@@ -60,6 +60,26 @@
  *  token in an ack request, a log line, or a thrown error message.
  *  This is the pattern for every future consumer (#2245, #2246).
  *
+ * ## Dynamic grant discovery by purpose (#2245)
+ *  A grant minted ahead of time for a KNOWN, fixed id (e.g. a #2242 minted
+ *  keypair provisioned once via `CORPUS_VAULT_GRANT_ID`) is fine for a
+ *  per-identity credential that never changes shape. It is the wrong fit
+ *  for a SHARED secret whose grantId is not known ahead of time and
+ *  changes on rotation (revoke old, mint new) — a caller pinned to a
+ *  literal `grant` id would need a file edit on every rotation, which is
+ *  exactly what #2245 exists to eliminate. `resolveGrantByPurpose` (set
+ *  either on `LoadFromVaultParams` as the default for every key, or on an
+ *  individual `VaultKeySpec` to override it) instead calls
+ *  `GET /api/vault/delegation/grants?purpose=` — the SAME self-service
+ *  enumeration route `packages/auth/tests/vault-client.test.ts`'s sibling
+ *  route file already serves for a human/agent listing its own grants —
+ *  and resolves whichever row currently has `status: 'active'` for that
+ *  purpose. A field can have only ONE active grant per (subject, grantedTo)
+ *  at a time, so this is unambiguous. A caller that also passes a literal
+ *  `grant` (top-level or per-key) is unaffected: the literal always wins,
+ *  since a fixed grant is cheaper (no extra round trip) and behaves
+ *  identically for a purpose that never rotates.
+ *
  * ## What this does NOT do
  *  - It does not decide HOW a caller obtains the bootstrap `identity` it
  *    authenticates with, or the `grant` id(s) it fetches — those are the
@@ -120,17 +140,36 @@ export interface VaultKeySpec {
    */
   onMissing: 'degrade' | 'fail';
   /**
-   * The one-time delegation grant id to fetch THIS key from. Defaults to
-   * the top-level `grant` — set this only when a single `loadFromVault`
-   * call needs to fetch keys sealed under different grants (e.g. a future
-   * multi-key consumer per #1922).
+   * The delegation grant id to fetch THIS key from. Defaults to the
+   * top-level `grant` (or `resolveGrantByPurpose`, if neither is set here)
+   * — set this only when a single `loadFromVault` call needs to fetch keys
+   * sealed under different grants (e.g. a future multi-key consumer per
+   * #1922).
    */
   grant?: string;
+  /**
+   * Overrides the top-level `resolveGrantByPurpose` for THIS key only —
+   * see `LoadFromVaultParams.resolveGrantByPurpose`. Ignored when `grant`
+   * (here or the top-level default) is set.
+   */
+  resolveGrantByPurpose?: string;
 }
 
 export interface LoadFromVaultParams {
-  /** Default one-time grant id, used for any `keys[]` entry that doesn't set its own `grant`. */
-  grant: string;
+  /**
+   * Default grant id, used for any `keys[]` entry that doesn't set its own
+   * `grant`. Omit this (and set `resolveGrantByPurpose` instead) for a
+   * grant whose id is not known ahead of time — see this module's
+   * "Dynamic grant discovery by purpose" docblock section.
+   */
+  grant?: string;
+  /**
+   * Default purpose-based grant lookup, used for any `keys[]` entry that
+   * sets neither its own `grant` nor its own `resolveGrantByPurpose`. See
+   * this module's "Dynamic grant discovery by purpose" docblock section.
+   * Ignored for a key that resolves a literal `grant` id instead.
+   */
+  resolveGrantByPurpose?: string;
   /** Why these keys are needed — recorded on each grant's ack (#2235), not logged anywhere else. */
   purpose: string;
   keys: VaultKeySpec[];
@@ -252,6 +291,35 @@ async function fetchGrant(authServiceUrl: string, grantId: string, token: string
     };
   }
   return { ok: true, field: body.field, value: body.value };
+}
+
+interface ListGrantsResponse {
+  grants?: Array<{ grantId?: unknown; status?: unknown }>;
+}
+
+/**
+ * `GET /api/vault/delegation/grants?purpose=` (#2231, self-service grant
+ * enumeration) — resolves the CURRENT `status: 'active'` grant id for
+ * `purpose`, or `null` when none is active (never fetched yet, or
+ * everything for this purpose has been revoked/superseded). See this
+ * module's "Dynamic grant discovery by purpose" docblock section. Never
+ * throws — a non-2xx or malformed response is treated the same as "no
+ * active grant", so the caller's own `onMissing` handling in `loadOneKey`
+ * decides what happens next.
+ */
+async function resolveActiveGrantId(authServiceUrl: string, token: string, purpose: string): Promise<string | null> {
+  try {
+    const res = await fetch(`${authServiceUrl}/api/vault/delegation/grants?purpose=${encodeURIComponent(purpose)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return null;
+    const body = (await res.json().catch(() => null)) as ListGrantsResponse | null;
+    const active = body?.grants?.find((grant) => grant.status === 'active' && typeof grant.grantId === 'string');
+    return active && typeof active.grantId === 'string' ? active.grantId : null;
+  } catch (err) {
+    log.warn({ purpose, err: String(err) }, 'loadFromVault: resolveGrantByPurpose lookup failed');
+    return null;
+  }
 }
 
 /**
@@ -382,17 +450,44 @@ function createGrantAckHandle(
   };
 }
 
+/**
+ * Resolves the grant id to fetch `keySpec` from: a literal `grant` (per-key,
+ * else the top-level default) always wins; otherwise a purpose-based
+ * dynamic lookup (per-key, else the top-level default) — see this module's
+ * "Dynamic grant discovery by purpose" docblock section. `null` means
+ * neither resolved to anything — the caller's `onMissing` handling decides
+ * what happens next, same as an ordinary fetch refusal.
+ */
+async function resolveGrantId(
+  authServiceUrl: string,
+  token: string,
+  defaultGrant: string | undefined,
+  defaultResolveGrantByPurpose: string | undefined,
+  keySpec: VaultKeySpec,
+): Promise<string | null> {
+  const literal = keySpec.grant ?? defaultGrant;
+  if (literal) return literal;
+
+  const purposeToResolve = keySpec.resolveGrantByPurpose ?? defaultResolveGrantByPurpose;
+  if (!purposeToResolve) return null;
+
+  return resolveActiveGrantId(authServiceUrl, token, purposeToResolve);
+}
+
 /** Fetches one `VaultKeySpec`, mutating `result` in place. Throws only for an `onMissing: 'fail'` key. No ack is sent here (#2257) — a successful fetch instead gets a deferred `GrantAckHandle` in `result.acks`. */
 async function loadOneKey(
   authServiceUrl: string,
   token: string,
-  defaultGrant: string,
+  defaultGrant: string | undefined,
+  defaultResolveGrantByPurpose: string | undefined,
   purpose: string,
   keySpec: VaultKeySpec,
   result: VaultCredentials,
 ): Promise<void> {
-  const grantId = keySpec.grant ?? defaultGrant;
-  const outcome = await fetchGrant(authServiceUrl, grantId, token);
+  const grantId = await resolveGrantId(authServiceUrl, token, defaultGrant, defaultResolveGrantByPurpose, keySpec);
+  const outcome: FetchGrantResult = grantId
+    ? await fetchGrant(authServiceUrl, grantId, token)
+    : { ok: false, status: 404, error: 'no grant id resolved' };
 
   if (!outcome.ok) {
     log.warn(
@@ -412,13 +507,14 @@ async function loadOneKey(
     result.dids[keySpec.key] = did;
   }
 
-  result.acks[keySpec.key] = createGrantAckHandle(authServiceUrl, grantId, token, purpose);
+  result.acks[keySpec.key] = createGrantAckHandle(authServiceUrl, grantId as string, token, purpose);
 }
 
 /**
- * Fetch `params.keys` through their one-time delegation grant(s), holding
- * every value in memory only. See this module's docblock for the full
- * contract, including the deferred (#2257) ack semantics.
+ * Fetch `params.keys` through their delegation grant(s) — a literal id or a
+ * purpose-based dynamic lookup, see "Dynamic grant discovery by purpose" —
+ * holding every value in memory only. See this module's docblock for the
+ * full contract, including the deferred (#2257) ack semantics.
  */
 export async function loadFromVault(params: LoadFromVaultParams): Promise<VaultCredentials> {
   const authServiceUrl = resolveAuthServiceUrl(params.authServiceUrl);
@@ -426,7 +522,7 @@ export async function loadFromVault(params: LoadFromVaultParams): Promise<VaultC
 
   const result: VaultCredentials = { values: {}, dids: {}, degraded: [], acks: {} };
   for (const keySpec of params.keys) {
-    await loadOneKey(authServiceUrl, token, params.grant, params.purpose, keySpec, result);
+    await loadOneKey(authServiceUrl, token, params.grant, params.resolveGrantByPurpose, params.purpose, keySpec, result);
   }
   return result;
 }

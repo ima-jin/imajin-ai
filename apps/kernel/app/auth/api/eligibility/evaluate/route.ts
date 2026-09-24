@@ -31,7 +31,7 @@ import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 const log = createLogger('kernel');
 
 export async function POST(request: NextRequest) {
-  const authError = requireInternalApiKey(request);
+  const authError = await requireInternalApiKey(request);
   if (authError) return authError;
 
   let body: Record<string, unknown>;

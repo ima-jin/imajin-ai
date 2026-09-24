@@ -96,7 +96,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ did: string }> }
 ) {
-  const authError = requireInternalApiKey(request);
+  const authError = await requireInternalApiKey(request);
   if (authError) return authError;
 
   const { did } = await params;

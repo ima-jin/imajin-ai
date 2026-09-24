@@ -1748,9 +1748,19 @@ export {
 // Trailing re-export only; see ./internal-secret.ts for the implementation.
 export {
   getInternalSecret,
+  getOrGenerateInternalSecret,
   internalSecretField,
   _resetInternalSecretCacheForTests,
+  type SecretGenerator,
 } from './internal-secret';
+
+// ── #2245 — shared (cross-service) internal secrets ─────────────────────
+// Trailing re-export only; see ./shared-internal-secret.ts for the
+// implementation (ATTESTATION_INTERNAL_API_KEY, the epic's second target).
+export {
+  grantInternalSecretTo,
+  type GrantInternalSecretResult,
+} from './shared-internal-secret';
 
 // ── #2247 — vault key cards on /jin (grant to a NEW consumer for an
 // already-minted key's field, without a re-seal) ───────────────────────────

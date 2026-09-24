@@ -102,7 +102,7 @@ function resolveNostrSignature(
 }
 
 export async function POST(request: NextRequest) {
-  const authError = requireInternalApiKey(request);
+  const authError = await requireInternalApiKey(request);
   if (authError) return authError;
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;

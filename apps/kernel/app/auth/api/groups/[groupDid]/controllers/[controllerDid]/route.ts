@@ -4,6 +4,7 @@ import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 
 const log = createLogger('kernel');
 
@@ -101,12 +102,8 @@ export async function GET(
   const { groupDid, controllerDid } = await params;
 
   // This endpoint is internal — validate via ATTESTATION_INTERNAL_API_KEY
-  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
-  const expectedKey = process.env.ATTESTATION_INTERNAL_API_KEY;
-
-  if (!expectedKey || apiKey !== expectedKey) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = await requireInternalApiKey(request);
+  if (authError) return authError;
 
   try {
     const [membership] = await db

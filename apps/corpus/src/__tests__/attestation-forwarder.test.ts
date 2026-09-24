@@ -1,9 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { forwardIngestionAttestation } from '../lib/attestation-forwarder';
 import type { IngestionAttestation } from '../engine/types';
 
+const { getAttestationInternalApiKeyMock, markAttestationKeyUsedForForwardingMock } = vi.hoisted(() => ({
+  getAttestationInternalApiKeyMock: vi.fn(),
+  markAttestationKeyUsedForForwardingMock: vi.fn(),
+}));
+
+vi.mock('../lib/attestation-key', () => ({
+  getAttestationInternalApiKey: getAttestationInternalApiKeyMock,
+  markAttestationKeyUsedForForwarding: markAttestationKeyUsedForForwardingMock,
+}));
+
+const { forwardIngestionAttestation } = await import('../lib/attestation-forwarder');
+
 const ORIGINAL_AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;
-const ORIGINAL_ATTESTATION_KEY = process.env.ATTESTATION_INTERNAL_API_KEY;
 
 function attestation(overrides: Partial<IngestionAttestation> = {}): IngestionAttestation {
   return {
@@ -19,21 +29,20 @@ function attestation(overrides: Partial<IngestionAttestation> = {}): IngestionAt
   };
 }
 
-describe('forwardIngestionAttestation (#1750)', () => {
+describe('forwardIngestionAttestation (#1750, vault-sourced key via #2245)', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     process.env.AUTH_SERVICE_URL = 'http://kernel.test';
-    process.env.ATTESTATION_INTERNAL_API_KEY = 'test-key';
+    getAttestationInternalApiKeyMock.mockReturnValue('test-key');
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
     if (ORIGINAL_AUTH_SERVICE_URL === undefined) delete process.env.AUTH_SERVICE_URL;
     else process.env.AUTH_SERVICE_URL = ORIGINAL_AUTH_SERVICE_URL;
-    if (ORIGINAL_ATTESTATION_KEY === undefined) delete process.env.ATTESTATION_INTERNAL_API_KEY;
-    else process.env.ATTESTATION_INTERNAL_API_KEY = ORIGINAL_ATTESTATION_KEY;
   });
 
-  it('posts to the kernel internal attestations endpoint with the corpus.ingested type and bearer auth', async () => {
+  it('posts to the kernel internal attestations endpoint with the corpus.ingested type and bearer auth, then marks the key used', async () => {
     const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ id: 'att_kernel123' }), { status: 201 }));
     vi.stubGlobal('fetch', fetchMock);
 
@@ -47,6 +56,7 @@ describe('forwardIngestionAttestation (#1750)', () => {
         headers: expect.objectContaining({ Authorization: 'Bearer test-key' }),
       }),
     );
+    expect(markAttestationKeyUsedForForwardingMock).toHaveBeenCalledTimes(1);
 
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init?.body as string) as Record<string, unknown>;
@@ -58,13 +68,14 @@ describe('forwardIngestionAttestation (#1750)', () => {
     });
   });
 
-  it('returns ok:false without throwing when the kernel responds with a non-2xx status', async () => {
+  it('returns ok:false without throwing when the kernel responds with a non-2xx status, and never marks the key used', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('server error', { status: 500 })));
 
     const result = await forwardIngestionAttestation(attestation(), 'did:imajin:corpus-service');
 
     expect(result.ok).toBe(false);
     expect(result.error).toMatch(/500/);
+    expect(markAttestationKeyUsedForForwardingMock).not.toHaveBeenCalled();
   });
 
   it('returns ok:false without throwing on a network error', async () => {
@@ -81,8 +92,8 @@ describe('forwardIngestionAttestation (#1750)', () => {
     expect(result.error).toMatch(/ECONNREFUSED/);
   });
 
-  it('returns ok:false when AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY is unset, without calling fetch', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  it('returns ok:false when AUTH_SERVICE_URL or the vault-sourced key is unset, without calling fetch', async () => {
+    getAttestationInternalApiKeyMock.mockReturnValue(null);
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
