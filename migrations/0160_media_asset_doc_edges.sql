@@ -1,4 +1,4 @@
--- Migration: 0158_media_asset_doc_edges
+-- Migration: 0160_media_asset_doc_edges
 -- owner: kernel
 -- #2282 (PR #2185 addendum items 4-6) — doc->asset edges for .fair
 -- derivative tracking. POST /media/api/assets/bundle materializes N files

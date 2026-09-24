@@ -9,8 +9,18 @@
  * the parsing logic has one owner and one test surface.
  */
 
-/** Matches inline markdown links and images: `[text](ref)` / `![alt](ref)`. */
-const MD_REF_RE = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+/**
+ * Matches inline markdown links and images: `[text](ref)` / `![alt](ref)`.
+ *
+ * The URL group excludes `"` (not just `)` and whitespace) so its character
+ * class can never overlap with the optional title group's `[^"]*`. Without
+ * that exclusion the two adjacent unbounded quantifiers could both claim the
+ * same run of quote characters, giving the engine a polynomial number of ways
+ * to split a non-matching tail on crafted input (Sonar S8786). Excluding `"`
+ * from the URL class makes the split point between the two groups unique, so
+ * there is nothing left to backtrack over.
+ */
+const MD_REF_RE = /(!?)\[([^\]]*)\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g;
 
 /** A ref that was resolved to a materialized asset URL. */
 export interface MarkdownRefRewrite {

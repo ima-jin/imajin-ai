@@ -591,7 +591,7 @@
     "media.asset_doc_edges": {
       "owner": "kernel",
       "schema": "media",
-      "firstMigration": "0158_media_asset_doc_edges.sql",
+      "firstMigration": "0160_media_asset_doc_edges.sql",
       "notes": ""
     },
     "media.folders": {

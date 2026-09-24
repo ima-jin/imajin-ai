@@ -5,7 +5,7 @@ import { createAsset, isAllowedMime, type AssetContext } from "@/src/lib/media/c
 import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { checkArticleFrontmatter, type ArticleFrontmatterCheck } from "@/src/lib/media/article-guard";
 import { buildAssetViewUrl } from "@/src/lib/media/view-url";
-import { normalizeLocalPath, rewriteMarkdownRefs } from "@/src/lib/media/markdown-refs";
+import { normalizeLocalPath, rewriteMarkdownRefs, type RewriteMarkdownRefsResult } from "@/src/lib/media/markdown-refs";
 
 const log = createLogger("kernel");
 
@@ -25,10 +25,11 @@ const log = createLogger("kernel");
  *   1. materializeReferencedFiles — every non-index file is uploaded via the
  *      shared createAsset pipeline first, so the index doc can be rewritten
  *      against real asset URLs.
- *   2. rewriteIndexRefs — the index markdown's local refs (`![x](./pic.png)`)
- *      are rewritten to the matching asset's view URL. Refs that don't match
- *      any bundled file are left as-is but always reported in `unresolved` —
- *      never silently left local without a signal.
+ *   2. rewriteMarkdownIndexRefs / passthroughIndexRefs — the index markdown's
+ *      local refs (`![x](./pic.png)`) are rewritten to the matching asset's
+ *      view URL (non-markdown indexes pass through untouched). Refs that
+ *      don't match any bundled file are left as-is but always reported in
+ *      `unresolved` — never silently left local without a signal.
  *   3. materializeIndex — created fresh (dedup-on, so re-uploading an
  *      unchanged bundle returns the same ids), or updated in place when the
  *      caller passes `indexAssetId` (explicit update semantics).
@@ -140,11 +141,19 @@ async function materializeReferencedFiles(
   return { ok: true, value: { assets, pathToUrl } };
 }
 
-/** Step 2 — see module doc. */
-function rewriteIndexRefs(isMarkdownIndex: boolean, rawIndexContent: string, pathToUrl: Map<string, string>) {
-  return isMarkdownIndex
-    ? rewriteMarkdownRefs(rawIndexContent, (localPath) => pathToUrl.get(localPath) ?? null)
-    : { content: rawIndexContent, rewritten: [] as { from: string; to: string }[], unresolved: [] as string[] };
+/**
+ * Step 2 (markdown index) — see module doc. Split from the non-markdown case
+ * below (rather than a single function toggled by a boolean parameter) per
+ * Sonar S2301: a boolean-selector parameter that changes a function's
+ * behavior should instead be two differently-named functions.
+ */
+function rewriteMarkdownIndexRefs(rawIndexContent: string, pathToUrl: Map<string, string>): RewriteMarkdownRefsResult {
+  return rewriteMarkdownRefs(rawIndexContent, (localPath) => pathToUrl.get(localPath) ?? null);
+}
+
+/** Step 2 (non-markdown index) — no local refs to rewrite; content passes through untouched. */
+function passthroughIndexRefs(rawIndexContent: string): RewriteMarkdownRefsResult {
+  return { content: rawIndexContent, rewritten: [], unresolved: [] };
 }
 
 /** Step 3 — see module doc. */
@@ -222,11 +231,9 @@ export async function processBundleUpload(input: BundleUploadInput): Promise<Bun
   if (!materializedRefs.ok) return materializedRefs;
   const { assets: assetSummaries, pathToUrl } = materializedRefs.value;
 
-  const { content: rewrittenContent, rewritten, unresolved } = rewriteIndexRefs(
-    isMarkdownIndex,
-    rawIndexContent,
-    pathToUrl,
-  );
+  const { content: rewrittenContent, rewritten, unresolved } = isMarkdownIndex
+    ? rewriteMarkdownIndexRefs(rawIndexContent, pathToUrl)
+    : passthroughIndexRefs(rawIndexContent);
 
   const materializedIndex = await materializeIndex({
     indexFile,
