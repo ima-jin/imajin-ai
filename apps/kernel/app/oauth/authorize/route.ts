@@ -25,6 +25,17 @@ const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
 
 /**
+ * The registered redirect_uris set to match an incoming redirect_uri against
+ * (#1348). `redirectUris` is authoritative; fall back to the single
+ * `callbackUrl` only for a row that predates the 0158 backfill (defence in
+ * depth — the migration backfills every existing row, so this should not be
+ * reachable in practice).
+ */
+function registeredRedirectUris(client: { callbackUrl: string; redirectUris: string[] | null }): string[] {
+  return client.redirectUris && client.redirectUris.length > 0 ? client.redirectUris : [client.callbackUrl];
+}
+
+/**
  * Resolve the PUBLIC origin for browser-facing redirects (login / consent).
  *
  * The kernel sits behind Caddy, so `request.url` reports the internal proxy
@@ -45,15 +56,6 @@ export const dynamic = 'force-dynamic';
  * flow, and for deployments that only set MCP_PUBLIC_URL), then the forwarded
  * host, then request.url as a last resort for local dev.
  */
-/** Parse a redirect_uri's origin, or null if it doesn't parse as an absolute URI (#1990). */
-function safeOrigin(uri: string): string | null {
-  try {
-    return new URL(uri).origin;
-  } catch {
-    return null;
-  }
-}
-
 function publicOrigin(request: NextRequest): string {
   const nodeOrigin = toOrigin(process.env.APP_URL) ?? toOrigin(process.env.NEXT_PUBLIC_BASE_URL);
   if (nodeOrigin) return nodeOrigin;
@@ -120,7 +122,7 @@ export async function GET(request: NextRequest) {
       appDid: registryApps.appDid,
       callbackUrl: registryApps.callbackUrl,
       requestedScopes: registryApps.requestedScopes,
-      allowedRedirectHosts: registryApps.allowedRedirectHosts,
+      redirectUris: registryApps.redirectUris,
     })
     .from(registryApps)
     .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
@@ -130,18 +132,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unauthorized_client', error_description: 'Unknown or inactive client' }, { status: 400 });
   }
 
-  // 2. redirect_uri must match the registered callbackUrl exactly, OR be a
-  //    same-origin loopback redirect (path may differ — DCR stored only the
-  //    first of several loopback callbacks). See redirectUriMatches(). #1990
-  //    additionally accepts an origin registered in allowed_redirect_hosts
-  //    (the FULL set of redirect_uri origins recorded at DCR time) — folds
-  //    #1348 in without narrowing the pre-existing exact/loopback match.
+  // 2. redirect_uri must be an EXACT member of the client's registered
+  //    redirect_uris set (#1348) — the full set validated at DCR time, not
+  //    just the first-registered callbackUrl. See redirectUriMatches().
   if (!redirectUri) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri required' }, { status: 400 });
   }
-  const redirectOrigin = safeOrigin(redirectUri);
-  const hostRegistered = redirectOrigin ? (client.allowedRedirectHosts ?? []).includes(redirectOrigin) : false;
-  if (!redirectUriMatches(redirectUri, client.callbackUrl) && !hostRegistered) {
+  if (!redirectUriMatches(redirectUri, registeredRedirectUris(client))) {
     return NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 });
   }
 
@@ -218,6 +215,7 @@ type ConsentClient = {
   publicKey: string;
   callbackUrl: string;
   requestedScopes: string[] | null;
+  redirectUris: string[] | null;
   name: string;
   logoUrl: string | null;
 };
@@ -272,7 +270,7 @@ async function validateConsentRequest(
       requestedScopes: registryApps.requestedScopes,
       name: registryApps.name,
       logoUrl: registryApps.logoUrl,
-      allowedRedirectHosts: registryApps.allowedRedirectHosts,
+      redirectUris: registryApps.redirectUris,
     })
     .from(registryApps)
     .where(and(eq(registryApps.id, clientId), eq(registryApps.status, 'active')))
@@ -284,12 +282,10 @@ async function validateConsentRequest(
   if (!redirectUri) {
     return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri required' }, { status: 400 }) };
   }
-  // #1990: mirrors the GET gate's allowed_redirect_hosts fold-in, so a
+  // #1348: mirrors the GET gate's exact registered-set match, so a
   // redirect_uri the GET step accepted can never be rejected here at commit
   // time.
-  const redirectOrigin = safeOrigin(redirectUri);
-  const hostRegistered = redirectOrigin ? (client.allowedRedirectHosts ?? []).includes(redirectOrigin) : false;
-  if (!redirectUriMatches(redirectUri, client.callbackUrl) && !hostRegistered) {
+  if (!redirectUriMatches(redirectUri, registeredRedirectUris(client))) {
     return { error: NextResponse.json({ error: 'invalid_request', error_description: 'redirect_uri mismatch' }, { status: 400 }) };
   }
   if (!codeChallenge || codeChallengeMethod !== 'S256') {

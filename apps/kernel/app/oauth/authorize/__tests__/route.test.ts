@@ -1,11 +1,12 @@
 /**
- * Tests for GET /oauth/authorize (#1990's allowed_redirect_hosts fold-in).
+ * Tests for GET /oauth/authorize (#1348's exact redirect_uris set match).
  *
- * Focused on the redirect_uri acceptance gate: the pre-existing exact/loopback
- * match against `callbackUrl` must be unchanged, and a redirect_uri whose
- * ORIGIN is in the client's `allowed_redirect_hosts` set (recorded from the
- * full registered redirect_uris set at DCR time, #1348) must now also be
- * accepted.
+ * Focused on the redirect_uri acceptance gate: an incoming redirect_uri must
+ * be an EXACT member of the client's registered `redirect_uris` set (the
+ * full set validated at DCR time), not merely share its origin. This
+ * supersedes #1990's origin-level `allowed_redirect_hosts` fold-in, which was
+ * broader than RFC 7591 intends (it accepted any path on a registered
+ * origin, even one never actually registered).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -41,7 +42,7 @@ vi.mock('@/src/db', () => ({
     appDid: 'registryApps.appDid',
     callbackUrl: 'registryApps.callbackUrl',
     requestedScopes: 'registryApps.requestedScopes',
-    allowedRedirectHosts: 'registryApps.allowedRedirectHosts',
+    redirectUris: 'registryApps.redirectUris',
     status: 'registryApps.status',
   },
   attestations: {},
@@ -87,7 +88,7 @@ function baseClientRow(overrides: Record<string, unknown> = {}) {
     appDid: 'did:imajin:mcp-typingmind',
     callbackUrl: REGISTERED_CALLBACK,
     requestedScopes: ['media:read'],
-    allowedRedirectHosts: ['https://www.typingmind.com'],
+    redirectUris: [REGISTERED_CALLBACK],
     ...overrides,
   };
 }
@@ -112,7 +113,7 @@ beforeEach(() => {
   mocks.getEffectiveDidMock.mockResolvedValue({ sessionDid: 'did:imajin:user' });
 });
 
-describe('GET /oauth/authorize — redirect_uri exact match (unchanged behavior)', () => {
+describe('GET /oauth/authorize — redirect_uri exact match (#1348)', () => {
   it('accepts a redirect_uri that exactly matches the registered callbackUrl', async () => {
     nextSelect([baseClientRow()]);
 
@@ -134,29 +135,40 @@ describe('GET /oauth/authorize — redirect_uri exact match (unchanged behavior)
   });
 });
 
-describe('GET /oauth/authorize — allowed_redirect_hosts fold-in (#1990)', () => {
-  it('accepts a redirect_uri on a DIFFERENT path but a registered origin', async () => {
-    nextSelect([baseClientRow({ allowedRedirectHosts: ['https://www.typingmind.com'] })]);
+describe('GET /oauth/authorize — full registered redirect_uris set (#1348)', () => {
+  it('accepts EVERY URI in a multi-URI registered set', async () => {
+    const registered = [REGISTERED_CALLBACK, 'https://www.typingmind.com/api/mcp/oauth/callback/debug'];
+    for (const uri of registered) {
+      nextSelect([baseClientRow({ redirectUris: registered })]);
+      const res = await GET(authorizeRequest({ ...VALID_PARAMS, redirect_uri: uri }) as never);
+      expect(res.status).toBe(302);
+    }
+  });
+
+  it('rejects a redirect_uri on the SAME ORIGIN as a registered URI but not itself registered', async () => {
+    nextSelect([baseClientRow({ redirectUris: [REGISTERED_CALLBACK] })]);
 
     const res = await GET(
       authorizeRequest({ ...VALID_PARAMS, redirect_uri: 'https://www.typingmind.com/some/other/path' }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error_description).toBe('redirect_uri mismatch');
+  });
+
+  it('falls back to callbackUrl when redirectUris is empty (pre-migration row, defence in depth)', async () => {
+    nextSelect([baseClientRow({ callbackUrl: 'https://a.example.com/cb', redirectUris: [] })]);
+
+    const res = await GET(
+      authorizeRequest({ ...VALID_PARAMS, redirect_uri: 'https://a.example.com/cb' }) as never,
     );
 
     expect(res.status).toBe(302);
   });
 
-  it('still rejects when the origin is not in allowed_redirect_hosts either', async () => {
-    nextSelect([baseClientRow({ allowedRedirectHosts: ['https://www.typingmind.com'] })]);
-
-    const res = await GET(
-      authorizeRequest({ ...VALID_PARAMS, redirect_uri: 'https://not-typingmind.example/callback' }) as never,
-    );
-
-    expect(res.status).toBe(400);
-  });
-
-  it('rejects when allowed_redirect_hosts is empty (pre-#1990 rows default to no extra hosts)', async () => {
-    nextSelect([baseClientRow({ callbackUrl: 'https://a.example.com/cb', allowedRedirectHosts: [] })]);
+  it('still rejects a different path when redirectUris is empty and falling back to callbackUrl', async () => {
+    nextSelect([baseClientRow({ callbackUrl: 'https://a.example.com/cb', redirectUris: [] })]);
 
     const res = await GET(
       authorizeRequest({ ...VALID_PARAMS, redirect_uri: 'https://a.example.com/different-path' }) as never,

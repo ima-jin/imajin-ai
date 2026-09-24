@@ -119,6 +119,7 @@ beforeEach(() => {
     id: 'app_integrity',
     appDid: 'did:imajin:integrity',
     callbackUrl: CALLBACK,
+    redirectUris: [CALLBACK],
     requestedScopes: [SCOPE_A],
   };
   delete process.env.APP_URL;
