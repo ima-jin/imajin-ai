@@ -6,11 +6,20 @@
  * paths against `GET`/`POST /jin/api/operator-approvals`, and the
  * per-source renderer registry (default vs. skill-workshop).
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { crypto as authCrypto } from '@imajin/auth';
-import { OperatorApprovalsPanel } from '../operator-approvals-panel';
 import { installIntervalSpy } from './panel-test-support';
+
+// `useSearchParams` (#2291's proposalId deep link) needs a Next router
+// context that does not exist outside the app runtime — stub it per-test,
+// same pattern `usage-feed-panel.test.tsx` already uses.
+const searchParamsMock = vi.hoisted(() => ({ current: new URLSearchParams() }));
+vi.mock('next/navigation', () => ({
+  useSearchParams: () => searchParamsMock.current,
+}));
+
+import { OperatorApprovalsPanel } from '../operator-approvals-panel';
 
 interface ApprovalFixture {
   proposalId: string;
@@ -156,6 +165,10 @@ function installFetch(
   return spy;
 }
 
+beforeEach(() => {
+  searchParamsMock.current = new URLSearchParams();
+});
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -178,6 +191,34 @@ describe('non-operator visibility (#2059 acceptance (c))', () => {
 
     // Before the fetch resolves, isOperator is still its initial `false`.
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe('deep link (#2291 phone push — opens /jin?proposalId=<id>)', () => {
+  it('highlights and scrolls to the deep-linked proposal\'s card once it has loaded', async () => {
+    const scrollIntoViewMock = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewMock;
+    searchParamsMock.current = new URLSearchParams('proposalId=opap_1');
+    installFetch([{ isOperator: true, approvals: [approval({ proposalId: 'opap_1' }), approval({ proposalId: 'opap_2' })] }]);
+
+    render(<OperatorApprovalsPanel />);
+
+    await waitFor(() => expect(scrollIntoViewMock).toHaveBeenCalledTimes(1));
+    const card = document.getElementById('approval-opap_1');
+    expect(card).not.toBeNull();
+    expect(card?.className).toContain('ring-amber-500/70');
+    expect(document.getElementById('approval-opap_2')?.className).not.toContain('ring-amber-500/70');
+  });
+
+  it('does not scroll when no proposalId is present in the URL', async () => {
+    const scrollIntoViewMock = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewMock;
+    installFetch([{ isOperator: true, approvals: [approval({ proposalId: 'opap_1' })] }]);
+
+    render(<OperatorApprovalsPanel />);
+
+    await screen.findByText('Restart the gateway to load the updated plugin.');
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 });
 

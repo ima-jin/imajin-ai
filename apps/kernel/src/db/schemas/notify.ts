@@ -97,3 +97,26 @@ export type Preference = typeof preferences.$inferSelect;
 export type NewPreference = typeof preferences.$inferInsert;
 export type NotifyTemplateDbRow = typeof notifyTemplates.$inferSelect;
 export type NewNotifyTemplateDbRow = typeof notifyTemplates.$inferInsert;
+
+// #2291 — phone push path: one row per browser/device Web Push (VAPID)
+// subscription, keyed by the push service's own globally-unique `endpoint`
+// URL. Additive alongside the existing WS push (delivery.ts) — this table
+// only ever fans OUT an already-persisted notification, never replaces the
+// notifications row as the source of truth. `revokedAt` is a soft-delete:
+// set on an explicit unsubscribe, or when the push service reports the
+// subscription gone (404/410) on send.
+export const pushSubscriptions = notifySchema.table("push_subscriptions", {
+  id: text("id").primaryKey(),
+  operatorDid: text("operator_did").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+}, (table) => ({
+  operatorIdx: index("idx_push_subscriptions_operator").on(table.operatorDid, table.revokedAt),
+}));
+
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+export type NewPushSubscriptionRow = typeof pushSubscriptions.$inferInsert;

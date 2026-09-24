@@ -1,0 +1,14 @@
+{
+  "name": "imajin /jin — Operator Console",
+  "short_name": "/jin",
+  "description": "Approve pending operator proposals and manage vault keys from your phone.",
+  "start_url": "/jin",
+  "scope": "/jin",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "icons": [
+    { "src": "/jin/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/jin/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

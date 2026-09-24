@@ -134,7 +134,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-import { getInternalSecret, internalSecretField, _resetInternalSecretCacheForTests } from '../internal-secret';
+import { getInternalSecret, getOrGenerateInternalSecret, internalSecretField, _resetInternalSecretCacheForTests } from '../internal-secret';
 
 const NODE_DID = 'did:imajin:node-test';
 const PURPOSE = 'kernel.foreign-principal-pepper';
@@ -264,6 +264,47 @@ describe('getInternalSecret — fetch path (an active grant already exists)', ()
     fetchGrantSecretMock.mockResolvedValue({ status: 'expired' });
 
     await expect(getInternalSecret(PURPOSE)).rejects.toThrow(/not fetchable/);
+  });
+});
+
+describe('getOrGenerateInternalSecret — custom generator (#2291)', () => {
+  it('uses the supplied generator instead of random bytes on first provisioning', async () => {
+    const generate = vi.fn(() => JSON.stringify({ publicKey: 'pub', privateKey: 'priv' }));
+
+    const value = await getOrGenerateInternalSecret('notify.web-push-vapid-keys', generate);
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(value).toBe(JSON.stringify({ publicKey: 'pub', privateKey: 'priv' }));
+    expect(sealAndGrantStaticSecretMock).toHaveBeenCalledWith(
+      internalSecretField('notify.web-push-vapid-keys'),
+      value,
+      expect.objectContaining({ principalDid: NODE_DID, granteeDid: NODE_DID }),
+    );
+  });
+
+  it('never calls the generator when an active grant already exists — fetches instead', async () => {
+    grantsStore.set('vdg_existing', {
+      id: 'vdg_existing', subject: NODE_DID, grantedTo: NODE_DID, purpose: 'notify.web-push-vapid-keys', status: 'active',
+    });
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'existing-vapid-json', grant: { id: 'vdg_existing' } });
+    const generate = vi.fn(() => 'should-never-be-used');
+
+    const value = await getOrGenerateInternalSecret('notify.web-push-vapid-keys', generate);
+
+    expect(value).toBe('existing-vapid-json');
+    expect(generate).not.toHaveBeenCalled();
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+  });
+
+  it('caches independently of getInternalSecret\'s default-generator purpose namespace', async () => {
+    const generate = () => 'custom-value';
+
+    const first = await getOrGenerateInternalSecret('purpose-custom', generate);
+    const second = await getOrGenerateInternalSecret('purpose-custom', generate);
+
+    expect(first).toBe('custom-value');
+    expect(second).toBe('custom-value');
+    expect(sealAndGrantStaticSecretMock).toHaveBeenCalledTimes(1);
   });
 });
 

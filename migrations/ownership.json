@@ -642,6 +642,12 @@
       "firstMigration": "0001_seed.sql",
       "notes": ""
     },
+    "notify.push_subscriptions": {
+      "owner": "kernel",
+      "schema": "notify",
+      "firstMigration": "0162_push_subscriptions.sql",
+      "notes": "#2291 phone push path \u2014 web-push (VAPID) subscriptions"
+    },
     "notify.templates": {
       "owner": "kernel",
       "schema": "notify",

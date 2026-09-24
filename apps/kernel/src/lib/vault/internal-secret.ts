@@ -139,10 +139,21 @@ async function fetchAndAck(ownerDid: string, grantId: string, purpose: string): 
   return outcome.value;
 }
 
+/**
+ * Produces the plaintext for a brand-new internal secret. Defaults to 32
+ * random bytes (opaque tokens/peppers); a caller with a structured secret
+ * — e.g. an asymmetric keypair — supplies its own via
+ * {@link getOrGenerateInternalSecret} instead (#2291's VAPID keys).
+ */
+export type SecretGenerator = () => string;
+
+/** The default plaintext generator: 32 random bytes, hex-encoded — an opaque token/pepper. */
+const DEFAULT_SECRET_GENERATOR: SecretGenerator = () => randomBytes(32).toString('hex');
+
 /** Generate, seal, self-grant, and attest a brand-new internal secret. Only the claim winner calls this. */
-async function generateAndSeal(ownerDid: string, purpose: string): Promise<string> {
+async function generateAndSeal(ownerDid: string, purpose: string, generate: SecretGenerator): Promise<string> {
   const field = internalSecretField(purpose);
-  const value = randomBytes(32).toString('hex');
+  const value = generate();
 
   const { grantId } = await sealAndGrantStaticSecret(field, value, {
     principalDid: ownerDid,
@@ -227,7 +238,7 @@ async function pollForActiveGrant(ownerDid: string, purpose: string): Promise<Ac
   );
 }
 
-async function resolveInternalSecret(purpose: string): Promise<string> {
+async function resolveInternalSecret(purpose: string, generate: SecretGenerator): Promise<string> {
   const ownerDid = getNodeSigningIdentity().senderDid;
 
   const existing = await findActiveGrant(ownerDid, purpose);
@@ -239,7 +250,7 @@ async function resolveInternalSecret(purpose: string): Promise<string> {
   const won = await claimProvisioning(ownerDid, purpose, field);
   if (won) {
     try {
-      return await generateAndSeal(ownerDid, purpose);
+      return await generateAndSeal(ownerDid, purpose, generate);
     } catch (err) {
       // Roll back our own claim on a failure WE observed, so this process
       // (or another) can retry immediately instead of waiting on a stale
@@ -263,13 +274,28 @@ async function resolveInternalSecret(purpose: string): Promise<string> {
  * Resolve a kernel-internal secret for `purpose`, self-provisioning it on
  * first call if no grant exists yet. Cached for the lifetime of the
  * process — see this module's docblock for the full generate/fetch/
- * concurrency contract.
+ * concurrency contract. Uses the default 32-random-bytes generator; see
+ * {@link getOrGenerateInternalSecret} for a structured secret.
  */
 export function getInternalSecret(purpose: string): Promise<string> {
+  return getOrGenerateInternalSecret(purpose, DEFAULT_SECRET_GENERATOR);
+}
+
+/**
+ * Like {@link getInternalSecret}, but lets the claim winner supply its own
+ * plaintext generator instead of 32 random bytes — e.g. #2291's VAPID
+ * keypair (`JSON.stringify({publicKey, privateKey})`), generated once and
+ * self-granted the same way, then parsed back out by the caller. A process
+ * that loses the provisioning race, or finds an existing grant, always
+ * gets back whatever was already generated/fetched — `generate()` is only
+ * ever invoked by the winner (see {@link generateAndSeal}), never used to
+ * override an existing value.
+ */
+export function getOrGenerateInternalSecret(purpose: string, generate: SecretGenerator): Promise<string> {
   const cached = secretCache.get(purpose);
   if (cached) return cached;
 
-  const promise = resolveInternalSecret(purpose).catch((err: unknown) => {
+  const promise = resolveInternalSecret(purpose, generate).catch((err: unknown) => {
     // Never cache a failed attempt — a transient DB hiccup on first boot
     // must not permanently poison every later call in this process.
     secretCache.delete(purpose);

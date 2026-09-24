@@ -18,6 +18,7 @@ const {
   mockVerifyOperatorCountersignature,
   mockIsOperatorCountersignRequired,
   mockEffectiveContentHash,
+  mockPushWebNotificationToOperator,
 } = vi.hoisted(() => ({
   mockSelectLimit: vi.fn(),
   mockInsertValues: vi.fn().mockResolvedValue(undefined),
@@ -32,6 +33,11 @@ const {
   // in the `../operator-approvals` mock factory below, once the real module
   // is available) — only the "fail-closed" test overrides this to throw.
   mockEffectiveContentHash: vi.fn(),
+  // #2291: the web-push fan-out module has its own dedicated test suite
+  // (web-push.test.ts) — here it's just a spy confirming
+  // recordApprovalRequested invokes it (and with what), never the real
+  // vault/web-push machinery.
+  mockPushWebNotificationToOperator: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/src/db', () => ({
@@ -89,6 +95,8 @@ vi.mock('nanoid', () => ({ nanoid: () => 'fixedid1234' }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeSelfInfo: vi.fn() }));
 
 vi.mock('../operator-countersign', () => ({ verifyOperatorCountersignature: mockVerifyOperatorCountersignature }));
+
+vi.mock('../web-push', () => ({ pushWebNotificationToOperator: mockPushWebNotificationToOperator }));
 
 vi.mock('../operator-approvals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../operator-approvals')>();
@@ -194,6 +202,51 @@ describe('recordApprovalRequested', () => {
         status: 'pending',
       }),
     );
+  });
+
+  it('fans out a web-push notification to the operator, fire-and-forget, with a deep link back to this proposal (#2291)', async () => {
+    mockSelectLimit.mockResolvedValueOnce([]); // no existing row
+
+    await recordApprovalRequested({
+      proposalId: PROPOSAL_ID,
+      operatorDid: OPERATOR_DID,
+      source: 'system-agent',
+      kind: 'system-agent:restart',
+      summary: 'Restart the gateway.',
+      keysTouched: [],
+      detail: null,
+      contentHash: null,
+      notificationId: 'ntf_1',
+      signerDid: null,
+    });
+
+    expect(mockPushWebNotificationToOperator).toHaveBeenCalledWith(
+      OPERATOR_DID,
+      expect.objectContaining({
+        title: expect.stringContaining('system-agent:restart'),
+        body: 'Restart the gateway.',
+        url: expect.stringContaining(`proposalId=${PROPOSAL_ID}`),
+      }),
+    );
+  });
+
+  it('does not fan out a web-push notification when the row already exists (retry-safe)', async () => {
+    mockSelectLimit.mockResolvedValueOnce([{ status: 'approved' }]);
+
+    await recordApprovalRequested({
+      proposalId: PROPOSAL_ID,
+      operatorDid: OPERATOR_DID,
+      source: 'system-agent',
+      kind: 'system-agent:restart',
+      summary: 'Restart the gateway.',
+      keysTouched: [],
+      detail: null,
+      contentHash: null,
+      notificationId: 'ntf_1',
+      signerDid: null,
+    });
+
+    expect(mockPushWebNotificationToOperator).not.toHaveBeenCalled();
   });
 
   it('records the requesting agent\'s signerDid when the source adapter supplied one (#2337)', async () => {
