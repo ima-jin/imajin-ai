@@ -93,6 +93,7 @@ function matchesClause(row: GrantRow, clause: unknown): boolean {
   if (c.__and) return c.__and.every((sub) => matchesClause(row, sub));
   if ('__eq' in c) {
     const field = c.__col?.field;
+    if (field === 'subject') return row.subject === c.__eq;
     if (field === 'grantedTo') return row.grantedTo === c.__eq;
     if (field === 'status') return row.status === c.__eq;
     if (field === 'field') return row.field === c.__eq;
@@ -103,6 +104,7 @@ function matchesClause(row: GrantRow, clause: unknown): boolean {
 vi.mock('@/src/db', () => {
   const vaultDelegationGrants = {
     id: { field: 'id' },
+    subject: { field: 'subject' },
     field: { field: 'field' },
     grantedTo: { field: 'grantedTo' },
     status: { field: 'status' },
@@ -253,5 +255,32 @@ describe('grantInternalSecretTo', () => {
     expect(outcome.status).toBe('ok');
     const newRow = outcome.status === 'ok' ? grantStore.get(outcome.grantId) : undefined;
     expect(newRow?.wrappedKey).toBe('wrapped-key-bytes');
+  });
+
+  it('never reuses — nor treats as already-granted — a row for the same field whose subject is NOT this node’s own DID', async () => {
+    const OTHER_NODE_DID = 'did:imajin:some-other-node';
+    // Same field name, active, intact key material, and even already granted
+    // to the SAME grantee — but sealed by a DIFFERENT node (subject). Reusing
+    // this row's wrappedKey would be wrong: the no-re-seal argument only
+    // holds because the wrap is to THIS node's own X25519 key.
+    grantStore.set('vdg_foreign', activeSelfGrantRow({
+      id: 'vdg_foreign',
+      subject: OTHER_NODE_DID,
+      grantedTo: CORPUS_BOOTSTRAP_DID,
+      wrappedKey: 'foreign-wrapped-key',
+      wrappedNonce: 'foreign-wrapped-nonce',
+    }));
+
+    const outcome = await grantInternalSecretTo(PURPOSE, CORPUS_BOOTSTRAP_DID, 'did:imajin:operator');
+
+    // Must still mint a fresh grant sourced from THIS node's own self-grant
+    // (vdg_self), never reusing or short-circuiting on the foreign row.
+    expect(outcome).toEqual({ status: 'ok', grantId: 'vdg_new' });
+    const newRow = grantStore.get('vdg_new');
+    expect(newRow).toMatchObject({
+      subject: OWNER_DID,
+      wrappedKey: 'wrapped-key-bytes',
+      wrappedNonce: 'wrapped-nonce-bytes',
+    });
   });
 });

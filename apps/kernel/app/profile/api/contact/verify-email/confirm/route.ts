@@ -17,7 +17,9 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
+import { getInternalSecret } from '@/src/lib/vault/internal-secret';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { ATTESTATION_INTERNAL_API_KEY_PURPOSE } from '@/src/lib/auth/require-internal-api-key';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 
@@ -25,7 +27,6 @@ const log = createLogger('kernel');
 
 const AUTH_INTERNAL_URL = process.env.AUTH_INTERNAL_URL ?? buildPublicUrlAbsolute('kernel');
 const PROFILE_URL = buildPublicUrlAbsolute('kernel');
-const ATTESTATION_INTERNAL_API_KEY = process.env.ATTESTATION_INTERNAL_API_KEY ?? '';
 
 function verifyToken(did: string, nonce: string, exp: number, tok: string): boolean {
   const privateKey = process.env.AUTH_PRIVATE_KEY ?? 'dev-verify-key';
@@ -111,14 +112,24 @@ export async function GET(request: NextRequest) {
   const normalised = email.toLowerCase().trim();
   const emailHash = createHash('sha256').update(normalised).digest('hex');
 
-  // Issue email_verified attestation via the internal endpoint (server-signed)
+  // Issue email_verified attestation via the internal endpoint (server-signed).
+  // The Bearer key is vault-sourced (#2245) — this route runs inside the
+  // kernel itself, so it resolves the same self-provisioned value
+  // require-internal-api-key.ts checks, rather than a hand-set env var.
   const nodeIdentity = getNodeSigningIdentity();
+  let attestationInternalApiKey: string;
+  try {
+    attestationInternalApiKey = await getInternalSecret(ATTESTATION_INTERNAL_API_KEY_PURPOSE);
+  } catch (err) {
+    log.error({ err: String(err), did }, 'Failed to resolve ATTESTATION_INTERNAL_API_KEY from vault at verify-email confirm');
+    return NextResponse.redirect(`${editUrl}?verified=error`);
+  }
   try {
     const attestRes = await fetch(`${AUTH_INTERNAL_URL}/auth/api/attestations/internal`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ATTESTATION_INTERNAL_API_KEY}`,
+        'Authorization': `Bearer ${attestationInternalApiKey}`,
       },
       body: JSON.stringify({
         issuer_did: nodeIdentity.senderDid,

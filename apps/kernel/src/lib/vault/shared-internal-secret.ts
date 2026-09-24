@@ -101,6 +101,7 @@ export async function grantInternalSecretTo(
     .from(vaultDelegationGrants)
     .where(
       and(
+        eq(vaultDelegationGrants.subject, ownerDid),
         eq(vaultDelegationGrants.field, field),
         eq(vaultDelegationGrants.grantedTo, granteeDid),
         eq(vaultDelegationGrants.status, 'active'),
@@ -113,13 +114,19 @@ export async function grantInternalSecretTo(
     return { status: 'ok', grantId: alreadyGranted[0]!.id };
   }
 
-  // Any row for this field with intact key material works as the reuse
-  // source — revoke/supersede blanks wrappedKey/wrappedNonce, so an erased
-  // row is naturally skipped by the non-empty check below.
+  // Any row for this (subject, field) with intact key material works as the
+  // reuse source — revoke/supersede blanks wrappedKey/wrappedNonce, so an
+  // erased row is naturally skipped by the non-empty check below. Filtering
+  // on `subject` too (not just `field`) matters because the no-re-seal
+  // argument above depends on the wrap being to THIS node's own X25519 key
+  // — true for every row this module or `getInternalSecret` has ever
+  // written (subject is always `ownerDid`), but the query should enforce
+  // that invariant rather than assume no other row could ever share this
+  // field name.
   const candidates = await db
     .select()
     .from(vaultDelegationGrants)
-    .where(eq(vaultDelegationGrants.field, field))
+    .where(and(eq(vaultDelegationGrants.subject, ownerDid), eq(vaultDelegationGrants.field, field)))
     .orderBy(desc(vaultDelegationGrants.createdAt));
   const source = candidates.find((row) => row.wrappedKey.length > 0 && row.wrappedNonce.length > 0);
   if (!source) {

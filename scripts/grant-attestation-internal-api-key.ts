@@ -52,7 +52,7 @@ const GRANTED_BY = 'operator:grant-attestation-internal-api-key-script';
 
 async function main(): Promise<void> {
   const [granteeDid] = process.argv.slice(2);
-  if (!granteeDid || !granteeDid.startsWith('did:imajin:')) {
+  if (!granteeDid?.startsWith('did:imajin:')) {
     console.error('Usage: npx tsx scripts/grant-attestation-internal-api-key.ts <granteeDid>');
     console.error('  <granteeDid> must be an already-registered did:imajin:* identity');
     console.error("  (e.g. the corpus service's CORPUS_VAULT_BOOTSTRAP_DID).");
