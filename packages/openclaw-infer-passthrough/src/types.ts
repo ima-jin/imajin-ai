@@ -56,6 +56,16 @@ export interface ProxyConfig {
   /** Raw hex Ed25519 private key seed. Never logged, never echoed in any response. */
   appPrivateKey: string;
   routes: ProviderRouteConfig[];
+  /**
+   * Public origin the kernel's MCP surface is issued/verified against (#2368)
+   * — must match `apps/kernel/src/lib/mcp/oauth-config.ts`'s `getMcpIssuer()`
+   * (`MCP_PUBLIC_URL` there too; same name, same default), NOT `kernelBaseUrl`.
+   * The `/mcp` route's app-token audience (RFC 8707) is `${mcpPublicUrl}/mcp`,
+   * which in prod is a different origin than `kernelBaseUrl` (the front-door
+   * `KERNEL_BASE_URL` this proxy otherwise dials for `/infer/v1/*`) — see
+   * `mcp-handler.ts`.
+   */
+  mcpPublicUrl: string;
 }
 
 export interface MintedToken {

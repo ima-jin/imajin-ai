@@ -21,6 +21,11 @@ formats, one shim — see [imajin-ai#1959](https://github.com/ima-jin/imajin-ai/
   Anthropic Messages API natively via `ANTHROPIC_BASE_URL` — today NanoClaw
   ([#1932](https://github.com/ima-jin/imajin-ai/issues/1932)), via the Claude Agent SDK /
   Claude Code CLI.
+- **MCP** (`POST /mcp`) — forwards raw JSON-RPC to the kernel's native MCP surface
+  (`POST /mcp` on the kernel itself, `apps/kernel/app/mcp/route.ts`)
+  ([#2368](https://github.com/ima-jin/imajin-ai/issues/2368)), so an OpenClaw-hosted agent
+  that only knows this proxy's app-token flow can also reach MCP tools, without speaking the
+  kernel's OAuth 2.1 Dynamic Client Registration dance itself.
 
 > **Scope note.** This package ships **code + the runbook below**. It does not touch any
 > live gateway config — the gateway host is operated separately. The prod acceptance
@@ -145,6 +150,48 @@ NanoClaw's Claude provider needs zero code changes to move off its scoped direct
 key — point `ANTHROPIC_BASE_URL` at this shim and `ANTHROPIC_API_KEY` at a placeholder,
 using the same wiring the OpenAI-compatible path already established.
 
+### MCP path — #2368
+
+1. A caller sends a JSON-RPC request to `POST /mcp` — the exact same shape it would send to
+   the kernel's own `/mcp` directly — with an `Authorization: Bearer <OpenClaw API key>`
+   (never checked by this shim; see "Incoming auth" below) and, for the single-app-identity
+   deployment this proxy assumes today, an optional `X-Imajin-App-Did` header that must equal
+   the configured `OPENCLAW_APP_DID` when present.
+2. The proxy mints (or reuses) a kernel app-token for the routes-config `"mcp"` entry, but
+   *without* narrowing to a single scope (unlike every other route here) — the kernel returns
+   the attestation's full granted scope set, and this proxy checks that set contains at least
+   one recognized MCP-surface scope (`media:read`, `github:read`, `warp:dispatch`, etc. — see
+   `@imajin/auth/scope-vocabulary`'s `scopesForSurface('mcp')`) before forwarding — a typed
+   `403 insufficient_scope` otherwise. Per-tool scope enforcement (e.g. a specific tool needing
+   `media:write`) is left to the kernel's own already-tested `handleMcpRpc` gate.
+3. The token is bound to the kernel's MCP resource audience (RFC 8707) —
+   `${MCP_PUBLIC_URL}/mcp` — which the kernel's `/mcp` route hard-requires
+   (`apps/kernel/src/lib/mcp/oauth-config.ts`'s `getMcpResource()`); every other route's token
+   carries the kernel's generic `imajin:apps` audience instead. **This is a different origin
+   than `KERNEL_BASE_URL` in prod** (`mcp.imajin.ai` vs `jin.imajin.ai`) — see the
+   `MCP_PUBLIC_URL` config entry below.
+4. It forwards the exact JSON-RPC body — plus `Mcp-Session-Id`/`Mcp-Protocol-Version`, when
+   the caller sent them — to `POST {KERNEL_BASE_URL}/mcp` with the minted token as the bearer,
+   streaming the response back byte for byte (SSE or plain JSON), and retrying once on a `401`
+   exactly like every other route.
+5. **No break-glass fallback exists for MCP** — the kernel is the only MCP server this proxy
+   can reach, so a kernel `5xx`/timeout surfaces the standard `502 kernel_unavailable` (the
+   same response any OpenAI-compatible/Anthropic-format route without a configured
+   `directBaseUrl` already returns).
+
+**Incoming auth.** Like every other route in this proxy, `/mcp` does not itself verify the
+caller's bearer — this shim binds `127.0.0.1` and trusts its local caller implicitly (see
+"Why a proxy" above); there is no OpenClaw-API-key verifier in this package to check an
+incoming bearer against, so `/mcp` does not invent one.
+
+```mermaid
+flowchart LR
+  Agent -->|"JSON-RPC, Bearer OpenClaw key"| Proxy["openclaw-infer-passthrough\n127.0.0.1:PORT/mcp"]
+  Proxy -->|"mint app-token JWT, aud=MCP_PUBLIC_URL/mcp"| AuthToken["POST /auth/api/apps/token"]
+  Proxy -->|"Bearer app-token"| Kernel["POST /mcp"]
+  Kernel --> Tools["MCP tools (media, github, warp, …)"]
+```
+
 ## Why the delegated app-token flow, not the service-token flow
 
 `packages/auth/src/scope-vocabulary.ts` fences which scopes a session-less
@@ -171,6 +218,7 @@ attestation per principal/route combination.
 | `OPENCLAW_APP_DID` | yes | This app's registered DID (`registry.apps`). |
 | `OPENCLAW_APP_PRIVATE_KEY` | yes | This app's Ed25519 private key (hex seed). **Never logged.** |
 | `INFER_PROXY_ROUTES_CONFIG` | yes | Path to the non-secret routes JSON file (see below). |
+| `MCP_PUBLIC_URL` | no (default `https://mcp.imajin.ai`) | The kernel's own public MCP issuer origin (imajin-ai#2368) — mirrors `apps/kernel/src/lib/mcp/oauth-config.ts`'s `getMcpIssuer()` env var name and default exactly. Only the `/mcp` route's app-token mint uses this; every other route is unaffected. **Must match whatever the kernel itself resolves `MCP_PUBLIC_URL` to**, or `/mcp` 401s on every call (RFC 8707 audience mismatch) — in prod this is typically a *different* origin than `KERNEL_BASE_URL` (`mcp.imajin.ai` vs `jin.imajin.ai`), so do not assume the default is correct without checking the kernel's own deployed value. |
 | *(per route)* `directApiKeyEnvVar` target, e.g. `ANTHROPIC_DIRECT_API_KEY` | no | Break-glass direct provider key for that route. Omit to disable fallback for it. |
 
 ### Routes config (`INFER_PROXY_ROUTES_CONFIG`, a JSON file — no secrets)
@@ -197,6 +245,12 @@ See `config/routes.example.json`. Each entry:
 - `directBaseUrl` / `directApiKeyEnvVar` — omit both to disable break-glass fallback for
   a route (a kernel outage then surfaces the kernel's own error instead of silently
   routing around it).
+
+The `"mcp"` entry (imajin-ai#2368) is the single well-known route id `POST /mcp` resolves
+against — same single-route shape as `"anthropic"`. It needs only `principalDid`/
+`attestationId` (an `app.authorized` attestation granting at least one MCP-surface scope,
+e.g. `media:read`); `modelPrefixes`/`directBaseUrl`/`directApiKeyEnvVar` do not apply (MCP has
+no model routing and no break-glass fallback — see the MCP path section above).
 
 ### OpenClaw custom-provider config shape
 

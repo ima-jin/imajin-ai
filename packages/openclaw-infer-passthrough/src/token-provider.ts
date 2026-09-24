@@ -29,22 +29,43 @@ import { stripTrailingSlashes } from './url-utils.js';
 
 const APP_TOKEN_SCOPE = 'infer:completions';
 
+/**
+ * @param scope Single scope to narrow the mint to (must be one of the
+ *   attestation's granted scopes) — defaults to `infer:completions` when
+ *   omitted, matching every pre-#2368 caller. Pass `null` EXPLICITLY to omit
+ *   `scope` from the request entirely, which the kernel treats as "grant the
+ *   attestation's full approved scope set" (the `/mcp` route's need — see
+ *   `RouteTokenProvider`'s own doc comment for why `null`, not `undefined`,
+ *   is the "no narrowing" sentinel here too).
+ * @param aud Resource-server audience (RFC 8707) to bind the token to —
+ *   omit for the kernel's own generic-apps default (`imajin:apps`). The
+ *   `/mcp` route (#2368) requires this to be set to its resource identifier
+ *   (`${MCP_PUBLIC_URL}/mcp`, see `apps/kernel/src/lib/mcp/oauth-config.ts`'s
+ *   `getMcpResource()`) or every call 401s on the kernel's own audience gate.
+ */
 export async function mintAppToken(
   kernelBaseUrl: string,
   appDid: string,
   privateKeyHex: string,
   attestationId: string,
-  scope: string = APP_TOKEN_SCOPE,
+  scope: string | null = APP_TOKEN_SCOPE,
+  aud?: string,
 ): Promise<MintedToken> {
   const nonce = randomBytes(16).toString('hex');
   const timestamp = new Date().toISOString();
   const challenge = `${appDid}:${attestationId}:${nonce}:${timestamp}`;
   const signature = crypto.signSync(challenge, privateKeyHex);
+  // `scope === null` must produce an OMITTED key, not a `null` value in the
+  // JSON body — the kernel's route only special-cases an absent `scope`,
+  // treating a body with `"scope": null` as a truthy-check miss the same as
+  // any other unexpected type. `JSON.stringify` drops `undefined` values but
+  // keeps `null` ones, so the two are not interchangeable here.
+  const resolvedScope = scope === null ? undefined : scope;
 
   const res = await fetch(`${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ appDid, attestationId, scope, nonce, timestamp, signature }),
+    body: JSON.stringify({ appDid, attestationId, scope: resolvedScope, aud, nonce, timestamp, signature }),
   });
 
   if (!res.ok) {
@@ -64,16 +85,40 @@ export interface TokenSource {
 }
 
 /**
+ * A `TokenSource` that can also report which scopes the currently-cached
+ * token actually carries (#2368) — `mcp-handler.ts` uses this to enforce the
+ * "agent must hold at least one recognized MCP-surface scope" gate before
+ * ever forwarding a JSON-RPC call to the kernel. `getScopes()` ensures a
+ * valid token first (minting if needed), exactly like `getToken()`.
+ */
+export interface ScopedTokenSource extends TokenSource {
+  getScopes(): Promise<string[]>;
+}
+
+/**
  * Caches one route's app token and refreshes it before the kernel's 10-minute
  * TTL expires. No TTL-extension request exists (deliberate epic decision,
  * imajin-ai#1922 finding 6) — the only way to keep a route "logged in" is to
  * mint a fresh token, which is exactly what `getToken()` does once the cached
  * one is within `refreshSkewMs` of expiring.
  */
-export class RouteTokenProvider implements TokenSource {
-  private cached: { token: string; expiresAt: number } | null = null;
+export class RouteTokenProvider implements ScopedTokenSource {
+  private cached: { token: string; expiresAt: number; scopes: string[] } | null = null;
   private mintPromise: Promise<string> | null = null;
 
+  /**
+   * @param scope Narrows the mint to one scope, matching every pre-#2368
+   *   caller's behavior (defaults to `infer:completions`). Pass `null`
+   *   explicitly to skip narrowing and receive the attestation's FULL
+   *   granted scope set instead — `null`, not `undefined`, because a
+   *   defaulted constructor parameter falls back to its default on an
+   *   `undefined` argument, which would silently re-narrow to
+   *   `infer:completions` instead of honoring an explicit "give me
+   *   everything granted" request (the `/mcp` route's own need — see
+   *   `mcp-handler.ts`).
+   * @param aud Resource-server audience to bind the mint to — see
+   *   `mintAppToken`'s own doc comment. Omitted for every route except `mcp`.
+   */
   constructor(
     private readonly kernelBaseUrl: string,
     private readonly appDid: string,
@@ -81,6 +126,8 @@ export class RouteTokenProvider implements TokenSource {
     private readonly attestationId: string,
     private readonly refreshSkewMs: number = 60_000,
     private readonly now: () => number = Date.now,
+    private readonly scope: string | null = APP_TOKEN_SCOPE,
+    private readonly aud?: string,
   ) {}
 
   /** Get a valid token, minting or refreshing as needed. Coalesces concurrent callers onto one mint. */
@@ -94,14 +141,20 @@ export class RouteTokenProvider implements TokenSource {
     return this.mintPromise;
   }
 
+  /** The scopes the currently-cached (or freshly minted) token actually carries. */
+  async getScopes(): Promise<string[]> {
+    await this.getToken();
+    return this.cached?.scopes ?? [];
+  }
+
   /** Force the next `getToken()` call to mint fresh — e.g. after a 401 from the kernel. */
   invalidate(): void {
     this.cached = null;
   }
 
   private async refresh(): Promise<string> {
-    const minted = await mintAppToken(this.kernelBaseUrl, this.appDid, this.privateKeyHex, this.attestationId);
-    this.cached = { token: minted.token, expiresAt: this.now() + minted.expiresIn * 1000 };
+    const minted = await mintAppToken(this.kernelBaseUrl, this.appDid, this.privateKeyHex, this.attestationId, this.scope, this.aud);
+    this.cached = { token: minted.token, expiresAt: this.now() + minted.expiresIn * 1000, scopes: minted.scopes };
     return this.cached.token;
   }
 }

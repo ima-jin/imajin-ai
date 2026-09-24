@@ -53,13 +53,24 @@ export function jsonError(status: number, error: string, message: string): Proxy
   };
 }
 
-export function toProxyResponse(res: Response): ProxyResponse {
+/**
+ * @param extraHeaderNames Additional response header names to copy through
+ *   verbatim when present, beyond `Content-Type`/the SSE pair above (#2368:
+ *   the `/mcp` route needs `Mcp-Session-Id`/`Mcp-Protocol-Version` preserved
+ *   on the way back to the caller; every pre-existing wire format needs
+ *   none, so the default keeps their behavior byte-for-byte unchanged).
+ */
+export function toProxyResponse(res: Response, extraHeaderNames: readonly string[] = []): ProxyResponse {
   const headers: Record<string, string> = {};
   const contentType = res.headers.get('content-type');
   if (contentType) headers['Content-Type'] = contentType;
   if ((res.headers.get('content-type') ?? '').includes('text/event-stream')) {
     headers['Cache-Control'] = 'no-cache';
     headers['Connection'] = 'keep-alive';
+  }
+  for (const name of extraHeaderNames) {
+    const value = res.headers.get(name);
+    if (value) headers[name] = value;
   }
   return { status: res.status, headers, body: res.body };
 }
@@ -76,25 +87,27 @@ export function toProxyResponse(res: Response): ProxyResponse {
  *   `directBaseUrl` and a resolvable direct key.
  * @param logFields   Extra fields (e.g. `{ endpoint: 'count_tokens' }`)
  *   merged into every log line this dispatch emits, alongside `route`.
+ * @param extraResponseHeaders See `toProxyResponse`'s doc comment.
  */
 export async function dispatchWithBreakGlass(
   deps: DispatchDeps,
   callKernel: (token: string) => Promise<Response>,
   callDirect: (directApiKey: string) => Promise<Response>,
   logFields: LogFields = {},
+  extraResponseHeaders: readonly string[] = [],
 ): Promise<ProxyResponse> {
   const tokenProvider = deps.getTokenProvider(deps.route.id);
 
   try {
     const kernelResponse = await attemptKernelCall(deps, tokenProvider, callKernel, logFields);
     if (kernelResponse.status >= 500) {
-      return await attemptFallback(deps, callDirect, `kernel returned ${kernelResponse.status}`, logFields);
+      return await attemptFallback(deps, callDirect, `kernel returned ${kernelResponse.status}`, logFields, extraResponseHeaders);
     }
     deps.health.recordKernelSuccess();
-    return toProxyResponse(kernelResponse);
+    return toProxyResponse(kernelResponse, extraResponseHeaders);
   } catch (err) {
     if (err instanceof UpstreamTimeoutError || err instanceof UpstreamUnavailableError) {
-      return await attemptFallback(deps, callDirect, err.message, logFields);
+      return await attemptFallback(deps, callDirect, err.message, logFields, extraResponseHeaders);
     }
     throw err;
   }
@@ -123,6 +136,7 @@ async function attemptFallback(
   callDirect: (directApiKey: string) => Promise<Response>,
   reason: string,
   logFields: LogFields,
+  extraResponseHeaders: readonly string[] = [],
 ): Promise<ProxyResponse> {
   const directApiKey = deps.resolveDirectApiKey(deps.route);
   if (!deps.route.directBaseUrl || !directApiKey) {
@@ -138,7 +152,7 @@ async function attemptFallback(
     const direct = await callDirect(directApiKey);
     deps.health.recordFallback();
     deps.log.warn({ route: deps.route.id, ...logFields, reason, status: direct.status }, 'break-glass: fell back to direct endpoint');
-    return toProxyResponse(direct);
+    return toProxyResponse(direct, extraResponseHeaders);
   } catch (err) {
     deps.health.recordFallback();
     const detail = err instanceof Error ? err.message : String(err);

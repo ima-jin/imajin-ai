@@ -144,6 +144,55 @@ export async function forwardDirect(
   return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, `Direct provider '${route.id}'`);
 }
 
+export interface McpForwardHeaders {
+  mcpProtocolVersion?: string;
+  /** Streamable HTTP session continuation (MCP spec) — forwarded pass-through even though the kernel's `/mcp` is currently stateless and never reads it, for forward-compat with a future stateful revision (#2368). */
+  mcpSessionId?: string;
+}
+
+/**
+ * Forward a JSON-RPC request to the kernel's native MCP surface
+ * (`POST {kernelBaseUrl}/mcp`, #2368). Never inspects or rewrites `bodyText`
+ * — the JSON-RPC body rides through as raw bytes, same discipline as every
+ * other forwarder in this file — beyond attaching the bearer token and the
+ * two MCP transport headers the caller sent, when present. Returns the raw
+ * `Response` for any HTTP status the kernel returns (2xx/4xx/5xx, including
+ * an SSE `text/event-stream` body); only a network failure or TTFB timeout
+ * throws.
+ */
+export async function forwardMcpToKernel(
+  kernelBaseUrl: string,
+  token: string,
+  bodyText: string,
+  timeoutMs: number,
+  headers: McpForwardHeaders = {},
+): Promise<Response> {
+  const url = `${stripTrailingSlashes(kernelBaseUrl)}/mcp`;
+  const reqHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+  if (headers.mcpProtocolVersion) reqHeaders['Mcp-Protocol-Version'] = headers.mcpProtocolVersion;
+  if (headers.mcpSessionId) reqHeaders['Mcp-Session-Id'] = headers.mcpSessionId;
+
+  return fetchWithTtfbTimeout(url, { method: 'POST', headers: reqHeaders, body: bodyText }, timeoutMs, 'Kernel');
+}
+
+/**
+ * MCP has no break-glass direct endpoint — the kernel is the only
+ * implementation of the MCP server this proxy can reach, unlike the
+ * OpenAI-compatible/Anthropic-format paths, which can fall back to a
+ * provider's own direct API. The `mcp` route entry never sets
+ * `directBaseUrl`, so `dispatchWithBreakGlass`'s `attemptFallback` always
+ * short-circuits to its own `kernel_unavailable` 502 before this would ever
+ * run — it exists only to satisfy that shared dispatch flow's `callDirect`
+ * signature, mirroring the same defensive guard `forwardDirect`/
+ * `forwardAnthropicDirect` use for a route that omits `directBaseUrl`.
+ */
+export async function forwardMcpDirect(route: ProviderRouteConfig): Promise<Response> {
+  throw new NoDirectFallbackError(route.id);
+}
+
 /** The two Anthropic-format endpoints this shim forwards (imajin-ai#1959). */
 export type AnthropicPath = 'messages' | 'messages/count_tokens';
 
