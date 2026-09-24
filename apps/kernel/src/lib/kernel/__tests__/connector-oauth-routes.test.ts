@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { makeRequest } from './next-route-test-utils';
 
 // ─── connector-oauth-routes.ts — connect/callback handler tests (#1521, #1529) ─
 //
@@ -9,6 +10,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //   2. (#1529) The callback is a *browser* redirect target, so every branch
 //      must redirect back into the app rather than render JSON — and the
 //      `returnTo` that drives where it lands must never escape the origin.
+//   3. (#2363) Behind Caddy that origin is NOT `request.url` — it is whatever
+//      the proxy forwarded — so the callback must anchor its redirects there.
 
 const { requireAuthMock, resolveActingDidMock, requireAppAuthMock } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
@@ -74,15 +77,6 @@ import {
 } from '../connector-oauth-routes';
 import type { BaseOAuthConfig } from '../connector-oauth';
 
-function makeRequest(url: string) {
-  return { url } as unknown as import('next/server').NextRequest;
-}
-
-/** A request with headers, for exercising app-auth header detection. */
-function makeRequestWithHeaders(url: string, headers: Record<string, string> = {}) {
-  return { url, headers: new Headers(headers) } as unknown as import('next/server').NextRequest;
-}
-
 /** A request whose `json()` resolves to `body` (or throws when omitted). */
 function makeJsonRequest(body: unknown, url = 'https://kernel.test/api') {
   return {
@@ -94,13 +88,29 @@ function makeJsonRequest(body: unknown, url = 'https://kernel.test/api') {
   } as unknown as import('next/server').NextRequest;
 }
 
+// The callback's redirect base comes from `proxyAwarePublicOrigin`, which
+// prefers a configured node origin over anything on the request (#2363). A
+// developer shell with either var exported would otherwise silently rewrite
+// every expected Location below.
+const originalAppUrl = process.env.APP_URL;
+const originalBaseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
 beforeEach(() => {
+  delete process.env.APP_URL;
+  delete process.env.NEXT_PUBLIC_BASE_URL;
   requireAuthMock.mockReset();
   requireAuthMock.mockResolvedValue({ identity: {} });
   resolveActingDidMock.mockReset();
   resolveActingDidMock.mockReturnValue('did:imajin:owner');
   requireAppAuthMock.mockReset();
   requireAppAuthMock.mockResolvedValue({ error: 'unauthorized', status: 401 });
+});
+
+afterAll(() => {
+  if (originalAppUrl === undefined) delete process.env.APP_URL;
+  else process.env.APP_URL = originalAppUrl;
+  if (originalBaseUrl === undefined) delete process.env.NEXT_PUBLIC_BASE_URL;
+  else process.env.NEXT_PUBLIC_BASE_URL = originalBaseUrl;
 });
 
 describe('createConnectHandler', () => {
@@ -171,7 +181,7 @@ describe('createConnectHandler', () => {
     const buildAuthorizeUrl = vi.fn(async () => 'https://provider.test/authorize?x=1');
     const handler = createConnectHandler(buildAuthorizeUrl, () => 'state123');
 
-    const res = (await handler(makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer app-token' }))) as {
+    const res = (await handler(makeRequest('https://kernel.test/connect', { authorization: 'Bearer app-token' }))) as {
       status: number;
       headers: { location: string };
     };
@@ -186,7 +196,7 @@ describe('createConnectHandler', () => {
     requireAppAuthMock.mockResolvedValue({ error: 'Invalid app token', status: 403 });
     const handler = createConnectHandler(async () => 'https://provider.test/authorize', () => 'state123');
 
-    const res = (await handler(makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer bad-token' }))) as {
+    const res = (await handler(makeRequest('https://kernel.test/connect', { authorization: 'Bearer bad-token' }))) as {
       status: number;
       json(): Promise<{ error: string }>;
     };
@@ -203,7 +213,7 @@ describe('createConnectHandler', () => {
     const buildAuthorizeUrl = vi.fn();
     const handler = createConnectHandler(buildAuthorizeUrl, () => 'state123');
 
-    const res = (await handler(makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer service-token' }))) as { status: number };
+    const res = (await handler(makeRequest('https://kernel.test/connect', { authorization: 'Bearer service-token' }))) as { status: number };
 
     expect(res.status).toBe(400);
     expect(buildAuthorizeUrl).not.toHaveBeenCalled();
@@ -262,7 +272,7 @@ describe('createConnectHandler', () => {
 
 describe('resolveConfigDidFromAppAuth (#1704)', () => {
   it('returns undefined when no app-auth headers are present', async () => {
-    const result = await resolveConfigDidFromAppAuth(makeRequestWithHeaders('https://kernel.test/connect'));
+    const result = await resolveConfigDidFromAppAuth(makeRequest('https://kernel.test/connect'));
     expect(result).toBeUndefined();
     expect(requireAppAuthMock).not.toHaveBeenCalled();
   });
@@ -271,7 +281,7 @@ describe('resolveConfigDidFromAppAuth (#1704)', () => {
     requireAppAuthMock.mockResolvedValue({
       appAuth: { appDid: 'did:imajin:agrifortress', userDid: 'did:imajin:owner', scopes: [], attestationId: 'att' },
     });
-    const request = makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer app-token' });
+    const request = makeRequest('https://kernel.test/connect', { authorization: 'Bearer app-token' });
 
     const result = await resolveConfigDidFromAppAuth(request);
 
@@ -283,7 +293,7 @@ describe('resolveConfigDidFromAppAuth (#1704)', () => {
     requireAppAuthMock.mockResolvedValue({
       appAuth: { appDid: 'did:imajin:agrifortress', userDid: 'did:imajin:owner', scopes: [], attestationId: 'att' },
     });
-    const request = makeRequestWithHeaders('https://kernel.test/connect', {
+    const request = makeRequest('https://kernel.test/connect', {
       'x-app-did': 'did:imajin:agrifortress',
       'x-app-authorization': 'att_123',
     });
@@ -293,7 +303,7 @@ describe('resolveConfigDidFromAppAuth (#1704)', () => {
 
   it('returns undefined (does not throw) when app-auth verification fails', async () => {
     requireAppAuthMock.mockResolvedValue({ error: 'Invalid app token', status: 401 });
-    const request = makeRequestWithHeaders('https://kernel.test/connect', { authorization: 'Bearer bad-token' });
+    const request = makeRequest('https://kernel.test/connect', { authorization: 'Bearer bad-token' });
 
     expect(await resolveConfigDidFromAppAuth(request)).toBeUndefined();
   });
@@ -435,6 +445,105 @@ describe('createCallbackHandler', () => {
     await call(handler);
 
     expect(exchange).toHaveBeenCalledWith('did:imajin:owner', 'abc', expect.any(URLSearchParams), undefined);
+  });
+});
+
+// ─── Reverse-proxy origin (#2363) ────────────────────────────────────────────
+//
+// In prod the kernel sits behind Caddy: `request.url` is the upstream
+// `http://localhost:<port>` target, and the public host survives only in
+// `X-Forwarded-Host` / `X-Forwarded-Proto`. Anchoring the callback's redirect
+// to `request.url` therefore sent every user — success and failure alike — to
+// a localhost URL their browser cannot reach.
+
+describe('createCallbackHandler behind a reverse proxy', () => {
+  /** The internal origin Next reports for a proxied request. */
+  const UPSTREAM = 'http://localhost:7000/google/api/callback?code=abc&state=xyz';
+
+  function googleHandler(
+    verifyState: () => { did: string; returnTo?: string } = () => ({ did: 'did:imajin:owner' }),
+    exchange: () => Promise<void> = async () => undefined,
+  ) {
+    return createCallbackHandler({
+      verifyState,
+      exchange,
+      connectorName: 'Google',
+      connectorId: 'google',
+    });
+  }
+
+  async function callProxied(
+    handler: ReturnType<typeof googleHandler>,
+    headers: Record<string, string>,
+    url = UPSTREAM,
+  ) {
+    return (await handler(makeRequest(url, headers))) as { headers: { location: string } };
+  }
+
+  it('lands the browser on the forwarded host, not the upstream localhost origin', async () => {
+    const res = await callProxied(googleHandler(), { 'x-forwarded-host': 'jin.imajin.ai' });
+    expect(res.headers.location).toBe('https://jin.imajin.ai/auth/connectors/google?connected=google');
+  });
+
+  it('honours an explicit x-forwarded-proto', async () => {
+    const res = await callProxied(googleHandler(), {
+      'x-forwarded-host': 'jin.imajin.ai',
+      'x-forwarded-proto': 'http',
+    });
+    expect(res.headers.location).toBe('http://jin.imajin.ai/auth/connectors/google?connected=google');
+  });
+
+  it('uses the outermost hop when a proxy chain comma-joins the header', async () => {
+    const res = await callProxied(googleHandler(), {
+      'x-forwarded-host': 'jin.imajin.ai, inner.internal',
+      'x-forwarded-proto': 'https, http',
+    });
+    expect(res.headers.location).toBe('https://jin.imajin.ai/auth/connectors/google?connected=google');
+  });
+
+  it('sends failures to the forwarded host too', async () => {
+    const handler = googleHandler(
+      () => ({ did: 'did:imajin:owner' }),
+      async () => { throw new Error('token endpoint down'); },
+    );
+    const res = await callProxied(handler, { 'x-forwarded-host': 'jin.imajin.ai' });
+    expect(res.headers.location).toBe(
+      'https://jin.imajin.ai/auth/connectors/google?error=exchange_failed&connector=google',
+    );
+  });
+
+  it('resolves a signed returnTo against the forwarded host', async () => {
+    const handler = googleHandler(() => ({ did: 'did:imajin:owner', returnTo: '/auth/settings' }));
+    const res = await callProxied(handler, { 'x-forwarded-host': 'jin.imajin.ai' });
+    expect(res.headers.location).toBe('https://jin.imajin.ai/auth/settings?connected=google');
+  });
+
+  it('still refuses an off-origin returnTo once the base is the forwarded host', async () => {
+    // The forwarded base must not become a way to smuggle `returnTo` off-site.
+    const handler = googleHandler(() => ({ did: 'did:imajin:owner', returnTo: 'https://evil.com/steal' }));
+    const res = await callProxied(handler, { 'x-forwarded-host': 'jin.imajin.ai' });
+    expect(res.headers.location).toBe('https://jin.imajin.ai/auth/connectors/google?connected=google');
+  });
+
+  it.each([
+    { label: 'an absolute URL', host: 'https://evil.com' },
+    { label: 'a host with a path', host: 'jin.imajin.ai/../evil.com' },
+    { label: 'userinfo smuggling', host: 'jin.imajin.ai@evil.com' },
+    { label: 'an empty value', host: '' },
+  ])('ignores a malformed x-forwarded-host (%s) and falls back to the request origin', async ({ host }) => {
+    const res = await callProxied(googleHandler(), { 'x-forwarded-host': host });
+    expect(res.headers.location).toBe('http://localhost:7000/auth/connectors/google?connected=google');
+  });
+
+  it('falls back to the request origin when the proxy headers are absent (local dev)', async () => {
+    const res = await callProxied(googleHandler(), {});
+    expect(res.headers.location).toBe('http://localhost:7000/auth/connectors/google?connected=google');
+  });
+
+  it('prefers a configured APP_URL over the forwarded headers', async () => {
+    process.env.APP_URL = 'https://configured.imajin.ai';
+    const res = await callProxied(googleHandler(), { 'x-forwarded-host': 'jin.imajin.ai' });
+    expect(res.headers.location).toBe('https://configured.imajin.ai/auth/connectors/google?connected=google');
   });
 });
 
