@@ -121,6 +121,26 @@ interface OperatorApprovalNormalized {
   contentHash: string | null;
 }
 
+const MAX_SIGNER_DID_LENGTH = 200;
+
+/**
+ * Extracts the requesting agent's DID from an `operator.approval.requested`
+ * payload's optional `signerDid` field (#2337) — the source adapter's own
+ * signing identity (e.g. `ima-jin/openclaw-imajin-plugin`'s
+ * `KernelApprovalRequestedPayload.signerDid`), captured so
+ * `decideOperatorApproval` can later address `operator.approval.decided`
+ * back to it, not just the operator. Absent or malformed input degrades to
+ * `null` (operator-only delivery, today's behavior) rather than rejecting
+ * the request — `signerDid` is delivery metadata, never something the /jin
+ * card renders or that a source is required to get exactly right.
+ */
+function resolveSignerDid(data: Record<string, unknown>): string | null {
+  const raw = data.signerDid;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 && trimmed.length <= MAX_SIGNER_DID_LENGTH ? trimmed : null;
+}
+
 /**
  * Guard for the `operator.approval.requested` scope (#2059, generalized
  * #2152): validates the payload (open source/kind vocabulary, bounded
@@ -370,6 +390,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
       detail: operatorApprovalGuard.normalized.detail,
       contentHash: operatorApprovalGuard.normalized.contentHash,
       notificationId: id,
+      signerDid: resolveSignerDid(data),
     });
   }
 

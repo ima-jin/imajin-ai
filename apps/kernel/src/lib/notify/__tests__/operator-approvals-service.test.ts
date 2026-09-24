@@ -5,7 +5,7 @@
  * bus publish.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { OPERATOR_DID, PROPOSAL_ID, pendingApprovalCard } from './operator-approvals-test-helpers';
+import { AGENT_DID, OPERATOR_DID, PROPOSAL_ID, pendingApprovalCard } from './operator-approvals-test-helpers';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -154,6 +154,11 @@ function row(overrides: Record<string, unknown> = {}) {
     detail: null,
     contentHash: null,
     notificationId: 'ntf_1',
+    // #2337: null by default (no requesting-agent DID captured, e.g. a
+    // legacy row) so every pre-existing test here keeps exercising
+    // operator-only delivery unchanged — tests that care about the
+    // dual-recipient behavior override this explicitly.
+    signerDid: null,
     status: 'pending',
     decision: null,
     appliedAt: null,
@@ -185,6 +190,7 @@ describe('recordApprovalRequested', () => {
       detail: null,
       contentHash: null,
       notificationId: 'ntf_1',
+      signerDid: null,
     });
 
     expect(mockInsertValues).toHaveBeenCalledWith(
@@ -211,6 +217,7 @@ describe('recordApprovalRequested', () => {
       detail: null,
       contentHash: null,
       notificationId: 'ntf_1',
+      signerDid: null,
     });
 
     expect(mockPushWebNotificationToOperator).toHaveBeenCalledWith(
@@ -236,9 +243,29 @@ describe('recordApprovalRequested', () => {
       detail: null,
       contentHash: null,
       notificationId: 'ntf_1',
+      signerDid: null,
     });
 
     expect(mockPushWebNotificationToOperator).not.toHaveBeenCalled();
+  });
+
+  it('records the requesting agent\'s signerDid when the source adapter supplied one (#2337)', async () => {
+    mockSelectLimit.mockResolvedValueOnce([]);
+
+    await recordApprovalRequested({
+      proposalId: PROPOSAL_ID,
+      operatorDid: OPERATOR_DID,
+      source: 'system-agent',
+      kind: 'system-agent:restart',
+      summary: 'Restart the gateway.',
+      keysTouched: [],
+      detail: null,
+      contentHash: null,
+      notificationId: 'ntf_1',
+      signerDid: AGENT_DID,
+    });
+
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ signerDid: AGENT_DID }));
   });
 
   it('inserts a new pending row with a source-specific detail and contentHash (#2152)', async () => {
@@ -255,6 +282,7 @@ describe('recordApprovalRequested', () => {
       detail,
       contentHash: 'a'.repeat(64),
       notificationId: 'ntf_2',
+      signerDid: null,
     });
 
     expect(mockInsertValues).toHaveBeenCalledWith(
@@ -275,6 +303,7 @@ describe('recordApprovalRequested', () => {
       detail: null,
       contentHash: null,
       notificationId: 'ntf_1',
+      signerDid: null,
     });
 
     expect(mockInsertValues).not.toHaveBeenCalled();
@@ -380,6 +409,100 @@ describe('decideOperatorApproval', () => {
     const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
 
     expect(result.ok).toBe(true);
+  });
+
+  // #2337: `operator.approval.decided` was only ever addressed to the
+  // operator, so the agent that raised the proposal (`row.signerDid`)
+  // never received the decision. These pin the fix: the SAME signed
+  // payload — contentHash and operatorSignature included, byte-for-byte —
+  // is published once per distinct recipient.
+  describe('delivery to both the requesting agent and the operator (#2337)', () => {
+    it('publishes operator.approval.decided to both the requesting agent DID and the operator DID', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending', signerDid: AGENT_DID })])
+        .mockResolvedValueOnce([row({ status: 'approved', signerDid: AGENT_DID })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      expect(mockPublish).toHaveBeenCalledTimes(2);
+      const subjects = mockPublish.mock.calls.map((call) => (call[1] as { subject: string }).subject).sort();
+      expect(subjects).toEqual([AGENT_DID, OPERATOR_DID].sort());
+      // Both publishes must carry the exact same signed payload — #2337
+      // must never fork the wire shape to address a second recipient.
+      const payloads = mockPublish.mock.calls.map((call) => (call[1] as { payload: unknown }).payload);
+      expect(payloads[0]).toEqual(payloads[1]);
+      expect(mockPublish).toHaveBeenCalledWith(
+        'operator.approval.decided',
+        expect.objectContaining({ issuer: OPERATOR_DID, subject: AGENT_DID, scope: 'operator' }),
+      );
+    });
+
+    it('preserves contentHash and operatorSignature identically across both publishes', async () => {
+      const OPERATOR_SIG = { keyId: 'a'.repeat(64), alg: 'ed25519' as const, sig: 'b'.repeat(128) };
+      const decidedAt = new Date().toISOString();
+      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending', signerDid: AGENT_DID })])
+        .mockResolvedValueOnce([row({ status: 'approved', signerDid: AGENT_DID })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(mockPublish).toHaveBeenCalledTimes(2);
+      for (const call of mockPublish.mock.calls) {
+        expect(call[1]).toEqual(
+          expect.objectContaining({
+            payload: expect.objectContaining({ operatorSignature: OPERATOR_SIG, decidedAt }),
+          }),
+        );
+      }
+    });
+
+    it('publishes only once when signerDid equals the operator DID (no duplicate delivery)', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending', signerDid: OPERATOR_DID })])
+        .mockResolvedValueOnce([row({ status: 'approved', signerDid: OPERATOR_DID })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      expect(mockPublish).toHaveBeenCalledOnce();
+    });
+
+    it('publishes only to the operator when no signerDid was captured (legacy row)', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending', signerDid: null })])
+        .mockResolvedValueOnce([row({ status: 'approved', signerDid: null })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      expect(mockPublish).toHaveBeenCalledOnce();
+      expect(mockPublish).toHaveBeenCalledWith(
+        'operator.approval.decided',
+        expect.objectContaining({ subject: OPERATOR_DID }),
+      );
+    });
+
+    it("one recipient's publish failure never suppresses the other's, nor fails the decision (non-fatal per-recipient)", async () => {
+      mockPublish.mockRejectedValueOnce(new Error('bus unavailable for first recipient'));
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending', signerDid: AGENT_DID })])
+        .mockResolvedValueOnce([row({ status: 'approved', signerDid: AGENT_DID })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+      // Both recipients were attempted even though the first rejected.
+      expect(mockPublish).toHaveBeenCalledTimes(2);
+    });
   });
 
   // #2221: the allow-once/deny-only gate and expiry refusal are exec.command

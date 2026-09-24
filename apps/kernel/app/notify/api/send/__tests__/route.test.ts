@@ -477,7 +477,27 @@ describe('operator.approval.requested boundary (#2059, generalized #2152)', () =
       detail: null,
       contentHash: null,
       notificationId: NOTIFICATION_ID,
+      signerDid: null,
     });
+  });
+
+  it("captures the requesting agent's signerDid from the payload (#2337)", async () => {
+    const SIGNER_DID = 'did:imajin:jin-agent';
+    const res = await POST(makeReq(operatorApprovalBody({ signerDid: SIGNER_DID })));
+
+    expect(res.status).toBe(200);
+    expect(mockRecordApprovalRequested).toHaveBeenCalledWith(
+      expect.objectContaining({ signerDid: SIGNER_DID }),
+    );
+  });
+
+  it('ignores a malformed signerDid (non-string) rather than rejecting the request (#2337)', async () => {
+    const res = await POST(makeReq(operatorApprovalBody({ signerDid: 12345 })));
+
+    expect(res.status).toBe(200);
+    expect(mockRecordApprovalRequested).toHaveBeenCalledWith(
+      expect.objectContaining({ signerDid: null }),
+    );
   });
 
   it('records the source-normalized detail and contentHash for an open-vocabulary proposal (#2152)', async () => {

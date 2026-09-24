@@ -637,6 +637,11 @@ async function raiseGithubOperatorApproval(params: {
       detail,
       contentHash,
       notificationId: null,
+      // #2337: raised in-process (never via the plugin's signed request
+      // contract) — `agentDid` above is carried in `detail` for the /jin
+      // card, not as a `bus.publish` delivery address; out of scope for
+      // this fix, left null to keep today's operator-only delivery here.
+      signerDid: null,
     });
   } catch (err) {
     log.error({ err: String(err), proposalId }, 'failed to raise /jin operator-approvals card for github proposal (non-fatal)');

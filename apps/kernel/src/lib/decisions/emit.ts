@@ -164,6 +164,9 @@ export async function emitDecisionCard(input: DecisionCardInput): Promise<EmitDe
       detail: card as unknown as Record<string, unknown>,
       contentHash: card.contentHash,
       notificationId: null,
+      // #2337: raised in-process (never via the plugin's signed request
+      // contract) — no separate requesting-agent DID to capture here.
+      signerDid: null,
     });
   } catch (err) {
     log.error({ err: String(err), cardId: card.id }, 'Failed to record decision card');
