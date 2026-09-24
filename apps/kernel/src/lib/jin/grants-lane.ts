@@ -22,16 +22,22 @@
  *                         since `GET /auth/api/agents`'s own query for this
  *                         half isn't exported as a reusable function.
  *                         Revoke: `DELETE /auth/api/agents/:did`.
- *   - `vault-delegation` — the grant a vault-minted key was delivered
- *                         through (#2247/#2235), sourced from
- *                         `listVaultKeyCards()` (already backs
+ *   - `vault-delegation` — every ACTIVE grant a vault-minted key's field
+ *                         currently carries (#2247/#2235/#2298), sourced
+ *                         from `listVaultKeyCards()` (already backs
  *                         `GET /api/vault/mint/cards` / VaultKeysPanel) so
  *                         the subject direction matches "who has access to
  *                         MY vault keys" — the self-service
  *                         `GET /api/vault/delegation/grants` route lists
  *                         the opposite direction (grants where the CALLER
  *                         is the grantee), which is not this lane's
- *                         question. Revoke: `POST /api/vault/delegation/revoke`.
+ *                         question. One card per active grant, not one per
+ *                         key: `card.grant` (the mint-time grant, whatever
+ *                         its status) is unioned with `card.grants` (every
+ *                         currently active consumer grant for that field)
+ *                         so a second/third consumer added later via
+ *                         `grantExistingMintedKey` is never dropped.
+ *                         Revoke: `POST /api/vault/delegation/revoke`.
  *   - `access-bearer`   — delegate-grant bearers (#2252), sourced from
  *                         `listDelegateGrantBearersForPrincipal` (already
  *                         backs `GET /auth/api/access/bearers` /
@@ -43,16 +49,6 @@
  *                         here directly, mirroring `GET /api/auth/apps`'s
  *                         own query (also not exported as a reusable
  *                         function). Revoke: `POST /api/auth/revoke`.
- *
- * Known gap (documented, not silently worked around): a vault field can
- * carry MORE than one active consumer grant once a second consumer is
- * added via `grantExistingMintedKey` (#2247's "Grant access" button) —
- * `vault_minted_keys.grantId` only ever points at the ORIGINAL grant, so
- * `listVaultKeyCards()` (and therefore this lane) only surfaces that one.
- * There is no existing subject-scoped route that lists every active grant
- * per field. Filed as a follow-up child issue under #2292 rather than
- * querying `vault_delegation_grants` directly here, which would be a new,
- * un-audited read path this PR didn't otherwise need.
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { db, identities, identityMembers, attestations, registryApps } from '@/src/db';
@@ -236,33 +232,45 @@ function vaultAckState(ackOutcome: string | null, lastFetchedAt: string | null):
   return lastFetchedAt ? 'pending' : null;
 }
 
-function vaultAckEvidence(card: Awaited<ReturnType<typeof listVaultKeyCards>>[number]): GrantAckEvidence | null {
-  const ackedEvent = card.timeline.find((event) => event.type === 'acked');
-  const evidence = ackedEvent?.detail.evidence;
-  return evidence && typeof evidence === 'object' ? (evidence as GrantAckEvidence) : null;
+type VaultKeyCardEntry = Awaited<ReturnType<typeof listVaultKeyCards>>[number];
+type VaultKeyCardGrant = NonNullable<VaultKeyCardEntry['grant']>;
+
+/**
+ * Every grant this card's field currently carries, deduplicated by
+ * `grantId` — the mint-time grant (`card.grant`, whatever its status)
+ * unioned with every currently ACTIVE consumer grant (`card.grants`,
+ * #2298), so a second/third consumer added later via
+ * `grantExistingMintedKey` is never dropped from this lane.
+ */
+function fieldGrantsForCard(card: VaultKeyCardEntry): VaultKeyCardGrant[] {
+  const byGrantId = new Map<string, VaultKeyCardGrant>();
+  if (card.grant) byGrantId.set(card.grant.grantId, card.grant);
+  for (const grant of card.grants ?? []) {
+    byGrantId.set(grant.grantId, grant);
+  }
+  return [...byGrantId.values()];
 }
 
 function normalizeVaultDelegationGrants(cards: Awaited<ReturnType<typeof listVaultKeyCards>>): GrantCard[] {
   const result: GrantCard[] = [];
   for (const card of cards) {
-    const { grant } = card;
-    if (!grant) continue;
-    const grantedEvent = card.timeline.find((event) => event.type === 'granted');
-    result.push({
-      id: `vault-delegation:${grant.grantId}`,
-      source: 'vault-delegation',
-      grantee: grant.grantedTo,
-      capabilities: [grant.purpose ?? card.purpose],
-      issuedAt: grantedEvent?.at ?? card.createdAt,
-      lastUsedAt: grant.lastFetchedAt,
-      ackState: vaultAckState(grant.ackOutcome, grant.lastFetchedAt),
-      ackEvidence: vaultAckEvidence(card),
-      status: grant.status,
-      revocable: grant.status === 'active',
-      revoke: grant.status === 'active'
-        ? { method: 'POST', path: '/api/vault/delegation/revoke', body: { field: mintedKeyField(card.did) } }
-        : null,
-    });
+    for (const grant of fieldGrantsForCard(card)) {
+      result.push({
+        id: `vault-delegation:${grant.grantId}`,
+        source: 'vault-delegation',
+        grantee: grant.grantedTo,
+        capabilities: [grant.purpose ?? card.purpose],
+        issuedAt: grant.createdAt,
+        lastUsedAt: grant.lastFetchedAt,
+        ackState: vaultAckState(grant.ackOutcome, grant.lastFetchedAt),
+        ackEvidence: grant.ackEvidence,
+        status: grant.status,
+        revocable: grant.status === 'active',
+        revoke: grant.status === 'active'
+          ? { method: 'POST', path: '/api/vault/delegation/revoke', body: { field: mintedKeyField(card.did) } }
+          : null,
+      });
+    }
   }
   return result;
 }
