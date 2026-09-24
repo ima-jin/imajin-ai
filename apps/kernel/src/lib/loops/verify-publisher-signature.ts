@@ -21,7 +21,8 @@
  * anything — the payload alone doesn't name which lifecycle phase it
  * asserts.
  */
-import { createDbResolver, canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 import type { LoopEnvelope, LoopLifecycleType, LoopPublisherSignature } from './types';
 

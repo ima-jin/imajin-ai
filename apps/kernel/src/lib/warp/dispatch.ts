@@ -132,6 +132,11 @@ import {
 } from './corpus-context';
 import { readEnvironmentId } from './environment';
 import { WarpApiError } from './errors';
+// Type-only: erased at compile time, so this adds no runtime dependency on
+// './loop-emit' (and therefore none of its DB dependency either) — see that
+// module's "Why this lives in its own module" doc. The real implementation is
+// reached only through the dynamic `import()` in `bridgeWarpRunToLoop` below.
+import type { WarpRunLoopTransition } from './loop-emit';
 
 // Re-exported for callers that need to catch it without importing
 // corpus-context.ts directly (mirroring the WarpApiError re-export below).
@@ -144,6 +149,52 @@ export type { CorpusContextInput } from './corpus-context';
 export { WarpApiError };
 
 const log = createLogger('kernel');
+
+/**
+ * Bridge one warp.run.* transition onto the kernel loop registry rail
+ * (#2296) via a dynamic `import()` of `./loop-emit` — see that module's
+ * "Why this lives in its own module" doc for why this stays dynamic rather
+ * than a static import: it keeps this module's own promise of holding no DB
+ * dependency, so this module's existing unit tests (none of which mock
+ * `./loop-emit` or its transitive DB dependency) are unaffected by a failed
+ * import in a test process with no real database configured.
+ *
+ * Never throws: a failed or unavailable loop-rail bridge must not cost the
+ * `warp.run.*` publish it mirrors, the same invariant every publish in this
+ * module already follows.
+ */
+async function bridgeWarpRunToLoop(transition: WarpRunLoopTransition): Promise<void> {
+  try {
+    const { emitWarpRunLoopEvent } = await import('./loop-emit');
+    await emitWarpRunLoopEvent(transition);
+  } catch (err) {
+    log.warn(
+      { err: String(err), type: transition.type, runId: transition.runId },
+      'warp.run -> loop.* bridge unavailable; the warp.run.* event still published normally',
+    );
+  }
+}
+
+/**
+ * Build one {@link WarpRunLoopTransition} for {@link bridgeWarpRunToLoop}
+ * (#2296). Factored out because the six call sites below (dispatched,
+ * resumed, progress, blocked, completed/failed, timeout) would otherwise
+ * repeat this same object shape near-verbatim, differing only in a handful
+ * of scalar fields — same reasoning `packages/bus/src/config.ts`'s
+ * `loopLifecycleChain()`/`emitAndNotify()` helpers apply to their own
+ * structurally-identical entries.
+ */
+function warpRunLoopTransition(
+  type: WarpRunLoopTransition['type'],
+  runId: string,
+  principalDid: string,
+  parentRunId: string | null,
+  state: string,
+  summary: string,
+  at: string,
+): WarpRunLoopTransition {
+  return { type, runId, principalDid, parentRunId, state, summary, at };
+}
 
 const DEFAULT_WARP_API_BASE_URL = 'https://app.warp.dev/api/v1';
 
@@ -1053,6 +1104,22 @@ export async function dispatchAgentRun(
     );
   });
 
+  // #2296: bridge onto the loop registry rail (loop.started, kind 'warp.run')
+  // alongside the audit event above — same fire-and-forget posture as the
+  // publish() call just above, for the same reason (a 201 response must not
+  // wait on this).
+  void bridgeWarpRunToLoop(
+    warpRunLoopTransition(
+      'loop.started',
+      run.runId,
+      principalDid,
+      run.parentRunId,
+      warpStateToLoopState(run.state),
+      `Warp run dispatched (${config.name})`,
+      new Date().toISOString(),
+    ),
+  );
+
   return run;
 }
 
@@ -1334,7 +1401,9 @@ async function publishRunResumed(
   previousSessionId: string | null,
   newSessionId: string | null,
   mode: WarpFollowupMode,
+  parentRunId: string | null,
 ): Promise<void> {
+  const resumedAt = new Date().toISOString();
   try {
     await publish('warp.run.resumed', {
       issuer: principalDid,
@@ -1347,7 +1416,7 @@ async function publishRunResumed(
         previousSessionId,
         newSessionId,
         mode,
-        resumedAt: new Date().toISOString(),
+        resumedAt,
         context_id: runId,
         context_type: 'warp.agent',
       },
@@ -1357,7 +1426,24 @@ async function publishRunResumed(
       { err: String(err), principalDid, runId },
       'Bus publish error for warp.run.resumed',
     );
+    return;
   }
+
+  // #2296: a resume starts a new loop segment onto the same loopId
+  // (mirroring warp.run.resumed's own semantics) — loop.started again for
+  // loopId = runId, which the loop-projection reactor treats as advancing an
+  // existing loop's state rather than resetting its started_at.
+  await bridgeWarpRunToLoop(
+    warpRunLoopTransition(
+      'loop.started',
+      runId,
+      principalDid,
+      parentRunId,
+      'running',
+      `Warp run resumed from ${previousState ?? 'unknown'}`,
+      resumedAt,
+    ),
+  );
 }
 
 /**
@@ -1435,7 +1521,15 @@ export async function sendFollowup(
     // segment-aware in-flight tracking (#2032) depends on capturing it here —
     // see `warp.run.resumed`'s doc in packages/bus/src/types.ts.
     const newSessionId = optionalString(objectOrNull(followupPayload)?.session_id) ?? null;
-    await publishRunResumed(principalDid, id, current.state, current.sessionId, newSessionId, mode);
+    await publishRunResumed(
+      principalDid,
+      id,
+      current.state,
+      current.sessionId,
+      newSessionId,
+      mode,
+      current.parentRunId,
+    );
     // #2055: reported back so the route can re-arm the in-request watch for
     // this resumed segment — see `WarpFollowupAck.resumed`'s doc.
     return { runId: id, accepted: true, resumed: { previousSessionId: current.sessionId } };
@@ -1596,6 +1690,20 @@ function toEventArtifacts(
  * cycle where `GET /runs/{id}` is metadata only.
  */
 const PRE_START_STATES = new Set<string>(['QUEUED', 'PENDING']);
+
+/**
+ * Map a Warp run's own state string onto the loop envelope's
+ * publisher-defined state vocabulary (#2296) — 'queued' | 'running' |
+ * 'blocked' | 'succeeded' | 'failed' | 'cancelled', matching the vocabulary
+ * `LoopEventPayload.state` documents in packages/bus/src/types.ts.
+ */
+function warpStateToLoopState(state: string | null): string {
+  if (state === null) return 'unknown';
+  if (state === BLOCKED_STATE) return 'blocked';
+  if (PRE_START_STATES.has(state)) return 'queued';
+  if (isTerminalRunState(state)) return state.toLowerCase();
+  return 'running';
+}
 
 /**
  * Most summarised messages one progress event carries.
@@ -1840,6 +1948,15 @@ async function publishRunProgress(
     pollCount: number;
   },
 ): Promise<void> {
+  const summary = progressSummary(
+    fields.changed,
+    fields.previousState,
+    run.state,
+    fields.newMessageCount,
+    run.statusMessage,
+  );
+  const observedAt = new Date().toISOString();
+
   await publish('warp.run.progress', {
     issuer: principalDid,
     subject: principalDid,
@@ -1850,13 +1967,7 @@ async function publishRunProgress(
       state: run.state,
       previousState: fields.previousState,
       changed: fields.changed,
-      summary: progressSummary(
-        fields.changed,
-        fields.previousState,
-        run.state,
-        fields.newMessageCount,
-        run.statusMessage,
-      ),
+      summary,
       newMessages: fields.newMessages,
       newMessageCount: fields.newMessageCount,
       totalMessageCount: fields.totalMessageCount,
@@ -1864,13 +1975,27 @@ async function publishRunProgress(
       statusMessage: run.statusMessage,
       artifacts: toEventArtifacts(run.artifacts),
       pollCount: fields.pollCount,
-      observedAt: new Date().toISOString(),
+      observedAt,
       // Same context as `warp.agent.dispatched` and `warp.run.completed`, so a
       // dispatch, everything it did, and its outcome are one thread.
       context_id: run.runId,
       context_type: 'warp.agent',
     },
   });
+
+  // #2296: loop.progress alongside warp.run.progress — same timestamp and
+  // summary, so a loop reader and a warp.run.* reader see the same story.
+  await bridgeWarpRunToLoop(
+    warpRunLoopTransition(
+      'loop.progress',
+      run.runId,
+      principalDid,
+      run.parentRunId,
+      warpStateToLoopState(run.state),
+      summary,
+      observedAt,
+    ),
+  );
 }
 
 /**
@@ -2079,6 +2204,8 @@ async function publishRunCompleted(
   state: 'SUCCEEDED' | 'CANCELLED',
   resumeContext: ResumeSegmentContext | undefined,
 ): Promise<void> {
+  const completedAt = new Date().toISOString();
+
   await publish('warp.run.completed', {
     issuer: principalDid,
     subject: principalDid,
@@ -2094,7 +2221,7 @@ async function publishRunCompleted(
       artifacts: toEventArtifacts(run.artifacts),
       sessionLink: run.sessionLink,
       principalDid,
-      completedAt: new Date().toISOString(),
+      completedAt,
       ...(resumeContext === undefined
         ? {}
         : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
@@ -2104,6 +2231,21 @@ async function publishRunCompleted(
       context_type: 'warp.agent',
     },
   });
+
+  // #2296: loop.finished alongside warp.run.completed — gated by the same
+  // claimTerminalPublish (#2043) the caller already won before reaching
+  // here, so a watch/sweep race can never double-emit this.
+  await bridgeWarpRunToLoop(
+    warpRunLoopTransition(
+      'loop.finished',
+      run.runId,
+      principalDid,
+      run.parentRunId,
+      state.toLowerCase(),
+      `Warp run ${state}`,
+      completedAt,
+    ),
+  );
 }
 
 /**
@@ -2128,6 +2270,9 @@ async function publishRunFailed(
   run: WarpAgentRun,
   resumeContext: ResumeSegmentContext | undefined,
 ): Promise<void> {
+  const summary = runStatusSummary(run.statusMessage, 'FAILED');
+  const failedAt = new Date().toISOString();
+
   await publish('warp.run.failed', {
     issuer: principalDid,
     subject: principalDid,
@@ -2139,12 +2284,12 @@ async function publishRunFailed(
       configName: run.configName,
       runTime: run.runTime,
       statusMessage: run.statusMessage,
-      summary: runStatusSummary(run.statusMessage, 'FAILED'),
+      summary,
       requestUsage: run.requestUsage,
       artifacts: toEventArtifacts(run.artifacts),
       sessionLink: run.sessionLink,
       principalDid,
-      failedAt: new Date().toISOString(),
+      failedAt,
       ...(resumeContext === undefined
         ? {}
         : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
@@ -2152,6 +2297,12 @@ async function publishRunFailed(
       context_type: 'warp.agent',
     },
   });
+
+  // #2296: loop.finished alongside warp.run.failed — same claim-gated
+  // idempotency as publishRunCompleted above.
+  await bridgeWarpRunToLoop(
+    warpRunLoopTransition('loop.finished', run.runId, principalDid, run.parentRunId, 'failed', summary, failedAt),
+  );
 }
 
 /**
@@ -2163,6 +2314,9 @@ async function publishRunFailed(
  * the first-class, immediate nudge instead.
  */
 async function publishRunBlocked(principalDid: string, run: WarpAgentRun): Promise<void> {
+  const summary = runStatusSummary(run.statusMessage, 'BLOCKED');
+  const blockedAt = new Date().toISOString();
+
   await publish('warp.run.blocked', {
     issuer: principalDid,
     subject: principalDid,
@@ -2173,15 +2327,22 @@ async function publishRunBlocked(principalDid: string, run: WarpAgentRun): Promi
       title: run.title,
       configName: run.configName,
       statusMessage: run.statusMessage,
-      summary: runStatusSummary(run.statusMessage, 'BLOCKED'),
+      summary,
       artifacts: toEventArtifacts(run.artifacts),
       sessionLink: run.sessionLink,
       principalDid,
-      blockedAt: new Date().toISOString(),
+      blockedAt,
       context_id: run.runId,
       context_type: 'warp.agent',
     },
   });
+
+  // #2296: loop.blocked alongside warp.run.blocked, gated by the same
+  // tracker.blockedNotified/hasPublishedBlockedNotice guard the caller
+  // already applies — idempotent for free.
+  await bridgeWarpRunToLoop(
+    warpRunLoopTransition('loop.blocked', run.runId, principalDid, run.parentRunId, 'blocked', summary, blockedAt),
+  );
 }
 
 /**
@@ -2234,6 +2395,8 @@ export async function publishTimeoutRunOutcome(
   runId: string,
   lastKnownState: string,
 ): Promise<void> {
+  const timedOutAt = new Date().toISOString();
+
   await publish('warp.run.timeout', {
     issuer: principalDid,
     subject: principalDid,
@@ -2242,11 +2405,30 @@ export async function publishTimeoutRunOutcome(
       runId,
       lastKnownState,
       principalDid,
-      timedOutAt: new Date().toISOString(),
+      timedOutAt,
       context_id: runId,
       context_type: 'warp.agent',
     },
   });
+
+  // #2296: loop.finished alongside warp.run.timeout — the sweep's own
+  // SWEEP_LOOKBACK_MS + mayPublishTerminalOutcome claim guard (#2043)
+  // already dedupe this the same way as the other terminal outcomes.
+  // parentRunId is unavailable here (this call site only has runId/state,
+  // not the full WarpAgentRun) — harmless: the loop-projection upsert
+  // COALESCEs a null parentLoopId onto the loop's existing lineage from its
+  // original loop.started row rather than clearing it.
+  await bridgeWarpRunToLoop(
+    warpRunLoopTransition(
+      'loop.finished',
+      runId,
+      principalDid,
+      null,
+      'timeout',
+      `Warp run timed out (last known state: ${lastKnownState})`,
+      timedOutAt,
+    ),
+  );
 }
 
 /**
