@@ -131,6 +131,7 @@ beforeEach(() => {
     id: 'app_test',
     appDid: 'did:imajin:mcp-test',
     callbackUrl: CALLBACK,
+    redirectUris: [CALLBACK],
     requestedScopes: [SCOPE_A, SCOPE_B],
   };
 });

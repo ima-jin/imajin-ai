@@ -148,6 +148,7 @@ beforeEach(() => {
     appDid: CLIENT_APP_DID,
     publicKey: 'pk',
     callbackUrl: CALLBACK,
+    redirectUris: [CALLBACK],
     requestedScopes: [SCOPE_A, SCOPE_B],
     name: 'Test App',
     logoUrl: null,

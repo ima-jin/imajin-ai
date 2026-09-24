@@ -80,6 +80,9 @@ describe('POST /oauth/register — open DCR (#1878)', () => {
     // origin set, not just callbackUrl's single origin.
     expect(insertedRow.tier).toBe('third_party');
     expect(insertedRow.allowedRedirectHosts).toEqual(['https://www.typingmind.com']);
+    // #1348: persists the FULL exact redirect_uris set, authoritative for
+    // /oauth/authorize's use-time match.
+    expect(insertedRow.redirectUris).toEqual(['https://www.typingmind.com/api/mcp/oauth/callback']);
   });
 
   it('records every distinct redirect_uri origin in allowedRedirectHosts (#1990)', async () => {
@@ -92,6 +95,26 @@ describe('POST /oauth/register — open DCR (#1878)', () => {
     expect(res.status).toBe(201);
     const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedRow.allowedRedirectHosts).toEqual(['https://a.example.com', 'https://b.example.com']);
+  });
+
+  it('persists the FULL exact redirect_uris set, not just the first entry (#1348)', async () => {
+    const res = await POST(
+      makeRequest({
+        redirect_uris: [
+          'http://localhost:6274/oauth/callback',
+          'http://localhost:6274/oauth/callback/debug',
+        ],
+      }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.redirectUris).toEqual([
+      'http://localhost:6274/oauth/callback',
+      'http://localhost:6274/oauth/callback/debug',
+    ]);
+    // callbackUrl remains the first entry, kept for back-compat display only.
+    expect(insertedRow.callbackUrl).toBe('http://localhost:6274/oauth/callback');
   });
 
   it('still registers Claude Desktop\u2019s known callbacks (no regression)', async () => {

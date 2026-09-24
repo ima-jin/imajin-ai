@@ -181,6 +181,11 @@ export async function POST(request: NextRequest) {
       tier,
       allowedRedirectHosts,
       tokenAudiences,
+      // #1348: the admin surface only takes a single callbackUrl, so the
+      // registered redirect_uris set is that one URI — keeps /oauth/authorize's
+      // exact-set match behaving identically to the pre-#1348 comparison for
+      // admin-registered apps.
+      redirectUris: [callbackUrl],
     })
     .returning();
 

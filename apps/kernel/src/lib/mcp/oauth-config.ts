@@ -215,30 +215,26 @@ export function isValidRedirectUri(uri: string): boolean {
 }
 
 /**
- * True iff an incoming authorize/token `redirect_uri` matches the client's
- * registered `callbackUrl`.
+ * True iff an incoming authorize/token `redirect_uri` EXACTLY matches one of
+ * the client's registered redirect_uris (#1348).
  *
- * DCR stores only the FIRST registered redirect_uri as the canonical
- * `callbackUrl`, but a client may register several loopback callbacks and then
- * authorize with a different one (e.g. MCP Inspector stores `/oauth/callback`
- * but authorizes with `/oauth/callback/debug`). Accept the incoming URI when:
- *   1. it EXACTLY equals the stored callbackUrl (the normal case), OR
- *   2. BOTH are loopback redirects on the SAME origin (scheme+host+port) — the
- *      path may differ. Safe because the code is PKCE-bound and the origin is a
- *      loopback interface the legitimate client controls.
+ * DCR used to store only the FIRST registered redirect_uri as a single
+ * canonical `callbackUrl`, so a client that registered several loopback
+ * callbacks and then authorized with a different one (e.g. MCP Inspector
+ * stores `/oauth/callback` but may authorize with `/oauth/callback/debug`)
+ * was rejected. A same-origin-loopback special case bridged that gap
+ * narrowly, accepting ANY path on a matching loopback origin.
  *
- * This is a narrow bridge until a proper multi-redirect_uri manager lands
- * (stores + matches the full registered set). See the tracking issue.
+ * Now that DCR persists the FULL set of validated redirect_uris
+ * (registry.apps.redirect_uris, 0159_registry_apps_redirect_uris.sql) and
+ * that set is authoritative, the special case is retired: membership in the
+ * registered set is itself what makes `/oauth/callback/debug` acceptable
+ * (it was registered), so a same-origin bypass is no longer needed and only
+ * widened the accepted surface beyond what the client actually registered.
  */
-export function redirectUriMatches(incoming: string | null | undefined, registered: string): incoming is string {
+export function redirectUriMatches(incoming: string | null | undefined, registered: readonly string[]): incoming is string {
   if (!incoming) return false;
-  if (incoming === registered) return true;
-  if (!isLoopbackRedirectUri(incoming) || !isLoopbackRedirectUri(registered)) return false;
-  try {
-    return new URL(incoming).origin === new URL(registered).origin;
-  } catch {
-    return false;
-  }
+  return registered.includes(incoming);
 }
 
 /** True iff EVERY requested redirect_uri is spec-valid (RFC 7591 DCR, #1878). */

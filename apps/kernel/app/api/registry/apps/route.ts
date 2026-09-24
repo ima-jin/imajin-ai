@@ -88,6 +88,11 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     requestedScopes: scopes,
     tier: 'third_party',
     allowedRedirectHosts,
+    // #1348: this surface only ever takes a single callbackUrl, so the
+    // registered redirect_uris set is that one URI. Kept in sync with
+    // callbackUrl so /oauth/authorize's exact-set match behaves identically
+    // to the pre-#1348 single-callback comparison for these apps.
+    redirectUris: [callbackUrl],
   }).returning();
 
   // Include keypair in response only when server-generated (shown once, never stored)
