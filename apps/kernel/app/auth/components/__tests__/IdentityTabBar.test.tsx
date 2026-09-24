@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
+import { resetServiceBadges, setServiceBadge } from '../../lib/service-badge-bus';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/auth',
@@ -15,6 +16,7 @@ const { default: IdentityTabBar } = await import('../IdentityTabBar');
 
 afterEach(() => {
   cleanup();
+  resetServiceBadges();
 });
 
 describe('IdentityTabBar — Money tab', () => {
@@ -50,5 +52,55 @@ describe('IdentityTabBar — Money tab', () => {
     );
     expect(screen.getByText('Money')).toBeDefined();
     expect(screen.queryByText('Pay')).toBeNull();
+  });
+});
+
+describe('IdentityTabBar — set_badge display (RFC-19, #2275)', () => {
+  it('shows a badge count on a service tab once set_badge fires for it', () => {
+    setServiceBadge('coffee', 3);
+
+    render(
+      <IdentityTabBar
+        showSettings={false}
+        showMembers={false}
+        showSecurity={false}
+        showMoney={false}
+        enabledServices={['coffee', 'market']}
+      />,
+    );
+
+    expect(screen.getByText('3')).toBeDefined();
+  });
+
+  it('shows no badge for a service with a zero or unset count', () => {
+    setServiceBadge('coffee', 0);
+
+    render(
+      <IdentityTabBar
+        showSettings={false}
+        showMembers={false}
+        showSecurity={false}
+        showMoney={false}
+        enabledServices={['coffee', 'market']}
+      />,
+    );
+
+    expect(screen.queryByText('0')).toBeNull();
+  });
+
+  it('caps a large badge count at 99+', () => {
+    setServiceBadge('market', 150);
+
+    render(
+      <IdentityTabBar
+        showSettings={false}
+        showMembers={false}
+        showSecurity={false}
+        showMoney={false}
+        enabledServices={['market']}
+      />,
+    );
+
+    expect(screen.getByText('99+')).toBeDefined();
   });
 });
