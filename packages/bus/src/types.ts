@@ -2040,8 +2040,8 @@ export interface BusEventMap {
    * Kernel loop registry (#2295, epic #2290) — a loop is a signed lifecycle.
    * Common envelope across every `kind` (`warp.run` | `openclaw.subagent` |
    * `openclaw.automation` | `openclaw.keeper` | `bus.chain` | `review` |
-   * `pr`, open vocabulary — the kernel never branches on it). `principal`
-   * is the onBehalfOf DID the loop is scoped to (GET /api/loops's per-caller
+   * `pr` | `cycle` (#2314), open vocabulary — the kernel never branches on
+   * it). `principal` is the onBehalfOf DID the loop is scoped to (GET /api/loops's per-caller
    * authz boundary); `parentLoopId` gives the lineage tree. issuer = the
    * publishing agent's DID (verified at ingest against its registered key,
    * see apps/kernel/src/lib/loops/verify-publisher-signature.ts); subject =
