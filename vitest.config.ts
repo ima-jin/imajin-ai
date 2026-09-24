@@ -100,6 +100,7 @@ export default defineConfig({
       { find: '@imajin/claw-provisioner', replacement: resolve(__dirname, 'packages/claw-provisioner/src/index.ts') },
       { find: '@imajin/claw-envelope', replacement: resolve(__dirname, 'packages/claw-envelope/src/index.ts') },
       { find: '@imajin/dfos', replacement: resolve(__dirname, 'packages/dfos/src/index.ts') },
+      { find: '@imajin/email', replacement: resolve(__dirname, 'packages/email/src/index.ts') },
       { find: '@imajin/emit', replacement: resolve(__dirname, 'packages/emit/src/index.ts') },
       { find: '@imajin/input', replacement: resolve(__dirname, 'packages/input/src/index.ts') },
       { find: '@imajin/llm', replacement: resolve(__dirname, 'packages/llm/src/index.ts') },
