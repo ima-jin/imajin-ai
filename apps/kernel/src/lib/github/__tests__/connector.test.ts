@@ -1509,8 +1509,8 @@ describe('updateIssue confirm rail (#1366)', () => {
   it('global write ceiling exceeded → re-proposes even inside a live windowed grant', async () => {
     grant(['github:write']);
     liveApprovalGrant({ approvedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) }); // live 24h window
-    // Ceiling: 30 done writes in the last hour.
-    proposalCountMock.mockResolvedValue([{ count: 30 }]);
+    // Ceiling: 100 done writes in the last hour.
+    proposalCountMock.mockResolvedValue([{ count: 100 }]);
 
     const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
 
@@ -1533,7 +1533,7 @@ describe('updateIssue confirm rail (#1366)', () => {
   it('#1716 — rate-limited pending re-propose tells the caller a window is already active (not "approve to unblock")', async () => {
     grant(['github:write']);
     liveApprovalGrant({ approvedUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) }); // live 24h window
-    proposalCountMock.mockResolvedValue([{ count: 30 }]); // global ceiling tripped anyway
+    proposalCountMock.mockResolvedValue([{ count: 100 }]); // global ceiling tripped anyway
 
     const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
 
@@ -2035,7 +2035,7 @@ describe('per-tool sub-limits (#1371)', () => {
   it('global under limit + per-tool (github_update_issue 20/hr) exceeded → re-proposes inside window', async () => {
     grant(['github:write']);
     liveWindow();
-    // global call → 0 (under 30/hr); per-tool call → 20 (at 20/hr ceiling).
+    // global call → 0 (under 100/hr); per-tool call → 20 (at 20/hr ceiling).
     proposalCountMock
       .mockResolvedValueOnce([{ count: 0 }])   // global
       .mockResolvedValueOnce([{ count: 20 }]);  // github_update_issue 20/hr
@@ -2054,13 +2054,13 @@ describe('per-tool sub-limits (#1371)', () => {
     expect(proposedCall![1].payload.argsSummary).toContain('[TOOL_RATE_LIMIT:20/hr]');
   });
 
-  it('global under limit + github_create_issue hourly (5/hr) exceeded → pending', async () => {
+  it('global under limit + github_create_issue hourly (50/hr) exceeded → pending', async () => {
     grant(['github:write']);
     appendLiveGrant();
-    // global → 0; github_create_issue 5/hr check → 5 (at ceiling).
+    // global → 0; github_create_issue 50/hr check → 50 (at ceiling).
     proposalCountMock
-      .mockResolvedValueOnce([{ count: 0 }])  // global
-      .mockResolvedValueOnce([{ count: 5 }]); // github_create_issue 5/hr
+      .mockResolvedValueOnce([{ count: 0 }])   // global
+      .mockResolvedValueOnce([{ count: 50 }]); // github_create_issue 50/hr
 
     const result = await createIssue(OWNER, REPO, 'New Issue', 'Body');
 
@@ -2068,7 +2068,59 @@ describe('per-tool sub-limits (#1371)', () => {
     expect(fetch).not.toHaveBeenCalled();
 
     const insertedRow = proposalInsertMock.mock.calls[0][0];
-    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:5/hr]');
+    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:50/hr]');
+  });
+
+  it('#2310 — 50 sequential github_create_issue calls inside one hour all succeed; the 51st returns rate_limited', async () => {
+    grant(['github:write']);
+    appendLiveGrant();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => MOCK_ISSUE,
+    });
+
+    // Simulate a rolling per-tool count that increments with each prior 'done'
+    // write in the current hour: global stays well under 100, and the
+    // github_create_issue count reflects how many issues have already landed.
+    let created = 0;
+    proposalCountMock.mockImplementation(async (..._args: unknown[]) => {
+      return [{ count: created }];
+    });
+    proposalInsertMock.mockImplementation(async (row: { status: string }) => {
+      if (row.status === 'done') created += 1;
+    });
+
+    for (let i = 0; i < 50; i++) {
+      const result = await createIssue(OWNER, REPO, `Issue ${i}`, 'Body');
+      expect(result.status).toBe('done');
+    }
+
+    // The 51st call sees created === 50, at the 50/hr ceiling → rate_limited.
+    const result51 = await createIssue(OWNER, REPO, 'Issue 50', 'Body');
+    expect(result51.status).toBe('pending');
+    if (result51.status === 'pending') {
+      const insertedRow = proposalInsertMock.mock.calls[proposalInsertMock.mock.calls.length - 1][0];
+      expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:50/hr]');
+    }
+  });
+
+  it('#2310 — global ceiling is 100 and github_create_comment 60/hr sub-limit is now reachable', async () => {
+    grant(['github:write']);
+    appendLiveGrant();
+    // Global at 99 (under the new 100/hr ceiling) so the per-tool check runs;
+    // comment hourly count at 60 (its own ceiling) trips the sub-limit.
+    // Under the old GLOBAL_WRITE_CEILING_PER_HOUR of 30, a global count of 99
+    // would have tripped the global check first, making this sub-limit dead code.
+    proposalCountMock
+      .mockResolvedValueOnce([{ count: 99 }])  // global: under 100/hr
+      .mockResolvedValueOnce([{ count: 0 }])   // burst 10/min: under
+      .mockResolvedValueOnce([{ count: 60 }]); // hourly 60/hr: at ceiling
+
+    const result = await createComment(OWNER, REPO, 42, 'A comment');
+
+    expect(result.status).toBe('pending');
+    const insertedRow = proposalInsertMock.mock.calls[0][0];
+    expect(insertedRow.argsSummary).toContain('[TOOL_RATE_LIMIT:60/hr]');
   });
 
   it('global under limit + github_create_comment per-minute burst (10/min) exceeded → pending', async () => {
@@ -2107,8 +2159,8 @@ describe('per-tool sub-limits (#1371)', () => {
   it('global ceiling exceeded → per-tool is never checked (global trip takes priority)', async () => {
     grant(['github:write']);
     liveWindow();
-    // All count calls return 30 (global at ceiling).
-    proposalCountMock.mockResolvedValue([{ count: 30 }]);
+    // All count calls return 100 (global at ceiling).
+    proposalCountMock.mockResolvedValue([{ count: 100 }]);
 
     const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
 
