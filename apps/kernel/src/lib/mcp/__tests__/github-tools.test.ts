@@ -39,6 +39,7 @@ vi.mock('@/src/lib/github/connector', () => ({
 
 import { githubTools } from '../tools/github';
 import {
+  createIssue,
   listIssues,
   getIssue,
   listPullRequests,
@@ -118,6 +119,7 @@ const COMMENT = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(createIssue).mockResolvedValue({ status: 'done', data: ISSUE });
   vi.mocked(listIssues).mockResolvedValue({ items: [ISSUE], hasMore: false, limit: DEFAULT_LIST_LIMIT });
   vi.mocked(getIssue).mockResolvedValue(ISSUE);
   vi.mocked(listPullRequests).mockResolvedValue({ items: [PR], hasMore: false, limit: DEFAULT_LIST_LIMIT });
@@ -384,6 +386,43 @@ describe('github_get_issue (#1528)', () => {
 
   it('requires issue_number', async () => {
     await expect(tool('github_get_issue').handler({ repo: REPO }, ctx)).rejects.toThrow(/issue_number is required/);
+  });
+});
+
+// ─── github_create_issue (#2309) ────────────────────────────────────────────
+
+describe('github_create_issue (#2309)', () => {
+  it('requires repo and title', async () => {
+    await expect(tool('github_create_issue').handler({}, ctx)).rejects.toThrow(/repo is required/);
+    await expect(tool('github_create_issue').handler({ repo: REPO }, ctx)).rejects.toThrow(/title is required/);
+  });
+
+  it('creates an issue with no labels when none are given', async () => {
+    await call('github_create_issue', { repo: REPO, title: 'Title', body: 'Body' });
+
+    expect(createIssue).toHaveBeenCalledWith(ctx.did, REPO, 'Title', 'Body', undefined);
+  });
+
+  it('forwards labels through to the connector (#2309)', async () => {
+    await call('github_create_issue', { repo: REPO, title: 'Title', body: 'Body', labels: ['bug', 'p1'] });
+
+    expect(createIssue).toHaveBeenCalledWith(ctx.did, REPO, 'Title', 'Body', ['bug', 'p1']);
+  });
+
+  it('ignores a malformed labels argument rather than throwing', async () => {
+    await call('github_create_issue', { repo: REPO, title: 'Title', body: 'Body', labels: [1, 2] });
+
+    expect(createIssue).toHaveBeenCalledWith(ctx.did, REPO, 'Title', 'Body', undefined);
+  });
+
+  it('returns a pending response without leaking the label list', async () => {
+    vi.mocked(createIssue).mockResolvedValue({
+      status: 'pending', proposalId: 'proposal_1', message: 'Action proposed (proposalId: proposal_1).',
+    });
+
+    const out = parseResult(await call('github_create_issue', { repo: REPO, title: 'Title', body: 'Body', labels: ['bug'] }));
+
+    expect(out).toEqual({ pending: true, proposalId: 'proposal_1', message: 'Action proposed (proposalId: proposal_1).' });
   });
 });
 
