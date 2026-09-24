@@ -15,10 +15,13 @@ on:
         description: "Version bump type"
         required: true
         type: choice
+        # Patch is the default and the only bump that runs without an explicit
+        # human call. minor/major are deliberate choices: pick them only when
+        # Ryan has said so for this release.
         options:
-          - minor
           - patch
-        default: minor
+          - minor
+        default: patch
 
 # One release in flight at a time — two concurrent runs racing to read/bump
 # root package.json would corrupt each other's version math.
