@@ -1,4 +1,4 @@
--- 0158_registry_apps_redirect_uris.sql
+-- 0159_registry_apps_redirect_uris.sql
 -- owner: kernel
 -- #1348 OAuth DCR: store + match the full registered redirect_uri set.
 --

@@ -1,5 +1,5 @@
 /**
- * Real-engine migration coverage for 0158 (#1348): registry.apps.redirect_uris
+ * Real-engine migration coverage for 0159 (#1348): registry.apps.redirect_uris
  * backfilled from callback_url.
  *
  * Runs the actual migration SQL against an embedded `@electric-sql/pglite`
@@ -38,7 +38,7 @@ function readMigration(filename: string): string {
 
 const SEED = readMigration('0001_seed.sql');
 const REGISTRY_APPS = readMigration('0007_registry_apps.sql');
-const REDIRECT_URIS = readMigration('0158_registry_apps_redirect_uris.sql');
+const REDIRECT_URIS = readMigration('0159_registry_apps_redirect_uris.sql');
 
 let client: PGlite;
 
@@ -60,7 +60,7 @@ async function seedApp(row: Readonly<SeedRow>): Promise<void> {
   );
 }
 
-describe('0158_registry_apps_redirect_uris (#1348)', () => {
+describe('0159_registry_apps_redirect_uris (#1348)', () => {
   it('backfills redirect_uris from callback_url, skips blank/null callback_url, and is idempotent on re-run', async () => {
     client = new PGlite({ extensions: { pgcrypto } });
     await client.waitReady;

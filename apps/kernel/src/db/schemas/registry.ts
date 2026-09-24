@@ -323,7 +323,7 @@ export const registryApps = registrySchema.table('apps', {
   /**
    * Origins (scheme://host[:port]) this app may redirect a user back to.
    * Superseded as the OAuth authorize/token use-time gate by `redirectUris`
-   * (#1348, 0158_registry_apps_redirect_uris.sql) — origin-level matching
+   * (#1348, 0159_registry_apps_redirect_uris.sql) — origin-level matching
    * accepts any path on a registered origin, which is broader than RFC 7591
    * intends. Left in place for the admin registry surface (#1990), which
    * still lets an operator grant an app a whole trusted origin.
@@ -333,7 +333,7 @@ export const registryApps = registrySchema.table('apps', {
   tokenAudiences: text('token_audiences').array().notNull().default(sql`'{}'::text[]`),
   /**
    * Full, exact set of RFC 7591-validated redirect_uris registered for this
-   * client (#1348, 0158_registry_apps_redirect_uris.sql). Authoritative for
+   * client (#1348, 0159_registry_apps_redirect_uris.sql). Authoritative for
    * the OAuth authorize/token use-time gate: an incoming `redirect_uri` must
    * be an EXACT member of this array. `callbackUrl` is kept as the first
    * entry for back-compat with readers that only need a single display URL

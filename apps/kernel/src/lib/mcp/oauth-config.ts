@@ -226,7 +226,7 @@ export function isValidRedirectUri(uri: string): boolean {
  * narrowly, accepting ANY path on a matching loopback origin.
  *
  * Now that DCR persists the FULL set of validated redirect_uris
- * (registry.apps.redirect_uris, 0158_registry_apps_redirect_uris.sql) and
+ * (registry.apps.redirect_uris, 0159_registry_apps_redirect_uris.sql) and
  * that set is authoritative, the special case is retired: membership in the
  * registered set is itself what makes `/oauth/callback/debug` acceptable
  * (it was registered), so a same-origin bypass is no longer needed and only

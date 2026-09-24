@@ -27,7 +27,7 @@ export const dynamic = 'force-dynamic';
 /**
  * The registered redirect_uris set to match an incoming redirect_uri against
  * (#1348). `redirectUris` is authoritative; fall back to the single
- * `callbackUrl` only for a row that predates the 0158 backfill (defence in
+ * `callbackUrl` only for a row that predates the 0159 backfill (defence in
  * depth — the migration backfills every existing row, so this should not be
  * reachable in practice).
  */
