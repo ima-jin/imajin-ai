@@ -1087,6 +1087,8 @@ single entry in the registry — the `/mcp` route handler and JSON-RPC dispatch 
 | `github_connect` | `github:write` | Seal a GitHub PAT in the vault |
 | `discord_send_message` | `discord:write` | Send a Discord message |
 | `discord_connect` | `discord:write` | Seal a Discord bot token in the vault |
+| `loops_list` | `loops:read` | List the caller's own loop registry entries (filters, cursor pagination) |
+| `loops_get` | `loops:read` | Get one loop's lifecycle projection + event history by id |
 
 ### Scope Vocabulary (MCP ceiling)
 
