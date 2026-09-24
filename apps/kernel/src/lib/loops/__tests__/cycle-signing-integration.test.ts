@@ -12,6 +12,13 @@
  * `kernel.loops` lookup of its own (no prior cycle to resolve), keeping
  * this file's mocking surface to exactly the two things that must stay
  * real: the node signing keypair and the ed25519 verify path.
+ *
+ * #2338: the node's own signing DID resolves in-process
+ * (`verify-publisher-signature.ts`'s `resolvePublisherPublicKey`), never
+ * through the DB identity registry, so the second case below now proves
+ * the opposite of what it did pre-fix — a node-signed event still ingests
+ * even when the registry has no entry (or a stale/different one) for the
+ * node DID, which is exactly the production bug #2338 fixes.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
@@ -46,14 +53,13 @@ beforeEach(() => {
 });
 
 describe('cycle.ts signing (real verify-publisher-signature path)', () => {
-  it('produces a signature that verifies against the node identity\u2019s registered public key', async () => {
+  it('produces a signature that verifies against the node identity\u2019s own key, with no registry lookup (#2338)', async () => {
     const { privateKey, publicKey } = authCrypto.generateKeypair();
     getNodeSigningIdentityMock.mockReturnValue({
       privateKeyHex: privateKey,
       senderPubkey: publicKey,
       senderDid: NODE_DID,
     });
-    mockLimit.mockResolvedValueOnce([{ id: NODE_DID, publicKey, type: 'actor', tier: 'established' }]);
     mockPublish.mockResolvedValueOnce(undefined);
 
     const result = await startCycle({
@@ -64,7 +70,9 @@ describe('cycle.ts signing (real verify-publisher-signature path)', () => {
 
     expect(result.ok).toBe(true);
     // The real ingestLoopEvent only reaches bus.publish once signature
-    // verification (also real here) has actually succeeded.
+    // verification (also real here) has actually succeeded — and it does
+    // so without ever querying the identity registry for the node's own DID.
+    expect(mockLimit).not.toHaveBeenCalled();
     expect(mockPublish).toHaveBeenCalledTimes(1);
     expect(mockPublish).toHaveBeenCalledWith(
       'loop.started',
@@ -72,21 +80,23 @@ describe('cycle.ts signing (real verify-publisher-signature path)', () => {
     );
   });
 
-  it('fails closed (no publish) when the signing identity\u2019s key does not match what is registered', async () => {
-    const nodeKeypair = authCrypto.generateKeypair();
-    const registeredKeypair = authCrypto.generateKeypair();
+  it('ingests successfully even when the node DID has no identity-registry entry at all (#2338 regression)', async () => {
+    const { privateKey, publicKey } = authCrypto.generateKeypair();
     getNodeSigningIdentityMock.mockReturnValue({
-      privateKeyHex: nodeKeypair.privateKey,
-      senderPubkey: nodeKeypair.publicKey,
+      privateKeyHex: privateKey,
+      senderPubkey: publicKey,
       senderDid: NODE_DID,
     });
-    // The DID resolves to a DIFFERENT registered key than the one signing here
-    // (e.g. a rotated/stale identity) — verification must reject it.
-    mockLimit.mockResolvedValueOnce([{ id: NODE_DID, publicKey: registeredKeypair.publicKey, type: 'actor', tier: 'established' }]);
+    // No registry row for NODE_DID at all — the exact prod condition #2338
+    // reported ("Could not resolve publisherDid to a registered public
+    // key"). The in-process resolver must never even reach this lookup.
+    mockLimit.mockResolvedValueOnce([]);
+    mockPublish.mockResolvedValueOnce(undefined);
 
     const result = await startCycle({ principal: 'did:imajin:ryan', trigger: 'automation', plannedPhases: ['merge-sweep'] });
 
-    expect(result.ok).toBe(false);
-    expect(mockPublish).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(mockLimit).not.toHaveBeenCalled();
+    expect(mockPublish).toHaveBeenCalledTimes(1);
   });
 });
