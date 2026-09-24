@@ -52,7 +52,48 @@ export const preferences = notifySchema.table("preferences", {
   didScopeUnique: index("idx_preferences_did_scope").on(table.did, table.scope),
 }));
 
+/**
+ * Data-driven notify templates (#1510) — one row per notification `scope`.
+ * `getTemplate()` (apps/kernel/src/lib/notify/template-store.ts) reads this
+ * table through a cached, bus-hot-reloadable lookup and falls back to the
+ * in-code registry (apps/kernel/src/lib/notify/templates.ts) whenever no
+ * row exists OR `enabled` is false — the latter is the deliberate rollout
+ * gate: a row can be backfilled and reviewed with zero runtime effect until
+ * an operator flips `enabled` (a config change, not a deploy).
+ *
+ * `subject_tpl` doubles as the in-app notification title AND the email
+ * Subject line; `body_tpl` is the in-app body (and the fallback plain-text
+ * source); `html_tpl` is the email body's inner HTML, nullable for scopes
+ * with no email leg. All three are rendered by the SAFE interpolation
+ * renderer in template-renderer.ts — `{{field}}` is entity-escaped by
+ * default and the only other construct, `{{cta:field:Label}}`, is a fixed,
+ * whitelisted CTA link/button. There is no raw-HTML passthrough and no code
+ * eval, by construction (see that module's doc comment for the full
+ * threat model).
+ */
+export const notifyTemplates = notifySchema.table("templates", {
+  id: text("id").primaryKey().default(sql`gen_random_uuid()::text`),
+  scope: text("scope").notNull().unique(),
+  urgency: text("urgency").notNull().default("normal"),
+  subjectTpl: text("subject_tpl").notNull(),
+  bodyTpl: text("body_tpl").notNull(),
+  htmlTpl: text("html_tpl"),
+  enabled: boolean("enabled").notNull().default(true),
+  // Audit trail (#1510) — DID (or 'system' for the migration backfill) of
+  // whoever last created/edited this row. No admin UI ships in this PR
+  // (issue's explicit stretch goal), so these are populated by the seed
+  // migration today and by a future admin surface later.
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  scopeIdx: index("idx_notify_templates_scope").on(table.scope),
+}));
+
 export type Notification = typeof notifications.$inferSelect;
 export type NewNotification = typeof notifications.$inferInsert;
 export type Preference = typeof preferences.$inferSelect;
 export type NewPreference = typeof preferences.$inferInsert;
+export type NotifyTemplateDbRow = typeof notifyTemplates.$inferSelect;
+export type NewNotifyTemplateDbRow = typeof notifyTemplates.$inferInsert;

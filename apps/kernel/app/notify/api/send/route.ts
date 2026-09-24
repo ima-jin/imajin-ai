@@ -4,7 +4,8 @@ import { nanoid } from 'nanoid';
 import { withLogger } from '@imajin/logger';
 import { db, notifications, preferences, identities, profiles, credentials } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
-import { getTemplate } from '@/src/lib/notify/templates';
+import { getTemplate } from '@/src/lib/notify/template-store';
+import type { NotifyTemplate } from '@/src/lib/notify/templates';
 import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
 import { sendEmail } from '@imajin/email';
 import {
@@ -190,14 +191,14 @@ function buildResponseBody(
  */
 function resolveNotificationUrgency(
   body: { urgency?: string },
-  template: ReturnType<typeof getTemplate> | undefined,
+  template: NotifyTemplate | undefined,
 ): string {
   return body.urgency ?? template?.urgency ?? 'normal';
 }
 
 function resolveNotificationTitle(
   body: { title?: string },
-  template: ReturnType<typeof getTemplate> | undefined,
+  template: NotifyTemplate | undefined,
   scope: string,
   data: Record<string, unknown>,
 ): string {
@@ -207,7 +208,7 @@ function resolveNotificationTitle(
 
 function resolveNotificationBody(
   body: { body?: string },
-  template: ReturnType<typeof getTemplate> | undefined,
+  template: NotifyTemplate | undefined,
   data: Record<string, unknown>,
 ): string | undefined {
   if (body.body) return body.body;
@@ -248,7 +249,7 @@ async function resolveInAppChannels(
  */
 async function resolveEmailChannel(
   emailEnabled: boolean | null,
-  template: ReturnType<typeof getTemplate> | undefined,
+  template: NotifyTemplate | undefined,
   to: string,
   data: Record<string, unknown>,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
@@ -296,8 +297,8 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   const operatorApprovalGuard = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
   if (operatorApprovalGuard.response) return operatorApprovalGuard.response;
 
-  // Resolve template
-  const template = getTemplate(scope);
+  // Resolve template (#1510 — DB row when enabled, else the in-code registry).
+  const template = await getTemplate(scope);
   const urgency = resolveNotificationUrgency(body, template);
   const title = resolveNotificationTitle(body, template, scope, data);
   const notifBody = resolveNotificationBody(body, template, data);

@@ -59,7 +59,7 @@ vi.mock('@imajin/logger', () => ({
 
 vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
 
-vi.mock('@/src/lib/notify/templates', () => ({ getTemplate: vi.fn(() => undefined) }));
+vi.mock('@/src/lib/notify/template-store', () => ({ getTemplate: vi.fn(() => undefined) }));
 
 // #2059 — operator-approvals.ts imports node-identity.ts, which calls
 // getClient() at module scope (requires DATABASE_URL); stub these out so
@@ -97,7 +97,7 @@ vi.mock('@/src/lib/notify/ws-push', async () => {
 
 import { POST } from '../route';
 import { sendEmail } from '@imajin/email';
-import { getTemplate } from '@/src/lib/notify/templates';
+import { getTemplate } from '@/src/lib/notify/template-store';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 

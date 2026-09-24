@@ -62,6 +62,19 @@ vi.mock('@imajin/logger', () => ({
 
 import { watchRun, WATCH_POLL_INTERVALS_MS, WATCH_TIMEOUT_MS } from '../dispatch';
 
+// #2334: `sleep` and `Date.now` below are already fully injected/stubbed —
+// the poll loop never touches a real timer, so this suite has nothing to gain
+// from `vi.useFakeTimers()`. What it does have is a long chain of real
+// awaited microtasks per poll cycle (mock `fetch`, `publish`, the progress
+// tracker) run across up to five simulated polls in one test. Under a CPU-
+// starved CI runner that chain can miss the default 5s *wall-clock* test
+// budget even though every step is logically instant, and because vitest
+// cannot actually cancel a timed-out promise chain, an abandoned test keeps
+// mutating this file's shared `slept`/`runLane` state into whichever test
+// runs next — which is exactly the `[5000, 10000]` vs. `[5000]` shape this
+// bug produced. Raise the ceiling; the assertions are unchanged.
+vi.setConfig({ testTimeout: 20_000 });
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const PRINCIPAL = 'did:imajin:veteze';
