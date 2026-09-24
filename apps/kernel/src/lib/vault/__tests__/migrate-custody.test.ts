@@ -15,10 +15,46 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { unlink } from 'node:fs/promises';
+import { unlink, writeFile } from 'node:fs/promises';
 import { deriveXKeypairFromEd25519 } from '@imajin/vault-core';
 
 type Row = Record<string, unknown>;
+
+/**
+ * Build a raw vault entry object for tests that write directly to the vault
+ * file (bypassing sealAndStore/sealAndStoreV2) so selection logic can be
+ * exercised against fixtures no real seal call could produce on demand —
+ * out-of-order timestamps, superseded history, and bare custodyScheme
+ * omission. Never asserted for integrity by selection code, so the crypto
+ * fields below are deliberately inert placeholders, not real ciphertext.
+ */
+function rawEntry(overrides: {
+  field: string;
+  timestamp: string;
+  senderDid: string;
+  custodyScheme?: 'node-sealed' | 'delegation-grant';
+  deleted?: boolean;
+  encrypted?: string;
+  nonce?: string;
+}): Row {
+  const { custodyScheme, ...rest } = overrides;
+  return {
+    version: custodyScheme === 'delegation-grant' ? 2 : 1,
+    cid: `cid-${overrides.field}-${overrides.timestamp}`,
+    encrypted: 'encrypted-placeholder',
+    nonce: 'nonce-placeholder',
+    senderPubkey: 'pubkey-placeholder',
+    keyId: 'key-placeholder',
+    signature: 'signature-placeholder',
+    ...rest,
+    ...(custodyScheme !== undefined ? { custodyScheme } : {}),
+  };
+}
+
+/** Write a raw vault file directly, bypassing the service's append-only `set()`. */
+async function writeRawVault(entries: Row[]): Promise<void> {
+  await writeFile(tmpVaultPath, JSON.stringify({ version: 1, entries }), 'utf8');
+}
 
 const { tmpVaultPath, grantStore, envelopeStore, requestStore } = vi.hoisted(() => {
   const { join } = require('node:path') as typeof import('node:path');
@@ -201,8 +237,8 @@ describe('migrateCustody — dry run', () => {
     expect(report.candidateCount).toBe(2);
     // Sorted, so the order is deterministic regardless of seal order.
     expect(report.results).toEqual([
-      { field: 'field-a', status: 'would-upgrade' },
-      { field: 'field-b', status: 'would-upgrade' },
+      { field: 'field-a', status: 'would-upgrade', ownerDidTruncated: expect.any(String) },
+      { field: 'field-b', status: 'would-upgrade', ownerDidTruncated: expect.any(String) },
     ]);
 
     // Nothing changed: both fields are still node-sealed, no grant issued.
@@ -369,5 +405,199 @@ describe('migrateCustody — stale pending guard', () => {
 
     expect(report.aborted).toBe(false);
     expect(report.results).toEqual([{ field: 'field-a', status: 'upgraded', grantId: expect.any(String) }]);
+  });
+});
+
+// ── Selection: timestamp-based, not array position (#2311) ────────────────────
+
+describe('migrateCustody — live v1 selection (#2311)', () => {
+  it('selects the true latest entry per field by timestamp, not array position', async () => {
+    // github-oauth: a stale, already-v2-looking entry was appended AFTER (a
+    // higher array index than) a live v1 entry with a LATER timestamp — the
+    // exact reordering that hid fields like this from the Aug-1 batch
+    // (#1537). Selecting by array position would treat this field as already
+    // migrated and skip it; selecting by timestamp correctly finds the live
+    // v1 entry as the true latest.
+    const entries: Row[] = [
+      rawEntry({
+        field: 'github-oauth:did:imajin:owner-a',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-a',
+      }),
+      rawEntry({
+        field: 'github-oauth:did:imajin:owner-a',
+        timestamp: '2026-03-01T00:00:00.000Z', // true latest — still v1
+        senderDid: 'did:imajin:owner-a',
+      }),
+      rawEntry({
+        field: 'github-oauth:did:imajin:owner-a',
+        timestamp: '2026-02-01T00:00:00.000Z', // chronologically older than the entry above...
+        senderDid: 'did:imajin:owner-a',
+        custodyScheme: 'delegation-grant', // ...but appended LAST in the array
+      }),
+      // github-config: single live v1 entry, custodyScheme explicit.
+      rawEntry({
+        field: 'github-config:did:imajin:owner-b',
+        timestamp: '2026-01-05T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-b',
+        custodyScheme: 'node-sealed',
+      }),
+      // gemini-model-id: custodyScheme entirely absent — must still count as live v1.
+      rawEntry({
+        field: 'gemini-model-id:did:imajin:owner-c',
+        timestamp: '2026-01-06T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-c',
+      }),
+      // warp-environment-id: superseded history, then a deleted latest entry — excluded entirely.
+      rawEntry({
+        field: 'warp-environment-id:did:imajin:owner-d',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-d',
+      }),
+      rawEntry({
+        field: 'warp-environment-id:did:imajin:owner-d',
+        timestamp: '2026-01-07T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-d',
+        deleted: true,
+      }),
+      // openai-model-id: already fully migrated to v2 — excluded.
+      rawEntry({
+        field: 'openai-model-id:did:imajin:owner-e',
+        timestamp: '2026-01-08T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-e',
+        custodyScheme: 'delegation-grant',
+      }),
+      // xai-model-id: another plain live v1 field, rounding out a mixed-prefix set.
+      rawEntry({
+        field: 'xai-model-id:did:imajin:owner-f',
+        timestamp: '2026-01-09T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-f',
+      }),
+    ];
+    await writeRawVault(entries);
+
+    const report = await migrateCustody({ dryRun: true });
+
+    expect(report.totalV1Fields).toBe(4);
+    expect(report.results.map((r) => r.field)).toEqual([
+      'gemini-model-id:did:imajin:owner-c',
+      'github-config:did:imajin:owner-b',
+      'github-oauth:did:imajin:owner-a',
+      'xai-model-id:did:imajin:owner-f',
+    ]);
+    for (const result of report.results) {
+      expect(result.status).toBe('would-upgrade');
+      expect(typeof result.ownerDidTruncated).toBe('string');
+    }
+
+    // Mutates nothing.
+    expect(grantStore.size).toBe(0);
+    expect(envelopeStore.size).toBe(0);
+    expect(requestStore.size).toBe(0);
+  });
+});
+
+// ── Dry run leaks nothing (#2311) ──────────────────────────────────────────────
+
+describe('migrateCustody — dry run leaks nothing (#2311)', () => {
+  it('never surfaces encrypted material and mutates no store', async () => {
+    await writeRawVault([
+      rawEntry({
+        field: 'field-a',
+        timestamp: '2026-01-01T00:00:00.000Z',
+        senderDid: 'did:imajin:owner-a',
+        encrypted: 'TOP-SECRET-CIPHERTEXT',
+        nonce: 'TOP-SECRET-NONCE',
+      }),
+    ]);
+
+    const report = await migrateCustody({ dryRun: true });
+
+    expect(JSON.stringify(report)).not.toMatch(/TOP-SECRET/);
+    expect(grantStore.size).toBe(0);
+    expect(envelopeStore.size).toBe(0);
+    expect(requestStore.size).toBe(0);
+  });
+
+  it('truncates a long owner DID to 20 chars in the dry-run plan', async () => {
+    const longDid = `did:imajin:${'a'.repeat(40)}`;
+    await writeRawVault([
+      rawEntry({ field: 'field-a', timestamp: '2026-01-01T00:00:00.000Z', senderDid: longDid }),
+    ]);
+
+    const report = await migrateCustody({ dryRun: true });
+
+    expect(report.results).toEqual([
+      { field: 'field-a', status: 'would-upgrade', ownerDidTruncated: longDid.slice(0, 20) },
+    ]);
+    expect(report.results[0].ownerDidTruncated).toHaveLength(20);
+  });
+
+  it('does not truncate a short owner DID', async () => {
+    const shortDid = 'did:imajin:short';
+    await writeRawVault([
+      rawEntry({ field: 'field-a', timestamp: '2026-01-01T00:00:00.000Z', senderDid: shortDid }),
+    ]);
+
+    const report = await migrateCustody({ dryRun: true });
+
+    expect(report.results[0].ownerDidTruncated).toBe(shortDid);
+  });
+});
+
+// ── Targeted --fields mode (#2311) ─────────────────────────────────────────────
+
+describe('migrateCustody — targeted fields mode (#2311)', () => {
+  it('restricts the dry-run plan to exactly the requested fields and reports the rest as not found', async () => {
+    await writeRawVault([
+      rawEntry({ field: 'field-a', timestamp: '2026-01-01T00:00:00.000Z', senderDid: 'did:imajin:owner-a' }),
+      rawEntry({ field: 'field-b', timestamp: '2026-01-02T00:00:00.000Z', senderDid: 'did:imajin:owner-b' }),
+      rawEntry({ field: 'field-c', timestamp: '2026-01-03T00:00:00.000Z', senderDid: 'did:imajin:owner-c' }),
+    ]);
+
+    const report = await migrateCustody({ dryRun: true, fields: ['field-a', 'field-c', 'does-not-exist'] });
+
+    expect(report.totalV1Fields).toBe(3);
+    expect(report.candidateCount).toBe(2);
+    expect(report.results.map((r) => r.field)).toEqual(['field-a', 'field-c']);
+    expect(report.notFound).toEqual(['does-not-exist']);
+  });
+
+  it('omits notFound when fields is not passed', async () => {
+    await sealAndStore('field-a', 'secret-a');
+
+    const report = await migrateCustody({ dryRun: true });
+
+    expect(report.notFound).toBeUndefined();
+  });
+
+  it('migrates only the requested fields on a real run, leaving the rest untouched', async () => {
+    await sealAndStore('field-a', 'secret-a');
+    await sealAndStore('field-b', 'secret-b');
+
+    const report = await migrateCustody({ dryRun: false, fields: ['field-a'], sleep: noSleep });
+
+    expect(report.aborted).toBe(false);
+    expect(report.results).toEqual([{ field: 'field-a', status: 'upgraded', grantId: expect.any(String) }]);
+    expect((await vaultService.peek('field-a'))!.custodyScheme).toBe('delegation-grant');
+    expect((await vaultService.peek('field-b'))!.custodyScheme).not.toBe('delegation-grant');
+  });
+});
+
+// ── Idempotency (#2311) ─────────────────────────────────────────────────────────
+
+describe('migrateCustody — idempotency (#2311)', () => {
+  it('rerunning after a full migration is a no-op', async () => {
+    await sealAndStore('field-a', 'secret-a');
+    await sealAndStore('field-b', 'secret-b');
+
+    const first = await migrateCustody({ dryRun: false, sleep: noSleep });
+    expect(first.aborted).toBe(false);
+    expect(first.results).toHaveLength(2);
+
+    const second = await migrateCustody({ dryRun: false, sleep: noSleep });
+    expect(second.results).toEqual([]);
+    expect(second.totalV1Fields).toBe(0);
+    expect(second.aborted).toBe(false);
   });
 });

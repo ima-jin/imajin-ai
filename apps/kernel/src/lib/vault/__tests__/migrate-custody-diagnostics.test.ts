@@ -20,14 +20,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IntegrityErrorCode, VaultIntegrityError } from '@imajin/vault-core';
 
-const { mockList, mockLoadAndUnseal, mockSealAndStoreV2 } = vi.hoisted(() => ({
-  mockList: vi.fn<() => Promise<Array<Record<string, unknown>>>>(),
+const { mockLoadVault, mockLoadAndUnseal, mockSealAndStoreV2 } = vi.hoisted(() => ({
+  mockLoadVault: vi.fn<() => Promise<{ version: number; entries: Array<Record<string, unknown>> }>>(),
   mockLoadAndUnseal: vi.fn<(field: string) => Promise<string | undefined>>(),
   mockSealAndStoreV2: vi.fn<(field: string, plaintext: string) => Promise<{ grantId: string | null }>>(),
 }));
 
 vi.mock('../index.js', () => ({
-  vaultService: { list: mockList },
+  vaultService: { loadVault: mockLoadVault },
   loadAndUnseal: mockLoadAndUnseal,
   sealAndStoreV2: mockSealAndStoreV2,
 }));
@@ -61,7 +61,15 @@ const PLAINTEXT: Record<string, string> = {
 function arrangeVault(fields: string[], failure: unknown, failAfterUpgrade: string[] = fields): void {
   const upgraded = new Set<string>();
 
-  mockList.mockResolvedValue(fields.map((field) => ({ field, custodyScheme: 'node-sealed' })));
+  mockLoadVault.mockResolvedValue({
+    version: 1,
+    entries: fields.map((field, index) => ({
+      field,
+      custodyScheme: 'node-sealed',
+      timestamp: new Date(2026, 0, index + 1).toISOString(),
+      senderDid: 'did:imajin:test-owner',
+    })),
+  });
 
   mockLoadAndUnseal.mockImplementation(async (field: string) => {
     if (upgraded.has(field) && failAfterUpgrade.includes(field)) {
@@ -144,7 +152,10 @@ describe('migrateCustody — verification failure diagnostics (#1556)', () => {
   });
 
   it('says so explicitly when nothing threw and the field simply never matched', async () => {
-    mockList.mockResolvedValue([{ field: 'field-a', custodyScheme: 'node-sealed' }]);
+    mockLoadVault.mockResolvedValue({
+      version: 1,
+      entries: [{ field: 'field-a', custodyScheme: 'node-sealed', timestamp: '2026-01-01T00:00:00.000Z', senderDid: 'did:imajin:test-owner' }],
+    });
     // Reads fine before the upgrade, then quietly returns something else — no
     // error to report, which is itself the diagnostic.
     let upgraded = false;
@@ -181,7 +192,10 @@ describe('migrateCustody — verification failure diagnostics (#1556)', () => {
   });
 
   it('reports an upgrade failure with its own label rather than a poll diagnostic', async () => {
-    mockList.mockResolvedValue([{ field: 'field-a', custodyScheme: 'node-sealed' }]);
+    mockLoadVault.mockResolvedValue({
+      version: 1,
+      entries: [{ field: 'field-a', custodyScheme: 'node-sealed', timestamp: '2026-01-01T00:00:00.000Z', senderDid: 'did:imajin:test-owner' }],
+    });
     mockLoadAndUnseal.mockResolvedValue('secret-a');
     mockSealAndStoreV2.mockRejectedValue(new Error('grant insert failed'));
 
@@ -192,7 +206,10 @@ describe('migrateCustody — verification failure diagnostics (#1556)', () => {
   });
 
   it('leaves a clean run untouched — no diagnostic, no abort', async () => {
-    mockList.mockResolvedValue([{ field: 'field-a', custodyScheme: 'node-sealed' }]);
+    mockLoadVault.mockResolvedValue({
+      version: 1,
+      entries: [{ field: 'field-a', custodyScheme: 'node-sealed', timestamp: '2026-01-01T00:00:00.000Z', senderDid: 'did:imajin:test-owner' }],
+    });
     mockLoadAndUnseal.mockResolvedValue('secret-a');
     mockSealAndStoreV2.mockResolvedValue({ grantId: 'vdg_field-a' });
 
