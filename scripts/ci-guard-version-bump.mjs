@@ -40,7 +40,8 @@
  *
  * - No PATH-spawn (S4036): `git` is resolved to an absolute path up front
  *   (env override or a fixed list of known install locations) rather than
- *   left to PATH lookup.
+ *   left to PATH lookup — see `scripts/lib/git-version.mjs`, shared with
+ *   `scripts/ci-guard-version-tag-sync.mjs` and `scripts/bump-workspace-version.mjs`.
  *
  * ## Usage
  *
@@ -54,10 +55,10 @@
  *   - `GIT_BIN`                        — absolute path to the git binary
  */
 
-import { existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveGitBinary, ensureSafeDirectory } from './lib/git-version.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
@@ -65,28 +66,6 @@ const ROOT = process.env.CI_GUARD_WORKDIR
 const BASE_REF = process.env.CI_GUARD_VERSION_BASE_REF || 'origin/main';
 const HEAD_REF = process.env.CI_GUARD_VERSION_HEAD_REF || 'HEAD';
 const RELEASE_PREFIX = 'release:';
-
-// ── git binary resolution (S4036: no PATH-spawn) ────────────────────────────
-
-const KNOWN_GIT_LOCATIONS = ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/bin/git'];
-
-function resolveGitBinary() {
-  if (process.env.GIT_BIN) return process.env.GIT_BIN;
-  const found = KNOWN_GIT_LOCATIONS.find((candidate) => existsSync(candidate));
-  if (found) return found;
-  throw new Error(
-    `git binary not found in any of: ${KNOWN_GIT_LOCATIONS.join(', ')}. Set GIT_BIN to its absolute path.`,
-  );
-}
-
-/** Best-effort: registers ROOT as a safe.directory so a container job's separate git config doesn't refuse it. */
-function ensureSafeDirectory(gitBin, root) {
-  try {
-    execFileSync(gitBin, ['config', '--global', '--add', 'safe.directory', root], { stdio: 'pipe' });
-  } catch {
-    // Non-fatal — the workflow step should also do this; this is defense in depth.
-  }
-}
 
 function git(gitBin, root, args) {
   return execFileSync(gitBin, args, { cwd: root, encoding: 'utf8' });

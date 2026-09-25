@@ -69,7 +69,8 @@
  * - No PATH-spawn (S4036): `git` is resolved to an absolute path up front
  *   (env override or a fixed list of known install locations), only to list
  *   tracked `package.json` files and describe the latest tag — no shell
- *   interpolation involved.
+ *   interpolation involved. See `scripts/lib/git-version.mjs`, shared with
+ *   `scripts/ci-guard-version-tag-sync.mjs` and `scripts/ci-guard-version-bump.mjs`.
  *
  * ## Usage
  *
@@ -82,25 +83,15 @@
  *   - `GIT_BIN`          — absolute path to the git binary
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveGitBinary, latestTagVersion } from './lib/git-version.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-const KNOWN_GIT_LOCATIONS = ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/bin/git'];
-
-function resolveGitBinary() {
-  if (process.env.GIT_BIN) return process.env.GIT_BIN;
-  const found = KNOWN_GIT_LOCATIONS.find((candidate) => existsSync(candidate));
-  if (found) return found;
-  throw new Error(
-    `git binary not found in any of: ${KNOWN_GIT_LOCATIONS.join(', ')}. Set GIT_BIN to its absolute path.`,
-  );
-}
 
 /** Lists every `package.json` tracked by git in the working tree, root-relative. */
 function listPackageJsonFiles(gitBin, root) {
@@ -113,27 +104,6 @@ function listPackageJsonFiles(gitBin, root) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !line.includes('node_modules/'));
-}
-
-/**
- * Returns the latest `vX.Y.Z` tag reachable from HEAD (leading `v` stripped),
- * or `undefined` when no such tag exists yet. Same `--match 'v[0-9]*'`
- * restriction as `scripts/lib/build-version.sh` (#2287), for the same reason:
- * a non-version tag must never be mistaken for a release point.
- */
-function latestTagVersion(gitBin, root) {
-  try {
-    const out = execFileSync(gitBin, ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*'], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return out ? out.replace(/^v/, '') : undefined;
-  } catch {
-    // `git describe` exits non-zero when no matching tag is reachable at all
-    // (e.g. a brand-new repo before its first release) — not fatal here.
-    return undefined;
-  }
 }
 
 /**

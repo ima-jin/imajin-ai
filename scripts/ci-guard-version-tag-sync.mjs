@@ -46,7 +46,8 @@
  *
  * - No PATH-spawn (S4036): `git` is resolved to an absolute path up front
  *   (env override or a fixed list of known install locations) rather than
- *   left to PATH lookup.
+ *   left to PATH lookup — see `scripts/lib/git-version.mjs`, shared with
+ *   `scripts/bump-workspace-version.mjs` and `scripts/ci-guard-version-bump.mjs`.
  *
  * ## Usage
  *
@@ -57,56 +58,20 @@
  *   - `GIT_BIN`          — absolute path to the git binary
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveGitBinary, ensureSafeDirectory, latestTagVersion } from './lib/git-version.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-// ── git binary resolution (S4036: no PATH-spawn) ────────────────────────────
-
-const KNOWN_GIT_LOCATIONS = ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/bin/git'];
-
-function resolveGitBinary() {
-  if (process.env.GIT_BIN) return process.env.GIT_BIN;
-  const found = KNOWN_GIT_LOCATIONS.find((candidate) => existsSync(candidate));
-  if (found) return found;
-  throw new Error(
-    `git binary not found in any of: ${KNOWN_GIT_LOCATIONS.join(', ')}. Set GIT_BIN to its absolute path.`,
-  );
-}
-
-/** Best-effort: registers ROOT as a safe.directory so a container job's separate git config doesn't refuse it. */
-function ensureSafeDirectory(gitBin, root) {
-  try {
-    execFileSync(gitBin, ['config', '--global', '--add', 'safe.directory', root], { stdio: 'pipe' });
-  } catch {
-    // Non-fatal — the workflow step should also do this; this is defense in depth.
-  }
-}
-
-/**
- * Returns the latest `vX.Y.Z` tag reachable from HEAD (leading `v` stripped),
- * or `undefined` when no such tag exists yet. Same `--match 'v[0-9]*'`
- * restriction as `scripts/lib/build-version.sh` (#2287) and
- * `scripts/bump-workspace-version.mjs` (#2349): a non-version tag must never
- * be mistaken for a release point.
- */
-export function latestTagVersion(gitBin, root) {
-  try {
-    const out = execFileSync(gitBin, ['describe', '--tags', '--abbrev=0', '--match', 'v[0-9]*'], {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    return out ? out.replace(/^v/, '') : undefined;
-  } catch {
-    return undefined;
-  }
-}
+// Re-exported for `scripts/__tests__/ci-guard-version-tag-sync.test.mjs`, and
+// so this module's own public surface (tag lookup + version comparison) stays
+// in one place even though the git-binary-resolution half now lives in
+// `scripts/lib/git-version.mjs`.
+export { latestTagVersion };
 
 /** Parses a plain `major.minor.patch` string into a `[major, minor, patch]` tuple, or `undefined` if it doesn't match. */
 export function parseVersion(version) {
