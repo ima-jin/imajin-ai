@@ -70,7 +70,7 @@ async function main() {
 
 const isMainModule = process.argv[1] === new URL(import.meta.url).pathname;
 if (isMainModule) {
-  main().catch((err) => {
+  await main().catch((err) => {
     console.error(`FAIL: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
   });

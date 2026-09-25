@@ -19,6 +19,17 @@
 # arguments are given, so a bare invocation smoke-tests "whatever main says
 # was just published".
 #
+# After installing the requested specs, this also reads each installed
+# package's own (already-published, already-scope-rewritten) package.json
+# and `npm install --no-save`s every declared peerDependency at its declared
+# range (#2376) — e.g. `next`, and `@ima-jin/auth`'s optional `drizzle-orm`.
+# A real consumer of these packages is a Next app and will always have
+# `next` in its own tree; the smoke test has to model that or it fails on
+# the exact thing every real install needs (`Cannot find module
+# '.../next/server'`), which a bare `npm install <specs>` never surfaces
+# since npm does not auto-install non-optional peers, let alone optional
+# ones.
+#
 # Reads GITHUB_PACKAGES_TOKEN, falling back to GITHUB_TOKEN (the shape
 # .github/workflows/smoke-sdk-install.yml runs this with, authenticated by
 # the workflow's own ephemeral secrets.GITHUB_TOKEN — no new secret). Never
@@ -68,6 +79,45 @@ npm install --no-save "${INSTALL_SPECS[@]}"
 
 echo "--- installed ---"
 npm ls --depth=0 || true
+
+# Real consumers always bring their own copy of every declared peer (the
+# published manifest's peerDependencies, at whatever range prepare-npm-
+# publish.mjs resolved workspace:* to) — see the module docstring. Collect
+# the declared peers of every package just installed, deduplicated by name,
+# and install them the same way a consuming app's own `npm install` would.
+declare -A SEEN_PEERS
+PEER_SPECS=()
+for pkg_at_version in "$@"; do
+  pkg="${pkg_at_version%@*}"
+  PKG_JSON="node_modules/@ima-jin/${pkg}/package.json"
+  if [[ ! -f "$PKG_JSON" ]]; then
+    echo "FAIL: expected $PKG_JSON to exist after installing @ima-jin/${pkg_at_version}" >&2
+    exit 1
+  fi
+  while IFS=$'\t' read -r peer_name peer_range; do
+    [[ -z "$peer_name" ]] && continue
+    if [[ -z "${SEEN_PEERS[$peer_name]:-}" ]]; then
+      SEEN_PEERS["$peer_name"]="$peer_range"
+      PEER_SPECS+=("${peer_name}@${peer_range}")
+    fi
+  done < <(PKG_JSON="$PKG_JSON" node -e '
+const fs = require("node:fs");
+const pkg = JSON.parse(fs.readFileSync(process.env.PKG_JSON, "utf8"));
+const peers = pkg.peerDependencies || {};
+for (const [name, range] of Object.entries(peers)) {
+  process.stdout.write(name + "\t" + range + "\n");
+}
+')
+done
+
+if [[ "${#PEER_SPECS[@]}" -gt 0 ]]; then
+  echo "Installing declared peerDependencies ${PEER_SPECS[*]} ..."
+  npm install --no-save "${PEER_SPECS[@]}"
+  echo "--- installed (with peers) ---"
+  npm ls --depth=0 || true
+else
+  echo "No declared peerDependencies to install."
+fi
 
 # Node's ESM resolver looks for node_modules relative to the *importing
 # file's* own path, not the process's cwd — copying the smoke script into

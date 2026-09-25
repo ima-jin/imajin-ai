@@ -117,11 +117,19 @@ by the install.
   explicit opt-in via `@ima-jin/logger/db`.
 - `@ima-jin/auth` has no direct database access either (#1992) — credential
   resolution goes through an internal kernel route.
-- None of the four packages carry a `workspace:*` dependency that isn't
-  itself resolvable from the registry: `@ima-jin/auth` and `@ima-jin/ui`
-  depend on sibling packages that are published from the same pipeline
-  (`config`, `logger`, `fair`), and `config`'s unused `tokens` dependency was
-  removed outright (dead code, see `docs/npm-publishing.md`).
+- `@ima-jin/auth` and `@ima-jin/ui` depend on sibling packages resolvable
+  from the registry (`config`, `logger`, `fair`), and `@ima-jin/logger`'s
+  optional peer on `@ima-jin/db` resolves the same way. That's only true
+  because `SDK_PACKAGES` in `.github/workflows/publish-packages.yml` lists
+  `fair` and `db` alongside the four SDK packages — **not** because a
+  `packages-v*` tag publishes "the same pipeline" as some looser, implicit
+  guarantee. Earlier revisions of this doc claimed `fair` already shipped
+  with every SDK publish before it was actually added to `SDK_PACKAGES`,
+  which was not true: the first real `packages-v0.8.2` tag push left both
+  `fair` (`@ima-jin/ui`'s hard dependency) and `db` (`@ima-jin/logger`'s
+  optional peer) unpublished, and both had to be dispatched by hand after
+  the fact (#2376). `config`'s unused `tokens` dependency was removed
+  outright (dead code, see `docs/npm-publishing.md`).
 - `@ima-jin/fair`'s `Money` type is inlined in `fair/src/types.ts` rather
   than imported from `@imajin/money` — `money` isn't published, and a type
   re-export still shows up in the emitted `.d.ts` even when the source
