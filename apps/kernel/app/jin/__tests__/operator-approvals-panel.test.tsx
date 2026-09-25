@@ -145,7 +145,12 @@ function gatewayExecApproval(overrides: Partial<ApprovalFixture> = {}): Approval
 
 /** Installs a fetch stub: GET list responses come from `listResponses` in order; any POST decision call resolves with `decisionResponse`. */
 function installFetch(
-  listResponses: Array<{ isOperator: boolean; approvals: ApprovalFixture[] }>,
+  listResponses: Array<{
+    isOperator: boolean;
+    approvals: ApprovalFixture[];
+    /** #2359 — non-null whenever the session is acting as another identity. */
+    actAs?: { sessionDid: string; actingDid: string } | null;
+  }>,
   decisionResponse: { ok: boolean; status?: number; body?: unknown } = { ok: true, body: { approval: approval({ status: 'approved' }) } },
 ) {
   let callIndex = 0;
@@ -310,6 +315,60 @@ describe.each([
       body: JSON.stringify({ decision }),
     });
     await waitFor(() => expect(screen.getByText(resultingStatusText)).toBeDefined());
+  });
+});
+
+// #2359: the confirm rail is self-only, so under act-as the queue still
+// renders (hiding it would make the act-as state harder to notice) but
+// every decision control is replaced by a line saying why.
+describe('act-as read-only (#2359)', () => {
+  const ACT_AS = { sessionDid: 'did:imajin:ryan-operator', actingDid: 'did:imajin:some-group' };
+
+  it('still lists the pending proposal, with no Approve/Deny controls', async () => {
+    installFetch([{ isOperator: true, approvals: [approval()], actAs: ACT_AS }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('Restart the gateway to load the updated plugin.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Deny' })).toBeNull();
+    expect(screen.getByTestId('act-as-locked')).toBeDefined();
+  });
+
+  it('names both identities in the panel-level read-only notice', async () => {
+    installFetch([{ isOperator: true, approvals: [approval()], actAs: ACT_AS }]);
+    render(<OperatorApprovalsPanel />);
+
+    const notice = await screen.findByTestId('act-as-readonly-notice');
+    expect(notice.textContent).toContain(ACT_AS.actingDid);
+    expect(notice.textContent).toContain(ACT_AS.sessionDid);
+  });
+
+  it('replaces the Withdraw control on an approved proposal too', async () => {
+    installFetch([{ isOperator: true, approvals: [approval({ status: 'approved' })], actAs: ACT_AS }]);
+    render(<OperatorApprovalsPanel />);
+
+    await screen.findByText('approved — pending apply');
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+    expect(screen.getByTestId('act-as-locked')).toBeDefined();
+  });
+
+  it('locks the github TTL picker, which supplies its own pending actions', async () => {
+    installFetch([{ isOperator: true, approvals: [githubApproval()], actAs: ACT_AS }]);
+    render(<OperatorApprovalsPanel />);
+
+    await screen.findByText('github:append');
+    expect(screen.queryByRole('button', { name: 'Yes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '24h' })).toBeNull();
+    expect(screen.getByTestId('act-as-locked')).toBeDefined();
+  });
+
+  it('leaves the controls fully intact when the session is plainly itself (actAs: null)', async () => {
+    installFetch([{ isOperator: true, approvals: [approval()], actAs: null }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByRole('button', { name: 'Approve' })).toBeDefined();
+    expect(screen.queryByTestId('act-as-locked')).toBeNull();
+    expect(screen.queryByTestId('act-as-readonly-notice')).toBeNull();
   });
 });
 

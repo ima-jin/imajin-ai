@@ -45,3 +45,28 @@ export function resolveComposedBy(identity: Identity): string | null {
   if (!identity.actingFor || identity.actingFor === identity.id) return null;
   return identity.id;
 }
+
+/**
+ * True when this request is running under act-as — i.e. the acting DID the
+ * request would be attributed to is NOT the real authenticated session DID
+ * (#2359).
+ *
+ * Covers BOTH delegation overlays `resolveActingDid` understands:
+ *   actingFor — an agent delegated to a human (`X-Acting-For`)
+ *   actingAs  — a human operating as a group DID (`x-acting-as` header/cookie)
+ *
+ * `resolveActingDid` answers "whose record is this?"; this answers "is that
+ * somebody other than whoever actually signed in?". A self-only rail — one
+ * where the real human must be the party on the hook, e.g. the /jin confirm
+ * rail (#2359) — refuses the request outright whenever this is true, rather
+ * than comparing `resolveActingDid(identity)` against the owner and
+ * accidentally accepting a borrowed identity.
+ *
+ * @example
+ *   const auth = await requireAuth(request);
+ *   if ('error' in auth) return ...;
+ *   if (isUnderActAs(auth.identity)) return forbidden('act_as_not_permitted');
+ */
+export function isUnderActAs(identity: Identity): boolean {
+  return resolveActingDid(identity) !== identity.id;
+}

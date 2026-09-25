@@ -337,6 +337,60 @@ proposing and `@jin` approving is structurally impossible, not just
 discouraged. A different human identity gets 403 without ever learning
 whether a given `proposalId` exists.
 
+## Who may countersign (#2359)
+
+**The confirm rail is self-only.** Every write-approval endpoint on it —
+confirm, deny, withdraw, and any other countersignature of a proposal —
+authorizes against the **real authenticated session identity**
+(`identity.id`), never against `resolveActingDid(identity)`. The rule is
+`session.identity.did === proposal.ownerDid`, where the owner of an
+operator-approval proposal is this node's configured operator DID.
+
+`isOperatorIdentity` above only ever excluded `actingFor`. It did not
+exclude `actingAs` — the group-impersonation overlay the /jin
+IdentitySwitcher sets as a year-long `x-acting-as` cookie
+(`POST /auth/api/session/act-as`) — so the operator's own session could
+satisfy `identity.id === operatorDid` while every other surface on the
+page was attributing its actions to a completely different DID. #2359
+closes that: `actAsRefusal` (`apps/kernel/src/lib/notify/act-as-guard.ts`,
+built on `isUnderActAs` in `packages/auth/src/acting-did.ts`) refuses ANY
+act-as shape — `actingFor` or `actingAs` — before the owner comparison
+even runs.
+
+### Behaviour under act-as
+
+- `POST /jin/api/operator-approvals/:proposalId/decision` → **403** with
+  `{ error, code: "act_as_not_permitted", sessionDid, actingDid }`. Refused
+  for being borrowed, not for failing an ownership test, so it discloses
+  nothing about whether `proposalId` exists — same non-disclosure posture
+  as the operator check.
+- `POST /jin/api/vault-proposals` (raising a `vault:*` card onto this rail)
+  → same 403, same code. A proposal that will be countersigned self-only is
+  not raised from a borrowed identity either.
+- `GET /jin/api/operator-approvals` → **unchanged, still lists.** Hiding
+  the queue would make the act-as state harder to notice, which is the
+  failure mode #2359 is about. The operator branch additionally carries
+  `actAs: { sessionDid, actingDid } | null`, so the panel renders every
+  card with its decision controls replaced by an explanatory line instead
+  of offering a tap the server will refuse. The non-operator response shape
+  is untouched.
+- Every `/jin` lane renders a persistent act-as banner
+  (`apps/kernel/app/jin/act-as-banner.tsx`, mounted from the lane layout):
+  who you are, who you're acting as, and a one-click drop. It renders
+  nothing when the acting DID equals the session DID — the banner marks an
+  abnormal state, so it must never become chrome.
+
+### Rails that DO permit acting-for
+
+This ruling is about the confirm rail only. A rail that legitimately
+accepts delegation — e.g. vault mint/revoke via `requireMintAuthority`
+(`apps/kernel/src/lib/vault/mint-authority.ts`) — is unchanged and keeps
+its own record honesty: the attestation it writes names the real signer
+DID (`resolveComposedBy`, #1673) alongside the owner it acted for, so
+"attributed to X, actually typed by Y" is always recoverable from the
+record. What such a rail may never do is countersign a proposal on this
+rail on somebody else's behalf.
+
 ## Redelivery
 
 `operator.approval.requested` is an ordinary `notify.notifications` row, so

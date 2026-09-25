@@ -117,6 +117,29 @@ components:
       required: [error]
       properties:
         error: { type: string }
+    ActAsContext:
+      type: object
+      nullable: true
+      description: >-
+        Who is signed in vs. who this session is currently acting as
+        (#2359). Non-null only while the acting DID (`X-Acting-For`, or the
+        `x-acting-as` cookie the /jin IdentitySwitcher sets) differs from
+        the real authenticated session DID. The confirm rail is self-only,
+        so a non-null value means every decision control is read-only for
+        this session.
+      required: [sessionDid, actingDid]
+      properties:
+        sessionDid: { type: string, description: "The real authenticated session DID — the only identity that may countersign." }
+        actingDid: { type: string, description: "The DID this request would otherwise be attributed to." }
+    ActAsNotPermittedError:
+      type: object
+      description: "403 body returned by every write-approval endpoint on the confirm rail when called under act-as (#2359)."
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code: { type: string, enum: [act_as_not_permitted] }
+        sessionDid: { type: string }
+        actingDid: { type: string }
     LoopRefs:
       type: object
       description: "Bare ids/numbers in the referenced system's own vocabulary — the kernel never resolves or validates these."
@@ -294,6 +317,11 @@ paths:
         this endpoint never confirms whether a proposal exists to a caller
         who isn't allowed to see it. Optional `?source=` scopes the list to
         one source (#2152) — a view filter only, never a security boundary.
+        This READ surface keeps listing under act-as (#2359) — hiding the
+        queue would only make the act-as state harder to notice — and
+        reports the act-as overlay as `actAs` so the panel can render its
+        decision controls read-only instead of offering a tap the confirm
+        rail will refuse with 403 `act_as_not_permitted`.
       security:
         - cookieAuth: []
       parameters:
@@ -314,6 +342,8 @@ paths:
                   approvals:
                     type: array
                     items: { $ref: "#/components/schemas/OperatorApprovalCard" }
+                  actAs:
+                    $ref: "#/components/schemas/ActAsContext"
         "401":
           description: Not authenticated
           content:
@@ -329,7 +359,11 @@ paths:
         Requires `requireAuth` to resolve the exact HUMAN operator identity
         directly — never `X-Acting-For`/`onBehalfOf`. A non-operator
         identity (including `@jin` acting for the operator) gets 403
-        without ever learning whether `proposalId` exists. `decision` is
+        without ever learning whether `proposalId` exists. Self-only
+        (#2359): a session under act-as of ANY shape — `X-Acting-For`, or
+        the `x-acting-as` cookie — is refused with 403
+        `act_as_not_permitted` before the operator comparison even runs.
+        `decision` is
         the open, source-agnostic vocabulary (#2152): the kernel never
         interprets it, only witnesses it and republishes it — together
         with the proposal's own `source` + `kind` — on the
@@ -388,10 +422,16 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Caller is not the node operator (never reveals whether proposalId exists)
+          description: >-
+            Caller is not the node operator, or is calling under act-as
+            (#2359, `code: act_as_not_permitted`). Neither case reveals
+            whether proposalId exists.
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ActAsNotPermittedError"
+                  - $ref: "#/components/schemas/Error"
         "404":
           description: Proposal not found (or not addressed to this operator)
           content:
@@ -423,6 +463,8 @@ paths:
         already decides — no new approval rail. Approving the resulting
         card is the signing event; the actual vault mutation runs
         server-side at that point (`src/lib/vault/approvals-execution.ts`).
+        Self-only too (#2359): a session under act-as is refused with 403
+        `act_as_not_permitted` before anything is written.
       security:
         - cookieAuth: []
       requestBody:
@@ -462,10 +504,15 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Caller is not the node operator
+          description: >-
+            Caller is not the node operator, or is calling under act-as
+            (#2359, `code: act_as_not_permitted`).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ActAsNotPermittedError"
+                  - $ref: "#/components/schemas/Error"
 
   /api/loops:
     post:

@@ -12,6 +12,17 @@
  * for. A non-operator identity — including a genuinely different human —
  * gets 403 without ever learning whether `proposalId` exists.
  *
+ * #2359 closed the other half of that rule: act-as of ANY shape is refused
+ * here before the operator comparison even runs ({@link actAsRefusal}, 403
+ * `act_as_not_permitted`). `isOperatorIdentity` alone only ever excluded
+ * `actingFor`, so the operator's own session carrying the
+ * IdentitySwitcher's `x-acting-as: <group DID>` cookie still satisfied
+ * `identity.id === operatorDid` and countersigned writes while wearing
+ * somebody else's identity. This rail is self-only — the real session DID
+ * is the party on the hook — so a borrowed one never reaches the signing
+ * event. Listing stays readable under act-as (`GET /jin/api/operator-
+ * approvals`); only deciding is refused.
+ *
  * `decision` is the open, source-agnostic vocabulary (#2152): the kernel
  * never interprets it, only witnesses it and carries it (plus `source` +
  * `kind` from the stored proposal) through on `operator.approval.decided`.
@@ -34,6 +45,7 @@ import { requireAuth } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
+import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
 import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
 import { executeVaultApproval } from '@/src/lib/vault/approvals-execution';
@@ -125,6 +137,12 @@ export async function POST(
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
+
+  // #2359: self-only, checked first. A borrowed identity is refused for
+  // being borrowed and is never compared against the proposal's owner, so
+  // this refusal reveals nothing about whether `proposalId` exists either.
+  const borrowedIdentityRefusal = actAsRefusal(authResult.identity, cors);
+  if (borrowedIdentityRefusal) return borrowedIdentityRefusal;
 
   const operatorDid = await getOperatorDid();
   if (!operatorDid || !isOperatorIdentity(authResult.identity, operatorDid)) {

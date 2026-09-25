@@ -39,6 +39,14 @@
  * cookie session), the decision POSTs without `operatorSignature`; the
  * kernel accepts that unless `OPERATOR_COUNTERSIGN_REQUIRED` is on, in
  * which case the resulting 400 surfaces through the existing error flash.
+ *
+ * #2359: the confirm rail is self-only. When `GET /jin/api/operator-
+ * approvals` reports an `actAs` context (the acting DID differs from the
+ * real session DID), the queue still renders in full — hiding it would
+ * only make the act-as state harder to notice — but every decision
+ * control is replaced by an explanatory line. The server refuses these
+ * decisions with 403 `act_as_not_permitted` regardless; this is the
+ * affordance catching up with the rule, not the rule itself.
  */
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -618,28 +626,121 @@ function approvalCardAnchorId(proposalId: string): string {
   return `approval-${proposalId}`;
 }
 
+/**
+ * Replaces every decision control on a card while the session is under
+ * act-as (#2359). Says WHY the control is gone rather than silently
+ * omitting it — the whole finding was that the act-as state was invisible
+ * at exactly the moment it mattered.
+ */
+function ActAsLockedNote() {
+  return (
+    <p data-testid="act-as-locked" className="pt-1 text-xs text-amber-300">
+      Approve and deny are disabled while you are acting as another identity — a proposal can only be countersigned by
+      the identity that signed in. Drop act-as to decide as yourself.
+    </p>
+  );
+}
+
+/**
+ * The decision row for one card: the expired badge, the act-as lock, the
+ * per-source pending actions, or Withdraw. Extracted from
+ * {@link ApprovalCardRow} so the act-as branch is a single early return
+ * instead of a fourth condition multiplied across every existing JSX
+ * guard.
+ */
+function CardActions({
+  approval,
+  onDecide,
+  busy,
+  decisionsLocked,
+}: Readonly<{
+  approval: OperatorApprovalCard;
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
+  busy: boolean;
+  /** True while the session is under act-as (#2359) — self-only rail, so no control is offered. */
+  decisionsLocked: boolean;
+}>) {
+  // S9379: an imperative focus-on-mount ref instead of the declarative
+  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
+  // finding. Stable across renders so it only fires when the button mounts.
+  const autoFocusRef = useCallback((el: HTMLButtonElement | null) => el?.focus(), []);
+
+  const decidable = approval.status === 'pending' || approval.status === 'approved';
+  if (!decidable) return null;
+
+  // #2221: a pending approval past its own detail.expiresAt can no longer be
+  // decided — the kernel enforces this authoritatively at decide time; this
+  // only keeps the card from ever offering a decision it will just refuse.
+  if (approval.status === 'pending' && isApprovalExpired(approval)) {
+    return (
+      <div className="pt-1">
+        <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-500">expired — can no longer be decided</span>
+      </div>
+    );
+  }
+
+  if (decisionsLocked) return <ActAsLockedNote />;
+
+  if (approval.status === 'approved') {
+    return (
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={() => onDecide(approval, 'withdrawn')}
+          disabled={busy}
+          className="px-3 py-1.5 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          {busy ? '…' : 'Withdraw'}
+        </button>
+      </div>
+    );
+  }
+
+  const renderer = rendererFor(approval.source);
+  if (renderer.renderPendingActions) {
+    return renderer.renderPendingActions(approval, onDecide, busy);
+  }
+
+  const decisionLabels = resolveDecisionLabels(renderer, approval);
+  return (
+    <div className="flex items-center gap-2 pt-1">
+      <button
+        type="button"
+        onClick={() => onDecide(approval, 'reject')}
+        disabled={busy}
+        className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        {decisionLabels.reject}
+      </button>
+      <button
+        type="button"
+        onClick={() => onDecide(approval, 'approve')}
+        disabled={busy}
+        ref={autoFocusRef}
+        className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
+      >
+        {busy ? '…' : decisionLabels.approve}
+      </button>
+    </div>
+  );
+}
+
 function ApprovalCardRow({
   approval,
   onDecide,
   busy,
   highlighted,
+  decisionsLocked,
 }: Readonly<{
   approval: OperatorApprovalCard;
   onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
   busy: boolean;
   /** True when this card is the one the operator was deep-linked to from a phone push (#2291). */
   highlighted: boolean;
+  /** True while the session is under act-as (#2359). */
+  decisionsLocked: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
-  const decisionLabels = resolveDecisionLabels(renderer, approval);
-  // S9379: an imperative focus-on-mount ref instead of the declarative
-  // `autoFocus` JSX attribute — same one-time focus behavior, no new SonarCloud
-  // finding. Stable across renders so it only fires when the button mounts.
-  const autoFocusRef = useCallback((el: HTMLButtonElement | null) => el?.focus(), []);
-  // #2221: a pending approval past its own detail.expiresAt can no longer be
-  // decided — the kernel enforces this authoritatively at decide time; this
-  // only keeps the card from ever offering a decision it will just refuse.
-  const expired = approval.status === 'pending' && isApprovalExpired(approval);
   const highlightClass = highlighted ? ' ring-2 ring-amber-500/70' : '';
   return (
     <div id={approvalCardAnchorId(approval.proposalId)} className={`rounded-lg border border-gray-800 p-4 space-y-2${highlightClass}`}>
@@ -653,46 +754,26 @@ function ApprovalCardRow({
         <span className="text-xs text-gray-500">{new Date(approval.createdAt).toLocaleString()}</span>
       </div>
       {renderer.renderDetail(approval)}
-      {approval.status === 'pending' && expired && (
-        <div className="pt-1">
-          <span className="px-2 py-0.5 rounded text-xs font-medium bg-gray-800 text-gray-500">expired — can no longer be decided</span>
-        </div>
-      )}
-      {approval.status === 'pending' && !expired && (
-        renderer.renderPendingActions ? renderer.renderPendingActions(approval, onDecide, busy) : (
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => onDecide(approval, 'reject')}
-              disabled={busy}
-              className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-            >
-              {decisionLabels.reject}
-            </button>
-            <button
-              type="button"
-              onClick={() => onDecide(approval, 'approve')}
-              disabled={busy}
-              ref={autoFocusRef}
-              className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
-            >
-              {busy ? '…' : decisionLabels.approve}
-            </button>
-          </div>
-        )
-      )}
-      {approval.status === 'approved' && (
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={() => onDecide(approval, 'withdrawn')}
-            disabled={busy}
-            className="px-3 py-1.5 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          >
-            {busy ? '…' : 'Withdraw'}
-          </button>
-        </div>
-      )}
+      <CardActions approval={approval} onDecide={onDecide} busy={busy} decisionsLocked={decisionsLocked} />
+    </div>
+  );
+}
+
+/** Who is signed in vs. who they are acting as (#2359) — mirrors `ActAsContext` on `GET /jin/api/operator-approvals`. */
+interface ActAsState {
+  sessionDid: string;
+  actingDid: string;
+}
+
+/** Panel-level companion to the per-card lock: says the whole queue is read-only, and names both identities. */
+function ActAsReadOnlyNotice({ actAs }: Readonly<{ actAs: ActAsState }>) {
+  return (
+    <div
+      data-testid="act-as-readonly-notice"
+      className="mb-3 px-3 py-2 rounded text-xs text-amber-300 bg-amber-950/40 border border-amber-800/60"
+    >
+      Read-only while acting as <span className="font-mono">{actAs.actingDid}</span>. Approvals are self-only — drop
+      act-as to decide as <span className="font-mono">{actAs.sessionDid}</span>.
     </div>
   );
 }
@@ -704,6 +785,7 @@ function renderPanelBody(
   onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
   busyId: string,
   deepLinkedProposalId: string | null,
+  decisionsLocked: boolean,
 ) {
   if (loading) {
     return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
@@ -727,6 +809,7 @@ function renderPanelBody(
           onDecide={onDecide}
           busy={busyId === approval.proposalId}
           highlighted={deepLinkedProposalId === approval.proposalId}
+          decisionsLocked={decisionsLocked}
         />
       ))}
     </div>
@@ -742,6 +825,7 @@ function OperatorApprovalsPanelInner() {
   const hasScrolledToDeepLink = useRef(false);
 
   const [isOperator, setIsOperator] = useState(false);
+  const [actAs, setActAs] = useState<ActAsState | null>(null);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
@@ -759,8 +843,13 @@ function OperatorApprovalsPanelInner() {
     try {
       const res = await fetch('/jin/api/operator-approvals', { credentials: 'include' });
       if (!res.ok) return;
-      const data = (await res.json()) as { isOperator: boolean; approvals: OperatorApprovalCard[] };
+      const data = (await res.json()) as {
+        isOperator: boolean;
+        approvals: OperatorApprovalCard[];
+        actAs?: ActAsState | null;
+      };
       setIsOperator(data.isOperator);
+      setActAs(data.actAs ?? null);
       setApprovals(data.approvals ?? []);
     } catch {
       // Silent — this panel simply stays empty on a transient network error.
@@ -868,7 +957,9 @@ function OperatorApprovalsPanelInner() {
         <RevealedBearerBanner revealed={revealedBearer} onDismiss={() => setRevealedBearer(null)} />
       )}
 
-      {renderPanelBody(loading, approvals, handleDecide, busyId, deepLinkedProposalId)}
+      {actAs && <ActAsReadOnlyNotice actAs={actAs} />}
+
+      {renderPanelBody(loading, approvals, handleDecide, busyId, deepLinkedProposalId, actAs !== null)}
     </section>
   );
 }

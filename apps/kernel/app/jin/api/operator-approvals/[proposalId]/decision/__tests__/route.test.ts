@@ -11,10 +11,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   OPERATOR_DID,
+  GROUP_DID,
   PROPOSAL_ID,
   operatorIdentity,
   otherHumanIdentity,
   agentActingForOperatorIdentity,
+  operatorActingAsGroupIdentity,
   pendingApprovalCard,
 } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
 
@@ -29,7 +31,14 @@ const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApprova
   mockExecuteGithubApproval: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
+// #2359: `act-as-guard.ts` calls the real `isUnderActAs`/`resolveActingDid`,
+// so the narrow mock keeps the actual implementations rather than standing
+// them in — the guard under test must not be able to pass against a
+// re-implementation of the very precedence rule it depends on.
+vi.mock('@imajin/auth', async () => {
+  const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
+  return { ...actual, requireAuth: mockRequireAuth };
+});
 
 vi.mock('@/src/lib/vault/approvals-execution', () => ({
   executeVaultApproval: mockExecuteVaultApproval,
@@ -207,6 +216,60 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
 
     expect(res.status).toBe(403);
     expect(mockDecide).not.toHaveBeenCalled();
+  });
+
+  // #2359: the confirm rail is self-only. `isOperatorIdentity` alone only
+  // ever excluded `actingFor`, so the operator's OWN session carrying the
+  // IdentitySwitcher's `x-acting-as` cookie still satisfied it and
+  // countersigned writes while wearing somebody else's identity.
+  describe('act-as must not reach the confirm rail (#2359)', () => {
+    it('refuses an approve from an operator session under act-as with 403 act_as_not_permitted', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code: string; sessionDid: string; actingDid: string };
+      expect(body.code).toBe('act_as_not_permitted');
+      expect(body.sessionDid).toBe(OPERATOR_DID);
+      expect(body.actingDid).toBe(GROUP_DID);
+      expect(mockDecide).not.toHaveBeenCalled();
+    });
+
+    it('refuses a deny (reject) from an operator session under act-as with the same 403', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+      const res = await POST(makeReq({ decision: 'reject' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code: string };
+      expect(body.code).toBe('act_as_not_permitted');
+      expect(mockDecide).not.toHaveBeenCalled();
+    });
+
+    it('refuses a withdraw from an operator session under act-as', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+      const res = await POST(makeReq({ decision: 'withdrawn' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(403);
+      expect(mockDecide).not.toHaveBeenCalled();
+    });
+
+    it('refuses before the operator DID is even resolved — the refusal leaks nothing about the proposal', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+
+      await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockGetOperatorDid).not.toHaveBeenCalled();
+    });
+
+    it('still lets the operator’s own un-borrowed session approve (the guard is act-as-shaped, not a blanket lock)', async () => {
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(200);
+      expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: OPERATOR_DID }));
+    });
   });
 
   it('returns 400 for a malformed JSON body', async () => {
