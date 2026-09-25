@@ -20,6 +20,12 @@ const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 8787;
 const DEFAULT_KERNEL_TIMEOUT_MS = 20_000;
 const DEFAULT_DIRECT_TIMEOUT_MS = 20_000;
+// Mirrors apps/kernel/src/lib/mcp/oauth-config.ts's `getMcpIssuer()` default
+// exactly (#2368) — same env var name, same fallback value — so a deployment
+// that never split its MCP issuer off from its kernel front door needs no new
+// config at all, while one that did (prod: `mcp.imajin.ai` vs `jin.imajin.ai`)
+// can point this proxy at the same value the kernel itself resolves.
+const DEFAULT_MCP_PUBLIC_URL = 'https://mcp.imajin.ai';
 
 function requireEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
@@ -100,6 +106,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ProxyConfig {
     appDid: requireEnv(env, 'OPENCLAW_APP_DID'),
     appPrivateKey: requireEnv(env, 'OPENCLAW_APP_PRIVATE_KEY'),
     routes: loadRoutes(routesPath),
+    mcpPublicUrl: env.MCP_PUBLIC_URL || DEFAULT_MCP_PUBLIC_URL,
   };
 }
 

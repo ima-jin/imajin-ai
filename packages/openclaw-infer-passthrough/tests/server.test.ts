@@ -11,10 +11,12 @@ const CONFIG: ProxyConfig = {
   directTimeoutMs: 5_000,
   appDid: 'did:imajin:app',
   appPrivateKey: 'ab'.repeat(32),
+  mcpPublicUrl: 'https://mcp.test',
   routes: [
     { id: 'xai', principalDid: 'did:imajin:ryan', attestationId: 'att-xai', modelPrefixes: ['grok-'] },
     { id: 'anthropic', principalDid: 'did:imajin:ryan', attestationId: 'att-anthropic', modelPrefixes: ['claude-'] },
     { id: 'openai', principalDid: 'did:imajin:ryan', attestationId: 'att-openai', modelPrefixes: ['gpt-', 'o1-', 'o3-'] },
+    { id: 'mcp', principalDid: 'did:imajin:ryan', attestationId: 'att-mcp' },
   ],
 };
 
@@ -243,6 +245,73 @@ describe('proxy server (integration)', () => {
     });
 
     expect(res.status).toBe(200);
+  });
+
+  it('mints a token and forwards POST /mcp to the kernel end to end, minting with the MCP resource audience (#2368)', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          const body = JSON.parse(init!.body as string) as { scope?: string; aud?: string };
+          expect(body.scope).toBeUndefined();
+          expect(body.aud).toBe('https://mcp.test/mcp');
+          return new Response(JSON.stringify({ token: 'tok-mcp-e2e', expiresIn: 600, scopes: ['media:read'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url === 'https://kernel.test/mcp') {
+          expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer tok-mcp-e2e');
+          return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: [] } }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ jsonrpc: '2.0', id: 1, result: { tools: [] } });
+  });
+
+  it('returns 403 insufficient_scope for POST /mcp when the minted token carries no MCP-surface scope (#2368)', async () => {
+    const realFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === 'https://kernel.test/auth/api/apps/token') {
+          return new Response(JSON.stringify({ token: 'tok-mcp-e2e', expiresIn: 600, scopes: ['infer:completions'] }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+        if (url.startsWith(baseUrl)) {
+          return realFetch(url, init);
+        }
+        throw new Error(`unexpected fetch to ${url}`);
+      }),
+    );
+
+    const res = await fetch(`${baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toBe('insufficient_scope');
   });
 
   it('mints a token and forwards GET /openai/v1/models to the kernel end to end (#2201)', async () => {

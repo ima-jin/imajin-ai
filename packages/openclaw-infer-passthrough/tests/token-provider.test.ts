@@ -61,6 +61,22 @@ describe('mintAppToken', () => {
       /403.*Authorization has been revoked/,
     );
   });
+
+  it('sends an explicit aud when given one, for audience-bound resources like the kernel MCP surface (#2368)', async () => {
+    const keypair = generateKeypair();
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedBody = JSON.parse(init!.body as string);
+        return jsonResponse({ token: 'mcp.jwt', expiresIn: 600, scopes: ['media:read'] });
+      }),
+    );
+
+    await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID, undefined, 'https://mcp.test/mcp');
+
+    expect((capturedBody as unknown as { aud: string }).aud).toBe('https://mcp.test/mcp');
+  });
 });
 
 describe('RouteTokenProvider', () => {
@@ -131,6 +147,48 @@ describe('RouteTokenProvider', () => {
     const [a, b, c] = await Promise.all([provider.getToken(), provider.getToken(), provider.getToken()]);
 
     expect([a, b, c]).toEqual(['tok-concurrent', 'tok-concurrent', 'tok-concurrent']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('mints with no scope narrowing and the given aud when constructed with scope: null (#2368)', async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        capturedBody = JSON.parse(init!.body as string);
+        return jsonResponse({ token: 'mcp-tok', expiresIn: 600, scopes: ['media:read', 'github:read'] });
+      }),
+    );
+
+    const provider = new RouteTokenProvider(
+      'https://kernel.test',
+      APP_DID,
+      generateKeypair().privateKey,
+      ATTESTATION_ID,
+      undefined,
+      undefined,
+      null,
+      'https://mcp.test/mcp',
+    );
+    const token = await provider.getToken();
+
+    expect(token).toBe('mcp-tok');
+    expect((capturedBody as unknown as { scope?: string }).scope).toBeUndefined();
+    expect((capturedBody as unknown as { aud: string }).aud).toBe('https://mcp.test/mcp');
+  });
+
+  it('getScopes() mints if needed and returns the scopes the cached token actually carries', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ token: 'mcp-tok', expiresIn: 600, scopes: ['media:read', 'github:read'] }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = new RouteTokenProvider('https://kernel.test', APP_DID, generateKeypair().privateKey, ATTESTATION_ID, undefined, undefined, null);
+    const scopes = await provider.getScopes();
+
+    expect(scopes).toEqual(['media:read', 'github:read']);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // A second call reuses the cached token/scopes rather than minting again.
+    await provider.getScopes();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -5,7 +5,7 @@
  * (`dispatch.ts`), so they share the same fake token source, body-reading,
  * and abort-simulation helpers rather than each declaring them independently.
  */
-import type { TokenSource } from '../src/token-provider.js';
+import type { ScopedTokenSource, TokenSource } from '../src/token-provider.js';
 
 export function fakeTokenSource(tokens: string[]): TokenSource & { calls: number } {
   let i = 0;
@@ -17,6 +17,17 @@ export function fakeTokenSource(tokens: string[]): TokenSource & { calls: number
     },
     invalidate() {
       i += 1;
+    },
+  };
+}
+
+/** Like `fakeTokenSource`, plus `getScopes()` — for `mcp-handler.test.ts` (imajin-ai#2368). */
+export function fakeScopedTokenSource(tokens: string[], scopes: string[]): ScopedTokenSource & { calls: number } {
+  const base = fakeTokenSource(tokens);
+  return {
+    ...base,
+    async getScopes() {
+      return scopes;
     },
   };
 }
