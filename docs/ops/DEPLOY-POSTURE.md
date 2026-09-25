@@ -53,9 +53,13 @@ SHA) — e.g. `apps/coffee/app/api/health/route.ts:4-10`, `apps/kernel/app/api/h
 `apps/market/app/api/health/route.ts:4-10`. Both are stamped at build time by
 `scripts/build.sh:104-124` from `git describe`/`git rev-parse` on the checked-out ref. A human asking
 "what SHA is this service running" gets a real answer from a `GET`, not an `ssh` — issue item 1 is
-already true for build identity. **Not checked:** migration head. No `/health` route queries
-`public._migrations`; there is no way to ask a running service "are you caught up" without
-`ssh + psql`.
+already true for build identity. **Migration head — now checked (#2384).** Every app's own
+`GET /api/health` reports a `migrations: { migrationHead, appliedCount, pendingCount }` block sourced
+from its own DB connection only (`@imajin/db`'s `getMigrationStatus`, see
+`packages/db/src/migration-status.ts`), and kernel's aggregating `/api/health`
+(`apps/kernel/app/api/health/route.ts`) relays each service's block verbatim and marks the aggregate
+`degraded` when any service reports `pendingCount > 0` — so "is the live DB caught up" is now a `GET`
+away, not an `ssh + psql` session.
 
 **Migrations applied — asserted only.** `scripts/migrate.mjs` runs unconditionally in both deploy
 workflows (`deploy-dev.yml:62`, `deploy-prod.yml:69`) and fails the job (non-zero exit,
@@ -156,10 +160,13 @@ the server side even though that can't be verified from the repo.
 1. `GET /api/health` on the app's routed URL returns a `build` field equal to the SHA the deploy
    workflow just checked out — this mechanism already exists (`scripts/build.sh:104-124`, §2 above)
    and just needs to be the asserted contract, not an implementation detail.
-2. `GET /api/health` additionally reports migration state: e.g. `migrationsHead` (the last-applied
-   filename or count from `public._migrations`) and `migrationsOwner` (which `--owner` scope, per
-   #1991) so a caller can tell "this app's schema is caught up" without `psql`. Today no health route
-   queries `_migrations` at all (§2) — this is new work, not a wiring gap.
+2. **Implemented (#2384).** `GET /api/health` additionally reports migration state via a
+   `migrations: { migrationHead, appliedCount, pendingCount }` block, sourced only from the app's own
+   DB connection (never another service's — no cross-DB reads) so a caller can tell "this app's
+   schema is caught up" without `psql`. The machine-checkable claim this gives deploy verification:
+   **deploy verify = every app's migration head equals the tag's expected head.** Kernel's aggregator
+   relays every service's block verbatim and flips the aggregate `status` to `degraded` when any
+   service reports `pendingCount > 0`.
 3. The evidence line epic #2370 already specifies — `ev: repo=… registered=y schema=… deploy=<run>
    health=<version>` — should read `health=<version>+<build>` sourced from #1 directly, not
    transcribed by hand from a log.
@@ -222,7 +229,9 @@ already polls every other service, `apps/kernel/app/api/health/route.ts:20-38,84
 app's own route reports its own migration head b) kernel's aggregator also queries each app's DB
 directly for migration head c) kernel's aggregator calls each app's own `/health` (option a) and
 relays it · rec: c — keeps each app the source of truth for its own schema state (matches #1991's
-per-owner boundary) while still giving one aggregate view.
+per-owner boundary) while still giving one aggregate view. · **Ruled: c (2026-09-25), implemented in
+#2384** — every app's own `/api/health` reports its own `migrations` block; kernel's aggregator
+calls each service's `/health` and relays that block verbatim, never reading another app's DB.
 
 DECISION · Prod rollback runbook · Should a documented rollback be "redeploy the previous tag via
 `gh workflow run deploy-prod.yml -f ref=<previous-tag>`" (already technically possible per

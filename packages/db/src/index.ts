@@ -25,6 +25,16 @@ export function createDb<TSchema extends Record<string, unknown>>(schema: TSchem
 export { getClient };
 export type { PostgresJsDatabase };
 
+// Per-app migration status (#2384) — see migration-status.ts for the full
+// rationale (each app is master of its own schema; no cross-DB reads).
+export {
+  createPostgresMigrationsQuerier,
+  defaultMigrationsDir,
+  getMigrationStatus,
+  listMigrationFilenames,
+} from './migration-status';
+export type { MigrationStatus, MigrationStatusQuerier } from './migration-status';
+
 /**
  * Database handle for consumers that receive an app `db` with many schemas
  * registered. Drizzle's schema generic is invariant, so narrow parameters like
