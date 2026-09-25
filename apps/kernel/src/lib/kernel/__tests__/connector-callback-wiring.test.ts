@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
+import { makeRequest } from './next-route-test-utils';
 
 // ─── Callback route wiring (#1529) ───────────────────────────────────────────
 //
@@ -43,13 +44,23 @@ vi.mock('@/src/lib/github/connector', () => ({ exchangeCodeAndStore: exchangeGit
 import { GET as quickbooksCallback } from '@/app/quickbooks/api/callback/route';
 import { GET as githubCallback } from '@/app/github/api/callback/route';
 
-function makeRequest(url: string) {
-  return { url } as unknown as import('next/server').NextRequest;
-}
+// The landing URLs below are anchored to the request origin, which only holds
+// while no node origin is configured (#2363 — see `proxyAwarePublicOrigin`).
+const originalAppUrl = process.env.APP_URL;
+const originalBaseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
 beforeEach(() => {
+  delete process.env.APP_URL;
+  delete process.env.NEXT_PUBLIC_BASE_URL;
   exchangeQuickBooksMock.mockClear();
   exchangeGitHubMock.mockClear();
+});
+
+afterAll(() => {
+  if (originalAppUrl === undefined) delete process.env.APP_URL;
+  else process.env.APP_URL = originalAppUrl;
+  if (originalBaseUrl === undefined) delete process.env.NEXT_PUBLIC_BASE_URL;
+  else process.env.NEXT_PUBLIC_BASE_URL = originalBaseUrl;
 });
 
 describe('QuickBooks callback route', () => {

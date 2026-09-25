@@ -23,6 +23,7 @@ import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
 import { deleteFromVault, vaultFieldExists } from '@/src/lib/vault';
 import { corsHeaders } from '@/src/lib/kernel/cors';
+import { proxyAwarePublicOrigin } from '@/src/lib/http/public-origin';
 import { sanitizeReturnTo } from '@/src/lib/kernel/oauth-return-to';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
 import { getPlatformDid } from '@/src/lib/kernel/connector-platform-did';
@@ -313,9 +314,22 @@ function defaultLandingPath(connectorId: string): string {
  * credentials for this exchange. Throw `MissingCallbackParamError` for a bad
  * callback.
  */
-/** Build an absolute same-origin redirect to `path` with one param set. */
+/**
+ * Build an absolute same-origin redirect to `path` with one param set.
+ *
+ * The base is {@link proxyAwarePublicOrigin}, not `request.url` (#2363).
+ * Behind Caddy, `request.url` carries the upstream origin
+ * (`http://localhost:<port>`) rather than the host the browser arrived on, so
+ * every branch of the callback — success, failure, and `returnTo` alike —
+ * redirected the user off-site to an unreachable localhost URL.
+ *
+ * Swapping the base does not widen the open-redirect surface: `path` is only
+ * ever a literal landing page or a `sanitizeReturnTo`-approved relative path,
+ * both of which can only resolve to somewhere on whatever origin they are
+ * given.
+ */
 function landing(request: NextRequest, path: string, key: string, value: string) {
-  const url = new URL(path, request.url);
+  const url = new URL(path, proxyAwarePublicOrigin(request));
   url.searchParams.set(key, value);
   return url;
 }
