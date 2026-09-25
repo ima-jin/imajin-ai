@@ -17,6 +17,11 @@ module.exports = {
       // that cannot load its env should crash loudly under pm2 rather than come
       // back up with the wrong signing identity. Shell env still takes precedence
       // over file values, so `env` below continues to win.
+      // VAULT_PATH (#2357): prod must never read/write dev-jin's vault file.
+      // Set here (pm2 env, not .env.local) so it wins regardless of what the
+      // env-file below carries — same reasoning as NODE_ENV above. A literal
+      // leading `~` is expanded to the process's home directory at runtime
+      // (apps/kernel/src/lib/vault/vault-path.ts).
       "name": "prod-jin",
       "cwd": "/home/jin/prod/imajin-ai/apps/kernel",
       "script": "server.js",
@@ -24,7 +29,8 @@ module.exports = {
       "interpreter": "node",
       "node_args": "--env-file=/home/jin/prod/imajin-ai/apps/kernel/.env.local",
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "VAULT_PATH": "~/.imajin/vault.prod.json"
       },
       "max_restarts": 10,
       "min_uptime": "20s"
