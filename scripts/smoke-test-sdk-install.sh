@@ -19,16 +19,27 @@
 # arguments are given, so a bare invocation smoke-tests "whatever main says
 # was just published".
 #
-# After installing the requested specs, this also reads each installed
-# package's own (already-published, already-scope-rewritten) package.json
-# and `npm install --no-save`s every declared peerDependency at its declared
-# range (#2376) — e.g. `next`, and `@ima-jin/auth`'s optional `drizzle-orm`.
-# A real consumer of these packages is a Next app and will always have
-# `next` in its own tree; the smoke test has to model that or it fails on
-# the exact thing every real install needs (`Cannot find module
-# '.../next/server'`), which a bare `npm install <specs>` never surfaces
-# since npm does not auto-install non-optional peers, let alone optional
-# ones.
+# After installing the requested specs, this also reads every installed
+# `@ima-jin/*` package's own (already-published, already-scope-rewritten)
+# package.json and `npm install`s every declared, non-optional
+# peerDependency at its declared range (#2376) — e.g. `next`, but not
+# `@ima-jin/auth`'s optional `drizzle-orm` (#2380). A real consumer of these
+# packages is a Next app and will always have `next` in its own tree; the
+# smoke test has to model that or it fails on the exact thing every real
+# install needs (`Cannot find module '.../next/server'`), which a bare `npm
+# install <specs>` never surfaces since npm does not auto-install
+# non-optional peers, let alone optional ones.
+#
+# Both installs below deliberately omit `--no-save`, unlike the original
+# #1982/#2376 versions of this script (#2380): with `--no-save`, npm treats
+# whatever is passed on that particular command line as the *entire* desired
+# tree for the (untracked) scratch package.json and prunes anything a prior,
+# separate `--no-save` install left behind — so the specs installed in phase
+# one were being deleted by the peers-only install in phase two. Recording
+# both phases in the scratch package.json (thrown away with the whole
+# directory on exit anyway) is simpler than pre-resolving peers via registry
+# queries before a single combined install, and it's what actually fixes the
+# pruning: each install only ever adds to what's already declared.
 #
 # Reads GITHUB_PACKAGES_TOKEN, falling back to GITHUB_TOKEN (the shape
 # .github/workflows/smoke-sdk-install.yml runs this with, authenticated by
@@ -75,46 +86,56 @@ for pkg_at_version in "$@"; do
 done
 
 echo "Installing ${INSTALL_SPECS[*]} from GitHub Packages into $SCRATCH_DIR ..."
-npm install --no-save "${INSTALL_SPECS[@]}"
+npm install "${INSTALL_SPECS[@]}"
 
 echo "--- installed ---"
 npm ls --depth=0 || true
 
-# Real consumers always bring their own copy of every declared peer (the
-# published manifest's peerDependencies, at whatever range prepare-npm-
-# publish.mjs resolved workspace:* to) — see the module docstring. Collect
-# the declared peers of every package just installed, deduplicated by name,
-# and install them the same way a consuming app's own `npm install` would.
+SPECS=("$@")
+assert_specs_present() {
+  local context="$1"
+  for pkg_at_version in "${SPECS[@]}"; do
+    pkg="${pkg_at_version%@*}"
+    PKG_JSON="node_modules/@ima-jin/${pkg}/package.json"
+    if [[ ! -f "$PKG_JSON" ]]; then
+      echo "FAIL: expected $PKG_JSON to exist ${context} (@ima-jin/${pkg_at_version}) (#2380)" >&2
+      exit 1
+    fi
+  done
+}
+assert_specs_present "after installing the requested specs"
+
+# Real consumers always bring their own copy of every declared, non-optional
+# peer (the published manifest's peerDependencies, at whatever range
+# prepare-npm-publish.mjs resolved workspace:* to) — see the module
+# docstring. Collect the declared peers of every `@ima-jin/*` package now
+# present under node_modules — not just the ones requested on the command
+# line, since a requested package's own hard dependency on another
+# `@ima-jin/*` package (e.g. `@ima-jin/ui` -> `@ima-jin/fair`, #2376) pulls
+# that sibling in transitively, and its peerDependencies need modeling too —
+# deduplicated by name, and install them the same way a consuming app's own
+# `npm install` would.
 declare -A SEEN_PEERS
 PEER_SPECS=()
-for pkg_at_version in "$@"; do
-  pkg="${pkg_at_version%@*}"
-  PKG_JSON="node_modules/@ima-jin/${pkg}/package.json"
-  if [[ ! -f "$PKG_JSON" ]]; then
-    echo "FAIL: expected $PKG_JSON to exist after installing @ima-jin/${pkg_at_version}" >&2
-    exit 1
-  fi
+for PKG_JSON in node_modules/@ima-jin/*/package.json; do
+  [[ -f "$PKG_JSON" ]] || continue
   while IFS=$'\t' read -r peer_name peer_range; do
     [[ -z "$peer_name" ]] && continue
     if [[ -z "${SEEN_PEERS[$peer_name]:-}" ]]; then
       SEEN_PEERS["$peer_name"]="$peer_range"
       PEER_SPECS+=("${peer_name}@${peer_range}")
     fi
-  done < <(PKG_JSON="$PKG_JSON" node -e '
-const fs = require("node:fs");
-const pkg = JSON.parse(fs.readFileSync(process.env.PKG_JSON, "utf8"));
-const peers = pkg.peerDependencies || {};
-for (const [name, range] of Object.entries(peers)) {
-  process.stdout.write(name + "\t" + range + "\n");
-}
-')
+  done < <(node "$REPO_ROOT/scripts/lib/read-peer-deps.mjs" "$PKG_JSON")
 done
 
 if [[ "${#PEER_SPECS[@]}" -gt 0 ]]; then
   echo "Installing declared peerDependencies ${PEER_SPECS[*]} ..."
-  npm install --no-save "${PEER_SPECS[@]}"
+  npm install "${PEER_SPECS[@]}"
   echo "--- installed (with peers) ---"
   npm ls --depth=0 || true
+  # Regression guard for #2380: the peers-only install above must not have
+  # pruned the specs installed in the first phase.
+  assert_specs_present "after installing peerDependencies"
 else
   echo "No declared peerDependencies to install."
 fi
