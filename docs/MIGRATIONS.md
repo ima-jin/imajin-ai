@@ -54,6 +54,11 @@ node scripts/migrate.mjs
 - **All DDL is idempotent.** No exceptions.
 - **One migration file per schema change.** Don't let two agents work on the same migration.
 - **Schema-qualified names everywhere.** `auth.identities`, not `identities`.
+- **Forward-only. Migrations are additive; no down-scripts.** A column or table may be dropped only
+  **≥1 release after** the last code that reads it shipped. Rollback = redeploy the last good tag
+  (`docs/ops/ROLLBACK.md`), which leaves the schema ahead of the code — so the previous release must
+  still run against the current schema. Never drop or rename in the same release that stops using a
+  column.
 
 ### Tracking
 
