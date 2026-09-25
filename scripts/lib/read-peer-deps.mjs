@@ -9,9 +9,10 @@
 // directly instead of only indirectly via a full, network-dependent
 // end-to-end run of the smoke script.
 //
-// Usage: node read-peer-deps.mjs <path-to-package.json>
+// Usage: run with cwd set to the directory the path is relative to (or an
+// absolute path under it): node read-peer-deps.mjs <path-to-package.json>
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { basename } from 'node:path';
+import { basename, resolve, sep } from 'node:path';
 
 /**
  * @param {{ peerDependencies?: Record<string, string>, peerDependenciesMeta?: Record<string, { optional?: boolean }> }} pkg
@@ -25,31 +26,43 @@ export function collectRequiredPeerDeps(pkg) {
 }
 
 /**
- * Reads and parses a `package.json` from a CLI-supplied path, narrowly
- * validated first: this script only ever needs to read a file literally
- * named `package.json` that already exists on disk, so requiring both
- * (before *and* after resolving symlinks) is enough to keep an arbitrary
- * caller-supplied path from being used to read anything else on the
- * filesystem, without breaking the script's `<path-to-package.json>` CLI
- * contract (#2380).
+ * Reads and parses a `package.json` from a CLI-supplied path, confined to
+ * `rootDir` (default: cwd — the smoke script's scratch directory when this
+ * runs for real): the path must literally end in "package.json" and its
+ * fully-resolved, symlink-free location must stay inside `rootDir`. This is
+ * the standard resolve-then-check-the-prefix containment pattern (OWASP /
+ * CodeQL js/path-injection) applied at both ends — before resolving
+ * symlinks (rejects "../" traversal in the argument itself) and after
+ * (rejects a symlink inside `rootDir` that points back out of it) — so a
+ * caller-supplied path can't be used to read anything outside the expected
+ * directory (#2380).
  *
  * @param {string} pkgJsonPathArg
+ * @param {string} [rootDir]
  */
-export function readPackageJsonSafely(pkgJsonPathArg) {
+export function readPackageJsonSafely(pkgJsonPathArg, rootDir = process.cwd()) {
   if (typeof pkgJsonPathArg !== 'string' || pkgJsonPathArg.length === 0) {
     throw new Error('a package.json path is required');
   }
   if (basename(pkgJsonPathArg) !== 'package.json') {
     throw new Error(`expected a path ending in "package.json", got: ${pkgJsonPathArg}`);
   }
-  if (!existsSync(pkgJsonPathArg)) {
+  const root = resolve(rootDir);
+  const resolvedPath = resolve(root, pkgJsonPathArg);
+  if (resolvedPath !== root && !resolvedPath.startsWith(root + sep)) {
+    throw new Error(`refusing to read a package.json outside ${root}: ${pkgJsonPathArg}`);
+  }
+  if (!existsSync(resolvedPath)) {
     throw new Error(`no such file: ${pkgJsonPathArg}`);
   }
-  const resolvedPath = realpathSync(pkgJsonPathArg);
-  if (basename(resolvedPath) !== 'package.json') {
-    throw new Error(`resolved path does not end in "package.json": ${resolvedPath}`);
+  const realPath = realpathSync(resolvedPath);
+  if (realPath !== root && !realPath.startsWith(root + sep)) {
+    throw new Error(`refusing to read a package.json outside ${root}: ${pkgJsonPathArg}`);
   }
-  return JSON.parse(readFileSync(resolvedPath, 'utf8'));
+  if (basename(realPath) !== 'package.json') {
+    throw new Error(`resolved path does not end in "package.json": ${realPath}`);
+  }
+  return JSON.parse(readFileSync(realPath, 'utf8'));
 }
 
 // Only run as a CLI when invoked directly (not when imported by a test).
