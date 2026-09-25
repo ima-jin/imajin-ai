@@ -63,15 +63,19 @@ workflows (`deploy-dev.yml:62`, `deploy-prod.yml:69`) and fails the job (non-zer
 deploy run" is machine-checkable **from the Actions run log**, but "is the live DB caught up right
 now" is not exposed anywhere a caller can query.
 
-**Services restarted — asserted, with a real per-service gap.** `build.sh` restarts each succeeded
-app individually and collects `RESTART_FAILED` (`scripts/build.sh:293-348`), logged to
-`.build-report` and the job log — but a failed restart does not fail the deploy job (`build.sh`'s own
-exit code folds in `PORT_REAP_FAILED`, not `RESTART_FAILED` — compare `build.sh:346-348` to the exit
-line at `build.sh:362`). A service that failed to restart can leave a green Actions run.
+**Services restarted — asserted, and now enforced (#2382, fixed).** `build.sh` restarts each
+succeeded app individually and collects `RESTART_FAILED` (`scripts/build.sh:294-354`), logged to
+`.build-report` and the job log. A failed restart now fails the deploy job too: `build.sh`'s exit
+code folds in `RESTART_FAILED` as a distinct, documented exit code `2` (see
+`deploy/README.md`'s "`scripts/build.sh` exit codes" section), separate from exit `1` for
+`FAILED`/`PORT_REAP_FAILED`. Before this fix, a service that failed to restart could leave a green
+Actions run — see `scripts/build-restart-failed.test.sh` for regression coverage.
 
-**Rollback — not machine-checked; arguably not defined.** No rollback runbook exists in the repo (see
-§4). The only committed "rollback" text is `deploy/README.md:111-117`'s emergency manual restart for
-the #1520 env-file failure mode specifically, not a general bad-deploy rollback.
+**Rollback — now defined, still not machine-checked.** `docs/ops/ROLLBACK.md` (#2385) is the runbook:
+redeploy the last good tag with `gh workflow run deploy-prod.yml -f ref=<tag>`, migrations stay
+forward-only. Nothing verifies a rollback automatically — no check compares the tag prod is serving
+to the tag that was intended. The other committed "rollback" text, `deploy/README.md:111-117`, is an
+emergency manual restart for the #1520 env-file failure mode specifically, not a bad-deploy rollback.
 
 **Drift, main vs deployed — not machine-checked at all today.** Nothing polls dev/prod `/health` and
 compares to `origin/main`'s SHA. The issue's own root-cause story (prod running a commit from a day
@@ -140,11 +144,12 @@ specific instance from the "why now" section has since been fixed. It's evidence
 gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
 that it's currently unresolved.
 
-**No down-migration / rollback story for schema changes.** `scripts/migrate.mjs` only ever applies
-forward (`migrate.mjs:128-175`); there's no down-migration mechanism, so a bad migration's only
-documented recovery is a hand-written corrective forward migration. Combined with the "no rollback
-runbook" gap in §2, a bad prod deploy today has no scripted way back — the human reviewer approving
-`deploy-prod.yml` is trusting the diff, not backed by a tested revert path.
+**No down-migration for schema changes — by ruling, not by omission.** `scripts/migrate.mjs` only
+ever applies forward (`migrate.mjs:128-175`); there is no down-migration mechanism and none is
+planned (ruled a on the card below). A bad migration's only recovery is a hand-written corrective
+forward migration. Rolling the *code* back is now written down (`docs/ops/ROLLBACK.md`), but it
+leaves the schema ahead of the code, which is only safe while migrations stay additive — hence the
+drop-lag rule in `docs/MIGRATIONS.md`.
 
 ## 4. Target posture — a checklist an agent can execute unaided
 
@@ -163,9 +168,10 @@ the server side even though that can't be verified from the repo.
 3. The evidence line epic #2370 already specifies — `ev: repo=… registered=y schema=… deploy=<run>
    health=<version>` — should read `health=<version>+<build>` sourced from #1 directly, not
    transcribed by hand from a log.
-4. A restart failure must fail the deploy job. Today `build.sh`'s exit code doesn't fold in
-   `RESTART_FAILED` (§2) — fix this before treating "workflow run succeeded" as "service is up."
-   Requires: none — this is a same-repo script fix, not a server dependency.
+4. A restart failure must fail the deploy job. **Fixed (#2382):** `build.sh`'s exit code now folds
+   in `RESTART_FAILED` as its own exit code `2` (§2, `deploy/README.md`) — "workflow run succeeded"
+   can now be trusted not to hide a dirty restart. Requires: none — this was a same-repo script fix,
+   not a server dependency.
 
 **4.2 — Template-level `deploy-dev.yml` shape (for `imajin-app-template`, feeding #2370's per-app
 loop)**
@@ -231,3 +237,4 @@ a) document the redeploy-previous-tag path only, migrations stay forward-only b)
 migration to ship a paired down-script c) defer — no rollback runbook until a real incident forces
 the question · rec: a — matches how this repo already treats migrations (idempotent, forward-only,
 per `docs/MIGRATIONS.md:51-56`) and costs only documentation, not new tooling.
+**Ruled 2026-09-25: a.** Written up in `docs/ops/ROLLBACK.md` (#2385).
