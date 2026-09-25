@@ -1,6 +1,6 @@
 {
   "name": "@imajin/ui",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "description": "Shared UI components for Imajin apps — NavBar, identity management, app launcher, theming, and common patterns",
   "license": "MIT",

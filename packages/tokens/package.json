@@ -1,6 +1,6 @@
 {
   "name": "@imajin/tokens",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "description": "Imajin design tokens — DTCG format, built with Style Dictionary v4",
   "license": "MIT",

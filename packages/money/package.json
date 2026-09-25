@@ -1,6 +1,6 @@
 {
   "name": "@imajin/money",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "description": "Currency-safe Money primitive, signed FX snapshots, and ECB rate cache-through (#1950)",
   "type": "module",
