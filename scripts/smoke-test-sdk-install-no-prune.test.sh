@@ -52,11 +52,11 @@ cd "$WORKDIR/consumer"
 npm init -y >/dev/null
 
 # --- Reproduce the bug: two `--no-save` installs in the same directory ---
-npm install --no-save --no-audit --no-fund "file:../pkg-a" >/dev/null
+npm install --no-save --no-audit --no-fund --ignore-scripts "file:../pkg-a" >/dev/null
 check "sanity: pkg-a is present after the first --no-save install" \
   test -f node_modules/smoke-test-pkg-a/package.json
 
-npm install --no-save --no-audit --no-fund "file:../pkg-b" >/dev/null
+npm install --no-save --no-audit --no-fund --ignore-scripts "file:../pkg-b" >/dev/null
 if [[ -f node_modules/smoke-test-pkg-a/package.json ]]; then
   echo "⚠️  pkg-a survived a second --no-save install on this npm version; the #2380 failure mode did not repro here (continuing to verify the fix regardless)"
 else
@@ -65,8 +65,8 @@ fi
 
 # --- The fix: install both without --no-save (#2380) ---
 rm -rf node_modules package-lock.json
-npm install --no-audit --no-fund "file:../pkg-a" >/dev/null
-npm install --no-audit --no-fund "file:../pkg-b" >/dev/null
+npm install --no-audit --no-fund --ignore-scripts "file:../pkg-a" >/dev/null
+npm install --no-audit --no-fund --ignore-scripts "file:../pkg-b" >/dev/null
 
 check "pkg-a survives the second install once both installs are saved (#2380 fix)" \
   test -f node_modules/smoke-test-pkg-a/package.json

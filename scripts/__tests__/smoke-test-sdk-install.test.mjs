@@ -16,15 +16,19 @@ const scriptsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 describe('smoke-test-sdk-install-no-prune.test.sh (#2380)', () => {
   it('passes', () => {
     const scriptPath = path.join(scriptsDir, 'smoke-test-sdk-install-no-prune.test.sh');
+    let output;
     try {
-      execFileSync('bash', [scriptPath], { encoding: 'utf8', stdio: 'pipe' });
+      output = execFileSync('bash', [scriptPath], { encoding: 'utf8', stdio: 'pipe' });
     } catch (err) {
       // Surface the script's own ✅/❌ output in the test failure instead of
       // just "exit code 1", so a CI failure is diagnosable from the log
       // alone.
-      const output = [err.stdout, err.stderr].filter(Boolean).join('\n');
-      throw new Error(`smoke-test-sdk-install-no-prune.test.sh failed:\n${output}`);
+      const failureOutput = [err.stdout, err.stderr].filter(Boolean).join('\n');
+      throw new Error(`smoke-test-sdk-install-no-prune.test.sh failed:\n${failureOutput}`);
     }
-    expect(true).toBe(true);
+    // A zero exit code alone doesn't prove the script's own assertions ran —
+    // assert on its explicit success line too, so a silently-skipped/short-
+    // circuited script body would still fail this test (#2380).
+    expect(output).toContain('All smoke-test-sdk-install no-prune assertions passed.');
   });
 });
