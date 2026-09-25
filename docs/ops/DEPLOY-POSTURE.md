@@ -69,9 +69,11 @@ app individually and collects `RESTART_FAILED` (`scripts/build.sh:293-348`), log
 exit code folds in `PORT_REAP_FAILED`, not `RESTART_FAILED` — compare `build.sh:346-348` to the exit
 line at `build.sh:362`). A service that failed to restart can leave a green Actions run.
 
-**Rollback — not machine-checked; arguably not defined.** No rollback runbook exists in the repo (see
-§4). The only committed "rollback" text is `deploy/README.md:111-117`'s emergency manual restart for
-the #1520 env-file failure mode specifically, not a general bad-deploy rollback.
+**Rollback — now defined, still not machine-checked.** `docs/ops/ROLLBACK.md` (#2385) is the runbook:
+redeploy the last good tag with `gh workflow run deploy-prod.yml -f ref=<tag>`, migrations stay
+forward-only. Nothing verifies a rollback automatically — no check compares the tag prod is serving
+to the tag that was intended. The other committed "rollback" text, `deploy/README.md:111-117`, is an
+emergency manual restart for the #1520 env-file failure mode specifically, not a bad-deploy rollback.
 
 **Drift, main vs deployed — not machine-checked at all today.** Nothing polls dev/prod `/health` and
 compares to `origin/main`'s SHA. The issue's own root-cause story (prod running a commit from a day
@@ -140,11 +142,12 @@ specific instance from the "why now" section has since been fixed. It's evidence
 gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
 that it's currently unresolved.
 
-**No down-migration / rollback story for schema changes.** `scripts/migrate.mjs` only ever applies
-forward (`migrate.mjs:128-175`); there's no down-migration mechanism, so a bad migration's only
-documented recovery is a hand-written corrective forward migration. Combined with the "no rollback
-runbook" gap in §2, a bad prod deploy today has no scripted way back — the human reviewer approving
-`deploy-prod.yml` is trusting the diff, not backed by a tested revert path.
+**No down-migration for schema changes — by ruling, not by omission.** `scripts/migrate.mjs` only
+ever applies forward (`migrate.mjs:128-175`); there is no down-migration mechanism and none is
+planned (ruled a on the card below). A bad migration's only recovery is a hand-written corrective
+forward migration. Rolling the *code* back is now written down (`docs/ops/ROLLBACK.md`), but it
+leaves the schema ahead of the code, which is only safe while migrations stay additive — hence the
+drop-lag rule in `docs/MIGRATIONS.md`.
 
 ## 4. Target posture — a checklist an agent can execute unaided
 
@@ -231,3 +234,4 @@ a) document the redeploy-previous-tag path only, migrations stay forward-only b)
 migration to ship a paired down-script c) defer — no rollback runbook until a real incident forces
 the question · rec: a — matches how this repo already treats migrations (idempotent, forward-only,
 per `docs/MIGRATIONS.md:51-56`) and costs only documentation, not new tooling.
+**Ruled 2026-09-25: a.** Written up in `docs/ops/ROLLBACK.md` (#2385).
