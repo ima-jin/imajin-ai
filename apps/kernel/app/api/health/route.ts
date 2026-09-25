@@ -8,9 +8,12 @@ import { NextResponse } from 'next/server';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 // #2384: kernel is also master of its own schema (auth/chat/pay/profile/
 // etc. all live in kernel-owned schemas, migrations/OWNERSHIP.md), so it
-// reports its own migration state via the same helper every other app
-// uses -- never by reading another service's DB directly.
-import { createPostgresMigrationsQuerier, getClient, getMigrationStatus, type MigrationStatus } from '@imajin/db';
+// reports its own migration state via the same shared helpers every other
+// app's own /api/health route uses (packages/db/src/health-route.ts) --
+// never by reading another service's DB directly. Kernel doesn't use
+// createAppHealthHandler itself since its own route also aggregates other
+// services, but shares the pieces that do.
+import { checkAppMigrations, hasPendingMigrations, type MigrationStatus } from '@imajin/db';
 
 interface ServiceCheck {
   name: string;
@@ -55,26 +58,6 @@ async function readMigrationsBlock(response: Response): Promise<MigrationStatus 
   } catch {
     return undefined;
   }
-}
-
-// #2384: this app is master of its own schema; never throws -- a DB/
-// connection failure degrades to an error shape so this route always
-// renders a response.
-async function checkOwnMigrations(): Promise<MigrationStatus> {
-  try {
-    return await getMigrationStatus(createPostgresMigrationsQuerier(getClient()));
-  } catch (error) {
-    return {
-      migrationHead: null,
-      appliedCount: 0,
-      pendingCount: null,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-}
-
-function hasPendingMigrations(migrations: MigrationStatus | undefined): boolean {
-  return migrations != null && migrations.pendingCount !== null && migrations.pendingCount > 0;
 }
 
 async function checkService(service: { name: string; label: string }): Promise<ServiceCheck> {
@@ -128,7 +111,7 @@ async function checkService(service: { name: string; label: string }): Promise<S
 export async function GET() {
   const [checks, migrations] = await Promise.all([
     Promise.all(SERVICES.map(checkService)),
-    checkOwnMigrations(),
+    checkAppMigrations(),
   ]);
 
   const allUp = checks.every(c => c.status === 'up');

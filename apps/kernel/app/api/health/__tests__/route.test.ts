@@ -17,16 +17,17 @@ const SINGLE_DOMAIN_ENV = {
 const CAUGHT_UP = { migrationHead: '0100_fixture.sql', appliedCount: 100, pendingCount: 0 };
 
 // #2384: kernel reports its own migration state through the same
-// @imajin/db helper every other app uses. Mocked so these tests never need
-// a real DATABASE_URL/Postgres connection; the default resolves "caught
-// up" so it never accidentally trips the degraded assertions below.
-const { getMigrationStatusMock } = vi.hoisted(() => ({ getMigrationStatusMock: vi.fn() }));
+// @imajin/db helper (checkAppMigrations) every other app's own /api/health
+// route uses. Mocked so these tests never need a real DATABASE_URL/Postgres
+// connection; the default resolves "caught up" so it never accidentally
+// trips the degraded assertions below. hasPendingMigrations is left real
+// (via importOriginal) since it's pure logic with no DB dependency.
+const { checkAppMigrationsMock } = vi.hoisted(() => ({ checkAppMigrationsMock: vi.fn() }));
 
-vi.mock('@imajin/db', () => ({
-  getClient: vi.fn(),
-  createPostgresMigrationsQuerier: vi.fn(),
-  getMigrationStatus: getMigrationStatusMock,
-}));
+vi.mock('@imajin/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@imajin/db')>();
+  return { ...actual, checkAppMigrations: checkAppMigrationsMock };
+});
 
 beforeEach(() => {
   // Prod runs in single-domain mode (base URL + path) without a
@@ -38,7 +39,7 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_INPUT_URL;
 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
-  getMigrationStatusMock.mockReset().mockResolvedValue(CAUGHT_UP);
+  checkAppMigrationsMock.mockReset().mockResolvedValue(CAUGHT_UP);
 });
 
 afterEach(() => {
