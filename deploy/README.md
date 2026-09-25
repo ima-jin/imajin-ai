@@ -138,6 +138,26 @@ Reconciling the prod file to reality (drop the compiled-in services, or annotate
 them explicitly) is follow-up work — this commit's job is to *capture* the current
 state under version control, not to change what runs.
 
+## `scripts/build.sh` exit codes (#2382)
+
+Both `deploy-dev.yml` and `deploy-prod.yml` invoke `build.sh` indirectly, via
+`scripts/build-changed.sh` under `set -euo pipefail`. Neither workflow
+branches on the *specific* exit code today — any non-zero exit already fails
+the Actions job — but the values below are still fixed and meaningful for
+anyone reading a failed run's log, so keep them stable:
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | Every app built, every port was clear, and every service (re)started. |
+| `1` | A build `FAILED` and/or an orphaned port could not be cleared (`PORT_REAP_FAILED`). |
+| `2` | Every app built and every port was clear, but pm2 could neither restart nor cold-start one or more services (`RESTART_FAILED`). |
+
+Code `2` closes the gap reported in #2382: before this fix, a service that
+failed to restart (`build.sh:290-347`) fell into `RESTART_FAILED` but the
+final exit check (`build.sh:362`, pre-fix) only looked at `FAILED` and
+`PORT_REAP_FAILED` — so a dirty restart left a green Actions run. See
+`docs/ops/DEPLOY-POSTURE.md` §2/§4.1 item 4 for the original investigation.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host
