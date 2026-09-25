@@ -1,0 +1,53 @@
+name: Smoke Test SDK Install
+
+# Proves #1982's out-of-repo acceptance criterion for real: installs one or
+# more @ima-jin/* SDK packages from GitHub Packages into a scratch directory
+# outside this repo, then runs scripts/smoke/sdk-mint-verify.mjs against the
+# installed copy (see scripts/smoke-test-sdk-install.sh and
+# docs/packages/PUBLISHING.md's "Smoke-testing a published version").
+#
+# Authenticated with this workflow's own ephemeral secrets.GITHUB_TOKEN
+# (packages: read) — never a new secret, and never NPM_TOKEN. That token can
+# read any package GitHub Packages has already made visible on this repo, so
+# it only proves anything once a `packages-v*` tag has actually published one
+# — hence the `workflow_run` trigger below, gated to that workflow's success.
+on:
+  workflow_dispatch:
+    inputs:
+      package_specs:
+        description: "Space-separated <package>@<version> pairs (workspace-local names, e.g. \"auth@0.8.2 config@0.8.2\")"
+        required: false
+        type: string
+  workflow_run:
+    workflows: ["Publish Packages"]
+    types: [completed]
+
+jobs:
+  smoke-test:
+    # Only ever run for a workflow_dispatch, or a Publish Packages run that
+    # (a) succeeded and (b) actually touched GitHub Packages — a
+    # workflow_dispatch of Publish Packages with registries=npmjs alone
+    # published nothing here for this job to smoke-test.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    name: Smoke Test SDK Install
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Read-only — this job only ever installs already-published packages,
+      # never publishes anything itself.
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run SDK install smoke test
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          bash scripts/smoke-test-sdk-install.sh ${{ inputs.package_specs || 'auth' }}

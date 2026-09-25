@@ -28,25 +28,47 @@ holds either way: consume it as a real published, versioned package — never
 
 ## Maintainer: bump, tag, publish
 
-1. Bump the version(s) in the relevant `packages/<name>/package.json` — `auth`,
-   `config`, `logger`, `ui` — and open a normal PR. `package.json` versions in
-   `main` are the source of truth; the publish workflow itself never commits a
-   version bump.
-2. Once merged to `main`, tag it and push the tag:
+`auth`/`config`/`logger`/`ui` do **not** get an independent, hand-edited
+version bump. Every `package.json` version in this repo — root, every
+`apps/*`, every `packages/*`, these four included — is bumped only in
+lockstep, by the Release workflow (`docs/npm-publishing.md`'s "Cutting a
+release" section, `AGENTS.md`'s "Versioning" section, #2285). A PR that
+hand-edits just these four packages' versions is indistinguishable, to
+`scripts/ci-guard-version-bump.mjs`, from any other unauthorized version
+bump — it fails unless the head commit message starts with `release:`, the
+one shape of commit the Release workflow itself produces. There is
+deliberately no second, competing bump path here.
+
+1. Cut a normal release: `gh workflow run release.yml -f bump=minor` (or
+   `patch`). This bumps root **and every workspace package**, including the
+   four SDK packages, to the same new `X.Y.Z` and opens a `release: vX.Y.Z`
+   PR into `main`.
+2. Merge that PR like any other reviewed PR — see `docs/npm-publishing.md`
+   for the full pipeline (it also tags the repo's own `vX.Y.Z` build-version
+   tag and rolls through `deploy-prod.yml`; that tag is unrelated to the
+   `packages-v*` tag below).
+3. Once merged, tag `main` with the SDK-publish tag and push it:
    ```bash
    git tag packages-v1.2.3
    git push origin packages-v1.2.3
    ```
    The tag's own version string is just a human-readable label for the
-   release — each package keeps its own independent version from its
-   `package.json`; the tag doesn't need to match any single package's number.
-3. Pushing a `packages-v*` tag runs `.github/workflows/publish-packages.yml`
+   release — it doesn't need to match `X.Y.Z` from step 1, since a
+   `packages-v*` tag can be pushed at any commit where the four packages'
+   already-lockstepped versions are the ones you mean to ship. In practice,
+   push it right after the release PR from step 1 merges, so the label matches.
+4. Pushing a `packages-v*` tag runs `.github/workflows/publish-packages.yml`
    with fixed parameters: it publishes exactly `auth`, `config`, `logger`, and
    `ui` to **GitHub Packages** (`npm.pkg.github.com`, `@ima-jin` scope) using
-   the repo's built-in `GITHUB_TOKEN` — no other secret is read on this path.
-4. Watch the **Publish Packages** workflow run in the Actions tab. Each
+   the repo's built-in `GITHUB_TOKEN` — no other secret is read on this path
+   (see `scripts/resolve-publish-params.mjs` and its tests for the exact
+   branching this triggers).
+5. Watch the **Publish Packages** workflow run in the Actions tab. Each
    package is built (`tsup`) and published from a freshly prepared
    `@ima-jin/*`-scoped copy (see `scripts/prepare-npm-publish.mjs`).
+6. Optionally, run the **Smoke Test SDK Install** workflow (`workflow_dispatch`,
+   `.github/workflows/smoke-sdk-install.yml`) against the version just
+   published — see "Smoke-testing a published version" below.
 
 Ad hoc/other-package publishes (the wider `cid`/`tokens`/`vault-core`/`db`/
 `fair`/`pay`/`auth-client` set, or a re-publish to npmjs.org) still go through
@@ -105,3 +127,67 @@ by the install.
   re-export still shows up in the emitted `.d.ts` even when the source
   dependency lives in `devDependencies`, so "move it to devDependencies"
   alone isn't enough for a type-only cross-package reference. Inlining is.
+- Each of the four packages carries a `CHANGELOG.md` (`packages/<name>/CHANGELOG.md`,
+  [Keep a Changelog](https://keepachangelog.com/) format), which
+  `scripts/prepare-npm-publish.mjs` copies straight into the published
+  tarball alongside `README.md`. Add an entry there whenever a change to
+  that package is user-visible, at or before the release PR that bumps its
+  version (#1982).
+
+## Smoke-testing a published version
+
+`scripts/smoke-test-sdk-install.sh` proves the out-of-repo half of #1982's
+acceptance criterion end-to-end: it creates a scratch directory **outside**
+this repo, installs one or more `@ima-jin/*` packages from GitHub Packages
+exactly the way a real external consumer would (via the `.npmrc` shape
+documented above), and runs `scripts/smoke/sdk-mint-verify.mjs` against the
+installed copy — mint a DID-signed, scope-carrying message with
+`generateKeypair`/`createDID`/`sign`, then `verify` it, using only what the
+installed package itself exports (no in-repo import, no `workspace:*`).
+
+```bash
+export GITHUB_PACKAGES_TOKEN="<a token with read:packages>"
+bash scripts/smoke-test-sdk-install.sh auth@0.8.2 config@0.8.2
+```
+
+`.github/workflows/smoke-sdk-install.yml` runs the same script in CI —
+`workflow_dispatch` (pick a version) or automatically after a **Publish
+Packages** run that pushed to GitHub Packages succeeds — authenticated with
+the repo's own `secrets.GITHUB_TOKEN` (`packages: read`), no new secret.
+
+**What this does NOT cover:** actually minting a token from a live session
+against `dev` (`POST {kernel}/auth/api/tokens/app`) requires a real,
+authenticated first-party session cookie — there is no anonymous or
+service-account path to that endpoint by design (see
+`apps/kernel/app/auth/api/tokens/app/route.ts`), so an unattended CI job or
+agent cannot obtain one. That full round-trip (mint against a real dev
+session, then `verifyAppToken` from the installed package against
+`AUTH_SERVICE_URL`) stays a manual, documented verification step for a human
+with dev credentials; the automated smoke test instead exercises the
+installed package's own sign/verify primitives, which is what's actually
+reachable without a secret.
+
+## Why the kernel (and `dykil`) still use `workspace:*`
+
+`apps/kernel` and `apps/dykil` both still depend on `@imajin/auth`/`config`/
+`logger`/`ui` via `workspace:*`, unchanged by this pipeline. That's
+intentional, not an oversight:
+
+- The kernel **is** where these packages' server-side counterparts and the
+  routes they call (e.g. `/auth/api/tokens/app`) live — it makes no sense for
+  the origin of an SDK to consume its own published copy of itself.
+- `dykil` is the first app slated to actually consume the published SDK from
+  outside the monorepo, but that extraction is
+  [#1985](https://github.com/ima-jin/imajin-ai/issues/1985), which is still
+  open and explicitly blocked on this issue (#1982) plus the registry
+  (#1990) and audit (#1983) work. `apps/dykil` is still inside this repo as
+  of this writing.
+- Switching any in-repo consumer to a registry version today would force a
+  publish-and-bump round trip for every single change to `auth`/`config`/
+  `logger`/`ui` during ordinary development — exactly the workflow the
+  monorepo (and `workspace:*`) exists to avoid. There is no non-monorepo
+  consumer yet for it to trade that cost against.
+
+Revisit this once `dykil` (or another app) actually moves to its own repo
+under #1985 — that PR is the one that should flip its dependencies from
+`workspace:*` to the published `@ima-jin/*` versions, not this one.

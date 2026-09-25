@@ -94,32 +94,20 @@ jobs:
       # package's package.json. There is no in-workflow version bump (#2286's
       # tag-as-truth philosophy: one way to change a version, a normal PR);
       # see docs/packages/PUBLISHING.md.
+      #
+      # This branching used to live entirely as inline bash here, untested —
+      # no `packages-v*` tag had ever actually been pushed in this repo, so
+      # the tag-push branch was unverified except by reading the YAML.
+      # scripts/resolve-publish-params.mjs is the same logic, pulled out so
+      # scripts/__tests__/resolve-publish-params.test.mjs can assert every
+      # branch (#1982).
       - name: Resolve run parameters
         id: params
-        run: |
-          if [ "${{ github.event_name }}" = "push" ]; then
-            echo "list=${{ env.SDK_PACKAGES }}" >> $GITHUB_OUTPUT
-            echo "do_npmjs=false" >> $GITHUB_OUTPUT
-            echo "do_ghp=true" >> $GITHUB_OUTPUT
-            echo "dry_run=false" >> $GITHUB_OUTPUT
-          else
-            if [ "${{ inputs.package }}" = "all" ]; then
-              echo "list=${{ env.ALL_PACKAGES }}" >> $GITHUB_OUTPUT
-            else
-              echo "list=${{ inputs.package }}" >> $GITHUB_OUTPUT
-            fi
-            if [ "${{ inputs.registries }}" = "github-packages" ]; then
-              echo "do_npmjs=false" >> $GITHUB_OUTPUT
-            else
-              echo "do_npmjs=true" >> $GITHUB_OUTPUT
-            fi
-            if [ "${{ inputs.registries }}" = "npmjs" ]; then
-              echo "do_ghp=false" >> $GITHUB_OUTPUT
-            else
-              echo "do_ghp=true" >> $GITHUB_OUTPUT
-            fi
-            echo "dry_run=${{ inputs.dry_run }}" >> $GITHUB_OUTPUT
-          fi
+        env:
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_REGISTRIES: ${{ inputs.registries }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: node scripts/resolve-publish-params.mjs
 
       # A selected package's dts build resolves its @imajin/* workspace
       # deps' types (e.g. vault-core → cid, config → tokens, ui → config/fair).
