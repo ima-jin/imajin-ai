@@ -46,7 +46,7 @@ export interface MigrationStatusQuerier {
 export function listMigrationFilenames(migrationsDir: string): string[] {
   return readdirSync(migrationsDir)
     .filter((filename) => filename.endsWith('.sql'))
-    .sort();
+    .sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -84,7 +84,7 @@ export async function getMigrationStatus(
     };
   }
 
-  const appliedSorted = [...applied].sort();
+  const appliedSorted = [...applied].sort((a, b) => a.localeCompare(b));
   const migrationHead = appliedSorted.length > 0 ? appliedSorted[appliedSorted.length - 1] : null;
 
   let pendingCount: number | null;
