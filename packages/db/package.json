@@ -39,9 +39,13 @@
     "drizzle-orm": "^0.45.1",
     "postgres": "^3.4.5"
   },
+  "peerDependencies": {
+    "next": ">=15.5.24"
+  },
   "devDependencies": {
     "typescript": "^5",
     "@types/node": "^22.0.0",
+    "next": "^15.5.24",
     "tsup": "^8.0.0"
   }
 }

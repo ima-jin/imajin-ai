@@ -1,11 +1,7 @@
-import { NextResponse } from 'next/server';
+// #2384: this app is master of its own schema. createAppHealthHandler
+// (packages/db/src/health-route.ts) is the single shared implementation
+// every schema-owning app's own /api/health route uses, so this file only
+// needs to name the app.
+import { createAppHealthHandler } from '@imajin/db';
 
-export async function GET() {
-  return NextResponse.json({
-    status: 'ok',
-    service: 'learn',
-    version: process.env.NEXT_PUBLIC_VERSION || '0.0.0',
-    build: process.env.NEXT_PUBLIC_BUILD_HASH || 'dev',
-    timestamp: new Date().toISOString(),
-  });
-}
+export const GET = createAppHealthHandler({ service: 'learn' });

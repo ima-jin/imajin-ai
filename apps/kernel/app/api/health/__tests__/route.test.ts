@@ -14,6 +14,21 @@ const SINGLE_DOMAIN_ENV = {
   NEXT_PUBLIC_DOMAIN: 'imajin.ai',
 } as const;
 
+const CAUGHT_UP = { migrationHead: '0100_fixture.sql', appliedCount: 100, pendingCount: 0 };
+
+// #2384: kernel reports its own migration state through the same
+// @imajin/db helper (checkAppMigrations) every other app's own /api/health
+// route uses. Mocked so these tests never need a real DATABASE_URL/Postgres
+// connection; the default resolves "caught up" so it never accidentally
+// trips the degraded assertions below. hasPendingMigrations is left real
+// (via importOriginal) since it's pure logic with no DB dependency.
+const { checkAppMigrationsMock } = vi.hoisted(() => ({ checkAppMigrationsMock: vi.fn() }));
+
+vi.mock('@imajin/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@imajin/db')>();
+  return { ...actual, checkAppMigrations: checkAppMigrationsMock };
+});
+
 beforeEach(() => {
   // Prod runs in single-domain mode (base URL + path) without a
   // NEXT_PUBLIC_INPUT_URL override — that's exactly the state that exposed
@@ -24,6 +39,7 @@ beforeEach(() => {
   delete process.env.NEXT_PUBLIC_INPUT_URL;
 
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 200 })));
+  checkAppMigrationsMock.mockReset().mockResolvedValue(CAUGHT_UP);
 });
 
 afterEach(() => {
@@ -62,5 +78,29 @@ describe('GET /api/health', () => {
     const parseFailures = body.services.filter((service) => service.error?.includes('Failed to parse URL'));
     expect(parseFailures).toEqual([]);
     expect(body.status).toBe('operational');
+  });
+
+  it("relays a service's migrations block verbatim and marks the aggregate degraded when it reports pending migrations (#2384)", async () => {
+    const pendingMigrations = { migrationHead: '0050_learn_thing.sql', appliedCount: 50, pendingCount: 3 };
+
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      const body = url.includes('/learn')
+        ? { status: 'ok', service: 'learn', migrations: pendingMigrations }
+        : { status: 'ok', migrations: CAUGHT_UP };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    }));
+
+    const { GET } = await import('../route');
+    const res = await GET();
+    const body = await res.json() as {
+      status: string;
+      migrations: typeof CAUGHT_UP;
+      services: { name: string; migrations?: typeof pendingMigrations }[];
+    };
+
+    const learn = body.services.find((service) => service.name === 'learn');
+    expect(learn?.migrations).toEqual(pendingMigrations);
+    expect(body.migrations).toEqual(CAUGHT_UP);
+    expect(body.status).toBe('degraded');
   });
 });
