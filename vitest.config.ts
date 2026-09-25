@@ -41,6 +41,11 @@ export default defineConfig({
         'apps/*/public/**/*.js',
         'apps/*/app/**/*.ts',
         'apps/*/app/**/*.tsx',
+        // App-root middleware.ts (#2332) — not under src/ or app/, so it fell
+        // outside every glob above and reported 0% covered despite having
+        // tests, for the same "absent from the lcov report" reason noted on
+        // the public/**/*.js entry above.
+        'apps/*/middleware.ts',
         'packages/*/src/**/*.ts',
         'packages/*/src/**/*.tsx',
         // Shared test-utility modules (e.g. env/fetch stubbing helpers) that live

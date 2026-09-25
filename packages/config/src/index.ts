@@ -1,4 +1,6 @@
 export { isAllowedOrigin, corsHeaders, corsOptions, withCors, validateOrigin, ALLOWED_FRAME_ORIGINS } from "./cors";
+export { standaloneDashboardMiddleware } from "./dashboard-redirect-middleware";
+export type { StandaloneDashboardMiddlewareOptions } from "./dashboard-redirect-middleware";
 export { tier1Headers, tier2Headers, tier3Headers } from './security-headers';
 export { APP_DISPLAY_NAME } from './brand';
 
