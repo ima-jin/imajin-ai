@@ -52,6 +52,11 @@ FAILED=()
 SUCCEEDED=()
 PORT_REAP_FAILED=false
 PORT_REAP_FAILURES=()
+# Declared up front (not just inside the "if any app succeeded" block below)
+# so the exit-code check at the bottom of this script can always safely read
+# it, even on a run where nothing built successfully and the restart loop
+# never executes.
+RESTART_FAILED=()
 
 echo "=== [$LABEL] Build started: $(date) ===" > "$REPORT"
 echo "Apps: ${APPS[*]}" >> "$REPORT"
@@ -297,7 +302,6 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   done
   echo "=== Restarting: $RESTART_LIST ===" | tee -a "$REPORT"
 
-  RESTART_FAILED=()
   for app in "${SUCCEEDED[@]}"; do
     name="$(pm2_name "$app")"
 
@@ -344,7 +348,7 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
   done
 
   if [[ ${#RESTART_FAILED[@]} -gt 0 ]]; then
-    echo "⚠️  Services that could not be (re)started: ${RESTART_FAILED[*]}" | tee -a "$REPORT"
+    echo "❌ Services that could not be (re)started: ${RESTART_FAILED[*]}" | tee -a "$REPORT"
   fi
   pm2 save >> "$REPORT" 2>&1 || true
 fi
@@ -356,7 +360,23 @@ echo "❌ Failed: ${FAILED[*]:-none}" | tee -a "$REPORT"
 if [[ "$PORT_REAP_FAILED" = true ]]; then
   echo "❌ Port-reap failures: ${PORT_REAP_FAILURES[*]}" | tee -a "$REPORT"
 fi
+if [[ ${#RESTART_FAILED[@]} -gt 0 ]]; then
+  echo "❌ Restart failures: ${RESTART_FAILED[*]}" | tee -a "$REPORT"
+fi
 
-# Exit with error if anything failed, including apps skipped because an
-# orphaned process couldn't be cleared off their port (#2094).
-[[ ${#FAILED[@]} -eq 0 && "$PORT_REAP_FAILED" = false ]]
+# Exit codes (#2382 — see docs/ops/DEPLOY-POSTURE.md §4.1 item 4 and
+# deploy/README.md's "build.sh exit codes" section):
+#   0 - everything built, no orphaned ports, everything (re)started.
+#   1 - a build FAILED and/or an orphaned port could not be cleared
+#       (PORT_REAP_FAILED) — unchanged from before this fix; deploy-prod.yml
+#       fails the job on any non-zero exit, it does not branch on the value.
+#   2 - every app built and every port was clear, but pm2 could not (re)start
+#       and could not cold-start one or more services (RESTART_FAILED) — the
+#       gap this fix closes: previously this case exited 0 (#2382).
+if [[ ${#FAILED[@]} -gt 0 || "$PORT_REAP_FAILED" = true ]]; then
+  exit 1
+fi
+if [[ ${#RESTART_FAILED[@]} -gt 0 ]]; then
+  exit 2
+fi
+exit 0
