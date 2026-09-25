@@ -65,48 +65,48 @@ An app registers as an identity with the kernel, gets scoped tokens, and never r
 
 SDK packages an app actually needs — see [Packages](#packages-sdk) for the rest:
 
-- [`@imajin/auth-client`](./packages/auth-client) — "Sign in with Imajin": JWT session management and ready-made Next.js route handlers
-- [`@imajin/auth`](./packages/auth) — signing, verification, and scoped app-token auth guards
-- [`@imajin/config`](./packages/config) — CORS, service routing, session config
-- [`@imajin/fair`](./packages/fair) — `.fair` attribution types and validator
+- [`@imajin/auth-client`](./packages/auth-client) — "Sign in with Imajin": JWT session management and ready-made Next.js route handlers — `npm install @ima-jin/auth-client`
+- [`@imajin/auth`](./packages/auth) — signing, verification, and scoped app-token auth guards — GitHub Packages only, `@ima-jin/auth` (needs a `read:packages` token)
+- [`@imajin/config`](./packages/config) — CORS, service routing, session config — `npm install @ima-jin/config`
+- [`@imajin/fair`](./packages/fair) — `.fair` attribution types and validator — `npm install @ima-jin/fair`
 
-None of these are published to npm yet — see [Packages](#packages-sdk) for publish status.
+All four are real, versioned, out-of-repo-installable packages now ([#1982](https://github.com/ima-jin/imajin-ai/issues/1982), closed) — published under the `@ima-jin` scope, not `@imajin`: npm doesn't recognize the scope this repo's code imports from, so [`scripts/prepare-npm-publish.mjs`](./scripts/prepare-npm-publish.mjs) rewrites it at publish time. See [docs/packages/PUBLISHING.md](./docs/packages/PUBLISHING.md) for exact install commands, including the `.npmrc` GitHub Packages requires for `auth`.
 
 Apps building on this surface today: [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke), [imajin-fixready](https://github.com/ima-jin/imajin-fixready), [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard) — separate repos, own databases, consuming identity/attestation/settlement.
 
 ## Packages (SDK)
 
-Generated from `packages/*/package.json`. **None are published to npm yet** — every package is `private: true`; publishing is tracked in [#1982](https://github.com/ima-jin/imajin-ai/issues/1982) / [#1581](https://github.com/ima-jin/imajin-ai/issues/1581) / [#1011](https://github.com/ima-jin/imajin-ai/issues/1011) / [#1992](https://github.com/ima-jin/imajin-ai/issues/1992). Depend on them via `workspace:*` inside this monorepo today.
+Generated from `packages/*/package.json`. Every package is `private: true` in-repo — that's a permanent publish safety net ([docs/npm-publishing.md](./docs/npm-publishing.md)), not a status signal, so "published" below reflects what's actually live on a registry, not the manifest flag. **10 of 29 are published:** 8 on npmjs.org (anonymous `npm install`) and 2 — `auth`, `logger` — on GitHub Packages only (needs a `read:packages` token). Everything ships under the `@ima-jin` scope, never `@imajin` (npm doesn't own us that scope). [#1982](https://github.com/ima-jin/imajin-ai/issues/1982) (the SDK publish push) and [#1011](https://github.com/ima-jin/imajin-ai/issues/1011) (build + dist exports) are both closed now; [#1992](https://github.com/ima-jin/imajin-ai/issues/1992) (auth's DB removal, a publish blocker) closed earlier; [#1581](https://github.com/ima-jin/imajin-ai/issues/1581) (normalizing the rest for npm) stays open. The unpublished packages are depended on via `workspace:*` inside this monorepo today. See [docs/packages/PUBLISHING.md](./docs/packages/PUBLISHING.md) for exact install commands.
 
-| Package | What it does |
-|---|---|
-| [`@imajin/auth`](./packages/auth) | Ed25519 keypairs, DID + session/app-token auth guards, permission tiers |
-| [`@imajin/auth-client`](./packages/auth-client) | "Sign in with Imajin" SDK — JWT sessions, ready-made Next.js route handlers |
-| [`@imajin/bus`](./packages/bus) | Event bus: publish → reactor chain (attestation, mjn, settle, notify, emit, webhook) |
-| [`@imajin/chat`](./packages/chat) | Chat UI components — orchestrator, message bubble, voice, media |
-| [`@imajin/cid`](./packages/cid) | Deterministic CIDv1 (dag-cbor + SHA-256) content addressing |
-| [`@imajin/config`](./packages/config) | Shared service config — CORS, routing, sessions, handle validation |
-| [`@imajin/db`](./packages/db) | Shared Postgres handle (postgres-js + Drizzle ORM) |
-| [`@imajin/dfos`](./packages/dfos) | [DFOS](https://protocol.dfos.com) protocol bridge — content publish, chain signer, relay |
-| [`@imajin/email`](./packages/email) | Email sending (SendGrid), templates, QR generation |
-| [`@imajin/emit`](./packages/emit) | Fire-and-forget system-event emission (audit/telemetry sink) |
-| [`eslint-config-imajin`](./packages/eslint-config-imajin) | Shared ESLint flat config for the monorepo |
-| [`@imajin/fair`](./packages/fair) | `.fair` attribution types, validator, builder, React components |
-| [`@imajin/input`](./packages/input) | Input components — emoji, voice, GPS, file upload |
-| [`@imajin/llm`](./packages/llm) | LLM inference abstraction — cost tracking, provider routing |
-| [`@imajin/logger`](./packages/logger) | Structured logging (pino-backed) and request middleware |
-| [`@imajin/media`](./packages/media) | Media browser & asset display components |
-| [`@imajin/money`](./packages/money) | Currency-safe Money primitive, signed FX snapshots, ECB rate cache |
-| [`@imajin/notify`](./packages/notify) | Cross-channel notification client (email/in-app/chat) |
-| [`@imajin/onboard`](./packages/onboard) | Anonymous-to-soft-DID onboarding (`<OnboardGate>`) |
-| [`@imajin/tokens`](./packages/tokens) | Design tokens (DTCG format, Style Dictionary v4) |
-| [`@imajin/trust-graph`](./packages/trust-graph) | Trust graph queries — pod membership, trust distance/radius |
-| [`@imajin/ui`](./packages/ui) | Shared UI — nav bar, identity management, app launcher, theming |
-| [`@imajin/vault-core`](./packages/vault-core) | Vault entry models — sealing, delegation, integrity verification |
+| Package | What it does | Published |
+|---|---|---|
+| [`@imajin/auth`](./packages/auth) | Ed25519 keypairs, DID + session/app-token auth guards, permission tiers | GitHub Packages (`@ima-jin/auth`) |
+| [`@imajin/auth-client`](./packages/auth-client) | "Sign in with Imajin" SDK — JWT sessions, ready-made Next.js route handlers | npm (`@ima-jin/auth-client`) |
+| [`@imajin/bus`](./packages/bus) | Event bus: publish → reactor chain (attestation, mjn, settle, notify, emit, webhook) | Workspace-only |
+| [`@imajin/chat`](./packages/chat) | Chat UI components — orchestrator, message bubble, voice, media | Workspace-only |
+| [`@imajin/cid`](./packages/cid) | Deterministic CIDv1 (dag-cbor + SHA-256) content addressing | npm (`@ima-jin/cid`) |
+| [`@imajin/config`](./packages/config) | Shared service config — CORS, routing, sessions, handle validation | npm (`@ima-jin/config`) |
+| [`@imajin/db`](./packages/db) | Shared Postgres handle (postgres-js + Drizzle ORM) | npm (`@ima-jin/db`) |
+| [`@imajin/dfos`](./packages/dfos) | [DFOS](https://protocol.dfos.com) protocol bridge — content publish, chain signer, relay | Workspace-only |
+| [`@imajin/email`](./packages/email) | Email sending (SendGrid), templates, QR generation | Workspace-only |
+| [`@imajin/emit`](./packages/emit) | Fire-and-forget system-event emission (audit/telemetry sink) | Workspace-only |
+| [`eslint-config-imajin`](./packages/eslint-config-imajin) | Shared ESLint flat config for the monorepo | Workspace-only |
+| [`@imajin/fair`](./packages/fair) | `.fair` attribution types, validator, builder, React components | npm (`@ima-jin/fair`) |
+| [`@imajin/input`](./packages/input) | Input components — emoji, voice, GPS, file upload | Workspace-only |
+| [`@imajin/llm`](./packages/llm) | LLM inference abstraction — cost tracking, provider routing | Workspace-only |
+| [`@imajin/logger`](./packages/logger) | Structured logging (pino-backed) and request middleware | GitHub Packages (`@ima-jin/logger`) |
+| [`@imajin/media`](./packages/media) | Media browser & asset display components | Workspace-only |
+| [`@imajin/money`](./packages/money) | Currency-safe Money primitive, signed FX snapshots, ECB rate cache | Workspace-only |
+| [`@imajin/notify`](./packages/notify) | Cross-channel notification client (email/in-app/chat) | Workspace-only |
+| [`@imajin/onboard`](./packages/onboard) | Anonymous-to-soft-DID onboarding (`<OnboardGate>`) | Workspace-only |
+| [`@imajin/tokens`](./packages/tokens) | Design tokens (DTCG format, Style Dictionary v4) | npm (`@ima-jin/tokens`) |
+| [`@imajin/trust-graph`](./packages/trust-graph) | Trust graph queries — pod membership, trust distance/radius | Workspace-only |
+| [`@imajin/ui`](./packages/ui) | Shared UI — nav bar, identity management, app launcher, theming | npm (`@ima-jin/ui`) |
+| [`@imajin/vault-core`](./packages/vault-core) | Vault entry models — sealing, delegation, integrity verification | npm (`@ima-jin/vault-core`) |
 
 ### Plugin surface (OpenClaw)
 
-The connector layer that lets an OpenClaw/Claude Code agent act as a kernel-registered identity.
+The connector layer that lets an OpenClaw/Claude Code agent act as a kernel-registered identity. All workspace-only today — none are published.
 
 | Package | What it does |
 |---|---|
@@ -133,12 +133,12 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 <!-- stats:start -->
 | Metric | Value | Method |
 |---|---|---|
-| Codebase | 332,544 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' \| xargs cat \| wc -l` |
-| Commits | 3,755 | `git rev-list --count HEAD` |
+| Codebase | 417,903 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' | xargs cat | wc -l` |
+| Commits | 4,294 | `git rev-list --count HEAD` |
 | Live since | February 2026 | `git log --reverse --format=%ad --date=short` (first commit) |
 | Services | 9 apps, 29 shared packages | `ls apps`, `ls packages` |
 <!-- stats:end -->
-_As of commit `cc9ae36b` (2026-09-06). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
+_As of commit `1b59045f` (2026-09-25). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
 
 Identities and inference cost aren't hand-typed into this table. There's no public identity-count endpoint yet. For inference cost: every node exposes a public, unauthenticated `GET /usage/api/rollup/{did}/latest`, returning the most recent signed `usage.rollup` attestation — self-verifiable against the issuer's key ([#2030](https://github.com/ima-jin/imajin-ai/issues/2030)). Read the ledger; this README doesn't assert a dollar figure it can't sign.
 
