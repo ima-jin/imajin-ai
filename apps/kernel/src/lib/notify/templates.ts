@@ -1,5 +1,6 @@
 import { emailWrapper, renderBroadcastEmail, stripHtml } from "@imajin/email";
 import { buildPublicUrlAbsolute } from "@imajin/config";
+import { ownerActionTitle, ownerActorSentence, resolveOwnerActor } from "./owner-actor";
 
 export interface NotifyTemplate {
   scope: string;
@@ -20,6 +21,32 @@ function escapeHtml(value: unknown): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
+}
+
+/**
+ * Name the acting delegate in an owner-facing body (#2366).
+ *
+ * The title already says "… on behalf of you"; this appends the delegate's raw
+ * DID so the owner can see the exact identity behind a friendly label. Empty
+ * for a first-party action, which keeps that copy byte-identical.
+ */
+function actingDelegateSuffix(data: Record<string, unknown>): string {
+  const actor = resolveOwnerActor(data);
+  return actor.onBehalfOfOwner ? ` Acting app: ${actor.actorDid}.` : '';
+}
+
+/**
+ * Owner-facing connector-lifecycle title (#2366): the existing provider-first
+ * copy for a first-party action, the acting-delegate form when an app did it
+ * on the owner's behalf.
+ */
+function connectorLifecycleTitle(
+  data: Record<string, unknown>,
+  firstPartyTitle: string,
+  delegatedAction: string,
+): string {
+  const actor = resolveOwnerActor(data);
+  return actor.onBehalfOfOwner ? ownerActorSentence(actor, delegatedAction) : firstPartyTitle;
 }
 
 function simpleEmailHtml(title: string, body: string): string {
@@ -659,31 +686,30 @@ export const templates: NotifyTemplate[] = [
     },
   },
   {
+    // #2366 — the alert must name the ACTING party. `requesterDid` records who
+    // the request is attributed to, which on the app-token lane (#1926) is the
+    // owner themself; `resolveOwnerActor` prefers the delegate (`appDid`, the
+    // token's `azp`) and adds the on-behalf-of clause when the two differ, so
+    // a delegate can no longer hide behind the principal it is acting as.
     scope: 'broker:consent-request',
     urgency: 'urgent',
-    title: (data) => {
-      const did: string = typeof data.requesterDid === 'string' ? data.requesterDid : '';
-      const short = did.length > 30 ? `${did.slice(0, 20)}\u2026${did.slice(-6)}` : did;
-      return `${short || 'Someone'} requested your ${data.purpose ?? 'data'}`;
-    },
+    title: (data) => ownerActionTitle(data, `requested your ${data.purpose ?? 'data'}`),
     body: (data) => {
       const fields: string[] = Array.isArray(data.fields) ? data.fields : [];
-      return fields.length > 0
+      const requested = fields.length > 0
         ? `Fields requested: ${fields.join(', ')}`
         : 'Tap to review and approve or deny.';
+      return `${requested}${actingDelegateSuffix(data)}`;
     },
   },
   {
     scope: 'broker:disclosure-receipt',
     urgency: 'low',
-    title: (data) => {
-      const did: string = typeof data.requesterDid === 'string' ? data.requesterDid : '';
-      const short = did.length > 30 ? `${did.slice(0, 20)}\u2026${did.slice(-6)}` : did;
-      return `${short || 'A party'} accessed your ${data.purpose ?? 'data'}`;
-    },
+    title: (data) => ownerActionTitle(data, `accessed your ${data.purpose ?? 'data'}`, 'A party'),
     body: (data) => {
       const fields: string[] = Array.isArray(data.fields) ? data.fields : [];
-      return fields.length > 0 ? `Fields shared: ${fields.join(', ')}` : 'Your data was disclosed.';
+      const shared = fields.length > 0 ? `Fields shared: ${fields.join(', ')}` : 'Your data was disclosed.';
+      return `${shared}${actingDelegateSuffix(data)}`;
     },
   },
   {
@@ -704,15 +730,21 @@ export const templates: NotifyTemplate[] = [
     // a WS-connected consumer (ima-jin/openclaw-imajin-plugin#37), not a
     // channel a person configures separately. Never carries credential
     // material — see apps/kernel/src/lib/notify/connector-events.ts.
+    //
+    // #2366 — connector use is owner-facing too, and carries the same
+    // `{did, appDid}` pair: when a delegate sealed/unsealed the credential the
+    // title names that app and says so, rather than reading as if the owner
+    // did it themself. First-party copy is unchanged.
     scope: 'connector.credential.sealed',
     urgency: 'low',
     title: (data) => {
       const provider = typeof data.provider === 'string' ? data.provider : 'A connector';
-      return `${provider} credential sealed`;
+      return connectorLifecycleTitle(data, `${provider} credential sealed`, `sealed your ${provider} credential`);
     },
     body: (data) => {
       const provider = typeof data.provider === 'string' ? data.provider : undefined;
-      return provider ? `A credential was sealed for the ${provider} connector.` : 'A connector credential was sealed.';
+      const sealed = provider ? `A credential was sealed for the ${provider} connector.` : 'A connector credential was sealed.';
+      return `${sealed}${actingDelegateSuffix(data)}`;
     },
   },
   {
@@ -720,13 +752,14 @@ export const templates: NotifyTemplate[] = [
     urgency: 'low',
     title: (data) => {
       const provider = typeof data.provider === 'string' ? data.provider : 'A connector';
-      return `${provider} credential unsealed`;
+      return connectorLifecycleTitle(data, `${provider} credential unsealed`, `unsealed your ${provider} credential`);
     },
     body: (data) => {
       const provider = typeof data.provider === 'string' ? data.provider : undefined;
-      return provider
+      const unsealed = provider
         ? `The sealed credential for the ${provider} connector was unsealed or removed.`
         : 'A connector credential was unsealed or removed.';
+      return `${unsealed}${actingDelegateSuffix(data)}`;
     },
   },
   {
@@ -734,11 +767,14 @@ export const templates: NotifyTemplate[] = [
     urgency: 'low',
     title: (data) => {
       const provider = typeof data.provider === 'string' ? data.provider : undefined;
-      return provider ? `${provider} model catalog changed` : 'Model catalog changed';
+      const firstParty = provider ? `${provider} model catalog changed` : 'Model catalog changed';
+      const delegated = provider ? `changed your ${provider} model catalog` : 'changed your model catalog';
+      return connectorLifecycleTitle(data, firstParty, delegated);
     },
     // Advisory only (#2205): the hint names why the catalog might have moved,
     // never the model list itself — consumers re-pull GET /infer/v1/models/usable.
-    body: (_data) => 'Your usable model catalog may have changed — re-fetch GET /infer/v1/models/usable.',
+    body: (data) =>
+      `Your usable model catalog may have changed — re-fetch GET /infer/v1/models/usable.${actingDelegateSuffix(data)}`,
   },
   // #2212 (child of #2206) — payment_request.* notify templates. One scope
   // per lifecycle transition; `data.role` distinguishes issuer vs recipient

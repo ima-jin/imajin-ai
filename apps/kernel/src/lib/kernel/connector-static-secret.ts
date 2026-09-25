@@ -72,7 +72,16 @@ export interface ConnectorStaticSecret {
   sealAndGrant(
     principalDid: string,
     plaintext: string,
-    opts?: { expiresAt?: Date | null },
+    opts?: {
+      expiresAt?: Date | null;
+      /**
+       * The ACTING delegate's app DID when an app sealed this credential for
+       * the principal (#2366). Attribution only — custody is unchanged. It
+       * reaches the owner's `connector.credential.sealed` alert so the alert
+       * names the delegate instead of reading as a first-party action.
+       */
+      actingAppDid?: string;
+    },
   ): Promise<{ grantId: string | null; requestId: string | null }>;
   /**
    * Load the sealed secret for principalDid via the connector's delegation
@@ -91,8 +100,12 @@ export interface ConnectorStaticSecret {
   /**
    * Revoke the delegation grant for principalDid → connectorDid.
    * Returns `true` when a grant was deactivated, `false` if none existed.
+   *
+   * `actingAppDid` is the delegate that requested the revoke, when one did
+   * (#2366) — attribution for the owner's `connector.credential.unsealed`
+   * alert, never part of the revoke decision.
    */
-  revokeGrant(principalDid: string): Promise<boolean>;
+  revokeGrant(principalDid: string, actingAppDid?: string): Promise<boolean>;
   /**
    * Whether a secret is sealed AND readable for principalDid — an active
    * delegation grant covers it, not merely a vault entry existing (#1774,
@@ -132,7 +145,7 @@ export function createConnectorStaticSecret(
   async function sealAndGrant(
     principalDid: string,
     plaintext: string,
-    { expiresAt }: { expiresAt?: Date | null } = {},
+    { expiresAt, actingAppDid }: { expiresAt?: Date | null; actingAppDid?: string } = {},
   ): Promise<{ grantId: string | null; requestId: string | null }> {
     const { grantId, requestId } = await sealAndGrantStaticSecret(
       secretField(principalDid),
@@ -147,7 +160,8 @@ export function createConnectorStaticSecret(
     // #2205 — best-effort; never fails a seal that already succeeded (see
     // connector-events.ts's own fail-open guarantee). `opts.name` doubles as
     // the CONNECTOR_REGISTRY id for every current static-secret connector.
-    await notifyConnectorCredentialSealed(principalDid, opts.name);
+    // #2366 — `actingAppDid` names the delegate on the owner's alert.
+    await notifyConnectorCredentialSealed(principalDid, opts.name, actingAppDid);
     return { grantId, requestId };
   }
 
@@ -175,11 +189,11 @@ export function createConnectorStaticSecret(
     return secret;
   }
 
-  async function revokeGrant(principalDid: string): Promise<boolean> {
+  async function revokeGrant(principalDid: string, actingAppDid?: string): Promise<boolean> {
     const revoked = await revokeStaticSecretGrant(secretField(principalDid), opts.connectorDid);
     // #2205 — only on an actual transition; best-effort, never fails this call.
     if (revoked) {
-      await notifyConnectorCredentialUnsealed(principalDid, opts.name);
+      await notifyConnectorCredentialUnsealed(principalDid, opts.name, actingAppDid);
     }
     return revoked;
   }

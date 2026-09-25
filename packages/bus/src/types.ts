@@ -1629,6 +1629,14 @@ export interface BusEventMap {
     path: string;
     cid: string;
     prevCid: string | null;
+    /**
+     * The ACTING delegate's app DID when this edit was made by an app on the
+     * owner's behalf (#2366) — the token's `azp`. `issuer` stays the owner
+     * (the edit is owner-pinned by #1205); this records who actually drove
+     * it, so downstream owner-facing alerts can name the delegate instead of
+     * rendering the owner as their own requester.
+     */
+    appDid?: string;
   };
   // #1134 — supply.* pre-sale provenance events (free stages, no settlement).
   // A lot is threaded declare -> collect -> process -> list via `lotId`; `priorCid`
@@ -2135,6 +2143,17 @@ export interface BrokerRequest<T extends string = string> {
   type: T;
   requester: string;        // DID of the requester
   subject: string;          // DID of the data subject
+  /**
+   * The ACTING delegate's app DID — the token's `azp` (#2366).
+   *
+   * `requester` answers "whose record is this request attributed to?"; this
+   * answers "who actually made it?". They differ on the app-token lane
+   * (#1926), where an app acts with `azp` = itself and `sub` = the principal.
+   * Absent for a true first-party request, and equal to `subject` when the
+   * principal acted directly — an owner-facing alert must name this party
+   * rather than rendering the principal twice.
+   */
+  appDid?: string;
   fields: string[];         // requested field names
   purpose: string;          // declared purpose
   scope: string;            // service scope

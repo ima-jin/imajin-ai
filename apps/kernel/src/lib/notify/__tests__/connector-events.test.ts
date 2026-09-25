@@ -192,6 +192,47 @@ describe('notifyConnectorModelsChanged', () => {
   });
 });
 
+// ── Acting delegate (#2366) ──────────────────────────────────────────
+//
+// Connector use is owner-facing, so it obeys the same rule as the projection
+// alert: when an app drove the transition the frame carries the `{did, appDid}`
+// pair so the template can name that delegate. Still no credential material.
+
+const ACTING_APP = 'did:imajin:ADEKzzzzzzzzzzzzzzzzzzzzzzzzzzzzn54k';
+
+describe('acting delegate attribution (#2366)', () => {
+  it('carries the {did, appDid} pair on a delegated seal, and on its models.changed', async () => {
+    getConnectorMock.mockReturnValue({ modelsRoute: '/gemini/api/models' });
+
+    await notifyConnectorCredentialSealed(PRINCIPAL, 'gemini', ACTING_APP);
+
+    const sealedRow = insertValues.find((v) => v.scope === CONNECTOR_CREDENTIAL_SEALED_SCOPE);
+    expect(sealedRow!.data).toEqual({ provider: 'gemini', did: PRINCIPAL, appDid: ACTING_APP });
+
+    const changedRow = insertValues.find((v) => v.scope === CONNECTOR_MODELS_CHANGED_SCOPE);
+    expect(changedRow!.data).toEqual({
+      provider: 'gemini',
+      hint: 'credential-sealed',
+      did: PRINCIPAL,
+      appDid: ACTING_APP,
+    });
+  });
+
+  it('carries the pair on a delegated unseal', async () => {
+    getConnectorMock.mockReturnValue({ modelsRoute: null });
+
+    await notifyConnectorCredentialUnsealed(PRINCIPAL, 'gcp', ACTING_APP);
+
+    expect(insertValues[0].data).toEqual({ provider: 'gcp', did: PRINCIPAL, appDid: ACTING_APP });
+  });
+
+  it('adds nothing at all when the owner acted first-party', async () => {
+    await notifyConnectorModelsChanged(PRINCIPAL, 'openai', 'catalog-update');
+
+    expect(insertValues[0].data).toEqual({ provider: 'openai', hint: 'catalog-update' });
+  });
+});
+
 // ── Fail-open contract (#2205 acceptance: never fails the caller) ─────────
 
 describe('fail-open contract', () => {
