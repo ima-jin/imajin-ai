@@ -79,18 +79,22 @@ before `main`) would still go undetected today; only the build-stamp half of the
 
 ## 3. Drift risks visible in the repo
 
-**Version source-of-truth conflict — live today.** `scripts/bump-workspace-version.mjs:138` still
-reads the **root `package.json`'s own version** as the bump base, not the latest tag. Right now
-`package.json` says `0.8.2` (`package.json:3`) while the latest reachable tag is `v0.8.5`
-(confirmed via `git tag --list 'v*' --sort=-v:refname` → `v0.8.5, v0.8.4, v0.8.3, ...`) — three patch
-releases of drift, accumulated exactly the way PR #2352's description reproduces (`release.yml`
-`bump=patch` would compute `0.8.3`, colliding with the already-tagged `v0.8.3`). **PR #2352 (open,
-not merged) fixes this**: it closes #2349 by deriving the bump base from `git describe --tags` instead
-of `package.json`, and adds `scripts/ci-guard-version-tag-sync.mjs` to fail CI when they disagree.
-This is a different mechanism from the already-merged `scripts/lib/build-version.sh` (#2285/#2287),
-which only fixes what the *build footer* displays (`scripts/build.sh:104-124`) — that fix does not
-touch what `release.yml` computes as the *next* version, which is the actual bug #2349/#2352
-addresses.
+**Version source-of-truth conflict — fixed by #2352 (merged 2026-09-25).** Until this merged,
+`scripts/bump-workspace-version.mjs` read the **root `package.json`'s own version** as the bump base,
+not the latest tag. That left `package.json` at `0.8.2` while three hot-fix tags (`v0.8.3`–`v0.8.5`)
+had already been pushed by hand — the next `release.yml bump=patch` dispatch would have recomputed
+`0.8.3` and collided with the already-tagged `v0.8.3` (the exact failure #2349 reported, run
+36031435178). #2352 fixed it two ways: `resolveBaseVersion()` in `scripts/bump-workspace-version.mjs`
+(lines 109-125) now derives the bump base from `latestTagVersion()` — the latest reachable `vX.Y.Z`
+tag, via the new shared helper `scripts/lib/git-version.mjs:53-66` — falling back to `package.json`
+only when no tag exists yet; and the new `scripts/ci-guard-version-tag-sync.mjs` (wired into `ci.yml`'s
+"CI Guards" job) now fails CI whenever `package.json`'s version is behind the latest tag, so this
+specific drift can't reaccumulate silently. Root `package.json` is `0.8.5` as of this branch's rebase
+(`package.json:3`), matching the latest tag `v0.8.5` — confirmed via
+`git tag --list 'v*' --sort=-v:refname`. This is a different mechanism from the earlier-merged
+`scripts/lib/build-version.sh` (#2285/#2287), which only ever fixed what the *build footer* displays
+(`scripts/build.sh:104-124`) — that fix never touched what `release.yml` computes as the *next*
+version, which is the bug #2349/#2352 actually addressed.
 
 **Migration numbering collisions — a recurring pattern, not a one-off.** `scripts/check-migrations.sh`
 hard-fails on a duplicate number (`check-migrations.sh:59-68`) and runs both in `ci.yml`'s
@@ -194,9 +198,8 @@ mirroring this repo's `deploy-dev.yml` but scoped to one app:
   `apps.provision` route; out of scope here beyond noting the dependency.
 
 **4.4 — Fold in already-in-flight fixes**
-- Merge #2352 (tag-is-truth for the release bump) before or alongside any new deploy-posture work —
-  it's the direct fix for the live `0.8.2`-vs-`v0.8.5` drift in §3, and is unrelated to the
-  dev-auto-deploy/build-stamp work above, so it can land independently.
+- Tag-is-truth for the release bump was merged in #2352 — the `0.8.2`-vs-`v0.8.5` drift described in
+  §3 is resolved on `main`. No follow-up needed here; noted so this checklist doesn't re-propose it.
 - Consider promoting the migration-numbering collision from "caught after merge" to "caught before
   merge": e.g. a periodic/scheduled re-run of `check-migrations.sh` against `main`'s current tip that
   pages instead of waiting for the next PR's `push` trigger to notice, or a bot that renumbers/rebases
