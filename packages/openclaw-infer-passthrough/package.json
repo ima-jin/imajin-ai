@@ -1,6 +1,6 @@
 {
   "name": "@imajin/openclaw-infer-passthrough",
-  "version": "0.8.2",
+  "version": "0.8.5",
   "private": true,
   "description": "Local OpenAI-compatible HTTP proxy (imajin-ai#1926, Phase 4 of the #1922 inference connectors epic): mints kernel app-token JWTs on OpenClaw's behalf and forwards custom-provider completions calls to POST /infer/v1/chat/completions, with break-glass direct fallback on kernel 5xx/timeout.",
   "type": "module",

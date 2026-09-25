@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Lockstep workspace version bump, for the Release workflow (#2285).
+ * Lockstep workspace version bump, for the Release workflow (#2285, #2349).
  *
  * ## Why this isn't literally `pnpm -r version <bump>`
  *
@@ -29,9 +29,32 @@
  * each package by its OWN current version independently would widen that
  * divergence instead of collapsing it to one release version.
  *
- * ## What this does instead
+ * ## Why the base version comes from the latest tag, not package.json (#2349)
  *
- * 1. Reads the ROOT `package.json` version as the single source of truth.
+ * This used to read root `package.json`'s `"version"` as the single source
+ * of truth. That broke the moment a release was cut OUTSIDE this workflow:
+ * `v0.8.3`–`v0.8.5` were pushed as manual annotated tags (hot-fix cycles),
+ * while root `package.json` stayed at `0.8.2`. The next `bump=patch`
+ * dispatch then read `0.8.2`, computed `v0.8.3`, and
+ * "Guard against re-using an existing tag" correctly refused to reopen a
+ * release for a version already tagged — the workflow was unusable until a
+ * human noticed and hand-synced the manifest.
+ *
+ * `git describe --tags --abbrev=0 --match 'v[0-9]*'` (the same tag-matching
+ * this repo already uses in `scripts/lib/build-version.sh` for #2287) is the
+ * one thing that can never be behind: every tag this repo creates, by hand or
+ * by `tag-release.yml`, is visible to it. Deriving the bump base from the
+ * latest reachable tag instead of `package.json` makes drift self-healing —
+ * the next dispatch always computes the true next version — rather than a
+ * fatal guard failure. `package.json` is still written (lockstep, as
+ * before); it's just no longer read as an input.
+ *
+ * ## What this does
+ *
+ * 1. Resolves the base version from the latest `vX.Y.Z` tag reachable from
+ *    HEAD (leading `v` stripped), falling back to root `package.json`'s
+ *    version only when no such tag exists yet (a brand-new repo before its
+ *    first release).
  * 2. Bumps it by `<bump>` (`minor` resets patch to 0; `patch` increments
  *    patch) — the same semantics `npm version`/`pnpm version` use for a
  *    prerelease-free `major.minor.patch` string, which is everything in
@@ -45,38 +68,30 @@
  *
  * - No PATH-spawn (S4036): `git` is resolved to an absolute path up front
  *   (env override or a fixed list of known install locations), only to list
- *   tracked `package.json` files — no shell interpolation involved.
+ *   tracked `package.json` files and describe the latest tag — no shell
+ *   interpolation involved. See `scripts/lib/git-version.mjs`, shared with
+ *   `scripts/ci-guard-version-tag-sync.mjs` and `scripts/ci-guard-version-bump.mjs`.
  *
  * ## Usage
  *
  * `node scripts/bump-workspace-version.mjs <minor|patch>`
  *
- * Prints the new version (e.g. `0.8.1`) to stdout on success.
+ * Prints the new version (e.g. `0.8.6`) to stdout on success.
  *
  * Env overrides (for tests / non-standard checkouts):
  *   - `CI_GUARD_WORKDIR` — repo root (default: one level up from this file)
  *   - `GIT_BIN`          — absolute path to the git binary
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveGitBinary, latestTagVersion } from './lib/git-version.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-const KNOWN_GIT_LOCATIONS = ['/usr/bin/git', '/usr/local/bin/git', '/opt/homebrew/bin/git', '/bin/git'];
-
-function resolveGitBinary() {
-  if (process.env.GIT_BIN) return process.env.GIT_BIN;
-  const found = KNOWN_GIT_LOCATIONS.find((candidate) => existsSync(candidate));
-  if (found) return found;
-  throw new Error(
-    `git binary not found in any of: ${KNOWN_GIT_LOCATIONS.join(', ')}. Set GIT_BIN to its absolute path.`,
-  );
-}
 
 /** Lists every `package.json` tracked by git in the working tree, root-relative. */
 function listPackageJsonFiles(gitBin, root) {
@@ -89,6 +104,24 @@ function listPackageJsonFiles(gitBin, root) {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !line.includes('node_modules/'));
+}
+
+/**
+ * Resolves the version this run should bump FROM: the latest reachable
+ * `vX.Y.Z` tag (tag is truth, #2349), falling back to root `package.json`'s
+ * own version only when no such tag exists yet.
+ */
+export function resolveBaseVersion(gitBin, root, rootPackageJsonPath) {
+  const tagVersion = latestTagVersion(gitBin, root);
+  if (tagVersion !== undefined) return tagVersion;
+
+  const currentVersion = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8')).version;
+  if (typeof currentVersion !== 'string') {
+    throw new Error(
+      `no vX.Y.Z tag reachable from HEAD, and root package.json at ${rootPackageJsonPath} has no "version" field.`,
+    );
+  }
+  return currentVersion;
 }
 
 /** Bumps a plain `major.minor.patch` string the same way `npm version <bump>` would, sans prerelease support. */
@@ -135,9 +168,12 @@ function main() {
 
   const gitBin = resolveGitBinary();
   const rootPackageJsonPath = join(ROOT, 'package.json');
-  const currentVersion = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8')).version;
-  if (typeof currentVersion !== 'string') {
-    console.error(`FAIL: root package.json at ${rootPackageJsonPath} has no "version" field.`);
+
+  let currentVersion;
+  try {
+    currentVersion = resolveBaseVersion(gitBin, ROOT, rootPackageJsonPath);
+  } catch (err) {
+    console.error(`FAIL: ${err.message}`);
     process.exit(1);
     return;
   }

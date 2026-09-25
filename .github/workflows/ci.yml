@@ -261,6 +261,13 @@ jobs:
       - name: Version bump guard
         run: node scripts/ci-guard-version-bump.mjs
 
+      # Version-tag-sync guard (#2349): fails when root package.json's
+      # "version" is behind the latest vX.Y.Z tag — the drift that broke
+      # release.yml's bump=patch dispatch when v0.8.3–v0.8.5 were pushed as
+      # manual hot-fix tags without a matching package.json sync.
+      - name: Version tag-sync guard
+        run: node scripts/ci-guard-version-tag-sync.mjs
+
       # Producer checks (every required context has a job that emits it) are a
       # real gate and run offline against .github/required-checks.json.
       #

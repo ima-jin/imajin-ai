@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bumpVersion, setVersionInFile } from '../bump-workspace-version.mjs';
+import { bumpVersion, setVersionInFile, resolveBaseVersion } from '../bump-workspace-version.mjs';
 
 // fileURLToPath, not `.pathname`: on Windows the latter yields "/D:/...", which
 // node then resolves against the cwd into "C:\D:\..." and cannot load.
@@ -20,8 +20,13 @@ function writePackageJson(dir, relPath, contents) {
   writeFileSync(fullPath, `${JSON.stringify(contents, null, 2)}\n`, 'utf8');
 }
 
-/** A repo shaped like this one: divergent per-package versions, not already in lockstep. */
-function makeDivergentWorkspaceRepo() {
+/**
+ * A repo shaped like this one: divergent per-package versions, not already in lockstep.
+ * `tag`, when given, is created as an annotated `vX.Y.Z` tag on the base commit — the
+ * source of truth `resolveBaseVersion`/the script now read (#2349). Omit it to exercise
+ * the bootstrap fallback (no tag reachable yet, falls back to root package.json).
+ */
+function makeDivergentWorkspaceRepo({ tag } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'workspace-version-bump-'));
 
   git(dir, ['init', '-q']);
@@ -40,6 +45,10 @@ function makeDivergentWorkspaceRepo() {
 
   git(dir, ['add', '-A']);
   git(dir, ['commit', '-q', '-m', 'base']);
+
+  if (tag) {
+    git(dir, ['tag', '-a', tag, '-m', tag]);
+  }
 
   return dir;
 }
@@ -104,8 +113,22 @@ describe('setVersionInFile', () => {
   });
 });
 
+describe('resolveBaseVersion', () => {
+  it('reads the latest vX.Y.Z tag when one is reachable, ignoring package.json entirely', () => {
+    const dir = makeDivergentWorkspaceRepo({ tag: 'v0.8.5' });
+
+    expect(resolveBaseVersion('git', dir, join(dir, 'package.json'))).toBe('0.8.5');
+  });
+
+  it('falls back to root package.json when no vX.Y.Z tag is reachable yet', () => {
+    const dir = makeDivergentWorkspaceRepo();
+
+    expect(resolveBaseVersion('git', dir, join(dir, 'package.json'))).toBe('0.8.0');
+  });
+});
+
 describe('bump-workspace-version script (end-to-end)', () => {
-  it('sets every tracked package.json to the same lockstep version, derived from root', () => {
+  it('sets every tracked package.json to the same lockstep version, derived from package.json when untagged', () => {
     const dir = makeDivergentWorkspaceRepo();
 
     const stdout = runScript(dir, 'patch');
@@ -120,14 +143,30 @@ describe('bump-workspace-version script (end-to-end)', () => {
     expect(readVersion(dir, 'apps/www/package.json')).toBe('0.8.1');
   });
 
+  // Reproduces #2349: v0.8.3–v0.8.5 were pushed as manual hot-fix tags while
+  // root package.json stayed at 0.8.2. Before this fix, bump=patch read
+  // package.json ("0.8.2") and computed v0.8.3 — already tagged, so
+  // release.yml's "Guard against re-using an existing tag" step failed.
+  it('computes the next version from the latest tag, not the (drifted) package.json version', () => {
+    const dir = makeDivergentWorkspaceRepo({ tag: 'v0.8.5' });
+    // Simulate the drift: package.json is behind the tag it should have been synced to.
+    writePackageJson(dir, 'package.json', { name: 'imajin-ai', version: '0.8.2', private: true });
+
+    const stdout = runScript(dir, 'patch');
+
+    expect(stdout.trim()).toBe('0.8.6');
+    expect(readVersion(dir, 'package.json')).toBe('0.8.6');
+    expect(readVersion(dir, 'packages/ui/package.json')).toBe('0.8.6');
+  });
+
   it('does not touch unrelated files', () => {
     const dir = makeDivergentWorkspaceRepo();
     runScript(dir, 'minor');
     expect(readFileSync(join(dir, 'apps/www/.env.example'), 'utf8')).toBe('FOO=bar\n');
   });
 
-  it('bumps minor from root, resetting patch to 0', () => {
-    const dir = makeDivergentWorkspaceRepo();
+  it('bumps minor from the latest tag, resetting patch to 0', () => {
+    const dir = makeDivergentWorkspaceRepo({ tag: 'v0.8.5' });
     const stdout = runScript(dir, 'minor');
     expect(stdout.trim()).toBe('0.9.0');
     expect(readVersion(dir, 'package.json')).toBe('0.9.0');
