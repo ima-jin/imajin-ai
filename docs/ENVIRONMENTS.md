@@ -243,6 +243,37 @@ corpus's missing `.env.local` is an error in dev (it's in
 `ecosystem.prod.config.js`; see the corpus host note above and
 `deploy/README.md`).
 
+### VAULT_PATH — per-env vault file split (#2357)
+
+`VAULT_PATH` is the absolute path to the kernel's on-disk sealed-secrets
+vault file (`FileVaultRepository` — owner GitHub OAuth tokens, connector
+config, Warp API keys sealed via `seal_key`, etc). It carries NO annotation
+in `apps/kernel/.env.example`, so `check-env` treats a missing value as a
+hard error for both the dev and prod kernel targets — the same posture as
+`DATABASE_URL`.
+
+| Environment | pm2 process | `VAULT_PATH` |
+|-------------|--------------|--------------|
+| Development | `dev-jin` | `~/.imajin/vault.dev.json` |
+| Production | `prod-jin` | `~/.imajin/vault.prod.json` |
+
+Both values are set directly in `deploy/ecosystem.{dev,prod}.config.js`'s
+`env` block (not `.env.local`), mirroring how `NODE_ENV` is already pinned
+there. A literal leading `~` is expanded to the process's home directory at
+runtime (`apps/kernel/src/lib/vault/vault-path.ts`) — pm2 ecosystem configs
+are version-controlled and can't embed a concrete home directory. The kernel
+refuses to start in production when `VAULT_PATH` is unset (see
+`instrumentation.ts#register()`), rather than silently falling back to the
+shared `~/.imajin/vault.json` default used outside production.
+
+The split matters because Postgres is already isolated per environment (a
+separate `imajin_prod`/`imajin_dev` database and `DATABASE_URL` each), but
+until #2357 the vault was not: `dev-jin` and `prod-jin` both defaulted to the
+same `~/.imajin/vault.json`, so a dev process could read — and, on any
+re-seal, silently overwrite — prod-sealed material. Splitting the file is
+the same trust boundary Postgres already draws, applied to the one piece of
+per-environment state that was missing it.
+
 ## Deployment
 
 See [DEPLOYMENT.md](../DEPLOYMENT.md) for the full deployment pipeline.

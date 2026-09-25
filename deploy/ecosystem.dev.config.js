@@ -1,13 +1,18 @@
 module.exports = {
   "apps": [
     {
+      // VAULT_PATH (#2357): dev must never read/write prod-jin's vault file.
+      // A literal leading `~` is expanded to the process's home directory at
+      // runtime (apps/kernel/src/lib/vault/vault-path.ts) — this config is
+      // version-controlled and can't embed a concrete home directory.
       "name": "dev-jin",
       "cwd": "/home/jin/dev/imajin-ai/apps/kernel",
       "script": "npm",
       "args": "start",
       "env": {
         "PORT": 3000,
-        "NODE_ENV": "production"
+        "NODE_ENV": "production",
+        "VAULT_PATH": "~/.imajin/vault.dev.json"
       },
       "max_restarts": 10,
       "min_uptime": "20s"
