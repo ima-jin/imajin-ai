@@ -41,6 +41,19 @@
 # queries before a single combined install, and it's what actually fixes the
 # pruning: each install only ever adds to what's already declared.
 #
+# Each peer is pinned to a concrete version derived from its own declared
+# range (scripts/lib/pin-peer-version.mjs) rather than installed at that
+# floating range directly — otherwise the exact version smoke-tested drifts
+# every time upstream publishes a new release the range still matches,
+# including a new major (#2383: this is literally how a `next` peer range of
+# `>=15.5.24` picked up Next.js 16 mid-investigation of the bug below).
+#
+# Even pinned, a peer like `next` ships no `"exports"` field in any published
+# version, so plain Node's ESM loader still can't resolve subpaths like
+# `next/server` that `@ima-jin/auth` imports (#2383) — after both install
+# phases, scripts/lib/shim-esm-subpaths.mjs patches around that; see its
+# module docstring for the full root-cause writeup.
+#
 # Reads GITHUB_PACKAGES_TOKEN, falling back to GITHUB_TOKEN (the shape
 # .github/workflows/smoke-sdk-install.yml runs this with, authenticated by
 # the workflow's own ephemeral secrets.GITHUB_TOKEN — no new secret). Never
@@ -122,8 +135,21 @@ for PKG_JSON in node_modules/@ima-jin/*/package.json; do
   while IFS=$'\t' read -r peer_name peer_range; do
     [[ -z "$peer_name" ]] && continue
     if [[ -z "${SEEN_PEERS[$peer_name]:-}" ]]; then
-      SEEN_PEERS["$peer_name"]="$peer_range"
-      PEER_SPECS+=("${peer_name}@${peer_range}")
+      # Pin to the floor of the declared range when it's a single-bound
+      # shape (#2383) so the version actually installed is deterministic
+      # instead of "whatever the registry's latest matching release happens
+      # to be today". Falls back to the declared range as-is when it isn't a
+      # shape pin-peer-version.mjs knows how to pin (see its docstring).
+      pinned_version="$(node "$REPO_ROOT/scripts/lib/pin-peer-version.mjs" "$peer_range")"
+      if [[ -n "$pinned_version" ]]; then
+        echo "Pinning peerDependency ${peer_name}@${peer_range} -> ${peer_name}@${pinned_version} (#2383)"
+        SEEN_PEERS["$peer_name"]="$pinned_version"
+        PEER_SPECS+=("${peer_name}@${pinned_version}")
+      else
+        echo "WARN: no deterministic pin derivable for ${peer_name}@${peer_range}; installing the declared range as-is" >&2
+        SEEN_PEERS["$peer_name"]="$peer_range"
+        PEER_SPECS+=("${peer_name}@${peer_range}")
+      fi
     fi
   done < <(node "$REPO_ROOT/scripts/lib/read-peer-deps.mjs" "$PKG_JSON")
 done
@@ -136,6 +162,15 @@ if [[ "${#PEER_SPECS[@]}" -gt 0 ]]; then
   # Regression guard for #2380: the peers-only install above must not have
   # pruned the specs installed in the first phase.
   assert_specs_present "after installing peerDependencies"
+
+  # A pinned peer version doesn't change the fact that e.g. `next` ships no
+  # "exports" field in any published version, so plain Node's ESM loader
+  # still can't resolve a subpath like `next/server` that `@ima-jin/auth`
+  # imports (#2383) — see scripts/lib/shim-esm-subpaths.mjs's module
+  # docstring for the full root-cause writeup and why this is a shim on the
+  # installed peer rather than a version pin or a synthetic "exports" map.
+  echo "Shimming ESM-unresolvable peer subpaths ..."
+  node "$REPO_ROOT/scripts/lib/shim-esm-subpaths.mjs" "$SCRATCH_DIR" "${!SEEN_PEERS[@]}"
 else
   echo "No declared peerDependencies to install."
 fi
