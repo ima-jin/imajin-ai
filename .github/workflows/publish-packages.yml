@@ -58,9 +58,16 @@ env:
   # step below builds each selected package's @imajin/* deps automatically,
   # regardless of order).
   ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client auth logger"
-  # The four packages that make up the out-of-repo SDK surface (#1982) — the
-  # only ones a `packages-v*` tag ever publishes.
-  SDK_PACKAGES: "auth config logger ui"
+  # The install closure a `packages-v*` tag must publish for the four
+  # out-of-repo SDK packages (#1982) to actually be installable by an
+  # external consumer (#2376): `ui` hard-depends on `fair` (a regular
+  # "dependencies" entry, not a peer — npm always pulls it in), and `logger`
+  # declares an optional peer on `db`. Neither was in this list until #2376;
+  # the first real publish had to hand-dispatch both after the fact (see
+  # scripts/__tests__/sdk-packages-closure.test.mjs, which fails the build if
+  # a hard @imajin/* dependency of any of these ever falls outside this set
+  # again).
+  SDK_PACKAGES: "auth config logger ui fair db"
 
 jobs:
   publish:
