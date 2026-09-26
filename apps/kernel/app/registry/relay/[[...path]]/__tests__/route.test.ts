@@ -5,8 +5,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // vi.hoisted. The env vars are set here too — route.ts reads them at module
 // scope, which runs after hoisted blocks but before any test body.
 
-const { mockRelayFetch, mockCreateCustomRelay, mockRequireAuth, mockGetIdentityChain } =
-  vi.hoisted(() => {
+const {
+  mockRelayFetch,
+  mockCreateCustomRelay,
+  mockRequireAuth,
+  mockGetIdentityChain,
+  mockDecodeJwsUnsafe,
+  mockDecodeMultikey,
+  mockVerifyAuthToken,
+  mockIsRelayPeerAttested,
+} = vi.hoisted(() => {
     process.env.RELAY_STORE = 'memory';
     process.env.RELAY_DID = 'did:dfos:relay-under-test';
     process.env.RELAY_PROFILE_JWS = 'jws.relay.profile';
@@ -18,6 +26,10 @@ const { mockRelayFetch, mockCreateCustomRelay, mockRequireAuth, mockGetIdentityC
       // A chain already exists for RELAY_DID, so initRelay takes the
       // env-identity path and never needs the bootstrap/well-known dance.
       mockGetIdentityChain: vi.fn().mockResolvedValue({ did: 'did:dfos:relay-under-test' }),
+      mockDecodeJwsUnsafe: vi.fn(),
+      mockDecodeMultikey: vi.fn(),
+      mockVerifyAuthToken: vi.fn(),
+      mockIsRelayPeerAttested: vi.fn(),
     };
   });
 
@@ -64,15 +76,33 @@ vi.mock('@imajin/auth', () => ({
     identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
-// ─── Subject under test ─────────────────────────────────────────────────────
+// DFOS proof verification (#2132) — real dfos-write-auth.ts / auth.ts wiring,
+// mocked only at the crypto/protocol boundary + the attestation gate.
+vi.mock('@metalabel/dfos-protocol/crypto', () => ({
+  decodeJwsUnsafe: mockDecodeJwsUnsafe,
+}));
+vi.mock('@metalabel/dfos-protocol/chain', () => ({
+  decodeMultikey: mockDecodeMultikey,
+}));
+vi.mock('@metalabel/dfos-protocol/credentials', () => ({
+  verifyAuthToken: mockVerifyAuthToken,
+}));
+vi.mock('@/src/lib/registry/relay/peer-attestations', () => ({
+  isRelayPeerAttested: mockIsRelayPeerAttested,
+}));
+
+// ─── Subject under test ─────────────────────────────────────────────────────────
 
 import { GET, POST, PUT, PATCH, DELETE } from '../route';
 
-// ─── Fixtures ───────────────────────────────────────────────────────────────
+// ─── Fixtures ─────────────────────────────────────────────────────────
 
 const WRITER_DID = 'did:imajin:writer-abc';
 const GROUP_DID = 'did:imajin:group-xyz';
 const WRITER_HEADER = 'x-imajin-relay-writer';
+const PEER_DID = 'did:dfos:peer-abc';
+const PEER_KEY_ID = 'key_peer';
+const RELAY_DID_UNDER_TEST = 'did:dfos:relay-under-test';
 
 const OPERATIONS_URL = 'https://test.imajin.ai/registry/relay/proof/v1/operations';
 const LOG_URL = 'https://test.imajin.ai/registry/relay/proof/v1/log?limit=10';
@@ -97,7 +127,13 @@ const WRITE_HANDLERS: Array<[string, RouteHandler]> = [
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetIdentityChain.mockResolvedValue({ did: 'did:dfos:relay-under-test' });
+  mockGetIdentityChain.mockImplementation(async (did: string) => {
+    if (did === RELAY_DID_UNDER_TEST) return { did: RELAY_DID_UNDER_TEST };
+    if (did === PEER_DID) {
+      return { state: { isDeleted: false, authKeys: [{ id: PEER_KEY_ID, publicKeyMultibase: 'z6Mkexample' }] } };
+    }
+    return undefined;
+  });
   mockCreateCustomRelay.mockResolvedValue({
     app: { fetch: mockRelayFetch },
     did: 'did:dfos:relay-under-test',
@@ -105,6 +141,11 @@ beforeEach(() => {
   });
   mockRelayFetch.mockResolvedValue(new Response('{"ok":true}', { status: 200 }));
   mockRequireAuth.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+  mockDecodeJwsUnsafe.mockReturnValue({ header: { kid: `${PEER_DID}#${PEER_KEY_ID}` }, payload: {} });
+  mockDecodeMultikey.mockReturnValue({ keyBytes: new Uint8Array([1, 2, 3]), codec: 0xed });
+  mockVerifyAuthToken.mockReturnValue({ iss: PEER_DID, aud: RELAY_DID_UNDER_TEST, exp: 1, iat: 0, kid: `${PEER_DID}#${PEER_KEY_ID}` });
+  mockIsRelayPeerAttested.mockResolvedValue(true);
 });
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
@@ -223,6 +264,58 @@ describe('relay proxy authZ (#454)', () => {
       );
 
       expect(forwardedRequest().headers.get(WRITER_HEADER)).toBe(WRITER_DID);
+    });
+  });
+
+  describe('DFOS proof writes (#2132)', () => {
+    function dfosRequest(): Request {
+      return makeRequest(OPERATIONS_URL, {
+        method: 'POST',
+        headers: { authorization: 'DFOS proof-token' },
+        body: '{}',
+      });
+    }
+
+    it('never calls requireAuth when a DFOS-scheme header is present', async () => {
+      await POST(dfosRequest());
+
+      expect(mockRequireAuth).not.toHaveBeenCalled();
+    });
+
+    it('proxies a write from an attested peer and forwards the peer DID for audit', async () => {
+      const res = await POST(dfosRequest());
+
+      expect(res.status).toBe(200);
+      expect(mockRelayFetch).toHaveBeenCalledOnce();
+      expect(forwardedRequest().headers.get(WRITER_HEADER)).toBe(PEER_DID);
+      // Audience resolved from RELAY_DID env, identity resolved from the store.
+      expect(mockVerifyAuthToken).toHaveBeenCalledWith(
+        expect.objectContaining({ audience: RELAY_DID_UNDER_TEST }),
+      );
+      expect(mockIsRelayPeerAttested).toHaveBeenCalledWith(PEER_DID);
+    });
+
+    it('rejects a cryptographically invalid proof with 401, never touching the relay', async () => {
+      mockVerifyAuthToken.mockImplementation(() => {
+        throw new Error('bad signature');
+      });
+
+      const res = await POST(dfosRequest());
+
+      expect(res.status).toBe(401);
+      await expect(res.json()).resolves.toEqual({ error: 'invalid_proof' });
+      expect(mockRelayFetch).not.toHaveBeenCalled();
+      expect(mockIsRelayPeerAttested).not.toHaveBeenCalled();
+    });
+
+    it('rejects a valid proof from a non-attested peer with 403', async () => {
+      mockIsRelayPeerAttested.mockResolvedValue(false);
+
+      const res = await POST(dfosRequest());
+
+      expect(res.status).toBe(403);
+      await expect(res.json()).resolves.toEqual({ error: 'peer_not_attested' });
+      expect(mockRelayFetch).not.toHaveBeenCalled();
     });
   });
 });
