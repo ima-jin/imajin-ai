@@ -172,8 +172,11 @@ export {
   allGrantScopes,
   validateGrantCapabilities,
   eventTypesForGrantScopes,
+  ATTEST_DELEGATION_PREFIX,
+  buildAttestDelegationCapability,
+  parseAttestDelegationCapability,
 } from "./grant-scopes";
-export type { GrantScope } from "./grant-scopes";
+export type { GrantScope, AttestDelegationCapability } from "./grant-scopes";
 export {
   isDid,
   isDelegationAudience,
@@ -187,6 +190,8 @@ export type {
   DelegationGrant,
   DelegationProvenance,
 } from "./delegation-grant";
+export { submitDelegatedAttestation } from "./delegated-attestation-client";
+export type { DelegatedAttestationInput, DelegatedAttestationResult } from "./delegated-attestation-client";
 export {
   KNOCK_SELF_DESCRIPTION_MAX_LENGTH,
   KNOCK_MAX_REQUESTED_CAPABILITIES,

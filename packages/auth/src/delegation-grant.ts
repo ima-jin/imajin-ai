@@ -1,11 +1,14 @@
-import type { GrantScope } from './grant-scopes';
-
 export type DelegationAudience =
   | { type: 'all' }
   | { type: 'dids'; values: string[] };
 
+// Capability is a plain string, not GrantScope: alongside the closed
+// GRANT_SCOPE_REGISTRY vocabulary, a grant may also hold a dynamic
+// `attest:<appId>:<type>` app-delegated-attestation capability (#2394,
+// see grant-scopes.ts's buildAttestDelegationCapability), which is not a
+// member of the closed GrantScope union.
 export interface CapabilityRevocation {
-  capability: GrantScope;
+  capability: string;
   revokedAt: string;
 }
 
@@ -13,7 +16,7 @@ export interface DelegationGrant {
   grantId: string;
   agentDid: string;
   delegatorDid: string;
-  capabilities: GrantScope[];
+  capabilities: string[];
   audience: DelegationAudience;
   expiry: string;
   issuedAt: string;

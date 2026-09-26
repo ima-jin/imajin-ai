@@ -34,14 +34,37 @@ import {
   GRANT_MAX_TTL,
   type DelegationAudience,
   type DelegationGrant,
-  type GrantScope,
 } from '@imajin/auth';
+import { validateAttestDelegationCapabilities } from './attest-delegation';
 
 const log = createLogger('kernel');
 
 export interface LibError {
   error: string;
   status: number;
+}
+
+/**
+ * Validate a batch of requested grant capabilities against BOTH the closed
+ * GRANT_SCOPE_REGISTRY vocabulary and (#2394) the dynamic
+ * `attest:<appId>:<type>` app-delegated-attestation shape, for a grant
+ * whose grantee is `agentDid`. Shared by `issueGrant` and
+ * `addGrantCapability` so the two can never validate this differently.
+ */
+async function resolveGrantCapabilities(
+  requested: readonly string[],
+  agentDid: string,
+): Promise<{ valid: string[] } | LibError> {
+  const { valid: registryValid, invalid: registryInvalid } = validateGrantCapabilities(requested);
+  if (registryInvalid.length === 0) {
+    return { valid: registryValid };
+  }
+
+  const { valid: attestValid, invalid: attestInvalid } = await validateAttestDelegationCapabilities(registryInvalid, agentDid);
+  if (attestInvalid.length > 0) {
+    return { error: `Unknown capabilities: ${attestInvalid.join(', ')}`, status: 400 };
+  }
+  return { valid: [...registryValid, ...attestValid] };
 }
 
 function clampTtlMs(ttlMs: number | undefined): number {
@@ -59,7 +82,7 @@ function toGrantRecord(row: {
   expiresAt: Date;
   status: string;
   revokedAt: Date | null;
-}, capabilities: GrantScope[]): DelegationGrant {
+}, capabilities: string[]): DelegationGrant {
   return {
     grantId: row.id,
     agentDid: row.agentDid,
@@ -124,10 +147,11 @@ export async function issueGrant(input: IssueGrantInput): Promise<{ grant: Deleg
   if (requested.length === 0) {
     return { error: 'capabilities must be a non-empty array', status: 400 };
   }
-  const { valid, invalid } = validateGrantCapabilities(requested);
-  if (invalid.length > 0) {
-    return { error: `Unknown capabilities: ${invalid.join(', ')}`, status: 400 };
+  const capabilityResult = await resolveGrantCapabilities(requested, agentDid);
+  if ('error' in capabilityResult) {
+    return capabilityResult;
   }
+  const { valid } = capabilityResult;
 
   if (!isDelegationAudience(input.audience)) {
     return {
@@ -194,9 +218,9 @@ async function requireGrantDelegator(params: {
   requestedBy: string;
   action: string;
   requireActiveError?: string;
-}): Promise<{ delegatorDid: string; status: string } | LibError> {
+}): Promise<{ delegatorDid: string; agentDid: string; status: string } | LibError> {
   const [grant] = await db
-    .select({ delegatorDid: delegationGrants.delegatorDid, status: delegationGrants.status })
+    .select({ delegatorDid: delegationGrants.delegatorDid, agentDid: delegationGrants.agentDid, status: delegationGrants.status })
     .from(delegationGrants)
     .where(eq(delegationGrants.id, params.grantId))
     .limit(1);
@@ -288,11 +312,11 @@ export async function addGrantCapability(params: {
   });
   if ('error' in grant) return grant;
 
-  const { valid, invalid } = validateGrantCapabilities([params.capability]);
-  if (invalid.length > 0) {
-    return { error: `Unknown capability: ${params.capability}`, status: 400 };
+  const capabilityResult = await resolveGrantCapabilities([params.capability], grant.agentDid);
+  if ('error' in capabilityResult) {
+    return { error: `Unknown capability: ${params.capability}`, status: capabilityResult.status };
   }
-  const [capability] = valid;
+  const [capability] = capabilityResult.valid;
 
   const [existing] = await db
     .select({ id: delegationGrantCapabilities.id, status: delegationGrantCapabilities.status })
@@ -469,11 +493,11 @@ export async function listGrantsForDelegator(delegatorDid: string): Promise<Dele
     .from(delegationGrantCapabilities)
     .where(inArray(delegationGrantCapabilities.grantId, grantRows.map((row: { id: string }) => row.id)));
 
-  const capabilitiesByGrant = new Map<string, GrantScope[]>();
+  const capabilitiesByGrant = new Map<string, string[]>();
   for (const row of capabilityRows) {
     if (row.status !== 'active') continue;
     const list = capabilitiesByGrant.get(row.grantId) ?? [];
-    list.push(row.capability as GrantScope);
+    list.push(row.capability);
     capabilitiesByGrant.set(row.grantId, list);
   }
 
@@ -497,7 +521,7 @@ export function grantStatusLabel(params: { status: string; expiresAt: string; no
 }
 
 export interface GrantCapabilityDetail {
-  capability: GrantScope;
+  capability: string;
   status: 'active' | 'revoked';
   revokedAt: string | null;
 }
@@ -555,7 +579,7 @@ export async function listGrantDetailsForDelegator(delegatorDid: string): Promis
   for (const row of capabilityRows) {
     const list = capabilitiesByGrant.get(row.grantId) ?? [];
     list.push({
-      capability: row.capability as GrantScope,
+      capability: row.capability,
       status: row.status as 'active' | 'revoked',
       revokedAt: row.revokedAt ? row.revokedAt.toISOString() : null,
     });
