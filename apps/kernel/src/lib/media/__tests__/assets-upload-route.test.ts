@@ -29,9 +29,18 @@ vi.mock('drizzle-orm', () => ({
   like: vi.fn(),
 }));
 
+const mockVerifyAppToken = vi.hoisted(() => vi.fn(async () => null));
+
 vi.mock('@imajin/auth', () => ({
   requireAuth: vi.fn(async () => ({ identity: { id: 'did:imajin:owner', scope: 'actor' } })),
-  resolveActingDid: vi.fn(() => 'did:imajin:owner'),
+  resolveActingDid: vi.fn((identity: { actingFor?: string; actingAs?: string; id: string }) =>
+    identity.actingFor ?? identity.actingAs ?? identity.id,
+  ),
+  verifyAppToken: mockVerifyAppToken,
+}));
+
+vi.mock('@/src/lib/http/node-url', () => ({
+  nodeUrl: vi.fn(() => 'https://jin.test'),
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -60,6 +69,7 @@ vi.mock('@/src/lib/media/create-asset', () => ({
 }));
 
 import type { NextRequest } from 'next/server';
+import { requireAuth } from '@imajin/auth';
 import { POST } from '@/app/media/api/assets/route';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -83,7 +93,8 @@ function uploadRequest({
   context,
   strict,
   compact,
-}: UploadOptions & { compact?: boolean } = {}): NextRequest {
+  bearer,
+}: UploadOptions & { compact?: boolean; bearer?: string } = {}): NextRequest {
   const form = new FormData();
   form.append('file', new File([content], filename, { type }), filename);
   if (context) form.append('context', JSON.stringify(context));
@@ -92,12 +103,14 @@ function uploadRequest({
   const url = `https://test.imajin.ai/media/api/assets${compact ? '?compact=1' : ''}`;
   return new Request(url, {
     method: 'POST',
+    headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
     body: form,
   }) as unknown as NextRequest;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockVerifyAppToken.mockResolvedValue(null);
   mockIdentityLimit.mockResolvedValue([{ tier: 'soft', uploadLimitMb: 50 }]);
   mockCreateAsset.mockResolvedValue({
     asset: {
@@ -238,5 +251,54 @@ describe('POST /media/api/assets — ?compact=1', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Object.keys(body).sort()).toEqual(['hash', 'id', 'mimeType', 'size', 'url']);
+  });
+});
+
+// ─── Auth modes (#2393) ──────────────────────────────────────────────────────
+
+describe('POST /media/api/assets — auth modes (#2393)', () => {
+  it('resolves owner/uploadedBy from the session identity on the cookie path', async () => {
+    const res = await POST(uploadRequest());
+
+    expect(res.status).toBe(201);
+    expect(mockVerifyAppToken).not.toHaveBeenCalled();
+    expect(mockCreateAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: 'did:imajin:owner', uploadedBy: 'did:imajin:owner' }),
+    );
+  });
+
+  it('accepts a scoped app-token and resolves owner/uploadedBy to its sub', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:app-user', aud: 'jin.test', scopes: [] });
+
+    const res = await POST(uploadRequest({ bearer: 'scoped-app-token' }));
+
+    expect(res.status).toBe(201);
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockCreateAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: 'did:imajin:app-user', uploadedBy: 'did:imajin:app-user' }),
+    );
+  });
+
+  it('falls back to session auth when the bearer does not verify as a scoped app-token', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(null);
+
+    const res = await POST(uploadRequest({ bearer: 'legacy-pat-or-garbage' }));
+
+    expect(res.status).toBe(201);
+    expect(vi.mocked(requireAuth)).toHaveBeenCalledTimes(1);
+    expect(mockCreateAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: 'did:imajin:owner', uploadedBy: 'did:imajin:owner' }),
+    );
+  });
+
+  it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {
+    // No Authorization header on this request at all, so verifyAppToken is
+    // never even called — the default beforeEach stub already covers that.
+    vi.mocked(requireAuth).mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
+
+    const res = await POST(uploadRequest());
+
+    expect(res.status).toBe(401);
+    expect(mockCreateAsset).not.toHaveBeenCalled();
   });
 });

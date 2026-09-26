@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, identities, type Asset } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
+import { requireMediaAuth } from "@/src/lib/media/require-media-auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql, ilike, like } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
@@ -186,21 +187,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const authResult = await requireAuth(request);
+  // #2393: accepts a scoped app-token (Authorization: Bearer, minted via
+  // POST /auth/api/tokens/app) alongside the pre-existing session cookie /
+  // legacy Bearer PAT — additive, see requireMediaAuth's own docblock.
+  const authResult = await requireMediaAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
-  const { identity } = authResult;
-  const ownerDid = resolveActingDid(identity);
-  const uploadedBy = identity.id;
+  const { auth } = authResult;
+  const ownerDid = auth.did;
+  // Attribution: the raw authenticated identity's own DID when session/legacy
+  // auth carries actingFor delegation (an agent uploading on a human's
+  // behalf); a scoped app-token has no separate delegate identity to
+  // attribute to — its `sub` IS the uploader.
+  const uploadedBy = auth.identity?.id ?? auth.did;
 
-  // Fetch full identity row to get uploadLimitMb
+  // Fetch full identity row to get uploadLimitMb — looked up by the raw
+  // authenticated identity when session/legacy auth carries delegation (its
+  // own tier governs the upload, matching pre-#2393 behavior), or by the
+  // resolved owner DID for a scoped app-token (no separate identity to prefer).
   const [identityRow] = await db
     .select({ tier: identities.tier, uploadLimitMb: identities.uploadLimitMb })
     .from(identities)
-    .where(eq(identities.id, identity.id))
+    .where(eq(identities.id, uploadedBy))
     .limit(1);
-  const uploadLimitBytes = getUploadLimitBytes(identityRow ?? { tier: identity.tier });
+  const uploadLimitBytes = getUploadLimitBytes(identityRow ?? { tier: auth.identity?.tier });
 
   // Parse multipart form data
   let formData: FormData;
