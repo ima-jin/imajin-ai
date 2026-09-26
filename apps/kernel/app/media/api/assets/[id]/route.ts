@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, unlink, rename } from "node:fs/promises";
 import path from "node:path";
 import { db, assets, assetReferences } from "@/src/db";
-import { requireAuth, resolveActingDid } from "@imajin/auth";
+import { requireMediaAuth } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 import { getAccessType } from "@/src/lib/media/read-access";
@@ -72,24 +72,28 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  const authResult = await requireAuth(request);
+  // #2393: accepts a scoped app-token alongside the session cookie / legacy
+  // Bearer PAT — additive, see requireMediaAuth's own docblock.
+  const authResult = await requireMediaAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const { identity } = authResult;
+  const { auth } = authResult;
 
-  // Approval gate: agents cannot delete via delegation
-  if (identity.actingFor) {
+  // Approval gate: agents cannot delete via delegation. Only applies on the
+  // session/legacy path — a scoped app-token's `sub` IS the resource owner
+  // directly, with no separate delegate identity to gate here.
+  if (auth.identity?.actingFor) {
     return NextResponse.json({
       error: "Agent delegation does not permit destructive operations",
       code: "AGENT_APPROVAL_REQUIRED",
       action: "delete",
       assetId: id,
-      ownerDid: identity.actingFor,
+      ownerDid: auth.identity.actingFor,
     }, { status: 403 });
   }
 
-  const requesterDid = resolveActingDid(identity);
+  const requesterDid = auth.did;
 
   let asset;
   try {
@@ -147,24 +151,28 @@ export async function PATCH(
 ) {
   const { id } = await params;
 
-  const authResult = await requireAuth(request);
+  // #2393: accepts a scoped app-token alongside the session cookie / legacy
+  // Bearer PAT — additive, see requireMediaAuth's own docblock.
+  const authResult = await requireMediaAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const { identity } = authResult;
+  const { auth } = authResult;
 
-  // Approval gate: agents cannot rename via delegation
-  if (identity.actingFor) {
+  // Approval gate: agents cannot rename via delegation. Only applies on the
+  // session/legacy path — a scoped app-token's `sub` IS the resource owner
+  // directly, with no separate delegate identity to gate here.
+  if (auth.identity?.actingFor) {
     return NextResponse.json({
       error: "Agent delegation does not permit destructive operations",
       code: "AGENT_APPROVAL_REQUIRED",
       action: "rename",
       assetId: id,
-      ownerDid: identity.actingFor,
+      ownerDid: auth.identity.actingFor,
     }, { status: 403 });
   }
 
-  const requesterDid = resolveActingDid(identity);
+  const requesterDid = auth.did;
 
   let body: { filename?: unknown };
   try {

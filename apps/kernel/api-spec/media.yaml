@@ -23,6 +23,18 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    appTokenAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Scoped app-token (#2393), minted via `POST /auth/api/tokens/app`
+        (`@imajin/auth`'s `verifyAppToken` / `requireSessionOrAppToken`) with
+        this node's own host as `aud`. Accepted ADDITIVELY alongside
+        `cookieAuth` on every route that lists it — never a replacement for
+        the session cookie or the legacy `bearerAuth` PAT. The token's `sub`
+        resolves directly to the resource owner / acting DID, with no
+        delegation overlay (there is no separate app identity to gate on
+        destructive operations the way `X-Acting-For` session delegation is).
   schemas:
     Asset:
       type: object
@@ -128,6 +140,7 @@ paths:
       summary: Upload a file (50 MB max) — auto-creates .fair manifest, deduplicates by SHA-256, async ML classification, auto-assigns to context folder
       security:
         - cookieAuth: []
+        - appTokenAuth: []
       requestBody:
         required: true
         content:
@@ -275,6 +288,7 @@ paths:
       summary: Hard-delete asset and files from storage (owner only)
       security:
         - cookieAuth: []
+        - appTokenAuth: []
       parameters:
         - name: id
           in: path
@@ -301,6 +315,7 @@ paths:
       summary: Rename asset filename (owner only) — renames the file on disk
       security:
         - cookieAuth: []
+        - appTokenAuth: []
       parameters:
         - name: id
           in: path
@@ -412,9 +427,16 @@ paths:
       tags: [media]
       operationId: getAssetContent
       summary: Read text content of a text/* or application/json asset — internal Bearer also accepted for public/trust-graph
+      description: |
+        Authorization mirrors `GET /api/assets/{id}` (raw bytes, #2393): when
+        the asset's `.fair` manifest `access` is `public`, content is
+        readable with NO authentication at all — `security` below only
+        applies to non-public assets.
       security:
         - cookieAuth: []
+        - appTokenAuth: []
         - bearerAuth: []
+        - {}
       parameters:
         - name: id
           in: path
@@ -449,6 +471,7 @@ paths:
       summary: Overwrite text file content (owner only) — updates hash and size in DB
       security:
         - cookieAuth: []
+        - appTokenAuth: []
       parameters:
         - name: id
           in: path

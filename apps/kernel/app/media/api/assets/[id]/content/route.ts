@@ -1,17 +1,67 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
-import { db, assets } from "@/src/db";
-import { requireAuth, resolveActingDid } from "@imajin/auth";
+import { db, assets, type Asset } from "@/src/db";
+import { requireMediaAuth } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { createLogger } from "@imajin/logger";
 import type { FairManifest } from "@imajin/fair";
-import { getAccessType } from "@/src/lib/media/read-access";
+import { getAccessType, type AssetAccessType } from "@/src/lib/media/read-access";
 import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
 import { articleWarningFields } from "@/src/lib/media/article-guard";
 
 const log = createLogger("kernel");
+
+/**
+ * Authorize a non-public content read (#2393). Callers must already know
+ * `accessType !== "public"` — a public asset's content is readable with no
+ * auth at all, mirroring GET /media/api/assets/[id] (raw bytes), which never
+ * calls its own equivalent auth check for a public asset either.
+ *
+ * Two paths, tried in the same order the pre-existing code did:
+ *   1. The internal API key (server-to-server): allowed for trust-graph only
+ *      now that public short-circuits before this function is ever called.
+ *   2. `requireMediaAuth` — a scoped app-token (Authorization: Bearer, #2393)
+ *      OR the pre-existing session cookie / legacy Bearer PAT — honoring the
+ *      shared read-access decision: owner, trust-graph grant (#1167), or
+ *      conversation membership (#1168).
+ */
+async function authorizeContentRead(
+  request: NextRequest,
+  asset: Asset,
+  access: FairManifest["access"],
+  accessType: AssetAccessType,
+): Promise<NextResponse | null> {
+  const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
+  const authHeader = request.headers.get("Authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (bearerToken && internalApiKey &&
+      bearerToken.length === internalApiKey.length &&
+      timingSafeEqual(Buffer.from(bearerToken), Buffer.from(internalApiKey))) {
+    if (accessType !== "trust-graph") {
+      return NextResponse.json(
+        { error: "Access denied", reason: "Asset is private" },
+        { status: 403 }
+      );
+    }
+    return null;
+  }
+
+  const authResult = await requireMediaAuth(request);
+  if ("error" in authResult) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+  const decision = await authorizeAssetRead(
+    { ownerDid: asset.ownerDid, access, metadata: asset.metadata },
+    authResult.auth.did,
+  );
+  if (!decision.allowed) {
+    return NextResponse.json({ error: "Forbidden", reason: decision.reason }, { status: 403 });
+  }
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // GET /api/assets/[id]/content — read text content of a file
@@ -49,35 +99,11 @@ export async function GET(
   const access = manifest?.access ?? "private";
   const accessType = getAccessType(access);
 
-  // Internal API key auth: allow read for public/trust-graph assets
-  const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
-  const authHeader = request.headers.get("Authorization");
-  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
-
-  if (bearerToken && internalApiKey &&
-      bearerToken.length === internalApiKey.length &&
-      timingSafeEqual(Buffer.from(bearerToken), Buffer.from(internalApiKey))) {
-    if (accessType !== "public" && accessType !== "trust-graph") {
-      return NextResponse.json(
-        { error: "Access denied", reason: "Asset is private" },
-        { status: 403 }
-      );
-    }
-  } else {
-    // Cookie auth — honor the shared read-access decision: owner, public,
-    // trust-graph grant (#1167), or conversation membership (#1168).
-    const authResult = await requireAuth(request);
-    if ("error" in authResult) {
-      return NextResponse.json({ error: "Authentication required" }, { status: 401 });
-    }
-    const requesterDid = resolveActingDid(authResult.identity);
-    const decision = await authorizeAssetRead(
-      { ownerDid: asset.ownerDid, access, metadata: asset.metadata },
-      requesterDid,
-    );
-    if (!decision.allowed) {
-      return NextResponse.json({ error: "Forbidden", reason: decision.reason }, { status: 403 });
-    }
+  // #2393: align with GET /media/api/assets/[id] (raw bytes) — a public
+  // asset's parsed content is readable with no auth, matching its raw bytes.
+  if (accessType !== "public") {
+    const denied = await authorizeContentRead(request, asset, access, accessType);
+    if (denied) return denied;
   }
 
   let content: string;
@@ -99,11 +125,13 @@ export async function PUT(
 ) {
   const { id } = await params;
 
-  const authResult = await requireAuth(request);
+  // #2393: accepts a scoped app-token alongside the session cookie / legacy
+  // Bearer PAT — additive, see requireMediaAuth's own docblock.
+  const authResult = await requireMediaAuth(request);
   if ("error" in authResult) {
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
-  const requesterDid = resolveActingDid(authResult.identity);
+  const requesterDid = authResult.auth.did;
 
   let body: { content?: unknown; strict?: unknown };
   try {
