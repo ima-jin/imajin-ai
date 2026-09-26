@@ -217,6 +217,16 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
 
+      # Unbound-React-in-dist guard (#2401): a package's tsconfig.json jsx
+      # override (e.g. "preserve") can silently defeat tsup's `jsx: 'automatic'`
+      # build option, making esbuild fall back to the classic
+      # `React.createElement(...)` transform for components with no explicit
+      # `import React from 'react'` — which throws `ReferenceError: React is
+      # not defined` the moment such a component renders. Runs after `pnpm
+      # build` above since it inspects built dist output, not source.
+      - name: Dist React-binding guard
+        run: node scripts/ci-guard-dist-react-binding.mjs
+
   ci-guards:
     name: CI Guards
     runs-on: imajin-self-hosted
