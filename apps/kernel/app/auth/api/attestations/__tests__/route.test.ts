@@ -20,6 +20,8 @@ const h = vi.hoisted(() => ({
   mockSelectLimit: vi.fn(),
   mockPublish: vi.fn().mockResolvedValue(undefined),
   verifySessionToken: vi.fn(),
+  mockVerifySessionAppTokenLocal: vi.fn(),
+  mockResolveActiveAppByAudience: vi.fn(),
   mockInsertValues: vi.fn(),
   mockIntrospectGrant: vi.fn(),
 }));
@@ -35,6 +37,7 @@ vi.mock('@/src/db', () => ({
     }),
   },
   identities: {},
+  registryApps: {},
   attestations: {},
   tokens: {},
 }));
@@ -49,7 +52,12 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('@/src/lib/auth/jwt', () => ({
   verifySessionToken: h.verifySessionToken,
+  verifySessionAppTokenLocal: h.mockVerifySessionAppTokenLocal,
   getSessionCookieOptions: () => ({ name: 'session' }),
+}));
+
+vi.mock('@/src/lib/kernel/app-registry', () => ({
+  resolveActiveAppByAudience: h.mockResolveActiveAppByAudience,
 }));
 
 vi.mock('@/src/lib/auth/grants', () => ({
@@ -61,13 +69,14 @@ vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@imajin/auth', () => ({
   canonicalize: (obj: unknown) => JSON.stringify(obj),
   crypto: { verifySync: () => true },
-  ATTESTATION_TYPES: ['delivery.receipt', 'intro_proposed'],
+  ATTESTATION_TYPES: ['delivery.receipt', 'intro_proposed', 'survey_response'],
   verifyNostrSig: vi.fn(),
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
   DEFAULT_DISCLOSURE_SCOPE: 'parties',
   isDisclosureScope: (v: string) => ['parties', 'connections', 'network', 'public'].includes(v),
   evidenceGradeForAttestationStatus: vi.fn(),
   capabilityForDelegatedAttestationType: (type: string) => (type === 'intro_proposed' ? 'intros:propose' : null),
+  buildAttestDelegationCapability: (appId: string, type: string) => `attest:${appId}:${type}`,
 }));
 
 vi.mock('@imajin/cid', () => ({ computeCid: vi.fn().mockResolvedValue('bafy-test') }));
@@ -95,6 +104,17 @@ function makeReq(body: unknown, opts: { origin?: string } = {}): NextRequest {
   } as unknown as NextRequest;
 }
 
+/** A request with no session cookie, authenticated only via `Authorization: Bearer <token>` (#2394). */
+function makeBearerReq(body: unknown, token: string): NextRequest {
+  const headers = new Headers();
+  headers.set('authorization', `Bearer ${token}`);
+  return {
+    cookies: { get: () => undefined },
+    headers,
+    json: async () => body,
+  } as unknown as NextRequest;
+}
+
 function baseBody(overrides: Record<string, unknown> = {}) {
   return {
     issuer_did: ISSUER,
@@ -114,6 +134,8 @@ function publishedPayload(): Record<string, unknown> {
 beforeEach(() => {
   vi.clearAllMocks();
   h.verifySessionToken.mockResolvedValue({ sub: ISSUER });
+  h.mockVerifySessionAppTokenLocal.mockResolvedValue(null);
+  h.mockResolveActiveAppByAudience.mockResolvedValue(null);
   h.mockSelectLimit.mockResolvedValue([{ publicKey: 'fake-public-key' }]);
   h.mockReturning.mockResolvedValue([{ id: 'att_test_123' }]);
   h.mockPublish.mockResolvedValue(undefined);
@@ -302,5 +324,122 @@ describe('amendment-by-supersession (#1790)', () => {
     // Only the issuer-identity lookup runs — a single select() call.
     expect(h.mockSelectLimit).toHaveBeenCalledTimes(1);
     expect(h.mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ supersedes: null }));
+  });
+});
+
+// #2394 — a registered third-party app can act as issuer_did on a
+// delegated attestation: its Ed25519 key resolves from registry.apps (not
+// auth.identities), and the delegation capability is the app's own
+// namespaced attest:<appId>:<type> slot.
+describe('app-delegated attestations (#2394)', () => {
+  const APP_ID = 'app_dykil123';
+  const APP_DID = 'did:imajin:app-dykil';
+
+  function appDelegatedBody(overrides: Record<string, unknown> = {}) {
+    return baseBody({
+      issuer_did: APP_DID,
+      type: 'survey_response',
+      payload: { delegator_did: DELEGATOR },
+      ...overrides,
+    });
+  }
+
+  it('resolves the issuer public key from registry.apps and builds attest:<appId>:<type> for the delegation check', async () => {
+    h.mockSelectLimit
+      .mockResolvedValueOnce([]) // auth.identities miss
+      .mockResolvedValueOnce([{ id: APP_ID, publicKey: 'app-public-key', status: 'active' }]); // registry.apps hit
+    h.mockIntrospectGrant.mockResolvedValue({ authorized: true, grantId: 'grant_app_1', delegatorDid: DELEGATOR, agentDid: APP_DID });
+
+    const res = await POST(makeReq(appDelegatedBody()));
+
+    expect(res.status).toBe(201);
+    expect(h.mockIntrospectGrant).toHaveBeenCalledWith({
+      agentDid: APP_DID,
+      capability: `attest:${APP_ID}:survey_response`,
+      targetDid: SUBJECT,
+      delegatorDid: DELEGATOR,
+    });
+    expect(h.mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ issuerDid: APP_DID, delegatorDid: DELEGATOR, delegationGrantId: 'grant_app_1' }),
+    );
+  });
+
+  it('rejects with 400 when issuer_did resolves to neither a plain identity nor an active registered app', async () => {
+    h.mockSelectLimit
+      .mockResolvedValueOnce([]) // auth.identities miss
+      .mockResolvedValueOnce([]); // registry.apps miss
+
+    const res = await POST(makeReq(appDelegatedBody()));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toBe('Issuer DID not found');
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 400 when the registry.apps row exists but has been revoked', async () => {
+    h.mockSelectLimit
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: APP_ID, publicKey: 'app-public-key', status: 'revoked' }]);
+
+    const res = await POST(makeReq(appDelegatedBody()));
+
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects with 403 when the app has no live grant for this attest capability (absent grant)', async () => {
+    h.mockSelectLimit
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: APP_ID, publicKey: 'app-public-key', status: 'active' }]);
+    h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+
+    const res = await POST(makeReq(appDelegatedBody()));
+
+    expect(res.status).toBe(403);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 403 when the grant for this attest capability has been revoked', async () => {
+    h.mockSelectLimit
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: APP_ID, publicKey: 'app-public-key', status: 'active' }]);
+    h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+
+    const res = await POST(makeReq(appDelegatedBody()));
+
+    expect(res.status).toBe(403);
+  });
+});
+
+// #2394 — Ryan's 2026-09-26 ruling: an app authenticates its inbound call
+// with a scoped app-token (POST /auth/api/tokens/app), verified locally and
+// re-checked against the live app registry on every call.
+describe('caller auth via scoped app-token (#2394)', () => {
+  it('authenticates the caller from a valid session-app-token whose aud is a live registered app', async () => {
+    h.mockVerifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'dykil.example.com', scopes: [] });
+    h.mockResolveActiveAppByAudience.mockResolvedValue({ id: 'app_dykil', appDid: 'did:imajin:app-dykil', status: 'active' });
+
+    const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
+
+    expect(res.status).toBe(201);
+    expect(h.mockResolveActiveAppByAudience).toHaveBeenCalledWith('dykil.example.com');
+  });
+
+  it('rejects with 401 when the token verifies but its aud is not a live registered app', async () => {
+    h.mockVerifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'unregistered.example.com', scopes: [] });
+    h.mockResolveActiveAppByAudience.mockResolvedValue(null);
+
+    const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
+
+    expect(res.status).toBe(401);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 401 when the bearer token is neither a legacy identity token nor a valid session-app-token', async () => {
+    h.mockVerifySessionAppTokenLocal.mockResolvedValue(null);
+
+    const res = await POST(makeBearerReq(baseBody(), 'garbage'));
+
+    expect(res.status).toBe(401);
   });
 });

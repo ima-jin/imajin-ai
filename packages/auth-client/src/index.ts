@@ -3,3 +3,5 @@ export { createSessionToken, verifySessionToken, sessionCookieOptions, clearCook
 export { getSession } from './get-session';
 export type { ImajinAuthConfig } from './handlers';
 export { createCallbackHandler, createSessionHandler, createLogoutHandler } from './handlers';
+export type { RequestAppTokenOptions, RequestAppTokenResult } from './app-token';
+export { requestAppToken } from './app-token';

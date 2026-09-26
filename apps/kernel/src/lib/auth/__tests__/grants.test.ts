@@ -170,6 +170,16 @@ vi.mock('@/src/lib/kernel/id', () => {
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 
+// #2394 — attest:<appId>:<type> validation is DB-heavy (app registry +
+// attestation-type vocabulary) and already covered end-to-end in
+// attest-delegation.test.ts; mocked here so issueGrant/addGrantCapability's
+// own delegation-to-it can be tested without re-deriving that DB machinery
+// on top of this file's own generic in-memory grant store.
+const attestMocks = vi.hoisted(() => ({ validateAttestDelegationCapabilities: vi.fn() }));
+vi.mock('../attest-delegation', () => ({
+  validateAttestDelegationCapabilities: attestMocks.validateAttestDelegationCapabilities,
+}));
+
 import {
   issueGrant,
   revokeGrant,
@@ -192,6 +202,13 @@ beforeEach(() => {
   capsStore.clear();
   eventsStore.clear();
   vi.clearAllMocks();
+  // Default: every candidate the closed registry didn't already recognize
+  // stays unrecognized — matches this file's many "bogus:scope"-style tests
+  // without per-test setup.
+  attestMocks.validateAttestDelegationCapabilities.mockImplementation(async (candidates: readonly string[]) => ({
+    valid: [],
+    invalid: [...candidates],
+  }));
 });
 
 describe('issueGrant — grammar and shape validation', () => {
@@ -246,6 +263,42 @@ describe('issueGrant — grammar and shape validation', () => {
     expect(result.grant.grantId).toMatch(/^grant_/);
     expect(grantsStore.size).toBe(1);
     expect(capsStore.size).toBe(2);
+  });
+
+  it('accepts an attest:<appId>:<type> capability the attest-delegation validator approves, merged alongside registry scopes', async () => {
+    attestMocks.validateAttestDelegationCapabilities.mockResolvedValue({ valid: ['attest:app_dykil:survey_response'], invalid: [] });
+
+    const result = await issueGrant({
+      delegatorDid: DELEGATOR,
+      agentDid: AGENT,
+      capabilities: ['messages:write', 'attest:app_dykil:survey_response'],
+      audience: { type: 'all' },
+    });
+
+    expect('grant' in result).toBe(true);
+    if (!('grant' in result)) throw new Error('expected grant');
+    expect(result.grant.capabilities.sort()).toEqual(['attest:app_dykil:survey_response', 'messages:write']);
+    expect(attestMocks.validateAttestDelegationCapabilities).toHaveBeenCalledWith(['attest:app_dykil:survey_response'], AGENT);
+  });
+
+  it('rejects with 400 when the attest-delegation validator rejects the capability (unregistered app, wrong agentDid, or unknown type)', async () => {
+    attestMocks.validateAttestDelegationCapabilities.mockResolvedValue({ valid: [], invalid: ['attest:app_unknown:survey_response'] });
+
+    const result = await issueGrant({
+      delegatorDid: DELEGATOR,
+      agentDid: AGENT,
+      capabilities: ['attest:app_unknown:survey_response'],
+      audience: { type: 'all' },
+    });
+
+    expect(result).toMatchObject({ status: 400, error: expect.stringContaining('attest:app_unknown:survey_response') });
+    expect(grantsStore.size).toBe(0);
+  });
+
+  it('never calls the attest-delegation validator when every capability is already known to the closed registry', async () => {
+    await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+
+    expect(attestMocks.validateAttestDelegationCapabilities).not.toHaveBeenCalled();
   });
 
   it('clamps ttlMs to the configured maximum lease bound', async () => {
@@ -353,6 +406,28 @@ describe('addGrantCapability — additive counterpart to per-capability revocati
 
     const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'intros:propose', requestedBy: 'did:imajin:someone-else' });
     expect(result).toMatchObject({ status: 403 });
+  });
+
+  it('adds an attest:<appId>:<type> capability the validator approves, validated against the grant\'s own agentDid (#2394)', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    attestMocks.validateAttestDelegationCapabilities.mockResolvedValue({ valid: ['attest:app_dykil:survey_response'], invalid: [] });
+
+    const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'attest:app_dykil:survey_response', requestedBy: DELEGATOR });
+
+    expect(result).toEqual({ added: true });
+    expect(attestMocks.validateAttestDelegationCapabilities).toHaveBeenCalledWith(['attest:app_dykil:survey_response'], AGENT);
+    await expect(introspectGrant({ agentDid: AGENT, capability: 'attest:app_dykil:survey_response' })).resolves.toMatchObject({ authorized: true });
+  });
+
+  it('rejects an attest:<appId>:<type> capability the validator rejects (#2394)', async () => {
+    const issued = await issueGrant({ delegatorDid: DELEGATOR, agentDid: AGENT, capabilities: ['messages:write'], audience: { type: 'all' } });
+    if (!('grant' in issued)) throw new Error('expected grant');
+    attestMocks.validateAttestDelegationCapabilities.mockResolvedValue({ valid: [], invalid: ['attest:app_dykil:survey_response'] });
+
+    const result = await addGrantCapability({ grantId: issued.grant.grantId, capability: 'attest:app_dykil:survey_response', requestedBy: DELEGATOR });
+
+    expect(result).toMatchObject({ status: 400 });
   });
 
   it('returns 404 for a non-existent grant', async () => {

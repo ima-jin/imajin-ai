@@ -1,17 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identities, attestations, tokens, attestationTypeRegistry } from '@/src/db';
+import { db, attestations, tokens, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
 import { eq, and, isNull, ne, gt, desc, notInArray, inArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
+import { verifySessionToken, verifySessionAppTokenLocal, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference, resolveAttestationHistory } from './attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference, resolveAttestationHistory, resolveIssuerCredentials } from './attestation-helpers';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
+import { resolveActiveAppByAudience } from '@/src/lib/kernel/app-registry';
 import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
 
@@ -72,17 +73,12 @@ async function verifyIssuerAndDelegation(params: {
   signature: string;
   delegatorDid: string | null;
 }): Promise<IssuerAndDelegationResult> {
-  const [issuerIdentity] = await db
-    .select({ publicKey: identities.publicKey })
-    .from(identities)
-    .where(eq(identities.id, params.issuerDid))
-    .limit(1);
-
-  if (!issuerIdentity) {
+  const issuer = await resolveIssuerCredentials(params.issuerDid);
+  if (!issuer) {
     return { ok: false, status: 400, error: 'Issuer DID not found' };
   }
 
-  const sigValid = authCrypto.verifySync(params.signature, params.canonicalPayload, issuerIdentity.publicKey);
+  const sigValid = authCrypto.verifySync(params.signature, params.canonicalPayload, issuer.publicKey);
   if (!sigValid) {
     return { ok: false, status: 400, error: 'Invalid signature' };
   }
@@ -95,6 +91,7 @@ async function verifyIssuerAndDelegation(params: {
     issuerDid: params.issuerDid,
     subjectDid: params.subjectDid,
     type: params.type,
+    issuerAppId: issuer.appId,
   });
   if (!delegationCheck.ok) {
     return { ok: false, status: 403, error: delegationCheck.error };
@@ -103,7 +100,41 @@ async function verifyIssuerAndDelegation(params: {
   return { ok: true, grantId: delegationCheck.grantId };
 }
 
-/** Resolve calling identity from session cookie or Bearer token */
+/** The legacy full-identity Bearer token path (`auth.tokens`). */
+async function resolveLegacyBearerDid(token: string): Promise<string | null> {
+  const [tok] = await db
+    .select({ identityId: tokens.identityId })
+    .from(tokens)
+    .where(
+      and(
+        eq(tokens.id, token),
+        isNull(tokens.revokedAt),
+        gt(tokens.expiresAt, new Date())
+      )
+    )
+    .limit(1);
+  return tok?.identityId ?? null;
+}
+
+/**
+ * #2394: accept a session-scoped app token (minted by
+ * POST /auth/api/tokens/app from the caller's own kernel session) as an
+ * alternate Bearer credential — this is how a registered third-party app
+ * authenticates an inbound call to this route on behalf of the user who
+ * minted the token (Ryan's 2026-09-26 ruling: dykil's inbound auth is a
+ * scoped app-token, verified the same way requireSessionOrAppToken does).
+ * The token's `sub` (the minting user's own DID) becomes the caller
+ * identity; its `aud` must still resolve to a live, active registered app
+ * on every call (#1990), not just at mint time.
+ */
+async function resolveSessionAppTokenDid(token: string): Promise<string | null> {
+  const claims = await verifySessionAppTokenLocal(token);
+  if (!claims) return null;
+  const app = await resolveActiveAppByAudience(claims.aud);
+  return app ? claims.sub : null;
+}
+
+/** Resolve calling identity from session cookie or Bearer token (legacy identity token or a scoped app token, #2394). */
 async function resolveCallerDid(request: NextRequest): Promise<string | null> {
   const cookieConfig = getSessionCookieOptions();
   const sessionToken = request.cookies.get(cookieConfig.name)?.value;
@@ -115,18 +146,7 @@ async function resolveCallerDid(request: NextRequest): Promise<string | null> {
   const auth = request.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) {
     const token = auth.slice(7);
-    const [tok] = await db
-      .select({ identityId: tokens.identityId })
-      .from(tokens)
-      .where(
-        and(
-          eq(tokens.id, token),
-          isNull(tokens.revokedAt),
-          gt(tokens.expiresAt, new Date())
-        )
-      )
-      .limit(1);
-    if (tok?.identityId) return tok.identityId;
+    return (await resolveLegacyBearerDid(token)) ?? (await resolveSessionAppTokenDid(token));
   }
 
   return null;

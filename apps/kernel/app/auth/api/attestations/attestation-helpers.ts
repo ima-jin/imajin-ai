@@ -3,11 +3,11 @@
  * Extracted to avoid duplication between the public and internal POST endpoints.
  */
 
-import { verifyNostrSig, isDisclosureScope, DISCLOSURE_SCOPES, DEFAULT_DISCLOSURE_SCOPE, capabilityForDelegatedAttestationType } from '@imajin/auth';
+import { verifyNostrSig, isDisclosureScope, DISCLOSURE_SCOPES, DEFAULT_DISCLOSURE_SCOPE, capabilityForDelegatedAttestationType, buildAttestDelegationCapability } from '@imajin/auth';
 import type { NostrKeyBindingClaim, DisclosureScope } from '@imajin/auth';
 import { toOrigin } from '@/src/lib/http/public-origin';
 import { introspectGrant } from '@/src/lib/auth/grants';
-import { db, attestations } from '@/src/db';
+import { db, attestations, identities, registryApps } from '@/src/db';
 import type { Attestation } from '@/src/db';
 import { eq } from 'drizzle-orm';
 
@@ -240,6 +240,21 @@ export type DelegationVerificationResult =
   | { ok: false; error: string };
 
 /**
+ * Resolve the grant capability that must cover a delegated attestation of
+ * `type` (#1895, #1897, #2394). The platform-seeded intro-funnel vocabulary
+ * (packages/auth/src/intro-funnel.ts) is checked first; any other type is
+ * only delegatable when `issuerAppId` names a live, registered third-party
+ * app (see resolveIssuerCredentials below) — the capability is then that
+ * app's own namespaced `attest:<appId>:<type>` slot (#2394). Returns null
+ * (fail closed) when neither applies.
+ */
+function resolveDelegationCapability(type: string, issuerAppId: string | null | undefined): string | null {
+  const funnelCapability = capabilityForDelegatedAttestationType(type);
+  if (funnelCapability) return funnelCapability;
+  return issuerAppId ? buildAttestDelegationCapability(issuerAppId, type) : null;
+}
+
+/**
  * Verify that a live (unexpired, unrevoked) delegation grant exists from
  * `delegatorDid` to `issuerDid` covering the capability implied by `type`,
  * whenever an attestation asserts delegated authority via
@@ -255,20 +270,23 @@ export type DelegationVerificationResult =
  * or a lookup that finds no live grant from exactly this delegator to this
  * issuer, is rejected rather than accepted on an unverified claim. Shared
  * by both attestation-creation routes so the check can never drift between
- * them.
+ * them. `issuerAppId` (#2394) — the registry.apps id when `issuerDid` names
+ * a live registered app, from `resolveIssuerCredentials` — is optional so
+ * the internal route (which never signs as an app) can omit it entirely.
  */
 export async function verifyDelegatedAttestation(params: {
   delegatorDid: string | null;
   issuerDid: string;
   subjectDid: string;
   type: string;
+  issuerAppId?: string | null;
 }): Promise<DelegationVerificationResult> {
-  const { delegatorDid, issuerDid, subjectDid, type } = params;
+  const { delegatorDid, issuerDid, subjectDid, type, issuerAppId } = params;
   if (!delegatorDid || delegatorDid === issuerDid) {
     return { ok: true, grantId: null };
   }
 
-  const capability = capabilityForDelegatedAttestationType(type);
+  const capability = resolveDelegationCapability(type, issuerAppId);
   if (!capability) {
     return { ok: false, error: `Attestation type "${type}" does not support payload.delegator_did` };
   }
@@ -282,6 +300,41 @@ export async function verifyDelegatedAttestation(params: {
   }
 
   return { ok: true, grantId: introspection.grantId };
+}
+
+export interface IssuerCredentials {
+  /** Ed25519 public key to verify the attestation's signature against. */
+  publicKey: string;
+  /**
+   * The registry.apps id when `issuerDid` names a live, active registered
+   * app rather than a plain auth.identities row — null otherwise (#2394).
+   */
+  appId: string | null;
+}
+
+/**
+ * Resolve the Ed25519 public key to verify an attestation signature
+ * against. Tries auth.identities first (the pre-existing, common case),
+ * then falls back to registry.apps (#2394): a registered app's DID is
+ * never mirrored into auth.identities (see POST /api/registry/apps) — its
+ * key lives solely in registry.apps, the same source of truth
+ * POST /auth/api/apps/token's proof-of-possession check uses (see
+ * apps/kernel/app/auth/api/apps/token/route.ts). This is what lets a
+ * registered app act as `issuer_did` on a delegated attestation
+ * (payload.delegator_did).
+ */
+export async function resolveIssuerCredentials(issuerDid: string): Promise<IssuerCredentials | null> {
+  const [identity] = await db.select({ publicKey: identities.publicKey }).from(identities).where(eq(identities.id, issuerDid)).limit(1);
+  if (identity) return { publicKey: identity.publicKey, appId: null };
+
+  const [app] = await db
+    .select({ id: registryApps.id, publicKey: registryApps.publicKey, status: registryApps.status })
+    .from(registryApps)
+    .where(eq(registryApps.appDid, issuerDid))
+    .limit(1);
+  if (app?.status === 'active') return { publicKey: app.publicKey, appId: app.id };
+
+  return null;
 }
 
 export type NostrValidationResult =
