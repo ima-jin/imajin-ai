@@ -29,27 +29,17 @@ vi.mock('drizzle-orm', () => ({
   like: vi.fn(),
 }));
 
+import { createAuthMock, createNodeUrlMock, createLoggerMock, appToken, APP_TOKEN_WRITE_ONLY, APP_TOKEN_NO_SCOPES } from './media-auth-test-helpers';
+
 const mockVerifyAppToken = vi.hoisted(() => vi.fn(async () => null));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: vi.fn(async () => ({ identity: { id: 'did:imajin:owner', scope: 'actor' } })),
-  resolveActingDid: vi.fn((identity: { actingFor?: string; actingAs?: string; id: string }) =>
-    identity.actingFor ?? identity.actingAs ?? identity.id,
-  ),
-  verifyAppToken: mockVerifyAppToken,
-}));
-
-vi.mock('@/src/lib/http/node-url', () => ({
-  nodeUrl: vi.fn(() => 'https://jin.test'),
-}));
+vi.mock('@imajin/auth', () => createAuthMock(mockVerifyAppToken));
+vi.mock('@/src/lib/http/node-url', () => createNodeUrlMock());
+vi.mock('@imajin/logger', () => createLoggerMock());
 
 vi.mock('@imajin/config', () => ({
   rateLimit: vi.fn(() => ({ limited: false })),
   getClientIP: vi.fn(() => '127.0.0.1'),
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -267,8 +257,8 @@ describe('POST /media/api/assets — auth modes (#2393)', () => {
     );
   });
 
-  it('accepts a scoped app-token and resolves owner/uploadedBy to its sub', async () => {
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:app-user', aud: 'jin.test', scopes: [] });
+  it('accepts a scoped app-token carrying media:write and resolves owner/uploadedBy to its sub', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY));
 
     const res = await POST(uploadRequest({ bearer: 'scoped-app-token' }));
 
@@ -277,6 +267,28 @@ describe('POST /media/api/assets — auth modes (#2393)', () => {
     expect(mockCreateAsset).toHaveBeenCalledWith(
       expect.objectContaining({ ownerDid: 'did:imajin:app-user', uploadedBy: 'did:imajin:app-user' }),
     );
+  });
+
+  it('rejects a scoped app-token that lacks media:write with 403, without creating the asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_NO_SCOPES));
+
+    const res = await POST(uploadRequest({ bearer: 'read-only-app-token' }));
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:write');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockCreateAsset).not.toHaveBeenCalled();
+  });
+
+  it("rejects a scoped app-token minted with only media:read (never falls back to session auth)", async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(['media:read']));
+
+    const res = await POST(uploadRequest({ bearer: 'read-only-app-token' }));
+
+    expect(res.status).toBe(403);
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockCreateAsset).not.toHaveBeenCalled();
   });
 
   it('falls back to session auth when the bearer does not verify as a scoped app-token', async () => {

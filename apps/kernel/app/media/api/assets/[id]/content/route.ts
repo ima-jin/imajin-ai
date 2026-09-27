@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { db, assets, type Asset } from "@/src/db";
-import { requireMediaAuth } from "@/src/lib/media/require-media-auth";
+import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { createLogger } from "@imajin/logger";
@@ -49,9 +49,9 @@ async function authorizeContentRead(
     return null;
   }
 
-  const authResult = await requireMediaAuth(request);
+  const authResult = await requireMediaAuth(request, "media:read");
   if ("error" in authResult) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    return mediaAuthErrorResponse(authResult);
   }
   const decision = await authorizeAssetRead(
     { ownerDid: asset.ownerDid, access, metadata: asset.metadata },
@@ -125,11 +125,12 @@ export async function PUT(
 ) {
   const { id } = await params;
 
-  // #2393: accepts a scoped app-token alongside the session cookie / legacy
-  // Bearer PAT — additive, see requireMediaAuth's own docblock.
-  const authResult = await requireMediaAuth(request);
+  // #2393: accepts a scoped app-token (requires `media:write`) alongside the
+  // session cookie / legacy Bearer PAT — additive, see requireMediaAuth's
+  // own docblock.
+  const authResult = await requireMediaAuth(request, "media:write");
   if ("error" in authResult) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    return mediaAuthErrorResponse(authResult);
   }
   const requesterDid = authResult.auth.did;
 

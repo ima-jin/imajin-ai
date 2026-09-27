@@ -21,23 +21,13 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('drizzle-orm', () => ({ eq: vi.fn() }));
 
+import { createAuthMock, createNodeUrlMock, createLoggerMock, appToken, APP_TOKEN_WRITE_ONLY, APP_TOKEN_READ_ONLY, APP_TOKEN_NO_SCOPES } from './media-auth-test-helpers';
+
 const mockVerifyAppToken = vi.hoisted(() => vi.fn(async () => null));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: vi.fn(async () => ({ identity: { id: 'did:imajin:owner', scope: 'actor' } })),
-  resolveActingDid: vi.fn((identity: { actingFor?: string; actingAs?: string; id: string }) =>
-    identity.actingFor ?? identity.actingAs ?? identity.id,
-  ),
-  verifyAppToken: mockVerifyAppToken,
-}));
-
-vi.mock('@/src/lib/http/node-url', () => ({
-  nodeUrl: vi.fn(() => 'https://jin.test'),
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
-}));
+vi.mock('@imajin/auth', () => createAuthMock(mockVerifyAppToken));
+vi.mock('@/src/lib/http/node-url', () => createNodeUrlMock());
+vi.mock('@imajin/logger', () => createLoggerMock());
 
 const mockReadFile = vi.hoisted(() => vi.fn(async () => 'file content'));
 vi.mock('node:fs/promises', () => ({ readFile: mockReadFile }));
@@ -162,8 +152,8 @@ describe('PUT /media/api/assets/[id]/content — auth modes (#2393)', () => {
     expect(vi.mocked(updateAssetContent).mock.calls[0][0].requesterDid).toBe('did:imajin:owner');
   });
 
-  it('accepts a scoped app-token and uses its sub as requesterDid', async () => {
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:app-user', aud: 'jin.test', scopes: [] });
+  it('accepts a scoped app-token carrying media:write and uses its sub as requesterDid', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY));
     vi.mocked(updateAssetContent).mockResolvedValueOnce({ ok: true, asset } as never);
 
     const req = putRequest({ content: 'body' });
@@ -173,6 +163,21 @@ describe('PUT /media/api/assets/[id]/content — auth modes (#2393)', () => {
 
     expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
     expect(vi.mocked(updateAssetContent).mock.calls[0][0].requesterDid).toBe('did:imajin:app-user');
+  });
+
+  it('rejects a scoped app-token that lacks media:write with 403, without writing', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_READ_ONLY));
+
+    const req = putRequest({ content: 'body' });
+    req.headers.set('Authorization', 'Bearer read-only-app-token');
+
+    const res = await PUT(req, { params });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:write');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(updateAssetContent).not.toHaveBeenCalled();
   });
 
   it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {
@@ -210,9 +215,9 @@ describe('GET /media/api/assets/[id]/content — auth modes (#2393)', () => {
     );
   });
 
-  it('accepts a scoped app-token for a private asset the token subject owns', async () => {
+  it('accepts a scoped app-token carrying media:read for a private asset the token subject owns', async () => {
     mockGetAccessType.mockReturnValue('private');
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:app-user', aud: 'jin.test', scopes: [] });
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_READ_ONLY));
     mockAuthorizeAssetRead.mockResolvedValueOnce({ allowed: true, requiresAuth: true, accessType: 'private' });
 
     const res = await GET(getRequest('scoped-app-token'), { params });
@@ -222,9 +227,9 @@ describe('GET /media/api/assets/[id]/content — auth modes (#2393)', () => {
     expect(mockAuthorizeAssetRead).toHaveBeenCalledWith(expect.anything(), 'did:imajin:app-user');
   });
 
-  it('returns 403 when a scoped app-token subject does not own a private asset', async () => {
+  it('returns 403 when a properly-scoped app-token subject does not own a private asset', async () => {
     mockGetAccessType.mockReturnValue('private');
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:stranger', aud: 'jin.test', scopes: [] });
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_READ_ONLY, 'did:imajin:stranger'));
     mockAuthorizeAssetRead.mockResolvedValueOnce({
       allowed: false,
       requiresAuth: true,
@@ -235,6 +240,20 @@ describe('GET /media/api/assets/[id]/content — auth modes (#2393)', () => {
     const res = await GET(getRequest('scoped-app-token'), { params });
 
     expect(res.status).toBe(403);
+    expect(mockAuthorizeAssetRead).toHaveBeenCalled();
+  });
+
+  it('rejects a scoped app-token that lacks media:read with 403, before any ownership check', async () => {
+    mockGetAccessType.mockReturnValue('private');
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_NO_SCOPES));
+
+    const res = await GET(getRequest('write-only-app-token'), { params });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:read');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockAuthorizeAssetRead).not.toHaveBeenCalled();
   });
 
   it('returns 401 when neither a scoped app-token nor session auth verifies for a private asset', async () => {

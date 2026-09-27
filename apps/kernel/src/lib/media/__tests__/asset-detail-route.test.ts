@@ -25,23 +25,13 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('drizzle-orm', () => ({ eq: vi.fn() }));
 
+import { createAuthMock, createNodeUrlMock, createLoggerMock, appToken, APP_TOKEN_WRITE_ONLY, APP_TOKEN_NO_SCOPES } from './media-auth-test-helpers';
+
 const mockVerifyAppToken = vi.hoisted(() => vi.fn(async () => null));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: vi.fn(async () => ({ identity: { id: 'did:imajin:owner', scope: 'actor' } })),
-  resolveActingDid: vi.fn((identity: { actingFor?: string; actingAs?: string; id: string }) =>
-    identity.actingFor ?? identity.actingAs ?? identity.id,
-  ),
-  verifyAppToken: mockVerifyAppToken,
-}));
-
-vi.mock('@/src/lib/http/node-url', () => ({
-  nodeUrl: vi.fn(() => 'https://jin.test'),
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
-}));
+vi.mock('@imajin/auth', () => createAuthMock(mockVerifyAppToken));
+vi.mock('@/src/lib/http/node-url', () => createNodeUrlMock());
+vi.mock('@imajin/logger', () => createLoggerMock());
 
 const mockUnlink = vi.hoisted(() => vi.fn(async () => undefined));
 const mockRename = vi.hoisted(() => vi.fn(async () => undefined));
@@ -93,8 +83,8 @@ describe('DELETE /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(mockVerifyAppToken).not.toHaveBeenCalled();
   });
 
-  it('accepts a scoped app-token and allows the token subject to delete its own asset', async () => {
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:owner', aud: 'jin.test', scopes: [] });
+  it('accepts a scoped app-token carrying media:write and allows the token subject to delete its own asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:owner'));
 
     const res = await DELETE(makeRequest('DELETE', undefined, 'scoped-app-token'), { params });
 
@@ -102,12 +92,24 @@ describe('DELETE /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when a scoped app-token subject does not own the asset', async () => {
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:stranger', aud: 'jin.test', scopes: [] });
+  it('returns 403 when a properly-scoped app-token subject does not own the asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:stranger'));
 
     const res = await DELETE(makeRequest('DELETE', undefined, 'scoped-app-token'), { params });
 
     expect(res.status).toBe(403);
+  });
+
+  it('rejects a scoped app-token that lacks media:write with 403, without deleting', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_NO_SCOPES, 'did:imajin:owner'));
+
+    const res = await DELETE(makeRequest('DELETE', undefined, 'read-only-app-token'), { params });
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:write');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockDeleteWhere).not.toHaveBeenCalled();
   });
 
   it('still blocks actingFor agent delegation on the session path', async () => {
@@ -143,8 +145,8 @@ describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(mockVerifyAppToken).not.toHaveBeenCalled();
   });
 
-  it('accepts a scoped app-token and allows the token subject to rename its own asset', async () => {
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:owner', aud: 'jin.test', scopes: [] });
+  it('accepts a scoped app-token carrying media:write and allows the token subject to rename its own asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:owner'));
 
     const res = await PATCH(
       makeRequest('PATCH', { filename: 'renamed.bin' }, 'scoped-app-token'),
@@ -155,8 +157,8 @@ describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
   });
 
-  it('returns 403 when a scoped app-token subject does not own the asset', async () => {
-    mockVerifyAppToken.mockResolvedValueOnce({ sub: 'did:imajin:stranger', aud: 'jin.test', scopes: [] });
+  it('returns 403 when a properly-scoped app-token subject does not own the asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:stranger'));
 
     const res = await PATCH(
       makeRequest('PATCH', { filename: 'renamed.bin' }, 'scoped-app-token'),
@@ -164,6 +166,21 @@ describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
     );
 
     expect(res.status).toBe(403);
+  });
+
+  it('rejects a scoped app-token that lacks media:write with 403, without renaming', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_NO_SCOPES, 'did:imajin:owner'));
+
+    const res = await PATCH(
+      makeRequest('PATCH', { filename: 'renamed.bin' }, 'read-only-app-token'),
+      { params },
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:write');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
   it('still blocks actingFor agent delegation on the session path', async () => {

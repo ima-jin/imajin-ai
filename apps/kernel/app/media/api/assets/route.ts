@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, identities, type Asset } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
-import { requireMediaAuth } from "@/src/lib/media/require-media-auth";
+import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
 import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
 import { eq, and, sql, ilike, like } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
@@ -188,11 +188,12 @@ export async function POST(request: NextRequest) {
   }
 
   // #2393: accepts a scoped app-token (Authorization: Bearer, minted via
-  // POST /auth/api/tokens/app) alongside the pre-existing session cookie /
-  // legacy Bearer PAT — additive, see requireMediaAuth's own docblock.
-  const authResult = await requireMediaAuth(request);
+  // POST /auth/api/tokens/app, requires the `media:write` scope) alongside
+  // the pre-existing session cookie / legacy Bearer PAT — additive, see
+  // requireMediaAuth's own docblock.
+  const authResult = await requireMediaAuth(request, "media:write");
   if ("error" in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+    return mediaAuthErrorResponse(authResult, cors);
   }
   const { auth } = authResult;
   const ownerDid = auth.did;
