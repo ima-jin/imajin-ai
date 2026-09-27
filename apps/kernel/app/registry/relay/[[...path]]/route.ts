@@ -10,6 +10,7 @@ import {
   isRelayWrite,
   isRelayWriteDenied,
 } from '@/src/lib/registry/relay/auth';
+import type { DfosWriteAuthDeps } from '@/src/lib/registry/relay/dfos-write-auth';
 import { db } from '@/src/db';
 import { relayConfig, relayPeers } from '@/src/db/schemas/relay';
 import { createLogger } from '@imajin/logger';
@@ -141,15 +142,42 @@ async function getRelay(): Promise<Hono> {
   return relayInitPromise;
 }
 
+/**
+ * Resolve this relay's own DFOS DID — the expected audience of a peer's
+ * `Authorization: DFOS <proof>` auth token (#2132). Mirrors `initRelay()`'s
+ * own env-then-DB precedence, but stays a single cheap lookup (never
+ * triggers full relay bootstrap) since it only runs for DFOS-scheme writes.
+ * `null` when this relay has no DFOS identity yet — no proof can name it.
+ */
+async function resolveRelayAudience(): Promise<string | null> {
+  if (RELAY_DID) return RELAY_DID;
+  const configs = await db.select().from(relayConfig).where(eq(relayConfig.id, 'singleton'));
+  return configs[0]?.did ?? null;
+}
+
+/** Adapts the relay's own `RelayStore` to the identity resolver `authorizeRelayWrite` needs for DFOS proofs (#2132). */
+function createDfosIdentityResolver(): DfosWriteAuthDeps['identities'] {
+  return {
+    async resolveAuthKeys(did) {
+      const chain = await store.getIdentityChain(did);
+      if (!chain || chain.state.isDeleted) return undefined;
+      return chain.state.authKeys;
+    },
+  };
+}
+
 async function handler(request: Request) {
   const url = new URL(request.url);
   const relayPath = url.pathname.replace(/^\/registry\/relay/, '') || '/';
 
-  // AuthZ (#454): writes require a verified Imajin DID; reads stay open.
-  // Checked before the relay is initialised so rejected writes never touch it.
+  // AuthZ (#454, #2132): writes require either a verified Imajin DID or an
+  // attested DFOS peer's proof; reads stay open. Checked before the relay
+  // is initialised so rejected writes never touch it.
   let writerDid: string | null = null;
   if (isRelayWrite(request.method)) {
-    const auth = await authorizeRelayWrite(request);
+    const auth = await authorizeRelayWrite(request, {
+      dfos: { identities: createDfosIdentityResolver(), getAudience: resolveRelayAudience },
+    });
     if (isRelayWriteDenied(auth)) {
       log.warn(
         { method: request.method, path: relayPath, reason: auth.error },
