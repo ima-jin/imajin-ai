@@ -29,18 +29,17 @@ vi.mock('drizzle-orm', () => ({
   like: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: vi.fn(async () => ({ identity: { id: 'did:imajin:owner', scope: 'actor' } })),
-  resolveActingDid: vi.fn(() => 'did:imajin:owner'),
-}));
+import { createAuthMock, createNodeUrlMock, createLoggerMock, appToken, APP_TOKEN_WRITE_ONLY, APP_TOKEN_NO_SCOPES } from './media-auth-test-helpers';
+
+const mockVerifyAppToken = vi.hoisted(() => vi.fn(async () => null));
+
+vi.mock('@imajin/auth', () => createAuthMock(mockVerifyAppToken));
+vi.mock('@/src/lib/http/node-url', () => createNodeUrlMock());
+vi.mock('@imajin/logger', () => createLoggerMock());
 
 vi.mock('@imajin/config', () => ({
   rateLimit: vi.fn(() => ({ limited: false })),
   getClientIP: vi.fn(() => '127.0.0.1'),
-}));
-
-vi.mock('@imajin/logger', () => ({
-  createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() })),
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -60,6 +59,7 @@ vi.mock('@/src/lib/media/create-asset', () => ({
 }));
 
 import type { NextRequest } from 'next/server';
+import { requireAuth } from '@imajin/auth';
 import { POST } from '@/app/media/api/assets/route';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -83,7 +83,8 @@ function uploadRequest({
   context,
   strict,
   compact,
-}: UploadOptions & { compact?: boolean } = {}): NextRequest {
+  bearer,
+}: UploadOptions & { compact?: boolean; bearer?: string } = {}): NextRequest {
   const form = new FormData();
   form.append('file', new File([content], filename, { type }), filename);
   if (context) form.append('context', JSON.stringify(context));
@@ -92,12 +93,14 @@ function uploadRequest({
   const url = `https://test.imajin.ai/media/api/assets${compact ? '?compact=1' : ''}`;
   return new Request(url, {
     method: 'POST',
+    headers: bearer ? { Authorization: `Bearer ${bearer}` } : undefined,
     body: form,
   }) as unknown as NextRequest;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockVerifyAppToken.mockResolvedValue(null);
   mockIdentityLimit.mockResolvedValue([{ tier: 'soft', uploadLimitMb: 50 }]);
   mockCreateAsset.mockResolvedValue({
     asset: {
@@ -238,5 +241,76 @@ describe('POST /media/api/assets — ?compact=1', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Object.keys(body).sort()).toEqual(['hash', 'id', 'mimeType', 'size', 'url']);
+  });
+});
+
+// ─── Auth modes (#2393) ──────────────────────────────────────────────────────
+
+describe('POST /media/api/assets — auth modes (#2393)', () => {
+  it('resolves owner/uploadedBy from the session identity on the cookie path', async () => {
+    const res = await POST(uploadRequest());
+
+    expect(res.status).toBe(201);
+    expect(mockVerifyAppToken).not.toHaveBeenCalled();
+    expect(mockCreateAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: 'did:imajin:owner', uploadedBy: 'did:imajin:owner' }),
+    );
+  });
+
+  it('accepts a scoped app-token carrying media:write and resolves owner/uploadedBy to its sub', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY));
+
+    const res = await POST(uploadRequest({ bearer: 'scoped-app-token' }));
+
+    expect(res.status).toBe(201);
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockCreateAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: 'did:imajin:app-user', uploadedBy: 'did:imajin:app-user' }),
+    );
+  });
+
+  it('rejects a scoped app-token that lacks media:write with 403, without creating the asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_NO_SCOPES));
+
+    const res = await POST(uploadRequest({ bearer: 'read-only-app-token' }));
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:write');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockCreateAsset).not.toHaveBeenCalled();
+  });
+
+  it("rejects a scoped app-token minted with only media:read (never falls back to session auth)", async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(['media:read']));
+
+    const res = await POST(uploadRequest({ bearer: 'read-only-app-token' }));
+
+    expect(res.status).toBe(403);
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockCreateAsset).not.toHaveBeenCalled();
+  });
+
+  it('falls back to session auth when the bearer does not verify as a scoped app-token', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(null);
+
+    const res = await POST(uploadRequest({ bearer: 'legacy-pat-or-garbage' }));
+
+    expect(res.status).toBe(201);
+    expect(vi.mocked(requireAuth)).toHaveBeenCalledTimes(1);
+    expect(mockCreateAsset).toHaveBeenCalledWith(
+      expect.objectContaining({ ownerDid: 'did:imajin:owner', uploadedBy: 'did:imajin:owner' }),
+    );
+  });
+
+  it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {
+    // No Authorization header on this request at all, so verifyAppToken is
+    // never even called — the default beforeEach stub already covers that.
+    vi.mocked(requireAuth).mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
+
+    const res = await POST(uploadRequest());
+
+    expect(res.status).toBe(401);
+    expect(mockCreateAsset).not.toHaveBeenCalled();
   });
 });
