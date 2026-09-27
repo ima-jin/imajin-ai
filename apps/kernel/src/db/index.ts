@@ -31,6 +31,7 @@ import * as operatorApprovalsSchema from './schemas/operator-approvals';
 import * as googleSchema from './schemas/google';
 import * as accessSchema from './schemas/access';
 import * as loopsSchema from './schemas/loops';
+import * as appProvisionsSchema from './schemas/app-provisions';
 
 const schema = {
   ...authSchema,
@@ -64,6 +65,7 @@ const schema = {
   ...googleSchema,
   ...accessSchema,
   ...loopsSchema,
+  ...appProvisionsSchema,
 };
 
 export const db = createDb(schema);
@@ -100,6 +102,7 @@ export * from './schemas/operator-approvals';
 export * from './schemas/google';
 export * from './schemas/access';
 export * from './schemas/loops';
+export * from './schemas/app-provisions';
 
 // Aliases for backward-compatible imports
 export { podsInConnections as pods } from "./schemas/connections";

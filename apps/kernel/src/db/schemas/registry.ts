@@ -1,4 +1,4 @@
-import { text, timestamp, jsonb, index, boolean, pgSchema, unique, real, integer } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, boolean, pgSchema, unique, uniqueIndex, real, integer } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const registrySchema = pgSchema('registry');
@@ -341,10 +341,18 @@ export const registryApps = registrySchema.table('apps', {
    * redirect_uri matching.
    */
   redirectUris: text('redirect_uris').array().notNull().default(sql`'{}'::text[]`),
+  /**
+   * Short, URL/repo-safe slug identifying this app independent of `id` or
+   * `appDid` (#2375, 0163_registry_apps_slug.sql) — e.g. 'dykil'. This is
+   * the idempotency key `apps.provision` looks up by. Nullable: rows
+   * registered before #2375 (third-party DCR clients) never set one.
+   */
+  slug: text('slug'),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),
   tierIdx: index('idx_registry_apps_tier').on(table.tier),
+  slugUniq: uniqueIndex('uniq_registry_apps_slug').on(table.slug).where(sql`${table.slug} IS NOT NULL`),
 }));
 
 export type RegistryApp = typeof registryApps.$inferSelect;

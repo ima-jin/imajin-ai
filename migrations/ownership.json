@@ -372,6 +372,12 @@
       "firstMigration": "0068_inference_engine.sql",
       "notes": ""
     },
+    "kernel.app_provisions": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0164_app_provisions.sql",
+      "notes": ""
+    },
     "kernel.audit_log": {
       "owner": "kernel",
       "schema": "kernel",

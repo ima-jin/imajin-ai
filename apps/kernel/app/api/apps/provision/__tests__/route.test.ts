@@ -1,0 +1,212 @@
+/**
+ * Unit tests for `POST`/`GET /api/apps/provision` (#2375) — the propose +
+ * status-poll route for apps.provision's operator-approvals proposal.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const {
+  requireAuthMock,
+  resolveActingDidMock,
+  getOperatorDidMock,
+  computeApprovalContentHashMock,
+  recordApprovalRequestedMock,
+  findPendingAppsProvisionProposalMock,
+  getAppProvisionStatusMock,
+} = vi.hoisted(() => ({
+  requireAuthMock: vi.fn(),
+  resolveActingDidMock: vi.fn(),
+  getOperatorDidMock: vi.fn(),
+  computeApprovalContentHashMock: vi.fn(),
+  recordApprovalRequestedMock: vi.fn(),
+  findPendingAppsProvisionProposalMock: vi.fn(),
+  getAppProvisionStatusMock: vi.fn(),
+}));
+
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+}));
+
+vi.mock('@imajin/auth', () => ({
+  requireAuth: requireAuthMock,
+  resolveActingDid: resolveActingDidMock,
+}));
+
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
+
+vi.mock('@/src/lib/kernel/id', () => ({
+  generateId: (prefix: string) => `${prefix}_testid`,
+}));
+
+vi.mock('@/src/lib/notify/operator-approvals', () => ({
+  getOperatorDid: getOperatorDidMock,
+  computeApprovalContentHash: computeApprovalContentHashMock,
+}));
+
+vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
+  recordApprovalRequested: recordApprovalRequestedMock,
+}));
+
+vi.mock('@/src/lib/apps/provision-proposals', () => ({
+  findPendingAppsProvisionProposal: findPendingAppsProvisionProposalMock,
+}));
+
+vi.mock('@/src/lib/apps/approvals-execution', () => ({
+  APPS_SOURCE: 'apps',
+  APPS_PROVISION_KIND: 'apps:provision',
+}));
+
+vi.mock('@/src/lib/apps/provision', () => ({
+  getAppProvisionStatus: getAppProvisionStatusMock,
+}));
+
+import { POST, GET } from '../route';
+
+const ACTING_DID = 'did:imajin:agent';
+const OPERATOR_DID = 'did:imajin:operator';
+
+function postRequest(body: unknown): Request {
+  return new Request('http://localhost/api/apps/provision', { method: 'POST', body: JSON.stringify(body) });
+}
+
+function getRequest(query: string): Request {
+  return new Request(`http://localhost/api/apps/provision${query}`, { method: 'GET' });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  requireAuthMock.mockResolvedValue({ identity: { id: ACTING_DID } });
+  resolveActingDidMock.mockReturnValue(ACTING_DID);
+  getOperatorDidMock.mockResolvedValue(OPERATOR_DID);
+  computeApprovalContentHashMock.mockReturnValue('a'.repeat(64));
+  getAppProvisionStatusMock.mockResolvedValue(undefined);
+  findPendingAppsProvisionProposalMock.mockResolvedValue(undefined);
+});
+
+describe('POST /api/apps/provision — auth + validation', () => {
+  it('returns the auth error verbatim when not authenticated', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+
+    expect(response.status).toBe(401);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid slug', async () => {
+    const response = await POST(postRequest({ slug: 'Dykil!', displayName: 'dykil' }) as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects a missing displayName', async () => {
+    const response = await POST(postRequest({ slug: 'dykil' }) as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects invalid JSON', async () => {
+    const request = new Request('http://localhost/api/apps/provision', { method: 'POST', body: '{not json' });
+    const response = await POST(request as never);
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('POST /api/apps/provision — idempotency', () => {
+  it('returns the cached result for an already-succeeded slug without raising a proposal', async () => {
+    getAppProvisionStatusMock.mockResolvedValue({
+      slug: 'dykil',
+      status: 'succeeded',
+      appDid: 'did:imajin:app-dykil',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+    });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({
+      status: 'succeeded',
+      slug: 'dykil',
+      appDid: 'did:imajin:app-dykil',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+    });
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses an already-pending proposal for the same slug rather than raising a duplicate', async () => {
+    findPendingAppsProvisionProposalMock.mockResolvedValue({ proposalId: 'appprov_existing' });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ status: 'pending', proposalId: 'appprov_existing' });
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/apps/provision — raising a new proposal', () => {
+  it('records a new proposal with signerDid set to the acting DID', async () => {
+    const response = await POST(postRequest({
+      slug: 'dykil',
+      displayName: 'dykil',
+      attestationTypes: ['dykil/survey-response'],
+    }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toEqual({ status: 'pending', proposalId: 'appprov_testid' });
+    expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({
+      proposalId: 'appprov_testid',
+      operatorDid: OPERATOR_DID,
+      source: 'apps',
+      kind: 'apps:provision',
+      signerDid: ACTING_DID,
+      detail: expect.objectContaining({ slug: 'dykil', displayName: 'dykil', attestationTypes: ['dykil/survey-response'] }),
+    }));
+  });
+
+  it('fails closed with 500 when no node operator is configured', async () => {
+    getOperatorDidMock.mockResolvedValue(null);
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+
+    expect(response.status).toBe(500);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/apps/provision', () => {
+  it('requires a slug query parameter', async () => {
+    const response = await GET(getRequest('') as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('returns 404 when no run exists for the slug', async () => {
+    const response = await GET(getRequest('?slug=unknown') as never);
+    expect(response.status).toBe(404);
+  });
+
+  it('returns the current ledger row for a known slug', async () => {
+    getAppProvisionStatusMock.mockResolvedValue({
+      slug: 'dykil',
+      status: 'failed',
+      appDid: 'did:imajin:app-dykil',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      secretsSet: [],
+      attestationTypes: [],
+      failedStep: 'seal',
+      errorMessage: 'GitHub 403',
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const response = await GET(getRequest('?slug=dykil') as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ slug: 'dykil', status: 'failed', failedStep: 'seal', errorMessage: 'GitHub 403' });
+  });
+});
