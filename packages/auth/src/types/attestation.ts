@@ -215,6 +215,17 @@ export const ATTESTATION_TYPES = [
   'access.bearer.used',
   'access.bearer.denied',
   'access.bearer.revoked',
+
+  // Dark-forest admission gate for DFOS-authenticated relay writes (#2132).
+  // Minted mechanically by this node's own identity when an operator admits
+  // a peer DID (see apps/kernel/src/lib/registry/relay/peer-attestations.ts
+  // and scripts/relay-peer-admit.ts) — never bilateral, never carrying an
+  // author_jws. Subject is the peer's did:dfos DID, not a did:imajin. A
+  // valid `Authorization: DFOS <proof>` on a relay write additionally
+  // requires a live (unrevoked, unexpired) attestation of this type, issued
+  // by this node, for the proof's peer DID — a cryptographically valid
+  // proof alone never admits.
+  'relay.peer',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -293,6 +304,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'access.bearer.used',
   'access.bearer.denied',
   'access.bearer.revoked',
+  // #2132 — minted mechanically by this node's own identity to admit a
+  // DFOS peer DID for relay-write authorization. See ATTESTATION_TYPES above.
+  'relay.peer',
 ] as const;
 
 /**

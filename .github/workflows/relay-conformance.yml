@@ -1,5 +1,15 @@
 name: DFOS Relay Conformance
 
+# #2132 (2026-09-26): relay writes now also accept `Authorization: DFOS
+# <proof>` from an attested peer (see docs/relay-dfos-peer-admission.md).
+# That does NOT flip this suite green by itself: createIdentity()/
+# createContent() in packages/relay-conformance submit unsigned-request
+# identity/content-chain operations (no Authorization header of any scheme,
+# self-certifying by the operation's own JWS signature per the upstream
+# protocol) and still fall through to the unchanged Imajin requireAuth path
+# -> still 401. Reconciling this suite's expectations with the attested-peer
+# admission model is tracked separately (see the #2132 PR body); this
+# workflow's pass/fail semantics are intentionally left as-is here.
 on:
   workflow_dispatch:
     inputs:

@@ -30,6 +30,20 @@ components:
       type: http
       scheme: bearer
       description: "Ed25519-signed NodeAttestation or NodeHeartbeat payload. The payload itself carries the signature field; no separate HTTP auth header is used — the node's registered public key is used to verify the signature embedded in the request body."
+    dfosAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        DFOS protocol proof (#2132): `Authorization: DFOS <proof>`, where
+        `<proof>` is a DID-signed auth-token JWT (protocol 0.2.0) naming this
+        relay's own DFOS DID as audience. Verified against the peer identity's
+        current auth keys as already known to this relay. A cryptographically
+        valid proof alone does not authorize a write — the peer DID must
+        additionally hold a live `relay.peer` attestation issued by this node
+        (dark-forest admission; see docs/relay-dfos-peer-admission.md). Checked
+        before, and independently of, cookieAuth/bearerAuth — any other
+        `Authorization` scheme (or none) falls through to those unchanged.
   schemas:
     Node:
       type: object
@@ -526,12 +540,14 @@ paths:
       operationId: relayPost
       summary: DFOS web relay — catch-all POST handler
       description: |
-        Writes require a verified Imajin DID (#454). The effective DID is
-        forwarded to the relay as `x-imajin-relay-writer` for audit; any
-        client-supplied value for that header is discarded.
+        Writes require either a verified Imajin DID (#454) or an attested
+        DFOS peer proof (#2132, dfosAuth). The effective DID is forwarded to
+        the relay as `x-imajin-relay-writer` for audit; any client-supplied
+        value for that header is discarded.
       security:
         - cookieAuth: []
         - bearerAuth: []
+        - dfosAuth: []
       parameters:
         - name: path
           in: path
@@ -547,12 +563,12 @@ paths:
         "200":
           description: Relay response
         "401":
-          description: Not authenticated — relay writes require a verified DID
+          description: Not authenticated, or an invalid/expired/replayed DFOS proof — relay writes require a verified DID or a valid DFOS proof
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Not authorized to act as the delegated identity
+          description: Not authorized to act as the delegated identity, or a valid DFOS proof from a DID with no live `relay.peer` attestation (`peer_not_attested`, #2132)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -566,12 +582,14 @@ paths:
       operationId: relayPut
       summary: DFOS web relay — catch-all PUT handler
       description: |
-        Writes require a verified Imajin DID (#454). The effective DID is
-        forwarded to the relay as `x-imajin-relay-writer` for audit; any
-        client-supplied value for that header is discarded.
+        Writes require either a verified Imajin DID (#454) or an attested
+        DFOS peer proof (#2132, dfosAuth). The effective DID is forwarded to
+        the relay as `x-imajin-relay-writer` for audit; any client-supplied
+        value for that header is discarded.
       security:
         - cookieAuth: []
         - bearerAuth: []
+        - dfosAuth: []
       parameters:
         - name: path
           in: path
@@ -587,12 +605,12 @@ paths:
         "200":
           description: Relay response
         "401":
-          description: Not authenticated — relay writes require a verified DID
+          description: Not authenticated, or an invalid/expired/replayed DFOS proof — relay writes require a verified DID or a valid DFOS proof
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Not authorized to act as the delegated identity
+          description: Not authorized to act as the delegated identity, or a valid DFOS proof from a DID with no live `relay.peer` attestation (`peer_not_attested`, #2132)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
