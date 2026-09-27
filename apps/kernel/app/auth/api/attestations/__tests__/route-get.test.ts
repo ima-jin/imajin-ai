@@ -18,7 +18,10 @@ interface Op {
 const mocks = vi.hoisted(() => {
   const limitMock = vi.fn();
   const orderByMock = vi.fn(() => ({ limit: limitMock }));
-  const whereMock = vi.fn(() => ({ orderBy: orderByMock }));
+  // Hybrid: chainable via `.orderBy()` (the main attestations query) AND
+  // directly awaitable, resolving to `[]` (filterVisibleRows's registry-gated
+  // types lookup, which awaits `.where(...)` with no further chaining).
+  const whereMock = vi.fn(() => Object.assign(Promise.resolve([]), { orderBy: orderByMock }));
   const fromMock = vi.fn(() => ({ where: whereMock }));
   const selectMock = vi.fn(() => ({ from: fromMock }));
 
@@ -28,6 +31,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('@/src/db', () => ({
   db: { select: mocks.selectMock },
   identities: {},
+  registryApps: {},
   attestations: {
     subjectDid: 'attestations.subjectDid',
     revokedAt: 'attestations.revokedAt',
@@ -36,6 +40,7 @@ vi.mock('@/src/db', () => ({
     attestationStatus: 'attestations.attestationStatus',
     issuedAt: 'attestations.issuedAt',
   },
+  attestationTypeRegistry: { typeName: 'attestationTypeRegistry.typeName', revokedAt: 'attestationTypeRegistry.revokedAt' },
   tokens: {},
 }));
 
@@ -47,6 +52,7 @@ vi.mock('drizzle-orm', () => ({
   gt: (...args: unknown[]): Op => ({ op: 'gt', args }),
   desc: (...args: unknown[]): Op => ({ op: 'desc', args }),
   notInArray: (...args: unknown[]): Op => ({ op: 'notInArray', args }),
+  inArray: (...args: unknown[]): Op => ({ op: 'inArray', args }),
 }));
 
 vi.mock('@/src/lib/auth/jwt', () => ({
@@ -62,6 +68,8 @@ vi.mock('@imajin/auth', () => ({
   ATTESTATION_TYPES: ['session.created', 'vouch'],
   MECHANICAL_ATTESTATION_TYPES: ['session.created'],
   verifyNostrSig: vi.fn(),
+  evidenceGradeForAttestationStatus: vi.fn(),
+  isDisclosureScope: (v: string) => ['parties', 'connections', 'network', 'public'].includes(v),
 }));
 
 vi.mock('@imajin/cid', () => ({ computeCid: vi.fn() }));
@@ -142,6 +150,23 @@ describe('GET /auth/api/attestations — operative-vs-history reads (#1790)', ()
     await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob'));
 
     expect(hasNe(whereArgs())).toBe(true);
+  });
+
+  // #2394 acceptance: consumers must be able to distinguish a delegated
+  // attestation (issuer acted for a delegator) from a self-signed one.
+  it('includes delegatorDid on every returned row, unmodified (#2394)', async () => {
+    mocks.limitMock.mockResolvedValue([
+      { id: 'att_delegated', type: 'vouch', issuerDid: 'did:imajin:app-dykil', subjectDid: 'did:imajin:bob', delegatorDid: 'did:imajin:bob' },
+      { id: 'att_self_signed', type: 'vouch', issuerDid: 'did:imajin:bob', subjectDid: 'did:imajin:bob', delegatorDid: null },
+    ]);
+
+    const res = await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob'));
+    const body = await res.json();
+
+    expect(body).toEqual([
+      expect.objectContaining({ id: 'att_delegated', delegatorDid: 'did:imajin:bob' }),
+      expect.objectContaining({ id: 'att_self_signed', delegatorDid: null }),
+    ]);
   });
 
   it('does not add the default exclusion when an explicit status filter is given', async () => {

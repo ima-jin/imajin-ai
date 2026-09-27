@@ -114,3 +114,57 @@ export function eventTypesForGrantScopes(capabilities: readonly string[]): strin
   }
   return [...eventTypes];
 }
+
+/**
+ * App-delegated attestation capabilities (#2394): `attest:<appId>:<type>`.
+ *
+ * Unlike the closed registry above, this is not a fixed list — any
+ * registered third-party app (`registry.apps`, #1990) may be granted
+ * delegated-signing authority over one of its own attestation types.
+ * `appId` is that app's `registry.apps.id` (e.g. `app_1a2b3c...`); `type`
+ * is the attestation type name (a compile-time `ATTESTATION_TYPES` entry or
+ * a live `attestation_type_registry` (#1885) entry) the app is being
+ * delegated to sign on a user's behalf.
+ *
+ * This module stays DB-free, so only the *shape* is validated here — that
+ * `appId` names an active app and `type` names a known attestation type is
+ * checked where those registries actually live:
+ * apps/kernel/src/lib/auth/attest-delegation.ts (grant issuance) and
+ * apps/kernel/app/auth/api/attestations/attestation-helpers.ts
+ * (attestation verification).
+ */
+export const ATTEST_DELEGATION_PREFIX = 'attest:';
+const ATTEST_DELEGATION_APP_ID_GRAMMAR = /^[a-z][a-z0-9_]*$/;
+// Attestation type names are wider than GRANT_SCOPE_GRAMMAR's segments —
+// e.g. `imajin/nostr-key-binding`, `intro_proposed`, a registered
+// `handle/local_name` — so this capability class uses its own, wider grammar.
+const ATTEST_DELEGATION_TYPE_GRAMMAR = /^[a-z][a-zA-Z0-9_./-]*$/;
+
+export interface AttestDelegationCapability {
+  appId: string;
+  attestationType: string;
+}
+
+export function buildAttestDelegationCapability(appId: string, attestationType: string): string {
+  return `${ATTEST_DELEGATION_PREFIX}${appId}:${attestationType}`;
+}
+
+/**
+ * Parse an `attest:<appId>:<type>` capability string, or return null when it
+ * doesn't match the shape. Splits on the first colon after the prefix only —
+ * attestation type names never contain a colon (see ATTESTATION_TYPES /
+ * attestation-type-registry.ts's `localName` grammar), so this is unambiguous.
+ */
+export function parseAttestDelegationCapability(capability: string): AttestDelegationCapability | null {
+  if (!capability.startsWith(ATTEST_DELEGATION_PREFIX)) return null;
+  const rest = capability.slice(ATTEST_DELEGATION_PREFIX.length);
+  const separatorIndex = rest.indexOf(':');
+  if (separatorIndex <= 0) return null;
+
+  const appId = rest.slice(0, separatorIndex);
+  const attestationType = rest.slice(separatorIndex + 1);
+  if (!ATTEST_DELEGATION_APP_ID_GRAMMAR.test(appId) || !ATTEST_DELEGATION_TYPE_GRAMMAR.test(attestationType)) {
+    return null;
+  }
+  return { appId, attestationType };
+}

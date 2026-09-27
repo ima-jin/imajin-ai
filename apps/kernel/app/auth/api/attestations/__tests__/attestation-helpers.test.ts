@@ -31,6 +31,8 @@ function nextSelectResult(): PromiseLike<unknown[]> & { limit: () => Promise<unk
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: () => nextSelectResult() }) }) },
   attestations: { id: 'attestations.id', supersedes: 'attestations.supersedes' },
+  identities: { id: 'identities.id', publicKey: 'identities.publicKey' },
+  registryApps: { id: 'registryApps.id', appDid: 'registryApps.appDid', publicKey: 'registryApps.publicKey', status: 'registryApps.status' },
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -51,6 +53,7 @@ vi.mock('@imajin/auth', () => ({
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
   DEFAULT_DISCLOSURE_SCOPE: 'parties',
   capabilityForDelegatedAttestationType: (type: string) => (type === 'intro_proposed' ? 'intros:propose' : null),
+  buildAttestDelegationCapability: (appId: string, type: string) => `attest:${appId}:${type}`,
 }));
 
 import {
@@ -59,6 +62,7 @@ import {
   checkSupersessionEligibility,
   validateSupersedesReference,
   resolveAttestationHistory,
+  resolveIssuerCredentials,
 } from '../attestation-helpers';
 
 beforeEach(() => {
@@ -176,6 +180,107 @@ describe('verifyDelegatedAttestation', () => {
     });
 
     expect(result).toMatchObject({ ok: false });
+  });
+});
+
+// #2394 — a registered app's own attestation type is delegatable via its
+// namespaced attest:<appId>:<type> capability, resolved from issuerAppId.
+describe('verifyDelegatedAttestation — app-delegated attestations (#2394)', () => {
+  it('builds attest:<appId>:<type> when the type has no funnel capability but issuerAppId is supplied', async () => {
+    h.introspectGrant.mockResolvedValue({ authorized: true, grantId: 'grant_app_1', delegatorDid: DELEGATOR, agentDid: ISSUER });
+
+    const result = await verifyDelegatedAttestation({
+      delegatorDid: DELEGATOR,
+      issuerDid: ISSUER,
+      subjectDid: SUBJECT,
+      type: 'survey_response',
+      issuerAppId: 'app_dykil123',
+    });
+
+    expect(result).toEqual({ ok: true, grantId: 'grant_app_1' });
+    expect(h.introspectGrant).toHaveBeenCalledWith({
+      agentDid: ISSUER,
+      capability: 'attest:app_dykil123:survey_response',
+      targetDid: SUBJECT,
+      delegatorDid: DELEGATOR,
+    });
+  });
+
+  it('prefers the platform funnel capability over building an attest: capability, even when issuerAppId is present', async () => {
+    h.introspectGrant.mockResolvedValue({ authorized: true, grantId: 'grant_funnel_1', delegatorDid: DELEGATOR, agentDid: ISSUER });
+
+    await verifyDelegatedAttestation({
+      delegatorDid: DELEGATOR,
+      issuerDid: ISSUER,
+      subjectDid: SUBJECT,
+      type: 'intro_proposed',
+      issuerAppId: 'app_dykil123',
+    });
+
+    expect(h.introspectGrant).toHaveBeenCalledWith(expect.objectContaining({ capability: 'intros:propose' }));
+  });
+
+  it('still fails closed for a type with no funnel capability when issuerAppId is absent (unregistered-app issuer)', async () => {
+    const result = await verifyDelegatedAttestation({
+      delegatorDid: DELEGATOR,
+      issuerDid: ISSUER,
+      subjectDid: SUBJECT,
+      type: 'survey_response',
+    });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(h.introspectGrant).not.toHaveBeenCalled();
+  });
+
+  it('rejects with a live grant absent for the app capability', async () => {
+    h.introspectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+
+    const result = await verifyDelegatedAttestation({
+      delegatorDid: DELEGATOR,
+      issuerDid: ISSUER,
+      subjectDid: SUBJECT,
+      type: 'survey_response',
+      issuerAppId: 'app_dykil123',
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: `No live delegation grant from "${DELEGATOR}" to "${ISSUER}" covers "attest:app_dykil123:survey_response"`,
+    });
+  });
+});
+
+describe('resolveIssuerCredentials (#2394)', () => {
+  it('resolves from auth.identities when the issuer is a plain identity', async () => {
+    h.selectQueue = [[{ publicKey: 'identity-public-key' }]];
+
+    const result = await resolveIssuerCredentials(ISSUER);
+
+    expect(result).toEqual({ publicKey: 'identity-public-key', appId: null });
+  });
+
+  it('falls back to registry.apps when the issuer is a live, active registered app', async () => {
+    h.selectQueue = [[], [{ id: 'app_dykil123', publicKey: 'app-public-key', status: 'active' }]];
+
+    const result = await resolveIssuerCredentials('did:imajin:app-dykil');
+
+    expect(result).toEqual({ publicKey: 'app-public-key', appId: 'app_dykil123' });
+  });
+
+  it('returns null when the issuer is neither a plain identity nor an active registered app', async () => {
+    h.selectQueue = [[], []];
+
+    const result = await resolveIssuerCredentials('did:imajin:nobody');
+
+    expect(result).toBeNull();
+  });
+
+  it('returns null when the matching registry.apps row has been revoked', async () => {
+    h.selectQueue = [[], [{ id: 'app_dykil123', publicKey: 'app-public-key', status: 'revoked' }]];
+
+    const result = await resolveIssuerCredentials('did:imajin:app-dykil');
+
+    expect(result).toBeNull();
   });
 });
 

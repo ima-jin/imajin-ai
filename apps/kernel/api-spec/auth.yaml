@@ -1499,15 +1499,27 @@ paths:
       operationId: createAttestation
       summary: Issue a new attestation
       description: |
-        Caller must be the issuer (session cookie or Bearer token). The signature must be an
-        Ed25519 signature over the canonical JSON of `{subject_did, type, context_id, context_type, payload, issued_at}`.
+        Caller must be authenticated: a session cookie, a legacy full-identity Bearer token,
+        or (#2394) a scoped app-token minted by `POST /auth/api/tokens/app` — this is how a
+        registered third-party app authenticates its own inbound call while acting for the
+        user who minted the token. The `issuer_did`'s signature must be an Ed25519 signature
+        over the canonical JSON of `{subject_did, type, context_id, context_type, payload, issued_at}`.
+        `issuer_did`'s public key resolves from `auth.identities` first, then (#2394) from
+        `registry.apps` — a registered app never has an `auth.identities` row of its own, so
+        this is what lets an app act as `issuer_did`.
 
-        `payload.delegator_did` (intro-funnel envelope, #1885) asserts that `delegator_did`
-        authorized `issuer_did` to act on its behalf. When present and different from
-        `issuer_did`, the write is rejected with 403 unless a live (unexpired, unrevoked)
-        delegation grant from `delegator_did` to `issuer_did` covers the capability implied
-        by `type` (#1895, #1897) — a self-asserted `delegator_did` is never trusted on its
-        own. The verified grant id is recorded on the attestation as `delegationGrantId`.
+        `payload.delegator_did` (intro-funnel envelope, #1885; generalized #2394) asserts that
+        `delegator_did` authorized `issuer_did` to act on its behalf. When present and different
+        from `issuer_did`, the write is rejected with 403 unless a live (unexpired, unrevoked)
+        delegation grant from `delegator_did` to `issuer_did` covers the capability implied by
+        `type` — a self-asserted `delegator_did` is never trusted on its own. For the
+        platform-seeded intro-funnel types that capability is the closed `intros:propose`
+        scope (#1895, #1897); for any other type, `issuer_did` must name a live, active
+        `registry.apps` row and the capability is that app's own namespaced
+        `attest:<appId>:<type>` slot (#2394) — see `POST /api/grants`. The verified grant id
+        is recorded on the attestation as `delegationGrantId`, and both `issuerDid` (the app)
+        and `delegatorDid` (the user) are persisted, so a delegated attestation is always
+        distinguishable from a self-signed one.
 
         `payload.supersedes` (amendment-by-supersession, #1790) names a bilateral attestation
         this one proposes to amend. Once this attestation itself goes bilateral via
@@ -1556,7 +1568,8 @@ paths:
                   type: { type: string }
                   attestationStatus: { type: string, enum: [pending, bilateral, declined, superseded, "null"] }
                   supersedes: { type: string, nullable: true, description: "Bilateral attestation this one proposes to amend, if any (#1790)" }
-                  delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897)" }
+                  delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897, #2394)" }
+                  delegatorDid: { type: string, nullable: true, description: "DID that authorized issuerDid to act on its behalf, if any (#2394 — distinguishes a delegated attestation from a self-signed one)" }
                   issuedAt: { type: string, format: date-time }
         "400":
           description: Invalid request or signature, or an invalid/ineligible payload.supersedes reference (#1790)
@@ -1623,6 +1636,7 @@ paths:
                     payload: { type: object }
                     attestationStatus: { type: string }
                     supersedes: { type: string, nullable: true, description: "Bilateral attestation this one proposes to amend, if any (#1790)" }
+                    delegatorDid: { type: string, nullable: true, description: "DID that authorized issuerDid to act on its behalf, if any (#2394)" }
                     issuedAt: { type: string, format: date-time }
         "400":
           description: subject_did required
@@ -2509,6 +2523,19 @@ paths:
         User-push only: the caller must be a directly authenticated delegator
         principal. A caller acting under `X-Acting-For` agent delegation is
         rejected — authority flows delegator -> agent only, never the reverse.
+
+        `capabilities` accepts two shapes: (1) a member of the closed
+        `domain:verb` GRANT_SCOPE_REGISTRY vocabulary (`@imajin/auth`'s
+        `validateGrantCapabilities`), or (2) an app-delegated attestation
+        capability `attest:<appId>:<type>` (#2394) — `appId` must name a
+        live, active `registry.apps` row whose OWN `app_did` is exactly this
+        request's `agentDid` (so a delegator can never be tricked into
+        granting one app's slot to a different app's DID), and `type` must
+        be a known attestation type (a compile-time `ATTESTATION_TYPES`
+        entry or a live `attestation_type_registry` entry, #1885). Granting
+        this authorizes `agentDid` (the app) to submit a `POST
+        /api/attestations` on the caller's behalf via `payload.delegator_did`
+        for that exact `type` — see that route's own description.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -2523,7 +2550,7 @@ paths:
                 agentDid: { type: string }
                 capabilities:
                   type: array
-                  items: { type: string }
+                  items: { type: string, example: "attest:app_dykil123:survey_response" }
                 audience: { $ref: "#/components/schemas/DelegationAudience" }
                 onBehalfOf:
                   type: array

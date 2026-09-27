@@ -7,6 +7,9 @@ import {
   allGrantScopes,
   validateGrantCapabilities,
   eventTypesForGrantScopes,
+  ATTEST_DELEGATION_PREFIX,
+  buildAttestDelegationCapability,
+  parseAttestDelegationCapability,
 } from '../src/grant-scopes';
 
 const MCP_PROMOTED_SCOPES = [
@@ -118,5 +121,58 @@ describe('eventTypesForGrantScopes', () => {
 
   it('returns an empty array for capabilities with no declared event feed', () => {
     expect(eventTypesForGrantScopes(['discovery:read', 'corpus:read'])).toEqual([]);
+  });
+
+  it('ignores an attest:<appId>:<type> capability (no event feed for app-delegated attestations)', () => {
+    expect(eventTypesForGrantScopes([buildAttestDelegationCapability('app_dykil123', 'survey_response')])).toEqual([]);
+  });
+});
+
+// #2394 — app-delegated attestation capabilities: attest:<appId>:<type>.
+describe('buildAttestDelegationCapability / parseAttestDelegationCapability', () => {
+  it('round-trips a simple appId + built-in type', () => {
+    const capability = buildAttestDelegationCapability('app_dykil123', 'vouch.given');
+    expect(capability).toBe('attest:app_dykil123:vouch.given');
+    expect(parseAttestDelegationCapability(capability)).toEqual({ appId: 'app_dykil123', attestationType: 'vouch.given' });
+  });
+
+  it('round-trips a registered handle/local_name type (contains a slash)', () => {
+    const capability = buildAttestDelegationCapability('app_dykil123', 'dykil/survey_response');
+    expect(parseAttestDelegationCapability(capability)).toEqual({ appId: 'app_dykil123', attestationType: 'dykil/survey_response' });
+  });
+
+  it('round-trips an underscore-bearing platform type (e.g. intro-funnel-shaped)', () => {
+    const capability = buildAttestDelegationCapability('app_dykil123', 'intro_proposed');
+    expect(parseAttestDelegationCapability(capability)).toEqual({ appId: 'app_dykil123', attestationType: 'intro_proposed' });
+  });
+
+  it('is namespaced under the ATTEST_DELEGATION_PREFIX constant', () => {
+    expect(buildAttestDelegationCapability('app_x', 'y')).toBe(`${ATTEST_DELEGATION_PREFIX}app_x:y`);
+  });
+
+  it('rejects a string with no attest: prefix', () => {
+    expect(parseAttestDelegationCapability('messages:write')).toBeNull();
+  });
+
+  it('rejects a string with the prefix but no second colon', () => {
+    expect(parseAttestDelegationCapability('attest:app_dykil123')).toBeNull();
+  });
+
+  it('rejects an empty appId', () => {
+    expect(parseAttestDelegationCapability('attest::vouch.given')).toBeNull();
+  });
+
+  it('rejects an empty attestationType', () => {
+    expect(parseAttestDelegationCapability('attest:app_dykil123:')).toBeNull();
+  });
+
+  it('rejects an appId with characters outside its grammar (e.g. uppercase or a colon)', () => {
+    expect(parseAttestDelegationCapability('attest:App_Dykil:vouch.given')).toBeNull();
+  });
+
+  it('never collides with a closed GRANT_SCOPE_REGISTRY entry\'s grammar', () => {
+    const capability = buildAttestDelegationCapability('app_dykil123', 'vouch.given');
+    expect(GRANT_SCOPE_GRAMMAR.test(capability)).toBe(false);
+    expect(isKnownGrantScope(capability)).toBe(false);
   });
 });
