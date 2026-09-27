@@ -34,6 +34,12 @@ tags:
     description: /jin kernel dashboard — operator approvals
   - name: loops
     description: Kernel loop registry (#2295) — signed lifecycle ingest + per-principal read
+  - name: apps
+    description: >-
+      apps.provision (#2375) — kernel-authoritative repo + registry +
+      sealed-credential provisioning for apps being extracted into their own
+      standalone repos (registered as tier: 'third_party'), riding the
+      operator-approvals rail
 
 components:
   securitySchemes:
@@ -236,6 +242,54 @@ components:
         hasOperatorSignature:
           type: boolean
           description: "Presence of `payload.operatorSignature` (#2082) — lets the lane render the wish-and-grant chain state (#2084)."
+    AppProvisionRequest:
+      type: object
+      description: >-
+        Body for `POST /api/apps/provision` (#2375). Raises an
+        `apps:provision` proposal on the operator-approvals rail — nothing
+        external happens until the operator countersigns an 'approve'
+        decision (`executeAppsProvisionApproval`).
+      required: [slug, displayName]
+      properties:
+        slug:
+          type: string
+          pattern: "^[a-z][a-z0-9-]{0,38}$"
+          example: dykil
+          description: "Short, URL/repo-safe identifier. The repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
+        displayName: { type: string, maxLength: 200, example: dykil }
+        template:
+          type: string
+          maxLength: 200
+          default: ima-jin/imajin-app-template
+          description: "owner/repo of the template to generate the app repo from."
+        attestationTypes:
+          type: array
+          maxItems: 20
+          items: { type: string, example: "dykil/survey-response" }
+          description: >-
+            Optional `<slug>/<type>` attestation types to seed via the
+            existing attestation-type registry (#1885). Refused (per-type,
+            never failing the whole call) when the prefix is not exactly
+            `slug`.
+    AppProvisionResult:
+      type: object
+      description: The terminal (or cached) result of an apps.provision run.
+      required: [status]
+      properties:
+        status: { type: string, enum: [pending, succeeded, failed] }
+        proposalId: { type: string, description: "Present when status is 'pending'." }
+        slug: { type: string }
+        appDid: { type: string, nullable: true }
+        repoUrl: { type: string, nullable: true }
+        secretsSet:
+          type: array
+          items: { type: string }
+          description: "Actions secret NAMES only (e.g. IMAJIN_APP_PRIVATE_KEY, GITHUB_PACKAGES_TOKEN) — never values."
+        attestationTypes:
+          type: array
+          items: { type: string }
+        failedStep: { type: string, nullable: true, description: "Present when status is 'failed' — names the step that failed." }
+        errorMessage: { type: string, nullable: true }
 
 paths:
   /api/events:
@@ -513,6 +567,98 @@ paths:
                 oneOf:
                   - $ref: "#/components/schemas/ActAsNotPermittedError"
                   - $ref: "#/components/schemas/Error"
+
+  /api/apps/provision:
+    post:
+      tags: [apps]
+      operationId: proposeAppsProvision
+      summary: Propose apps.provision (#2375) — create/register/seal an extracted (third_party) app
+      description: >-
+        Any authenticated identity may propose (mirrors the GitHub
+        connector's "agent proposes, operator approves" posture, NOT
+        `/api/vault-proposals`'s operator-only raise) — stages an
+        `apps:provision` proposal on the SAME operator-approvals table
+        `GET /api/operator-approvals` lists and
+        `POST /api/operator-approvals/{proposalId}/decision` decides. The
+        repo/mint/register/seal pipeline (`src/lib/apps/provision.ts`) only
+        runs once the operator countersigns an 'approve' decision —
+        provisioning is operator-authority, never self-service.
+        Idempotent on `slug`: an already-succeeded slug returns the cached
+        result immediately (status 200, no proposal); an already-pending
+        proposal for the same slug is reused rather than duplicated.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppProvisionRequest" }
+      responses:
+        "200":
+          description: Already succeeded (cached) or an existing pending proposal was reused
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppProvisionResult" }
+        "201":
+          description: New proposal raised
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending] }
+                  proposalId: { type: string }
+        "400":
+          description: Malformed slug/displayName/template/attestationTypes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: No node operator configured, or failed to raise the proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [apps]
+      operationId: getAppsProvisionStatus
+      summary: Poll the current apps.provision ledger row for a slug
+      description: >-
+        Lets the proposing agent retrieve the eventual result without
+        needing the operator's decision response — reads
+        `kernel.app_provisions` (`src/lib/apps/provision.ts`).
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: slug
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppProvisionResult" }
+        "400":
+          description: Missing slug query parameter
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No apps.provision run found for this slug
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/loops:
     post:

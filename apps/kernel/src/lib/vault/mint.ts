@@ -67,6 +67,14 @@ export interface MintKeypairParams {
   /** The acting principal who called mint (requireAuth/actingFor). */
   mintedBy: string;
   expiresAt?: Date | null;
+  /**
+   * Single-use grant, consumed by the first successful agent-fetch (#2231).
+   * Defaults to `true`, matching every pre-existing `mintKeypair` caller
+   * exactly. `apps.provision` (#2375) passes `false` for its self-granted
+   * (node → node) copy, since it may need to re-fetch the plaintext across
+   * retries of the external Actions-secret seal step.
+   */
+  oneTime?: boolean;
 }
 
 export interface MintKeypairResult {
@@ -80,16 +88,23 @@ export interface MintKeypairResult {
 }
 
 /**
- * Generate a new Ed25519 keypair inside the vault and seal the private key
- * as a v2 delegation-grant entry, granted once to `requesterDid`.
+ * Shared seal+record core behind {@link mintKeypair}: given an
+ * ALREADY-GENERATED Ed25519 keypair and its derived `did`, seals the
+ * private key via the existing v2 delegation-grant custody path and
+ * records the `vault_minted_keys` bookkeeping row. Extracted (#2375) so
+ * `apps.provision`'s own keypair minting shares this exact logic rather
+ * than hand-copying it.
  *
  * No plaintext (the private key) is logged at any point, and it is never
  * present in the returned value.
  */
-export async function mintKeypair(params: MintKeypairParams): Promise<MintKeypairResult> {
-  const { purpose, requesterDid, mintedBy, expiresAt = null } = params;
-  const { privateKey, publicKey } = generateKeypair();
-  const did = didFromPublicKey(publicKey);
+async function sealAndRecordMintedKeypair(
+  did: string,
+  publicKey: string,
+  privateKey: string,
+  params: MintKeypairParams,
+): Promise<MintKeypairResult> {
+  const { purpose, requesterDid, mintedBy, expiresAt = null, oneTime = true } = params;
   const field = mintedKeyField(did);
 
   const { grantId, requestId } = await sealAndGrantStaticSecret(field, privateKey, {
@@ -97,7 +112,7 @@ export async function mintKeypair(params: MintKeypairParams): Promise<MintKeypai
     granteeDid: requesterDid,
     expiresAt,
     purpose,
-    oneTime: true,
+    oneTime,
   });
 
   const mintId = generateId('vmk');
@@ -119,6 +134,20 @@ export async function mintKeypair(params: MintKeypairParams): Promise<MintKeypai
   );
 
   return { mintId, did, publicKey, field, grantId, requestId };
+}
+
+/**
+ * Generate a new Ed25519 keypair inside the vault and seal the private key
+ * as a v2 delegation-grant entry, granted once to `requesterDid`. `did` is
+ * derived from the freshly generated public key (see {@link didFromPublicKey}).
+ *
+ * No plaintext (the private key) is logged at any point, and it is never
+ * present in the returned value.
+ */
+export async function mintKeypair(params: MintKeypairParams): Promise<MintKeypairResult> {
+  const { privateKey, publicKey } = generateKeypair();
+  const did = didFromPublicKey(publicKey);
+  return sealAndRecordMintedKeypair(did, publicKey, privateKey, params);
 }
 
 /**

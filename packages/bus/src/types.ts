@@ -2074,6 +2074,31 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'notify.template';
   };
+  /**
+   * `apps.provision` (#2375, gate 1+2 of epic #2370) succeeded end to end:
+   * the app's GitHub repo exists, its `registry.apps` row is registered
+   * with a real (vault-minted) keypair, and its deploy secrets are sealed.
+   * `secretsSet` is Actions secret NAMES only — never values.
+   */
+  'apps.provisioned': {
+    slug: string;
+    appDid: string;
+    repoUrl: string;
+    secretsSet: string[];
+    context_id: string;
+    context_type: 'apps.provision';
+  };
+  /**
+   * `apps.provision` (#2375) failed at `failedStep` — fail-closed: no
+   * half-registered app is served. See apps/kernel/src/lib/apps/provision.ts.
+   */
+  'apps.provision.failed': {
+    slug: string;
+    failedStep: string;
+    error: string;
+    context_id: string;
+    context_type: 'apps.provision';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;

@@ -51,6 +51,7 @@ import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
 import { executeVaultApproval } from '@/src/lib/vault/approvals-execution';
 import { executeAccessApproval } from '@/src/lib/access/approvals-execution';
 import { executeGithubApproval, GITHUB_SOURCE } from '@/src/lib/github/approvals-execution';
+import { executeAppsProvisionApproval } from '@/src/lib/apps/approvals-execution';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -110,6 +111,12 @@ async function runProposalExecutionIfApplicable(
     const execution = await executeAccessApproval(card);
     if (execution.ok) return { data: { ...execution.data } };
     log.error({ proposalId, kind: card.kind, error: execution.error }, 'Access proposal approved but execution failed');
+    return { error: execution.error };
+  }
+  if (card.source === 'apps') {
+    const execution = await executeAppsProvisionApproval(card);
+    if (execution.ok) return { data: { ...execution.data } };
+    log.error({ proposalId, kind: card.kind, error: execution.error }, 'Apps proposal approved but execution failed');
     return { error: execution.error };
   }
   return {};
