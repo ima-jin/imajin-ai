@@ -1,9 +1,10 @@
 /**
  * POST /api/apps/provision — propose `apps.provision` (#2375) on the
  * existing operator-approvals rail (#2059/#2152/#2082). Gate 1+2 of epic
- * #2370: creates a first-party app's GitHub repo, registers it in
- * `registry.apps` (#1990), and seals its app-auth private key + a
- * GitHub-Packages-read token into the repo's Actions secrets.
+ * #2370: creates an extracted app's GitHub repo, registers it in
+ * `registry.apps` (#1990) as a new `tier: 'third_party'` row, and seals its
+ * app-auth private key + a GitHub-Packages-read token into the repo's
+ * Actions secrets.
  *
  * Any authenticated identity may PROPOSE (mirrors the GitHub connector's
  * "agent proposes, operator approves" posture — contrast

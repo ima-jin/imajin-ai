@@ -37,7 +37,8 @@ tags:
   - name: apps
     description: >-
       apps.provision (#2375) — kernel-authoritative repo + registry +
-      sealed-credential provisioning for first-party apps, riding the
+      sealed-credential provisioning for apps being extracted into their own
+      standalone repos (registered as tier: 'third_party'), riding the
       operator-approvals rail
 
 components:
@@ -571,7 +572,7 @@ paths:
     post:
       tags: [apps]
       operationId: proposeAppsProvision
-      summary: Propose apps.provision (#2375) — create/register/seal a first-party app
+      summary: Propose apps.provision (#2375) — create/register/seal an extracted (third_party) app
       description: >-
         Any authenticated identity may propose (mirrors the GitHub
         connector's "agent proposes, operator approves" posture, NOT

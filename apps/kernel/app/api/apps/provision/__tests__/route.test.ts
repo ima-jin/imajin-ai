@@ -62,7 +62,7 @@ vi.mock('@/src/lib/apps/provision', () => ({
   getAppProvisionStatus: getAppProvisionStatusMock,
 }));
 
-import { POST, GET } from '../route';
+import { OPTIONS, POST, GET } from '../route';
 
 const ACTING_DID = 'did:imajin:agent';
 const OPERATOR_DID = 'did:imajin:operator';
@@ -109,6 +109,37 @@ describe('POST /api/apps/provision — auth + validation', () => {
     const request = new Request('http://localhost/api/apps/provision', { method: 'POST', body: '{not json' });
     const response = await POST(request as never);
     expect(response.status).toBe(400);
+  });
+
+  it('rejects a template longer than the max length', async () => {
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil', template: 'x'.repeat(201) }) as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects a non-array attestationTypes', async () => {
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil', attestationTypes: 'not-an-array' }) as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an attestationTypes array longer than the max length', async () => {
+    const response = await POST(postRequest({
+      slug: 'dykil',
+      displayName: 'dykil',
+      attestationTypes: Array.from({ length: 21 }, (_, i) => `dykil/type-${i}`),
+    }) as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('rejects an attestationTypes array containing a non-string/empty entry', async () => {
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil', attestationTypes: ['dykil/valid', ''] }) as never);
+    expect(response.status).toBe(400);
+  });
+});
+
+describe('OPTIONS /api/apps/provision', () => {
+  it('returns a CORS preflight response', async () => {
+    const response = await OPTIONS(new Request('http://localhost/api/apps/provision', { method: 'OPTIONS' }) as never);
+    expect(response.status).toBe(204);
   });
 });
 
@@ -177,9 +208,27 @@ describe('POST /api/apps/provision — raising a new proposal', () => {
     expect(response.status).toBe(500);
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
+
+  it('fails closed with 500 and logs when recording the proposal itself throws', async () => {
+    recordApprovalRequestedMock.mockRejectedValue(new Error('db unavailable'));
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({ error: 'Failed to raise apps.provision proposal' });
+  });
 });
 
 describe('GET /api/apps/provision', () => {
+  it('returns the auth error verbatim when not authenticated', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const response = await GET(getRequest('?slug=dykil') as never);
+
+    expect(response.status).toBe(401);
+  });
+
   it('requires a slug query parameter', async () => {
     const response = await GET(getRequest('') as never);
     expect(response.status).toBe(400);

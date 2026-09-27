@@ -1,8 +1,10 @@
 /**
  * `apps.provision` (#2375) — gate 1+2 of epic #2370: one kernel-authoritative
- * call that creates a first-party app's GitHub repo, registers it in the
- * existing `registry.apps` table (#1990), and seals its app-auth private
- * key + a GitHub-Packages-read token into the repo's Actions secrets.
+ * call that creates an extracted app's GitHub repo, registers it in the
+ * existing `registry.apps` table (#1990) as a `tier: 'third_party'` row
+ * (never upserting any pre-existing legacy `first_party` row for the same
+ * app — see `registerApp`'s docblock), and seals its app-auth private key +
+ * a GitHub-Packages-read token into the repo's Actions secrets.
  *
  * ## Idempotency + fail-closed (`kernel.app_provisions`)
  * One durable row per `slug`. A `status: 'succeeded'` row means "re-run
@@ -11,10 +13,11 @@
  * still seeds any NEWLY requested `attestationTypes`, which is additive).
  * A `status: 'failed'` row names the step that failed
  * (`failedStep`/`errorMessage`) and is safely retryable: every step checks
- * its own completion state first (repo: GET-before-create; mint: reuse an
- * existing `vault_minted_keys` row for the same appDid; register: upsert
- * by slug; seal: skip once `sealedAt` is set), so a retry only re-attempts
- * whatever didn't already succeed.
+ * its own completion state first (repo: GET-before-create; mint: reuse the
+ * ledger's own `appDid` once minting first succeeds, an existing
+ * `vault_minted_keys` row for it; register: insert-if-not-already-registered
+ * by that same appDid, never an upsert; seal: skip once `sealedAt` is set),
+ * so a retry only re-attempts whatever didn't already succeed.
  *
  * ## No half-registered app is ever servable
  * The `registry.apps` row (the thing that makes an app "servable" —
@@ -40,7 +43,7 @@ import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, appProvisions, registryApps, type AppProvisionRow, type NewAppProvisionRow } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { mintKeypairForDid, emitMintedEvents } from '@/src/lib/vault/mint';
+import { mintKeypair, emitMintedEvents } from '@/src/lib/vault/mint';
 import { getMintedKeyByDid } from '@/src/lib/vault/key-cards';
 import { loadAndUnsealByGrantee } from '@/src/lib/vault';
 import {
@@ -87,17 +90,6 @@ export interface AppProvisionFailure {
 
 export type AppProvisionOutcome = AppProvisionSuccess | AppProvisionFailure;
 
-/**
- * First-party app DIDs follow the fixed `did:imajin:app-<slug>` convention
- * `0139_registry_apps_seed_first_party.sql` already established — NOT
- * derived from the minted public key (contrast `mintKeypair`'s
- * `didFromPublicKey`). This is what makes provisioning idempotent on slug
- * alone: the DID is known before anything is minted.
- */
-export function appDidForSlug(slug: string): string {
-  return `did:imajin:app-${slug}`;
-}
-
 async function getProvisionRow(slug: string): Promise<AppProvisionRow | undefined> {
   const [row] = await db.select().from(appProvisions).where(eq(appProvisions.slug, slug)).limit(1);
   return row;
@@ -130,29 +122,41 @@ async function markFailed(nodeDid: string, slug: string, step: string, error: un
 }
 
 /**
- * Step 2 (mint): reuse an already-minted, active keypair for `appDid` when
- * one exists (idempotent retry), otherwise mint a fresh one. Either way,
- * the plaintext private key is fetched back out via `loadAndUnsealByGrantee`
- * (self-granted node -> node, `oneTime: false`) so the caller has it in
- * hand for the one-shot GitHub Actions-secret seal — never returned from
- * this function's own return value in any other form, and never logged.
+ * Step 2 (mint): reuse an already-minted, active keypair for the ledger's
+ * own `existingAppDid` when one is already known (idempotent retry —
+ * `appDid` is persisted into `kernel.app_provisions` the moment minting
+ * first succeeds), otherwise mint a FRESH keypair. Provisioned apps are
+ * `tier: 'third_party'` (see `registerApp`'s docblock), so — unlike the
+ * legacy `did:imajin:app-<slug>` first-party convention — the DID is
+ * derived from the freshly minted public key (`mintKeypair`, the same
+ * convention third-party self-service registration already uses), which
+ * is what keeps it structurally distinct from any pre-existing legacy
+ * first-party row's `app_did` (registry.apps.app_did is globally unique).
+ *
+ * Either way, the plaintext private key is fetched back out via
+ * `loadAndUnsealByGrantee` (self-granted node -> node, `oneTime: false`)
+ * so the caller has it in hand for the one-shot GitHub Actions-secret seal
+ * — never returned from this function's own return value in any other
+ * form, and never logged.
  */
 async function ensureMintedKeypair(
   slug: string,
-  appDid: string,
   nodeDid: string,
-): Promise<{ publicKey: string; privateKey: string }> {
-  const existing = await getMintedKeyByDid(appDid);
-  if (existing && existing.status === 'active') {
-    const privateKey = await loadAndUnsealByGrantee(existing.field, nodeDid);
-    if (privateKey === undefined) {
-      throw new Error(`apps.provision: minted key for '${appDid}' exists but its sealed private key could not be unsealed`);
+  existingAppDid: string | null | undefined,
+): Promise<{ did: string; publicKey: string; privateKey: string }> {
+  if (existingAppDid) {
+    const existing = await getMintedKeyByDid(existingAppDid);
+    if (existing && existing.status === 'active') {
+      const privateKey = await loadAndUnsealByGrantee(existing.field, nodeDid);
+      if (privateKey === undefined) {
+        throw new Error(`apps.provision: minted key for '${existingAppDid}' exists but its sealed private key could not be unsealed`);
+      }
+      return { did: existingAppDid, publicKey: existing.publicKey, privateKey };
     }
-    return { publicKey: existing.publicKey, privateKey };
   }
 
   const purpose = `${APP_KEY_PURPOSE_PREFIX}${slug}`;
-  const minted = await mintKeypairForDid(appDid, {
+  const minted = await mintKeypair({
     purpose,
     requesterDid: nodeDid,
     mintedBy: nodeDid,
@@ -165,12 +169,30 @@ async function ensureMintedKeypair(
 
   const privateKey = await loadAndUnsealByGrantee(minted.field, nodeDid);
   if (privateKey === undefined) {
-    throw new Error(`apps.provision: freshly minted key for '${appDid}' could not be re-unsealed`);
+    throw new Error(`apps.provision: freshly minted key for '${minted.did}' could not be re-unsealed`);
   }
-  return { publicKey: minted.publicKey, privateKey };
+  return { did: minted.did, publicKey: minted.publicKey, privateKey };
 }
 
-/** Step 3 (register): upsert the registry.apps row by slug. Returns the row id. */
+/**
+ * Step 3 (register): insert a NEW `tier: 'third_party'` registry.apps row —
+ * NEVER updates/upserts an existing row, and in particular never touches a
+ * pre-existing LEGACY `tier: 'first_party'` row for the same slug (e.g.
+ * dykil's `app_first_party_dykil`, seeded by
+ * `0139_registry_apps_seed_first_party.sql` before #1985/#1991's
+ * extraction). Idempotent on `appDid` (always sourced from the
+ * `kernel.app_provisions` ledger, so a retry passes the SAME appDid and
+ * this lookup finds the row this same pipeline already created — never
+ * the differently-app-did'd legacy row): a matching row already existing
+ * is treated as "already registered", a no-op. Returns the row id.
+ *
+ * If a legacy row's `slug` was ever left set for this same slug (only
+ * possible for an app `0163_registry_apps_slug.sql` did NOT deliberately
+ * exclude), the INSERT below fails on `registry.apps`'s unique `slug`
+ * index — correctly fail-closed at the 'register' step, since provisioning
+ * an app whose slug is still claimed by an untouched legacy row would
+ * otherwise silently produce two rows answering to the same slug.
+ */
 async function registerApp(params: {
   slug: string;
   displayName: string;
@@ -182,22 +204,10 @@ async function registerApp(params: {
   const [existing] = await db
     .select({ id: registryApps.id })
     .from(registryApps)
-    .where(eq(registryApps.slug, slug))
+    .where(eq(registryApps.appDid, appDid))
     .limit(1);
 
   if (existing) {
-    await db
-      .update(registryApps)
-      .set({
-        appDid,
-        publicKey,
-        tier: 'first_party',
-        status: 'active',
-        tokenAudiences: [slug],
-        allowedRedirectHosts: [slug],
-        updatedAt: new Date(),
-      })
-      .where(eq(registryApps.id, existing.id));
     return existing.id;
   }
 
@@ -206,13 +216,13 @@ async function registerApp(params: {
     id,
     ownerDid: 'did:imajin:platform',
     name: displayName,
-    description: `${displayName} (first-party, apps.provision #2375)`,
+    description: `${displayName} (provisioned via apps.provision #2375)`,
     appDid,
     publicKey,
-    // Placeholder host convention matching 0139_registry_apps_seed_first_party.sql —
-    // an operator can register the real per-node host later via the admin surface.
+    // Placeholder host — an operator can register the app's real deployed
+    // host later via the admin surface once it's actually deployed (#2060).
     callbackUrl: `https://your-node.imajin.ai/${slug}`,
-    tier: 'first_party',
+    tier: 'third_party',
     status: 'active',
     slug,
     allowedRedirectHosts: [slug],
@@ -228,7 +238,7 @@ function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppI
     type: 'registry.app.registered',
     context_id: registryAppId,
     context_type: 'registry_app',
-    payload: { appId: registryAppId, name: displayName, tier: 'first_party', slug, tokenAudiences: [slug], allowedRedirectHosts: [slug] },
+    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts: [slug] },
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
@@ -269,16 +279,18 @@ function mergeAttestationTypes(existing: readonly string[], newlySeeded: Attesta
 export async function runAppProvision(params: AppProvisionParams): Promise<AppProvisionOutcome> {
   const { slug, displayName, template = DEFAULT_APP_TEMPLATE, attestationTypes = [] } = params;
   const nodeDid = getNodeSigningIdentity().senderDid;
-  const appDid = appDidForSlug(slug);
 
   const existingRun = await getProvisionRow(slug);
 
   // Idempotent on slug: a prior success returns the cached result without
   // re-creating anything — but a newly requested attestationTypes list is
   // still additive-seeded, since that step never re-creates the app itself.
+  // `existingRun.appDid` is always set by the time a run reaches 'succeeded'
+  // (it's persisted right after the mint step below succeeds).
   if (existingRun?.status === 'succeeded') {
+    const succeededAppDid = existingRun.appDid ?? '';
     const attestationTypeResults = attestationTypes.length > 0
-      ? await seedAttestationTypes(appDid, slug, attestationTypes)
+      ? await seedAttestationTypes(succeededAppDid, slug, attestationTypes)
       : [];
     if (attestationTypeResults.length > 0) {
       await upsertProvisionRow(slug, {
@@ -288,13 +300,13 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
     return {
       status: 'succeeded',
       repoUrl: existingRun.repoUrl ?? '',
-      appDid: existingRun.appDid ?? appDid,
+      appDid: succeededAppDid,
       secretsSet: existingRun.secretsSet,
       attestationTypeResults,
     };
   }
 
-  await upsertProvisionRow(slug, { appDid, status: 'pending' });
+  await upsertProvisionRow(slug, { status: 'pending' });
 
   // ── Step 1: repo ──────────────────────────────────────────────────────
   let repo: EnsureRepoResult;
@@ -306,12 +318,19 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   }
 
   // ── Step 2: mint (kernel-internal — nothing external can observe this yet) ──
-  let keypair: { publicKey: string; privateKey: string };
+  // `appDid` is not known ahead of a fresh mint (it's derived from the
+  // freshly generated public key — see `ensureMintedKeypair`'s docblock),
+  // so it is persisted to the ledger the moment minting succeeds, letting a
+  // later retry (if register/seal fails) resolve the SAME minted key
+  // instead of minting a second one for this slug.
+  let keypair: { did: string; publicKey: string; privateKey: string };
   try {
-    keypair = await ensureMintedKeypair(slug, appDid, nodeDid);
+    keypair = await ensureMintedKeypair(slug, nodeDid, existingRun?.appDid);
+    await upsertProvisionRow(slug, { appDid: keypair.did });
   } catch (err) {
     return markFailed(nodeDid, slug, 'mint', err);
   }
+  const appDid = keypair.did;
 
   // ── Step 3: register (the app becomes servable ONLY from this point on) ──
   let registryAppId: string;

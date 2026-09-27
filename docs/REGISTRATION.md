@@ -1,17 +1,25 @@
-# Registering a first-party app with the kernel
+# Registering an extracted app with the kernel
 
-Gate 1+2 of epic #2370 (#2375): a first-party app (dykil, links, learn, ...) is registered
-through `apps.provision` — one call that creates its GitHub repo, registers it in the
-kernel's app registry (`registry.apps`, #1990), and seals its app-auth private key + a
-GitHub-Packages-read token into the repo's Actions secrets. **The app's private key never
-leaves the kernel** — it is never returned in any API response, never logged, and never
-"shown once."
+Gate 1+2 of epic #2370 (#2375): an app being extracted out of the monorepo into its own
+standalone repo (dykil today; links/learn/etc. later, #1985/#1991) is registered through
+`apps.provision` — one call that creates its GitHub repo, registers it in the kernel's app
+registry (`registry.apps`, #1990) as a **`tier: 'third_party'`** row, and seals its app-auth
+private key + a GitHub-Packages-read token into the repo's Actions secrets. **The app's
+private key never leaves the kernel** — it is never returned in any API response, never
+logged, and never "shown once."
 
-This doc is for **first-party** apps provisioned by/for `ima-jin` (e.g. an extraction like
-`ima-jin/dykil`). A **third-party** developer forking `ima-jin/imajin-app-template` for their
-own app uses that template's own self-service `docs/REGISTRATION.md`
-(`POST /api/registry/apps`) — a different, human-session-gated flow with a different custody
-model (the developer holds their own keypair). Do not confuse the two.
+`apps.provision` always registers `tier: 'third_party'` — matching `imajin-app-template`'s own
+AGENTS.md ("every app forked from this template, including Imajin's own extractions (dykil,
+links, ...), registers the same way, at the same [third_party] tier"). `tier: 'first_party'`
+stays reserved for the kernel's own admin surface (`POST /api/admin/registry/apps`) seeding
+an in-monorepo trusted-userspace app — see "Legacy first-party rows vs. provisioned apps"
+below for how the two coexist during an app's extraction.
+
+A developer forking `ima-jin/imajin-app-template` **outside** ima-jin (a genuine third party,
+not an ima-jin extraction) uses that template's own self-service `docs/REGISTRATION.md`
+(`POST /api/registry/apps`) instead — a different, human-session-gated flow where the developer
+holds their own keypair rather than the kernel minting and sealing it. Do not confuse the two:
+`apps.provision` is for apps the kernel itself is extracting/deploying.
 
 ## Operator setup (one-time, per node)
 
@@ -86,7 +94,7 @@ curl "${IMAJIN_AUTH_URL}/api/apps/provision?slug=dykil" \
 {
   "slug": "dykil",
   "status": "succeeded",
-  "appDid": "did:imajin:app-dykil",
+  "appDid": "did:imajin:9f2c...",
   "repoUrl": "https://github.com/ima-jin/dykil",
   "secretsSet": ["IMAJIN_APP_PRIVATE_KEY", "GITHUB_PACKAGES_TOKEN"],
   "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"],
@@ -94,6 +102,9 @@ curl "${IMAJIN_AUTH_URL}/api/apps/provision?slug=dykil" \
   "errorMessage": null
 }
 ```
+
+(`appDid` is freshly minted and public-key-derived, not the legacy `did:imajin:app-dykil`
+placeholder — see "Legacy first-party rows vs. provisioned apps" below.)
 
 ### Fields
 
@@ -144,9 +155,35 @@ Actions public key before `PUT .../actions/secrets/{name}` — GitHub's own docu
 mechanism. Neither value is ever logged, returned in an API response, or persisted anywhere
 outside the vault (for the private key) — `secretsSet` in every response/record is names only.
 
-The app's DID follows the fixed `did:imajin:app-<slug>` convention (matching the pre-existing
-first-party seed rows, `migrations/0139_registry_apps_seed_first_party.sql`) — not derived
-from the minted public key, so the identity is known before anything is minted.
+The app's DID is derived from its freshly minted public key (the same convention third-party
+self-service registration already uses) — NOT the `did:imajin:app-<slug>` convention the
+legacy first-party seed rows use (`migrations/0139_registry_apps_seed_first_party.sql`).
+This is deliberate: it's what keeps the new row's `app_did` structurally distinct from a
+pre-existing legacy first-party row's `app_did` for the same app (`registry.apps.app_did` is
+globally unique) — see "Legacy first-party rows vs. provisioned apps" below.
+
+### Legacy first-party rows vs. provisioned apps
+
+An app mid-extraction (dykil today) has, for a time, **two** `registry.apps` rows:
+
+| | Legacy row (e.g. `app_first_party_dykil`) | Provisioned row (`apps.provision` creates this) |
+|---|---|---|
+| `tier` | `first_party` | `third_party` |
+| `slug` | `NULL` (deliberately excluded from `0163_registry_apps_slug.sql`'s backfill) | the provisioned slug, e.g. `dykil` |
+| `app_did` | the legacy `did:imajin:app-<slug>` placeholder, with **no real private key backing it** | freshly minted, vault-sealed, public-key-derived |
+| Written by | `0139_registry_apps_seed_first_party.sql` (one-time seed) | `apps.provision` |
+
+`apps.provision` **never updates, renames, or upserts into the legacy row** — it only ever
+reads/writes the row it itself owns (looked up by the freshly-minted `app_did`, never by
+slug or id). The legacy row's `slug` is left `NULL` specifically so the provisioned row can
+claim that slug value without violating `registry.apps`'s unique `slug` index. The two rows
+coexist until the legacy row's own retirement (revoking it, or dropping it entirely) is
+deliberately handled as separate cleanup — #1991, out of scope for #2375.
+
+An app whose legacy row was NOT excluded from the slug backfill (i.e. its `slug` is already
+set) cannot be provisioned yet: the INSERT in the 'register' step hits the same unique-slug
+constraint and correctly fails closed at that step — provisioning intentionally refuses to
+silently produce two rows answering to the same slug.
 
 ## 2. Or do these steps by hand
 
@@ -161,12 +198,15 @@ with the idempotency ledger.
    `{"purpose": "apps.provision:<slug>", "requesterDid": "<node DID>"}` — note that route
    requires mint authority (the node's own signing identity); prefer the
    `apps.provision` route as soon as the org credential exists.
-3. **Register the app:** `POST /api/admin/registry/apps` (admin-scoped) with
+3. **Register the app as a NEW third-party row** — do not touch any pre-existing legacy
+   first-party row for the same app. `POST /api/admin/registry/apps` (admin-scoped) with
    `{"name": "<displayName>", "ownerDid": "did:imajin:platform", "callbackUrl":
-   "https://your-node.imajin.ai/<slug>", "tier": "first_party", "publicKey": "<from step 2>",
+   "https://your-node.imajin.ai/<slug>", "tier": "third_party", "publicKey": "<from step 2>",
    "tokenAudiences": ["<slug>"], "allowedRedirectHosts": ["<slug>"]}`. Set the row's `slug`
    column directly in the database (the admin route predates #2375's `slug` column) so future
-   `apps.provision` calls treat it as idempotent.
+   `apps.provision` calls treat it as idempotent. If a legacy row for this slug still has
+   `slug` set, clear it first (see "Legacy first-party rows vs. provisioned apps" below) —
+   `slug` is globally unique.
 4. **Seal the deploy secrets:** fetch the repo's Actions public key
    (`GET /repos/{owner}/{repo}/actions/secrets/public-key`), encrypt the private key + the
    org-scoped GitHub credential client-side with libsodium `crypto_box_seal`, and
@@ -180,25 +220,29 @@ with the idempotency ledger.
 Per #2370's evidence comment (2026-09-26): a standalone `ima-jin/dykil` was already cloned,
 built, and Caddy-routed on dev — it hard-stopped at app registration, since
 `POST /auth/api/registry/apps` needs a human session and there was no agent-callable path.
-`apps.provision` is exactly the gate that unblocks it:
+`apps.provision` is exactly the gate that unblocks it. dykil is **not provisioned at all**
+on dev today: `registry.apps` has only the **legacy** first-party row `app_first_party_dykil`
+(seeded by `migrations/0139_registry_apps_seed_first_party.sql` — `did:imajin:app-dykil`, a
+non-functional placeholder public key, `slug IS NULL`, `tier = 'first_party'`), and the
+standalone repo `ima-jin/dykil` already exists.
 
-1. The repo `ima-jin/dykil` already exists (no repo-creation step needed) and
-   `registry.apps` already carries a **placeholder** row (`app_first_party_dykil`,
-   `did:imajin:app-dykil`, a non-functional placeholder public key —
-   `migrations/0139_registry_apps_seed_first_party.sql`).
-2. An agent proposes:
+1. An agent proposes:
    ```json
    POST /api/apps/provision
    { "slug": "dykil", "displayName": "dykil",
      "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"] }
    ```
-3. Because a `registry.apps` row already exists for slug `dykil`, the operator approving this
-   proposal **skips repo creation** (idempotent/skippable — the repo already exists) and only
-   **registers** (replaces the placeholder public key with a real, vault-minted one — the
-   `appDid` stays `did:imajin:app-dykil`) and **seals** (`IMAJIN_APP_PRIVATE_KEY`,
-   `GITHUB_PACKAGES_TOKEN` land in `ima-jin/dykil`'s Actions secrets).
-4. dykil's own CI/deploy on dev now has `IMAJIN_APP_DID=did:imajin:app-dykil` (set by the
-   deploy step from the registry response) and its private key + packages token as Actions
-   secrets — no human touched a secret value at any point.
-5. The two `dykil/*` attestation types are seeded, so dykil's survey-response ingestion is
-   immediately namespace-valid.
+2. The operator approves. Because `ima-jin/dykil` already exists, the pipeline **skips repo
+   creation** (idempotent/skippable). It then mints a **fresh** Ed25519 keypair (a new,
+   public-key-derived DID — distinct from the legacy `did:imajin:app-dykil`) and **registers
+   a brand-new `tier: 'third_party'` row** with `slug: 'dykil'` — the legacy
+   `app_first_party_dykil` row is left completely untouched (still `first_party`, still
+   `slug IS NULL`, still its own placeholder `app_did`). Finally it **seals**
+   `IMAJIN_APP_PRIVATE_KEY` / `GITHUB_PACKAGES_TOKEN` into `ima-jin/dykil`'s Actions secrets.
+3. dykil's own CI/deploy on dev sets `IMAJIN_APP_DID` from the new third-party row's `appDid`
+   (the response/ledger value, not the legacy placeholder) and consumes its private key +
+   packages token from Actions secrets — no human touched a secret value at any point.
+4. The two `dykil/*` attestation types are seeded against the NEW `appDid`, so dykil's
+   survey-response ingestion is immediately namespace-valid.
+5. `registry.apps` now has both rows side by side (see "Legacy first-party rows vs.
+   provisioned apps" above) until the legacy row's separate retirement (#1991).

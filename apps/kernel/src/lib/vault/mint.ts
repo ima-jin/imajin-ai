@@ -88,14 +88,12 @@ export interface MintKeypairResult {
 }
 
 /**
- * Shared seal+record core behind {@link mintKeypair} and
- * {@link mintKeypairForDid} (#2375): given an ALREADY-GENERATED Ed25519
- * keypair and an explicit `did` (the caller decides how `did` is derived —
- * from the public key, as `mintKeypair` does, or a fixed convention, as
- * `apps.provision` does for first-party app DIDs), seals the private key
- * via the existing v2 delegation-grant custody path and records the
- * `vault_minted_keys` bookkeeping row. Extracted so a second caller with a
- * different DID-derivation rule never has to hand-copy this logic.
+ * Shared seal+record core behind {@link mintKeypair}: given an
+ * ALREADY-GENERATED Ed25519 keypair and its derived `did`, seals the
+ * private key via the existing v2 delegation-grant custody path and
+ * records the `vault_minted_keys` bookkeeping row. Extracted (#2375) so
+ * `apps.provision`'s own keypair minting shares this exact logic rather
+ * than hand-copying it.
  *
  * No plaintext (the private key) is logged at any point, and it is never
  * present in the returned value.
@@ -149,21 +147,6 @@ async function sealAndRecordMintedKeypair(
 export async function mintKeypair(params: MintKeypairParams): Promise<MintKeypairResult> {
   const { privateKey, publicKey } = generateKeypair();
   const did = didFromPublicKey(publicKey);
-  return sealAndRecordMintedKeypair(did, publicKey, privateKey, params);
-}
-
-/**
- * Like {@link mintKeypair}, but for a caller that needs an EXPLICIT `did`
- * rather than one derived from the freshly generated public key (#2375) —
- * e.g. `apps.provision`, whose first-party app DIDs follow the fixed
- * `did:imajin:app-<slug>` convention `0139_registry_apps_seed_first_party.sql`
- * already established, independent of any particular keypair.
- *
- * No plaintext (the private key) is logged at any point, and it is never
- * present in the returned value.
- */
-export async function mintKeypairForDid(did: string, params: MintKeypairParams): Promise<MintKeypairResult> {
-  const { privateKey, publicKey } = generateKeypair();
   return sealAndRecordMintedKeypair(did, publicKey, privateKey, params);
 }
 

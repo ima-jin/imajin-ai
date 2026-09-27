@@ -1,6 +1,6 @@
 /**
  * GitHub org-scoped provisioning (#2375) — the credential + REST calls
- * `apps.provision` uses to create a first-party app's repo and seal its
+ * `apps.provision` uses to create an extracted app's repo and seal its
  * deploy secrets. Deliberately separate from `./connector.ts`: that module
  * is a PER-DID OAuth/PAT connector for issue/PR automation on behalf of a
  * human, gated by `channel_links` + the confirm rail. This module has no
