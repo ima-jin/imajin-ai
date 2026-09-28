@@ -471,6 +471,29 @@ const ACCESS_RENDERER: SourceRenderer = {
   renderDetail: renderAccessDetail,
 };
 
+// `apps` (#2375, claim code #2411): apps.provision proposals — approving
+// runs the create-repo/mint/register/seal pipeline server-side; the
+// one-time app-signing-key claim-code reveal is handled by `handleDecide`
+// below (same pattern as `access`'s bearer reveal), never by this renderer.
+function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
+  const { detail } = approval;
+  const slug = detailString(detail, 'slug', '\u2014');
+  const displayName = detailString(detail, 'displayName', '\u2014');
+  const template = detailString(detail, 'template', 'ima-jin/imajin-app-template');
+  return (
+    <div className="space-y-1 text-sm text-gray-200">
+      <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Template</span><span className="font-mono">{template}</span></div>
+    </div>
+  );
+}
+
+const APPS_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Approve & provision', reject: 'Deny' },
+  renderDetail: renderAppsProvisionDetail,
+};
+
 // `github` (#2293): folds the retired pre-#2059 GitHub confirm rail
 // (`/github/api/confirm/:proposalId`) into this rail. `detail` carries the
 // legacy fields (tool/target/riskTier/argsSummary/ownerDid/agentDid);
@@ -570,6 +593,7 @@ const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   vault: VAULT_RENDERER,
   access: ACCESS_RENDERER,
   github: GITHUB_RENDERER,
+  apps: APPS_RENDERER,
 };
 
 function rendererFor(source: string): SourceRenderer {
@@ -596,7 +620,7 @@ function RevealedBearerBanner({
 }: Readonly<{ revealed: RevealedBearer; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
-    navigator.clipboard?.writeText(revealed.bearer).then(() => {
+    globalThis.navigator.clipboard?.writeText(revealed.bearer).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => undefined);
@@ -609,6 +633,49 @@ function RevealedBearerBanner({
       </p>
       <pre className="text-xs font-mono text-amber-100 bg-black/40 rounded p-2 overflow-x-auto select-all">{revealed.bearer}</pre>
       <p className="text-xs text-amber-400">Sliding expiry — extends on every use, dead by {new Date(revealed.expiresAt).toLocaleString()} without one.</p>
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={copy} className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60">
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+        <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
+          I&apos;ve saved it — dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── one-time app-signing-key claim-code reveal (#2411) ──────────────────────
+// Same pattern as `RevealedBearerBanner` above: the decision route surfaces
+// the freshly issued claim code exactly once, in the approve response's
+// `data.claimCode` — never persisted (only its SHA-256 hash is), never
+// fetchable again. This box is the only place in the UI that ever holds it.
+
+interface RevealedClaimCode {
+  proposalId: string;
+  displayName: string;
+  claimCode: string;
+}
+
+function RevealedClaimCodeBanner({
+  revealed,
+  onDismiss,
+}: Readonly<{ revealed: RevealedClaimCode; onDismiss: () => void }>) {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback(() => {
+    globalThis.navigator.clipboard?.writeText(revealed.claimCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }).catch(() => undefined);
+  }, [revealed.claimCode]);
+
+  return (
+    <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="revealed-claim-code">
+      <p className="text-sm text-amber-200 font-medium">
+        App signing-key claim code for &quot;{revealed.displayName}&quot; — shown once, never again. Put it in the
+        app&apos;s <code>.env.local</code> now; it is single-use and short-lived.
+      </p>
+      <pre className="text-xs font-mono text-amber-100 bg-black/40 rounded p-2 overflow-x-auto select-all">{revealed.claimCode}</pre>
       <div className="flex items-center gap-2">
         <button type="button" onClick={copy} className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60">
           {copied ? 'Copied!' : 'Copy'}
@@ -831,6 +898,7 @@ function OperatorApprovalsPanelInner() {
   const [busyId, setBusyId] = useState('');
   const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
+  const [revealedClaimCode, setRevealedClaimCode] = useState<RevealedClaimCode | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const notify = useCallback((type: 'ok' | 'err', msg: string) => {
@@ -908,13 +976,24 @@ function OperatorApprovalsPanelInner() {
       // minted bearer plaintext exactly once, in `data.bearer` — surface it
       // as a persistent (not auto-dismissing) reveal box rather than the
       // 4s flash, since the operator needs time to copy it.
-      const responseBody = await res.json().catch(() => ({})) as { data?: { bearer?: string; expiresAt?: string } };
+      const responseBody = await res.json().catch(() => ({})) as {
+        data?: { bearer?: string; expiresAt?: string; claimCode?: string };
+      };
       if (decision === 'approve' && responseBody.data?.bearer) {
         setRevealedBearer({
           proposalId,
           clientLabel: detailString(approval.detail, 'clientLabel', approval.summary),
           bearer: responseBody.data.bearer,
           expiresAt: responseBody.data.expiresAt ?? '',
+        });
+      }
+      // #2411: an approved apps:provision proposal returns the freshly
+      // issued app-signing-key claim code exactly once, in `data.claimCode`.
+      if (decision === 'approve' && responseBody.data?.claimCode) {
+        setRevealedClaimCode({
+          proposalId,
+          displayName: detailString(approval.detail, 'displayName', approval.summary),
+          claimCode: responseBody.data.claimCode,
         });
       }
       notify('ok', `Proposal ${decision}.`);
@@ -955,6 +1034,10 @@ function OperatorApprovalsPanelInner() {
 
       {revealedBearer && (
         <RevealedBearerBanner revealed={revealedBearer} onDismiss={() => setRevealedBearer(null)} />
+      )}
+
+      {revealedClaimCode && (
+        <RevealedClaimCodeBanner revealed={revealedClaimCode} onDismiss={() => setRevealedClaimCode(null)} />
       )}
 
       {actAs && <ActAsReadOnlyNotice actAs={actAs} />}

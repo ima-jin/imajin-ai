@@ -5,3 +5,8 @@ export type { ImajinAuthConfig } from './handlers';
 export { createCallbackHandler, createSessionHandler, createLogoutHandler } from './handlers';
 export type { RequestAppTokenOptions, RequestAppTokenResult } from './app-token';
 export { requestAppToken } from './app-token';
+export type { LoadAppSigningKeyOptions, AppSigningKey } from './load-app-signing-key';
+export { loadAppSigningKey } from './load-app-signing-key';
+export type { BootstrapKeypair } from './ed25519';
+export { generateBootstrapKeypair, signBootstrapPayload, canonicalizeBootstrapFetchPayload } from './ed25519';
+export { readKeystore, writeKeystore, resolveKeystorePath } from './keystore';

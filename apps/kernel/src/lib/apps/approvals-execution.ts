@@ -30,6 +30,13 @@ export interface AppsExecutionData {
   repoUrl: string;
   appDid: string;
   secretsSet: string[];
+  /**
+   * Plaintext one-time app-signing-key claim code (#2411) — surfaced in
+   * the decision route's response EXACTLY ONCE, same posture as #2252's
+   * `AccessExecutionData.bearer`. Never persisted anywhere past this
+   * single response.
+   */
+  claimCode: string;
 }
 
 export type AppsExecutionResult =
@@ -85,7 +92,7 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
     }
     return {
       ok: true,
-      data: { repoUrl: outcome.repoUrl, appDid: outcome.appDid, secretsSet: outcome.secretsSet },
+      data: { repoUrl: outcome.repoUrl, appDid: outcome.appDid, secretsSet: outcome.secretsSet, claimCode: outcome.claimCode },
     };
   } catch (err) {
     log.error({ err: String(err), proposalId: card.proposalId, slug }, 'Apps proposal execution failed');

@@ -15,15 +15,21 @@ const LEGACY_DYKIL_DID = 'did:imajin:app-dykil';
 const {
   appProvisionsRef,
   registryAppsRef,
+  vaultDelegationGrantsRef,
   appProvisionsStore,
   registryAppsStore,
+  vaultDelegationGrantsStore,
   publishMock,
   emitAttestationMock,
   getNodeSigningIdentityMock,
   mintKeypairMock,
   emitMintedEventsMock,
+  mintedKeyFieldMock,
+  grantExistingMintedKeyMock,
+  emitGrantEventsMock,
   getMintedKeyByDidMock,
   loadAndUnsealByGranteeMock,
+  issueSigningKeyClaimMock,
   ensureRepoFromTemplateMock,
   sealActionsSecretMock,
   loadOrgCredentialMock,
@@ -33,15 +39,21 @@ const {
   return {
     appProvisionsRef: new Proxy({}, { get: (_t, prop) => (typeof prop === 'string' ? prop : undefined) }) as Record<string, unknown>,
     registryAppsRef: new Proxy({}, { get: (_t, prop) => (typeof prop === 'string' ? prop : undefined) }) as Record<string, unknown>,
+    vaultDelegationGrantsRef: new Proxy({}, { get: (_t, prop) => (typeof prop === 'string' ? prop : undefined) }) as Record<string, unknown>,
     appProvisionsStore: new Map<string, Record<string, unknown>>(),
     registryAppsStore: new Map<string, Record<string, unknown>>(),
+    vaultDelegationGrantsStore: new Map<string, Record<string, unknown>>(),
     publishMock: vi.fn().mockResolvedValue(undefined),
     emitAttestationMock: vi.fn().mockResolvedValue({}),
     getNodeSigningIdentityMock: vi.fn(),
     mintKeypairMock: vi.fn(),
     emitMintedEventsMock: vi.fn(),
+    mintedKeyFieldMock: vi.fn((did: string) => `vault-minted-key:${did}`),
+    grantExistingMintedKeyMock: vi.fn(),
+    emitGrantEventsMock: vi.fn(),
     getMintedKeyByDidMock: vi.fn(),
     loadAndUnsealByGranteeMock: vi.fn(),
+    issueSigningKeyClaimMock: vi.fn(),
     ensureRepoFromTemplateMock: vi.fn(),
     sealActionsSecretMock: vi.fn().mockResolvedValue(undefined),
     loadOrgCredentialMock: vi.fn().mockResolvedValue('org-credential-token'),
@@ -57,10 +69,13 @@ vi.mock('nanoid', () => ({ nanoid: () => 'testnanoid1234567' }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (col: string, val: unknown) => ({ col, val }),
+  and: (...conds: FakeCond[]) => conds,
 }));
 
 function storeFor(table: unknown) {
-  return table === appProvisionsRef ? appProvisionsStore : registryAppsStore;
+  if (table === appProvisionsRef) return appProvisionsStore;
+  if (table === vaultDelegationGrantsRef) return vaultDelegationGrantsStore;
+  return registryAppsStore;
 }
 
 function projectRow(row: Record<string, unknown>, projection: Record<string, unknown>) {
@@ -70,22 +85,28 @@ function projectRow(row: Record<string, unknown>, projection: Record<string, unk
 }
 
 interface FakeCond { col: string; val: unknown }
+type FakeWhere = FakeCond | FakeCond[];
+
+function matchesWhere(row: Record<string, unknown>, where: FakeWhere | undefined): boolean {
+  if (!where) return true;
+  const conds = Array.isArray(where) ? where : [where];
+  return conds.every((cond) => row[cond.col] === cond.val);
+}
 
 class FakeSelectChain {
   private table: unknown;
-  private cond: FakeCond | undefined;
+  private cond: FakeWhere | undefined;
   constructor(private readonly projection?: Record<string, unknown>) {}
   from(table: unknown): this {
     this.table = table;
     return this;
   }
-  where(cond: FakeCond): this {
+  where(cond: FakeWhere): this {
     this.cond = cond;
     return this;
   }
   limit(n: number): Promise<Record<string, unknown>[]> {
-    let rows = [...storeFor(this.table).values()];
-    if (this.cond) rows = rows.filter((r) => r[this.cond!.col] === this.cond!.val);
+    let rows = [...storeFor(this.table).values()].filter((r) => matchesWhere(r, this.cond));
     rows = rows.slice(0, n);
     if (this.projection) rows = rows.map((r) => projectRow(r, this.projection!));
     return Promise.resolve(rows);
@@ -122,6 +143,7 @@ class FakeInsertChain {
 vi.mock('@/src/db', () => ({
   appProvisions: appProvisionsRef,
   registryApps: registryAppsRef,
+  vaultDelegationGrants: vaultDelegationGrantsRef,
   db: {
     select: (projection?: Record<string, unknown>) => new FakeSelectChain(projection),
     update: (table: unknown) => new FakeUpdateChain(table),
@@ -135,12 +157,15 @@ vi.mock('@/src/lib/vault/sealing', () => ({
 vi.mock('@/src/lib/vault/mint', () => ({
   mintKeypair: mintKeypairMock,
   emitMintedEvents: emitMintedEventsMock,
+  mintedKeyField: mintedKeyFieldMock,
 }));
 vi.mock('@/src/lib/vault/key-cards', () => ({
   getMintedKeyByDid: getMintedKeyByDidMock,
 }));
 vi.mock('@/src/lib/vault', () => ({
   loadAndUnsealByGrantee: loadAndUnsealByGranteeMock,
+  grantExistingMintedKey: grantExistingMintedKeyMock,
+  emitGrantEvents: emitGrantEventsMock,
 }));
 vi.mock('@/src/lib/github/org-provisioning', () => ({
   ensureRepoFromTemplate: ensureRepoFromTemplateMock,
@@ -152,12 +177,20 @@ vi.mock('@/src/lib/github/org-provisioning', () => ({
 vi.mock('../attestation-types', () => ({
   seedAttestationTypes: seedAttestationTypesMock,
 }));
+vi.mock('../signing-key-claims', () => ({
+  APP_SIGNING_KEY_PURPOSE: 'app-signing-key',
+  issueSigningKeyClaim: issueSigningKeyClaimMock,
+}));
 
 import { runAppProvision, getAppProvisionStatus } from '../provision';
+
+const CLAIM_CODE = 'claim_test_code_0000000000000000';
+const APP_SELF_GRANT_ID = 'vdg_appself_1';
 
 function resetStores(): void {
   appProvisionsStore.clear();
   registryAppsStore.clear();
+  vaultDelegationGrantsStore.clear();
 }
 
 /** The pre-existing legacy first-party row 0139_registry_apps_seed_first_party.sql seeds for dykil. */
@@ -189,6 +222,8 @@ beforeEach(() => {
   loadAndUnsealByGranteeMock.mockResolvedValue(PRIVATE_KEY_PLAINTEXT);
   loadOrgCredentialMock.mockResolvedValue('org-credential-token');
   seedAttestationTypesMock.mockResolvedValue([]);
+  grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
+  issueSigningKeyClaimMock.mockResolvedValue(CLAIM_CODE);
 });
 
 describe('runAppProvision — happy path', () => {
@@ -226,6 +261,64 @@ describe('runAppProvision — happy path', () => {
     expect(publishMock).toHaveBeenCalledWith('apps.provisioned', expect.objectContaining({
       payload: expect.objectContaining({ slug: 'dykil', appDid: MINTED_DID }),
     }));
+    expect(outcome.claimCode).toBe(CLAIM_CODE);
+  });
+
+  it('grants the app its own app-signing-key delegation and issues a claim code', async () => {
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    if (outcome.status !== 'succeeded') throw new Error('unreachable');
+    expect(outcome.claimCode).toBe(CLAIM_CODE);
+
+    expect(grantExistingMintedKeyMock).toHaveBeenCalledWith({
+      did: MINTED_DID,
+      grantedTo: MINTED_DID,
+      purpose: 'app-signing-key',
+      oneTime: false,
+      grantedBy: NODE_DID,
+    });
+    expect(emitGrantEventsMock).toHaveBeenCalledWith({
+      grantId: APP_SELF_GRANT_ID,
+      did: MINTED_DID,
+      field: `vault-minted-key:${MINTED_DID}`,
+      grantedTo: MINTED_DID,
+      grantedBy: NODE_DID,
+    });
+    expect(issueSigningKeyClaimMock).toHaveBeenCalledWith({
+      nodeDid: NODE_DID,
+      slug: 'dykil',
+      appDid: MINTED_DID,
+      grantId: APP_SELF_GRANT_ID,
+    });
+  });
+
+  it('reuses an already-active app-signing-key grant instead of issuing a duplicate one', async () => {
+    vaultDelegationGrantsStore.set('vdg_existing', {
+      id: 'vdg_existing',
+      subject: MINTED_DID,
+      grantedTo: MINTED_DID,
+      field: `vault-minted-key:${MINTED_DID}`,
+      purpose: 'app-signing-key',
+      status: 'active',
+    });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(grantExistingMintedKeyMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).toHaveBeenCalledWith(expect.objectContaining({ grantId: 'vdg_existing' }));
+  });
+
+  it('names the failed step when the app-signing-key grant cannot be issued', async () => {
+    grantExistingMintedKeyMock.mockResolvedValueOnce({ status: 'no_reusable_grant' });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('app-signing-key-grant');
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
   });
 
   it('seeds attestation types when requested', async () => {
@@ -319,10 +412,44 @@ describe('runAppProvision — idempotent re-run', () => {
       appDid: MINTED_DID,
       secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
       attestationTypeResults: [],
+      claimCode: CLAIM_CODE,
     });
     expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
     expect(mintKeypairMock).not.toHaveBeenCalled();
     expect(sealActionsSecretMock).not.toHaveBeenCalled();
+  });
+
+  it('re-issues a fresh claim code every time, reusing the existing grant', async () => {
+    appProvisionsStore.set('dykil', {
+      slug: 'dykil',
+      appDid: MINTED_DID,
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      repoCreated: false,
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      attestationTypes: [],
+      status: 'succeeded',
+    });
+    vaultDelegationGrantsStore.set('vdg_existing', {
+      id: 'vdg_existing',
+      subject: MINTED_DID,
+      grantedTo: MINTED_DID,
+      field: `vault-minted-key:${MINTED_DID}`,
+      purpose: 'app-signing-key',
+      status: 'active',
+    });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    if (outcome.status !== 'succeeded') throw new Error('unreachable');
+    expect(outcome.claimCode).toBe(CLAIM_CODE);
+    expect(grantExistingMintedKeyMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).toHaveBeenCalledWith({
+      nodeDid: NODE_DID,
+      slug: 'dykil',
+      appDid: MINTED_DID,
+      grantId: 'vdg_existing',
+    });
   });
 
   it('still additively seeds newly requested attestation types on an already-succeeded slug', async () => {
