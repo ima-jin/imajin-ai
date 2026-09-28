@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useIdentity } from './context/IdentityContext';
 import { ImajinFooter } from '@imajin/ui';
 import { profilePath } from '@imajin/config';
@@ -45,12 +46,12 @@ export default function Home() {
       </p>
 
       <div className="flex flex-col gap-3 max-w-xs mx-auto">
-        <a
+        <Link
           href="/auth/login"
           className="px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold text-center"
         >
           Login with Key File
-        </a>
+        </Link>
         <p className="text-xs text-gray-500">
           Have an invite?{' '}
           <span className="text-gray-400">

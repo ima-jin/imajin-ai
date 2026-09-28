@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { normalizeHandleInput, profilePath } from '@imajin/config';
 import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
@@ -322,12 +323,12 @@ function RegisterPage() {
           <p className="text-gray-500 text-sm mb-6">
             Already have an account?
           </p>
-          <a
+          <Link
             href="/auth/login"
             className="inline-block px-6 py-3 bg-[#F59E0B] text-black rounded-lg hover:bg-[#D97706] transition font-semibold"
           >
             Login
-          </a>
+          </Link>
         </div>
       </div>
     );

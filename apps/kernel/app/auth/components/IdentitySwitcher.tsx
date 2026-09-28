@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useIdentities } from '@imajin/ui';
 
 function scopeIcon(scope: string): string {
@@ -109,24 +110,24 @@ export default function IdentitySwitcher({
 
       {/* Divider */}
       <div className="border-t border-gray-800 my-2 pt-1">
-        <a
+        <Link
           href="/auth/groups/new?scope=family"
           className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
         >
           <span className="text-base leading-none">+</span> Create Family Identity
-        </a>
-        <a
+        </Link>
+        <Link
           href="/auth/groups/new?scope=community"
           className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
         >
           <span className="text-base leading-none">+</span> Create Community Identity
-        </a>
-        <a
+        </Link>
+        <Link
           href="/auth/groups/new?scope=business"
           className="flex items-center gap-2 px-3 py-2 text-xs text-zinc-500 hover:text-zinc-300 transition-colors rounded-lg no-underline"
         >
           <span className="text-base leading-none">+</span> Create Business Identity
-        </a>
+        </Link>
       </div>
     </div>
   );
