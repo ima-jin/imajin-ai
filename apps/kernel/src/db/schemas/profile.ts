@@ -22,6 +22,23 @@ export type FieldVisibility = Record<string, {
 }>;
 
 /**
+ * Tax registration numbers for a business profile (#2420). Multiple
+ * registrations are allowed — a business may be registered in several
+ * jurisdictions. Format validation lives in
+ * `src/lib/profile/tax-registrations.ts`; this is a data-shape-only type.
+ * Public by design — these print on invoices/pay pages (#2206), so the
+ * public profile read never filters this field.
+ */
+export type TaxRegistrationKind = 'GST/HST' | 'QST' | 'PST' | 'VAT';
+
+export interface TaxRegistration {
+  jurisdiction: string;  // e.g. 'CA-ON'
+  kind: TaxRegistrationKind;
+  number: string;
+  label?: string;
+}
+
+/**
  * Profiles - public identity pages linked to DIDs
  */
 export const profiles = profileSchema.table('profiles', {
@@ -42,6 +59,10 @@ export const profiles = profileSchema.table('profiles', {
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }), // Online presence tracking
   featureToggles: jsonb('feature_toggles').$type<FeatureToggles>().notNull().default({}),
   agentPricing: jsonb('agent_pricing').default({}),
+  // Tax registration numbers (#2420) — business scope only, but stored on
+  // the shared profiles table like every other profile field. Additive
+  // jsonb column; see migrations/0166_add_tax_registrations.sql.
+  taxRegistrations: jsonb('tax_registrations').$type<TaxRegistration[]>().notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   claimedBy: text('claimed_by'),                              // owner DID, null = unclaimed stub

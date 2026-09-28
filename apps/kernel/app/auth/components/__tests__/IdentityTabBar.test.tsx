@@ -22,7 +22,7 @@ afterEach(() => {
 describe('IdentityTabBar — Money tab', () => {
   it('renders the Money tab when showMoney is true', () => {
     render(
-      <IdentityTabBar showSettings={false} showMembers={false} showSecurity={false} showMoney enabledServices={[]} />,
+      <IdentityTabBar showSettings={false} showMembers={false} showSecurity={false} showMoney showTax={false} enabledServices={[]} />,
     );
     expect(screen.getByText('Money')).toBeDefined();
   });
@@ -34,6 +34,7 @@ describe('IdentityTabBar — Money tab', () => {
         showMembers={false}
         showSecurity={false}
         showMoney={false}
+        showTax={false}
         enabledServices={[]}
       />,
     );
@@ -47,11 +48,35 @@ describe('IdentityTabBar — Money tab', () => {
         showMembers={false}
         showSecurity={false}
         showMoney
+        showTax={false}
         enabledServices={[]}
       />,
     );
     expect(screen.getByText('Money')).toBeDefined();
     expect(screen.queryByText('Pay')).toBeNull();
+  });
+});
+
+describe('IdentityTabBar — Tax registrations tab (#2420)', () => {
+  it('renders the Tax tab when showTax is true', () => {
+    render(
+      <IdentityTabBar showSettings={false} showMembers={false} showSecurity={false} showMoney={false} showTax enabledServices={[]} />,
+    );
+    expect(screen.getByText('Tax')).toBeDefined();
+  });
+
+  it('hides the Tax tab when showTax is false (e.g. a personal/actor identity)', () => {
+    render(
+      <IdentityTabBar
+        showSettings={false}
+        showMembers={false}
+        showSecurity={false}
+        showMoney={false}
+        showTax={false}
+        enabledServices={[]}
+      />,
+    );
+    expect(screen.queryByText('Tax')).toBeNull();
   });
 });
 
@@ -65,6 +90,7 @@ describe('IdentityTabBar — set_badge display (RFC-19, #2275)', () => {
         showMembers={false}
         showSecurity={false}
         showMoney={false}
+        showTax={false}
         enabledServices={['coffee', 'market']}
       />,
     );
@@ -81,6 +107,7 @@ describe('IdentityTabBar — set_badge display (RFC-19, #2275)', () => {
         showMembers={false}
         showSecurity={false}
         showMoney={false}
+        showTax={false}
         enabledServices={['coffee', 'market']}
       />,
     );
@@ -97,6 +124,7 @@ describe('IdentityTabBar — set_badge display (RFC-19, #2275)', () => {
         showMembers={false}
         showSecurity={false}
         showMoney={false}
+        showTax={false}
         enabledServices={['market']}
       />,
     );
