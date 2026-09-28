@@ -17,6 +17,17 @@ export interface PaymentRequestFairManifest {
   distributions: unknown[];
   attribution: unknown[];
   total: { amount: number; currency: string };
+  /** #2419 — present only on a caller-supplied custom manifest that opts into trust-liability tax. `total` above is the GROSS total (subtotal + Σtaxes.amount) when this is non-empty. */
+  taxes?: Array<{
+    jurisdiction: string;
+    kind: string;
+    rateBps: number;
+    basisAmount: number;
+    amount: number;
+    collectorDid: string;
+    remitTo: string;
+    registrationNumber?: string;
+  }>;
 }
 
 export type PaymentRequestSettlementMethod = 'manual' | 'stripe' | 'mjnx';

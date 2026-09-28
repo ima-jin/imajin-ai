@@ -85,7 +85,18 @@ vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: stat
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
   getStripeClient: () => ({ checkout: { sessions: { retrieve: state.stripeSessionsRetrieveMock } } }),
 }));
-vi.mock('@/src/lib/pay/checkout', () => ({ resolveConnectedAccountFee: state.resolveConnectedAccountFeeMock }));
+vi.mock('@/src/lib/pay/checkout', () => ({
+  resolveConnectedAccountFee: state.resolveConnectedAccountFeeMock,
+  // #2419: real (pure) implementation — [] for every manifest in this
+  // suite's fixtures, since none carry `taxes[]`.
+  taxLineItems: (fairManifest: { taxes?: Array<{ jurisdiction: string; kind: string; amount: number }> }) =>
+    (fairManifest?.taxes ?? []).map((tax) => ({
+      name: `${tax.kind} (${tax.jurisdiction})`,
+      description: 'Sales tax collected in trust',
+      amount: tax.amount,
+      quantity: 1,
+    })),
+}));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: state.settlePaymentMock }));
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   getPaymentRequestById: state.getPaymentRequestByIdMock,

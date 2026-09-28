@@ -40,10 +40,10 @@ import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { resolveSettlementChain, type FairSettlementEntry } from '@imajin/fair';
+import { resolveSettlementChain, type FairSettlementEntry, type FairSettlementTax } from '@imajin/fair';
 import { getPaymentService } from '../pay';
 import { getStripeClient } from '../providers/stripe-client';
-import { resolveConnectedAccountFee, type CheckoutBody, type CheckoutItem } from '../checkout';
+import { resolveConnectedAccountFee, taxLineItems, type CheckoutBody, type CheckoutItem } from '../checkout';
 import type { CheckoutRequest, FiatCurrency } from '../types';
 import { settlePayment } from '../settle-core';
 import { getPaymentRequestById, type ServiceError } from './service';
@@ -143,14 +143,19 @@ export async function createPaymentRequestCheckoutSession(
   const reused = await findReusableCheckoutSession(existing.id);
   if (reused) return { ...reused, reused: true };
 
-  const items = toCheckoutItems(existing.lineItems);
+  // #2419: tax is appended as its own manual Stripe line item, derived
+  // from the manifest's `taxes[]` — `existing.lineItems` (-> `items`) stays
+  // the merchandise-only subtotal/`basisAmount` that `resolveConnectedAccountFee`
+  // below expects. `[]` for a manifest without `taxes[]`.
+  const merchandiseItems = toCheckoutItems(existing.lineItems);
   const fairManifest = existing.fairManifest as unknown as CheckoutBody['fairManifest'];
+  const items = [...merchandiseItems, ...taxLineItems(fairManifest)];
 
   // `successUrl`/`cancelUrl` are part of the shared `CheckoutBody` shape but
   // are never read by `resolveConnectedAccountFee` (fee computation only) —
   // the real ones are built below, once fee resolution has succeeded.
   const feeResult = await resolveConnectedAccountFee({
-    items,
+    items: merchandiseItems,
     currency: existing.currency,
     successUrl: '',
     cancelUrl: '',
@@ -239,20 +244,31 @@ async function settleAndAttestStripePaid(
     const buyerDid = paymentRequest.recipientDid ?? paymentRequest.issuerDid;
     const nodeDid = (await getNodeDid()) || null;
 
-    const { resolvedChain, expectedTotal } = resolveSettlementChain({
-      amountCents: paymentRequest.totalAmount,
+    // #2419: a custom manifest may carry `taxes[]`. When it does,
+    // `paymentRequest.totalAmount` is the GROSS charge (subtotal + tax) —
+    // `resolveSettlementChain` needs the pre-tax basisAmount instead, so
+    // tax never enters chain-share/fee-skim math. Absent `taxes`, this is
+    // a no-op (`basisAmountCents === paymentRequest.totalAmount`).
+    const taxes = (manifest?.taxes ?? []) as FairSettlementTax[];
+    const taxTotalCents = taxes.reduce((sum, t) => sum + t.amount, 0);
+    const basisAmountCents = paymentRequest.totalAmount - taxTotalCents;
+
+    const { resolvedChain, expectedTotal, taxCredits, totalTaxDollars } = resolveSettlementChain({
+      amountCents: basisAmountCents,
       chain,
       fees: manifest?.fees as Array<{ role: string; rateBps: number; fixedCents: number }> | undefined,
       buyerDid,
       nodeDid,
+      taxes,
     });
 
     const settleResult = await settlePayment({
       from_did: buyerDid,
-      total_amount: expectedTotal,
+      // #2419: the widened validateChain invariant is chain + taxCredits == total_amount.
+      total_amount: expectedTotal + totalTaxDollars,
       service: 'pay',
       type: 'payment_request',
-      fair_manifest: { chain: resolvedChain },
+      fair_manifest: { chain: resolvedChain, ...(taxCredits.length > 0 && { taxCredits }) },
       funded: true,
       funded_provider: 'stripe',
       metadata: { payment_request_id: paymentRequest.id },

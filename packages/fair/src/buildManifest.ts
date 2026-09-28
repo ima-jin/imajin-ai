@@ -1,4 +1,4 @@
-import type { FairEntry, FairFee } from './types';
+import type { FairEntry, FairFee, FairTax } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
@@ -21,6 +21,18 @@ export interface FairFeeManifest {
   chain: FairEntry[];
   distributions: FairEntry[];
   attribution: FairEntry[];
+  /** #2419 — present only when the caller supplied `taxes` (non-empty). */
+  taxes?: FairTax[];
+}
+
+/** Caller-supplied input for a single tax row (#2419) — everything except the computed `basisAmount`/`amount`, which `buildFairManifest` derives from `basisAmountCents`. */
+export interface BuildFairManifestTaxInput {
+  jurisdiction: string;
+  kind: string;
+  rateBps: number;
+  registrationNumber?: string;
+  collectorDid: string;
+  remitTo: string;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -29,6 +41,47 @@ function clamp(value: number, min: number, max: number): number {
 
 function bpsToShare(bps: number): number {
   return bps / 10000;
+}
+
+/**
+ * Compute the resolved `taxes[]` rows for the fee manifest (#2419).
+ *
+ * `basisAmountCents` is the pre-tax subtotal (in cents) the caller charged
+ * for the goods/services — required whenever `taxes` is non-empty, since
+ * `FairTax.basisAmount`/`amount` are absolute cents, not the fractional
+ * shares the rest of this function deals in. `amount` is computed with
+ * plain integer rounding (`Math.round`), matching every other cents-based
+ * fee computation already in this codebase (`resolveSettlementChain`'s
+ * `computeFeeCents`, `checkout.ts`'s `computePlatformShareCents`) —
+ * deliberately NOT `@imajin/money`: `packages/fair` dropped that
+ * dependency entirely (see `docs/npm-publishing.md`) because `money` is
+ * unpublished and pulls in `@imajin/db`/`@imajin/auth`, which would have
+ * broken `@ima-jin/fair`'s publishability.
+ *
+ * Chain shares and platform/protocol/node/scope/buyer-credit fees never
+ * reference `basisAmountCents` at all — they're pure ratios of 1.0 by
+ * construction (see the fee cascade below) — so tax structurally cannot
+ * enter any skim basis here.
+ */
+function computeTaxRows(
+  taxes: BuildFairManifestTaxInput[] | undefined,
+  basisAmountCents: number | undefined,
+): FairTax[] {
+  if (!taxes || taxes.length === 0) return [];
+  if (!Number.isInteger(basisAmountCents) || (basisAmountCents as number) < 0) {
+    throw new Error('buildFairManifest: basisAmountCents (a non-negative integer) is required when taxes are provided');
+  }
+  const basis = basisAmountCents as number;
+  return taxes.map((t) => ({
+    jurisdiction: t.jurisdiction,
+    kind: t.kind,
+    rateBps: t.rateBps,
+    basisAmount: basis,
+    amount: Math.round((basis * t.rateBps) / 10000),
+    ...(t.registrationNumber ? { registrationNumber: t.registrationNumber } : {}),
+    collectorDid: t.collectorDid,
+    remitTo: t.remitTo,
+  }));
 }
 
 /**
@@ -51,6 +104,10 @@ export function buildFairManifest(params: {
   buyerCreditBps?: number;
   nodeOperatorDid?: string;
   scopeFeeBps?: number | null;
+  /** #2419 — one rate per invoice (v1 granularity). Requires `basisAmountCents`. */
+  taxes?: BuildFairManifestTaxInput[];
+  /** #2419 — the pre-tax subtotal (cents) `taxes[].amount` is computed from. Required whenever `taxes` is non-empty. */
+  basisAmountCents?: number;
 }): FairFeeManifest {
   const {
     creatorDid,
@@ -113,11 +170,17 @@ export function buildFairManifest(params: {
     { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, minRateBps: STRIPE_MIN_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
   ];
 
+  const taxes = computeTaxRows(params.taxes, params.basisAmountCents);
+
   return {
-    version: '0.4.0',
+    // #2419: fee-manifest version bumps 0.4.0 -> 0.5.0 only for manifests
+    // that actually carry taxes[] — manifests without taxes keep validating
+    // exactly as today.
+    version: taxes.length > 0 ? '0.5.0' : '0.4.0',
     fees,
     chain,
     distributions,
     attribution,
+    ...(taxes.length > 0 ? { taxes } : {}),
   };
 }

@@ -74,9 +74,27 @@ export interface ResolvedChainEntry {
   amount: number;
 }
 
+/** A resolved `.fair` `taxes[]` row, in the cents-based shape `FairTax` uses. */
+export interface FairSettlementTax {
+  jurisdiction: string;
+  kind: string;
+  rateBps: number;
+  basisAmount: number;
+  amount: number;
+  collectorDid: string;
+  remitTo: string;
+  registrationNumber?: string;
+}
+
 /** Options for {@link resolveSettlementChain}. */
 export interface ResolveChainOptions {
-  /** Transaction total in cents. */
+  /**
+   * Transaction total in cents. When `taxes` is present/non-empty, this
+   * MUST be the pre-tax `basisAmount` (NOT the gross subtotal+tax) — chain
+   * shares and fee-skim math never see tax (#2419 rule 2). The gross
+   * (`amountCents + Σtaxes.amount`) is derived internally, solely to feed
+   * the processor-fee calculation — see `taxes` below.
+   */
   amountCents: number;
   /** The .fair manifest chain entries (shares must sum to 1.0). */
   chain: FairSettlementEntry[];
@@ -98,6 +116,15 @@ export interface ResolveChainOptions {
    * Defaults to {@link DEFAULT_SELLER_ROLES}.
    */
   sellerRoles?: ReadonlySet<string>;
+  /**
+   * The manifest's `taxes[]` rows (#2419), cents-based. When present, the
+   * processor/Stripe fee is computed on the GROSS amount (`amountCents +
+   * Σtaxes.amount`) per Ryan's ruling: the seller absorbs the processing
+   * fee on the tax portion, same as they already absorb it on their own
+   * share. Chain-share math is entirely unaffected (still `amountCents` =
+   * basisAmount). Omit/empty for byte-identical pre-#2419 behavior.
+   */
+  taxes?: FairSettlementTax[];
 }
 
 /** Result of {@link resolveSettlementChain}. */
@@ -112,8 +139,35 @@ export interface ResolvedChain {
   /**
    * Estimated processor fee deducted from the seller's share, in dollars.
    * Derived from the manifest `processor` fee entry or the 3.7%+30¢ fallback.
+   * Computed on the GROSS amount (basisAmount + tax total) when `taxes` is
+   * supplied — see {@link ResolveChainOptions.taxes}.
    */
   estimatedFeeDollars: number;
+  /**
+   * One trust-liability credit per tax row (#2419), each for the row's
+   * FULL `amount` (dollars) to its own `collectorDid` — deliberately kept
+   * OUT of `resolvedChain` so `ΣresolvedChain == basisAmount` never has to
+   * account for tax, and so tax is structurally excluded from fee-skim
+   * math and MJNx reconciliation (both of which only ever look at
+   * `chain`/`resolvedChain`). Empty when `taxes` is absent/empty. Carries
+   * `jurisdiction`/`kind`/`rateBps`/`remitTo` (not just `did`/`amount`) so
+   * the caller can pass this straight through as `fair_manifest.taxCredits`
+   * to `settlePayment()`, which needs those fields for ledger metadata.
+   */
+  taxCredits: ResolvedTaxCredit[];
+  /** Σ`taxes[].amount` in dollars. Zero when `taxes` is absent/empty. */
+  totalTaxDollars: number;
+}
+
+/** A resolved trust-liability tax credit (#2419) — the row's FULL `amount` (dollars) to `did` (the row's `collectorDid`), plus the metadata `settlePayment()` writes onto the ledger row. */
+export interface ResolvedTaxCredit {
+  did: string;
+  amount: number;
+  jurisdiction: string;
+  kind: string;
+  rateBps: number;
+  remitTo: string;
+  registrationNumber?: string;
 }
 
 /**
@@ -159,15 +213,21 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     buyerDid,
     nodeDid,
     sellerRoles = DEFAULT_SELLER_ROLES,
+    taxes = [],
   } = opts;
 
   const totalDollars = amountCents / 100;
+  const totalTaxCents = taxes.reduce((sum, t) => sum + t.amount, 0);
+  // #2419 rule 3: the processor/Stripe fee applies to the GROSS amount
+  // (basisAmount + tax) — identical to `amountCents` when there's no tax,
+  // so this is a no-op for every pre-#2419 caller.
+  const grossCentsForFee = amountCents + totalTaxCents;
 
-  // ── 1. Find processor fee ──────────────────────────────────────────────────
+  // ── 1. Find processor fee ──────────────────────────────────────────────────────────────────────
   const processorFee = fees.find((f) => f.role === 'processor');
   const estimatedFeeCents = processorFee
-    ? computeFeeCents(amountCents, processorFee.rateBps, processorFee.fixedCents)
-    : computeFeeCents(amountCents, FALLBACK_PROCESSOR_RATE_BPS, FALLBACK_PROCESSOR_FIXED_CENTS);
+    ? computeFeeCents(grossCentsForFee, processorFee.rateBps, processorFee.fixedCents)
+    : computeFeeCents(grossCentsForFee, FALLBACK_PROCESSOR_RATE_BPS, FALLBACK_PROCESSOR_FIXED_CENTS);
   const estimatedFeeDollars = Number.parseFloat((estimatedFeeCents / 100).toFixed(2));
 
   // ── 2. Resolve placeholder DIDs and compute per-entry amounts ──────────────
@@ -198,5 +258,18 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     target.amount = Number.parseFloat((target.amount + drift).toFixed(2));
   }
 
-  return { resolvedChain, expectedTotal, estimatedFeeDollars };
+  // ── 4. Tax credits (#2419) ── full amount each, no fee deduction, no
+  // proportional math; kept entirely separate from `resolvedChain`.
+  const taxCredits: ResolvedTaxCredit[] = taxes.map((t) => ({
+    did: t.collectorDid,
+    amount: Number.parseFloat((t.amount / 100).toFixed(2)),
+    jurisdiction: t.jurisdiction,
+    kind: t.kind,
+    rateBps: t.rateBps,
+    remitTo: t.remitTo,
+    ...(t.registrationNumber ? { registrationNumber: t.registrationNumber } : {}),
+  }));
+  const totalTaxDollars = Number.parseFloat((totalTaxCents / 100).toFixed(2));
+
+  return { resolvedChain, expectedTotal, estimatedFeeDollars, taxCredits, totalTaxDollars };
 }

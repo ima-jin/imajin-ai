@@ -2,6 +2,8 @@ import type { FairManifest } from "./types";
 
 const SUM_TOLERANCE = 1e-6;
 const VALID_SETTLEMENT_SCHEMES = new Set(["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"]);
+// #2419 — rounding tolerance (cents) for `taxes[].amount ≈ basisAmount × rateBps / 10000`.
+const TAX_AMOUNT_TOLERANCE_CENTS = 1;
 
 function validateMoney(m: unknown, path: string): string[] {
   const errors: string[] = [];
@@ -157,7 +159,8 @@ function validateSettlement(settlement: unknown): string[] {
 
 function validateRequiredFieldsV1_1(m: Record<string, unknown>): string[] {
   const errors: string[] = [];
-  if (m.fair !== "1.1") errors.push('fair must be "1.1"');
+  // #2419: 'fair' is '1.2' exactly for manifests carrying taxes[]; '1.1' otherwise.
+  if (m.fair !== "1.1" && m.fair !== "1.2") errors.push('fair must be "1.1" or "1.2"');
   if (typeof m.id !== "string" || !m.id) errors.push("id is required");
   if (typeof m.type !== "string" || !m.type) errors.push("type is required");
   if (typeof m.owner !== "string" || !m.owner) errors.push("owner (DID) is required");
@@ -210,6 +213,55 @@ function validateFees(fees: unknown): string[] {
 }
 
 /**
+ * Validate a single `taxes[]` row (#2419): required fields, plus
+ * `amount ≈ basisAmount × rateBps / 10000` within a 1-cent rounding
+ * tolerance. Purely structural — whether `basisAmount` actually matches
+ * the transaction's pre-tax subtotal is a settlement-time invariant (see
+ * `resolveSettlementChain`/`validateChain` in the kernel), not something
+ * this manifest-shape validator can check in isolation.
+ */
+function validateTaxEntry(tax: unknown, i: number): string[] {
+  const errors: string[] = [];
+  if (typeof tax !== "object" || tax === null) {
+    return [`taxes[${i}] must be an object`];
+  }
+  const t = tax as Record<string, unknown>;
+  if (typeof t.jurisdiction !== "string" || !t.jurisdiction) errors.push(`taxes[${i}].jurisdiction must be a non-empty string`);
+  if (typeof t.kind !== "string" || !t.kind) errors.push(`taxes[${i}].kind must be a non-empty string`);
+  if (typeof t.rateBps !== "number" || !Number.isInteger(t.rateBps) || t.rateBps < 0) {
+    errors.push(`taxes[${i}].rateBps must be a non-negative integer`);
+  }
+  if (typeof t.basisAmount !== "number" || !Number.isInteger(t.basisAmount) || t.basisAmount < 0) {
+    errors.push(`taxes[${i}].basisAmount must be a non-negative integer`);
+  }
+  if (typeof t.amount !== "number" || !Number.isInteger(t.amount) || t.amount < 0) {
+    errors.push(`taxes[${i}].amount must be a non-negative integer`);
+  }
+  if (t.registrationNumber !== undefined && (typeof t.registrationNumber !== "string" || !t.registrationNumber)) {
+    errors.push(`taxes[${i}].registrationNumber must be a non-empty string when present`);
+  }
+  if (typeof t.collectorDid !== "string" || !t.collectorDid) errors.push(`taxes[${i}].collectorDid must be a non-empty string`);
+  if (typeof t.remitTo !== "string" || !t.remitTo) errors.push(`taxes[${i}].remitTo must be a non-empty string`);
+
+  if (typeof t.basisAmount === "number" && typeof t.rateBps === "number" && typeof t.amount === "number") {
+    const expected = Math.round((t.basisAmount * t.rateBps) / 10000);
+    if (Math.abs(expected - t.amount) > TAX_AMOUNT_TOLERANCE_CENTS) {
+      errors.push(`taxes[${i}].amount (${t.amount}) does not match basisAmount × rateBps / 10000 (${expected})`);
+    }
+  }
+  return errors;
+}
+
+/** Validate the optional top-level `taxes[]` field (#2419). Absent entirely for manifests that predate/don't use trust-liability tax. */
+function validateTaxes(taxes: unknown): string[] {
+  if (taxes === undefined) return [];
+  if (!Array.isArray(taxes)) return ["taxes must be an array"];
+  const errors: string[] = [];
+  for (let i = 0; i < taxes.length; i++) errors.push(...validateTaxEntry(taxes[i], i));
+  return errors;
+}
+
+/**
  * Validate the optional `provenance[]` field (#1886) — one-directional
  * refs from a `.fair` manifest to the attestation facts that justify it.
  * Existence/resolvability against real attestation rows is a DB-backed
@@ -248,6 +300,7 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
     ...validateSettlement(manifest.settlement),
     ...validateFees(manifest.fees),
     ...validateProvenance(manifest.provenance),
+    ...validateTaxes(manifest.taxes),
   ];
 }
 
@@ -346,7 +399,9 @@ export function validateManifest(manifest: unknown): { ok: boolean; valid: boole
   }
 
   const m = manifest as Record<string, unknown>;
-  const isV1_1 = m.fair === "1.1" || m.version === "1.1";
+  // #2419: '1.2' manifests (taxes[] present) validate through the same
+  // v1.1 path — see validateRequiredFieldsV1_1 for the version-string check.
+  const isV1_1 = m.fair === "1.1" || m.fair === "1.2" || m.version === "1.1" || m.version === "1.2";
   const errors = isV1_1 ? validateV1_1(m) : validateV1_0(m);
   const ok = errors.length === 0;
   return { ok, valid: ok, errors };

@@ -81,6 +81,31 @@ export interface FairManifestV10 {
   platformSignature?: FairSignature;
   version?: string;
   chain?: FairEntry[];
+  taxes?: FairTax[];
+}
+
+/**
+ * A single top-level tax row (#2419) — sales tax (GST/HST/QST/VAT/PST/...)
+ * collected IN TRUST for a remittance authority, never as chain/fee revenue.
+ *
+ * `basisAmount`/`amount` are integer minor units (cents), same convention
+ * as `Money.amount` — `amount` is always `round(basisAmount × rateBps /
+ * 10000)`. `collectorDid` is who holds the money in trust (typically the
+ * seller); `remitTo` is the authority DID it's owed to (a creditor label —
+ * see `AUTHORITY_DID_CA_CRA` in `./constants` — never a settlement payee).
+ * Tax never enters any chain-share or fee-skim basis: every chain share and
+ * platform/protocol/node/scope/buyer-credit fee computes on `basisAmount`
+ * only (see `buildFairManifest`/`resolveSettlementChain`).
+ */
+export interface FairTax {
+  jurisdiction: string; // e.g. "CA-ON"
+  kind: 'GST/HST' | 'QST' | 'VAT' | 'PST' | string;
+  rateBps: number; // e.g. 1300 for 13%
+  basisAmount: number; // pre-tax subtotal the rate applies to (cents)
+  amount: number; // computed tax amount (cents) = round(basisAmount × rateBps / 10000)
+  registrationNumber?: string; // issuer tax registration (e.g. "123456789RT0001")
+  collectorDid: string; // DID that collects in trust (typically the seller)
+  remitTo: string; // authority DID (well-known placeholder, e.g. "did:imajin:authority:ca-cra")
 }
 
 // ============================================================================
@@ -179,10 +204,16 @@ export interface FairProvenanceRef {
   type: string;
 }
 
-/** .fair manifest schema v1.1 — see `version` field */
+/**
+ * .fair manifest schema v1.1 — see `version` field.
+ *
+ * `version`/`fair` is `'1.2'` (#2419) exactly when `taxes` is present and
+ * non-empty; manifests without `taxes[]` stay `'1.1'` and validate/settle
+ * byte-for-byte identically to before #2419.
+ */
 export interface FairManifestV11 {
-  fair: string; // "1.1"
-  version: '1.1';
+  fair: string; // "1.1" | "1.2"
+  version: '1.1' | '1.2';
   id: string;
   type: string;
   owner: string;
@@ -214,15 +245,21 @@ export interface FairManifestV11 {
   distributions?: DidShareList;
   chain?: DidShareList;
   platformSignature?: FairSignature;
+  // #2419 — top-level trust-liability tax rows; see `FairTax`.
+  taxes?: FairTax[];
 }
 
-/** Union type — narrow with `'version' in m && m.version === '1.1'` */
+/** Union type — narrow with `'version' in m && (m.version === '1.1' || m.version === '1.2')` */
 export type FairManifest = FairManifestV10 | FairManifestV11;
 
 // ============================================================================
 // Type guards
 // ============================================================================
 
+/**
+ * True for both '1.1' and '1.2' (#2419) — the two share one structural
+ * shape; '1.2' only ever differs by carrying a non-empty `taxes[]`.
+ */
 export function isFairManifestV11(m: FairManifest | null | undefined): m is FairManifestV11 {
-  return !!m && typeof m === 'object' && 'version' in m && m.version === '1.1';
+  return !!m && typeof m === 'object' && 'version' in m && (m.version === '1.1' || m.version === '1.2');
 }

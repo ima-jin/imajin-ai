@@ -55,11 +55,35 @@ interface FairManifestChainItem {
   role: string;
 }
 
+/** A resolved trust-liability tax credit (#2419) — dollar `amount`, kept OUT of `chain` (see `resolveSettlementChain`'s `taxCredits`). */
+interface FairManifestTaxCredit {
+  did: string;
+  amount: number;
+  jurisdiction: string;
+  kind: string;
+  rateBps: number;
+  remitTo: string;
+  registrationNumber?: string;
+}
+
 type SettlementValidationResult =
   | { error: string; status: number }
   | { signatureVerified: boolean };
 
-function validateChain(chain: unknown, total_amount: number): { error: string; status: number } | { chainTotal: number } {
+/**
+ * Validate `fair_manifest.chain` shape/sum against `total_amount`.
+ *
+ * #2419: when `taxCredits` is present/non-empty, the invariant widens from
+ * "chain sums to total_amount" to "chain + taxCredits sums to
+ * total_amount" — tax is real money moved in the same settlement batch,
+ * just kept out of `chain` so it never enters fee-skim math. Exported for
+ * direct unit testing (no DB needed — this is pure validation).
+ */
+export function validateChain(
+  chain: unknown,
+  total_amount: number,
+  taxCredits?: unknown,
+): { error: string; status: number } | { chainTotal: number; taxTotal: number } {
   if (!chain || !Array.isArray(chain)) {
     return { error: 'fair_manifest.chain must be an array', status: 400 };
   }
@@ -70,10 +94,26 @@ function validateChain(chain: unknown, total_amount: number): { error: string; s
     }
     chainTotal += item.amount;
   }
-  if (Math.abs(chainTotal - total_amount) > 0.01) {
-    return { error: `Chain total (${chainTotal}) does not match total_amount (${total_amount})`, status: 400 };
+
+  let taxTotal = 0;
+  if (taxCredits !== undefined) {
+    if (!Array.isArray(taxCredits)) {
+      return { error: 'fair_manifest.taxCredits must be an array when present', status: 400 };
+    }
+    for (const credit of taxCredits as FairManifestTaxCredit[]) {
+      if (!credit.did || !credit.amount || !credit.jurisdiction || !credit.kind || !credit.remitTo) {
+        return { error: 'Each taxCredits item must have did, amount, jurisdiction, kind, and remitTo', status: 400 };
+      }
+      taxTotal += credit.amount;
+    }
   }
-  return { chainTotal };
+
+  if (Math.abs(chainTotal + taxTotal - total_amount) > 0.01) {
+    return taxTotal > 0
+      ? { error: `Chain total + tax total (${chainTotal} + ${taxTotal}) does not match total_amount (${total_amount})`, status: 400 }
+      : { error: `Chain total (${chainTotal}) does not match total_amount (${total_amount})`, status: 400 };
+  }
+  return { chainTotal, taxTotal };
 }
 
 /**
@@ -125,7 +165,7 @@ async function validateSettlementRequest(params: {
 }): Promise<SettlementValidationResult> {
   const { fair_manifest, total_amount, from_did, service, funded } = params;
 
-  const chainCheck = validateChain(fair_manifest.chain, total_amount);
+  const chainCheck = validateChain(fair_manifest.chain, total_amount, fair_manifest.taxCredits);
   if ('error' in chainCheck) return chainCheck;
 
   // #1886 money-rule guard: a no-op for every manifest that isn't the
@@ -180,6 +220,142 @@ async function resolveInternalSettlementSource(params: {
   }
 
   return { source: sourceLabelForUnit(unit), burnAmount: total_amount, settleCurrency };
+}
+
+/** Role set whose funded-settlement members already received money directly via Stripe Connect — shared between the chain-recipient and tax-credit crediting loops below. */
+const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
+
+/** Minimal shape both crediting loops need from either `db` or a `db.transaction()` callback's `tx`. Mirrors `ledger.ts`'s private `Executor` type. */
+type TxExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
+
+/** Shared per-settlement context both crediting loops read from — avoids threading nine individual params through each. */
+interface CreditLoopContext {
+  from_did: string;
+  service: string;
+  type: string;
+  fair_manifest: SettlePaymentParams['fair_manifest'];
+  funded: boolean;
+  funded_provider?: string;
+  metadata: Record<string, unknown>;
+  unit: Unit;
+  sourceKind: 'receipt' | 'transfer';
+  source: string;
+  settleCurrency: string;
+  batchId: string;
+  signatureVerified: boolean;
+}
+
+/**
+ * Credit each `fair_manifest.chain` recipient (#2016 — single-unit, no
+ * cash-laundering): insert one `transactions` audit row per recipient
+ * (always), and skip the internal balance credit only for a funded
+ * settlement's seller-role recipients (money already moved via Stripe
+ * Connect). Returns the inserted transaction ids.
+ */
+async function creditChainRecipients(tx: TxExecutor, ctx: CreditLoopContext): Promise<string[]> {
+  const { from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified } = ctx;
+  const txIds: string[] = [];
+
+  for (const recipient of fair_manifest.chain) {
+    const txId = generateId('tx');
+    txIds.push(txId);
+
+    const skipBalanceCredit = funded && SELLER_ROLES.has(recipient.role);
+
+    await tx.insert(transactions).values({
+      id: txId,
+      service,
+      type,
+      fromDid: from_did,
+      toDid: recipient.did,
+      amount: recipient.amount.toString(),
+      currency: settleCurrency,
+      unit,
+      sourceKind,
+      status: 'completed',
+      source,
+      fairManifest: fair_manifest,
+      batchId,
+      metadata: {
+        ...metadata,
+        role: recipient.role,
+        ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
+        signature_verified: funded ? false : signatureVerified,
+        ...(skipBalanceCredit && { balance_skipped: true, reason: 'externally_funded_seller' }),
+      },
+    });
+
+    if (!skipBalanceCredit) {
+      await creditUnit(tx, recipient.did, unit, recipient.amount, { currency: settleCurrency });
+    }
+  }
+
+  return txIds;
+}
+
+/**
+ * Credit each `fair_manifest.taxCredits` row (#2419) — one extra
+ * trust-liability ledger credit per `.fair` `taxes[]` row, tagged
+ * `{ tax: true, jurisdiction, kind, rateBps, remitTo, trustLiability: true,
+ * remitted: null }`. On a funded (Stripe) settlement, a collector DID
+ * that's ALSO one of this settlement's chain sellers already received the
+ * tax money directly via the same Stripe Connect transfer (the checkout's
+ * single connected-account destination) — so, mirroring
+ * `creditChainRecipients`' seller skip, that credit is recorded (audit
+ * trail) but not double-applied to the internal balance. A collector
+ * distinct from any chain seller (uncommon, but the type allows it) is
+ * always credited internally, funded or not, since nothing else would
+ * have moved that money there. Returns the inserted transaction ids.
+ */
+async function creditTaxRows(tx: TxExecutor, ctx: CreditLoopContext): Promise<string[]> {
+  const { from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified } = ctx;
+  const txIds: string[] = [];
+  const chainSellerDids = new Set(
+    fair_manifest.chain.filter((r) => SELLER_ROLES.has(r.role)).map((r) => r.did),
+  );
+
+  for (const credit of fair_manifest.taxCredits ?? []) {
+    const txId = generateId('tx');
+    txIds.push(txId);
+
+    const skipTaxBalanceCredit = funded && chainSellerDids.has(credit.did);
+
+    await tx.insert(transactions).values({
+      id: txId,
+      service,
+      type,
+      fromDid: from_did,
+      toDid: credit.did,
+      amount: credit.amount.toString(),
+      currency: settleCurrency,
+      unit,
+      sourceKind,
+      status: 'completed',
+      source,
+      fairManifest: fair_manifest,
+      batchId,
+      metadata: {
+        ...metadata,
+        role: 'tax',
+        tax: true,
+        jurisdiction: credit.jurisdiction,
+        kind: credit.kind,
+        rateBps: credit.rateBps,
+        remitTo: credit.remitTo,
+        trustLiability: true,
+        remitted: null,
+        ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
+        signature_verified: funded ? false : signatureVerified,
+        ...(skipTaxBalanceCredit && { balance_skipped: true, reason: 'externally_funded_seller' }),
+      },
+    });
+
+    if (!skipTaxBalanceCredit) {
+      await creditUnit(tx, credit.did, unit, credit.amount, { currency: settleCurrency });
+    }
+  }
+
+  return txIds;
 }
 
 interface EmitAttestationsParams {
@@ -247,7 +423,23 @@ export interface SettlePaymentParams {
   total_amount: number;
   service: string;
   type: string;
-  fair_manifest: Record<string, unknown> & { chain: Array<{ did: string; amount: number; role: string }> };
+  fair_manifest: Record<string, unknown> & {
+    chain: Array<{ did: string; amount: number; role: string }>;
+    /**
+     * Resolved trust-liability tax credits (#2419), dollar-based, one per
+     * `.fair` `taxes[]` row (see `resolveSettlementChain`'s `taxCredits`).
+     * Kept OUT of `chain` — see `validateChain`'s widened invariant above.
+     */
+    taxCredits?: Array<{
+      did: string;
+      amount: number;
+      jurisdiction: string;
+      kind: string;
+      rateBps: number;
+      remitTo: string;
+      registrationNumber?: string;
+    }>;
+  };
   funded?: boolean;
   funded_provider?: string;
   metadata?: Record<string, unknown>;
@@ -336,7 +528,7 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
   const payeeChainVerified = payeeVerifications.every(Boolean);
 
   const batchId = generateId('batch');
-  const txIds: string[] = [];
+  let txIds: string[] = [];
 
   // Externally funded settlements are backed by a real Stripe receipt;
   // internal (from an existing balance) settlements are pure ledger moves.
@@ -349,49 +541,17 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
       await debitUnit(tx, from_did, unit, burnAmount);
     }
 
+    const creditCtx: CreditLoopContext = {
+      from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified,
+    };
     // Credit each recipient in the SAME unit as the settlement (#2016 — no
-    // more forced "earnings go to cash" laundering into a different bucket).
-    // For externally-funded payments (Stripe), the seller already received money
-    // via Stripe Connect. Only credit platform/node/buyer_credit balances — NOT the seller.
-    const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
-
-    for (const recipient of fair_manifest.chain) {
-      const txId = generateId('tx');
-      txIds.push(txId);
-
-      const skipBalanceCredit = funded && SELLER_ROLES.has(recipient.role);
-
-      // Insert transaction (always — for audit trail)
-      await tx.insert(transactions).values({
-        id: txId,
-        service,
-        type,
-        fromDid: from_did,
-        toDid: recipient.did,
-        amount: recipient.amount.toString(),
-        currency: settleCurrency,
-        unit,
-        sourceKind,
-        status: 'completed',
-        source,
-        fairManifest: fair_manifest,
-        batchId,
-        metadata: {
-          ...metadata,
-          role: recipient.role,
-          ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
-          signature_verified: funded ? false : signatureVerified,
-          ...(skipBalanceCredit && { balance_skipped: true, reason: 'externally_funded_seller' }),
-        },
-      });
-
-      // Credit recipient's balance in the settlement's unit — skip for
-      // sellers on funded payments (money already went to their Stripe
-      // Connected account).
-      if (!skipBalanceCredit) {
-        await creditUnit(tx, recipient.did, unit, recipient.amount, { currency: settleCurrency });
-      }
-    }
+    // more forced "earnings go to cash" laundering into a different bucket),
+    // then each #2419 trust-liability tax credit — kept as two separate
+    // loops/functions (`creditChainRecipients`/`creditTaxRows`) so neither
+    // one's cognitive complexity creeps back up as new cases are added.
+    const chainTxIds = await creditChainRecipients(tx, creditCtx);
+    const taxTxIds = await creditTaxRows(tx, creditCtx);
+    txIds = [...chainTxIds, ...taxTxIds];
   });
 
   // Fire attestations asynchronously — don't block settlement response
