@@ -31,6 +31,7 @@ import {
   tryLoadOrgCredential,
   ensureRepoFromTemplate,
   sealActionsSecret,
+  fetchAppManifest,
   OrgCredentialMissingError,
   PROVISIONING_ORG,
   DEFAULT_APP_TEMPLATE,
@@ -269,5 +270,85 @@ describe('sealActionsSecret', () => {
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
 
     await expect(sealActionsSecret('ima-jin/dykil', 'GITHUB_PACKAGES_TOKEN', 'token-plaintext')).resolves.toBeUndefined();
+  });
+});
+
+describe('fetchAppManifest (#2425)', () => {
+  function contentsResponse(manifest: unknown): Response {
+    const encoded = Buffer.from(JSON.stringify(manifest), 'utf-8').toString('base64');
+    return jsonResponse(200, { content: encoded, encoding: 'base64' });
+  }
+
+  it('returns null (never calls fetch) when the credential is unsealed', async () => {
+    const result = await fetchAppManifest('dykil', null);
+
+    expect(result).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the parsed, validated manifest for a 200 response', async () => {
+    fetchMock.mockResolvedValueOnce(contentsResponse({
+      name: 'Dykil',
+      icon: '📋',
+      entryUrl: '/dykil',
+      placements: ['launcher', 'home', 'auth-submenu'],
+      requiredScope: 'creator',
+    }));
+
+    const result = await fetchAppManifest('dykil', ORG_TOKEN);
+
+    expect(result).toEqual({
+      name: 'Dykil',
+      icon: '📋',
+      entryUrl: '/dykil',
+      placements: ['launcher', 'home', 'auth-submenu'],
+      requiredScope: 'creator',
+    });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`https://api.github.com/repos/${PROVISIONING_ORG}/dykil/contents/imajin.app.json`);
+    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${ORG_TOKEN}`);
+  });
+
+  it('returns null (non-fatal) when the file does not exist (404)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: 'Not Found' }));
+
+    await expect(fetchAppManifest('dykil', ORG_TOKEN)).resolves.toBeNull();
+  });
+
+  it('returns null when the response is not base64-encoded', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { content: '{}', encoding: 'none' }));
+
+    await expect(fetchAppManifest('dykil', ORG_TOKEN)).resolves.toBeNull();
+  });
+
+  it('returns null when the decoded content is not valid JSON', async () => {
+    const encoded = Buffer.from('not json', 'utf-8').toString('base64');
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { content: encoded, encoding: 'base64' }));
+
+    await expect(fetchAppManifest('dykil', ORG_TOKEN)).resolves.toBeNull();
+  });
+
+  it('returns null when placements contains an unrecognized value', async () => {
+    fetchMock.mockResolvedValueOnce(contentsResponse({ placements: ['launcher', 'not-a-real-placement'] }));
+
+    await expect(fetchAppManifest('dykil', ORG_TOKEN)).resolves.toBeNull();
+  });
+
+  it('returns null when a field has the wrong type', async () => {
+    fetchMock.mockResolvedValueOnce(contentsResponse({ icon: 42 }));
+
+    await expect(fetchAppManifest('dykil', ORG_TOKEN)).resolves.toBeNull();
+  });
+
+  it('never throws when fetch itself rejects (network failure)', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('network down'));
+
+    await expect(fetchAppManifest('dykil', ORG_TOKEN)).resolves.toBeNull();
+  });
+
+  it('accepts a manifest with only some fields set (all optional)', async () => {
+    fetchMock.mockResolvedValueOnce(contentsResponse({ icon: '☕' }));
+
+    await expect(fetchAppManifest('coffee', ORG_TOKEN)).resolves.toEqual({ icon: '☕' });
   });
 });

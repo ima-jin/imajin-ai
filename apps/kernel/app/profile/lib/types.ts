@@ -2,10 +2,13 @@ export interface FeatureToggles {
   inference_enabled?: boolean;
   show_market_items?: boolean;
   show_events?: boolean;
+  /** @deprecated (#2425) superseded by `enabledApps` — see `src/db/schemas/profile.ts`'s `FeatureToggles`. */
   links?: string | null;
   coffee?: string | null;
   dykil?: string | null;
   learn?: string | null;
+  /** Generic, slug-keyed replacement for the per-app fields above (#2425). */
+  enabledApps?: string[];
 }
 
 export interface ProfileData {

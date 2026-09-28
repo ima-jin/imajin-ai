@@ -264,6 +264,75 @@ interface ActionsPublicKeyResponse {
   key: string;
 }
 
+/** Nav metadata (#2425) an app can publish about itself via `imajin.app.json` at its repo root. */
+export interface AppManifest {
+  name?: string;
+  icon?: string;
+  entryUrl?: string;
+  placements?: string[];
+  requiredScope?: string | null;
+}
+
+/** Mirrors `src/lib/kernel/app-nav.ts`'s `AppPlacement` — duplicated here (rather than imported) to keep this GitHub-specific module independent of kernel nav internals. */
+const VALID_MANIFEST_PLACEMENTS = new Set(['launcher', 'home', 'auth-submenu']);
+
+function isValidManifest(value: unknown): value is AppManifest {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (v.name !== undefined && typeof v.name !== 'string') return false;
+  if (v.icon !== undefined && typeof v.icon !== 'string') return false;
+  if (v.entryUrl !== undefined && typeof v.entryUrl !== 'string') return false;
+  if (v.requiredScope !== undefined && v.requiredScope !== null && typeof v.requiredScope !== 'string') return false;
+  if (v.placements !== undefined) {
+    if (!Array.isArray(v.placements)) return false;
+    if (!v.placements.every((p) => typeof p === 'string' && VALID_MANIFEST_PLACEMENTS.has(p))) return false;
+  }
+  return true;
+}
+
+interface GitHubContentsResponse {
+  content: string;
+  encoding: string;
+}
+
+/**
+ * Best-effort read of `imajin.app.json` from the app's own repo at
+ * `apps.provision` time (#2425) — nav metadata (name/icon/entryUrl/
+ * placements/requiredScope) an extracted app can publish about itself so
+ * `registerApp` doesn't have to fall back to defaults for every third-party
+ * app. The repo is created PRIVATE (see `createRepoFromTemplate`), so this
+ * always requires the org-scoped credential — unlike the anonymous-first
+ * repo-existence check above.
+ *
+ * Never throws: returns `null` when the credential is unsealed, the file
+ * doesn't exist (a template that hasn't adopted the manifest convention
+ * yet), or its contents don't parse/validate. A missing/invalid manifest is
+ * NOT a provisioning failure — same degrade-don't-fail posture as
+ * `tryLoadOrgCredential`/`sealDeploySecrets`'s caller in `provision.ts`.
+ */
+export async function fetchAppManifest(slug: string, token: string | null): Promise<AppManifest | null> {
+  if (token === null) return null;
+  try {
+    const res = await callGitHubApi<GitHubContentsResponse>({
+      method: 'GET',
+      path: `/repos/${PROVISIONING_ORG}/${slug}/contents/imajin.app.json`,
+      token,
+    });
+    if (res.status !== 200 || !res.data || res.data.encoding !== 'base64') return null;
+
+    const decoded = Buffer.from(res.data.content, 'base64').toString('utf-8');
+    const parsed: unknown = JSON.parse(decoded);
+    if (!isValidManifest(parsed)) {
+      log.warn({ slug }, 'apps.provision: imajin.app.json failed validation, using defaults');
+      return null;
+    }
+    return parsed;
+  } catch (err) {
+    log.warn({ err: String(err), slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
+    return null;
+  }
+}
+
 /**
  * Encrypt `plaintext` with libsodium's anonymous sealed box against
  * `repo`'s Actions public key, and PUT it as the named Actions secret.
