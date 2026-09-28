@@ -620,7 +620,7 @@ function RevealedBearerBanner({
 }: Readonly<{ revealed: RevealedBearer; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
-    navigator.clipboard?.writeText(revealed.bearer).then(() => {
+    globalThis.navigator.clipboard?.writeText(revealed.bearer).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => undefined);
@@ -663,7 +663,7 @@ function RevealedClaimCodeBanner({
 }: Readonly<{ revealed: RevealedClaimCode; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
   const copy = useCallback(() => {
-    navigator.clipboard?.writeText(revealed.claimCode).then(() => {
+    globalThis.navigator.clipboard?.writeText(revealed.claimCode).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => undefined);

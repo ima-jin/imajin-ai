@@ -26,6 +26,10 @@ export const appSigningKeyClaims = kernelAppSigningKeyClaimsSchema.table('app_si
   claimedAt: timestamp('claimed_at', { withTimezone: true }),
   /** Best-effort host hint the claiming app reported (e.g. hostname) — for the /jin timeline, not authorization. */
   claimedByHost: text('claimed_by_host'),
+  /** Hex-encoded Ed25519 public key of the app's own bootstrap keypair, bound at claim time. Never the private key. */
+  bootstrapPublicKey: text('bootstrap_public_key'),
+  /** Set when a newer claim for the same appDid supersedes this binding (reissueClaim rebinding). */
+  bootstrapKeyRevokedAt: timestamp('bootstrap_key_revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   codeHashUniq: uniqueIndex('uniq_app_signing_key_claims_code_hash').on(table.codeHash),

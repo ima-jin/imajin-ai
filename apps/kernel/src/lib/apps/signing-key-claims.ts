@@ -38,9 +38,24 @@
  * for the same slug (see `POST /api/apps/provision`'s `reissueClaim` flag)
  * to get a new one-time code without re-minting the key or re-creating the
  * repo.
+ *
+ * ## Bootstrap-key binding (restart authentication)
+ * The claim code alone only ever authenticates ONE exchange (first boot).
+ * To avoid needing a fresh operator-approved code on every later restart,
+ * the app mints its OWN Ed25519 "bootstrap" keypair, persists it in a local
+ * keystore file (never the actual signing key — see
+ * `@ima-jin/auth-client`'s `loadAppSigningKey`), and submits the PUBLIC
+ * half alongside the claim code. {@link claimSigningKey} binds that public
+ * key to the claim row. Every later boot re-authenticates by signing a
+ * fresh challenge with the bootstrap private key — verified by
+ * `../apps/bootstrap-fetch-auth.ts` against the bound public key — instead
+ * of spending a claim code. Re-issuing (rebinding, e.g. a lost keystore)
+ * revokes the previously bound key: {@link claimSigningKey} calls
+ * {@link revokeBootstrapBindingsForAppDid} on every successful claim, so at
+ * most one bootstrap key is ever trusted per app at a time.
  */
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, appSigningKeyClaims, type AppSigningKeyClaimRow } from '@/src/db';
@@ -123,16 +138,43 @@ export type ClaimSigningKeyOutcome =
   | { status: 'not_found' | 'expired' | 'already_claimed' };
 
 /**
+ * Revoke every currently-active bootstrap-key binding for `appDid` other
+ * than `exceptRowId` (when given). Called on every successful
+ * {@link claimSigningKey} so rebinding (operator re-approving
+ * `apps.provision` with `reissueClaim: true` after a lost keystore) leaves
+ * at most one trusted bootstrap key per app — the previous key can never
+ * again authenticate a fetch, even though its own claim row's `status`
+ * stays `'claimed'` as the historical record.
+ */
+export async function revokeBootstrapBindingsForAppDid(appDid: string, exceptRowId?: string): Promise<void> {
+  const scope = [
+    eq(appSigningKeyClaims.appDid, appDid),
+    isNotNull(appSigningKeyClaims.bootstrapPublicKey),
+    isNull(appSigningKeyClaims.bootstrapKeyRevokedAt),
+  ];
+  await db
+    .update(appSigningKeyClaims)
+    .set({ bootstrapKeyRevokedAt: new Date() })
+    .where(exceptRowId ? and(...scope, ne(appSigningKeyClaims.id, exceptRowId)) : and(...scope));
+}
+
+/**
  * Redeem a plaintext claim code: looks it up by its hash, checks it hasn't
- * expired or already been claimed, and atomically flips it to `'claimed'`.
+ * expired or already been claimed, and atomically flips it to `'claimed'`
+ * while binding the app's bootstrap public key. Any other currently-active
+ * bootstrap binding for the same app DID is revoked in the same call
+ * (rebinding after a lost keystore, or the ordinary first-ever claim where
+ * there is nothing to revoke).
  *
  * Never throws for an ordinary refusal — every outcome is a `status` value
  * so the route layer can respond and audit uniformly. `hostHint` is a
  * caller-reported, best-effort label (e.g. hostname) recorded for the /jin
- * timeline only — never trusted for authorization.
+ * timeline only — never trusted for authorization. `bootstrapPublicKey` is
+ * assumed already shape-validated (hex Ed25519 public key) by the route.
  */
 export async function claimSigningKey(params: {
   code: string;
+  bootstrapPublicKey: string;
   hostHint?: string | null;
 }): Promise<ClaimSigningKeyOutcome> {
   const codeHash = hashClaimCode(params.code);
@@ -161,7 +203,12 @@ export async function claimSigningKey(params: {
 
   const claimed = await db
     .update(appSigningKeyClaims)
-    .set({ status: 'claimed', claimedAt: new Date(), claimedByHost: params.hostHint ?? null })
+    .set({
+      status: 'claimed',
+      claimedAt: new Date(),
+      claimedByHost: params.hostHint ?? null,
+      bootstrapPublicKey: params.bootstrapPublicKey,
+    })
     .where(and(eq(appSigningKeyClaims.id, row.id), eq(appSigningKeyClaims.status, 'pending')))
     .returning({ id: appSigningKeyClaims.id });
   if (claimed.length === 0) {
@@ -169,7 +216,45 @@ export async function claimSigningKey(params: {
     return { status: 'already_claimed' };
   }
 
+  await revokeBootstrapBindingsForAppDid(row.appDid, row.id);
+
   return { status: 'ok', slug: row.slug, appDid: row.appDid, grantId: row.grantId };
+}
+
+export interface BootstrapBinding {
+  slug: string;
+  appDid: string;
+  grantId: string;
+  boundPublicKey: string;
+}
+
+/**
+ * Resolve the currently-active bootstrap-key binding for `appDid`, if any
+ * — the claim row whose `bootstrapPublicKey` is set and not yet revoked.
+ * Used by `../apps/bootstrap-fetch-auth.ts` on every subsequent-boot fetch.
+ * Returns `null` when the app has never completed a claim exchange, or its
+ * only binding has been revoked (rebound elsewhere).
+ */
+export async function resolveActiveBootstrapBinding(appDid: string): Promise<BootstrapBinding | null> {
+  const rows = await db
+    .select()
+    .from(appSigningKeyClaims)
+    .where(
+      and(
+        eq(appSigningKeyClaims.appDid, appDid),
+        eq(appSigningKeyClaims.status, 'claimed'),
+        isNotNull(appSigningKeyClaims.bootstrapPublicKey),
+        isNull(appSigningKeyClaims.bootstrapKeyRevokedAt),
+      ),
+    )
+    .orderBy(desc(appSigningKeyClaims.claimedAt))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row?.bootstrapPublicKey) {
+    return null;
+  }
+  return { slug: row.slug, appDid: row.appDid, grantId: row.grantId, boundPublicKey: row.bootstrapPublicKey };
 }
 
 /** Current status for a slug's most recent claim — used by tests/diagnostics only. */

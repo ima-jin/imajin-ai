@@ -29,7 +29,9 @@
     "src/"
   ],
   "dependencies": {
-    "jose": "^5.10.0"
+    "jose": "^5.10.0",
+    "@noble/ed25519": "^2.3.0",
+    "@noble/hashes": "^1.7.2"
   },
   "peerDependencies": {
     "next": ">=15.5.24"

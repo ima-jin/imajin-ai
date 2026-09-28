@@ -2132,17 +2132,22 @@ export interface BusEventMap {
     context_type: 'apps.signing-key';
   };
   /**
-   * A third-party app fetched its own signing key from the vault after
-   * redeeming a claim code (#2411) — the final link in the
-   * minted -> granted -> claimed -> fetched chain. Carries no key
-   * material — `outcome` is the same closed vocabulary
-   * `fetchGrantSecret` (`../vault/index.ts`) already reports.
+   * A third-party app fetched its own signing key from the vault — the
+   * final link in the minted -> granted -> claimed/re-authenticated ->
+   * fetched chain (#2411). Carries no key material — `outcome` is the
+   * same closed vocabulary `fetchGrantSecret` (`../vault/index.ts`)
+   * reports, plus `wrong_purpose` for the defensive purpose check both
+   * fetch routes run. `via` distinguishes the first-boot claim-code
+   * exchange (`'claim'`) from every later restart's bootstrap-key
+   * signature re-authentication (`'bootstrap-key'`) — see
+   * `apps/kernel/src/lib/apps/bootstrap-fetch-auth.ts`.
    */
   'apps.signing-key.fetched': {
     slug: string;
     appDid: string;
     grantId: string;
-    outcome: 'ok' | 'not_found' | 'not_grantee' | 'inactive' | 'expired' | 'consumed' | 'error';
+    outcome: 'ok' | 'not_found' | 'not_grantee' | 'inactive' | 'expired' | 'consumed' | 'wrong_purpose' | 'error';
+    via: 'claim' | 'bootstrap-key';
     context_id: string;
     context_type: 'apps.signing-key';
   };

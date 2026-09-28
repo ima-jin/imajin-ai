@@ -59,9 +59,9 @@ if (!user) redirect('/');
 An app provisioned via the kernel's `apps.provision` (see
 `ima-jin/imajin-ai`'s `docs/REGISTRATION.md`) never holds a raw
 `IMAJIN_APP_PRIVATE_KEY` in any env file. Instead, `.env.local` carries
-only `IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID`, and a one-time
-`IMAJIN_APP_CLAIM_CODE` — shown once on the kernel operator's `/jin`
-approval card. Exchange it for the real signing key at boot:
+`IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID`, and — only until first boot — a
+one-time `IMAJIN_APP_CLAIM_CODE`, shown once on the kernel operator's
+`/jin` approval card:
 
 ```ts
 // src/lib/signing-identity.ts
@@ -79,13 +79,30 @@ export function getSigningIdentity() {
 }
 ```
 
+**First boot vs. every later boot** (Ryan's restart-authentication ruling,
+#2411): `loadAppSigningKey()` mints its own Ed25519 "bootstrap" keypair on
+first boot, exchanges the claim code + that keypair's public half for the
+real signing key, and persists ONLY the bootstrap keypair — never the
+signing key — in a local keystore file (`IMAJIN_APP_KEYSTORE`, default
+`./.imajin/keystore.json`, mode `0600`). Every later boot signs a fresh
+challenge with that persisted bootstrap key instead of spending another
+claim code, so no operator action is needed on an ordinary restart.
+
 `loadAppSigningKey()` throws on any failure (missing config, an
-already-redeemed or expired claim code, a revoked grant) rather than
-degrading silently — a signing key is the app's own identity, so a
-misconfigured deploy should fail loudly at boot. The claim code is
-single-use: if it's already been redeemed (e.g. after a restart that lost
-the in-memory key), ask the kernel operator to re-approve `apps.provision`
-with `reissueClaim: true` for a fresh one.
+already-redeemed or expired claim code, an invalid bootstrap signature, a
+revoked grant) rather than degrading silently — a signing key is the app's
+own identity, so a misconfigured deploy should fail loudly at boot. If the
+local keystore is ever lost (disk wipe, redeploy to a fresh host), ask the
+kernel operator to re-approve `apps.provision` with `reissueClaim: true`
+for a fresh claim code — redeeming it also revokes the lost keystore's
+bootstrap key so it can never authenticate a fetch again.
+
+| Env var | When needed |
+|---|---|
+| `IMAJIN_KERNEL_URL` | Always |
+| `IMAJIN_APP_DID` | Every later boot (once a keystore exists) |
+| `IMAJIN_APP_CLAIM_CODE` | First boot only (or after a `reissueClaim: true` rebind) |
+| `IMAJIN_APP_KEYSTORE` | Optional — defaults to `./.imajin/keystore.json` |
 
 ## Part of Imajin
 

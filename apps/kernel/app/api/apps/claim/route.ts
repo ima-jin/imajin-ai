@@ -10,26 +10,38 @@
  * The claim code itself — single-use, short-TTL, shown exactly once on the
  * /jin operator-approval card — IS the authentication for this one call.
  *
- * Body: `{ claimCode: string, hostHint?: string }`. `hostHint` is a
- * caller-reported, best-effort label (e.g. hostname) recorded on the /jin
- * timeline only — never trusted for authorization.
+ * This is a FIRST-BOOT-ONLY route. The app also submits an Ed25519
+ * `bootstrapPublicKey` it minted and persisted in its own local keystore
+ * file, which the kernel binds to the claim (`claimSigningKey`). Every
+ * LATER boot re-authenticates via `POST /api/apps/signing-key/fetch`
+ * instead — a signature from that same bootstrap key, no claim code spent.
+ *
+ * Body: `{ claimCode: string, bootstrapPublicKey: string, hostHint?: string }`.
+ * `bootstrapPublicKey` is a hex-encoded Ed25519 public key (64 hex chars).
+ * `hostHint` is a caller-reported, best-effort label (e.g. hostname)
+ * recorded on the /jin timeline only — never trusted for authorization.
  *
  * Response (200): `{ appDid, privateKey, publicKey }` — held in memory only
  * by the caller (never written to disk by this route, and the SDK helper
  * this route is meant to be called through,
- * `@ima-jin/auth-client`'s `loadAppSigningKey`, never persists it either).
+ * `@ima-jin/auth-client`'s `loadAppSigningKey`, never persists it either —
+ * only the bootstrap keypair is persisted, in the local keystore).
  *
  * Every outcome — success or refusal — is audited via the
  * `apps.signing-key.claimed` / `apps.signing-key.fetched` bus events.
- * Neither ever carries the claim code or the private key.
+ * Neither ever carries the claim code or any private key.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-import { claimSigningKey, type ClaimSigningKeyOutcome, APP_SIGNING_KEY_PURPOSE } from '@/src/lib/apps/signing-key-claims';
-import { fetchGrantSecret, type GrantFetchOutcome } from '@/src/lib/vault';
-import { getMintedKeyByDid } from '@/src/lib/vault/key-cards';
+import { claimSigningKey, type ClaimSigningKeyOutcome } from '@/src/lib/apps/signing-key-claims';
+import {
+  resolveSigningKeyForGrant,
+  statusForSigningKeyFetchOutcome,
+  errorForSigningKeyFetchOutcome,
+  emitSigningKeyFetchedEvent,
+} from '@/src/lib/apps/signing-key-fetch';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 
 const log = createLogger('kernel:apps-claim-route');
@@ -38,12 +50,16 @@ export const dynamic = 'force-dynamic';
 
 const MAX_HOST_HINT_LENGTH = 200;
 
+/** 32-byte Ed25519 public key, hex-encoded. */
+const HEX_PUBLIC_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
+
 export async function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
 interface ClaimRequestBody {
   claimCode?: unknown;
+  bootstrapPublicKey?: unknown;
   hostHint?: unknown;
 }
 
@@ -72,36 +88,6 @@ function errorForClaimOutcome(status: Exclude<ClaimSigningKeyOutcome['status'], 
   }
 }
 
-function statusForGrantOutcome(status: Exclude<GrantFetchOutcome['status'], 'ok'>): number {
-  switch (status) {
-    case 'not_found':
-    case 'not_grantee':
-      return 404;
-    case 'consumed':
-      return 410;
-    case 'inactive':
-    case 'expired':
-    default:
-      return 403;
-  }
-}
-
-function errorForGrantOutcome(status: Exclude<GrantFetchOutcome['status'], 'ok'>): string {
-  switch (status) {
-    case 'not_found':
-    case 'not_grantee':
-      return 'The app-signing-key grant behind this claim no longer exists';
-    case 'consumed':
-      return 'The app-signing-key grant behind this claim has already been fetched';
-    case 'inactive':
-      return 'The app-signing-key grant behind this claim is no longer active (revoked)';
-    case 'expired':
-      return 'The app-signing-key grant behind this claim has expired';
-    default:
-      return 'Unable to fetch the app-signing-key grant behind this claim';
-  }
-}
-
 function emitClaimedEvent(nodeDid: string, slug: string, appDid: string, grantId: string, hostHint: string | null): void {
   publish('apps.signing-key.claimed', {
     issuer: nodeDid,
@@ -111,13 +97,30 @@ function emitClaimedEvent(nodeDid: string, slug: string, appDid: string, grantId
   }).catch((err: unknown) => log.error({ err: String(err), slug, appDid }, 'Bus publish error for apps.signing-key.claimed'));
 }
 
-function emitFetchedEvent(nodeDid: string, slug: string, appDid: string, grantId: string, outcome: GrantFetchOutcome['status']): void {
-  publish('apps.signing-key.fetched', {
-    issuer: nodeDid,
-    subject: appDid,
-    scope: 'apps',
-    payload: { slug, appDid, grantId, outcome, context_id: appDid, context_type: 'apps.signing-key' },
-  }).catch((err: unknown) => log.error({ err: String(err), slug, appDid }, 'Bus publish error for apps.signing-key.fetched'));
+interface ValidatedClaimBody {
+  claimCode: string;
+  bootstrapPublicKey: string;
+  hostHint: string | null;
+}
+
+function validateClaimBody(body: ClaimRequestBody): { ok: true; value: ValidatedClaimBody } | { ok: false; error: string } {
+  if (typeof body.claimCode !== 'string' || body.claimCode.length === 0) {
+    return { ok: false, error: 'claimCode is required' };
+  }
+  if (typeof body.bootstrapPublicKey !== 'string' || !HEX_PUBLIC_KEY_PATTERN.test(body.bootstrapPublicKey)) {
+    return { ok: false, error: 'bootstrapPublicKey must be a 64-char hex-encoded Ed25519 public key' };
+  }
+  if (body.hostHint !== undefined && (typeof body.hostHint !== 'string' || body.hostHint.length > MAX_HOST_HINT_LENGTH)) {
+    return { ok: false, error: `hostHint must be a string of at most ${MAX_HOST_HINT_LENGTH} chars` };
+  }
+  return {
+    ok: true,
+    value: {
+      claimCode: body.claimCode,
+      bootstrapPublicKey: body.bootstrapPublicKey.toLowerCase(),
+      hostHint: typeof body.hostHint === 'string' ? body.hostHint : null,
+    },
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -130,18 +133,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  if (typeof body.claimCode !== 'string' || body.claimCode.length === 0) {
-    return NextResponse.json({ error: 'claimCode is required' }, { status: 400, headers: cors });
+  const validation = validateClaimBody(body);
+  if (!validation.ok) {
+    return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
   }
-  if (body.hostHint !== undefined && (typeof body.hostHint !== 'string' || body.hostHint.length > MAX_HOST_HINT_LENGTH)) {
-    return NextResponse.json({ error: `hostHint must be a string of at most ${MAX_HOST_HINT_LENGTH} chars` }, { status: 400, headers: cors });
-  }
-  const hostHint = typeof body.hostHint === 'string' ? body.hostHint : null;
+  const { claimCode, bootstrapPublicKey, hostHint } = validation.value;
 
   const nodeDid = getNodeSigningIdentity().senderDid;
 
   try {
-    const claimOutcome = await claimSigningKey({ code: body.claimCode, hostHint });
+    const claimOutcome = await claimSigningKey({ code: claimCode, bootstrapPublicKey, hostHint });
     if (claimOutcome.status !== 'ok') {
       return NextResponse.json(
         { error: errorForClaimOutcome(claimOutcome.status) },
@@ -151,27 +152,20 @@ export async function POST(request: NextRequest) {
     const { slug, appDid, grantId } = claimOutcome;
     emitClaimedEvent(nodeDid, slug, appDid, grantId, hostHint);
 
-    const grantOutcome = await fetchGrantSecret({ grantId, granteeDid: appDid });
-    emitFetchedEvent(nodeDid, slug, appDid, grantId, grantOutcome.status);
-    if (grantOutcome.status !== 'ok') {
+    const keyOutcome = await resolveSigningKeyForGrant({ grantId, appDid });
+    emitSigningKeyFetchedEvent({ nodeDid, slug, appDid, grantId, outcome: keyOutcome.status, via: 'claim' });
+    if (keyOutcome.status !== 'ok') {
+      if (keyOutcome.status === 'wrong_purpose') {
+        log.error({ slug, appDid, grantId }, 'App signing-key claim resolved a grant with an unexpected purpose — refusing');
+      }
       return NextResponse.json(
-        { error: errorForGrantOutcome(grantOutcome.status) },
-        { status: statusForGrantOutcome(grantOutcome.status), headers: cors },
+        { error: errorForSigningKeyFetchOutcome(keyOutcome.status) },
+        { status: statusForSigningKeyFetchOutcome(keyOutcome.status), headers: cors },
       );
     }
 
-    // Defensive: a claim always names the grantId it was issued for
-    // (`issueSigningKeyClaim`), but refuse to hand back a value fetched
-    // through a grant that isn't actually purpose-bound to app signing keys
-    // — e.g. a claim row somehow pointing at an unrelated grant.
-    if (grantOutcome.grant.purpose !== APP_SIGNING_KEY_PURPOSE) {
-      log.error({ slug, appDid, grantId, purpose: grantOutcome.grant.purpose }, 'App signing-key claim resolved a grant with an unexpected purpose — refusing');
-      return NextResponse.json({ error: 'Unable to fetch the app-signing-key grant behind this claim' }, { status: 500, headers: cors });
-    }
-
-    const mintedKey = await getMintedKeyByDid(appDid);
     return NextResponse.json(
-      { appDid, privateKey: grantOutcome.value, publicKey: mintedKey?.publicKey ?? null },
+      { appDid: keyOutcome.appDid, privateKey: keyOutcome.privateKey, publicKey: keyOutcome.publicKey },
       { headers: cors },
     );
   } catch (error) {

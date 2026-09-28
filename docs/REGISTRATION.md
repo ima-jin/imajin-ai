@@ -162,7 +162,7 @@ This is deliberate: it's what keeps the new row's `app_did` structurally distinc
 pre-existing legacy first-party row's `app_did` for the same app (`registry.apps.app_did` is
 globally unique) — see "Legacy first-party rows vs. provisioned apps" below.
 
-### First boot: the app fetches its own signing key from the vault (#2411)
+### First boot, then every later boot: the app fetches its own signing key from the vault (#2411)
 
 `IMAJIN_APP_PRIVATE_KEY` sealed into GitHub Actions secrets (above) is a real destination for a
 CI-deployed app, but it doesn't help an app started directly on a host the operator doesn't run
@@ -172,33 +172,62 @@ directly to the app's own DID in the vault (`purpose: 'app-signing-key'`), and t
 approval additionally issues a **one-time, ~15-minute claim code** — Ryan's 2026-09-27 ruling on
 #2411: not a `/jin` copy-paste of the key itself, not an unseal CLI on the box.
 
+#### First boot: claim code -> bootstrap keypair -> signing key
+
 The claim code is shown **exactly once**, in a reveal banner on the `/jin` approval card right
 after approval — never persisted anywhere (only its SHA-256 hash is), never returned again by
 any route, including `GET /api/apps/provision?slug=`. Put it in the app's `.env.local` as
-`IMAJIN_APP_CLAIM_CODE` — the ONLY credential that file ever carries, alongside `PORT`,
-`NODE_ENV`, `IMAJIN_KERNEL_URL`, and `IMAJIN_APP_DID`. At boot, the app exchanges it for its real
-private key:
+`IMAJIN_APP_CLAIM_CODE` — a bootstrap credential the file only ever needs ONCE, alongside `PORT`,
+`NODE_ENV`, `IMAJIN_KERNEL_URL`, and `IMAJIN_APP_DID`. At first boot, the app mints its OWN
+Ed25519 "bootstrap" keypair (a narrow-purpose credential distinct from the vault signing key),
+persists it in a local keystore file (`IMAJIN_APP_KEYSTORE`, default `./.imajin/keystore.json`,
+`0600`), and exchanges the claim code + the bootstrap PUBLIC key for the real signing key:
 
 ```bash
 curl -X POST "${IMAJIN_KERNEL_URL}/api/apps/claim" \
   -H "Content-Type: application/json" \
-  -d '{"claimCode": "claim_...", "hostHint": "dykil-standalone"}'
+  -d '{"claimCode": "claim_...", "bootstrapPublicKey": "<hex Ed25519 pubkey>", "hostHint": "dykil-standalone"}'
 ```
 
 ```json
 { "appDid": "did:imajin:9f2c...", "privateKey": "...", "publicKey": "..." }
 ```
 
-The SDK does this for you — `@ima-jin/auth-client`'s `loadAppSigningKey()` (see that package's
-README). No `requireAuth` session gates this route: the claim code itself, single-use and
-short-lived, IS the authentication for this one call. A second exchange attempt — whether the
-code was already redeemed or has simply expired — is refused (410 Gone); re-propose and
-re-approve `apps.provision` for the same slug with `"reissueClaim": true` in the request body for
-a fresh code (reuses the existing repo/key/grant — nothing is re-minted or re-created).
+The kernel binds `bootstrapPublicKey` to the claim (`kernel.app_signing_key_claims`), which is
+what every LATER boot authenticates against — see below. No `requireAuth` session gates this
+route: the claim code itself, single-use and short-lived, IS the authentication for this one
+call. A second exchange attempt — whether the code was already redeemed or has simply expired —
+is refused (410 Gone).
+
+#### Every later boot: sign a fresh challenge with the bootstrap key
+
+Once the keystore exists, the app never spends another claim code. It signs
+`canonicalize({ appDid, nonce, timestamp })` with the bootstrap private key and re-fetches:
+
+```bash
+curl -X POST "${IMAJIN_KERNEL_URL}/api/apps/signing-key/fetch" \
+  -H "Content-Type: application/json" \
+  -d '{"appDid": "did:imajin:9f2c...", "timestamp": 1735300000000, "nonce": "<random>", "signature": "<hex sig>"}'
+```
+
+The kernel verifies the signature against the bound bootstrap public key, rejects a stale
+timestamp or a replayed nonce (both `401`), and otherwise returns the same `{appDid, privateKey,
+publicKey}` shape. The SDK does all of this for you — `@ima-jin/auth-client`'s
+`loadAppSigningKey()` (see that package's README) picks the keystore-present vs. first-boot path
+automatically.
+
+#### Rebinding a lost keystore
+
+If the local keystore is lost (disk wipe, redeploy to a fresh host), re-propose and re-approve
+`apps.provision` for the same slug with `"reissueClaim": true` in the request body for a fresh
+claim code (reuses the existing repo/key/grant — nothing is re-minted or re-created). Redeeming
+the new code **revokes** the previous bootstrap key's binding, so a lost/compromised keystore can
+never authenticate a fetch again.
 
 Signed events for the full chain are on the bus: `vault.key.minted` → `vault.grant.fulfilled` →
-`apps.signing-key.claimed` → `apps.signing-key.fetched`. None of them ever carries the claim
-code or the private key.
+`apps.signing-key.claimed` → `apps.signing-key.fetched` (tagged `via: 'claim'` on first boot,
+`via: 'bootstrap-key'` on every later boot). None of them ever carries the claim code, the
+bootstrap private key, or the signing private key.
 
 ### Legacy first-party rows vs. provisioned apps
 
