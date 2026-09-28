@@ -49,7 +49,6 @@ import { loadAndUnsealByGrantee, grantExistingMintedKey, emitGrantEvents } from 
 import {
   ensureRepoFromTemplate,
   sealActionsSecret,
-  loadOrgCredential,
   PROVISIONING_ORG,
   DEFAULT_APP_TEMPLATE,
   type EnsureRepoResult,
@@ -62,9 +61,16 @@ const log = createLogger('kernel:apps:provision');
 /** Purpose prefix recorded on the minted key's `vault_minted_keys` row. */
 const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
 
-/** Actions secret names apps.provision seals — names only, values are never logged/returned. */
+/**
+ * Actions secret name apps.provision seals — a name only, the value is
+ * never logged/returned.
+ *
+ * TODO(#2411): revisit — the app fetches its signing key from the vault at
+ * boot (`loadAppSigningKey()`), so sealing the raw key into Actions
+ * secrets is a pre-#2411 shape kept only for template-CI test runs; a
+ * human call on whether to keep or drop it is still open (see #2416).
+ */
 export const IMAJIN_APP_PRIVATE_KEY_SECRET = 'IMAJIN_APP_PRIVATE_KEY';
-export const GITHUB_PACKAGES_TOKEN_SECRET = 'GITHUB_PACKAGES_TOKEN';
 
 export interface AppProvisionParams {
   slug: string;
@@ -308,15 +314,20 @@ function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppI
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
-/** Step 4 (seal): seal the app's private key + the reused org credential as GitHub-Packages-read token. */
+/**
+ * Step 4 (seal): seal the app's private key into the repo's Actions
+ * secrets. Pre-#2416 this also resealed the org-scoped credential itself
+ * as `GITHUB_PACKAGES_TOKEN` — dropped (#2416): a GitHub App installation
+ * token expires within the hour, so reusing it as a long-lived Actions
+ * secret no longer makes sense, and the template CI reads `@ima-jin/*`
+ * from public npmjs, so no packages-read secret is needed at all.
+ */
 async function sealDeploySecrets(slug: string, privateKey: string): Promise<string[]> {
   const repo = `${PROVISIONING_ORG}/${slug}`;
-  const orgCredential = await loadOrgCredential();
 
   await sealActionsSecret(repo, IMAJIN_APP_PRIVATE_KEY_SECRET, privateKey);
-  await sealActionsSecret(repo, GITHUB_PACKAGES_TOKEN_SECRET, orgCredential);
 
-  return [IMAJIN_APP_PRIVATE_KEY_SECRET, GITHUB_PACKAGES_TOKEN_SECRET];
+  return [IMAJIN_APP_PRIVATE_KEY_SECRET];
 }
 
 function emitProvisionedEvent(nodeDid: string, slug: string, appDid: string, repoUrl: string, secretsSet: readonly string[]): void {

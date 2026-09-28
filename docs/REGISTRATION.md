@@ -4,9 +4,8 @@ Gate 1+2 of epic #2370 (#2375): an app being extracted out of the monorepo into 
 standalone repo (dykil today; links/learn/etc. later, #1985/#1991) is registered through
 `apps.provision` — one call that creates its GitHub repo, registers it in the kernel's app
 registry (`registry.apps`, #1990) as a **`tier: 'third_party'`** row, and seals its app-auth
-private key + a GitHub-Packages-read token into the repo's Actions secrets. **The app's
-private key never leaves the kernel** — it is never returned in any API response, never
-logged, and never "shown once."
+private key into the repo's Actions secrets. **The app's private key never leaves the
+kernel** — it is never returned in any API response, never logged, and never "shown once."
 
 `apps.provision` always registers `tier: 'third_party'` — matching `imajin-app-template`'s own
 AGENTS.md ("every app forked from this template, including Imajin's own extractions (dykil,
@@ -23,35 +22,46 @@ holds their own keypair rather than the kernel minting and sealing it. Do not co
 
 ## Operator setup (one-time, per node)
 
-`apps.provision` acts with an **org-scoped GitHub credential** — ruled by Ryan (2026-09-24,
-#2375): "the kernel does it with an org-scoped credential; no org-admin grant to
-`warp-factories[bot]`, no per-app manual step by Jin." An operator seals this once via the
-existing generic vault-set route:
+`apps.provision` acts as a **GitHub App installation**, not a personal access token — ruled
+by Ryan (2026-09-28, #2416): the `ima-jin` org does not issue GitHub PATs. This supersedes
+#2375's original org-scoped-PAT shape; the credential slot (`github-org-provisioning`) is the
+same vault field, just resealed with a different, non-PAT shape. Every GitHub action this
+credential takes lands in the org audit log as `imajin-provisioner[bot]` — the same identity
+model `warp-factories[bot]` already uses.
 
-```bash
-curl -X POST "${IMAJIN_AUTH_URL}/api/vault/set" \
-  -H "Content-Type: application/json" \
-  -H "Cookie: <admin session cookie>" \
-  -d '{
-    "field": "github-org-provisioning",
-    "value": "<a GitHub PAT scoped for this>",
-    "custodyScheme": "delegation-grant"
-  }'
-```
+1. **Create the App** under the `ima-jin` org: `https://github.com/organizations/ima-jin/settings/apps`
+   -> "New GitHub App". Name it `imajin-provisioner` (or similar), disable webhooks (unused).
+2. **Grant repository permissions:** Administration (Read and write — creates repos from the
+   template), Contents (Read and write), Secrets (Read and write — seals Actions secrets),
+   Metadata (Read-only — mandatory baseline).
+3. **Install the App on the org:** from the App's settings page, "Install App" -> `ima-jin` ->
+   "All repositories" (new app repos are created after the install, so per-repo selection
+   can't include them yet).
+4. **Generate a private key** on the App's settings page ("Generate a private key") — this
+   downloads a `.pem` file once. Note the **App ID** (shown on the same page) and the
+   **Installation ID** (the numeric ID in the URL after installing, e.g.
+   `https://github.com/organizations/ima-jin/settings/installations/<installationId>`).
+5. **Seal the three values as one JSON blob** via the existing generic vault-set route:
+   ```bash
+   curl -X POST "${IMAJIN_AUTH_URL}/api/vault/set" \
+     -H "Content-Type: application/json" \
+     -H "Cookie: <admin session cookie>" \
+     -d '{
+       "field": "github-org-provisioning",
+       "value": "{\"appId\":\"<App ID>\",\"installationId\":\"<Installation ID>\",\"privateKeyPem\":\"<contents of the downloaded .pem, newlines escaped as \\n>\"}",
+       "custodyScheme": "delegation-grant"
+     }'
+   ```
+   Never sealed as a v1 field — `custodyScheme: "delegation-grant"` is required (v2 grant
+   shape, self-granted to the node, #2311). The private key never passes through chat or Jin
+   — only the operator running this `curl` ever sees it.
 
-The token needs:
-- **Repo creation from a template** in the `ima-jin` org (classic PAT: `repo` + org
-  permission to create repos from `ima-jin/imajin-app-template`; fine-grained: template repo
-  contents:read + org Administration:write, or equivalent).
-- **Actions secrets: write** on repos it provisions (to seal `IMAJIN_APP_PRIVATE_KEY` /
-  `GITHUB_PACKAGES_TOKEN`).
-- **`read:packages`** — this SAME token is reused, unmodified, as the sealed
-  `GITHUB_PACKAGES_TOKEN` secret (see "What gets sealed, and where" below), so it must itself
-  be able to read `@ima-jin/*` packages from GitHub Packages the way
-  `docs/packages/PUBLISHING.md`'s consumer instructions describe.
-
-Never sealed as a v1 field — `custodyScheme: "delegation-grant"` is required (v2 grant shape,
-self-granted to the node, #2311).
+At call time, `getInstallationToken()` (`src/lib/github/org-provisioning.ts`) signs a
+short-lived RS256 JWT with the App's private key (`iss` = App ID, <=10-minute lifetime),
+exchanges it for a 1-hour installation access token
+(`POST /app/installations/{installationId}/access_tokens`), and caches that token in memory
+until 5 minutes before it expires. The App private key and the minted installation token are
+never persisted outside the vault field itself, and never logged.
 
 ## 1. Call `apps.provision` (the normal path)
 
@@ -96,7 +106,7 @@ curl "${IMAJIN_AUTH_URL}/api/apps/provision?slug=dykil" \
   "status": "succeeded",
   "appDid": "did:imajin:9f2c...",
   "repoUrl": "https://github.com/ima-jin/dykil",
-  "secretsSet": ["IMAJIN_APP_PRIVATE_KEY", "GITHUB_PACKAGES_TOKEN"],
+  "secretsSet": ["IMAJIN_APP_PRIVATE_KEY"],
   "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"],
   "failedStep": null,
   "errorMessage": null
@@ -143,17 +153,21 @@ it never fails the rest of provisioning).
 
 ### What gets sealed, and where
 
-Two Actions secrets are sealed into the app's repo, by name:
+One Actions secret is sealed into the app's repo, by name:
 
 | Secret name | Value |
 |---|---|
 | `IMAJIN_APP_PRIVATE_KEY` | The app's freshly minted Ed25519 private key (app-auth credential). |
-| `GITHUB_PACKAGES_TOKEN` | The SAME org-scoped credential from "Operator setup" above, reused as-is — this is the exact env var name `docs/packages/PUBLISHING.md` documents for a consumer app's `.npmrc`. |
 
-Both are encrypted client-side with libsodium's `crypto_box_seal` against the repo's own
+(Pre-#2416 this also resealed the org-scoped credential itself as `GITHUB_PACKAGES_TOKEN` —
+dropped: a GitHub App installation token expires within the hour, so reusing it as a
+long-lived Actions secret no longer made sense, and `imajin-app-template`'s own CI reads
+`@ima-jin/*` from public npmjs, so no packages-read secret was needed at all.)
+
+It is encrypted client-side with libsodium's `crypto_box_seal` against the repo's own
 Actions public key before `PUT .../actions/secrets/{name}` — GitHub's own documented
-mechanism. Neither value is ever logged, returned in an API response, or persisted anywhere
-outside the vault (for the private key) — `secretsSet` in every response/record is names only.
+mechanism. The value is never logged, returned in an API response, or persisted anywhere
+outside the vault — `secretsSet` in every response/record is names only.
 
 The app's DID is derived from its freshly minted public key (the same convention third-party
 self-service registration already uses) — NOT the `did:imajin:app-<slug>` convention the
@@ -274,11 +288,12 @@ with the idempotency ledger.
    `apps.provision` calls treat it as idempotent. If a legacy row for this slug still has
    `slug` set, clear it first (see "Legacy first-party rows vs. provisioned apps" below) —
    `slug` is globally unique.
-4. **Seal the deploy secrets:** fetch the repo's Actions public key
-   (`GET /repos/{owner}/{repo}/actions/secrets/public-key`), encrypt the private key + the
-   org-scoped GitHub credential client-side with libsodium `crypto_box_seal`, and
-   `PUT /repos/{owner}/{repo}/actions/secrets/IMAJIN_APP_PRIVATE_KEY` /
-   `.../GITHUB_PACKAGES_TOKEN` respectively.
+4. **Seal the deploy secret:** fetch the repo's Actions public key
+   (`GET /repos/{owner}/{repo}/actions/secrets/public-key`), encrypt the private key
+   client-side with libsodium `crypto_box_seal`, and
+   `PUT /repos/{owner}/{repo}/actions/secrets/IMAJIN_APP_PRIVATE_KEY` with the result. Use a
+   GitHub App installation token (see "Operator setup" above) to authenticate the two calls
+   above, minted the same way `getInstallationToken()` does.
 5. **Seed attestation types (optional):** `POST /auth/api/attestations/types` per type, or call
    `registerAttestationType` in-process with `handle: <slug>`.
 
@@ -305,10 +320,11 @@ standalone repo `ima-jin/dykil` already exists.
    a brand-new `tier: 'third_party'` row** with `slug: 'dykil'` — the legacy
    `app_first_party_dykil` row is left completely untouched (still `first_party`, still
    `slug IS NULL`, still its own placeholder `app_did`). Finally it **seals**
-   `IMAJIN_APP_PRIVATE_KEY` / `GITHUB_PACKAGES_TOKEN` into `ima-jin/dykil`'s Actions secrets.
+   `IMAJIN_APP_PRIVATE_KEY` into `ima-jin/dykil`'s Actions secrets, authenticated as the
+   `imajin-provisioner[bot]` GitHub App installation.
 3. dykil's own CI/deploy on dev sets `IMAJIN_APP_DID` from the new third-party row's `appDid`
-   (the response/ledger value, not the legacy placeholder) and consumes its private key +
-   packages token from Actions secrets — no human touched a secret value at any point.
+   (the response/ledger value, not the legacy placeholder) and consumes its private key from
+   Actions secrets — no human touched a secret value at any point.
 4. The two `dykil/*` attestation types are seeded against the NEW `appDid`, so dykil's
    survey-response ingestion is immediately namespace-valid.
 5. `registry.apps` now has both rows side by side (see "Legacy first-party rows vs.

@@ -83,7 +83,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       status: 'succeeded',
       repoUrl: 'https://github.com/ima-jin/dykil',
       appDid: 'did:imajin:app-dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypeResults: [],
     });
 
@@ -94,7 +94,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       data: {
         repoUrl: 'https://github.com/ima-jin/dykil',
         appDid: 'did:imajin:app-dykil',
-        secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+        secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       },
     });
     expect(runAppProvisionMock).toHaveBeenCalledWith({

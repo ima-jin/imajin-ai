@@ -32,7 +32,6 @@ const {
   issueSigningKeyClaimMock,
   ensureRepoFromTemplateMock,
   sealActionsSecretMock,
-  loadOrgCredentialMock,
   seedAttestationTypesMock,
   logMock,
 } = vi.hoisted(() => {
@@ -56,7 +55,6 @@ const {
     issueSigningKeyClaimMock: vi.fn(),
     ensureRepoFromTemplateMock: vi.fn(),
     sealActionsSecretMock: vi.fn().mockResolvedValue(undefined),
-    loadOrgCredentialMock: vi.fn().mockResolvedValue('org-credential-token'),
     seedAttestationTypesMock: vi.fn().mockResolvedValue([]),
     logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
@@ -170,7 +168,6 @@ vi.mock('@/src/lib/vault', () => ({
 vi.mock('@/src/lib/github/org-provisioning', () => ({
   ensureRepoFromTemplate: ensureRepoFromTemplateMock,
   sealActionsSecret: sealActionsSecretMock,
-  loadOrgCredential: loadOrgCredentialMock,
   PROVISIONING_ORG: 'ima-jin',
   DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
 }));
@@ -220,7 +217,6 @@ beforeEach(() => {
     requestId: null,
   });
   loadAndUnsealByGranteeMock.mockResolvedValue(PRIVATE_KEY_PLAINTEXT);
-  loadOrgCredentialMock.mockResolvedValue('org-credential-token');
   seedAttestationTypesMock.mockResolvedValue([]);
   grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
   issueSigningKeyClaimMock.mockResolvedValue(CLAIM_CODE);
@@ -234,7 +230,7 @@ describe('runAppProvision — happy path', () => {
     if (outcome.status !== 'succeeded') throw new Error('unreachable');
     expect(outcome.repoUrl).toBe('https://github.com/ima-jin/dykil');
     expect(outcome.appDid).toBe(MINTED_DID);
-    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN']);
+    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY']);
 
     expect(ensureRepoFromTemplateMock).toHaveBeenCalledWith('dykil', 'ima-jin/imajin-app-template');
     expect(mintKeypairMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -242,8 +238,8 @@ describe('runAppProvision — happy path', () => {
       mintedBy: NODE_DID,
       oneTime: false,
     }));
+    expect(sealActionsSecretMock).toHaveBeenCalledTimes(1);
     expect(sealActionsSecretMock).toHaveBeenCalledWith('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', PRIVATE_KEY_PLAINTEXT);
-    expect(sealActionsSecretMock).toHaveBeenCalledWith('ima-jin/dykil', 'GITHUB_PACKAGES_TOKEN', 'org-credential-token');
 
     const row = appProvisionsStore.get('dykil');
     expect(row?.status).toBe('succeeded');
@@ -399,7 +395,7 @@ describe('runAppProvision — idempotent re-run', () => {
       appDid: MINTED_DID,
       repoUrl: 'https://github.com/ima-jin/dykil',
       repoCreated: false,
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'succeeded',
     });
@@ -410,7 +406,7 @@ describe('runAppProvision — idempotent re-run', () => {
       status: 'succeeded',
       repoUrl: 'https://github.com/ima-jin/dykil',
       appDid: MINTED_DID,
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypeResults: [],
       claimCode: CLAIM_CODE,
     });
@@ -425,7 +421,7 @@ describe('runAppProvision — idempotent re-run', () => {
       appDid: MINTED_DID,
       repoUrl: 'https://github.com/ima-jin/dykil',
       repoCreated: false,
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'succeeded',
     });
@@ -457,7 +453,7 @@ describe('runAppProvision — idempotent re-run', () => {
       slug: 'dykil',
       appDid: MINTED_DID,
       repoUrl: 'https://github.com/ima-jin/dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: ['dykil/survey-response'],
       status: 'succeeded',
     });
@@ -634,7 +630,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
     expect(ensureRepoFromTemplateMock).toHaveBeenCalledTimes(1); // idempotent GET-before-create, not a duplicate create
     expect(mintKeypairMock).not.toHaveBeenCalled(); // reused the existing minted key via the ledger's appDid
     expect(getMintedKeyByDidMock).toHaveBeenCalledWith(MINTED_DID);
-    expect(sealActionsSecretMock).toHaveBeenCalledTimes(2);
+    expect(sealActionsSecretMock).toHaveBeenCalledTimes(1);
   });
 
   it('retrying after an attestation-types failure skips repo/mint/register/seal entirely (register already-registered, seal already sealedAt)', async () => {
@@ -655,7 +651,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
       repoCreated: true,
       registeredAt: new Date(),
       sealedAt: new Date(),
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'failed',
       failedStep: 'attestation-types',
@@ -677,7 +673,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
 
     expect(outcome.status).toBe('succeeded');
     if (outcome.status !== 'succeeded') throw new Error('unreachable');
-    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN']);
+    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY']);
     expect(mintKeypairMock).not.toHaveBeenCalled();
     expect(sealActionsSecretMock).not.toHaveBeenCalled(); // sealedAt already set — never re-sealed
     expect(registryAppsStore.size).toBe(1); // register found the already-registered row — never inserted a second one
