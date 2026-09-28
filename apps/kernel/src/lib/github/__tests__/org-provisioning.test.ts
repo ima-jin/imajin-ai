@@ -1,13 +1,14 @@
 /**
- * Direct behavioral tests for `org-provisioning.ts` (#2375, #2416) — the
- * GitHub App credential parsing, installation-token minting/caching, and
- * idempotent repo-from-template creation + Actions-secret sealing.
- * `sealActionsSecret` is exercised against the REAL `libsodium-wrappers`
- * `crypto_box_seal`/`crypto_box_seal_open` pair (not mocked) so the
- * encryption round-trip is genuinely verified, not just "some function was
- * called". The App JWT minting is exercised against REAL RSA keypairs and
- * verified with `jose.jwtVerify`, so the claims contract is genuinely
- * checked too.
+ * Direct behavioral tests for `org-provisioning.ts` (#2375, #2416 GitHub
+ * App installation credential, #2415 unauthenticated-existence-check-first
+ * idempotency) — GitHub App credential parsing, installation-token
+ * minting/caching, idempotent repo-from-template creation, and
+ * Actions-secret sealing. `sealActionsSecret` is exercised against the REAL
+ * `libsodium-wrappers` `crypto_box_seal`/`crypto_box_seal_open` pair (not
+ * mocked) so the encryption round-trip is genuinely verified, not just
+ * "some function was called". The App JWT minting is exercised against
+ * REAL RSA keypairs and verified with `jose.jwtVerify`, so the claims
+ * contract is genuinely checked too.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRequire } from 'node:module';
@@ -32,6 +33,7 @@ vi.mock('@/src/lib/vault', () => ({
 import {
   loadOrgCredential,
   getInstallationToken,
+  tryGetInstallationToken,
   ensureRepoFromTemplate,
   sealActionsSecret,
   OrgCredentialMissingError,
@@ -260,41 +262,56 @@ describe('getInstallationToken', () => {
   });
 });
 
-describe('ensureRepoFromTemplate', () => {
-  it('propagates OrgCredentialMissingError before ever calling fetch', async () => {
-    loadAndUnsealMock.mockResolvedValueOnce(undefined);
-    await expect(ensureRepoFromTemplate('dykil')).rejects.toBeInstanceOf(OrgCredentialMissingError);
+describe('tryGetInstallationToken', () => {
+  it('returns a real installation token when the credential is sealed', async () => {
+    fetchMock.mockResolvedValueOnce(installationTokenResponse());
+    await expect(tryGetInstallationToken()).resolves.toBe(INSTALLATION_TOKEN);
+  });
+
+  it('returns null (never throws) when the credential was never sealed', async () => {
+    loadAndUnsealMock.mockResolvedValue(undefined);
+    await expect(tryGetInstallationToken()).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns created:false without POSTing when the repo already exists', async () => {
-    fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
-      .mockResolvedValueOnce(jsonResponse(200, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }));
+  it('propagates OrgCredentialMalformedError instead of swallowing it as "unsealed"', async () => {
+    loadAndUnsealMock.mockResolvedValue('not json');
+    await expect(tryGetInstallationToken()).rejects.toBeInstanceOf(OrgCredentialMalformedError);
+  });
+});
+
+describe('ensureRepoFromTemplate', () => {
+  it('#2415: checks existence unauthenticated first, and never loads any credential when the repo already exists', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }));
 
     const result = await ensureRepoFromTemplate('dykil');
 
     expect(result).toEqual({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const [url, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe(`https://api.github.com/repos/${PROVISIONING_ORG}/dykil`);
     expect(init.method).toBe('GET');
-    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${INSTALLATION_TOKEN}`);
+    expect((init.headers as Record<string, string>).Authorization).toBeUndefined();
+    expect(loadAndUnsealMock).not.toHaveBeenCalled();
   });
 
-  it('creates the repo from the template when a 404 says it does not exist yet', async () => {
+  it('creates the repo from the template when the unauthenticated existence check 404s and the credential is sealed', async () => {
     fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
       .mockResolvedValueOnce(jsonResponse(404, { message: 'Not Found' }))
+      .mockResolvedValueOnce(installationTokenResponse())
       .mockResolvedValueOnce(jsonResponse(201, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }));
 
     const result = await ensureRepoFromTemplate('dykil');
 
     expect(result).toEqual({ repoUrl: 'https://github.com/ima-jin/dykil', created: true });
     expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [existenceUrl, existenceInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(existenceUrl).toBe(`https://api.github.com/repos/${PROVISIONING_ORG}/dykil`);
+    expect((existenceInit.headers as Record<string, string>).Authorization).toBeUndefined();
     const [createUrl, createInit] = fetchMock.mock.calls[2] as [string, RequestInit];
     expect(createUrl).toBe(`https://api.github.com/repos/${DEFAULT_APP_TEMPLATE}/generate`);
     expect(createInit.method).toBe('POST');
+    expect((createInit.headers as Record<string, string>).Authorization).toBe(`Bearer ${INSTALLATION_TOKEN}`);
     expect(JSON.parse(createInit.body as string)).toEqual({
       owner: PROVISIONING_ORG,
       name: 'dykil',
@@ -305,8 +322,8 @@ describe('ensureRepoFromTemplate', () => {
 
   it('uses a caller-supplied template instead of the default', async () => {
     fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
       .mockResolvedValueOnce(jsonResponse(404, null))
+      .mockResolvedValueOnce(installationTokenResponse())
       .mockResolvedValueOnce(jsonResponse(201, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }));
 
     await ensureRepoFromTemplate('dykil', 'ima-jin/custom-template');
@@ -315,21 +332,23 @@ describe('ensureRepoFromTemplate', () => {
     expect(createUrl).toBe('https://api.github.com/repos/ima-jin/custom-template/generate');
   });
 
-  it('fails closed when the existence check returns an unexpected (non-200, non-404) status', async () => {
-    fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
-      .mockResolvedValueOnce(jsonResponse(403, { message: 'rate limited' }));
+  it('#2415: repo missing and credential unsealed throws OrgCredentialMissingError with an out-of-band message, and never attempts to create', async () => {
+    loadAndUnsealMock.mockResolvedValue(undefined);
+    fetchMock.mockImplementation(() => Promise.resolve(jsonResponse(404, { message: 'Not Found' })));
 
+    await expect(ensureRepoFromTemplate('dykil')).rejects.toBeInstanceOf(OrgCredentialMissingError);
     await expect(ensureRepoFromTemplate('dykil')).rejects.toThrow(
-      "apps.provision: failed to check for existing repo 'dykil' (GitHub status 403)",
+      /does not exist and github-org-provisioning is not sealed.*gh repo create ima-jin\/dykil --template ima-jin\/imajin-app-template/s,
     );
+    // One unauthenticated existence GET per assertion above; no installation
+    // token mint and no POST create ever attempted.
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('fails closed when the template-generate call itself fails', async () => {
+  it('fails closed when the repo creation call itself fails', async () => {
     fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
       .mockResolvedValueOnce(jsonResponse(404, null))
+      .mockResolvedValueOnce(installationTokenResponse())
       .mockResolvedValueOnce(jsonResponse(422, { message: 'Unprocessable' }));
 
     await expect(ensureRepoFromTemplate('dykil')).rejects.toThrow(
@@ -337,17 +356,68 @@ describe('ensureRepoFromTemplate', () => {
     );
   });
 
+  it('#2415: retries an ambiguous (non-200, non-404) anonymous status once, authenticated, when the credential is sealed', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { message: 'rate limited' }))
+      .mockResolvedValueOnce(installationTokenResponse())
+      .mockResolvedValueOnce(jsonResponse(200, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }));
+
+    const result = await ensureRepoFromTemplate('dykil');
+
+    expect(result).toEqual({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    const [, retryInit] = fetchMock.mock.calls[2] as [string, RequestInit];
+    expect((retryInit.headers as Record<string, string>).Authorization).toBe(`Bearer ${INSTALLATION_TOKEN}`);
+  });
+
+  it('#2415: an ambiguous status whose authenticated retry resolves to 404 creates the repo', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { message: 'rate limited' }))
+      .mockResolvedValueOnce(installationTokenResponse())
+      .mockResolvedValueOnce(jsonResponse(404, null))
+      .mockResolvedValueOnce(jsonResponse(201, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }));
+
+    const result = await ensureRepoFromTemplate('dykil');
+
+    expect(result).toEqual({ repoUrl: 'https://github.com/ima-jin/dykil', created: true });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('#2415: an ambiguous status fails closed WITHOUT any authenticated retry when the credential is unsealed', async () => {
+    loadAndUnsealMock.mockResolvedValue(undefined);
+    fetchMock.mockResolvedValueOnce(jsonResponse(403, { message: 'rate limited' }));
+
+    await expect(ensureRepoFromTemplate('dykil')).rejects.toThrow(
+      "apps.provision: failed to check for existing repo 'dykil' (GitHub status 403)",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the authenticated retry itself returns an unexpected status', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse(403, { message: 'rate limited' }))
+      .mockResolvedValueOnce(installationTokenResponse())
+      .mockResolvedValueOnce(jsonResponse(500, { message: 'server error' }));
+
+    await expect(ensureRepoFromTemplate('dykil')).rejects.toThrow(
+      "apps.provision: failed to check for existing repo 'dykil' (GitHub status 500)",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('reuses a cached installation token across two calls instead of re-minting', async () => {
     fetchMock
+      .mockResolvedValueOnce(jsonResponse(404, null))
       .mockResolvedValueOnce(installationTokenResponse())
-      .mockResolvedValueOnce(jsonResponse(200, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }))
-      .mockResolvedValueOnce(jsonResponse(200, { html_url: 'https://github.com/ima-jin/links', full_name: 'ima-jin/links' }));
+      .mockResolvedValueOnce(jsonResponse(201, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }))
+      .mockResolvedValueOnce(jsonResponse(404, null))
+      .mockResolvedValueOnce(jsonResponse(201, { html_url: 'https://github.com/ima-jin/links', full_name: 'ima-jin/links' }));
 
     await ensureRepoFromTemplate('dykil');
     await ensureRepoFromTemplate('links');
 
-    // One token mint + two existence checks — never re-minted.
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    // Two existence checks + two creates + exactly ONE token mint — never re-minted.
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 });
 

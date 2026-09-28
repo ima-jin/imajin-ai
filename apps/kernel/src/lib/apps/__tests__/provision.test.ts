@@ -32,6 +32,7 @@ const {
   issueSigningKeyClaimMock,
   ensureRepoFromTemplateMock,
   sealActionsSecretMock,
+  tryGetInstallationTokenMock,
   seedAttestationTypesMock,
   logMock,
 } = vi.hoisted(() => {
@@ -55,6 +56,7 @@ const {
     issueSigningKeyClaimMock: vi.fn(),
     ensureRepoFromTemplateMock: vi.fn(),
     sealActionsSecretMock: vi.fn().mockResolvedValue(undefined),
+    tryGetInstallationTokenMock: vi.fn().mockResolvedValue('installation-token'),
     seedAttestationTypesMock: vi.fn().mockResolvedValue([]),
     logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
@@ -168,6 +170,7 @@ vi.mock('@/src/lib/vault', () => ({
 vi.mock('@/src/lib/github/org-provisioning', () => ({
   ensureRepoFromTemplate: ensureRepoFromTemplateMock,
   sealActionsSecret: sealActionsSecretMock,
+  tryGetInstallationToken: tryGetInstallationTokenMock,
   PROVISIONING_ORG: 'ima-jin',
   DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
 }));
@@ -217,6 +220,7 @@ beforeEach(() => {
     requestId: null,
   });
   loadAndUnsealByGranteeMock.mockResolvedValue(PRIVATE_KEY_PLAINTEXT);
+  tryGetInstallationTokenMock.mockResolvedValue('installation-token');
   seedAttestationTypesMock.mockResolvedValue([]);
   grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
   issueSigningKeyClaimMock.mockResolvedValue(CLAIM_CODE);
@@ -356,6 +360,67 @@ describe('runAppProvision — repo-exists path (no pre-existing registry row)', 
   });
 });
 
+describe('runAppProvision — #2415 seal degrades instead of failing when the org credential is unsealed', () => {
+  it('existing-repo + unsealed credential: reaches the claim code, secretsSet is empty, and apps.provision.seal.skipped is emitted', async () => {
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
+    tryGetInstallationTokenMock.mockResolvedValue(null);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    if (outcome.status !== 'succeeded') throw new Error('unreachable');
+    expect(outcome.secretsSet).toEqual([]);
+    expect(outcome.sealSkipped).toBe(true);
+    expect(outcome.claimCode).toBe(CLAIM_CODE);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+
+    const row = appProvisionsStore.get('dykil');
+    expect(row?.status).toBe('succeeded');
+    expect(row?.sealedAt).toBeUndefined();
+    expect(row?.secretsSet).toEqual([]);
+
+    expect(publishMock).toHaveBeenCalledWith('apps.provision.seal.skipped', expect.objectContaining({
+      payload: expect.objectContaining({ slug: 'dykil', reason: 'org-credential-unsealed' }),
+    }));
+  });
+
+  it('missing-repo + unsealed credential: fails at \'repo\' with the out-of-band create message, before mint/register/seal ever run', async () => {
+    ensureRepoFromTemplateMock.mockRejectedValue(new Error(
+      "ima-jin/dykil does not exist and github-org-provisioning is not sealed — create it out of band with " +
+      "'gh repo create ima-jin/dykil --template ima-jin/imajin-app-template' and re-run apps.provision, or seal an " +
+      "org-scoped GitHub credential via POST /api/vault/set first (see docs/REGISTRATION.md)",
+    ));
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('repo');
+    expect(outcome.error).toContain('does not exist and github-org-provisioning is not sealed');
+    expect(outcome.error).toContain('gh repo create ima-jin/dykil --template ima-jin/imajin-app-template');
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+    expect(registryAppsStore.size).toBe(0);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+  });
+
+  it('sealed path is unchanged: seal actually runs and sealSkipped is false', async () => {
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
+    tryGetInstallationTokenMock.mockResolvedValue('installation-token');
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    if (outcome.status !== 'succeeded') throw new Error('unreachable');
+    expect(outcome.sealSkipped).toBe(false);
+    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY']);
+    expect(sealActionsSecretMock).toHaveBeenCalledTimes(1);
+    expect(publishMock).not.toHaveBeenCalledWith('apps.provision.seal.skipped', expect.anything());
+
+    const row = appProvisionsStore.get('dykil');
+    expect(row?.sealedAt).toBeInstanceOf(Date);
+  });
+});
+
 describe('runAppProvision — legacy first-party row coexistence (dykil, real dev state)', () => {
   it('creates a NEW third-party row for the slug and leaves the legacy first-party row completely untouched', async () => {
     // dykil is NOT provisioned at all today: only the legacy 0139 seed row
@@ -395,6 +460,7 @@ describe('runAppProvision — idempotent re-run', () => {
       appDid: MINTED_DID,
       repoUrl: 'https://github.com/ima-jin/dykil',
       repoCreated: false,
+      sealedAt: new Date(),
       secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'succeeded',
@@ -409,6 +475,7 @@ describe('runAppProvision — idempotent re-run', () => {
       secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypeResults: [],
       claimCode: CLAIM_CODE,
+      sealSkipped: false,
     });
     expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
     expect(mintKeypairMock).not.toHaveBeenCalled();
@@ -421,6 +488,7 @@ describe('runAppProvision — idempotent re-run', () => {
       appDid: MINTED_DID,
       repoUrl: 'https://github.com/ima-jin/dykil',
       repoCreated: false,
+      sealedAt: new Date(),
       secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'succeeded',

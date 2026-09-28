@@ -49,6 +49,7 @@ import { loadAndUnsealByGrantee, grantExistingMintedKey, emitGrantEvents } from 
 import {
   ensureRepoFromTemplate,
   sealActionsSecret,
+  tryGetInstallationToken,
   PROVISIONING_ORG,
   DEFAULT_APP_TEMPLATE,
   type EnsureRepoResult,
@@ -98,6 +99,14 @@ export interface AppProvisionSuccess {
    * one-time `data` reveal (same posture as #2252's bearer plaintext).
    */
   claimCode: string;
+  /**
+   * True when the seal step (#2415) was skipped because the org-scoped
+   * GitHub credential was never sealed — `secretsSet` is `[]` in that case.
+   * Derived from `sealedAt IS NULL` on an otherwise-`succeeded` ledger row
+   * (reusing that existing column rather than adding a new one), since
+   * every succeeded row reached that status via a real seal before #2415.
+   */
+  sealSkipped: boolean;
 }
 
 export interface AppProvisionFailure {
@@ -314,20 +323,73 @@ function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppI
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
+interface SealDeploySecretsResult {
+  secretsSet: string[];
+  /** True when the org credential was never sealed — the step was skipped, not attempted and failed. */
+  skipped: boolean;
+}
+
+function emitSealSkippedEvent(nodeDid: string, slug: string): void {
+  publish('apps.provision.seal.skipped', {
+    issuer: nodeDid,
+    subject: nodeDid,
+    scope: 'apps',
+    payload: { slug, reason: 'org-credential-unsealed', context_id: slug, context_type: 'apps.provision' },
+  }).catch((err: unknown) => log.error({ err: String(err), slug }, 'Bus publish error for apps.provision.seal.skipped'));
+}
+
 /**
  * Step 4 (seal): seal the app's private key into the repo's Actions
- * secrets. Pre-#2416 this also resealed the org-scoped credential itself
- * as `GITHUB_PACKAGES_TOKEN` — dropped (#2416): a GitHub App installation
- * token expires within the hour, so reusing it as a long-lived Actions
- * secret no longer makes sense, and the template CI reads `@ima-jin/*`
- * from public npmjs, so no packages-read secret is needed at all.
+ * secrets. #2415: when the org credential was never sealed, this DEGRADES
+ * rather than fails — there is no template-CI to seal secrets into for a
+ * dev-path app (it fetches its signing key from the vault at boot instead,
+ * #2411), so an unsealed credential must not block the rest of the chain
+ * (grant + claim code). #2416: no longer reseals the org credential itself
+ * as `GITHUB_PACKAGES_TOKEN` — a GitHub App installation token expires
+ * within the hour, so reusing it as a long-lived Actions secret no longer
+ * makes sense, and the template CI reads `@ima-jin/*` from public npmjs,
+ * so no packages-read secret is needed at all.
  */
-async function sealDeploySecrets(slug: string, privateKey: string): Promise<string[]> {
+async function sealDeploySecrets(slug: string, privateKey: string): Promise<SealDeploySecretsResult> {
   const repo = `${PROVISIONING_ORG}/${slug}`;
+  // A cheap availability check before the real work below — `sealActionsSecret`
+  // mints/re-uses its OWN cached installation token internally, so this never
+  // costs a second GitHub round trip when the credential is actually sealed.
+  const installationToken = await tryGetInstallationToken();
+  if (installationToken === null) {
+    return { secretsSet: [], skipped: true };
+  }
 
   await sealActionsSecret(repo, IMAJIN_APP_PRIVATE_KEY_SECRET, privateKey);
 
-  return [IMAJIN_APP_PRIVATE_KEY_SECRET];
+  return { secretsSet: [IMAJIN_APP_PRIVATE_KEY_SECRET], skipped: false };
+}
+
+/**
+ * Step 4 runner: resumes from an already-sealed retry, otherwise attempts
+ * sealing and persists whichever outcome results — sealed (`sealedAt` set)
+ * or skipped (#2415: `secretsSet: []`, `sealedAt` left null, `seal.skipped`
+ * bus event). Extracted out of `runAppProvision` purely to keep that
+ * function's own cognitive complexity down.
+ */
+async function runSealStep(
+  slug: string,
+  nodeDid: string,
+  privateKey: string,
+  existingRun: Pick<AppProvisionRow, 'sealedAt' | 'secretsSet'> | undefined,
+): Promise<SealDeploySecretsResult> {
+  if (existingRun?.sealedAt) {
+    return { secretsSet: existingRun.secretsSet, skipped: false };
+  }
+
+  const sealResult = await sealDeploySecrets(slug, privateKey);
+  if (sealResult.skipped) {
+    await upsertProvisionRow(slug, { secretsSet: sealResult.secretsSet });
+    emitSealSkippedEvent(nodeDid, slug);
+  } else {
+    await upsertProvisionRow(slug, { sealedAt: new Date(), secretsSet: sealResult.secretsSet });
+  }
+  return sealResult;
 }
 
 function emitProvisionedEvent(nodeDid: string, slug: string, appDid: string, repoUrl: string, secretsSet: readonly string[]): void {
@@ -389,6 +451,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       secretsSet: existingRun.secretsSet,
       attestationTypeResults,
       claimCode,
+      sealSkipped: !existingRun.sealedAt,
     };
   }
 
@@ -429,14 +492,16 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   }
 
   // ── Step 4: seal (external, network-fallible — the only step a retry ever repeats) ──
+  // #2415: an unsealed org credential degrades this step (secretsSet: [],
+  // sealedAt left null) rather than failing it — a retry with `sealedAt`
+  // still null naturally re-attempts sealing, which is exactly right if the
+  // operator has since sealed the credential.
   let secretsSet: string[];
+  let sealSkipped: boolean;
   try {
-    if (existingRun?.sealedAt) {
-      secretsSet = existingRun.secretsSet;
-    } else {
-      secretsSet = await sealDeploySecrets(slug, keypair.privateKey);
-      await upsertProvisionRow(slug, { sealedAt: new Date(), secretsSet });
-    }
+    const sealResult = await runSealStep(slug, nodeDid, keypair.privateKey, existingRun);
+    secretsSet = sealResult.secretsSet;
+    sealSkipped = sealResult.skipped;
   } catch (err) {
     return markFailed(nodeDid, slug, 'seal', err);
   }
@@ -477,7 +542,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
 
   emitProvisionedEvent(nodeDid, slug, appDid, repo.repoUrl, secretsSet);
 
-  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode };
+  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode, sealSkipped };
 }
 
 /** Current ledger status for a slug, for `GET /api/apps/provision?slug=`. Undefined when never provisioned. */

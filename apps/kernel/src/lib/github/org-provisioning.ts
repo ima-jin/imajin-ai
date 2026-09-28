@@ -92,8 +92,10 @@ export interface OrgAppCredential {
 
 /** Thrown when the org-scoped credential has never been sealed. */
 export class OrgCredentialMissingError extends Error {
-  constructor() {
+  /** `message` defaults to the generic "not sealed" notice; a caller with more specific context (e.g. a missing repo) may override it. */
+  constructor(message?: string) {
     super(
+      message ??
       `${GITHUB_ORG_CREDENTIAL_FIELD} is not sealed — an operator must seal an org-scoped ` +
       `GitHub App installation credential via POST /api/vault/set before apps.provision can ` +
       `create repos or seal deploy secrets (see docs/REGISTRATION.md)`,
@@ -254,28 +256,52 @@ export function __resetInstallationTokenCacheForTests(): void {
   cachedInstallationToken = undefined;
 }
 
+/**
+ * Best-effort variant of {@link getInstallationToken} — `null` (never
+ * throws) when the org credential has never been sealed, so callers that
+ * need to branch on "is it sealed at all" (#2415: the repo existence check
+ * / authenticated retry, and `sealDeploySecrets`'s degrade-instead-of-fail
+ * path) don't need exception-driven control flow. Returns a real,
+ * ready-to-use installation access token (not the raw sealed credential)
+ * so callers can hand it straight to {@link callGitHubApi}. Any OTHER
+ * error — a malformed blob ({@link OrgCredentialMalformedError}), or a
+ * genuine vault/GitHub failure — still propagates; only "never sealed" is
+ * treated as the soft, expected case.
+ */
+export async function tryGetInstallationToken(): Promise<string | null> {
+  try {
+    return await getInstallationToken();
+  } catch (err) {
+    if (err instanceof OrgCredentialMissingError) return null;
+    throw err;
+  }
+}
+
 interface GitHubApiOptions {
   method: 'GET' | 'POST' | 'PUT';
   path: string;
-  token: string;
+  /** Omit for an unauthenticated call — e.g. #2415's repo existence check, which must not require the org credential. */
+  token?: string;
   body?: Record<string, unknown>;
 }
 
 /**
- * Call the GitHub REST API with the org-scoped credential. Returns
- * `{ status, data }` rather than throwing on non-2xx, so callers can
+ * Call the GitHub REST API, optionally with the org-scoped credential.
+ * Returns `{ status, data }` rather than throwing on non-2xx, so callers can
  * branch on 404 (e.g. "repo does not exist yet") without exception-driven
- * control flow. The token is only ever used in the Authorization header —
- * never logged.
+ * control flow. The token (when supplied) is only ever used in the
+ * Authorization header — never logged.
  */
 async function callGitHubApi<T = unknown>(opts: Readonly<GitHubApiOptions>): Promise<{ status: number; data: T | null }> {
   const url = opts.path.startsWith('http') ? opts.path : `${GITHUB_API_BASE}${opts.path}`;
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
-    Authorization: `Bearer ${opts.token}`,
     'X-GitHub-Api-Version': GITHUB_API_VERSION,
     'User-Agent': 'imajin-kernel-apps-provision/1.0',
   };
+  if (opts.token !== undefined) {
+    headers.Authorization = `Bearer ${opts.token}`;
+  }
 
   const init: RequestInit = { method: opts.method, headers };
   if (opts.body !== undefined) {
@@ -303,32 +329,20 @@ interface GitHubRepoResponse {
   full_name: string;
 }
 
-/**
- * Idempotent repo provisioning (#2375 acceptance: "repo creation must be
- * idempotent/skippable when the repo exists"). Checks for an existing
- * `ima-jin/{slug}` repo first; only calls the template-generate endpoint
- * when none exists. Fails closed on any other GitHub error (rate limit,
- * bad credential, etc.).
- */
-export async function ensureRepoFromTemplate(
-  slug: string,
-  template: string = DEFAULT_APP_TEMPLATE,
-): Promise<EnsureRepoResult> {
-  const token = await getInstallationToken();
+function repoExistenceCheckPath(slug: string): string {
+  return `/repos/${PROVISIONING_ORG}/${slug}`;
+}
 
-  const existing = await callGitHubApi<GitHubRepoResponse>({
-    method: 'GET',
-    path: `/repos/${PROVISIONING_ORG}/${slug}`,
-    token,
-  });
-  if (existing.status === 200 && existing.data) {
-    log.info({ slug, repo: existing.data.full_name }, 'apps.provision: repo already exists — skipping creation');
-    return { repoUrl: existing.data.html_url, created: false };
-  }
-  if (existing.status !== 404) {
-    throw new Error(`apps.provision: failed to check for existing repo '${slug}' (GitHub status ${existing.status})`);
-  }
+/** #2415: the repo can always be created out of band while the org credential is unsealed — this is the message that unblocks an operator/agent stuck on this step. */
+function missingRepoWithUnsealedCredentialError(slug: string, template: string): OrgCredentialMissingError {
+  return new OrgCredentialMissingError(
+    `ima-jin/${slug} does not exist and ${GITHUB_ORG_CREDENTIAL_FIELD} is not sealed — create it out of band with ` +
+    `'gh repo create ima-jin/${slug} --template ${template}' and re-run apps.provision, or seal an org-scoped ` +
+    `GitHub credential via POST /api/vault/set first (see docs/REGISTRATION.md)`,
+  );
+}
 
+async function createRepoFromTemplate(slug: string, template: string, token: string): Promise<EnsureRepoResult> {
   const created = await callGitHubApi<GitHubRepoResponse>({
     method: 'POST',
     path: `/repos/${template}/generate`,
@@ -341,6 +355,71 @@ export async function ensureRepoFromTemplate(
 
   log.info({ slug, repo: created.data.full_name }, 'apps.provision: repo created from template');
   return { repoUrl: created.data.html_url, created: true };
+}
+
+/**
+ * The anonymous check came back with neither a confirmed-exists (200) nor a
+ * confirmed-missing (404) status — could be rate limiting, or a private repo
+ * an anonymous call can't see. Retry once, authenticated, only if a
+ * credential exists; there is nothing further to try when it doesn't.
+ */
+async function resolveAmbiguousRepoStatus(
+  slug: string,
+  template: string,
+  anonymousStatus: number,
+  token: string | null,
+): Promise<EnsureRepoResult> {
+  if (token === null) {
+    throw new Error(`apps.provision: failed to check for existing repo '${slug}' (GitHub status ${anonymousStatus})`);
+  }
+
+  const retried = await callGitHubApi<GitHubRepoResponse>({ method: 'GET', path: repoExistenceCheckPath(slug), token });
+  if (retried.status === 200 && retried.data) {
+    log.info({ slug, repo: retried.data.full_name }, 'apps.provision: repo already exists — skipping creation');
+    return { repoUrl: retried.data.html_url, created: false };
+  }
+  if (retried.status === 404) {
+    return createRepoFromTemplate(slug, template, token);
+  }
+  throw new Error(`apps.provision: failed to check for existing repo '${slug}' (GitHub status ${retried.status})`);
+}
+
+/**
+ * Idempotent repo provisioning (#2375 acceptance: "repo creation must be
+ * idempotent/skippable when the repo exists"; #2415: idempotent/skippable
+ * WITHOUT requiring the org credential at all).
+ *
+ * The existence check runs UNAUTHENTICATED first — a public-org repo's
+ * existence is visible with no token, and the org credential must never be
+ * a precondition for recognizing "the repo is already there" (#2415's bug:
+ * an unsealed credential used to fail the whole chain before GitHub was
+ * even asked). The credential is only loaded once the anonymous check comes
+ * back inconclusive:
+ *   - confirmed missing (404) — needed to actually create the repo, or (if
+ *     unsealed) to explain that it can be created out of band instead;
+ *   - anything else (e.g. rate limiting, or a private repo an anonymous
+ *     call can't see) — used for one authenticated retry before failing.
+ */
+export async function ensureRepoFromTemplate(
+  slug: string,
+  template: string = DEFAULT_APP_TEMPLATE,
+): Promise<EnsureRepoResult> {
+  const anonymous = await callGitHubApi<GitHubRepoResponse>({ method: 'GET', path: repoExistenceCheckPath(slug) });
+  if (anonymous.status === 200 && anonymous.data) {
+    log.info({ slug, repo: anonymous.data.full_name }, 'apps.provision: repo already exists — skipping creation');
+    return { repoUrl: anonymous.data.html_url, created: false };
+  }
+
+  const token = await tryGetInstallationToken();
+
+  if (anonymous.status === 404) {
+    if (token === null) {
+      throw missingRepoWithUnsealedCredentialError(slug, template);
+    }
+    return createRepoFromTemplate(slug, template, token);
+  }
+
+  return resolveAmbiguousRepoStatus(slug, template, anonymous.status, token);
 }
 
 interface ActionsPublicKeyResponse {

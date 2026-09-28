@@ -688,6 +688,36 @@ function RevealedClaimCodeBanner({
   );
 }
 
+// ── seal-skipped notice (#2415) ──────────────────────────────────────────────
+// The decision route surfaces `data.sealSkipped` when apps.provision's seal
+// step was skipped (org credential unsealed) rather than failed — shown as a
+// dismissable notice right where the operator's attention already is, same
+// pattern as the claim-code/bearer reveals above (though this carries no
+// secret, so it's informational rather than a one-time reveal).
+
+interface SealSkipped {
+  proposalId: string;
+  displayName: string;
+}
+
+function SealSkippedBanner({
+  skipped,
+  onDismiss,
+}: Readonly<{ skipped: SealSkipped; onDismiss: () => void }>) {
+  return (
+    <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="seal-skipped-notice">
+      <p className="text-sm text-amber-200 font-medium">
+        CI secrets not sealed for &quot;{skipped.displayName}&quot; — the org GitHub credential is not sealed, so
+        `IMAJIN_APP_PRIVATE_KEY` was not pushed to Actions secrets. The app can still fetch its
+        signing key from the vault at boot; re-run provisioning once an operator seals the credential to also seal CI.
+      </p>
+      <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
+        Dismiss
+      </button>
+    </div>
+  );
+}
+
 /** Deep-link anchor id (#2291) — the web-push notificationclick handler opens `/jin?proposalId=<id>` to this card. */
 function approvalCardAnchorId(proposalId: string): string {
   return `approval-${proposalId}`;
@@ -899,6 +929,7 @@ function OperatorApprovalsPanelInner() {
   const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
   const [revealedClaimCode, setRevealedClaimCode] = useState<RevealedClaimCode | null>(null);
+  const [sealSkipped, setSealSkipped] = useState<SealSkipped | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const notify = useCallback((type: 'ok' | 'err', msg: string) => {
@@ -977,7 +1008,7 @@ function OperatorApprovalsPanelInner() {
       // as a persistent (not auto-dismissing) reveal box rather than the
       // 4s flash, since the operator needs time to copy it.
       const responseBody = await res.json().catch(() => ({})) as {
-        data?: { bearer?: string; expiresAt?: string; claimCode?: string };
+        data?: { bearer?: string; expiresAt?: string; claimCode?: string; sealSkipped?: boolean };
       };
       if (decision === 'approve' && responseBody.data?.bearer) {
         setRevealedBearer({
@@ -994,6 +1025,14 @@ function OperatorApprovalsPanelInner() {
           proposalId,
           displayName: detailString(approval.detail, 'displayName', approval.summary),
           claimCode: responseBody.data.claimCode,
+        });
+      }
+      // #2415: apps.provision reached the claim code but skipped sealing CI
+      // secrets — surface it right alongside the claim-code reveal above.
+      if (decision === 'approve' && responseBody.data?.sealSkipped) {
+        setSealSkipped({
+          proposalId,
+          displayName: detailString(approval.detail, 'displayName', approval.summary),
         });
       }
       notify('ok', `Proposal ${decision}.`);
@@ -1038,6 +1077,10 @@ function OperatorApprovalsPanelInner() {
 
       {revealedClaimCode && (
         <RevealedClaimCodeBanner revealed={revealedClaimCode} onDismiss={() => setRevealedClaimCode(null)} />
+      )}
+
+      {sealSkipped && (
+        <SealSkippedBanner skipped={sealSkipped} onDismiss={() => setSealSkipped(null)} />
       )}
 
       {actAs && <ActAsReadOnlyNotice actAs={actAs} />}
