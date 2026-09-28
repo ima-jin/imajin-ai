@@ -54,10 +54,11 @@ The kernel is the six primitives above plus the rails that serve them. Everythin
 | [dykil](./apps/dykil) | Surveys & polls | Live | [README](./apps/dykil/README.md) |
 | [events](./apps/events) | Create events, sell tickets, issue signed tickets | Live | [README](./apps/events/README.md) |
 | [learn](./apps/learn) | Courses, lessons, learning progress | Live | [README](./apps/learn/README.md) |
-| [links](./apps/links) | Curated link collection | Live | [README](./apps/links/README.md) |
 | [market](./apps/market) | Marketplace: listings, trust-gated commerce | Live | [README](./apps/market/README.md) |
 
 `apps/kernel` is the kernel service itself (the primitives above), not a third-party app — see its own [README](./apps/kernel/README.md).
+
+**links** was the first app extracted out of this monorepo per the plan above ([#1986](https://github.com/ima-jin/imajin-ai/issues/1986)): it now lives in its own repo, [ima-jin/links](https://github.com/ima-jin/links), still served at `jin.imajin.ai/links` via the same Caddy route.
 
 ## Build an app
 
@@ -136,7 +137,7 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 | Codebase | 417,903 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' | xargs cat | wc -l` |
 | Commits | 4,294 | `git rev-list --count HEAD` |
 | Live since | February 2026 | `git log --reverse --format=%ad --date=short` (first commit) |
-| Services | 9 apps, 29 shared packages | `ls apps`, `ls packages` |
+| Services | 8 apps, 29 shared packages | `ls apps`, `ls packages` |
 <!-- stats:end -->
 _As of commit `1b59045f` (2026-09-25). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
 
