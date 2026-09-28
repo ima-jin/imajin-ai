@@ -37,6 +37,8 @@ export interface AppsExecutionData {
    * single response.
    */
   claimCode: string;
+  /** #2415: true when the deploy-secrets seal step was skipped (org credential unsealed) — surfaced on the /jin card as "CI secrets not sealed". */
+  sealSkipped: boolean;
 }
 
 export type AppsExecutionResult =
@@ -92,7 +94,13 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
     }
     return {
       ok: true,
-      data: { repoUrl: outcome.repoUrl, appDid: outcome.appDid, secretsSet: outcome.secretsSet, claimCode: outcome.claimCode },
+      data: {
+        repoUrl: outcome.repoUrl,
+        appDid: outcome.appDid,
+        secretsSet: outcome.secretsSet,
+        claimCode: outcome.claimCode,
+        sealSkipped: outcome.sealSkipped,
+      },
     };
   } catch (err) {
     log.error({ err: String(err), proposalId: card.proposalId, slug }, 'Apps proposal execution failed');

@@ -85,6 +85,8 @@ describe('executeAppsProvisionApproval — execution', () => {
       appDid: 'did:imajin:app-dykil',
       secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
       attestationTypeResults: [],
+      claimCode: 'claim_test_code',
+      sealSkipped: false,
     });
 
     const result = await executeAppsProvisionApproval(card());
@@ -95,6 +97,8 @@ describe('executeAppsProvisionApproval — execution', () => {
         repoUrl: 'https://github.com/ima-jin/dykil',
         appDid: 'did:imajin:app-dykil',
         secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+        claimCode: 'claim_test_code',
+        sealSkipped: false,
       },
     });
     expect(runAppProvisionMock).toHaveBeenCalledWith({
@@ -102,6 +106,31 @@ describe('executeAppsProvisionApproval — execution', () => {
       displayName: 'dykil',
       template: undefined,
       attestationTypes: [],
+    });
+  });
+
+  it('#2415: surfaces sealSkipped: true when the seal step was skipped', async () => {
+    runAppProvisionMock.mockResolvedValue({
+      status: 'succeeded',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      appDid: 'did:imajin:app-dykil',
+      secretsSet: [],
+      attestationTypeResults: [],
+      claimCode: 'claim_test_code',
+      sealSkipped: true,
+    });
+
+    const result = await executeAppsProvisionApproval(card());
+
+    expect(result).toEqual({
+      ok: true,
+      data: {
+        repoUrl: 'https://github.com/ima-jin/dykil',
+        appDid: 'did:imajin:app-dykil',
+        secretsSet: [],
+        claimCode: 'claim_test_code',
+        sealSkipped: true,
+      },
     });
   });
 

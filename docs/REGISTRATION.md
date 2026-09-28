@@ -21,37 +21,35 @@ not an ima-jin extraction) uses that template's own self-service `docs/REGISTRAT
 holds their own keypair rather than the kernel minting and sealing it. Do not confuse the two:
 `apps.provision` is for apps the kernel itself is extracting/deploying.
 
-## Operator setup (one-time, per node)
+## Operator setup (one-time, per node) — optional for an app whose repo already exists
 
-`apps.provision` acts with an **org-scoped GitHub credential** — ruled by Ryan (2026-09-24,
-#2375): "the kernel does it with an org-scoped credential; no org-admin grant to
-`warp-factories[bot]`, no per-app manual step by Jin." An operator seals this once via the
-existing generic vault-set route:
+**The `ima-jin` org does not issue PATs** (Ryan, 2026-09-28) — there is no personal access
+token to paste into this slot, ever. The `github-org-provisioning` vault field is reserved for
+a **GitHub App installation identity** (a sibling piece of work, #2416) once one is minted;
+until then this field simply stays unsealed on most nodes, and that is an expected, supported
+state — not a setup step anyone is blocked on.
 
-```bash
-curl -X POST "${IMAJIN_AUTH_URL}/api/vault/set" \
-  -H "Content-Type: application/json" \
-  -H "Cookie: <admin session cookie>" \
-  -d '{
-    "field": "github-org-provisioning",
-    "value": "<a GitHub PAT scoped for this>",
-    "custodyScheme": "delegation-grant"
-  }'
-```
+`apps.provision`'s repo-existence check (`ensureRepoFromTemplate`) runs **unauthenticated**
+first and never requires this credential at all when `ima-jin/<slug>` already exists (#2415):
+provisioning an app whose repo was created out of band (e.g. `gh repo create`, or cloned/built
+manually per the dykil precedent below) needs no GitHub credential of any kind. The credential
+is only ever consulted for two things once it exists as a GitHub App identity:
+- **Creating a new repo from the template** when `ima-jin/<slug>` does not exist yet (the
+  'repo' step fails closed with an out-of-band `gh repo create` instruction when it's missing
+  AND the credential is unsealed — see "Idempotency and fail-closed" below).
+- **Sealing CI deploy secrets** (`IMAJIN_APP_PRIVATE_KEY` / `GITHUB_PACKAGES_TOKEN`) into an
+  existing or newly created repo's Actions secrets — skipped (not failed) when unsealed, since
+  a dev-path app never needed CI secrets in the first place (see "What gets sealed, and where"
+  below).
 
-The token needs:
-- **Repo creation from a template** in the `ima-jin` org (classic PAT: `repo` + org
-  permission to create repos from `ima-jin/imajin-app-template`; fine-grained: template repo
-  contents:read + org Administration:write, or equivalent).
-- **Actions secrets: write** on repos it provisions (to seal `IMAJIN_APP_PRIVATE_KEY` /
-  `GITHUB_PACKAGES_TOKEN`).
-- **`read:packages`** — this SAME token is reused, unmodified, as the sealed
-  `GITHUB_PACKAGES_TOKEN` secret (see "What gets sealed, and where" below), so it must itself
-  be able to read `@ima-jin/*` packages from GitHub Packages the way
-  `docs/packages/PUBLISHING.md`'s consumer instructions describe.
-
-Never sealed as a v1 field — `custodyScheme: "delegation-grant"` is required (v2 grant shape,
-self-granted to the node, #2311).
+Once the GitHub App identity exists, an operator seals its installation token the same way any
+other vault-native credential is sealed, via the existing generic vault-set route with
+`custodyScheme: "delegation-grant"` (v2 grant shape, self-granted to the node, #2311) — see
+#2416 for the exact shape once that lands. It needs **Actions secrets: write** on repos it
+provisions, plus whatever scope covers repo creation from `ima-jin/imajin-app-template`; the
+same token is also reused, unmodified, as the sealed `GITHUB_PACKAGES_TOKEN` secret (see "What
+gets sealed, and where" below), so it must itself be able to read `@ima-jin/*` packages from
+GitHub Packages the way `docs/packages/PUBLISHING.md`'s consumer instructions describe.
 
 ## 1. Call `apps.provision` (the normal path)
 
@@ -122,14 +120,32 @@ placeholder — see "Legacy first-party rows vs. provisioned apps" below.)
   not re-mint a key, and does not re-seal secrets. If the repo already exists (e.g. dykil's
   `ima-jin/dykil`, cloned/built manually before this landed), the repo-creation step is
   skipped and only registration + sealing run.
-- **Fail-closed.** Any step failing leaves a `kernel.app_provisions` row with
-  `status: "failed"`, `failedStep` naming exactly which step (`repo` | `mint` | `register` |
-  `seal` | `attestation-types`), and an `apps.provision.failed` bus event. No half-registered
-  app is ever served: the `registry.apps` row is written only after a real keypair already
-  exists and is durably vault-sealed — a failure sealing the GitHub secret never leaves a
-  registry row pointing at a key nothing backs.
+- **The repo-existence check needs no GitHub credential at all (#2415).** `ensureRepoFromTemplate`
+  checks `ima-jin/<slug>` unauthenticated FIRST; a `200` short-circuits straight to `{created:
+  false}` without ever touching the org credential. The credential is only consulted once the
+  repo is confirmed missing (`404`) — to actually create it — or on an ambiguous status, for one
+  authenticated retry. If the repo is missing AND the credential is unsealed, the 'repo' step
+  fails closed with an `OrgCredentialMissingError` naming the out-of-band fix: `gh repo create
+  ima-jin/<slug> --template ima-jin/imajin-app-template`, then re-run `apps.provision`.
+- **Sealing CI secrets degrades instead of failing when the credential is unsealed (#2415).**
+  Once the repo step passes (existing or freshly created), an unsealed org credential no longer
+  fails the whole pipeline at 'seal' — it's skipped: `secretsSet: []`, an
+  `apps.provision.seal.skipped { slug, reason: 'org-credential-unsealed' }` bus event, and "CI
+  secrets not sealed" surfaced on the `/jin` approval card. The chain still proceeds to mint the
+  app-signing-key grant and issue the claim code — a dev-path app (`pm2 start` by hand, no
+  template-CI) fetches its signing key from the vault at boot (#2411) and never needed the
+  Actions secrets in the first place.
+- **Fail-closed for every other step.** A step other than the seal-skip case above failing
+  leaves a `kernel.app_provisions` row with `status: "failed"`, `failedStep` naming exactly
+  which step (`repo` | `mint` | `register` | `seal` | `attestation-types` | `app-signing-key-
+  grant`), and an `apps.provision.failed` bus event. No half-registered app is ever served: the
+  `registry.apps` row is written only after a real keypair already exists and is durably
+  vault-sealed — a genuine seal failure (e.g. a sealed-but-invalid credential, not merely
+  unsealed) never leaves a registry row pointing at a key nothing backs.
 - **Retryable.** Re-proposing after a failure resumes from whichever step didn't already
-  succeed (each step checks its own completion state first).
+  succeed (each step checks its own completion state first) — including a prior seal-skip: a
+  retry with `sealedAt` still unset re-attempts sealing, which succeeds once an operator has
+  since sealed the credential.
 
 ### Attestation types (namespaced, app-owned)
 
@@ -154,6 +170,11 @@ Both are encrypted client-side with libsodium's `crypto_box_seal` against the re
 Actions public key before `PUT .../actions/secrets/{name}` — GitHub's own documented
 mechanism. Neither value is ever logged, returned in an API response, or persisted anywhere
 outside the vault (for the private key) — `secretsSet` in every response/record is names only.
+
+When the org credential is unsealed, neither secret is sealed at all — see "Sealing CI secrets
+degrades instead of failing" above. This is expected on a node whose `github-org-provisioning`
+field has never been sealed (the default today, since the org does not issue PATs — see
+"Operator setup" above).
 
 The app's DID is derived from its freshly minted public key (the same convention third-party
 self-service registration already uses) — NOT the `did:imajin:app-<slug>` convention the
@@ -254,17 +275,21 @@ silently produce two rows answering to the same slug.
 
 ## 2. Or do these steps by hand
 
-Only if `apps.provision` cannot be used (e.g. bootstrapping before the org credential is
-sealed). Do not do this for an app `apps.provision` already owns — hand-registering fights
-with the idempotency ledger.
+`apps.provision` needs no GitHub credential at all when `ima-jin/<slug>` already exists
+(#2415), so hand-registering should rarely be necessary anymore. It remains useful only for
+creating a repo that does NOT exist yet while the org credential is unsealed (`apps.provision`
+fails closed at 'repo' in that specific case, with the exact `gh repo create` command to run).
+Do not do this for an app `apps.provision` already owns — hand-registering fights with the
+idempotency ledger.
 
 1. **Create the repo:** `gh repo create ima-jin/<slug> --template ima-jin/imajin-app-template
    --private`. Skip if it already exists.
 2. **Mint a keypair** for the app (do NOT hand-generate one — use the vault's own mint
    primitive so the private key is born sealed): `POST /api/vault/mint` with
    `{"purpose": "apps.provision:<slug>", "requesterDid": "<node DID>"}` — note that route
-   requires mint authority (the node's own signing identity); prefer the
-   `apps.provision` route as soon as the org credential exists.
+   requires mint authority (the node's own signing identity); prefer the `apps.provision` route
+   instead — it now handles this whole case (repo already exists, credential unsealed) on its
+   own.
 3. **Register the app as a NEW third-party row** — do not touch any pre-existing legacy
    first-party row for the same app. `POST /api/admin/registry/apps` (admin-scoped) with
    `{"name": "<displayName>", "ownerDid": "did:imajin:platform", "callbackUrl":
@@ -290,8 +315,10 @@ built, and Caddy-routed on dev — it hard-stopped at app registration, since
 `apps.provision` is exactly the gate that unblocks it. dykil is **not provisioned at all**
 on dev today: `registry.apps` has only the **legacy** first-party row `app_first_party_dykil`
 (seeded by `migrations/0139_registry_apps_seed_first_party.sql` — `did:imajin:app-dykil`, a
-non-functional placeholder public key, `slug IS NULL`, `tier = 'first_party'`), and the
-standalone repo `ima-jin/dykil` already exists.
+non-functional placeholder public key, `slug IS NULL`, `tier = 'first_party'`), the standalone
+repo `ima-jin/dykil` already exists, and — as of #2415's surfaced bug — `github-org-
+provisioning` is **not sealed** on this node (the org does not issue PATs; #2416's GitHub App
+identity has not landed yet).
 
 1. An agent proposes:
    ```json
@@ -299,17 +326,22 @@ standalone repo `ima-jin/dykil` already exists.
    { "slug": "dykil", "displayName": "dykil",
      "attestationTypes": ["dykil/survey-response", "dykil/survey-response-legacy-import"] }
    ```
-2. The operator approves. Because `ima-jin/dykil` already exists, the pipeline **skips repo
-   creation** (idempotent/skippable). It then mints a **fresh** Ed25519 keypair (a new,
+2. The operator approves. Because `ima-jin/dykil` already exists, the unauthenticated existence
+   check alone confirms that (#2415) — the unsealed credential is never even loaded for this
+   step, so the pipeline is not blocked by it. It then mints a **fresh** Ed25519 keypair (a new,
    public-key-derived DID — distinct from the legacy `did:imajin:app-dykil`) and **registers
    a brand-new `tier: 'third_party'` row** with `slug: 'dykil'` — the legacy
    `app_first_party_dykil` row is left completely untouched (still `first_party`, still
-   `slug IS NULL`, still its own placeholder `app_did`). Finally it **seals**
-   `IMAJIN_APP_PRIVATE_KEY` / `GITHUB_PACKAGES_TOKEN` into `ima-jin/dykil`'s Actions secrets.
-3. dykil's own CI/deploy on dev sets `IMAJIN_APP_DID` from the new third-party row's `appDid`
-   (the response/ledger value, not the legacy placeholder) and consumes its private key +
-   packages token from Actions secrets — no human touched a secret value at any point.
-4. The two `dykil/*` attestation types are seeded against the NEW `appDid`, so dykil's
+   `slug IS NULL`, still its own placeholder `app_did`).
+3. The seal step finds the credential still unsealed and **degrades instead of failing**
+   (#2415): `secretsSet: []`, an `apps.provision.seal.skipped` bus event, and "CI secrets not
+   sealed" on the `/jin` card. The chain proceeds straight to the app-signing-key grant and
+   claim code — dykil runs via `pm2 start` on dev, not template-CI, so it never needed
+   `IMAJIN_APP_PRIVATE_KEY`/`GITHUB_PACKAGES_TOKEN` as Actions secrets in the first place.
+4. dykil sets `IMAJIN_APP_DID` from the new third-party row's `appDid` (the response/ledger
+   value, not the legacy placeholder) and, at first boot, exchanges the claim code for its
+   signing key straight from the vault (#2411) — no human touched a secret value at any point.
+5. The two `dykil/*` attestation types are seeded against the NEW `appDid`, so dykil's
    survey-response ingestion is immediately namespace-valid.
-5. `registry.apps` now has both rows side by side (see "Legacy first-party rows vs.
+6. `registry.apps` now has both rows side by side (see "Legacy first-party rows vs.
    provisioned apps" above) until the legacy row's separate retirement (#1991).
