@@ -53,9 +53,18 @@ interface ProvisionRequestBody {
   displayName?: unknown;
   template?: unknown;
   attestationTypes?: unknown;
+  /**
+   * #2411: when true, an already-`succeeded` slug is NOT short-circuited
+   * with the cached result — a new `apps:provision` proposal is raised
+   * (and, once approved, `runAppProvision`'s idempotent-succeeded branch
+   * issues a FRESH one-time claim code, reusing the existing grant/key/
+   * repo). This is the operator's lever to recover a lost or expired app
+   * signing-key claim code without re-minting anything.
+   */
+  reissueClaim?: unknown;
 }
 
-type ValidatedBody = { slug: string; displayName: string; template: string | null; attestationTypes: string[] };
+type ValidatedBody = { slug: string; displayName: string; template: string | null; attestationTypes: string[]; reissueClaim: boolean };
 
 function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedBody } | { ok: false; error: string } {
   if (typeof body.slug !== 'string' || !SLUG_PATTERN.test(body.slug)) {
@@ -83,6 +92,7 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
       displayName: body.displayName.trim(),
       template: typeof body.template === 'string' ? body.template : null,
       attestationTypes: Array.isArray(body.attestationTypes) ? (body.attestationTypes as string[]) : [],
+      reissueClaim: body.reissueClaim === true,
     },
   };
 }
@@ -107,12 +117,15 @@ export async function POST(request: NextRequest) {
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
   }
-  const { slug, displayName, template, attestationTypes } = validation.value;
+  const { slug, displayName, template, attestationTypes, reissueClaim } = validation.value;
 
   // Idempotent on slug: an already-succeeded provision returns the cached
-  // result immediately — no new proposal, nothing re-created.
+  // result immediately — no new proposal, nothing re-created — UNLESS the
+  // caller explicitly asked to reissue the app-signing-key claim code
+  // (#2411), in which case a fresh proposal is raised anyway so the
+  // operator's approval mints a new one-time code.
   const existingRun = await getAppProvisionStatus(slug);
-  if (existingRun?.status === 'succeeded') {
+  if (existingRun?.status === 'succeeded' && !reissueClaim) {
     return NextResponse.json(
       {
         status: 'succeeded',

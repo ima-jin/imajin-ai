@@ -177,6 +177,23 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(body).toEqual({ status: 'pending', proposalId: 'appprov_existing' });
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
+
+  it('#2411: raises a fresh proposal for an already-succeeded slug when reissueClaim is true', async () => {
+    getAppProvisionStatusMock.mockResolvedValue({
+      slug: 'dykil',
+      status: 'succeeded',
+      appDid: 'did:imajin:app-dykil',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+    });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil', reissueClaim: true }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body).toEqual({ status: 'pending', proposalId: 'appprov_testid' });
+    expect(recordApprovalRequestedMock).toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/apps/provision — raising a new proposal', () => {

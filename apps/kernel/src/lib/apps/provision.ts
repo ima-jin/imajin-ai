@@ -36,16 +36,16 @@
  * of this module's return value — see `AppProvisionSuccess.secretsSet`,
  * which carries secret NAMES only.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { emitAttestation } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, appProvisions, registryApps, type AppProvisionRow, type NewAppProvisionRow } from '@/src/db';
+import { db, appProvisions, registryApps, vaultDelegationGrants, type AppProvisionRow, type NewAppProvisionRow } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { mintKeypair, emitMintedEvents } from '@/src/lib/vault/mint';
+import { mintKeypair, emitMintedEvents, mintedKeyField } from '@/src/lib/vault/mint';
 import { getMintedKeyByDid } from '@/src/lib/vault/key-cards';
-import { loadAndUnsealByGrantee } from '@/src/lib/vault';
+import { loadAndUnsealByGrantee, grantExistingMintedKey, emitGrantEvents } from '@/src/lib/vault';
 import {
   ensureRepoFromTemplate,
   sealActionsSecret,
@@ -55,6 +55,7 @@ import {
   type EnsureRepoResult,
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
+import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -80,6 +81,17 @@ export interface AppProvisionSuccess {
   /** Actions secret NAMES only — never values. */
   secretsSet: string[];
   attestationTypeResults: AttestationTypeSeedOutcome[];
+  /**
+   * Plaintext one-time claim code (#2411) the app exchanges at first boot
+   * for its own `app-signing-key` vault delegation grant, via
+   * `POST /api/apps/claim`. Present on EVERY successful outcome (fresh or
+   * idempotent-retry) — each execution issues a fresh code and expires any
+   * prior still-pending one. Never persisted anywhere by this module or
+   * its callers beyond this single return value; the operator-approvals
+   * execution bridge surfaces it exactly once, in the decision response's
+   * one-time `data` reveal (same posture as #2252's bearer plaintext).
+   */
+  claimCode: string;
 }
 
 export interface AppProvisionFailure {
@@ -172,6 +184,60 @@ async function ensureMintedKeypair(
     throw new Error(`apps.provision: freshly minted key for '${minted.did}' could not be re-unsealed`);
   }
   return { did: minted.did, publicKey: minted.publicKey, privateKey };
+}
+
+/**
+ * Step 4.5 (grant, #2411): issue the app's OWN DID a delegation grant for
+ * its just-minted key's field, on top of the pre-existing self-granted
+ * (node -> node) copy `ensureMintedKeypair` already holds for the
+ * GitHub-Actions-secret seal. This is the SAME primitive #2247's vault key
+ * cards use to add a second consumer to an already-minted key without
+ * re-sealing (`grantExistingMintedKey`) — here the second consumer is the
+ * app's own identity, purpose `app-signing-key`, `oneTime: false` (the app
+ * may re-fetch across restarts for as long as its claim code, or a
+ * reissued one, remains valid — see `signing-key-claims.ts`).
+ *
+ * Idempotent: reuses an already-active grant for (appDid, appDid, field,
+ * purpose) rather than issuing a duplicate one on every retry —
+ * `grantExistingMintedKey` itself has no such dedup (it exists to add
+ * ADDITIONAL consumers), so this lookup is what keeps a re-run of an
+ * already-succeeded provision from piling up redundant active grants for
+ * the same tuple (which would also collide with the delegation grants
+ * table's own one-active-row-per-tuple uniqueness).
+ */
+async function ensureAppSigningKeyGrant(appDid: string, nodeDid: string): Promise<string> {
+  const field = mintedKeyField(appDid);
+
+  const [existing] = await db
+    .select({ id: vaultDelegationGrants.id })
+    .from(vaultDelegationGrants)
+    .where(
+      and(
+        eq(vaultDelegationGrants.subject, appDid),
+        eq(vaultDelegationGrants.grantedTo, appDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.purpose, APP_SIGNING_KEY_PURPOSE),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    return existing.id;
+  }
+
+  const result = await grantExistingMintedKey({
+    did: appDid,
+    grantedTo: appDid,
+    purpose: APP_SIGNING_KEY_PURPOSE,
+    oneTime: false,
+    grantedBy: nodeDid,
+  });
+  if (result.status !== 'ok') {
+    throw new Error(`apps.provision: could not grant '${appDid}' its own app-signing-key (${result.status})`);
+  }
+
+  emitGrantEvents({ grantId: result.grantId, did: appDid, field, grantedTo: appDid, grantedBy: nodeDid });
+  return result.grantId;
 }
 
 /**
@@ -297,12 +363,21 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
         attestationTypes: mergeAttestationTypes(existingRun.attestationTypes, attestationTypeResults),
       });
     }
+    // #2411: a re-approved provision for an already-succeeded slug is also
+    // the operator's lever to reissue a fresh claim code (e.g. a prior one
+    // expired unused, or the app's first-boot host never got it) — see
+    // `POST /api/apps/provision`'s `reissueClaim` flag. The grant itself is
+    // idempotent (`ensureAppSigningKeyGrant` reuses the existing active
+    // row); only the claim code is genuinely fresh every time.
+    const grantId = await ensureAppSigningKeyGrant(succeededAppDid, nodeDid);
+    const claimCode = await issueSigningKeyClaim({ nodeDid, slug, appDid: succeededAppDid, grantId });
     return {
       status: 'succeeded',
       repoUrl: existingRun.repoUrl ?? '',
       appDid: succeededAppDid,
       secretsSet: existingRun.secretsSet,
       attestationTypeResults,
+      claimCode,
     };
   }
 
@@ -355,7 +430,24 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
     return markFailed(nodeDid, slug, 'seal', err);
   }
 
-  // ── Step 5: attestation types (optional, additive) ───────────────────
+  // ── Step 5: app-signing-key grant + claim code (#2411, kernel-internal) ──
+  // The app's own DID has no pre-existing identity to authenticate a
+  // normal vault fetch with, so this is a SECOND destination for the same
+  // freshly minted key: an active delegation grant to appDid itself, plus
+  // a one-time claim code the app exchanges for it at first boot (see
+  // `signing-key-claims.ts`). Runs unconditionally — unlike attestation
+  // types, this isn't optional for a third-party app to be bootable off
+  // the vault path.
+  let grantId: string;
+  let claimCode: string;
+  try {
+    grantId = await ensureAppSigningKeyGrant(appDid, nodeDid);
+    claimCode = await issueSigningKeyClaim({ nodeDid, slug, appDid, grantId });
+  } catch (err) {
+    return markFailed(nodeDid, slug, 'app-signing-key-grant', err);
+  }
+
+  // ── Step 6: attestation types (optional, additive) ───────────────────
   let attestationTypeResults: AttestationTypeSeedOutcome[] = [];
   if (attestationTypes.length > 0) {
     try {
@@ -374,7 +466,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
 
   emitProvisionedEvent(nodeDid, slug, appDid, repo.repoUrl, secretsSet);
 
-  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults };
+  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode };
 }
 
 /** Current ledger status for a slug, for `GET /api/apps/provision?slug=`. Undefined when never provisioned. */

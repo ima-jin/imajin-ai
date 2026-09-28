@@ -162,6 +162,44 @@ This is deliberate: it's what keeps the new row's `app_did` structurally distinc
 pre-existing legacy first-party row's `app_did` for the same app (`registry.apps.app_did` is
 globally unique) — see "Legacy first-party rows vs. provisioned apps" below.
 
+### First boot: the app fetches its own signing key from the vault (#2411)
+
+`IMAJIN_APP_PRIVATE_KEY` sealed into GitHub Actions secrets (above) is a real destination for a
+CI-deployed app, but it doesn't help an app started directly on a host the operator doesn't run
+CI against (e.g. a dev box, `pm2 start` by hand) — there's no honest channel to hand it a raw
+private key without pasting it into a file. For that case, the SAME minted key is also granted
+directly to the app's own DID in the vault (`purpose: 'app-signing-key'`), and the operator's
+approval additionally issues a **one-time, ~15-minute claim code** — Ryan's 2026-09-27 ruling on
+#2411: not a `/jin` copy-paste of the key itself, not an unseal CLI on the box.
+
+The claim code is shown **exactly once**, in a reveal banner on the `/jin` approval card right
+after approval — never persisted anywhere (only its SHA-256 hash is), never returned again by
+any route, including `GET /api/apps/provision?slug=`. Put it in the app's `.env.local` as
+`IMAJIN_APP_CLAIM_CODE` — the ONLY credential that file ever carries, alongside `PORT`,
+`NODE_ENV`, `IMAJIN_KERNEL_URL`, and `IMAJIN_APP_DID`. At boot, the app exchanges it for its real
+private key:
+
+```bash
+curl -X POST "${IMAJIN_KERNEL_URL}/api/apps/claim" \
+  -H "Content-Type: application/json" \
+  -d '{"claimCode": "claim_...", "hostHint": "dykil-standalone"}'
+```
+
+```json
+{ "appDid": "did:imajin:9f2c...", "privateKey": "...", "publicKey": "..." }
+```
+
+The SDK does this for you — `@ima-jin/auth-client`'s `loadAppSigningKey()` (see that package's
+README). No `requireAuth` session gates this route: the claim code itself, single-use and
+short-lived, IS the authentication for this one call. A second exchange attempt — whether the
+code was already redeemed or has simply expired — is refused (410 Gone); re-propose and
+re-approve `apps.provision` for the same slug with `"reissueClaim": true` in the request body for
+a fresh code (reuses the existing repo/key/grant — nothing is re-minted or re-created).
+
+Signed events for the full chain are on the bus: `vault.key.minted` → `vault.grant.fulfilled` →
+`apps.signing-key.claimed` → `apps.signing-key.fetched`. None of them ever carries the claim
+code or the private key.
+
 ### Legacy first-party rows vs. provisioned apps
 
 An app mid-extraction (dykil today) has, for a time, **two** `registry.apps` rows:

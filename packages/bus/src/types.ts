@@ -2099,6 +2099,53 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'apps.provision';
   };
+  /**
+   * `apps.provision` (#2411) issued a fresh one-time claim code for a
+   * third-party app's own `app-signing-key` delegation grant — the
+   * bootstrap credential the app exchanges at first boot (`POST
+   * /api/apps/claim`) since it has no pre-existing identity to
+   * authenticate a normal `loadFromVault` fetch with. Carries no secret
+   * material — the plaintext code itself is surfaced exactly once, in the
+   * operator-approval decision response, never on the bus.
+   */
+  'apps.signing-key.claim.issued': {
+    slug: string;
+    appDid: string;
+    grantId: string;
+    context_id: string;
+    context_type: 'apps.signing-key';
+  };
+  /**
+   * A third-party app successfully redeemed its one-time claim code
+   * (#2411) — `POST /api/apps/claim` flipped the claim row
+   * `pending -> claimed`. Emitted before the underlying vault fetch is
+   * attempted; see `apps.signing-key.fetched` for the fetch outcome
+   * itself. `hostHint` is a caller-reported, best-effort label — never
+   * trusted for authorization, recorded for the /jin timeline only.
+   */
+  'apps.signing-key.claimed': {
+    slug: string;
+    appDid: string;
+    grantId: string;
+    hostHint: string | null;
+    context_id: string;
+    context_type: 'apps.signing-key';
+  };
+  /**
+   * A third-party app fetched its own signing key from the vault after
+   * redeeming a claim code (#2411) — the final link in the
+   * minted -> granted -> claimed -> fetched chain. Carries no key
+   * material — `outcome` is the same closed vocabulary
+   * `fetchGrantSecret` (`../vault/index.ts`) already reports.
+   */
+  'apps.signing-key.fetched': {
+    slug: string;
+    appDid: string;
+    grantId: string;
+    outcome: 'ok' | 'not_found' | 'not_grantee' | 'inactive' | 'expired' | 'consumed' | 'error';
+    context_id: string;
+    context_type: 'apps.signing-key';
+  };
 }
 
 export type BusEventType = keyof BusEventMap;
