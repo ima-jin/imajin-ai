@@ -465,7 +465,7 @@ interface VaultCheckResult {
 function readEcosystemEnvValue(env: "dev" | "prod", key: string): string | undefined {
   const file = path.join(ROOT, "deploy", env === "prod" ? "ecosystem.prod.config.js" : "ecosystem.dev.config.js");
   if (!fs.existsSync(file)) return undefined;
-  const pattern = new RegExp(`"${key}"\\s*:\\s*"([^"]*)"`);
+  const pattern = new RegExp(String.raw`"${key}"\s*:\s*"([^"]*)"`);
   return pattern.exec(fs.readFileSync(file, "utf-8"))?.[1];
 }
 
