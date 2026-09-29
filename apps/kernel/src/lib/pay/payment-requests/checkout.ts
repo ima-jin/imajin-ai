@@ -48,6 +48,7 @@ import type { CheckoutRequest, FiatCurrency } from '../types';
 import { settlePayment } from '../settle-core';
 import { getPaymentRequestById, type ServiceError } from './service';
 import { emitPaymentRequestSettledStripeAttestation } from './attestations';
+import { taxBreakdownOf } from './tax';
 import type { PaymentRequestFairManifest, PaymentRequestLineItem, PaymentRequestSettlementRef } from './types';
 
 const log = createLogger('kernel');
@@ -116,6 +117,11 @@ function toCheckoutItems(lineItems: unknown): CheckoutItem[] {
   }));
 }
 
+/** Σ amount × quantity over checkout items, in minor units (integers only). */
+function merchandiseTotal(items: CheckoutItem[]): number {
+  return items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
+}
+
 /**
  * Create (or reuse) a Stripe Checkout session for a payment_request. Either
  * the issuer or the recipient may call this — anonymous pay-link checkout
@@ -143,11 +149,22 @@ export async function createPaymentRequestCheckoutSession(
   const reused = await findReusableCheckoutSession(existing.id);
   if (reused) return { ...reused, reused: true };
 
-  // #2419: tax is appended as its own manual Stripe line item, derived
-  // from the manifest's `taxes[]` — `existing.lineItems` (-> `items`) stays
-  // the merchandise-only subtotal/`basisAmount` that `resolveConnectedAccountFee`
-  // below expects. `[]` for a manifest without `taxes[]`.
+  // #2419/#2421: tax is appended as its own manual Stripe line item (never
+  // Stripe Tax), derived from the manifest's `taxes[]` — `existing.lineItems`
+  // (-> `merchandiseItems`) stays the merchandise-only, PRE-TAX subtotal that
+  // `resolveConnectedAccountFee` below computes the platform fee on (the
+  // #2426 settle-core tax silo; not re-derived here). `[]` for a manifest
+  // without `taxes[]`.
   const merchandiseItems = toCheckoutItems(existing.lineItems);
+  if (merchandiseTotal(merchandiseItems) !== existing.subtotalAmount) {
+    // The row's stored subtotal is what `.fair` `taxes[].basisAmount` and the
+    // settlement basis are pinned to — refuse rather than charge something else.
+    log.error(
+      { paymentRequestId: existing.id, subtotalAmount: existing.subtotalAmount },
+      'payment_request checkout refused: line items do not sum to subtotal_amount',
+    );
+    return err('payment_request amounts are inconsistent (line items do not sum to the subtotal)', 409);
+  }
   const fairManifest = existing.fairManifest as unknown as CheckoutBody['fairManifest'];
   const items = [...merchandiseItems, ...taxLineItems(fairManifest)];
 
@@ -244,26 +261,24 @@ async function settleAndAttestStripePaid(
     const buyerDid = paymentRequest.recipientDid ?? paymentRequest.issuerDid;
     const nodeDid = (await getNodeDid()) || null;
 
-    // #2419 fix (review): `paymentRequest.totalAmount` is already the
-    // PRE-TAX line-items subtotal — `service.ts`'s `validateLineItems`
-    // sums line items into it, and `validateCustomPaymentRequestManifest`
-    // enforces `fair_manifest.total == Σline_items` for a custom manifest.
-    // Tax is added on top later as its own Stripe line item(s), never
-    // folded into `totalAmount`. So basis = totalAmount (NOT totalAmount
-    // minus tax — that would take tax off twice), and gross = basis +
-    // Σtax is what was actually charged via Stripe.
+    // #2419/#2421: the settlement basis is the PRE-TAX `subtotalAmount`
+    // (`service.ts`'s `validateLineItems` sums line items into it, and
+    // `validateCustomPaymentRequestManifest` enforces `fair_manifest.total ==
+    // Σline_items`). `totalAmount` is subtotal + tax — the gross that was
+    // actually charged via Stripe — so it is NOT the basis (using it would
+    // fold tax into every chain share). Tax rides only in `taxes[]`.
     const taxes = (manifest?.taxes ?? []) as FairSettlementTax[];
-    const basisAmountCents = paymentRequest.totalAmount;
+    const basisAmountCents = paymentRequest.subtotalAmount;
 
-    // Defense in depth: every tax row's `basisAmount` must equal the
-    // request's own pre-tax subtotal. A mismatch means the stored
-    // manifest is stale/tampered — refuse to settle rather than silently
-    // using the wrong basis for chain-share math.
+    // Defense in depth (#2426, unchanged): every tax row's `basisAmount`
+    // must equal the request's own pre-tax subtotal. A mismatch means the
+    // stored manifest is stale/tampered — refuse to settle rather than
+    // silently using the wrong basis for chain-share math.
     const basisMismatch = taxes.find((t) => t.basisAmount !== basisAmountCents);
     if (basisMismatch) {
       log.error(
         { paymentRequestId: paymentRequest.id, expected: basisAmountCents, got: basisMismatch.basisAmount },
-        'payment_request stripe settle skipped: taxes[].basisAmount does not match totalAmount',
+        'payment_request stripe settle skipped: taxes[].basisAmount does not match subtotalAmount',
       );
       return;
     }
@@ -306,6 +321,7 @@ async function settleAndAttestStripePaid(
       totalAmount: paymentRequest.totalAmount,
       currency: paymentRequest.currency,
       settlementRef,
+      tax: taxBreakdownOf(paymentRequest),
     });
 
     publish('payment_request.settled', {

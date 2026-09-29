@@ -61,6 +61,19 @@ describe('taxLineItems', () => {
   });
 });
 
+describe('taxLineItems — zero-amount rows (#2421)', () => {
+  it('does not send a zero-priced line item to Stripe (a 0% row, or a basis too small to round up to a cent)', () => {
+    const items = taxLineItems({
+      taxes: [
+        { jurisdiction: 'CA-BC', kind: 'GST/HST', amount: 0 },
+        { jurisdiction: 'CA-BC', kind: 'PST', amount: 1400 },
+      ],
+    });
+    expect(items).toEqual([{ name: 'PST (CA-BC)', description: 'Sales tax collected in trust', amount: 1400, quantity: 1 }]);
+    expect(taxLineItems({ taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 0 }] })).toEqual([]);
+  });
+});
+
 describe('resolveConnectedAccountFee — basisAmount vs gross (#2419)', () => {
   const baseBody: CheckoutBody = {
     items: [{ name: 'Ticket', amount: 10_000, quantity: 1 }],
@@ -102,6 +115,22 @@ describe('resolveConnectedAccountFee — basisAmount vs gross (#2419)', () => {
       const platformShareOnly = 10_000 * (1 - 0.97);
       expect(platformShareOnly).toBeCloseTo(300, 6);
       expect(withTax.applicationFeeAmount).toBeGreaterThan(withoutTax.applicationFeeAmount!);
+    }
+  });
+
+  it('#2421: adding tax moves the application fee by EXACTLY the processor-fee delta on the tax — the platform share is pinned to the pre-tax subtotal', async () => {
+    const fairManifest = { chain: [{ role: 'seller', share: 0.97 }], fees: [{ role: 'processor', rateBps: 370, fixedCents: 30 }] };
+    const untaxed = await resolveConnectedAccountFee({ ...baseBody, fairManifest });
+    const taxed = await resolveConnectedAccountFee({
+      ...baseBody,
+      fairManifest: { ...fairManifest, taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300, basisAmount: 10_000 }] },
+    });
+    expect(untaxed.ok && taxed.ok).toBe(true);
+    if (untaxed.ok && taxed.ok) {
+      const processorFeeDelta = Math.round((11_300 * 370) / 10000) - Math.round((10_000 * 370) / 10000); // 418 - 370
+      expect(taxed.applicationFeeAmount! - untaxed.applicationFeeAmount!).toBe(processorFeeDelta);
+      // Had the platform share been computed on the gross, the delta would also include 3% of 1300 (= 39).
+      expect(processorFeeDelta).toBe(48);
     }
   });
 
