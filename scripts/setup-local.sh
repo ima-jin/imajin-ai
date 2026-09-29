@@ -256,7 +256,9 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "REGISTRY_SERVICE_URL"     "${KERNEL_URL}/registry"
 
     # ── Shared secrets (must match kernel) ─────────────────────────────────
-    set_env "$local_env" "ATTESTATION_INTERNAL_API_KEY" "\"${ATTESTATION_KEY}\""
+    # ATTESTATION_INTERNAL_API_KEY is deliberately NOT written here (#2353):
+    # userspace apps fetch it from the vault at boot via
+    # <SERVICE>_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY (see docs/ENVIRONMENTS.md).
     set_env "$local_env" "AUTH_INTERNAL_API_KEY"        "\"${AUTH_INTERNAL_KEY}\""
 
     case "$app" in

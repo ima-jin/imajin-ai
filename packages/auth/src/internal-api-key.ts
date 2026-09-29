@@ -172,7 +172,7 @@ function failBoot(service: string, did: string | null, reason: string): Internal
   state.failure = { service, did, reason };
   const purpose = ATTESTATION_INTERNAL_API_KEY_PURPOSE;
   log.error(
-    { service, did, purpose },
+    { service, did: did ?? undefined, purpose },
     `${service}: cannot resolve ${VAULT_SOURCED_KEY} from the vault (${reason}). ` +
       `Service DID: ${did ?? SERVICE_DID_PLACEHOLDER}. Purpose: ${purpose}. ` +
       `Internal posts to the kernel will FAIL until the operator runs: ${operatorCommand(did)}`,

@@ -19,7 +19,7 @@ Not every item applies to every PR. Scan the categories — check only what's re
 
 ## Cross-Service
 - [ ] `.env.example` updated in every affected app
-- [ ] `AUTH_INTERNAL_API_KEY` (verify-delegation/grants-introspect) added if new service calls auth internally. `ATTESTATION_INTERNAL_API_KEY` (attestation forwarding) is vault-sourced (#2245) — do NOT add it as a new `.env.example` entry; a new consumer needs a grant via `scripts/grant-attestation-internal-api-key.ts` instead, same as corpus
+- [ ] `AUTH_INTERNAL_API_KEY` (verify-delegation/grants-introspect) added if new service calls auth internally. `ATTESTATION_INTERNAL_API_KEY` (attestation forwarding) is vault-sourced (#2245, #2353) — do NOT add it as a new `.env.example` entry; a new consumer calls `bootstrapInternalApiKey('<service>')` from `instrumentation.ts`, adds `<SERVICE>_VAULT_BOOTSTRAP_DID`/`_PRIVATE_KEY` (annotated `# optional`), and needs a grant via `scripts/grant-attestation-internal-api-key.ts <service-did>`, same as corpus
 - [ ] Service URLs added to `.env.local` on dev + prod for any new service-to-service calls
 - [ ] `docs/ENVIRONMENTS.md` updated if new port/domain/schema
 

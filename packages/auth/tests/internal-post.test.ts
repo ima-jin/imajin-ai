@@ -29,6 +29,8 @@ import {
 
 const AUTH_SERVICE_URL = 'https://auth.kernel.test';
 const RESOLVED_KEY = 'resolved-vault-key';
+// The retired env var, referenced by name only: these tests prove it is ignored.
+const RETIRED_ENV_VAR = 'ATTESTATION_INTERNAL_API_KEY';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,7 +43,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   _resetInternalApiKeyStateForTests();
   delete process.env.AUTH_SERVICE_URL;
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  delete process.env[RETIRED_ENV_VAR];
 });
 
 describe('postInternal — key comes from the vault-sourced holder', () => {
@@ -69,8 +71,8 @@ describe('postInternal — key comes from the vault-sourced holder', () => {
     expect(mocks.markUsed).not.toHaveBeenCalled();
   });
 
-  it('ignores a hand-set process.env.ATTESTATION_INTERNAL_API_KEY entirely', async () => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = 'hand-set-env-key';
+  it('ignores a hand-set ATTESTATION_INTERNAL_API_KEY env var entirely', async () => {
+    process.env[RETIRED_ENV_VAR] = 'hand-set-env-key';
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 

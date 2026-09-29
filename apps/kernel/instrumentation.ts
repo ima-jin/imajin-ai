@@ -32,10 +32,12 @@ export async function register() {
     const { resolveVaultPath } = await import('@/src/lib/vault/vault-path');
     resolveVaultPath();
 
+    // The vault/db modules are imported lazily, on first use, so register()
+    // itself stays free of database side effects at boot.
     const { setInternalApiKeyResolver } = await import('@imajin/auth');
-    const { getInternalSecret } = await import('@/src/lib/vault/internal-secret');
-    const { ATTESTATION_INTERNAL_API_KEY_PURPOSE } = await import('@/src/lib/auth/require-internal-api-key');
     setInternalApiKeyResolver(async () => {
+      const { getInternalSecret } = await import('@/src/lib/vault/internal-secret');
+      const { ATTESTATION_INTERNAL_API_KEY_PURPOSE } = await import('@/src/lib/auth/require-internal-api-key');
       const secret = await getInternalSecret(ATTESTATION_INTERNAL_API_KEY_PURPOSE).catch(() => null);
       return secret || process.env.ATTESTATION_INTERNAL_API_KEY;
     });

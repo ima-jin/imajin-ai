@@ -224,12 +224,34 @@ the new value on their next boot.
 
 `ATTESTATION_INTERNAL_API_KEY` carries NO `.env.example` line on either
 side anymore (kernel or corpus) — same "deleted entirely" posture as a
-single-consumer internal secret. Both `require-internal-api-key.ts` and
+single-consumer internal secret. `require-internal-api-key.ts` and
 `attestation-key.ts` still accept a hand-set env var as a DEPRECATED
-fallback (logged once) for any deployment, or any OTHER not-yet-migrated
-service via `packages/auth/src/internal-post.ts`, that has not moved onto
-the vault path yet — generalizing this pattern to those other callers is
-out of scope for #2245.
+fallback (logged once) until #2353 step 4 deletes the kernel's.
+
+#### Userspace services (#2353)
+
+`apps/learn`, `apps/events`, `apps/links`, `apps/dykil`, `apps/market` and
+`apps/coffee` were the "other not-yet-migrated callers" above (via
+`packages/auth`'s `postInternal`, act-as validation in
+`requireAuth`/`getSession`, and `requireAppAuth`). `packages/auth` no longer
+reads `process.env.ATTESTATION_INTERNAL_API_KEY` at all: each service's
+`instrumentation.ts` calls `bootstrapInternalApiKey('<service>')`
+(`packages/auth/src/internal-api-key.ts`), which does the same
+`loadFromVault` + `resolveGrantByPurpose` fetch corpus does and holds the
+value in memory for every `packages/auth` consumer.
+
+Unlike corpus these services had no bootstrap identity before, so each gets
+its own pair — `<SERVICE>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` (annotated
+`optional` in `.env.example` so check-env passes on a not-yet-provisioned
+host). Operator step, once per service DID, before deploying:
+
+    npx tsx scripts/grant-attestation-internal-api-key.ts <service-bootstrap-did>
+
+**Fail-closed:** if the key can't be resolved at boot the service logs ONE
+error naming its DID, the purpose (`kernel.attestation-internal-api-key`)
+and that command, and every internal post throws
+`InternalApiKeyUnavailableError` — it never sends an empty `Authorization`
+header.
 
 ### Per-env deploy targets (#2246)
 
