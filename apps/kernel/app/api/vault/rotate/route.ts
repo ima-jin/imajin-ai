@@ -42,6 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Field not found' }, { status: 404 });
     }
 
+    // #2446: rotation must carry the superseded grant's purpose forward.
     const entry = await rotateAndStore(field.trim(), value);
 
     let published = true;
