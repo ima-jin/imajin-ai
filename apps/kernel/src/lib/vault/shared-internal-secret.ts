@@ -45,19 +45,20 @@
  * avoids a churned grantId (and a pointless re-sign) on every redundant
  * provisioning run.
  *
- * ## Rotation (explicitly out of scope for #2245, same seam as internal-secret.ts)
- * A future rotate card supersedes every active grant for the field (the
- * self-grant AND every external grantee this module has ever created) and
- * re-grants each from a fresh seal — no change needed to `getInternalSecret`'s
- * or this module's own lookup-by-(field, grantedTo).
+ * ## Rotation (#2446)
+ * Rotation supersedes the self-grant AND every external grantee this module
+ * has created, and re-grants each from the fresh seal
+ * ({@link reissueInternalSecretGrants}, called by `internal-secret-rotate.ts`)
+ * — no change needed to `getInternalSecret`'s or this module's own
+ * lookup-by-(field, grantedTo).
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { crypto as authCrypto } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants } from '@/src/db';
+import { db, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
-import { canonicalizeGrantPayload } from './index';
+import { canonicalizeGrantPayload, supersedeActiveGrant } from './index';
 import { getInternalSecret, internalSecretField } from './internal-secret';
 import { emitGrantEvents } from './grant';
 
@@ -133,6 +134,28 @@ export async function grantInternalSecretTo(
     return { status: 'no_reusable_grant' };
   }
 
+  const grantId = await issueGrantFromSource({
+    field, ownerDid, granteeDid, grantedBy, source,
+    terms: { purpose, expiresAt: null, oneTime: false },
+  });
+  return { status: 'ok', grantId };
+}
+
+/**
+ * Insert a new active grant of `field` to `granteeDid`, reusing `source`'s
+ * key material (no re-seal — see this module's docblock), then emit the
+ * grant events. Shared by first-time grants and rotation re-issue (#2446).
+ */
+async function issueGrantFromSource(params: {
+  field: string;
+  ownerDid: string;
+  granteeDid: string;
+  grantedBy: string;
+  source: VaultDelegationGrant;
+  terms: GrantTerms;
+}): Promise<string> {
+  const { field, ownerDid, granteeDid, grantedBy, source, terms } = params;
+  const { purpose, expiresAt, oneTime } = terms;
   const identity = getNodeSigningIdentity();
   const grantRaw = {
     subject: ownerDid,
@@ -142,7 +165,8 @@ export async function grantInternalSecretTo(
     wrappedKey: source.wrappedKey,
     wrappedNonce: source.wrappedNonce,
     keyId: source.keyId,
-    expiresAt: null,
+    // Signed: the carried-forward expiry is part of the grant payload.
+    expiresAt,
   };
   const ownerSignature = authCrypto.signSync(canonicalizeGrantPayload(grantRaw), identity.privateKeyHex);
 
@@ -155,7 +179,7 @@ export async function grantInternalSecretTo(
     recipientXPub: source.recipientXPub,
     ownerEdPub: source.ownerEdPub ?? identity.senderPubkey,
     purpose,
-    oneTime: false,
+    oneTime,
   });
 
   log.info(
@@ -168,5 +192,83 @@ export async function grantInternalSecretTo(
   // AttestationType (see packages/auth/src/types/attestation.ts).
   emitGrantEvents({ grantId, did: ownerDid, field, grantedTo: granteeDid, grantedBy });
 
-  return { status: 'ok', grantId };
+  return grantId;
+}
+
+/** The unsigned + signed terms a grant is issued under — carried forward verbatim on re-issue. */
+interface GrantTerms {
+  purpose: string | null;
+  expiresAt: Date | null;
+  oneTime: boolean;
+}
+
+/**
+ * A prior grant that can still be exercised: not expired, and not a
+ * one-time grant already consumed. Re-issuing anything else would hand the
+ * grantee access it no longer has — rotation must never widen (#2446).
+ */
+function isStillExercisable(grant: VaultDelegationGrant, now: Date): boolean {
+  if (grant.expiresAt instanceof Date && grant.expiresAt.getTime() <= now.getTime()) return false;
+  return !(grant.oneTime && grant.consumedAt);
+}
+
+/**
+ * Re-issue a rotated internal secret to every external consumer that held
+ * it before the rotation (#2446). Rotation re-seals the field under a NEW
+ * field key; an external grant still carrying the OLD wrapped key would
+ * keep looking active while every fetch failed to decrypt. Each prior
+ * grant is superseded (key material erased) and replaced by one that
+ * reuses the node's fresh self-grant — with that prior grant's OWN terms
+ * (purpose, expiry, one-time) carried forward, so a consumer that
+ * discovers its grant by purpose (corpus, #2245) finds the new one at its
+ * next boot and nothing is ever broadened. Grants that are expired or
+ * consumed one-time are superseded but NOT re-issued. The set of grantees
+ * never grows: adding a consumer stays an operator grant.
+ *
+ * Operator-initiated rotation only — a boot never calls this.
+ * `sourceGrantId` is the node's new self-grant, returned by the re-seal.
+ */
+export async function reissueInternalSecretGrants(params: {
+  purpose: string;
+  sourceGrantId: string;
+  previousGrants: readonly VaultDelegationGrant[];
+  grantedBy: string;
+}): Promise<{ reissued: string[]; dropped: string[] }> {
+  const { purpose, sourceGrantId, previousGrants, grantedBy } = params;
+  const field = internalSecretField(purpose);
+  const ownerDid = getNodeSigningIdentity().senderDid;
+  const prior = previousGrants.filter(
+    (g) => g.subject === ownerDid && g.grantedTo !== ownerDid && g.field === field,
+  );
+  if (prior.length === 0) return { reissued: [], dropped: [] };
+
+  const [source] = await db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(and(eq(vaultDelegationGrants.id, sourceGrantId), eq(vaultDelegationGrants.status, 'active')))
+    .limit(1);
+  if (!source || source.field !== field || source.subject !== ownerDid) {
+    throw new Error(`reissueInternalSecretGrants: '${sourceGrantId}' is not the active self-grant for '${field}'`);
+  }
+
+  const now = new Date();
+  const reissued: string[] = [];
+  const dropped: string[] = [];
+  const seen = new Set<string>();
+  for (const grant of prior) {
+    if (seen.has(grant.grantedTo)) continue;
+    seen.add(grant.grantedTo);
+    await supersedeActiveGrant({ subject: ownerDid, grantedTo: grant.grantedTo, field });
+    if (!isStillExercisable(grant, now)) {
+      dropped.push(grant.grantedTo);
+      continue;
+    }
+    reissued.push(
+      await issueGrantFromSource({
+        field, ownerDid, granteeDid: grant.grantedTo, grantedBy, source,
+        terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
+      }),
+    );
+  }
+  return { reissued, dropped };
 }
