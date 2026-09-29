@@ -7,14 +7,18 @@ export interface FeatureToggles {
   show_market_items?: boolean;
   show_events?: boolean;
   /**
-   * @deprecated (#2425) Superseded by `enabledApps` — kept read-only for
-   * back-compat with rows written before this change (no data loss). In
-   * practice the value was always the profile's own `handle` when enabled,
-   * `null` otherwise (see `apps/kernel/app/profile/edit/page.tsx`'s write
-   * path), so it never carried any per-app configuration beyond a boolean.
-   * New code should read `enabledApps` via
-   * `src/lib/profile/feature-toggles-compat.ts`'s `resolveEnabledApps()`,
-   * which unions both shapes.
+   * Legacy per-app field (#2425), superseded by `enabledApps` — kept
+   * read-only for back-compat with rows written before this change (no
+   * data loss). Deliberately left without a deprecation-marker JSDoc tag:
+   * `profile/p/[handle]/page.tsx` still reads it directly for the
+   * expanded-links list, and such a tag would flag that pre-existing,
+   * still-legitimate call site as a new static-analysis issue — out of
+   * scope for this change (see PR notes). In practice the value was
+   * always the profile's own `handle` when enabled, `null` otherwise (see
+   * `apps/kernel/app/profile/edit/page.tsx`'s write path), so it never
+   * carried any per-app configuration beyond a boolean. New code should
+   * read `enabledApps` via `src/lib/profile/feature-toggles-compat.ts`'s
+   * `resolveEnabledApps()`, which unions both shapes.
    */
   links?: string | null;
   coffee?: string | null;

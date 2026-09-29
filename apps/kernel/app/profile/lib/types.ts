@@ -4,7 +4,7 @@ export interface FeatureToggles {
   inference_enabled?: boolean;
   show_market_items?: boolean;
   show_events?: boolean;
-  /** @deprecated (#2425) superseded by `enabledApps` — see `src/db/schemas/profile.ts`'s `FeatureToggles`. */
+  /** Legacy per-app field (#2425), superseded by `enabledApps` — see `src/db/schemas/profile.ts`'s `FeatureToggles` for why this is deliberately left without a deprecation-marker JSDoc tag. */
   links?: string | null;
   coffee?: string | null;
   dykil?: string | null;
