@@ -100,6 +100,18 @@ function accessApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixtu
   });
 }
 
+function appsApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_apps_1',
+    source: 'apps',
+    kind: 'apps:provision',
+    summary: 'Provision Dykil as a third-party app.',
+    keysTouched: [],
+    detail: { slug: 'dykil', displayName: 'Dykil', template: 'ima-jin/imajin-app-template' },
+    ...overrides,
+  });
+}
+
 function githubApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
   return approval({
     proposalId: 'opap_gh_1',
@@ -887,5 +899,76 @@ describe('per-source renderer registry — github', () => {
     await waitFor(() => expect(screen.getByText('Proposal withdrawn.')).toBeDefined());
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
     expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'withdrawn' }) });
+  });
+});
+
+// `apps` renderer (#2375, claim code #2411): apps.provision proposals.
+// Approving runs the provisioning pipeline server-side and returns a
+// one-time app-signing-key claim code via `data.claimCode` — surfaced
+// alongside the app's own `/claim` page URL (#2427) so the operator can
+// paste the code there instead of ssh-ing in to edit an env file.
+describe('per-source renderer registry — apps', () => {
+  it('renders the provisioning detail and Approve & provision / Deny controls', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('Dykil')).toBeDefined();
+    expect(screen.getByText('dykil')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+  });
+
+  it('reveals the claim code plus a paste-at URL derived from the origin and slug (#2427)', async () => {
+    installFetch(
+      [{ isOperator: true, approvals: [appsApproval()] }, { isOperator: true, approvals: [appsApproval({ status: 'approved' })] }],
+      {
+        ok: true,
+        body: {
+          approval: appsApproval({ status: 'approved' }),
+          data: { claimCode: 'claim_plaintext_xyz', repoUrl: 'https://github.com/ima-jin/dykil', appDid: 'did:imajin:dykil-app', secretsSet: [] },
+        },
+      },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & provision' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & provision' }));
+
+    const revealBox = await screen.findByTestId('revealed-claim-code');
+    expect(within(revealBox).getByText('claim_plaintext_xyz')).toBeDefined();
+    expect(within(revealBox).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
+  });
+
+  it('copies the claim-page URL (not the code) when Copy link is clicked, independently of Copy', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    installFetch(
+      [{ isOperator: true, approvals: [appsApproval()] }, { isOperator: true, approvals: [appsApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: appsApproval({ status: 'approved' }), data: { claimCode: 'claim_plaintext_xyz' } } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & provision' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & provision' }));
+    const revealBox = await screen.findByTestId('revealed-claim-code');
+
+    fireEvent.click(within(revealBox).getByRole('button', { name: 'Copy link' }));
+    expect(writeText).toHaveBeenCalledWith(`${globalThis.location.origin}/dykil/claim`);
+
+    fireEvent.click(within(revealBox).getByRole('button', { name: 'Copy' }));
+    expect(writeText).toHaveBeenCalledWith('claim_plaintext_xyz');
+  });
+
+  it('never reveals a claim code for a reject decision (no data in the response)', async () => {
+    installFetch(
+      [{ isOperator: true, approvals: [appsApproval()] }, { isOperator: true, approvals: [appsApproval({ status: 'denied' })] }],
+      { ok: true, body: { approval: appsApproval({ status: 'denied' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Deny' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+
+    await waitFor(() => expect(screen.getByText('Proposal reject.')).toBeDefined());
+    expect(screen.queryByTestId('revealed-claim-code')).toBeNull();
   });
 });
