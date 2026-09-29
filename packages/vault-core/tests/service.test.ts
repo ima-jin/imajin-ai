@@ -36,7 +36,7 @@ describe('VaultEntryService', () => {
     });
 
     it('persists entries and retrieves latest value', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const service = new VaultEntryService(repository);
 
         const first = await service.set(createEntry('API_KEY', 'cid:1'));
@@ -50,7 +50,7 @@ describe('VaultEntryService', () => {
     });
 
     it('lists latest entry per field and excludes deleted entries', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const service = new VaultEntryService(repository);
 
         await service.set(createEntry('ONE', 'cid:one-1'));
@@ -65,7 +65,7 @@ describe('VaultEntryService', () => {
     });
 
     it('returns undefined from get when latest entry is tombstoned', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const service = new VaultEntryService(repository);
 
         await service.set(createEntry('TOKEN', 'cid:token-1'));
@@ -75,7 +75,7 @@ describe('VaultEntryService', () => {
     });
 
     it('returns newest-to-oldest chain in history', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const service = new VaultEntryService(repository);
 
         await service.set(createEntry('SECRET', 'cid:s1'));
@@ -87,11 +87,11 @@ describe('VaultEntryService', () => {
     });
 
     it('reads persisted values from a new service instance', async () => {
-        const repository1 = new FileVaultRepository({ vaultPath });
+        const repository1 = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const service1 = new VaultEntryService(repository1);
         await service1.set(createEntry('PERSIST', 'cid:persist-1'));
 
-        const repository2 = new FileVaultRepository({ vaultPath });
+        const repository2 = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const service2 = new VaultEntryService(repository2);
         const loaded = await service2.get('PERSIST');
 
@@ -99,7 +99,7 @@ describe('VaultEntryService', () => {
     });
 
     it('uses per-field locking when a lock is provided', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const lock = new InMemoryFieldLock();
         const service = new VaultEntryService(repository, { lock });
 
@@ -157,7 +157,7 @@ describe('VaultEntryService', () => {
     });
 
     it('runs integrity verification on get when adapters are provided', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const adapters: VaultIntegrityAdapters = {
             computeCid: vi.fn(async ({ encrypted, nonce }) => `cid:${encrypted}:${nonce}`),
             deriveKeyId: vi.fn((senderPubkey: string) => `kid:${senderPubkey}`),
@@ -177,7 +177,7 @@ describe('VaultEntryService', () => {
     });
 
     it('throws on get when integrity verification fails', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const adapters: VaultIntegrityAdapters = {
             computeCid: vi.fn(async () => 'wrong-cid'),
             deriveKeyId: vi.fn(() => 'kid'),
@@ -193,7 +193,7 @@ describe('VaultEntryService', () => {
     });
 
     it('runs integrity verification on list when adapters are provided', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const adapters: VaultIntegrityAdapters = {
             computeCid: vi.fn(async ({ encrypted, nonce }) => `cid:${encrypted}:${nonce}`),
             deriveKeyId: vi.fn((senderPubkey: string) => `kid:${senderPubkey}`),
@@ -213,7 +213,7 @@ describe('VaultEntryService', () => {
     });
 
     it('throws on history read when integrity verification fails', async () => {
-        const repository = new FileVaultRepository({ vaultPath });
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const adapters: VaultIntegrityAdapters = {
             computeCid: vi.fn(async () => 'wrong-cid'),
             deriveKeyId: vi.fn(() => 'kid'),

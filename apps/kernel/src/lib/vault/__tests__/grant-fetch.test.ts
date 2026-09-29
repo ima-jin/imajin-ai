@@ -64,6 +64,7 @@ const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
 
   const tmpVaultPath = join(tmpdir(), `vault-grant-fetch-test-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   const grantStore = new Map<string, Row>();
   const envelopeStore = new Map<string, Row>();

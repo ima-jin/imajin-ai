@@ -32,6 +32,7 @@ const { tmpVaultPath, grantStore } = vi.hoisted(() => {
 
   const tmpVaultPath = join(tmpdir(), `vault-duplicate-grant-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   return { tmpVaultPath, grantStore: new Map<string, Row>() };
 });

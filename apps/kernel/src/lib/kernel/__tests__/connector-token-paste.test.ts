@@ -29,6 +29,7 @@ const { tmpVaultPath, grantStore, envelopeStore, channelLinksStore } = vi.hoiste
 
   const tmpVaultPath = join(tmpdir(), `vault-connector-token-paste-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   return {
     tmpVaultPath,

@@ -7,9 +7,13 @@
  *   npx tsx scripts/check-env.ts --env prod           # check all services (prod)
  *   npx tsx scripts/check-env.ts www auth profile     # check specific services
  *   npx tsx scripts/check-env.ts --env prod www auth  # specific services on prod
+ *
+ * When the kernel is among the checked services, also asserts that a configured
+ * VAULT_PATH points at a file that exists (#2412) — see checkVault().
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { SERVICES, type ServiceDefinition } from "../packages/config/src/services.js";
 
@@ -436,6 +440,91 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
   }
 }
 
+// ── Vault file check (#2412) ─────────────────────────────────────────────────
+//
+// v0.8.8 shipped VAULT_PATH=~/.imajin/vault.prod.json while that file did not
+// exist; the kernel then ran ~9h with an empty vault and every sealed secret
+// resolving to undefined. The kernel now refuses to boot in that state, and this
+// check makes the deploy stop BEFORE pm2 is restarted.
+//
+// VAULT_PATH is not in any .env.local — pm2 sets it in deploy/ecosystem.*.config.js
+// — so it is read from the process env first (operator override / tests), then
+// from that ecosystem file. VAULT_ALLOW_BOOTSTRAP is the explicit first-run flag
+// (same two sources) that turns a missing file from an error into a warning.
+
+interface VaultCheckResult {
+  /** No VAULT_PATH configured anywhere — nothing to assert. */
+  skipped: boolean;
+  path: string | null;
+  exists: boolean;
+  bootstrapAllowed: boolean;
+  errors: number;
+  warnings: number;
+}
+
+function readEcosystemEnvValue(env: "dev" | "prod", key: string): string | undefined {
+  const file = path.join(ROOT, "deploy", env === "prod" ? "ecosystem.prod.config.js" : "ecosystem.dev.config.js");
+  if (!fs.existsSync(file)) return undefined;
+  const pattern = new RegExp(String.raw`"${key}"\s*:\s*"([^"]*)"`);
+  return pattern.exec(fs.readFileSync(file, "utf-8"))?.[1];
+}
+
+function readVaultSetting(env: "dev" | "prod", key: string): string | undefined {
+  const fromProcess = process.env[key]?.trim();
+  if (fromProcess) return fromProcess;
+  const fromEcosystem = readEcosystemEnvValue(env, key)?.trim();
+  return fromEcosystem || undefined;
+}
+
+/** Mirrors apps/kernel/src/lib/vault/vault-path.ts: a leading `~` is the home directory. */
+function expandTilde(rawPath: string): string {
+  if (rawPath === "~") return os.homedir();
+  if (rawPath.startsWith("~/") || rawPath.startsWith("~\\")) return path.join(os.homedir(), rawPath.slice(2));
+  return rawPath;
+}
+
+function checkVault(env: "dev" | "prod"): VaultCheckResult {
+  const raw = readVaultSetting(env, "VAULT_PATH");
+  const flag = readVaultSetting(env, "VAULT_ALLOW_BOOTSTRAP")?.toLowerCase();
+  const bootstrapAllowed = flag === "1" || flag === "true";
+
+  if (!raw) {
+    return { skipped: true, path: null, exists: false, bootstrapAllowed, errors: 0, warnings: 0 };
+  }
+
+  const vaultPath = expandTilde(raw);
+  const exists = fs.existsSync(vaultPath);
+  if (exists) {
+    return { skipped: false, path: vaultPath, exists, bootstrapAllowed, errors: 0, warnings: 0 };
+  }
+  if (bootstrapAllowed) {
+    return { skipped: false, path: vaultPath, exists, bootstrapAllowed, errors: 0, warnings: 1 };
+  }
+  return { skipped: false, path: vaultPath, exists, bootstrapAllowed, errors: 1, warnings: 0 };
+}
+
+function printVaultResult(result: VaultCheckResult): void {
+  const label = bold("🔐  vault");
+  if (result.skipped) {
+    console.log(`  ${sym.info}  ${label}  ${dim("VAULT_PATH not set — nothing to check")}`);
+    return;
+  }
+  if (result.exists) {
+    console.log(`  ${sym.ok}  ${label}  ${green("vault file present")}  ${dim(result.path ?? "")}`);
+    return;
+  }
+  if (result.bootstrapAllowed) {
+    const detail = "vault file missing, but VAULT_ALLOW_BOOTSTRAP is set — kernel will bootstrap an empty vault";
+    console.log(`  ${sym.warn}  ${label}  ${yellow(detail)}  ${dim(result.path ?? "")}`);
+    return;
+  }
+  console.log(`  ${sym.err}  ${label}  ${red("VAULT_PATH file does not exist — kernel would refuse to boot")}`);
+  console.log(`       ${sym.arrow}  ${red("missing")}  ${cyan(result.path ?? "")}`);
+  console.log(
+    `       ${sym.arrow}  ${dim("restore the file, fix VAULT_PATH, or set VAULT_ALLOW_BOOTSTRAP=1 for a deliberate first-run bootstrap")}`
+  );
+}
+
 // ── CLI entry ────────────────────────────────────────────────────────────────
 
 function parseArgs(args: string[]): { env: "dev" | "prod"; names: string[] } {
@@ -492,9 +581,9 @@ function printGroupedResults(results: ServiceResult[], env: "dev" | "prod"): voi
 }
 
 /** Print the final summary line and exit the process with the appropriate status code */
-function printSummaryAndExit(results: ServiceResult[]): void {
-  const totalErrors   = results.reduce((n, r) => n + r.errors, 0);
-  const totalWarnings = results.reduce((n, r) => n + r.warnings, 0);
+function printSummaryAndExit(results: ServiceResult[], vault: VaultCheckResult | null): void {
+  const totalErrors   = results.reduce((n, r) => n + r.errors, 0) + (vault?.errors ?? 0);
+  const totalWarnings = results.reduce((n, r) => n + r.warnings, 0) + (vault?.warnings ?? 0);
   const noLocal       = results.filter((r) => !r.hasEnvLocal).length;
 
   console.log(dim("─".repeat(60)));
@@ -529,7 +618,14 @@ function main(): void {
 
   printGroupedResults(results, env);
 
-  printSummaryAndExit(results);
+  // Only the kernel process reads VAULT_PATH.
+  const vault = services.some((s) => s.name === "kernel") ? checkVault(env) : null;
+  if (vault) {
+    printVaultResult(vault);
+    console.log();
+  }
+
+  printSummaryAndExit(results, vault);
 }
 
 main();

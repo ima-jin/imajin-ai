@@ -12,12 +12,12 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 
-const { mockResolveVaultPath } = vi.hoisted(() => ({
-  mockResolveVaultPath: vi.fn().mockReturnValue('/tmp/vault-instrumentation-test.json'),
+const { mockLoadVaultAtBoot } = vi.hoisted(() => ({
+  mockLoadVaultAtBoot: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock('@/src/lib/vault/vault-path', () => ({
-  resolveVaultPath: mockResolveVaultPath,
+vi.mock('@/src/lib/vault/vault-repository', () => ({
+  loadVaultAtBoot: mockLoadVaultAtBoot,
 }));
 
 import { register } from '../instrumentation';
@@ -34,32 +34,41 @@ function setRuntime(value: string | undefined): void {
 
 afterEach(() => {
   setRuntime(originalRuntime);
-  mockResolveVaultPath.mockClear();
+  mockLoadVaultAtBoot.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
-  it('resolves VAULT_PATH at boot in the nodejs runtime', async () => {
+  it('resolves and loads the vault at boot in the nodejs runtime', async () => {
     setRuntime('nodejs');
 
     await register();
 
-    expect(mockResolveVaultPath).toHaveBeenCalledTimes(1);
+    expect(mockLoadVaultAtBoot).toHaveBeenCalledTimes(1);
   });
 
   it('propagates a VAULT_PATH resolution failure so the server refuses to start', async () => {
     setRuntime('nodejs');
-    mockResolveVaultPath.mockImplementationOnce(() => {
-      throw new Error('VAULT_PATH is required in production: refusing to fall back');
-    });
+    mockLoadVaultAtBoot.mockRejectedValueOnce(
+      new Error('VAULT_PATH is required in production: refusing to fall back'),
+    );
 
     await expect(register()).rejects.toThrow(/VAULT_PATH is required in production/);
   });
 
-  it('does not resolve VAULT_PATH outside the nodejs runtime (e.g. edge)', async () => {
+  it('propagates a missing configured vault file so the server refuses to start (#2412)', async () => {
+    setRuntime('nodejs');
+    mockLoadVaultAtBoot.mockRejectedValueOnce(
+      new Error('Configured vault file not found at /tmp/vault.prod.json'),
+    );
+
+    await expect(register()).rejects.toThrow(/Configured vault file not found/);
+  });
+
+  it('does not load the vault outside the nodejs runtime (e.g. edge)', async () => {
     setRuntime('edge');
 
     await register();
 
-    expect(mockResolveVaultPath).not.toHaveBeenCalled();
+    expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
   });
 });

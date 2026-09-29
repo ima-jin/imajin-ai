@@ -23,6 +23,7 @@ const { tmpVaultPath, grantStore } = vi.hoisted(() => {
 
   const tmpVaultPath = join(tmpdir(), `vault-list-active-grants-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   return { tmpVaultPath, grantStore: new Map<string, GrantRow>() };
 });

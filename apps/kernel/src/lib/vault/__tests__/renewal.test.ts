@@ -30,6 +30,7 @@ const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
 
   const tmpVaultPath = join(tmpdir(), `vault-renewal-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   return {
     tmpVaultPath,
