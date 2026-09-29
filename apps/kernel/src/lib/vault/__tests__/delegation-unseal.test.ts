@@ -140,7 +140,7 @@ function buildGrant(params: {
 
 function makeTempService() {
     const vaultPath = join(tmpdir(), `vault-v2-test-${Date.now()}-${randomBytes(4).toString('hex')}.json`);
-    const repo = new FileVaultRepository({ vaultPath });
+    const repo = new FileVaultRepository({ vaultPath, allowBootstrap: true });
     const lock = new InMemoryFieldLock();
     return new VaultEntryService(repo, { lock, adapters });
 }

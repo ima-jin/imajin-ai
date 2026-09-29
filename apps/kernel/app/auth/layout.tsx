@@ -44,6 +44,8 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   // toggleable vertical service (unlike enabledServices below), so it's
   // gated on scope alone, the same way Security is gated on 'actor'.
   const showMoney = effectiveIdentity?.scope === 'business';
+  // Tax registrations (#2420) live next to Money and share the same gate.
+  const showTax = effectiveIdentity?.scope === 'business';
 
   // Query forest_config for enabled services and landing service. Kept
   // separately from the registry-driven `navApps` below: Pay/Media are
@@ -114,6 +116,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       showMembers={showMembers}
       showSecurity={showSecurity}
       showMoney={showMoney}
+      showTax={showTax}
       showPay={showPay}
       showMedia={showMedia}
       apps={navApps}

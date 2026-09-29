@@ -58,7 +58,7 @@ function deriveSealKeyFromPrivateKey(privateKeyHex: string): Buffer {
 // ─── In-process vault helper (avoids the singleton vaultService) ─────────────
 
 function makeTempVaultSetup(vaultPath: string) {
-    const repository = new FileVaultRepository({ vaultPath });
+    const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
     const lock = new InMemoryFieldLock();
     const adapters = createDefaultAdapters();
     const service = new VaultEntryService(repository, { lock, adapters });

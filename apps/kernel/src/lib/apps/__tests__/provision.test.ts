@@ -32,7 +32,7 @@ const {
   issueSigningKeyClaimMock,
   ensureRepoFromTemplateMock,
   sealActionsSecretMock,
-  tryLoadOrgCredentialMock,
+  tryGetInstallationTokenMock,
   fetchAppManifestMock,
   seedAttestationTypesMock,
   logMock,
@@ -57,7 +57,7 @@ const {
     issueSigningKeyClaimMock: vi.fn(),
     ensureRepoFromTemplateMock: vi.fn(),
     sealActionsSecretMock: vi.fn().mockResolvedValue(undefined),
-    tryLoadOrgCredentialMock: vi.fn().mockResolvedValue('org-credential-token'),
+    tryGetInstallationTokenMock: vi.fn().mockResolvedValue('installation-token'),
     fetchAppManifestMock: vi.fn().mockResolvedValue(null),
     seedAttestationTypesMock: vi.fn().mockResolvedValue([]),
     logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -172,7 +172,7 @@ vi.mock('@/src/lib/vault', () => ({
 vi.mock('@/src/lib/github/org-provisioning', () => ({
   ensureRepoFromTemplate: ensureRepoFromTemplateMock,
   sealActionsSecret: sealActionsSecretMock,
-  tryLoadOrgCredential: tryLoadOrgCredentialMock,
+  tryGetInstallationToken: tryGetInstallationTokenMock,
   fetchAppManifest: fetchAppManifestMock,
   PROVISIONING_ORG: 'ima-jin',
   DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
@@ -223,7 +223,7 @@ beforeEach(() => {
     requestId: null,
   });
   loadAndUnsealByGranteeMock.mockResolvedValue(PRIVATE_KEY_PLAINTEXT);
-  tryLoadOrgCredentialMock.mockResolvedValue('org-credential-token');
+  tryGetInstallationTokenMock.mockResolvedValue('installation-token');
   fetchAppManifestMock.mockResolvedValue(null);
   seedAttestationTypesMock.mockResolvedValue([]);
   grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
@@ -238,7 +238,7 @@ describe('runAppProvision — happy path', () => {
     if (outcome.status !== 'succeeded') throw new Error('unreachable');
     expect(outcome.repoUrl).toBe('https://github.com/ima-jin/dykil');
     expect(outcome.appDid).toBe(MINTED_DID);
-    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN']);
+    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY']);
 
     expect(ensureRepoFromTemplateMock).toHaveBeenCalledWith('dykil', 'ima-jin/imajin-app-template');
     expect(mintKeypairMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -246,8 +246,8 @@ describe('runAppProvision — happy path', () => {
       mintedBy: NODE_DID,
       oneTime: false,
     }));
+    expect(sealActionsSecretMock).toHaveBeenCalledTimes(1);
     expect(sealActionsSecretMock).toHaveBeenCalledWith('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', PRIVATE_KEY_PLAINTEXT);
-    expect(sealActionsSecretMock).toHaveBeenCalledWith('ima-jin/dykil', 'GITHUB_PACKAGES_TOKEN', 'org-credential-token');
 
     const row = appProvisionsStore.get('dykil');
     expect(row?.status).toBe('succeeded');
@@ -333,7 +333,7 @@ describe('runAppProvision — happy path', () => {
   it('#2425: writes nav metadata from the app manifest when present and valid', async () => {
     fetchAppManifestMock.mockResolvedValue({
       name: 'Dykil (from manifest)',
-      icon: '📋',
+      icon: '\ud83d\udccb',
       entryUrl: '/dykil',
       placements: ['launcher', 'home', 'auth-submenu'],
       requiredScope: 'creator',
@@ -342,11 +342,11 @@ describe('runAppProvision — happy path', () => {
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
 
     expect(outcome.status).toBe('succeeded');
-    expect(fetchAppManifestMock).toHaveBeenCalledWith('dykil', 'org-credential-token');
+    expect(fetchAppManifestMock).toHaveBeenCalledWith('dykil', 'installation-token');
     const registryRow = [...registryAppsStore.values()][0];
     expect(registryRow).toMatchObject({
       name: 'Dykil (from manifest)',
-      icon: '📋',
+      icon: '\ud83d\udccb',
       entryUrl: '/dykil',
       placements: ['launcher', 'home', 'auth-submenu'],
       requiredScope: 'creator',
@@ -411,7 +411,7 @@ describe('runAppProvision — repo-exists path (no pre-existing registry row)', 
 describe('runAppProvision — #2415 seal degrades instead of failing when the org credential is unsealed', () => {
   it('existing-repo + unsealed credential: reaches the claim code, secretsSet is empty, and apps.provision.seal.skipped is emitted', async () => {
     ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
-    tryLoadOrgCredentialMock.mockResolvedValue(null);
+    tryGetInstallationTokenMock.mockResolvedValue(null);
 
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
 
@@ -453,15 +453,15 @@ describe('runAppProvision — #2415 seal degrades instead of failing when the or
 
   it('sealed path is unchanged: seal actually runs and sealSkipped is false', async () => {
     ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
-    tryLoadOrgCredentialMock.mockResolvedValue('org-credential-token');
+    tryGetInstallationTokenMock.mockResolvedValue('installation-token');
 
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
 
     expect(outcome.status).toBe('succeeded');
     if (outcome.status !== 'succeeded') throw new Error('unreachable');
     expect(outcome.sealSkipped).toBe(false);
-    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN']);
-    expect(sealActionsSecretMock).toHaveBeenCalledTimes(2);
+    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY']);
+    expect(sealActionsSecretMock).toHaveBeenCalledTimes(1);
     expect(publishMock).not.toHaveBeenCalledWith('apps.provision.seal.skipped', expect.anything());
 
     const row = appProvisionsStore.get('dykil');
@@ -509,7 +509,7 @@ describe('runAppProvision — idempotent re-run', () => {
       repoUrl: 'https://github.com/ima-jin/dykil',
       repoCreated: false,
       sealedAt: new Date(),
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'succeeded',
     });
@@ -520,7 +520,7 @@ describe('runAppProvision — idempotent re-run', () => {
       status: 'succeeded',
       repoUrl: 'https://github.com/ima-jin/dykil',
       appDid: MINTED_DID,
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypeResults: [],
       claimCode: CLAIM_CODE,
       sealSkipped: false,
@@ -537,7 +537,7 @@ describe('runAppProvision — idempotent re-run', () => {
       repoUrl: 'https://github.com/ima-jin/dykil',
       repoCreated: false,
       sealedAt: new Date(),
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'succeeded',
     });
@@ -569,7 +569,7 @@ describe('runAppProvision — idempotent re-run', () => {
       slug: 'dykil',
       appDid: MINTED_DID,
       repoUrl: 'https://github.com/ima-jin/dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: ['dykil/survey-response'],
       status: 'succeeded',
     });
@@ -746,7 +746,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
     expect(ensureRepoFromTemplateMock).toHaveBeenCalledTimes(1); // idempotent GET-before-create, not a duplicate create
     expect(mintKeypairMock).not.toHaveBeenCalled(); // reused the existing minted key via the ledger's appDid
     expect(getMintedKeyByDidMock).toHaveBeenCalledWith(MINTED_DID);
-    expect(sealActionsSecretMock).toHaveBeenCalledTimes(2);
+    expect(sealActionsSecretMock).toHaveBeenCalledTimes(1);
   });
 
   it('retrying after an attestation-types failure skips repo/mint/register/seal entirely (register already-registered, seal already sealedAt)', async () => {
@@ -767,7 +767,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
       repoCreated: true,
       registeredAt: new Date(),
       sealedAt: new Date(),
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypes: [],
       status: 'failed',
       failedStep: 'attestation-types',
@@ -789,7 +789,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
 
     expect(outcome.status).toBe('succeeded');
     if (outcome.status !== 'succeeded') throw new Error('unreachable');
-    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN']);
+    expect(outcome.secretsSet).toEqual(['IMAJIN_APP_PRIVATE_KEY']);
     expect(mintKeypairMock).not.toHaveBeenCalled();
     expect(sealActionsSecretMock).not.toHaveBeenCalled(); // sealedAt already set — never re-sealed
     expect(registryAppsStore.size).toBe(1); // register found the already-registered row — never inserted a second one

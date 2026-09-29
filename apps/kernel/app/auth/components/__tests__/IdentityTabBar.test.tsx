@@ -4,6 +4,9 @@
  * Security's 'actor' gate), not on the registry `apps` prop — it's the
  * business-DID receivable surface, not a toggleable vertical service.
  *
+ * Tax tab wiring (#2420): shares the same business-scope gate as Money,
+ * via its own `showTax` prop.
+ *
  * Service-tab rendering (#2425): SERVICE_TABS's hard-coded literal array is
  * gone — tabs for the six extractable apps (coffee/dykil/links/learn/
  * events/market) now come from the `apps` prop (resolved server-side from
@@ -39,6 +42,7 @@ const BASE_PROPS = {
   showMembers: false,
   showSecurity: false,
   showMoney: false,
+  showTax: false,
   showPay: false,
   showMedia: false,
   apps: [] as NavApp[],
@@ -64,6 +68,18 @@ describe('IdentityTabBar — Money tab', () => {
     render(<IdentityTabBar {...BASE_PROPS} showMoney showPay={false} />);
     expect(screen.getByText('Money')).toBeDefined();
     expect(screen.queryByText('Pay')).toBeNull();
+  });
+});
+
+describe('IdentityTabBar — Tax registrations tab (#2420)', () => {
+  it('renders the Tax tab when showTax is true', () => {
+    render(<IdentityTabBar {...BASE_PROPS} showTax />);
+    expect(screen.getByText('Tax')).toBeDefined();
+  });
+
+  it('hides the Tax tab when showTax is false (e.g. a personal/actor identity)', () => {
+    render(<IdentityTabBar {...BASE_PROPS} showTax={false} />);
+    expect(screen.queryByText('Tax')).toBeNull();
   });
 });
 

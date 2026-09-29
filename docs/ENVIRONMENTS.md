@@ -266,6 +266,31 @@ refuses to start in production when `VAULT_PATH` is unset (see
 `instrumentation.ts#register()`), rather than silently falling back to the
 shared `~/.imajin/vault.json` default used outside production.
 
+#### Fail-loud vault file (#2412)
+
+A configured `VAULT_PATH` must point at a file that exists. v0.8.8 shipped
+`VAULT_PATH=~/.imajin/vault.prod.json` while only `vault.json` existed on the
+box; the vault silently loaded as empty and every sealed secret resolved to
+`undefined` for ~9h while `/api/health` was green. Now:
+
+- **Boot** (`instrumentation.ts#register()`): the kernel loads the vault and
+  logs `vault: loaded N entries from <path>`. A missing configured file makes
+  boot throw, so pm2 crash-loops loudly instead of serving an empty vault.
+- **`/api/health`** has a `vault` block: `status` (`ok` / `empty` / `error`),
+  `path`, `entryCount`, `lastLoadedAt`, `bootstrapped`. Never field names or
+  values. `error` always degrades the aggregate; `empty` degrades it in
+  production (zero sealed entries is a red flag there).
+- **`check-env`** (run by `scripts/build.sh` before pm2 restarts) fails when the
+  kernel is checked and `VAULT_PATH` (process env, else the env's
+  `deploy/ecosystem.*.config.js`) names a missing file.
+- **First-run bootstrap is explicit:** set `VAULT_ALLOW_BOOTSTRAP=1` (or `true`)
+  in the kernel's env to start a brand-new vault at a path that does not exist
+  yet. The kernel then loads an empty store, warns on every boot while the flag
+  is set, and creates the file on the first seal. `check-env` downgrades the
+  missing file to a warning. Unset the flag once the file exists. With no
+  `VAULT_PATH` at all (non-production local dev) the default
+  `~/.imajin/vault.json` still bootstraps implicitly, as before.
+
 The split matters because Postgres is already isolated per environment (a
 separate `imajin_prod`/`imajin_dev` database and `DATABASE_URL` each), but
 until #2357 the vault was not: `dev-jin` and `prod-jin` both defaulted to the

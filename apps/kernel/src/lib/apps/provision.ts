@@ -3,8 +3,8 @@
  * call that creates an extracted app's GitHub repo, registers it in the
  * existing `registry.apps` table (#1990) as a `tier: 'third_party'` row
  * (never upserting any pre-existing legacy `first_party` row for the same
- * app — see `registerApp`'s docblock), and seals its app-auth private key +
- * a GitHub-Packages-read token into the repo's Actions secrets.
+ * app — see `registerApp`'s docblock), and seals its app-auth private key
+ * into the repo's Actions secrets.
  *
  * ## Idempotency + fail-closed (`kernel.app_provisions`)
  * One durable row per `slug`. A `status: 'succeeded'` row means "re-run
@@ -34,7 +34,9 @@
  * round trip to encrypt-and-PUT it as a GitHub Actions secret. It is never
  * logged, never part of any bus event/attestation payload, and never part
  * of this module's return value — see `AppProvisionSuccess.secretsSet`,
- * which carries secret NAMES only.
+ * which carries secret NAMES only. The GitHub credential used to reach
+ * that repo is a GitHub App installation token (#2416) — see
+ * `org-provisioning.ts`'s docblock — never a PAT.
  */
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -49,7 +51,7 @@ import { loadAndUnsealByGrantee, grantExistingMintedKey, emitGrantEvents } from 
 import {
   ensureRepoFromTemplate,
   sealActionsSecret,
-  tryLoadOrgCredential,
+  tryGetInstallationToken,
   fetchAppManifest,
   PROVISIONING_ORG,
   DEFAULT_APP_TEMPLATE,
@@ -64,9 +66,16 @@ const log = createLogger('kernel:apps:provision');
 /** Purpose prefix recorded on the minted key's `vault_minted_keys` row. */
 const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
 
-/** Actions secret names apps.provision seals — names only, values are never logged/returned. */
+/**
+ * Actions secret name apps.provision seals — a name only, the value is
+ * never logged/returned.
+ *
+ * Follow-up: #2411 / #2436 — the app fetches its signing key from the vault
+ * at boot (`loadAppSigningKey()`), so sealing the raw key into Actions
+ * secrets is a pre-#2411 shape kept only for template-CI test runs; a
+ * human call on whether to keep or drop it is still open (see #2416).
+ */
 export const IMAJIN_APP_PRIVATE_KEY_SECRET = 'IMAJIN_APP_PRIVATE_KEY';
-export const GITHUB_PACKAGES_TOKEN_SECRET = 'GITHUB_PACKAGES_TOKEN';
 
 export interface AppProvisionParams {
   slug: string;
@@ -365,24 +374,30 @@ function emitSealSkippedEvent(nodeDid: string, slug: string): void {
 }
 
 /**
- * Step 4 (seal): seal the app's private key + the reused org credential as
- * GitHub-Packages-read token. #2415: when the org credential was never
- * sealed, this DEGRADES rather than fails — there is no template-CI to seal
- * secrets into for a dev-path app (it fetches its signing key from the
- * vault at boot instead, #2411), so an unsealed credential must not block
- * the rest of the chain (grant + claim code).
+ * Step 4 (seal): seal the app's private key into the repo's Actions
+ * secrets. #2415: when the org credential was never sealed, this DEGRADES
+ * rather than fails — there is no template-CI to seal secrets into for a
+ * dev-path app (it fetches its signing key from the vault at boot instead,
+ * #2411), so an unsealed credential must not block the rest of the chain
+ * (grant + claim code). #2416: no longer reseals the org credential itself
+ * as `GITHUB_PACKAGES_TOKEN` — a GitHub App installation token expires
+ * within the hour, so reusing it as a long-lived Actions secret no longer
+ * makes sense, and the template CI reads `@ima-jin/*` from public npmjs,
+ * so no packages-read secret is needed at all.
  */
 async function sealDeploySecrets(slug: string, privateKey: string): Promise<SealDeploySecretsResult> {
   const repo = `${PROVISIONING_ORG}/${slug}`;
-  const orgCredential = await tryLoadOrgCredential();
-  if (orgCredential === null) {
+  // A cheap availability check before the real work below — `sealActionsSecret`
+  // mints/re-uses its OWN cached installation token internally, so this never
+  // costs a second GitHub round trip when the credential is actually sealed.
+  const installationToken = await tryGetInstallationToken();
+  if (installationToken === null) {
     return { secretsSet: [], skipped: true };
   }
 
   await sealActionsSecret(repo, IMAJIN_APP_PRIVATE_KEY_SECRET, privateKey);
-  await sealActionsSecret(repo, GITHUB_PACKAGES_TOKEN_SECRET, orgCredential);
 
-  return { secretsSet: [IMAJIN_APP_PRIVATE_KEY_SECRET, GITHUB_PACKAGES_TOKEN_SECRET], skipped: false };
+  return { secretsSet: [IMAJIN_APP_PRIVATE_KEY_SECRET], skipped: false };
 }
 
 /**
@@ -507,7 +522,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // is not a provisioning failure, `registerApp` falls back to defaults.
   let registryAppId: string;
   try {
-    const manifestToken = await tryLoadOrgCredential();
+    const manifestToken = await tryGetInstallationToken();
     const manifest = await fetchAppManifest(slug, manifestToken);
     registryAppId = await registerApp({ slug, displayName, appDid, publicKey: keypair.publicKey, manifest });
     await upsertProvisionRow(slug, { registeredAt: new Date() });

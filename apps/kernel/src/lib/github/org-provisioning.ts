@@ -1,25 +1,28 @@
 /**
- * GitHub org-scoped provisioning (#2375) — the credential + REST calls
- * `apps.provision` uses to create an extracted app's repo and seal its
- * deploy secrets. Deliberately separate from `./connector.ts`: that module
- * is a PER-DID OAuth/PAT connector for issue/PR automation on behalf of a
- * human, gated by `channel_links` + the confirm rail. This module has no
- * per-DID concept at all — it is the KERNEL's own org-wide credential,
- * ruled by Ryan 2026-09-24 (#2375): "the kernel does it with an org-scoped
- * credential; no org-admin grant to `warp-factories[bot]`".
+ * GitHub org-scoped provisioning (#2375, #2416) — the credential + REST
+ * calls `apps.provision` uses to create an extracted app's repo and seal
+ * its deploy secrets. Deliberately separate from `./connector.ts`: that
+ * module is a PER-DID OAuth/PAT connector for issue/PR automation on
+ * behalf of a human, gated by `channel_links` + the confirm rail. This
+ * module has no per-DID concept at all — it is the KERNEL's own org-wide
+ * identity, ruled by Ryan 2026-09-24 (#2375): "the kernel does it with an
+ * org-scoped credential; no org-admin grant to `warp-factories[bot]`".
  *
- * ## Credential custody
- * The org-scoped GitHub token is a single, kernel-wide vault field
- * ({@link GITHUB_ORG_CREDENTIAL_FIELD}), sealed ONCE by the operator via
- * the existing generic `POST /api/vault/set` route with
- * `custodyScheme: 'delegation-grant'` (v2 self-granted to the node,
- * #2311's "v2 grant shape") — no new sealing route. See
- * `docs/REGISTRATION.md` for the exact scopes the token needs: repo
- * creation from a template (`repo`, or fine-grained Administration:write
- * on the org), Actions-secrets write on the created repo, and
- * `read:packages` (the SAME token is reused as the sealed
- * `GITHUB_PACKAGES_TOKEN` Actions secret — see #2375's PR description for
- * why one sufficiently-scoped token was chosen over two).
+ * ## Credential custody (#2416: a GitHub App installation, not a PAT)
+ * Ruled by Ryan 2026-09-28 (#2416): the `ima-jin` org does not issue GitHub
+ * PATs. The credential is a GitHub App (`imajin-provisioner`) installed on
+ * the org — same identity model as `warp-factories[bot]`. The sealed
+ * {@link GITHUB_ORG_CREDENTIAL_FIELD} vault field holds a JSON blob
+ * (`{ appId, installationId, privateKeyPem }`, see {@link OrgAppCredential}),
+ * sealed ONCE by the operator via the existing generic `POST /api/vault/set`
+ * route with `custodyScheme: 'delegation-grant'` (v2 self-granted to the
+ * node, #2311's "v2 grant shape") — no new sealing route. See
+ * `docs/REGISTRATION.md` for the App's setup (permissions, installation).
+ * Nothing long-lived that can act on GitHub directly is stored: every
+ * actual GitHub call authenticates with a short-lived installation access
+ * token minted on demand by {@link getInstallationToken} and cached only
+ * in memory (see that function's docblock) — every GitHub action this
+ * module takes lands in the org audit log as `imajin-provisioner[bot]`.
  *
  * ## Actions secrets
  * GitHub's Actions-secrets API requires the plaintext to be encrypted
@@ -34,10 +37,20 @@
  * kind of crypto correctness question this codebase's own vault module
  * refuses to reinvent.
  *
- * No secret value (org credential, minted private key, or GitHub Packages
- * token) is ever logged.
+ * ## Nav manifest read (#2425)
+ * {@link fetchAppManifest} is a best-effort read of `imajin.app.json` from
+ * the app's own (private) repo at `apps.provision` time — nav metadata an
+ * extracted app can publish about itself. It uses the SAME installation
+ * token as every other call in this module (passed in by the caller, see
+ * `provision.ts`'s use of {@link tryGetInstallationToken}), never a
+ * separate credential.
+ *
+ * No secret value (the App private key, a minted installation token, or a
+ * minted app-auth private key) is ever logged.
  */
 import { createRequire } from 'node:module';
+import { createPrivateKey } from 'node:crypto';
+import { SignJWT } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { loadAndUnseal } from '@/src/lib/vault';
 import type sodiumWrappersType from 'libsodium-wrappers';
@@ -62,14 +75,28 @@ export const PROVISIONING_ORG = 'ima-jin';
 export const DEFAULT_APP_TEMPLATE = 'ima-jin/imajin-app-template';
 
 /**
- * Vault field holding the kernel-wide, org-scoped GitHub credential
- * (#2375). Sealed once by the operator via `POST /api/vault/set`
- * (`custodyScheme: 'delegation-grant'`) — see this module's docblock.
+ * Vault field holding the kernel-wide, org-scoped GitHub App installation
+ * credential (#2375, #2416). Sealed once by the operator via
+ * `POST /api/vault/set` (`custodyScheme: 'delegation-grant'`) — see this
+ * module's docblock.
  */
 export const GITHUB_ORG_CREDENTIAL_FIELD = 'github-org-provisioning';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_API_VERSION = '2022-11-28';
+
+/**
+ * The sealed shape of {@link GITHUB_ORG_CREDENTIAL_FIELD} (#2416): a GitHub
+ * App installation identity — never a token that can act on GitHub
+ * directly. `privateKeyPem` is the App's own RSA private key, used only to
+ * sign short-lived JWTs (see {@link getInstallationToken}), never sent to
+ * GitHub itself.
+ */
+export interface OrgAppCredential {
+  appId: string;
+  installationId: string;
+  privateKeyPem: string;
+}
 
 /** Thrown when the org-scoped credential has never been sealed. */
 export class OrgCredentialMissingError extends Error {
@@ -78,36 +105,180 @@ export class OrgCredentialMissingError extends Error {
     super(
       message ??
       `${GITHUB_ORG_CREDENTIAL_FIELD} is not sealed — an operator must seal an org-scoped ` +
-      `GitHub credential via POST /api/vault/set before apps.provision can create repos ` +
-      `or seal deploy secrets (see docs/REGISTRATION.md)`,
+      `GitHub App installation credential via POST /api/vault/set before apps.provision can ` +
+      `create repos or seal deploy secrets (see docs/REGISTRATION.md)`,
     );
     this.name = 'OrgCredentialMissingError';
   }
 }
 
 /**
- * Load the org-scoped GitHub credential. Throws {@link OrgCredentialMissingError}
- * if it has never been sealed. Never logged.
+ * Thrown when {@link GITHUB_ORG_CREDENTIAL_FIELD} IS sealed but does not
+ * unmarshal to a well-formed {@link OrgAppCredential} — e.g. a stale
+ * pre-#2416 PAT string, truncated JSON, or a blob missing one of the three
+ * required fields. Mirrors {@link OrgCredentialMissingError}'s
+ * one-error-per-cause shape, but as a `TypeError` (the sealed value's
+ * *type/shape* is wrong, not merely absent) so callers can tell "never
+ * sealed" apart from "sealed wrong" without string-matching messages.
  */
-export async function loadOrgCredential(): Promise<string> {
-  const token = await loadAndUnseal(GITHUB_ORG_CREDENTIAL_FIELD);
-  if (token === undefined) {
-    throw new OrgCredentialMissingError();
+export class OrgCredentialMalformedError extends TypeError {
+  constructor(reason: string) {
+    super(
+      `${GITHUB_ORG_CREDENTIAL_FIELD} is sealed but malformed (${reason}) — expected JSON ` +
+      `{ appId, installationId, privateKeyPem } for a GitHub App installation (see docs/REGISTRATION.md)`,
+    );
+    this.name = 'OrgCredentialMalformedError';
   }
-  return token;
+}
+
+function requireCredentialStringField(parsed: Record<string, unknown>, field: keyof OrgAppCredential): string {
+  const value = parsed[field];
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new OrgCredentialMalformedError(`"${field}" must be a non-empty string`);
+  }
+  return value;
+}
+
+/** Parse + validate the raw sealed value as an {@link OrgAppCredential}. */
+function parseOrgAppCredential(raw: string): OrgAppCredential {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new OrgCredentialMalformedError('not valid JSON');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new OrgCredentialMalformedError('expected a JSON object');
+  }
+  const record = parsed as Record<string, unknown>;
+  return {
+    appId: requireCredentialStringField(record, 'appId'),
+    installationId: requireCredentialStringField(record, 'installationId'),
+    privateKeyPem: requireCredentialStringField(record, 'privateKeyPem'),
+  };
 }
 
 /**
- * Best-effort variant of {@link loadOrgCredential} — `null` (never throws)
- * when the credential has never been sealed, so callers that need to branch
- * on "is it sealed at all" (#2415: the repo existence check, and
- * `sealDeploySecrets`'s degrade-instead-of-fail path) don't need
- * exception-driven control flow. Any OTHER error while unsealing (a genuine
- * vault failure, not "never sealed") still propagates.
+ * Load + parse the org-scoped GitHub App installation credential. Throws
+ * {@link OrgCredentialMissingError} if it has never been sealed, or
+ * {@link OrgCredentialMalformedError} if the sealed value doesn't unmarshal
+ * to a well-formed {@link OrgAppCredential}. Never logged. Callers that
+ * need to actually call the GitHub API should use
+ * {@link getInstallationToken} instead — this is exported mainly for that
+ * function and for direct testing of the parse/validate contract.
  */
-export async function tryLoadOrgCredential(): Promise<string | null> {
+export async function loadOrgCredential(): Promise<OrgAppCredential> {
+  const raw = await loadAndUnseal(GITHUB_ORG_CREDENTIAL_FIELD);
+  if (raw === undefined) {
+    throw new OrgCredentialMissingError();
+  }
+  return parseOrgAppCredential(raw);
+}
+
+// ── Installation token minting (#2416) ─────────────────────────────────
+
+/** GitHub's hard cap on a GitHub App JWT's total (iat -> exp) lifetime. */
+const APP_JWT_MAX_LIFETIME_SECONDS = 10 * 60;
+/** Backdate `iat` by this much to tolerate clock drift — GitHub's own recommendation. */
+const APP_JWT_CLOCK_SKEW_SECONDS = 60;
+/** Refresh the cached installation token this far ahead of its real expiry. */
+const INSTALLATION_TOKEN_REFRESH_MARGIN_MS = 5 * 60 * 1000;
+
+interface CachedInstallationToken {
+  token: string;
+  expiresAtMs: number;
+}
+
+let cachedInstallationToken: CachedInstallationToken | undefined;
+
+/**
+ * Mint a short-lived RS256 App JWT (`iss: appId`, `iat` backdated 60s,
+ * `exp` <= 10 minutes total lifetime — GitHub's own requirements). The key
+ * is loaded via `node:crypto`'s `createPrivateKey` (rather than jose's own
+ * `importPKCS8`) because GitHub Apps' downloadable private keys are PKCS#1
+ * (`-----BEGIN RSA PRIVATE KEY-----`), not PKCS#8, and jose's `importPKCS8`
+ * strictly rejects that format; `createPrivateKey` auto-detects either PEM
+ * encoding and returns a `KeyObject` jose's `SignJWT.sign` accepts
+ * natively. The JWT is used exactly once, to mint an installation token —
+ * it is never returned, logged, or cached itself.
+ */
+async function mintAppJwt(credential: OrgAppCredential): Promise<string> {
+  const privateKey = createPrivateKey(credential.privateKeyPem);
+  const issuedAt = Math.floor(Date.now() / 1000) - APP_JWT_CLOCK_SKEW_SECONDS;
+  return new SignJWT({})
+    .setProtectedHeader({ alg: 'RS256' })
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(issuedAt + APP_JWT_MAX_LIFETIME_SECONDS)
+    .setIssuer(credential.appId)
+    .sign(privateKey);
+}
+
+interface InstallationTokenResponse {
+  token: string;
+  expires_at: string;
+}
+
+async function mintInstallationToken(credential: OrgAppCredential): Promise<CachedInstallationToken> {
+  const appJwt = await mintAppJwt(credential);
+  const response = await callGitHubApi<InstallationTokenResponse>({
+    method: 'POST',
+    path: `/app/installations/${credential.installationId}/access_tokens`,
+    token: appJwt,
+  });
+  if (response.status !== 201 || !response.data) {
+    throw new Error(
+      `apps.provision: failed to mint an installation token for installation '${credential.installationId}' (GitHub status ${response.status})`,
+    );
+  }
+  const expiresAtMs = Date.parse(response.data.expires_at);
+  if (Number.isNaN(expiresAtMs)) {
+    throw new RangeError(
+      `apps.provision: installation token response had an unparsable "expires_at" value ('${response.data.expires_at}')`,
+    );
+  }
+  log.info({ installationId: credential.installationId }, 'apps.provision: minted a fresh GitHub App installation token');
+  return { token: response.data.token, expiresAtMs };
+}
+
+/**
+ * Get a live GitHub App installation access token (#2416), minting a fresh
+ * one only when none is cached or the cached one is within
+ * {@link INSTALLATION_TOKEN_REFRESH_MARGIN_MS} of its real `expires_at`.
+ * Cached ONLY in this module's in-memory state — never persisted, never
+ * logged. Every GitHub call made with this token lands in the org audit
+ * log as `imajin-provisioner[bot]`, not as any human or the kernel's own
+ * identity.
+ */
+export async function getInstallationToken(): Promise<string> {
+  const now = Date.now();
+  if (cachedInstallationToken && cachedInstallationToken.expiresAtMs - INSTALLATION_TOKEN_REFRESH_MARGIN_MS > now) {
+    return cachedInstallationToken.token;
+  }
+  const credential = await loadOrgCredential();
+  cachedInstallationToken = await mintInstallationToken(credential);
+  return cachedInstallationToken.token;
+}
+
+/** Test-only: reset the cached installation token between test cases. */
+export function __resetInstallationTokenCacheForTests(): void {
+  cachedInstallationToken = undefined;
+}
+
+/**
+ * Best-effort variant of {@link getInstallationToken} — `null` (never
+ * throws) when the org credential has never been sealed, so callers that
+ * need to branch on "is it sealed at all" (#2415: the repo existence check
+ * / authenticated retry, and `sealDeploySecrets`'s degrade-instead-of-fail
+ * path) don't need exception-driven control flow. Returns a real,
+ * ready-to-use installation access token (not the raw sealed credential)
+ * so callers can hand it straight to {@link callGitHubApi}. Any OTHER
+ * error — a malformed blob ({@link OrgCredentialMalformedError}), or a
+ * genuine vault/GitHub failure — still propagates; only "never sealed" is
+ * treated as the soft, expected case.
+ */
+export async function tryGetInstallationToken(): Promise<string | null> {
   try {
-    return await loadOrgCredential();
+    return await getInstallationToken();
   } catch (err) {
     if (err instanceof OrgCredentialMissingError) return null;
     throw err;
@@ -247,7 +418,7 @@ export async function ensureRepoFromTemplate(
     return { repoUrl: anonymous.data.html_url, created: false };
   }
 
-  const token = await tryLoadOrgCredential();
+  const token = await tryGetInstallationToken();
 
   if (anonymous.status === 404) {
     if (token === null) {
@@ -301,14 +472,17 @@ interface GitHubContentsResponse {
  * placements/requiredScope) an extracted app can publish about itself so
  * `registerApp` doesn't have to fall back to defaults for every third-party
  * app. The repo is created PRIVATE (see `createRepoFromTemplate`), so this
- * always requires the org-scoped credential — unlike the anonymous-first
- * repo-existence check above.
+ * always requires an installation token — unlike the anonymous-first
+ * repo-existence check above. The caller passes in the token (see
+ * `provision.ts`'s use of {@link tryGetInstallationToken}) rather than this
+ * function minting its own, so a single token is reused for the whole
+ * provisioning run.
  *
  * Never throws: returns `null` when the credential is unsealed, the file
  * doesn't exist (a template that hasn't adopted the manifest convention
  * yet), or its contents don't parse/validate. A missing/invalid manifest is
  * NOT a provisioning failure — same degrade-don't-fail posture as
- * `tryLoadOrgCredential`/`sealDeploySecrets`'s caller in `provision.ts`.
+ * `tryGetInstallationToken`/`sealDeploySecrets`'s caller in `provision.ts`.
  */
 export async function fetchAppManifest(slug: string, token: string | null): Promise<AppManifest | null> {
   if (token === null) return null;
@@ -340,7 +514,7 @@ export async function fetchAppManifest(slug: string, token: string | null): Prom
  * caller for the `secretsSet` audit trail.
  */
 export async function sealActionsSecret(repo: string, name: string, plaintext: string): Promise<void> {
-  const token = await loadOrgCredential();
+  const token = await getInstallationToken();
 
   const keyResponse = await callGitHubApi<ActionsPublicKeyResponse>({
     method: 'GET',

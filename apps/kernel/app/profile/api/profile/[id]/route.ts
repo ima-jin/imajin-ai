@@ -1,7 +1,7 @@
 import * as ed from '@noble/ed25519';
 import { sha512 } from '@noble/hashes/sha2.js';
 import { NextRequest, NextResponse } from 'next/server';
-import { db, profiles, identityMembers } from '@/src/db';
+import { db, profiles, identityMembers, identities } from '@/src/db';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { corsOptions, corsHeaders } from '@/src/lib/kernel/cors';
 import { eq, and, isNull, count } from 'drizzle-orm';
@@ -9,7 +9,7 @@ import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
 import { publish, broker, isBrokerRelease } from '@imajin/bus';
 import { validateAgentPricingManifest } from '@imajin/fair';
-import { filterProfileFields, FIELD_VISIBILITY_LEVELS } from '@/src/lib/profile';
+import { filterProfileFields, FIELD_VISIBILITY_LEVELS, validateTaxRegistrations } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
 import { loadAndUnseal } from '@/src/lib/vault';
 import { processEmailUpdate, processPhoneUpdate } from '@/src/lib/profile/vault-contacts';
@@ -290,7 +290,7 @@ function validateProfileUpdateBody(
   body: Record<string, any>,
   cors: HeadersInit
 ): NextResponse | null {
-  const { visibility, agentPricing, fieldVisibility } = body;
+  const { visibility, agentPricing, fieldVisibility, taxRegistrations } = body;
   if (visibility !== undefined && !['public', 'incognito'].includes(visibility)) {
     return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
   }
@@ -304,6 +304,35 @@ function validateProfileUpdateBody(
     const fvError = validateFieldVisibilityShape(fieldVisibility, cors);
     if (fvError) return fvError;
   }
+  if (taxRegistrations !== undefined) {
+    const trResult = validateTaxRegistrations(taxRegistrations);
+    if (!trResult.valid) {
+      return NextResponse.json({ error: 'Invalid tax registrations', details: trResult.errors }, { status: 400, headers: cors });
+    }
+  }
+  return null;
+}
+
+/**
+ * tax_registrations (#2420) is business-scope only. Returns an error
+ * response when the body attempts to set it on a non-business identity, or
+ * null when the update may proceed (including when taxRegistrations is
+ * absent from the body entirely).
+ */
+async function checkTaxRegistrationsScope(
+  body: Record<string, any>,
+  profileDid: string,
+  cors: HeadersInit
+): Promise<NextResponse | null> {
+  if (body.taxRegistrations === undefined) return null;
+  const [identityRow] = await db
+    .select({ scope: identities.scope })
+    .from(identities)
+    .where(eq(identities.id, profileDid))
+    .limit(1);
+  if (identityRow?.scope !== 'business') {
+    return NextResponse.json({ error: 'taxRegistrations can only be set on a business identity' }, { status: 403, headers: cors });
+  }
   return null;
 }
 
@@ -316,7 +345,7 @@ async function buildProfileUpdates(
   existing: typeof profiles.$inferSelect | undefined,
   profileDid: string
 ): Promise<Record<string, any>> {
-  const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility } = body;
+  const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility, taxRegistrations } = body;
   const updates: Record<string, any> = { updatedAt: new Date() };
 
   if (displayName !== undefined) updates.displayName = displayName;
@@ -329,6 +358,11 @@ async function buildProfileUpdates(
   if (agentPricing !== undefined) updates.agentPricing = agentPricing;
   if (visibility !== undefined) updates.visibility = visibility;
   if (fieldVisibility !== undefined) updates.fieldVisibility = fieldVisibility as FieldVisibility;
+  // Replace semantics, not merge — the UI always sends the full list (#2420).
+  // validateProfileUpdateBody has already confirmed this is valid.
+  if (taxRegistrations !== undefined) {
+    updates.taxRegistrations = validateTaxRegistrations(taxRegistrations).normalized ?? [];
+  }
 
   // Contact info is vault-stored — never write plaintext to DB columns.
   if (email !== undefined) {
@@ -452,6 +486,10 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (validationError) return validationError;
 
     const profileDid = existing?.did ?? id;
+
+    const scopeError = await checkTaxRegistrationsScope(body, profileDid, cors);
+    if (scopeError) return scopeError;
+
     const updates = await buildProfileUpdates(body, existing, profileDid);
 
     let updated;
@@ -462,7 +500,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         .where(eq(profiles.did, existing.did))
         .returning();
     } else {
-      const { displayName, avatar, bio, visibility, feature_toggles, agentPricing } = body;
+      const { displayName, avatar, bio, visibility, feature_toggles, agentPricing, taxRegistrations } = body;
       [updated] = await db
         .insert(profiles)
         .values({
@@ -476,6 +514,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           visibility: visibility || 'public',
           featureToggles: feature_toggles || {},
           agentPricing: agentPricing || null,
+          taxRegistrations: taxRegistrations !== undefined ? (validateTaxRegistrations(taxRegistrations).normalized ?? []) : [],
         })
         .returning();
     }

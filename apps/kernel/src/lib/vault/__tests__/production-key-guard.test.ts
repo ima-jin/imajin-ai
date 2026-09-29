@@ -20,6 +20,7 @@ vi.hoisted(() => {
   const { join } = require('node:path') as typeof import('node:path');
   const { tmpdir } = require('node:os') as typeof import('node:os');
   process.env.VAULT_PATH = join(tmpdir(), `vault-key-guard-${Date.now()}.json`);
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 });
 
 vi.mock('@/src/db', () => ({
