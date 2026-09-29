@@ -77,7 +77,10 @@ describe('loadVaultAtBoot', () => {
 
     await loadVaultAtBoot();
 
-    expect(mockInfo).toHaveBeenCalledWith(`vault: loaded 3 entries from ${vaultPath}`);
+    expect(mockInfo).toHaveBeenCalledWith(
+      { vaultPath, entryCount: 3 },
+      `vault: loaded 3 entries from ${vaultPath}`,
+    );
     expect(mockError).not.toHaveBeenCalled();
     expect(mockWarn).not.toHaveBeenCalled();
   });
@@ -87,7 +90,10 @@ describe('loadVaultAtBoot', () => {
 
     await loadVaultAtBoot();
 
-    expect(mockInfo).toHaveBeenCalledWith(`vault: loaded 0 entries from ${vaultPath}`);
+    expect(mockInfo).toHaveBeenCalledWith(
+      { vaultPath, entryCount: 0 },
+      `vault: loaded 0 entries from ${vaultPath}`,
+    );
     expect(mockWarn).toHaveBeenCalledTimes(1);
     expect(String(mockWarn.mock.calls[0]?.[1])).toContain('bootstrapping an empty vault');
   });
@@ -109,8 +115,10 @@ describe('loadVaultAtBoot', () => {
       const fresh = await import('../vault-repository.js');
 
       await expect(fresh.loadVaultAtBoot()).resolves.toBeUndefined();
+      const defaultPath = path.join(tempDirectory, '.imajin', 'vault.json');
       expect(mockInfo).toHaveBeenCalledWith(
-        `vault: loaded 0 entries from ${path.join(tempDirectory, '.imajin', 'vault.json')}`,
+        { vaultPath: defaultPath, entryCount: 0 },
+        `vault: loaded 0 entries from ${defaultPath}`,
       );
     } finally {
       if (originalHome === undefined) {

@@ -70,7 +70,8 @@ export async function loadVaultAtBoot(): Promise<void> {
       `vault: no file at configured path — bootstrapping an empty vault (${VAULT_BOOTSTRAP_ENV} is set); unset it once the file exists`,
     );
   }
-  log.info(`vault: loaded ${status.entryCount ?? 0} entries from ${status.path}`);
+  const entryCount = status.entryCount ?? 0;
+  log.info({ vaultPath: status.path, entryCount }, `vault: loaded ${entryCount} entries from ${status.path}`);
 }
 
 export interface VaultHealth {
