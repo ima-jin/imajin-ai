@@ -294,11 +294,11 @@ describe('CreatePaymentRequestForm — Charge tax (#2421)', () => {
     fireEvent.click(screen.getByText('Pick Alice'));
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
     // Shown live in the tax summary and, on Send, in the error banner.
-    expect((await screen.findAllByText('Enter a rate for QST (CA-QC)')).length).toBe(2);
+    expect(await screen.findAllByText('Enter a rate for QST (CA-QC)')).toHaveLength(2);
 
     fireEvent.change(rate, { target: { value: '9.975' } });
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
-    expect((await screen.findAllByText(/not a whole number of basis points/)).length).toBe(2);
+    expect(await screen.findAllByText(/not a whole number of basis points/)).toHaveLength(2);
     expect(createCall(spy)).toBeUndefined();
 
     fireEvent.change(rate, { target: { value: '9.97' } });

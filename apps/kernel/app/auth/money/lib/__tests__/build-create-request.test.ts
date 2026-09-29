@@ -206,7 +206,7 @@ describe('buildCreatePaymentRequestBody — tax (#2421)', () => {
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect((result.body.taxes as unknown[]).length).toBe(2);
+      expect(result.body.taxes as unknown[]).toHaveLength(2);
       expect(result.body).toMatchObject({ subtotal_amount: 10_000, tax_total_amount: 1200, total_amount: 11_200 });
     }
   });

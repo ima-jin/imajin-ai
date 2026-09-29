@@ -74,7 +74,7 @@ export default function TaxSection({ chargeTax, onChargeTaxChange, rows, onRowsC
           disabled={!loaded || !hasRegistrations}
           onChange={(e) => onChargeTaxChange(e.target.checked)}
         />
-        Charge tax
+        <span>Charge tax</span>
       </label>
 
       {loaded && !hasRegistrations && (

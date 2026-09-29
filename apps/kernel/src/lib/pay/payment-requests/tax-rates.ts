@@ -92,8 +92,11 @@ export function parseRatePercentToBps(input: string): ParsedRate {
 /** Render integer bps as a percentage string with no float math: 1300 → "13%", 997 → "9.97%", 1050 → "10.5%". */
 export function formatRateBps(rateBps: number): string {
   const whole = Math.trunc(rateBps / 100);
-  const fraction = String(rateBps % 100).padStart(2, '0').replace(/0+$/, '');
-  return fraction ? `${whole}.${fraction}%` : `${whole}%`;
+  const hundredths = rateBps % 100;
+  if (hundredths === 0) return `${whole}%`;
+  const digits = String(hundredths).padStart(2, '0');
+  const fraction = digits.endsWith('0') ? digits.slice(0, 1) : digits;
+  return `${whole}.${fraction}%`;
 }
 
 /** The rate as an editable percent string for an input field: 1300 → "13", 997 → "9.97". */
