@@ -9,7 +9,7 @@
  * and independent of key order.
  */
 import { computeCid } from '@imajin/cid';
-import type { PaymentRequestLineItem } from './types';
+import type { PaymentRequestLineItem, PaymentRequestTaxBreakdown } from './types';
 
 export interface PaymentRequestContentFields {
   kind: 'invoice' | 'request';
@@ -19,7 +19,10 @@ export interface PaymentRequestContentFields {
   recipientStubId: string | null;
   lineItems: PaymentRequestLineItem[];
   currency: string;
+  /** The GRAND total (subtotal + tax) — what the payer owes. */
   totalAmount: number;
+  /** #2421 — bound into the hash only when tax is charged, so a request without tax hashes exactly as it did before. */
+  tax?: PaymentRequestTaxBreakdown | null;
   dueAt: string | null;
   allowOnPlatform: boolean;
 }
@@ -37,6 +40,7 @@ export async function computePaymentRequestContentHash(
     lineItems: fields.lineItems,
     currency: fields.currency,
     totalAmount: fields.totalAmount,
+    ...(fields.tax ? { subtotalAmount: fields.tax.subtotalAmount, taxTotalAmount: fields.tax.taxTotalAmount, taxes: fields.tax.taxes } : {}),
     dueAt: fields.dueAt,
     allowOnPlatform: fields.allowOnPlatform,
   });

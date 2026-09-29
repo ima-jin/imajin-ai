@@ -39,13 +39,35 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({
   getNodeDid: vi.fn().mockResolvedValue('did:imajin:node'),
 }));
 
+const mechanicalMock = vi.hoisted(() => vi.fn().mockResolvedValue('att_mech_1'));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({
+  emitMechanicalAttestation: mechanicalMock,
+}));
+
 import {
   emitPaymentRequestIssuedAttestation,
   emitPaymentRequestSettledAttestation,
+  emitPaymentRequestSettledStripeAttestation,
 } from '../attestations';
 
 const ISSUER_DID = 'did:imajin:issuer';
 const RECIPIENT_DID = 'did:imajin:recipient';
+
+/** #2421 — $100.00 subtotal + 13% GST/HST. */
+const TAX_BREAKDOWN = {
+  subtotalAmount: 10_000,
+  taxTotalAmount: 1300,
+  taxes: [
+    { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, amount: 1300, registrationNumber: '123456789RT0001' },
+  ],
+};
+const TAX_PAYLOAD_FIELDS = {
+  subtotal_amount: 10_000,
+  tax_total_amount: 1300,
+  taxes: [
+    { jurisdiction: 'CA-ON', kind: 'GST/HST', rate_bps: 1300, amount: 1300, registration_number: '123456789RT0001' },
+  ],
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -134,5 +156,70 @@ describe('emitPaymentRequestSettledAttestation', () => {
     expect(payload.method).toBe('manual');
     expect(payload.asserted_by).toBe(ISSUER_DID);
     expect(payload.note).toBe('paid via e-transfer');
+  });
+});
+
+describe('tax breakdown in attestation payloads (#2421)', () => {
+  const ISSUED = {
+    paymentRequestId: 'pr_1',
+    issuerDid: ISSUER_DID,
+    recipientDid: RECIPIENT_DID,
+    recipientStubId: null,
+    kind: 'invoice',
+    totalAmount: 11_300,
+    currency: 'CAD',
+    contentHash: 'bafy-content',
+  };
+  const SETTLED = {
+    paymentRequestId: 'pr_1',
+    issuerDid: ISSUER_DID,
+    recipientDid: RECIPIENT_DID,
+    method: 'manual' as const,
+    assertedBy: ISSUER_DID,
+    contentHash: 'bafy-content',
+    totalAmount: 11_300,
+    currency: 'CAD',
+  };
+  const payloadOf = () => (mocks.insertValuesMock.mock.calls[0][0] as { payload: Record<string, unknown> }).payload;
+
+  it('issued: carries subtotal / tax_total / per-line taxes next to the grand total_amount', async () => {
+    await emitPaymentRequestIssuedAttestation({ ...ISSUED, tax: TAX_BREAKDOWN });
+    expect(payloadOf()).toMatchObject({ total_amount: 11_300, ...TAX_PAYLOAD_FIELDS });
+    const p = payloadOf() as { subtotal_amount: number; tax_total_amount: number; total_amount: number };
+    expect(p.subtotal_amount + p.tax_total_amount).toBe(p.total_amount);
+  });
+
+  it('manual settled receipt: carries the same breakdown', async () => {
+    await emitPaymentRequestSettledAttestation({ ...SETTLED, tax: TAX_BREAKDOWN });
+    expect(payloadOf()).toMatchObject({ total_amount: 11_300, ...TAX_PAYLOAD_FIELDS });
+  });
+
+  it('stripe settled receipt (kernel-signed): carries the same breakdown', async () => {
+    await emitPaymentRequestSettledStripeAttestation({
+      paymentRequestId: 'pr_1',
+      issuerDid: ISSUER_DID,
+      recipientDid: RECIPIENT_DID,
+      contentHash: 'bafy-content',
+      totalAmount: 11_300,
+      currency: 'CAD',
+      settlementRef: { method: 'stripe', settled_at: '2026-01-01T00:00:00Z', checkout_session_id: 'cs_1' },
+      tax: TAX_BREAKDOWN,
+    });
+    const { payload } = mechanicalMock.mock.calls[0][0] as { payload: Record<string, unknown> };
+    expect(payload).toMatchObject({ method: 'stripe', total_amount: 11_300, ...TAX_PAYLOAD_FIELDS });
+  });
+
+  it.each([
+    ['null', null],
+    ['omitted', undefined],
+  ])('without tax (%s): the payload has none of the tax fields — identical to pre-#2421', async (_label, tax) => {
+    await emitPaymentRequestIssuedAttestation({ ...ISSUED, totalAmount: 10_000, tax });
+    const payload = payloadOf();
+    expect(payload).not.toHaveProperty('subtotal_amount');
+    expect(payload).not.toHaveProperty('tax_total_amount');
+    expect(payload).not.toHaveProperty('taxes');
+    expect(Object.keys(payload).sort()).toEqual(
+      ['content_hash', 'currency', 'kind', 'payment_request_id', 'recipient_did', 'recipient_stub_id', 'total_amount'].sort(),
+    );
   });
 });

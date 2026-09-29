@@ -16,10 +16,28 @@ import { publish } from '@imajin/bus';
 import { add as moneyAdd, type Money } from '@imajin/money';
 import { isConnected } from '@/src/lib/chat/connection-check';
 import { createPaymentRequestInvite } from '@/src/lib/connections/payment-request-invite';
+import type { TaxRegistration } from '@/src/lib/profile/tax-registrations';
 import { computePaymentRequestContentHash } from './content-hash';
-import { buildDefaultPaymentRequestManifest, validateCustomPaymentRequestManifest } from './manifest';
+import {
+  FAIR_VERSION_WITH_TAXES,
+  buildDefaultPaymentRequestManifest,
+  validateCustomPaymentRequestManifest,
+} from './manifest';
 import { emitPaymentRequestIssuedAttestation, emitPaymentRequestSettledAttestation } from './attestations';
-import type { PaymentRequestFairManifest, PaymentRequestLineItem, PaymentRequestSettlementRef } from './types';
+import {
+  checkAssertedTotals,
+  computeGrandTotal,
+  parseTaxRowInputs,
+  resolveTaxCharge,
+  sumTaxes,
+  taxBreakdownOf,
+} from './tax';
+import type {
+  PaymentRequestFairManifest,
+  PaymentRequestLineItem,
+  PaymentRequestSettlementRef,
+  PaymentRequestTaxLine,
+} from './types';
 
 export type ServiceError = { error: string; status: number };
 
@@ -34,7 +52,8 @@ export function isServiceError<T>(value: T | ServiceError): value is ServiceErro
 const MAX_LINE_ITEMS = 100;
 const MAX_LINE_ITEM_NAME_LENGTH = 256;
 
-type LineItemsResult = { total: Money; items: PaymentRequestLineItem[] } | ServiceError;
+/** `subtotal` is the PRE-TAX line-items sum — tax (#2421) is added on top of it in `createPaymentRequest`. */
+type LineItemsResult = { subtotal: Money; items: PaymentRequestLineItem[] } | ServiceError;
 
 /** Validate a single `line_items[index]` entry. Extracted from `validateLineItems` to keep that function's cognitive complexity within budget. */
 function validateLineItem(rawItem: unknown, index: number): PaymentRequestLineItem | ServiceError {
@@ -66,7 +85,7 @@ function validateLineItem(rawItem: unknown, index: number): PaymentRequestLineIt
   };
 }
 
-/** Validate `line_items` and compute the request total via `packages/money` — no float intermediates. */
+/** Validate `line_items` and compute the pre-tax subtotal via `packages/money` — no float intermediates. */
 function validateLineItems(raw: unknown, currency: string): LineItemsResult {
   if (!Array.isArray(raw) || raw.length === 0) {
     return err('line_items must be a non-empty array', 400);
@@ -76,17 +95,17 @@ function validateLineItems(raw: unknown, currency: string): LineItemsResult {
   }
 
   const items: PaymentRequestLineItem[] = [];
-  let total: Money = { amount: 0, currency };
+  let subtotal: Money = { amount: 0, currency };
 
   for (const [index, rawItem] of raw.entries()) {
     const validated = validateLineItem(rawItem, index);
     if (isServiceError(validated)) return validated;
 
     items.push(validated);
-    total = moneyAdd(total, { amount: validated.amount * validated.quantity, currency });
+    subtotal = moneyAdd(subtotal, { amount: validated.amount * validated.quantity, currency });
   }
 
-  return { total, items };
+  return { subtotal, items };
 }
 
 export interface CreatePaymentRequestInvite {
@@ -110,6 +129,14 @@ export interface CreatePaymentRequestInput {
   dueAt?: unknown;
   allowOnPlatform?: unknown;
   fairManifest?: unknown;
+  /** #2421 — opt in to charging the issuer's registered tax(es) on top of the subtotal. */
+  chargeTax?: unknown;
+  /** #2421 — one `{ jurisdiction, kind, rate_bps, amount? }` per charged registration; required (non-empty) when `chargeTax` is true. */
+  taxes?: unknown;
+  /** #2421 — optional client-previewed amounts. Never trusted: each one present must equal the server's recomputation, else 400. */
+  subtotalAmount?: unknown;
+  taxTotalAmount?: unknown;
+  totalAmount?: unknown;
 }
 
 export interface CreatedPaymentRequestInvite {
@@ -216,7 +243,7 @@ function resolveDueAt(dueAt: unknown): { dueAt: Date | null } | ServiceError {
   return { dueAt: parsed };
 }
 
-/** Resolve the stored `fair_manifest`: caller-supplied (validated against the computed total) or the default single-payee manifest. */
+/** Resolve the stored `fair_manifest`: caller-supplied (validated against the computed pre-tax subtotal) or the default single-payee manifest. */
 function resolveFairManifest(
   fairManifestInput: unknown,
   params: { payeeAccount: string; paymentRequestId: string; total: Money },
@@ -229,12 +256,100 @@ function resolveFairManifest(
   return fairManifestInput as PaymentRequestFairManifest;
 }
 
+/** The issuer's tax registrations (#2420), read server-side straight off their profile — the authoritative source for every `taxes[].registrationNumber`. */
+async function fetchIssuerTaxRegistrations(issuerDid: string): Promise<TaxRegistration[]> {
+  const [profile] = await db
+    .select({ taxRegistrations: profiles.taxRegistrations })
+    .from(profiles)
+    .where(eq(profiles.did, issuerDid))
+    .limit(1);
+  return profile?.taxRegistrations ?? [];
+}
+
+interface ResolvedManifestAndTax {
+  fairManifest: PaymentRequestFairManifest;
+  taxTotal: Money;
+}
+
+interface ManifestAndTaxParams {
+  issuerDid: string;
+  payeeAccount: string;
+  paymentRequestId: string;
+  subtotal: Money;
+}
+
+/** No `charge_tax`: the manifest is the default (untaxed) or a caller-supplied custom one — which may itself carry `taxes[]` (#2419), but only collected by the issuer. */
+function resolveUnchargedManifest(input: CreatePaymentRequestInput, params: ManifestAndTaxParams): ResolvedManifestAndTax | ServiceError {
+  const taxesSupplied = input.taxes !== undefined && input.taxes !== null;
+  const taxesEmptyArray = Array.isArray(input.taxes) && input.taxes.length === 0;
+  if (taxesSupplied && !taxesEmptyArray) {
+    return err('taxes requires charge_tax: true', 400);
+  }
+  const fairManifest = resolveFairManifest(input.fairManifest, {
+    payeeAccount: params.payeeAccount,
+    paymentRequestId: params.paymentRequestId,
+    total: params.subtotal,
+  });
+  if (isServiceError(fairManifest)) return fairManifest;
+
+  const taxes = fairManifest.taxes ?? [];
+  const foreignCollector = taxes.find((t) => t.collectorDid !== params.issuerDid);
+  if (foreignCollector) {
+    return err(`fair_manifest.taxes[].collectorDid (${foreignCollector.collectorDid}) must be the issuer`, 400);
+  }
+  return { fairManifest, taxTotal: sumTaxes(taxes, params.subtotal.currency) };
+}
+
+/**
+ * `charge_tax: true`: rebuild `taxes[]` from the issuer's registrations and
+ * the server-computed subtotal, stamp `fair: '1.2'`, then run the FULL
+ * custom-manifest validation over the result — which is what asserts the
+ * collector (the issuer) is a seller in the manifest chain, so a payee
+ * account that isn't the issuer 400s here rather than at settle (#2439 item 2).
+ */
+async function resolveChargedManifest(input: CreatePaymentRequestInput, params: ManifestAndTaxParams): Promise<ResolvedManifestAndTax | ServiceError> {
+  const rows = parseTaxRowInputs(input.taxes);
+  if (!rows.ok) return err(rows.error, 400);
+
+  const customManifest = input.fairManifest ?? null;
+  if (customManifest && (customManifest as { taxes?: unknown }).taxes !== undefined) {
+    return err('fair_manifest.taxes cannot be combined with charge_tax — send one or the other', 400);
+  }
+
+  const registrations = await fetchIssuerTaxRegistrations(params.issuerDid);
+  const charge = resolveTaxCharge({ issuerDid: params.issuerDid, subtotal: params.subtotal, registrations, rows: rows.value });
+  if (!charge.ok) return err(charge.error, 400);
+
+  const base = customManifest
+    ? { ...(customManifest as PaymentRequestFairManifest), taxes: charge.value.taxes, fair: FAIR_VERSION_WITH_TAXES }
+    : buildDefaultPaymentRequestManifest({
+        payeeAccount: params.payeeAccount,
+        paymentRequestId: params.paymentRequestId,
+        total: params.subtotal,
+        taxes: charge.value.taxes,
+      });
+
+  const validation = validateCustomPaymentRequestManifest(base, params.subtotal);
+  if (!validation.ok) return err(validation.error, 400);
+  return { fairManifest: base, taxTotal: charge.value.taxTotal };
+}
+
+/** Resolve the stored `fair_manifest` and the tax total it implies (zero for an untaxed request). */
+async function resolveManifestAndTax(input: CreatePaymentRequestInput, params: ManifestAndTaxParams): Promise<ResolvedManifestAndTax | ServiceError> {
+  if (input.chargeTax !== undefined && typeof input.chargeTax !== 'boolean') {
+    return err('charge_tax must be a boolean', 400);
+  }
+  return input.chargeTax === true ? resolveChargedManifest(input, params) : resolveUnchargedManifest(input, params);
+}
+
 /**
  * Create a payment_request: issuer-only (caller must resolve to
  * `issuer_did`). Validates the recipient and line items, computes the
- * total via `packages/money`, resolves/validates `fair_manifest`, computes
- * `content_hash`, writes the row, mints exactly ONE `payment_request.issued`
- * attestation, and publishes `payment_request.issued`.
+ * pre-tax subtotal via `packages/money`, resolves/validates `fair_manifest`
+ * (and, when `charge_tax` is set, rebuilds `taxes[]` server-side — #2421),
+ * derives `total = subtotal + tax_total` exactly, computes `content_hash`,
+ * writes the row, mints exactly ONE `payment_request.issued` attestation,
+ * and publishes `payment_request.issued`.
  */
 export async function createPaymentRequest(input: CreatePaymentRequestInput): Promise<CreatedPaymentRequest | ServiceError> {
   if (typeof input.issuerDid !== 'string' || !input.issuerDid) {
@@ -264,7 +379,7 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
 
   const lineItemsResult = validateLineItems(input.lineItems, currency);
   if (isServiceError(lineItemsResult)) return lineItemsResult;
-  const { total, items } = lineItemsResult;
+  const { subtotal, items } = lineItemsResult;
 
   const dueAtResult = resolveDueAt(input.dueAt);
   if (isServiceError(dueAtResult)) return dueAtResult;
@@ -273,9 +388,21 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
   const allowOnPlatform = input.allowOnPlatform === undefined ? true : Boolean(input.allowOnPlatform);
   const payeeAccount = typeof input.payeeAccount === 'string' && input.payeeAccount ? input.payeeAccount : input.issuerDid;
 
-  const fairManifestResult = resolveFairManifest(input.fairManifest, { payeeAccount, paymentRequestId: id, total });
-  if (isServiceError(fairManifestResult)) return fairManifestResult;
-  const fairManifest = fairManifestResult;
+  const manifestAndTax = await resolveManifestAndTax(input, {
+    issuerDid: input.issuerDid,
+    payeeAccount,
+    paymentRequestId: id,
+    subtotal,
+  });
+  if (isServiceError(manifestAndTax)) return manifestAndTax;
+  const { fairManifest, taxTotal } = manifestAndTax;
+
+  // total = subtotal + tax_total, exactly (packages/money). Anything the
+  // client previewed is checked against this — never trusted.
+  const total = computeGrandTotal(subtotal, taxTotal);
+  const assertedError = checkAssertedTotals(input, { subtotal, taxTotal, total });
+  if (assertedError) return err(assertedError, 400);
+  const tax = taxBreakdownOf({ subtotalAmount: subtotal.amount, taxTotalAmount: taxTotal.amount, fairManifest });
 
   const contentHash = await computePaymentRequestContentHash({
     kind,
@@ -286,6 +413,7 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
     lineItems: items,
     currency,
     totalAmount: total.amount,
+    tax,
     dueAt: dueAt ? dueAt.toISOString() : null,
     allowOnPlatform,
   });
@@ -302,6 +430,8 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
       lineItems: items,
       currency,
       totalAmount: total.amount,
+      subtotalAmount: subtotal.amount,
+      taxTotalAmount: taxTotal.amount,
       fairManifest,
       dueAt,
       allowOnPlatform,
@@ -321,6 +451,7 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
     totalAmount: total.amount,
     currency,
     contentHash,
+    tax,
   });
 
   publish('payment_request.issued', {
@@ -353,7 +484,13 @@ export async function getPaymentRequestById(id: string): Promise<PaymentRequest 
 export interface PaymentRequestPublicView {
   kind: PaymentRequestKind;
   lineItems: PaymentRequestLineItem[];
+  /** The GRAND total the payer owes (`subtotalAmount + taxTotalAmount`). */
   totalAmount: number;
+  /** #2421 — pre-tax subtotal; equals `totalAmount` when no tax is charged. */
+  subtotalAmount: number;
+  taxTotalAmount: number;
+  /** #2421 — one line per charged tax (kind, jurisdiction, rate, amount, issuer registration number — public by design, #2420); empty, and the page renders exactly as before, when no tax is charged. */
+  taxes: PaymentRequestTaxLine[];
   currency: string;
   issuerDisplayName: string;
   status: string;
@@ -382,6 +519,9 @@ export async function getPaymentRequestByHandle(handle: string): Promise<Payment
     kind: row.kind as PaymentRequestKind,
     lineItems: row.lineItems as PaymentRequestLineItem[],
     totalAmount: row.totalAmount,
+    subtotalAmount: row.subtotalAmount,
+    taxTotalAmount: row.taxTotalAmount,
+    taxes: taxBreakdownOf(row)?.taxes ?? [],
     currency: row.currency,
     issuerDisplayName: await resolveIssuerDisplayName(row.issuerDid),
     status: row.status,
@@ -512,6 +652,7 @@ export async function settlePaymentRequestManual(input: SettlePaymentRequestManu
     contentHash: existing.contentHash,
     totalAmount: existing.totalAmount,
     currency: existing.currency,
+    tax: taxBreakdownOf(existing),
   });
 
   publish('payment_request.settled', {

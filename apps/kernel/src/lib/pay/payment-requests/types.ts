@@ -12,18 +12,21 @@ export interface PaymentRequestLineItem {
 /** A `.fair` fee manifest (the shape `buildFairManifest` returns) plus the `total` it was built against — see `manifest.ts` for why `total` rides alongside the fee chain. */
 export interface PaymentRequestFairManifest {
   version: string;
+  /** #2421 — `'1.2'` exactly when `taxes[]` is present (#2419's `.fair` version for trust-liability tax); omitted otherwise. */
+  fair?: string;
   fees: unknown[];
   chain: unknown[];
   distributions: unknown[];
   attribution: unknown[];
   total: { amount: number; currency: string };
   /**
-   * #2419 — present only on a caller-supplied custom manifest that opts
-   * into trust-liability tax. `total` above stays the PRE-TAX subtotal
-   * (the same `Money` the line items sum to — see `service.ts`'s
-   * `validateLineItems`/`validateCustomPaymentRequestManifest`); tax is
-   * added on top as separate Stripe line items, never folded into
-   * `total`/`totalAmount`. Every `taxes[].basisAmount` must equal `total.amount`.
+   * #2419/#2421 — present when the request charges trust-liability tax.
+   * `total` above stays the PRE-TAX subtotal (the same `Money` the line
+   * items sum to — see `service.ts`'s `validateLineItems`/
+   * `validateCustomPaymentRequestManifest`) and equals the row's
+   * `subtotal_amount`, NOT its `total_amount` (which is subtotal + tax);
+   * tax is added on top as separate Stripe line items. Every
+   * `taxes[].basisAmount` must equal `total.amount`.
    */
   taxes?: Array<{
     jurisdiction: string;
@@ -35,6 +38,23 @@ export interface PaymentRequestFairManifest {
     remitTo: string;
     registrationNumber: string;
   }>;
+}
+
+/** One tax line as shown on the pay page and carried by receipt attestations (#2421). `registrationNumber` prints next to the tax line — it is public by design (#2420). */
+export interface PaymentRequestTaxLine {
+  jurisdiction: string;
+  kind: string;
+  rateBps: number;
+  /** Minor units. */
+  amount: number;
+  registrationNumber: string;
+}
+
+/** Subtotal → tax → total breakdown of a payment_request that charges tax (#2421); `total = subtotalAmount + taxTotalAmount`. */
+export interface PaymentRequestTaxBreakdown {
+  subtotalAmount: number;
+  taxTotalAmount: number;
+  taxes: PaymentRequestTaxLine[];
 }
 
 export type PaymentRequestSettlementMethod = 'manual' | 'stripe' | 'mjnx';

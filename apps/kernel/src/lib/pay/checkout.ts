@@ -135,12 +135,14 @@ function taxTotalCents(fairManifest: CheckoutBody['fairManifest']): number {
  * Build one manual Stripe line item per `.fair` `taxes[]` row (#2419) —
  * NEVER via Stripe Tax, since each row's `amount` is already computed from
  * the manifest's own `rateBps`/`basisAmount`. Returns `[]` for a manifest
- * without `taxes[]`.
+ * without `taxes[]`. A zero-amount row (a 0% rate, or a basis too small to
+ * round up to a cent) stays in the manifest but is not sent to Stripe as a
+ * zero-priced line item (#2421).
  */
 export function taxLineItems(fairManifest: CheckoutBody['fairManifest']): CheckoutItem[] {
   const taxes = fairManifest?.taxes as CheckoutFairTax[] | undefined;
   if (!taxes || taxes.length === 0) return [];
-  return taxes.map((tax) => ({
+  return taxes.filter((tax) => tax.amount > 0).map((tax) => ({
     name: `${tax.kind} (${tax.jurisdiction})`,
     description: 'Sales tax collected in trust',
     amount: tax.amount,
