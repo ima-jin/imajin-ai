@@ -17,12 +17,18 @@
  * server instance starts — the correct, safe place for "the kernel refuses
  * to start in production without VAULT_PATH" to actually happen, rather than
  * deferring the failure to whatever request first happens to touch the vault.
+ *
+ * It then LOADS the vault (#2412), logging `vault: loaded N entries from
+ * <path>`. A configured VAULT_PATH whose file is missing throws here, so the
+ * kernel refuses to boot instead of serving an empty vault behind a green
+ * /health (unless VAULT_ALLOW_BOOTSTRAP=1 explicitly requests a first-run
+ * bootstrap).
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('@imajin/logger/db');
 
-    const { resolveVaultPath } = await import('@/src/lib/vault/vault-path');
-    resolveVaultPath();
+    const { loadVaultAtBoot } = await import('@/src/lib/vault/vault-repository');
+    await loadVaultAtBoot();
   }
 }

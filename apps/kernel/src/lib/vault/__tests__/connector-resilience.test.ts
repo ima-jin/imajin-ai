@@ -23,6 +23,7 @@ const { tmpVaultPath } = vi.hoisted(() => {
 
   const tmpVaultPath = join(tmpdir(), `vault-connector-resilience-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
   return { tmpVaultPath };
 });
 
