@@ -92,7 +92,7 @@ async function resolveCredential(
   try {
     const outcome = await postInternal<Record<string, string | null>>('/api/credentials/resolve', body);
     if (!outcome) {
-      log.warn({}, 'Credential resolution skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
+      log.warn({}, 'Credential resolution skipped: AUTH_SERVICE_URL not set');
       return null;
     }
     if (!outcome.ok) {

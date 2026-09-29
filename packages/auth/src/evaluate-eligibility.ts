@@ -26,7 +26,7 @@ export async function evaluateEligibility(did: string): Promise<EligibilityEvalu
   try {
     const outcome = await postInternal<EligibilityEvaluation>('/api/eligibility/evaluate', { did });
     if (!outcome) {
-      log.warn({}, 'Eligibility evaluation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
+      log.warn({}, 'Eligibility evaluation skipped: AUTH_SERVICE_URL not set');
       return null;
     }
     if (!outcome.ok) {

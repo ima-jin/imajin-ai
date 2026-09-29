@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import { _resetInternalApiKeyStateForTests, setInternalApiKeyResolver } from '../../src/internal-api-key';
 
 /**
  * Shared fixtures for testing packages/auth clients built on `postInternal()`
@@ -21,14 +22,21 @@ export function setUpInternalPostEnv(): void {
   vi.resetModules();
   vi.clearAllMocks();
   process.env.AUTH_SERVICE_URL = AUTH_SERVICE_URL;
-  process.env.ATTESTATION_INTERNAL_API_KEY = INTERNAL_API_KEY;
+  // Vault-sourced (#2353): the key is injected, never read from process.env.
+  _resetInternalApiKeyStateForTests();
+  setInternalApiKeyResolver(() => INTERNAL_API_KEY);
   delete process.env.AUTH_INTERNAL_API_KEY;
+}
+
+/** Simulates a service whose boot-time vault fetch never resolved a key. */
+export function clearInternalApiKey(): void {
+  _resetInternalApiKeyStateForTests();
 }
 
 /** Common `afterEach` for postInternal()-based client tests. */
 export function tearDownInternalPostEnv(): void {
   delete process.env.AUTH_SERVICE_URL;
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  _resetInternalApiKeyStateForTests();
   delete process.env.AUTH_INTERNAL_API_KEY;
   vi.unstubAllGlobals();
 }

@@ -57,7 +57,7 @@ export async function emitAttestation(params: {
   try {
     const outcome = await postInternal<Record<string, unknown>>('/api/attestations/internal', params);
     if (!outcome) {
-      log.warn({}, 'Attestation skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
+      log.warn({}, 'Attestation skipped: AUTH_SERVICE_URL not set');
       return {};
     }
     if (!outcome.ok) {

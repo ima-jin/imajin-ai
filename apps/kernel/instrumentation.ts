@@ -17,6 +17,13 @@
  * server instance starts — the correct, safe place for "the kernel refuses
  * to start in production without VAULT_PATH" to actually happen, rather than
  * deferring the failure to whatever request first happens to touch the vault.
+ *
+ * Also registers the kernel's own `ATTESTATION_INTERNAL_API_KEY` resolver with
+ * `@imajin/auth` (#2353). packages/auth no longer reads that key from
+ * `process.env`; userspace services fetch it from the vault at boot, and the
+ * kernel — which owns the secret — resolves it from its own vault
+ * (`getInternalSecret`), keeping the deprecated env value as the same
+ * fallback `requireInternalApiKey` still honors until #2353 step 4 deletes it.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
@@ -24,5 +31,13 @@ export async function register() {
 
     const { resolveVaultPath } = await import('@/src/lib/vault/vault-path');
     resolveVaultPath();
+
+    const { setInternalApiKeyResolver } = await import('@imajin/auth');
+    const { getInternalSecret } = await import('@/src/lib/vault/internal-secret');
+    const { ATTESTATION_INTERNAL_API_KEY_PURPOSE } = await import('@/src/lib/auth/require-internal-api-key');
+    setInternalApiKeyResolver(async () => {
+      const secret = await getInternalSecret(ATTESTATION_INTERNAL_API_KEY_PURPOSE).catch(() => null);
+      return secret || process.env.ATTESTATION_INTERNAL_API_KEY;
+    });
   }
 }

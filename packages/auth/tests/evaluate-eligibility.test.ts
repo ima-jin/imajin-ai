@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   AUTH_SERVICE_URL,
   INTERNAL_API_KEY as API_KEY,
+  clearInternalApiKey,
   requestBody,
   setUpInternalPostEnv,
   tearDownInternalPostEnv,
@@ -83,8 +84,8 @@ describe('evaluateEligibility', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('returns null without calling fetch when no internal API key is configured', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  it('fails closed — logs the operator grant command and never calls fetch — when no internal API key was resolved', async () => {
+    clearInternalApiKey();
     const { evaluateEligibility } = await import('../src/evaluate-eligibility');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -93,5 +94,9 @@ describe('evaluateEligibility', () => {
 
     expect(result).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.stringContaining('scripts/grant-attestation-internal-api-key.ts') }),
+      expect.any(String),
+    );
   });
 });

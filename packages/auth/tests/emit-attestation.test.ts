@@ -12,6 +12,7 @@
  *   forward-failure counter.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { _resetInternalApiKeyStateForTests, setInternalApiKeyResolver } from '../src/internal-api-key';
 
 const mocks = vi.hoisted(() => ({
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -58,21 +59,22 @@ function fakeKernelFetch(expectedKey: string): ReturnType<typeof vi.fn> {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  // Vault-sourced (#2353): the key is injected via the resolver, never read from process.env.
+  _resetInternalApiKeyStateForTests();
   delete process.env.AUTH_INTERNAL_API_KEY;
   process.env.AUTH_SERVICE_URL = AUTH_SERVICE_URL;
 });
 
 afterEach(() => {
   delete process.env.AUTH_SERVICE_URL;
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  _resetInternalApiKeyStateForTests();
   delete process.env.AUTH_INTERNAL_API_KEY;
   vi.unstubAllGlobals();
 });
 
 describe('emitAttestation pending/originUrl threading (#1820)', () => {
   beforeEach(() => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+    setInternalApiKeyResolver(() => ATTESTATION_KEY);
   });
 
   it('includes pending: true in the internal route request body when passed', async () => {
@@ -109,8 +111,8 @@ describe('emitAttestation pending/originUrl threading (#1820)', () => {
 });
 
 describe('internal API key resolution (#2037)', () => {
-  it('authenticates with the canonical ATTESTATION_INTERNAL_API_KEY and the route accepts the forward', async () => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+  it('authenticates with the resolved (vault-sourced) internal API key and the route accepts the forward', async () => {
+    setInternalApiKeyResolver(() => ATTESTATION_KEY);
     const { emitAttestation, getAttestationForwardFailureCount } = await import('../src/emit-attestation');
     const fetchMock = fakeKernelFetch(ATTESTATION_KEY);
     vi.stubGlobal('fetch', fetchMock);
@@ -122,7 +124,7 @@ describe('internal API key resolution (#2037)', () => {
     expect(mocks.log.warn).not.toHaveBeenCalled();
   });
 
-  it('falls back to AUTH_INTERNAL_API_KEY and still authenticates when ATTESTATION_INTERNAL_API_KEY is unset, warning once per process', async () => {
+  it('falls back to AUTH_INTERNAL_API_KEY and still authenticates when no vault-sourced key was resolved, warning once per process', async () => {
     process.env.AUTH_INTERNAL_API_KEY = LEGACY_KEY;
     const { emitAttestation, getAttestationForwardFailureCount } = await import('../src/emit-attestation');
     const fetchMock = fakeKernelFetch(LEGACY_KEY);
@@ -141,7 +143,7 @@ describe('internal API key resolution (#2037)', () => {
   });
 
   it('rejects, logs a warn (status + route, never the key), and increments the failure counter on a mismatched key', async () => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = 'client-key';
+    setInternalApiKeyResolver(() => 'client-key');
     const { emitAttestation, getAttestationForwardFailureCount } = await import('../src/emit-attestation');
     const fetchMock = fakeKernelFetch('server-key'); // the route's own key differs from what the client sends
     vi.stubGlobal('fetch', fetchMock);
@@ -154,5 +156,20 @@ describe('internal API key resolution (#2037)', () => {
     expect(meta).toMatchObject({ status: 401, route: '/api/attestations/internal' });
     expect(JSON.stringify(meta)).not.toContain('client-key');
     expect(JSON.stringify(meta)).not.toContain('server-key');
+  });
+
+  it('fails closed when no key was resolved — never calls fetch, logs the operator grant command, and never sends an empty header', async () => {
+    const { emitAttestation } = await import('../src/emit-attestation');
+    const fetchMock = fakeKernelFetch(ATTESTATION_KEY);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await emitAttestation(baseParams());
+
+    expect(result).toEqual({});
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.log.error).toHaveBeenCalledTimes(1);
+    const [meta] = mocks.log.error.mock.calls[0];
+    expect(meta.err).toContain('scripts/grant-attestation-internal-api-key.ts');
+    expect(meta.err).toContain('kernel.attestation-internal-api-key');
   });
 });

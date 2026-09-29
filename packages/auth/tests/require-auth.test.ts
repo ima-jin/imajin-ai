@@ -6,6 +6,7 @@
  * dual-read endpoint itself is unreachable or unconfigured.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { _resetInternalApiKeyStateForTests, setInternalApiKeyResolver } from '../src/internal-api-key';
 
 const AGENT = 'did:imajin:jin';
 const PRINCIPAL = 'did:imajin:ryan';
@@ -33,7 +34,7 @@ beforeEach(() => {
   vi.resetModules();
   process.env.AUTH_SERVICE_URL = 'https://auth.test';
   process.env.AUTH_INTERNAL_API_KEY = INTERNAL_KEY;
-  process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+  setInternalApiKeyResolver(() => ATTESTATION_KEY);
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -41,7 +42,7 @@ beforeEach(() => {
 afterEach(() => {
   delete process.env.AUTH_SERVICE_URL;
   delete process.env.AUTH_INTERNAL_API_KEY;
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  _resetInternalApiKeyStateForTests();
   vi.unstubAllGlobals();
   vi.resetModules();
 });

@@ -33,7 +33,7 @@ export async function backfillContactEmail(did: string, email: string): Promise<
       { email },
     );
     if (!outcome) {
-      log.warn({}, 'Contact email backfill skipped: AUTH_SERVICE_URL or ATTESTATION_INTERNAL_API_KEY not set');
+      log.warn({}, 'Contact email backfill skipped: AUTH_SERVICE_URL not set');
       return null;
     }
     if (!outcome.ok) {

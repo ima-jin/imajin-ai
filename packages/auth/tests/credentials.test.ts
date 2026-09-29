@@ -26,6 +26,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   AUTH_SERVICE_URL,
   INTERNAL_API_KEY as API_KEY,
+  clearInternalApiKey,
   requestBody,
   setUpInternalPostEnv,
   tearDownInternalPostEnv,
@@ -146,8 +147,8 @@ describe('resolveDidForEmail — 3-tier precedence via kernel (#1858, migrated #
     expect(await resolveDidForEmail('nobody@example.com')).toBeNull();
   });
 
-  it('returns null without calling fetch when no internal API key is configured', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  it('fails closed — returns null without calling fetch — when no internal API key was resolved', async () => {
+    clearInternalApiKey();
     const { resolveDidForEmail } = await import('../src/credentials');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);

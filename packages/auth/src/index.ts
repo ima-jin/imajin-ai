@@ -212,3 +212,13 @@ export type {
   GrantAckHandle,
   GrantAckOutcome,
 } from "./vault-client";
+export {
+  bootstrapInternalApiKey,
+  getInternalApiKey,
+  setInternalApiKeyResolver,
+  vaultBootstrapNames,
+  InternalApiKeyUnavailableError,
+  ATTESTATION_INTERNAL_API_KEY_PURPOSE,
+  GRANT_SCRIPT_COMMAND,
+} from "./internal-api-key";
+export type { InternalApiKeyResolver, InternalApiKeyBootResult } from "./internal-api-key";
