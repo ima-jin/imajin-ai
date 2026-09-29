@@ -150,7 +150,7 @@ describe('POST /api/apps/provision — idempotency', () => {
       status: 'succeeded',
       appDid: 'did:imajin:app-dykil',
       repoUrl: 'https://github.com/ima-jin/dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
     });
 
     const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
@@ -162,7 +162,7 @@ describe('POST /api/apps/provision — idempotency', () => {
       slug: 'dykil',
       appDid: 'did:imajin:app-dykil',
       repoUrl: 'https://github.com/ima-jin/dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
     });
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
@@ -184,7 +184,7 @@ describe('POST /api/apps/provision — idempotency', () => {
       status: 'succeeded',
       appDid: 'did:imajin:app-dykil',
       repoUrl: 'https://github.com/ima-jin/dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
     });
 
     const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil', reissueClaim: true }) as never);
