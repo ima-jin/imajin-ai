@@ -22,3 +22,8 @@ export const BUYER_CREDIT_MIN_BPS = 25;
 export const BUYER_CREDIT_MAX_BPS = 200;
 export const BUYER_CREDIT_DEFAULT_BPS = 25;  // 0.25%
 export const SCOPE_FEE_DEFAULT_BPS = 25;     // 0.25%
+
+// #2419 — well-known remittance-authority placeholder DID. A creditor
+// label only (`taxes[].remitTo`) — never a settlement payee, never
+// resolved to a real identity/keypair.
+export const AUTHORITY_DID_CA_CRA = 'did:imajin:authority:ca-cra';

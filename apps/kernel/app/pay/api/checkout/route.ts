@@ -34,6 +34,7 @@ import { withLogger } from '@imajin/logger';
 import {
   resolveCheckoutIdentity,
   resolveConnectedAccountFee,
+  taxLineItems,
   validateCheckoutBody,
   type CheckoutBody as CheckoutBodyBase,
 } from '@/src/lib/pay/checkout';
@@ -83,8 +84,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
     const { connectedAccountId: resolvedConnectedAccountId, applicationFeeAmount } = feeResult;
 
+    // #2419: tax is appended as its own manual Stripe line item, derived
+    // from the manifest's `taxes[]` — never folded into `body.items`
+    // (which `resolveConnectedAccountFee` above treats as the merchandise-
+    // only subtotal/`basisAmount`). `[]` for a manifest without `taxes[]`.
+    const items = [...body.items, ...taxLineItems(body.fairManifest)];
+
     const checkoutRequest: CheckoutRequest = {
-      items: body.items,
+      items,
       currency: body.currency || 'CAD',
       mode: body.mode,
       customerEmail: body.customerEmail,
@@ -101,8 +108,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     
     const result = await pay.checkout(checkoutRequest);
 
-    // Create a pending transaction
-    const totalAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
+    // Create a pending transaction — totalAmount is the gross charge
+    // (merchandise + tax), matching what Stripe actually collects.
+    const totalAmount = items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
     const txId = generateId('tx');
 
     await db.insert(transactions).values({

@@ -22,6 +22,7 @@ export type {
   SettlementScheme,
   SettlementConfig,
   FairProvenanceRef,
+  FairTax,
 } from './types';
 export { isFairManifestV11 } from './types';
 
@@ -51,10 +52,11 @@ export {
   STRIPE_RATE_BPS,
   STRIPE_MIN_RATE_BPS,
   STRIPE_FIXED_CENTS,
+  AUTHORITY_DID_CA_CRA,
 } from './constants';
 
 export { buildFairManifest } from './buildManifest';
-export type { FairFeeManifest } from './buildManifest';
+export type { FairFeeManifest, BuildFairManifestTaxInput } from './buildManifest';
 
 export {
   calculateAgentInteractionCost,
@@ -103,13 +105,15 @@ export type {
   ApplyGatesResult,
 } from './disclosure';
 
-// ── Settlement fee-math (#1453) ────────────────────────────────────────────────
+// ── Settlement fee-math (#1453) ──────────────────────────────────────────────────
 export { computeFeeCents, resolveSettlementChain, DEFAULT_SELLER_ROLES } from './settlement';
 export type {
   FairSettlementEntry,
   ResolvedChainEntry,
   ResolveChainOptions,
   ResolvedChain,
+  FairSettlementTax,
+  ResolvedTaxCredit,
 } from './settlement';
 
 // ── Intro-attribution .fair template (#1886) ───────────────────────────────────
