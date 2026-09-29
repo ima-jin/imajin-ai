@@ -17,6 +17,47 @@ describe('buildDefaultPaymentRequestManifest', () => {
     expect(sellerEntry?.did).toBe('did:imajin:issuer');
     // One customer/attribution entry, matching "one payee, one customer".
     expect(manifest.attribution).toEqual([{ did: 'did:imajin:issuer', role: 'creator', share: 1 }]);
+    // No tax: no `taxes`, no `fair` stamp, version untouched.
+    expect(manifest).not.toHaveProperty('taxes');
+    expect(manifest).not.toHaveProperty('fair');
+    expect(manifest.version).toBe('0.4.0');
+  });
+
+  it('#2421: with taxes, carries taxes[] verbatim, stamps fair "1.2" and bumps the fee-manifest version, keeping total pre-tax', () => {
+    const tax = {
+      jurisdiction: 'CA-ON',
+      kind: 'GST/HST',
+      rateBps: 1300,
+      basisAmount: 5000,
+      amount: 650,
+      registrationNumber: '123456789RT0001',
+      collectorDid: 'did:imajin:issuer',
+      remitTo: 'did:imajin:authority:ca-cra',
+    };
+    const manifest = buildDefaultPaymentRequestManifest({
+      payeeAccount: 'did:imajin:issuer',
+      paymentRequestId: 'pr_1',
+      total: { amount: 5000, currency: 'CAD' },
+      taxes: [tax],
+    });
+
+    expect(manifest.taxes).toEqual([tax]);
+    expect(manifest.fair).toBe('1.2');
+    expect(manifest.version).toBe('0.5.0');
+    expect(manifest.total).toEqual({ amount: 5000, currency: 'CAD' });
+    // The default manifest's own chain always satisfies the collector-is-a-seller rule for the payee.
+    expect(validateCustomPaymentRequestManifest(manifest, { amount: 5000, currency: 'CAD' }).ok).toBe(true);
+  });
+
+  it('#2421: an empty taxes array is treated as no tax', () => {
+    const manifest = buildDefaultPaymentRequestManifest({
+      payeeAccount: 'did:imajin:issuer',
+      paymentRequestId: 'pr_1',
+      total: { amount: 5000, currency: 'CAD' },
+      taxes: [],
+    });
+    expect(manifest).not.toHaveProperty('taxes');
+    expect(manifest).not.toHaveProperty('fair');
   });
 });
 
@@ -64,18 +105,71 @@ describe('validateCustomPaymentRequestManifest — taxes[] (#2419 review fixes 5
     collectorDid: 'did:imajin:issuer',
     remitTo: 'did:imajin:authority:ca-cra',
   };
+  // #2439 item 2: the tax collector must be a seller in the manifest chain.
+  const SELLER_CHAIN = [
+    { did: 'did:imajin:protocol', role: 'protocol', share: 0.01 },
+    { did: 'did:imajin:issuer', role: 'seller', share: 0.99 },
+  ];
 
   it('accepts a manifest with a valid taxes[] row whose basisAmount matches the request total', () => {
     const result = validateCustomPaymentRequestManifest(
-      { total: { amount: 10_000, currency: 'CAD' }, taxes: [VALID_TAX] },
+      { total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [VALID_TAX] },
       requestTotal,
     );
     expect(result.ok).toBe(true);
   });
 
+  it('#2439 item 2: rejects at create time when the tax collector is not a seller in the chain', () => {
+    const result = validateCustomPaymentRequestManifest(
+      {
+        total: { amount: 10_000, currency: 'CAD' },
+        chain: [{ did: 'did:imajin:someone-else', role: 'seller', share: 1 }],
+        taxes: [VALID_TAX],
+      },
+      requestTotal,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/collectorDid \(did:imajin:issuer\) must be a seller in fair_manifest\.chain/);
+  });
+
+  it('#2439 item 2: a collector that is in the chain but only as a non-seller role (e.g. platform) is rejected', () => {
+    const result = validateCustomPaymentRequestManifest(
+      {
+        total: { amount: 10_000, currency: 'CAD' },
+        chain: [{ did: 'did:imajin:issuer', role: 'platform', share: 1 }],
+        taxes: [VALID_TAX],
+      },
+      requestTotal,
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  it('#2439 item 2: a manifest with taxes[] and no chain at all is rejected', () => {
+    const result = validateCustomPaymentRequestManifest(
+      { total: { amount: 10_000, currency: 'CAD' }, taxes: [VALID_TAX] },
+      requestTotal,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/must be a seller/);
+  });
+
+  it('accepts a collector whose chain role is creator or event (the same SELLER_ROLES settle-core credits)', () => {
+    for (const role of ['creator', 'event']) {
+      const result = validateCustomPaymentRequestManifest(
+        {
+          total: { amount: 10_000, currency: 'CAD' },
+          chain: [{ did: 'did:imajin:issuer', role, share: 1 }],
+          taxes: [VALID_TAX],
+        },
+        requestTotal,
+      );
+      expect(result.ok).toBe(true);
+    }
+  });
+
   it('rejects when taxes[].basisAmount does not match the request total (fix 5)', () => {
     const result = validateCustomPaymentRequestManifest(
-      { total: { amount: 10_000, currency: 'CAD' }, taxes: [{ ...VALID_TAX, basisAmount: 9_000 }] },
+      { total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [{ ...VALID_TAX, basisAmount: 9_000 }] },
       requestTotal,
     );
     expect(result.ok).toBe(false);
@@ -104,7 +198,7 @@ describe('validateCustomPaymentRequestManifest — taxes[] (#2419 review fixes 5
 
   it('rejects when taxes[].amount does not match basisAmount × rateBps / 10000', () => {
     const result = validateCustomPaymentRequestManifest(
-      { total: { amount: 10_000, currency: 'CAD' }, taxes: [{ ...VALID_TAX, amount: 9999 }] },
+      { total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [{ ...VALID_TAX, amount: 9999 }] },
       requestTotal,
     );
     expect(result.ok).toBe(false);

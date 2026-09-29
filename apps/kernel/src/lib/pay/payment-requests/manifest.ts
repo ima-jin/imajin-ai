@@ -20,22 +20,37 @@
  * per #2208's "reject the request when the manifest total != the request
  * total" requirement.
  */
-import { buildFairManifest } from '@imajin/fair';
+import { buildFairManifest, type FairTax } from '@imajin/fair';
 import { equals as moneyEquals, type Money } from '@imajin/money';
+import { isChainSeller } from './tax';
 import type { PaymentRequestFairManifest } from './types';
 
-/** Build the default single-payee manifest: one payee (the issuer/payee account), one customer. */
+/** `.fair` version stamped on a manifest that carries `taxes[]` (#2419). */
+export const FAIR_VERSION_WITH_TAXES = '1.2';
+
+/**
+ * Build the default single-payee manifest: one payee (the issuer/payee
+ * account), one customer. `total` is the PRE-TAX subtotal; when `taxes` is
+ * supplied (#2421) the rows ride along as `taxes[]` (built against that same
+ * subtotal by `resolveTaxCharge`) and `fair` is set to `'1.2'`.
+ */
 export function buildDefaultPaymentRequestManifest(params: {
   payeeAccount: string;
   paymentRequestId: string;
   total: Money;
+  taxes?: FairTax[];
 }): PaymentRequestFairManifest {
   const manifest = buildFairManifest({
     creatorDid: params.payeeAccount,
     contentDid: params.paymentRequestId,
     contentType: 'payment_request',
   });
-  return { ...manifest, total: { amount: params.total.amount, currency: params.total.currency } };
+  const taxes = params.taxes ?? [];
+  return {
+    ...manifest,
+    total: { amount: params.total.amount, currency: params.total.currency },
+    ...(taxes.length > 0 ? { taxes, version: '0.5.0', fair: FAIR_VERSION_WITH_TAXES } : {}),
+  };
 }
 
 export type ManifestValidationResult = { ok: true } | { ok: false; error: string };
@@ -51,37 +66,76 @@ const TAX_AMOUNT_TOLERANCE_CENTS = 1;
  * same `Money` `fair_manifest.total` must already equal), which is exactly
  * what `taxes[].basisAmount` must match — tax is added on top of it, never
  * folded into `total`.
+ *
+ * #2439 item 2: the row's `collectorDid` must be a seller in the manifest's
+ * `chain` (`chain` is the manifest's own `chain`). Settlement credits tax
+ * to the collector and 400s when it isn't a chain seller — by which point
+ * the buyer has already paid through Stripe — so it is refused here, at
+ * create time, before any charge.
  */
-function validateCustomManifestTaxRow(tax: unknown, i: number, requestTotal: Money): string | null {
+function validateCustomManifestTaxRow(tax: unknown, i: number, requestTotal: Money, chain: unknown): string | null {
   if (!tax || typeof tax !== 'object') return `fair_manifest.taxes[${i}] must be an object`;
-  const t = tax as Record<string, unknown>;
-  if (typeof t.jurisdiction !== 'string' || !t.jurisdiction) return `fair_manifest.taxes[${i}].jurisdiction must be a non-empty string`;
-  if (typeof t.kind !== 'string' || !t.kind) return `fair_manifest.taxes[${i}].kind must be a non-empty string`;
-  if (typeof t.rateBps !== 'number' || !Number.isInteger(t.rateBps) || t.rateBps < 0) return `fair_manifest.taxes[${i}].rateBps must be a non-negative integer`;
-  if (typeof t.basisAmount !== 'number' || !Number.isInteger(t.basisAmount) || t.basisAmount < 0) return `fair_manifest.taxes[${i}].basisAmount must be a non-negative integer`;
-  if (typeof t.amount !== 'number' || !Number.isInteger(t.amount) || t.amount < 0) return `fair_manifest.taxes[${i}].amount must be a non-negative integer`;
-  if (typeof t.collectorDid !== 'string' || !t.collectorDid) return `fair_manifest.taxes[${i}].collectorDid must be a non-empty string`;
-  if (typeof t.remitTo !== 'string' || !t.remitTo) return `fair_manifest.taxes[${i}].remitTo must be a non-empty string`;
-  if (typeof t.registrationNumber !== 'string' || !t.registrationNumber) return `fair_manifest.taxes[${i}].registrationNumber must be a non-empty string`;
+  const shapeError = validateTaxRowShape(tax as Record<string, unknown>, i);
+  if (shapeError) return shapeError;
+  return validateTaxRowSemantics(tax as ShapedTaxRow, i, requestTotal, chain);
+}
 
-  if (typeof t.basisAmount === 'number' && t.basisAmount !== requestTotal.amount) {
-    return `fair_manifest.taxes[${i}].basisAmount (${t.basisAmount}) must equal the request total (${requestTotal.amount})`;
-  }
-  if (typeof t.basisAmount === 'number' && typeof t.rateBps === 'number' && typeof t.amount === 'number') {
-    const expected = Math.round((t.basisAmount * t.rateBps) / 10000);
-    if (Math.abs(expected - t.amount) > TAX_AMOUNT_TOLERANCE_CENTS) {
-      return `fair_manifest.taxes[${i}].amount (${t.amount}) does not match basisAmount × rateBps / 10000 (${expected})`;
+/** Required `taxes[]` row fields, in the order they are reported. */
+const TAX_ROW_FIELDS: ReadonlyArray<readonly [string, 'string' | 'integer']> = [
+  ['jurisdiction', 'string'],
+  ['kind', 'string'],
+  ['rateBps', 'integer'],
+  ['basisAmount', 'integer'],
+  ['amount', 'integer'],
+  ['collectorDid', 'string'],
+  ['remitTo', 'string'],
+  ['registrationNumber', 'string'],
+];
+
+interface ShapedTaxRow {
+  collectorDid: string;
+  basisAmount: number;
+  rateBps: number;
+  amount: number;
+}
+
+function isFieldValid(value: unknown, type: 'string' | 'integer'): boolean {
+  if (type === 'string') return typeof value === 'string' && value.length > 0;
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+/** Presence/type of every required `taxes[]` field. */
+function validateTaxRowShape(t: Record<string, unknown>, i: number): string | null {
+  for (const [field, type] of TAX_ROW_FIELDS) {
+    if (!isFieldValid(t[field], type)) {
+      const expected = type === 'string' ? 'a non-empty string' : 'a non-negative integer';
+      return `fair_manifest.taxes[${i}].${field} must be ${expected}`;
     }
   }
   return null;
 }
 
+/** Cross-field rules on a shape-valid row: collector is a chain seller (#2439 item 2), basis = request subtotal, amount ≈ basis × rate. */
+function validateTaxRowSemantics(t: ShapedTaxRow, i: number, requestTotal: Money, chain: unknown): string | null {
+  if (!isChainSeller(chain, t.collectorDid)) {
+    return `fair_manifest.taxes[${i}].collectorDid (${t.collectorDid}) must be a seller in fair_manifest.chain`;
+  }
+  if (t.basisAmount !== requestTotal.amount) {
+    return `fair_manifest.taxes[${i}].basisAmount (${t.basisAmount}) must equal the request total (${requestTotal.amount})`;
+  }
+  const expected = Math.round((t.basisAmount * t.rateBps) / 10000);
+  if (Math.abs(expected - t.amount) > TAX_AMOUNT_TOLERANCE_CENTS) {
+    return `fair_manifest.taxes[${i}].amount (${t.amount}) does not match basisAmount × rateBps / 10000 (${expected})`;
+  }
+  return null;
+}
+
 /** Validate the optional `fair_manifest.taxes[]` field on a custom manifest. `undefined` is valid (no tax). */
-function validateCustomManifestTaxes(taxes: unknown, requestTotal: Money): string | null {
+function validateCustomManifestTaxes(taxes: unknown, requestTotal: Money, chain: unknown): string | null {
   if (taxes === undefined) return null;
   if (!Array.isArray(taxes)) return 'fair_manifest.taxes must be an array';
   for (let i = 0; i < taxes.length; i++) {
-    const error = validateCustomManifestTaxRow(taxes[i], i, requestTotal);
+    const error = validateCustomManifestTaxRow(taxes[i], i, requestTotal, chain);
     if (error) return error;
   }
   return null;
@@ -93,7 +147,11 @@ function validateCustomManifestTaxes(taxes: unknown, requestTotal: Money): strin
  * computed total — a manifest silently describing a different total than
  * the line items sum to would let the split diverge from what the payer
  * actually owes. When present, `taxes[]` is validated the same way
- * `packages/fair`'s `validate.ts` validates a `.fair` manifest's `taxes[]`.
+ * `packages/fair`'s `validate.ts` validates a `.fair` manifest's `taxes[]`,
+ * plus the create-time collector-is-a-chain-seller check (#2439 item 2).
+ *
+ * `requestTotal` is the request's PRE-TAX subtotal (`subtotal_amount`) — the
+ * same value `fair_manifest.total` and every `taxes[].basisAmount` carry.
  */
 export function validateCustomPaymentRequestManifest(
   manifest: unknown,
@@ -102,7 +160,7 @@ export function validateCustomPaymentRequestManifest(
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
     return { ok: false, error: 'fair_manifest must be an object' };
   }
-  const candidate = manifest as { total?: unknown; taxes?: unknown };
+  const candidate = manifest as { total?: unknown; taxes?: unknown; chain?: unknown };
   const total = candidate.total;
   if (
     !total ||
@@ -118,7 +176,7 @@ export function validateCustomPaymentRequestManifest(
       error: `fair_manifest.total (${(total as Money).amount} ${(total as Money).currency}) does not match the request total (${requestTotal.amount} ${requestTotal.currency})`,
     };
   }
-  const taxesError = validateCustomManifestTaxes(candidate.taxes, requestTotal);
+  const taxesError = validateCustomManifestTaxes(candidate.taxes, requestTotal, candidate.chain);
   if (taxesError) return { ok: false, error: taxesError };
   return { ok: true };
 }

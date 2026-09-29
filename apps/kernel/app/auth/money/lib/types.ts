@@ -29,6 +29,7 @@ export interface FairManifestEntryView {
 export interface FairManifestView {
   version: string;
   chain: FairManifestEntryView[];
+  /** The PRE-TAX subtotal (equals the row's `subtotalAmount`). */
   total: { amount: number; currency: string };
 }
 
@@ -55,7 +56,10 @@ export interface PaymentRequestRow {
   recipientStubId: string | null;
   lineItems: PaymentRequestLineItemView[];
   currency: string;
+  /** The GRAND total the payer owes: `subtotalAmount + taxTotalAmount` (#2421). */
   totalAmount: number;
+  subtotalAmount: number;
+  taxTotalAmount: number;
   fairManifest: FairManifestView;
   dueAt: string | null;
   allowOnPlatform: boolean;
@@ -83,6 +87,21 @@ export interface RecipientInviteDraft {
   email: string;
   delivery: 'link' | 'email';
   note: string;
+}
+
+/**
+ * One tax registration from the issuer's business profile (#2420) as a row of
+ * the create form's tax section (#2421). `rate` is the editable percentage as
+ * typed ("13", "9.97"); blank when there is no integer-bps default for the
+ * registration — and required whenever the row is charged.
+ */
+export interface TaxRowDraft {
+  key: string;
+  jurisdiction: string;
+  kind: string;
+  number: string;
+  included: boolean;
+  rate: string;
 }
 
 /** One in-progress line item row in the create form — string-valued so inputs stay uncontrolled-input-safe while editing. */

@@ -182,7 +182,11 @@ export const paymentRequests = paySchema.table('payment_request', {
   recipientStubId: text('recipient_stub_id'),             // NULLABLE — resolved to recipientDid on claim
   lineItems: jsonb('line_items').notNull(),                // Array<{ name, description?, amount, quantity }>
   currency: text('currency').notNull().default('CAD'),
+  // #2421: totalAmount is the GRAND total (subtotalAmount + taxTotalAmount, exactly);
+  // see migrations/0168_pay_payment_request_tax_amounts.sql.
   totalAmount: integer('total_amount').notNull(),          // minor units, per packages/money
+  subtotalAmount: integer('subtotal_amount').notNull(),    // pre-tax line-items sum (the .fair tax basis), minor units
+  taxTotalAmount: integer('tax_total_amount').notNull().default(0), // Σ fair_manifest.taxes[].amount, minor units
   fairManifest: jsonb('fair_manifest').notNull(),          // .fair manifest — every payment_request carries one
   dueAt: timestamp('due_at', { withTimezone: true }),
   allowOnPlatform: boolean('allow_on_platform').notNull().default(true),
