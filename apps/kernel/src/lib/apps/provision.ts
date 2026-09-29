@@ -66,8 +66,8 @@ const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
  * Actions secret name apps.provision seals — a name only, the value is
  * never logged/returned.
  *
- * TODO(#2411): revisit — the app fetches its signing key from the vault at
- * boot (`loadAppSigningKey()`), so sealing the raw key into Actions
+ * Follow-up: #2411 / #2436 — the app fetches its signing key from the vault
+ * at boot (`loadAppSigningKey()`), so sealing the raw key into Actions
  * secrets is a pre-#2411 shape kept only for template-CI test runs; a
  * human call on whether to keep or drop it is still open (see #2416).
  */
