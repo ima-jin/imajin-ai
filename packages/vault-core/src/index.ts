@@ -21,7 +21,8 @@ export {
 } from './delegation.js';
 export {
     IntegrityErrorCode,
-    VaultIntegrityError
+    VaultIntegrityError,
+    VaultFileMissingError
 } from './errors.js';
 export {
     assertEntryIntegrity,
@@ -35,7 +36,8 @@ export type {
 export {
     FileVaultRepository,
     type VaultRepository,
-    type FileVaultRepositoryOptions
+    type FileVaultRepositoryOptions,
+    type VaultRepositoryStatus
 } from './repository.js';
 export {
     VaultEntryService,

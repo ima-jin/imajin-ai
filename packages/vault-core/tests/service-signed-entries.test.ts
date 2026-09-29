@@ -84,7 +84,7 @@ describe('VaultEntryService signed-entry handling', () => {
 
         tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'vault-core-signed-'));
         vaultPath = path.join(tempDirectory, 'vault.json');
-        service = new VaultEntryService(new FileVaultRepository({ vaultPath }), {
+        service = new VaultEntryService(new FileVaultRepository({ vaultPath, allowBootstrap: true }), {
             lock: new InMemoryFieldLock(),
             adapters,
         });
