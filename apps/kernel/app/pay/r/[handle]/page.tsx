@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import { getPaymentRequestByHandle } from '@/src/lib/pay/payment-requests/service';
 import { formatMinorUnits } from '@/src/lib/pay/payment-requests/money-format';
+import { formatRateBps } from '@/src/lib/pay/payment-requests/tax-rates';
+import type { PaymentRequestTaxLine } from '@/src/lib/pay/payment-requests/types';
 import PayRequestActions from './PayRequestActions';
 
 const STATUS_NOTES: Record<string, string> = {
@@ -17,13 +19,45 @@ function StatusNote({ status }: Readonly<{ status: string }>) {
   );
 }
 
+interface TaxBreakdownProps {
+  subtotalAmount: number;
+  taxes: PaymentRequestTaxLine[];
+  currency: string;
+}
+
+/**
+ * Subtotal → tax lines (#2421), rendered only for a request that charges
+ * tax. Each tax line shows kind, jurisdiction, rate and the issuer's
+ * registration number next to the amount — the number prints on invoices by
+ * design (#2420). The grand total renders below, as it always has.
+ */
+function TaxBreakdown({ subtotalAmount, taxes, currency }: Readonly<TaxBreakdownProps>) {
+  return (
+    <div className="space-y-2 border-t border-zinc-800 pt-4 text-sm text-zinc-300" data-testid="tax-breakdown">
+      <div className="flex justify-between">
+        <span>Subtotal</span>
+        <span>{formatMinorUnits(subtotalAmount, currency)}</span>
+      </div>
+      {taxes.map((tax) => (
+        <div key={`${tax.kind}-${tax.jurisdiction}`} className="flex justify-between gap-4">
+          <span>
+            {tax.kind} ({tax.jurisdiction}) · {formatRateBps(tax.rateBps)}
+            <span className="block text-xs text-zinc-500">Registration no. {tax.registrationNumber}</span>
+          </span>
+          <span>{formatMinorUnits(tax.amount, currency)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /**
  * /pay/r/:handle — the public pay page for a payment_request's opaque
  * `pay_handle` (#2210/#2211). Unauthenticated, minimal, no PII: renders
  * exactly what `getPaymentRequestByHandle` returns (issuer display name,
- * line items, total, status) — nothing about the issuer's DID or the
- * recipient. `void` requests 404 the same as an unknown handle, matching
- * the underlying route's own behavior.
+ * line items, subtotal/tax lines when tax is charged, total, status) —
+ * nothing about the issuer's DID or the recipient. `void` requests 404 the
+ * same as an unknown handle, matching the underlying route's own behavior.
  */
 export default async function PayByHandlePage({ params }: Readonly<{ params: Promise<{ handle: string }> }>) {
   const { handle } = await params;
@@ -53,6 +87,10 @@ export default async function PayByHandlePage({ params }: Readonly<{ params: Pro
             </div>
           ))}
         </div>
+
+        {view.taxes.length > 0 && (
+          <TaxBreakdown subtotalAmount={view.subtotalAmount} taxes={view.taxes} currency={view.currency} />
+        )}
 
         <div className="flex justify-between items-baseline border-t border-zinc-800 pt-4">
           <span className="text-sm text-zinc-400">Total due</span>

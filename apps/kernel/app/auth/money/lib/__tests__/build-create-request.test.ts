@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildCreatePaymentRequestBody, type CreateFormState } from '../build-create-request';
-import type { LineItemDraft } from '../types';
+import { buildCreatePaymentRequestBody, previewSubtotal, type CreateFormState } from '../build-create-request';
+import type { LineItemDraft, TaxRowDraft } from '../types';
 
 const ISSUER_DID = 'did:imajin:business';
 
@@ -18,6 +18,8 @@ function baseState(overrides: Partial<CreateFormState> = {}): CreateFormState {
     recipientMode: 'connection',
     selectedConnection: { did: 'did:imajin:customer', name: 'Alice', handle: null },
     invite: { email: '', delivery: 'email', note: '' },
+    chargeTax: false,
+    taxRows: [],
     ...overrides,
   };
 }
@@ -153,5 +155,105 @@ describe('buildCreatePaymentRequestBody — other fields', () => {
         allow_on_platform: false,
       });
     }
+  });
+});
+
+describe('buildCreatePaymentRequestBody — tax (#2421)', () => {
+  function taxRow(overrides: Partial<TaxRowDraft> = {}): TaxRowDraft {
+    return { key: 'CA-ON|GST/HST|123', jurisdiction: 'CA-ON', kind: 'GST/HST', number: '123456789RT0001', included: true, rate: '13', ...overrides };
+  }
+
+  it('with Charge tax off the body carries no tax fields at all — identical to pre-tax bodies', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ chargeTax: false, taxRows: [taxRow()] }));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      for (const field of ['charge_tax', 'taxes', 'subtotal_amount', 'tax_total_amount', 'total_amount']) {
+        expect(result.body).not.toHaveProperty(field);
+      }
+    }
+  });
+
+  it('with Charge tax on: charge_tax, taxes[] and the previewed amounts (integer minor units)', () => {
+    const result = buildCreatePaymentRequestBody(
+      ISSUER_DID,
+      baseState({ chargeTax: true, taxRows: [taxRow()], lineItems: [lineItem({ unitAmount: '19.99', quantity: '3' })] }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // subtotal 5997; 13% = 779.61 -> 780; total 6777.
+      expect(result.body).toMatchObject({
+        charge_tax: true,
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rate_bps: 1300, amount: 780 }],
+        subtotal_amount: 5997,
+        tax_total_amount: 780,
+        total_amount: 6777,
+      });
+    }
+  });
+
+  it('one taxes[] row per CHARGED registration', () => {
+    const result = buildCreatePaymentRequestBody(
+      ISSUER_DID,
+      baseState({
+        chargeTax: true,
+        lineItems: [lineItem({ unitAmount: '100.00' })],
+        taxRows: [
+          taxRow({ key: 'a', jurisdiction: 'CA-BC', kind: 'GST/HST', rate: '5' }),
+          taxRow({ key: 'b', jurisdiction: 'CA-BC', kind: 'PST', rate: '7' }),
+          taxRow({ key: 'c', jurisdiction: 'CA-QC', kind: 'QST', rate: '', included: false }),
+        ],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect((result.body.taxes as unknown[]).length).toBe(2);
+      expect(result.body).toMatchObject({ subtotal_amount: 10_000, tax_total_amount: 1200, total_amount: 11_200 });
+    }
+  });
+
+  it('a blank rate on a charged registration is an error (required when the toggle is on)', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ chargeTax: true, taxRows: [taxRow({ rate: '  ' })] }));
+    expect(result).toEqual({ ok: false, error: 'Enter a rate for GST/HST (CA-ON)' });
+  });
+
+  it('a rate that is not a whole number of bps (9.975%) is refused, never rounded', () => {
+    const result = buildCreatePaymentRequestBody(
+      ISSUER_DID,
+      baseState({ chargeTax: true, taxRows: [taxRow({ kind: 'QST', jurisdiction: 'CA-QC', rate: '9.975' })] }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/QST \(CA-QC\): .*not a whole number of basis points/);
+  });
+
+  it('Charge tax on with no registration ticked is an error', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ chargeTax: true, taxRows: [taxRow({ included: false })] }));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/Pick at least one tax registration/);
+  });
+
+  it('zero rate: a 0 tax amount and total == subtotal', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ chargeTax: true, taxRows: [taxRow({ rate: '0' })] }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.body).toMatchObject({ tax_total_amount: 0, subtotal_amount: 1999, total_amount: 1999 });
+  });
+
+  it('never sends the registration number', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ chargeTax: true, taxRows: [taxRow()] }));
+    expect(JSON.stringify(result)).not.toContain('123456789RT0001');
+  });
+
+  it('line-item errors still win over tax errors', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ chargeTax: true, taxRows: [], lineItems: [lineItem({ name: '' })] }));
+    expect(result).toEqual({ ok: false, error: 'Line item 1 needs a name' });
+  });
+});
+
+describe('previewSubtotal', () => {
+  it('sums amount × quantity in minor units', () => {
+    expect(previewSubtotal([lineItem({ unitAmount: '19.99', quantity: '3' }), lineItem({ unitAmount: '0.01' })], 'CAD')).toBe(5998);
+  });
+  it('is null while any line item is incomplete', () => {
+    expect(previewSubtotal([lineItem({ unitAmount: '' })], 'CAD')).toBeNull();
+    expect(previewSubtotal([], 'CAD')).toBeNull();
   });
 });

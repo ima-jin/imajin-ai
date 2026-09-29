@@ -343,6 +343,40 @@ async function resolveManifestAndTax(input: CreatePaymentRequestInput, params: M
 }
 
 /**
+ * `total = subtotal + tax_total`, exactly (packages/money), plus the tax
+ * breakdown carried by the attestations and the content hash. Any
+ * subtotal/tax/total the client previewed and sent is checked against this —
+ * never trusted (400 on mismatch).
+ */
+function deriveTotals(
+  input: CreatePaymentRequestInput,
+  params: { subtotal: Money; taxTotal: Money; fairManifest: PaymentRequestFairManifest },
+): { total: Money; tax: ReturnType<typeof taxBreakdownOf> } | ServiceError {
+  const { subtotal, taxTotal, fairManifest } = params;
+  const total = computeGrandTotal(subtotal, taxTotal);
+  const assertedError = checkAssertedTotals(input, { subtotal, taxTotal, total });
+  if (assertedError) return err(assertedError, 400);
+  const tax = taxBreakdownOf({ subtotalAmount: subtotal.amount, taxTotalAmount: taxTotal.amount, fairManifest });
+  return { total, tax };
+}
+
+interface ResolvedPricing extends ResolvedManifestAndTax {
+  /** subtotal + tax_total — what the payer owes. */
+  total: Money;
+  tax: ReturnType<typeof taxBreakdownOf>;
+}
+
+/** The stored `fair_manifest`, tax total, grand total and tax breakdown for a create — or the first 400 found. */
+async function resolvePricing(input: CreatePaymentRequestInput, params: ManifestAndTaxParams): Promise<ResolvedPricing | ServiceError> {
+  const manifestAndTax = await resolveManifestAndTax(input, params);
+  if (isServiceError(manifestAndTax)) return manifestAndTax;
+
+  const totals = deriveTotals(input, { subtotal: params.subtotal, ...manifestAndTax });
+  if (isServiceError(totals)) return totals;
+  return { ...manifestAndTax, ...totals };
+}
+
+/**
  * Create a payment_request: issuer-only (caller must resolve to
  * `issuer_did`). Validates the recipient and line items, computes the
  * pre-tax subtotal via `packages/money`, resolves/validates `fair_manifest`
@@ -388,21 +422,9 @@ export async function createPaymentRequest(input: CreatePaymentRequestInput): Pr
   const allowOnPlatform = input.allowOnPlatform === undefined ? true : Boolean(input.allowOnPlatform);
   const payeeAccount = typeof input.payeeAccount === 'string' && input.payeeAccount ? input.payeeAccount : input.issuerDid;
 
-  const manifestAndTax = await resolveManifestAndTax(input, {
-    issuerDid: input.issuerDid,
-    payeeAccount,
-    paymentRequestId: id,
-    subtotal,
-  });
-  if (isServiceError(manifestAndTax)) return manifestAndTax;
-  const { fairManifest, taxTotal } = manifestAndTax;
-
-  // total = subtotal + tax_total, exactly (packages/money). Anything the
-  // client previewed is checked against this — never trusted.
-  const total = computeGrandTotal(subtotal, taxTotal);
-  const assertedError = checkAssertedTotals(input, { subtotal, taxTotal, total });
-  if (assertedError) return err(assertedError, 400);
-  const tax = taxBreakdownOf({ subtotalAmount: subtotal.amount, taxTotalAmount: taxTotal.amount, fairManifest });
+  const pricing = await resolvePricing(input, { issuerDid: input.issuerDid, payeeAccount, paymentRequestId: id, subtotal });
+  if (isServiceError(pricing)) return pricing;
+  const { fairManifest, taxTotal, total, tax } = pricing;
 
   const contentHash = await computePaymentRequestContentHash({
     kind,
