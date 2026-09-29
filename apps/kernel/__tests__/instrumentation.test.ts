@@ -20,10 +20,13 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
   loadVaultAtBoot: mockLoadVaultAtBoot,
 }));
 
-const { mockSetResolver, mockGetInternalSecret } = vi.hoisted(() => ({
+const { mockSetResolver, mockGetInternalSecret, mockLog } = vi.hoisted(() => ({
   mockSetResolver: vi.fn(),
   mockGetInternalSecret: vi.fn(),
+  mockLog: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
+
+vi.mock('@imajin/logger', () => ({ createLogger: () => mockLog }));
 
 vi.mock('@imajin/auth', () => ({ setInternalApiKeyResolver: mockSetResolver }));
 vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: mockGetInternalSecret }));
@@ -48,6 +51,7 @@ afterEach(() => {
   mockLoadVaultAtBoot.mockClear();
   mockSetResolver.mockClear();
   mockGetInternalSecret.mockReset();
+  mockLog.warn.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
@@ -124,5 +128,28 @@ describe('kernel instrumentation register() — internal API key resolver (#2353
       if (original === undefined) delete process.env[legacyEnv];
       else process.env[legacyEnv] = original;
     }
+  });
+
+  it('warns once, naming the purpose, when the vault lookup fails — not silently and not on every call', async () => {
+    mockGetInternalSecret.mockRejectedValue(new Error('vault down'));
+    const resolver = await registeredResolver();
+
+    await resolver();
+    await resolver();
+    await resolver();
+
+    expect(mockLog.warn).toHaveBeenCalledTimes(1);
+    const [meta, message] = mockLog.warn.mock.calls[0];
+    expect(meta).toMatchObject({ purpose: 'kernel.attestation-internal-api-key', err: expect.stringContaining('vault down') });
+    expect(message).toContain('kernel.attestation-internal-api-key');
+  });
+
+  it('does not warn when the vault lookup succeeds', async () => {
+    mockGetInternalSecret.mockResolvedValue('vault-key');
+    const resolver = await registeredResolver();
+
+    await resolver();
+
+    expect(mockLog.warn).not.toHaveBeenCalled();
   });
 });

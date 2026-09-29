@@ -41,10 +41,25 @@ export async function register() {
     // The vault/db modules are imported lazily, on first use, so register()
     // itself stays free of database side effects at boot.
     const { setInternalApiKeyResolver } = await import('@imajin/auth');
+    const { createLogger } = await import('@imajin/logger');
+    const log = createLogger('kernel');
+    let warnedVaultLookupFailure = false;
     setInternalApiKeyResolver(async () => {
       const { getInternalSecret } = await import('@/src/lib/vault/internal-secret');
       const { ATTESTATION_INTERNAL_API_KEY_PURPOSE } = await import('@/src/lib/auth/require-internal-api-key');
-      const secret = await getInternalSecret(ATTESTATION_INTERNAL_API_KEY_PURPOSE).catch(() => null);
+      const secret = await getInternalSecret(ATTESTATION_INTERNAL_API_KEY_PURPOSE).catch((err: unknown) => {
+        // Warn once per process, not once per call: a vault outage must be
+        // visible, but must not flood the log on every internal request.
+        if (!warnedVaultLookupFailure) {
+          warnedVaultLookupFailure = true;
+          log.warn(
+            { err: String(err), purpose: ATTESTATION_INTERNAL_API_KEY_PURPOSE },
+            `internal-api-key: vault lookup for purpose '${ATTESTATION_INTERNAL_API_KEY_PURPOSE}' failed — ` +
+              'falling back to the deprecated ATTESTATION_INTERNAL_API_KEY env var (if set)',
+          );
+        }
+        return null;
+      });
       return secret || process.env.ATTESTATION_INTERNAL_API_KEY;
     });
   }

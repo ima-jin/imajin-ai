@@ -241,11 +241,19 @@ reads `process.env.ATTESTATION_INTERNAL_API_KEY` at all: each service's
 value in memory for every `packages/auth` consumer.
 
 Unlike corpus these services had no bootstrap identity before, so each gets
-its own pair — `<SERVICE>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` (annotated
-`optional` in `.env.example` so check-env passes on a not-yet-provisioned
-host). Operator step, once per service DID, before deploying:
+its own pair — `<SERVICE>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY`. The pair is
+**required** in `.env.example` (no check-env annotation), so a deploy stops at
+check-env until every service host has it provisioned. Operator steps, once
+per service, before deploying:
 
-    npx tsx scripts/grant-attestation-internal-api-key.ts <service-bootstrap-did>
+1. Register the service's bootstrap identity and set the pair in its
+   `.env.local`.
+2. Grant the shared secret to that DID (once per service DID):
+
+       npx tsx scripts/grant-attestation-internal-api-key.ts <service-bootstrap-did>
+
+check-env only proves the pair is *set*; the boot ERROR below covers a pair
+that is set while the grant is still missing.
 
 **Fail-closed:** if the key can't be resolved at boot the service logs ONE
 error naming its DID, the purpose (`kernel.attestation-internal-api-key`)
