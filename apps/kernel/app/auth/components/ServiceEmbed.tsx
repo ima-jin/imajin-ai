@@ -55,7 +55,7 @@ const ERROR_COPY: Record<ErrorReason, string> = {
  * means here), so the kernel's own origin IS the correct expected origin.
  */
 function resolveExpectedOrigin(service: string, baseUrl?: string): string | null {
-  const kernelOrigin = typeof globalThis.location === 'undefined' ? undefined : globalThis.location.origin;
+  const kernelOrigin = globalThis.location === undefined ? undefined : globalThis.location.origin;
   if (isKernelNativeService(service)) {
     return kernelOrigin ?? null;
   }
