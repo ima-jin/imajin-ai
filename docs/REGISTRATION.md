@@ -54,20 +54,35 @@ consulted for two things:
    downloads a `.pem` file once. Note the **App ID** (shown on the same page) and the
    **Installation ID** (the numeric ID in the URL after installing, e.g.
    `https://github.com/organizations/ima-jin/settings/installations/<installationId>`).
-5. **Seal the three values as one JSON blob** via the existing generic vault-set route:
+5. **Seal the three values as one JSON blob.** The admin panel (`/admin/vault` → "Set
+   Secret") is the primary path (#2445): type the field name exactly as
+   `github-org-provisioning` (lowercase-hyphen — the dialog validates this and shows the
+   rule inline; it no longer uppercases what you type), paste the JSON blob as the value,
+   and pick **delegation-grant** custody — the dialog defaults to and locks this scheme for
+   `github-org-provisioning` because `org-provisioning.ts` (`loadOrgCredential`) reads it
+   only through the v2 delegation-grant path; a node-sealed entry is invisible to
+   `apps.provision`. Never sealed as a v1 field.
+
+   Build the JSON blob with `jq` rather than hand-escaping newlines:
+   ```bash
+   PEM_JSON=$(jq -Rs . < /path/to/downloaded-app-key.pem)
+   VALUE=$(jq -nc --arg appId "<App ID>" --arg installationId "<Installation ID>" \
+     --argjson privateKeyPem "$PEM_JSON" \
+     '{appId: $appId, installationId: $installationId, privateKeyPem: $privateKeyPem}')
+   echo "$VALUE"   # paste this as the panel's Value field
+   ```
+
+   **Fallback (curl, when the panel is unreachable):**
    ```bash
    curl -X POST "${IMAJIN_AUTH_URL}/api/vault/set" \
      -H "Content-Type: application/json" \
      -H "Cookie: <admin session cookie>" \
-     -d '{
-       "field": "github-org-provisioning",
-       "value": "{\"appId\":\"<App ID>\",\"installationId\":\"<Installation ID>\",\"privateKeyPem\":\"<contents of the downloaded .pem, newlines escaped as \\n>\"}",
-       "custodyScheme": "delegation-grant"
-     }'
+     -d "$(jq -nc --arg field 'github-org-provisioning' --arg value "$VALUE" \
+       '{field: $field, value: $value, custodyScheme: "delegation-grant"}')"
    ```
-   Never sealed as a v1 field — `custodyScheme: "delegation-grant"` is required (v2 grant
-   shape, self-granted to the node, #2311). The private key never passes through chat or Jin
-   — only the operator running this `curl` ever sees it.
+   `custodyScheme: "delegation-grant"` is required either way (v2 grant shape, self-granted
+   to the node, #2311). The private key never passes through chat or Jin — only the operator
+   sealing it, via the panel or this `curl`, ever sees it.
 
 At call time, `getInstallationToken()` (`src/lib/github/org-provisioning.ts`) signs a
 short-lived RS256 JWT with the App's private key (`iss` = App ID, <=10-minute lifetime),

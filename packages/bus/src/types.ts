@@ -691,6 +691,19 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault';
   };
+  /**
+   * Emitted when an operator tombstones a vault field via the admin panel's
+   * Delete action (#2445 defect 5). No `vault-hot-reload` reactor for this
+   * one — that reactor exists to hand subscribers a NEW value, and a delete
+   * has none; it is announced solely for the audit trail (`emit`).
+   */
+  'vault.secret.deleted': {
+    field: string;
+    cid: string;
+    senderDid: string;
+    context_id: string;
+    context_type: 'vault';
+  };
   /** Emitted when a vault_delegation_grants row is revoked (#1242). */
   'vault.delegation.revoked': {
     grantId: string;

@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { DeleteSecretDialog } from './delete-secret-dialog';
 import { HistoryDialog } from './history-dialog';
 import { RevokeGrantDialog } from './revoke-grant-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
 import { SetSecretDialog } from './set-secret-dialog';
 import type {
-  AdminEventsApiResponse,
+  KnownVaultFieldApiRow,
+  KnownVaultFieldsApiResponse,
   RotateSecretInput,
   SetSecretInput,
   UpgradeCustodyApiResponse,
@@ -25,13 +27,54 @@ function createHint(value: string, hint: string): string {
   return `${source.slice(0, 4)}...`;
 }
 
-function statusBadge(status: VaultSecretRow['status']): string {
-  return status === 'confirmed' ? '🟢 confirmed' : '🟡 pending';
+function isGrantExpired(expiresAt: string | null | undefined): boolean {
+  return expiresAt ? new Date(expiresAt) < new Date() : false;
+}
+
+interface VaultFieldHealth {
+  sealed: boolean;
+  /** The concrete operator action that resolves an unsealed row — always present when `sealed` is false. */
+  action?: string;
+  reason?: string;
+}
+
+/**
+ * Vault-state-derived health (#2445 defect 3), replacing the old "CID seen
+ * in the last 200 vault admin events" heuristic. A node-sealed field is
+ * always readable by definition — there is nothing pending about it. A
+ * delegation-grant field is only unreadable when its grant has lapsed
+ * (revoked or expired), and the fix in both cases is the same visible
+ * action already on the row: Rotate re-seals via the same v2 self-grant
+ * path a fresh seal uses (rotateAndStore's v2 dispatch), which mints a
+ * replacement grant.
+ */
+function vaultFieldHealth(row: Pick<VaultSecretRow, 'custodyScheme' | 'grantStatus' | 'expiresAt'>): VaultFieldHealth {
+  if (row.custodyScheme !== 'delegation-grant') {
+    return { sealed: true };
+  }
+  const isExpired = isGrantExpired(row.expiresAt);
+  if (row.grantStatus === 'active' && !isExpired) {
+    return { sealed: true };
+  }
+  const reason = isExpired
+    ? 'Delegation grant expired — this field is not currently readable.'
+    : 'Delegation grant was revoked (or never issued) — this field is not currently readable.';
+  return { sealed: false, action: 'Rotate', reason };
+}
+
+function statusBadge(health: VaultFieldHealth): { label: string; title?: string } {
+  if (health.sealed) {
+    return { label: '🟢 sealed' };
+  }
+  return {
+    label: '🟡 needs attention',
+    title: `${health.reason} Action: ${health.action} to reseal and restore access.`,
+  };
 }
 
 function CustodyCell({ row }: Readonly<{ row: VaultSecretRow }>) {
   const isDelegation = row.custodyScheme === 'delegation-grant';
-  const isExpired = row.expiresAt ? new Date(row.expiresAt) < new Date() : false;
+  const isExpired = isGrantExpired(row.expiresAt);
   const hasActiveGrant = isDelegation && row.grantStatus === 'active' && !isExpired;
   const isGrantRevoked = isDelegation && (row.grantStatus === 'none' || (row.grantStatus === 'active' && isExpired));
   let custodyLabel: string;
@@ -91,22 +134,6 @@ async function readErrorMessage(response: Response): Promise<string> {
   }
 }
 
-async function fetchVaultEvents(): Promise<Set<string>> {
-  const response = await fetch('/api/admin/events?service=vault&limit=200', { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-  const data = (await response.json()) as AdminEventsApiResponse;
-  const cids = new Set<string>();
-  data.rows.forEach((row) => {
-    const payloadCid = row.payload && typeof row.payload.cid === 'string' ? row.payload.cid : null;
-    if ((row.action === 'vault.secret.updated' || row.action === 'vault.secret.rotated') && payloadCid) {
-      cids.add(payloadCid);
-    }
-  });
-  return cids;
-}
-
 async function fetchVaultList(): Promise<VaultSecretRow[]> {
   const response = await fetch('/api/vault/list', { cache: 'no-store' });
   if (!response.ok) {
@@ -120,12 +147,20 @@ async function fetchVaultList(): Promise<VaultSecretRow[]> {
     cid: row.cid,
     setBy: row.senderDid,
     updatedAt: row.timestamp,
-    status: 'pending',
     custodyScheme: row.custodyScheme ?? 'node-sealed',
     grantedTo: row.grantedTo,
     expiresAt: row.expiresAt,
     grantStatus: row.grantStatus,
   }));
+}
+
+async function fetchKnownFields(): Promise<KnownVaultFieldApiRow[]> {
+  const response = await fetch('/api/vault/known-fields', { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response));
+  }
+  const data = (await response.json()) as KnownVaultFieldsApiResponse;
+  return data.fields;
 }
 
 async function fetchHistory(field: string): Promise<VaultHistoryEntry[]> {
@@ -145,13 +180,16 @@ async function fetchHistory(field: string): Promise<VaultHistoryEntry[]> {
 
 export function VaultPanel() {
   const [secrets, setSecrets] = useState<VaultSecretRow[]>([]);
+  const [knownFields, setKnownFields] = useState<KnownVaultFieldApiRow[]>([]);
   const [historyByField, setHistoryByField] = useState<Record<string, VaultHistoryEntry[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [setOpen, setSetOpen] = useState(false);
+  const [setInitialField, setSetInitialField] = useState<string | undefined>(undefined);
   const [rotateField, setRotateField] = useState<string | null>(null);
   const [historyField, setHistoryField] = useState<string | null>(null);
   const [revokeField, setRevokeField] = useState<string | null>(null);
+  const [deleteField, setDeleteField] = useState<string | null>(null);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -161,42 +199,28 @@ export function VaultPanel() {
     [secrets]
   );
 
-  const refreshStatuses = useCallback(async (baseRows?: VaultSecretRow[]) => {
-    const confirmedCids = await fetchVaultEvents();
-    setSecrets((current) => {
-      const source = baseRows ?? current;
-      return source.map((row) => ({
-        ...row,
-        status: confirmedCids.has(row.cid) ? 'confirmed' : 'pending',
-      }));
-    });
-  }, []);
+  const missingKnownFields = useMemo(
+    () => knownFields.filter((known) => !secrets.some((row) => row.field === known.field)),
+    [knownFields, secrets],
+  );
 
   const refreshSecrets = useCallback(async () => {
     setLoading(true);
     try {
-      const rows = await fetchVaultList();
+      const [rows, known] = await Promise.all([fetchVaultList(), fetchKnownFields()]);
       setSecrets(rows);
+      setKnownFields(known);
       setError(null);
-      await refreshStatuses(rows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load vault secrets');
     } finally {
       setLoading(false);
     }
-  }, [refreshStatuses]);
+  }, []);
 
   useEffect(() => {
     void refreshSecrets();
   }, [refreshSecrets]);
-
-  useEffect(() => {
-    if (secrets.length === 0) return undefined;
-    const intervalId = globalThis.setInterval(() => {
-      void refreshStatuses();
-    }, 8000);
-    return () => globalThis.clearInterval(intervalId);
-  }, [refreshStatuses, secrets.length]);
 
   useEffect(() => {
     if (!historyField || historyByField[historyField]) return;
@@ -214,6 +238,16 @@ export function VaultPanel() {
       })
       .finally(() => setHistoryLoading(false));
   }, [historyByField, historyField]);
+
+  function openSetDialog(initialField?: string): void {
+    setSetInitialField(initialField);
+    setSetOpen(true);
+  }
+
+  function closeSetDialog(): void {
+    setSetOpen(false);
+    setSetInitialField(undefined);
+  }
 
   async function handleUpgradeCustody(field: string): Promise<void> {
     setUpgrading(field);
@@ -282,7 +316,7 @@ export function VaultPanel() {
       const response = await fetch('/api/vault/set', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ field: input.field, value: input.value }),
+        body: JSON.stringify({ field: input.field, value: input.value, custodyScheme: input.custodyScheme }),
       });
 
       if (!response.ok) {
@@ -296,8 +330,8 @@ export function VaultPanel() {
         cid: result.cid,
         setBy: result.senderDid,
         updatedAt: result.timestamp,
-        status: result.status,
-        custodyScheme: result.custodyScheme ?? 'node-sealed',
+        custodyScheme: result.custodyScheme ?? input.custodyScheme,
+        grantStatus: result.custodyScheme === 'delegation-grant' ? 'active' : undefined,
       };
       setSecrets((current) => {
         const withoutField = current.filter((row) => row.field !== input.field);
@@ -317,8 +351,7 @@ export function VaultPanel() {
         ],
       }));
       setError(null);
-      setSetOpen(false);
-      await refreshStatuses();
+      closeSetDialog();
     } finally {
       setSubmitting(false);
     }
@@ -347,8 +380,10 @@ export function VaultPanel() {
                 hint: createHint(input.value, input.hint),
                 setBy: result.senderDid,
                 updatedAt: result.timestamp,
-                status: result.status,
-                // custodyScheme stays the same after a rotate (v1 rotates v1, v2 stays v2)
+                // custodyScheme stays the same after a rotate (v1 rotates v1, v2 stays v2);
+                // a v2 rotate also mints a fresh grant, so a lapsed grant is healthy again.
+                grantStatus: row.custodyScheme === 'delegation-grant' ? 'active' : row.grantStatus,
+                expiresAt: row.custodyScheme === 'delegation-grant' ? null : row.expiresAt,
               }
             : row
         )
@@ -368,7 +403,30 @@ export function VaultPanel() {
       }));
       setError(null);
       setRotateField(null);
-      await refreshStatuses();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteSecret(field: string): Promise<void> {
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/vault/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ field }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      setSecrets((current) => current.filter((row) => row.field !== field));
+      setHistoryByField((current) =>
+        Object.fromEntries(Object.entries(current).filter(([rowField]) => rowField !== field)),
+      );
+      setDeleteField(null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to delete ${field}`);
     } finally {
       setSubmitting(false);
     }
@@ -396,7 +454,7 @@ export function VaultPanel() {
           </button>
           <button
             type="button"
-            onClick={() => setSetOpen(true)}
+            onClick={() => openSetDialog()}
             className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 text-sm font-medium"
           >
             + Set Secret
@@ -427,7 +485,7 @@ export function VaultPanel() {
                   </td>
                 </tr>
               )}
-              {!loading && sortedSecrets.length === 0 && (
+              {!loading && sortedSecrets.length === 0 && missingKnownFields.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-5 text-sm text-gray-500 dark:text-gray-400">
                     No secrets found yet.
@@ -436,9 +494,10 @@ export function VaultPanel() {
               )}
               {sortedSecrets.map((secret) => {
                 const isDelegation = secret.custodyScheme === 'delegation-grant';
-                const isExpired = secret.expiresAt ? new Date(secret.expiresAt) < new Date() : false;
+                const isExpired = isGrantExpired(secret.expiresAt);
                 const hasActiveGrant = isDelegation && secret.grantStatus === 'active' && !isExpired;
                 const isUpgrading = upgrading === secret.field;
+                const badge = statusBadge(vaultFieldHealth(secret));
                 return (
                   <tr key={secret.field} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">{secret.field}</td>
@@ -448,7 +507,7 @@ export function VaultPanel() {
                     <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {formatDistanceToNow(new Date(secret.updatedAt), { addSuffix: true })}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{statusBadge(secret.status)}</td>
+                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300" title={badge.title}>{badge.label}</td>
                     <td className="px-4 py-3">
                       <CustodyCell row={secret} />
                     </td>
@@ -487,11 +546,40 @@ export function VaultPanel() {
                             Revoke grant
                           </button>
                         )}
+                        <button
+                          type="button"
+                          aria-label={`Delete ${secret.field}`}
+                          onClick={() => setDeleteField(secret.field)}
+                          className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          Delete
+                        </button>
                       </div>
                     </td>
                   </tr>
                 );
               })}
+              {!loading && missingKnownFields.map((known) => (
+                <tr key={`missing-${known.field}`} className="bg-red-50/40 dark:bg-red-900/10">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">{known.field}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" colSpan={4}>{known.description}</td>
+                  <td className="px-4 py-3 text-xs text-red-700 dark:text-red-300" title={known.why}>
+                    🔴 missing — needed by {known.description}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                    {known.requiredCustody ?? '—'}
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => openSetDialog(known.field)}
+                      className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 text-xs font-medium"
+                    >
+                      Add
+                    </button>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -500,9 +588,10 @@ export function VaultPanel() {
       <div className="md:hidden space-y-3">
         {sortedSecrets.map((secret) => {
           const isDelegation = secret.custodyScheme === 'delegation-grant';
-          const isExpired = secret.expiresAt ? new Date(secret.expiresAt) < new Date() : false;
+          const isExpired = isGrantExpired(secret.expiresAt);
           const hasActiveGrant = isDelegation && secret.grantStatus === 'active' && !isExpired;
           const isUpgrading = upgrading === secret.field;
+          const badge = statusBadge(vaultFieldHealth(secret));
           return (
             <div key={secret.field} className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-4">
               <div className="flex items-start justify-between gap-3">
@@ -510,7 +599,7 @@ export function VaultPanel() {
                   <p className="font-mono text-xs text-gray-900 dark:text-white">{secret.field}</p>
                   <p className="text-sm text-gray-700 dark:text-gray-300">{secret.hint}</p>
                 </div>
-                <span className="text-xs text-gray-700 dark:text-gray-300">{statusBadge(secret.status)}</span>
+                <span className="text-xs text-gray-700 dark:text-gray-300" title={badge.title}>{badge.label}</span>
               </div>
               <div className="mt-2">
                 <CustodyCell row={secret} />
@@ -553,16 +642,39 @@ export function VaultPanel() {
                     Revoke grant
                   </button>
                 )}
+                <button
+                  type="button"
+                  aria-label={`Delete ${secret.field}`}
+                  onClick={() => setDeleteField(secret.field)}
+                  className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           );
         })}
+        {!loading && missingKnownFields.map((known) => (
+          <div key={`missing-${known.field}`} className="rounded-xl bg-red-50/60 dark:bg-red-900/10 shadow border border-red-200 dark:border-red-800 p-4">
+            <p className="font-mono text-xs text-gray-900 dark:text-white">{known.field}</p>
+            <p className="mt-1 text-xs text-red-700 dark:text-red-300">🔴 missing — needed by {known.description}</p>
+            <button
+              type="button"
+              onClick={() => openSetDialog(known.field)}
+              className="mt-3 rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 text-xs font-medium"
+            >
+              Add
+            </button>
+          </div>
+        ))}
       </div>
 
       <SetSecretDialog
         open={setOpen}
         submitting={submitting}
-        onClose={() => setSetOpen(false)}
+        knownFields={knownFields}
+        initialField={setInitialField}
+        onClose={closeSetDialog}
         onSubmit={handleSetSecret}
       />
       <RotateSecretDialog
@@ -584,6 +696,13 @@ export function VaultPanel() {
         submitting={submitting}
         onClose={() => setRevokeField(null)}
         onConfirm={handleRevokeGrant}
+      />
+      <DeleteSecretDialog
+        field={deleteField}
+        open={deleteField !== null}
+        submitting={submitting}
+        onClose={() => setDeleteField(null)}
+        onConfirm={handleDeleteSecret}
       />
     </div>
   );

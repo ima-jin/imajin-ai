@@ -1,6 +1,7 @@
-export type VaultReloadStatus = 'confirmed' | 'pending';
+export type { VaultCustodyScheme } from '@/src/lib/vault/field-grammar';
+import type { VaultCustodyScheme } from '@/src/lib/vault/field-grammar';
+
 export type VaultHistoryAction = 'set' | 'rotate';
-export type VaultCustodyScheme = 'node-sealed' | 'delegation-grant';
 export type VaultGrantStatus = 'active' | 'none';
 
 export interface VaultSecretRow {
@@ -9,7 +10,6 @@ export interface VaultSecretRow {
   cid: string;
   setBy: string;
   updatedAt: string;
-  status: VaultReloadStatus;
   custodyScheme: VaultCustodyScheme;
   /** Only present when custodyScheme === 'delegation-grant' */
   grantedTo?: string | null;
@@ -29,6 +29,7 @@ export interface SetSecretInput {
   field: string;
   value: string;
   hint: string;
+  custodyScheme: VaultCustodyScheme;
 }
 
 export interface RotateSecretInput {
@@ -67,7 +68,7 @@ export interface VaultWriteApiResponse {
   cid: string;
   timestamp: string;
   senderDid: string;
-  status: VaultReloadStatus;
+  status: 'confirmed' | 'pending';
   custodyScheme?: VaultCustodyScheme;
   grantId?: string;
 }
@@ -82,12 +83,21 @@ export interface UpgradeCustodyApiResponse {
   grantedTo: string;
 }
 
-export interface AdminEventRow {
-  action: string;
-  payload: Record<string, unknown> | null;
+export interface DeleteVaultApiResponse {
+  ok: true;
+  field: string;
+  cid: string;
+  timestamp: string;
 }
 
-export interface AdminEventsApiResponse {
-  rows: AdminEventRow[];
-  total: number;
+/** A field the kernel is known to read by a fixed name (#2445 defect 4) — see GET /api/vault/known-fields. */
+export interface KnownVaultFieldApiRow {
+  field: string;
+  description: string;
+  requiredCustody?: VaultCustodyScheme;
+  why?: string;
+}
+
+export interface KnownVaultFieldsApiResponse {
+  fields: KnownVaultFieldApiRow[];
 }

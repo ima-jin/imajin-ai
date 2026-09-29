@@ -26,7 +26,8 @@ import { db, identities, foreignPrincipalStubs } from '@/src/db';
 import { getInternalSecret } from '@/src/lib/vault';
 
 /** Purpose label for the vault-generated pepper (#2245) — see getInternalSecret. */
-const PEPPER_PURPOSE = 'kernel.foreign-principal-pepper';
+/** Exported so the admin vault panel's known-fields registry (#2445) can cite the real purpose constant rather than a hardcoded string. */
+export const PEPPER_PURPOSE = 'kernel.foreign-principal-pepper';
 
 /**
  * Salted/peppered HMAC-SHA256 match key for a `(platform, externalRef)`
