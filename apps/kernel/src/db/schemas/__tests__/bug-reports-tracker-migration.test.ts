@@ -72,6 +72,11 @@ async function seedBugReport(row: Readonly<SeedRow>): Promise<void> {
 }
 
 describe('0154_bug_reports_external_tracker (#2184)', () => {
+  // Explicit timeout (default 5000ms): this spins up a real embedded PGlite
+  // Postgres instance and replays the full 0001_seed.sql schema before the
+  // migration itself, which occasionally exceeds the default under
+  // contended CI runners even though it consistently finishes in ~1-1.5s
+  // locally (confirmed via 5 consecutive local runs) — not a regression.
   it('backfills tracker/external_ref/external_url only for imported rows, and is idempotent on re-run', async () => {
     client = new PGlite({ extensions: { pgcrypto } });
     await client.waitReady;
@@ -112,7 +117,7 @@ describe('0154_bug_reports_external_tracker (#2184)', () => {
       'SELECT id, tracker, external_ref, external_url FROM www.bug_reports ORDER BY id',
     );
     expect(secondRun.rows).toEqual(firstRun.rows);
-  });
+  }, 15_000);
 });
 
 describe('0155_bug_reports_drop_github_columns (#2184)', () => {

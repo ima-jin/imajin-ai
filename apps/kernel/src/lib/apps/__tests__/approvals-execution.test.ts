@@ -83,7 +83,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       status: 'succeeded',
       repoUrl: 'https://github.com/ima-jin/dykil',
       appDid: 'did:imajin:app-dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
       attestationTypeResults: [],
       claimCode: 'claim_test_code',
       sealSkipped: false,
@@ -96,7 +96,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       data: {
         repoUrl: 'https://github.com/ima-jin/dykil',
         appDid: 'did:imajin:app-dykil',
-        secretsSet: ['IMAJIN_APP_PRIVATE_KEY', 'GITHUB_PACKAGES_TOKEN'],
+        secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
         claimCode: 'claim_test_code',
         sealSkipped: false,
       },

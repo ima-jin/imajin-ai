@@ -733,7 +733,7 @@ function SealSkippedBanner({
     <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="seal-skipped-notice">
       <p className="text-sm text-amber-200 font-medium">
         CI secrets not sealed for &quot;{skipped.displayName}&quot; — the org GitHub credential is not sealed, so
-        `IMAJIN_APP_PRIVATE_KEY`/`GITHUB_PACKAGES_TOKEN` were not pushed to Actions secrets. The app can still fetch its
+        `IMAJIN_APP_PRIVATE_KEY` was not pushed to Actions secrets. The app can still fetch its
         signing key from the vault at boot; re-run provisioning once an operator seals the credential to also seal CI.
       </p>
       <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
