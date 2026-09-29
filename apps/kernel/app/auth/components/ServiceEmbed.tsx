@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@imajin/ui';
-import { buildEmbedSrc, getServiceBaseUrl, isKernelNativeService } from '../lib/service-registry';
+import { buildEmbedSrc, isKernelNativeService } from '../lib/service-registry';
 import {
   isAppToKernelMessage,
   normalizeToastLevel,
@@ -42,15 +42,26 @@ const ERROR_COPY: Record<ErrorReason, string> = {
   timeout: 'This service is taking too long to load.',
 };
 
-/** Origin the embedded app's postMessage traffic must come from/go to. */
-function resolveExpectedOrigin(service: string, baseUrlOverride?: string): string | null {
+/**
+ * Origin the embedded app's postMessage traffic must come from/go to.
+ *
+ * #2425 send-back: `baseUrl` can be a RELATIVE path (`buildPublicUrl`'s
+ * single-node-mode return, e.g. `/coffee`, when no
+ * `NEXT_PUBLIC_SERVICE_PREFIX`/`NEXT_PUBLIC_DOMAIN` is configured) — a bare
+ * `new URL(baseUrl)` throws on that and used to silently disable the
+ * postMessage origin check for every such embed. Resolving against the
+ * kernel's own origin as the base fixes that: the embedded app is served
+ * from the SAME origin as the kernel in that mode (that's what "relative"
+ * means here), so the kernel's own origin IS the correct expected origin.
+ */
+function resolveExpectedOrigin(service: string, baseUrl?: string): string | null {
+  const kernelOrigin = typeof globalThis.location === 'undefined' ? undefined : globalThis.location.origin;
   if (isKernelNativeService(service)) {
-    return typeof globalThis.location === 'undefined' ? null : globalThis.location.origin;
+    return kernelOrigin ?? null;
   }
-  const baseUrl = baseUrlOverride ?? getServiceBaseUrl(service);
   if (!baseUrl) return null;
   try {
-    return new URL(baseUrl).origin;
+    return new URL(baseUrl, kernelOrigin).origin;
   } catch {
     return null;
   }

@@ -3,23 +3,19 @@
  * Tests for <ServiceEmbed> (#2275): loading/error states around the iframe,
  * the health-check gate, and the RFC-19 postMessage handshake in both
  * directions (docs/rfcs/RFC-19-kernel-userspace-architecture.md).
+ *
+ * #2425 send-back: `service-registry.ts` no longer carries a hard-coded
+ * per-app `NEXT_PUBLIC_<NAME>_URL` map, so every non-kernel-native test
+ * below passes its origin explicitly via the `baseUrl` prop — exactly as
+ * `/auth/[app]/page.tsx` does in production, resolving it from the
+ * registry row's own slug.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
+import ServiceEmbed from '../ServiceEmbed';
 import { resetServiceBadges, getServiceBadges } from '../../lib/service-badge-bus';
 
-// Fixed for the whole file, and set BEFORE ../ServiceEmbed -> ../lib/service-registry
-// is ever evaluated. A static `import ServiceEmbed from '../ServiceEmbed'` here
-// would be hoisted above this assignment (ES module semantics run all static
-// imports before any other top-level statement in the importing file), so
-// service-registry would read an unset env var no matter where the line sat
-// textually — hence the dynamic `loadServiceEmbed()` below instead.
 const ORIGIN = 'https://coffee.example';
-process.env.NEXT_PUBLIC_COFFEE_URL = ORIGIN;
-
-async function loadServiceEmbed() {
-  return (await import('../ServiceEmbed')).default;
-}
 
 const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -61,9 +57,8 @@ function stubPostMessage(iframe: HTMLIFrameElement) {
 }
 
 /** Render, stub postMessage, fire `load`, and wait for ready — the common "app is up" starting point. */
-async function renderReady(service = 'coffee') {
-  const ServiceEmbed = await loadServiceEmbed();
-  render(<ServiceEmbed service={service} did="did:imajin:abc" />);
+async function renderReady(service = 'coffee', baseUrl: string | undefined = ORIGIN) {
+  render(<ServiceEmbed service={service} did="did:imajin:abc" baseUrl={baseUrl} />);
   const iframe = await screen.findByTitle<HTMLIFrameElement>(`${service} dashboard`);
   const postMessageSpy = stubPostMessage(iframe);
   fireEvent.load(iframe);
@@ -87,9 +82,8 @@ afterEach(() => {
 describe('ServiceEmbed loading/error states (#2275)', () => {
   it('shows a spinner while the health check is in flight, then mounts the iframe once it passes', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch;
-    const ServiceEmbed = await loadServiceEmbed();
 
-    render(<ServiceEmbed service="coffee" did="did:imajin:abc" />);
+    render(<ServiceEmbed service="coffee" did="did:imajin:abc" baseUrl={ORIGIN} />);
 
     expect(screen.getByRole('status')).toBeDefined();
     const iframe = await screen.findByTitle<HTMLIFrameElement>('coffee dashboard');
@@ -100,9 +94,8 @@ describe('ServiceEmbed loading/error states (#2275)', () => {
 
   it('shows an error state instead of the iframe when the health check reports the service down', async () => {
     globalThis.fetch = mockFetch({ health: { ok: false, checked: true, status: 503 } }) as unknown as typeof fetch;
-    const ServiceEmbed = await loadServiceEmbed();
 
-    render(<ServiceEmbed service="coffee" did="did:imajin:abc" />);
+    render(<ServiceEmbed service="coffee" did="did:imajin:abc" baseUrl={ORIGIN} />);
 
     expect(await screen.findByText(/isn't responding right now/i)).toBeDefined();
     expect(screen.queryByTitle('coffee dashboard')).toBeNull();
@@ -111,9 +104,8 @@ describe('ServiceEmbed loading/error states (#2275)', () => {
   it('shows an error state when the iframe never fires load within the handshake timeout', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch;
     const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
-    const ServiceEmbed = await loadServiceEmbed();
 
-    render(<ServiceEmbed service="coffee" did="did:imajin:abc" />);
+    render(<ServiceEmbed service="coffee" did="did:imajin:abc" baseUrl={ORIGIN} />);
     await screen.findByTitle('coffee dashboard');
 
     // Fire the handshake-timeout callback directly rather than waiting out
@@ -131,9 +123,8 @@ describe('ServiceEmbed loading/error states (#2275)', () => {
     expect(screen.getByText(/taking too long to load/i)).toBeDefined();
   });
 
-  it('#2425 send-back: a baseUrl prop overrides the static service-registry.ts map for the iframe src', async () => {
+  it('#2425 send-back: a baseUrl prop resolves the iframe src for an app with no special-casing at all', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch;
-    const ServiceEmbed = await loadServiceEmbed();
 
     render(<ServiceEmbed service="a-brand-new-app" did="did:imajin:abc" baseUrl="https://registry-resolved.example" />);
 
@@ -141,12 +132,26 @@ describe('ServiceEmbed loading/error states (#2275)', () => {
     expect(iframe.src).toContain('https://registry-resolved.example/dashboard');
   });
 
+  it('#2425 send-back: a relative baseUrl (single-node mode) still resolves an absolute postMessage origin from the kernel\'s own location', async () => {
+    globalThis.fetch = mockFetch() as unknown as typeof fetch;
+
+    render(<ServiceEmbed service="coffee" did="did:imajin:abc" baseUrl="/coffee" />);
+    const iframe = await screen.findByTitle<HTMLIFrameElement>('coffee dashboard');
+    expect(iframe.src).toContain('/coffee/dashboard');
+
+    const postMessageSpy = stubPostMessage(iframe);
+    fireEvent.load(iframe);
+
+    await waitFor(() =>
+      expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'theme' }), globalThis.location.origin),
+    );
+  });
+
   it('retries the health check and remounts the iframe when Retry is clicked', async () => {
     const fetchMock = mockFetch({ health: { ok: false, checked: true, status: 503 } });
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    const ServiceEmbed = await loadServiceEmbed();
 
-    render(<ServiceEmbed service="coffee" did="did:imajin:abc" />);
+    render(<ServiceEmbed service="coffee" did="did:imajin:abc" baseUrl={ORIGIN} />);
     await screen.findByText(/isn't responding right now/i);
 
     fetchMock.mockImplementation((input: RequestInfo | URL) => {
@@ -179,7 +184,6 @@ describe('ServiceEmbed Kernel -> App messages (RFC-19, #2275)', () => {
   it('skips session minting for kernel-native services but still sends theme', async () => {
     const fetchMock = mockFetch();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-    const ServiceEmbed = await loadServiceEmbed();
 
     render(<ServiceEmbed service="pay" did="did:imajin:abc" />);
     const iframe = await screen.findByTitle<HTMLIFrameElement>('pay dashboard');

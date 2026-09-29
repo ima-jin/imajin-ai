@@ -27,10 +27,31 @@ const mocks = vi.hoisted(() => {
     return { where: () => ({ limit: async () => rows() }) };
   }
 
+  // #2425 send-back: `isActiveRegistryAppSlug` chains `.where(...).limit(1)`
+  // directly on the registryApps table (unlike `listNavCapableApps`, which
+  // awaits the bare `.from()` result and filters in JS) — this interprets
+  // the mocked `eq`/`and` shapes below against the raw row objects so both
+  // call shapes work against the same `state.registryRows`.
+  function matchesRegistryWhere(row: Record<string, unknown>, cond: unknown): boolean {
+    const conds = (cond as { and?: unknown[] })?.and ?? [cond];
+    return conds.every((c) => {
+      const [colToken, val] = (c as { eq: [unknown, unknown] }).eq;
+      const key = Object.entries(registryApps).find(([, v]) => v === colToken)?.[0];
+      return key !== undefined && row[key] === val;
+    });
+  }
+
+  function whereRegistryRows(cond: unknown): Record<string, unknown>[] {
+    return state.registryRows.filter((row) => matchesRegistryWhere(row, cond));
+  }
+
   function fromTable(table: unknown) {
     if (table === identities) return limitedWhere(() => state.identityRows);
     if (table === forestConfig) return limitedWhere(() => state.forestRows);
-    return Promise.resolve(state.registryRows);
+    const bare: Promise<unknown[]> & { where?: (cond: unknown) => { limit: (n: number) => Promise<unknown[]> } } =
+      Promise.resolve(state.registryRows);
+    bare.where = (cond: unknown) => ({ limit: async (n: number) => whereRegistryRows(cond).slice(0, n) });
+    return bare;
   }
 
   const selectMock = vi.fn(() => ({ from: fromTable }));
@@ -45,9 +66,12 @@ vi.mock('@/src/db', () => ({
   registryApps: mocks.registryApps,
 }));
 
-vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => ({ eq: args }) }));
+vi.mock('drizzle-orm', () => ({
+  eq: (...args: unknown[]) => ({ eq: args }),
+  and: (...args: unknown[]) => ({ and: args }),
+}));
 
-import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, type NavApp } from '../app-nav';
+import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
 
 // requiredScope is null (#2425 send-back): 'creator' is services.ts's
 // display-visibility tier, not one of the four identity scopes, so the
@@ -197,5 +221,31 @@ describe('resolveRegistryAppsBySlug (#2425 send-back — public, unauthenticated
     const apps = await resolveRegistryAppsBySlug(['coffee', 'revoked-app', 'jin']);
 
     expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+});
+
+describe('isActiveRegistryAppSlug (#2425 send-back — health route slug validation)', () => {
+  it('returns true for a slug with an active registry.apps row', async () => {
+    mocks.state.registryRows = [COFFEE_ROW];
+
+    await expect(isActiveRegistryAppSlug('coffee')).resolves.toBe(true);
+  });
+
+  it('returns false for a slug with no registry.apps row at all', async () => {
+    mocks.state.registryRows = [COFFEE_ROW];
+
+    await expect(isActiveRegistryAppSlug('not-a-real-app')).resolves.toBe(false);
+  });
+
+  it('returns false for a slug whose only row is not active (e.g. revoked)', async () => {
+    mocks.state.registryRows = [REVOKED_ROW];
+
+    await expect(isActiveRegistryAppSlug('revoked-app')).resolves.toBe(false);
+  });
+
+  it('is not placement-gated — a row with no declared placements still counts as a valid, reachable slug', async () => {
+    mocks.state.registryRows = [NO_PLACEMENT_ROW];
+
+    await expect(isActiveRegistryAppSlug('jin')).resolves.toBe(true);
   });
 });

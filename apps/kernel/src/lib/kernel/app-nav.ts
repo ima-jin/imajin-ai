@@ -20,7 +20,7 @@
  * it only stops each call site from hand-rolling it against a literal
  * array of app names.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, identities, forestConfig, registryApps } from '@/src/db';
 
 /** The 3 nav surfaces an app registry row can declare itself visible on. */
@@ -146,4 +146,22 @@ export async function resolveRegistryAppsBySlug(slugs: readonly string[]): Promi
   const navCapable = await listNavCapableApps();
   const slugSet = new Set(slugs);
   return navCapable.filter((app) => slugSet.has(app.slug));
+}
+
+/**
+ * True when `slug` matches an ACTIVE `registry.apps` row (#2425 send-back
+ * item 2b) — used by the health route to accept any registered app rather
+ * than the historical 6-app hard-coded list `service-registry.ts` used to
+ * carry. Deliberately not placement/scope-gated (unlike
+ * {@link resolveNavAppsForIdentity}): a health probe is about reachability
+ * of a slug, not about whether the caller's identity can currently see it
+ * in nav.
+ */
+export async function isActiveRegistryAppSlug(slug: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: registryApps.id })
+    .from(registryApps)
+    .where(and(eq(registryApps.slug, slug), eq(registryApps.status, 'active')))
+    .limit(1);
+  return row !== undefined;
 }
