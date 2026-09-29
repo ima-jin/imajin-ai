@@ -134,7 +134,10 @@ export async function grantInternalSecretTo(
     return { status: 'no_reusable_grant' };
   }
 
-  const grantId = await issueGrantFromSource({ purpose, field, ownerDid, granteeDid, grantedBy, source });
+  const grantId = await issueGrantFromSource({
+    field, ownerDid, granteeDid, grantedBy, source,
+    terms: { purpose, expiresAt: null, oneTime: false },
+  });
   return { status: 'ok', grantId };
 }
 
@@ -144,14 +147,15 @@ export async function grantInternalSecretTo(
  * grant events. Shared by first-time grants and rotation re-issue (#2446).
  */
 async function issueGrantFromSource(params: {
-  purpose: string;
   field: string;
   ownerDid: string;
   granteeDid: string;
   grantedBy: string;
   source: VaultDelegationGrant;
+  terms: GrantTerms;
 }): Promise<string> {
-  const { purpose, field, ownerDid, granteeDid, grantedBy, source } = params;
+  const { field, ownerDid, granteeDid, grantedBy, source, terms } = params;
+  const { purpose, expiresAt, oneTime } = terms;
   const identity = getNodeSigningIdentity();
   const grantRaw = {
     subject: ownerDid,
@@ -161,7 +165,8 @@ async function issueGrantFromSource(params: {
     wrappedKey: source.wrappedKey,
     wrappedNonce: source.wrappedNonce,
     keyId: source.keyId,
-    expiresAt: null,
+    // Signed: the carried-forward expiry is part of the grant payload.
+    expiresAt,
   };
   const ownerSignature = authCrypto.signSync(canonicalizeGrantPayload(grantRaw), identity.privateKeyHex);
 
@@ -174,7 +179,7 @@ async function issueGrantFromSource(params: {
     recipientXPub: source.recipientXPub,
     ownerEdPub: source.ownerEdPub ?? identity.senderPubkey,
     purpose,
-    oneTime: false,
+    oneTime,
   });
 
   log.info(
@@ -190,30 +195,53 @@ async function issueGrantFromSource(params: {
   return grantId;
 }
 
+/** The unsigned + signed terms a grant is issued under — carried forward verbatim on re-issue. */
+interface GrantTerms {
+  purpose: string | null;
+  expiresAt: Date | null;
+  oneTime: boolean;
+}
+
+/**
+ * A prior grant that can still be exercised: not expired, and not a
+ * one-time grant already consumed. Re-issuing anything else would hand the
+ * grantee access it no longer has — rotation must never widen (#2446).
+ */
+function isStillExercisable(grant: VaultDelegationGrant, now: Date): boolean {
+  if (grant.expiresAt instanceof Date && grant.expiresAt.getTime() <= now.getTime()) return false;
+  return !(grant.oneTime && grant.consumedAt);
+}
+
 /**
  * Re-issue a rotated internal secret to every external consumer that held
  * it before the rotation (#2446). Rotation re-seals the field under a NEW
  * field key; an external grant still carrying the OLD wrapped key would
  * keep looking active while every fetch failed to decrypt. Each prior
- * grantee's grant is superseded (key material erased) and replaced by one
- * that reuses the node's fresh self-grant, with the same purpose — so a
- * consumer that discovers its grant by purpose (corpus, #2245) finds the
- * new one at its next boot. The SET of grantees is unchanged: rotation
- * never adds or drops a consumer; that stays an operator grant/revoke.
+ * grant is superseded (key material erased) and replaced by one that
+ * reuses the node's fresh self-grant — with that prior grant's OWN terms
+ * (purpose, expiry, one-time) carried forward, so a consumer that
+ * discovers its grant by purpose (corpus, #2245) finds the new one at its
+ * next boot and nothing is ever broadened. Grants that are expired or
+ * consumed one-time are superseded but NOT re-issued. The set of grantees
+ * never grows: adding a consumer stays an operator grant.
  *
+ * Operator-initiated rotation only — a boot never calls this.
  * `sourceGrantId` is the node's new self-grant, returned by the re-seal.
  */
 export async function reissueInternalSecretGrants(params: {
   purpose: string;
   sourceGrantId: string;
-  granteeDids: readonly string[];
+  previousGrants: readonly VaultDelegationGrant[];
   grantedBy: string;
-}): Promise<string[]> {
-  const { purpose, sourceGrantId, granteeDids, grantedBy } = params;
-  if (granteeDids.length === 0) return [];
-
+}): Promise<{ reissued: string[]; dropped: string[] }> {
+  const { purpose, sourceGrantId, previousGrants, grantedBy } = params;
   const field = internalSecretField(purpose);
   const ownerDid = getNodeSigningIdentity().senderDid;
+  const prior = previousGrants.filter(
+    (g) => g.subject === ownerDid && g.grantedTo !== ownerDid && g.field === field,
+  );
+  if (prior.length === 0) return { reissued: [], dropped: [] };
+
   const [source] = await db
     .select()
     .from(vaultDelegationGrants)
@@ -223,10 +251,24 @@ export async function reissueInternalSecretGrants(params: {
     throw new Error(`reissueInternalSecretGrants: '${sourceGrantId}' is not the active self-grant for '${field}'`);
   }
 
+  const now = new Date();
   const reissued: string[] = [];
-  for (const granteeDid of granteeDids) {
-    await supersedeActiveGrant({ subject: ownerDid, grantedTo: granteeDid, field });
-    reissued.push(await issueGrantFromSource({ purpose, field, ownerDid, granteeDid, grantedBy, source }));
+  const dropped: string[] = [];
+  const seen = new Set<string>();
+  for (const grant of prior) {
+    if (seen.has(grant.grantedTo)) continue;
+    seen.add(grant.grantedTo);
+    await supersedeActiveGrant({ subject: ownerDid, grantedTo: grant.grantedTo, field });
+    if (!isStillExercisable(grant, now)) {
+      dropped.push(grant.grantedTo);
+      continue;
+    }
+    reissued.push(
+      await issueGrantFromSource({
+        field, ownerDid, granteeDid: grant.grantedTo, grantedBy, source,
+        terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
+      }),
+    );
   }
-  return reissued;
+  return { reissued, dropped };
 }

@@ -233,14 +233,24 @@ async function supersedeGrants(where: SQL | undefined): Promise<void> {
  * internal secret's external grantees (#2446); same semantics every re-seal
  * path in this module applies to its own tuple.
  */
-export async function supersedeActiveGrant(tuple: { subject: string; grantedTo: string; field: string }): Promise<void> {
-  await supersedeGrants(
-    and(
-      eq(vaultDelegationGrants.subject, tuple.subject),
-      eq(vaultDelegationGrants.grantedTo, tuple.grantedTo),
-      eq(vaultDelegationGrants.field, tuple.field),
-      eq(vaultDelegationGrants.status, 'active'),
-    ),
+export async function supersedeActiveGrant(tuple: GrantTuple): Promise<void> {
+  await supersedeGrants(activeGrantTuple(tuple));
+}
+
+/** A grant's identity: who granted `field` to whom. */
+interface GrantTuple {
+  subject: string;
+  grantedTo: string;
+  field: string;
+}
+
+/** WHERE clause for the single active grant of a {@link GrantTuple} (`uniq_vault_delegation_active`). */
+function activeGrantTuple(tuple: GrantTuple): SQL | undefined {
+  return and(
+    eq(vaultDelegationGrants.subject, tuple.subject),
+    eq(vaultDelegationGrants.grantedTo, tuple.grantedTo),
+    eq(vaultDelegationGrants.field, tuple.field),
+    eq(vaultDelegationGrants.status, 'active'),
   );
 }
 
@@ -579,14 +589,7 @@ export async function inheritableGrantMetadata(
   const [row] = await db
     .select({ purpose: vaultDelegationGrants.purpose, oneTime: vaultDelegationGrants.oneTime })
     .from(vaultDelegationGrants)
-    .where(
-      and(
-        eq(vaultDelegationGrants.subject, subject),
-        eq(vaultDelegationGrants.grantedTo, grantedTo),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-      ),
-    )
+    .where(activeGrantTuple({ subject, grantedTo, field }))
     .limit(1);
   return { purpose: row?.purpose ?? null, oneTime: row?.oneTime ?? false };
 }
@@ -935,14 +938,7 @@ export async function sealAndGrantStaticSecret(
   await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub: getOwnerXPublicKey() });
 
   // Supersede any existing active grant for this (principalDid, granteeDid, field) tuple.
-  await supersedeGrants(
-    and(
-      eq(vaultDelegationGrants.subject, principalDid),
-      eq(vaultDelegationGrants.grantedTo, granteeDid),
-      eq(vaultDelegationGrants.field, field),
-      eq(vaultDelegationGrants.status, 'active'),
-    ),
-  );
+  await supersedeActiveGrant({ subject: principalDid, grantedTo: granteeDid, field });
 
   // Wrap the field key to the node's X25519 pubkey using the owner X25519 private key.
   const wrapped = wrapFieldKey(fieldKey, nodeXPub, getOwnerXPrivateKey());

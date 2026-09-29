@@ -42,17 +42,20 @@
  * claim back immediately, so a retry — in this process or another — is
  * never blocked by that failure.
  *
- * ## Stranded claims → re-provision (#2446)
- * A claim row can outlive its grant: a pre-#2446 operator rotation minted
- * the replacement grant with `purpose = NULL`, a revoke removes it, or a
- * winner is SIGKILLed between claiming and rolling back. Polling for a
- * winner that does not exist failed every request forever (prod,
- * 2026-09-29). Now: a row that recorded a grant yet has no active
- * purpose-tagged grant, or a grant-less claim older than STALE_CLAIM_MS,
- * is released and re-claimed through the same unique-constraint claim
- * (one winner), which supersedes the field's self-grant, mints a
- * purpose-tagged one, and repoints the row — ADOPTING the field's current
- * readable value rather than replacing it. One WARN per re-provision.
+ * ## No purpose-tagged grant → adopt before generating (#2446)
+ * A claim row can outlive its grant, and a grant can lose its purpose: a
+ * pre-#2446 operator rotation minted the replacement with `purpose = NULL`,
+ * an operator may delete the row by hand (prod, 2026-09-29), a winner can
+ * be SIGKILLed mid-seal. Polling for a winner that does not exist failed
+ * every request forever. Now a row that recorded a grant yet has no active
+ * purpose-tagged grant, or a grant-less claim older than STALE_CLAIM_MS, is
+ * released and re-claimed through the same unique-constraint claim (one
+ * winner). EVERY claim holder — first boot included — then reads the field
+ * before generating: readable through the node's self-grant → re-tag that
+ * grant with the purpose and repoint the row (bookkeeping only: no
+ * re-seal, grantees untouched, one WARN); tamper-class failure → error,
+ * claim kept; nothing readable → generate, with an ERROR naming any
+ * grantee left on a dead key. A boot never re-keys a shared secret.
  *
  * ## Rotation (#2446)
  * The lookup resolves the CURRENT grant for `(subject, grantedTo, purpose)`
@@ -73,6 +76,7 @@
  * since the plaintext is already in hand from generation.
  */
 import { randomBytes, createHash } from 'node:crypto';
+import { VaultIntegrityError, type VaultEntry } from '@imajin/vault-core';
 import { emitAttestation } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
@@ -202,7 +206,7 @@ export async function sealAndRecordInternalSecret(
   ownerDid: string,
   purpose: string,
   value: string,
-): Promise<{ entry: Awaited<ReturnType<typeof sealAndGrantStaticSecret>>['entry']; grantId: string }> {
+): Promise<{ entry: VaultEntry; grantId: string }> {
   const field = internalSecretField(purpose);
   const { entry, grantId } = await sealAndGrantStaticSecret(field, value, {
     principalDid: ownerDid,
@@ -361,61 +365,146 @@ async function reclaimStrandedProvision(
 }
 
 /**
- * The field's current plaintext, if the node can still read it. A missing
- * field or one with no active node grant (revoked) reads as undefined —
- * nothing to adopt. Integrity failures are NOT swallowed: a tampered entry
- * must fail closed, never be silently replaced by a fresh secret.
+ * The node's own active, unexpired self-grant for `field` (subject ===
+ * grantedTo === ownerDid), whatever its purpose — the grant a pre-#2446
+ * rotation left behind with `purpose = NULL`, or a hand-imported field's.
  */
-async function readCurrentFieldValue(field: string): Promise<string | undefined> {
-  try {
-    return await loadAndUnseal(field);
-  } catch (err) {
-    if (err instanceof VaultDelegationError) return undefined;
-    throw err;
-  }
+async function findSelfGrantForField(
+  ownerDid: string,
+  field: string,
+): Promise<{ id: string; purpose: string | null } | undefined> {
+  const rows = await db
+    .select({
+      id: vaultDelegationGrants.id,
+      purpose: vaultDelegationGrants.purpose,
+      expiresAt: vaultDelegationGrants.expiresAt,
+    })
+    .from(vaultDelegationGrants)
+    .where(
+      and(
+        eq(vaultDelegationGrants.subject, ownerDid),
+        eq(vaultDelegationGrants.grantedTo, ownerDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    );
+  const now = Date.now();
+  const live = rows.find((row) => !(row.expiresAt instanceof Date) || row.expiresAt.getTime() > now);
+  return live ? { id: live.id, purpose: live.purpose ?? null } : undefined;
+}
+
+/** Every OTHER DID holding an active grant of `field` from this node — who a fresh secret would strand. */
+async function listExternalGrantees(ownerDid: string, field: string): Promise<string[]> {
+  const rows = await db
+    .select({ grantedTo: vaultDelegationGrants.grantedTo })
+    .from(vaultDelegationGrants)
+    .where(
+      and(
+        eq(vaultDelegationGrants.subject, ownerDid),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    );
+  return [...new Set(rows.map((row) => row.grantedTo).filter((did) => did !== ownerDid))];
 }
 
 /**
- * Re-provision a stranded `(ownerDid, purpose)` (#2446): supersede whatever
- * self-grant the field has, mint a purpose-tagged one, repoint the row.
- *
- * ADOPTS the field's current value when it is readable rather than
- * generating a new one. The stranding case that matters is an operator
- * rotation that lost `purpose` — that rotated value is what the operator
- * chose and what any external consumer was just handed, so replacing it
- * with fresh random bytes would turn a bookkeeping repair into an outage.
- * Only a field with nothing readable left (revoked, deleted, crashed before
- * sealing) is generated fresh — the same existence-is-automatic rule as a
- * first boot.
- *
- * Logs exactly one WARN per re-provision; the resolved value is then cached
- * like any other, so later requests never see this path again.
+ * Re-tag the existing self-grant with `purpose` and point the provisions
+ * row at it (#2446 ruling a). `purpose` is an unsigned bookkeeping column,
+ * so this is pure bookkeeping: no re-seal, no new key, external grantees
+ * untouched. Idempotent under a race — the conditional update only fires on
+ * a still-untagged row, and a loser that finds it already tagged adopts
+ * whichever grant now carries the purpose.
  */
-async function reprovision(
-  ownerDid: string,
-  purpose: string,
-  field: string,
-  stranded: ProvisionClaim,
-  generate: SecretGenerator,
-): Promise<string> {
-  const current = await readCurrentFieldValue(field);
-  log.warn(
-    { purpose, field, previousGrantId: stranded.grantId, adoptedCurrentValue: current !== undefined },
-    'getInternalSecret: provisions row had no active purpose-tagged grant — re-provisioning (#2446)',
-  );
-  if (current === undefined) {
-    return generateAndSeal(ownerDid, purpose, generate);
+async function retagSelfGrant(ownerDid: string, purpose: string, grantId: string): Promise<string> {
+  const tagged = await db
+    .update(vaultDelegationGrants)
+    .set({ purpose })
+    .where(
+      and(
+        eq(vaultDelegationGrants.id, grantId),
+        eq(vaultDelegationGrants.status, 'active'),
+        isNull(vaultDelegationGrants.purpose),
+      ),
+    )
+    .returning({ id: vaultDelegationGrants.id });
+  let current: string | undefined = tagged[0]?.id;
+  if (!current) {
+    current = (await findActiveGrant(ownerDid, purpose))?.grantId;
   }
-  await sealAndRecordInternalSecret(ownerDid, purpose, current);
+  if (!current) {
+    throw new Error(
+      `getInternalSecret: could not re-tag grant '${grantId}' with purpose '${purpose}' — it is no longer an untagged active self-grant`,
+    );
+  }
+  await recordProvisionGrant(ownerDid, purpose, current);
   return current;
 }
 
 /**
+ * The claim holder's move when no purpose-tagged grant exists — first boot,
+ * a manually deleted provisions row, or a stranded one (#2446):
+ *
+ *   - the field is still readable through the node's own self-grant →
+ *     ADOPT it: re-tag that grant with the purpose, repoint the row, keep
+ *     the value (one WARN). This is prod's 2026-09-29 state; the kernel
+ *     must find *that* secret, not *a* secret.
+ *   - reading it fails (tampered entry, invalid grant signature) → the
+ *     error surfaces. Never replaced, never regenerated.
+ *   - nothing readable (no field, no self-grant, tombstoned) → generate
+ *     fresh. If other DIDs still hold grants of the field, they now point
+ *     at a key that no longer exists: ERROR naming them — re-granting is an
+ *     operator action, never done unattended at boot (#2245 countersign).
+ */
+async function adoptOrGenerate(
+  ownerDid: string,
+  purpose: string,
+  field: string,
+  generate: SecretGenerator,
+  stranded: ProvisionClaim | undefined,
+): Promise<string> {
+  const selfGrant = await findSelfGrantForField(ownerDid, field);
+  if (selfGrant) {
+    const value = await loadAndUnseal(field);
+    if (value !== undefined) {
+      const grantId = await retagSelfGrant(ownerDid, purpose, selfGrant.id);
+      log.warn(
+        { purpose, field, grantId, previousGrantId: stranded?.grantId ?? null },
+        'getInternalSecret: no purpose-tagged grant, but the field is readable — re-tagged the existing grant and kept its value (#2446)',
+      );
+      return value;
+    }
+  }
+
+  const staleGrantees = await listExternalGrantees(ownerDid, field);
+  if (staleGrantees.length > 0) {
+    log.error(
+      { purpose, field, staleGrantees },
+      'getInternalSecret: nothing readable left — generating a fresh secret; these grantees now hold a stale key and must be re-granted by an operator (#2446)',
+    );
+  } else if (stranded) {
+    log.warn(
+      { purpose, field, previousGrantId: stranded.grantId },
+      'getInternalSecret: stranded provisions row and nothing readable left — generating a fresh secret (#2446)',
+    );
+  }
+  return generateAndSeal(ownerDid, purpose, generate);
+}
+
+/** Tamper-class failures: the claim is kept so nothing ever races in to replace the entry. */
+function isTamperFailure(err: unknown): boolean {
+  return err instanceof VaultIntegrityError || err instanceof VaultDelegationError;
+}
+
+/**
  * Run `provision` as the holder of the `(ownerDid, purpose)` claim, rolling
- * the claim back on a failure WE observed so this process (or another) can
- * retry immediately instead of waiting on a stale row. A hard crash between
- * claiming and this catch running (e.g. SIGKILL) can still leave a claim
- * behind — {@link findStrandedProvision} re-claims it once it is stale.
+ * the claim back on an ordinary failure WE observed so this process (or
+ * another) can retry immediately instead of waiting on a stale row. A
+ * tamper-class failure keeps the claim (#2446): deleting it would let the
+ * next caller win a fresh claim and paper over the tampered entry with a
+ * new secret. A hard crash between claiming and this catch running (e.g.
+ * SIGKILL) can still leave a claim behind — {@link findStrandedProvision}
+ * re-claims it once it is stale.
  */
 async function provisionAsClaimHolder(
   ownerDid: string,
@@ -425,10 +514,12 @@ async function provisionAsClaimHolder(
   try {
     return await provision();
   } catch (err) {
-    await db
-      .delete(internalSecretProvisions)
-      .where(and(eq(internalSecretProvisions.ownerDid, ownerDid), eq(internalSecretProvisions.purpose, purpose)))
-      .catch(() => undefined);
+    if (!isTamperFailure(err)) {
+      await db
+        .delete(internalSecretProvisions)
+        .where(and(eq(internalSecretProvisions.ownerDid, ownerDid), eq(internalSecretProvisions.purpose, purpose)))
+        .catch(() => undefined);
+    }
     throw err;
   }
 }
@@ -443,14 +534,14 @@ async function resolveInternalSecret(purpose: string, generate: SecretGenerator)
 
   const field = internalSecretField(purpose);
   if (await claimProvisioning(ownerDid, purpose, field)) {
-    return provisionAsClaimHolder(ownerDid, purpose, () => generateAndSeal(ownerDid, purpose, generate));
+    return provisionAsClaimHolder(ownerDid, purpose, () => adoptOrGenerate(ownerDid, purpose, field, generate, undefined));
   }
 
   // #2446: a claim row can outlive its grant. Waiting on it would poll for a
-  // winner that does not exist and fail on every request; re-provision instead.
+  // winner that does not exist and fail on every request; re-claim instead.
   const stranded = await findStrandedProvision(ownerDid, purpose);
   if (stranded && (await reclaimStrandedProvision(ownerDid, purpose, field, stranded))) {
-    return provisionAsClaimHolder(ownerDid, purpose, () => reprovision(ownerDid, purpose, field, stranded, generate));
+    return provisionAsClaimHolder(ownerDid, purpose, () => adoptOrGenerate(ownerDid, purpose, field, generate, stranded));
   }
 
   const winnerGrant = await pollForActiveGrant(ownerDid, purpose);

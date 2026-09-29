@@ -14,7 +14,9 @@
  *   1. re-seal + self-grant with the purpose, and repoint the provisions row
  *      (`sealAndRecordInternalSecret` — shared with first-boot generation and
  *      bootstrap re-provisioning, so the three can never drift apart);
- *   2. re-issue each prior external grantee on the new key, same purpose;
+ *   2. re-issue each prior external grantee on the new key with its own
+ *      purpose/expiry/one-time carried forward (expired or consumed grants
+ *      are dropped, never renewed);
  *   3. drop this process's cached value so the next read resolves the new
  *      grant without a restart.
  *
@@ -53,23 +55,22 @@ export async function rotateInternalSecret(field: string, plaintext: string): Pr
   }
 
   const ownerDid = getNodeSigningIdentity().senderDid;
-  const previous = await listActiveGrantsForField(field);
-  const externalGrantees = [
-    ...new Set(previous.filter((g) => g.subject === ownerDid && g.grantedTo !== ownerDid).map((g) => g.grantedTo)),
-  ];
+  // Read BEFORE the re-seal: listActiveGrantsForField is newest-first, which
+  // is the grant whose terms a re-issue carries forward.
+  const previousGrants = await listActiveGrantsForField(field);
 
   const { entry, grantId } = await sealAndRecordInternalSecret(ownerDid, purpose, plaintext);
   invalidateInternalSecret(purpose);
 
-  const reissued = await reissueInternalSecretGrants({
+  const { reissued, dropped } = await reissueInternalSecretGrants({
     purpose,
     sourceGrantId: grantId,
-    granteeDids: externalGrantees,
+    previousGrants,
     grantedBy: ROTATION_GRANTED_BY,
   });
 
   log.info(
-    { field, purpose, grantId, reissuedGrantIds: reissued },
+    { field, purpose, grantId, reissuedGrantIds: reissued, droppedExpiredGrantees: dropped },
     'Vault: rotated an internal secret — purpose kept, provisions row and external grantees moved to the new key',
   );
   return entry;

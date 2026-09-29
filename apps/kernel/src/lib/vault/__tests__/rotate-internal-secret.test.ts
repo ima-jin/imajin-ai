@@ -136,7 +136,10 @@ function upsertRow(table: { __table?: string }, data: Row, set: Row | undefined)
 
 function insertValues(table: { __table?: string }, raw: Row) {
   const data: Row = { createdAt: new Date(), ...raw };
-  if (table.__table === 'grants') data.oneTime ??= false;
+  if (table.__table === 'grants') {
+    data.oneTime ??= false;
+    data.consumedAt ??= null; // Postgres column default — fetchGrantSecret checks `!== null`
+  }
   const exists = () => storeFor(table).has(keyFor(table, data));
   // Envelopes are always written through onConflictDoUpdate in the code under test.
   const plain = (): Row[] => {
@@ -393,21 +396,103 @@ describe('rotate an internal-secret:* field (#2446)', () => {
     const fetched = await vault.fetchGrantSecret({ grantId: String(external[0]!.id), granteeDid: corpusDid });
     expect(fetched).toMatchObject({ status: 'ok', value: rotated });
   });
+
+  it('re-issue carries each grantee\'s own terms forward and never widens (expired / consumed are dropped)', async () => {
+    const { vault, internal } = await boot();
+    await internal.getInternalSecret(PURPOSE);
+    const future = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const setTerms = async (did: string, terms: Row) => {
+      const res = await vault.grantInternalSecretTo(PURPOSE, did, 'test-operator');
+      const id = res.status === 'ok' ? res.grantId : '';
+      stores.grants.set(id, { ...stores.grants.get(id)!, ...terms });
+    };
+    await setTerms('did:imajin:scoped', { expiresAt: future, oneTime: true, purpose: 'corpus.custom' });
+    await setTerms('did:imajin:expired', { expiresAt: new Date(Date.now() - 1000) });
+    await setTerms('did:imajin:consumed', { oneTime: true, consumedAt: new Date() });
+    const rotated = randomBytes(24).toString('hex');
+
+    const res = await rotateViaRoute(FIELD, rotated);
+    expect(res.status).toBe(200);
+
+    const byGrantee = (did: string) => activeGrantsFor(FIELD).filter((g) => g.grantedTo === did);
+    const [scoped] = byGrantee('did:imajin:scoped');
+    expect(scoped).toMatchObject({ expiresAt: future, oneTime: true, purpose: 'corpus.custom' });
+    // Signed with the carried-forward expiry: the grant verifies and decrypts the new value.
+    const fetched = await vault.fetchGrantSecret({ grantId: String(scoped!.id), granteeDid: 'did:imajin:scoped' });
+    expect(fetched).toMatchObject({ status: 'ok', value: rotated });
+    expect(byGrantee('did:imajin:expired')).toHaveLength(0);
+    expect(byGrantee('did:imajin:consumed')).toHaveLength(0);
+  });
+
+  it('Tier 1: rotate of an internal secret is refused before anything is written', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const before = {
+      grants: JSON.stringify([...stores.grants.values()]),
+      provisions: JSON.stringify([...stores.provisions.values()]),
+      cid: (await first.vault.vaultService.peek(FIELD))?.cid,
+    };
+    process.env.VAULT_OWNER_X_PUB = randomBytes(32).toString('hex');
+    process.env.VAULT_OWNER_ED_PUB = randomBytes(32).toString('hex');
+
+    const tier1 = await boot();
+    const res = await rotateViaRoute(FIELD, randomBytes(24).toString('hex'));
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(JSON.stringify([...stores.grants.values()])).toBe(before.grants);
+    expect(JSON.stringify([...stores.provisions.values()])).toBe(before.provisions);
+    expect((await tier1.vault.vaultService.peek(FIELD))?.cid).toBe(before.cid);
+    expect(stores.requests.size).toBe(0);
+  });
 });
 
-describe('kernel bootstrap with a stranded provisions row (#2446)', () => {
-  it('re-provisions (adopting the current value) instead of polling and giving up — one WARN', async () => {
+/**
+ * The state a pre-#2446 rotation leaves behind: the active self-grant lost
+ * its purpose (no re-seal — the value and key are what the operator set).
+ * `deleteRow` additionally mirrors prod's 2026-09-29 manual recovery.
+ */
+function stripPurpose(options: { deleteRow: boolean }): void {
+  for (const g of activeGrantsFor(FIELD)) {
+    if (g.grantedTo === g.subject) stores.grants.set(String(g.id), { ...g, purpose: null });
+  }
+  if (options.deleteRow) stores.provisions.clear();
+}
+
+describe('kernel bootstrap without a purpose-tagged grant (#2446 ruling a: re-tag in place)', () => {
+  it('prod\'s exact state (row deleted, field readable): value kept, no new secret, no re-seal, one WARN', async () => {
     const first = await boot();
     await first.internal.getInternalSecret(PURPOSE);
     const rotated = randomBytes(24).toString('hex');
     await rotateViaRoute(FIELD, rotated);
-    // Reproduce the pre-fix prod state exactly: the rotated grant lost its purpose.
-    for (const g of activeGrantsFor(FIELD)) stores.grants.set(String(g.id), { ...g, purpose: null });
+    stripPurpose({ deleteRow: true });
+    const [selfGrant] = activeGrantsFor(FIELD);
+    const cidBefore = (await first.vault.vaultService.peek(FIELD))?.cid;
+    logSpies.warn.mockClear();
 
     const restarted = await boot();
     await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
     await restarted.internal.getInternalSecret(PURPOSE);
-    await restarted.internal.getInternalSecret(PURPOSE);
+
+    const active = activeGrantsFor(FIELD);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.id).toBe(selfGrant!.id); // same grant, re-tagged
+    expect(active[0]!.purpose).toBe(PURPOSE);
+    expect((await restarted.vault.vaultService.peek(FIELD))?.cid).toBe(cidBefore); // no re-seal
+    expect([...stores.provisions.values()][0]!.grantId).toBe(selfGrant!.id);
+    expect(logSpies.error).not.toHaveBeenCalled();
+    expect(logSpies.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('stranded row (recorded grant, purpose lost): re-tags instead of polling and giving up', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const rotated = randomBytes(24).toString('hex');
+    await rotateViaRoute(FIELD, rotated);
+    stripPurpose({ deleteRow: false });
+    logSpies.warn.mockClear();
+
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
 
     const active = activeGrantsFor(FIELD);
     expect(active).toHaveLength(1);
@@ -415,6 +500,81 @@ describe('kernel bootstrap with a stranded provisions row (#2446)', () => {
     expect([...stores.provisions.values()][0]!.grantId).toBe(active[0]!.id);
     expect(logSpies.error).not.toHaveBeenCalled();
     expect(logSpies.warn).toHaveBeenCalledTimes(1);
+  });
+
+  it('a healthy external grantee keeps working across the repair (same value, grant untouched)', async () => {
+    const first = await boot();
+    const value = await first.internal.getInternalSecret(PURPOSE);
+    const corpusDid = 'did:imajin:corpus-test';
+    const granted = await first.vault.grantInternalSecretTo(PURPOSE, corpusDid, 'test-operator');
+    const corpusGrantId = granted.status === 'ok' ? granted.grantId : '';
+    stripPurpose({ deleteRow: true });
+
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(value);
+
+    expect(stores.grants.get(corpusGrantId)?.status).toBe('active');
+    const fetched = await restarted.vault.fetchGrantSecret({ grantId: corpusGrantId, granteeDid: corpusDid });
+    expect(fetched).toMatchObject({ status: 'ok', value });
+  });
+
+  it('re-tag race: two processes booting at once resolve the same value, one grant, no re-seal', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const rotated = randomBytes(24).toString('hex');
+    await rotateViaRoute(FIELD, rotated);
+    stripPurpose({ deleteRow: true });
+    const [selfGrant] = activeGrantsFor(FIELD);
+    const cidBefore = (await first.vault.vaultService.peek(FIELD))?.cid;
+
+    const a = await boot();
+    const b = await boot();
+    const values = await Promise.all([a.internal.getInternalSecret(PURPOSE), b.internal.getInternalSecret(PURPOSE)]);
+
+    expect(values).toEqual([rotated, rotated]);
+    const active = activeGrantsFor(FIELD);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.id).toBe(selfGrant!.id);
+    expect(active[0]!.purpose).toBe(PURPOSE);
+    expect((await b.vault.vaultService.peek(FIELD))?.cid).toBe(cidBefore);
+    expect(stores.provisions.size).toBe(1);
+  });
+
+  it('tampered grant: the error surfaces on every call, the entry is never replaced, the row survives', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    stripPurpose({ deleteRow: true });
+    const [selfGrant] = activeGrantsFor(FIELD);
+    stores.grants.set(String(selfGrant!.id), { ...selfGrant!, ownerSignature: randomBytes(64).toString('hex') });
+    const cidBefore = (await first.vault.vaultService.peek(FIELD))?.cid;
+    const grantsBefore = stores.grants.size;
+
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).rejects.toThrow();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).rejects.toThrow();
+
+    expect((await restarted.vault.vaultService.peek(FIELD))?.cid).toBe(cidBefore);
+    expect(stores.grants.size).toBe(grantsBefore);
+    expect(stores.provisions.size).toBe(1);
+  });
+
+  it('nothing readable left: generates fresh and ERRORs naming the grantees now on a dead key', async () => {
+    const first = await boot();
+    const original = await first.internal.getInternalSecret(PURPOSE);
+    const corpusDid = 'did:imajin:corpus-test';
+    await first.vault.grantInternalSecretTo(PURPOSE, corpusDid, 'test-operator');
+    for (const g of activeGrantsFor(FIELD)) {
+      if (g.grantedTo === g.subject) stores.grants.set(String(g.id), { ...g, status: 'revoked' });
+    }
+
+    const restarted = await boot();
+    const fresh = await restarted.internal.getInternalSecret(PURPOSE);
+
+    expect(fresh).not.toBe(original);
+    expect(logSpies.error).toHaveBeenCalledWith(
+      expect.objectContaining({ staleGrantees: [corpusDid] }),
+      expect.stringMatching(/re-granted by an operator/),
+    );
   });
 
   it('a crashed winner\'s stale claim (no grant ever recorded) is re-claimed and generated', async () => {

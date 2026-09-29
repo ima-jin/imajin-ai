@@ -25,6 +25,7 @@ const { provisionsStore, grantsStore, PROVISIONS_TABLE, GRANTS_TABLE } = vi.hois
   const GRANTS_TABLE = {
     __table: 'grants',
     id: 'id', subject: 'subject', grantedTo: 'grantedTo', purpose: 'purpose', status: 'status',
+    field: 'field', expiresAt: 'expiresAt',
   };
   return { provisionsStore, grantsStore, PROVISIONS_TABLE, GRANTS_TABLE };
 });
@@ -46,6 +47,32 @@ function project(rows: Row[], projection?: Record<string, string>): Row[] {
   });
 }
 
+// Top-level (hoisted) so the vi.mock factory stays inside the nesting budget.
+function selectWhere(table: { __table: string }, predicate: Predicate, projection?: Record<string, string>) {
+  const rows = project([...storeFor(table).values()].filter(predicate), projection);
+  return Object.assign(Promise.resolve(rows), { limit: (n: number) => Promise.resolve(rows.slice(0, n)) });
+}
+
+/** An already-executed mutation: awaitable, plus drizzle's `.returning()`. */
+function withReturning(rows: Row[]) {
+  return Object.assign(Promise.resolve([]), {
+    returning: (projection?: Record<string, string>) => Promise.resolve(project(rows, projection)),
+  });
+}
+
+function patchWhere(table: { __table: string }, patch: Row, predicate: Predicate): Row[] {
+  const store = storeFor(table);
+  const touched: Row[] = [];
+  for (const [key, row] of store) {
+    if (predicate(row)) {
+      const next = { ...row, ...patch };
+      store.set(key, next);
+      touched.push(next);
+    }
+  }
+  return touched;
+}
+
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
   const eq = (column: string, value: unknown): Predicate => (row) => row[column] === value;
@@ -58,10 +85,7 @@ vi.mock('@/src/db', () => ({
   db: {
     select: (projection?: Record<string, string>) => ({
       from: (table: { __table: string }) => ({
-        where: (predicate: Predicate) => ({
-          limit: (n: number) =>
-            Promise.resolve(project([...storeFor(table).values()].filter(predicate), projection).slice(0, n)),
-        }),
+        where: (predicate: Predicate) => selectWhere(table, predicate, projection),
       }),
     }),
     insert: (_table: { __table: string }) => ({
@@ -85,11 +109,7 @@ vi.mock('@/src/db', () => ({
     update: (table: { __table: string }) => ({
       set: (patch: Row) => ({
         where: (predicate: Predicate) => {
-          const store = storeFor(table);
-          for (const [key, row] of store) {
-            if (predicate(row)) store.set(key, { ...row, ...patch });
-          }
-          return Promise.resolve([]);
+          return withReturning(patchWhere(table, patch, predicate));
         },
       }),
     }),
@@ -103,9 +123,7 @@ vi.mock('@/src/db', () => ({
             deleted.push(row);
           }
         }
-        return Object.assign(Promise.resolve([]), {
-          returning: (projection?: Record<string, string>) => Promise.resolve(project(deleted, projection)),
-        });
+        return withReturning(deleted);
       },
     }),
   },
@@ -117,13 +135,14 @@ vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`,
 }));
 
-const { sealAndGrantStaticSecretMock, fetchGrantSecretMock, ackGrantMock, loadAndUnsealMock, subscriptions, warnMock } = vi.hoisted(() => ({
+const { sealAndGrantStaticSecretMock, fetchGrantSecretMock, ackGrantMock, loadAndUnsealMock, subscriptions, warnMock, errorMock } = vi.hoisted(() => ({
   sealAndGrantStaticSecretMock: vi.fn(),
   fetchGrantSecretMock: vi.fn(),
   ackGrantMock: vi.fn(),
   loadAndUnsealMock: vi.fn(),
   subscriptions: new Map<string, Array<() => void>>(),
   warnMock: vi.fn(),
+  errorMock: vi.fn(),
 }));
 vi.mock('../index', () => ({
   sealAndGrantStaticSecret: sealAndGrantStaticSecretMock,
@@ -157,7 +176,7 @@ vi.mock('@imajin/bus', () => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: warnMock, error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: warnMock, error: errorMock }),
 }));
 
 import {
@@ -169,7 +188,7 @@ import {
   purposeFromInternalSecretField,
   _resetInternalSecretCacheForTests,
 } from '../internal-secret';
-import { VaultDelegationError } from '../errors';
+import { IntegrityErrorCode, VaultIntegrityError } from '@imajin/vault-core';
 
 const NODE_DID = 'did:imajin:node-test';
 const PURPOSE = 'kernel.foreign-principal-pepper';
@@ -180,6 +199,7 @@ beforeEach(() => {
   grantsStore.clear();
   subscriptions.clear();
   warnMock.mockReset();
+  errorMock.mockReset();
   loadAndUnsealMock.mockReset().mockResolvedValue(undefined);
   _resetInternalSecretCacheForTests();
 
@@ -412,46 +432,97 @@ describe('getInternalSecret — rotation pickup without restart (#2446 fix 3)', 
   });
 });
 
-describe('getInternalSecret — stranded provisions row (#2446 fix 2)', () => {
+describe('getInternalSecret — no purpose-tagged grant: adopt before generating (#2446 fix 1+2)', () => {
   const claimKey = `${NODE_DID}::${PURPOSE}`;
+  const untagged = () => ({
+    id: 'vdg_untagged', subject: NODE_DID, grantedTo: NODE_DID, field: FIELD, purpose: null, status: 'active', expiresAt: null,
+  });
 
-  it('re-provisions by ADOPTING the readable current value when the recorded grant lost its purpose', async () => {
-    provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_superseded' });
+  it('prod state (row deleted by hand, readable untagged self-grant): re-tags in place, keeps the value, no re-seal', async () => {
+    grantsStore.set('vdg_untagged', untagged());
     loadAndUnsealMock.mockResolvedValue('operator-rotated-value');
-    sealAndGrantStaticSecretMock.mockResolvedValue({ entry: {}, grantId: 'vdg_repaired', requestId: null });
 
     await expect(getInternalSecret(PURPOSE)).resolves.toBe('operator-rotated-value');
     await getInternalSecret(PURPOSE);
 
-    expect(sealAndGrantStaticSecretMock).toHaveBeenCalledTimes(1);
-    expect(sealAndGrantStaticSecretMock).toHaveBeenCalledWith(FIELD, 'operator-rotated-value', expect.objectContaining({
-      principalDid: NODE_DID, granteeDid: NODE_DID, purpose: PURPOSE,
-    }));
-    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_repaired');
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+    expect(grantsStore.get('vdg_untagged')?.purpose).toBe(PURPOSE);
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_untagged');
     expect(emitAttestationMock).not.toHaveBeenCalled(); // adopted, not generated
     expect(warnMock).toHaveBeenCalledTimes(1);
   });
 
-  it('generates fresh when the field has nothing readable left (revoked)', async () => {
+  it('stranded row (recorded grant superseded): same re-tag, no re-seal', async () => {
+    provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_superseded' });
+    grantsStore.set('vdg_untagged', untagged());
+    loadAndUnsealMock.mockResolvedValue('operator-rotated-value');
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('operator-rotated-value');
+
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_untagged');
+    expect(warnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('generates fresh only when nothing is readable, and ERRORs naming the grantees left on a dead key', async () => {
     provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_revoked' });
-    loadAndUnsealMock.mockRejectedValue(new VaultDelegationError('no active grant', { field: FIELD }));
+    grantsStore.set('vdg_corpus', {
+      id: 'vdg_corpus', subject: NODE_DID, grantedTo: 'did:imajin:corpus', field: FIELD, purpose: PURPOSE, status: 'active',
+    });
 
     const value = await getInternalSecret(PURPOSE);
 
     expect(value).toMatch(/^[0-9a-f]{64}$/);
     expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_generated');
     expect(emitAttestationMock).toHaveBeenCalledTimes(1);
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ staleGrantees: ['did:imajin:corpus'] }),
+      expect.stringMatching(/re-granted by an operator/),
+    );
   });
 
-  it('fails closed on a vault integrity error instead of replacing the secret', async () => {
-    provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_old' });
-    loadAndUnsealMock.mockRejectedValue(new Error('integrity violation'));
+  it('first boot with nothing in the vault generates quietly (no WARN, no ERROR)', async () => {
+    await expect(getInternalSecret(PURPOSE)).resolves.toMatch(/^[0-9a-f]{64}$/);
+    expect(warnMock).not.toHaveBeenCalled();
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it('tampered entry: the integrity error surfaces, nothing is regenerated, and the claim row survives', async () => {
+    grantsStore.set('vdg_untagged', untagged());
+    loadAndUnsealMock.mockRejectedValue(
+      new VaultIntegrityError(IntegrityErrorCode.KEY_ID_MISMATCH, 'integrity violation', { entryField: FIELD }),
+    );
 
     await expect(getInternalSecret(PURPOSE)).rejects.toThrow(/integrity violation/);
+
     expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
-    // The claim was rolled back, so a later boot can retry.
+    expect(provisionsStore.has(claimKey)).toBe(true);
+    expect(grantsStore.get('vdg_untagged')?.purpose).toBeNull();
+  });
+
+  it('an ordinary failure while generating still rolls the claim back for an immediate retry', async () => {
+    sealAndGrantStaticSecretMock.mockRejectedValueOnce(new Error('db hiccup'));
+
+    await expect(getInternalSecret(PURPOSE)).rejects.toThrow(/db hiccup/);
     expect(provisionsStore.has(claimKey)).toBe(false);
   });
+
+  it('re-tag race: a grant another process already tagged is adopted, not re-tagged twice', async () => {
+    grantsStore.set('vdg_untagged', untagged());
+    loadAndUnsealMock.mockImplementation(async () => {
+      // The other process wins the re-tag between our read and our update.
+      grantsStore.set('vdg_untagged', { ...untagged(), purpose: PURPOSE });
+      return 'operator-rotated-value';
+    });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('operator-rotated-value');
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_untagged');
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getInternalSecret — stale / live claims (#2446 fix 2)', () => {
+  const claimKey = `${NODE_DID}::${PURPOSE}`;
 
   it('re-claims a crashed winner\'s stale claim (no grant, older than the stale window)', async () => {
     provisionsStore.set(claimKey, {
