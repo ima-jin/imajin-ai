@@ -284,7 +284,7 @@ components:
         secretsSet:
           type: array
           items: { type: string }
-          description: "Actions secret NAMES only (e.g. IMAJIN_APP_PRIVATE_KEY, GITHUB_PACKAGES_TOKEN) — never values."
+          description: "Actions secret NAMES only (e.g. IMAJIN_APP_PRIVATE_KEY) — never values."
         attestationTypes:
           type: array
           items: { type: string }

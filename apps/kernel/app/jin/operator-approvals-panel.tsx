@@ -645,16 +645,26 @@ function RevealedBearerBanner({
   );
 }
 
-// ── one-time app-signing-key claim-code reveal (#2411) ──────────────────────
+// ── one-time app-signing-key claim-code reveal (#2411, entryUrl #2427) ──────
 // Same pattern as `RevealedBearerBanner` above: the decision route surfaces
 // the freshly issued claim code exactly once, in the approve response's
 // `data.claimCode` — never persisted (only its SHA-256 hash is), never
 // fetchable again. This box is the only place in the UI that ever holds it.
+//
+// #2427: the provisioned app now has its own operator-facing `/claim` page
+// (`ima-jin/imajin-app-template`'s unclaimed-boot-mode work) that redeems
+// this code in the browser instead of an ssh + `.env.local` edit. This
+// banner surfaces exactly where to paste it — `entryUrl` is derived
+// client-side only (this dashboard's own origin, the same Caddy-fronted
+// node the app deploys behind, plus the proposal's own `slug`), never a
+// new server-supplied field.
 
 interface RevealedClaimCode {
   proposalId: string;
   displayName: string;
   claimCode: string;
+  /** apps:provision proposal's slug — used to derive the claim-page URL below (#2427). */
+  slug: string;
 }
 
 function RevealedClaimCodeBanner({
@@ -662,6 +672,9 @@ function RevealedClaimCodeBanner({
   onDismiss,
 }: Readonly<{ revealed: RevealedClaimCode; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
+  const [urlCopied, setUrlCopied] = useState(false);
+  const claimUrl = `${globalThis.location.origin}/${revealed.slug}/claim`;
+
   const copy = useCallback(() => {
     globalThis.navigator.clipboard?.writeText(revealed.claimCode).then(() => {
       setCopied(true);
@@ -669,16 +682,28 @@ function RevealedClaimCodeBanner({
     }).catch(() => undefined);
   }, [revealed.claimCode]);
 
+  const copyUrl = useCallback(() => {
+    globalThis.navigator.clipboard?.writeText(claimUrl).then(() => {
+      setUrlCopied(true);
+      setTimeout(() => setUrlCopied(false), 2000);
+    }).catch(() => undefined);
+  }, [claimUrl]);
+
   return (
     <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="revealed-claim-code">
       <p className="text-sm text-amber-200 font-medium">
-        App signing-key claim code for &quot;{revealed.displayName}&quot; — shown once, never again. Put it in the
-        app&apos;s <code>.env.local</code> now; it is single-use and short-lived.
+        App signing-key claim code for &quot;{revealed.displayName}&quot; — shown once, never again.
       </p>
       <pre className="text-xs font-mono text-amber-100 bg-black/40 rounded p-2 overflow-x-auto select-all">{revealed.claimCode}</pre>
+      <p className="text-xs text-amber-300">
+        Paste at <span className="font-mono select-all">{claimUrl}</span>
+      </p>
       <div className="flex items-center gap-2">
         <button type="button" onClick={copy} className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60">
           {copied ? 'Copied!' : 'Copy'}
+        </button>
+        <button type="button" onClick={copyUrl} className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60">
+          {urlCopied ? 'Copied!' : 'Copy link'}
         </button>
         <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
           I&apos;ve saved it — dismiss
@@ -708,7 +733,7 @@ function SealSkippedBanner({
     <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="seal-skipped-notice">
       <p className="text-sm text-amber-200 font-medium">
         CI secrets not sealed for &quot;{skipped.displayName}&quot; — the org GitHub credential is not sealed, so
-        `IMAJIN_APP_PRIVATE_KEY`/`GITHUB_PACKAGES_TOKEN` were not pushed to Actions secrets. The app can still fetch its
+        `IMAJIN_APP_PRIVATE_KEY` was not pushed to Actions secrets. The app can still fetch its
         signing key from the vault at boot; re-run provisioning once an operator seals the credential to also seal CI.
       </p>
       <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
@@ -1020,11 +1045,15 @@ function OperatorApprovalsPanelInner() {
       }
       // #2411: an approved apps:provision proposal returns the freshly
       // issued app-signing-key claim code exactly once, in `data.claimCode`.
+      // #2427: `slug` rides along so the banner can derive the app's own
+      // /claim page URL — already present on `approval.detail`, never a new
+      // server field.
       if (decision === 'approve' && responseBody.data?.claimCode) {
         setRevealedClaimCode({
           proposalId,
           displayName: detailString(approval.detail, 'displayName', approval.summary),
           claimCode: responseBody.data.claimCode,
+          slug: detailString(approval.detail, 'slug', ''),
         });
       }
       // #2415: apps.provision reached the claim code but skipped sealing CI
