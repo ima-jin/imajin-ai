@@ -27,7 +27,7 @@ import { computeCid } from '@imajin/cid';
 import { createLogger } from '@imajin/logger';
 import { randomUUID } from 'node:crypto';
 import { emitMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
-import type { PaymentRequestSettlementRef } from './types';
+import type { PaymentRequestSettlementRef, PaymentRequestTaxBreakdown } from './types';
 
 const log = createLogger('kernel');
 
@@ -107,6 +107,28 @@ export async function emitIssuerSignedAttestation(params: IssuerSignedAttestatio
   }
 }
 
+/**
+ * #2421 — the subtotal → tax → total breakdown as attestation payload
+ * fields (snake_case, like the rest of the payload). Empty for a request
+ * that charges no tax, so its attestation payload is byte-identical to
+ * what it was before tax existed. `total_amount` alongside is the GRAND
+ * total; `subtotal_amount + tax_total_amount === total_amount`.
+ */
+function taxPayloadFields(tax: PaymentRequestTaxBreakdown | null | undefined): Record<string, unknown> {
+  if (!tax) return {};
+  return {
+    subtotal_amount: tax.subtotalAmount,
+    tax_total_amount: tax.taxTotalAmount,
+    taxes: tax.taxes.map((t) => ({
+      jurisdiction: t.jurisdiction,
+      kind: t.kind,
+      rate_bps: t.rateBps,
+      amount: t.amount,
+      registration_number: t.registrationNumber,
+    })),
+  };
+}
+
 /** Exactly ONE `payment_request.issued` per request, binding `content_hash`, signed by the issuer. */
 export async function emitPaymentRequestIssuedAttestation(params: {
   paymentRequestId: string;
@@ -117,6 +139,7 @@ export async function emitPaymentRequestIssuedAttestation(params: {
   totalAmount: number;
   currency: string;
   contentHash: string;
+  tax?: PaymentRequestTaxBreakdown | null;
 }): Promise<string | null> {
   return emitIssuerSignedAttestation({
     issuerDid: params.issuerDid,
@@ -133,6 +156,7 @@ export async function emitPaymentRequestIssuedAttestation(params: {
       recipient_did: params.recipientDid,
       recipient_stub_id: params.recipientStubId,
       total_amount: params.totalAmount,
+      ...taxPayloadFields(params.tax),
       currency: params.currency,
       content_hash: params.contentHash,
     },
@@ -150,6 +174,7 @@ export async function emitPaymentRequestSettledAttestation(params: {
   contentHash: string;
   totalAmount: number;
   currency: string;
+  tax?: PaymentRequestTaxBreakdown | null;
 }): Promise<string | null> {
   return emitIssuerSignedAttestation({
     issuerDid: params.issuerDid,
@@ -163,6 +188,7 @@ export async function emitPaymentRequestSettledAttestation(params: {
       asserted_by: params.assertedBy,
       note: params.note ?? null,
       total_amount: params.totalAmount,
+      ...taxPayloadFields(params.tax),
       currency: params.currency,
       content_hash: params.contentHash,
     },
@@ -186,6 +212,7 @@ export async function emitPaymentRequestSettledStripeAttestation(params: {
   totalAmount: number;
   currency: string;
   settlementRef: PaymentRequestSettlementRef;
+  tax?: PaymentRequestTaxBreakdown | null;
 }): Promise<string | null> {
   return emitMechanicalAttestation({
     subjectDid: params.recipientDid ?? params.issuerDid,
@@ -197,6 +224,7 @@ export async function emitPaymentRequestSettledStripeAttestation(params: {
       method: 'stripe',
       issuer_did: params.issuerDid,
       total_amount: params.totalAmount,
+      ...taxPayloadFields(params.tax),
       currency: params.currency,
       content_hash: params.contentHash,
       settlement_ref: params.settlementRef,
