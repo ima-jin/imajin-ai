@@ -101,3 +101,23 @@ export interface KnownVaultFieldApiRow {
 export interface KnownVaultFieldsApiResponse {
   fields: KnownVaultFieldApiRow[];
 }
+
+/**
+ * An active delegation grant on a field OTHER than the node's own self-grant
+ * (#2450 step 1) — GET /api/vault/grantees/[field]. Rotating or deleting a
+ * field does nothing to these; each one's copy of the wrapped key stops
+ * decrypting unless the field's rotate path re-issues it (not yet
+ * implemented generically — #2450 step 2).
+ */
+export interface VaultGranteeApiRow {
+  grantedTo: string;
+  purpose: string | null;
+  oneTime: boolean;
+  expiresAt: string | null;
+}
+
+export interface VaultGranteesApiResponse {
+  field: string;
+  count: number;
+  grantees: VaultGranteeApiRow[];
+}

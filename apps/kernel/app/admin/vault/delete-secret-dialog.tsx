@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { describeGrantee, useVaultGrantees } from './use-vault-grantees';
 
 interface DeleteSecretDialogProps {
   field: string | null;
@@ -23,6 +24,7 @@ export function DeleteSecretDialog({
   onConfirm,
 }: Readonly<DeleteSecretDialogProps>) {
   const [confirmText, setConfirmText] = useState('');
+  const { loading: loadingGrantees, grantees } = useVaultGrantees(field, open);
 
   useEffect(() => {
     if (!open) {
@@ -34,6 +36,7 @@ export function DeleteSecretDialog({
     return null;
   }
 
+  const hasOtherGrantees = grantees.length > 0;
   const matches = confirmText === field;
 
   async function handleConfirm(): Promise<void> {
@@ -56,6 +59,24 @@ export function DeleteSecretDialog({
             ⚠️ Only for a mis-named or dead row. Type the field name below to confirm.
           </p>
         </div>
+
+        {!loadingGrantees && hasOtherGrantees && (
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-4">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+              ⚠️ {grantees.length} active grantee{grantees.length === 1 ? '' : 's'} will need re-issue
+            </p>
+            <ul className="mt-1 list-disc list-inside text-xs text-amber-800 dark:text-amber-300 font-mono">
+              {grantees.map((grantee) => (
+                <li key={grantee.grantedTo}>{describeGrantee(grantee)}</li>
+              ))}
+            </ul>
+            <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+              These grantees&apos; existing copies will stop decrypting once this field is deleted —
+              deleting does not re-issue or notify them.
+            </p>
+          </div>
+        )}
+
         <label htmlFor="delete-secret-confirm" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Type <span className="font-mono">{field}</span> to confirm
         </label>

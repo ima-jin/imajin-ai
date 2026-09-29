@@ -35,6 +35,9 @@ function installFetch(rows: MockVaultRow[] = []) {
     if (url === '/api/vault/known-fields' && method === 'GET') {
       return jsonResponse({ fields: [] });
     }
+    if (url.startsWith('/api/vault/grantees/') && method === 'GET') {
+      return jsonResponse({ field: decodeURIComponent(url.split('/').pop() ?? ''), count: 0, grantees: [] });
+    }
     if (url === '/api/vault/set' && method === 'POST') {
       const body = JSON.parse(init?.body as string) as { field: string; value: string; custodyScheme: string };
       const nowRow: MockVaultRow = {
