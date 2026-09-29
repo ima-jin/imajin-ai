@@ -4,6 +4,23 @@ import type { FieldVisibility } from '@/src/db/schemas/profile';
 
 export const FIELD_VISIBILITY_LEVELS: string[] = ['public', 'connections', 'selective', 'private'];
 
+// Tax registrations (#2420) — validators used by the profile update route,
+// plus `getPrimaryTaxRegistration` for #2421 (pay service tax-rate prefill).
+export {
+  TAX_REGISTRATION_KINDS,
+  validateTaxRegistrationNumber,
+  validateTaxRegistration,
+  validateTaxRegistrations,
+  getPrimaryTaxRegistration,
+} from './tax-registrations';
+export type {
+  TaxRegistration,
+  TaxRegistrationKind,
+  TaxRegistrationNumberValidation,
+  TaxRegistrationValidationResult,
+  TaxRegistrationsValidationResult,
+} from './tax-registrations';
+
 /**
  * Release connections-gated metadata fields through the broker in a single batched request.
  * Mutates `result` in place. Fail-closed — on any broker error the fields stay sealed.
