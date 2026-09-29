@@ -36,6 +36,8 @@ export interface RotateSecretInput {
   field: string;
   value: string;
   hint: string;
+  /** Required, and must equal `field` exactly, when the field has other active grantees (#2450). */
+  confirmField?: string;
 }
 
 export interface VaultListApiRow {

@@ -22,7 +22,7 @@ export function RotateSecretDialog({
   const [value, setValue] = useState('');
   const [hint, setHint] = useState('');
   const [confirmText, setConfirmText] = useState('');
-  const { loading: loadingGrantees, grantees } = useVaultGrantees(field, open);
+  const { loading: loadingGrantees, grantees, error: granteesError } = useVaultGrantees(field, open);
 
   useEffect(() => {
     if (!open) {
@@ -36,22 +36,29 @@ export function RotateSecretDialog({
     return null;
   }
 
-  // #2450 step 1: rotating re-seals under a new key and re-grants only the
-  // node's own self-grant — every OTHER active grantee's copy of the wrapped
-  // key still points at the material being replaced, so it silently stops
-  // decrypting. Require a typed confirmation naming the blast radius before
-  // that can happen; re-issuing those grantees generically is #2450 step 2,
-  // not yet implemented, so the honest thing here is to warn, not to claim
-  // it's handled.
+  // #2450: rotating re-seals under a new key and re-grants only the node's
+  // own self-grant — every OTHER active grantee's copy of the wrapped key
+  // still points at the material being replaced, so it silently stops
+  // decrypting. The server enforces this too (POST /api/vault/rotate 409s
+  // without a matching confirmField) — this is the UI half, not the only
+  // guard, after the review on #2449 found a browser-only version of this
+  // check that failed open. A grantee-query failure is treated the same as
+  // "grantees exist and are unknown" — never silently allowed through.
   const hasOtherGrantees = grantees.length > 0;
-  const confirmed = !hasOtherGrantees || confirmText === field;
-  const canSubmit = !submitting && value.trim().length > 0 && confirmed;
+  const requiresConfirm = hasOtherGrantees || granteesError !== null;
+  const confirmed = !requiresConfirm || confirmText === field;
+  const canSubmit = !submitting && !loadingGrantees && value.trim().length > 0 && confirmed;
 
   async function handleRotate(): Promise<void> {
     if (!canSubmit) {
       return;
     }
-    await onSubmit({ field: field ?? '', value, hint: hint.trim() });
+    await onSubmit({
+      field: field ?? '',
+      value,
+      hint: hint.trim(),
+      ...(requiresConfirm ? { confirmField: confirmText } : {}),
+    });
   }
 
   return (
@@ -61,6 +68,21 @@ export function RotateSecretDialog({
         <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
           Submit a new value for <span className="font-mono">{field}</span>. Transmitted over TLS, sealed server-side, and a rotation event is published.
         </p>
+
+        {loadingGrantees && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Checking for other active grantees…</p>
+        )}
+
+        {!loadingGrantees && granteesError && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 mb-4">
+            <p className="text-sm font-medium text-red-800 dark:text-red-300">
+              ⚠️ Could not check for other active grantees: {granteesError}
+            </p>
+            <p className="mt-1 text-xs text-red-800 dark:text-red-300">
+              Treated as unknown, not zero — type the field name below to rotate anyway.
+            </p>
+          </div>
+        )}
 
         {!loadingGrantees && hasOtherGrantees && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-4">
@@ -98,7 +120,7 @@ export function RotateSecretDialog({
           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-orange-500"
         />
 
-        {hasOtherGrantees && (
+        {requiresConfirm && (
           <>
             <label htmlFor="rotate-secret-confirm" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Type <span className="font-mono">{field}</span> to confirm rotating past these grantees

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq, gt, isNull, ne, or } from 'drizzle-orm';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
 const log = createLogger('kernel');
@@ -17,13 +16,13 @@ const log = createLogger('kernel');
  * that grantee's copy of the wrapped key still points at the OLD sealed
  * material, so its next fetch silently fails to decrypt (#2446/#2448/#2450).
  *
- * "Currently usable" excludes what a re-issue warning would mislead about:
- * an expired grant, or a one-time grant already consumed, can't be used
- * again regardless of what Rotate/Delete does, so it is not counted.
- *
- * Read-only — this route never re-issues anything itself (#2450 step 2,
- * generalizing #2448's re-issue to every delegation-grant field, is
- * deliberately separate follow-up work).
+ * Read-only. The count and shape returned here are shared (via
+ * `listOtherActiveGrantees`) with the SERVER-SIDE guard on
+ * `POST /api/vault/rotate` and `POST /api/vault/delete` — the review on
+ * #2449 found the client-only version of this check failed open (a raw
+ * POST with no confirmation still succeeded), so this endpoint is now
+ * purely informational for the UI; the routes enforce the same query
+ * themselves rather than trusting whatever the browser saw.
  */
 export async function GET(_request: NextRequest, props: { params: Promise<{ field: string }> }) {
   const params = await props.params;
@@ -34,32 +33,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ fiel
 
   try {
     const identity = getNodeSigningIdentity();
-
-    const rows = await db
-      .select({
-        grantedTo: vaultDelegationGrants.grantedTo,
-        purpose: vaultDelegationGrants.purpose,
-        oneTime: vaultDelegationGrants.oneTime,
-        expiresAt: vaultDelegationGrants.expiresAt,
-      })
-      .from(vaultDelegationGrants)
-      .where(
-        and(
-          eq(vaultDelegationGrants.field, field),
-          eq(vaultDelegationGrants.status, 'active'),
-          ne(vaultDelegationGrants.grantedTo, identity.senderDid),
-          isNull(vaultDelegationGrants.consumedAt),
-          or(isNull(vaultDelegationGrants.expiresAt), gt(vaultDelegationGrants.expiresAt, new Date())),
-        ),
-      );
-
-    const grantees = rows.map((row) => ({
-      grantedTo: row.grantedTo,
-      purpose: row.purpose,
-      oneTime: row.oneTime,
-      expiresAt: row.expiresAt?.toISOString() ?? null,
-    }));
-
+    const grantees = await listOtherActiveGrantees(field, identity.senderDid);
     return NextResponse.json({ field, count: grantees.length, grantees });
   } catch (error) {
     log.error({ err: String(error), field }, 'Vault grantees error');

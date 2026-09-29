@@ -44,11 +44,13 @@ describe('typed confirmation', () => {
     expect(screen.queryByText('Delete Vault Entry')).toBeNull();
   });
 
-  it('disables Delete until the field name is typed exactly', () => {
+  it('disables Delete until the grantee check resolves AND the field name is typed exactly', async () => {
     installGranteesFetch();
     renderDialog();
     const deleteButton = screen.getByRole('button', { name: 'Delete' });
     expect(deleteButton).toHaveProperty('disabled', true);
+
+    await waitFor(() => expect(screen.queryByText(/Checking for other active grantees/)).toBeNull());
 
     fireEvent.change(screen.getByLabelText(/Type/), { target: { value: 'github-org-provisioning' } });
     expect(screen.getByRole('button', { name: 'Delete' })).toHaveProperty('disabled', true);
@@ -60,6 +62,7 @@ describe('typed confirmation', () => {
   it('only calls onConfirm once the typed text matches', async () => {
     installGranteesFetch();
     const { onConfirm } = renderDialog();
+    await waitFor(() => expect(screen.queryByText(/Checking for other active grantees/)).toBeNull());
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     expect(onConfirm).not.toHaveBeenCalled();

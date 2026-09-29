@@ -57,16 +57,15 @@ afterEach(() => {
 });
 
 describe('field name — no case transform', () => {
-  it('submits a namespaced lowercase field exactly as typed', async () => {
+  it('submits a namespaced, real-DID-shaped connector field exactly as typed', async () => {
     const { onSubmit } = renderDialog();
+    const field = 'warp-agent-key:did:imajin:V1StGXR8_Z5jdHi6B-myT';
 
-    fireEvent.change(fieldInput(), { target: { value: 'internal-secret:kernel.foreign-principal-pepper' } });
+    fireEvent.change(fieldInput(), { target: { value: field } });
     fireEvent.change(valueInput(), { target: { value: 'secret-value' } });
     fireEvent.click(saveButton());
 
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({ field: 'internal-secret:kernel.foreign-principal-pepper' }),
-    );
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ field }));
   });
 
   it('submits a legacy ENV_STYLE field unchanged', async () => {
@@ -101,6 +100,20 @@ describe('field name — no case transform', () => {
   it('pre-fills the field from initialField (missing-row Add flow)', () => {
     renderDialog({ initialField: 'github-org-provisioning' });
     expect(fieldInput().value).toBe('github-org-provisioning');
+  });
+});
+
+describe('internal-secret:* refusal (#2450 DECISION a)', () => {
+  it('blocks submission and explains that Rotate is the only path', () => {
+    const { onSubmit } = renderDialog();
+
+    fireEvent.change(fieldInput(), { target: { value: 'internal-secret:kernel.foreign-principal-pepper' } });
+    fireEvent.change(valueInput(), { target: { value: 'x' } });
+
+    expect(saveButton()).toHaveProperty('disabled', true);
+    expect(screen.getByText(/use Rotate on the existing row, not Set/)).toBeDefined();
+    fireEvent.click(saveButton());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });
 

@@ -701,6 +701,8 @@ export interface BusEventMap {
     field: string;
     cid: string;
     senderDid: string;
+    /** DIDs whose active grant on this field was revoked in the same operation (#2450 defect 2) — the node's own self-grant included, since there's nothing left for it to cover. */
+    revokedGrants: string[];
     context_id: string;
     context_type: 'vault';
   };

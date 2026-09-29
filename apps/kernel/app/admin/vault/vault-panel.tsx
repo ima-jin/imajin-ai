@@ -7,6 +7,7 @@ import { HistoryDialog } from './history-dialog';
 import { RevokeGrantDialog } from './revoke-grant-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
 import { SetSecretDialog } from './set-secret-dialog';
+import { isInternalSecretField } from '@/src/lib/vault/field-grammar';
 import type {
   KnownVaultFieldApiRow,
   KnownVaultFieldsApiResponse,
@@ -33,42 +34,63 @@ function isGrantExpired(expiresAt: string | null | undefined): boolean {
 
 interface VaultFieldHealth {
   sealed: boolean;
+  label: string;
   /** The concrete operator action that resolves an unsealed row — always present when `sealed` is false. */
   action?: string;
   reason?: string;
 }
 
 /**
- * Vault-state-derived health (#2445 defect 3), replacing the old "CID seen
- * in the last 200 vault admin events" heuristic. A node-sealed field is
- * always readable by definition — there is nothing pending about it. A
- * delegation-grant field is only unreadable when its grant has lapsed
- * (revoked or expired), and the fix in both cases is the same visible
- * action already on the row: Rotate re-seals via the same v2 self-grant
- * path a fresh seal uses (rotateAndStore's v2 dispatch), which mints a
- * replacement grant.
+ * Vault-state-derived health (#2445 defect 3, #2450 review item 4),
+ * replacing the old "CID seen in the last 200 vault admin events"
+ * heuristic. Checked in order:
+ *
+ *   1. Custody mismatch against a known field's `requiredCustody` — the
+ *      exact prod state before #2445 landed (`github-org-provisioning`
+ *      sealed `node-sealed`, unreadable by `loadOrgCredential`, yet the old
+ *      code showed it green because the row merely EXISTED). A field the
+ *      kernel hard-requires a scheme for is only actually usable when it is
+ *      sealed that way.
+ *   2. A node-sealed field is otherwise always readable by definition.
+ *   3. A delegation-grant field is only unreadable when its grant has
+ *      lapsed (revoked or expired) — Rotate re-seals via the same v2
+ *      self-grant path a fresh seal uses, minting a replacement grant.
  */
-function vaultFieldHealth(row: Pick<VaultSecretRow, 'custodyScheme' | 'grantStatus' | 'expiresAt'>): VaultFieldHealth {
+function vaultFieldHealth(
+  row: Pick<VaultSecretRow, 'field' | 'custodyScheme' | 'grantStatus' | 'expiresAt'>,
+  knownFields: readonly KnownVaultFieldApiRow[],
+): VaultFieldHealth {
+  const known = knownFields.find((candidate) => candidate.field === row.field);
+  if (known?.requiredCustody && row.custodyScheme !== known.requiredCustody) {
+    const reader = known.why ?? `this field is only usable sealed as ${known.requiredCustody}`;
+    return {
+      sealed: false,
+      label: '🟡 wrong custody',
+      action: 'Upgrade custody',
+      reason: `Sealed as ${row.custodyScheme}, but required custody is ${known.requiredCustody} — ${reader}`,
+    };
+  }
+
   if (row.custodyScheme !== 'delegation-grant') {
-    return { sealed: true };
+    return { sealed: true, label: '🟢 sealed' };
   }
   const isExpired = isGrantExpired(row.expiresAt);
   if (row.grantStatus === 'active' && !isExpired) {
-    return { sealed: true };
+    return { sealed: true, label: '🟢 sealed' };
   }
   const reason = isExpired
     ? 'Delegation grant expired — this field is not currently readable.'
     : 'Delegation grant was revoked (or never issued) — this field is not currently readable.';
-  return { sealed: false, action: 'Rotate', reason };
+  return { sealed: false, label: '🟡 needs attention', action: 'Rotate', reason };
 }
 
 function statusBadge(health: VaultFieldHealth): { label: string; title?: string } {
   if (health.sealed) {
-    return { label: '🟢 sealed' };
+    return { label: health.label };
   }
   return {
-    label: '🟡 needs attention',
-    title: `${health.reason} Action: ${health.action} to reseal and restore access.`,
+    label: health.label,
+    title: `${health.reason} Action: ${health.action}.`,
   };
 }
 
@@ -363,7 +385,7 @@ export function VaultPanel() {
       const response = await fetch('/api/vault/rotate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ field: input.field, value: input.value }),
+        body: JSON.stringify({ field: input.field, value: input.value, confirmField: input.confirmField }),
       });
 
       if (!response.ok) {
@@ -414,7 +436,11 @@ export function VaultPanel() {
       const response = await fetch('/api/vault/delete', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ field }),
+        // confirmField mirrors field unconditionally — the dialog's own
+        // typed-confirm input already gates this call on an exact match, so
+        // the server's grantee guard (#2450) always has what it needs, and
+        // it's a harmless no-op when the field has no other grantees.
+        body: JSON.stringify({ field, confirmField: field }),
       });
       if (!response.ok) {
         throw new Error(await readErrorMessage(response));
@@ -497,7 +523,8 @@ export function VaultPanel() {
                 const isExpired = isGrantExpired(secret.expiresAt);
                 const hasActiveGrant = isDelegation && secret.grantStatus === 'active' && !isExpired;
                 const isUpgrading = upgrading === secret.field;
-                const badge = statusBadge(vaultFieldHealth(secret));
+                const badge = statusBadge(vaultFieldHealth(secret, knownFields));
+                const isInternalSecret = isInternalSecretField(secret.field);
                 return (
                   <tr key={secret.field} className="hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
                     <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">{secret.field}</td>
@@ -546,40 +573,53 @@ export function VaultPanel() {
                             Revoke grant
                           </button>
                         )}
-                        <button
-                          type="button"
-                          aria-label={`Delete ${secret.field}`}
-                          onClick={() => setDeleteField(secret.field)}
-                          className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-                        >
-                          Delete
-                        </button>
+                        {!isInternalSecret && (
+                          <button
+                            type="button"
+                            aria-label={`Delete ${secret.field}`}
+                            onClick={() => setDeleteField(secret.field)}
+                            className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {!loading && missingKnownFields.map((known) => (
-                <tr key={`missing-${known.field}`} className="bg-red-50/40 dark:bg-red-900/10">
-                  <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">{known.field}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" colSpan={4}>{known.description}</td>
-                  <td className="px-4 py-3 text-xs text-red-700 dark:text-red-300" title={known.why}>
-                    🔴 missing — needed by {known.description}
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                    {known.requiredCustody ?? '—'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => openSetDialog(known.field)}
-                      className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 text-xs font-medium"
-                    >
-                      Add
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {!loading && missingKnownFields.map((known) => {
+                const isInternalSecret = isInternalSecretField(known.field);
+                return (
+                  <tr key={`missing-${known.field}`} className={isInternalSecret ? 'bg-gray-50/60 dark:bg-gray-800/40' : 'bg-red-50/40 dark:bg-red-900/10'}>
+                    <td className="px-4 py-3 font-mono text-xs text-gray-900 dark:text-white">{known.field}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" colSpan={4}>{known.description}</td>
+                    {isInternalSecret ? (
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" title="Self-provisioned on first use (#2245) — no operator action needed or possible from here.">
+                        ⚪ kernel provisions on boot
+                      </td>
+                    ) : (
+                      <td className="px-4 py-3 text-xs text-red-700 dark:text-red-300" title={known.why}>
+                        🔴 missing — needed by {known.description}
+                      </td>
+                    )}
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                      {known.requiredCustody ?? '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      {!isInternalSecret && (
+                        <button
+                          type="button"
+                          onClick={() => openSetDialog(known.field)}
+                          className="rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 text-xs font-medium"
+                        >
+                          Add
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -591,7 +631,8 @@ export function VaultPanel() {
           const isExpired = isGrantExpired(secret.expiresAt);
           const hasActiveGrant = isDelegation && secret.grantStatus === 'active' && !isExpired;
           const isUpgrading = upgrading === secret.field;
-          const badge = statusBadge(vaultFieldHealth(secret));
+          const badge = statusBadge(vaultFieldHealth(secret, knownFields));
+          const isInternalSecret = isInternalSecretField(secret.field);
           return (
             <div key={secret.field} className="rounded-xl bg-white dark:bg-gray-800 shadow border border-gray-100 dark:border-gray-700 p-4">
               <div className="flex items-start justify-between gap-3">
@@ -642,31 +683,49 @@ export function VaultPanel() {
                     Revoke grant
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-label={`Delete ${secret.field}`}
-                  onClick={() => setDeleteField(secret.field)}
-                  className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
-                >
-                  Delete
-                </button>
+                {!isInternalSecret && (
+                  <button
+                    type="button"
+                    aria-label={`Delete ${secret.field}`}
+                    onClick={() => setDeleteField(secret.field)}
+                    className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           );
         })}
-        {!loading && missingKnownFields.map((known) => (
-          <div key={`missing-${known.field}`} className="rounded-xl bg-red-50/60 dark:bg-red-900/10 shadow border border-red-200 dark:border-red-800 p-4">
-            <p className="font-mono text-xs text-gray-900 dark:text-white">{known.field}</p>
-            <p className="mt-1 text-xs text-red-700 dark:text-red-300">🔴 missing — needed by {known.description}</p>
-            <button
-              type="button"
-              onClick={() => openSetDialog(known.field)}
-              className="mt-3 rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 text-xs font-medium"
+        {!loading && missingKnownFields.map((known) => {
+          const isInternalSecret = isInternalSecretField(known.field);
+          return (
+            <div
+              key={`missing-${known.field}`}
+              className={
+                isInternalSecret
+                  ? 'rounded-xl bg-gray-50/60 dark:bg-gray-800/40 shadow border border-gray-200 dark:border-gray-700 p-4'
+                  : 'rounded-xl bg-red-50/60 dark:bg-red-900/10 shadow border border-red-200 dark:border-red-800 p-4'
+              }
             >
-              Add
-            </button>
-          </div>
-        ))}
+              <p className="font-mono text-xs text-gray-900 dark:text-white">{known.field}</p>
+              {isInternalSecret ? (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">⚪ kernel provisions on boot — no action</p>
+              ) : (
+                <>
+                  <p className="mt-1 text-xs text-red-700 dark:text-red-300">🔴 missing — needed by {known.description}</p>
+                  <button
+                    type="button"
+                    onClick={() => openSetDialog(known.field)}
+                    className="mt-3 rounded-lg bg-orange-500 hover:bg-orange-600 text-white px-2 py-1 text-xs font-medium"
+                  >
+                    Add
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <SetSecretDialog

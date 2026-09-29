@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import {
   VAULT_FIELD_NAME_RULE,
   defaultCustodyForField,
+  isInternalSecretField,
   isValidVaultFieldName,
 } from '@/src/lib/vault/field-grammar';
 import type { KnownVaultFieldApiRow, SetSecretInput, VaultCustodyScheme } from './types';
@@ -56,10 +57,11 @@ export function SetSecretDialog({
   }
 
   const trimmedField = field.trim();
-  const fieldIsValid = trimmedField.length === 0 || isValidVaultFieldName(trimmedField);
+  const isRefusedInternalSecret = isInternalSecretField(trimmedField);
+  const fieldIsValid = trimmedField.length === 0 || (isValidVaultFieldName(trimmedField) && !isRefusedInternalSecret);
   const custodyDefault = defaultCustodyForField(trimmedField);
   const effectiveCustody = custodyDefault.locked ? custodyDefault.scheme : custodyScheme;
-  const canSubmit = trimmedField.length > 0 && isValidVaultFieldName(trimmedField) && value.length > 0;
+  const canSubmit = trimmedField.length > 0 && fieldIsValid && value.length > 0;
 
   function handleFieldChange(next: string): void {
     setField(next);
@@ -113,7 +115,15 @@ export function SetSecretDialog({
               ))}
             </datalist>
             <p className={`mt-1 text-xs ${fieldIsValid ? 'text-gray-400 dark:text-gray-500' : 'text-red-600 dark:text-red-400'}`}>
-              {fieldIsValid ? VAULT_FIELD_NAME_RULE : `Not a valid field name — ${VAULT_FIELD_NAME_RULE}`}
+              {(() => {
+                if (isRefusedInternalSecret) {
+                  return 'internal-secret:* fields are kernel self-provisioned (#2245) — use Rotate on the existing row, not Set.';
+                }
+                if (!fieldIsValid) {
+                  return `Not a valid field name — ${VAULT_FIELD_NAME_RULE}`;
+                }
+                return VAULT_FIELD_NAME_RULE;
+              })()}
             </p>
           </div>
           <div>

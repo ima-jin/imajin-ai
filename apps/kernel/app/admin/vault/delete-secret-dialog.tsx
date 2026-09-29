@@ -24,7 +24,7 @@ export function DeleteSecretDialog({
   onConfirm,
 }: Readonly<DeleteSecretDialogProps>) {
   const [confirmText, setConfirmText] = useState('');
-  const { loading: loadingGrantees, grantees } = useVaultGrantees(field, open);
+  const { loading: loadingGrantees, grantees, error: granteesError } = useVaultGrantees(field, open);
 
   useEffect(() => {
     if (!open) {
@@ -38,6 +38,9 @@ export function DeleteSecretDialog({
 
   const hasOtherGrantees = grantees.length > 0;
   const matches = confirmText === field;
+  // The typed-field-name confirm already fail-closes regardless of grantee
+  // count or a query error (#2450) — Delete simply stays disabled while
+  // loading, matching Rotate's guard.
 
   async function handleConfirm(): Promise<void> {
     if (!field || !matches) {
@@ -59,6 +62,18 @@ export function DeleteSecretDialog({
             ⚠️ Only for a mis-named or dead row. Type the field name below to confirm.
           </p>
         </div>
+
+        {loadingGrantees && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Checking for other active grantees…</p>
+        )}
+
+        {!loadingGrantees && granteesError && (
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 mb-4">
+            <p className="text-sm font-medium text-red-800 dark:text-red-300">
+              ⚠️ Could not check for other active grantees: {granteesError}
+            </p>
+          </div>
+        )}
 
         {!loadingGrantees && hasOtherGrantees && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-4">
@@ -97,7 +112,7 @@ export function DeleteSecretDialog({
           </button>
           <button
             type="button"
-            disabled={submitting || !matches}
+            disabled={submitting || loadingGrantees || !matches}
             onClick={() => void handleConfirm()}
             className="rounded-lg bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-sm font-medium disabled:opacity-50"
           >
