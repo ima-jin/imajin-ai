@@ -78,7 +78,8 @@ const PST_JURISDICTION_DIGIT_LENGTHS: Readonly<Record<string, number>> = {
 const PST_DEFAULT_LENGTH_RANGE: readonly [number, number] = [6, 10];
 
 function validatePstWithLength(normalized: string, length: number, jurisdiction: string): TaxRegistrationNumberValidation {
-  if (!new RegExp(`^\\d{${length}}$`).test(normalized)) {
+  const pattern = String.raw`^\d{${length}}$`;
+  if (!new RegExp(pattern).test(normalized)) {
     return { valid: false, normalized, error: `PST number for ${jurisdiction} must be ${length} digits` };
   }
   return { valid: true, normalized };

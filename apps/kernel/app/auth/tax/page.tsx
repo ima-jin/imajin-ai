@@ -26,7 +26,7 @@ export default async function TaxPage() {
     .where(eq(identities.id, did))
     .limit(1);
 
-  if (!identity || identity.scope !== 'business') {
+  if (identity?.scope !== 'business') {
     return (
       <div className="text-zinc-500 text-sm py-8">
         Tax registrations are only available for business identities. Switch to (or create) a business identity to manage them.
