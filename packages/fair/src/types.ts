@@ -85,25 +85,30 @@ export interface FairManifestV10 {
 }
 
 /**
- * A single top-level tax row (#2419) — sales tax (GST/HST/QST/VAT/PST/...)
- * collected IN TRUST for a remittance authority, never as chain/fee revenue.
+ * A single top-level tax row (#2419) — sales tax collected IN TRUST for a
+ * remittance authority, never as chain/fee revenue. `kind` is a free-form
+ * string (no closed enum — jurisdictions vary); known values in practice
+ * include `'GST/HST'`, `'QST'`, `'VAT'`, and `'PST'`.
  *
  * `basisAmount`/`amount` are integer minor units (cents), same convention
  * as `Money.amount` — `amount` is always `round(basisAmount × rateBps /
  * 10000)`. `collectorDid` is who holds the money in trust (typically the
  * seller); `remitTo` is the authority DID it's owed to (a creditor label —
  * see `AUTHORITY_DID_CA_CRA` in `./constants` — never a settlement payee).
- * Tax never enters any chain-share or fee-skim basis: every chain share and
- * platform/protocol/node/scope/buyer-credit fee computes on `basisAmount`
- * only (see `buildFairManifest`/`resolveSettlementChain`).
+ * `registrationNumber` is required — the issue specifies it as part of a
+ * tax row's required shape, sourced from the business-profile tax
+ * registration (#2423). Tax never enters any chain-share or fee-skim
+ * basis: every chain share and platform/protocol/node/scope/buyer-credit
+ * fee computes on `basisAmount` only (see
+ * `buildFairManifest`/`resolveSettlementChain`).
  */
 export interface FairTax {
   jurisdiction: string; // e.g. "CA-ON"
-  kind: 'GST/HST' | 'QST' | 'VAT' | 'PST' | string;
+  kind: string; // e.g. "GST/HST", "QST", "VAT", "PST"
   rateBps: number; // e.g. 1300 for 13%
   basisAmount: number; // pre-tax subtotal the rate applies to (cents)
   amount: number; // computed tax amount (cents) = round(basisAmount × rateBps / 10000)
-  registrationNumber?: string; // issuer tax registration (e.g. "123456789RT0001")
+  registrationNumber: string; // issuer tax registration (e.g. "123456789RT0001")
   collectorDid: string; // DID that collects in trust (typically the seller)
   remitTo: string; // authority DID (well-known placeholder, e.g. "did:imajin:authority:ca-cra")
 }

@@ -347,4 +347,115 @@ describe('settlePaymentRequestFromStripeCheckout', () => {
     expect(state.settlePaymentMock).not.toHaveBeenCalled();
     expect(state.settledStripeAttestationMock).not.toHaveBeenCalled();
   });
+
+  it('#2419 review fix 1/8 (e2e): settles on basisAmount == totalAmount (NOT totalAmount minus tax), and total_amount passed to settlePayment is basis - fee + tax (the gross-minus-fee actually charged)', async () => {
+    // paymentRequest.totalAmount is the PRE-TAX line-items subtotal — see
+    // service.ts's validateLineItems — with tax added on top as its own
+    // Stripe line item, never folded into totalAmount. This is exactly the
+    // shape `createPaymentRequest` -> `createPaymentRequestCheckoutSession`
+    // produces for a manifest carrying `taxes[]`.
+    const TAXED_REQUEST = {
+      ...ISSUED_REQUEST,
+      totalAmount: 10_000, // $100.00 pre-tax subtotal
+      fairManifest: {
+        version: '0.4.0',
+        fees: [],
+        chain: [{ did: ISSUER_DID, role: 'seller', share: 1 }],
+        distributions: [],
+        attribution: [],
+        total: { amount: 10_000, currency: 'CAD' },
+        taxes: [
+          {
+            jurisdiction: 'CA-ON',
+            kind: 'GST/HST',
+            rateBps: 1300,
+            basisAmount: 10_000, // MUST equal totalAmount (fix 1)
+            amount: 1300, // $13.00 = 10000 * 1300 / 10000
+            registrationNumber: '123456789RT0001',
+            collectorDid: ISSUER_DID,
+            remitTo: 'did:imajin:authority:ca-cra',
+          },
+        ],
+      },
+    };
+
+    state.getPaymentRequestByIdMock.mockResolvedValue(TAXED_REQUEST);
+    state.updateReturningQueue.push([{ ...TAXED_REQUEST, status: 'paid' }]);
+    state.settlePaymentMock.mockResolvedValue({
+      settled: true,
+      batchId: 'batch_tax',
+      transactions: ['tx_1', 'tx_2'],
+      total_amount: 108.52,
+      recipients: 1,
+      source: 'external',
+    });
+
+    const result = await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+    expect(result).toMatchObject({ settled: true });
+
+    expect(state.settlePaymentMock).toHaveBeenCalledOnce();
+    const settleArgs = state.settlePaymentMock.mock.calls[0][0];
+
+    // Gross = 10000 + 1300 = 11300 cents; fallback fee 3.7% + 30c on GROSS:
+    // 11300*370/10000 + 30 = 418.1 + 30 = 448.1 -> $4.48.
+    // Chain (single seller, share 1): 100 - 4.48 = $95.52 — computed on the
+    // pre-tax basis (100), NOT on 100 - 13 = 87 (the #1 regression).
+    expect(settleArgs.fair_manifest.chain).toEqual([{ did: ISSUER_DID, role: 'seller', amount: 95.52 }]);
+
+    // One resolved tax credit, full $13.00, to the collector — kept OUT of chain.
+    expect(settleArgs.fair_manifest.taxCredits).toEqual([
+      {
+        did: ISSUER_DID,
+        amount: 13,
+        jurisdiction: 'CA-ON',
+        kind: 'GST/HST',
+        rateBps: 1300,
+        remitTo: 'did:imajin:authority:ca-cra',
+        registrationNumber: '123456789RT0001',
+      },
+    ]);
+
+    // total_amount == chain Σ (95.52) + taxCredits Σ (13) == 108.52 — the
+    // GROSS actually charged, minus the processor fee. NOT the subtotal
+    // (100) and NOT the erroneous "subtotal minus tax" (87) the pre-fix
+    // code would have produced.
+    expect(settleArgs.total_amount).toBeCloseTo(108.52, 2);
+  });
+
+  it('#2419 review fix 1 (e2e): skips settlement (no DB writes) when a tax row\'s basisAmount does not match totalAmount', async () => {
+    const MISMATCHED_REQUEST = {
+      ...ISSUED_REQUEST,
+      totalAmount: 10_000,
+      fairManifest: {
+        version: '0.4.0',
+        fees: [],
+        chain: [{ did: ISSUER_DID, role: 'seller', share: 1 }],
+        distributions: [],
+        attribution: [],
+        total: { amount: 10_000, currency: 'CAD' },
+        taxes: [
+          {
+            jurisdiction: 'CA-ON',
+            kind: 'GST/HST',
+            rateBps: 1300,
+            basisAmount: 9_000, // MISMATCH — should equal totalAmount (10_000)
+            amount: 1170,
+            registrationNumber: '123456789RT0001',
+            collectorDid: ISSUER_DID,
+            remitTo: 'did:imajin:authority:ca-cra',
+          },
+        ],
+      },
+    };
+
+    state.getPaymentRequestByIdMock.mockResolvedValue(MISMATCHED_REQUEST);
+    state.updateReturningQueue.push([{ ...MISMATCHED_REQUEST, status: 'paid' }]);
+
+    const result = await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+    // The 'issued -> paid' transition and 'paid' publish still happen —
+    // only the settle step (which needs a trustworthy basis) is skipped.
+    expect(result).toMatchObject({ settled: true });
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+    expect(state.settledStripeAttestationMock).not.toHaveBeenCalled();
+  });
 });

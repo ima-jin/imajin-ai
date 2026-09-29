@@ -108,4 +108,38 @@ describe('validateChain — #2419 taxCredits invariant', () => {
     const result = validateChain(CHAIN, 123, [TAX_CREDIT, secondCredit]);
     expect(result).toMatchObject({ chainTotal: 100, taxTotal: 23 });
   });
+
+  it('accepts a zero-amount tax credit (e.g. rateBps: 0, which validate.ts already allows)', () => {
+    const zeroCredit = { ...TAX_CREDIT, amount: 0 };
+    const result = validateChain(CHAIN, 100, [zeroCredit]);
+    expect(result).toMatchObject({ chainTotal: 100, taxTotal: 0 });
+  });
+
+  it('rejects a string amount (#2419 review fix 4) instead of silently doing string concatenation', () => {
+    const stringAmountCredit = { ...TAX_CREDIT, amount: '13' as unknown as number };
+    const result = validateChain(CHAIN, 113, [stringAmountCredit]);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toMatch(/finite number/);
+  });
+
+  it('rejects a NaN amount (#2419 review fix 4) instead of silently passing the tolerance check', () => {
+    const nanCredit = { ...TAX_CREDIT, amount: Number.NaN };
+    const result = validateChain(CHAIN, 113, [nanCredit]);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toMatch(/finite number/);
+  });
+
+  it('rejects a negative amount (#2419 review fix 4)', () => {
+    const negativeCredit = { ...TAX_CREDIT, amount: -13 };
+    const result = validateChain(CHAIN, 87, [negativeCredit]);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toMatch(/finite number/);
+  });
+
+  it('rejects an Infinity amount (#2419 review fix 4)', () => {
+    const infiniteCredit = { ...TAX_CREDIT, amount: Number.POSITIVE_INFINITY };
+    const result = validateChain(CHAIN, 113, [infiniteCredit]);
+    expect('error' in result).toBe(true);
+    if ('error' in result) expect(result.error).toMatch(/finite number/);
+  });
 });

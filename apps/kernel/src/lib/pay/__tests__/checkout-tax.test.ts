@@ -28,7 +28,7 @@ vi.mock('@/src/db', () => ({
 }));
 vi.mock('@/src/lib/pay', () => ({ DEFAULT_PLATFORM_FEE_BPS: 100 }));
 
-import { resolveConnectedAccountFee, taxLineItems, type CheckoutBody } from '../checkout';
+import { resolveConnectedAccountFee, taxLineItems, validateCheckoutBody, type CheckoutBody } from '../checkout';
 
 const SELLER_DID = 'did:imajin:seller';
 
@@ -91,7 +91,7 @@ describe('resolveConnectedAccountFee — basisAmount vs gross (#2419)', () => {
       ...baseBody,
       fairManifest: {
         chain: [{ role: 'seller', share: 0.97 }],
-        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300 }],
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300, basisAmount: 10_000 }],
       },
     });
     expect(withoutTax.ok && withTax.ok).toBe(true);
@@ -111,7 +111,7 @@ describe('resolveConnectedAccountFee — basisAmount vs gross (#2419)', () => {
       fairManifest: {
         chain: [{ role: 'seller', share: 0.97 }],
         fees: [{ role: 'processor', rateBps: 370, fixedCents: 30 }],
-        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300 }],
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300, basisAmount: 10_000 }],
       },
     });
     expect(result.ok).toBe(true);
@@ -121,5 +121,45 @@ describe('resolveConnectedAccountFee — basisAmount vs gross (#2419)', () => {
       const stripeFee = Math.round((gross * 370) / 10000) + 30; // 448
       expect(result.applicationFeeAmount).toBe(platformShare + stripeFee);
     }
+  });
+
+  it('rejects with a 400 (#2419 review fix 5) when taxes[].basisAmount does not match the merchandise subtotal', async () => {
+    const result = await resolveConnectedAccountFee({
+      ...baseBody,
+      fairManifest: {
+        chain: [{ role: 'seller', share: 0.97 }],
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300, basisAmount: 9_000 }],
+      },
+    });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/basisAmount/);
+  });
+});
+
+describe('validateCheckoutBody — reject taxes[] on the generic checkout path (#2419 review fix 2)', () => {
+  const baseBody: CheckoutBody = {
+    items: [{ name: 'Ticket', amount: 10_000, quantity: 1 }],
+    currency: 'CAD',
+    successUrl: 'https://x/success',
+    cancelUrl: 'https://x/cancel',
+  };
+
+  it('accepts a body without taxes (unchanged behavior)', () => {
+    const result = validateCheckoutBody(baseBody);
+    expect(result.ok).toBe(true);
+  });
+
+  it('rejects a body whose fairManifest carries a non-empty taxes[]', () => {
+    const result = validateCheckoutBody({
+      ...baseBody,
+      fairManifest: { taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300, basisAmount: 10_000 }] },
+    });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/taxes/);
+  });
+
+  it('accepts a body whose fairManifest carries an EMPTY taxes[]', () => {
+    const result = validateCheckoutBody({ ...baseBody, fairManifest: { taxes: [] } });
+    expect(result.ok).toBe(true);
   });
 });

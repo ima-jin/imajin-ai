@@ -25,12 +25,12 @@ export interface FairFeeManifest {
   taxes?: FairTax[];
 }
 
-/** Caller-supplied input for a single tax row (#2419) — everything except the computed `basisAmount`/`amount`, which `buildFairManifest` derives from `basisAmountCents`. */
+/** Caller-supplied input for a single tax row (#2419) — everything except the computed `basisAmount`/`amount`, which `buildFairManifest` derives from `basisAmountCents`. `registrationNumber` is required, per the issue's tax-row shape (sourced from the business-profile tax registration, #2423). */
 export interface BuildFairManifestTaxInput {
   jurisdiction: string;
   kind: string;
   rateBps: number;
-  registrationNumber?: string;
+  registrationNumber: string;
   collectorDid: string;
   remitTo: string;
 }
@@ -78,7 +78,7 @@ function computeTaxRows(
     rateBps: t.rateBps,
     basisAmount: basis,
     amount: Math.round((basis * t.rateBps) / 10000),
-    ...(t.registrationNumber ? { registrationNumber: t.registrationNumber } : {}),
+    registrationNumber: t.registrationNumber,
     collectorDid: t.collectorDid,
     remitTo: t.remitTo,
   }));

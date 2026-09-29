@@ -71,6 +71,39 @@ type SettlementValidationResult =
   | { signatureVerified: boolean };
 
 /**
+ * Validate + sum `fair_manifest.taxCredits` (#2419), split out of
+ * `validateChain` purely to keep that function's cognitive complexity
+ * under budget — not because this validation is reusable elsewhere.
+ */
+function validateTaxCreditsSum(taxCredits: unknown): { error: string; status: number } | { taxTotal: number } {
+  if (taxCredits === undefined) return { taxTotal: 0 };
+  if (!Array.isArray(taxCredits)) {
+    return { error: 'fair_manifest.taxCredits must be an array when present', status: 400 };
+  }
+
+  let taxTotal = 0;
+  for (const credit of taxCredits as FairManifestTaxCredit[]) {
+    // #2419 fix (review): checked separately from `amount` so a
+    // non-negative ZERO amount (e.g. rateBps: 0, which validate.ts
+    // already allows) isn't rejected by a truthy check.
+    if (!credit.did || !credit.jurisdiction || !credit.kind || !credit.remitTo) {
+      return { error: 'Each taxCredits item must have did, amount, jurisdiction, kind, and remitTo', status: 400 };
+    }
+    // #2419 fix (review): a string/NaN amount previously slipped through
+    // `!credit.amount` (a non-empty numeric string is truthy) and turned
+    // `chainTotal + taxTotal` into string concatenation or NaN, at which
+    // point `Math.abs(NaN) > 0.01` is false and the tolerance check below
+    // silently passes. `/pay/api/settle` takes `fair_manifest` straight
+    // from an API-key caller, so this must be a hard 400.
+    if (typeof credit.amount !== 'number' || !Number.isFinite(credit.amount) || credit.amount < 0) {
+      return { error: 'Each taxCredits item amount must be a finite number >= 0', status: 400 };
+    }
+    taxTotal += credit.amount;
+  }
+  return { taxTotal };
+}
+
+/**
  * Validate `fair_manifest.chain` shape/sum against `total_amount`.
  *
  * #2419: when `taxCredits` is present/non-empty, the invariant widens from
@@ -95,18 +128,9 @@ export function validateChain(
     chainTotal += item.amount;
   }
 
-  let taxTotal = 0;
-  if (taxCredits !== undefined) {
-    if (!Array.isArray(taxCredits)) {
-      return { error: 'fair_manifest.taxCredits must be an array when present', status: 400 };
-    }
-    for (const credit of taxCredits as FairManifestTaxCredit[]) {
-      if (!credit.did || !credit.amount || !credit.jurisdiction || !credit.kind || !credit.remitTo) {
-        return { error: 'Each taxCredits item must have did, amount, jurisdiction, kind, and remitTo', status: 400 };
-      }
-      taxTotal += credit.amount;
-    }
-  }
+  const taxCheck = validateTaxCreditsSum(taxCredits);
+  if ('error' in taxCheck) return taxCheck;
+  const { taxTotal } = taxCheck;
 
   if (Math.abs(chainTotal + taxTotal - total_amount) > 0.01) {
     return taxTotal > 0
@@ -114,6 +138,41 @@ export function validateChain(
       : { error: `Chain total (${chainTotal}) does not match total_amount (${total_amount})`, status: 400 };
   }
   return { chainTotal, taxTotal };
+}
+
+/** Role set whose funded-settlement members already received money directly via Stripe Connect. Declared here (used by both pre-mutation validation and the crediting loops further below). */
+const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
+
+/**
+ * #2419 fix (review): on a Stripe-funded settlement, ALL the money — tax
+ * included — was deposited into the seller's connected Stripe account, not
+ * held by the platform. Crediting a tax `collectorDid` that ISN'T one of
+ * this settlement's chain sellers would mint internal balance the platform
+ * never actually received. Reject that combination outright, before any
+ * balance is touched (unlike the funded-seller case, which is a safe
+ * balance-credit *skip*, not an error). Unfunded settlements are
+ * unaffected — `creditTaxRows` still credits any collector normally there,
+ * since that money really did move through the internal ledger.
+ */
+function validateFundedTaxCollectors(
+  fair_manifest: Record<string, unknown>,
+  funded: boolean,
+): { error: string; status: number } | null {
+  if (!funded) return null;
+  const taxCredits = fair_manifest.taxCredits;
+  if (!Array.isArray(taxCredits) || taxCredits.length === 0) return null;
+
+  const chain = Array.isArray(fair_manifest.chain) ? (fair_manifest.chain as FairManifestChainItem[]) : [];
+  const chainSellerDids = new Set(chain.filter((r) => SELLER_ROLES.has(r.role)).map((r) => r.did));
+
+  const unbacked = (taxCredits as FairManifestTaxCredit[]).find((credit) => !chainSellerDids.has(credit.did));
+  if (unbacked) {
+    return {
+      error: `Funded settlement's tax collector '${unbacked.did}' is not one of this settlement's chain sellers — Stripe never sent money to that account`,
+      status: 400,
+    };
+  }
+  return null;
 }
 
 /**
@@ -168,6 +227,9 @@ async function validateSettlementRequest(params: {
   const chainCheck = validateChain(fair_manifest.chain, total_amount, fair_manifest.taxCredits);
   if ('error' in chainCheck) return chainCheck;
 
+  const taxCollectorCheck = validateFundedTaxCollectors(fair_manifest, funded);
+  if (taxCollectorCheck) return taxCollectorCheck;
+
   // #1886 money-rule guard: a no-op for every manifest that isn't the
   // intro-attribution template. For that template, resolves
   // fair_manifest.provenance[] against real auth.attestations rows and
@@ -221,9 +283,6 @@ async function resolveInternalSettlementSource(params: {
 
   return { source: sourceLabelForUnit(unit), burnAmount: total_amount, settleCurrency };
 }
-
-/** Role set whose funded-settlement members already received money directly via Stripe Connect — shared between the chain-recipient and tax-credit crediting loops below. */
-const SELLER_ROLES = new Set(['seller', 'creator', 'event']);
 
 /** Minimal shape both crediting loops need from either `db` or a `db.transaction()` callback's `tx`. Mirrors `ledger.ts`'s private `Executor` type. */
 type TxExecutor = Pick<typeof db, 'select' | 'insert' | 'update'>;
@@ -297,15 +356,15 @@ async function creditChainRecipients(tx: TxExecutor, ctx: CreditLoopContext): Pr
  * Credit each `fair_manifest.taxCredits` row (#2419) — one extra
  * trust-liability ledger credit per `.fair` `taxes[]` row, tagged
  * `{ tax: true, jurisdiction, kind, rateBps, remitTo, trustLiability: true,
- * remitted: null }`. On a funded (Stripe) settlement, a collector DID
- * that's ALSO one of this settlement's chain sellers already received the
- * tax money directly via the same Stripe Connect transfer (the checkout's
- * single connected-account destination) — so, mirroring
- * `creditChainRecipients`' seller skip, that credit is recorded (audit
- * trail) but not double-applied to the internal balance. A collector
- * distinct from any chain seller (uncommon, but the type allows it) is
- * always credited internally, funded or not, since nothing else would
- * have moved that money there. Returns the inserted transaction ids.
+ * remitted: null }`. On a funded (Stripe) settlement, `validateFundedTaxCollectors`
+ * (pre-mutation validation, above) has already guaranteed every credit's
+ * `did` is one of this settlement's chain sellers — that DID already
+ * received the tax money directly via the same Stripe Connect transfer
+ * (the checkout's single connected-account destination), so the credit is
+ * recorded here (audit trail) but not double-applied to the internal
+ * balance, mirroring `creditChainRecipients`' seller skip. For an unfunded
+ * settlement, any collector is credited internally, since that's a real
+ * internal ledger move. Returns the inserted transaction ids.
  */
 async function creditTaxRows(tx: TxExecutor, ctx: CreditLoopContext): Promise<string[]> {
   const { from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified } = ctx;

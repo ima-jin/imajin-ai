@@ -54,13 +54,34 @@ function validateCheckoutItem(item: CheckoutItem, index: number): CheckoutValida
   return { ok: true };
 }
 
-/** Validate the checkout request body: items array shape, per-item bounds, and required URLs. */
+/**
+ * Validate the checkout request body: items array shape, per-item bounds,
+ * required URLs, and (#2419 fix, review) that `fairManifest.taxes` is
+ * absent. The generic checkout's webhook-side settlement
+ * (`webhook-handlers.ts`'s `processChainDistribution`, intentionally left
+ * untouched by #2419 — see that module's "Known divergences" doc comment)
+ * splits the FULL Stripe total — tax included — into protocol/node/platform
+ * `feeLedger` shares, which would violate the "tax is never fee-skimmable"
+ * invariant. Until that webhook path is updated to settle on `basisAmount`/
+ * `taxCredits` (tracked as follow-up work), this path refuses `taxes[]`
+ * outright rather than silently skimming it. `payment_request` checkout
+ * (`payment-requests/checkout.ts`) does NOT go through this validator — it
+ * settles via `settlePayment()`, which already handles tax correctly.
+ */
 export function validateCheckoutBody(body: CheckoutBody): CheckoutValidation {
   if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
     return { ok: false, error: 'items array is required', status: 400 };
   }
   if (!body.successUrl || !body.cancelUrl) {
     return { ok: false, error: 'successUrl and cancelUrl are required', status: 400 };
+  }
+  const taxes = body.fairManifest?.taxes;
+  if (Array.isArray(taxes) && taxes.length > 0) {
+    return {
+      ok: false,
+      error: 'fairManifest.taxes is not supported on this checkout path yet (#2419 follow-up: webhook chain distribution needs to settle on basisAmount) — use payment_request checkout instead',
+      status: 400,
+    };
   }
   for (let i = 0; i < body.items.length; i++) {
     const itemResult = validateCheckoutItem(body.items[i], i);
@@ -101,6 +122,7 @@ interface CheckoutFairTax {
   jurisdiction: string;
   kind: string;
   amount: number;
+  basisAmount: number;
 }
 
 /** Sum of a manifest's `taxes[].amount` (cents). Zero for a manifest without `taxes[]` — fully backward compatible. */
@@ -164,6 +186,30 @@ function computeProcessingFeeCents(grossAmount: number, fairManifest: CheckoutBo
 }
 
 /**
+ * Validate that every `taxes[].basisAmount` equals the merchandise subtotal
+ * (#2419 fix, review: "validate basisAmount matches the pre-tax subtotal").
+ * A mismatch means the caller computed tax against a different total than
+ * what's actually being charged for goods/services — refuse rather than
+ * silently using the wrong basis anywhere downstream.
+ */
+function validateTaxesBasis(
+  fairManifest: CheckoutBody['fairManifest'],
+  merchandiseAmount: number,
+): { ok: true } | { ok: false; error: string } {
+  const taxes = fairManifest?.taxes as CheckoutFairTax[] | undefined;
+  if (!taxes || taxes.length === 0) return { ok: true };
+  for (const tax of taxes) {
+    if (tax.basisAmount !== merchandiseAmount) {
+      return {
+        ok: false,
+        error: `fairManifest.taxes[].basisAmount (${tax.basisAmount}) must equal the merchandise subtotal (${merchandiseAmount})`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/**
  * Resolve the connected Stripe account (if a seller DID was supplied) and
  * compute the application fee: platform share (from the .fair manifest or
  * the account's fallback rate) plus processing fees (from the manifest or
@@ -193,6 +239,12 @@ export async function resolveConnectedAccountFee(body: CheckoutBody): Promise<Co
   // tax line items are appended separately via `taxLineItems()` at the
   // point the Stripe session is built, never folded into `body.items`.
   const merchandiseAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
+
+  const basisCheck = validateTaxesBasis(body.fairManifest, merchandiseAmount);
+  if (!basisCheck.ok) {
+    return { ok: false, error: basisCheck.error, status: 400 };
+  }
+
   const grossAmount = merchandiseAmount + taxTotalCents(body.fairManifest);
   const platformShareCents = computePlatformShareCents(merchandiseAmount, body.fairManifest, account.platformFeeBps);
   const processingFeeCents = computeProcessingFeeCents(grossAmount, body.fairManifest);

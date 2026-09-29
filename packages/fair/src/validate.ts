@@ -237,8 +237,8 @@ function validateTaxEntry(tax: unknown, i: number): string[] {
   if (typeof t.amount !== "number" || !Number.isInteger(t.amount) || t.amount < 0) {
     errors.push(`taxes[${i}].amount must be a non-negative integer`);
   }
-  if (t.registrationNumber !== undefined && (typeof t.registrationNumber !== "string" || !t.registrationNumber)) {
-    errors.push(`taxes[${i}].registrationNumber must be a non-empty string when present`);
+  if (typeof t.registrationNumber !== "string" || !t.registrationNumber) {
+    errors.push(`taxes[${i}].registrationNumber must be a non-empty string`);
   }
   if (typeof t.collectorDid !== "string" || !t.collectorDid) errors.push(`taxes[${i}].collectorDid must be a non-empty string`);
   if (typeof t.remitTo !== "string" || !t.remitTo) errors.push(`taxes[${i}].remitTo must be a non-empty string`);

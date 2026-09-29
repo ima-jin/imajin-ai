@@ -146,8 +146,8 @@ describe('settlePayment — #2419 tax credits', () => {
     expect(taxRow!.metadata).toMatchObject({ balance_skipped: true, reason: 'externally_funded_seller' });
   });
 
-  it('credits the internal ledger for a tax row whose collector is NOT one of the funded chain sellers', async () => {
-    await settlePayment({
+  it('rejects with 400 (#2419 review fix 3) a FUNDED settlement whose tax collector is NOT one of the chain sellers, before touching any balance', async () => {
+    const result = await settlePayment({
       from_did: BUYER_DID,
       total_amount: 113,
       service: 'market',
@@ -160,7 +160,32 @@ describe('settlePayment — #2419 tax credits', () => {
       },
     });
 
-    expect(state.creditUnitMock).toHaveBeenCalledWith(expect.anything(), 'did:imajin:third-party-collector', 'MJN', 13, expect.anything());
+    expect(result).toMatchObject({ status: 400 });
+    expect(state.creditUnitMock).not.toHaveBeenCalled();
+    expect(state.insertedRows).toHaveLength(0);
+  });
+
+  it('credits the internal ledger normally for a non-seller tax collector on an UNFUNDED settlement (a real internal ledger move)', async () => {
+    state.creditUnitMock.mockClear();
+    // Unfunded settlement debits from_did's own balance via getBalanceRow/debitUnit —
+    // getBalanceRow is mocked to resolve undefined (amountOf -> 0), so give it enough
+    // "available" balance by overriding amountOf's mock return isn't needed here since
+    // resolveInternalSettlementSource compares available (0) < total_amount and would
+    // fail; use the smallest total_amount (0) to skip the insufficient-balance path.
+    const result = await settlePayment({
+      from_did: BUYER_DID,
+      total_amount: 0,
+      service: 'market',
+      type: 'sale',
+      funded: false,
+      fair_manifest: {
+        chain: [],
+        taxCredits: [{ did: 'did:imajin:third-party-collector', amount: 0, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra' }],
+      },
+    });
+
+    expect('settled' in result && result.settled).toBe(true);
+    expect(state.creditUnitMock).toHaveBeenCalledWith(expect.anything(), 'did:imajin:third-party-collector', 'MJN', 0, expect.anything());
   });
 
   it('a manifest without taxCredits behaves exactly as before (no extra rows, no tax metadata)', async () => {

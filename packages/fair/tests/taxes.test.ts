@@ -32,7 +32,7 @@ describe('buildFairManifest — taxes (#2419)', () => {
       contentType: 'event',
       basisAmountCents: 10_000, // $100.00 pre-tax
       taxes: [
-        { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA },
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, registrationNumber: '123456789RT0001', collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA },
       ],
     });
 
@@ -47,24 +47,15 @@ describe('buildFairManifest — taxes (#2419)', () => {
     expect(tax.remitTo).toBe(AUTHORITY_DID_CA_CRA);
   });
 
-  it('preserves registrationNumber only when supplied', () => {
-    const withReg = buildFairManifest({
+  it('includes the caller-supplied registrationNumber on every tax row (required, #2419 review fix 7)', () => {
+    const manifest = buildFairManifest({
       creatorDid: CREATOR,
       contentDid: CONTENT,
       contentType: 'event',
       basisAmountCents: 10_000,
       taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, registrationNumber: '123456789RT0001', collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA }],
     });
-    expect(withReg.taxes![0].registrationNumber).toBe('123456789RT0001');
-
-    const withoutReg = buildFairManifest({
-      creatorDid: CREATOR,
-      contentDid: CONTENT,
-      contentType: 'event',
-      basisAmountCents: 10_000,
-      taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA }],
-    });
-    expect(withoutReg.taxes![0].registrationNumber).toBeUndefined();
+    expect(manifest.taxes![0].registrationNumber).toBe('123456789RT0001');
   });
 
   it('throws when taxes are supplied without basisAmountCents', () => {
@@ -73,7 +64,7 @@ describe('buildFairManifest — taxes (#2419)', () => {
         creatorDid: CREATOR,
         contentDid: CONTENT,
         contentType: 'event',
-        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA }],
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, registrationNumber: '123456789RT0001', collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA }],
       }),
     ).toThrow(/basisAmountCents/);
   });
@@ -85,7 +76,7 @@ describe('buildFairManifest — taxes (#2419)', () => {
       contentDid: CONTENT,
       contentType: 'event',
       basisAmountCents: 10_000,
-      taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA }],
+      taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, registrationNumber: '123456789RT0001', collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA }],
     });
     expect(withTax.chain).toEqual(withoutTax.chain);
   });
@@ -97,8 +88,8 @@ describe('buildFairManifest — taxes (#2419)', () => {
       contentType: 'event',
       basisAmountCents: 10_000,
       taxes: [
-        { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA },
-        { jurisdiction: 'CA-QC', kind: 'QST', rateBps: 998, collectorDid: CREATOR, remitTo: 'did:imajin:authority:ca-qc-rq' },
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, registrationNumber: '123456789RT0001', collectorDid: CREATOR, remitTo: AUTHORITY_DID_CA_CRA },
+        { jurisdiction: 'CA-QC', kind: 'QST', rateBps: 998, registrationNumber: '123456789RT0001', collectorDid: CREATOR, remitTo: 'did:imajin:authority:ca-qc-rq' },
       ],
     });
     expect(manifest.taxes).toHaveLength(2);
@@ -129,6 +120,7 @@ describe('validateManifest — taxes[] (#2419)', () => {
     rateBps: 1300,
     basisAmount: 10_000,
     amount: 1300,
+    registrationNumber: '123456789RT0001',
     collectorDid: CREATOR,
     remitTo: AUTHORITY_DID_CA_CRA,
   };

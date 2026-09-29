@@ -17,7 +17,14 @@ export interface PaymentRequestFairManifest {
   distributions: unknown[];
   attribution: unknown[];
   total: { amount: number; currency: string };
-  /** #2419 — present only on a caller-supplied custom manifest that opts into trust-liability tax. `total` above is the GROSS total (subtotal + Σtaxes.amount) when this is non-empty. */
+  /**
+   * #2419 — present only on a caller-supplied custom manifest that opts
+   * into trust-liability tax. `total` above stays the PRE-TAX subtotal
+   * (the same `Money` the line items sum to — see `service.ts`'s
+   * `validateLineItems`/`validateCustomPaymentRequestManifest`); tax is
+   * added on top as separate Stripe line items, never folded into
+   * `total`/`totalAmount`. Every `taxes[].basisAmount` must equal `total.amount`.
+   */
   taxes?: Array<{
     jurisdiction: string;
     kind: string;
@@ -26,7 +33,7 @@ export interface PaymentRequestFairManifest {
     amount: number;
     collectorDid: string;
     remitTo: string;
-    registrationNumber?: string;
+    registrationNumber: string;
   }>;
 }
 

@@ -244,14 +244,29 @@ async function settleAndAttestStripePaid(
     const buyerDid = paymentRequest.recipientDid ?? paymentRequest.issuerDid;
     const nodeDid = (await getNodeDid()) || null;
 
-    // #2419: a custom manifest may carry `taxes[]`. When it does,
-    // `paymentRequest.totalAmount` is the GROSS charge (subtotal + tax) —
-    // `resolveSettlementChain` needs the pre-tax basisAmount instead, so
-    // tax never enters chain-share/fee-skim math. Absent `taxes`, this is
-    // a no-op (`basisAmountCents === paymentRequest.totalAmount`).
+    // #2419 fix (review): `paymentRequest.totalAmount` is already the
+    // PRE-TAX line-items subtotal — `service.ts`'s `validateLineItems`
+    // sums line items into it, and `validateCustomPaymentRequestManifest`
+    // enforces `fair_manifest.total == Σline_items` for a custom manifest.
+    // Tax is added on top later as its own Stripe line item(s), never
+    // folded into `totalAmount`. So basis = totalAmount (NOT totalAmount
+    // minus tax — that would take tax off twice), and gross = basis +
+    // Σtax is what was actually charged via Stripe.
     const taxes = (manifest?.taxes ?? []) as FairSettlementTax[];
-    const taxTotalCents = taxes.reduce((sum, t) => sum + t.amount, 0);
-    const basisAmountCents = paymentRequest.totalAmount - taxTotalCents;
+    const basisAmountCents = paymentRequest.totalAmount;
+
+    // Defense in depth: every tax row's `basisAmount` must equal the
+    // request's own pre-tax subtotal. A mismatch means the stored
+    // manifest is stale/tampered — refuse to settle rather than silently
+    // using the wrong basis for chain-share math.
+    const basisMismatch = taxes.find((t) => t.basisAmount !== basisAmountCents);
+    if (basisMismatch) {
+      log.error(
+        { paymentRequestId: paymentRequest.id, expected: basisAmountCents, got: basisMismatch.basisAmount },
+        'payment_request stripe settle skipped: taxes[].basisAmount does not match totalAmount',
+      );
+      return;
+    }
 
     const { resolvedChain, expectedTotal, taxCredits, totalTaxDollars } = resolveSettlementChain({
       amountCents: basisAmountCents,
