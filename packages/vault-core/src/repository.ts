@@ -64,8 +64,8 @@ export class FileVaultRepository implements VaultRepository {
         let raw: string;
         try {
             raw = await fs.readFile(this.vaultPath, 'utf8');
-        } catch (error: any) {
-            if (error?.code === 'ENOENT') {
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
                 return this.handleMissingFile();
             }
             return this.recordLoad(this.createEmptyVault(), false);

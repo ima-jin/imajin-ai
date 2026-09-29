@@ -198,3 +198,143 @@ describe('check-env per-env deploy targets', () => {
     expect(result.stdout).toContain("required for this env's deploy target");
   });
 });
+
+// ── Vault file check (#2412) ────────────────────────────────────────────────
+//
+// A configured VAULT_PATH whose file is absent must stop the deploy here, before
+// pm2 restarts the kernel into an empty vault. VAULT_PATH lives in the pm2
+// ecosystem file (not .env.local), so these fixtures write it there; the
+// process-env override is exercised separately.
+
+/** A CHECK_ENV_ROOT whose only checked service is a clean, env-satisfied kernel. */
+function makeKernelRoot({ vaultPath, extraEnv = {} } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'check-env-vault-test-'));
+  mkdirSync(join(dir, 'apps', 'kernel'), { recursive: true });
+  mkdirSync(join(dir, 'deploy'), { recursive: true });
+  writeFileSync(join(dir, 'apps', 'kernel', '.env.example'), '', 'utf8');
+  writeFileSync(join(dir, 'apps', 'kernel', '.env.local'), '', 'utf8');
+
+  const envEntries = { ...extraEnv };
+  if (vaultPath !== undefined) envEntries.VAULT_PATH = vaultPath;
+  const envBlock = Object.entries(envEntries)
+    .map(([key, value]) => `        "${key}": "${value}"`)
+    .join(',\n');
+  writeFileSync(
+    join(dir, 'deploy', 'ecosystem.dev.config.js'),
+    `module.exports = {\n  "apps": [\n    { "name": "dev-jin", "cwd": "/home/jin/dev/imajin-ai/apps/kernel", "env": {\n${envBlock}\n    } }\n  ]\n};\n`,
+    'utf8',
+  );
+  return dir;
+}
+
+function runKernel(dir, envOverrides = {}) {
+  const baseEnv = { ...process.env, CHECK_ENV_ROOT: dir };
+  delete baseEnv.VAULT_PATH;
+  delete baseEnv.VAULT_ALLOW_BOOTSTRAP;
+  try {
+    const stdout = execFileSync('pnpm', ['exec', 'tsx', SCRIPT, '--env', 'dev', 'kernel'], {
+      encoding: 'utf8',
+      cwd: REPO_ROOT,
+      env: { ...baseEnv, ...envOverrides },
+    });
+    return { stdout, status: 0 };
+  } catch (e) {
+    return {
+      stdout: (e.stdout?.toString() ?? '') + (e.stderr?.toString() ?? ''),
+      status: e.status ?? 1,
+    };
+  }
+}
+
+describe('check-env vault file (#2412)', () => {
+  it('fails when the configured VAULT_PATH file does not exist', () => {
+    const missing = join(mkdtempSync(join(tmpdir(), 'check-env-vault-empty-')), 'vault.dev.json');
+    const dir = makeKernelRoot({ vaultPath: missing });
+
+    const result = runKernel(dir);
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('VAULT_PATH file does not exist');
+    expect(result.stdout).toContain(missing);
+  });
+
+  it('passes when the configured VAULT_PATH file exists', () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), 'check-env-vault-present-'));
+    const present = join(vaultDir, 'vault.dev.json');
+    writeFileSync(present, '{"version":1,"entries":[]}', 'utf8');
+    const dir = makeKernelRoot({ vaultPath: present });
+
+    const result = runKernel(dir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('vault file present');
+  });
+
+  it('fails on a deliberately wrong VAULT_PATH from the process env, overriding the ecosystem file', () => {
+    const vaultDir = mkdtempSync(join(tmpdir(), 'check-env-vault-override-'));
+    const good = join(vaultDir, 'vault.dev.json');
+    writeFileSync(good, '{"version":1,"entries":[]}', 'utf8');
+    const dir = makeKernelRoot({ vaultPath: good });
+
+    const result = runKernel(dir, { VAULT_PATH: join(vaultDir, 'vault.typo.json') });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('vault.typo.json');
+  });
+
+  it('expands a leading ~ against the home directory, like the kernel does', () => {
+    const home = mkdtempSync(join(tmpdir(), 'check-env-vault-home-'));
+    mkdirSync(join(home, '.imajin'), { recursive: true });
+    writeFileSync(join(home, '.imajin', 'vault.dev.json'), '{"version":1,"entries":[]}', 'utf8');
+    const dir = makeKernelRoot({ vaultPath: '~/.imajin/vault.dev.json' });
+
+    expect(runKernel(dir, { HOME: home, USERPROFILE: home }).status).toBe(0);
+
+    const emptyHome = mkdtempSync(join(tmpdir(), 'check-env-vault-nohome-'));
+    expect(runKernel(dir, { HOME: emptyHome, USERPROFILE: emptyHome }).status).toBe(1);
+  });
+
+  it('allows a missing file (warning only) when the explicit bootstrap flag is set', () => {
+    const missing = join(mkdtempSync(join(tmpdir(), 'check-env-vault-bootstrap-')), 'vault.dev.json');
+    const dir = makeKernelRoot({ vaultPath: missing });
+
+    const result = runKernel(dir, { VAULT_ALLOW_BOOTSTRAP: '1' });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('VAULT_ALLOW_BOOTSTRAP is set');
+  });
+
+  it('reads the bootstrap flag from the ecosystem file too', () => {
+    const missing = join(mkdtempSync(join(tmpdir(), 'check-env-vault-eco-bootstrap-')), 'vault.dev.json');
+    const dir = makeKernelRoot({ vaultPath: missing, extraEnv: { VAULT_ALLOW_BOOTSTRAP: 'true' } });
+
+    expect(runKernel(dir).status).toBe(0);
+  });
+
+  it('does not treat VAULT_ALLOW_BOOTSTRAP=0 as a bootstrap request', () => {
+    const missing = join(mkdtempSync(join(tmpdir(), 'check-env-vault-zero-')), 'vault.dev.json');
+    const dir = makeKernelRoot({ vaultPath: missing });
+
+    expect(runKernel(dir, { VAULT_ALLOW_BOOTSTRAP: '0' }).status).toBe(1);
+  });
+
+  it('skips the vault check when no VAULT_PATH is configured anywhere', () => {
+    const dir = makeKernelRoot();
+
+    const result = runKernel(dir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('VAULT_PATH not set');
+  });
+
+  it('does not check the vault when the kernel is not among the checked services', () => {
+    const dir = makeRoot();
+    writeExample(dir, '');
+    writeLocal(dir, '');
+
+    const result = run(dir, ['--env', 'dev', SERVICE]);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('vault');
+  });
+});
