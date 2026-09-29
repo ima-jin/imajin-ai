@@ -58,4 +58,19 @@ describe('service-registry (#2275)', () => {
     const { buildEmbedSrc } = await import('../service-registry');
     expect(buildEmbedSrc('learn', 'did:imajin:abc')).toBe('/dashboard?embed=hub&did=did%3Aimajin%3Aabc');
   });
+
+  it('#2425 send-back: a baseUrlOverride takes precedence over the static SERVICE_URLS map', async () => {
+    process.env.NEXT_PUBLIC_COFFEE_URL = 'https://node.example/coffee';
+    const { buildEmbedSrc } = await import('../service-registry');
+    expect(buildEmbedSrc('coffee', 'did:imajin:abc', 'https://registry-resolved.example')).toBe(
+      'https://registry-resolved.example/dashboard?embed=hub&did=did%3Aimajin%3Aabc',
+    );
+  });
+
+  it('#2425 send-back: a baseUrlOverride works for a slug with no hardcoded SERVICE_URLS entry at all', async () => {
+    const { buildEmbedSrc } = await import('../service-registry');
+    expect(buildEmbedSrc('a-brand-new-app', 'did:imajin:abc', 'https://newapp.example')).toBe(
+      'https://newapp.example/dashboard?embed=hub&did=did%3Aimajin%3Aabc',
+    );
+  });
 });

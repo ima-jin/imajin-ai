@@ -14,6 +14,14 @@ import { setServiceBadge } from '../lib/service-badge-bus';
 interface Props {
   service: string;
   did: string;
+  /**
+   * Registry-resolved base origin for this service (#2425). Overrides
+   * `service-registry.ts`'s static, 6-name-only `SERVICE_URLS` map so an
+   * app that only exists as a `registry.apps` row still gets a working
+   * embed. Ignored for kernel-native services (pay/media always embed
+   * same-origin).
+   */
+  baseUrl?: string;
 }
 
 type EmbedPhase = 'checking' | 'loading' | 'ready' | 'error';
@@ -35,11 +43,11 @@ const ERROR_COPY: Record<ErrorReason, string> = {
 };
 
 /** Origin the embedded app's postMessage traffic must come from/go to. */
-function resolveExpectedOrigin(service: string): string | null {
+function resolveExpectedOrigin(service: string, baseUrlOverride?: string): string | null {
   if (isKernelNativeService(service)) {
     return typeof globalThis.location === 'undefined' ? null : globalThis.location.origin;
   }
-  const baseUrl = getServiceBaseUrl(service);
+  const baseUrl = baseUrlOverride ?? getServiceBaseUrl(service);
   if (!baseUrl) return null;
   try {
     return new URL(baseUrl).origin;
@@ -48,7 +56,7 @@ function resolveExpectedOrigin(service: string): string | null {
   }
 }
 
-export default function ServiceEmbed({ service, did }: Readonly<Props>) {
+export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>) {
   const [phase, setPhase] = useState<EmbedPhase>('checking');
   const [errorReason, setErrorReason] = useState<ErrorReason>('unavailable');
   const [attempt, setAttempt] = useState(0);
@@ -60,8 +68,8 @@ export default function ServiceEmbed({ service, did }: Readonly<Props>) {
   const targetWindowRef = useRef<Window | null>(null);
   const { toast } = useToast();
 
-  const src = buildEmbedSrc(service, did);
-  const expectedOrigin = resolveExpectedOrigin(service);
+  const src = buildEmbedSrc(service, did, baseUrl);
+  const expectedOrigin = resolveExpectedOrigin(service, baseUrl);
 
   const clearHandshakeTimeout = useCallback(() => {
     if (timeoutRef.current) {

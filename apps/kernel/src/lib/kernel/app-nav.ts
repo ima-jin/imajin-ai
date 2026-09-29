@@ -7,7 +7,7 @@
  *
  * Deliberately scoped to the apps #1981 will eventually extract out of the
  * monorepo (coffee, dykil, links, learn, events, market — the rows
- * `0166_registry_apps_nav_metadata.sql` backfills `placements` for).
+ * `0167_registry_apps_nav_metadata.sql` backfills `placements` for).
  * `pay`/`media` are kernel-native services that are never pruned (see
  * `apps/kernel/app/auth/lib/service-registry.ts`'s `isKernelNativeService`)
  * and stay outside this resolver — they are gated by scope/enabledServices
@@ -87,7 +87,15 @@ async function resolveEnabledSlugsForIdentity(did: string, scope: string | undef
   return new Set(forestRow?.enabledServices ?? []);
 }
 
-/** `requiredScope` gates visibility to a matching identity scope; `NULL` (or actor scope) always passes. */
+/**
+ * `requiredScope` gates visibility to a matching IDENTITY scope
+ * (`'actor' | 'business' | 'community' | 'family'` — `identities.scope`'s own
+ * literal union), never to an app's display/visibility tier (e.g.
+ * `packages/config/src/services.ts`'s per-app `visibility: 'creator'`,
+ * which is an unrelated concept — see `0167_registry_apps_nav_metadata.sql`'s
+ * header for why the first-party backfill leaves this column NULL for all
+ * six apps). `NULL` (or actor scope) always passes.
+ */
 function passesScopeGate(app: NavApp, scope: string | undefined): boolean {
   if (!app.requiredScope) return true;
   if (scope === 'actor') return true;
@@ -122,4 +130,20 @@ export async function resolveNavAppsForIdentity(did: string): Promise<NavApp[]> 
 /** Narrow a resolved nav-app list down to the ones visible on a given placement. */
 export function filterByPlacement(apps: readonly NavApp[], placement: AppPlacement): NavApp[] {
   return apps.filter((app) => app.placements.includes(placement));
+}
+
+/**
+ * Registry apps matching the given slugs — no identity/scope gating at all
+ * (#2425 send-back). For PUBLIC, unauthenticated reads like the profile
+ * page's `ServiceLinks`: the PROFILE OWNER (not the viewer) already decided
+ * which apps to enable via `feature_toggles`/`resolveEnabledApps`, so there
+ * is no viewer identity to gate against here — `resolveNavAppsForIdentity`
+ * would be the wrong tool (it answers "what can THIS identity see in its
+ * own hub", not "what has THAT profile opted into showing everyone").
+ */
+export async function resolveRegistryAppsBySlug(slugs: readonly string[]): Promise<NavApp[]> {
+  if (slugs.length === 0) return [];
+  const navCapable = await listNavCapableApps();
+  const slugSet = new Set(slugs);
+  return navCapable.filter((app) => slugSet.has(app.slug));
 }

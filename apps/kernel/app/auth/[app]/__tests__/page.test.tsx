@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   resolveNavAppsForIdentity: vi.fn(),
   redirect: vi.fn(),
   notFound: vi.fn(),
+  buildPublicUrl: vi.fn((slug: string) => `https://registry-resolved.example/${slug}`),
 }));
 
 vi.mock('next/navigation', () => ({
@@ -19,13 +20,15 @@ vi.mock('next/navigation', () => ({
   notFound: mocks.notFound,
 }));
 
+vi.mock('@imajin/config', () => ({ buildPublicUrl: mocks.buildPublicUrl }));
+
 vi.mock('../../lib/get-effective-did', () => ({ getEffectiveDid: mocks.getEffectiveDid }));
 
 vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveNavAppsForIdentity: mocks.resolveNavAppsForIdentity }));
 
 vi.mock('../../components/ServiceEmbed', () => ({
-  default: ({ service, did }: { service: string; did: string }) => (
-    <div data-testid="service-embed">{`${service}:${did}`}</div>
+  default: ({ service, did, baseUrl }: { service: string; did: string; baseUrl?: string }) => (
+    <div data-testid="service-embed">{`${service}:${did}:${baseUrl ?? ''}`}</div>
   ),
 }));
 
@@ -68,9 +71,9 @@ describe('AppPage /auth/[app] (#2425)', () => {
     await renderPage('pay');
 
     // pay is kernel-native — isKernelNativeService short-circuits before
-    // the registry list is ever fetched.
+    // the registry list is ever fetched, and no baseUrl override is passed.
     expect(mocks.resolveNavAppsForIdentity).not.toHaveBeenCalled();
-    expect(screen.getByTestId('service-embed').textContent).toBe(`pay:${DID}`);
+    expect(screen.getByTestId('service-embed').textContent).toBe(`pay:${DID}:`);
   });
 
   it('renders ServiceEmbed directly for the other kernel-native service (media)', async () => {
@@ -85,8 +88,23 @@ describe('AppPage /auth/[app] (#2425)', () => {
 
     render((await AppPage({ params: Promise.resolve({ app: 'coffee' }) })) as React.ReactElement);
 
-    expect(screen.getByTestId('service-embed').textContent).toBe(`coffee:${DID}`);
+    expect(screen.getByTestId('service-embed').textContent).toBe(
+      `coffee:${DID}:https://registry-resolved.example/coffee`,
+    );
     expect(mocks.notFound).not.toHaveBeenCalled();
+  });
+
+  it('#2425 send-back: resolves the embed baseUrl from the registry row\'s slug via buildPublicUrl, not a hardcoded map', async () => {
+    mocks.resolveNavAppsForIdentity.mockResolvedValue([
+      { slug: 'a-brand-new-app', name: 'Brand New App', icon: '🆕', entryUrl: '/a-brand-new-app', placements: ['auth-submenu'], requiredScope: null, tier: 'third_party' },
+    ]);
+
+    render((await AppPage({ params: Promise.resolve({ app: 'a-brand-new-app' }) })) as React.ReactElement);
+
+    expect(mocks.buildPublicUrl).toHaveBeenCalledWith('a-brand-new-app');
+    expect(screen.getByTestId('service-embed').textContent).toBe(
+      `a-brand-new-app:${DID}:https://registry-resolved.example/a-brand-new-app`,
+    );
   });
 
   it('404s for an unknown slug', async () => {

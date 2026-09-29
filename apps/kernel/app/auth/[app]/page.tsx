@@ -1,4 +1,5 @@
 import { redirect, notFound } from 'next/navigation';
+import { buildPublicUrl } from '@imajin/config';
 import { getEffectiveDid } from '../lib/get-effective-did';
 import ServiceEmbed from '../components/ServiceEmbed';
 import { isKernelNativeService } from '../lib/service-registry';
@@ -28,10 +29,18 @@ export default async function AppPage({ params }: Readonly<PageProps>) {
   }
 
   const navApps = await resolveNavAppsForIdentity(effectiveDid);
-  const isEnabled = navApps.some((navApp) => navApp.slug === app && navApp.placements.includes('auth-submenu'));
-  if (!isEnabled) {
+  const match = navApps.find((navApp) => navApp.slug === app && navApp.placements.includes('auth-submenu'));
+  if (!match) {
     notFound();
   }
 
-  return <ServiceEmbed service={app} did={effectiveDid} />;
+  // #2425 send-back: resolve the embed origin FROM THE REGISTRY ROW'S OWN
+  // SLUG via buildPublicUrl (the same env-aware, NEXT_PUBLIC_<SLUG>_URL +
+  // subdomain/path-fallback mechanism every other kernel surface already
+  // uses for a service's public URL) instead of ServiceEmbed silently
+  // falling back to service-registry.ts's static, 6-name-only map. A newly
+  // provisioned third-party app that exists only as a registry row (no
+  // hand-added SERVICE_URLS entry) now gets a working embed too.
+  const baseUrl = buildPublicUrl(match.slug);
+  return <ServiceEmbed service={app} did={effectiveDid} baseUrl={baseUrl} />;
 }

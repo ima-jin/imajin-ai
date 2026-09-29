@@ -349,7 +349,7 @@ export const registryApps = registrySchema.table('apps', {
    */
   slug: text('slug'),
   /**
-   * Nav metadata (#2425, 0166_registry_apps_nav_metadata.sql) — read from
+   * Nav metadata (#2425, 0167_registry_apps_nav_metadata.sql) — read from
    * the app manifest at `apps.provision` time (see
    * `src/lib/apps/provision.ts`'s `registerApp`), or seeded/backfilled for
    * first-party apps by the migration. `placements` is a subset of

@@ -131,6 +131,16 @@ describe('ServiceEmbed loading/error states (#2275)', () => {
     expect(screen.getByText(/taking too long to load/i)).toBeDefined();
   });
 
+  it('#2425 send-back: a baseUrl prop overrides the static service-registry.ts map for the iframe src', async () => {
+    globalThis.fetch = mockFetch() as unknown as typeof fetch;
+    const ServiceEmbed = await loadServiceEmbed();
+
+    render(<ServiceEmbed service="a-brand-new-app" did="did:imajin:abc" baseUrl="https://registry-resolved.example" />);
+
+    const iframe = await screen.findByTitle<HTMLIFrameElement>('a-brand-new-app dashboard');
+    expect(iframe.src).toContain('https://registry-resolved.example/dashboard');
+  });
+
   it('retries the health check and remounts the iframe when Retry is clicked', async () => {
     const fetchMock = mockFetch({ health: { ok: false, checked: true, status: 503 } });
     globalThis.fetch = fetchMock as unknown as typeof fetch;

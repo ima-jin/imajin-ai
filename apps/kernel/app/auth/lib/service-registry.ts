@@ -41,9 +41,16 @@ function getServicePath(service: string): string {
   return KERNEL_SERVICE_PATHS[service] ?? '/dashboard';
 }
 
-/** Build the iframe `src` for a service embed, scoped to the given delegated/effective DID. */
-export function buildEmbedSrc(service: string, did: string): string {
-  const baseUrl = getServiceBaseUrl(service);
+/**
+ * Build the iframe `src` for a service embed, scoped to the given
+ * delegated/effective DID. `baseUrlOverride` (#2425) lets a caller pass a
+ * registry-resolved origin (any slug, not just the ones hardcoded in
+ * `SERVICE_URLS` above) — without it, a third-party app that exists only
+ * as a `registry.apps` row (no hand-added `SERVICE_URLS` entry) would get
+ * a broken, path-only embed src.
+ */
+export function buildEmbedSrc(service: string, did: string, baseUrlOverride?: string): string {
+  const baseUrl = baseUrlOverride ?? getServiceBaseUrl(service);
   const path = getServicePath(service);
   const suffix = `${path}?embed=hub&did=${encodeURIComponent(did)}`;
   return baseUrl ? `${baseUrl}${suffix}` : suffix;

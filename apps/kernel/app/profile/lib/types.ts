@@ -1,3 +1,5 @@
+import type { NavApp } from '@/src/lib/kernel/app-nav';
+
 export interface FeatureToggles {
   inference_enabled?: boolean;
   show_market_items?: boolean;
@@ -59,4 +61,6 @@ export interface ProfileViewProps {
   viewer: ViewerContext;
   counts: ProfileCounts;
   links: LinkItem[];
+  /** Registry apps (#2425) resolved for this profile's own enabled slugs — see `resolveRegistryAppsBySlug`. Consumed by `ServiceLinks`. */
+  serviceApps: NavApp[];
 }

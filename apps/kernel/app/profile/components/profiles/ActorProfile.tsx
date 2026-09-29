@@ -9,7 +9,7 @@ import { MarketItems } from '../MarketItems';
 import { formatMemberSince } from '../../lib/profile-utils';
 import type { ProfileViewProps } from '../../lib/types';
 
-export function ActorProfile({ profile, identity, viewer, counts, links }: Readonly<ProfileViewProps>) {
+export function ActorProfile({ profile, identity, viewer, counts, links, serviceApps }: Readonly<ProfileViewProps>) {
   const isSoftDID = !isVerifiedTier(identity.tier);
 
   return (
@@ -39,7 +39,7 @@ export function ActorProfile({ profile, identity, viewer, counts, links }: Reado
 
         <ContactCard contactEmail={profile.contactEmail} phone={profile.phone} />
 
-        <ServiceLinks profile={profile} viewerDid={viewer.viewerDid} />
+        <ServiceLinks profile={profile} viewerDid={viewer.viewerDid} apps={serviceApps} />
 
         {/* Expanded links list */}
         {links.length > 0 && (

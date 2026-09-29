@@ -1,4 +1,4 @@
--- 0166_registry_apps_nav_metadata.sql
+-- 0167_registry_apps_nav_metadata.sql
 -- owner: kernel
 -- #2425 — kernel navigation derives from the app registry, not hard-coded
 -- literals. `registry.apps` (#1990) had no nav metadata; this adds it as
@@ -9,14 +9,23 @@
 --   entry_url      — path (or absolute URL) nav surfaces should link to
 --   placements     — subset of ('launcher','home','auth-submenu') this app
 --                    should render on; empty = not nav-visible yet
---   required_scope — identity scope required to see this app in nav, or
---                    NULL when any authenticated scope may see it
+--   required_scope — identity scope ('actor'|'business'|'community'|'family')
+--                    required to see this app in nav, or NULL when any
+--                    authenticated scope may see it
 --
 -- Backfilled for the 6 pre-seeded first-party apps that #1981 will extract
 -- out of the monorepo (0139_registry_apps_seed_first_party.sql, slug'd by
--- 0163_registry_apps_slug.sql) — values mirror packages/config/src/services.ts's
--- existing icon/visibility fields for the same slugs, so nav rendering is
--- pixel-identical to today's hard-coded IdentityTabBar/services.ts values.
+-- 0163_registry_apps_slug.sql) — icon/entry_url values mirror
+-- packages/config/src/services.ts's existing icon fields for the same slugs,
+-- so nav rendering is pixel-identical to today's hard-coded
+-- IdentityTabBar/services.ts values. `required_scope` is left NULL for all
+-- six: `services.ts`'s per-app `visibility: 'creator'` field (coffee/dykil/
+-- links) is a VISIBILITY TIER, not one of the four identity-scope values
+-- (`registry.apps.required_scope`/`identities.scope` are actor|business|
+-- community|family) — comparing them would wrongly hide coffee/dykil/links
+-- from business/community/family identities that already have them enabled
+-- via forest_config. See `src/lib/kernel/app-nav.ts`'s `passesScopeGate`
+-- docblock for the gate this column actually feeds.
 -- `jin` (the neutral shell) and `pay`/`media` (kernel-native, never pruned)
 -- are deliberately NOT given placements here — they stay outside the
 -- registry-driven nav surface this issue covers (see app-nav.ts docblock).
@@ -56,15 +65,15 @@ ALTER TABLE registry.apps
   ADD COLUMN IF NOT EXISTS required_scope TEXT;
 
 UPDATE registry.apps
-SET icon = '☕', entry_url = '/coffee', placements = ARRAY['launcher','home','auth-submenu'], required_scope = 'creator'
+SET icon = '☕', entry_url = '/coffee', placements = ARRAY['launcher','home','auth-submenu'], required_scope = NULL
 WHERE slug = 'coffee' AND (icon IS NULL OR entry_url IS NULL OR placements = '{}');
 
 UPDATE registry.apps
-SET icon = '📋', entry_url = '/dykil', placements = ARRAY['launcher','home','auth-submenu'], required_scope = 'creator'
+SET icon = '📋', entry_url = '/dykil', placements = ARRAY['launcher','home','auth-submenu'], required_scope = NULL
 WHERE slug = 'dykil' AND (icon IS NULL OR entry_url IS NULL OR placements = '{}');
 
 UPDATE registry.apps
-SET icon = '🔗', entry_url = '/links', placements = ARRAY['launcher','home','auth-submenu'], required_scope = 'creator'
+SET icon = '🔗', entry_url = '/links', placements = ARRAY['launcher','home','auth-submenu'], required_scope = NULL
 WHERE slug = 'links' AND (icon IS NULL OR entry_url IS NULL OR placements = '{}');
 
 UPDATE registry.apps

@@ -47,15 +47,19 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => ({ eq: args }) }));
 
-import { resolveNavAppsForIdentity, filterByPlacement, type NavApp } from '../app-nav';
+import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, type NavApp } from '../app-nav';
 
+// requiredScope is null (#2425 send-back): 'creator' is services.ts's
+// display-visibility tier, not one of the four identity scopes, so the
+// real coffee/dykil/links backfill never sets requiredScope to it — see
+// 0167_registry_apps_nav_metadata.sql's header.
 const COFFEE_ROW = {
   slug: 'coffee',
   name: 'Coffee',
   icon: '☕',
   entryUrl: '/coffee',
   placements: ['launcher', 'home', 'auth-submenu'],
-  requiredScope: 'creator',
+  requiredScope: null,
   tier: 'first_party',
   status: 'active',
 };
@@ -123,23 +127,35 @@ describe('resolveNavAppsForIdentity — group/business scope (#2425)', () => {
     expect(apps).toEqual([]);
   });
 
-  it('applies the requiredScope gate on top of enabledServices — a creator-only app stays hidden from a non-matching scope', async () => {
+  it('applies the requiredScope gate on top of enabledServices — an app scoped to a different identity scope stays hidden', async () => {
     mocks.state.identityRows = [{ scope: 'business' }];
     mocks.state.forestRows = [{ enabledServices: ['coffee', 'learn'] }];
-    mocks.state.registryRows = [{ ...COFFEE_ROW, requiredScope: 'creator' }, LEARN_ROW];
+    // requiredScope here is a real identity scope value ('family'), unlike
+    // the pre-fix bug that compared against services.ts's display tier.
+    mocks.state.registryRows = [{ ...COFFEE_ROW, requiredScope: 'family' }, LEARN_ROW];
 
     const apps = await resolveNavAppsForIdentity('did:imajin:group-3');
 
-    // 'business' scope does not match requiredScope 'creator' — coffee is filtered out.
+    // 'business' scope does not match requiredScope 'family' — coffee is filtered out.
     expect(apps.map((a) => a.slug)).toEqual(['learn']);
   });
 
   it('shows a requiredScope app when the identity scope matches exactly', async () => {
-    mocks.state.identityRows = [{ scope: 'creator' }];
+    mocks.state.identityRows = [{ scope: 'family' }];
     mocks.state.forestRows = [{ enabledServices: ['coffee'] }];
-    mocks.state.registryRows = [{ ...COFFEE_ROW, requiredScope: 'creator' }];
+    mocks.state.registryRows = [{ ...COFFEE_ROW, requiredScope: 'family' }];
 
     const apps = await resolveNavAppsForIdentity('did:imajin:group-4');
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('#2425 send-back: a business identity with coffee enabled sees coffee (requiredScope NULL never hides it from a non-actor scope)', async () => {
+    mocks.state.identityRows = [{ scope: 'business' }];
+    mocks.state.forestRows = [{ enabledServices: ['coffee'] }];
+    mocks.state.registryRows = [COFFEE_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:business-1');
 
     expect(apps.map((a) => a.slug)).toEqual(['coffee']);
   });
@@ -154,5 +170,32 @@ describe('filterByPlacement (#2425)', () => {
 
     expect(filterByPlacement(apps, 'auth-submenu').map((a) => a.slug)).toEqual(['coffee']);
     expect(filterByPlacement(apps, 'launcher').map((a) => a.slug).sort()).toEqual(['coffee', 'learn']);
+  });
+});
+
+describe('resolveRegistryAppsBySlug (#2425 send-back — public, unauthenticated profile reads)', () => {
+  it('returns an empty array without querying the db when given no slugs', async () => {
+    const apps = await resolveRegistryAppsBySlug([]);
+
+    expect(apps).toEqual([]);
+    expect(mocks.selectMock).not.toHaveBeenCalled();
+  });
+
+  it('returns only the registry apps matching the given slugs, ignoring identity/scope entirely', async () => {
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    const apps = await resolveRegistryAppsBySlug(['coffee']);
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+    // No identity or forest_config lookup — only the registry itself.
+    expect(mocks.selectMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('excludes inactive/no-placement/no-slug rows, same as the nav-capable filter', async () => {
+    mocks.state.registryRows = [COFFEE_ROW, REVOKED_ROW, NO_PLACEMENT_ROW, NO_SLUG_ROW];
+
+    const apps = await resolveRegistryAppsBySlug(['coffee', 'revoked-app', 'jin']);
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
   });
 });

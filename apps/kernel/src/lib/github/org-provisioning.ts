@@ -318,7 +318,7 @@ export async function fetchAppManifest(slug: string, token: string | null): Prom
       path: `/repos/${PROVISIONING_ORG}/${slug}/contents/imajin.app.json`,
       token,
     });
-    if (res.status !== 200 || !res.data || res.data.encoding !== 'base64') return null;
+    if (res.status !== 200 || res.data?.encoding !== 'base64') return null;
 
     const decoded = Buffer.from(res.data.content, 'base64').toString('utf-8');
     const parsed: unknown = JSON.parse(decoded);

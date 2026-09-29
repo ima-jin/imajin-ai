@@ -1,5 +1,5 @@
 /**
- * Real-engine migration coverage for 0166 (#2425): registry.apps gains nav
+ * Real-engine migration coverage for 0167 (#2425): registry.apps gains nav
  * metadata columns, backfilled for the 6 first-party apps #1981 will
  * eventually extract out of the monorepo.
  *
@@ -38,7 +38,7 @@ const REGISTRY_APPS = readMigration('0007_registry_apps.sql');
 const REGISTRY_FIELDS = readMigration('0138_registry_apps_registry_fields.sql');
 const REGISTRY_APPS_SLUG = readMigration('0163_registry_apps_slug.sql');
 const SEED_FIRST_PARTY = readMigration('0139_registry_apps_seed_first_party.sql');
-const NAV_METADATA = readMigration('0166_registry_apps_nav_metadata.sql');
+const NAV_METADATA = readMigration('0167_registry_apps_nav_metadata.sql');
 
 let client: PGlite;
 
@@ -54,7 +54,7 @@ interface NavRow {
   required_scope: string | null;
 }
 
-describe('0166_registry_apps_nav_metadata (#2425)', () => {
+describe('0167_registry_apps_nav_metadata (#2425)', () => {
   it('adds nav columns and backfills the 6 extractable first-party apps, leaving jin untouched', async () => {
     client = new PGlite({ extensions: { pgcrypto } });
     await client.waitReady;
@@ -71,14 +71,18 @@ describe('0166_registry_apps_nav_metadata (#2425)', () => {
     );
     const bySlug = new Map(rows.map((r) => [r.slug, r]));
 
+    // #2425 send-back: required_scope must be NULL for every first-party app
+    // — services.ts's `visibility: 'creator'` is a display tier, not one of
+    // the four identity scopes (actor|business|community|family), so it must
+    // never be written into this column (see this migration's own header).
     expect(bySlug.get('coffee')).toMatchObject({
       icon: '☕',
       entry_url: '/coffee',
       placements: ['launcher', 'home', 'auth-submenu'],
-      required_scope: 'creator',
+      required_scope: null,
     });
-    expect(bySlug.get('dykil')).toMatchObject({ icon: '📋', entry_url: '/dykil', required_scope: 'creator' });
-    expect(bySlug.get('links')).toMatchObject({ icon: '🔗', entry_url: '/links', required_scope: 'creator' });
+    expect(bySlug.get('dykil')).toMatchObject({ icon: '📋', entry_url: '/dykil', required_scope: null });
+    expect(bySlug.get('links')).toMatchObject({ icon: '🔗', entry_url: '/links', required_scope: null });
     expect(bySlug.get('learn')).toMatchObject({ icon: '📚', entry_url: '/learn', required_scope: null });
     expect(bySlug.get('events')).toMatchObject({ icon: '🎫', entry_url: '/events', required_scope: null });
     expect(bySlug.get('market')).toMatchObject({ icon: '🏪', entry_url: '/market', required_scope: null });
