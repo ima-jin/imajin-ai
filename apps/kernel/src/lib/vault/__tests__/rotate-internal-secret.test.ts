@@ -62,163 +62,174 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   return { ...actual, eq, and, or, isNull, gt, lt, like, desc };
 });
 
+// ── DB double ────────────────────────────────────────────────────────────────
+// Helpers are top-level function declarations (hoisted, so the hoisted
+// vi.mock factory below can reference them) purely to stay inside the
+// linter's nested-function depth budget.
+
 function columns(names: string[]): Record<string, string> {
   return Object.fromEntries(names.map((name) => [name, name]));
 }
 
-vi.mock('@/src/db', () => {
-  const vaultDelegationGrants = {
+function storeFor(table: { __table?: string }): Map<string, Row> {
+  return stores[(table.__table ?? 'grants') as keyof typeof stores];
+}
+
+/** Natural keys for the tables with a real unique constraint, so the double refuses what Postgres would. */
+function keyFor(table: { __table?: string }, data: Row): string {
+  if (table.__table === 'envelopes') return `${String(data.field)}:${String(data.keyId)}`;
+  if (table.__table === 'provisions') return `${String(data.ownerDid)}::${String(data.purpose)}`;
+  return String(data.id);
+}
+
+function sameActiveTuple(a: Row, b: Row): boolean {
+  return a.status === 'active' && a.subject === b.subject && a.grantedTo === b.grantedTo
+    && a.field === b.field && a.keyId === b.keyId;
+}
+
+/** `uniq_vault_delegation_active` over (subject, grantedTo, field, keyId) WHERE status = 'active'. */
+function assertActiveGrantUnique(data: Row): void {
+  if (data.status !== 'active') return;
+  if ([...stores.grants.values()].some((row) => sameActiveTuple(row, data))) {
+    throw Object.assign(new Error('duplicate key'), { code: '23505', constraint_name: 'uniq_vault_delegation_active' });
+  }
+}
+
+function project(rows: Row[], projection?: Record<string, string>): Row[] {
+  if (!projection) return rows;
+  return rows.map((row) => Object.fromEntries(Object.entries(projection).map(([k, col]) => [k, row[col]])));
+}
+
+function byColumnDesc(column: string): (a: Row, b: Row) => number {
+  return (a, b) => Number(b[column]) - Number(a[column]);
+}
+
+function memoize(fn: () => Row[]): () => Row[] {
+  let memo: Row[] | undefined;
+  return () => (memo ??= fn());
+}
+
+/** A lazily-executed drizzle-ish query: awaitable, with .limit() and .orderBy(). */
+function queryable(rows: () => Row[]) {
+  const run = () => Promise.resolve().then(rows);
+  return {
+    then: (res: (v: Row[]) => unknown, rej?: (e: unknown) => unknown) => run().then(res, rej),
+    catch: (rej: (e: unknown) => unknown) => run().catch(rej),
+    limit: (n: number) => run().then((r) => r.slice(0, n)),
+    orderBy: (order: { column: string }) => queryable(() => [...rows()].sort(byColumnDesc(order.column))),
+  };
+}
+
+function writeRow(table: { __table?: string }, data: Row): Row[] {
+  if (table.__table === 'grants') assertActiveGrantUnique(data);
+  storeFor(table).set(keyFor(table, data), data);
+  return [data];
+}
+
+function upsertRow(table: { __table?: string }, data: Row, set: Row | undefined): Row[] {
+  const store = storeFor(table);
+  const key = keyFor(table, data);
+  const existing = store.get(key);
+  store.set(key, existing ? { ...existing, ...(set ?? data) } : data);
+  return [];
+}
+
+function insertValues(table: { __table?: string }, raw: Row) {
+  const data: Row = { createdAt: new Date(), ...raw };
+  if (table.__table === 'grants') data.oneTime ??= false;
+  const exists = () => storeFor(table).has(keyFor(table, data));
+  // Envelopes are always written through onConflictDoUpdate in the code under test.
+  const plain = (): Row[] => {
+    if (table.__table === 'envelopes') return upsertRow(table, data, data);
+    return writeRow(table, data);
+  };
+  return {
+    ...queryable(plain),
+    onConflictDoNothing: () => ({
+      returning: (projection?: Record<string, string>) =>
+        Promise.resolve(exists() ? [] : project(writeRow(table, data), projection)),
+    }),
+    onConflictDoUpdate: (opts: { set?: Row }) => Promise.resolve(upsertRow(table, data, opts.set)),
+  };
+}
+
+function patchMatching(table: { __table?: string }, patch: Row, predicate: Predicate): Row[] {
+  const store = storeFor(table);
+  const out: Row[] = [];
+  for (const [id, row] of store) {
+    if (predicate(row)) {
+      const next = { ...row, ...patch };
+      store.set(id, next);
+      out.push(next);
+    }
+  }
+  return out;
+}
+
+function deleteMatching(table: { __table?: string }, predicate: Predicate): Row[] {
+  const store = storeFor(table);
+  const out: Row[] = [];
+  for (const [id, row] of store) {
+    if (predicate(row)) {
+      store.delete(id);
+      out.push(row);
+    }
+  }
+  return out;
+}
+
+/** An awaitable mutation that also supports .returning(), executing exactly once either way. */
+function mutation(execute: () => Row[]) {
+  const once = memoize(execute);
+  const awaited = (): Row[] => {
+    once();
+    return [];
+  };
+  return {
+    ...queryable(awaited),
+    returning: (projection?: Record<string, string>) => Promise.resolve(project(once(), projection)),
+  };
+}
+
+const dbDouble = {
+  insert: (table: { __table?: string }) => ({ values: (raw: Row) => insertValues(table, raw) }),
+  update: (table: { __table?: string }) => ({
+    set: (patch: Row) => ({ where: (predicate: Predicate) => mutation(() => patchMatching(table, patch, predicate)) }),
+  }),
+  delete: (table: { __table?: string }) => ({
+    where: (predicate: Predicate) => mutation(() => deleteMatching(table, predicate)),
+  }),
+  select: (projection?: Record<string, string>) => ({
+    from: (table: { __table?: string }) => ({
+      where: (predicate: Predicate) => queryable(() => project([...storeFor(table).values()].filter(predicate), projection)),
+    }),
+  }),
+};
+
+vi.mock('@/src/db', () => ({
+  db: dbDouble,
+  vaultDelegationGrants: {
     __table: 'grants',
     ...columns([
       'id', 'subject', 'grantedTo', 'field', 'ownerXPub', 'wrappedKey', 'wrappedNonce', 'keyId',
       'ownerSignature', 'status', 'expiresAt', 'createdAt', 'revokedAt', 'recipientXPub', 'ownerEdPub',
       'purpose', 'oneTime', 'consumedAt', 'lastFetchedAt', 'ackedAt', 'ackOutcome',
     ]),
-  };
-  const vaultOwnerEnvelopes = {
+  },
+  vaultOwnerEnvelopes: {
     __table: 'envelopes',
     ...columns(['id', 'field', 'keyId', 'ownerXPub', 'senderXPub', 'wrappedKey', 'wrappedNonce', 'createdAt']),
-  };
-  const vaultGrantRequests = {
+  },
+  vaultGrantRequests: {
     __table: 'requests',
     ...columns(['id', 'field', 'keyId', 'requestId', 'status', 'createdAt', 'expiresAt', 'grantId']),
-  };
-  const internalSecretProvisions = {
+  },
+  internalSecretProvisions: {
     __table: 'provisions',
     ...columns(['id', 'ownerDid', 'purpose', 'field', 'grantId', 'createdAt']),
-  };
-
-  const storeFor = (table: { __table?: string }): Map<string, Row> =>
-    stores[(table.__table ?? 'grants') as keyof typeof stores];
-
-  // Natural keys for the three tables with a real unique constraint, so the
-  // double refuses exactly what Postgres would.
-  const keyFor = (table: { __table?: string }, data: Row): string => {
-    if (table.__table === 'envelopes') return `${String(data.field)}:${String(data.keyId)}`;
-    if (table.__table === 'provisions') return `${String(data.ownerDid)}::${String(data.purpose)}`;
-    return String(data.id);
-  };
-
-  function assertActiveGrantUnique(data: Row): void {
-    if (data.status !== 'active') return;
-    for (const row of stores.grants.values()) {
-      if (
-        row.status === 'active' && row.subject === data.subject && row.grantedTo === data.grantedTo
-        && row.field === data.field && row.keyId === data.keyId
-      ) {
-        throw Object.assign(new Error('duplicate key'), { code: '23505', constraint_name: 'uniq_vault_delegation_active' });
-      }
-    }
-  }
-
-  function project(rows: Row[], projection?: Record<string, string>): Row[] {
-    if (!projection) return rows;
-    return rows.map((row) => Object.fromEntries(Object.entries(projection).map(([k, col]) => [k, row[col]])));
-  }
-
-  function queryable(rows: () => Row[]) {
-    const run = () => Promise.resolve().then(rows);
-    return {
-      then: (res: (v: Row[]) => unknown, rej?: (e: unknown) => unknown) => run().then(res, rej),
-      catch: (rej: (e: unknown) => unknown) => run().catch(rej),
-      limit: (n: number) => run().then((r) => r.slice(0, n)),
-      orderBy: (order: { column: string }) =>
-        queryable(() => [...rows()].sort((a, b) => Number(b[order.column]) - Number(a[order.column]))),
-    };
-  }
-
-  const insert = (table: { __table?: string }) => ({
-    values: (raw: Row) => {
-      const store = storeFor(table);
-      const data: Row = { createdAt: new Date(), ...raw };
-      if (table.__table === 'grants') data.oneTime ??= false;
-      const key = keyFor(table, data);
-      const write = () => {
-        if (table.__table === 'grants') assertActiveGrantUnique(data);
-        store.set(key, data);
-        return [data];
-      };
-      return {
-        ...queryable(() => (table.__table === 'envelopes' ? (store.set(key, data), []) : write())),
-        onConflictDoNothing: () => ({
-          returning: (projection?: Record<string, string>) =>
-            Promise.resolve(store.has(key) ? [] : project(write(), projection)),
-        }),
-        onConflictDoUpdate: (opts: { set?: Row }) => {
-          const existing = store.get(key);
-          store.set(key, existing ? { ...existing, ...(opts.set ?? data) } : data);
-          return Promise.resolve([]);
-        },
-      };
-    },
-  });
-
-  const update = (table: { __table?: string }) => ({
-    set: (patch: Row) => ({
-      where: (predicate: Predicate) => {
-        const touched = () => {
-          const store = storeFor(table);
-          const out: Row[] = [];
-          for (const [id, row] of store) {
-            if (predicate(row)) {
-              const next = { ...row, ...patch };
-              store.set(id, next);
-              out.push(next);
-            }
-          }
-          return out;
-        };
-        let memo: Row[] | undefined;
-        const once = () => (memo ??= touched());
-        return {
-          ...queryable(() => (once(), [])),
-          returning: (projection?: Record<string, string>) => Promise.resolve(project(once(), projection)),
-        };
-      },
-    }),
-  });
-
-  const del = (table: { __table?: string }) => ({
-    where: (predicate: Predicate) => {
-      let memo: Row[] | undefined;
-      const once = () => {
-        if (memo) return memo;
-        const store = storeFor(table);
-        memo = [];
-        for (const [id, row] of store) {
-          if (predicate(row)) {
-            store.delete(id);
-            memo.push(row);
-          }
-        }
-        return memo;
-      };
-      return {
-        ...queryable(() => (once(), [])),
-        returning: (projection?: Record<string, string>) => Promise.resolve(project(once(), projection)),
-      };
-    },
-  });
-
-  return {
-    db: {
-      insert,
-      update,
-      delete: del,
-      select: (projection?: Record<string, string>) => ({
-        from: (table: { __table?: string }) => ({
-          where: (predicate: Predicate) =>
-            queryable(() => project([...storeFor(table).values()].filter(predicate), projection)),
-        }),
-      }),
-    },
-    vaultDelegationGrants,
-    vaultOwnerEnvelopes,
-    vaultGrantRequests,
-    internalSecretProvisions,
-    channelLinks: {},
-  };
-});
+  },
+  channelLinks: {},
+}));
 
 vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`,
@@ -332,6 +343,22 @@ describe('rotate an internal-secret:* field (#2446)', () => {
     await rotateViaRoute(FIELD, rotated);
 
     await expect(internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
+  });
+
+  it('the vault.secret.rotated event alone invalidates the cached value (subscribeToSecret wiring)', async () => {
+    const { internal, sealing } = await boot();
+    await internal.getInternalSecret(PURPOSE);
+    const ownerDid = sealing.getNodeSigningIdentity().senderDid;
+    const replaced = randomBytes(24).toString('hex');
+    // Re-seal WITHOUT the rotate path's direct invalidation — only the bus event can refresh the cache.
+    await internal.sealAndRecordInternalSecret(ownerDid, PURPOSE, replaced);
+    const bus = await import('@imajin/bus');
+
+    await bus.publish('vault.secret.rotated', {
+      issuer: ownerDid, subject: ownerDid, scope: 'vault', payload: { field: FIELD } as never,
+    });
+
+    await expect(internal.getInternalSecret(PURPOSE)).resolves.toBe(replaced);
   });
 
   it('a plain v2 field keeps its grant purpose across rotate (general path)', async () => {

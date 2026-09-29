@@ -42,7 +42,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Field not found' }, { status: 404 });
     }
 
-    // #2446: rotation must carry the superseded grant's purpose forward.
+    // rotateAndStore keeps the superseded grant's purpose; internal-secret:*
+    // fields also keep their provisions row + external grantees (#2446).
     const entry = await rotateAndStore(field.trim(), value);
 
     let published = true;

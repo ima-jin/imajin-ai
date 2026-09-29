@@ -45,19 +45,20 @@
  * avoids a churned grantId (and a pointless re-sign) on every redundant
  * provisioning run.
  *
- * ## Rotation (explicitly out of scope for #2245, same seam as internal-secret.ts)
- * A future rotate card supersedes every active grant for the field (the
- * self-grant AND every external grantee this module has ever created) and
- * re-grants each from a fresh seal — no change needed to `getInternalSecret`'s
- * or this module's own lookup-by-(field, grantedTo).
+ * ## Rotation (#2446)
+ * Rotation supersedes the self-grant AND every external grantee this module
+ * has created, and re-grants each from the fresh seal
+ * ({@link reissueInternalSecretGrants}, called by `internal-secret-rotate.ts`)
+ * — no change needed to `getInternalSecret`'s or this module's own
+ * lookup-by-(field, grantedTo).
  */
 import { and, desc, eq } from 'drizzle-orm';
 import { crypto as authCrypto } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { db, vaultDelegationGrants } from '@/src/db';
+import { db, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
-import { canonicalizeGrantPayload } from './index';
+import { canonicalizeGrantPayload, supersedeActiveGrant } from './index';
 import { getInternalSecret, internalSecretField } from './internal-secret';
 import { emitGrantEvents } from './grant';
 
@@ -133,6 +134,24 @@ export async function grantInternalSecretTo(
     return { status: 'no_reusable_grant' };
   }
 
+  const grantId = await issueGrantFromSource({ purpose, field, ownerDid, granteeDid, grantedBy, source });
+  return { status: 'ok', grantId };
+}
+
+/**
+ * Insert a new active grant of `field` to `granteeDid`, reusing `source`'s
+ * key material (no re-seal — see this module's docblock), then emit the
+ * grant events. Shared by first-time grants and rotation re-issue (#2446).
+ */
+async function issueGrantFromSource(params: {
+  purpose: string;
+  field: string;
+  ownerDid: string;
+  granteeDid: string;
+  grantedBy: string;
+  source: VaultDelegationGrant;
+}): Promise<string> {
+  const { purpose, field, ownerDid, granteeDid, grantedBy, source } = params;
   const identity = getNodeSigningIdentity();
   const grantRaw = {
     subject: ownerDid,
@@ -168,5 +187,46 @@ export async function grantInternalSecretTo(
   // AttestationType (see packages/auth/src/types/attestation.ts).
   emitGrantEvents({ grantId, did: ownerDid, field, grantedTo: granteeDid, grantedBy });
 
-  return { status: 'ok', grantId };
+  return grantId;
+}
+
+/**
+ * Re-issue a rotated internal secret to every external consumer that held
+ * it before the rotation (#2446). Rotation re-seals the field under a NEW
+ * field key; an external grant still carrying the OLD wrapped key would
+ * keep looking active while every fetch failed to decrypt. Each prior
+ * grantee's grant is superseded (key material erased) and replaced by one
+ * that reuses the node's fresh self-grant, with the same purpose — so a
+ * consumer that discovers its grant by purpose (corpus, #2245) finds the
+ * new one at its next boot. The SET of grantees is unchanged: rotation
+ * never adds or drops a consumer; that stays an operator grant/revoke.
+ *
+ * `sourceGrantId` is the node's new self-grant, returned by the re-seal.
+ */
+export async function reissueInternalSecretGrants(params: {
+  purpose: string;
+  sourceGrantId: string;
+  granteeDids: readonly string[];
+  grantedBy: string;
+}): Promise<string[]> {
+  const { purpose, sourceGrantId, granteeDids, grantedBy } = params;
+  if (granteeDids.length === 0) return [];
+
+  const field = internalSecretField(purpose);
+  const ownerDid = getNodeSigningIdentity().senderDid;
+  const [source] = await db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(and(eq(vaultDelegationGrants.id, sourceGrantId), eq(vaultDelegationGrants.status, 'active')))
+    .limit(1);
+  if (!source || source.field !== field || source.subject !== ownerDid) {
+    throw new Error(`reissueInternalSecretGrants: '${sourceGrantId}' is not the active self-grant for '${field}'`);
+  }
+
+  const reissued: string[] = [];
+  for (const granteeDid of granteeDids) {
+    await supersedeActiveGrant({ subject: ownerDid, grantedTo: granteeDid, field });
+    reissued.push(await issueGrantFromSource({ purpose, field, ownerDid, granteeDid, grantedBy, source }));
+  }
+  return reissued;
 }

@@ -20,7 +20,7 @@ const { provisionsStore, grantsStore, PROVISIONS_TABLE, GRANTS_TABLE } = vi.hois
   const grantsStore = new Map<string, Row>(); // keyed by grant id
   const PROVISIONS_TABLE = {
     __table: 'provisions',
-    id: 'id', ownerDid: 'ownerDid', purpose: 'purpose', field: 'field', grantId: 'grantId',
+    id: 'id', ownerDid: 'ownerDid', purpose: 'purpose', field: 'field', grantId: 'grantId', createdAt: 'createdAt',
   };
   const GRANTS_TABLE = {
     __table: 'grants',
@@ -50,7 +50,8 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
   const eq = (column: string, value: unknown): Predicate => (row) => row[column] === value;
   const and = (...preds: Predicate[]): Predicate => (row) => preds.every((p) => p(row));
-  return { ...actual, eq, and };
+  const isNull = (column: string): Predicate => (row) => row[column] === null || row[column] === undefined;
+  return { ...actual, eq, and, isNull };
 });
 
 vi.mock('@/src/db', () => ({
@@ -73,6 +74,12 @@ vi.mock('@/src/db', () => ({
             return Promise.resolve(project([{ ...data }], projection));
           },
         }),
+        onConflictDoUpdate: (opts: { set: Row }) => {
+          const key = `${String(data.ownerDid)}::${String(data.purpose)}`;
+          const existing = provisionsStore.get(key);
+          provisionsStore.set(key, existing ? { ...existing, ...opts.set } : { ...data });
+          return Promise.resolve([]);
+        },
       }),
     }),
     update: (table: { __table: string }) => ({
@@ -89,10 +96,16 @@ vi.mock('@/src/db', () => ({
     delete: (table: { __table: string }) => ({
       where: (predicate: Predicate) => {
         const store = storeFor(table);
+        const deleted: Row[] = [];
         for (const [key, row] of store) {
-          if (predicate(row)) store.delete(key);
+          if (predicate(row)) {
+            store.delete(key);
+            deleted.push(row);
+          }
         }
-        return Promise.resolve([]);
+        return Object.assign(Promise.resolve([]), {
+          returning: (projection?: Record<string, string>) => Promise.resolve(project(deleted, projection)),
+        });
       },
     }),
   },
@@ -104,15 +117,28 @@ vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`,
 }));
 
-const { sealAndGrantStaticSecretMock, fetchGrantSecretMock, ackGrantMock } = vi.hoisted(() => ({
+const { sealAndGrantStaticSecretMock, fetchGrantSecretMock, ackGrantMock, loadAndUnsealMock, subscriptions, warnMock } = vi.hoisted(() => ({
   sealAndGrantStaticSecretMock: vi.fn(),
   fetchGrantSecretMock: vi.fn(),
   ackGrantMock: vi.fn(),
+  loadAndUnsealMock: vi.fn(),
+  subscriptions: new Map<string, Array<() => void>>(),
+  warnMock: vi.fn(),
 }));
 vi.mock('../index', () => ({
   sealAndGrantStaticSecret: sealAndGrantStaticSecretMock,
   fetchGrantSecret: fetchGrantSecretMock,
   ackGrant: ackGrantMock,
+  loadAndUnseal: loadAndUnsealMock,
+}));
+
+// #2446 fix 3 — capture the vault hot-reload subscriptions getInternalSecret registers.
+vi.mock('../subscribe', () => ({
+  ensureVaultHotReloadReactorRegistered: vi.fn(),
+  subscribeToSecret: (field: string, callback: () => void) => {
+    subscriptions.set(field, [...(subscriptions.get(field) ?? []), callback]);
+    return () => undefined;
+  },
 }));
 
 const getNodeSigningIdentityMock = vi.fn();
@@ -131,10 +157,19 @@ vi.mock('@imajin/bus', () => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: warnMock, error: vi.fn() }),
 }));
 
-import { getInternalSecret, getOrGenerateInternalSecret, internalSecretField, _resetInternalSecretCacheForTests } from '../internal-secret';
+import {
+  getInternalSecret,
+  getOrGenerateInternalSecret,
+  internalSecretField,
+  invalidateInternalSecret,
+  isInternalSecretField,
+  purposeFromInternalSecretField,
+  _resetInternalSecretCacheForTests,
+} from '../internal-secret';
+import { VaultDelegationError } from '../errors';
 
 const NODE_DID = 'did:imajin:node-test';
 const PURPOSE = 'kernel.foreign-principal-pepper';
@@ -143,6 +178,9 @@ const FIELD = internalSecretField(PURPOSE);
 beforeEach(() => {
   provisionsStore.clear();
   grantsStore.clear();
+  subscriptions.clear();
+  warnMock.mockReset();
+  loadAndUnsealMock.mockReset().mockResolvedValue(undefined);
   _resetInternalSecretCacheForTests();
 
   getNodeSigningIdentityMock.mockReset().mockReturnValue({
@@ -336,4 +374,102 @@ describe('getInternalSecret — provisioning race (two boots)', () => {
     await expect(getInternalSecret(PURPOSE)).rejects.toThrow(/lost the provisioning race/);
     expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
   }, 10_000);
+});
+
+describe('internal-secret field helpers (#2446)', () => {
+  it('recognises and inverts internal-secret fields', () => {
+    expect(isInternalSecretField(FIELD)).toBe(true);
+    expect(isInternalSecretField('internal-secret:')).toBe(false);
+    expect(isInternalSecretField('github-oauth:did:x')).toBe(false);
+    expect(purposeFromInternalSecretField(FIELD)).toBe(PURPOSE);
+    expect(() => purposeFromInternalSecretField('github-oauth:did:x')).toThrow(/not an internal-secret field/);
+  });
+});
+
+describe('getInternalSecret — rotation pickup without restart (#2446 fix 3)', () => {
+  it('subscribes once per purpose, and a rotate event on the field drops the cached value', async () => {
+    const first = await getInternalSecret(PURPOSE);
+    await getInternalSecret(PURPOSE);
+    expect(subscriptions.get(FIELD)).toHaveLength(1);
+
+    for (const callback of subscriptions.get(FIELD) ?? []) callback();
+    sealAndGrantStaticSecretMock.mockClear();
+    grantsStore.set('vdg_rotated', { id: 'vdg_rotated', subject: NODE_DID, grantedTo: NODE_DID, purpose: PURPOSE, status: 'active' });
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'rotated-value' });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('rotated-value');
+    expect(first).not.toBe('rotated-value');
+  });
+
+  it('invalidateInternalSecret forces the next call to re-resolve', async () => {
+    grantsStore.set('vdg_a', { id: 'vdg_a', subject: NODE_DID, grantedTo: NODE_DID, purpose: PURPOSE, status: 'active' });
+    fetchGrantSecretMock.mockResolvedValueOnce({ status: 'ok', value: 'one' }).mockResolvedValueOnce({ status: 'ok', value: 'two' });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('one');
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('one');
+    invalidateInternalSecret(PURPOSE);
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('two');
+  });
+});
+
+describe('getInternalSecret — stranded provisions row (#2446 fix 2)', () => {
+  const claimKey = `${NODE_DID}::${PURPOSE}`;
+
+  it('re-provisions by ADOPTING the readable current value when the recorded grant lost its purpose', async () => {
+    provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_superseded' });
+    loadAndUnsealMock.mockResolvedValue('operator-rotated-value');
+    sealAndGrantStaticSecretMock.mockResolvedValue({ entry: {}, grantId: 'vdg_repaired', requestId: null });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('operator-rotated-value');
+    await getInternalSecret(PURPOSE);
+
+    expect(sealAndGrantStaticSecretMock).toHaveBeenCalledTimes(1);
+    expect(sealAndGrantStaticSecretMock).toHaveBeenCalledWith(FIELD, 'operator-rotated-value', expect.objectContaining({
+      principalDid: NODE_DID, granteeDid: NODE_DID, purpose: PURPOSE,
+    }));
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_repaired');
+    expect(emitAttestationMock).not.toHaveBeenCalled(); // adopted, not generated
+    expect(warnMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('generates fresh when the field has nothing readable left (revoked)', async () => {
+    provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_revoked' });
+    loadAndUnsealMock.mockRejectedValue(new VaultDelegationError('no active grant', { field: FIELD }));
+
+    const value = await getInternalSecret(PURPOSE);
+
+    expect(value).toMatch(/^[0-9a-f]{64}$/);
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_generated');
+    expect(emitAttestationMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed on a vault integrity error instead of replacing the secret', async () => {
+    provisionsStore.set(claimKey, { id: 'isp_old', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_old' });
+    loadAndUnsealMock.mockRejectedValue(new Error('integrity violation'));
+
+    await expect(getInternalSecret(PURPOSE)).rejects.toThrow(/integrity violation/);
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+    // The claim was rolled back, so a later boot can retry.
+    expect(provisionsStore.has(claimKey)).toBe(false);
+  });
+
+  it('re-claims a crashed winner\'s stale claim (no grant, older than the stale window)', async () => {
+    provisionsStore.set(claimKey, {
+      id: 'isp_crashed', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: null,
+      createdAt: new Date(Date.now() - 5 * 60_000),
+    });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toMatch(/^[0-9a-f]{64}$/);
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_generated');
+  });
+
+  it('a FRESH claim with no grant yet is a live race — still polls, never re-provisions', async () => {
+    provisionsStore.set(claimKey, {
+      id: 'isp_live', ownerDid: NODE_DID, purpose: PURPOSE, field: FIELD, grantId: null, createdAt: new Date(),
+    });
+
+    await expect(getInternalSecret(PURPOSE)).rejects.toThrow(/lost the provisioning race/);
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+    expect(provisionsStore.get(claimKey)?.id).toBe('isp_live');
+  });
 });

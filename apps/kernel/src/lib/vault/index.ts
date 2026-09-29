@@ -38,6 +38,8 @@ import { generateId } from '@/src/lib/kernel/id';
 import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey, getExternalOwnerEdPublicKey } from './sealing';
 import { getVaultRepository } from './vault-repository';
 import { VaultDelegationError } from './errors';
+import { isInternalSecretField } from './internal-secret';
+import { rotateInternalSecret } from './internal-secret-rotate';
 
 const log = createLogger('kernel');
 
@@ -223,6 +225,23 @@ async function supersedeGrants(where: SQL | undefined): Promise<void> {
     });
 
   await eraseGrantKeyMaterial(superseded);
+}
+
+/**
+ * Supersede (and erase the key material of) the active grant for exactly
+ * `(subject, grantedTo, field)`. Exported for rotation re-issue of an
+ * internal secret's external grantees (#2446); same semantics every re-seal
+ * path in this module applies to its own tuple.
+ */
+export async function supersedeActiveGrant(tuple: { subject: string; grantedTo: string; field: string }): Promise<void> {
+  await supersedeGrants(
+    and(
+      eq(vaultDelegationGrants.subject, tuple.subject),
+      eq(vaultDelegationGrants.grantedTo, tuple.grantedTo),
+      eq(vaultDelegationGrants.field, tuple.field),
+      eq(vaultDelegationGrants.status, 'active'),
+    ),
+  );
 }
 
 /**
@@ -491,6 +510,13 @@ export async function sealAndStoreV2(
     identity.privateKeyHex,
   );
 
+  // Read the grant we are about to supersede BEFORE superseding it (#2446):
+  // a re-seal/rotation replaces the key material, never what the grant is
+  // FOR. Without this the new row landed with `purpose = NULL`, and every
+  // purpose-keyed lookup (`getInternalSecret`, `listGrantsForGrantee`, an
+  // agent discovering its grant by purpose) lost the field on its next read.
+  const inherited = await inheritableGrantMetadata(identity.senderDid, identity.senderDid, field);
+
   // Supersede any existing active delegation grant for this (field, node) pair.
   // This handles re-sealing: the old ciphertext+grant become orphaned together.
   //
@@ -522,9 +548,47 @@ export async function sealAndStoreV2(
     // grant's signature must check against (the node itself, for a self-grant).
     recipientXPub: nodeXPub,
     ownerEdPub: identity.senderPubkey,
+    // #2446 — carried forward from the superseded grant (bookkeeping only,
+    // not part of the signed payload, same as sealAndGrantStaticSecret).
+    purpose: inherited.purpose,
+    oneTime: inherited.oneTime,
   });
 
   return { entry, grantId, requestId: null };
+}
+
+/**
+ * The unsigned, agent-facing bookkeeping a replacement grant must carry
+ * forward from the ACTIVE grant it supersedes for `(subject, grantedTo,
+ * field)` (#2446). Everything else on a grant row is either signed key
+ * material (re-derived from the fresh seal) or lifecycle state (status,
+ * acks, fetch timestamps) that belongs to the old generation only.
+ *
+ * `expiresAt` is deliberately NOT inherited here: the TTL a re-seal gets is
+ * a rotation-policy question (#2354), and the existing default-TTL
+ * behaviour of each caller is left exactly as it was.
+ *
+ * No active grant (first seal, or a field whose grant was revoked) yields
+ * the column defaults — identical to what every caller wrote before.
+ */
+export async function inheritableGrantMetadata(
+  subject: string,
+  grantedTo: string,
+  field: string,
+): Promise<{ purpose: string | null; oneTime: boolean }> {
+  const [row] = await db
+    .select({ purpose: vaultDelegationGrants.purpose, oneTime: vaultDelegationGrants.oneTime })
+    .from(vaultDelegationGrants)
+    .where(
+      and(
+        eq(vaultDelegationGrants.subject, subject),
+        eq(vaultDelegationGrants.grantedTo, grantedTo),
+        eq(vaultDelegationGrants.field, field),
+        eq(vaultDelegationGrants.status, 'active'),
+      ),
+    )
+    .limit(1);
+  return { purpose: row?.purpose ?? null, oneTime: row?.oneTime ?? false };
 }
 
 /**
@@ -607,6 +671,12 @@ export async function rotateAndStore(field: string, plaintext: string): Promise<
   }
 
   if (existingEntry.custodyScheme === 'delegation-grant') {
+    // #2446: an internal-secret field is found by PURPOSE and tracked by its
+    // provisions row — rotate it through the same custody path that
+    // provisioned it, never the generic node re-seal.
+    if (isInternalSecretField(field)) {
+      return rotateInternalSecret(field, plaintext);
+    }
     const { entry } = await sealAndStoreV2(field, plaintext);
     return entry;
   }
