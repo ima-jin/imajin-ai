@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { FairManifest, FairEntry, FairFee } from '../types';
+import type { FairManifest, FairEntry, FairFee, FairTax } from '../types';
 
 /** Normalize share values: if any > 1, assume percentages and divide by 100 */
 function normalizeShares(entries: FairEntry[]): FairEntry[] {
@@ -225,6 +225,33 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {manifest.taxes && manifest.taxes.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">
+                Tax
+              </h3>
+              <div className="space-y-2">
+                {manifest.taxes.map((tax: FairTax) => (
+                  <div
+                    key={`${tax.jurisdiction}-${tax.kind}`}
+                    className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
+                      <span className="text-sm font-medium">
+                        {tax.kind} {(tax.rateBps / 100).toFixed(2)}% (collected for {tax.jurisdiction})
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold">${(tax.amount / 100).toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-gray-500 mt-1.5 pl-1">
+                Collected in trust — not revenue, never fee-skimmable.
+              </p>
             </div>
           )}
 

@@ -14,6 +14,11 @@ import { buildPublicUrlAbsolute } from '@imajin/config';
 // createAppHealthHandler itself since its own route also aggregates other
 // services, but shares the pieces that do.
 import { checkAppMigrations, hasPendingMigrations, type MigrationStatus } from '@imajin/db';
+// #2412: the vault file is per-environment state that can silently go missing
+// (a wrong VAULT_PATH once left prod with every sealed secret unresolved while
+// this endpoint reported green). Surfaces path / entry count / last-load time
+// only — never field names or values. Same audience as the rest of /api/health.
+import { getVaultHealth, type VaultHealth } from '@/src/lib/vault/vault-repository';
 
 interface ServiceCheck {
   name: string;
@@ -108,23 +113,35 @@ async function checkService(service: { name: string; label: string }): Promise<S
   }
 }
 
+// #2412: an unloadable vault is always degraded; an EMPTY vault is degraded in
+// production, where zero sealed entries means every secret resolves to undefined.
+function isVaultDegraded(vault: VaultHealth): boolean {
+  if (vault.status === 'error') {
+    return true;
+  }
+  return vault.status === 'empty' && process.env.NODE_ENV === 'production';
+}
+
 export async function GET() {
-  const [checks, migrations] = await Promise.all([
+  const [checks, migrations, vault] = await Promise.all([
     Promise.all(SERVICES.map(checkService)),
     checkAppMigrations(),
+    getVaultHealth(),
   ]);
 
   const allUp = checks.every(c => c.status === 'up');
   const anyDown = checks.some(c => c.status === 'down');
   // #2384: degraded if kernel's own schema, or any relayed service's schema, has pending migrations.
   const anyMigrationsPending = hasPendingMigrations(migrations) || checks.some(c => hasPendingMigrations(c.migrations));
+  const vaultDegraded = isVaultDegraded(vault);
 
   return NextResponse.json({
-    status: (() => { if (anyDown || anyMigrationsPending) { return 'degraded'; } if (allUp) { return 'operational'; } return 'degraded'; })(),
+    status: (() => { if (anyDown || anyMigrationsPending || vaultDegraded) { return 'degraded'; } if (allUp) { return 'operational'; } return 'degraded'; })(),
     version: process.env.NEXT_PUBLIC_VERSION || '0.0.0',
     build: process.env.NEXT_PUBLIC_BUILD_HASH || 'dev',
     timestamp: new Date().toISOString(),
     migrations,
+    vault,
     services: checks,
   });
 }

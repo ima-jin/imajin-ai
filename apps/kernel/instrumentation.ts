@@ -18,6 +18,12 @@
  * to start in production without VAULT_PATH" to actually happen, rather than
  * deferring the failure to whatever request first happens to touch the vault.
  *
+ * It then LOADS the vault (#2412), logging `vault: loaded N entries from
+ * <path>`. A configured VAULT_PATH whose file is missing throws here, so the
+ * kernel refuses to boot instead of serving an empty vault behind a green
+ * /health (unless VAULT_ALLOW_BOOTSTRAP=1 explicitly requests a first-run
+ * bootstrap).
+ *
  * Also registers the kernel's own `ATTESTATION_INTERNAL_API_KEY` resolver with
  * `@imajin/auth` (#2353). packages/auth no longer reads that key from
  * `process.env`; userspace services fetch it from the vault at boot, and the
@@ -29,8 +35,8 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('@imajin/logger/db');
 
-    const { resolveVaultPath } = await import('@/src/lib/vault/vault-path');
-    resolveVaultPath();
+    const { loadVaultAtBoot } = await import('@/src/lib/vault/vault-repository');
+    await loadVaultAtBoot();
 
     // The vault/db modules are imported lazily, on first use, so register()
     // itself stays free of database side effects at boot.

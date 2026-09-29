@@ -62,6 +62,7 @@ const { tmpVaultPath, grantStore, envelopeStore, requestStore } = vi.hoisted(() 
 
   const tmpVaultPath = join(tmpdir(), `vault-migrate-custody-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   return {
     tmpVaultPath,

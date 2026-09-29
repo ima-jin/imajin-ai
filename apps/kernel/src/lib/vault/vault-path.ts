@@ -100,6 +100,30 @@ export function resolveVaultPath(): string {
   return cachedVaultPath;
 }
 
+/** Name of the explicit first-run bootstrap flag (#2412). */
+export const VAULT_BOOTSTRAP_ENV = 'VAULT_ALLOW_BOOTSTRAP';
+
+/**
+ * True when the operator explicitly pointed the kernel at a vault file
+ * (`VAULT_PATH` set and non-empty). A configured path is expected to exist —
+ * see {@link isVaultBootstrapAllowed} for the one sanctioned exception.
+ */
+export function isVaultPathConfigured(): boolean {
+  return Boolean(process.env.VAULT_PATH?.trim());
+}
+
+/**
+ * True when `VAULT_ALLOW_BOOTSTRAP` is `1`/`true` (#2412): the operator is
+ * deliberately starting a brand-new vault, so a missing configured file is an
+ * empty store instead of a boot failure. Deliberately opt-in and never
+ * implied — a forgotten flag only matters while the file is absent, and the
+ * kernel logs a warning every time it actually bootstraps.
+ */
+export function isVaultBootstrapAllowed(): boolean {
+  const raw = process.env[VAULT_BOOTSTRAP_ENV]?.trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
 /** Reset the cache — only for use in tests. */
 export function _resetVaultPathCacheForTests(): void {
   cachedVaultPath = undefined;

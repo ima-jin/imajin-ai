@@ -35,6 +35,7 @@ const { tmpVaultPath, grantStore, envelopeStore } = vi.hoisted(() => {
 
   const tmpVaultPath = join(tmpdir(), `vault-revoke-by-connector-test-${Date.now()}.json`);
   process.env.VAULT_PATH = tmpVaultPath;
+  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
 
   const grantStore = new Map<string, GrantRow>();
   const envelopeStore = new Map<string, Record<string, unknown>>();

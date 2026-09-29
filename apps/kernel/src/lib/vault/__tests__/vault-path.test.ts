@@ -16,10 +16,16 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: mockWarn, error: vi.fn() }),
 }));
 
-import { resolveVaultPath, _resetVaultPathCacheForTests } from '../vault-path.js';
+import {
+  resolveVaultPath,
+  isVaultPathConfigured,
+  isVaultBootstrapAllowed,
+  _resetVaultPathCacheForTests,
+} from '../vault-path.js';
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalVaultPath = process.env.VAULT_PATH;
+const originalBootstrap = process.env.VAULT_ALLOW_BOOTSTRAP;
 
 function setNodeEnv(value: string | undefined): void {
   if (value === undefined) {
@@ -41,6 +47,11 @@ afterEach(() => {
     delete process.env.VAULT_PATH;
   } else {
     process.env.VAULT_PATH = originalVaultPath;
+  }
+  if (originalBootstrap === undefined) {
+    delete process.env.VAULT_ALLOW_BOOTSTRAP;
+  } else {
+    process.env.VAULT_ALLOW_BOOTSTRAP = originalBootstrap;
   }
   setNodeEnv(originalNodeEnv);
 });
@@ -128,5 +139,33 @@ describe('resolveVaultPath', () => {
 
     process.env.VAULT_PATH = '/srv/imajin/vault.prod.json';
     expect(resolveVaultPath()).toBe('/srv/imajin/vault.prod.json');
+  });
+});
+
+describe('vault configuration flags (#2412)', () => {
+  it('treats a non-blank VAULT_PATH as configured', () => {
+    process.env.VAULT_PATH = '/srv/imajin/vault.prod.json';
+    expect(isVaultPathConfigured()).toBe(true);
+  });
+
+  it('treats an unset or blank VAULT_PATH as not configured', () => {
+    expect(isVaultPathConfigured()).toBe(false);
+    process.env.VAULT_PATH = '   ';
+    expect(isVaultPathConfigured()).toBe(false);
+  });
+
+  it('allows bootstrap only for an explicit 1/true VAULT_ALLOW_BOOTSTRAP', () => {
+    delete process.env.VAULT_ALLOW_BOOTSTRAP;
+    expect(isVaultBootstrapAllowed()).toBe(false);
+
+    for (const value of ['1', 'true', 'TRUE', ' true ']) {
+      process.env.VAULT_ALLOW_BOOTSTRAP = value;
+      expect(isVaultBootstrapAllowed()).toBe(true);
+    }
+
+    for (const value of ['', '0', 'false', 'yes']) {
+      process.env.VAULT_ALLOW_BOOTSTRAP = value;
+      expect(isVaultBootstrapAllowed()).toBe(false);
+    }
   });
 });

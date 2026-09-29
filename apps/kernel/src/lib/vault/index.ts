@@ -1,6 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import {
-  FileVaultRepository,
   VaultEntryService,
   InMemoryFieldLock,
   createDefaultAdapters,
@@ -37,44 +36,17 @@ import {
 } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getSealKey, getNodeSigningIdentity, getNodeXPrivateKey, getNodeXPublicKey, getOwnerXPrivateKey, getOwnerXPublicKey, isVaultTier1, getExternalOwnerXPublicKey, getExternalOwnerEdPublicKey } from './sealing';
-import { resolveVaultPath } from './vault-path';
+import { getVaultRepository } from './vault-repository';
 import { VaultDelegationError } from './errors';
 
 const log = createLogger('kernel');
 
-// Process-lifetime cache — constructed once, on first real vault operation.
-let cachedRepository: FileVaultRepository | undefined;
-
-/**
- * Lazily construct the on-disk vault repository.
- *
- * Deliberately NOT constructed at module scope (contrast with the eager
- * `lock`/`vaultAdapters` below). `next build` imports this module with
- * NODE_ENV=production while collecting page data, on a build machine/CI
- * runner that legitimately has no VAULT_PATH set — resolving the path at
- * import time would turn `resolveVaultPath`'s production guard (#2357) into
- * a build failure, exactly the AUTH_PRIVATE_KEY pitfall documented below for
- * getNodeSigningIdentity. Deferring to first real use means a kernel that
- * genuinely boots in production without VAULT_PATH still fails loudly — via
- * instrumentation.ts's `register()`, which calls resolveVaultPath() eagerly
- * at actual server startup (never at build) — while `next build` and any
- * vault-untouched request stay unaffected.
- */
-function getRepository(): FileVaultRepository {
-  if (cachedRepository === undefined) {
-    const vaultPath = resolveVaultPath();
-    cachedRepository = new FileVaultRepository({ vaultPath });
-    log.info({ vaultPath }, 'Vault service initialised');
-  }
-  return cachedRepository;
-}
-
 // Thin, always-lazy indirection so `vaultService` can be constructed eagerly
 // (cheap — no I/O, no path resolution) while every actual load()/save() call
-// still routes through the lazy getRepository() above.
+// still routes through the lazy getVaultRepository() (./vault-repository.ts).
 const lazyRepository: VaultRepository = {
-  load: () => getRepository().load(),
-  save: (vault) => getRepository().save(vault),
+  load: () => getVaultRepository().load(),
+  save: (vault) => getVaultRepository().save(vault),
 };
 
 const lock = new InMemoryFieldLock();
