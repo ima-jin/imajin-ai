@@ -31,6 +31,14 @@ interface CreatePaymentRequestBody {
   due_at?: unknown;
   allow_on_platform?: unknown;
   fair_manifest?: unknown;
+  /** #2421 — charge the issuer's registered tax(es) on top of the subtotal. */
+  charge_tax?: unknown;
+  /** #2421 — `[{ jurisdiction, kind, rate_bps, amount? }]`, one per charged registration. */
+  taxes?: unknown;
+  /** #2421 — optional client-previewed amounts; validated against the server's recomputation, never trusted. */
+  subtotal_amount?: unknown;
+  tax_total_amount?: unknown;
+  total_amount?: unknown;
 }
 
 export async function POST(request: NextRequest) {
@@ -63,6 +71,11 @@ export async function POST(request: NextRequest) {
       dueAt: body.due_at,
       allowOnPlatform: body.allow_on_platform,
       fairManifest: body.fair_manifest,
+      chargeTax: body.charge_tax,
+      taxes: body.taxes,
+      subtotalAmount: body.subtotal_amount,
+      taxTotalAmount: body.tax_total_amount,
+      totalAmount: body.total_amount,
     });
     if (isServiceError(result)) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });

@@ -33,6 +33,7 @@ const {
   ensureRepoFromTemplateMock,
   sealActionsSecretMock,
   tryGetInstallationTokenMock,
+  fetchAppManifestMock,
   seedAttestationTypesMock,
   logMock,
 } = vi.hoisted(() => {
@@ -57,6 +58,7 @@ const {
     ensureRepoFromTemplateMock: vi.fn(),
     sealActionsSecretMock: vi.fn().mockResolvedValue(undefined),
     tryGetInstallationTokenMock: vi.fn().mockResolvedValue('installation-token'),
+    fetchAppManifestMock: vi.fn().mockResolvedValue(null),
     seedAttestationTypesMock: vi.fn().mockResolvedValue([]),
     logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
@@ -171,6 +173,7 @@ vi.mock('@/src/lib/github/org-provisioning', () => ({
   ensureRepoFromTemplate: ensureRepoFromTemplateMock,
   sealActionsSecret: sealActionsSecretMock,
   tryGetInstallationToken: tryGetInstallationTokenMock,
+  fetchAppManifest: fetchAppManifestMock,
   PROVISIONING_ORG: 'ima-jin',
   DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
 }));
@@ -221,6 +224,7 @@ beforeEach(() => {
   });
   loadAndUnsealByGranteeMock.mockResolvedValue(PRIVATE_KEY_PLAINTEXT);
   tryGetInstallationTokenMock.mockResolvedValue('installation-token');
+  fetchAppManifestMock.mockResolvedValue(null);
   seedAttestationTypesMock.mockResolvedValue([]);
   grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
   issueSigningKeyClaimMock.mockResolvedValue(CLAIM_CODE);
@@ -257,6 +261,11 @@ describe('runAppProvision — happy path', () => {
     expect(registryRow?.tier).toBe('third_party');
     expect(registryRow?.status).toBe('active');
     expect(registryRow?.slug).toBe('dykil');
+    // #2425: no manifest present (fetchAppManifestMock defaults to null) — falls back to defaults.
+    expect(registryRow?.icon).toBeNull();
+    expect(registryRow?.entryUrl).toBe('/dykil');
+    expect(registryRow?.placements).toEqual(['auth-submenu']);
+    expect(registryRow?.requiredScope).toBeNull();
 
     expect(publishMock).toHaveBeenCalledWith('apps.provisioned', expect.objectContaining({
       payload: expect.objectContaining({ slug: 'dykil', appDid: MINTED_DID }),
@@ -319,6 +328,45 @@ describe('runAppProvision — happy path', () => {
     if (outcome.status !== 'failed') throw new Error('unreachable');
     expect(outcome.failedStep).toBe('app-signing-key-grant');
     expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+  });
+
+  it('#2425: writes nav metadata from the app manifest when present and valid', async () => {
+    fetchAppManifestMock.mockResolvedValue({
+      name: 'Dykil (from manifest)',
+      icon: '\ud83d\udccb',
+      entryUrl: '/dykil',
+      placements: ['launcher', 'home', 'auth-submenu'],
+      requiredScope: 'creator',
+    });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(fetchAppManifestMock).toHaveBeenCalledWith('dykil', 'installation-token');
+    const registryRow = [...registryAppsStore.values()][0];
+    expect(registryRow).toMatchObject({
+      name: 'Dykil (from manifest)',
+      icon: '\ud83d\udccb',
+      entryUrl: '/dykil',
+      placements: ['launcher', 'home', 'auth-submenu'],
+      requiredScope: 'creator',
+    });
+  });
+
+  it('#2425: falls back to defaults when the manifest read returns null (unsealed credential, missing file, etc.)', async () => {
+    fetchAppManifestMock.mockResolvedValue(null);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'My Dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    const registryRow = [...registryAppsStore.values()][0];
+    expect(registryRow).toMatchObject({
+      name: 'My Dykil',
+      icon: null,
+      entryUrl: '/dykil',
+      placements: ['auth-submenu'],
+      requiredScope: null,
+    });
   });
 
   it('seeds attestation types when requested', async () => {

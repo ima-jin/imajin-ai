@@ -118,6 +118,8 @@ const ISSUED_REQUEST = {
   allowOnPlatform: true,
   currency: 'CAD',
   totalAmount: 5000,
+  subtotalAmount: 5000,
+  taxTotalAmount: 0,
   contentHash: 'bafy-x',
   lineItems: [{ name: 'Consulting', amount: 5000, quantity: 1 }],
   fairManifest: {
@@ -219,6 +221,76 @@ describe('createPaymentRequestCheckoutSession', () => {
     expect(inserted.status).toBe('pending');
     expect(inserted.fairManifest).toBeUndefined();
     expect((inserted.metadata as Record<string, string>).payment_request_id).toBe('pr_1');
+  });
+
+  describe('with tax (#2421)', () => {
+    const TAXED_REQUEST = {
+      ...ISSUED_REQUEST,
+      lineItems: [{ name: 'Consulting', amount: 5000, quantity: 2 }],
+      subtotalAmount: 10_000,
+      taxTotalAmount: 1300,
+      totalAmount: 11_300,
+      fairManifest: {
+        ...ISSUED_REQUEST.fairManifest,
+        fair: '1.2',
+        total: { amount: 10_000, currency: 'CAD' },
+        taxes: [
+          {
+            jurisdiction: 'CA-ON',
+            kind: 'GST/HST',
+            rateBps: 1300,
+            basisAmount: 10_000,
+            amount: 1300,
+            registrationNumber: '123456789RT0001',
+            collectorDid: ISSUER_DID,
+            remitTo: 'did:imajin:authority:ca-cra',
+          },
+        ],
+      },
+    };
+
+    it('sends tax as its own Stripe line item, after the untouched merchandise items', async () => {
+      state.getPaymentRequestByIdMock.mockResolvedValue(TAXED_REQUEST);
+      await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+      const checkoutArgs = state.payCheckoutMock.mock.calls[0][0];
+      expect(checkoutArgs.items).toEqual([
+        { name: 'Consulting', amount: 5000, quantity: 2 },
+        { name: 'GST/HST (CA-ON)', description: 'Sales tax collected in trust', amount: 1300, quantity: 1 },
+      ]);
+      // Stripe's grand total == the row's total_amount (subtotal + tax), exactly.
+      const stripeTotal = checkoutArgs.items.reduce((sum: number, i: { amount: number; quantity: number }) => sum + i.amount * i.quantity, 0);
+      expect(stripeTotal).toBe(TAXED_REQUEST.totalAmount);
+    });
+
+    it('computes the fee on the merchandise-only (pre-tax) items, never on the tax line', async () => {
+      state.getPaymentRequestByIdMock.mockResolvedValue(TAXED_REQUEST);
+      await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+      const feeArgs = state.resolveConnectedAccountFeeMock.mock.calls[0][0];
+      expect(feeArgs.items).toEqual([{ name: 'Consulting', amount: 5000, quantity: 2 }]);
+      expect(feeArgs.items.some((i: { name: string }) => i.name.startsWith('GST/HST'))).toBe(false);
+      expect(feeArgs.fairManifest.taxes).toHaveLength(1);
+    });
+
+    it('records the pending tx at the grand total (subtotal + tax)', async () => {
+      state.getPaymentRequestByIdMock.mockResolvedValue(TAXED_REQUEST);
+      await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+      expect(state.insertCalls[0].amount).toBe('113');
+    });
+
+    it('refuses (409) when the line items no longer sum to subtotal_amount', async () => {
+      state.getPaymentRequestByIdMock.mockResolvedValue({ ...TAXED_REQUEST, subtotalAmount: 9_999 });
+      const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+      expect(result).toMatchObject({ status: 409 });
+      expect(state.payCheckoutMock).not.toHaveBeenCalled();
+    });
+
+    it('a request without tax sends exactly its line items and nothing else', async () => {
+      state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
+      await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+      expect(state.payCheckoutMock.mock.calls[0][0].items).toEqual([{ name: 'Consulting', amount: 5000, quantity: 1 }]);
+    });
   });
 
   it('reuses an existing open Stripe session instead of creating a duplicate', async () => {
@@ -348,15 +420,16 @@ describe('settlePaymentRequestFromStripeCheckout', () => {
     expect(state.settledStripeAttestationMock).not.toHaveBeenCalled();
   });
 
-  it('#2419 review fix 1/8 (e2e): settles on basisAmount == totalAmount (NOT totalAmount minus tax), and total_amount passed to settlePayment is basis - fee + tax (the gross-minus-fee actually charged)', async () => {
-    // paymentRequest.totalAmount is the PRE-TAX line-items subtotal — see
-    // service.ts's validateLineItems — with tax added on top as its own
-    // Stripe line item, never folded into totalAmount. This is exactly the
-    // shape `createPaymentRequest` -> `createPaymentRequestCheckoutSession`
-    // produces for a manifest carrying `taxes[]`.
+  it('#2419/#2421 (e2e): settles on basisAmount == subtotalAmount (NOT totalAmount, NOT totalAmount minus tax), and total_amount passed to settlePayment is basis - fee + tax (the gross-minus-fee actually charged)', async () => {
+    // paymentRequest.subtotalAmount is the PRE-TAX line-items subtotal;
+    // totalAmount = subtotal + tax is what Stripe charged. This is exactly
+    // the shape `createPaymentRequest` -> `createPaymentRequestCheckoutSession`
+    // produces for a request carrying `taxes[]`.
     const TAXED_REQUEST = {
       ...ISSUED_REQUEST,
-      totalAmount: 10_000, // $100.00 pre-tax subtotal
+      subtotalAmount: 10_000, // $100.00 pre-tax subtotal
+      taxTotalAmount: 1300,
+      totalAmount: 11_300, // $113.00 grand total
       fairManifest: {
         version: '0.4.0',
         fees: [],
@@ -420,12 +493,34 @@ describe('settlePaymentRequestFromStripeCheckout', () => {
     // (100) and NOT the erroneous "subtotal minus tax" (87) the pre-fix
     // code would have produced.
     expect(settleArgs.total_amount).toBeCloseTo(108.52, 2);
+
+    // The kernel-signed receipt attestation carries the same breakdown.
+    const attestationArgs = state.settledStripeAttestationMock.mock.calls[0][0];
+    expect(attestationArgs.totalAmount).toBe(11_300);
+    expect(attestationArgs.tax).toEqual({
+      subtotalAmount: 10_000,
+      taxTotalAmount: 1300,
+      taxes: [
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, amount: 1300, registrationNumber: '123456789RT0001' },
+      ],
+    });
   });
 
-  it('#2419 review fix 1 (e2e): skips settlement (no DB writes) when a tax row\'s basisAmount does not match totalAmount', async () => {
+  it('a request without tax hands the receipt attestation no breakdown (payload unchanged)', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
+    state.updateReturningQueue.push([{ ...ISSUED_REQUEST, status: 'paid' }]);
+    state.settlePaymentMock.mockResolvedValue({ settled: true, batchId: 'b', transactions: [], total_amount: 47.85, recipients: 1, source: 'external' });
+
+    await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+    expect(state.settledStripeAttestationMock.mock.calls[0][0].tax).toBeNull();
+  });
+
+  it('#2419/#2421 (e2e): skips settlement (no DB writes) when a tax row\'s basisAmount does not match subtotalAmount', async () => {
     const MISMATCHED_REQUEST = {
       ...ISSUED_REQUEST,
-      totalAmount: 10_000,
+      subtotalAmount: 10_000,
+      taxTotalAmount: 1170,
+      totalAmount: 11_170,
       fairManifest: {
         version: '0.4.0',
         fees: [],

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
 import { getServiceBadges, subscribeServiceBadges } from '../lib/service-badge-bus';
+import type { NavApp } from '@/src/lib/kernel/app-nav';
 
 interface Props {
   showSettings: boolean;
@@ -11,7 +12,11 @@ interface Props {
   showSecurity: boolean;
   showMoney: boolean;
   showTax: boolean;
-  enabledServices: string[];
+  /** Pay/Media are kernel-native services (never pruned), gated directly rather than via `apps` (#2425). */
+  showPay: boolean;
+  showMedia: boolean;
+  /** Registry-driven extractable apps (coffee/dykil/links/learn/events/market) enabled for this identity (#2425). */
+  apps: readonly NavApp[];
   landingService?: string | null;
 }
 
@@ -38,19 +43,18 @@ const ALL_TABS: Tab[] = [
   { label: 'Members', href: '/auth/members', exact: false },
 ];
 
-const SERVICE_TABS: Tab[] = [
-  { label: 'Events', href: '/auth/events', exact: false },
-  { label: 'Market', href: '/auth/market', exact: false },
-  { label: 'Coffee', href: '/auth/coffee', exact: false },
-  { label: 'Dykil', href: '/auth/dykil', exact: false },
-  { label: 'Learn', href: '/auth/learn', exact: false },
-  { label: 'Links', href: '/auth/links', exact: false },
-  { label: 'Pay', href: '/auth/pay', exact: false },
-  { label: 'Media', href: '/auth/media', exact: false },
-];
+/** Kernel-native tabs (#2425) — never pruned, so they stay a small fixed list rather than registry rows. */
+const KERNEL_NATIVE_TABS: Record<'pay' | 'media', Tab> = {
+  pay: { label: 'Pay', href: '/auth/pay', exact: false },
+  media: { label: 'Media', href: '/auth/media', exact: false },
+};
 
 function serviceFromHref(href: string): string {
   return href.split('/').pop() ?? '';
+}
+
+function navAppToTab(app: NavApp): Tab {
+  return { label: app.name, href: `/auth/${app.slug}`, exact: false };
 }
 
 function TabLink({ tab, pathname, badge = 0 }: Readonly<{ tab: Tab; pathname: string; badge?: number }>) {
@@ -81,7 +85,9 @@ export default function IdentityTabBar({
   showSecurity,
   showMoney,
   showTax,
-  enabledServices,
+  showPay,
+  showMedia,
+  apps,
 }: Readonly<Props>) {
   const pathname = usePathname();
   const badges = useSyncExternalStore(subscribeServiceBadges, getServiceBadges, getServiceBadges);
@@ -95,10 +101,11 @@ export default function IdentityTabBar({
     return true;
   });
 
-  const serviceTabs = SERVICE_TABS.filter((tab) => {
-    const service = serviceFromHref(tab.href);
-    return enabledServices.includes(service);
-  });
+  const serviceTabs: Tab[] = [
+    ...apps.map(navAppToTab),
+    ...(showPay ? [KERNEL_NATIVE_TABS.pay] : []),
+    ...(showMedia ? [KERNEL_NATIVE_TABS.media] : []),
+  ];
 
   return (
     <div className="border-b border-zinc-800 flex gap-1 flex-wrap">

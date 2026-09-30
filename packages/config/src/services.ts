@@ -1,7 +1,17 @@
 /**
- * Canonical service manifest — single source of truth for all Imajin services.
+ * Canonical service manifest — infra/build-time topology for all Imajin
+ * services (dev/prod ports, Postgres schema, deployment tier, Caddy/pm2
+ * routing, docs sync, `/registry/api/specs`). These consumers run without a
+ * live identity/DB context (build scripts, edge config, port-based
+ * routing), so this stays a static, synchronously-importable array.
  *
- * Consumers: registry specs, Caddy config, pm2 ecosystem, docs sync, shared nav.
+ * NOT the nav authority (#2425): which apps an authenticated identity sees
+ * in the kernel hub (auth submenu, launcher, home tiles) is now derived
+ * from `registry.apps` (#1990) via `apps/kernel/src/lib/kernel/app-nav.ts`,
+ * not from this file — a disabled/pruned app disappears from nav by
+ * flipping registry state, independent of whether it still has a row here
+ * for port/Caddy purposes. Consumers: registry specs, Caddy config, pm2
+ * ecosystem, docs sync.
  */
 
 export type ServiceTier = "core" | "imajin";

@@ -1,12 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useToast } from '@imajin/ui';
 import LineItemsEditor from './LineItemsEditor';
 import RecipientPicker, { type RecipientMode } from './RecipientPicker';
 import CreatedRequestSummary from './CreatedRequestSummary';
-import { buildCreatePaymentRequestBody, type CreateFormState } from '../lib/build-create-request';
-import type { LineItemDraft, PaymentRequestRow, RecipientInviteDraft, SelectedConnection } from '../lib/types';
+import TaxSection from './TaxSection';
+import { buildCreatePaymentRequestBody, previewSubtotal, type CreateFormState } from '../lib/build-create-request';
+import { buildTaxPreview, draftsFromRegistrations, type TaxPreviewResult } from '../lib/tax-form';
+import type {
+  LineItemDraft,
+  PaymentRequestRow,
+  RecipientInviteDraft,
+  SelectedConnection,
+  TaxRowDraft,
+} from '../lib/types';
 
 interface Props {
   issuerDid: string;
@@ -21,6 +29,30 @@ const SELECT_CLASSES =
 function newLineItem(): LineItemDraft {
   const key = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `item-${Date.now()}`;
   return { key, name: '', description: '', quantity: '1', unitAmount: '' };
+}
+
+/**
+ * Read the issuer's tax registrations (#2420) through the existing public
+ * profile read path (`GET /profile/api/profile/:did`, the same one the Tax
+ * registrations tab uses) — never straight from the profile tables. Any
+ * failure degrades to "no registrations", i.e. "Charge tax" stays off.
+ */
+async function loadTaxRegistrations(issuerDid: string): Promise<TaxRowDraft[]> {
+  try {
+    const res = await fetch(`/profile/api/profile/${encodeURIComponent(issuerDid)}`, { credentials: 'include' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data?.taxRegistrations) ? draftsFromRegistrations(data.taxRegistrations) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Live subtotal → tax → total preview for the Charge tax section; `null` until the line items yield a subtotal. */
+function computePreview(chargeTax: boolean, lineItems: LineItemDraft[], currency: string, taxRows: TaxRowDraft[]): TaxPreviewResult | null {
+  if (!chargeTax) return null;
+  const subtotal = previewSubtotal(lineItems, currency);
+  return subtotal === null ? null : buildTaxPreview(subtotal, currency, taxRows);
 }
 
 /**
@@ -44,6 +76,25 @@ export default function CreatePaymentRequestForm({ issuerDid, onCreated, onCance
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [created, setCreated] = useState<PaymentRequestRow | null>(null);
+  const [chargeTax, setChargeTax] = useState(false);
+  const [taxRows, setTaxRows] = useState<TaxRowDraft[]>([]);
+  const [taxLoaded, setTaxLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadTaxRegistrations(issuerDid).then((drafts) => {
+      if (cancelled) return;
+      setTaxRows(drafts);
+      // Default ON exactly when the issuer has a tax registration on their profile.
+      setChargeTax(drafts.length > 0);
+      setTaxLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [issuerDid]);
+
+  const taxPreview = computePreview(chargeTax, lineItems, currency, taxRows);
 
   async function handleSubmit() {
     setError(null);
@@ -56,6 +107,8 @@ export default function CreatePaymentRequestForm({ issuerDid, onCreated, onCance
       recipientMode,
       selectedConnection,
       invite,
+      chargeTax,
+      taxRows,
     };
     const validation = buildCreatePaymentRequestBody(issuerDid, state);
     if (!validation.ok) {
@@ -128,6 +181,16 @@ export default function CreatePaymentRequestForm({ issuerDid, onCreated, onCance
         <span className="block text-xs text-zinc-500 mb-1.5">Line items</span>
         <LineItemsEditor items={lineItems} currency={currency} onChange={setLineItems} />
       </div>
+
+      <TaxSection
+        chargeTax={chargeTax}
+        onChargeTaxChange={setChargeTax}
+        rows={taxRows}
+        onRowsChange={setTaxRows}
+        preview={taxPreview}
+        currency={currency}
+        loaded={taxLoaded}
+      />
 
       <div className="grid grid-cols-2 gap-3">
         <div>

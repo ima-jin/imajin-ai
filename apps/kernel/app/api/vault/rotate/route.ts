@@ -67,7 +67,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const entry = await rotateAndStore(trimmedField, value);
+    // rotateAndStore keeps the superseded grant's purpose; internal-secret:*
+    // fields also keep their provisions row + external grantees (#2446).
+    const entry = await rotateAndStore(field.trim(), value);
 
     let published = true;
     try {

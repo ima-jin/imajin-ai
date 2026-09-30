@@ -7,6 +7,7 @@ import PlacesMaintained from './components/PlacesMaintained';
 import IdentityTabBar from './components/IdentityTabBar';
 import AuthLayoutShell from './components/AuthLayoutShell';
 import { buildPublicUrl } from '@imajin/config';
+import { resolveNavAppsForIdentity, filterByPlacement } from '@/src/lib/kernel/app-nav';
 
 export default async function AuthLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { sessionDid, effectiveDid } = await getEffectiveDid();
@@ -46,17 +47,22 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   // Tax registrations (#2420) live next to Money and share the same gate.
   const showTax = effectiveIdentity?.scope === 'business';
 
-  // Query forest_config for enabled services and landing service
-  let enabledServices: string[] = [];
+  // Query forest_config for enabled services and landing service. Kept
+  // separately from the registry-driven `navApps` below: Pay/Media are
+  // kernel-native services (never pruned, see
+  // `apps/kernel/app/auth/lib/service-registry.ts`'s `isKernelNativeService`)
+  // and are gated on this raw toggle list directly, exactly as before #2425.
+  let rawEnabledServices: string[] = [];
   let landingService: string | null = null;
+  const isActorScope = !effectiveIdentity?.scope || effectiveIdentity.scope === 'actor';
 
-  if (effectiveIdentity?.scope && effectiveIdentity.scope !== 'actor') {
+  if (!isActorScope) {
     const [forestRow] = await db
       .select({ enabledServices: forestConfig.enabledServices, landingService: forestConfig.landingService })
       .from(forestConfig)
       .where(eq(forestConfig.groupDid, did))
       .limit(1);
-    enabledServices = forestRow?.enabledServices ?? [];
+    rawEnabledServices = forestRow?.enabledServices ?? [];
     landingService = forestRow?.landingService ?? null;
 
     const [membership] = await db
@@ -74,10 +80,18 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       showSettings = true;
       showMembers = true;
     }
-  } else {
-    // Actor scope: all services visible
-    enabledServices = ['events', 'market', 'coffee', 'dykil', 'learn', 'links', 'pay', 'media'];
   }
+
+  const showPay = isActorScope || rawEnabledServices.includes('pay');
+  const showMedia = isActorScope || rawEnabledServices.includes('media');
+
+  // Registry-driven nav apps (#2425) — replaces the old hard-coded
+  // actor-scope fallback list. `resolveNavAppsForIdentity` re-derives the
+  // same actor-vs-forest_config enabled-services logic above internally, so
+  // the visible set is unchanged; only the source of the six extractable
+  // app slugs (coffee/dykil/links/learn/events/market) moves to
+  // `registry.apps`.
+  const navApps = filterByPlacement(await resolveNavAppsForIdentity(did), 'auth-submenu');
 
   const authUrl = '/auth';
   const profileUrl = buildPublicUrl('profile');
@@ -103,8 +117,9 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       showSecurity={showSecurity}
       showMoney={showMoney}
       showTax={showTax}
-      enabledServices={enabledServices}
-      landingService={landingService}
+      showPay={showPay}
+      showMedia={showMedia}
+      apps={navApps}
     />
   );
 

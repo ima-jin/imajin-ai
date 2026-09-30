@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { buildPublicUrlAbsolute } from '@imajin/config';
+import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
+import { resolveRegistryAppsBySlug } from '@/src/lib/kernel/app-nav';
 import {
   getViewerDid,
   getProfile,
@@ -87,10 +89,15 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
     return <GatedProfile profile={profile} viewerDid={viewerDid} />;
   }
 
-  const [counts, isFollowing, links] = await Promise.all([
+  const [counts, isFollowing, links, serviceApps] = await Promise.all([
     getProfileCounts(profile.did),
     viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
     profile.featureToggles?.links ? getLinks(profile.featureToggles.links) : Promise.resolve([]),
+    // #2425 send-back: registry apps ∩ resolveEnabledApps — replaces
+    // ServiceLinks.tsx's own hard-coded 'links'/'coffee' literals. Public,
+    // unauthenticated read (the profile owner already opted these in via
+    // feature_toggles); see resolveRegistryAppsBySlug's docblock.
+    resolveRegistryAppsBySlug(resolveEnabledApps(profile.featureToggles)),
   ]);
 
   const viewer = {
@@ -100,7 +107,7 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
     isFollowing,
   };
 
-  const props = { profile, identity, viewer, counts, links };
+  const props = { profile, identity, viewer, counts, links, serviceApps };
 
   switch (identity.scope) {
     case 'business':
