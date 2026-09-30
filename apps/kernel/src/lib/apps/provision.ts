@@ -3,8 +3,8 @@
  * call that creates an extracted app's GitHub repo, registers it in the
  * existing `registry.apps` table (#1990) as a `tier: 'third_party'` row
  * (never upserting any pre-existing legacy `first_party` row for the same
- * app — see `registerApp`'s docblock), and seals its app-auth private key +
- * a GitHub-Packages-read token into the repo's Actions secrets.
+ * app — see `registerApp`'s docblock), and seals its app-auth private key
+ * into the repo's Actions secrets.
  *
  * ## Idempotency + fail-closed (`kernel.app_provisions`)
  * One durable row per `slug`. A `status: 'succeeded'` row means "re-run
@@ -34,7 +34,9 @@
  * round trip to encrypt-and-PUT it as a GitHub Actions secret. It is never
  * logged, never part of any bus event/attestation payload, and never part
  * of this module's return value — see `AppProvisionSuccess.secretsSet`,
- * which carries secret NAMES only.
+ * which carries secret NAMES only. The GitHub credential used to reach
+ * that repo is a GitHub App installation token (#2416) — see
+ * `org-provisioning.ts`'s docblock — never a PAT.
  */
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -50,9 +52,11 @@ import {
   ensureRepoFromTemplate,
   sealActionsSecret,
   tryGetInstallationToken,
+  fetchAppManifest,
   PROVISIONING_ORG,
   DEFAULT_APP_TEMPLATE,
   type EnsureRepoResult,
+  type AppManifest,
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
@@ -256,6 +260,31 @@ async function ensureAppSigningKeyGrant(appDid: string, nodeDid: string): Promis
 }
 
 /**
+ * Nav metadata (#2425) for a newly registered row: prefers the app's own
+ * `imajin.app.json` manifest (see `fetchAppManifest`), falling back to a
+ * sane default when the manifest is absent/invalid — an `entryUrl` derived
+ * from the slug and a single `auth-submenu` placement, so a freshly
+ * extracted app is at least reachable through the hub's dynamic
+ * `/auth/[app]` route without requiring every template to have adopted the
+ * manifest convention yet.
+ */
+function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
+  name: string | undefined;
+  icon: string | null;
+  entryUrl: string;
+  placements: string[];
+  requiredScope: string | null;
+} {
+  return {
+    name: manifest?.name,
+    icon: manifest?.icon ?? null,
+    entryUrl: manifest?.entryUrl ?? `/${slug}`,
+    placements: manifest?.placements ?? ['auth-submenu'],
+    requiredScope: manifest?.requiredScope ?? null,
+  };
+}
+
+/**
  * Step 3 (register): insert a NEW `tier: 'third_party'` registry.apps row —
  * NEVER updates/upserts an existing row, and in particular never touches a
  * pre-existing LEGACY `tier: 'first_party'` row for the same slug (e.g.
@@ -279,8 +308,9 @@ async function registerApp(params: {
   displayName: string;
   appDid: string;
   publicKey: string;
+  manifest: AppManifest | null;
 }): Promise<string> {
-  const { slug, displayName, appDid, publicKey } = params;
+  const { slug, displayName, appDid, publicKey, manifest } = params;
 
   const [existing] = await db
     .select({ id: registryApps.id })
@@ -292,11 +322,12 @@ async function registerApp(params: {
     return existing.id;
   }
 
+  const navMetadata = resolveNavMetadata(slug, manifest);
   const id = `app_${nanoid(16)}`;
   await db.insert(registryApps).values({
     id,
     ownerDid: 'did:imajin:platform',
-    name: displayName,
+    name: navMetadata.name ?? displayName,
     description: `${displayName} (provisioned via apps.provision #2375)`,
     appDid,
     publicKey,
@@ -308,6 +339,10 @@ async function registerApp(params: {
     slug,
     allowedRedirectHosts: [slug],
     tokenAudiences: [slug],
+    icon: navMetadata.icon,
+    entryUrl: navMetadata.entryUrl,
+    placements: navMetadata.placements,
+    requiredScope: navMetadata.requiredScope,
   });
   return id;
 }
@@ -482,9 +517,14 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   const appDid = keypair.did;
 
   // ── Step 3: register (the app becomes servable ONLY from this point on) ──
+  // Manifest read (#2425) is best-effort and never throws (see
+  // `fetchAppManifest`'s docblock) — a missing/invalid `imajin.app.json`
+  // is not a provisioning failure, `registerApp` falls back to defaults.
   let registryAppId: string;
   try {
-    registryAppId = await registerApp({ slug, displayName, appDid, publicKey: keypair.publicKey });
+    const manifestToken = await tryGetInstallationToken();
+    const manifest = await fetchAppManifest(slug, manifestToken);
+    registryAppId = await registerApp({ slug, displayName, appDid, publicKey: keypair.publicKey, manifest });
     await upsertProvisionRow(slug, { registeredAt: new Date() });
     emitRegisteredAttestation(nodeDid, appDid, registryAppId, displayName, slug);
   } catch (err) {

@@ -8,7 +8,7 @@ import { StubActions } from '../StubActions';
 import { StubGallery } from '../StubGallery';
 import type { ProfileViewProps } from '../../lib/types';
 
-export async function BusinessProfile({ profile, identity, viewer, counts, links }: Readonly<ProfileViewProps>) {
+export async function BusinessProfile({ profile, identity, viewer, counts, links, serviceApps }: Readonly<ProfileViewProps>) {
   const isUnclaimed = !profile.claimStatus || profile.claimStatus === 'unclaimed';
   let viewerRole: string | null;
   if (viewer.viewerDid && !viewer.isSelf) {
@@ -76,7 +76,7 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
         {/* Gallery */}
         <StubGallery identityDid={profile.did} isMaintainer={isMaintainer} />
 
-        <ServiceLinks profile={profile} viewerDid={viewer.viewerDid} />
+        <ServiceLinks profile={profile} viewerDid={viewer.viewerDid} apps={serviceApps} />
 
         {/* Expanded links */}
         {links.length > 0 && (

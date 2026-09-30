@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@imajin/ui';
-import { buildEmbedSrc, getServiceBaseUrl, isKernelNativeService } from '../lib/service-registry';
+import { buildEmbedSrc, isKernelNativeService } from '../lib/service-registry';
 import {
   isAppToKernelMessage,
   normalizeToastLevel,
@@ -14,6 +14,14 @@ import { setServiceBadge } from '../lib/service-badge-bus';
 interface Props {
   service: string;
   did: string;
+  /**
+   * Registry-resolved base origin for this service (#2425). Overrides
+   * `service-registry.ts`'s static, 6-name-only `SERVICE_URLS` map so an
+   * app that only exists as a `registry.apps` row still gets a working
+   * embed. Ignored for kernel-native services (pay/media always embed
+   * same-origin).
+   */
+  baseUrl?: string;
 }
 
 type EmbedPhase = 'checking' | 'loading' | 'ready' | 'error';
@@ -34,21 +42,32 @@ const ERROR_COPY: Record<ErrorReason, string> = {
   timeout: 'This service is taking too long to load.',
 };
 
-/** Origin the embedded app's postMessage traffic must come from/go to. */
-function resolveExpectedOrigin(service: string): string | null {
+/**
+ * Origin the embedded app's postMessage traffic must come from/go to.
+ *
+ * #2425 send-back: `baseUrl` can be a RELATIVE path (`buildPublicUrl`'s
+ * single-node-mode return, e.g. `/coffee`, when no
+ * `NEXT_PUBLIC_SERVICE_PREFIX`/`NEXT_PUBLIC_DOMAIN` is configured) — a bare
+ * `new URL(baseUrl)` throws on that and used to silently disable the
+ * postMessage origin check for every such embed. Resolving against the
+ * kernel's own origin as the base fixes that: the embedded app is served
+ * from the SAME origin as the kernel in that mode (that's what "relative"
+ * means here), so the kernel's own origin IS the correct expected origin.
+ */
+function resolveExpectedOrigin(service: string, baseUrl?: string): string | null {
+  const kernelOrigin = globalThis.location === undefined ? undefined : globalThis.location.origin;
   if (isKernelNativeService(service)) {
-    return typeof globalThis.location === 'undefined' ? null : globalThis.location.origin;
+    return kernelOrigin ?? null;
   }
-  const baseUrl = getServiceBaseUrl(service);
   if (!baseUrl) return null;
   try {
-    return new URL(baseUrl).origin;
+    return new URL(baseUrl, kernelOrigin).origin;
   } catch {
     return null;
   }
 }
 
-export default function ServiceEmbed({ service, did }: Readonly<Props>) {
+export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>) {
   const [phase, setPhase] = useState<EmbedPhase>('checking');
   const [errorReason, setErrorReason] = useState<ErrorReason>('unavailable');
   const [attempt, setAttempt] = useState(0);
@@ -60,8 +79,8 @@ export default function ServiceEmbed({ service, did }: Readonly<Props>) {
   const targetWindowRef = useRef<Window | null>(null);
   const { toast } = useToast();
 
-  const src = buildEmbedSrc(service, did);
-  const expectedOrigin = resolveExpectedOrigin(service);
+  const src = buildEmbedSrc(service, did, baseUrl);
+  const expectedOrigin = resolveExpectedOrigin(service, baseUrl);
 
   const clearHandshakeTimeout = useCallback(() => {
     if (timeoutRef.current) {

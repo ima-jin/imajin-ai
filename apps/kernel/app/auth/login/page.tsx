@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import KeyAuthTab from './components/KeyAuthTab';
 import PasswordAuthTab from './components/PasswordAuthTab';
 import MfaGate from './components/MfaGate';
@@ -199,9 +200,9 @@ function LoginForm() {
         </div>
 
         <p className="mt-4 text-center text-sm text-gray-500">
-          <a href="/auth/recover" className="text-gray-400 hover:text-[#F59E0B] transition">
+          <Link href="/auth/recover" className="text-gray-400 hover:text-[#F59E0B] transition">
             Lost your key?
-          </a>
+          </Link>
         </p>
       </div>
     </div>

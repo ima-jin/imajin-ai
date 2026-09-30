@@ -1,11 +1,16 @@
+import type { NavApp } from '@/src/lib/kernel/app-nav';
+
 export interface FeatureToggles {
   inference_enabled?: boolean;
   show_market_items?: boolean;
   show_events?: boolean;
+  /** Legacy per-app field (#2425), superseded by `enabledApps` — see `src/db/schemas/profile.ts`'s `FeatureToggles` for why this is deliberately left without a deprecation-marker JSDoc tag. */
   links?: string | null;
   coffee?: string | null;
   dykil?: string | null;
   learn?: string | null;
+  /** Generic, slug-keyed replacement for the per-app fields above (#2425). */
+  enabledApps?: string[];
 }
 
 export interface ProfileData {
@@ -56,4 +61,6 @@ export interface ProfileViewProps {
   viewer: ViewerContext;
   counts: ProfileCounts;
   links: LinkItem[];
+  /** Registry apps (#2425) resolved for this profile's own enabled slugs — see `resolveRegistryAppsBySlug`. Consumed by `ServiceLinks`. */
+  serviceApps: NavApp[];
 }

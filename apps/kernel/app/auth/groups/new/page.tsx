@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, FormEvent, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { normalizeHandleInput } from '@imajin/config';
 import { DeviceLocationStatus } from '../../lib/device-location-status';
 
@@ -221,9 +222,9 @@ function NewGroupForm() {
     <div className="max-w-lg mx-auto py-8">
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-8">
         <div className="mb-6">
-          <a href="/auth" className="text-sm text-zinc-500 hover:text-zinc-300 transition">
+          <Link href="/auth" className="text-sm text-zinc-500 hover:text-zinc-300 transition">
             ← Back to identities
-          </a>
+          </Link>
           <h1 className="text-2xl font-bold text-white mt-3 mb-1">Create Identity</h1>
           <p className="text-zinc-400 text-sm">Set up a new group, organization, or family identity.</p>
         </div>
@@ -456,12 +457,12 @@ function NewGroupForm() {
           )}
 
           <div className="flex gap-3 pt-2">
-            <a
+            <Link
               href="/auth/groups"
               className="flex-1 px-4 py-2.5 bg-zinc-900 border border-gray-700 rounded-lg text-zinc-400 hover:text-white hover:border-gray-500 transition-colors text-sm font-medium text-center"
             >
               Cancel
-            </a>
+            </Link>
             <button
               type="submit"
               disabled={status === 'loading' || !name.trim()}

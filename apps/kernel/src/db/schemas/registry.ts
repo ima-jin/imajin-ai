@@ -348,6 +348,20 @@ export const registryApps = registrySchema.table('apps', {
    * registered before #2375 (third-party DCR clients) never set one.
    */
   slug: text('slug'),
+  /**
+   * Nav metadata (#2425, 0167_registry_apps_nav_metadata.sql) — read from
+   * the app manifest at `apps.provision` time (see
+   * `src/lib/apps/provision.ts`'s `registerApp`), or seeded/backfilled for
+   * first-party apps by the migration. `placements` is a subset of
+   * `'launcher' | 'home' | 'auth-submenu'` (see `src/lib/kernel/app-nav.ts`'s
+   * `AppPlacement`); an empty array means this row is not nav-visible yet.
+   * `requiredScope` gates visibility to a specific identity `scope`, or
+   * `NULL` to allow any authenticated scope.
+   */
+  icon: text('icon'),
+  entryUrl: text('entry_url'),
+  placements: text('placements').array().notNull().default(sql`'{}'::text[]`),
+  requiredScope: text('required_scope'),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),

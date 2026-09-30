@@ -26,6 +26,7 @@
  * lives on `/auth/agents`) — this panel only links to it.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import Link from 'next/link';
 
 type GrantSourceKind = 'auth-grant' | 'auth-membership' | 'vault-delegation' | 'access-bearer' | 'app-authorization';
 type DeferredAckState = 'used' | 'failed' | 'discarded' | 'pending';
@@ -312,12 +313,12 @@ export function GrantsPanel() {
           <p className="text-xs text-gray-500">Who acts for you, with what capabilities — one-tap revoke</p>
         </div>
         <div className="flex items-center gap-3">
-          <a
+          <Link
             href="/auth/agents"
             className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
           >
             Manage capabilities →
-          </a>
+          </Link>
           <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
             <input
               type="checkbox"
