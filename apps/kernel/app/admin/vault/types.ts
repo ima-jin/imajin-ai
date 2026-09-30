@@ -29,6 +29,7 @@ export interface SetSecretInput {
   field: string;
   value: string;
   hint: string;
+  custodyScheme: VaultCustodyScheme;
 }
 
 export interface RotateSecretInput {
@@ -80,14 +81,4 @@ export interface UpgradeCustodyApiResponse {
   custodyScheme: 'delegation-grant';
   grantId: string;
   grantedTo: string;
-}
-
-export interface AdminEventRow {
-  action: string;
-  payload: Record<string, unknown> | null;
-}
-
-export interface AdminEventsApiResponse {
-  rows: AdminEventRow[];
-  total: number;
 }
