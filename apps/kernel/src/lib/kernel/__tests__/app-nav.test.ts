@@ -78,7 +78,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
 }));
 
-import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
+import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, resolveLauncherApps, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
 
 // requiredScope is null (#2425 send-back): 'creator' is services.ts's
 // display-visibility tier, not one of the four identity scopes, so the
@@ -308,6 +308,52 @@ describe('resolveRegistryAppsBySlug (#2425 send-back — public, unauthenticated
     const apps = await resolveRegistryAppsBySlug(['coffee', 'revoked-app', 'jin']);
 
     expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+});
+
+describe('resolveLauncherApps (#2434 — launcher / landing grid)', () => {
+  it('lists a registry-only app (no services.ts entry) that declares the launcher placement', async () => {
+    mocks.state.registryRows = [
+      COFFEE_ROW,
+      { ...LEARN_ROW, slug: 'registry-only-app', name: 'Registry Only', placements: ['launcher'] },
+    ];
+
+    const apps = await resolveLauncherApps();
+
+    expect(apps.map((a) => a.slug).sort()).toEqual(['coffee', 'registry-only-app']);
+    // Registry only — no identity, forest_config, or profile lookups.
+    expect(mocks.state.fromCalls).toEqual([expect.anything()]);
+    expect(mocks.state.fromCalls).not.toContain(mocks.identities);
+    expect(mocks.state.fromCalls).not.toContain(mocks.forestConfig);
+    expect(mocks.state.fromCalls).not.toContain(mocks.profiles);
+  });
+
+  it('excludes apps without the launcher placement, inactive rows, and rows with no slug', async () => {
+    mocks.state.registryRows = [
+      COFFEE_ROW,
+      { ...LEARN_ROW, placements: ['auth-submenu'] },
+      REVOKED_ROW,
+      NO_PLACEMENT_ROW,
+      NO_SLUG_ROW,
+    ];
+
+    const apps = await resolveLauncherApps();
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('leaves out apps with a requiredScope — there is no viewer identity on the public list to match it against', async () => {
+    mocks.state.registryRows = [COFFEE_ROW, { ...LEARN_ROW, requiredScope: 'business' }];
+
+    const apps = await resolveLauncherApps();
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('returns nothing when the registry has no launcher apps', async () => {
+    mocks.state.registryRows = [];
+
+    await expect(resolveLauncherApps()).resolves.toEqual([]);
   });
 });
 

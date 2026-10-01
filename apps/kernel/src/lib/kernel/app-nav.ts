@@ -160,6 +160,25 @@ export function filterByPlacement(apps: readonly NavApp[], placement: AppPlaceme
 }
 
 /**
+ * Registry apps for the PUBLIC launcher / landing grid (#2434): every active
+ * registry row declaring the `launcher` placement — the same
+ * `listNavCapableApps` source and `filterByPlacement` narrowing every
+ * identity-scoped nav surface uses, so a registry-only app (no `services.ts`
+ * entry) appears. There is no viewer identity to gate against on the
+ * anonymous landing page, so rows with a `requiredScope` are left out (they
+ * only surface through {@link resolveNavAppsForIdentity}, which knows the
+ * caller's scope); the grid narrows this list further per identity client-side
+ * via `GET /auth/api/apps?placement=launcher`.
+ */
+export async function resolveLauncherApps(): Promise<NavApp[]> {
+  const navCapable = await listNavCapableApps();
+  return filterByPlacement(
+    navCapable.filter((app) => !app.requiredScope),
+    'launcher',
+  );
+}
+
+/**
  * Registry apps matching the given slugs — no identity/scope gating at all
  * (#2425 send-back). For PUBLIC, unauthenticated reads like the profile
  * page's `ServiceLinks`: the PROFILE OWNER (not the viewer) already decided
