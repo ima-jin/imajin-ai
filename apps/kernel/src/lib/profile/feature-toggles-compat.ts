@@ -35,6 +35,21 @@ export function resolveEnabledApps(featureToggles: FeatureToggles | null | undef
   return [...enabled];
 }
 
+/**
+ * Has this profile EVER configured its app toggles (#2434, #2425 ruling b)?
+ * True when `enabledApps` exists (even empty — an explicit "none") or any
+ * legacy per-app field is present (even `null`, which the profile edit form
+ * writes for an app switched off). A profile whose `feature_toggles` has none
+ * of those keys has never touched app toggles; actor nav treats that as "show
+ * every app" rather than "show none". No migration: it is derived from the
+ * shape already stored.
+ */
+export function hasConfiguredAppToggles(featureToggles: FeatureToggles | null | undefined): boolean {
+  if (!featureToggles) return false;
+  if (featureToggles.enabledApps !== undefined) return true;
+  return LEGACY_APP_SLUGS.some((slug) => featureToggles[slug] !== undefined);
+}
+
 /** Convenience check for a single slug — `resolveEnabledApps(ft).includes(slug)` without building the whole array at call sites that only need one answer. */
 export function isAppEnabled(featureToggles: FeatureToggles | null | undefined, slug: string): boolean {
   if (!featureToggles) return false;
