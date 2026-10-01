@@ -239,18 +239,30 @@ persists it in a local keystore file (`IMAJIN_APP_KEYSTORE`, default `./.imajin/
 ```bash
 curl -X POST "${IMAJIN_KERNEL_URL}/api/apps/claim" \
   -H "Content-Type: application/json" \
-  -d '{"claimCode": "claim_...", "bootstrapPublicKey": "<hex Ed25519 pubkey>", "hostHint": "dykil-standalone"}'
+  -d '{"claimCode": "claim_...", "bootstrapPublicKey": "<hex Ed25519 pubkey>", "hostHint": "dykil-standalone", "expectedAppDid": "did:imajin:9f2c..."}'
 ```
 
 ```json
-{ "appDid": "did:imajin:9f2c...", "privateKey": "...", "publicKey": "..." }
+{ "appDid": "did:imajin:9f2c...", "privateKey": "...", "publicKey": "...", "attestationId": "att_..." }
 ```
+
+`expectedAppDid` (optional, #2444) is the app DID the caller believes the code belongs to — an
+app passes its own `IMAJIN_APP_DID`. If it doesn't match the app the code was issued for, the
+kernel answers **409 before spending the code**: nothing is claimed or bound, no key material is
+returned, and the code stays redeemable by its rightful app (so pasting another app's code into
+the wrong app burns nothing). Omitted, the route behaves as it always has.
+
+`attestationId` (#2444) is the id of the kernel-signed `apps.signing-key.claimed` attestation
+minted for this redemption — what a `/claim` success page shows next to the app DID. It is
+`null` only if attestation forwarding was unavailable; the code is already spent by then, so
+that never fails the exchange.
 
 The kernel binds `bootstrapPublicKey` to the claim (`kernel.app_signing_key_claims`), which is
 what every LATER boot authenticates against — see below. No `requireAuth` session gates this
 route: the claim code itself, single-use and short-lived, IS the authentication for this one
 call. A second exchange attempt — whether the code was already redeemed or has simply expired —
-is refused (410 Gone).
+is refused (410 Gone). A code presented with a mismatching `expectedAppDid` is refused with 409
+and is not spent.
 
 #### Every later boot: sign a fresh challenge with the bootstrap key
 
