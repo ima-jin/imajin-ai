@@ -55,6 +55,20 @@ jobs:
       - name: Rebuild native dependencies
         run: pnpm rebuild -r better-sqlite3
 
+      # Service bootstrap identities (#2442), same step as deploy-prod. Before
+      # check-env (build-changed.sh -> build.sh); a failure fails the deploy
+      # before any restart. See deploy-prod.yml for the reasoning.
+      - name: Build workspace packages (provisioning prerequisite)
+        run: pnpm -r --filter './packages/**' build
+
+      - name: Provision service bootstrap identities
+        env:
+          # pm2 sets NODE_ENV for dev-jin in the ecosystem file, not .env.local.
+          NODE_ENV: production
+        # dev-jin is `npm start` in apps/kernel, which loads apps/kernel/.env.local;
+        # --env dev takes VAULT_PATH from deploy/ecosystem.dev.config.js.
+        run: pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all --env dev
+
       - name: Build changed apps
         run: ./scripts/build-changed.sh
 
