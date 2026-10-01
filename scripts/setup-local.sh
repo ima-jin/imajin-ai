@@ -178,7 +178,9 @@ ok "Kernel-only secrets (GROUP_KEY, MEDIA, TRUST)"
 step "Writing .env.local files"
 
 # Apps with .env.example files (broker-agent handled separately below)
-APPS=(kernel events coffee dykil links learn market)
+# links (#1986 phase 2) now runs from its own repo (ima-jin/links) against
+# this same dev DB — it is no longer part of this monorepo's local setup.
+APPS=(kernel events coffee dykil learn market)
 
 for app in "${APPS[@]}"; do
   app_dir="$REPO_ROOT/apps/$app"
@@ -319,7 +321,6 @@ echo "  3. $(cyan "Start verticals as needed")"
 echo "     pnpm --filter @imajin/events dev     $(dim "→ http://localhost:3006")"
 echo "     pnpm --filter @imajin/coffee dev     $(dim "→ http://localhost:3100")"
 echo "     pnpm --filter @imajin/dykil  dev     $(dim "→ http://localhost:3101")"
-echo "     pnpm --filter @imajin/links  dev     $(dim "→ http://localhost:3102")"
 echo "     pnpm --filter @imajin/learn  dev     $(dim "→ http://localhost:3103")"
 echo "     pnpm --filter @imajin/market dev     $(dim "→ http://localhost:3104")"
 echo
