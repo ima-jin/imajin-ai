@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { getVaultInternalApiKey } from './internal-post';
 const log = createLogger('auth');
 
 export interface AppAuthContext {
@@ -97,7 +98,7 @@ export async function requireAppAuth(
     return { error: 'Auth service unavailable', status: 503 };
   }
 
-  const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
+  const internalApiKey = getVaultInternalApiKey() ?? process.env.ATTESTATION_INTERNAL_API_KEY;
   if (!internalApiKey) {
     log.warn({}, '[APP-AUTH] ATTESTATION_INTERNAL_API_KEY not set');
     return { error: 'Auth service misconfigured', status: 503 };

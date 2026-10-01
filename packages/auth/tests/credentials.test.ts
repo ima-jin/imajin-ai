@@ -28,6 +28,7 @@ import {
   INTERNAL_API_KEY as API_KEY,
   requestBody,
   setUpInternalPostEnv,
+  setVaultInternalApiKey,
   tearDownInternalPostEnv,
 } from './support/internal-post-test-env';
 
@@ -147,7 +148,7 @@ describe('resolveDidForEmail — 3-tier precedence via kernel (#1858, migrated #
   });
 
   it('returns null without calling fetch when no internal API key is configured', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+    setVaultInternalApiKey(undefined);
     const { resolveDidForEmail } = await import('../src/credentials');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
