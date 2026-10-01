@@ -125,7 +125,7 @@ function parseEnvValue(raw: string): string {
 export function parseEnvFile(content: string): Map<string, string> {
   const entries = new Map<string, string>();
   for (const line of content.split(/\r?\n/)) {
-    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(line);
+    const match = /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=(.*)$/.exec(line);
     if (match) entries.set(match[1]!, parseEnvValue(match[2]!));
   }
   return entries;
@@ -273,11 +273,14 @@ export async function provisionServices(
   const errors = pairs.flatMap(({ pair }) => (pair.kind === 'invalid' ? [pair.error] : []));
   if (errors.length > 0) throw new Error(errors.join('\n'));
 
+  // Strictly one service at a time: the first grant for a purpose self-provisions
+  // the shared secret (getInternalSecret), which must not race itself.
   const results: ProvisionResult[] = [];
-  for (const { service, pair } of pairs) {
+  await pairs.reduce<Promise<void>>(async (previous, { service, pair }) => {
+    await previous;
     if (pair.kind === 'no-env-local') {
       onSkip(service);
-      continue;
+      return;
     }
     const result =
       pair.kind === 'existing'
@@ -285,7 +288,7 @@ export async function provisionServices(
         : await provisionMissing(repoRoot, service, deps);
     results.push(result);
     onResult(result);
-  }
+  }, Promise.resolve());
   return results;
 }
 
