@@ -2,9 +2,12 @@
 /**
  * generate-api-specs.ts
  *
- * Walks route.ts files across all 11 imajin services, detects HTTP method
+ * Walks route.ts files across all 10 imajin services, detects HTTP method
  * exports, maps file paths to URL paths, and emits one openapi.yaml per
  * service under apps/<service>/api-spec/openapi.yaml.
+ *
+ * links (#1986 phase 2) now runs from its own repo (ima-jin/links) and is
+ * intentionally absent from this list — apps/links no longer exists here.
  *
  * Usage:
  *   pnpm generate:api-specs
@@ -118,15 +121,6 @@ const SERVICES: ServiceConfig[] = [
     prodUrl: 'https://dykil.imajin.ai',
     devUrl: 'https://dev-dykil.imajin.ai',
     port: 7101,
-    routeRoots: ['app/api'],
-  },
-  {
-    name: 'links',
-    title: 'imajin links',
-    description: 'Link-in-bio pages with privacy-preserving click analytics, multiple links per page, and theme presets.',
-    prodUrl: 'https://links.imajin.ai',
-    devUrl: 'https://dev-links.imajin.ai',
-    port: 7102,
     routeRoots: ['app/api'],
   },
 ];
