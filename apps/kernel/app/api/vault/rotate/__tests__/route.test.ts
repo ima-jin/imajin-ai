@@ -9,13 +9,15 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireAdmin, mockVaultServiceGet, mockRotateAndStore, mockPublish, mockGetNodeSigningIdentity, mockListOtherActiveGrantees } = vi.hoisted(() => ({
+// The real grantees helper (and its internal-secret exemption) runs here; only
+// the DB query it issues is mocked, via mockOtherGranteeRows.
+const { mockRequireAdmin, mockVaultServiceGet, mockRotateAndStore, mockPublish, mockGetNodeSigningIdentity, mockOtherGranteeRows } = vi.hoisted(() => ({
   mockRequireAdmin: vi.fn(async () => true),
   mockVaultServiceGet: vi.fn(),
   mockRotateAndStore: vi.fn(),
   mockPublish: vi.fn().mockResolvedValue(undefined),
   mockGetNodeSigningIdentity: vi.fn(() => ({ senderDid: 'did:imajin:node' })),
-  mockListOtherActiveGrantees: vi.fn(async () => []),
+  mockOtherGranteeRows: vi.fn((): unknown[] => []),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAdmin: mockRequireAdmin }));
@@ -32,7 +34,19 @@ vi.mock('@/src/lib/vault/subscribe', () => ({
 }));
 
 vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: mockGetNodeSigningIdentity }));
-vi.mock('@/src/lib/vault/grantees', () => ({ listOtherActiveGrantees: mockListOtherActiveGrantees }));
+vi.mock('@/src/db', () => ({
+  db: { select: () => ({ from: () => ({ where: () => Promise.resolve(mockOtherGranteeRows()) }) }) },
+  vaultDelegationGrants: {
+    id: 'id',
+    grantedTo: 'granted_to',
+    purpose: 'purpose',
+    oneTime: 'one_time',
+    expiresAt: 'expires_at',
+    field: 'field',
+    status: 'status',
+    consumedAt: 'consumed_at',
+  },
+}));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -60,7 +74,7 @@ beforeEach(() => {
   mockVaultServiceGet.mockResolvedValue(EXISTING);
   mockPublish.mockResolvedValue(undefined);
   mockGetNodeSigningIdentity.mockReturnValue({ senderDid: 'did:imajin:node' });
-  mockListOtherActiveGrantees.mockResolvedValue([]);
+  mockOtherGranteeRows.mockReturnValue([]);
 });
 
 describe('POST /api/vault/rotate', () => {
@@ -124,7 +138,7 @@ describe('POST /api/vault/rotate', () => {
 
 describe('fail-closed grantee guard (#2450)', () => {
   it('returns 409 with the count and list when other active grantees exist and no confirmField is sent', async () => {
-    mockListOtherActiveGrantees.mockResolvedValue([
+    mockOtherGranteeRows.mockReturnValue([
       { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null },
     ]);
     const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new' }) as never);
@@ -136,14 +150,14 @@ describe('fail-closed grantee guard (#2450)', () => {
   });
 
   it('returns 409 when confirmField does not match the field exactly', async () => {
-    mockListOtherActiveGrantees.mockResolvedValue([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: null, oneTime: false, expiresAt: null }]);
+    mockOtherGranteeRows.mockReturnValue([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: null, oneTime: false, expiresAt: null }]);
     const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new', confirmField: 'wrong' }) as never);
     expect(response.status).toBe(409);
     expect(mockRotateAndStore).not.toHaveBeenCalled();
   });
 
   it('proceeds when confirmField matches the field exactly', async () => {
-    mockListOtherActiveGrantees.mockResolvedValue([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: null, oneTime: false, expiresAt: null }]);
+    mockOtherGranteeRows.mockReturnValue([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: null, oneTime: false, expiresAt: null }]);
     mockRotateAndStore.mockResolvedValue({
       field: 'GH_TOKEN',
       cid: 'cid:new',
@@ -164,5 +178,38 @@ describe('fail-closed grantee guard (#2450)', () => {
     });
     const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new' }) as never);
     expect(response.status).toBe(200);
+  });
+});
+
+describe('internal-secret:* exemption from the grantee guard (#2450)', () => {
+  const INTERNAL_FIELD = 'internal-secret:kernel.attestation-internal-api-key';
+  const EXTERNAL_GRANTEE = { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null };
+
+  beforeEach(() => {
+    mockVaultServiceGet.mockResolvedValue({ field: INTERNAL_FIELD, cid: 'cid:old' });
+    mockRotateAndStore.mockResolvedValue({
+      field: INTERNAL_FIELD,
+      cid: 'cid:new',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      senderDid: 'did:imajin:node',
+      custodyScheme: 'delegation-grant',
+    });
+  });
+
+  it('rotates without confirmField even with external grantees — no 409', async () => {
+    mockOtherGranteeRows.mockReturnValue([EXTERNAL_GRANTEE]);
+    const response = await POST(makeRequest({ field: INTERNAL_FIELD, value: 'new' }) as never);
+    expect(response.status).toBe(200);
+    expect(mockRotateAndStore).toHaveBeenCalledWith(INTERNAL_FIELD, 'new');
+    // exempt fields are not even queried for grantees
+    expect(mockOtherGranteeRows).not.toHaveBeenCalled();
+  });
+
+  it('keeps the 409 for a non-internal-secret field with the same grantee', async () => {
+    mockVaultServiceGet.mockResolvedValue(EXISTING);
+    mockOtherGranteeRows.mockReturnValue([EXTERNAL_GRANTEE]);
+    const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new' }) as never);
+    expect(response.status).toBe(409);
+    expect(mockRotateAndStore).not.toHaveBeenCalled();
   });
 });

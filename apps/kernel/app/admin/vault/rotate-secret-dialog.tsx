@@ -22,7 +22,12 @@ export function RotateSecretDialog({
   const [value, setValue] = useState('');
   const [hint, setHint] = useState('');
   const [confirmText, setConfirmText] = useState('');
-  const { loading: loadingGrantees, grantees, error: granteesError } = useVaultGrantees(field, open);
+  const {
+    loading: loadingGrantees,
+    grantees,
+    error: granteesError,
+    reissuedOnRotate,
+  } = useVaultGrantees(field, open);
 
   useEffect(() => {
     if (!open) {
@@ -40,9 +45,11 @@ export function RotateSecretDialog({
   // decrypting. The server enforces this too (POST /api/vault/rotate 409s
   // without a matching confirmField); this is the UI half. A grantee-query
   // failure is treated the same as "grantees exist and are unknown" — never
-  // silently allowed through.
+  // silently allowed through. Exception: internal-secret:* fields — the
+  // server says their rotate path re-issues grantees itself (#2446), so no
+  // guard applies.
   const hasOtherGrantees = grantees.length > 0;
-  const requiresConfirm = hasOtherGrantees || granteesError !== null;
+  const requiresConfirm = !reissuedOnRotate && (hasOtherGrantees || granteesError !== null);
   const confirmed = !requiresConfirm || confirmText === field;
   const canSubmit = !submitting && !loadingGrantees && value.trim().length > 0 && confirmed;
 
@@ -68,6 +75,12 @@ export function RotateSecretDialog({
 
         {loadingGrantees && (
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Checking for other active grantees…</p>
+        )}
+
+        {!loadingGrantees && reissuedOnRotate && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+            Any external grantees of this field are re-issued automatically on the new key.
+          </p>
         )}
 
         {!loadingGrantees && granteesError && (

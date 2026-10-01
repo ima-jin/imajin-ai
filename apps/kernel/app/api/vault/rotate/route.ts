@@ -6,7 +6,7 @@ import { rotateAndStore, vaultService } from '@/src/lib/vault';
 import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
+import { getRotateGranteeGuard } from '@/src/lib/vault/grantees';
 
 const log = createLogger('kernel');
 ensureVaultHotReloadReactorRegistered();
@@ -16,7 +16,7 @@ const nodeDid = process.env.NODE_DID ?? 'did:imajin:node';
 interface RotateVaultBody {
   field: string;
   value: string;
-  /** Required, and must equal `field` exactly, when the field has other active grantees (#2450). */
+  /** Required, and must equal `field` exactly, when the field has other active grantees (#2450) — never for internal-secret:*. */
   confirmField?: string;
 }
 
@@ -52,10 +52,10 @@ export async function POST(request: NextRequest) {
     // re-seals under a new key and re-grants only the node's own self-grant,
     // so any OTHER active grantee's copy of the wrapped key silently stops
     // decrypting. Computed with the exact same query the admin panel's
-    // warning uses, so the two can't drift. Re-issuing those grants on
-    // rotate is still open (#2450 step 2).
+    // warning uses, so the two can't drift. internal-secret:* fields are
+    // exempt: their rotate path re-issues external grantees itself (#2446).
     const identity = getNodeSigningIdentity();
-    const otherGrantees = await listOtherActiveGrantees(trimmedField, identity.senderDid);
+    const { grantees: otherGrantees } = await getRotateGranteeGuard(trimmedField, identity.senderDid);
     if (otherGrantees.length > 0 && confirmField !== trimmedField) {
       return NextResponse.json(
         {

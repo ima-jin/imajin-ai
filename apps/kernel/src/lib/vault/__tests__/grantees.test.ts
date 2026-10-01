@@ -21,7 +21,7 @@ vi.mock('@/src/db', () => ({
   },
 }));
 
-import { listOtherActiveGrantees } from '../grantees';
+import { listOtherActiveGrantees, getRotateGranteeGuard } from '../grantees';
 
 function queryReturning(rows: unknown[]) {
   mockDbSelect.mockReturnValue({
@@ -58,5 +58,33 @@ describe('listOtherActiveGrantees', () => {
   it('propagates a query failure', async () => {
     mockDbSelect.mockReturnValue({ from: () => ({ where: () => Promise.reject(new Error('db down')) }) });
     await expect(listOtherActiveGrantees('GH_TOKEN', 'did:imajin:node')).rejects.toThrow('db down');
+  });
+});
+
+describe('getRotateGranteeGuard (#2450)', () => {
+  const ROW = { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null };
+
+  it('exempts internal-secret:* fields without querying — their rotate path re-issues grantees (#2446)', async () => {
+    queryReturning([ROW]);
+    const guard = await getRotateGranteeGuard('internal-secret:kernel.attestation-internal-api-key', 'did:imajin:node');
+    expect(guard).toEqual({ grantees: [], reissuedOnRotate: true });
+    expect(mockDbSelect).not.toHaveBeenCalled();
+  });
+
+  it('stays fail-closed for any other field: returns its grantees, not exempt', async () => {
+    queryReturning([ROW]);
+    const guard = await getRotateGranteeGuard('GH_TOKEN', 'did:imajin:node');
+    expect(guard).toEqual({ grantees: [ROW], reissuedOnRotate: false });
+  });
+
+  it('does not exempt a bare "internal-secret:" prefix or a lookalike', async () => {
+    queryReturning([ROW]);
+    expect((await getRotateGranteeGuard('internal-secret:', 'did:imajin:node')).reissuedOnRotate).toBe(false);
+    expect((await getRotateGranteeGuard('x-internal-secret:foo', 'did:imajin:node')).reissuedOnRotate).toBe(false);
+  });
+
+  it('propagates a query failure for a non-exempt field', async () => {
+    mockDbSelect.mockReturnValue({ from: () => ({ where: () => Promise.reject(new Error('db down')) }) });
+    await expect(getRotateGranteeGuard('GH_TOKEN', 'did:imajin:node')).rejects.toThrow('db down');
   });
 });

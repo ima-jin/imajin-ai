@@ -7,17 +7,20 @@ export interface VaultGranteesState {
   loading: boolean;
   grantees: VaultGranteeApiRow[];
   error: string | null;
+  /** The server says this field's rotate path re-issues its grantees (internal-secret:*) — no guard. */
+  reissuedOnRotate: boolean;
 }
 
-const EMPTY_STATE: VaultGranteesState = { loading: false, grantees: [], error: null };
+const EMPTY_STATE: VaultGranteesState = { loading: false, grantees: [], error: null, reissuedOnRotate: false };
 
 /**
  * Fetches the OTHER active delegation grantees on `field` (#2450 step 1) —
  * GET /api/vault/grantees/[field] — whenever the Rotate dialog opens.
  * Rotate does not re-issue an existing grantee's copy of the wrapped key,
- * so each one silently stops decrypting unless the operator is warned
- * (re-issuing on rotate is #2450 step 2, not done here — this hook only
- * informs the warning).
+ * so each one silently stops decrypting unless the operator is warned —
+ * except `internal-secret:*` fields, whose rotate path re-issues them
+ * (#2446); the server reports that as `reissuedOnRotate`. This hook only
+ * informs the warning.
  */
 export function useVaultGrantees(field: string | null, open: boolean): VaultGranteesState {
   const [state, setState] = useState<VaultGranteesState>(EMPTY_STATE);
@@ -29,7 +32,7 @@ export function useVaultGrantees(field: string | null, open: boolean): VaultGran
     }
 
     let cancelled = false;
-    setState({ loading: true, grantees: [], error: null });
+    setState({ loading: true, grantees: [], error: null, reissuedOnRotate: false });
 
     fetch(`/api/vault/grantees/${encodeURIComponent(field)}`, { cache: 'no-store' })
       .then(async (response) => {
@@ -40,7 +43,12 @@ export function useVaultGrantees(field: string | null, open: boolean): VaultGran
       })
       .then((data) => {
         if (!cancelled) {
-          setState({ loading: false, grantees: data.grantees, error: null });
+          setState({
+            loading: false,
+            grantees: data.grantees,
+            error: null,
+            reissuedOnRotate: data.reissuedOnRotate === true,
+          });
         }
       })
       .catch((err: unknown) => {
@@ -49,6 +57,7 @@ export function useVaultGrantees(field: string | null, open: boolean): VaultGran
             loading: false,
             grantees: [],
             error: err instanceof Error ? err.message : 'Failed to load grantees',
+            reissuedOnRotate: false,
           });
         }
       });

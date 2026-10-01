@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
+import { getRotateGranteeGuard } from '@/src/lib/vault/grantees';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 
 const log = createLogger('kernel');
@@ -17,9 +17,11 @@ const log = createLogger('kernel');
  * decrypt (#2446/#2448/#2450).
  *
  * Read-only and purely informational for the UI: the count and shape here
- * are shared (via `listOtherActiveGrantees`) with the SERVER-SIDE guard on
- * `POST /api/vault/rotate`, which enforces the same query itself rather
- * than trusting whatever the browser saw.
+ * are shared (via `getRotateGranteeGuard`) with the SERVER-SIDE guard on
+ * `POST /api/vault/rotate`, which enforces the same decision itself rather
+ * than trusting whatever the browser saw. `internal-secret:*` fields report
+ * no grantees and `reissuedOnRotate: true` — their rotate path re-issues
+ * external grantees itself (#2446).
  */
 export async function GET(_request: NextRequest, props: { params: Promise<{ field: string }> }) {
   const params = await props.params;
@@ -30,8 +32,8 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ fiel
 
   try {
     const identity = getNodeSigningIdentity();
-    const grantees = await listOtherActiveGrantees(field, identity.senderDid);
-    return NextResponse.json({ field, count: grantees.length, grantees });
+    const { grantees, reissuedOnRotate } = await getRotateGranteeGuard(field, identity.senderDid);
+    return NextResponse.json({ field, count: grantees.length, grantees, reissuedOnRotate });
   } catch (error) {
     log.error({ err: String(error), field }, 'Vault grantees error');
     return toVaultErrorResponse(error, 'Failed to list grantees', 500);

@@ -1,22 +1,22 @@
 /**
  * Unit tests for GET /api/vault/grantees/[field] (#2450 step 1).
  *
- * Thin wrapper over `listOtherActiveGrantees` (shared with the server-side
+ * Thin wrapper over `getRotateGranteeGuard` (shared with the server-side
  * guard on rotate) — this test pins the route-level contract: auth,
  * and that the shared helper's result is passed through as-is.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireAdmin, mockListOtherActiveGrantees, mockGetNodeSigningIdentity } = vi.hoisted(() => ({
+const { mockRequireAdmin, mockGetRotateGranteeGuard, mockGetNodeSigningIdentity } = vi.hoisted(() => ({
   mockRequireAdmin: vi.fn(async () => true),
-  mockListOtherActiveGrantees: vi.fn(),
+  mockGetRotateGranteeGuard: vi.fn(),
   mockGetNodeSigningIdentity: vi.fn(() => ({ senderDid: 'did:imajin:node' })),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAdmin: mockRequireAdmin }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: mockGetNodeSigningIdentity }));
-vi.mock('@/src/lib/vault/grantees', () => ({ listOtherActiveGrantees: mockListOtherActiveGrantees }));
+vi.mock('@/src/lib/vault/grantees', () => ({ getRotateGranteeGuard: mockGetRotateGranteeGuard }));
 vi.mock('@/src/lib/vault/errors', () => ({
   toVaultErrorResponse: (_e: unknown, msg: string, status: number) =>
     new Response(JSON.stringify({ error: msg }), { status }),
@@ -39,36 +39,49 @@ describe('GET /api/vault/grantees/[field]', () => {
     mockRequireAdmin.mockResolvedValue(false);
     const response = await GET(new Request('http://localhost') as never, makeParams('warp-agent-key:did:imajin:x'));
     expect(response.status).toBe(401);
-    expect(mockListOtherActiveGrantees).not.toHaveBeenCalled();
+    expect(mockGetRotateGranteeGuard).not.toHaveBeenCalled();
   });
 
   it('returns an empty list for a field with no other grantees', async () => {
-    mockListOtherActiveGrantees.mockResolvedValue([]);
+    mockGetRotateGranteeGuard.mockResolvedValue({ grantees: [], reissuedOnRotate: false });
     const response = await GET(new Request('http://localhost') as never, makeParams('GH_TOKEN'));
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body).toEqual({ field: 'GH_TOKEN', count: 0, grantees: [] });
-    expect(mockListOtherActiveGrantees).toHaveBeenCalledWith('GH_TOKEN', 'did:imajin:node');
+    expect(body).toEqual({ field: 'GH_TOKEN', count: 0, grantees: [], reissuedOnRotate: false });
+    expect(mockGetRotateGranteeGuard).toHaveBeenCalledWith('GH_TOKEN', 'did:imajin:node');
   });
 
   it('lists an external grantee with its purpose and expiry', async () => {
-    mockListOtherActiveGrantees.mockResolvedValue([
-      { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null },
-    ]);
-    const response = await GET(
-      new Request('http://localhost') as never,
-      makeParams('internal-secret:kernel.attestation-internal-api-key'),
-    );
+    mockGetRotateGranteeGuard.mockResolvedValue({
+      grantees: [{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null }],
+      reissuedOnRotate: false,
+    });
+    const response = await GET(new Request('http://localhost') as never, makeParams('warp-agent-key:did:imajin:x'));
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.count).toBe(1);
+    expect(body.reissuedOnRotate).toBe(false);
     expect(body.grantees).toEqual([
       { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null },
     ]);
   });
 
+  it('reports reissuedOnRotate with no grantees for an exempt internal-secret field', async () => {
+    mockGetRotateGranteeGuard.mockResolvedValue({ grantees: [], reissuedOnRotate: true });
+    const response = await GET(
+      new Request('http://localhost') as never,
+      makeParams('internal-secret:kernel.attestation-internal-api-key'),
+    );
+    expect(await response.json()).toEqual({
+      field: 'internal-secret:kernel.attestation-internal-api-key',
+      count: 0,
+      grantees: [],
+      reissuedOnRotate: true,
+    });
+  });
+
   it('surfaces a query failure as a 500', async () => {
-    mockListOtherActiveGrantees.mockRejectedValue(new Error('db down'));
+    mockGetRotateGranteeGuard.mockRejectedValue(new Error('db down'));
     const response = await GET(new Request('http://localhost') as never, makeParams('GH_TOKEN'));
     expect(response.status).toBe(500);
   });
