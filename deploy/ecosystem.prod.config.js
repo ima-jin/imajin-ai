@@ -1,3 +1,17 @@
+// pm2 must exec the listener directly (#2447). Never use `script: "npm"` /
+// `args: "start"` for an app we own: pm2 tracks the npm wrapper, so on restart
+// it kills npm while the `sh -c next start` -> `next-server` grandchildren
+// survive, get reparented to init and keep the port bound. The fresh pm2 copy
+// then crash-loops on EADDRINUSE while the orphan serves traffic. Instead:
+//   - Next apps:  script node_modules/next/dist/bin/next, args "start -p <port>"
+//   - kernel:     script server.js (the custom Next server)
+//   - corpus:     script src/index.ts under `node --import tsx`
+// so the pm2-managed pid *is* the listener. scripts/assert-pm2-listeners.sh
+// verifies this after every deploy restart.
+//
+// fixready / karaoke / scorecard live in separate repos whose start scripts
+// are not visible from here; they keep `npm start` until each is confirmed and
+// converted (tracked in the allowlist in scripts/__tests__/ecosystem-config.test.mjs).
 module.exports = {
   "apps": [
     {
@@ -38,8 +52,10 @@ module.exports = {
     {
       "name": "prod-auth",
       "cwd": "/home/jin/prod/imajin-ai/apps/auth",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7001",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7001,
         "NODE_ENV": "production"
@@ -50,8 +66,10 @@ module.exports = {
     {
       "name": "prod-registry",
       "cwd": "/home/jin/prod/imajin-ai/apps/registry",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7002",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7002,
         "NODE_ENV": "production"
@@ -62,8 +80,10 @@ module.exports = {
     {
       "name": "prod-connections",
       "cwd": "/home/jin/prod/imajin-ai/apps/connections",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7003",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7003,
         "NODE_ENV": "production"
@@ -74,8 +94,10 @@ module.exports = {
     {
       "name": "prod-pay",
       "cwd": "/home/jin/prod/imajin-ai/apps/pay",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7004",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7004,
         "NODE_ENV": "production"
@@ -86,8 +108,10 @@ module.exports = {
     {
       "name": "prod-profile",
       "cwd": "/home/jin/prod/imajin-ai/apps/profile",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7005",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7005,
         "NODE_ENV": "production"
@@ -98,8 +122,10 @@ module.exports = {
     {
       "name": "prod-events",
       "cwd": "/home/jin/prod/imajin-ai/apps/events",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7006",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7006,
         "NODE_ENV": "production"
@@ -110,8 +136,9 @@ module.exports = {
     {
       "name": "prod-chat",
       "cwd": "/home/jin/prod/imajin-ai/apps/chat",
-      "script": "npm",
-      "args": "start",
+      "script": "server.js",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7007,
         "NODE_ENV": "production"
@@ -122,8 +149,10 @@ module.exports = {
     {
       "name": "prod-media",
       "cwd": "/home/jin/prod/imajin-ai/apps/media",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7009",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7009,
         "NODE_ENV": "production"
@@ -134,8 +163,10 @@ module.exports = {
     {
       "name": "prod-coffee",
       "cwd": "/home/jin/prod/imajin-ai/apps/coffee",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7100",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7100,
         "NODE_ENV": "production"
@@ -146,8 +177,10 @@ module.exports = {
     {
       "name": "prod-dykil",
       "cwd": "/home/jin/prod/imajin-ai/apps/dykil",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7101",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7101,
         "NODE_ENV": "production"
@@ -158,8 +191,10 @@ module.exports = {
     {
       "name": "prod-links",
       "cwd": "/home/jin/prod/imajin-ai/apps/links",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7102",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7102,
         "NODE_ENV": "production"
@@ -170,8 +205,10 @@ module.exports = {
     {
       "name": "prod-learn",
       "cwd": "/home/jin/prod/imajin-ai/apps/learn",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7103",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7103,
         "NODE_ENV": "production"
@@ -182,8 +219,10 @@ module.exports = {
     {
       "name": "prod-market",
       "cwd": "/home/jin/prod/imajin-ai/apps/market",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7104",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7104,
         "NODE_ENV": "production"

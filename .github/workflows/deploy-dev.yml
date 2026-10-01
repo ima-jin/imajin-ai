@@ -71,6 +71,32 @@ jobs:
             echo "⚠️  No dev-* pm2 processes found to restart"
             exit 0
           fi
-          echo "Restarting: $DEV_PROCS"
-          pm2 restart $DEV_PROCS
+          # Services declared in the ecosystem file are restarted FROM the file: a
+          # name-based `pm2 restart` reuses the saved definition, so a service pm2
+          # still has saved as `npm start` would keep the npm wrapper that orphans
+          # next-server on restart (#2447). Anything not in the file keeps the
+          # name-based restart.
+          source scripts/lib/pm2-owned.sh
+          FILE_PROCS=""
+          NAME_PROCS=""
+          for proc in $DEV_PROCS; do
+            if ecosystem_has_app "$proc" "$ECOSYSTEM_FILE"; then
+              FILE_PROCS="${FILE_PROCS:+$FILE_PROCS,}$proc"
+            else
+              NAME_PROCS="$NAME_PROCS $proc"
+            fi
+          done
+          if [ -n "$FILE_PROCS" ]; then
+            echo "Restarting from $ECOSYSTEM_FILE: $FILE_PROCS"
+            pm2 startOrRestart "$ECOSYSTEM_FILE" --only "$FILE_PROCS" --update-env
+          fi
+          if [ -n "$NAME_PROCS" ]; then
+            echo "Restarting by name:$NAME_PROCS"
+            pm2 restart $NAME_PROCS
+          fi
           echo "✅ Dev services restarted"
+
+      # #2447: fail the deploy unless every port's listener is the pm2-managed
+      # process (or its child), not an orphan surviving the restart.
+      - name: Assert pm2 owns every service port
+        run: ./scripts/assert-pm2-listeners.sh dev "$ECOSYSTEM_FILE"
