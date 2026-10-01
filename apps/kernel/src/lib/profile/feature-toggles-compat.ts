@@ -16,7 +16,7 @@
 import type { FeatureToggles } from '@/src/db/schemas/profile';
 
 /** The 4 legacy per-app fields this mapper reads for back-compat (#2425). */
-const LEGACY_APP_SLUGS = ['links', 'coffee', 'dykil', 'learn'] as const;
+export const LEGACY_APP_SLUGS = ['links', 'coffee', 'dykil', 'learn'] as const;
 
 /**
  * Resolve the full set of app slugs enabled on a profile, unioning the
