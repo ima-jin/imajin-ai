@@ -6,6 +6,14 @@ import html from 'remark-html';
 import { db, assets, identities } from '@/src/db';
 import { sql, eq } from 'drizzle-orm';
 
+/**
+ * An article is publicly readable only when it is POSTED and its asset is
+ * public. Matches the media list's public filter (missing access = private).
+ * Every query in this file serves anonymous readers, so all of them apply it.
+ */
+const publiclyVisible = sql`${assets.metadata}->'article'->>'status' = ${'POSTED'}
+        AND COALESCE(${assets.fairManifest}->'access'->>'type', 'private') = 'public'`;
+
 export type ArticleStatus = 'POSTED' | 'REVIEW' | 'DRAFT';
 
 export interface ArticleMeta {
@@ -99,7 +107,7 @@ export async function getAllArticles(): Promise<ArticleMeta[]> {
     .where(
       sql`${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
-        AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
+        AND ${publiclyVisible}`
     )
     .orderBy(sql`(${assets.metadata}->'article'->>'date')::date DESC`);
 
@@ -124,7 +132,7 @@ export async function getArticlesByAuthor(ownerDid: string): Promise<ArticleMeta
       sql`${assets.ownerDid} = ${ownerDid}
         AND ${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
-        AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
+        AND ${publiclyVisible}`
     )
     .orderBy(sql`(${assets.metadata}->'article'->>'date')::date DESC`);
 
@@ -147,7 +155,7 @@ export async function getAllArticleSlugs(): Promise<{ handle: string; slug: stri
     .where(
       sql`${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
-        AND ${assets.metadata}->'article'->>'status' = ${'POSTED'}`
+        AND ${publiclyVisible}`
     );
 
   return rows
@@ -227,7 +235,8 @@ export async function getArticleBySlug(ownerDid: string, slug: string): Promise<
       sql`${assets.ownerDid} = ${ownerDid}
         AND ${assets.mimeType} = ${'text/markdown'}
         AND ${assets.status} = ${'active'}
-        AND ${assets.metadata}->'article'->>'slug' = ${slug}`
+        AND ${assets.metadata}->'article'->>'slug' = ${slug}
+        AND ${publiclyVisible}`
     )
     .limit(1);
 

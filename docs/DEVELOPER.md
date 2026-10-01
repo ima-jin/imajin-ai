@@ -40,7 +40,7 @@ Run with `--help` for all options. Use `--force` to regenerate `.env.local` file
 - Runs `pnpm install`
 - Creates the `imajin_dev` database (skip if it already exists)
 - Generates an Ed25519 keypair (`AUTH_PRIVATE_KEY`) and all internal API keys
-- Writes `.env.local` for kernel and every vertical (events, coffee, dykil, links, learn, market) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`
+- Writes `.env.local` for kernel and every in-repo vertical (events, coffee, dykil, learn, market) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`. `links` (#1986 phase 2) now lives in its own repo, [ima-jin/links](https://github.com/ima-jin/links), and is set up separately.
 - Runs all migrations via `./scripts/migrate.sh`
 
 ### Minimum Services for Local Dev

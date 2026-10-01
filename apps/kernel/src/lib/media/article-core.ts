@@ -143,7 +143,20 @@ export async function deriveArticleProjection(
 ): Promise<DeriveArticleProjectionResult> {
   const built = projectArticleFromFrontmatter(fileContent);
   // No header, or no slug/title in it → treat as a plain note, not an article.
-  if (built === null || "error" in built) return { article: null };
+  // metadata.article is a projection of the file, so a demotion must clear it:
+  // leaving the old block behind keeps the asset routable as an article after
+  // the write reported it as demoted. Plain notes with no prior block: no write.
+  if (built === null || "error" in built) {
+    const base = existingMetadata && typeof existingMetadata === "object"
+      ? (existingMetadata as Record<string, unknown>)
+      : null;
+    if (base && "article" in base) {
+      const rest: Record<string, unknown> = { ...base };
+      delete rest.article;
+      await db.update(assets).set({ metadata: rest, updatedAt: new Date() }).where(eq(assets.id, assetId));
+    }
+    return { article: null };
+  }
 
   const metadata = mergeArticleMetadata(existingMetadata, built.block);
   await db.update(assets).set({ metadata, updatedAt: new Date() }).where(eq(assets.id, assetId));
