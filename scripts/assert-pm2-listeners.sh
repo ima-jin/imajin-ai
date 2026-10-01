@@ -59,19 +59,24 @@ TARGETS="$(node -e '
 
 # pm2's own pid for process $1 (empty if unknown or not running).
 pm2_pid_of() {
+  local name="$1"
   pm2 jlist 2>/dev/null | node -e '
     const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
     const match = procs.find((p) => p && p.name === process.argv[1]);
     if (match && match.pid) console.log(match.pid);
-  ' "$1" 2>/dev/null || true
+  ' "$name" 2>/dev/null || true
+  return 0
 }
 
 # Does pm2 know a process named $1 at all (running or not)?
 pm2_knows() {
+  local name="$1" status
   pm2 jlist 2>/dev/null | node -e '
     const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
     process.exit(procs.some((p) => p && p.name === process.argv[1]) ? 0 : 1);
-  ' "$1" 2>/dev/null
+  ' "$name" 2>/dev/null
+  status=$?
+  return "$status"
 }
 
 # Is pid $1 equal to, or a descendant of, pid $2?

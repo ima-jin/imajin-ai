@@ -29,7 +29,7 @@ const EXTERNAL_WRAPPED = new Set([
 ]);
 
 // In-repo Next apps (`next start`) that must run via the next binary.
-const NEXT_APPS = ['events', 'coffee', 'dykil', 'links', 'learn', 'market'];
+const NEXT_APPS = ['events', 'coffee', 'dykil', 'learn', 'market'];
 
 function loadApps(env) {
   const apps = require(`${DEPLOY_DIR}ecosystem.${env}.config.js`).apps;

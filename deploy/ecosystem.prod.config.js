@@ -189,20 +189,6 @@ module.exports = {
       "min_uptime": "20s"
     },
     {
-      "name": "prod-links",
-      "cwd": "/home/jin/prod/imajin-ai/apps/links",
-      "script": "node_modules/next/dist/bin/next",
-      "args": "start -p 7102",
-      "interpreter": "node",
-      "exec_mode": "fork",
-      "env": {
-        "PORT": 7102,
-        "NODE_ENV": "production"
-      },
-      "max_restarts": 10,
-      "min_uptime": "20s"
-    },
-    {
       "name": "prod-learn",
       "cwd": "/home/jin/prod/imajin-ai/apps/learn",
       "script": "node_modules/next/dist/bin/next",

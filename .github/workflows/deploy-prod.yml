@@ -85,7 +85,9 @@ jobs:
           pm2 startOrRestart "$ECOSYSTEM_FILE" --only prod-jin --update-env
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
-          # Everything else (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, prod-links, …).
+          # Everything else (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, …).
+          # links (#1986 phase 2) runs from its own repo/pm2 process now, so it is no
+          # longer among these.
           #
           # Services declared in the ecosystem file are restarted FROM the file for
           # the same reason as prod-jin: a name-based `pm2 restart` reuses the saved

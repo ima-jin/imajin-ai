@@ -1,7 +1,7 @@
 # Registering an extracted app with the kernel
 
 Gate 1+2 of epic #2370 (#2375): an app being extracted out of the monorepo into its own
-standalone repo (dykil today; links/learn/etc. later, #1985/#1991) is registered through
+standalone repo (dykil and links today; learn/etc. later, #1985/#1991/#1986) is registered through
 `apps.provision` — one call that creates its GitHub repo, registers it in the kernel's app
 registry (`registry.apps`, #1990) as a **`tier: 'third_party'`** row, and seals its app-auth
 private key into the repo's Actions secrets. **The app's private key never leaves the
