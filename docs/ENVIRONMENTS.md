@@ -63,7 +63,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Core | events | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee | 3100 | 7100 | jin.imajin.ai/coffee |
 | Imajin | dykil | 3101 | 7101 | jin.imajin.ai/dykil |
-| Imajin | links | 3102 | 7102 | jin.imajin.ai/links |
+| Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
 | Imajin | learn | 3103 | 7103 | jin.imajin.ai/learn |
 | Imajin | market | 3104 | 7104 | jin.imajin.ai/market |
 | Client | fixready | 3400 | 7400 | fixready.imajin.ai |
@@ -76,6 +76,13 @@ as the rest of prod — it's deployed on **gx10**, not the ProLiant
 (`deploy/ecosystem.prod.config.js` has no `prod-corpus` entry; see that
 file's README). Dev corpus (8013) is unaffected and still runs on the
 ProLiant alongside `dev-jin`.
+
+**links host note (#1986 phase 2):** links moved out of this monorepo into
+its own repo, [ima-jin/links](https://github.com/ima-jin/links) (kernel-side
+prune merged 2026-09-28). Its ports (3102/7102) and Caddy route
+(`jin.imajin.ai/links`) are unchanged — it is still deployed on this same
+host, just as a standalone `dev-links`/`prod-links` pm2 process built from
+its own repo checkout instead of `deploy/ecosystem.{dev,prod}.config.js`.
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when

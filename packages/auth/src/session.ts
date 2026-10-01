@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { getVaultInternalApiKey } from "./internal-post";
 const log = createLogger('auth');
 
 import { SESSION_COOKIE_NAME } from "@imajin/config";
@@ -20,7 +21,7 @@ async function validateActingAsCookie(
   service?: string
 ): Promise<{ valid: boolean; allowedServices?: string[] | null }> {
   const authUrl = getAuthUrl();
-  const internalApiKey = process.env.ATTESTATION_INTERNAL_API_KEY;
+  const internalApiKey = getVaultInternalApiKey() ?? process.env.ATTESTATION_INTERNAL_API_KEY;
   if (!internalApiKey) {
     log.warn({}, "[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as in getSession");
     return { valid: false };

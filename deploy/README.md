@@ -158,6 +158,19 @@ final exit check (`build.sh:362`, pre-fix) only looked at `FAILED` and
 `PORT_REAP_FAILED` — so a dirty restart left a green Actions run. See
 `docs/ops/DEPLOY-POSTURE.md` §2/§4.1 item 4 for the original investigation.
 
+## links is no longer in these ecosystem files (#1986 phase 2)
+
+`links` was removed from both `ecosystem.dev.config.js` and
+`ecosystem.prod.config.js` when `apps/links` was pruned from this monorepo
+(the app's own repo, [ima-jin/links](https://github.com/ima-jin/links), now
+owns it end to end — phase 1 of #1986). Its ports (3102 dev / 7102 prod) and
+Caddy route (`jin.imajin.ai/links`) are unchanged; the operator re-points the
+`dev-links`/`prod-links` pm2 entry at a checkout of the `ima-jin/links` repo
+instead of `~/dev/imajin-ai/apps/links` / `~/prod/imajin-ai/apps/links`. This
+repo's deploy workflows no longer build, migrate, or restart it — that is now
+`ima-jin/links`'s own CI/CD's job. See `docs/ops/DEPLOY-POSTURE.md` for the
+full note.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host

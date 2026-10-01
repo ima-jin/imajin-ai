@@ -12,6 +12,7 @@
  *   forward-failure counter.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { setVaultInternalApiKey } from './support/internal-post-test-env';
 
 const mocks = vi.hoisted(() => ({
   log: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
@@ -58,21 +59,21 @@ function fakeKernelFetch(expectedKey: string): ReturnType<typeof vi.fn> {
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  setVaultInternalApiKey(undefined);
   delete process.env.AUTH_INTERNAL_API_KEY;
   process.env.AUTH_SERVICE_URL = AUTH_SERVICE_URL;
 });
 
 afterEach(() => {
   delete process.env.AUTH_SERVICE_URL;
-  delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  setVaultInternalApiKey(undefined);
   delete process.env.AUTH_INTERNAL_API_KEY;
   vi.unstubAllGlobals();
 });
 
 describe('emitAttestation pending/originUrl threading (#1820)', () => {
   beforeEach(() => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+    setVaultInternalApiKey(ATTESTATION_KEY);
   });
 
   it('includes pending: true in the internal route request body when passed', async () => {
@@ -110,7 +111,7 @@ describe('emitAttestation pending/originUrl threading (#1820)', () => {
 
 describe('internal API key resolution (#2037)', () => {
   it('authenticates with the canonical ATTESTATION_INTERNAL_API_KEY and the route accepts the forward', async () => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+    setVaultInternalApiKey(ATTESTATION_KEY);
     const { emitAttestation, getAttestationForwardFailureCount } = await import('../src/emit-attestation');
     const fetchMock = fakeKernelFetch(ATTESTATION_KEY);
     vi.stubGlobal('fetch', fetchMock);
@@ -141,7 +142,7 @@ describe('internal API key resolution (#2037)', () => {
   });
 
   it('rejects, logs a warn (status + route, never the key), and increments the failure counter on a mismatched key', async () => {
-    process.env.ATTESTATION_INTERNAL_API_KEY = 'client-key';
+    setVaultInternalApiKey('client-key');
     const { emitAttestation, getAttestationForwardFailureCount } = await import('../src/emit-attestation');
     const fetchMock = fakeKernelFetch('server-key'); // the route's own key differs from what the client sends
     vi.stubGlobal('fetch', fetchMock);
