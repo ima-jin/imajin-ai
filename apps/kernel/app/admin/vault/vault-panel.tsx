@@ -7,7 +7,6 @@ import { RevokeGrantDialog } from './revoke-grant-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
 import { SetSecretDialog } from './set-secret-dialog';
 import type {
-  AdminEventsApiResponse,
   RotateSecretInput,
   SetSecretInput,
   UpgradeCustodyApiResponse,
@@ -25,8 +24,21 @@ function createHint(value: string, hint: string): string {
   return `${source.slice(0, 4)}...`;
 }
 
+/** Confirmed = the running kernel's vault lists this entry and can read it. Pending = an operator action exists. */
+function toStatus(row: Pick<VaultListApiRow, 'custodyScheme' | 'grantStatus' | 'expiresAt'>): VaultSecretRow['status'] {
+  if (row.custodyScheme !== 'delegation-grant') return 'confirmed';
+  const isExpired = row.expiresAt ? new Date(row.expiresAt) < new Date() : false;
+  return row.grantStatus === 'active' && !isExpired ? 'confirmed' : 'pending';
+}
+
 function statusBadge(status: VaultSecretRow['status']): string {
   return status === 'confirmed' ? '🟢 confirmed' : '🟡 pending';
+}
+
+function statusHint(status: VaultSecretRow['status']): string {
+  return status === 'confirmed'
+    ? 'The running kernel holds this entry and can read it.'
+    : 'No active delegation grant for this node, so the kernel cannot read this field. Click Rotate to re-seal it and issue a fresh grant.';
 }
 
 function CustodyCell({ row }: Readonly<{ row: VaultSecretRow }>) {
@@ -91,22 +103,6 @@ async function readErrorMessage(response: Response): Promise<string> {
   }
 }
 
-async function fetchVaultEvents(): Promise<Set<string>> {
-  const response = await fetch('/api/admin/events?service=vault&limit=200', { cache: 'no-store' });
-  if (!response.ok) {
-    throw new Error(await readErrorMessage(response));
-  }
-  const data = (await response.json()) as AdminEventsApiResponse;
-  const cids = new Set<string>();
-  data.rows.forEach((row) => {
-    const payloadCid = row.payload && typeof row.payload.cid === 'string' ? row.payload.cid : null;
-    if ((row.action === 'vault.secret.updated' || row.action === 'vault.secret.rotated') && payloadCid) {
-      cids.add(payloadCid);
-    }
-  });
-  return cids;
-}
-
 async function fetchVaultList(): Promise<VaultSecretRow[]> {
   const response = await fetch('/api/vault/list', { cache: 'no-store' });
   if (!response.ok) {
@@ -120,7 +116,7 @@ async function fetchVaultList(): Promise<VaultSecretRow[]> {
     cid: row.cid,
     setBy: row.senderDid,
     updatedAt: row.timestamp,
-    status: 'pending',
+    status: toStatus(row),
     custodyScheme: row.custodyScheme ?? 'node-sealed',
     grantedTo: row.grantedTo,
     expiresAt: row.expiresAt,
@@ -161,42 +157,22 @@ export function VaultPanel() {
     [secrets]
   );
 
-  const refreshStatuses = useCallback(async (baseRows?: VaultSecretRow[]) => {
-    const confirmedCids = await fetchVaultEvents();
-    setSecrets((current) => {
-      const source = baseRows ?? current;
-      return source.map((row) => ({
-        ...row,
-        status: confirmedCids.has(row.cid) ? 'confirmed' : 'pending',
-      }));
-    });
-  }, []);
-
   const refreshSecrets = useCallback(async () => {
     setLoading(true);
     try {
       const rows = await fetchVaultList();
       setSecrets(rows);
       setError(null);
-      await refreshStatuses(rows);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load vault secrets');
     } finally {
       setLoading(false);
     }
-  }, [refreshStatuses]);
+  }, []);
 
   useEffect(() => {
     void refreshSecrets();
   }, [refreshSecrets]);
-
-  useEffect(() => {
-    if (secrets.length === 0) return undefined;
-    const intervalId = globalThis.setInterval(() => {
-      void refreshStatuses();
-    }, 8000);
-    return () => globalThis.clearInterval(intervalId);
-  }, [refreshStatuses, secrets.length]);
 
   useEffect(() => {
     if (!historyField || historyByField[historyField]) return;
@@ -282,7 +258,7 @@ export function VaultPanel() {
       const response = await fetch('/api/vault/set', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ field: input.field, value: input.value }),
+        body: JSON.stringify({ field: input.field, value: input.value, custodyScheme: input.custodyScheme }),
       });
 
       if (!response.ok) {
@@ -297,7 +273,7 @@ export function VaultPanel() {
         setBy: result.senderDid,
         updatedAt: result.timestamp,
         status: result.status,
-        custodyScheme: result.custodyScheme ?? 'node-sealed',
+        custodyScheme: result.custodyScheme ?? input.custodyScheme,
       };
       setSecrets((current) => {
         const withoutField = current.filter((row) => row.field !== input.field);
@@ -318,7 +294,7 @@ export function VaultPanel() {
       }));
       setError(null);
       setSetOpen(false);
-      await refreshStatuses();
+      await refreshSecrets();
     } finally {
       setSubmitting(false);
     }
@@ -368,7 +344,7 @@ export function VaultPanel() {
       }));
       setError(null);
       setRotateField(null);
-      await refreshStatuses();
+      await refreshSecrets();
     } finally {
       setSubmitting(false);
     }
@@ -448,7 +424,7 @@ export function VaultPanel() {
                     <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                       {formatDistanceToNow(new Date(secret.updatedAt), { addSuffix: true })}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{statusBadge(secret.status)}</td>
+                    <td title={statusHint(secret.status)} className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{statusBadge(secret.status)}</td>
                     <td className="px-4 py-3">
                       <CustodyCell row={secret} />
                     </td>
@@ -510,7 +486,7 @@ export function VaultPanel() {
                   <p className="font-mono text-xs text-gray-900 dark:text-white">{secret.field}</p>
                   <p className="text-sm text-gray-700 dark:text-gray-300">{secret.hint}</p>
                 </div>
-                <span className="text-xs text-gray-700 dark:text-gray-300">{statusBadge(secret.status)}</span>
+                <span title={statusHint(secret.status)} className="text-xs text-gray-700 dark:text-gray-300">{statusBadge(secret.status)}</span>
               </div>
               <div className="mt-2">
                 <CustodyCell row={secret} />
