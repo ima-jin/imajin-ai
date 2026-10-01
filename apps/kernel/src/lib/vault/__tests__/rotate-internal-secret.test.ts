@@ -48,6 +48,7 @@ const { tmpVaultPath, stores, logSpies, reactors } = vi.hoisted(() => {
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
   const eq = (column: string, value: unknown): Predicate => (row) => row[column] === value;
+  const ne = (column: string, value: unknown): Predicate => (row) => row[column] !== value;
   const isNull = (column: string): Predicate => (row) => row[column] === null || row[column] === undefined;
   const toMs = (v: unknown): number => (v instanceof Date ? v.getTime() : Number(v));
   const gt = (column: string, value: unknown): Predicate => (row) =>
@@ -59,7 +60,7 @@ vi.mock('drizzle-orm', async (importOriginal) => {
   const like = (column: string, pattern: string): Predicate => (row) =>
     String(row[column]).startsWith(pattern.replaceAll('%', ''));
   const desc = (column: string) => ({ column, direction: 'desc' });
-  return { ...actual, eq, and, or, isNull, gt, lt, like, desc };
+  return { ...actual, eq, ne, and, or, isNull, gt, lt, like, desc };
 });
 
 // ── DB double ────────────────────────────────────────────────────────────────
@@ -276,12 +277,15 @@ function activeGrantsFor(field: string): Row[] {
   return [...stores.grants.values()].filter((g) => g.field === field && g.status === 'active');
 }
 
+// Sends `confirmField` the way the admin panel does: since #2450 the route
+// refuses (409) to rotate a field with other active grantees unless the
+// operator confirms by re-typing the field name.
 async function rotateViaRoute(field: string, value: string): Promise<Response> {
   const { POST } = await import('@/app/api/vault/rotate/route');
   const { NextRequest } = await import('next/server');
   return POST(new NextRequest('http://kernel.test/api/vault/rotate', {
     method: 'POST',
-    body: JSON.stringify({ field, value }),
+    body: JSON.stringify({ field, value, confirmField: field }),
   }));
 }
 

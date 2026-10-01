@@ -9,11 +9,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireAdmin, mockVaultServiceGet, mockRotateAndStore, mockPublish } = vi.hoisted(() => ({
+const { mockRequireAdmin, mockVaultServiceGet, mockRotateAndStore, mockPublish, mockGetNodeSigningIdentity, mockListOtherActiveGrantees } = vi.hoisted(() => ({
   mockRequireAdmin: vi.fn(async () => true),
   mockVaultServiceGet: vi.fn(),
   mockRotateAndStore: vi.fn(),
   mockPublish: vi.fn().mockResolvedValue(undefined),
+  mockGetNodeSigningIdentity: vi.fn(() => ({ senderDid: 'did:imajin:node' })),
+  mockListOtherActiveGrantees: vi.fn(async () => []),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAdmin: mockRequireAdmin }));
@@ -28,6 +30,9 @@ vi.mock('@/src/lib/vault', () => ({
 vi.mock('@/src/lib/vault/subscribe', () => ({
   ensureVaultHotReloadReactorRegistered: vi.fn(),
 }));
+
+vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: mockGetNodeSigningIdentity }));
+vi.mock('@/src/lib/vault/grantees', () => ({ listOtherActiveGrantees: mockListOtherActiveGrantees }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -54,6 +59,8 @@ beforeEach(() => {
   mockRequireAdmin.mockResolvedValue(true);
   mockVaultServiceGet.mockResolvedValue(EXISTING);
   mockPublish.mockResolvedValue(undefined);
+  mockGetNodeSigningIdentity.mockReturnValue({ senderDid: 'did:imajin:node' });
+  mockListOtherActiveGrantees.mockResolvedValue([]);
 });
 
 describe('POST /api/vault/rotate', () => {
@@ -112,5 +119,50 @@ describe('POST /api/vault/rotate', () => {
     mockRotateAndStore.mockRejectedValue(new Error('boom'));
     const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'x' }) as never);
     expect(response.status).toBe(400);
+  });
+});
+
+describe('fail-closed grantee guard (#2450)', () => {
+  it('returns 409 with the count and list when other active grantees exist and no confirmField is sent', async () => {
+    mockListOtherActiveGrantees.mockResolvedValue([
+      { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null },
+    ]);
+    const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new' }) as never);
+    expect(response.status).toBe(409);
+    const body = await response.json();
+    expect(body.count).toBe(1);
+    expect(body.grantees).toEqual([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null }]);
+    expect(mockRotateAndStore).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when confirmField does not match the field exactly', async () => {
+    mockListOtherActiveGrantees.mockResolvedValue([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: null, oneTime: false, expiresAt: null }]);
+    const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new', confirmField: 'wrong' }) as never);
+    expect(response.status).toBe(409);
+    expect(mockRotateAndStore).not.toHaveBeenCalled();
+  });
+
+  it('proceeds when confirmField matches the field exactly', async () => {
+    mockListOtherActiveGrantees.mockResolvedValue([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: null, oneTime: false, expiresAt: null }]);
+    mockRotateAndStore.mockResolvedValue({
+      field: 'GH_TOKEN',
+      cid: 'cid:new',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      senderDid: 'did:imajin:node',
+    });
+    const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new', confirmField: 'GH_TOKEN' }) as never);
+    expect(response.status).toBe(200);
+    expect(mockRotateAndStore).toHaveBeenCalledWith('GH_TOKEN', 'new');
+  });
+
+  it('never blocks a field with zero other grantees, confirmField or not', async () => {
+    mockRotateAndStore.mockResolvedValue({
+      field: 'GH_TOKEN',
+      cid: 'cid:new',
+      timestamp: '2026-01-01T00:00:00.000Z',
+      senderDid: 'did:imajin:node',
+    });
+    const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'new' }) as never);
+    expect(response.status).toBe(200);
   });
 });

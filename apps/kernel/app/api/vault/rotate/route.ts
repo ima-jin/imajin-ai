@@ -5,6 +5,8 @@ import { createLogger } from '@imajin/logger';
 import { rotateAndStore, vaultService } from '@/src/lib/vault';
 import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
 
 const log = createLogger('kernel');
 ensureVaultHotReloadReactorRegistered();
@@ -14,6 +16,8 @@ const nodeDid = process.env.NODE_DID ?? 'did:imajin:node';
 interface RotateVaultBody {
   field: string;
   value: string;
+  /** Required, and must equal `field` exactly, when the field has other active grantees (#2450). */
+  confirmField?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -27,7 +31,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { field, value } = body;
+  const { field, value, confirmField } = body;
 
   if (typeof field !== 'string' || field.trim().length === 0) {
     return NextResponse.json({ error: 'field is required' }, { status: 400 });
@@ -36,15 +40,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'value is required' }, { status: 400 });
   }
 
+  const trimmedField = field.trim();
+
   try {
-    const existing = await vaultService.get(field.trim());
+    const existing = await vaultService.get(trimmedField);
     if (!existing) {
       return NextResponse.json({ error: 'Field not found' }, { status: 404 });
     }
 
+    // #2450 — fail-closed server-side, not just in the dialog: rotating
+    // re-seals under a new key and re-grants only the node's own self-grant,
+    // so any OTHER active grantee's copy of the wrapped key silently stops
+    // decrypting. Computed with the exact same query the admin panel's
+    // warning uses, so the two can't drift. Re-issuing those grants on
+    // rotate is still open (#2450 step 2).
+    const identity = getNodeSigningIdentity();
+    const otherGrantees = await listOtherActiveGrantees(trimmedField, identity.senderDid);
+    if (otherGrantees.length > 0 && confirmField !== trimmedField) {
+      return NextResponse.json(
+        {
+          error: `${otherGrantees.length} active grantee(s) hold a grant on '${trimmedField}' — resend with confirmField: "${trimmedField}" to proceed.`,
+          count: otherGrantees.length,
+          grantees: otherGrantees,
+        },
+        { status: 409 },
+      );
+    }
+
     // rotateAndStore keeps the superseded grant's purpose; internal-secret:*
     // fields also keep their provisions row + external grantees (#2446).
-    const entry = await rotateAndStore(field.trim(), value);
+    const entry = await rotateAndStore(trimmedField, value);
 
     let published = true;
     try {

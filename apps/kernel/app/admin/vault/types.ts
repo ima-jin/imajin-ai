@@ -36,6 +36,8 @@ export interface RotateSecretInput {
   field: string;
   value: string;
   hint: string;
+  /** Required, and must equal `field` exactly, when the field has other active grantees (#2450). */
+  confirmField?: string;
 }
 
 export interface VaultListApiRow {
@@ -81,4 +83,25 @@ export interface UpgradeCustodyApiResponse {
   custodyScheme: 'delegation-grant';
   grantId: string;
   grantedTo: string;
+}
+
+/**
+ * An active delegation grant on a field OTHER than the node's own self-grant
+ * (#2450 step 1) — GET /api/vault/grantees/[field]. Rotating a field does
+ * nothing to these; each one's copy of the wrapped key stops decrypting
+ * unless the field's rotate path re-issues it (not yet implemented — #2450
+ * step 2).
+ */
+export interface VaultGranteeApiRow {
+  grantId: string;
+  grantedTo: string;
+  purpose: string | null;
+  oneTime: boolean;
+  expiresAt: string | null;
+}
+
+export interface VaultGranteesApiResponse {
+  field: string;
+  count: number;
+  grantees: VaultGranteeApiRow[];
 }
