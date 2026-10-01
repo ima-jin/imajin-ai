@@ -219,6 +219,31 @@ mirroring this repo's `deploy-dev.yml` but scoped to one app:
   a PR's new migration file against `main`'s current max at merge time. Both are process changes, not
   server changes, and don't require an ops ruling — flagged here as follow-up, not a DECISION card.
 
+## 5. links is external now (#1986 phase 2)
+
+`apps/links` was removed from this repo entirely — it now lives and is built,
+tested, and deployed from its own repo, [ima-jin/links](https://github.com/ima-jin/links)
+(phase 1 merged first, this repo's kernel-side prune is phase 2). Nothing in
+§1's pipeline shape changes: `deploy-dev.yml`/`deploy-prod.yml` never targeted
+`ima-jin/links` and don't need to — that repo owns its own CI/CD now. What
+does change here:
+
+- `deploy/ecosystem.{dev,prod}.config.js` no longer list a `links`/`prod-links`
+  entry (removed in this PR). The pm2 process that serves it on this same host
+  is now the operator's responsibility to point at a `ima-jin/links` checkout
+  instead of `~/{dev,prod}/imajin-ai/apps/links`.
+- Caddy is unchanged — `jin.imajin.ai/links` still reverse-proxies to the same
+  port (3102 dev / 7102 prod); only what's running behind that port changes.
+- `deploy-prod.yml`'s "Restart prod services" step restarts every `prod-*` pm2
+  process by name, discovered dynamically via `pm2 jlist` (not read from the
+  ecosystem file) — so if the operator keeps naming the standalone process
+  `prod-links`, this repo's kernel deploys will keep bouncing it too, even
+  though this repo no longer builds or migrates it. See the decision below.
+- This repo's per-owner migration ownership map (`migrations/OWNERSHIP.md`,
+  `migrations/ownership.json`) already scoped `links.*` tables to the `links`
+  owner; no migration files moved (see `migrations/BASELINE.md`'s "Per-app
+  migration directories" section — still deferred, unrelated to this prune).
+
 ## Decisions for Ryan
 
 DECISION · Migration collision prevention · Should merging a PR that adds a new migration file
@@ -247,3 +272,16 @@ migration to ship a paired down-script c) defer — no rollback runbook until a 
 the question · rec: a — matches how this repo already treats migrations (idempotent, forward-only,
 per `docs/MIGRATIONS.md:51-56`) and costs only documentation, not new tooling.
 **Ruled 2026-09-25: a.** Written up in `docs/ops/ROLLBACK.md` (#2385).
+
+DECISION · `prod-links`/`dev-links` pm2 naming post-extraction (#1986 phase 2) · Now that `links`
+is built and deployed by its own repo, should the operator keep naming its standalone pm2 process
+`prod-links`/`dev-links` (this repo's `deploy-prod.yml`/`deploy-dev.yml` restart every `prod-*`/
+`dev-*` process found via `pm2 jlist`, by name, regardless of the ecosystem file — so a kernel-only
+deploy would keep bouncing it too), or rename it (e.g. `links` / `links-standalone`) so this repo's
+deploys stop touching a process it no longer builds or migrates? · a) keep the `prod-links`/
+`dev-links` names — harmless extra restart, and it's a fast Next.js app b) rename it out of the
+`prod-*`/`dev-*` sweep so this repo's deploys are fully hands-off for links c) give `ima-jin/links`
+its own `deploy-prod.yml`/`deploy-dev.yml` that manages its own pm2 process by name explicitly,
+independent of this repo's sweep entirely · rec: c — matches the actual ownership split (this repo
+no longer owns links' build/migrate/restart at all) and avoids two unrelated deploy pipelines
+racing to restart the same process.
