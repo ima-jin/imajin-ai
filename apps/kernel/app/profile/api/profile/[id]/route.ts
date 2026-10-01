@@ -290,7 +290,7 @@ function validateFieldVisibilityShape(
  * without bound. Returns the first violation, or null.
  */
 function findJsonbSizeViolation(
-  body: Record<string, any>,
+  body: Record<string, unknown>,
   existing: typeof profiles.$inferSelect | undefined
 ): JsonbSizeResult | null {
   const candidates: Array<[ProfileJsonbField, unknown]> = [
@@ -299,7 +299,7 @@ function findJsonbSizeViolation(
     ['taxRegistrations', body.taxRegistrations],
   ];
   if (body.feature_toggles !== undefined) {
-    candidates.push(['featureToggles', { ...existing?.featureToggles, ...body.feature_toggles }]);
+    candidates.push(['featureToggles', { ...existing?.featureToggles, ...(body.feature_toggles as Record<string, unknown>) }]);
   }
   for (const [field, value] of candidates) {
     const result = validateJsonbSize(field, value);
