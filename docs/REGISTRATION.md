@@ -54,7 +54,10 @@ consulted for two things:
    downloads a `.pem` file once. Note the **App ID** (shown on the same page) and the
    **Installation ID** (the numeric ID in the URL after installing, e.g.
    `https://github.com/organizations/ima-jin/settings/installations/<installationId>`).
-5. **Seal the three values as one JSON blob** via the existing generic vault-set route:
+5. **Seal the three values as one JSON blob** through the admin panel: open `/admin/vault` ->
+   "+ Set Secret", enter the field `github-org-provisioning` (typed exactly — case is preserved),
+   leave Custody on `delegation-grant` (the default for a namespaced field), and paste the JSON
+   blob as the value. Fallback, via the existing generic vault-set route:
    ```bash
    curl -X POST "${IMAJIN_AUTH_URL}/api/vault/set" \
      -H "Content-Type: application/json" \
