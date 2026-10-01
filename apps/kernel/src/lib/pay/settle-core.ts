@@ -63,12 +63,42 @@ interface FairManifestTaxCredit {
   kind: string;
   rateBps: number;
   remitTo: string;
-  registrationNumber?: string;
+  /** Required (#2439) — stored on the tax ledger row so the remittance-owed report can show it. */
+  registrationNumber: string;
 }
 
 type SettlementValidationResult =
   | { error: string; status: number }
   | { signatureVerified: boolean };
+
+/**
+ * Validate one `fair_manifest.taxCredits` row (#2419), split out so the
+ * per-row rules stay individually small.
+ */
+function validateTaxCreditRow(credit: FairManifestTaxCredit): { error: string; status: number } | null {
+  // #2419 fix (review): checked separately from `amount` so a
+  // non-negative ZERO amount (e.g. rateBps: 0, which validate.ts
+  // already allows) isn't rejected by a truthy check.
+  if (!credit.did || !credit.jurisdiction || !credit.kind || !credit.remitTo) {
+    return { error: 'Each taxCredits item must have did, amount, jurisdiction, kind, remitTo, and registrationNumber', status: 400 };
+  }
+  // #2439: required end-to-end — it is persisted on the tax ledger row and
+  // shown by the remittance-owed report, so a credit without one can't be
+  // reported against a registration.
+  if (typeof credit.registrationNumber !== 'string' || credit.registrationNumber.length === 0) {
+    return { error: 'Each taxCredits item must have a non-empty registrationNumber', status: 400 };
+  }
+  // #2419 fix (review): a string/NaN amount previously slipped through
+  // `!credit.amount` (a non-empty numeric string is truthy) and turned
+  // `chainTotal + taxTotal` into string concatenation or NaN, at which
+  // point `Math.abs(NaN) > 0.01` is false and the tolerance check below
+  // silently passes. `/pay/api/settle` takes `fair_manifest` straight
+  // from an API-key caller, so this must be a hard 400.
+  if (typeof credit.amount !== 'number' || !Number.isFinite(credit.amount) || credit.amount < 0) {
+    return { error: 'Each taxCredits item amount must be a finite number >= 0', status: 400 };
+  }
+  return null;
+}
 
 /**
  * Validate + sum `fair_manifest.taxCredits` (#2419), split out of
@@ -83,21 +113,8 @@ function validateTaxCreditsSum(taxCredits: unknown): { error: string; status: nu
 
   let taxTotal = 0;
   for (const credit of taxCredits as FairManifestTaxCredit[]) {
-    // #2419 fix (review): checked separately from `amount` so a
-    // non-negative ZERO amount (e.g. rateBps: 0, which validate.ts
-    // already allows) isn't rejected by a truthy check.
-    if (!credit.did || !credit.jurisdiction || !credit.kind || !credit.remitTo) {
-      return { error: 'Each taxCredits item must have did, amount, jurisdiction, kind, and remitTo', status: 400 };
-    }
-    // #2419 fix (review): a string/NaN amount previously slipped through
-    // `!credit.amount` (a non-empty numeric string is truthy) and turned
-    // `chainTotal + taxTotal` into string concatenation or NaN, at which
-    // point `Math.abs(NaN) > 0.01` is false and the tolerance check below
-    // silently passes. `/pay/api/settle` takes `fair_manifest` straight
-    // from an API-key caller, so this must be a hard 400.
-    if (typeof credit.amount !== 'number' || !Number.isFinite(credit.amount) || credit.amount < 0) {
-      return { error: 'Each taxCredits item amount must be a finite number >= 0', status: 400 };
-    }
+    const rowError = validateTaxCreditRow(credit);
+    if (rowError) return rowError;
     taxTotal += credit.amount;
   }
   return { taxTotal };
@@ -355,8 +372,9 @@ async function creditChainRecipients(tx: TxExecutor, ctx: CreditLoopContext): Pr
 /**
  * Credit each `fair_manifest.taxCredits` row (#2419) — one extra
  * trust-liability ledger credit per `.fair` `taxes[]` row, tagged
- * `{ tax: true, jurisdiction, kind, rateBps, remitTo, trustLiability: true,
- * remitted: null }`. On a funded (Stripe) settlement, `validateFundedTaxCollectors`
+ * `{ tax: true, jurisdiction, kind, rateBps, remitTo, registrationNumber,
+ * trustLiability: true, remitted: null }` (`registrationNumber` #2439 —
+ * required, so `getTaxRemittanceOwed` can report it).
  * (pre-mutation validation, above) has already guaranteed every credit's
  * `did` is one of this settlement's chain sellers — that DID already
  * received the tax money directly via the same Stripe Connect transfer
@@ -401,6 +419,7 @@ async function creditTaxRows(tx: TxExecutor, ctx: CreditLoopContext): Promise<st
         kind: credit.kind,
         rateBps: credit.rateBps,
         remitTo: credit.remitTo,
+        registrationNumber: credit.registrationNumber,
         trustLiability: true,
         remitted: null,
         ...(funded && { funded: true, funded_provider: funded_provider || 'unknown' }),
@@ -496,7 +515,7 @@ export interface SettlePaymentParams {
       kind: string;
       rateBps: number;
       remitTo: string;
-      registrationNumber?: string;
+      registrationNumber: string;
     }>;
   };
   funded?: boolean;

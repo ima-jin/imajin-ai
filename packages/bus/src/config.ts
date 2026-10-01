@@ -648,6 +648,24 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'payment_request.settled': [
     { type: 'payment-request-notify', config: {}, enabled: true },
   ],
+  // #2439 — operator alert when a paid-through-Stripe request fails to
+  // settle on the ledger. `emit` puts it on the signed event stream; `notify`
+  // lands the operator's /jin card (the event's `subject` is the operator /
+  // node DID). No DB row is seeded: no schema change — getChainConfig falls
+  // back to this entry.
+  'payment_request.settlement_failed': [
+    { type: 'emit', config: {}, enabled: true },
+    {
+      type: 'notify',
+      config: {
+        title: 'Payment settlement failed: {{reason}}',
+        body:
+          'Payment request {{paymentRequestId}} was paid but did not settle: {{error}}. ' +
+          'Fix the cause, then POST /pay/api/admin/payment-requests/{{paymentRequestId}}/retry-settlement.',
+      },
+      enabled: true,
+    },
+  ],
   'payment_request.voided': [
     { type: 'payment-request-notify', config: {}, enabled: true },
   ],

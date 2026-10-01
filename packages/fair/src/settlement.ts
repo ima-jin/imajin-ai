@@ -83,7 +83,8 @@ export interface FairSettlementTax {
   amount: number;
   collectorDid: string;
   remitTo: string;
-  registrationNumber?: string;
+  /** Issuer tax registration — required end-to-end (#2439) so the remittance-owed report can show it next to what's owed. */
+  registrationNumber: string;
 }
 
 /** Options for {@link resolveSettlementChain}. */
@@ -167,7 +168,8 @@ export interface ResolvedTaxCredit {
   kind: string;
   rateBps: number;
   remitTo: string;
-  registrationNumber?: string;
+  /** Required (#2439) — persisted on the tax ledger row by `settlePayment()`. */
+  registrationNumber: string;
 }
 
 /**
@@ -267,7 +269,7 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     kind: t.kind,
     rateBps: t.rateBps,
     remitTo: t.remitTo,
-    ...(t.registrationNumber ? { registrationNumber: t.registrationNumber } : {}),
+    registrationNumber: t.registrationNumber,
   }));
   const totalTaxDollars = Number.parseFloat((totalTaxCents / 100).toFixed(2));
 

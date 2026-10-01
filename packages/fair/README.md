@@ -15,7 +15,9 @@ is the TypeScript implementation consumed across `imajin-ai`.
   shape to v1.1, plus an optional top-level `taxes[]` array. A manifest is
   `'1.2'` **only** when it actually carries `taxes[]`; every manifest
   without `taxes[]` stays `'1.1'` and validates/settles byte-for-byte
-  identically to before #2419.
+  identically to before #2419. The tie is enforced both ways by
+  `validateManifest` (#2439): a non-empty `taxes[]` on a `'1.1'` manifest
+  is rejected, and so is `'1.2'` with no (or an empty) `taxes[]`.
 
 ## `taxes[]` — sales tax collected in trust (#2419)
 
@@ -28,7 +30,7 @@ taxes?: Array<{
   rateBps: number;             // e.g. 1300 for 13%
   basisAmount: number;         // pre-tax subtotal the rate applies to (cents)
   amount: number;              // round(basisAmount × rateBps / 10000), cents
-  registrationNumber?: string; // issuer tax registration
+  registrationNumber: string;  // issuer tax registration — required end-to-end (#2439)
   collectorDid: string;        // who holds the money in trust (typically the seller)
   remitTo: string;             // authority DID this is owed to (creditor label)
 }>
@@ -55,8 +57,10 @@ taxes?: Array<{
    share still compute on `basisAmount` alone.
 4. **Tax settles as a trust-liability credit** to `collectorDid`, with
    ledger metadata `{ tax: true, jurisdiction, kind, rateBps, remitTo,
-   trustLiability: true, remitted: null }`. It is **never MJNx-reconciled**
-   and **never fee-skimmable** — both hold structurally, since tax credits
+   registrationNumber, trustLiability: true, remitted: null }`
+   (`registrationNumber` is required on every credit — `settlePayment()`
+   400s without it — and stored so the remittance-owed report can show it).
+   It is **never MJNx-reconciled** and **never fee-skimmable** — both hold structurally, since tax credits
    are written entirely outside `chain`/`resolvedChain`, and MJNx
    reconciliation (`webhook-handlers.ts`) and fee-skim math only ever look
    at `chain`.
@@ -66,7 +70,8 @@ taxes?: Array<{
    transfer ever goes to `remitTo`.
 6. **Remittance-owed** = `SUM(amount)` over settled tax rows `WHERE
    metadata.tax AND metadata.remitted IS NULL GROUP BY jurisdiction, kind`
-   — see `apps/kernel/src/lib/pay/tax-remittance.ts`'s
+   (plus the registration number the tax was collected under, #2439, so
+   each owed line carries its `registrationNumber`) — see
    `getTaxRemittanceOwed`, exposed read-only via
    `GET /pay/api/tax/remittance-owed`.
 7. **Tax registration lives on the business profile**, not yet an
