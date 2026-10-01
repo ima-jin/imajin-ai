@@ -6,6 +6,42 @@ section), the actual squash waits on deploy posture (#2060). This document
 exists so the procedure is designed, reviewed, and ready before that gate
 lifts — not to schedule when it happens.
 
+## #1986 phase 2 — links per-table ownership decision (no SQL moved)
+
+When `apps/links` was pruned from this monorepo (#1986 phase 2; phase 1 —
+`ima-jin/links` running against this same shared DB — already merged), every
+table touched by `apps/links/src/db/schema.ts` and every migration file whose
+name mentions "links" was checked against `migrations/ownership.json` to
+decide what, if anything, needed to move. Nothing did:
+
+- **`links.clicks`, `links.links`, `links.pages`** (owner: `links`, both per
+  `ownership.json` and per `apps/links/src/db/schema.ts`'s own `pgSchema('links')`)
+  are the app's real tables. They are **not relocated** — this is Option B
+  from "Per-app migration directories" below, already the de facto state:
+  they stay recorded as originating in root `0001_seed.sql`, which is not
+  edited (immutable, shared with 6 other owners). `ima-jin/links` (phase 1)
+  already connects to this same dev/prod Postgres instance and expects the
+  `links` schema to pre-exist from that same `0001_seed.sql`, so the schema
+  must keep being created here until a future baseline squash (Option A)
+  gives `links` a real standalone migration file — not this PR's job.
+- **`auth.channel_link_tokens`, `auth.channel_links`** (`0044_channel_links.sql`,
+  backfilled by `0090_backfill_app_authorization_channel_links.sql`) are a
+  **false-positive name collision, not links-app tables.** Despite the
+  filename, both are schema-qualified `auth.*` (owner: `kernel` per
+  `ownership.json`) and back an unrelated feature: linking an external
+  channel (Discord, a connector app, etc.) to a kernel identity for scoped
+  app authorization — consumed extensively across
+  `apps/kernel/src/lib/kernel/connector-*.ts`, every provider connector
+  (`apps/kernel/src/lib/{google,github,discord,...}/connector.ts`), and the
+  `/auth/api/channel-link/*` routes. `grep -rn "channel_links\|channel_link_tokens"
+  apps/links` returns nothing — the links app never referenced these tables.
+  They stay kernel-side, unchanged.
+- **Gap check**: no kernel code (or any other app) reads `links.clicks`,
+  `links.links`, or `links.pages` directly (`grep -rn "links\.\(clicks\|links\|pages\)"
+  apps/` outside `apps/links` returns nothing), so removing `apps/links` from
+  this repo leaves no dangling cross-schema read — unlike the gaps already
+  tracked in `OWNERSHIP.md`'s "Gaps" section for other owners.
+
 ## Why a squash at all
 
 `migrations/` is 132 files deep, and `0001_seed.sql` alone creates all 155

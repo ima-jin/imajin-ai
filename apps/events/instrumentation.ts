@@ -9,9 +9,14 @@
  * are set. Core `@imajin/logger` has no `@imajin/db` dependency (#2143) —
  * this import is what opts an app that already depends on `@imajin/db` in
  * to that behavior.
+ *
+ * Also fetches the vault-sourced ATTESTATION_INTERNAL_API_KEY (#2353) that
+ * @imajin/auth's kernel-internal calls authenticate with.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === 'nodejs') {
     await import('@imajin/logger/db');
+    const { bootstrapInternalApiKey } = await import('@imajin/auth');
+    await bootstrapInternalApiKey('events');
   }
 }

@@ -81,6 +81,30 @@ describe('deriveArticleProjection', () => {
     expect(db.update).not.toHaveBeenCalled();
   });
 
+  it('clears a stale metadata.article when a write drops the frontmatter (demotion)', async () => {
+    const existing = { context: { app: 'article' }, article: { slug: 'hello', title: 'Hello', status: 'DRAFT' } };
+    const res = await deriveArticleProjection('asset_5', '# just the body\n\ntext', existing);
+    expect(res.article).toBeNull();
+    expect(db.update).toHaveBeenCalledTimes(1);
+    const setArg = mockSet.mock.calls[0][0] as { metadata: Record<string, unknown> };
+    expect(setArg.metadata).toEqual({ context: { app: 'article' } });
+  });
+
+  it('clears a stale metadata.article when the header loses its slug/title', async () => {
+    const existing = { article: { slug: 'hello', title: 'Hello', status: 'POSTED' } };
+    const res = await deriveArticleProjection('asset_6', '---\nfoo: "bar"\n---\nbody', existing);
+    expect(res.article).toBeNull();
+    expect(db.update).toHaveBeenCalledTimes(1);
+    const setArg = mockSet.mock.calls[0][0] as { metadata: Record<string, unknown> };
+    expect(setArg.metadata).toEqual({});
+  });
+
+  it('does not write for a plain note whose metadata never had an article', async () => {
+    const res = await deriveArticleProjection('asset_7', 'plain', { context: { app: 'media' } });
+    expect(res.article).toBeNull();
+    expect(db.update).not.toHaveBeenCalled();
+  });
+
   it('preserves an explicit POSTED status declared in the file (truth wins)', async () => {
     const file = composeArticleFile({ ...postedArticle, status: 'POSTED' }, 'b');
     const res = await deriveArticleProjection('asset_4', file, {});

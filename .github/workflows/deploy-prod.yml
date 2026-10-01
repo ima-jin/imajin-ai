@@ -86,7 +86,8 @@ jobs:
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
           # Everything else keeps the previous name-based restart
-          # (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, prod-links, …).
+          # (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, …). links (#1986
+          # phase 2) runs from its own repo/pm2 process now, so it is no longer among these.
           PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
           OTHER_PROCS=$(echo "$PROD_PROCS" | tr ' ' '\n' | grep -v '^prod-jin$' | grep -v '^$' | tr '\n' ' ')
           if [ -n "$OTHER_PROCS" ]; then

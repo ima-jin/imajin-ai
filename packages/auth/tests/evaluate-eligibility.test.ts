@@ -10,6 +10,7 @@ import {
   INTERNAL_API_KEY as API_KEY,
   requestBody,
   setUpInternalPostEnv,
+  setVaultInternalApiKey,
   tearDownInternalPostEnv,
 } from './support/internal-post-test-env';
 
@@ -84,7 +85,7 @@ describe('evaluateEligibility', () => {
   });
 
   it('returns null without calling fetch when no internal API key is configured', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+    setVaultInternalApiKey(undefined);
     const { evaluateEligibility } = await import('../src/evaluate-eligibility');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
