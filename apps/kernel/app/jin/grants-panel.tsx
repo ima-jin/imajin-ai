@@ -26,6 +26,7 @@
  * lives on `/auth/agents`) — this panel only links to it.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCancellableTimeout } from './use-cancellable-timeout';
 import Link from 'next/link';
 
 type GrantSourceKind = 'auth-grant' | 'auth-membership' | 'vault-delegation' | 'access-bearer' | 'app-authorization';
@@ -239,10 +240,11 @@ export function GrantsPanel() {
   const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const scheduleFlashClear = useCancellableTimeout();
   const notify = useCallback((type: 'ok' | 'err', msg: string) => {
     setFlash({ type, msg });
-    setTimeout(() => setFlash(null), 5000);
-  }, []);
+    scheduleFlashClear(() => setFlash(null), 5000);
+  }, [scheduleFlashClear]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

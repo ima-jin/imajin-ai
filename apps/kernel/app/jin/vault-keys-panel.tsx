@@ -26,6 +26,7 @@
  * up once the claim/pairing events exist.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useCancellableTimeout } from './use-cancellable-timeout';
 
 type VaultKeyTimelineEventType = 'minted' | 'granted' | 'fetched' | 'acked' | 'rotated' | 'revoked';
 
@@ -391,10 +392,11 @@ export function VaultKeysPanel() {
   const [mintRequesterDid, setMintRequesterDid] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const scheduleFlashClear = useCancellableTimeout();
   const notify = useCallback((type: 'ok' | 'err', msg: string) => {
     setFlash({ type, msg });
-    setTimeout(() => setFlash(null), 5000);
-  }, []);
+    scheduleFlashClear(() => setFlash(null), 5000);
+  }, [scheduleFlashClear]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

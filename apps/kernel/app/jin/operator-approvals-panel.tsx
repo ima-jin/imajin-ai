@@ -49,6 +49,7 @@
  * affordance catching up with the rule, not the rule itself.
  */
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -619,12 +620,13 @@ function RevealedBearerBanner({
   onDismiss,
 }: Readonly<{ revealed: RevealedBearer; onDismiss: () => void }>) {
   const [copied, setCopied] = useState(false);
+  const scheduleCopiedReset = useCancellableTimeout();
   const copy = useCallback(() => {
     globalThis.navigator.clipboard?.writeText(revealed.bearer).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      scheduleCopiedReset(() => setCopied(false), 2000);
     }).catch(() => undefined);
-  }, [revealed.bearer]);
+  }, [revealed.bearer, scheduleCopiedReset]);
 
   return (
     <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="revealed-bearer">
@@ -674,20 +676,22 @@ function RevealedClaimCodeBanner({
   const [copied, setCopied] = useState(false);
   const [urlCopied, setUrlCopied] = useState(false);
   const claimUrl = `${globalThis.location.origin}/${revealed.slug}/claim`;
+  const scheduleCopiedReset = useCancellableTimeout();
+  const scheduleUrlCopiedReset = useCancellableTimeout();
 
   const copy = useCallback(() => {
     globalThis.navigator.clipboard?.writeText(revealed.claimCode).then(() => {
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      scheduleCopiedReset(() => setCopied(false), 2000);
     }).catch(() => undefined);
-  }, [revealed.claimCode]);
+  }, [revealed.claimCode, scheduleCopiedReset]);
 
   const copyUrl = useCallback(() => {
     globalThis.navigator.clipboard?.writeText(claimUrl).then(() => {
       setUrlCopied(true);
-      setTimeout(() => setUrlCopied(false), 2000);
+      scheduleUrlCopiedReset(() => setUrlCopied(false), 2000);
     }).catch(() => undefined);
-  }, [claimUrl]);
+  }, [claimUrl, scheduleUrlCopiedReset]);
 
   return (
     <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="revealed-claim-code">
@@ -957,10 +961,11 @@ function OperatorApprovalsPanelInner() {
   const [sealSkipped, setSealSkipped] = useState<SealSkipped | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const scheduleFlashClear = useCancellableTimeout();
   const notify = useCallback((type: 'ok' | 'err', msg: string) => {
     setFlash({ type, msg });
-    setTimeout(() => setFlash(null), 4000);
-  }, []);
+    scheduleFlashClear(() => setFlash(null), 4000);
+  }, [scheduleFlashClear]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

@@ -432,6 +432,31 @@ describe('poll refresh', () => {
   });
 });
 
+// #2492: the 4s flash auto-dismiss used a bare `setTimeout` that outlived the
+// component — in CI it could fire after jsdom teardown (`window is not
+// defined`). It must be cancelled on unmount.
+describe('flash timer cleanup (#2492)', () => {
+  it('cancels the pending flash auto-dismiss timer on unmount', async () => {
+    installIntervalSpy();
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    installFetch([{ isOperator: true, approvals: [approval()] }]);
+    const { unmount } = render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await screen.findByText('Proposal approve.');
+
+    const flashCallIndex = setTimeoutSpy.mock.calls.findIndex(([, ms]) => ms === 4000);
+    expect(flashCallIndex).toBeGreaterThanOrEqual(0);
+    const flashTimerId = setTimeoutSpy.mock.results[flashCallIndex].value;
+
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(flashTimerId);
+  });
+});
+
 describe('network failure', () => {
   it('does not throw and stays hidden when the initial fetch rejects', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
