@@ -67,7 +67,7 @@ jobs:
           NODE_ENV: production
         # dev-jin is `npm start` in apps/kernel, which loads apps/kernel/.env.local;
         # --env dev takes VAULT_PATH from deploy/ecosystem.dev.config.js.
-        run: pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all --env dev
+        run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env dev
 
       - name: Build changed apps
         run: ./scripts/build-changed.sh
