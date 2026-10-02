@@ -27,3 +27,24 @@ export const SCOPE_FEE_DEFAULT_BPS = 25;     // 0.25%
 // label only (`taxes[].remitTo`) — never a settlement payee, never
 // resolved to a real identity/keypair.
 export const AUTHORITY_DID_CA_CRA = 'did:imajin:authority:ca-cra';
+
+/** Short display labels for well-known remittance-authority DIDs (#2439 — what #2419 shows next to a tax line, e.g. "collected for CRA"). */
+export const AUTHORITY_LABELS: Readonly<Record<string, string>> = {
+  [AUTHORITY_DID_CA_CRA]: 'CRA',
+};
+
+const AUTHORITY_DID_PREFIX = 'did:imajin:authority:';
+
+/**
+ * Display label for a `taxes[].remitTo` authority DID: the well-known short
+ * label when there is one (`…:ca-cra` → `CRA`), else the upper-cased slug of
+ * any other `did:imajin:authority:*` DID, else `null` (not an authority DID —
+ * the caller picks its own fallback).
+ */
+export function authorityLabel(remitTo: string): string | null {
+  const known = AUTHORITY_LABELS[remitTo];
+  if (known) return known;
+  if (!remitTo.startsWith(AUTHORITY_DID_PREFIX)) return null;
+  const slug = remitTo.slice(AUTHORITY_DID_PREFIX.length);
+  return slug ? slug.toUpperCase() : null;
+}

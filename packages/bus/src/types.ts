@@ -2010,6 +2010,34 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'payment_request';
   };
+  /**
+   * The on-platform Stripe settlement of a `paid` payment_request did not
+   * complete (#2439) — the buyer's money has already moved through Stripe,
+   * but the `.fair` ledger settlement was skipped or rejected, so the
+   * request is `paid` with no settlement rows. Operator-facing alert:
+   * `issuer` = `subject` = the node (operator) DID when known (else the
+   * request's issuer DID), so the default chain's `notify` reactor lands a
+   * /jin card on the operator. `reason` is a closed set — `empty_chain`,
+   * `basis_mismatch` (a `taxes[].basisAmount` no longer matches the
+   * request's subtotal — stale/tampered manifest, fix the data first),
+   * `settle_rejected` (`settlePayment()` returned a 4xx-style error) or
+   * `settle_error` (an exception). Retry path: once the cause is fixed,
+   * `POST /pay/api/admin/payment-requests/:id/retry-settlement` (admin-only)
+   * re-runs the settlement exactly once and refuses if ledger rows already
+   * exist for the request.
+   */
+  'payment_request.settlement_failed': {
+    paymentRequestId: string;
+    reason: 'empty_chain' | 'basis_mismatch' | 'settle_rejected' | 'settle_error';
+    error: string;
+    issuerDid: string;
+    recipientDid: string | null;
+    totalAmount: number;
+    currency: string;
+    method: 'stripe';
+    context_id: string;
+    context_type: 'payment_request';
+  };
   'payment_request.voided': {
     paymentRequestId: string;
     issuerDid: string;
