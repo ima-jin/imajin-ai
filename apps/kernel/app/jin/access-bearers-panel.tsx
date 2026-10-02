@@ -15,7 +15,7 @@
  * `access` renderer and its one-time bearer reveal box.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { useCancellableTimeout } from './use-cancellable-timeout';
+import { useFlashNotice } from './use-flash-notice';
 
 interface DelegateGrantBearerSummary {
   bearerId: string;
@@ -191,14 +191,9 @@ export function AccessBearersPanel() {
   const [bearers, setBearers] = useState<DelegateGrantBearerSummary[]>([]);
   const [busy, setBusy] = useState(false);
   const [busyId, setBusyId] = useState('');
-  const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const scheduleFlashClear = useCancellableTimeout();
-  const notify = useCallback((type: 'ok' | 'err', msg: string) => {
-    setFlash({ type, msg });
-    scheduleFlashClear(() => setFlash(null), 5000);
-  }, [scheduleFlashClear]);
+  const { flash, notify } = useFlashNotice(5000);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

@@ -50,6 +50,7 @@
  */
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCancellableTimeout } from './use-cancellable-timeout';
+import { useFlashNotice } from './use-flash-notice';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -955,17 +956,12 @@ function OperatorApprovalsPanelInner() {
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
-  const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
   const [revealedClaimCode, setRevealedClaimCode] = useState<RevealedClaimCode | null>(null);
   const [sealSkipped, setSealSkipped] = useState<SealSkipped | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const scheduleFlashClear = useCancellableTimeout();
-  const notify = useCallback((type: 'ok' | 'err', msg: string) => {
-    setFlash({ type, msg });
-    scheduleFlashClear(() => setFlash(null), 4000);
-  }, [scheduleFlashClear]);
+  const { flash, notify } = useFlashNotice(4000);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
