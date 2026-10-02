@@ -1,6 +1,6 @@
 {
   "name": "@imajin/logger",
-  "version": "0.8.10",
+  "version": "0.8.11",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -8,11 +8,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./db": {
       "types": "./dist/db.d.ts",
-      "import": "./dist/db.js"
+      "import": "./dist/db.js",
+      "default": "./dist/db.js"
     }
   },
   "files": [
