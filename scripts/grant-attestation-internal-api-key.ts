@@ -38,12 +38,10 @@
  * stdout/stderr as usual — never the secret's plaintext value, only the
  * resulting grantId (a pointer, not a secret).
  */
-import { grantInternalSecretTo } from '../apps/kernel/src/lib/vault/index.js';
-
-// Must match `ATTESTATION_INTERNAL_API_KEY_PURPOSE` in
-// apps/kernel/src/lib/auth/require-internal-api-key.ts and the literal
-// used by apps/corpus/src/lib/attestation-key.ts.
-const ATTESTATION_INTERNAL_API_KEY_PURPOSE = 'kernel.attestation-internal-api-key';
+import {
+  ATTESTATION_INTERNAL_API_KEY_PURPOSE,
+  ensureAttestationInternalApiKeyGrant,
+} from './lib/attestation-internal-api-key-grant.js';
 
 // The acting principal recorded on the grant's audit log line — this
 // script has no session/identity of its own, so it names itself rather
@@ -61,7 +59,7 @@ async function main(): Promise<void> {
 
   console.log(`Granting ATTESTATION_INTERNAL_API_KEY (purpose '${ATTESTATION_INTERNAL_API_KEY_PURPOSE}') to ${granteeDid}...`);
 
-  const outcome = await grantInternalSecretTo(ATTESTATION_INTERNAL_API_KEY_PURPOSE, granteeDid, GRANTED_BY);
+  const outcome = await ensureAttestationInternalApiKeyGrant(granteeDid, GRANTED_BY);
 
   switch (outcome.status) {
     case 'ok':
