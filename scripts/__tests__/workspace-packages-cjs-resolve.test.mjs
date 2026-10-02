@@ -5,8 +5,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Regression test for #2480: scripts/provision-service-bootstrap.ts is run via
-// `pnpm exec tsx`, which compiles the (type-less, i.e. CJS) kernel sources to
+// Regression test for #2480: scripts/provision-service-bootstrap.ts used to be
+// run via `pnpm exec tsx` (since #2483 the entrypoint is the ESM
+// scripts/provision-service-bootstrap.mjs, so this is no longer the deploy's
+// failure mode — the `default` conditions are kept for the other tsx-run
+// scripts and kernel tooling). tsx compiles the (type-less, i.e. CJS) kernel sources to
 // CJS. `import ... from '@imajin/vault-core'` therefore becomes a
 // `require()`, and Node's CJS resolver fails with
 // `No "exports" main defined` unless every conditional export has a

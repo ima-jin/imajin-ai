@@ -1,6 +1,6 @@
-#!/usr/bin/env tsx
+#!/usr/bin/env node
 /**
- * scripts/provision-service-bootstrap.ts (#2442)
+ * scripts/provision-service-bootstrap.mjs (#2442, ESM since #2483)
  *
  * Provisions the vault bootstrap identity of every userspace service that
  * declares `<SVC>_VAULT_BOOTSTRAP_DID` in its `apps/<svc>/.env.example`, and
@@ -19,16 +19,32 @@
  * not, so a crash between the write and the grant self-heals on the next run.
  * Idempotent: a re-run with everything provisioned changes nothing.
  *
- * Usage (from repo root):
- *   pnpm exec tsx scripts/provision-service-bootstrap.ts --all
- *   pnpm exec tsx scripts/provision-service-bootstrap.ts market
- *   pnpm exec tsx scripts/provision-service-bootstrap.ts --all --env prod
+ * Runs as ESM under plain `node` (#2483), like scripts/migrate.mjs and the
+ * other ops scripts that need ESM-only dependencies. The core logic stays
+ * TypeScript (scripts/lib/provision-service-bootstrap.ts, which imports the
+ * kernel's TypeScript sources); scripts/lib/import-ts-as-esm.mjs bundles that
+ * TypeScript to ESM and leaves every dependency to Node's ESM resolver, so
+ * every transitive ESM-only package (e.g. `@ipld/dag-cbor`) loads. Run via
+ * `tsx` instead and the same sources compile to CommonJS, where those
+ * packages fail with `No "exports" main defined`.
+ *
+ * Usage (from repo root, after `pnpm -r --filter './packages/**' build`):
+ *   node scripts/provision-service-bootstrap.mjs --all
+ *   node scripts/provision-service-bootstrap.mjs market
+ *   node scripts/provision-service-bootstrap.mjs --all --env prod
+ *   node scripts/provision-service-bootstrap.mjs --all --dry-run
  *
  * Options:
  *   --env dev|prod   Take VAULT_PATH from deploy/ecosystem.<env>.config.js
  *                    (where pm2 sets it for the kernel) unless already set in
  *                    the process env — the grant must land in the SAME vault
  *                    file the target kernel reads.
+ *   --dry-run        Validate every .env.local pair and load every module a
+ *                    real run imports, then stop: nothing is minted, written,
+ *                    registered or granted, and the database is never
+ *                    contacted (DATABASE_URL is replaced by an unroutable
+ *                    placeholder). Exits non-zero on any module-resolution
+ *                    error — the CI check that the entrypoint can load.
  *
  * Env (the kernel's own, for the target deployment — same as
  * scripts/grant-attestation-internal-api-key.ts):
@@ -36,7 +52,7 @@
  *   AUTH_PRIVATE_KEY  — node signing + seal key
  *   VAULT_PATH        — optional; defaults to ~/.imajin/vault.json
  * deploy-*.yml loads them exactly like pm2 starts prod-jin:
- *   pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all --env prod
+ *   node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod
  *
  * Output: one line per service — `service · did · minted|existing · grantId` —
  * also appended to $GITHUB_STEP_SUMMARY under GitHub Actions. A private key is
@@ -45,35 +61,32 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import {
-  createKernelDeps,
-  discoverServices,
-  formatResult,
-  provisionServices,
-  type BootstrapService,
-} from './lib/provision-service-bootstrap.js';
+import { importTsAsEsm } from './lib/import-ts-as-esm.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 // The acting principal recorded on the grant's audit log line.
 const GRANTED_BY = 'operator:provision-service-bootstrap-script';
 
+// Unroutable and credential-free: --dry-run must never reach a real database.
+const DRY_RUN_DATABASE_URL = 'postgres://127.0.0.1:1/provision_dry_run';
+
 const USAGE = [
-  'Usage: pnpm exec tsx scripts/provision-service-bootstrap.ts (--all | <service>) [--env dev|prod]',
+  'Usage: node scripts/provision-service-bootstrap.mjs (--all | <service>) [--env dev|prod] [--dry-run]',
 ].join('\n');
 
-interface CliArgs {
-  all: boolean;
-  service: string | null;
-  env: 'dev' | 'prod' | null;
-}
-
-function parseArgs(argv: readonly string[]): CliArgs {
-  const args: CliArgs = { all: false, service: null, env: null };
+/**
+ * @param {readonly string[]} argv
+ * @returns {{ all: boolean, service: string | null, env: 'dev' | 'prod' | null, dryRun: boolean }}
+ */
+function parseArgs(argv) {
+  const args = { all: false, service: null, env: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i]!;
+    const arg = argv[i];
     if (arg === '--all') {
       args.all = true;
+    } else if (arg === '--dry-run') {
+      args.dryRun = true;
     } else if (arg === '--env') {
       const value = argv[++i];
       if (value !== 'dev' && value !== 'prod') throw new Error(`--env must be 'dev' or 'prod'\n${USAGE}`);
@@ -88,7 +101,7 @@ function parseArgs(argv: readonly string[]): CliArgs {
   return args;
 }
 
-function selectServices(args: CliArgs): BootstrapService[] {
+function selectServices(args, discoverServices) {
   const discovered = discoverServices(REPO_ROOT);
   if (args.all) return discovered;
   const match = discovered.find((service) => service.name === args.service);
@@ -104,7 +117,7 @@ function selectServices(args: CliArgs): BootstrapService[] {
  * .env.local (same lookup as scripts/check-env.ts). A value already in the
  * process env wins, exactly as it does for the kernel itself.
  */
-function applyEcosystemVaultPath(env: 'dev' | 'prod'): void {
+function applyEcosystemVaultPath(env) {
   if (process.env.VAULT_PATH?.trim()) return;
   const file = path.join(REPO_ROOT, 'deploy', `ecosystem.${env}.config.js`);
   if (!fs.existsSync(file)) return;
@@ -112,26 +125,38 @@ function applyEcosystemVaultPath(env: 'dev' | 'prod'): void {
   if (vaultPath) process.env.VAULT_PATH = vaultPath;
 }
 
-function writeStepSummary(lines: readonly string[]): void {
+function writeStepSummary(lines) {
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
   if (!summaryFile || lines.length === 0) return;
   fs.appendFileSync(summaryFile, `### Service bootstrap identities\n\n\`\`\`\n${lines.join('\n')}\n\`\`\`\n`);
 }
 
-async function main(): Promise<void> {
+async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const services = selectServices(args);
+  // Must be set before the kernel modules load: the kernel's db module reads it at import.
+  if (args.dryRun) process.env.DATABASE_URL = DRY_RUN_DATABASE_URL;
+
+  const lib = await importTsAsEsm(path.join(REPO_ROOT, 'scripts', 'lib', 'provision-service-bootstrap.ts'));
+  const services = selectServices(args, lib.discoverServices);
   if (services.length === 0) throw new Error('No service declares a *_VAULT_BOOTSTRAP_DID in apps/*/.env.example');
+
+  if (args.dryRun) {
+    const lines = await lib.dryRunServices(REPO_ROOT, services);
+    for (const line of lines) console.log(line);
+    console.log(`dry-run · ${services.length} service(s) validated, kernel modules load as ESM — nothing changed`);
+    return;
+  }
+
   if (args.env) applyEcosystemVaultPath(args.env);
 
-  const lines: string[] = [];
+  const lines = [];
   try {
-    await provisionServices(
+    await lib.provisionServices(
       REPO_ROOT,
       services,
-      createKernelDeps(GRANTED_BY),
+      lib.createKernelDeps(GRANTED_BY),
       (result) => {
-        const line = formatResult(result);
+        const line = lib.formatResult(result);
         lines.push(line);
         console.log(line);
       },
@@ -142,13 +167,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().then(
-  () => {
-    // The kernel's DB pool keeps the event loop alive; this is a one-shot script.
-    process.exit(0);
-  },
-  (err: unknown) => {
-    console.error(`provision-service-bootstrap failed: ${err instanceof Error ? err.message : String(err)}`);
-    process.exit(1);
-  },
-);
+try {
+  await main();
+  // The kernel's DB pool keeps the event loop alive; this is a one-shot script.
+  process.exit(0);
+} catch (err) {
+  console.error(`provision-service-bootstrap failed: ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}

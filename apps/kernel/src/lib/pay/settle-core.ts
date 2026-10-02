@@ -449,7 +449,8 @@ interface EmitAttestationsParams {
 
 async function emitAttestations(params: EmitAttestationsParams) {
   const { from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified } = params;
-  const attestationCalls: Promise<void>[] = [];
+  // publish() resolves to a PublishResult; these callers only await completion.
+  const attestationCalls: Promise<unknown>[] = [];
 
   // One "customer" attestation per recipient
   for (const recipient of fair_manifest.chain) {

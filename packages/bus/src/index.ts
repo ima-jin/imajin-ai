@@ -33,6 +33,7 @@ registerReactor('payment-request-notify', paymentRequestNotifyReactor);
 registerReactor('loop-projection', loopProjectionReactor);
 
 export { publish } from './publish';
+export type { PublishResult } from './publish';
 export { broker } from './broker';
 export { registerReactor, getReactor } from './registry';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';

@@ -4,7 +4,7 @@
  * The one code path that grants the kernel's `ATTESTATION_INTERNAL_API_KEY`
  * shared secret (#2245) to a consumer DID. Shared by
  * `scripts/grant-attestation-internal-api-key.ts` (operator, one DID) and
- * `scripts/provision-service-bootstrap.ts` (#2442, every service bootstrap
+ * `scripts/provision-service-bootstrap.mjs` (#2442, every service bootstrap
  * identity) so the two can never drift.
  *
  * Idempotent (see `grantInternalSecretTo`): a grantee that already holds an

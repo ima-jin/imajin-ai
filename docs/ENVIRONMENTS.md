@@ -245,10 +245,10 @@ vault at boot authenticates with its own bootstrap identity:
 `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
 (today: learn, events, dykil, market, coffee). The pair stays **required**
 (no `check-env` annotation) — but nobody mints it by hand any more.
-`scripts/provision-service-bootstrap.ts` does, and the deploy runs it:
+`scripts/provision-service-bootstrap.mjs` does, and the deploy runs it:
 
 - **Where:** `deploy-prod.yml` and `deploy-dev.yml` run
-  `pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all --env <env>`
+  `node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env <env>`
   after dependencies are installed and **before check-env** (which
   `build-changed.sh` → `build.sh` runs first). In prod the whole job sits behind
   the `production` environment approval, so the gate tap is the human
@@ -279,8 +279,15 @@ vault at boot authenticates with its own bootstrap identity:
 
 Local dev: `scripts/setup-local.sh` runs the same script with `--all` after
 migrations. To provision (or re-check) by hand:
-`pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all`
+`node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all`
 (or pass a single `<service>`, e.g. `market`).
+
+The entrypoint runs as ESM under plain `node` (#2483), like `scripts/migrate.mjs`:
+run through `tsx` the kernel's TypeScript compiles to CommonJS, which cannot load
+ESM-only dependencies such as `@ipld/dag-cbor`. `--dry-run` validates every
+`.env.local` pair and loads every module a real run imports, without minting,
+writing, granting or contacting the database; CI's "Provisioning entrypoint" job
+runs the deploy command plus `--dry-run` against a production-style install.
 
 ### Per-env deploy targets (#2246)
 
