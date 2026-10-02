@@ -19,7 +19,7 @@ import type { ServiceVisibility, ServiceCategory } from '@imajin/config';
 import { resolveLauncherApps, type NavApp } from './app-nav';
 
 /** Categories that stay driven by `SERVICES`: not extractable apps, never pruned. */
-const STATIC_LAUNCHER_CATEGORIES: readonly ServiceCategory[] = ['kernel', 'meta'];
+const STATIC_LAUNCHER_CATEGORIES: ReadonlySet<ServiceCategory> = new Set<ServiceCategory>(['kernel', 'meta']);
 
 export interface LauncherEntry {
   name: string;
@@ -37,7 +37,7 @@ export interface LauncherEntry {
 const DEFAULT_APP_ICON = '🧩';
 
 function staticEntries(): LauncherEntry[] {
-  return SERVICES.filter((s) => STATIC_LAUNCHER_CATEGORIES.includes(s.category)).map((s) => {
+  return SERVICES.filter((s) => STATIC_LAUNCHER_CATEGORIES.has(s.category)).map((s) => {
     const url = buildPublicUrl(s.name);
     const isExternal = Boolean(s.externalUrl || s.wwwPath);
     return {
