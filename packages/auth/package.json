@@ -1,6 +1,6 @@
 {
   "name": "@imajin/auth",
-  "version": "0.8.10",
+  "version": "0.8.13",
   "private": true,
   "type": "module",
   "main": "./dist/index.js",
@@ -8,23 +8,28 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     },
     "./broker-consent-vocabulary": {
       "types": "./dist/broker-consent-vocabulary.d.ts",
-      "import": "./dist/broker-consent-vocabulary.js"
+      "import": "./dist/broker-consent-vocabulary.js",
+      "default": "./dist/broker-consent-vocabulary.js"
     },
     "./scope-vocabulary": {
       "types": "./dist/scope-vocabulary.d.ts",
-      "import": "./dist/scope-vocabulary.js"
+      "import": "./dist/scope-vocabulary.js",
+      "default": "./dist/scope-vocabulary.js"
     },
     "./grant-scopes": {
       "types": "./dist/grant-scopes.d.ts",
-      "import": "./dist/grant-scopes.js"
+      "import": "./dist/grant-scopes.js",
+      "default": "./dist/grant-scopes.js"
     },
     "./resolve-db": {
       "types": "./dist/resolve-db.d.ts",
-      "import": "./dist/resolve-db.js"
+      "import": "./dist/resolve-db.js",
+      "default": "./dist/resolve-db.js"
     }
   },
   "files": [

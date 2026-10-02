@@ -59,6 +59,28 @@ jobs:
       - name: Rebuild native dependencies
         run: pnpm rebuild -r better-sqlite3
 
+      # Service bootstrap identities (#2442). Runs only after the `production`
+      # environment approval (this whole job is gated on it), so the gate tap is
+      # the human countersign from #2245. It must come BEFORE check-env, which
+      # build-changed.sh -> build.sh runs first thing: a service whose
+      # *_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY pair is missing stops the deploy
+      # there. A failure here fails the deploy before any restart.
+      #
+      # The script imports the kernel's source, which imports workspace
+      # packages by their built dist, so build them first (build.sh rebuilds
+      # them again later; the cost is a few seconds of duplicated work).
+      - name: Build workspace packages (provisioning prerequisite)
+        run: pnpm -r --filter './packages/**' build
+
+      - name: Provision service bootstrap identities
+        env:
+          # pm2 sets NODE_ENV for prod-jin in the ecosystem file, not .env.local.
+          NODE_ENV: production
+        # Loads the kernel's env exactly like pm2 starts prod-jin
+        # (`--env-file=<repo>/apps/kernel/.env.local`); --env prod takes VAULT_PATH
+        # from deploy/ecosystem.prod.config.js, where pm2 sets it.
+        run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod
+
       - name: Build changed apps
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
         # by the diff since the last successful build (tracked via .last-build-sha).
