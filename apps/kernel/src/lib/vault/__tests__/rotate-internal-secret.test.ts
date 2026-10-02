@@ -195,7 +195,37 @@ function mutation(execute: () => Row[]) {
   };
 }
 
+type StoreSnapshot = Array<[Map<string, Row>, Map<string, Row>]>;
+
+function snapshotStores(): StoreSnapshot {
+  return Object.values(stores).map((store): [Map<string, Row>, Map<string, Row>] => [store, new Map(store)]);
+}
+
+function restoreStores(snapshot: StoreSnapshot): void {
+  for (const [store, saved] of snapshot) {
+    store.clear();
+    for (const [key, row] of saved) store.set(key, row);
+  }
+}
+
+/**
+ * Postgres-shaped transaction over the in-memory stores: everything the callback
+ * wrote survives only if it resolves; a throw puts every store back exactly as
+ * it was. (Rows are replaced, never mutated in place, so a shallow copy is a
+ * faithful snapshot.)
+ */
+async function runInTransaction<T>(run: (tx: unknown) => Promise<T>): Promise<T> {
+  const snapshot = snapshotStores();
+  try {
+    return await run(dbDouble);
+  } catch (err) {
+    restoreStores(snapshot);
+    throw err;
+  }
+}
+
 const dbDouble = {
+  transaction: <T>(run: (tx: unknown) => Promise<T>) => runInTransaction(run),
   insert: (table: { __table?: string }) => ({ values: (raw: Row) => insertValues(table, raw) }),
   update: (table: { __table?: string }) => ({
     set: (patch: Row) => ({ where: (predicate: Predicate) => mutation(() => patchMatching(table, patch, predicate)) }),
@@ -891,5 +921,230 @@ describe('re-issue is operator-initiated only (#2245 countersign ruling)', () =>
     await restarted.internal.getInternalSecret(PURPOSE);
 
     expect(shape()).toEqual(before);
+  });
+});
+
+// ── #2451: rotate is all-or-nothing ──────────────────────────────────────────
+
+type Booted = Awaited<ReturnType<typeof boot>>;
+
+/** Everything a rotate may touch: every DB table plus the vault entry's cid. */
+async function stateOfRotatedField(vault: Booted['vault']) {
+  return {
+    grants: JSON.stringify([...stores.grants.entries()]),
+    provisions: JSON.stringify([...stores.provisions.entries()]),
+    envelopes: JSON.stringify([...stores.envelopes.entries()]),
+    cid: (await vault.vaultService.peek(FIELD))?.cid,
+  };
+}
+
+/** Make inserting a NEW grant to `did` throw — the injected mid-rotate failure. */
+function failGrantInsertTo(did: string) {
+  const real = dbDouble.insert.bind(dbDouble);
+  return vi.spyOn(dbDouble, 'insert').mockImplementation((table) => {
+    const query = real(table);
+    const guarded = (raw: Row) => {
+      if (table.__table === 'grants' && raw.grantedTo === did) throw new Error('injected: grant insert failed');
+      return query.values(raw);
+    };
+    return { values: guarded } as unknown as ReturnType<typeof real>;
+  });
+}
+
+describe('rotate is all-or-nothing (#2451)', () => {
+  const corpusDid = 'did:imajin:corpus-test';
+
+  async function bootWithCorpusGrant() {
+    const booted = await boot();
+    const original = await booted.internal.getInternalSecret(PURPOSE);
+    await booted.vault.grantInternalSecretTo(PURPOSE, corpusDid, 'test-operator');
+    const corpusGrant = activeGrantsFor(FIELD).find((g) => g.grantedTo === corpusDid);
+    const bus = await import('@imajin/bus');
+    return { ...booted, original, corpusGrantId: String(corpusGrant!.id), publish: bus.publish as ReturnType<typeof vi.fn> };
+  }
+
+  async function expectNothingChanged(
+    ctx: Awaited<ReturnType<typeof bootWithCorpusGrant>>,
+    before: Awaited<ReturnType<typeof stateOfRotatedField>>,
+  ) {
+    expect(await stateOfRotatedField(ctx.vault)).toEqual(before);
+    // The old key still serves everyone: the grantee, and the kernel across a restart.
+    const corpus = await ctx.vault.fetchGrantSecret({ grantId: ctx.corpusGrantId, granteeDid: corpusDid });
+    expect(corpus).toMatchObject({ status: 'ok', value: ctx.original });
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(ctx.original);
+    expect(ctx.publish).not.toHaveBeenCalledWith('vault.grant.fulfilled', expect.anything());
+    expect(logSpies.error).toHaveBeenCalledWith(
+      expect.objectContaining({ field: FIELD }),
+      expect.stringMatching(/rotate failed/),
+    );
+  }
+
+  it('a grantee re-issue that fails mid-rotate rolls everything back — no half-state — and a clean retry then succeeds', async () => {
+    const ctx = await bootWithCorpusGrant();
+    const before = await stateOfRotatedField(ctx.vault);
+    ctx.publish.mockClear();
+    logSpies.error.mockClear();
+    const failing = failGrantInsertTo(corpusDid);
+
+    const res = await rotateViaRoute(FIELD, randomBytes(24).toString('hex'));
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    await expectNothingChanged(ctx, before);
+
+    failing.mockRestore();
+    const rotated = randomBytes(24).toString('hex');
+    expect((await rotateViaRoute(FIELD, rotated)).status).toBe(200);
+    const [corpusNow] = activeGrantsFor(FIELD).filter((g) => g.grantedTo === corpusDid);
+    expect(await ctx.vault.fetchGrantSecret({ grantId: String(corpusNow!.id), granteeDid: corpusDid }))
+      .toMatchObject({ status: 'ok', value: rotated });
+  });
+
+  it('a failure between superseding the self-grant and inserting its replacement leaves the old self-grant active', async () => {
+    const ctx = await bootWithCorpusGrant();
+    const before = await stateOfRotatedField(ctx.vault);
+    ctx.publish.mockClear();
+    logSpies.error.mockClear();
+    const ownerDid = ctx.sealing.getNodeSigningIdentity().senderDid;
+    failGrantInsertTo(ownerDid);
+
+    const res = await rotateViaRoute(FIELD, randomBytes(24).toString('hex'));
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    await expectNothingChanged(ctx, before);
+    expect(activeGrantsFor(FIELD).filter((g) => g.grantedTo === ownerDid)).toHaveLength(1);
+  });
+
+  it('the vault entry is written last: if saving it fails, the database rolls back too', async () => {
+    const ctx = await bootWithCorpusGrant();
+    const before = await stateOfRotatedField(ctx.vault);
+    ctx.publish.mockClear();
+    logSpies.error.mockClear();
+    vi.spyOn(ctx.vault.vaultService, 'set').mockRejectedValueOnce(new Error('injected: disk full'));
+
+    const res = await rotateViaRoute(FIELD, randomBytes(24).toString('hex'));
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    await expectNothingChanged(ctx, before);
+  });
+
+  it('announces each re-issued grant only after the rotate has committed', async () => {
+    const ctx = await bootWithCorpusGrant();
+    ctx.publish.mockClear();
+
+    expect((await rotateViaRoute(FIELD, randomBytes(24).toString('hex'))).status).toBe(200);
+
+    const fulfilled = ctx.publish.mock.calls.filter(([type]) => type === 'vault.grant.fulfilled');
+    expect(fulfilled).toHaveLength(1);
+    expect(fulfilled[0]![1]).toMatchObject({ payload: { grantedTo: corpusDid } });
+  });
+});
+
+// ── #2451: the kernel's own grant never silently expires ─────────────────────
+
+describe('the node\'s own internal-secret grant never silently expires (#2451)', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+
+  afterEach(() => {
+    vi.useRealTimers();
+    delete process.env.VAULT_GRANT_TTL_DAYS;
+  });
+
+  /**
+   * What a pre-#2446 operator rotate left behind: `sealAndStoreV2` stamped
+   * `VAULT_GRANT_TTL_DAYS` onto the node's own self-grant (a signed expiry).
+   */
+  async function sealLikeAPreFixRotate(vault: Booted['vault'], value: string): Promise<Row> {
+    process.env.VAULT_GRANT_TTL_DAYS = '30';
+    await vault.sealAndStoreV2(FIELD, value);
+    delete process.env.VAULT_GRANT_TTL_DAYS;
+    const [stamped] = activeGrantsFor(FIELD);
+    expect(stamped!.expiresAt).toBeInstanceOf(Date);
+    return stamped!;
+  }
+
+  function jumpDays(days: number): void {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.now() + days * DAY_MS);
+  }
+
+  it('boot re-tag clears the expiry (same grant, re-signed, no re-seal) and the kernel still reads its secret long after it', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const rotated = randomBytes(24).toString('hex');
+    const stamped = await sealLikeAPreFixRotate(first.vault, rotated);
+    stripPurpose({ deleteRow: true });
+    const cidBefore = (await first.vault.vaultService.peek(FIELD))?.cid;
+    logSpies.warn.mockClear();
+
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
+
+    const [healed] = activeGrantsFor(FIELD);
+    expect(healed!.id).toBe(stamped.id);
+    expect(healed!.expiresAt).toBeNull();
+    expect(healed!.purpose).toBe(PURPOSE);
+    expect(healed!.wrappedKey).toBe(stamped.wrappedKey);
+    expect((await restarted.vault.vaultService.peek(FIELD))?.cid).toBe(cidBefore);
+    expect(logSpies.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ previousExpiresAt: (stamped.expiresAt as Date).toISOString() }),
+      expect.stringMatching(/cleared it/),
+    );
+    expect(logSpies.error).not.toHaveBeenCalled();
+
+    jumpDays(90); // far past the stamped expiry — a still-expiring grant would now throw on every lookup
+    const muchLater = await boot();
+    await expect(muchLater.internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
+    expect(logSpies.error).not.toHaveBeenCalled();
+  });
+
+  it('a grant an earlier boot already re-tagged but left expiring is healed on the next boot', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const rotated = randomBytes(24).toString('hex');
+    const stamped = await sealLikeAPreFixRotate(first.vault, rotated);
+    expect(stamped.purpose).toBe(PURPOSE); // tagged: the re-tag path is not involved
+
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
+
+    const [healed] = activeGrantsFor(FIELD);
+    expect(healed!.id).toBe(stamped.id);
+    expect(healed!.expiresAt).toBeNull();
+    jumpDays(90);
+    await expect((await boot()).internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
+  });
+
+  it('a self-grant that has already lapsed but is not yet swept is renewed instead of locking the kernel out', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const rotated = randomBytes(24).toString('hex');
+    await sealLikeAPreFixRotate(first.vault, rotated);
+    jumpDays(31); // past the 30-day expiry; the row is still `active` with its key material intact
+
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(rotated);
+
+    expect(activeGrantsFor(FIELD)[0]!.expiresAt).toBeNull();
+  });
+
+  it('clearSelfGrantExpiry leaves a non-expiring grant alone and reports (never forces) what the node cannot re-sign', async () => {
+    const { vault, internal } = await boot();
+    await internal.getInternalSecret(PURPOSE);
+    const grantId = String(activeGrantsFor(FIELD)[0]!.id);
+    await expect(vault.clearSelfGrantExpiry(grantId)).resolves.toEqual({ status: 'none' });
+
+    const expiresAt = new Date(Date.now() + DAY_MS);
+    const grant = stores.grants.get(grantId)!;
+    stores.grants.set(grantId, { ...grant, expiresAt, ownerEdPub: randomBytes(32).toString('hex') });
+    await expect(vault.clearSelfGrantExpiry(grantId)).resolves.toEqual({ status: 'blocked', expiresAt, reason: 'foreign-signer' });
+    expect(stores.grants.get(grantId)).toMatchObject({ expiresAt });
+
+    stores.grants.set(grantId, { ...grant, expiresAt });
+    process.env.VAULT_OWNER_X_PUB = randomBytes(32).toString('hex');
+    process.env.VAULT_OWNER_ED_PUB = randomBytes(32).toString('hex');
+    const tier1 = await boot();
+    await expect(tier1.vault.clearSelfGrantExpiry(grantId)).resolves.toEqual({ status: 'blocked', expiresAt, reason: 'tier1' });
+    expect(stores.grants.get(grantId)).toMatchObject({ expiresAt });
   });
 });
