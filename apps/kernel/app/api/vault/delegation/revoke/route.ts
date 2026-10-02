@@ -6,6 +6,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
 
 const log = createLogger('kernel');
 
@@ -48,8 +49,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'field is required' }, { status: 400 });
   }
 
-  const identity = getNodeSigningIdentity();
   const trimmedField = field.trim();
+
+  // #2452 — fail-closed, server-side: revoking the node's grant on an
+  // internal-secret:* field would strand the kernel from its own secret.
+  // Replacement goes through Rotate (which re-issues, #2446); the panel does
+  // not offer the button on these rows either.
+  if (isInternalSecretField(trimmedField)) {
+    return NextResponse.json(
+      { error: `'${trimmedField}' is a kernel-internal secret — its grant cannot be revoked by an operator.` },
+      { status: 409 },
+    );
+  }
+
+  const identity = getNodeSigningIdentity();
 
   const revoked = await db
     .update(vaultDelegationGrants)
