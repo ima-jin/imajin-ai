@@ -1,6 +1,6 @@
 {
   "name": "@imajin/kernel",
-  "version": "0.8.12",
+  "version": "0.8.13",
   "private": true,
   "scripts": {
     "dev": "node --env-file=.env.local server.js",
