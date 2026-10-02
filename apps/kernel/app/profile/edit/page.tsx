@@ -8,16 +8,9 @@ import * as ed from '@noble/ed25519';
 import { buildPublicUrl, profilePath } from '@imajin/config';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
-
-interface FeatureToggles {
-  inference_enabled?: boolean;
-  show_market_items?: boolean;
-  show_events?: boolean;
-  links?: string | null;
-  coffee?: string | null;
-  dykil?: string | null;
-  learn?: string | null;
-}
+import type { FeatureToggles } from '@/src/db/schemas/profile';
+import { mergeFeatureToggles } from '@/src/lib/profile/feature-toggles-merge';
+import { isAppEnabled } from '@/src/lib/profile/feature-toggles-compat';
 
 interface Profile {
   did: string;
@@ -47,7 +40,9 @@ const SERVICES = [
 function buildServiceToggles(ft: FeatureToggles): Record<string, boolean> {
   const toggles: Record<string, boolean> = {};
   for (const svc of SERVICES) {
-    toggles[svc.key] = svc.key === 'inference' ? !!ft.inference_enabled : !!(ft[svc.key as keyof typeof ft]);
+    // App slugs resolve through both the legacy fields and `enabledApps` (#2425), so a
+    // profile that only uses `enabledApps` doesn't render OFF and get switched off on save.
+    toggles[svc.key] = svc.key === 'inference' ? !!ft.inference_enabled : isAppEnabled(ft, svc.key);
   }
   return toggles;
 }
@@ -81,6 +76,9 @@ function EditProfileContent() {
   const [serviceToggles, setServiceToggles] = useState<Record<string, boolean>>({});
   const [showMarketItems, setShowMarketItems] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
+  // The toggles the profile was loaded with — the base the save MERGES into (#2434),
+  // so keys this form doesn't edit (e.g. `enabledApps`) survive a save.
+  const [loadedToggles, setLoadedToggles] = useState<FeatureToggles>({});
   const [tier, setTier] = useState<string>('soft');
   const [emailUpdates, setEmailUpdates] = useState(false);
   const [emailUpdatesLoading, setEmailUpdatesLoading] = useState(false);
@@ -166,6 +164,7 @@ function EditProfileContent() {
 
       // Set service toggles from feature_toggles
       const ft = profile.featureToggles ?? profile.feature_toggles ?? {};
+      setLoadedToggles(ft);
       setServiceToggles(buildServiceToggles(ft));
       setShowMarketItems(!!ft.show_market_items);
       setShowEvents(!!ft.show_events);
@@ -185,16 +184,12 @@ function EditProfileContent() {
     setSaving(true);
 
     try {
-      const featureToggles: FeatureToggles = {
-        inference_enabled: !!serviceToggles['inference'],
-        show_market_items: showMarketItems,
-        show_events: showEvents,
-      };
-      for (const svc of SERVICES) {
-        if (svc.key === 'inference') continue;
-        (featureToggles as Record<string, string | boolean | null>)[svc.key] =
-          serviceToggles[svc.key] && handle ? handle : null;
-      }
+      const featureToggles = mergeFeatureToggles(loadedToggles, {
+        serviceToggles,
+        showMarketItems,
+        showEvents,
+        handle: handle || undefined,
+      });
 
       const payload = JSON.stringify({
         displayName,
