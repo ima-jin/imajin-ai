@@ -196,6 +196,11 @@ for app in "${APPS[@]}"; do
 
   cp "$example" "$local_env"
 
+  # Drop the blank *_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY placeholders the copy just
+  # brought in: scripts/provision-service-bootstrap.ts treats an empty key as a
+  # half-written pair (error) and mints the real pair when both are absent.
+  sed_inplace -E '/^[A-Z0-9_]+_VAULT_BOOTSTRAP_(DID|PRIVATE_KEY)="?"?$/d' "$local_env"
+
   # ── All apps: database, runtime ────────────────────────────────────────────
   set_env "$local_env" "DATABASE_URL" "\"${DATABASE_URL}\""
   set_env "$local_env" "NODE_ENV" "development"
@@ -301,6 +306,24 @@ if [[ "$SKIP_MIGRATE" != true ]]; then
     err "Migrations failed — check DATABASE_URL in apps/kernel/.env.local"
     exit 1
   fi
+fi
+
+# ── Service bootstrap identities (#2442) ──────────────────────────────────────
+# Mints each userspace service's vault bootstrap identity into its .env.local
+# and grants it ATTESTATION_INTERNAL_API_KEY, so internal posts work with no
+# manual steps. Needs the migrated DB (kernel identity table) and the built
+# workspace packages; loads the kernel's env the same way pm2 does.
+if [[ "$SKIP_MIGRATE" != true ]]; then
+  step "Provisioning service bootstrap identities"
+  if pnpm build:types >/dev/null \
+     && pnpm exec tsx --env-file="$REPO_ROOT/apps/kernel/.env.local" scripts/provision-service-bootstrap.ts --all; then
+    ok "Service bootstrap identities provisioned"
+  else
+    err "Provisioning failed — fix the error above, then re-run: pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all"
+    exit 1
+  fi
+else
+  warn "Skipped service bootstrap identities (--skip-migrate): run pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all once the DB is migrated"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
