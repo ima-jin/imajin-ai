@@ -53,6 +53,19 @@ describe('useCancellableTimeout', () => {
     expect(fn).not.toHaveBeenCalled();
   });
 
+  it('ignores a schedule() made after unmount (e.g. a late promise .then)', () => {
+    const fn = vi.fn();
+    const { result, unmount } = renderHook(() => useCancellableTimeout());
+    const schedule = result.current;
+
+    unmount();
+    schedule(fn, 1000);
+
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(5000);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
   it('returns a stable function across renders', () => {
     const { result, rerender } = renderHook(() => useCancellableTimeout());
     const first = result.current;

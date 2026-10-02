@@ -800,6 +800,34 @@ describe('per-source renderer registry — access', () => {
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(screen.queryByTestId('revealed-bearer')).toBeNull();
   });
+
+  // #2492: dismissing the box right after Copy unmounts the banner before the
+  // clipboard promise resolves; its `.then` must not arm a 2s reset timer that
+  // would outlive the component (and, in tests, jsdom teardown).
+  it('arms no copy-reset timer when the banner unmounts before the clipboard write resolves', async () => {
+    let resolveWrite: () => void = () => undefined;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { resolveWrite = resolve; }));
+    Object.assign(navigator, { clipboard: { writeText } });
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    installFetch(
+      [{ isOperator: true, approvals: [accessApproval()] }, { isOperator: true, approvals: [accessApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: accessApproval({ status: 'approved' }), data: { bearer: 'plaintext-secret-xyz', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z' } } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & mint bearer' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & mint bearer' }));
+    await screen.findByTestId('revealed-bearer');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByTestId('revealed-bearer')).toBeNull();
+
+    resolveWrite();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setTimeoutSpy.mock.calls.some(([, ms]) => ms === 2000)).toBe(false);
+  });
 });
 
 // `github` renderer (#2293): folds the retired pre-#2059 confirm rail into
