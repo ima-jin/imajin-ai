@@ -166,6 +166,9 @@ async function hasOwnerEnvelope(field: string, keyId: string, executor: DbExecut
  */
 const ERASED_KEY_MATERIAL = { wrappedKey: '', wrappedNonce: '' } as const;
 
+/** The columns erasing a grant's key material needs to identify it. */
+type ErasableGrant = Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>;
+
 /**
  * Erase key material for grants leaving `active`, but only where an owner envelope
  * exists for that (field, keyId).
@@ -192,7 +195,7 @@ const ERASED_KEY_MATERIAL = { wrappedKey: '', wrappedNonce: '' } as const;
  * in the secret store.
  */
 async function eraseGrantKeyMaterial(
-  grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
+  grants: ErasableGrant[],
   executor: DbExecutor = db,
 ): Promise<string[]> {
   // Each grant is independent (own row, own envelope check), so they run side by
@@ -203,7 +206,7 @@ async function eraseGrantKeyMaterial(
 
 /** Erase one grant's key material; returns its id, or undefined when the no-envelope guard skipped it. */
 async function eraseOneGrantKeyMaterial(
-  grant: Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>,
+  grant: ErasableGrant,
   executor: DbExecutor,
 ): Promise<string | undefined> {
   if (!(await hasOwnerEnvelope(grant.field, grant.keyId, executor))) {
@@ -276,7 +279,7 @@ export function activeGrantTuple(tuple: GrantTuple): SQL | undefined {
  * `active` by the caller. Exported for the revoke route and the expiry sweep.
  */
 export async function eraseInactiveGrantKeyMaterial(
-  grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
+  grants: ErasableGrant[],
 ): Promise<string[]> {
   return eraseGrantKeyMaterial(grants);
 }
