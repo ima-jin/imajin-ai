@@ -1,3 +1,17 @@
+// pm2 must exec the listener directly (#2447). Never use `script: "npm"` /
+// `args: "start"` for an app we own: pm2 tracks the npm wrapper, so on restart
+// it kills npm while the `sh -c next start` -> `next-server` grandchildren
+// survive, get reparented to init and keep the port bound. The fresh pm2 copy
+// then crash-loops on EADDRINUSE while the orphan serves traffic. Instead:
+//   - Next apps:  script node_modules/next/dist/bin/next, args "start -p <port>"
+//   - kernel:     script server.js (the custom Next server)
+//   - corpus:     script src/index.ts under `node --import tsx`
+// so the pm2-managed pid *is* the listener. scripts/assert-pm2-listeners.sh
+// verifies this after every deploy restart.
+//
+// fixready / karaoke / scorecard live in separate repos whose start scripts
+// are not visible from here; they keep `npm start` until each is confirmed and
+// converted (tracked in the allowlist in scripts/__tests__/ecosystem-config.test.mjs).
 module.exports = {
   "apps": [
     {
@@ -7,8 +21,9 @@ module.exports = {
       // version-controlled and can't embed a concrete home directory.
       "name": "dev-jin",
       "cwd": "/home/jin/dev/imajin-ai/apps/kernel",
-      "script": "npm",
-      "args": "start",
+      "script": "server.js",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3000,
         "NODE_ENV": "production",
@@ -20,8 +35,10 @@ module.exports = {
     {
       "name": "dev-events",
       "cwd": "/home/jin/dev/imajin-ai/apps/events",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3006",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3006,
         "NODE_ENV": "production"
@@ -32,8 +49,10 @@ module.exports = {
     {
       "name": "dev-coffee",
       "cwd": "/home/jin/dev/imajin-ai/apps/coffee",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3100",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3100,
         "NODE_ENV": "production"
@@ -44,8 +63,10 @@ module.exports = {
     {
       "name": "dev-dykil",
       "cwd": "/home/jin/dev/imajin-ai/apps/dykil",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3101",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3101,
         "NODE_ENV": "production"
@@ -56,8 +77,10 @@ module.exports = {
     {
       "name": "dev-learn",
       "cwd": "/home/jin/dev/imajin-ai/apps/learn",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3103",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3103,
         "NODE_ENV": "production"
@@ -68,8 +91,10 @@ module.exports = {
     {
       "name": "dev-market",
       "cwd": "/home/jin/dev/imajin-ai/apps/market",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3104",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3104,
         "NODE_ENV": "production"
@@ -126,8 +151,10 @@ module.exports = {
       // environment / .env.local on the host, never here.
       "name": "dev-corpus",
       "cwd": "/home/jin/dev/imajin-ai/apps/corpus",
-      "script": "npm",
-      "args": "start",
+      "script": "src/index.ts",
+      "interpreter": "node",
+      "node_args": "--import tsx",
+      "exec_mode": "fork",
       "env": {
         "PORT": 8013,
         "NODE_ENV": "production"

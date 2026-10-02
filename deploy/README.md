@@ -116,6 +116,27 @@ cd ~/prod/imajin-ai/apps/kernel && set -a && . .env.local && set +a
 pm2 restart prod-jin --update-env
 ```
 
+## pm2 must exec the listener directly (#2447)
+
+Apps are **not** started via `script: "npm", args: "start"`. pm2 would track the
+npm wrapper (`pm2 -> npm -> sh -c next start -> next-server`); a restart kills
+npm but the `next-server` grandchild survives, is reparented to init and keeps
+the port, while the new pm2 copy crash-loops on `EADDRINUSE` (prod-events,
+2026-09-29: 5,314 restarts). Instead each entry execs the server itself:
+
+- Next apps: `script: "node_modules/next/dist/bin/next"`, `args: "start -p <port>"`
+- kernel: `script: "server.js"`; corpus (dev): `script: "src/index.ts"` with `node_args: "--import tsx"`
+
+so the pm2-managed pid *is* the listener. Both deploy workflows restart every
+service declared in the ecosystem file **from the file** (a name-based
+`pm2 restart` would keep the old saved `npm start` definition), then run
+`scripts/assert-pm2-listeners.sh <dev|prod>`, which fails the deploy unless each
+port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
+
+`fixready`, `karaoke` and `scorecard` come from separate repos and still use
+`npm start`; convert them once their start scripts are confirmed (allowlisted in
+`scripts/__tests__/ecosystem-config.test.mjs`).
+
 ## Known drift captured on 2026-07-16 (documented, not yet reconciled)
 
 The prod file does **not** match what actually runs, in two ways. Both are

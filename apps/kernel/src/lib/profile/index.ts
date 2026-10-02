@@ -4,6 +4,10 @@ import type { FieldVisibility } from '@/src/db/schemas/profile';
 
 export const FIELD_VISIBILITY_LEVELS: string[] = ['public', 'connections', 'selective', 'private'];
 
+// Shared jsonb size caps (#2432) — see jsonb-limits.ts for the documented limits.
+export { PROFILE_JSONB_LIMITS, validateJsonbSize } from './jsonb-limits';
+export type { JsonbLimits, JsonbSizeResult, ProfileJsonbField } from './jsonb-limits';
+
 // Tax registrations (#2420) — validators used by the profile update route,
 // plus `getPrimaryTaxRegistration` for #2421 (pay service tax-rate prefill).
 export {

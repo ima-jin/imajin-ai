@@ -1,7 +1,8 @@
 /**
  * Tests for the `tax_registrations` slice of PUT /profile/api/profile/:id
  * (#2420): auth, ownership, business-scope guard, validation, and the
- * normalise-then-persist round trip. The rest of this route's behaviour
+ * normalise-then-persist round trip, plus the shared jsonb size caps and
+ * duplicate-registration rejection (#2432). The rest of this route's behaviour
  * (contact info, agentPricing, fieldVisibility, etc.) is exercised
  * elsewhere/pre-existing and is out of scope here.
  */
@@ -81,6 +82,7 @@ vi.mock('@/src/lib/kernel/session', () => ({
 // round-trip test below asserts on their actual normalisation output.
 
 import { GET, PUT } from '../route';
+import { PROFILE_JSONB_LIMITS } from '@/src/lib/profile/jsonb-limits';
 
 const BUSINESS_DID = 'did:imajin:biz';
 const OTHER_DID = 'did:imajin:someone-else';
@@ -172,6 +174,122 @@ describe('PUT /profile/api/profile/:id — validation (#2420)', () => {
   it('rejects a non-array taxRegistrations payload', async () => {
     const res = await PUT(makeRequest({ taxRegistrations: { jurisdiction: 'CA-ON' } }), params());
     expect(res.status).toBe(400);
+  });
+});
+
+describe('PUT /profile/api/profile/:id — duplicate registrations (#2432)', () => {
+  it('rejects the same jurisdiction + kind twice with a clear error, without writing', async () => {
+    const res = await PUT(
+      makeRequest({
+        taxRegistrations: [
+          { jurisdiction: 'CA-ON', kind: 'GST/HST', number: '123456789RT0001' },
+          { jurisdiction: 'CA-ON', kind: 'GST/HST', number: '987654321RT0001' },
+        ],
+      }),
+      params()
+    );
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toMatch(/Invalid tax registrations/);
+    expect(data.details).toEqual([expect.stringMatching(/taxRegistrations\[1\]: duplicate registration for jurisdiction CA-ON and kind GST\/HST/)]);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+});
+
+// Shared-validator wiring (#2432). The validator's three axes are covered per
+// field in src/lib/profile/__tests__/jsonb-limits.test.ts; these assert each
+// PUT-accepted jsonb field is actually guarded by it and returns a field-named 400.
+function entriesOf(count: number, value: unknown): Record<string, unknown> {
+  return Object.fromEntries(Array.from({ length: count }, (_, i) => [`k${i}`, value]));
+}
+
+const JSONB_ENTRY_CASES: Array<{ bodyKey: string; field: string; max: number; build: (n: number) => unknown }> = [
+  {
+    bodyKey: 'taxRegistrations',
+    field: 'taxRegistrations',
+    max: PROFILE_JSONB_LIMITS.taxRegistrations.maxEntries,
+    build: (n) => Array.from({ length: n }, (_, i) => ({ jurisdiction: `J${i}`, kind: 'PST', number: '1234567' })),
+  },
+  {
+    bodyKey: 'fieldVisibility',
+    field: 'fieldVisibility',
+    max: PROFILE_JSONB_LIMITS.fieldVisibility.maxEntries,
+    build: (n) => entriesOf(n, { level: 'public' }),
+  },
+  {
+    bodyKey: 'feature_toggles',
+    field: 'featureToggles',
+    max: PROFILE_JSONB_LIMITS.featureToggles.maxEntries,
+    build: (n) => entriesOf(n, true),
+  },
+  {
+    bodyKey: 'agentPricing',
+    field: 'agentPricing',
+    max: PROFILE_JSONB_LIMITS.agentPricing.maxEntries,
+    build: (n) => entriesOf(n, 1),
+  },
+];
+
+describe('PUT /profile/api/profile/:id — jsonb size caps (#2432)', () => {
+  it.each(JSONB_ENTRY_CASES)('$field: accepts $max entries', async ({ bodyKey, max, build }) => {
+    const res = await PUT(makeRequest({ [bodyKey]: build(max) }), params());
+    expect(res.status).toBe(200);
+    expect(mockSet).toHaveBeenCalled();
+  });
+
+  it.each(JSONB_ENTRY_CASES)('$field: rejects $max + 1 entries with a field-named 400 and no write', async ({ bodyKey, field, max, build }) => {
+    const res = await PUT(makeRequest({ [bodyKey]: build(max + 1) }), params());
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.field).toBe(field);
+    expect(data.error).toContain(field);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it('taxRegistrations: accepts a label of exactly maxStringLength and rejects one character more', async () => {
+    const { maxStringLength } = PROFILE_JSONB_LIMITS.taxRegistrations;
+    const entry = (label: string) => [{ jurisdiction: 'CA-ON', kind: 'GST/HST', number: '123456789RT0001', label }];
+
+    const ok = await PUT(makeRequest({ taxRegistrations: entry('x'.repeat(maxStringLength)) }), params());
+    expect(ok.status).toBe(200);
+
+    mockSet.mockClear();
+    const tooLong = await PUT(makeRequest({ taxRegistrations: entry('x'.repeat(maxStringLength + 1)) }), params());
+    expect(tooLong.status).toBe(400);
+    const data = await tooLong.json();
+    expect(data.field).toBe('taxRegistrations');
+    expect(data.error).toMatch(/string that is too long/);
+    expect(mockSet).not.toHaveBeenCalled();
+  });
+
+  it('fieldVisibility: rejects a payload over maxBytes with a field-named 400', async () => {
+    // Each rule is small and within the string cap, but the whole is over the byte cap.
+    const { maxBytes } = PROFILE_JSONB_LIMITS.fieldVisibility;
+    const allowedDids = Array.from({ length: Math.ceil(maxBytes / 10) }, (_, i) => `did:imajin:${i}`);
+    const res = await PUT(makeRequest({ fieldVisibility: { bio: { level: 'selective', allowedDids } } }), params());
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.field).toBe('fieldVisibility');
+    expect(data.error).toMatch(/too large/);
+  });
+
+  it('feature_toggles: caps the merged value, so repeated small PUTs cannot grow it past the limit', async () => {
+    const { maxEntries } = PROFILE_JSONB_LIMITS.featureToggles;
+    mockFindFirst.mockResolvedValue({ did: BUSINESS_DID, featureToggles: entriesOf(maxEntries, true) });
+
+    const res = await PUT(makeRequest({ feature_toggles: { one_more: true } }), params());
+    expect(res.status).toBe(400);
+    expect((await res.json()).field).toBe('featureToggles');
+    expect(mockSet).not.toHaveBeenCalled();
+
+    // Updating a key that already exists keeps the merged size at the limit and is accepted.
+    const same = await PUT(makeRequest({ feature_toggles: { k0: false } }), params());
+    expect(same.status).toBe(200);
+  });
+
+  it('allows clearing agentPricing with null', async () => {
+    const res = await PUT(makeRequest({ agentPricing: null }), params());
+    expect(res.status).toBe(200);
   });
 });
 
