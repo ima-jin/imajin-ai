@@ -236,61 +236,127 @@ export interface SettledFromStripeResult {
 }
 
 /**
- * Best-effort settle + attest, called only once — immediately after the
- * guarded `issued -> paid` transition wins. Never throws: a settle/
- * attestation failure is logged, not fatal to the webhook response, matching
- * every other post-primary-effect side action in this codebase (see
- * `settle-core.ts`'s `emitAttestations`, `webhook-handlers.ts`'s
- * `notifyCheckoutServices`).
+ * Why a paid payment_request's on-platform settlement did not complete
+ * (#2439) — the `reason` carried by `payment_request.settlement_failed`.
  */
-async function settleAndAttestStripePaid(
+export type StripeSettlementFailureReason = 'empty_chain' | 'basis_mismatch' | 'settle_rejected' | 'settle_error';
+
+interface StripeSettlementFailure {
+  ok: false;
+  reason: StripeSettlementFailureReason;
+  error: string;
+}
+
+type StripeSettlementOutcome = { ok: true } | StripeSettlementFailure;
+
+function settlementFailure(reason: StripeSettlementFailureReason, error: string): StripeSettlementFailure {
+  return { ok: false, reason, error };
+}
+
+type ResolvedStripeSettlement = ReturnType<typeof resolveSettlementChain>;
+
+/**
+ * Resolve a paid request's stored `.fair` manifest to absolute amounts, or
+ * say why it can't be settled. Pure — no I/O.
+ */
+function planStripeSettlement(
   paymentRequest: PaymentRequest,
-  settlementRef: PaymentRequestSettlementRef,
-): Promise<void> {
-  try {
-    const manifest = paymentRequest.fairManifest as unknown as PaymentRequestFairManifest;
-    const chain = (manifest?.chain ?? []) as FairSettlementEntry[];
-    if (chain.length === 0) {
-      log.error(
-        { paymentRequestId: paymentRequest.id },
-        'payment_request stripe settle skipped: fair_manifest.chain is empty',
-      );
-      return;
-    }
+  buyerDid: string,
+  nodeDid: string | null,
+): { ok: true; resolved: ResolvedStripeSettlement } | StripeSettlementFailure {
+  const manifest = paymentRequest.fairManifest as unknown as PaymentRequestFairManifest;
+  const chain = (manifest?.chain ?? []) as FairSettlementEntry[];
+  if (chain.length === 0) {
+    return settlementFailure('empty_chain', 'fair_manifest.chain is empty');
+  }
 
-    const buyerDid = paymentRequest.recipientDid ?? paymentRequest.issuerDid;
-    const nodeDid = (await getNodeDid()) || null;
+  // #2419/#2421: the settlement basis is the PRE-TAX `subtotalAmount`
+  // (`service.ts`'s `validateLineItems` sums line items into it, and
+  // `validateCustomPaymentRequestManifest` enforces `fair_manifest.total ==
+  // Σline_items`). `totalAmount` is subtotal + tax — the gross that was
+  // actually charged via Stripe — so it is NOT the basis (using it would
+  // fold tax into every chain share). Tax rides only in `taxes[]`.
+  const taxes = (manifest?.taxes ?? []) as FairSettlementTax[];
+  const basisAmountCents = paymentRequest.subtotalAmount;
 
-    // #2419/#2421: the settlement basis is the PRE-TAX `subtotalAmount`
-    // (`service.ts`'s `validateLineItems` sums line items into it, and
-    // `validateCustomPaymentRequestManifest` enforces `fair_manifest.total ==
-    // Σline_items`). `totalAmount` is subtotal + tax — the gross that was
-    // actually charged via Stripe — so it is NOT the basis (using it would
-    // fold tax into every chain share). Tax rides only in `taxes[]`.
-    const taxes = (manifest?.taxes ?? []) as FairSettlementTax[];
-    const basisAmountCents = paymentRequest.subtotalAmount;
+  // Defense in depth (#2426, unchanged): every tax row's `basisAmount`
+  // must equal the request's own pre-tax subtotal. A mismatch means the
+  // stored manifest is stale/tampered — refuse to settle rather than
+  // silently using the wrong basis for chain-share math.
+  const basisMismatch = taxes.find((t) => t.basisAmount !== basisAmountCents);
+  if (basisMismatch) {
+    return settlementFailure(
+      'basis_mismatch',
+      `taxes[].basisAmount (${basisMismatch.basisAmount}) does not match subtotalAmount (${basisAmountCents})`,
+    );
+  }
 
-    // Defense in depth (#2426, unchanged): every tax row's `basisAmount`
-    // must equal the request's own pre-tax subtotal. A mismatch means the
-    // stored manifest is stale/tampered — refuse to settle rather than
-    // silently using the wrong basis for chain-share math.
-    const basisMismatch = taxes.find((t) => t.basisAmount !== basisAmountCents);
-    if (basisMismatch) {
-      log.error(
-        { paymentRequestId: paymentRequest.id, expected: basisAmountCents, got: basisMismatch.basisAmount },
-        'payment_request stripe settle skipped: taxes[].basisAmount does not match subtotalAmount',
-      );
-      return;
-    }
-
-    const { resolvedChain, expectedTotal, taxCredits, totalTaxDollars } = resolveSettlementChain({
+  return {
+    ok: true,
+    resolved: resolveSettlementChain({
       amountCents: basisAmountCents,
       chain,
       fees: manifest?.fees as Array<{ role: string; rateBps: number; fixedCents: number }> | undefined,
       buyerDid,
       nodeDid,
       taxes,
-    });
+    }),
+  };
+}
+
+/** Mint the single kernel-signed `payment_request.settled` attestation and publish `payment_request.settled`. */
+async function attestAndAnnounceStripeSettled(
+  paymentRequest: PaymentRequest,
+  settlementRef: PaymentRequestSettlementRef,
+  nodeDid: string | null,
+): Promise<void> {
+  const attestationId = await emitPaymentRequestSettledStripeAttestation({
+    paymentRequestId: paymentRequest.id,
+    issuerDid: paymentRequest.issuerDid,
+    recipientDid: paymentRequest.recipientDid,
+    contentHash: paymentRequest.contentHash,
+    totalAmount: paymentRequest.totalAmount,
+    currency: paymentRequest.currency,
+    settlementRef,
+    tax: taxBreakdownOf(paymentRequest),
+  });
+
+  publish('payment_request.settled', {
+    issuer: nodeDid || paymentRequest.issuerDid,
+    subject: paymentRequest.recipientDid ?? paymentRequest.issuerDid,
+    scope: 'pay',
+    payload: {
+      paymentRequestId: paymentRequest.id,
+      method: 'stripe',
+      issuerDid: paymentRequest.issuerDid,
+      recipientDid: paymentRequest.recipientDid,
+      totalAmount: paymentRequest.totalAmount,
+      currency: paymentRequest.currency,
+      contentHash: paymentRequest.contentHash,
+      settlementRef: settlementRef as unknown as Record<string, unknown>,
+      attestationId,
+      context_id: paymentRequest.id,
+      context_type: 'payment_request',
+    },
+  }).catch((error: unknown) => log.error({ err: String(error) }, 'payment_request.settled publish error'));
+}
+
+/**
+ * One settlement attempt for a Stripe-paid request: resolve the manifest,
+ * run `settlePayment()`, then attest + announce. Never throws — every
+ * failure comes back as a typed outcome so the caller can alert on it.
+ */
+async function attemptStripeSettlement(
+  paymentRequest: PaymentRequest,
+  settlementRef: PaymentRequestSettlementRef,
+): Promise<StripeSettlementOutcome> {
+  try {
+    const buyerDid = paymentRequest.recipientDid ?? paymentRequest.issuerDid;
+    const nodeDid = (await getNodeDid()) || null;
+
+    const plan = planStripeSettlement(paymentRequest, buyerDid, nodeDid);
+    if (!plan.ok) return plan;
+    const { resolvedChain, expectedTotal, taxCredits, totalTaxDollars } = plan.resolved;
 
     const settleResult = await settlePayment({
       from_did: buyerDid,
@@ -304,47 +370,64 @@ async function settleAndAttestStripePaid(
       metadata: { payment_request_id: paymentRequest.id },
       currency: paymentRequest.currency,
     });
+    if ('error' in settleResult) return settlementFailure('settle_rejected', settleResult.error);
 
-    if ('error' in settleResult) {
-      log.error(
-        { paymentRequestId: paymentRequest.id, error: settleResult.error },
-        'payment_request stripe settle failed',
-      );
-      return;
-    }
+    await attestAndAnnounceStripeSettled(paymentRequest, settlementRef, nodeDid);
+    return { ok: true };
+  } catch (error) {
+    return settlementFailure('settle_error', String(error));
+  }
+}
 
-    const attestationId = await emitPaymentRequestSettledStripeAttestation({
+/**
+ * #2439: the buyer's money has already moved through Stripe by the time a
+ * settlement fails, so a bare log line is not enough — publish
+ * `payment_request.settlement_failed`, whose default chain (`emit` +
+ * `notify`, `packages/bus/src/config.ts`) puts an operator card on the
+ * node DID. The retry path is `retryPaymentRequestStripeSettlement` below
+ * (`POST /pay/api/admin/payment-requests/:id/retry-settlement`). Never throws.
+ */
+async function alertSettlementFailure(paymentRequest: PaymentRequest, failure: StripeSettlementFailure): Promise<void> {
+  log.error(
+    { paymentRequestId: paymentRequest.id, reason: failure.reason, error: failure.error },
+    'payment_request stripe settle failed — operator alerted',
+  );
+  const nodeDid = await getNodeDid().catch(() => null);
+  const operatorDid = nodeDid || paymentRequest.issuerDid;
+  await publish('payment_request.settlement_failed', {
+    issuer: operatorDid,
+    subject: operatorDid,
+    scope: 'pay',
+    payload: {
       paymentRequestId: paymentRequest.id,
+      reason: failure.reason,
+      error: failure.error,
       issuerDid: paymentRequest.issuerDid,
       recipientDid: paymentRequest.recipientDid,
-      contentHash: paymentRequest.contentHash,
       totalAmount: paymentRequest.totalAmount,
       currency: paymentRequest.currency,
-      settlementRef,
-      tax: taxBreakdownOf(paymentRequest),
-    });
+      method: 'stripe',
+      context_id: paymentRequest.id,
+      context_type: 'payment_request',
+    },
+  }).catch((error: unknown) => log.error({ err: String(error) }, 'payment_request.settlement_failed publish error'));
+}
 
-    publish('payment_request.settled', {
-      issuer: nodeDid || paymentRequest.issuerDid,
-      subject: paymentRequest.recipientDid ?? paymentRequest.issuerDid,
-      scope: 'pay',
-      payload: {
-        paymentRequestId: paymentRequest.id,
-        method: 'stripe',
-        issuerDid: paymentRequest.issuerDid,
-        recipientDid: paymentRequest.recipientDid,
-        totalAmount: paymentRequest.totalAmount,
-        currency: paymentRequest.currency,
-        contentHash: paymentRequest.contentHash,
-        settlementRef: settlementRef as unknown as Record<string, unknown>,
-        attestationId,
-        context_id: paymentRequest.id,
-        context_type: 'payment_request',
-      },
-    }).catch((error: unknown) => log.error({ err: String(error) }, 'payment_request.settled publish error'));
-  } catch (error) {
-    log.error({ err: String(error), paymentRequestId: paymentRequest.id }, 'payment_request stripe settle error');
-  }
+/**
+ * Best-effort settle + attest, called only once — immediately after the
+ * guarded `issued -> paid` transition wins. Never throws: a settle/
+ * attestation failure is not fatal to the webhook response (Stripe must
+ * still get its 200), matching every other post-primary-effect side action
+ * in this codebase (see `settle-core.ts`'s `emitAttestations`,
+ * `webhook-handlers.ts`'s `notifyCheckoutServices`) — but unlike those, a
+ * failure here is alerted (#2439), not just logged.
+ */
+async function settleAndAttestStripePaid(
+  paymentRequest: PaymentRequest,
+  settlementRef: PaymentRequestSettlementRef,
+): Promise<void> {
+  const outcome = await attemptStripeSettlement(paymentRequest, settlementRef);
+  if (!outcome.ok) await alertSettlementFailure(paymentRequest, outcome);
 }
 
 /**
@@ -408,4 +491,70 @@ export async function settlePaymentRequestFromStripeCheckout(
   await settleAndAttestStripePaid(paidRow, settlementRef);
 
   return { paymentRequest: paidRow, settled: true };
+}
+
+
+// ---------------------------------------------------------------------------
+// Operator retry path (#2439)
+// ---------------------------------------------------------------------------
+
+export interface RetriedSettlementResult {
+  paymentRequest: PaymentRequest;
+  settled: true;
+}
+
+/** True when `settlePayment()` already wrote ledger rows for this payment_request — a retry must never settle twice. */
+async function hasSettlementLedgerRows(paymentRequestId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: transactions.id })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.service, 'pay'),
+        eq(transactions.type, 'payment_request'),
+        eq(transactions.status, 'completed'),
+        sql`${transactions.metadata}->>'payment_request_id' = ${paymentRequestId}`,
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+/**
+ * Re-run the on-platform settlement for a payment_request that Stripe
+ * collected but whose ledger settlement failed (#2439 — see
+ * `payment_request.settlement_failed`). Operator-only (the route wrapping
+ * this is admin-gated); never invoked automatically, because the failures
+ * it recovers from — a stale manifest basis, an empty chain, a rejected
+ * settlement — don't heal on their own and re-running blind could double-
+ * credit. Preconditions:
+ *   - the request is `paid` via Stripe (`settlementRef.method === 'stripe'`);
+ *   - no settlement ledger rows exist yet for it (checked here; a request
+ *     that already settled gets a 409, so a retry is safe to repeat).
+ * A retry that fails again re-alerts the operator and returns 422 with the
+ * reason, so the fix-then-retry loop is observable.
+ */
+export async function retryPaymentRequestStripeSettlement(
+  paymentRequestId: string,
+): Promise<RetriedSettlementResult | ServiceError> {
+  const existing = await getPaymentRequestById(paymentRequestId);
+  if (!existing) return err('payment_request not found', 404);
+
+  const settlementRef = existing.settlementRef as PaymentRequestSettlementRef | null;
+  if (existing.status !== 'paid' || settlementRef?.method !== 'stripe') {
+    return err(
+      `only a payment_request paid via Stripe (status 'paid') can be re-settled — this one is '${existing.status}'`,
+      409,
+    );
+  }
+  if (await hasSettlementLedgerRows(existing.id)) {
+    return err('payment_request already has settlement ledger rows — refusing to settle twice', 409);
+  }
+
+  const outcome = await attemptStripeSettlement(existing, settlementRef);
+  if (!outcome.ok) {
+    await alertSettlementFailure(existing, outcome);
+    return err(`settlement retry failed (${outcome.reason}): ${outcome.error}`, 422);
+  }
+  return { paymentRequest: existing, settled: true };
 }

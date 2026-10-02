@@ -71,6 +71,7 @@ describe('validateChain — #2419 taxCredits invariant', () => {
     kind: 'GST/HST',
     rateBps: 1300,
     remitTo: 'did:imajin:authority:ca-cra',
+    registrationNumber: '123456789RT0001',
   };
 
   it('accepts chain + taxCredits summing to total_amount', () => {
@@ -87,9 +88,34 @@ describe('validateChain — #2419 taxCredits invariant', () => {
   });
 
   it('rejects a taxCredits entry missing a required field', () => {
-    const missingJurisdiction = { did: TAX_CREDIT.did, amount: TAX_CREDIT.amount, kind: TAX_CREDIT.kind, rateBps: TAX_CREDIT.rateBps, remitTo: TAX_CREDIT.remitTo };
+    const missingJurisdiction = { did: TAX_CREDIT.did, amount: TAX_CREDIT.amount, kind: TAX_CREDIT.kind, rateBps: TAX_CREDIT.rateBps, remitTo: TAX_CREDIT.remitTo, registrationNumber: TAX_CREDIT.registrationNumber };
     const result = validateChain(CHAIN, 113, [missingJurisdiction]);
     expect('error' in result).toBe(true);
+  });
+
+  describe('registrationNumber is required end-to-end (#2439)', () => {
+    it('rejects a taxCredits entry with no registrationNumber', () => {
+      const result = validateChain(CHAIN, 113, [{ ...TAX_CREDIT, registrationNumber: undefined }]);
+      expect(result).toMatchObject({ status: 400 });
+      if ('error' in result) expect(result.error).toMatch(/registrationNumber/);
+    });
+
+    it('rejects an empty-string registrationNumber', () => {
+      const result = validateChain(CHAIN, 113, [{ ...TAX_CREDIT, registrationNumber: '' }]);
+      expect(result).toMatchObject({ status: 400 });
+      if ('error' in result) expect(result.error).toMatch(/registrationNumber/);
+    });
+
+    it('rejects a non-string registrationNumber', () => {
+      const result = validateChain(CHAIN, 113, [{ ...TAX_CREDIT, registrationNumber: 123456789 }]);
+      expect(result).toMatchObject({ status: 400 });
+    });
+
+    it('rejects when only one of several credits lacks a registrationNumber', () => {
+      const second = { ...TAX_CREDIT, jurisdiction: 'CA-QC', kind: 'QST', amount: 10, registrationNumber: '' };
+      const result = validateChain(CHAIN, 123, [TAX_CREDIT, second]);
+      expect(result).toMatchObject({ status: 400 });
+    });
   });
 
   it('rejects a non-array taxCredits', () => {

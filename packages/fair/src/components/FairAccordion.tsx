@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import type { FairManifest, FairEntry, FairFee, FairTax } from '../types';
+import { taxLineLabel } from '../taxLabel';
 
 /** Normalize share values: if any > 1, assume percentages and divide by 100 */
 function normalizeShares(entries: FairEntry[]): FairEntry[] {
@@ -241,9 +242,7 @@ export function FairAccordion({ manifest, resolveProfile, nodeDid, viewerDid, vi
                   >
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-purple-500" />
-                      <span className="text-sm font-medium">
-                        {tax.kind} {(tax.rateBps / 100).toFixed(2)}% (collected for {tax.jurisdiction})
-                      </span>
+                      <span className="text-sm font-medium">{taxLineLabel(tax)}</span>
                     </div>
                     <span className="text-sm font-bold">${(tax.amount / 100).toFixed(2)}</span>
                   </div>

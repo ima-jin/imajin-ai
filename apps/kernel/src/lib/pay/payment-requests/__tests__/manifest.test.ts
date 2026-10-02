@@ -113,10 +113,40 @@ describe('validateCustomPaymentRequestManifest — taxes[] (#2419 review fixes 5
 
   it('accepts a manifest with a valid taxes[] row whose basisAmount matches the request total', () => {
     const result = validateCustomPaymentRequestManifest(
-      { total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [VALID_TAX] },
+      { fair: '1.2', total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [VALID_TAX] },
       requestTotal,
     );
     expect(result.ok).toBe(true);
+  });
+
+  it('#2439: rejects a non-empty taxes[] on a manifest not stamped fair "1.2"', () => {
+    for (const fair of [undefined, '1.1', '1.0']) {
+      const result = validateCustomPaymentRequestManifest(
+        { fair, total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [VALID_TAX] },
+        requestTotal,
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/fair_manifest\.fair must be "1\.2" when fair_manifest\.taxes is present/);
+    }
+  });
+
+  it('#2439: an empty taxes[] needs no "1.2" stamp', () => {
+    const result = validateCustomPaymentRequestManifest(
+      { total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes: [] },
+      requestTotal,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it('#2439 item 4: rejects every non-array taxes value instead of silently ignoring it', () => {
+    for (const taxes of [null, 'GST', 13, true, { not: 'an array' }]) {
+      const result = validateCustomPaymentRequestManifest(
+        { fair: '1.2', total: { amount: 10_000, currency: 'CAD' }, chain: SELLER_CHAIN, taxes },
+        requestTotal,
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error).toMatch(/taxes must be an array/);
+    }
   });
 
   it('#2439 item 2: rejects at create time when the tax collector is not a seller in the chain', () => {
@@ -157,6 +187,7 @@ describe('validateCustomPaymentRequestManifest — taxes[] (#2419 review fixes 5
     for (const role of ['creator', 'event']) {
       const result = validateCustomPaymentRequestManifest(
         {
+          fair: '1.2',
           total: { amount: 10_000, currency: 'CAD' },
           chain: [{ did: 'did:imajin:issuer', role, share: 1 }],
           taxes: [VALID_TAX],
