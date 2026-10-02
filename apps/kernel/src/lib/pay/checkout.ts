@@ -4,7 +4,7 @@ import type { Identity } from '@imajin/auth';
 import { db, connectedAccounts } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS, validateTaxes } from '@imajin/fair';
 
 export interface CheckoutItem {
   name: string;
@@ -54,19 +54,87 @@ function validateCheckoutItem(item: CheckoutItem, index: number): CheckoutValida
   return { ok: true };
 }
 
+/** Exact `.fair` version a manifest carrying `taxes[]` must declare (#2419/#2439). */
+const FAIR_VERSION_WITH_TAXES = '1.2';
+
+function hasTaxRows(fairManifest: CheckoutBody['fairManifest']): boolean {
+  const taxes = fairManifest?.taxes;
+  return Array.isArray(taxes) && taxes.length > 0;
+}
+
+/**
+ * #2435: `fair` is `'1.2'` exactly when `taxes[]` is present and non-empty —
+ * the same rule `validateManifest` enforces for v1.1+ manifests (this
+ * path's share-based `chain` manifest can't go through `validateManifest`
+ * itself). A `taxes[]` on any other version, or a `'1.2'` stamp with nothing
+ * to justify it, is a 400.
+ */
+function validateFairVersionForTaxes(fairManifest: CheckoutBody['fairManifest']): CheckoutValidation {
+  const hasTaxes = hasTaxRows(fairManifest);
+  const fair = fairManifest?.fair;
+  if (hasTaxes && fair !== FAIR_VERSION_WITH_TAXES) {
+    return { ok: false, error: `fairManifest.fair must be "${FAIR_VERSION_WITH_TAXES}" when taxes[] is present`, status: 400 };
+  }
+  if (!hasTaxes && fair === FAIR_VERSION_WITH_TAXES) {
+    return { ok: false, error: `fairManifest.fair "${FAIR_VERSION_WITH_TAXES}" requires a non-empty taxes[]`, status: 400 };
+  }
+  return { ok: true };
+}
+
+/**
+ * #2435: every `taxes[].collectorDid` must be the connected-account seller.
+ * Stripe settles this checkout as a destination charge, so the tax money
+ * lands in the seller's connected account — recording a trust-liability
+ * credit against any other DID would book money that DID never received
+ * (the same rule `settle-core.ts`'s `validateFundedTaxCollectors` applies to
+ * funded settlements).
+ */
+function validateTaxCollectors(body: CheckoutBody): CheckoutValidation {
+  const taxes = body.fairManifest?.taxes as CheckoutFairTax[];
+  const sellerDid = body.sellerDid || body.metadata?.sellerDid;
+  if (!sellerDid) {
+    return { ok: false, error: 'fairManifest.taxes[] requires sellerDid — tax is collected in trust into the seller\'s connected account', status: 400 };
+  }
+  const unbacked = taxes.find((tax) => tax.collectorDid !== sellerDid);
+  if (unbacked) {
+    return { ok: false, error: `fairManifest.taxes[].collectorDid '${unbacked.collectorDid}' must be the seller (${sellerDid}) — Stripe never sends the tax money to any other account`, status: 400 };
+  }
+  return { ok: true };
+}
+
+/**
+ * Validate a manifest's `taxes[]` for the generic checkout path (#2435):
+ * `fair: '1.2'` exactly, per-row shape/amount rules (shared with
+ * `validateManifest`), collector = seller, and every `basisAmount` equal to
+ * the merchandise subtotal. A manifest without `taxes[]` always passes.
+ */
+function validateCheckoutTaxes(body: CheckoutBody): CheckoutValidation {
+  const versionCheck = validateFairVersionForTaxes(body.fairManifest);
+  if (!versionCheck.ok) return versionCheck;
+  if (!hasTaxRows(body.fairManifest)) return { ok: true };
+
+  const rowErrors = validateTaxes(body.fairManifest?.taxes);
+  if (rowErrors.length > 0) {
+    return { ok: false, error: `fairManifest.${rowErrors.join('; fairManifest.')}`, status: 400 };
+  }
+  const collectorCheck = validateTaxCollectors(body);
+  if (!collectorCheck.ok) return collectorCheck;
+
+  const merchandiseAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
+  const basisCheck = validateTaxesBasis(body.fairManifest, merchandiseAmount);
+  return basisCheck.ok ? { ok: true } : { ok: false, error: basisCheck.error, status: 400 };
+}
+
 /**
  * Validate the checkout request body: items array shape, per-item bounds,
- * required URLs, and (#2419 fix, review) that `fairManifest.taxes` is
- * absent. The generic checkout's webhook-side settlement
- * (`webhook-handlers.ts`'s `processChainDistribution`, intentionally left
- * untouched by #2419 — see that module's "Known divergences" doc comment)
- * splits the FULL Stripe total — tax included — into protocol/node/platform
- * `feeLedger` shares, which would violate the "tax is never fee-skimmable"
- * invariant. Until that webhook path is updated to settle on `basisAmount`/
- * `taxCredits` (tracked as follow-up work), this path refuses `taxes[]`
- * outright rather than silently skimming it. `payment_request` checkout
+ * required URLs, and (#2435) any `fairManifest.taxes[]`. `taxes[]` is
+ * accepted here because the webhook's settlement
+ * (`webhook-handlers.ts`'s `processChainDistribution`) now splits only the
+ * pre-tax basis (Stripe total minus Σ`taxes[].amount`) into
+ * platform/node/protocol shares and books each tax row as a trust-liability
+ * credit, so tax is never fee base. `payment_request` checkout
  * (`payment-requests/checkout.ts`) does NOT go through this validator — it
- * settles via `settlePayment()`, which already handles tax correctly.
+ * settles via `settlePayment()`.
  */
 export function validateCheckoutBody(body: CheckoutBody): CheckoutValidation {
   if (!body.items || !Array.isArray(body.items) || body.items.length === 0) {
@@ -75,19 +143,11 @@ export function validateCheckoutBody(body: CheckoutBody): CheckoutValidation {
   if (!body.successUrl || !body.cancelUrl) {
     return { ok: false, error: 'successUrl and cancelUrl are required', status: 400 };
   }
-  const taxes = body.fairManifest?.taxes;
-  if (Array.isArray(taxes) && taxes.length > 0) {
-    return {
-      ok: false,
-      error: 'fairManifest.taxes is not supported on this checkout path yet (#2419 follow-up: webhook chain distribution needs to settle on basisAmount) — use payment_request checkout instead',
-      status: 400,
-    };
-  }
   for (let i = 0; i < body.items.length; i++) {
     const itemResult = validateCheckoutItem(body.items[i], i);
     if (!itemResult.ok) return itemResult;
   }
-  return { ok: true };
+  return validateCheckoutTaxes(body);
 }
 
 /**
@@ -123,6 +183,7 @@ interface CheckoutFairTax {
   kind: string;
   amount: number;
   basisAmount: number;
+  collectorDid?: string;
 }
 
 /** Sum of a manifest's `taxes[].amount` (cents). Zero for a manifest without `taxes[]` — fully backward compatible. */

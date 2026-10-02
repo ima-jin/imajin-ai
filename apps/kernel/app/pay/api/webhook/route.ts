@@ -316,12 +316,17 @@ async function processFairManifest(
     await reconcileStripeFee({ tx, manifest, actualFeeCents, estimatedFeeCents, currency });
   }
 
+  // #2435: `totalAmountCents` is the gross Stripe charge (tax included). The
+  // processor-fee estimate above intentionally stays on gross (the seller
+  // absorbs Stripe's fee on the tax portion), but chain shares are computed
+  // on the pre-tax basis only and each tax row is booked as a trust liability.
   await processChainDistribution({
     tx,
     totalAmountCents,
     currency,
     buyerDid,
     chain: manifest.chain,
+    taxes: Array.isArray(manifest.taxes) ? manifest.taxes : undefined,
   });
 }
 
