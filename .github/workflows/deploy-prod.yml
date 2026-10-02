@@ -107,15 +107,37 @@ jobs:
           pm2 startOrRestart "$ECOSYSTEM_FILE" --only prod-jin --update-env
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
-          # Everything else keeps the previous name-based restart
-          # (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, …). links (#1986
-          # phase 2) runs from its own repo/pm2 process now, so it is no longer among these.
+          # Everything else (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, …).
+          # links (#1986 phase 2) runs from its own repo/pm2 process now, so it is no
+          # longer among these.
+          #
+          # Services declared in the ecosystem file are restarted FROM the file for
+          # the same reason as prod-jin: a name-based `pm2 restart` reuses the saved
+          # definition, so a service pm2 still has saved as `npm start` would keep
+          # the npm wrapper that orphans next-server on restart (#2447) and never
+          # pick up the direct-exec config. Anything pm2 runs that is NOT in the file
+          # keeps the name-based restart.
+          source scripts/lib/pm2-owned.sh
           PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
-          OTHER_PROCS=$(echo "$PROD_PROCS" | tr ' ' '\n' | grep -v '^prod-jin$' | grep -v '^$' | tr '\n' ' ')
-          if [ -n "$OTHER_PROCS" ]; then
-            echo "Restarting: $OTHER_PROCS"
-            pm2 restart $OTHER_PROCS
-          else
+          FILE_PROCS=""
+          NAME_PROCS=""
+          for proc in $PROD_PROCS; do
+            [ "$proc" = "prod-jin" ] && continue
+            if ecosystem_has_app "$proc" "$ECOSYSTEM_FILE"; then
+              FILE_PROCS="${FILE_PROCS:+$FILE_PROCS,}$proc"
+            else
+              NAME_PROCS="$NAME_PROCS $proc"
+            fi
+          done
+          if [ -n "$FILE_PROCS" ]; then
+            echo "Restarting from $ECOSYSTEM_FILE: $FILE_PROCS"
+            pm2 startOrRestart "$ECOSYSTEM_FILE" --only "$FILE_PROCS" --update-env
+          fi
+          if [ -n "$NAME_PROCS" ]; then
+            echo "Restarting by name:$NAME_PROCS"
+            pm2 restart $NAME_PROCS
+          fi
+          if [ -z "$FILE_PROCS" ] && [ -z "$NAME_PROCS" ]; then
             echo "ℹ️  No other prod-* pm2 processes to restart"
           fi
 
@@ -123,3 +145,9 @@ jobs:
           # node_args, instead of the stale saved definition that lacks them.
           pm2 save
           echo "✅ Prod services restarted"
+
+      # #2447: the restart above can leave an orphan holding a port while pm2's
+      # own copy crash-loops on EADDRINUSE. Fail the deploy unless every port's
+      # listener is the pm2-managed process (or its child).
+      - name: Assert pm2 owns every service port
+        run: ./scripts/assert-pm2-listeners.sh prod "$ECOSYSTEM_FILE"

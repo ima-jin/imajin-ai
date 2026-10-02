@@ -4,6 +4,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { isValidHandle, HANDLE_ERROR } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { validateJsonbSize } from '@/src/lib/profile/jsonb-limits';
 
 /**
  * POST /api/profile - Create a new profile
@@ -29,6 +30,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // Validate handle format if provided
     if (handle && !isValidHandle(handle)) {
       return errorResponse(HANDLE_ERROR);
+    }
+
+    // Cap the owner-supplied metadata jsonb (#2432)
+    const metadataSize = validateJsonbSize('metadata', metadata);
+    if (!metadataSize.valid) {
+      return jsonResponse({ error: metadataSize.error, field: metadataSize.field }, 400);
     }
 
     // Use acting-as DID if present, otherwise personal DID

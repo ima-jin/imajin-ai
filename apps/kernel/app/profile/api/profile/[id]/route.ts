@@ -9,7 +9,8 @@ import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
 import { publish, broker, isBrokerRelease } from '@imajin/bus';
 import { validateAgentPricingManifest } from '@imajin/fair';
-import { filterProfileFields, FIELD_VISIBILITY_LEVELS, validateTaxRegistrations } from '@/src/lib/profile';
+import { filterProfileFields, FIELD_VISIBILITY_LEVELS, validateTaxRegistrations, validateJsonbSize } from '@/src/lib/profile';
+import type { JsonbSizeResult, ProfileJsonbField } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
 import { loadAndUnseal } from '@/src/lib/vault';
 import { processEmailUpdate, processPhoneUpdate } from '@/src/lib/profile/vault-contacts';
@@ -283,16 +284,46 @@ function validateFieldVisibilityShape(
 }
 
 /**
- * Validate body fields that require explicit checks (visibility, agentPricing, fieldVisibility).
+ * Size-cap every jsonb field in the body via the shared validator (#2432).
+ * feature_toggles is merged into the stored value on write, so the cap is
+ * applied to the merged result — otherwise repeated small PUTs could grow it
+ * without bound. Returns the first violation, or null.
+ */
+function findJsonbSizeViolation(
+  body: Record<string, unknown>,
+  existing: typeof profiles.$inferSelect | undefined
+): JsonbSizeResult | null {
+  const candidates: Array<[ProfileJsonbField, unknown]> = [
+    ['agentPricing', body.agentPricing],
+    ['fieldVisibility', body.fieldVisibility],
+    ['taxRegistrations', body.taxRegistrations],
+  ];
+  if (body.feature_toggles !== undefined) {
+    candidates.push(['featureToggles', { ...existing?.featureToggles, ...(body.feature_toggles as Record<string, unknown>) }]);
+  }
+  for (const [field, value] of candidates) {
+    const result = validateJsonbSize(field, value);
+    if (!result.valid) return result;
+  }
+  return null;
+}
+
+/**
+ * Validate body fields that require explicit checks (visibility, jsonb sizes, agentPricing, fieldVisibility).
  * Returns an error response if validation fails, or null if all is valid.
  */
 function validateProfileUpdateBody(
   body: Record<string, any>,
+  existing: typeof profiles.$inferSelect | undefined,
   cors: HeadersInit
 ): NextResponse | null {
   const { visibility, agentPricing, fieldVisibility, taxRegistrations } = body;
   if (visibility !== undefined && !['public', 'incognito'].includes(visibility)) {
     return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
+  }
+  const sizeViolation = findJsonbSizeViolation(body, existing);
+  if (sizeViolation) {
+    return NextResponse.json({ error: sizeViolation.error, field: sizeViolation.field }, { status: 400, headers: cors });
   }
   if (agentPricing !== undefined && agentPricing !== null) {
     const validation = validateAgentPricingManifest(agentPricing);
@@ -482,7 +513,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (sigError) return sigError;
 
     const body = JSON.parse(bodyText);
-    const validationError = validateProfileUpdateBody(body, cors);
+    const validationError = validateProfileUpdateBody(body, existing, cors);
     if (validationError) return validationError;
 
     const profileDid = existing?.did ?? id;
