@@ -23,6 +23,40 @@ interface SetVaultBody {
   confirmField?: string;
 }
 
+/**
+ * #2452 — the #2449 guards Rotate/Delete have, fail-closed and server-side.
+ * Returns a 409 response when the set must be refused, or null to proceed.
+ *
+ *  - internal-secret:* is the kernel's own secret: never operator-set
+ *    (provisioning is the internal-secret path, replacement is Rotate).
+ *  - set on an EXISTING field re-seals it under a new key — exactly the harm
+ *    Rotate guards against (#2450): any other active grantee's wrapped key
+ *    stops decrypting. Same guard query as Rotate, same typed confirmField.
+ */
+async function checkSetGuards(field: string, confirmField: string | undefined): Promise<NextResponse | null> {
+  if (isInternalSecretField(field)) {
+    return NextResponse.json(
+      { error: `'${field}' is a kernel-internal secret and cannot be set by an operator.` },
+      { status: 409 },
+    );
+  }
+
+  if (!(await vaultService.get(field))) return null;
+
+  const identity = getNodeSigningIdentity();
+  const otherGrantees = await listOtherActiveGrantees(field, identity.senderDid);
+  if (otherGrantees.length === 0 || confirmField === field) return null;
+
+  return NextResponse.json(
+    {
+      error: `'${field}' already exists and ${otherGrantees.length} active grantee(s) hold a grant on it — use Rotate, or resend with confirmField: "${field}" to re-seal anyway.`,
+      count: otherGrantees.length,
+      grantees: otherGrantees,
+    },
+    { status: 409 },
+  );
+}
+
 export async function POST(request: NextRequest) {
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -57,36 +91,9 @@ export async function POST(request: NextRequest) {
 
   const trimmedField = field.trim();
 
-  // #2452 — fail-closed, server-side (same posture as Rotate/Delete, #2449):
-  // internal-secret:* fields are the kernel's own secrets and are never
-  // operator-set. Provisioning goes through the internal-secret path and
-  // replacement through Rotate.
-  if (isInternalSecretField(trimmedField)) {
-    return NextResponse.json(
-      { error: `'${trimmedField}' is a kernel-internal secret and cannot be set by an operator.` },
-      { status: 409 },
-    );
-  }
-
   try {
-    // #2452 — set on an EXISTING field is a re-seal under a new key, exactly the
-    // harm Rotate guards against (#2450): any other active grantee's wrapped key
-    // stops decrypting. Same guard query as Rotate, same typed confirmField.
-    const existing = await vaultService.get(trimmedField);
-    if (existing) {
-      const identity = getNodeSigningIdentity();
-      const otherGrantees = await listOtherActiveGrantees(trimmedField, identity.senderDid);
-      if (otherGrantees.length > 0 && confirmField !== trimmedField) {
-        return NextResponse.json(
-          {
-            error: `'${trimmedField}' already exists and ${otherGrantees.length} active grantee(s) hold a grant on it — use Rotate, or resend with confirmField: "${trimmedField}" to re-seal anyway.`,
-            count: otherGrantees.length,
-            grantees: otherGrantees,
-          },
-          { status: 409 },
-        );
-      }
-    }
+    const refusal = await checkSetGuards(trimmedField, confirmField);
+    if (refusal) return refusal;
 
     if (custodyScheme === 'delegation-grant') {
       return await handleDelegationGrantSet(trimmedField, value, expiresAtDate);
