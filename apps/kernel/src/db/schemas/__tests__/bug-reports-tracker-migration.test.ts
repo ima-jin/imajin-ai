@@ -121,6 +121,9 @@ describe('0154_bug_reports_external_tracker (#2184)', () => {
 });
 
 describe('0155_bug_reports_drop_github_columns (#2184)', () => {
+  // Same heavy embedded-PGlite + full 0001_seed.sql replay as the 0154 test
+  // above, so it gets the same explicit timeout bump (default 5000ms is
+  // flaky on contended CI runners) — see #2436.
   it('drops the legacy columns after 0154 has backfilled the generic ones, preserves the backfilled data, and is itself idempotent', async () => {
     client = new PGlite({ extensions: { pgcrypto } });
     await client.waitReady;
@@ -150,5 +153,5 @@ describe('0155_bug_reports_drop_github_columns (#2184)', () => {
 
     // Idempotency: re-running the drop migration (DROP COLUMN IF EXISTS) must not error.
     await expect(client.exec(DROP_GITHUB_COLUMNS)).resolves.not.toThrow();
-  });
+  }, 15_000);
 });

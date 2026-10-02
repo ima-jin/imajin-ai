@@ -2131,13 +2131,13 @@ export interface BusEventMap {
    * `apps.provision` (#2415) skipped the deploy-secrets seal step rather
    * than failing the whole pipeline: the org-scoped GitHub credential
    * (`github-org-provisioning`) has never been sealed, so there is no
-   * token to encrypt `IMAJIN_APP_PRIVATE_KEY`/`GITHUB_PACKAGES_TOKEN`
-   * against the repo's Actions public key. The chain still proceeds to the
-   * app-signing-key grant + claim code — a dev-path app fetches its
-   * signing key from the vault at boot (#2411) and never needed the
-   * Actions secrets in the first place. `reason` is a closed vocabulary of
-   * one today, kept as a string so a future degrade condition can reuse
-   * this same event without a payload shape change.
+   * token to encrypt `IMAJIN_APP_PRIVATE_KEY` against the repo's Actions
+   * public key. The chain still proceeds to the app-signing-key grant +
+   * claim code — a dev-path app fetches its signing key from the vault at
+   * boot (#2411) and never needed the Actions secrets in the first place.
+   * `reason` is a closed vocabulary of one today, kept as a string so a
+   * future degrade condition can reuse this same event without a payload
+   * shape change.
    */
   'apps.provision.seal.skipped': {
     slug: string;

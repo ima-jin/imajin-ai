@@ -5,7 +5,7 @@
  * mid-step (naming the failed step, for every step), retry-resumes, and a
  * no-raw-key-leak contract test.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const PRIVATE_KEY_PLAINTEXT = 'ed25519-secret-do-not-leak-1234567890abcdef';
 const NODE_DID = 'did:imajin:node';
@@ -34,6 +34,7 @@ const {
   sealActionsSecretMock,
   tryGetInstallationTokenMock,
   fetchAppManifestMock,
+  loadAndUnsealMock,
   seedAttestationTypesMock,
   logMock,
 } = vi.hoisted(() => {
@@ -59,6 +60,7 @@ const {
     sealActionsSecretMock: vi.fn().mockResolvedValue(undefined),
     tryGetInstallationTokenMock: vi.fn().mockResolvedValue('installation-token'),
     fetchAppManifestMock: vi.fn().mockResolvedValue(null),
+    loadAndUnsealMock: vi.fn(),
     seedAttestationTypesMock: vi.fn().mockResolvedValue([]),
     logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
@@ -165,6 +167,9 @@ vi.mock('@/src/lib/vault/key-cards', () => ({
   getMintedKeyByDid: getMintedKeyByDidMock,
 }));
 vi.mock('@/src/lib/vault', () => ({
+  // `loadAndUnseal` is only reached by the REAL org-provisioning module, which the
+  // #2436 stale-PAT describe block delegates to; every other test mocks that module.
+  loadAndUnseal: loadAndUnsealMock,
   loadAndUnsealByGrantee: loadAndUnsealByGranteeMock,
   grantExistingMintedKey: grantExistingMintedKeyMock,
   emitGrantEvents: emitGrantEventsMock,
@@ -225,6 +230,7 @@ beforeEach(() => {
   loadAndUnsealByGranteeMock.mockResolvedValue(PRIVATE_KEY_PLAINTEXT);
   tryGetInstallationTokenMock.mockResolvedValue('installation-token');
   fetchAppManifestMock.mockResolvedValue(null);
+  sealActionsSecretMock.mockResolvedValue(undefined);
   seedAttestationTypesMock.mockResolvedValue([]);
   grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
   issueSigningKeyClaimMock.mockResolvedValue(CLAIM_CODE);
@@ -466,6 +472,111 @@ describe('runAppProvision — #2415 seal degrades instead of failing when the or
 
     const row = appProvisionsStore.get('dykil');
     expect(row?.sealedAt).toBeInstanceOf(Date);
+  });
+});
+
+/**
+ * #2436 (follow-up to #2418/#2416): a stale pre-#2416 PAT still sealed in
+ * `github-org-provisioning` must fail the pipeline closed with
+ * `OrgCredentialMalformedError` — not degrade like the never-sealed case.
+ * Unlike the rest of this file, the org-provisioning functions here are the
+ * REAL implementations (only the vault read and `fetch` are faked), so the
+ * error genuinely travels the whole `runAppProvision` chain.
+ */
+describe('runAppProvision — stale PAT still sealed (#2436, real org-provisioning)', () => {
+  const STALE_PAT = 'ghp_stale_pre_2416_pat_not_json';
+  const MALFORMED_MESSAGE = 'github-org-provisioning is sealed but malformed (not valid JSON)';
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  function repoResponse(status: number): Response {
+    const body = status === 200
+      ? JSON.stringify({ html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' })
+      : JSON.stringify({ message: 'Not Found' });
+    return new Response(body, { status });
+  }
+
+  beforeEach(async () => {
+    const actual = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>(
+      '@/src/lib/github/org-provisioning',
+    );
+    actual.__resetInstallationTokenCacheForTests();
+    ensureRepoFromTemplateMock.mockImplementation(actual.ensureRepoFromTemplate);
+    tryGetInstallationTokenMock.mockImplementation(actual.tryGetInstallationToken);
+    fetchAppManifestMock.mockImplementation(actual.fetchAppManifest);
+    loadAndUnsealMock.mockResolvedValue(STALE_PAT);
+    fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('repo already exists: fails closed at the first credential read (register) with OrgCredentialMalformedError, writing no registry row and never sealing', async () => {
+    fetchMock.mockResolvedValueOnce(repoResponse(200));
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain(MALFORMED_MESSAGE);
+    expect(outcome.error).not.toContain(STALE_PAT);
+
+    // Only the unauthenticated existence GET ever reached GitHub — the stale PAT was never sent anywhere.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(registryAppsStore.size).toBe(0);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+    expect(grantExistingMintedKeyMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+
+    const row = appProvisionsStore.get('dykil');
+    expect(row?.status).toBe('failed');
+    expect(row?.failedStep).toBe('register');
+    expect(row?.errorMessage).toContain(MALFORMED_MESSAGE);
+    expect(row?.sealedAt).toBeUndefined();
+    expect(publishMock).toHaveBeenCalledWith('apps.provision.failed', expect.objectContaining({
+      payload: expect.objectContaining({ slug: 'dykil', failedStep: 'register' }),
+    }));
+    expect(publishMock).not.toHaveBeenCalledWith('apps.provision.seal.skipped', expect.anything());
+  });
+
+  it('repo missing: fails closed at repo with OrgCredentialMalformedError, before mint/register/seal ever run', async () => {
+    fetchMock.mockResolvedValueOnce(repoResponse(404));
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('repo');
+    expect(outcome.error).toContain(MALFORMED_MESSAGE);
+    expect(outcome.error).not.toContain(STALE_PAT);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+    expect(registryAppsStore.size).toBe(0);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+  });
+
+  it('is NOT treated as the soft unsealed case: no seal.skipped event and no succeeded outcome', async () => {
+    fetchMock.mockResolvedValueOnce(repoResponse(200));
+    loadAndUnsealMock.mockResolvedValue(undefined);
+
+    // Control: the genuinely-unsealed credential degrades and succeeds through the same real chain...
+    const unsealed = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    expect(unsealed.status).toBe('succeeded');
+    if (unsealed.status !== 'succeeded') throw new Error('unreachable');
+    expect(unsealed.sealSkipped).toBe(true);
+
+    // ...whereas the stale PAT, for a fresh slug, does not.
+    resetStores();
+    publishMock.mockClear();
+    loadAndUnsealMock.mockResolvedValue(STALE_PAT);
+    fetchMock.mockResolvedValueOnce(repoResponse(200));
+
+    const stale = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    expect(stale.status).toBe('failed');
+    expect(publishMock).not.toHaveBeenCalledWith('apps.provision.seal.skipped', expect.anything());
   });
 });
 
