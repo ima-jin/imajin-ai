@@ -275,32 +275,53 @@ export async function reissueInternalSecretGrants(params: {
     throw new Error(`reissueInternalSecretGrants: '${sourceGrantId}' is not the active self-grant for '${field}'`);
   }
 
-  const now = new Date();
-  const reissued: string[] = [];
-  const dropped: string[] = [];
-  const issued: IssuedGrantAnnouncement[] = [];
-  const seen = new Set<string>();
+  // `prior` is newest-first, so the first grant seen per grantee carries the terms to keep.
+  const newestPerGrantee = new Map<string, VaultDelegationGrant>();
   for (const grant of prior) {
-    if (seen.has(grant.grantedTo)) continue;
-    seen.add(grant.grantedTo);
-    await supersedeActiveGrant({ subject: ownerDid, grantedTo: grant.grantedTo, field }, executor);
-    if (!isStillExercisable(grant, now)) {
-      dropped.push(grant.grantedTo);
-      continue;
-    }
-    const granteeDid = grant.grantedTo;
-    const grantId = await issueGrantFromSource({
-      field, ownerDid, granteeDid, source, executor,
-      terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
-    });
-    reissued.push(grantId);
-    issued.push({ purpose: grant.purpose, field, ownerDid, granteeDid, grantedBy, grantId });
+    if (!newestPerGrantee.has(grant.grantedTo)) newestPerGrantee.set(grant.grantedTo, grant);
   }
+  const grantees = [...newestPerGrantee.values()];
+
+  // Each grantee is independent (its own tuple), so they run side by side inside
+  // the caller's transaction; outcomes keep the grantee order.
+  const context: ReissueContext = { field, ownerDid, source, executor, grantedBy, now: new Date() };
+  const outcomes = await Promise.all(grantees.map((grant) => reissueForGrantee(context, grant)));
+
+  const issued = outcomes.filter((outcome): outcome is IssuedGrantAnnouncement => outcome !== undefined);
   return {
-    reissued,
-    dropped,
+    reissued: issued.map((announcement) => announcement.grantId),
+    dropped: grantees.filter((_, index) => outcomes[index] === undefined).map((grant) => grant.grantedTo),
     announce: () => {
       for (const announcement of issued) announceIssuedGrant(announcement);
     },
   };
+}
+
+interface ReissueContext {
+  field: string;
+  ownerDid: string;
+  source: VaultDelegationGrant;
+  executor: DbExecutor;
+  grantedBy: string;
+  now: Date;
+}
+
+/**
+ * Supersede one grantee's prior grant and, when it can still be exercised, issue
+ * its replacement from the fresh self-grant. Resolves to what to announce after
+ * commit, or undefined when the prior grant was expired/consumed and is dropped.
+ */
+async function reissueForGrantee(
+  context: ReissueContext,
+  grant: VaultDelegationGrant,
+): Promise<IssuedGrantAnnouncement | undefined> {
+  const { field, ownerDid, source, executor, grantedBy, now } = context;
+  const granteeDid = grant.grantedTo;
+  await supersedeActiveGrant({ subject: ownerDid, grantedTo: granteeDid, field }, executor);
+  if (!isStillExercisable(grant, now)) return undefined;
+  const grantId = await issueGrantFromSource({
+    field, ownerDid, granteeDid, source, executor,
+    terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
+  });
+  return { purpose: grant.purpose, field, ownerDid, granteeDid, grantedBy, grantId };
 }

@@ -195,25 +195,30 @@ async function eraseGrantKeyMaterial(
   grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
   executor: DbExecutor = db,
 ): Promise<string[]> {
-  const erased: string[] = [];
+  // Each grant is independent (own row, own envelope check), so they run side by
+  // side; the result keeps the input order.
+  const outcomes = await Promise.all(grants.map((grant) => eraseOneGrantKeyMaterial(grant, executor)));
+  return outcomes.filter((id): id is string => id !== undefined);
+}
 
-  for (const grant of grants) {
-    if (!(await hasOwnerEnvelope(grant.field, grant.keyId, executor))) {
-      log.warn(
-        { grantId: grant.id, field: grant.field },
-        'Vault: skipping key-material erase — no owner envelope, wrapped key is the only copy',
-      );
-      continue;
-    }
-
-    await executor
-      .update(vaultDelegationGrants)
-      .set(ERASED_KEY_MATERIAL)
-      .where(eq(vaultDelegationGrants.id, grant.id));
-    erased.push(grant.id);
+/** Erase one grant's key material; returns its id, or undefined when the no-envelope guard skipped it. */
+async function eraseOneGrantKeyMaterial(
+  grant: Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>,
+  executor: DbExecutor,
+): Promise<string | undefined> {
+  if (!(await hasOwnerEnvelope(grant.field, grant.keyId, executor))) {
+    log.warn(
+      { grantId: grant.id, field: grant.field },
+      'Vault: skipping key-material erase — no owner envelope, wrapped key is the only copy',
+    );
+    return undefined;
   }
 
-  return erased;
+  await executor
+    .update(vaultDelegationGrants)
+    .set(ERASED_KEY_MATERIAL)
+    .where(eq(vaultDelegationGrants.id, grant.id));
+  return grant.id;
 }
 
 /**
@@ -1472,15 +1477,17 @@ async function fetchActiveGrant(
  * mint-time grant regardless of its status already have their own
  * `grantId`-keyed lookup for that (see `listVaultKeyCards`'s `grantById`).
  */
-export async function listActiveGrantsForField(
+export function listActiveGrantsForField(
   field: string,
   executor: DbExecutor = db,
 ): Promise<VaultDelegationGrant[]> {
-  return executor
-    .select()
-    .from(vaultDelegationGrants)
-    .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
-    .orderBy(desc(vaultDelegationGrants.createdAt));
+  return Promise.resolve(
+    executor
+      .select()
+      .from(vaultDelegationGrants)
+      .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
+      .orderBy(desc(vaultDelegationGrants.createdAt)),
+  );
 }
 
 /**
