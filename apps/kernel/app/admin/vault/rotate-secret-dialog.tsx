@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { RotateSecretInput } from './types';
 import { describeGrantee, useVaultGrantees } from './use-vault-grantees';
 
@@ -21,7 +21,6 @@ export function RotateSecretDialog({
 }: Readonly<RotateSecretDialogProps>) {
   const [value, setValue] = useState('');
   const [hint, setHint] = useState('');
-  const [confirmText, setConfirmText] = useState('');
   const {
     loading: loadingGrantees,
     grantees,
@@ -29,40 +28,24 @@ export function RotateSecretDialog({
     reissuedOnRotate,
   } = useVaultGrantees(field, open);
 
-  useEffect(() => {
-    if (!open) {
-      setConfirmText('');
-    }
-  }, [open]);
-
   if (!open || !field) {
     return null;
   }
 
-  // #2450: rotating re-seals under a new key and re-grants only the node's
-  // own self-grant — every OTHER active grantee's copy of the wrapped key
-  // still points at the material being replaced, so it silently stops
-  // decrypting. The server enforces this too (POST /api/vault/rotate 409s
-  // without a matching confirmField); this is the UI half. A grantee-query
-  // failure is treated the same as "grantees exist and are unknown" — never
-  // silently allowed through. Exception: internal-secret:* fields — the
-  // server says their rotate path re-issues grantees itself (#2446), so no
-  // guard applies.
+  // #2450: rotating re-seals under a new key, so every OTHER active grantee's
+  // copy of the wrapped key would stop decrypting. The server re-issues them
+  // on rotate (same grantee set, expiry / one-time / purpose carried forward)
+  // and refuses outright when it cannot (Tier 1 custody) — this dialog lists
+  // who is affected and blocks Rotate in exactly the cases the server would
+  // refuse. A grantee-query failure is treated as "unknown", never as zero.
   const hasOtherGrantees = grantees.length > 0;
-  const requiresConfirm = !reissuedOnRotate && (hasOtherGrantees || granteesError !== null);
-  const confirmed = !requiresConfirm || confirmText === field;
-  const canSubmit = !submitting && !loadingGrantees && value.trim().length > 0 && confirmed;
+  const blocked = granteesError !== null || (hasOtherGrantees && !reissuedOnRotate);
+  const canSubmit = !submitting && !loadingGrantees && value.trim().length > 0 && !blocked;
 
   async function handleRotate(): Promise<void> {
-    await onSubmit({
-      field: field ?? '',
-      value,
-      hint: hint.trim(),
-      ...(requiresConfirm ? { confirmField: confirmText } : {}),
-    });
+    await onSubmit({ field: field ?? '', value, hint: hint.trim() });
     setValue('');
     setHint('');
-    setConfirmText('');
   }
 
   return (
@@ -77,27 +60,28 @@ export function RotateSecretDialog({
           <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Checking for other active grantees…</p>
         )}
 
-        {!loadingGrantees && reissuedOnRotate && (
-          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-            Any external grantees of this field are re-issued automatically on the new key.
-          </p>
-        )}
-
         {!loadingGrantees && granteesError && (
           <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 mb-4">
             <p className="text-sm font-medium text-red-800 dark:text-red-300">
               ⚠️ Could not check for other active grantees: {granteesError}
             </p>
             <p className="mt-1 text-xs text-red-800 dark:text-red-300">
-              Treated as unknown, not zero — type the field name below to rotate anyway.
+              Treated as unknown, not zero — close and reopen this dialog to retry.
             </p>
           </div>
         )}
 
         {!loadingGrantees && hasOtherGrantees && (
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-4">
+          <div
+            className={
+              reissuedOnRotate
+                ? 'rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 mb-4'
+                : 'rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 px-3 py-2 mb-4'
+            }
+          >
             <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-              ⚠️ {grantees.length} active grantee{grantees.length === 1 ? '' : 's'} will need re-issue
+              ⚠️ {grantees.length} active grantee{grantees.length === 1 ? '' : 's'}{' '}
+              {reissuedOnRotate ? 'will be re-issued on the new key' : 'cannot be re-issued — rotate is blocked'}
             </p>
             <ul className="mt-1 list-disc list-inside text-xs text-amber-800 dark:text-amber-300 font-mono">
               {grantees.map((grantee) => (
@@ -105,9 +89,9 @@ export function RotateSecretDialog({
               ))}
             </ul>
             <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-              Rotating re-seals this field under a new key. These grantees&apos; existing copies will
-              stop decrypting unless they are re-issued a grant on the new key — this rotate path does
-              not do that automatically yet.
+              {reissuedOnRotate
+                ? 'Each grantee keeps its own purpose, expiry and one-time terms; expired or consumed grants are not renewed. Re-issue is operator-initiated — it happens only because you rotate.'
+                : 'This node cannot sign replacement grants (Tier 1 vault custody), so rotating would strand these grantees. Revoke them first.'}
             </p>
           </div>
         )}
@@ -129,20 +113,6 @@ export function RotateSecretDialog({
           onChange={(event) => setHint(event.target.value)}
           className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-orange-500"
         />
-        {requiresConfirm && (
-          <>
-            <label htmlFor="rotate-secret-confirm" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Type <span className="font-mono">{field}</span> to confirm rotating past these grantees
-            </label>
-            <input
-              id="rotate-secret-confirm"
-              value={confirmText}
-              onChange={(event) => setConfirmText(event.target.value)}
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-white px-3 py-2 text-sm font-mono mb-4 focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </>
-        )}
-
         <div className="flex justify-end gap-2">
           <button
             type="button"
