@@ -227,6 +227,54 @@ jobs:
       - name: Dist React-binding guard
         run: node scripts/ci-guard-dist-react-binding.mjs
 
+  # Provisioning entrypoint (#2483): runs the REAL deploy entrypoint, with the
+  # deploy step's exact command and working directory (repo root), against a
+  # production-style install + package build, in --dry-run mode (nothing is
+  # minted, written, granted or sent to a database; no secrets are used).
+  # Fails on any module-resolution error — the class of failure that kept prod
+  # on v0.8.10 (v0.8.11: `@imajin/vault-core` exports; v0.8.12: ESM-only
+  # `@ipld/dag-cbor`), which only surfaced mid-deploy. The command below is
+  # asserted equal to deploy-prod.yml's (+ --dry-run) by
+  # scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs.
+  provisioning-entrypoint:
+    name: Provisioning entrypoint
+    runs-on: imajin-self-hosted
+    container:
+      image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
+        with:
+          version: 9
+
+      # Prod runs Node 22 (deploy-prod.yml's PATH).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      # Same flags as the deploy's install, except the lockfile is enforced.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Same step, same command as deploy-prod.yml.
+      - name: Build workspace packages (provisioning prerequisite)
+        run: pnpm -r --filter './packages/**' build
+
+      # The deploy loads --env-file=apps/kernel/.env.local, and node refuses a
+      # missing --env-file. An empty one carries no secrets: --dry-run needs none.
+      - name: Create an empty kernel env file (no secrets)
+        run: touch apps/kernel/.env.local
+
+      - name: Dry-run the provisioning entrypoint (exact deploy command)
+        env:
+          NODE_ENV: production
+        run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod --dry-run
+
   ci-guards:
     name: CI Guards
     runs-on: imajin-self-hosted

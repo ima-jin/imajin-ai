@@ -79,7 +79,7 @@ jobs:
         # Loads the kernel's env exactly like pm2 starts prod-jin
         # (`--env-file=<repo>/apps/kernel/.env.local`); --env prod takes VAULT_PATH
         # from deploy/ecosystem.prod.config.js, where pm2 sets it.
-        run: pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all --env prod
+        run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod
 
       - name: Build changed apps
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
