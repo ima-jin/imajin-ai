@@ -20,6 +20,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHmac, randomBytes } from 'node:crypto';
 import { unlink } from 'node:fs/promises';
 
+// Every test re-imports the whole kernel module graph (`boot()` = resetModules +
+// fresh import), and the first one also pays the cold transform. ~1.6s for the
+// file on an idle machine, but under a loaded CI runner that first test can
+// outrun vitest's 5s default — a timeout, not a failure of what is under test.
+vi.setConfig({ testTimeout: 30_000 });
+
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
 type Handler = (event: { type: string; payload: Row }) => Promise<void> | void;
