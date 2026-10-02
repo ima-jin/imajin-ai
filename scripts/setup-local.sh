@@ -197,7 +197,7 @@ for app in "${APPS[@]}"; do
   cp "$example" "$local_env"
 
   # Drop the blank *_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY placeholders the copy just
-  # brought in: scripts/provision-service-bootstrap.ts treats an empty key as a
+  # brought in: scripts/provision-service-bootstrap.mjs treats an empty key as a
   # half-written pair (error) and mints the real pair when both are absent.
   sed_inplace -E '/^[A-Z0-9_]+_VAULT_BOOTSTRAP_(DID|PRIVATE_KEY)="?"?$/d' "$local_env"
 
@@ -316,14 +316,14 @@ fi
 if [[ "$SKIP_MIGRATE" != true ]]; then
   step "Provisioning service bootstrap identities"
   if pnpm build:types >/dev/null \
-     && pnpm exec tsx --env-file="$REPO_ROOT/apps/kernel/.env.local" scripts/provision-service-bootstrap.ts --all; then
+     && node --env-file="$REPO_ROOT/apps/kernel/.env.local" scripts/provision-service-bootstrap.mjs --all; then
     ok "Service bootstrap identities provisioned"
   else
-    err "Provisioning failed — fix the error above, then re-run: pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all"
+    err "Provisioning failed — fix the error above, then re-run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all"
     exit 1
   fi
 else
-  warn "Skipped service bootstrap identities (--skip-migrate): run pnpm exec tsx --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.ts --all once the DB is migrated"
+  warn "Skipped service bootstrap identities (--skip-migrate): run node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all once the DB is migrated"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
