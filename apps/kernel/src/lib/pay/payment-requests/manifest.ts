@@ -130,13 +130,22 @@ function validateTaxRowSemantics(t: ShapedTaxRow, i: number, requestTotal: Money
   return null;
 }
 
-/** Validate the optional `fair_manifest.taxes[]` field on a custom manifest. `undefined` is valid (no tax). */
-function validateCustomManifestTaxes(taxes: unknown, requestTotal: Money, chain: unknown): string | null {
+/**
+ * Validate the optional `fair_manifest.taxes[]` field on a custom manifest.
+ * `undefined` is valid (no tax); any other non-array is rejected (#2439 item 4
+ * — never silently ignored). A non-empty `taxes[]` must be stamped
+ * `fair: '1.2'`, the same tie `packages/fair`'s `validateManifest` enforces
+ * (#2439) — the stored manifest is what settlement and the receipts read.
+ */
+function validateCustomManifestTaxes(taxes: unknown, fair: unknown, requestTotal: Money, chain: unknown): string | null {
   if (taxes === undefined) return null;
   if (!Array.isArray(taxes)) return 'fair_manifest.taxes must be an array';
   for (let i = 0; i < taxes.length; i++) {
     const error = validateCustomManifestTaxRow(taxes[i], i, requestTotal, chain);
     if (error) return error;
+  }
+  if (taxes.length > 0 && fair !== FAIR_VERSION_WITH_TAXES) {
+    return `fair_manifest.fair must be "${FAIR_VERSION_WITH_TAXES}" when fair_manifest.taxes is present`;
   }
   return null;
 }
@@ -160,7 +169,7 @@ export function validateCustomPaymentRequestManifest(
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) {
     return { ok: false, error: 'fair_manifest must be an object' };
   }
-  const candidate = manifest as { total?: unknown; taxes?: unknown; chain?: unknown };
+  const candidate = manifest as { total?: unknown; taxes?: unknown; chain?: unknown; fair?: unknown };
   const total = candidate.total;
   if (
     !total ||
@@ -176,7 +185,7 @@ export function validateCustomPaymentRequestManifest(
       error: `fair_manifest.total (${(total as Money).amount} ${(total as Money).currency}) does not match the request total (${requestTotal.amount} ${requestTotal.currency})`,
     };
   }
-  const taxesError = validateCustomManifestTaxes(candidate.taxes, requestTotal, candidate.chain);
+  const taxesError = validateCustomManifestTaxes(candidate.taxes, candidate.fair, requestTotal, candidate.chain);
   if (taxesError) return { ok: false, error: taxesError };
   return { ok: true };
 }

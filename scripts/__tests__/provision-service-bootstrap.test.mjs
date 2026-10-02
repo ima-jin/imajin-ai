@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   createKernelDeps,
   discoverServices,
+  dryRunServices,
   formatResult,
   provisionServices,
 } from '../lib/provision-service-bootstrap.ts';
@@ -264,6 +265,20 @@ describe('provisionServices', () => {
     ]);
     expect(healthy.mintIdentity).not.toHaveBeenCalled();
     expect(readFileSync(envLocal(root, 'market'), 'utf8')).toBe(written);
+  });
+});
+
+describe('dryRunServices (#2483)', () => {
+  it('fails a half-written pair before loading anything, and leaves .env.local untouched', async () => {
+    const root = makeRoot({ market: 'MARKET' });
+    const content = 'MARKET_VAULT_BOOTSTRAP_DID=did:imajin:half\n';
+    writeFileSync(envLocal(root, 'market'), content);
+
+    const error = await dryRunServices(root, discoverServices(root)).catch((err) => err);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toMatch(/market: apps\/market\/\.env\.local must define both/);
+    expect(readFileSync(envLocal(root, 'market'), 'utf8')).toBe(content);
   });
 });
 

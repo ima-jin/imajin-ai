@@ -226,6 +226,14 @@ export const ATTESTATION_TYPES = [
   // by this node, for the proof's peer DID — a cryptographically valid
   // proof alone never admits.
   'relay.peer',
+
+  // App signing-key claim (#2411, #2444) — minted mechanically by the kernel
+  // node key when a third-party app redeems its one-time claim code at
+  // `POST /api/apps/claim`. Its id is returned in the claim response so the
+  // operator's success page can show it. Carries slug/appDid/grantId/hostHint
+  // only — never the claim code or any key material. See
+  // MECHANICAL_ATTESTATION_TYPES below.
+  'apps.signing-key.claimed',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -307,6 +315,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2132 — minted mechanically by this node's own identity to admit a
   // DFOS peer DID for relay-write authorization. See ATTESTATION_TYPES above.
   'relay.peer',
+  // #2411/#2444 — minted mechanically by the kernel node key on every
+  // successful app signing-key claim. See ATTESTATION_TYPES above.
+  'apps.signing-key.claimed',
 ] as const;
 
 /**

@@ -288,9 +288,23 @@ function validateProvenance(provenance: unknown): string[] {
   return errors;
 }
 
+/**
+ * #2439: `fair` is `'1.2'` exactly when `taxes[]` is present and non-empty
+ * (see `FairManifestV11`) — a `taxes[]` on a `'1.1'` manifest, or a `'1.2'`
+ * stamp with nothing to justify it, is rejected rather than silently
+ * accepted. (A non-array `taxes` is additionally reported by `validateTaxes`.)
+ */
+function validateFairVersionMatchesTaxes(m: Record<string, unknown>): string[] {
+  const hasTaxes = Array.isArray(m.taxes) && m.taxes.length > 0;
+  if (hasTaxes && m.fair !== "1.2") return ['fair must be "1.2" when taxes[] is present'];
+  if (!hasTaxes && m.fair === "1.2") return ['fair "1.2" requires a non-empty taxes[]'];
+  return [];
+}
+
 function validateV1_1(manifest: Record<string, unknown>): string[] {
   return [
     ...validateRequiredFieldsV1_1(manifest),
+    ...validateFairVersionMatchesTaxes(manifest),
     ...validateAccess(manifest.access),
     ...validateDidShareList(manifest.attribution, "attribution"),
     ...validateTransferV1_1(manifest.transfer),
