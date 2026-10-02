@@ -211,6 +211,124 @@ describe('settlement invariant: penny rounding drift', () => {
   });
 });
 
+// ─── Multi-seller chains: fee split pro rata (#2472) ────────────────────────
+
+describe('settlement invariant: processor fee is split pro rata across seller-role entries (#2472)', () => {
+  const STRIPE: Fees = [{ role: 'processor', rateBps: 290, fixedCents: 30 }];
+  const NO_FEE: Fees = [{ role: 'processor', rateBps: 0, fixedCents: 0 }];
+
+  const TWO_SELLERS: FairSettlementEntry[] = [
+    { did: 'did:imajin:creator', role: 'creator', share: 0.6 },
+    { did: 'did:imajin:event', role: 'event', share: 0.3 },
+    { did: 'did:imajin:platform', role: 'platform', share: 0.1 },
+  ];
+
+  it('charges the fee once in total, split by gross share (not in full to each seller)', () => {
+    // $100.00, fee 2.9% + 30c = $3.20 split 2:1 across 60.00 / 30.00 → 2.13 / 1.07
+    const { resolvedChain, estimatedFeeDollars } = resolve(10_000, TWO_SELLERS, STRIPE);
+
+    expect(estimatedFeeDollars).toBe(3.2);
+    expect(resolvedChain.map((e) => e.amount)).toEqual([57.87, 28.93, 10]);
+    expect(sumCents(resolvedChain)).toBe(10_000 - 320);
+  });
+
+  it('equal seller shares each bear an equal part of the fee', () => {
+    const { resolvedChain } = resolve(
+      10_000,
+      [
+        { did: 'did:imajin:a', role: 'creator', share: 0.45 },
+        { did: 'did:imajin:b', role: 'event', share: 0.45 },
+        { did: 'did:imajin:platform', role: 'platform', share: 0.1 },
+      ],
+      STRIPE,
+    );
+
+    expect(resolvedChain.map((e) => e.amount)).toEqual([43.4, 43.4, 10]);
+  });
+
+  it('gives an odd fee cent to the seller with the larger remainder, not always the first', () => {
+    // Flat 1c fee over 40% / 60% sellers: exact parts are 0.4c / 0.6c, so the second seller takes the cent.
+    const { resolvedChain } = resolve(
+      1000,
+      [
+        { did: 'did:imajin:a', role: 'creator', share: 0.4 },
+        { did: 'did:imajin:b', role: 'event', share: 0.6 },
+      ],
+      [{ role: 'processor', rateBps: 0, fixedCents: 1 }],
+    );
+
+    expect(resolvedChain.map((e) => e.amount)).toEqual([4, 5.99]);
+    expect(sumCents(resolvedChain)).toBe(999);
+  });
+
+  it('a single-cent rounding shortfall lands on the first seller-role entry', () => {
+    // $1.00: gross rounds to 24c / 24c / 24c / 27c = 99c, one cent short.
+    const { resolvedChain } = resolve(
+      100,
+      [
+        { did: 'did:imajin:a', role: 'creator', share: 0.2449 },
+        { did: 'did:imajin:b', role: 'creator', share: 0.2449 },
+        { did: 'did:imajin:c', role: 'creator', share: 0.2449 },
+        { did: 'did:imajin:d', role: 'creator', share: 0.2653 },
+      ],
+      NO_FEE,
+    );
+
+    expect(resolvedChain.map((e) => e.amount)).toEqual([0.25, 0.24, 0.24, 0.27]);
+  });
+
+  it('spreads a multi-cent shortfall one cent per seller instead of loading the first', () => {
+    // $1.00 over five 19.49% sellers: gross rounds to 19c each = 95c, five cents short.
+    const { resolvedChain } = resolve(
+      100,
+      ['a', 'b', 'c', 'd', 'e'].map((id) => ({ did: `did:imajin:${id}`, role: 'creator', share: 0.1949 })),
+      NO_FEE,
+    );
+
+    expect(resolvedChain.map((e) => e.amount)).toEqual([0.2, 0.2, 0.2, 0.2, 0.2]);
+  });
+
+  it('spreads a multi-cent surplus one cent per seller and never drives an entry negative', () => {
+    // $0.05 over six ~16.67% sellers: gross rounds to 1c each = 6c, one cent over → one seller gives up its cent.
+    const { resolvedChain, expectedTotal } = resolve(
+      5,
+      ['a', 'b', 'c', 'd', 'e', 'f'].map((id) => ({ did: `did:imajin:${id}`, role: 'creator', share: 1 / 6 })),
+      NO_FEE,
+    );
+
+    expect(sumCents(resolvedChain)).toBe(toCents(expectedTotal));
+    for (const e of resolvedChain) expect(e.amount).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps non-seller entries untouched and never produces a negative amount', () => {
+    for (const amountCents of [1000, 1001, 1999, 3333, 9999, 12_345, 99_999]) {
+      const { resolvedChain, expectedTotal } = resolve(amountCents, TWO_SELLERS, STRIPE);
+      const platform = resolvedChain.find((e) => e.role === 'platform')!;
+
+      expect(toCents(platform.amount), `amount=${amountCents}`).toBe(Math.round(amountCents * 0.1));
+      expect(sumCents(resolvedChain), `amount=${amountCents}`).toBe(toCents(expectedTotal));
+      for (const e of resolvedChain) expect(e.amount, `amount=${amountCents}`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('exhaustive sweep: multi-seller chain always reconciles and every seller bears at most its share of the fee ±1c', () => {
+    for (let amountCents = 100; amountCents <= 5000; amountCents++) {
+      const { resolvedChain, estimatedFeeDollars, expectedTotal } = resolve(amountCents, TWO_SELLERS, STRIPE);
+
+      expect(sumCents(resolvedChain), `amount=${amountCents}`).toBe(toCents(expectedTotal));
+      expect(sumCents(resolvedChain) + toCents(estimatedFeeDollars), `amount=${amountCents}`).toBe(amountCents);
+
+      const feeCents = toCents(estimatedFeeDollars);
+      const [creator, event] = resolvedChain;
+      const creatorFee = Math.round(amountCents * 0.6) - toCents(creator!.amount);
+      const eventFee = Math.round(amountCents * 0.3) - toCents(event!.amount);
+      // Each seller's deduction tracks its pro-rata part of the fee within the 2c of gross-rounding drift.
+      expect(Math.abs(creatorFee - (feeCents * 2) / 3), `amount=${amountCents}`).toBeLessThanOrEqual(2);
+      expect(Math.abs(eventFee - feeCents / 3), `amount=${amountCents}`).toBeLessThanOrEqual(2);
+    }
+  });
+});
+
 // ─── Tax is excluded from chain math but included in the fee basis ─────────
 
 describe('settlement invariant: taxes never enter the chain', () => {
