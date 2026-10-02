@@ -163,7 +163,16 @@ export interface TaxRegistrationsValidationResult {
   normalized?: TaxRegistration[];
 }
 
-/** Validate + normalise an entire `tax_registrations` array (#2420). */
+/** Case/whitespace-insensitive identity of a registration: one per jurisdiction + kind (#2432). */
+function registrationKey(reg: TaxRegistration): string {
+  return `${reg.jurisdiction.trim().toUpperCase()}|${reg.kind}`;
+}
+
+/**
+ * Validate + normalise an entire `tax_registrations` array (#2420).
+ * Rejects (rather than dedupes) a second registration for the same
+ * jurisdiction + kind (#2432), so the caller sees which rows collide.
+ */
 export function validateTaxRegistrations(input: unknown): TaxRegistrationsValidationResult {
   if (!Array.isArray(input)) {
     return { valid: false, errors: ['taxRegistrations must be an array'] };
@@ -171,12 +180,23 @@ export function validateTaxRegistrations(input: unknown): TaxRegistrationsValida
 
   const errors: string[] = [];
   const normalized: TaxRegistration[] = [];
+  const seen = new Map<string, number>();
   input.forEach((entry, index) => {
     const result = validateTaxRegistration(entry);
     if (!result.valid || !result.normalized) {
       errors.push(`taxRegistrations[${index}]: ${result.error ?? 'invalid'}`);
       return;
     }
+    const key = registrationKey(result.normalized);
+    const firstIndex = seen.get(key);
+    if (firstIndex !== undefined) {
+      const { jurisdiction, kind } = result.normalized;
+      errors.push(
+        `taxRegistrations[${index}]: duplicate registration for jurisdiction ${jurisdiction} and kind ${kind} (already listed at taxRegistrations[${firstIndex}])`
+      );
+      return;
+    }
+    seen.set(key, index);
     normalized.push(result.normalized);
   });
 

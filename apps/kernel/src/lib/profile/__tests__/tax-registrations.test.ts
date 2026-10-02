@@ -209,6 +209,52 @@ describe('validateTaxRegistrations', () => {
     expect(result.errors?.[0]).toMatch(/^taxRegistrations\[0\]/);
     expect(result.errors?.[1]).toMatch(/^taxRegistrations\[1\]/);
   });
+
+  describe('duplicate jurisdiction + kind (#2432)', () => {
+    it('rejects a second registration for the same jurisdiction and kind, naming both indexes', () => {
+      const result = validateTaxRegistrations([
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', number: '123456789RT0001' },
+        { jurisdiction: 'CA-QC', kind: 'QST', number: '1234567890TQ0001' },
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', number: '987654321RT0001' },
+      ]);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toEqual([
+        'taxRegistrations[2]: duplicate registration for jurisdiction CA-ON and kind GST/HST (already listed at taxRegistrations[0])',
+      ]);
+    });
+
+    it('treats jurisdiction case and surrounding whitespace as the same jurisdiction', () => {
+      const result = validateTaxRegistrations([
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', number: '123456789RT0001' },
+        { jurisdiction: ' ca-on ', kind: 'GST/HST', number: '987654321RT0001' },
+      ]);
+      expect(result.valid).toBe(false);
+      expect(result.errors?.[0]).toMatch(/^taxRegistrations\[1\]: duplicate registration/);
+    });
+
+    it('reports every duplicate, alongside per-entry format errors', () => {
+      const result = validateTaxRegistrations([
+        { jurisdiction: 'GB', kind: 'VAT', number: 'GB123456789' },
+        { jurisdiction: 'GB', kind: 'VAT', number: 'GB987654321' },
+        { jurisdiction: 'GB', kind: 'VAT', number: 'GB555555555' },
+        { jurisdiction: 'CA-ON', kind: 'GST/HST', number: 'bad' },
+      ]);
+      expect(result.valid).toBe(false);
+      expect(result.errors).toHaveLength(3);
+      expect(result.errors?.[2]).toMatch(/^taxRegistrations\[3\]/);
+    });
+
+    it('allows the same kind in different jurisdictions and different kinds in the same jurisdiction', () => {
+      const result = validateTaxRegistrations([
+        { jurisdiction: 'CA-BC', kind: 'PST', number: '12345678' },
+        { jurisdiction: 'CA-SK', kind: 'PST', number: '1234567' },
+        { jurisdiction: 'CA-QC', kind: 'GST/HST', number: '123456789RT0001' },
+        { jurisdiction: 'CA-QC', kind: 'QST', number: '1234567890TQ0001' },
+      ]);
+      expect(result.valid).toBe(true);
+      expect(result.normalized).toHaveLength(4);
+    });
+  });
 });
 
 describe('getPrimaryTaxRegistration', () => {
