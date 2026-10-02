@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server.js";
 import { buildPublicUrlAbsolute } from "./services";
 import { corsHeaders, withCors } from "./cors";
 

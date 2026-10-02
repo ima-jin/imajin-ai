@@ -22,11 +22,14 @@
  * Runs as ESM under plain `node` (#2483), like scripts/migrate.mjs and the
  * other ops scripts that need ESM-only dependencies. The core logic stays
  * TypeScript (scripts/lib/provision-service-bootstrap.ts, which imports the
- * kernel's TypeScript sources); scripts/lib/import-ts-as-esm.mjs bundles that
- * TypeScript to ESM and leaves every dependency to Node's ESM resolver, so
- * every transitive ESM-only package (e.g. `@ipld/dag-cbor`) loads. Run via
- * `tsx` instead and the same sources compile to CommonJS, where those
- * packages fail with `No "exports" main defined`.
+ * kernel's TypeScript sources) and is compiled to a native ES module at package
+ * build time by `@imajin/provision-bootstrap` (packages/provision-bootstrap,
+ * built by the same `pnpm -r --filter './packages/**' build` the deploy already
+ * runs, #2485); this script only `import()`s the result — nothing is bundled at
+ * run time. Every dependency is loaded by Node's native ESM resolver, so every
+ * transitive ESM-only package (e.g. `@ipld/dag-cbor`) loads. Run via `tsx`
+ * instead and the same sources compile to CommonJS, where those packages fail
+ * with `No "exports" main defined`.
  *
  * Usage (from repo root, after `pnpm -r --filter './packages/**' build`):
  *   node scripts/provision-service-bootstrap.mjs --all
@@ -60,10 +63,12 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { importTsAsEsm } from './lib/import-ts-as-esm.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
+
+// The pre-built provisioning library (`pnpm -r --filter './packages/**' build`).
+const LIB_BUILD = path.join(REPO_ROOT, 'packages', 'provision-bootstrap', 'dist', 'index.mjs');
 
 // The acting principal recorded on the grant's audit log line.
 const GRANTED_BY = 'operator:provision-service-bootstrap-script';
@@ -101,6 +106,15 @@ function parseArgs(argv) {
   return args;
 }
 
+async function loadLib() {
+  if (!fs.existsSync(LIB_BUILD)) {
+    throw new Error(
+      `${path.relative(REPO_ROOT, LIB_BUILD)} is missing — run \`pnpm -r --filter './packages/**' build\` first`,
+    );
+  }
+  return import(pathToFileURL(LIB_BUILD).href);
+}
+
 function selectServices(args, discoverServices) {
   const discovered = discoverServices(REPO_ROOT);
   if (args.all) return discovered;
@@ -136,7 +150,7 @@ async function main() {
   // Must be set before the kernel modules load: the kernel's db module reads it at import.
   if (args.dryRun) process.env.DATABASE_URL = DRY_RUN_DATABASE_URL;
 
-  const lib = await importTsAsEsm(path.join(REPO_ROOT, 'scripts', 'lib', 'provision-service-bootstrap.ts'));
+  const lib = await loadLib();
   const services = selectServices(args, lib.discoverServices);
   if (services.length === 0) throw new Error('No service declares a *_VAULT_BOOTSTRAP_DID in apps/*/.env.example');
 

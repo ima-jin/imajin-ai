@@ -8,7 +8,7 @@
  * services, so it composes `checkAppMigrations`/`hasPendingMigrations`
  * directly rather than using `createAppHealthHandler`.
  */
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server.js';
 import { getClient } from './client';
 import { createPostgresMigrationsQuerier, getMigrationStatus, type MigrationStatus } from './migration-status';
 
