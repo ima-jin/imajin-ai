@@ -58,7 +58,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
-import { canonicalizeGrantPayload, supersedeActiveGrant } from './index';
+import { canonicalizeGrantPayload, supersedeActiveGrant, type DbExecutor } from './index';
 import { getInternalSecret, internalSecretField } from './internal-secret';
 import { emitGrantEvents } from './grant';
 
@@ -135,26 +135,30 @@ export async function grantInternalSecretTo(
   }
 
   const grantId = await issueGrantFromSource({
-    field, ownerDid, granteeDid, grantedBy, source,
+    field, ownerDid, granteeDid, source,
     terms: { purpose, expiresAt: null, oneTime: false },
   });
+  announceIssuedGrant({ purpose, field, ownerDid, granteeDid, grantedBy, grantId });
   return { status: 'ok', grantId };
 }
 
 /**
  * Insert a new active grant of `field` to `granteeDid`, reusing `source`'s
- * key material (no re-seal — see this module's docblock), then emit the
- * grant events. Shared by first-time grants and rotation re-issue (#2446).
+ * key material (no re-seal — see this module's docblock). Shared by
+ * first-time grants and rotation re-issue (#2446). Writes only: the log line
+ * and bus event are {@link announceIssuedGrant}, which a transactional caller
+ * (rotation, #2451) must run AFTER commit so a rolled-back grant is never
+ * announced.
  */
 async function issueGrantFromSource(params: {
   field: string;
   ownerDid: string;
   granteeDid: string;
-  grantedBy: string;
   source: VaultDelegationGrant;
   terms: GrantTerms;
+  executor?: DbExecutor;
 }): Promise<string> {
-  const { field, ownerDid, granteeDid, grantedBy, source, terms } = params;
+  const { field, ownerDid, granteeDid, source, terms, executor = db } = params;
   const { purpose, expiresAt, oneTime } = terms;
   const identity = getNodeSigningIdentity();
   const grantRaw = {
@@ -171,7 +175,7 @@ async function issueGrantFromSource(params: {
   const ownerSignature = authCrypto.signSync(canonicalizeGrantPayload(grantRaw), identity.privateKeyHex);
 
   const grantId = generateId('vdg');
-  await db.insert(vaultDelegationGrants).values({
+  await executor.insert(vaultDelegationGrants).values({
     id: grantId,
     ...grantRaw,
     ownerSignature,
@@ -182,6 +186,21 @@ async function issueGrantFromSource(params: {
     oneTime,
   });
 
+  return grantId;
+}
+
+interface IssuedGrantAnnouncement {
+  purpose: string | null;
+  field: string;
+  ownerDid: string;
+  granteeDid: string;
+  grantedBy: string;
+  grantId: string;
+}
+
+/** Log + audit event for a grant {@link issueGrantFromSource} wrote. */
+function announceIssuedGrant(params: IssuedGrantAnnouncement): void {
+  const { purpose, field, ownerDid, granteeDid, grantedBy, grantId } = params;
   log.info(
     { purpose, field, grantId, granteeDid, grantedBy },
     'Vault: granted a shared internal secret to an additional external consumer',
@@ -191,8 +210,6 @@ async function issueGrantFromSource(params: {
   // no signed attestation — `vault.grant.fulfilled` is not a registered
   // AttestationType (see packages/auth/src/types/attestation.ts).
   emitGrantEvents({ grantId, did: ownerDid, field, grantedTo: granteeDid, grantedBy });
-
-  return grantId;
 }
 
 /** The unsigned + signed terms a grant is issued under — carried forward verbatim on re-issue. */
@@ -227,22 +244,29 @@ function isStillExercisable(grant: VaultDelegationGrant, now: Date): boolean {
  *
  * Operator-initiated rotation only — a boot never calls this.
  * `sourceGrantId` is the node's new self-grant, returned by the re-seal.
+ *
+ * Atomic with the caller (#2451): pass the rotation's transaction as
+ * `executor` and every supersede + insert here commits or rolls back together
+ * with the self re-seal, so a failure partway never leaves a grantee
+ * superseded-but-not-re-issued. The bus events are NOT sent here — the caller
+ * invokes the returned `announce` once the transaction has committed.
  */
 export async function reissueInternalSecretGrants(params: {
   purpose: string;
   sourceGrantId: string;
   previousGrants: readonly VaultDelegationGrant[];
   grantedBy: string;
-}): Promise<{ reissued: string[]; dropped: string[] }> {
-  const { purpose, sourceGrantId, previousGrants, grantedBy } = params;
+  executor?: DbExecutor;
+}): Promise<{ reissued: string[]; dropped: string[]; announce: () => void }> {
+  const { purpose, sourceGrantId, previousGrants, grantedBy, executor = db } = params;
   const field = internalSecretField(purpose);
   const ownerDid = getNodeSigningIdentity().senderDid;
   const prior = previousGrants.filter(
     (g) => g.subject === ownerDid && g.grantedTo !== ownerDid && g.field === field,
   );
-  if (prior.length === 0) return { reissued: [], dropped: [] };
+  if (prior.length === 0) return { reissued: [], dropped: [], announce: () => undefined };
 
-  const [source] = await db
+  const [source] = await executor
     .select()
     .from(vaultDelegationGrants)
     .where(and(eq(vaultDelegationGrants.id, sourceGrantId), eq(vaultDelegationGrants.status, 'active')))
@@ -251,24 +275,53 @@ export async function reissueInternalSecretGrants(params: {
     throw new Error(`reissueInternalSecretGrants: '${sourceGrantId}' is not the active self-grant for '${field}'`);
   }
 
-  const now = new Date();
-  const reissued: string[] = [];
-  const dropped: string[] = [];
-  const seen = new Set<string>();
+  // `prior` is newest-first, so the first grant seen per grantee carries the terms to keep.
+  const newestPerGrantee = new Map<string, VaultDelegationGrant>();
   for (const grant of prior) {
-    if (seen.has(grant.grantedTo)) continue;
-    seen.add(grant.grantedTo);
-    await supersedeActiveGrant({ subject: ownerDid, grantedTo: grant.grantedTo, field });
-    if (!isStillExercisable(grant, now)) {
-      dropped.push(grant.grantedTo);
-      continue;
-    }
-    reissued.push(
-      await issueGrantFromSource({
-        field, ownerDid, granteeDid: grant.grantedTo, grantedBy, source,
-        terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
-      }),
-    );
+    if (!newestPerGrantee.has(grant.grantedTo)) newestPerGrantee.set(grant.grantedTo, grant);
   }
-  return { reissued, dropped };
+  const grantees = [...newestPerGrantee.values()];
+
+  // Each grantee is independent (its own tuple), so they run side by side inside
+  // the caller's transaction; outcomes keep the grantee order.
+  const context: ReissueContext = { field, ownerDid, source, executor, grantedBy, now: new Date() };
+  const outcomes = await Promise.all(grantees.map((grant) => reissueForGrantee(context, grant)));
+
+  const issued = outcomes.filter((outcome): outcome is IssuedGrantAnnouncement => outcome !== undefined);
+  return {
+    reissued: issued.map((announcement) => announcement.grantId),
+    dropped: grantees.filter((_, index) => outcomes[index] === undefined).map((grant) => grant.grantedTo),
+    announce: () => {
+      for (const announcement of issued) announceIssuedGrant(announcement);
+    },
+  };
+}
+
+interface ReissueContext {
+  field: string;
+  ownerDid: string;
+  source: VaultDelegationGrant;
+  executor: DbExecutor;
+  grantedBy: string;
+  now: Date;
+}
+
+/**
+ * Supersede one grantee's prior grant and, when it can still be exercised, issue
+ * its replacement from the fresh self-grant. Resolves to what to announce after
+ * commit, or undefined when the prior grant was expired/consumed and is dropped.
+ */
+async function reissueForGrantee(
+  context: ReissueContext,
+  grant: VaultDelegationGrant,
+): Promise<IssuedGrantAnnouncement | undefined> {
+  const { field, ownerDid, source, executor, grantedBy, now } = context;
+  const granteeDid = grant.grantedTo;
+  await supersedeActiveGrant({ subject: ownerDid, grantedTo: granteeDid, field }, executor);
+  if (!isStillExercisable(grant, now)) return undefined;
+  const grantId = await issueGrantFromSource({
+    field, ownerDid, granteeDid, source, executor,
+    terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
+  });
+  return { purpose: grant.purpose, field, ownerDid, granteeDid, grantedBy, grantId };
 }

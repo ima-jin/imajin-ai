@@ -43,6 +43,13 @@ import { rotateInternalSecret } from './internal-secret-rotate';
 
 const log = createLogger('kernel');
 
+/**
+ * What the grant/envelope helpers below run their statements on: the shared
+ * pool by default, or a caller's open transaction (#2451). Same idiom as
+ * `TxExecutor` in `lib/pay/settle-core.ts`.
+ */
+export type DbExecutor = Pick<typeof db, 'select' | 'insert' | 'update' | 'delete'>;
+
 // Thin, always-lazy indirection so `vaultService` can be constructed eagerly
 // (cheap — no I/O, no path resolution) while every actual load()/save() call
 // still routes through the lazy getVaultRepository() (./vault-repository.ts).
@@ -96,16 +103,19 @@ async function resolvePreviousCid(field: string): Promise<string | undefined> {
  *
  * The raw field key is never logged.
  */
-async function writeOwnerEnvelope(params: {
-  field: string;
-  keyId: string;
-  fieldKey: Buffer;
-  ownerXPub: string;
-}): Promise<void> {
+async function writeOwnerEnvelope(
+  params: {
+    field: string;
+    keyId: string;
+    fieldKey: Buffer;
+    ownerXPub: string;
+  },
+  executor: DbExecutor = db,
+): Promise<void> {
   const senderXPub = getNodeXPublicKey();
   const wrapped = wrapFieldKey(params.fieldKey, params.ownerXPub, getNodeXPrivateKey());
 
-  await db
+  await executor
     .insert(vaultOwnerEnvelopes)
     .values({
       id: generateId('vwe'),
@@ -135,8 +145,8 @@ async function writeOwnerEnvelope(params: {
  * This is the precondition for erasing a grant's key material. Erase is
  * irreversible, so it must never run when this returns false.
  */
-async function hasOwnerEnvelope(field: string, keyId: string): Promise<boolean> {
-  const rows = await db
+async function hasOwnerEnvelope(field: string, keyId: string, executor: DbExecutor = db): Promise<boolean> {
+  const rows = await executor
     .select({ id: vaultOwnerEnvelopes.id })
     .from(vaultOwnerEnvelopes)
     .where(and(eq(vaultOwnerEnvelopes.field, field), eq(vaultOwnerEnvelopes.keyId, keyId)))
@@ -155,6 +165,9 @@ async function hasOwnerEnvelope(field: string, keyId: string): Promise<boolean> 
  * Blanking the material is what gives revocation and expiry real effect.
  */
 const ERASED_KEY_MATERIAL = { wrappedKey: '', wrappedNonce: '' } as const;
+
+/** The columns erasing a grant's key material needs to identify it. */
+type ErasableGrant = Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>;
 
 /**
  * Erase key material for grants leaving `active`, but only where an owner envelope
@@ -182,27 +195,33 @@ const ERASED_KEY_MATERIAL = { wrappedKey: '', wrappedNonce: '' } as const;
  * in the secret store.
  */
 async function eraseGrantKeyMaterial(
-  grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
+  grants: ErasableGrant[],
+  executor: DbExecutor = db,
 ): Promise<string[]> {
-  const erased: string[] = [];
+  // Each grant is independent (own row, own envelope check), so they run side by
+  // side; the result keeps the input order.
+  const outcomes = await Promise.all(grants.map((grant) => eraseOneGrantKeyMaterial(grant, executor)));
+  return outcomes.filter((id): id is string => id !== undefined);
+}
 
-  for (const grant of grants) {
-    if (!(await hasOwnerEnvelope(grant.field, grant.keyId))) {
-      log.warn(
-        { grantId: grant.id, field: grant.field },
-        'Vault: skipping key-material erase — no owner envelope, wrapped key is the only copy',
-      );
-      continue;
-    }
-
-    await db
-      .update(vaultDelegationGrants)
-      .set(ERASED_KEY_MATERIAL)
-      .where(eq(vaultDelegationGrants.id, grant.id));
-    erased.push(grant.id);
+/** Erase one grant's key material; returns its id, or undefined when the no-envelope guard skipped it. */
+async function eraseOneGrantKeyMaterial(
+  grant: ErasableGrant,
+  executor: DbExecutor,
+): Promise<string | undefined> {
+  if (!(await hasOwnerEnvelope(grant.field, grant.keyId, executor))) {
+    log.warn(
+      { grantId: grant.id, field: grant.field },
+      'Vault: skipping key-material erase — no owner envelope, wrapped key is the only copy',
+    );
+    return undefined;
   }
 
-  return erased;
+  await executor
+    .update(vaultDelegationGrants)
+    .set(ERASED_KEY_MATERIAL)
+    .where(eq(vaultDelegationGrants.id, grant.id));
+  return grant.id;
 }
 
 /**
@@ -213,8 +232,8 @@ async function eraseGrantKeyMaterial(
  * current one recoverable. See {@link eraseGrantKeyMaterial} for the exact
  * guarantee.
  */
-async function supersedeGrants(where: SQL | undefined): Promise<void> {
-  const superseded = await db
+async function supersedeGrants(where: SQL | undefined, executor: DbExecutor = db): Promise<void> {
+  const superseded = await executor
     .update(vaultDelegationGrants)
     .set({ status: 'superseded' })
     .where(where)
@@ -224,17 +243,18 @@ async function supersedeGrants(where: SQL | undefined): Promise<void> {
       keyId: vaultDelegationGrants.keyId,
     });
 
-  await eraseGrantKeyMaterial(superseded);
+  await eraseGrantKeyMaterial(superseded, executor);
 }
 
 /**
  * Supersede (and erase the key material of) the active grant for exactly
  * `(subject, grantedTo, field)`. Exported for rotation re-issue of an
  * internal secret's external grantees (#2446); same semantics every re-seal
- * path in this module applies to its own tuple.
+ * path in this module applies to its own tuple. Pass a transaction as
+ * `executor` to make it part of a larger atomic change (#2451).
  */
-export async function supersedeActiveGrant(tuple: GrantTuple): Promise<void> {
-  await supersedeGrants(activeGrantTuple(tuple));
+export async function supersedeActiveGrant(tuple: GrantTuple, executor: DbExecutor = db): Promise<void> {
+  await supersedeGrants(activeGrantTuple(tuple), executor);
 }
 
 /** A grant's identity: who granted `field` to whom. */
@@ -245,7 +265,7 @@ interface GrantTuple {
 }
 
 /** WHERE clause for the single active grant of a {@link GrantTuple} (`uniq_vault_delegation_active`). */
-function activeGrantTuple(tuple: GrantTuple): SQL | undefined {
+export function activeGrantTuple(tuple: GrantTuple): SQL | undefined {
   return and(
     eq(vaultDelegationGrants.subject, tuple.subject),
     eq(vaultDelegationGrants.grantedTo, tuple.grantedTo),
@@ -259,7 +279,7 @@ function activeGrantTuple(tuple: GrantTuple): SQL | undefined {
  * `active` by the caller. Exported for the revoke route and the expiry sweep.
  */
 export async function eraseInactiveGrantKeyMaterial(
-  grants: Array<Pick<VaultDelegationGrant, 'id' | 'field' | 'keyId'>>,
+  grants: ErasableGrant[],
 ): Promise<string[]> {
   return eraseGrantKeyMaterial(grants);
 }
@@ -300,12 +320,16 @@ function isUniqueViolationOn(err: unknown, constraintName: string): boolean {
  * `uniq_vault_delegation_active` reject the insert outright (the QuickBooks
  * `connect_error` crash), supersede whatever currently occupies the tuple and
  * retry once.
+ *
+ * Inside a caller's transaction (`executor`) the retry is skipped: Postgres
+ * aborts the whole transaction on the violation, so the error propagates and
+ * the caller's rollback leaves nothing behind (#2451).
  */
-async function insertActiveGrant(row: NewVaultDelegationGrant): Promise<void> {
+async function insertActiveGrant(row: NewVaultDelegationGrant, executor: DbExecutor = db): Promise<void> {
   try {
-    await db.insert(vaultDelegationGrants).values(row);
+    await executor.insert(vaultDelegationGrants).values(row);
   } catch (err) {
-    if (!isUniqueViolationOn(err, 'uniq_vault_delegation_active')) {
+    if (executor !== db || !isUniqueViolationOn(err, 'uniq_vault_delegation_active')) {
       throw err;
     }
     log.warn(
@@ -594,6 +618,71 @@ export async function inheritableGrantMetadata(
   return { purpose: row?.purpose ?? null, oneTime: row?.oneTime ?? false };
 }
 
+/** Why {@link clearSelfGrantExpiry} could not clear an expiry — each needs an operator, not a boot. */
+export type SelfGrantExpiryBlocker = 'tier1' | 'not-self-grant' | 'foreign-signer' | 'key-material-erased';
+
+export type ClearSelfGrantExpiryResult =
+  | { status: 'none' }
+  | { status: 'cleared'; previousExpiresAt: Date }
+  | { status: 'blocked'; expiresAt: Date; reason: SelfGrantExpiryBlocker };
+
+/** The node can only re-sign a grant it issued to itself with its own key, and only while the key material exists. */
+function selfGrantExpiryBlocker(
+  grant: VaultDelegationGrant,
+  identity: { senderDid: string; senderPubkey: string },
+): SelfGrantExpiryBlocker | undefined {
+  if (isVaultTier1()) return 'tier1';
+  if (grant.subject !== identity.senderDid || grant.grantedTo !== identity.senderDid) return 'not-self-grant';
+  if (grant.ownerEdPub && grant.ownerEdPub !== identity.senderPubkey) return 'foreign-signer';
+  if (!grant.wrappedKey || !grant.wrappedNonce) return 'key-material-erased';
+  return undefined;
+}
+
+/**
+ * Make the node's own active self-grant non-expiring (#2451).
+ *
+ * An internal secret has one in-process consumer: its self-grant is how the
+ * node reads its own secret, so a TTL on it only ever produces a lockout (every
+ * lookup throws `not fetchable (status: expired)` and the kernel falls back to
+ * env). A pre-#2446 rotate stamped one via `defaultGrantExpiry()` whenever
+ * `VAULT_GRANT_TTL_DAYS` was set, and re-tagging that grant kept it.
+ *
+ * `expiresAt` is part of the SIGNED grant payload, so clearing it re-signs the
+ * grant with the node key. No re-seal, no new key: the wrapped key, grantees and
+ * every other column are untouched. Still-active-but-lapsed grants are renewed
+ * too, as long as their key material has not been erased yet.
+ *
+ * `blocked` means the node cannot do this itself (Tier 1 owner-agent grant, a
+ * grant signed by another owner, or erased key material); the caller reports
+ * the date so an operator can rotate. Idempotent under a race.
+ */
+export async function clearSelfGrantExpiry(grantId: string): Promise<ClearSelfGrantExpiryResult> {
+  const [grant] = await db
+    .select()
+    .from(vaultDelegationGrants)
+    .where(and(eq(vaultDelegationGrants.id, grantId), eq(vaultDelegationGrants.status, 'active')))
+    .limit(1);
+  if (!(grant?.expiresAt instanceof Date)) {
+    return { status: 'none' };
+  }
+
+  const identity = getNodeSigningIdentity();
+  const reason = selfGrantExpiryBlocker(grant, identity);
+  if (reason) {
+    return { status: 'blocked', expiresAt: grant.expiresAt, reason };
+  }
+
+  const ownerSignature = authCrypto.signSync(
+    canonicalizeGrantPayload({ ...grant, expiresAt: null }),
+    identity.privateKeyHex,
+  );
+  await db
+    .update(vaultDelegationGrants)
+    .set({ expiresAt: null, ownerSignature })
+    .where(and(eq(vaultDelegationGrants.id, grantId), eq(vaultDelegationGrants.status, 'active')));
+  return { status: 'cleared', previousExpiresAt: grant.expiresAt };
+}
+
 /**
  * Write a signed tombstone (deleted: true) for a vault field, removing it
  * from all future reads while preserving the audit chain.
@@ -809,6 +898,14 @@ export async function loadAndUnseal(field: string): Promise<string | undefined> 
  * Supersedes any existing active grant for the (principalDid, granteeDid, field)
  * tuple before inserting the new row (rotation semantics).
  *
+ * ## `tx`: atomic re-seal (#2451)
+ * With a caller-supplied transaction every DB write (owner envelope, supersede,
+ * the new grant) runs on it, and the vault ENTRY is NOT persisted here. The entry
+ * is a file write that no rollback can undo, so the caller must persist it with
+ * `vaultService.set(entry)` as the LAST step inside the same transaction: any
+ * earlier failure then rolls the database back and leaves the old entry
+ * untouched, instead of a new entry that no active grant can open. Tier 0 only.
+ *
  * No plaintext is logged at any point.
  */
 export async function sealAndGrantStaticSecret(
@@ -830,9 +927,15 @@ export async function sealAndGrantStaticSecret(
      * caller of this function exactly.
      */
     oneTime?: boolean;
+    /** Run on this transaction and leave persisting the entry to the caller — see `tx` above (#2451). */
+    tx?: DbExecutor;
   },
 ): Promise<{ entry: VaultEntry; grantId: string | null; requestId: string | null }> {
-  const { principalDid, granteeDid, expiresAt = null, purpose = null, oneTime = false } = options;
+  const { principalDid, granteeDid, expiresAt = null, purpose = null, oneTime = false, tx } = options;
+  if (tx && isVaultTier1()) {
+    throw new Error('sealAndGrantStaticSecret: a transactional seal is Tier 0 only — Tier 1 grants are issued by the owner agent');
+  }
+  const executor = tx ?? db;
   const identity = getNodeSigningIdentity();
   const fieldKey = randomBytes(32);
 
@@ -861,7 +964,9 @@ export async function sealAndGrantStaticSecret(
   const entry: VaultEntry = { ...payload, signature };
 
   await assertEntryIntegrity(entry, vaultAdapters);
-  await vaultService.set(entry);
+  if (!tx) {
+    await vaultService.set(entry);
+  }
 
   const nodeXPub = getNodeXPublicKey();
 
@@ -935,10 +1040,10 @@ export async function sealAndGrantStaticSecret(
 
   // Durable owner copy before anything is superseded, so the erase below can never
   // remove the last recoverable copy of the current field key.
-  await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub: getOwnerXPublicKey() });
+  await writeOwnerEnvelope({ field, keyId, fieldKey, ownerXPub: getOwnerXPublicKey() }, executor);
 
   // Supersede any existing active grant for this (principalDid, granteeDid, field) tuple.
-  await supersedeActiveGrant({ subject: principalDid, grantedTo: granteeDid, field });
+  await supersedeActiveGrant({ subject: principalDid, grantedTo: granteeDid, field }, executor);
 
   // Wrap the field key to the node's X25519 pubkey using the owner X25519 private key.
   const wrapped = wrapFieldKey(fieldKey, nodeXPub, getOwnerXPrivateKey());
@@ -973,7 +1078,7 @@ export async function sealAndGrantStaticSecret(
     // #2231/#2242 — agent-facing bookkeeping, not cryptographically signed scope.
     purpose,
     oneTime,
-  });
+  }, executor);
 
   return { entry, grantId, requestId: null };
 }
@@ -1375,12 +1480,17 @@ async function fetchActiveGrant(
  * mint-time grant regardless of its status already have their own
  * `grantId`-keyed lookup for that (see `listVaultKeyCards`'s `grantById`).
  */
-export async function listActiveGrantsForField(field: string): Promise<VaultDelegationGrant[]> {
-  return db
-    .select()
-    .from(vaultDelegationGrants)
-    .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
-    .orderBy(desc(vaultDelegationGrants.createdAt));
+export function listActiveGrantsForField(
+  field: string,
+  executor: DbExecutor = db,
+): Promise<VaultDelegationGrant[]> {
+  return Promise.resolve(
+    executor
+      .select()
+      .from(vaultDelegationGrants)
+      .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
+      .orderBy(desc(vaultDelegationGrants.createdAt)),
+  );
 }
 
 /**
