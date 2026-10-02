@@ -1,5 +1,65 @@
 <!-- Build Log — newest first. Source: Discord dev channel + git history. -->
 
+## September 2026 — The Usage Ledger, Brain Connectors, Vault Grants & the Registered-App Boundary
+
+**What agents spend became a signed receipt, the kernel learned to hold keys on an agent's behalf without handing them over, and third-party apps got a registry, a provisioner, and a vault-held key — while the SDK finally shipped out of the repo.**
+
+### 📒 The usage ledger — signed receipts, not asserted numbers (#1148, #1923, #2030, PR #1946, PR #1947)
+
+`usage.incurred` became a real primitive: an emitter- and resource-agnostic event with a system-class chain and clock rollup (#1148, PR #1947). Inference grew a per-turn metering ledger with spend caps (#1923, PR #1946), an emitter registry with a Claude Code reference adapter (PR #1949), and Ask Me routes that emit usage (#1956, PR #1958). Provider-billed cost ingestion and reconciliation landed as the first stage of #1076 (PR #1948 — #1076 itself stays open), and receipts upload into `usage.billed` for non-API costs (#1951, PR #2041). The read API shipped with a public, signed per-DID rollup (#2030, PR #2031) — the endpoint the README's inference-cost link points at, so no cost figure is typed anywhere. On `/jin`: a live per-turn agent usage feed (#1864, PR #1963) and an auditor chain view (#2204, PR #2222). The umbrella Epic #1147 is still open.
+
+### 🧠 Brain connectors & the inference passthrough (#1925, #1959, #2201, #2195, PR #1928, PR #1944, PR #1945, PR #2189)
+
+The connector registry consolidated onto one shared brain-connector contract (#1924, #1940), and a run of providers slotted in behind it: xAI (#1924), OpenAI (#1927), Moonshot (Kimi, #1930), Z.ai (GLM, #1931), OpenRouter (#2188), plus a keyless local-inference connector for any OpenAI-compatible base URL (#1957). Anthropic's model list went dynamic with no hardcoded default (#1953, PR #1954) and later sent the headers it requires (#2196). Underneath, the kernel gained an inference passthrough: chat completions (#1925), Anthropic-format messages (#1959), a models list with parameter translation (#2201), and routing by the requested model (#2195). A TypeSafe.ai service connector (`typesafe:decide`, #2197) and the **Google Workspace connector v1** (#2144, PR #2151, PR #2153) — OAuth2 auth-code, sealed refresh token, signed `onBehalfOf`, revocation both ways, `google_*` MCP tools — rounded out the month.
+
+*Carry-over from the August entry:* the **Google Cloud connector** (signed-action-per-cloud-op, #1317) merged its PR in August but the tracking issue closed on 2026-09-04, so it is noted here as a date-straddling item, not claimed as a clean September ship.
+
+### 🦞 The OpenClaw plugin surface (#1932, #1933, #2186, #2368, PR #1935, PR #1955, PR #2146)
+
+An outbound guard and reflex scaffold for the OpenClaw plugin (PR #1935); a kernel inference-passthrough shim with a break-glass path and migration runbook (PR #1955 — the custom-provider migration, #1926, stays open); NanoClaw's first boot with an envelope generator, Imajin chat bridge, and identity bootstrap (#1932); the envelope provisioner with an Agent View pane (#1933); a `harness: 'openclaw'` envelope renderer (#2186); an agent-DID seat served through the passthrough (PR #2146); and the passthrough fronting `/mcp` alongside `/openai/v1` (#2368, PR #2371).
+
+### 🔑 Vault grants & the operator's `/jin` (#2231, #2257, #2242, #2252, #2247, #2292, #2289, #2291, PR #2158)
+
+The vault learned to hand an agent a credential without giving it away: agent-facing grant fetch with a stated purpose and one-time consumption (#2231), one deferred acknowledgement per fetch — used, failed, or discarded (#2257, #2235), Ed25519 keypairs born in-vault with mint/revoke attestations (#2242), a memory-only `loadFromVault` boot helper with the corpus service as first consumer (#2243), internal secrets self-provisioned as vault grants (PR #2274, #2245), and a delegate-grant bearer for static-header clients — knock, approve, scoped bearer, revocable (#2252). On the operator side, `/jin` became the place approvals live: approvals as a signed confirm (#2059), operator-countersigned client-side (#2082, PR #2158), an open source/kind vocabulary (#2152), forwarded OpenClaw host-exec approvals as cards (#2221), vault key cards with signed proposals (#2247), a Grants lane with one-tap revoke (#2292), a Record lane read API (#2289), and a phone push path (#2291). `operator.approval.decided` now carries the content hash and operator signature (#2294), and act-as can no longer reach the confirm rail (#2359). A per-principal agent endpoint — a foreign agent reaching a specific human's agent by DID under a principal-authored gate, both sides signed — merged in PR #2255; its tracking issue (#2251) stays open.
+
+### 🔁 The loops rail & the cycle (#2295, #2296, #2314, #2297, #2316, #2315, #2358)
+
+The sprint loop registered itself on the record. A `loop.*` rail landed with signed ingest, a projection, and a read API (#2295); `warp.run` transitions emit loop lifecycle events (#2296); the sprint cycle registers as a loop (#2314); agents read the registry through `loops_list` / `loops_get` (#2297) and drive it through `cycle_run` / `cycle_status` (#2316); a DecisionCard schema v1 with emitter and local organizer (#2315); and loop publishers are verified as authorized for the principal (#2358). The Warp side got steadier — terminal resume via follow-ups (#1939), timeouts no longer terminal (#2032), the duplicate-publish race closed (#2043), the watcher re-armed on resume (#2055). The loop epics (#1327, #2313) and the registry feature (#2290) remain open.
+
+### 🧱 Kernel vs. apps — the registered-app boundary (#1990, #2394, #2375, #2411, #2416, #2425, #1992)
+
+Apps are identities now: the app registry became a first-class table (#1990). Registered third-party apps can obtain delegated attestations (#2394) and scoped app-tokens on media routes (#2393); `apps.provision` creates the repo, registry entry, and sealed credential (#2375), with the key living in the vault (#2411) and the provisioner authenticating as a GitHub App installation — no PATs (#2416). Kernel navigation derives from the app registry instead of hard-coded links (#2425). Boundary hygiene: events stops writing `auth.identities` (#1999), batched identity resolution (#1998), `forest_config` parity for coffee/learn/market (#2001), a public node-DID lookup (#2000), `@imajin/auth` no longer reaches the database (#1992), and a migration ownership map with a schema-boundary CI guard (PR #2140, PR #2161). The dead `packages/pay` fork was deleted (PR #2279). The extraction Epic #1981 is still open — the boundary is being built, the apps have not left.
+
+### 💱 Pay: MJN and MJNx, payment requests, and tax in trust (#2019, #2172, #2207, #2419, #2421, PR #2159)
+
+The ledger split — MJN (withdrawable) from MJNx (emitted, non-withdrawable) — merged in PR #2159, and the model ruling was reconciled across the whitepaper, RFC-12, and wallet copy (#2019, PR #2180). Money paths got honest: gifts and event top-ups are funded transfers, not mints (#2018); debits are guarded atomic updates (#2166) with a real two-connection concurrency harness (#2168); settlement converged behind one core (#1073); a withdrawal intent with a Stripe-to-ledger reconciler (#2172) resolves its destination server-side (#2190). Payment requests arrived end to end — table, routes, attestations, bus events (#2207, #2208), recipient by DID or invite-new (#2210), checkout linkage (#2209), a Money tab (#2211) — and carry tax: a `taxes[]` on the `.fair` manifest (#2419), tax registrations on the business profile (#2420), and tax through the payment request (#2421). A shared `packages/money` with FX snapshots landed (#1950).
+
+### 🛡 Identity & security hardening (#306, #1937, #1348, #1967, #1969, PR #1938, PR #1975, PR #2114)
+
+Recovery codes as the self-custody key-recovery floor, then hardened with proof-of-new-key, status, and attestations (PR #1938, PR #1975 — the broader key-recovery issue #1250 stays open). Device tracking with new-device login alerts (#306). The `.fair` fee split is validated and re-derived before the node signs (#1937); the countersign route verifies `witnessJws` and its CID binding (PR #2114); chat routes authorize session callers against the conversation (PR #2138, PR #2148); the turn-usage endpoint is auth-gated (#1967, #1969); OAuth DCR stores and matches the full redirect URI set (#1348).
+
+### 📦 The SDK ships; releases are tag-as-truth (#1011, #1982, #2285, #2287, #2349, #2385, #2060)
+
+After tsup build and dist exports landed across the workspace packages (#1011), the first out-of-repo SDK publish went out (PR #2304) with a publish pipeline and smoke verification (#1982, PR #2374) — see the README for which packages are installable and from where. Versioning moved to tag-as-truth: the build version derives from the latest tag (#2285, #2287), the Release workflow computes its next version from tags rather than `package.json` (#2349), and a CI guard keeps feature PRs from bumping versions (PR #2286). Deploys got stricter: prod gated on a GitHub Environment with serialized deploys (PR #2225), a forward-only rollback runbook (#2385), `build.sh` failing loudly on a failed restart (#2382), per-app migration heads in `/api/health` (#2384), and the dev/prod posture investigation closed out (#2060).
+
+### 🔎 Corpus follow-ons (Epic #1726, still open)
+
+The GitHub adapter mounted with a `/spec` (#2020); every corpus route now takes a kernel-minted, DID-scoped `CorpusAccessClaim` (PR #2024); queries can pin a snapshot at a ref for reproducible retrieval (#1921); ingestion is signed under a service DID (PR #2034); a hybrid semantic layer joined BM25 with embed/rerank (#1599, #1601); the corpus fetches and pins the kernel's published signing key (#2244); and Warp dispatch now pulls retrieval context from the principal's corpus (PR #2026).
+
+### 🧹 Static analysis, held as a gate (PR #2076, PR #2086, PR #2156, PR #2164, #2088, #2095)
+
+A concentrated SonarCloud pass — vulnerability findings, empty test files, cognitive-complexity and nested-ternary refactors, accessibility handlers, mechanical minor rules — brought `main` to a clean state (PR #2156), and merges are now blocked on a failing quality gate (PR #2164). Dependency advisories cleared for Next (#2088, #2092) and nodemailer (#2095).
+
+### 📐 Docs, rulings & the replay
+
+Revocation as the sixth primitive reached the repo's own surfaces (PR #2042, #2027). The primitive was ruled on 2026-08-14, so this is a September landing of an August decision, not a September ruling. The whitepaper got its v0.6 hygiene pass (#2179, PR #2183), the MJN/MJNx reconciliation (#2019) landed beside it, the README was replayed twice from its brief (PR #2051, PR #2181, PR #2390), and the RFC corpus got a staleness triage (PR #1972).
+
+### 🏗 Also shipped
+
+Notifications that miss their live push are redelivered (#2044) and the WebSocket gets a heartbeat with ack-confirmed delivery (#2099); notify templates became data-driven (#1510). Media gained an asset ownership-transfer endpoint (#1128), bundle upload with compact responses (#2282), and a viewer that hides article frontmatter behind a metadata badge (#1445). The relay accepts DFOS proofs on writes for attested peers (#2132). Specs landed for the calendar routes (#1994), the app-token and delegation routes (#1993, #1995, #1996), and chat context (#1997).
+
+---
+
 ## August 2026 — Connector Custody, the Corpus Engine & Agents at the Door
 
 **Connectors grew a real custody model, a per-DID search engine landed inside the kernel, and external agents got a door of their own — verified, not just trusted.**
