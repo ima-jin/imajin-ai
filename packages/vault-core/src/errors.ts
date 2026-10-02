@@ -64,8 +64,9 @@ export class VaultFileUnreadableError extends Error {
     public readonly errno: string | undefined;
 
     constructor(vaultPath: string, errno?: string) {
+        const detail = errno ? ` (${errno})` : '';
         super(
-            `Vault file at ${vaultPath} exists but could not be read${errno ? ` (${errno})` : ''} — ` +
+            `Vault file at ${vaultPath} exists but could not be read${detail} — ` +
             'refusing to continue with an empty vault. Fix the file permissions or path; the file has not been modified.'
         );
         this.name = 'VaultFileUnreadableError';
