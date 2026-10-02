@@ -255,26 +255,54 @@ export async function reissueFieldGrants(params: {
   }
 
   const now = new Date();
+  // One grant per (subject, grantedTo): newest first, so the newest grant's terms win.
+  // Distinct tuples touch distinct rows, so the replacements are independent.
+  const outcomes = await Promise.all(
+    uniqueByGrantee(prior).map((grant) => reissueOneGrant({ grant, field, source, grantedBy, now })),
+  );
+
   const reissued: string[] = [];
   const dropped: string[] = [];
-  const seen = new Set<string>();
-  for (const grant of prior) {
-    const tupleKey = `${grant.subject}\u0000${grant.grantedTo}`;
-    if (seen.has(tupleKey)) continue;
-    seen.add(tupleKey);
-    await supersedeActiveGrant({ subject: grant.subject, grantedTo: grant.grantedTo, field });
-    if (!isStillExercisable(grant, now)) {
-      dropped.push(grant.grantedTo);
-      continue;
-    }
-    reissued.push(
-      await issueGrantFromSource({
-        field, subject: grant.subject, granteeDid: grant.grantedTo, grantedBy, source,
-        terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
-      }),
-    );
+  for (const outcome of outcomes) {
+    if (outcome.reissuedGrantId === null) dropped.push(outcome.grantedTo);
+    else reissued.push(outcome.reissuedGrantId);
   }
   return { reissued, dropped };
+}
+
+/** First (newest) grant per `(subject, grantedTo)` pair, preserving order. */
+function uniqueByGrantee(grants: readonly VaultDelegationGrant[]): VaultDelegationGrant[] {
+  const seen = new Set<string>();
+  return grants.filter((grant) => {
+    const key = `${grant.subject}\u0000${grant.grantedTo}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/**
+ * Supersede one prior grant (erasing its old key material), then issue its
+ * replacement from `source` with the same terms — unless it can no longer be
+ * exercised, in which case it is superseded and NOT replaced.
+ */
+async function reissueOneGrant(params: {
+  grant: VaultDelegationGrant;
+  field: string;
+  source: VaultDelegationGrant;
+  grantedBy: string;
+  now: Date;
+}): Promise<{ grantedTo: string; reissuedGrantId: string | null }> {
+  const { grant, field, source, grantedBy, now } = params;
+  await supersedeActiveGrant({ subject: grant.subject, grantedTo: grant.grantedTo, field });
+  if (!isStillExercisable(grant, now)) {
+    return { grantedTo: grant.grantedTo, reissuedGrantId: null };
+  }
+  const reissuedGrantId = await issueGrantFromSource({
+    field, subject: grant.subject, granteeDid: grant.grantedTo, grantedBy, source,
+    terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
+  });
+  return { grantedTo: grant.grantedTo, reissuedGrantId };
 }
 
 /** {@link reissueFieldGrants} for an `internal-secret:<purpose>` field (#2446). */
