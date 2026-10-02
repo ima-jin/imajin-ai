@@ -53,7 +53,10 @@ export {
   STRIPE_MIN_RATE_BPS,
   STRIPE_FIXED_CENTS,
   AUTHORITY_DID_CA_CRA,
+  AUTHORITY_LABELS,
+  authorityLabel,
 } from './constants';
+export { taxLineLabel } from './taxLabel';
 
 export { buildFairManifest } from './buildManifest';
 export type { FairFeeManifest, BuildFairManifestTaxInput } from './buildManifest';

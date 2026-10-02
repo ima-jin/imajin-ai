@@ -492,9 +492,30 @@ describe('createPaymentRequest — charge_tax (#2421)', () => {
 
 describe('createPaymentRequest — custom manifest carrying taxes[] (#2419 path, #2421 totals)', () => {
   const CUSTOM = (taxes: unknown[], chainDid = ISSUER_DID) => ({
+    fair: '1.2',
     chain: [{ did: chainDid, role: 'seller', share: 1 }],
     total: { amount: 5000, currency: 'CAD' },
     taxes,
+  });
+
+  it('#2439: rejects a custom manifest carrying taxes[] that is not stamped fair "1.2"', async () => {
+    const result = await createPaymentRequest({ ...CHARGED_BASE, fairManifest: { ...CUSTOM([TAX_ROW_ON]), fair: undefined } });
+    expect(isServiceError(result)).toBe(true);
+    if (isServiceError(result)) {
+      expect(result.status).toBe(400);
+      expect(result.error).toMatch(/fair_manifest\.fair must be "1\.2"/);
+    }
+    expect(state.insertCalls).toHaveLength(0);
+  });
+
+  it('#2439 item 4: rejects a non-array taxes on a custom manifest at create time', async () => {
+    const result = await createPaymentRequest({
+      ...CHARGED_BASE,
+      fairManifest: { chain: [{ did: ISSUER_DID, role: 'seller', share: 1 }], total: { amount: 5000, currency: 'CAD' }, taxes: 'GST' },
+    });
+    expect(isServiceError(result)).toBe(true);
+    if (isServiceError(result)) expect(result.error).toMatch(/taxes must be an array/);
+    expect(state.insertCalls).toHaveLength(0);
   });
 
   it('total = subtotal + Σ manifest tax amounts, so the row matches what checkout charges', async () => {

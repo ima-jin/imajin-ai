@@ -1,9 +1,11 @@
 /**
  * GET /pay/api/tax/remittance-owed?collector_did=...
  *
- * Read-only trust-liability tax remittance-owed query (#2419). Business-
- * scoped: a caller may only see remittance owed for their OWN
- * `collector_did` — same "caller must match the queried DID" convention as
+ * Read-only trust-liability tax remittance-owed query (#2419). Returns one
+ * row per jurisdiction + kind (split further only by the registration number
+ * the tax was collected under, #2439), each with the summed `amount` still
+ * owed and that `registrationNumber`. Business-scoped: a caller may only
+ * see remittance owed for their OWN `collector_did` — same "caller must match the queried DID" convention as
  * `GET /pay/api/payment-requests` (issuer_did/recipient_did) and
  * `GET /api/transactions/[did]/summary`.
  */
