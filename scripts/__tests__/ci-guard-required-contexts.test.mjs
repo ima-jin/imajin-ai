@@ -23,6 +23,9 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT = fileURLToPath(new URL('../ci-guard-required-contexts.mjs', import.meta.url));
 
 const WORKFLOW = `name: CI
+on:
+  pull_request:
+  merge_group:
 jobs:
   lint:
     name: Lint & Typecheck
@@ -96,6 +99,51 @@ jobs:
 
     expect(status).toBe(1);
     expect(output).toContain('Lint & Typecheck');
+  });
+
+  /**
+   * #2491: with a merge queue, a required check that does not run on
+   * `merge_group` never reports on the queue's temporary branch.
+   */
+  it('fails when a required context is produced by a workflow without merge_group', () => {
+    const dir = makeRepo({
+      workflow: WORKFLOW.replace('  merge_group:\n', ''),
+      manifest: { required: ['Test'], advisory: [] },
+    });
+
+    const { status, output } = runGuard(dir);
+
+    expect(status).toBe(1);
+    expect(output).toContain('merge_group');
+    expect(output).toContain('"Test" (ci.yml)');
+  });
+
+  it('accepts merge_group in the list and string forms of `on:`', () => {
+    for (const on of ['on: [pull_request, merge_group]', 'on: merge_group']) {
+      const dir = makeRepo({
+        workflow: WORKFLOW.replace(/on:\n {2}pull_request:\n {2}merge_group:/, on),
+        manifest: { required: ['Test'], advisory: [] },
+      });
+
+      expect(runGuard(dir).status).toBe(0);
+    }
+  });
+
+  it('does not require merge_group on workflows producing only advisory contexts', () => {
+    const dir = makeRepo({
+      workflow: `name: Advisory\non:\n  pull_request:\njobs:\n  adv:\n    name: Advisory Only\n    runs-on: ubuntu-latest\n`,
+      manifest: {
+        required: ['Required One'],
+        advisory: [{ context: 'Advisory Only', reason: 'non-blocking' }],
+      },
+    });
+    writeFileSync(
+      join(dir, '.github', 'workflows', 'required.yml'),
+      `name: Req\non:\n  merge_group:\njobs:\n  req:\n    name: Required One\n    runs-on: ubuntu-latest\n`,
+      'utf8',
+    );
+
+    expect(runGuard(dir).status).toBe(0);
   });
 
   it('fails on an advisory entry whose job no longer exists', () => {

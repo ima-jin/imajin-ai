@@ -34,11 +34,14 @@
  * Always (no network, hard-fails):
  *   1. Every context in `required` is emitted by some job `name:`.
  *   2. `required` and `advisory` do not overlap, and neither has duplicates.
+ *   3. Every workflow that emits a required context also triggers on
+ *      `merge_group` (#2491). With a GitHub merge queue, required checks must
+ *      run on the queue's `merge_group` event or the queued PR waits forever.
  *
  * Additionally, when an admin-scoped token is available (hard-fails on drift):
- *   3. The live ruleset's required contexts match `required` exactly.
+ *   4. The live ruleset's required contexts match `required` exactly.
  *
- * Step 3 degrades to a loud warning when the API is unreachable or the token
+ * Step 4 degrades to a loud warning when the API is unreachable or the token
  * lacks permission. That half is advisory BY DESIGN and says so on every run —
  * it is not allowed to be silent again.
  *
@@ -115,9 +118,28 @@ function loadManifest() {
   return { required, advisory };
 }
 
-/** Collect every job name (or job-id fallback) from all workflow files. */
+/**
+ * Does this workflow's `on:` declare a `merge_group` trigger? Handles the
+ * string, array and map forms of `on:`.
+ */
+function hasMergeGroupTrigger(doc) {
+  // YAML 1.1 parsers read a bare `on` key as boolean `true`.
+  const on = doc?.on ?? doc?.[true];
+  if (typeof on === 'string') return on === 'merge_group';
+  if (Array.isArray(on)) return on.includes('merge_group');
+  if (on && typeof on === 'object') return Object.hasOwn(on, 'merge_group');
+  return false;
+}
+
+/**
+ * Collect every job name (or job-id fallback) from all workflow files.
+ *
+ * `producers` maps each name to the workflow files that emit it and whether
+ * each of those files triggers on `merge_group`.
+ */
 function collectJobNames() {
   const names = new Set();
+  const producers = new Map();
 
   let files;
   try {
@@ -138,12 +160,17 @@ function collectJobNames() {
     const jobs = doc?.jobs;
     if (!jobs || typeof jobs !== 'object') continue;
 
+    const mergeGroup = hasMergeGroupTrigger(doc);
     for (const [jobId, jobDef] of Object.entries(jobs)) {
-      names.add(typeof jobDef?.name === 'string' ? jobDef.name : jobId);
+      const name = typeof jobDef?.name === 'string' ? jobDef.name : jobId;
+      names.add(name);
+      const list = producers.get(name) ?? [];
+      list.push({ file, mergeGroup });
+      producers.set(name, list);
     }
   }
 
-  return names;
+  return { names, producers };
 }
 
 /**
@@ -197,7 +224,7 @@ async function fetchLiveContexts() {
 // ── Main ─────────────────────────────────────────────────────────────────────
 
 const { required, advisory } = loadManifest();
-const jobNames = collectJobNames();
+const { names: jobNames, producers } = collectJobNames();
 
 console.log(`ci-guard-required-contexts: ${required.length} declared required context(s)`);
 console.log(`ci-guard-required-contexts: ${jobNames.size} job name(s) found in workflows`);
@@ -211,6 +238,22 @@ if (orphaned.length > 0) {
     'Each required context must match a job `name:` (or job-id if unnamed)',
     'in .github/workflows/*.yml. Renaming a job is a breaking change to',
     'branch protection — update .github/required-checks.json and the ruleset.',
+  ]);
+}
+
+// Merge-queue check — every producer of a required context must run on
+// `merge_group`, otherwise the queue never receives the required status (#2491).
+const missingMergeGroup = required
+  .flatMap((ctx) =>
+    (producers.get(ctx) ?? []).filter((p) => !p.mergeGroup).map((p) => `- "${ctx}" (${p.file})`),
+  )
+  .sort(byString);
+if (missingMergeGroup.length > 0) {
+  fail('required context(s) produced by a workflow with no `merge_group` trigger:', [
+    ...missingMergeGroup,
+    '',
+    'Add `merge_group:` to the `on:` section of the workflow, or the GitHub',
+    'merge queue will wait forever for the required check (#2491).',
   ]);
 }
 
