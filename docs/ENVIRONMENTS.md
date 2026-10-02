@@ -238,6 +238,57 @@ service via `packages/auth/src/internal-post.ts`, that has not moved onto
 the vault path yet — generalizing this pattern to those other callers is
 out of scope for #2245.
 
+### Service bootstrap identities (#2353, #2442)
+
+Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the
+vault at boot authenticates with its own bootstrap identity:
+`<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
+(today: learn, events, dykil, market, coffee). The pair stays **required**
+(no `check-env` annotation) — but nobody mints it by hand any more.
+`scripts/provision-service-bootstrap.mjs` does, and the deploy runs it:
+
+- **Where:** `deploy-prod.yml` and `deploy-dev.yml` run
+  `node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env <env>`
+  after dependencies are installed and **before check-env** (which
+  `build-changed.sh` → `build.sh` runs first). In prod the whole job sits behind
+  the `production` environment approval, so the gate tap is the human
+  countersign from #2245 for these grants. A provisioning failure fails the
+  deploy before any restart.
+- **Env:** the kernel's own — `DATABASE_URL` and `AUTH_PRIVATE_KEY` from
+  `apps/kernel/.env.local` (loaded with `--env-file`, exactly how pm2 starts
+  `prod-jin`), and `VAULT_PATH` from the env's `deploy/ecosystem.*.config.js`
+  (`--env`), so the grant lands in the same vault file the kernel reads.
+- **Discovery:** services are found by scanning `apps/*/.env.example` for
+  `<SVC>_VAULT_BOOTSTRAP_DID` — add the two keys to a new service's
+  `.env.example` and the next deploy provisions it. A pair annotated
+  `# optional` there (corpus) is skipped, and so is a service with no
+  `apps/<svc>/.env.local` on that host (creating one would turn `check-env`'s
+  warning into an error for a service that isn't deployed there).
+- **Per service:** both keys present and non-empty → left alone, never rotated
+  or overwritten. Exactly one present, or either empty → the run fails with a
+  clear error and changes nothing (fix the file by hand). Both absent → mint an
+  Ed25519 keypair + `did:imajin:*` DID (`@imajin/auth`), register it as a kernel
+  identity (the vault fetch authenticates against `auth.identities`), and
+  append the pair to `.env.local` atomically (temp file + rename, mode 0600).
+- **Grant:** for **every** service whose pair exists — minted now or not — the
+  `kernel.attestation-internal-api-key` grant is ensured through the same code
+  path as `scripts/grant-attestation-internal-api-key.ts`. It is idempotent, so
+  a crash between the write and the grant self-heals on the next run.
+- **Output:** one line per service, `service · did · minted|existing · grantId`
+  (also in the run's step summary). A private key is never printed or logged.
+
+Local dev: `scripts/setup-local.sh` runs the same script with `--all` after
+migrations. To provision (or re-check) by hand:
+`node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all`
+(or pass a single `<service>`, e.g. `market`).
+
+The entrypoint runs as ESM under plain `node` (#2483), like `scripts/migrate.mjs`:
+run through `tsx` the kernel's TypeScript compiles to CommonJS, which cannot load
+ESM-only dependencies such as `@ipld/dag-cbor`. `--dry-run` validates every
+`.env.local` pair and loads every module a real run imports, without minting,
+writing, granting or contacting the database; CI's "Provisioning entrypoint" job
+runs the deploy command plus `--dry-run` against a production-style install.
+
 ### Per-env deploy targets (#2246)
 
 A service with no `.env.local` at all is only a **hard error** when it's

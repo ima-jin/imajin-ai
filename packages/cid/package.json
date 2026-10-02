@@ -1,6 +1,6 @@
 {
   "name": "@imajin/cid",
-  "version": "0.8.10",
+  "version": "0.8.13",
   "private": true,
   "description": "Deterministic CIDv1 (dag-cbor + SHA-256) helpers shared across Imajin services",
   "license": "MIT",
@@ -15,7 +15,8 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
     }
   },
   "files": [
