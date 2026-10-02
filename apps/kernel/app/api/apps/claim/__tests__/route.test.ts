@@ -4,6 +4,10 @@
  * signing key. Covers: bootstrapPublicKey validation, claim code outcomes
  * (reused, expired), grant outcomes (missing, revoked, wrong purpose) via
  * the shared `signing-key-fetch` module, and the success/audit shape.
+ *
+ * #2444: also covers the target-app binding (`expectedAppDid` mismatch -> 409
+ * with nothing spent and no key material) and the `attestationId` the
+ * success response now carries.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -16,7 +20,7 @@ const {
   claimSigningKeyMock: vi.fn(),
   resolveSigningKeyForGrantMock: vi.fn(),
   getNodeSigningIdentityMock: vi.fn(),
-  publishMock: vi.fn().mockResolvedValue(undefined),
+  publishMock: vi.fn().mockResolvedValue({ attestationId: 'att_claimed_1' }),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -69,6 +73,7 @@ const APP_DID = 'did:imajin:app-under-test';
 const GRANT_ID = 'vdg_app_self_1';
 const SLUG = 'dykil';
 const BOOTSTRAP_PUBLIC_KEY = 'a'.repeat(64);
+const ATTESTATION_ID = 'att_claimed_1';
 
 function postRequest(body: unknown): Request {
   return new Request('http://localhost/api/apps/claim', { method: 'POST', body: JSON.stringify(body) });
@@ -107,6 +112,17 @@ describe('POST /api/apps/claim — validation', () => {
   it('rejects an oversized hostHint', async () => {
     const response = await POST(postRequest({ claimCode: 'claim_x', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, hostHint: 'x'.repeat(201) }) as never);
     expect(response.status).toBe(400);
+  });
+
+  it.each([
+    ['an empty string', ''],
+    ['a non-string', 42],
+    ['null', null],
+    ['an oversized string', 'd'.repeat(257)],
+  ])('rejects an expectedAppDid that is %s', async (_label, expectedAppDid) => {
+    const response = await POST(postRequest({ claimCode: 'claim_x', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, expectedAppDid }) as never);
+    expect(response.status).toBe(400);
+    expect(claimSigningKeyMock).not.toHaveBeenCalled();
   });
 });
 
@@ -149,6 +165,55 @@ describe('POST /api/apps/claim — claim code outcomes', () => {
     await POST(postRequest({ claimCode: 'claim_x', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY.toUpperCase() }) as never);
 
     expect(claimSigningKeyMock).toHaveBeenCalledWith({ code: 'claim_x', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, hostHint: null });
+  });
+});
+
+// #2444: the claim code is bound to its target app.
+describe('POST /api/apps/claim — expectedAppDid binding (#2444)', () => {
+  it('passes expectedAppDid through to claimSigningKey', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'not_found' });
+
+    await POST(postRequest({ claimCode: 'claim_x', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, expectedAppDid: APP_DID }) as never);
+
+    expect(claimSigningKeyMock).toHaveBeenCalledWith({
+      code: 'claim_x',
+      bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY,
+      hostHint: null,
+      expectedAppDid: APP_DID,
+    });
+  });
+
+  it('returns 409 on a mismatch, without resolving the key, auditing a claim, or leaking key material or the real app DID', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'app_mismatch' });
+
+    const response = await POST(postRequest({ claimCode: 'claim_foreign', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, expectedAppDid: 'did:imajin:some-other-app' }) as never);
+    const text = await response.text();
+
+    expect(response.status).toBe(409);
+    expect(JSON.parse(text).error).toMatch(/different app/);
+    expect(text).not.toContain('privateKey');
+    expect(text).not.toContain('publicKey');
+    expect(text).not.toContain('attestationId');
+    expect(text).not.toContain(APP_DID);
+    expect(resolveSigningKeyForGrantMock).not.toHaveBeenCalled();
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('succeeds when expectedAppDid matches the code\'s app', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'ok', slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+    resolveSigningKeyForGrantMock.mockResolvedValue({ status: 'ok', appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key' });
+
+    const response = await POST(postRequest({ claimCode: 'claim_valid', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, expectedAppDid: APP_DID }) as never);
+
+    expect(response.status).toBe(200);
+  });
+
+  it('omits expectedAppDid entirely when the caller sent none (existing path unchanged)', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'not_found' });
+
+    await POST(postRequest({ claimCode: 'claim_x', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY }) as never);
+
+    expect(claimSigningKeyMock.mock.calls[0][0].expectedAppDid).toBeUndefined();
   });
 });
 
@@ -206,7 +271,7 @@ describe('POST /api/apps/claim — grant outcomes (after a valid claim)', () => 
 });
 
 describe('POST /api/apps/claim — success', () => {
-  it('returns the appDid/privateKey/publicKey on a fully successful exchange', async () => {
+  it('returns the appDid/privateKey/publicKey/attestationId on a fully successful exchange', async () => {
     claimSigningKeyMock.mockResolvedValue({ status: 'ok', slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
     resolveSigningKeyForGrantMock.mockResolvedValue({ status: 'ok', appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key' });
 
@@ -214,9 +279,47 @@ describe('POST /api/apps/claim — success', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({ appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key' });
+    expect(body).toEqual({ appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key', attestationId: ATTESTATION_ID });
     expect(claimSigningKeyMock).toHaveBeenCalledWith({ code: 'claim_valid', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY, hostHint: 'dykil-standalone' });
     expect(resolveSigningKeyForGrantMock).toHaveBeenCalledWith({ grantId: GRANT_ID, appDid: APP_DID });
+  });
+
+  // #2444: the attestation id never used to leave the kernel.
+  it('returns the attestation id minted by the apps.signing-key.claimed event', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'ok', slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+    resolveSigningKeyForGrantMock.mockResolvedValue({ status: 'ok', appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key' });
+    publishMock.mockResolvedValueOnce({ attestationId: 'att_from_chain' });
+
+    const response = await POST(postRequest({ claimCode: 'claim_valid', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY }) as never);
+    const body = await response.json();
+
+    expect(body.attestationId).toBe('att_from_chain');
+  });
+
+  it('returns attestationId: null (still 200) when the chain minted no attestation', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'ok', slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+    resolveSigningKeyForGrantMock.mockResolvedValue({ status: 'ok', appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key' });
+    publishMock.mockResolvedValueOnce({});
+
+    const response = await POST(postRequest({ claimCode: 'claim_valid', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.attestationId).toBeNull();
+    expect(body.privateKey).toBe('private-key-hex');
+  });
+
+  it('still returns the key (attestationId: null) when publishing the claimed event throws — the code is already spent', async () => {
+    claimSigningKeyMock.mockResolvedValue({ status: 'ok', slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+    resolveSigningKeyForGrantMock.mockResolvedValue({ status: 'ok', appDid: APP_DID, privateKey: 'private-key-hex', publicKey: 'the-public-key' });
+    publishMock.mockRejectedValueOnce(new Error('bus down'));
+
+    const response = await POST(postRequest({ claimCode: 'claim_valid', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.attestationId).toBeNull();
+    expect(body.privateKey).toBe('private-key-hex');
   });
 
   it('never leaks the private key on a non-2xx response', async () => {

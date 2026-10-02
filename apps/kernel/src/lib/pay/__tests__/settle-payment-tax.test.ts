@@ -78,6 +78,7 @@ import { settlePayment } from '../settle-core';
 
 const SELLER_DID = 'did:imajin:seller';
 const BUYER_DID = 'did:imajin:buyer';
+const REGISTRATION_NUMBER = '123456789RT0001';
 
 beforeEach(() => {
   state.insertedRows.length = 0;
@@ -104,6 +105,7 @@ describe('settlePayment — #2419 tax credits', () => {
             kind: 'GST/HST',
             rateBps: 1300,
             remitTo: 'did:imajin:authority:ca-cra',
+            registrationNumber: REGISTRATION_NUMBER,
           },
         ],
       },
@@ -120,9 +122,34 @@ describe('settlePayment — #2419 tax credits', () => {
       kind: 'GST/HST',
       rateBps: 1300,
       remitTo: 'did:imajin:authority:ca-cra',
+      // #2439: persisted on the ledger row so the remittance-owed report can show it.
+      registrationNumber: REGISTRATION_NUMBER,
       trustLiability: true,
       remitted: null,
     });
+  });
+
+  it('#2439: rejects with 400 a tax credit without a registrationNumber, before any row is written or balance touched', async () => {
+    const result = await settlePayment({
+      from_did: BUYER_DID,
+      total_amount: 113,
+      service: 'market',
+      type: 'sale',
+      funded: true,
+      funded_provider: 'stripe',
+      fair_manifest: {
+        chain: [{ did: SELLER_DID, amount: 100, role: 'seller' }],
+        // Deliberately off-type: a JSON caller of /pay/api/settle can omit the field.
+        taxCredits: [
+          { did: SELLER_DID, amount: 13, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra' },
+        ] as unknown as Array<{ did: string; amount: number; jurisdiction: string; kind: string; rateBps: number; remitTo: string; registrationNumber: string }>,
+      },
+    });
+
+    expect(result).toMatchObject({ status: 400 });
+    expect('error' in result && result.error).toMatch(/registrationNumber/);
+    expect(state.creditUnitMock).not.toHaveBeenCalled();
+    expect(state.insertedRows).toHaveLength(0);
   });
 
   it('skips the internal balance credit for a tax row whose collector is also a funded chain seller (money already moved via Stripe Connect)', async () => {
@@ -135,7 +162,7 @@ describe('settlePayment — #2419 tax credits', () => {
       funded_provider: 'stripe',
       fair_manifest: {
         chain: [{ did: SELLER_DID, amount: 100, role: 'seller' }],
-        taxCredits: [{ did: SELLER_DID, amount: 13, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra' }],
+        taxCredits: [{ did: SELLER_DID, amount: 13, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra', registrationNumber: REGISTRATION_NUMBER }],
       },
     });
 
@@ -156,7 +183,7 @@ describe('settlePayment — #2419 tax credits', () => {
       funded_provider: 'stripe',
       fair_manifest: {
         chain: [{ did: SELLER_DID, amount: 100, role: 'seller' }],
-        taxCredits: [{ did: 'did:imajin:third-party-collector', amount: 13, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra' }],
+        taxCredits: [{ did: 'did:imajin:third-party-collector', amount: 13, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra', registrationNumber: REGISTRATION_NUMBER }],
       },
     });
 
@@ -180,7 +207,7 @@ describe('settlePayment — #2419 tax credits', () => {
       funded: false,
       fair_manifest: {
         chain: [],
-        taxCredits: [{ did: 'did:imajin:third-party-collector', amount: 0, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra' }],
+        taxCredits: [{ did: 'did:imajin:third-party-collector', amount: 0, jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, remitTo: 'did:imajin:authority:ca-cra', registrationNumber: REGISTRATION_NUMBER }],
       },
     });
 

@@ -59,11 +59,12 @@ describe('GET /pay/api/tax/remittance-owed', () => {
   });
 
   it('returns owed amounts for the caller\u2019s own collector_did', async () => {
-    mocks.getTaxRemittanceOwed.mockResolvedValueOnce([{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 13 }]);
+    mocks.getTaxRemittanceOwed.mockResolvedValueOnce([{ jurisdiction: 'CA-ON', kind: 'GST/HST', registrationNumber: '123456789RT0001', amount: 13 }]);
     const res = await GET(getReq(`?collector_did=${COLLECTOR_DID}`));
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.owed).toEqual([{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 13 }]);
+    // #2439: the registration number rides next to what's owed.
+    expect(body.owed).toEqual([{ jurisdiction: 'CA-ON', kind: 'GST/HST', registrationNumber: '123456789RT0001', amount: 13 }]);
     expect(mocks.getTaxRemittanceOwed).toHaveBeenCalledWith(COLLECTOR_DID);
   });
 

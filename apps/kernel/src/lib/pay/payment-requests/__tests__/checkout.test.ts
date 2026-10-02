@@ -45,7 +45,8 @@ function orderByResult() {
   return { limit: selectTxResult };
 }
 function selectWhereResult() {
-  return { orderBy: orderByResult };
+  // `.orderBy().limit()` for the reusable-session lookup; bare `.limit()` for the retry's ledger-rows lookup (#2439).
+  return { orderBy: orderByResult, limit: selectTxResult };
 }
 function selectFromResult() {
   return { where: selectWhereResult };
@@ -74,7 +75,7 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: updateSetResult }),
   },
   paymentRequests: { __table: 'payment_request', id: 'id', status: 'status' },
-  transactions: { __table: 'transactions', metadata: 'metadata', status: 'status', createdAt: 'createdAt', stripeId: 'stripeId' },
+  transactions: { __table: 'transactions', id: 'id', service: 'service', type: 'type', metadata: 'metadata', status: 'status', createdAt: 'createdAt', stripeId: 'stripeId' },
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: state.publishMock }));
@@ -105,7 +106,11 @@ vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
   emitPaymentRequestSettledStripeAttestation: state.settledStripeAttestationMock,
 }));
 
-import { createPaymentRequestCheckoutSession, settlePaymentRequestFromStripeCheckout } from '../checkout';
+import {
+  createPaymentRequestCheckoutSession,
+  retryPaymentRequestStripeSettlement,
+  settlePaymentRequestFromStripeCheckout,
+} from '../checkout';
 
 const ISSUER_DID = 'did:imajin:issuer';
 const RECIPIENT_DID = 'did:imajin:recipient';
@@ -552,5 +557,208 @@ describe('settlePaymentRequestFromStripeCheckout', () => {
     expect(result).toMatchObject({ settled: true });
     expect(state.settlePaymentMock).not.toHaveBeenCalled();
     expect(state.settledStripeAttestationMock).not.toHaveBeenCalled();
+    // #2439: skipping after money has moved is no longer silent — the operator is alerted.
+    expect(settlementFailedPublishes()).toHaveLength(1);
+    expect(settlementFailedPublishes()[0][1].payload).toMatchObject({ paymentRequestId: 'pr_1', reason: 'basis_mismatch' });
+  });
+});
+
+/** Every `payment_request.settlement_failed` publish() call as `[type, event]`. */
+function settlementFailedPublishes(): Array<[string, { issuer: string; subject: string; scope: string; payload: Record<string, unknown> }]> {
+  return state.publishMock.mock.calls.filter(([type]) => type === 'payment_request.settlement_failed');
+}
+
+const SETTLED_OK = { settled: true, batchId: 'b', transactions: [], total_amount: 47.85, recipients: 1, source: 'external' };
+const STRIPE_REF = { method: 'stripe', checkout_session_id: 'cs_1', payment_intent_id: 'pi_1', settled_at: '2026-01-01T00:00:00Z' };
+
+describe('settlement failure alerting (#2439 — money has moved, so no silent log-only failures)', () => {
+  const PAID_INPUT = { paymentRequestId: 'pr_1', checkoutSessionId: 'cs_1', paymentIntentId: 'pi_1' };
+
+  function arrangePaid(request: Record<string, unknown> = ISSUED_REQUEST) {
+    state.getPaymentRequestByIdMock.mockResolvedValue(request);
+    state.updateReturningQueue.push([{ ...request, status: 'paid' }]);
+  }
+
+  it('a rejected settlement (settlePayment error) alerts the operator with the reason and error', async () => {
+    arrangePaid();
+    state.settlePaymentMock.mockResolvedValue({ error: 'Each taxCredits item must have a non-empty registrationNumber', status: 400 });
+
+    const result = await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+
+    expect(result).toMatchObject({ settled: true }); // the webhook still gets its 200
+    expect(settlementFailedPublishes()).toHaveLength(1);
+    const [, event] = settlementFailedPublishes()[0];
+    expect(event).toMatchObject({ issuer: 'did:imajin:node', subject: 'did:imajin:node', scope: 'pay' });
+    expect(event.payload).toMatchObject({
+      paymentRequestId: 'pr_1',
+      reason: 'settle_rejected',
+      error: 'Each taxCredits item must have a non-empty registrationNumber',
+      issuerDid: ISSUER_DID,
+      recipientDid: RECIPIENT_DID,
+      totalAmount: 5000,
+      currency: 'CAD',
+      method: 'stripe',
+      context_id: 'pr_1',
+      context_type: 'payment_request',
+    });
+  });
+
+  it('an empty chain alerts with reason empty_chain and never calls settlePayment', async () => {
+    arrangePaid({ ...ISSUED_REQUEST, fairManifest: { ...ISSUED_REQUEST.fairManifest, chain: [] } });
+
+    await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+    expect(settlementFailedPublishes()).toHaveLength(1);
+    expect(settlementFailedPublishes()[0][1].payload).toMatchObject({ reason: 'empty_chain', error: 'fair_manifest.chain is empty' });
+  });
+
+  it('a basis mismatch names both amounts in the alert', async () => {
+    arrangePaid({
+      ...ISSUED_REQUEST,
+      fairManifest: {
+        ...ISSUED_REQUEST.fairManifest,
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, basisAmount: 4000, amount: 520, registrationNumber: 'R', collectorDid: ISSUER_DID, remitTo: 'did:imajin:authority:ca-cra' }],
+      },
+    });
+
+    await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+
+    expect(settlementFailedPublishes()[0][1].payload).toMatchObject({
+      reason: 'basis_mismatch',
+      error: 'taxes[].basisAmount (4000) does not match subtotalAmount (5000)',
+    });
+  });
+
+  it('an exception inside settlement alerts with reason settle_error and does not fail the webhook', async () => {
+    arrangePaid();
+    state.settlePaymentMock.mockRejectedValue(new Error('db down'));
+
+    const result = await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+
+    expect(result).toMatchObject({ settled: true });
+    expect(settlementFailedPublishes()[0][1].payload).toMatchObject({ reason: 'settle_error', error: 'Error: db down' });
+  });
+
+  it('falls back to the issuer DID as the alert subject when the node DID is unresolved', async () => {
+    arrangePaid();
+    state.getNodeDidMock.mockResolvedValue('');
+    state.settlePaymentMock.mockResolvedValue({ error: 'nope', status: 400 });
+
+    await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+
+    expect(settlementFailedPublishes()[0][1]).toMatchObject({ issuer: ISSUER_DID, subject: ISSUER_DID });
+  });
+
+  it('a failing alert publish is swallowed — the webhook never throws', async () => {
+    arrangePaid();
+    state.settlePaymentMock.mockResolvedValue({ error: 'nope', status: 400 });
+    state.publishMock.mockImplementation((type: string) =>
+      type === 'payment_request.settlement_failed' ? Promise.reject(new Error('bus down')) : Promise.resolve(undefined),
+    );
+
+    await expect(settlePaymentRequestFromStripeCheckout(PAID_INPUT)).resolves.toMatchObject({ settled: true });
+  });
+
+  it('a successful settlement publishes no alert', async () => {
+    arrangePaid();
+    state.settlePaymentMock.mockResolvedValue(SETTLED_OK);
+
+    await settlePaymentRequestFromStripeCheckout(PAID_INPUT);
+
+    expect(settlementFailedPublishes()).toHaveLength(0);
+  });
+});
+
+describe('retryPaymentRequestStripeSettlement (#2439 — the operator retry path)', () => {
+  const PAID_STRIPE = { ...ISSUED_REQUEST, status: 'paid', settlementRef: STRIPE_REF };
+
+  it('404s for an unknown payment_request', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue(null);
+    expect(await retryPaymentRequestStripeSettlement('pr_missing')).toMatchObject({ status: 404 });
+  });
+
+  it.each([
+    ['issued', { ...ISSUED_REQUEST }],
+    ['settled_manual', { ...ISSUED_REQUEST, status: 'settled_manual', settlementRef: { method: 'manual' } }],
+    ['paid but not via Stripe', { ...ISSUED_REQUEST, status: 'paid', settlementRef: { method: 'mjnx' } }],
+    ['paid with no settlement ref', { ...ISSUED_REQUEST, status: 'paid', settlementRef: null }],
+  ])('409s when the request is %s — only a Stripe-paid request can be re-settled', async (_label, request) => {
+    state.getPaymentRequestByIdMock.mockResolvedValue(request);
+    expect(await retryPaymentRequestStripeSettlement('pr_1')).toMatchObject({ status: 409 });
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+  });
+
+  it('409s and never settles twice when ledger rows already exist for the request', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue(PAID_STRIPE);
+    state.selectTxQueue.push([{ id: 'tx_existing' }]);
+
+    const result = await retryPaymentRequestStripeSettlement('pr_1');
+
+    expect(result).toMatchObject({ status: 409 });
+    expect(result).toMatchObject({ error: expect.stringMatching(/already has settlement ledger rows/) });
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+    expect(state.settledStripeAttestationMock).not.toHaveBeenCalled();
+  });
+
+  it('re-runs the settlement, attests and announces it, and alerts nothing when it succeeds', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue(PAID_STRIPE);
+    state.settlePaymentMock.mockResolvedValue(SETTLED_OK);
+
+    const result = await retryPaymentRequestStripeSettlement('pr_1');
+
+    expect(result).toMatchObject({ settled: true, paymentRequest: { id: 'pr_1' } });
+    expect(state.settlePaymentMock).toHaveBeenCalledOnce();
+    expect(state.settlePaymentMock.mock.calls[0][0]).toMatchObject({
+      funded: true,
+      funded_provider: 'stripe',
+      metadata: { payment_request_id: 'pr_1' },
+    });
+    expect(state.settledStripeAttestationMock.mock.calls[0][0].settlementRef).toMatchObject(STRIPE_REF);
+    expect(state.publishMock).toHaveBeenCalledWith('payment_request.settled', expect.anything());
+    expect(settlementFailedPublishes()).toHaveLength(0);
+    // A retry never touches the request's status — it is already `paid`.
+    expect(state.updateCalls).toHaveLength(0);
+  });
+
+  it('a retry that still cannot settle re-alerts the operator and answers 422 with the reason', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue({ ...PAID_STRIPE, fairManifest: { ...ISSUED_REQUEST.fairManifest, chain: [] } });
+
+    const result = await retryPaymentRequestStripeSettlement('pr_1');
+
+    expect(result).toMatchObject({ status: 422, error: expect.stringMatching(/empty_chain/) });
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+    expect(settlementFailedPublishes()).toHaveLength(1);
+  });
+
+  it('fix-then-retry: a basis-mismatch failure is alerted, and once the manifest is corrected the retry settles', async () => {
+    const staleTax = { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, basisAmount: 4000, amount: 520, registrationNumber: '123456789RT0001', collectorDid: ISSUER_DID, remitTo: 'did:imajin:authority:ca-cra' };
+    const stale = { ...ISSUED_REQUEST, fairManifest: { ...ISSUED_REQUEST.fairManifest, taxes: [staleTax] } };
+    state.getPaymentRequestByIdMock.mockResolvedValue(stale);
+    state.updateReturningQueue.push([{ ...stale, status: 'paid', settlementRef: STRIPE_REF }]);
+
+    // 1. Webhook: settlement skipped, operator alerted, nothing settled.
+    await settlePaymentRequestFromStripeCheckout({ paymentRequestId: 'pr_1', checkoutSessionId: 'cs_1', paymentIntentId: 'pi_1' });
+    expect(settlementFailedPublishes()[0][1].payload).toMatchObject({ reason: 'basis_mismatch' });
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+
+    // 2. Retrying before the fix fails the same way (and re-alerts).
+    state.getPaymentRequestByIdMock.mockResolvedValue({ ...stale, status: 'paid', settlementRef: STRIPE_REF });
+    expect(await retryPaymentRequestStripeSettlement('pr_1')).toMatchObject({ status: 422 });
+    expect(settlementFailedPublishes()).toHaveLength(2);
+
+    // 3. The operator fixes the manifest; the retry now settles.
+    const fixed = {
+      ...stale,
+      status: 'paid',
+      settlementRef: STRIPE_REF,
+      fairManifest: { ...stale.fairManifest, taxes: [{ ...staleTax, basisAmount: 5000, amount: 650 }] },
+    };
+    state.getPaymentRequestByIdMock.mockResolvedValue(fixed);
+    state.settlePaymentMock.mockResolvedValue(SETTLED_OK);
+    expect(await retryPaymentRequestStripeSettlement('pr_1')).toMatchObject({ settled: true });
+    expect(state.settlePaymentMock).toHaveBeenCalledOnce();
+    expect(state.settlePaymentMock.mock.calls[0][0].fair_manifest.taxCredits[0]).toMatchObject({ registrationNumber: '123456789RT0001' });
+    expect(settlementFailedPublishes()).toHaveLength(2);
   });
 });

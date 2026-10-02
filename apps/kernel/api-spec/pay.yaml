@@ -1167,6 +1167,58 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/admin/payment-requests/{id}/retry-settlement:
+    post:
+      tags: [pay]
+      operationId: retryPaymentRequestSettlement
+      summary: Re-run the on-platform settlement for a Stripe-paid payment_request — operator-only (#2439)
+      description: |
+        Retry path for `payment_request.settlement_failed`: the buyer paid
+        through Stripe but the `.fair` ledger settlement failed or was
+        skipped (`reason`: `empty_chain`, `basis_mismatch`,
+        `settle_rejected`, `settle_error`). Fix the cause, then call this.
+        Refuses (409) unless the request is `paid` via Stripe with no
+        settlement ledger rows yet, so it can never settle twice. A retry
+        that still fails re-publishes `payment_request.settlement_failed`
+        and returns 422.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Settled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentRequestId: { type: string }
+                  settled: { type: boolean }
+        "401":
+          description: Unauthorized (not an admin)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Not paid via Stripe, or settlement ledger rows already exist
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: The settlement still cannot complete (reason in `error`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/payment-requests:
     post:
       tags: [pay]

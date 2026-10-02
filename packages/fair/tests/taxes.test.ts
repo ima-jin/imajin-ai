@@ -132,9 +132,33 @@ describe('validateManifest — taxes[] (#2419)', () => {
   });
 
   it('accepts fair: "1.1" manifests without taxes exactly as before (no regression)', () => {
-    const result = validateManifest(makeV1_2(undefined) as unknown as Record<string, unknown>);
-    // fair is '1.2' here with taxes undefined — also valid, since taxes is optional.
+    const result = validateManifest({ ...makeV1_2(undefined), fair: '1.1', version: '1.1' });
     expect(result.ok).toBe(true);
+  });
+
+  describe('fair "1.2" is tied to the presence of taxes[] (#2439)', () => {
+    it('rejects a non-empty taxes[] on a fair "1.1" manifest', () => {
+      const result = validateManifest({ ...makeV1_2([VALID_TAX]), fair: '1.1', version: '1.1' });
+      expect(result.ok).toBe(false);
+      expect(result.errors).toContain('fair must be "1.2" when taxes[] is present');
+    });
+
+    it('rejects fair "1.2" with no taxes[] at all', () => {
+      const result = validateManifest(makeV1_2(undefined));
+      expect(result.ok).toBe(false);
+      expect(result.errors).toContain('fair "1.2" requires a non-empty taxes[]');
+    });
+
+    it('rejects fair "1.2" with an empty taxes[]', () => {
+      const result = validateManifest(makeV1_2([]));
+      expect(result.ok).toBe(false);
+      expect(result.errors).toContain('fair "1.2" requires a non-empty taxes[]');
+    });
+
+    it('accepts an empty taxes[] on a fair "1.1" manifest (no tax to stamp)', () => {
+      const result = validateManifest({ ...makeV1_2([]), fair: '1.1', version: '1.1' });
+      expect(result.ok).toBe(true);
+    });
   });
 
   it('rejects a taxes[] row missing a required field', () => {
@@ -187,6 +211,7 @@ const TAX_ROW: FairSettlementTax = {
   amount: 1300,
   collectorDid: 'did:imajin:seller',
   remitTo: AUTHORITY_DID_CA_CRA,
+  registrationNumber: '123456789RT0001',
 };
 
 describe('resolveSettlementChain — taxes (#2419)', () => {
@@ -239,6 +264,7 @@ describe('resolveSettlementChain — taxes (#2419)', () => {
         kind: 'GST/HST',
         rateBps: 1300,
         remitTo: AUTHORITY_DID_CA_CRA,
+        registrationNumber: '123456789RT0001', // #2439 — carried onto every credit so settlePayment() can persist it
       },
     ]);
     expect(totalTaxDollars).toBe(13);

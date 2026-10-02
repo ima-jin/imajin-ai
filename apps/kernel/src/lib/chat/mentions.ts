@@ -85,7 +85,8 @@ function validateMention(mention: StructuredMention, text: string): boolean {
   return text.includes(expected);
 }
 
-function publishMention(ctx: MentionContext, messageText: string, targetDid: string): Promise<void> {
+// Resolves to publish()'s result (or void after a logged failure); callers only await completion.
+function publishMention(ctx: MentionContext, messageText: string, targetDid: string): Promise<unknown> {
   return publish('chat.mention', {
     issuer: ctx.senderDid,
     subject: targetDid,

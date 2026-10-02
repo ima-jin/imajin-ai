@@ -16,16 +16,26 @@
  * LATER boot re-authenticates via `POST /api/apps/signing-key/fetch`
  * instead — a signature from that same bootstrap key, no claim code spent.
  *
- * Body: `{ claimCode: string, bootstrapPublicKey: string, hostHint?: string }`.
+ * Body: `{ claimCode: string, bootstrapPublicKey: string, hostHint?: string,
+ * expectedAppDid?: string }`.
  * `bootstrapPublicKey` is a hex-encoded Ed25519 public key (64 hex chars).
  * `hostHint` is a caller-reported, best-effort label (e.g. hostname)
  * recorded on the /jin timeline only — never trusted for authorization.
+ * `expectedAppDid` (#2444) binds the code to the requesting app: when
+ * present and it differs from the app the code was issued for, the route
+ * answers 409 WITHOUT spending the code and without returning any key
+ * material, so a wrong/foreign code stays redeemable by its rightful app.
+ * Absent, the route behaves exactly as before.
  *
- * Response (200): `{ appDid, privateKey, publicKey }` — held in memory only
- * by the caller (never written to disk by this route, and the SDK helper
- * this route is meant to be called through,
- * `@ima-jin/auth-client`'s `loadAppSigningKey`, never persists it either —
- * only the bootstrap keypair is persisted, in the local keystore).
+ * Response (200): `{ appDid, privateKey, publicKey, attestationId }` — the
+ * key material is held in memory only by the caller (never written to disk
+ * by this route, and the SDK helper this route is meant to be called
+ * through, `@ima-jin/auth-client`'s `loadAppSigningKey`, never persists it
+ * either — only the bootstrap keypair is persisted, in the local keystore).
+ * `attestationId` (#2444) is the id of the `apps.signing-key.claimed`
+ * attestation minted for this redemption, or `null` if attestation
+ * forwarding was unavailable — the claim itself has still succeeded by then
+ * (the code is already spent), so it never fails the exchange.
  *
  * Every outcome — success or refusal — is audited via the
  * `apps.signing-key.claimed` / `apps.signing-key.fetched` bus events.
@@ -49,6 +59,7 @@ const log = createLogger('kernel:apps-claim-route');
 export const dynamic = 'force-dynamic';
 
 const MAX_HOST_HINT_LENGTH = 200;
+const MAX_APP_DID_LENGTH = 256;
 
 /** 32-byte Ed25519 public key, hex-encoded. */
 const HEX_PUBLIC_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
@@ -61,6 +72,7 @@ interface ClaimRequestBody {
   claimCode?: unknown;
   bootstrapPublicKey?: unknown;
   hostHint?: unknown;
+  expectedAppDid?: unknown;
 }
 
 function statusForClaimOutcome(status: Exclude<ClaimSigningKeyOutcome['status'], 'ok'>): number {
@@ -70,6 +82,8 @@ function statusForClaimOutcome(status: Exclude<ClaimSigningKeyOutcome['status'],
     case 'expired':
     case 'already_claimed':
       return 410;
+    case 'app_mismatch':
+      return 409;
     default:
       return 400;
   }
@@ -83,24 +97,49 @@ function errorForClaimOutcome(status: Exclude<ClaimSigningKeyOutcome['status'], 
       return 'This claim code has expired — ask the operator to re-approve provisioning for a fresh one';
     case 'already_claimed':
       return 'This claim code has already been redeemed';
+    case 'app_mismatch':
+      return 'This claim code was issued for a different app — it has not been redeemed';
     default:
       return 'Unable to redeem this claim code';
   }
 }
 
-function emitClaimedEvent(nodeDid: string, slug: string, appDid: string, grantId: string, hostHint: string | null): void {
-  publish('apps.signing-key.claimed', {
-    issuer: nodeDid,
-    subject: appDid,
-    scope: 'apps',
-    payload: { slug, appDid, grantId, hostHint, context_id: appDid, context_type: 'apps.signing-key' },
-  }).catch((err: unknown) => log.error({ err: String(err), slug, appDid }, 'Bus publish error for apps.signing-key.claimed'));
+/**
+ * Publish `apps.signing-key.claimed` and resolve to the id of the attestation
+ * its (awaited) chain minted, or `null` when none was produced. Never throws:
+ * by the time this runs the claim code is already spent, so a bus/attestation
+ * failure must not turn a successful redemption into an error response.
+ */
+async function emitClaimedEvent(
+  nodeDid: string,
+  slug: string,
+  appDid: string,
+  grantId: string,
+  hostHint: string | null,
+): Promise<string | null> {
+  try {
+    const result = await publish('apps.signing-key.claimed', {
+      issuer: nodeDid,
+      subject: appDid,
+      scope: 'apps',
+      payload: { slug, appDid, grantId, hostHint, context_id: appDid, context_type: 'apps.signing-key' },
+    });
+    return result.attestationId ?? null;
+  } catch (err: unknown) {
+    log.error({ err: String(err), slug, appDid }, 'Bus publish error for apps.signing-key.claimed');
+    return null;
+  }
 }
 
 interface ValidatedClaimBody {
   claimCode: string;
   bootstrapPublicKey: string;
   hostHint: string | null;
+  expectedAppDid: string | undefined;
+}
+
+function isValidExpectedAppDid(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= MAX_APP_DID_LENGTH;
 }
 
 function validateClaimBody(body: ClaimRequestBody): { ok: true; value: ValidatedClaimBody } | { ok: false; error: string } {
@@ -113,12 +152,16 @@ function validateClaimBody(body: ClaimRequestBody): { ok: true; value: Validated
   if (body.hostHint !== undefined && (typeof body.hostHint !== 'string' || body.hostHint.length > MAX_HOST_HINT_LENGTH)) {
     return { ok: false, error: `hostHint must be a string of at most ${MAX_HOST_HINT_LENGTH} chars` };
   }
+  if (body.expectedAppDid !== undefined && !isValidExpectedAppDid(body.expectedAppDid)) {
+    return { ok: false, error: `expectedAppDid must be a non-empty string of at most ${MAX_APP_DID_LENGTH} chars` };
+  }
   return {
     ok: true,
     value: {
       claimCode: body.claimCode,
       bootstrapPublicKey: body.bootstrapPublicKey.toLowerCase(),
       hostHint: typeof body.hostHint === 'string' ? body.hostHint : null,
+      expectedAppDid: isValidExpectedAppDid(body.expectedAppDid) ? body.expectedAppDid : undefined,
     },
   };
 }
@@ -137,12 +180,12 @@ export async function POST(request: NextRequest) {
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
   }
-  const { claimCode, bootstrapPublicKey, hostHint } = validation.value;
+  const { claimCode, bootstrapPublicKey, hostHint, expectedAppDid } = validation.value;
 
   const nodeDid = getNodeSigningIdentity().senderDid;
 
   try {
-    const claimOutcome = await claimSigningKey({ code: claimCode, bootstrapPublicKey, hostHint });
+    const claimOutcome = await claimSigningKey({ code: claimCode, bootstrapPublicKey, hostHint, expectedAppDid });
     if (claimOutcome.status !== 'ok') {
       return NextResponse.json(
         { error: errorForClaimOutcome(claimOutcome.status) },
@@ -150,7 +193,7 @@ export async function POST(request: NextRequest) {
       );
     }
     const { slug, appDid, grantId } = claimOutcome;
-    emitClaimedEvent(nodeDid, slug, appDid, grantId, hostHint);
+    const attestationId = await emitClaimedEvent(nodeDid, slug, appDid, grantId, hostHint);
 
     const keyOutcome = await resolveSigningKeyForGrant({ grantId, appDid });
     emitSigningKeyFetchedEvent({ nodeDid, slug, appDid, grantId, outcome: keyOutcome.status, via: 'claim' });
@@ -165,7 +208,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { appDid: keyOutcome.appDid, privateKey: keyOutcome.privateKey, publicKey: keyOutcome.publicKey },
+      { appDid: keyOutcome.appDid, privateKey: keyOutcome.privateKey, publicKey: keyOutcome.publicKey, attestationId },
       { headers: cors },
     );
   } catch (error) {

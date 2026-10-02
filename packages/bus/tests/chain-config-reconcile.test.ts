@@ -67,6 +67,20 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
   });
 
+  it('payment_request.settlement_failed emits and notifies the operator with the retry path (#2439)', async () => {
+    const cfg = await getChainConfig('payment_request.settlement_failed', 'default');
+    const types = cfg.reactors.map((r) => r.type);
+
+    expect(types).toEqual(['emit', 'notify']);
+    expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+    const notify = cfg.reactors.find((r) => r.type === 'notify');
+    // No `to` override: the event's subject (the operator/node DID) is the recipient.
+    expect(notify?.config.to).toBeUndefined();
+    expect(notify?.config.title).toContain('{{reason}}');
+    expect(notify?.config.body).toContain('{{paymentRequestId}}');
+    expect(notify?.config.body).toContain('/pay/api/admin/payment-requests/{{paymentRequestId}}/retry-settlement');
+  });
+
   it('vault.delegation.fetched routes to audit-log (#2231)', async () => {
     const cfg = await getChainConfig('vault.delegation.fetched', 'default');
     const types = cfg.reactors.map((r) => r.type);
@@ -130,6 +144,16 @@ describe('chain config DEFAULTS reconcile (#1873, #1874)', () => {
 
     expect(types).toEqual(['audit-log']);
     expect(cfg.reactors.every((r) => r.enabled)).toBe(true);
+  });
+});
+
+describe('apps.signing-key.claimed chain (#2444)', () => {
+  it('mints an awaited attestation so publish() can return its id to POST /api/apps/claim', async () => {
+    const cfg = await getChainConfig('apps.signing-key.claimed', 'apps');
+
+    expect(cfg.reactors).toEqual([
+      { type: 'attestation', config: { attestationType: 'apps.signing-key.claimed' }, await: true, enabled: true },
+    ]);
   });
 });
 

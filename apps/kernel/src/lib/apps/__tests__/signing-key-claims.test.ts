@@ -187,6 +187,62 @@ describe('claimSigningKey', () => {
     expect(outcome).toEqual({ status: 'not_found' });
   });
 
+  // #2444 required test: a foreign code is refused before it is spent.
+  describe('expectedAppDid binding (#2444)', () => {
+    const OTHER_APP_DID = 'did:imajin:some-other-app';
+
+    it('refuses a code issued for a different app with app_mismatch, without spending or binding anything', async () => {
+      const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+
+      const outcome = await claimSigningKey({ code, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1, hostHint: 'wrong-box', expectedAppDid: OTHER_APP_DID });
+
+      expect(outcome).toEqual({ status: 'app_mismatch' });
+      const row = [...claimsStore.values()][0];
+      expect(row.status).toBe('pending');
+      expect(row.claimedAt).toBeUndefined();
+      expect(row.claimedByHost).toBeUndefined();
+      expect(row.bootstrapPublicKey).toBeUndefined();
+      expect(await resolveActiveBootstrapBinding(APP_DID)).toBeNull();
+    });
+
+    it('leaves the code claimable by the right app after a mismatch', async () => {
+      const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+      await claimSigningKey({ code, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_2, expectedAppDid: OTHER_APP_DID });
+
+      const outcome = await claimSigningKey({ code, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1, expectedAppDid: APP_DID });
+
+      expect(outcome).toEqual({ status: 'ok', slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+      expect(await resolveActiveBootstrapBinding(APP_DID)).toMatchObject({ boundPublicKey: BOOTSTRAP_PUBLIC_KEY_1 });
+    });
+
+    it('redeems normally when expectedAppDid matches', async () => {
+      const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+
+      const outcome = await claimSigningKey({ code, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1, expectedAppDid: APP_DID });
+
+      expect(outcome.status).toBe('ok');
+    });
+
+    it('reports a mismatch before any lifecycle state — an expired or already-claimed foreign code is neither disclosed nor mutated', async () => {
+      const expiredCode = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+      const expiredRow = [...claimsStore.values()][0];
+      expiredRow.expiresAt = new Date(Date.now() - 1000);
+
+      expect(await claimSigningKey({ code: expiredCode, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1, expectedAppDid: OTHER_APP_DID })).toEqual({ status: 'app_mismatch' });
+      expect(expiredRow.status).toBe('pending'); // not lazily flipped to 'expired' by the wrong caller
+
+      const claimedCode = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: 'did:imajin:second-app', grantId: GRANT_ID });
+      await claimSigningKey({ code: claimedCode, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1 });
+
+      expect(await claimSigningKey({ code: claimedCode, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_2, expectedAppDid: OTHER_APP_DID })).toEqual({ status: 'app_mismatch' });
+    });
+
+    it('still reports not_found for an unknown code even when expectedAppDid is given', async () => {
+      const outcome = await claimSigningKey({ code: 'claim_never_issued', bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1, expectedAppDid: APP_DID });
+      expect(outcome).toEqual({ status: 'not_found' });
+    });
+  });
+
   // #2411 required test: claim code reused.
   it('refuses a SECOND redemption of an already-claimed code (claim code reused)', async () => {
     const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
