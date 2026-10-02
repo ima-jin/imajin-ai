@@ -6,6 +6,11 @@ describe('MECHANICAL_ATTESTATION_TYPES (#1822)', () => {
     expect(MECHANICAL_ATTESTATION_TYPES).toContain('session.created');
   });
 
+  it('contains apps.signing-key.claimed (#2444)', () => {
+    expect(MECHANICAL_ATTESTATION_TYPES).toContain('apps.signing-key.claimed');
+    expect((ATTESTATION_TYPES as readonly string[]).includes('apps.signing-key.claimed')).toBe(true);
+  });
+
   it('every mechanical type is a known attestation type', () => {
     const known = new Set<string>(ATTESTATION_TYPES);
     for (const type of MECHANICAL_ATTESTATION_TYPES) {

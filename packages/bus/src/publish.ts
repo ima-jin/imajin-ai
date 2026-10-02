@@ -6,10 +6,25 @@ import type { BusEvent, BusEventMap, BusEventType } from './types';
 
 const log = createLogger('bus');
 
+/**
+ * What `publish()` hands back to its caller (#2444). Every field is optional and
+ * only populated when a reactor in the event's chain produced it, so callers
+ * that ignore the result (the vast majority) are unaffected.
+ */
+export interface PublishResult {
+  /**
+   * Id of the attestation created by an awaited `attestation` reactor in this
+   * event's chain (the reactor stashes it onto the shared event payload — see
+   * `reactors/attestation.ts`). Absent when the chain has no awaited
+   * attestation reactor, or attestation forwarding failed/was disabled.
+   */
+  attestationId?: string;
+}
+
 export async function publish<T extends BusEventType>(
   type: T,
   event: { issuer: string; subject: string; scope: string; payload: BusEventMap[T]; correlationId?: string; timestamp?: string }
-): Promise<void> {
+): Promise<PublishResult> {
   const fullEvent: BusEvent = {
     ...event,
     type,
@@ -72,4 +87,7 @@ export async function publish<T extends BusEventType>(
       log.error({ err: String(err), reactor: reactor.type, event: type }, 'Reactor threw');
     }
   }
+
+  const attestationId = fullEvent.payload?.attestationId;
+  return typeof attestationId === 'string' ? { attestationId } : {};
 }

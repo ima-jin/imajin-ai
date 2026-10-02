@@ -670,6 +670,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'notify.template.updated': [
     { type: 'notify-template-hot-reload', config: {}, await: true, enabled: true },
   ],
+  // #2444 — a third-party app redeemed its one-time signing-key claim code.
+  // `attestation` is awaited so the created attestation's id is stashed on
+  // the shared event (see `reactors/attestation.ts`) and handed back to the
+  // `publish()` caller — `POST /api/apps/claim` returns it in its response.
+  'apps.signing-key.claimed': [
+    { type: 'attestation', config: { attestationType: 'apps.signing-key.claimed' }, await: true, enabled: true },
+  ],
 };
 
 // ---------------------------------------------------------------------------

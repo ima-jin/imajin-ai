@@ -660,6 +660,107 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/apps/claim:
+    post:
+      tags: [apps]
+      operationId: claimAppSigningKey
+      summary: Exchange a one-time claim code for the app's vault-minted signing key (#2411, #2444)
+      description: >-
+        First-boot exchange for a third-party app provisioned via
+        `apps.provision`. Deliberately NOT session-gated — the app has no
+        identity yet; the single-use, ~15-minute claim code shown once on the
+        /jin approval card IS the authentication. The caller also submits an
+        Ed25519 `bootstrapPublicKey`, which the kernel binds to the claim and
+        which every later boot re-authenticates with via
+        `POST /api/apps/signing-key/fetch` (no claim code spent).
+
+        **Target-app binding (#2444).** `expectedAppDid` (optional) binds the
+        code to the requesting app: if present and it does not match the app
+        the code was issued for, the route answers `409` BEFORE spending the
+        code — nothing is claimed, bound, or audited as a claim, no key
+        material is returned, and the code stays redeemable by its rightful
+        app. The check runs ahead of the expired/already-claimed checks, so a
+        foreign code's lifecycle state is neither disclosed nor mutated.
+        Omitted, behavior is unchanged.
+
+        **Attestation id (#2444).** A successful response carries the id of
+        the `apps.signing-key.claimed` attestation minted for the redemption
+        (kernel-signed, mechanical), so the operator-facing success page can
+        show "app DID + attestation id". It is `null` only if attestation
+        forwarding was unavailable — the code is already spent by then, so
+        that never fails the exchange.
+
+        Neither the claim code nor any private key ever appears on the bus,
+        in an attestation payload, or in a non-2xx response.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [claimCode, bootstrapPublicKey]
+              properties:
+                claimCode: { type: string, description: "The one-time plaintext claim code (`claim_...`)." }
+                bootstrapPublicKey:
+                  type: string
+                  pattern: "^[0-9a-fA-F]{64}$"
+                  description: Hex-encoded Ed25519 public key (64 hex chars) the app minted and persisted locally.
+                hostHint:
+                  type: string
+                  maxLength: 200
+                  description: Caller-reported, best-effort label (e.g. hostname). Recorded for the /jin timeline only — never trusted for authorization.
+                expectedAppDid:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                  description: >-
+                    The app DID the caller expects the code to belong to
+                    (`IMAJIN_APP_DID`). On mismatch the route returns 409
+                    without spending the code.
+      responses:
+        "200":
+          description: Code redeemed; key material returned (held in memory only by the caller)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appDid, privateKey, publicKey, attestationId]
+                properties:
+                  appDid: { type: string }
+                  privateKey: { type: string, description: The app's vault-minted Ed25519 private key. Never persisted by the kernel route or the SDK. }
+                  publicKey: { type: string }
+                  attestationId:
+                    type: [string, "null"]
+                    description: Id of the `apps.signing-key.claimed` attestation minted for this redemption; `null` if attestation forwarding was unavailable.
+        "400":
+          description: Malformed body (missing claimCode, bad bootstrapPublicKey, oversized hostHint, invalid expectedAppDid) or an otherwise unredeemable code
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unrecognized claim code, or the underlying app-signing-key grant no longer exists
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: >-
+            `expectedAppDid` does not match the app this code was issued for.
+            The code was NOT spent and no key material is returned (#2444).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: The claim code has expired or was already redeemed (or its one-time grant was already consumed)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Unexpected failure redeeming the code, or the grant resolved with an unexpected purpose
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/loops:
     post:
       tags: [loops]

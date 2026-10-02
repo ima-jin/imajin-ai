@@ -135,7 +135,7 @@ export async function issueSigningKeyClaim(params: {
 
 export type ClaimSigningKeyOutcome =
   | { status: 'ok'; slug: string; appDid: string; grantId: string }
-  | { status: 'not_found' | 'expired' | 'already_claimed' };
+  | { status: 'not_found' | 'expired' | 'already_claimed' | 'app_mismatch' };
 
 /**
  * Revoke every currently-active bootstrap-key binding for `appDid` other
@@ -171,11 +171,21 @@ export async function revokeBootstrapBindingsForAppDid(appDid: string, exceptRow
  * caller-reported, best-effort label (e.g. hostname) recorded for the /jin
  * timeline only — never trusted for authorization. `bootstrapPublicKey` is
  * assumed already shape-validated (hex Ed25519 public key) by the route.
+ *
+ * ## Target-app binding (#2444)
+ * When `expectedAppDid` is given and differs from the app the code was
+ * issued for, the claim is refused with `app_mismatch` BEFORE any state
+ * change: the code is not spent, not lazily expired, and nothing is bound —
+ * so a wrong/foreign code pasted into the wrong app stays redeemable by its
+ * rightful app. The check deliberately runs ahead of the status checks so a
+ * foreign code's lifecycle state (claimed/expired) is never disclosed to, or
+ * mutated by, the wrong caller.
  */
 export async function claimSigningKey(params: {
   code: string;
   bootstrapPublicKey: string;
   hostHint?: string | null;
+  expectedAppDid?: string | null;
 }): Promise<ClaimSigningKeyOutcome> {
   const codeHash = hashClaimCode(params.code);
 
@@ -186,6 +196,9 @@ export async function claimSigningKey(params: {
     .limit(1);
   if (!row) {
     return { status: 'not_found' };
+  }
+  if (params.expectedAppDid && params.expectedAppDid !== row.appDid) {
+    return { status: 'app_mismatch' };
   }
   if (row.status === 'claimed') {
     return { status: 'already_claimed' };
