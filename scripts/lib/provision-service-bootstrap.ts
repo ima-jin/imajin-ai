@@ -1,7 +1,7 @@
 /**
  * scripts/lib/provision-service-bootstrap.ts (#2442)
  *
- * Core of `scripts/provision-service-bootstrap.ts`: provisions each userspace
+ * Core of `scripts/provision-service-bootstrap.mjs`: provisions each userspace
  * service's vault bootstrap identity (`<SVC>_VAULT_BOOTSTRAP_DID` /
  * `_PRIVATE_KEY`) and ensures it holds the `ATTESTATION_INTERNAL_API_KEY`
  * grant (#2353).
@@ -255,11 +255,25 @@ async function provisionExisting(
 }
 
 /**
- * Provision `services` (in order). Every pair is validated first, so a bad
- * `.env.local` fails the run before any identity is minted, written or
- * granted. `onResult` fires as each service completes, so a caller can emit
- * progress even when a later service fails; `onSkip` fires for a service with
- * no `.env.local`.
+ * Validate every service's `.env.local` pair up front. Throws one error naming
+ * every bad pair, so a bad `.env.local` fails the run before any identity is
+ * minted, written or granted. Read-only; never touches the DB or the vault.
+ */
+function inspectServices(
+  repoRoot: string,
+  services: readonly BootstrapService[],
+): Array<{ service: BootstrapService; pair: PairState }> {
+  const pairs = services.map((service) => ({ service, pair: inspectPair(repoRoot, service) }));
+  const errors = pairs.flatMap(({ pair }) => (pair.kind === 'invalid' ? [pair.error] : []));
+  if (errors.length > 0) throw new Error(errors.join('\n'));
+  return pairs;
+}
+
+/**
+ * Provision `services` (in order). Every pair is validated first (see
+ * {@link inspectServices}). `onResult` fires as each service completes, so a
+ * caller can emit progress even when a later service fails; `onSkip` fires for
+ * a service with no `.env.local`.
  */
 export async function provisionServices(
   repoRoot: string,
@@ -268,10 +282,7 @@ export async function provisionServices(
   onResult: (result: ProvisionResult) => void = () => {},
   onSkip: (service: BootstrapService) => void = () => {},
 ): Promise<ProvisionResult[]> {
-  const pairs = services.map((service) => ({ service, pair: inspectPair(repoRoot, service) }));
-
-  const errors = pairs.flatMap(({ pair }) => (pair.kind === 'invalid' ? [pair.error] : []));
-  if (errors.length > 0) throw new Error(errors.join('\n'));
+  const pairs = inspectServices(repoRoot, services);
 
   // Strictly one service at a time: the first grant for a purpose self-provisions
   // the shared secret (getInternalSecret), which must not race itself.
@@ -292,6 +303,26 @@ export async function provisionServices(
   return results;
 }
 
+/**
+ * `--dry-run` (#2483): everything a real run does that can fail BEFORE it
+ * touches state, and nothing that changes any. Validates every `.env.local`
+ * pair (read-only), then loads every module the real run would load
+ * ({@link loadKernelModules}) so a module-resolution error surfaces here
+ * instead of mid-deploy. Never mints, writes, registers or grants; never
+ * connects to the database; returns one line per service with no key material.
+ */
+export async function dryRunServices(repoRoot: string, services: readonly BootstrapService[]): Promise<string[]> {
+  const pairs = inspectServices(repoRoot, services);
+  await loadKernelModules();
+  const outcomes: Record<PairState['kind'], string> = {
+    'no-env-local': 'would skip (no .env.local)',
+    missing: 'would mint',
+    existing: 'would keep existing identity',
+    invalid: 'invalid',
+  };
+  return pairs.map(({ service, pair }) => `${service.name} · dry-run · ${outcomes[pair.kind]}`);
+}
+
 /** `service · did · minted|existing · grantId` — never carries key material. */
 export function formatResult(result: ProvisionResult): string {
   return `${result.service} · ${result.did} · ${result.status} · ${result.grantId}`;
@@ -300,21 +331,36 @@ export function formatResult(result: ProvisionResult): string {
 // ── Real dependencies (kernel DB / vault) ────────────────────────────────────
 
 /**
+ * Every module {@link createKernelDeps} loads lazily, in one place — the real
+ * deps below and the `--dry-run` preload share these loaders so the dry run
+ * can never drift from what a real run imports.
+ */
+const loadAuth = () => import('@imajin/auth');
+const loadKernelDb = () => import('../../apps/kernel/src/db/index.js');
+const loadGrant = () => import('./attestation-internal-api-key-grant.js');
+
+/** Load (without calling anything in) every module a real provisioning run imports. */
+export async function loadKernelModules(): Promise<void> {
+  await Promise.all([loadAuth(), loadKernelDb(), loadGrant()]);
+}
+
+/**
  * The production {@link ProvisionDeps}. Kernel modules are imported lazily so
- * argument/`.env.local` validation errors surface without needing a database,
- * and `@imajin/auth` is imported dynamically for the ESM-only resolution
- * reason documented in scripts/bootstrap-corpus-identity.ts (#1711).
+ * argument/`.env.local` validation errors surface without needing a database.
+ * This file is bundled to ESM by scripts/lib/import-ts-as-esm.mjs, so every
+ * import below — including the ESM-only transitive ones (`@imajin/auth`,
+ * `@ipld/dag-cbor` via `@imajin/cid`) — resolves with Node's ESM resolver (#2483).
  */
 export function createKernelDeps(grantedBy: string): ProvisionDeps {
   return {
     async mintIdentity() {
-      const { generateKeypair, createDID } = await import('@imajin/auth');
+      const { generateKeypair, createDID } = await loadAuth();
       const keypair = generateKeypair();
       return { did: createDID(keypair.publicKey), publicKey: keypair.publicKey, privateKey: keypair.privateKey };
     },
 
     async identityFromPrivateKey(privateKey) {
-      const { getPublicKey, createDID } = await import('@imajin/auth');
+      const { getPublicKey, createDID } = await loadAuth();
       try {
         const publicKey = getPublicKey(privateKey);
         return { did: createDID(publicKey), publicKey };
@@ -324,7 +370,7 @@ export function createKernelDeps(grantedBy: string): ProvisionDeps {
     },
 
     async registerIdentity({ did, publicKey, name }) {
-      const { db, identities } = await import('../../apps/kernel/src/db/index.js');
+      const { db, identities } = await loadKernelDb();
       await db
         .insert(identities)
         .values({ id: did, scope: 'actor', subtype: 'service', publicKey, name, tier: 'preliminary' })
@@ -332,7 +378,7 @@ export function createKernelDeps(grantedBy: string): ProvisionDeps {
     },
 
     async ensureGrant(did) {
-      const { ensureAttestationInternalApiKeyGrant } = await import('./attestation-internal-api-key-grant.js');
+      const { ensureAttestationInternalApiKeyGrant } = await loadGrant();
       return ensureAttestationInternalApiKeyGrant(did, grantedBy);
     },
   };
