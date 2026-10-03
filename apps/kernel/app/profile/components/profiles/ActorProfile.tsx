@@ -1,4 +1,3 @@
-import { buildPublicUrl } from '@imajin/config';
 import { isVerifiedTier } from '@imajin/auth';
 import { ScopeHeader } from '../ScopeHeader';
 import { ProfileStats } from '../ProfileStats';
@@ -7,10 +6,14 @@ import { ServiceLinks } from '../ServiceLinks';
 import { UpcomingEvents } from '../UpcomingEvents';
 import { MarketItems } from '../MarketItems';
 import { formatMemberSince } from '../../lib/profile-utils';
+import { resolveRegistryAppUrl } from '../../lib/registry-app-links';
 import type { ProfileViewProps } from '../../lib/types';
 
-export function ActorProfile({ profile, identity, viewer, counts, links, serviceApps }: Readonly<ProfileViewProps>) {
+export function ActorProfile({ profile, identity, viewer, counts, links, serviceApps, registryApps }: Readonly<ProfileViewProps>) {
   const isSoftDID = !isVerifiedTier(identity.tier);
+  // #2434: widget links come from the registry, not hard-coded literals — a pruned app yields null and drops its widget.
+  const eventsUrl = resolveRegistryAppUrl(registryApps, 'events');
+  const marketUrl = resolveRegistryAppUrl(registryApps, 'market');
 
   return (
     <div className="max-w-lg mx-auto">
@@ -62,13 +65,13 @@ export function ActorProfile({ profile, identity, viewer, counts, links, service
         )}
 
         {/* Upcoming events */}
-        {profile.featureToggles?.show_events && (
-          <UpcomingEvents did={profile.did} eventsBaseUrl={buildPublicUrl('events')} viewerDid={viewer.viewerDid} />
+        {profile.featureToggles?.show_events && eventsUrl && (
+          <UpcomingEvents did={profile.did} eventsBaseUrl={eventsUrl} viewerDid={viewer.viewerDid} />
         )}
 
         {/* Market items */}
-        {profile.featureToggles?.show_market_items && (
-          <MarketItems did={profile.did} handle={profile.handle} marketBaseUrl={buildPublicUrl('market')} />
+        {profile.featureToggles?.show_market_items && marketUrl && (
+          <MarketItems did={profile.did} handle={profile.handle} marketBaseUrl={marketUrl} />
         )}
 
         {/* Member since */}
