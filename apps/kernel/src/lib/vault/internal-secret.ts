@@ -85,22 +85,19 @@ import { db, vaultDelegationGrants, internalSecretProvisions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity } from './sealing';
 import { VaultDelegationError } from './errors';
+import { INTERNAL_SECRET_FIELD_PREFIX, isInternalSecretField } from './internal-secret-field';
 import { sealAndGrantStaticSecret, fetchGrantSecret, ackGrant, loadAndUnseal } from './index';
 import { ensureVaultHotReloadReactorRegistered, subscribeToSecret } from './subscribe';
 
 const log = createLogger('kernel');
 
-/** Field-name prefix every self-provisioned internal secret lives under. */
-export const INTERNAL_SECRET_FIELD_PREFIX = 'internal-secret:';
+// Defined in a pure module so client code can share it (#2452); re-exported here
+// so existing importers are unaffected.
+export { INTERNAL_SECRET_FIELD_PREFIX, isInternalSecretField };
 
 /** Vault field name holding a self-provisioned internal secret for `purpose`. */
 export function internalSecretField(purpose: string): string {
   return `${INTERNAL_SECRET_FIELD_PREFIX}${purpose}`;
-}
-
-/** True when `field` is an `internal-secret:*` field (#2446 — rotation routes these specially). */
-export function isInternalSecretField(field: string): boolean {
-  return field.startsWith(INTERNAL_SECRET_FIELD_PREFIX) && field.length > INTERNAL_SECRET_FIELD_PREFIX.length;
 }
 
 /** Inverse of {@link internalSecretField}: the purpose an `internal-secret:*` field is for. */
