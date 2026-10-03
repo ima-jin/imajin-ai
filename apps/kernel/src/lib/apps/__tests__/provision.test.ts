@@ -353,6 +353,36 @@ describe('runAppProvision — happy path', () => {
     });
   });
 
+  it.each([
+    ['relative path', '/dykil/home'],
+    ['https URL', 'https://dykil.example.com/app'],
+  ])('#2434: accepts a manifest entryUrl that is a %s', async (_label, entryUrl) => {
+    fetchAppManifestMock.mockResolvedValue({ entryUrl });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0]?.entryUrl).toBe(entryUrl);
+  });
+
+  it.each([
+    ['http URL', 'http://dykil.example.com/app'],
+    ['javascript: URL', 'javascript:alert(1)'],
+    ['protocol-relative URL', '//evil.example.com/app'],
+  ])('#2434: rejects a manifest entryUrl that is a %s, failing closed at the register step', async (_label, entryUrl) => {
+    fetchAppManifestMock.mockResolvedValue({ entryUrl });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('Invalid manifest entryUrl');
+    // Fail-closed: no registry row is ever written for a rejected entryUrl.
+    expect(registryAppsStore.size).toBe(0);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+  });
+
   it('#2425: falls back to defaults when the manifest read returns null (unsealed credential, missing file, etc.)', async () => {
     fetchAppManifestMock.mockResolvedValue(null);
 

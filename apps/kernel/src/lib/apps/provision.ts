@@ -59,6 +59,7 @@ import {
   type AppManifest,
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
+import { assertValidEntryUrl } from './entry-url';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
 
 const log = createLogger('kernel:apps:provision');
@@ -267,6 +268,12 @@ async function ensureAppSigningKeyGrant(appDid: string, nodeDid: string): Promis
  * extracted app is at least reachable through the hub's dynamic
  * `/auth/[app]` route without requiring every template to have adopted the
  * manifest convention yet.
+ *
+ * A manifest `entryUrl` is untrusted third-party input (#2434): it must be a
+ * root-relative path or an `https:` URL (see `entry-url.ts`). An invalid one
+ * THROWS — the caller's `register` step turns that into a fail-closed
+ * `failedStep: 'register'` outcome with the validator's message, so no
+ * registry row is written.
  */
 function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
   name: string | undefined;
@@ -278,7 +285,7 @@ function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
   return {
     name: manifest?.name,
     icon: manifest?.icon ?? null,
-    entryUrl: manifest?.entryUrl ?? `/${slug}`,
+    entryUrl: manifest?.entryUrl === undefined ? `/${slug}` : assertValidEntryUrl(manifest.entryUrl),
     placements: manifest?.placements ?? ['auth-submenu'],
     requiredScope: manifest?.requiredScope ?? null,
   };
