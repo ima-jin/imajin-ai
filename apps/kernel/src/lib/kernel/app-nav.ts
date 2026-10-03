@@ -13,15 +13,16 @@
  * and stay outside this resolver — they are gated by scope/enabledServices
  * directly at each call site, exactly as before this issue.
  *
- * Enabled-for-identity resolution mirrors the EXACT pre-existing logic in
- * `apps/kernel/app/auth/layout.tsx` (actor scope sees everything; every
- * other scope is gated by `profile.forest_config.enabled_services` for
- * that identity's own DID) — this module does not change that semantic,
- * it only stops each call site from hand-rolling it against a literal
- * array of app names.
+ * Enabled-for-identity resolution: every non-actor scope is gated by
+ * `profile.forest_config.enabled_services` for that identity's own DID
+ * (unchanged from `apps/kernel/app/auth/layout.tsx`'s pre-#2425 logic).
+ * Actor scope follows the actor's own `feature_toggles` (#2434 — #2425
+ * DECISION ruled b); an actor that never configured toggles still sees every
+ * app. See `resolveActorEnabledSlugs`.
  */
 import { and, eq } from 'drizzle-orm';
-import { db, identities, forestConfig, registryApps } from '@/src/db';
+import { db, identities, forestConfig, registryApps, profiles } from '@/src/db';
+import { hasConfiguredAppToggles, resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
 
 /** The 3 nav surfaces an app registry row can declare itself visible on. */
 export type AppPlacement = 'launcher' | 'home' | 'auth-submenu';
@@ -75,9 +76,35 @@ async function listNavCapableApps(): Promise<NavApp[]> {
   return apps;
 }
 
-/** `null` return means "actor scope — every nav-capable app is enabled", matching `layout.tsx`'s existing fallback. */
+/**
+ * Actor scope (#2434, #2425 DECISION ruled b): an actor follows its own
+ * `profile.profiles.feature_toggles` (via `resolveEnabledApps`, which unions
+ * the legacy per-app fields with `enabledApps`). An actor that has NEVER
+ * configured app toggles — see `hasConfiguredAppToggles` — sees every
+ * nav-capable app, so existing actors keep today's nav with no migration.
+ * `null` means "every nav-capable app is enabled".
+ */
+async function resolveActorEnabledSlugs(did: string): Promise<Set<string> | null> {
+  const [profileRow] = await db
+    .select({ featureToggles: profiles.featureToggles })
+    .from(profiles)
+    .where(eq(profiles.did, did))
+    .limit(1);
+
+  const featureToggles = profileRow?.featureToggles;
+  if (!hasConfiguredAppToggles(featureToggles)) return null;
+  return new Set(resolveEnabledApps(featureToggles));
+}
+
+/**
+ * `null` return means "every nav-capable app is enabled": an identity with no
+ * resolvable scope (matching `layout.tsx`'s existing fallback) or an actor
+ * that never configured its toggles. Every other scope is gated by
+ * `profile.forest_config.enabled_services` for that identity's own DID.
+ */
 async function resolveEnabledSlugsForIdentity(did: string, scope: string | undefined): Promise<Set<string> | null> {
-  if (!scope || scope === 'actor') return null;
+  if (!scope) return null;
+  if (scope === 'actor') return resolveActorEnabledSlugs(did);
 
   const [forestRow] = await db
     .select({ enabledServices: forestConfig.enabledServices })
@@ -130,6 +157,25 @@ export async function resolveNavAppsForIdentity(did: string): Promise<NavApp[]> 
 /** Narrow a resolved nav-app list down to the ones visible on a given placement. */
 export function filterByPlacement(apps: readonly NavApp[], placement: AppPlacement): NavApp[] {
   return apps.filter((app) => app.placements.includes(placement));
+}
+
+/**
+ * Registry apps for the PUBLIC launcher / landing grid (#2434): every active
+ * registry row declaring the `launcher` placement — the same
+ * `listNavCapableApps` source and `filterByPlacement` narrowing every
+ * identity-scoped nav surface uses, so a registry-only app (no `services.ts`
+ * entry) appears. There is no viewer identity to gate against on the
+ * anonymous landing page, so rows with a `requiredScope` are left out (they
+ * only surface through {@link resolveNavAppsForIdentity}, which knows the
+ * caller's scope); the grid narrows this list further per identity client-side
+ * via `GET /auth/api/apps?placement=launcher`.
+ */
+export async function resolveLauncherApps(): Promise<NavApp[]> {
+  const navCapable = await listNavCapableApps();
+  return filterByPlacement(
+    navCapable.filter((app) => !app.requiredScope),
+    'launcher',
+  );
 }
 
 /**
