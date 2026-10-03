@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { listActiveGrantOwners } from '@/src/lib/google/connector';
 import { listWatchExpirations, watch } from '@/src/lib/google/gmail';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
@@ -24,7 +25,7 @@ interface RenewFailure {
  * GET /api/cron/google-gmail-watch-renew — Gmail `users.watch` renewal sweep (#2144).
  *
  * Google expires a Gmail push subscription after ~7 days regardless of
- * activity. Scheduled daily (see vercel.json) — well inside the renewal
+ * activity. Scheduled daily (see src/cron/schedule.ts) — well inside the renewal
  * window — so a watch is renewed long before it lapses into "no more
  * pushes, and nothing tells you why". Protected by
  * `Authorization: Bearer {CRON_SECRET}`, same pattern as every other cron
@@ -36,13 +37,9 @@ interface RenewFailure {
  * gets picked up.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const owners = await listActiveGrantOwners('google:gmail:read');

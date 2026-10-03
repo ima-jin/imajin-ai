@@ -6,7 +6,7 @@ const { mockRunBilledUsageIngestion } = vi.hoisted(() => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock('@/src/lib/usage/billed/ingest-job', () => ({ runBilledUsageIngestion: mockRunBilledUsageIngestion }));
@@ -17,6 +17,8 @@ function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/usage-billed-ingest', { headers });
 }
 
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
+
 describe('GET /api/cron/usage-billed-ingest (#1076 Stage 1)', () => {
   describeCronSecretAuthContract({
     makeRequest,
@@ -24,10 +26,10 @@ describe('GET /api/cron/usage-billed-ingest (#1076 Stage 1)', () => {
   });
 
   it('runs the sweep and returns its result when auth passes', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockRunBilledUsageIngestion.mockResolvedValue({ owners: 2, results: [{ provider: 'anthropic' }], failures: [] });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; owners: number };
 
     expect(response.status).toBe(200);
@@ -37,10 +39,10 @@ describe('GET /api/cron/usage-billed-ingest (#1076 Stage 1)', () => {
   });
 
   it('returns 500 when the sweep throws', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockRunBilledUsageIngestion.mockRejectedValue(new Error('DB connection lost'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = await response.json() as { error: string };
     expect(body.error).toBe('Internal server error');

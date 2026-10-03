@@ -137,6 +137,41 @@ port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
 `npm start`; convert them once their start scripts are confirmed (allowlisted in
 `scripts/__tests__/ecosystem-config.test.mjs`).
 
+## Kernel cron scheduler: `prod-kernel-cron` / `dev-kernel-cron` (#2550)
+
+We don't deploy on Vercel, so the kernel's scheduled jobs are not run by any
+platform cron. They are declared in code in `apps/kernel/src/cron/schedule.ts`
+(path, UTC schedule, no-overlap flag; `apps/kernel/vercel.json` is gone) and run
+by one small process per environment, declared next to the kernel in these
+ecosystem files. It execs `src/cron/scheduler.ts` directly under
+`node --import tsx` (never `npm start`, see above), loads the kernel's
+`.env.local` via `--env-file`, and calls each `/api/cron/*` route on loopback
+(`CRON_BASE_URL`, must match the kernel's port) with
+`Authorization: Bearer $CRON_SECRET`.
+
+- A job never overlaps itself: a tick that fires while the previous run is still
+  in flight is skipped and logged (`status: "skipped"`).
+- One JSON log line per run (job, status, httpStatus, durationMs) in
+  `pm2 logs <env>-kernel-cron`. The secret is never logged.
+- Last run and outcome per job: `GET /api/admin/cron-status` with the same bearer
+  (`curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:<port>/api/admin/cron-status`).
+  `stale: true` means a scheduled tick passed with no run; `schedulerSeen: false`
+  means the scheduler has never written state. State lives in
+  `apps/kernel/.cron-state.json` (gitignored; override with `CRON_STATE_PATH`).
+- Every `/api/cron/*` route fails closed: `CRON_SECRET` unset gives 503 plus a
+  WARN, a wrong bearer gives 401.
+- **Operator step:** `CRON_SECRET` (non-empty, different in dev and prod) must be
+  in the kernel's `.env.local` on each host *before* the deploy that ships this.
+  `check-env` requires it, so the deploy stops before restart if it is missing;
+  the scheduler itself exits non-zero without it.
+- Both deploy workflows always include the scheduler in the restart set and
+  restart it from the ecosystem file, so `pm2 startOrRestart` starts it even
+  when pm2 has never seen it. No manual `pm2 start`.
+- Adding a cron route means adding a manifest entry (and vice versa):
+  `scripts/ci-guard-cron-manifest.mjs`, run by `scripts/__tests__/ci-guard-cron-manifest.test.mjs`
+  in the Test job, fails CI on drift. The manifest is per-app, so an app that
+  leaves the kernel brings its own `src/cron/schedule.ts`.
+
 ## Known drift captured on 2026-07-16 (documented, not yet reconciled)
 
 The prod file does **not** match what actually runs, in two ways. Both are

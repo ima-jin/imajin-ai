@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { runUsageRollup, previousUtcDayWindow } from '@/src/lib/usage/rollup';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
@@ -14,9 +15,9 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/cron/usage-rollup — daily clock-rollup over `usage.incurred` (#1148).
  *
- * Vercel Cron job (schedule: "0 2 * * *" — 02:00 UTC daily, after the
+ * Scheduled job (schedule: "0 2 * * *" — 02:00 UTC daily, after the
  * previous UTC day's `usage.incurred` rows have all landed). Registered in
- * vercel.json. Protected by Authorization: Bearer {CRON_SECRET}, same
+ * src/cron/schedule.ts. Protected by Authorization: Bearer {CRON_SECRET}, same
  * convention as every other cron route.
  *
  * Reads the previous full UTC day, groups by (principal_did, resource,
@@ -25,13 +26,9 @@ export const dynamic = 'force-dynamic';
  * grouping/idempotency details.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const { windowStart, windowEnd } = previousUtcDayWindow(new Date());

@@ -279,6 +279,16 @@ function findWrongPortForKey(
   return null;
 }
 
+/**
+ * Keys that must be present AND non-empty in a service's .env.local, beyond the
+ * presence check every un-annotated .env.example key already gets. An empty
+ * CRON_SECRET (#2550) would pass a presence check but leave every kernel cron
+ * route failing closed with 503 and the cron scheduler unable to start.
+ */
+const REQUIRED_NON_EMPTY: Readonly<Record<string, readonly string[]>> = {
+  kernel: ["CRON_SECRET"],
+};
+
 function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResult {
   const appDir = path.join(ROOT, "apps", svc.name);
   const examplePath = path.join(appDir, ".env.example");
@@ -337,6 +347,11 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     } else if (annotation.kind === "deprecated") {
       deprecatedPresent.push({ key, reason: annotation.reason });
     }
+  }
+
+  // Present-but-empty values for keys that must carry a real value (#2550).
+  for (const key of REQUIRED_NON_EMPTY[svc.name] ?? []) {
+    if (example.has(key) && local.get(key) === "") missing.push(`${key} (empty)`);
   }
 
   // Validate port values in .env.local

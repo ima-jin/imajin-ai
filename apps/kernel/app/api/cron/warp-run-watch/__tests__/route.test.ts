@@ -23,6 +23,8 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 
 const EMPTY_OUTCOME = { checked: 0, completed: 0, failed: 0, blockedNotified: 0, stillInFlight: 0, errors: 0 };
 
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
+
 describe('GET /api/cron/warp-run-watch', () => {
   const originalCronSecret = process.env.CRON_SECRET;
 
@@ -60,16 +62,15 @@ describe('GET /api/cron/warp-run-watch', () => {
     expect(response.status).toBe(200);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
     delete process.env.CRON_SECRET;
-    mockSweep.mockResolvedValue(EMPTY_OUTCOME);
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   it('runs the sweep and reports its outcome', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockSweep.mockResolvedValue({
       checked: 3,
       completed: 1,
@@ -79,7 +80,7 @@ describe('GET /api/cron/warp-run-watch', () => {
       errors: 0,
     });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { ok: boolean; checked: number; blockedNotified: number };
 
     expect(response.status).toBe(200);
@@ -96,10 +97,10 @@ describe('GET /api/cron/warp-run-watch', () => {
   });
 
   it('returns 500 when the sweep throws', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockSweep.mockRejectedValue(new Error('DB connection lost'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe('Internal server error');

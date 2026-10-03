@@ -5,7 +5,7 @@ const { mockRunReconciliation } = vi.hoisted(() => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock('@/src/lib/pay/reconciliation', () => ({ runReconciliation: mockRunReconciliation }));
@@ -15,6 +15,8 @@ import { GET } from '../route.js';
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/withdrawal-reconcile', { headers });
 }
+
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
   const originalCronSecret = process.env.CRON_SECRET;
@@ -62,19 +64,18 @@ describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
     expect(body.rails).toHaveLength(1);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
     delete process.env.CRON_SECRET;
-    mockRunReconciliation.mockResolvedValue({ rails: [] });
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   it('returns 500 when the sweep throws', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockRunReconciliation.mockRejectedValue(new Error('rail unreachable'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe('Internal server error');
