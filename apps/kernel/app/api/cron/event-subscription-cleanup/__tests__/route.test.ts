@@ -50,6 +50,15 @@ describe('GET /api/cron/event-subscription-cleanup', () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
+    process.env.CRON_SECRET = 'test-secret';
+    mockReturning.mockResolvedValue([]);
+
+    const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
+    expect(response.status).toBe(401);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
     process.env.CRON_SECRET = 'test-secret';
     mockReturning.mockResolvedValue([]);

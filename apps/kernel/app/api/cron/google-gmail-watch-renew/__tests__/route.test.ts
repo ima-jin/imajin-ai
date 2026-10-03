@@ -48,6 +48,13 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
     expect(response.status).toBe(401);
   });
 
+  it('fails closed with 503 (and does no work) when CRON_SECRET is not set (#2550)', async () => {
+    delete process.env.CRON_SECRET;
+    const response = await GET(makeRequest(CRON_AUTH) as never);
+    expect(response.status).toBe(503);
+    expect(mockListActiveGrantOwners).not.toHaveBeenCalled();
+  });
+
   it('renews every owner with no prior watch row', async () => {
     process.env.CRON_SECRET = 'test-secret';
     mockListActiveGrantOwners.mockResolvedValue([JIN, OTHER]);
