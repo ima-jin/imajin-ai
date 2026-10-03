@@ -6,6 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mocks = vi.hoisted(() => {
   const identities = { id: 'identities.id', scope: 'identities.scope' };
   const forestConfig = { groupDid: 'forestConfig.groupDid', enabledServices: 'forestConfig.enabledServices' };
+  const profiles = { did: 'profiles.did', featureToggles: 'profiles.featureToggles' };
   const registryApps = {
     slug: 'registryApps.slug',
     name: 'registryApps.name',
@@ -20,6 +21,9 @@ const mocks = vi.hoisted(() => {
   const state = {
     identityRows: [] as Array<{ scope: string }>,
     forestRows: [] as Array<{ enabledServices: string[] }>,
+    profileRows: [] as Array<{ featureToggles: Record<string, unknown> | null }>,
+    /** Every table `db.select().from(...)` was called with, in order (#2434 — lets tests assert which lookups ran). */
+    fromCalls: [] as unknown[],
     registryRows: [] as Array<Record<string, unknown>>,
   };
 
@@ -46,6 +50,8 @@ const mocks = vi.hoisted(() => {
   }
 
   function fromTable(table: unknown) {
+    state.fromCalls.push(table);
+    if (table === profiles) return limitedWhere(() => state.profileRows);
     if (table === identities) return limitedWhere(() => state.identityRows);
     if (table === forestConfig) return limitedWhere(() => state.forestRows);
     const bare: Promise<unknown[]> & { where?: (cond: unknown) => { limit: (n: number) => Promise<unknown[]> } } =
@@ -56,13 +62,14 @@ const mocks = vi.hoisted(() => {
 
   const selectMock = vi.fn(() => ({ from: fromTable }));
 
-  return { identities, forestConfig, registryApps, state, selectMock };
+  return { identities, forestConfig, profiles, registryApps, state, selectMock };
 });
 
 vi.mock('@/src/db', () => ({
   db: { select: mocks.selectMock },
   identities: mocks.identities,
   forestConfig: mocks.forestConfig,
+  profiles: mocks.profiles,
   registryApps: mocks.registryApps,
 }));
 
@@ -71,7 +78,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
 }));
 
-import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
+import { resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, resolveLauncherApps, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
 
 // requiredScope is null (#2425 send-back): 'creator' is services.ts's
 // display-visibility tier, not one of the four identity scopes, so the
@@ -105,24 +112,104 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.state.identityRows = [];
   mocks.state.forestRows = [];
+  mocks.state.profileRows = [];
+  mocks.state.fromCalls = [];
   mocks.state.registryRows = [];
 });
 
-describe('resolveNavAppsForIdentity — actor scope (#2425)', () => {
-  it('sees every nav-capable app regardless of enabledServices, matching the pre-existing fallback behavior', async () => {
+describe('resolveNavAppsForIdentity — actor scope (#2425, #2434 ruling b)', () => {
+  it('an actor that has never configured toggles (empty feature_toggles) sees every nav-capable app', async () => {
     mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: {} }];
     mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
 
     const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
 
     expect(apps.map((a) => a.slug).sort()).toEqual(['coffee', 'learn']);
-    // Actor scope never needs a forest_config lookup.
-    expect(mocks.selectMock).toHaveBeenCalledTimes(2);
+    // Actor scope reads the actor's own feature_toggles, never forest_config.
+    expect(mocks.state.fromCalls).not.toContain(mocks.forestConfig);
+    expect(mocks.state.fromCalls).toContain(mocks.profiles);
+  });
+
+  it('an actor with no profile row at all is also "never configured" and sees every app', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [];
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
+
+    expect(apps.map((a) => a.slug).sort()).toEqual(['coffee', 'learn']);
+  });
+
+  it('an actor whose feature_toggles carry only unrelated keys has still never configured app toggles', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: { inference_enabled: true, show_events: true } }];
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
+
+    expect(apps.map((a) => a.slug).sort()).toEqual(['coffee', 'learn']);
+  });
+
+  it('an actor with legacy toggles follows them — only the enabled app is visible', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: { coffee: 'ryan', learn: null, links: null } }];
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('an actor with enabledApps follows them', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: { enabledApps: ['learn'] } }];
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
+
+    expect(apps.map((a) => a.slug)).toEqual(['learn']);
+  });
+
+  it('an actor who explicitly configured toggles with everything off sees no apps', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: { links: null, coffee: null, dykil: null, learn: null } }];
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    await expect(resolveNavAppsForIdentity('did:imajin:actor-1')).resolves.toEqual([]);
+  });
+
+  it('an explicit empty enabledApps list means "none", not "never configured"', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: { enabledApps: [] } }];
+    mocks.state.registryRows = [COFFEE_ROW];
+
+    await expect(resolveNavAppsForIdentity('did:imajin:actor-1')).resolves.toEqual([]);
+  });
+
+  it('an identity with no resolvable scope keeps the pre-existing "sees everything" fallback without reading toggles', async () => {
+    mocks.state.identityRows = [];
+    mocks.state.registryRows = [COFFEE_ROW, LEARN_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:unknown');
+
+    expect(apps.map((a) => a.slug).sort()).toEqual(['coffee', 'learn']);
+    expect(mocks.state.fromCalls).not.toContain(mocks.profiles);
   });
 
   it('excludes inactive rows and rows with no declared placement or slug', async () => {
     mocks.state.identityRows = [{ scope: 'actor' }];
     mocks.state.registryRows = [COFFEE_ROW, REVOKED_ROW, NO_PLACEMENT_ROW, NO_SLUG_ROW];
+
+    const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('still applies the requiredScope gate on top of the actor\'s toggles (actor scope passes any requiredScope)', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.profileRows = [{ featureToggles: { coffee: 'ryan' } }];
+    mocks.state.registryRows = [{ ...COFFEE_ROW, requiredScope: 'business' }];
 
     const apps = await resolveNavAppsForIdentity('did:imajin:actor-1');
 
@@ -221,6 +308,52 @@ describe('resolveRegistryAppsBySlug (#2425 send-back — public, unauthenticated
     const apps = await resolveRegistryAppsBySlug(['coffee', 'revoked-app', 'jin']);
 
     expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+});
+
+describe('resolveLauncherApps (#2434 — launcher / landing grid)', () => {
+  it('lists a registry-only app (no services.ts entry) that declares the launcher placement', async () => {
+    mocks.state.registryRows = [
+      COFFEE_ROW,
+      { ...LEARN_ROW, slug: 'registry-only-app', name: 'Registry Only', placements: ['launcher'] },
+    ];
+
+    const apps = await resolveLauncherApps();
+
+    expect(apps.map((a) => a.slug).sort()).toEqual(['coffee', 'registry-only-app']);
+    // Registry only — no identity, forest_config, or profile lookups.
+    expect(mocks.state.fromCalls).toEqual([expect.anything()]);
+    expect(mocks.state.fromCalls).not.toContain(mocks.identities);
+    expect(mocks.state.fromCalls).not.toContain(mocks.forestConfig);
+    expect(mocks.state.fromCalls).not.toContain(mocks.profiles);
+  });
+
+  it('excludes apps without the launcher placement, inactive rows, and rows with no slug', async () => {
+    mocks.state.registryRows = [
+      COFFEE_ROW,
+      { ...LEARN_ROW, placements: ['auth-submenu'] },
+      REVOKED_ROW,
+      NO_PLACEMENT_ROW,
+      NO_SLUG_ROW,
+    ];
+
+    const apps = await resolveLauncherApps();
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('leaves out apps with a requiredScope — there is no viewer identity on the public list to match it against', async () => {
+    mocks.state.registryRows = [COFFEE_ROW, { ...LEARN_ROW, requiredScope: 'business' }];
+
+    const apps = await resolveLauncherApps();
+
+    expect(apps.map((a) => a.slug)).toEqual(['coffee']);
+  });
+
+  it('returns nothing when the registry has no launcher apps', async () => {
+    mocks.state.registryRows = [];
+
+    await expect(resolveLauncherApps()).resolves.toEqual([]);
   });
 });
 
