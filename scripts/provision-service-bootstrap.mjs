@@ -62,6 +62,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { importTsAsEsm } from './lib/import-ts-as-esm.mjs';
+import { ecosystemConfigPath, readEcosystemVaultPath } from './lib/vault-path-sources.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -114,14 +115,14 @@ function selectServices(args, discoverServices) {
 
 /**
  * pm2 sets the kernel's VAULT_PATH in deploy/ecosystem.<env>.config.js, not in
- * .env.local (same lookup as scripts/check-env.ts). A value already in the
- * process env wins, exactly as it does for the kernel itself.
+ * .env.local. A value already in the process env wins, exactly as it does for
+ * the kernel itself — which is why .env.local must not set it (#2487):
+ * scripts/check-vault-path-consistency.mjs fails the deploy before this runs
+ * if it does and the paths differ.
  */
 function applyEcosystemVaultPath(env) {
   if (process.env.VAULT_PATH?.trim()) return;
-  const file = path.join(REPO_ROOT, 'deploy', `ecosystem.${env}.config.js`);
-  if (!fs.existsSync(file)) return;
-  const vaultPath = /"VAULT_PATH"\s*:\s*"([^"]*)"/.exec(fs.readFileSync(file, 'utf8'))?.[1];
+  const vaultPath = readEcosystemVaultPath(ecosystemConfigPath(REPO_ROOT, env), env);
   if (vaultPath) process.env.VAULT_PATH = vaultPath;
 }
 
