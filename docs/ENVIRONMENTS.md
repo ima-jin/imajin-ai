@@ -357,6 +357,15 @@ re-seal, silently overwrite — prod-sealed material. Splitting the file is
 the same trust boundary Postgres already draws, applied to the one piece of
 per-environment state that was missing it.
 
+### CRON_SECRET — kernel scheduled jobs (#2550)
+
+`CRON_SECRET` is required in the kernel's `.env.local` (non-empty; use a
+different value in dev and prod). It is the bearer token for every
+`/api/cron/*` route and `GET /api/admin/cron-status`. The routes fail closed
+(503 + WARN when unset, 401 on a wrong bearer), and the `prod-kernel-cron` /
+`dev-kernel-cron` pm2 apps refuse to start without it. `check-env` stops a deploy
+that lacks it. See `deploy/README.md` for the scheduler.
+
 ## Deployment
 
 See [DEPLOYMENT.md](../DEPLOYMENT.md) for the full deployment pipeline.

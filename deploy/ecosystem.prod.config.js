@@ -50,6 +50,38 @@ module.exports = {
       "min_uptime": "20s"
     },
     {
+      // Kernel cron scheduler (#2550). We don't deploy on Vercel, so the
+      // kernel's scheduled jobs (apps/kernel/src/cron/schedule.ts) only run if
+      // something on this host calls them. This process reads that manifest and
+      // calls each /api/cron/* route on loopback with
+      // `Authorization: Bearer $CRON_SECRET`, never overlapping a job with
+      // itself, one structured JSON log line per run (`pm2 logs prod-kernel-cron`).
+      // Last run + outcome per job: GET /api/admin/cron-status.
+      //
+      // Exec'd directly under `node --import tsx` (the dev-corpus pattern), NOT
+      // via `npm start` (#2447/#2547): the pm2 pid is the process.
+      // `--env-file` loads CRON_SECRET from the kernel's untracked .env.local,
+      // exactly like prod-jin; Node EXITS if the file is missing, and the
+      // scheduler itself exits non-zero when CRON_SECRET is unset, so a
+      // misconfigured host crash-loops visibly instead of running nothing.
+      // check-env requires CRON_SECRET in the kernel env, so the deploy stops
+      // before restart if it is absent. CRON_BASE_URL must be loopback and match
+      // prod-jin's port above. The deploy workflow starts this app even when pm2
+      // has never seen it (see deploy-prod.yml "Restart prod services").
+      "name": "prod-kernel-cron",
+      "cwd": "/home/jin/prod/imajin-ai/apps/kernel",
+      "script": "src/cron/scheduler.ts",
+      "interpreter": "node",
+      "node_args": "--env-file=/home/jin/prod/imajin-ai/apps/kernel/.env.local --import tsx",
+      "exec_mode": "fork",
+      "env": {
+        "NODE_ENV": "production",
+        "CRON_BASE_URL": "http://127.0.0.1:7000"
+      },
+      "max_restarts": 10,
+      "min_uptime": "20s"
+    },
+    {
       "name": "prod-auth",
       "cwd": "/home/jin/prod/imajin-ai/apps/auth",
       "script": "node_modules/next/dist/bin/next",

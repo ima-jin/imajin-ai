@@ -28,6 +28,7 @@ vi.mock('@/src/db', () => ({
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({
     info: vi.fn(),
+    warn: vi.fn(),
     error: vi.fn(),
   }),
 }));
@@ -43,6 +44,8 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
+
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/attestation-cleanup', () => {
   const originalCronSecret = process.env.CRON_SECRET;
@@ -85,21 +88,20 @@ describe('GET /api/cron/attestation-cleanup', () => {
     expect(response.status).toBe(200);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
     delete process.env.CRON_SECRET;
-    mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   // ── Sweep logic ─────────────────────────────────────────────────────────────
 
   it('deletes expired attestations and returns their ids', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockReturning.mockResolvedValue([{ id: 'att_1' }, { id: 'att_2' }]);
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; deleted: number; ids: string[] };
 
     expect(response.status).toBe(200);
@@ -111,10 +113,10 @@ describe('GET /api/cron/attestation-cleanup', () => {
   });
 
   it('no-op: returns deleted=0 and empty ids when no expired attestations exist', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockReturning.mockResolvedValue([]);
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; deleted: number; ids: string[] };
 
     expect(response.status).toBe(200);
@@ -126,10 +128,10 @@ describe('GET /api/cron/attestation-cleanup', () => {
   // ── Error handling ──────────────────────────────────────────────────────────
 
   it('returns 500 when the DB delete throws', async () => {
-    delete process.env.CRON_SECRET;
+    process.env.CRON_SECRET = 'test-secret';
     mockReturning.mockRejectedValue(new Error('DB connection lost'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = await response.json() as { error: string };
     expect(body.error).toBe('Internal server error');

@@ -23,8 +23,9 @@ export interface CronRouteAuthFixture {
 }
 
 /**
- * Pins the `CRON_SECRET` bearer-auth gate: 401 when the header is missing or
- * wrong while `CRON_SECRET` is set. Restores the pre-test `CRON_SECRET` value
+ * Pins the fail-closed `CRON_SECRET` bearer-auth gate (#2550): 503 when
+ * `CRON_SECRET` is unset or empty (the route must never run open), 401 when the
+ * header is missing or wrong while `CRON_SECRET` is set. Restores the pre-test `CRON_SECRET` value
  * afterward and clears mocks between cases, same as every cron route test
  * this was extracted from.
  */
@@ -42,6 +43,18 @@ export function describeCronSecretAuthContract(fixture: CronRouteAuthFixture): v
     } else {
       process.env.CRON_SECRET = originalCronSecret;
     }
+  });
+
+  it('fails closed with 503 when CRON_SECRET is unset, even with a bearer header', async () => {
+    delete process.env.CRON_SECRET;
+    const response = await callRoute(makeRequest({ authorization: 'Bearer anything' }));
+    expect(response.status).toBe(503);
+  });
+
+  it('fails closed with 503 when CRON_SECRET is empty', async () => {
+    process.env.CRON_SECRET = '';
+    const response = await callRoute(makeRequest());
+    expect(response.status).toBe(503);
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {

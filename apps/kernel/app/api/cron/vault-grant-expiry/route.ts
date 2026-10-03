@@ -5,14 +5,15 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
 /**
  * This route mutates the database and must never be evaluated at build time.
  *
- * Without this, Next statically prerenders it: the only request access below is
- * guarded by `if (cronSecret)`, so with `CRON_SECRET` unset the handler looks
+ * Without this, Next statically prerenders it: the only request access below used to be
+ * guarded by `if (cronSecret)`, so with `CRON_SECRET` unset the handler looked
  * static and Next runs the sweep during `next build` — issuing UPDATEs against
  * whatever database the build environment points at, and baking the resulting
  * response into a static file instead of running the sweep per invocation.
@@ -22,7 +23,7 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/cron/vault-grant-expiry — sweep expired-but-still-active delegation grants.
  *
- * Vercel Cron job (schedule: "0 * * * *" — hourly). Registered in vercel.json.
+ * Scheduled job (schedule: "0 * * * *" — hourly). Registered in src/cron/schedule.ts.
  * Protected by Authorization: Bearer {CRON_SECRET}.
  *
  * Expiry is already fail-safe at read time (SQL filter in fetchActiveGrant inside
@@ -38,15 +39,9 @@ export const dynamic = 'force-dynamic';
  * Bus event: mirrors vault.delegation.revoked from POST /api/vault/delegation/revoke.
  */
 export async function GET(request: NextRequest) {
-  // Validate Vercel CRON_SECRET.  When CRON_SECRET is unset (local dev),
-  // any request is allowed so the route can be exercised manually.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const identity = getNodeSigningIdentity();

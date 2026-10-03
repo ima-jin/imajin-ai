@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { and, isNotNull, lt } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, attestations } from '@/src/db';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
@@ -13,7 +14,7 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/cron/attestation-cleanup — purge attestations whose expires_at has passed.
  *
- * Vercel Cron job (schedule: "0 0 * * *" — daily at midnight). Registered in vercel.json.
+ * Scheduled job (schedule: "0 0 * * *" — daily at midnight). Registered in src/cron/schedule.ts.
  * Protected by Authorization: Bearer {CRON_SECRET}.
  *
  * This is a generic cleanup sweep: any attestation row with expires_at set and
@@ -24,15 +25,9 @@ export const dynamic = 'force-dynamic';
  * state transition that other services need to react to.
  */
 export async function GET(request: NextRequest) {
-  // Validate Vercel CRON_SECRET. When CRON_SECRET is unset (local dev),
-  // any request is allowed so the route can be exercised manually.
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const now = new Date();

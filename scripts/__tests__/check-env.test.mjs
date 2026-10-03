@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -336,5 +336,46 @@ describe('check-env vault file (#2412)', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('vault');
+  });
+});
+
+// ── CRON_SECRET (#2550) ─────────────────────────────────────────────────────
+//
+// Every kernel cron route fails closed without it and the cron scheduler will
+// not start, so a deploy without a real value must stop here, before restart.
+
+function makeCronRoot(localContent) {
+  const dir = makeKernelRoot();
+  writeFileSync(join(dir, 'apps', 'kernel', '.env.example'), 'CRON_SECRET=""\n', 'utf8');
+  writeFileSync(join(dir, 'apps', 'kernel', '.env.local'), localContent, 'utf8');
+  return dir;
+}
+
+describe('check-env CRON_SECRET (#2550)', () => {
+  it('fails the deploy when CRON_SECRET is missing from the kernel .env.local', () => {
+    const result = runKernel(makeCronRoot(''));
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('missing');
+    expect(result.stdout).toContain('CRON_SECRET');
+  });
+
+  it('fails the deploy when CRON_SECRET is present but empty', () => {
+    const result = runKernel(makeCronRoot('CRON_SECRET=""\n'));
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('CRON_SECRET (empty)');
+  });
+
+  it('passes when CRON_SECRET has a value', () => {
+    const result = runKernel(makeCronRoot('CRON_SECRET=not-a-real-value\n'));
+    expect(result.status).toBe(0);
+  });
+
+  it("declares CRON_SECRET in the kernel's real .env.example with no optional/vault-sourced annotation", () => {
+    const lines = readFileSync(join(REPO_ROOT, 'apps', 'kernel', '.env.example'), 'utf8').split('\n');
+    const index = lines.findIndex((line) => line.startsWith('CRON_SECRET='));
+    expect(index).toBeGreaterThan(-1);
+    // check-env treats a recognised annotation comment directly above a key as
+    // "not required"; it must not be present here.
+    expect(lines[index - 1]).not.toMatch(/^#\s*(optional|vault-sourced|deprecated)/);
   });
 });

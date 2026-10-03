@@ -329,7 +329,7 @@ paths:
       description: >-
         Enumerates every DID with an active google:gmail:read grant and calls
         `users.watch` again for any whose subscription has no row yet or
-        expires within 24 hours. Scheduled daily — see vercel.json.
+        expires within 24 hours. Scheduled daily — see src/cron/schedule.ts.
       security:
         - cronBearer: []
       responses:

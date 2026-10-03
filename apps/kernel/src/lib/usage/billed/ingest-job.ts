@@ -5,7 +5,7 @@
  * yesterday (day granularity, settled) and the current month-to-date (month
  * granularity, still moving) from that provider's own usage/cost admin API
  * and upserts both into `usage.billed`. Wired to `GET /api/cron/usage-billed-ingest`,
- * scheduled daily in `vercel.json` — same shape as the QuickBooks reconcile
+ * scheduled daily in `apps/kernel/src/cron/schedule.ts` — same shape as the QuickBooks reconcile
  * sweep (`app/api/cron/quickbooks-reconcile/route.ts`).
  *
  * Fails open at both levels: an auth failure (401/403 — key missing or

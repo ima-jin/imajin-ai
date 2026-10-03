@@ -465,7 +465,7 @@ async function checkOneRun(candidate: InFlightRun, outcome: SweepOutcome, lookba
  * `warp.run.timeout` applies (#2032 widens this from the pre-existing three).
  *
  * Called from `GET /api/cron/warp-run-watch` on a modest schedule (see
- * vercel.json). Never throws — a candidate that fails to read or publish is
+ * src/cron/schedule.ts). Never throws — a candidate that fails to read or publish is
  * counted in `errors` and logged, and the sweep moves on to the rest; the
  * next tick tries it again.
  */

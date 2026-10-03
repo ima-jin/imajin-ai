@@ -110,3 +110,43 @@ describe('deploy/ecosystem.dev.config.js corpus (#2447)', () => {
     expect(corpus.exec_mode).toBe('fork');
   });
 });
+
+// #2550: the kernel's scheduled jobs only run if this process is declared in the
+// ecosystem file that `pm2 startOrReload` / the deploy workflows apply.
+for (const env of ['dev', 'prod']) {
+  describe(`deploy/ecosystem.${env}.config.js kernel cron scheduler (#2550)`, () => {
+    const apps = loadApps(env);
+    const kernel = apps.find((a) => a.name === `${env}-jin`);
+    const cron = apps.find((a) => a.name === `${env}-kernel-cron`);
+
+    it(`declares ${env}-kernel-cron next to the kernel`, () => {
+      expect(cron).toBeDefined();
+      expect(apps.indexOf(cron)).toBe(apps.indexOf(kernel) + 1);
+    });
+
+    it('execs the scheduler directly under node --import tsx (never npm/sh)', () => {
+      expect(cron.script).toBe('src/cron/scheduler.ts');
+      expect(WRAPPER_SCRIPTS.has(cron.script)).toBe(false);
+      expect(cron.interpreter).toBe('node');
+      expect(cron.exec_mode).toBe('fork');
+      expect(cron.node_args).toContain('--import tsx');
+    });
+
+    it("runs in the kernel's directory and loads the kernel's .env.local (CRON_SECRET) via --env-file", () => {
+      expect(cron.cwd).toBe(kernel.cwd);
+      expect(cron.node_args).toContain(`--env-file=${kernel.cwd}/.env.local`);
+    });
+
+    it("calls the kernel's own loopback port and never carries the secret in the config", () => {
+      const port = portOf(kernel);
+      expect(cron.env.CRON_BASE_URL).toBe(`http://127.0.0.1:${port}`);
+      expect(JSON.stringify(cron)).not.toMatch(/CRON_SECRET/);
+      expect(cron.env.PORT).toBeUndefined(); // no listener of its own
+    });
+
+    it('has the same restart limits as the other apps', () => {
+      expect(cron.max_restarts).toBe(10);
+      expect(cron.min_uptime).toBe('20s');
+    });
+  });
+}
