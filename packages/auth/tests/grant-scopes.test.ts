@@ -27,7 +27,8 @@ const MCP_PROMOTED_SCOPES = [
 // original 3 from #1882; #2204 adds 'usage:read' as a 5th (the auditor
 // chain-view capability); #2251 adds 'agent:reach' as a 6th (per-principal
 // agent-reach authority); #2358 adds 'loops:publish' as a 7th (publisher
-// authorization for the loop registry rail).
+// authorization for the loop registry rail); #1978 adds 'evidence:publish' as
+// an 8th (publisher authorization for agent.turn.evidence).
 const KERNEL_EXTENSION_SCOPES = [
   'intros:propose',
   'events:read',
@@ -36,6 +37,7 @@ const KERNEL_EXTENSION_SCOPES = [
   'usage:read',
   'agent:reach',
   'loops:publish',
+  'evidence:publish',
 ];
 
 describe('GRANT_SCOPE_REGISTRY structure', () => {
