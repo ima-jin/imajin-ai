@@ -261,6 +261,73 @@ describe('getInstallationToken', () => {
     const error: unknown = await getInstallationToken().catch((caught: unknown) => caught);
     expect(String(error)).not.toContain(PKCS8_PRIVATE_KEY_PEM);
   });
+
+  describe('in-flight coalescing (#2431)', () => {
+    const CONCURRENT_CALLERS = 10;
+
+    function accessTokenCalls(): unknown[][] {
+      return fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/access_tokens'));
+    }
+
+    it('N concurrent calls on a cold cache issue exactly one token request and share the result', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(installationTokenResponse()));
+
+      const tokens = await Promise.all(Array.from({ length: CONCURRENT_CALLERS }, () => getInstallationToken()));
+
+      expect(tokens).toEqual(Array.from({ length: CONCURRENT_CALLERS }, () => INSTALLATION_TOKEN));
+      expect(accessTokenCalls()).toHaveLength(1);
+      expect(loadAndUnsealMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('fills the cache once: a later call after the burst reuses it without minting again', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(installationTokenResponse()));
+
+      await Promise.all(Array.from({ length: CONCURRENT_CALLERS }, () => getInstallationToken()));
+      await expect(getInstallationToken()).resolves.toBe(INSTALLATION_TOKEN);
+
+      expect(accessTokenCalls()).toHaveLength(1);
+      expect(loadAndUnsealMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('N concurrent calls on a just-expired cache issue exactly one new token request', async () => {
+      fetchMock.mockImplementationOnce(() =>
+        Promise.resolve(installationTokenResponse({ expires_at: new Date(Date.now() + 60 * 1000).toISOString() })),
+      );
+      await getInstallationToken();
+      fetchMock.mockImplementation(() => Promise.resolve(installationTokenResponse({ token: 'ghs_refreshed' })));
+
+      const tokens = await Promise.all(Array.from({ length: CONCURRENT_CALLERS }, () => getInstallationToken()));
+
+      expect(tokens).toEqual(Array.from({ length: CONCURRENT_CALLERS }, () => 'ghs_refreshed'));
+      expect(accessTokenCalls()).toHaveLength(2);
+    });
+
+    it('a failed mint rejects every concurrent caller, is not cached, and the next caller retries', async () => {
+      fetchMock.mockImplementationOnce(() => Promise.resolve(jsonResponse(401, { message: 'Bad credentials' })));
+
+      const results = await Promise.allSettled(Array.from({ length: CONCURRENT_CALLERS }, () => getInstallationToken()));
+
+      expect(results.every((result) => result.status === 'rejected')).toBe(true);
+      expect(accessTokenCalls()).toHaveLength(1);
+
+      fetchMock.mockImplementation(() => Promise.resolve(installationTokenResponse()));
+      await expect(getInstallationToken()).resolves.toBe(INSTALLATION_TOKEN);
+      expect(accessTokenCalls()).toHaveLength(2);
+    });
+
+    it('a failed credential load (e.g. unsealed) also clears the in-flight slot so the next caller retries', async () => {
+      loadAndUnsealMock.mockResolvedValueOnce(undefined);
+
+      const results = await Promise.allSettled(Array.from({ length: CONCURRENT_CALLERS }, () => getInstallationToken()));
+
+      expect(results.every((result) => result.status === 'rejected')).toBe(true);
+      expect(loadAndUnsealMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      fetchMock.mockImplementation(() => Promise.resolve(installationTokenResponse()));
+      await expect(getInstallationToken()).resolves.toBe(INSTALLATION_TOKEN);
+    });
+  });
 });
 
 describe('tryGetInstallationToken', () => {
