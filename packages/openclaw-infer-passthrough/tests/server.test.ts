@@ -86,13 +86,13 @@ describe('proxy server (integration)', () => {
     expect(res.status).toBe(404);
   });
 
-  it('returns 422 for an unrecognised provider path segment', async () => {
+  it('returns 404 for an unrecognised provider path segment (#2453)', async () => {
     const res = await fetch(`${baseUrl}/not-configured/v1/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{}',
     });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(404);
   });
 
   it('mints a token and forwards an Anthropic-format /anthropic/v1/messages request end to end (#1959)', async () => {
@@ -341,5 +341,143 @@ describe('proxy server (integration)', () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(modelsBody);
+  });
+});
+
+describe('proxy server — proper status codes instead of a generic 500 (#2453)', () => {
+  const MINT_URL = 'https://kernel.test/auth/api/apps/token';
+  const COMPLETIONS_URL = 'https://kernel.test/infer/v1/chat/completions';
+  const MODELS_URL = 'https://kernel.test/infer/v1/models/usable';
+  const jsonHeaders = { 'Content-Type': 'application/json' };
+  const goodMint = () =>
+    new Response(JSON.stringify({ token: 'tok-ok', expiresIn: 600, scopes: ['infer:completions'] }), { status: 200, headers: jsonHeaders });
+
+  /** Stub only the shim's outbound kernel calls; the test's own calls to the local server fall through to the real fetch. */
+  function stubKernel(handler: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+    const realFetch = globalThis.fetch;
+    const mock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith(baseUrl)) return realFetch(url, init);
+      return handler(url, init);
+    });
+    vi.stubGlobal('fetch', mock);
+    return mock;
+  }
+
+  function post(path: string, body: unknown) {
+    return fetch(`${baseUrl}${path}`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(body) });
+  }
+
+  it('keyless request (kernel refuses the app-token mint) → 401, not 500', async () => {
+    stubKernel((url) => {
+      if (url === MINT_URL) return new Response(JSON.stringify({ error: 'invalid signature' }), { status: 401, headers: jsonHeaders });
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+
+    const res = await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] });
+
+    expect(res.status).toBe(401);
+    const body = await res.json();
+    expect(body.error).toBe('unauthorized');
+    expect(JSON.stringify(body)).not.toContain('ab'.repeat(32));
+  });
+
+  it('unknown model on the unprefixed path → 404', async () => {
+    const fetchMock = stubKernel(() => {
+      throw new Error('kernel must not be called');
+    });
+
+    const res = await post('/v1/chat/completions', { model: 'no-such-model', messages: [] });
+
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe('no_route_for_model');
+    expect(fetchMock).toHaveBeenCalledTimes(1); // only the test's own call to the shim
+  });
+
+  it('kernel-reported unknown model (404) is forwarded verbatim', async () => {
+    stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      return new Response(JSON.stringify({ error: 'model_not_found' }), { status: 404, headers: jsonHeaders });
+    });
+
+    const res = await post('/openai/v1/chat/completions', { model: 'mystery-model', messages: [] });
+
+    expect(res.status).toBe(404);
+    expect((await res.json()).error).toBe('model_not_found');
+  });
+
+  it('grok-4 on the /openai/v1 seat mints against the xai attestation and is not a 500', async () => {
+    const mintedFor: string[] = [];
+    stubKernel((url, init) => {
+      if (url === MINT_URL) {
+        mintedFor.push(JSON.parse(init?.body as string).attestationId);
+        return goodMint();
+      }
+      if (url === COMPLETIONS_URL) return new Response(JSON.stringify({ id: 'chatcmpl-grok' }), { status: 200, headers: jsonHeaders });
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+
+    const res = await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ id: 'chatcmpl-grok' });
+    expect(mintedFor).toEqual(['att-xai']);
+  });
+
+  it('valid model with a failing upstream (kernel 500, no fallback) → 502', async () => {
+    stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      return new Response(JSON.stringify({ error: 'upstream exploded' }), { status: 500, headers: jsonHeaders });
+    });
+
+    const res = await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] });
+
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe('kernel_unavailable');
+  });
+
+  it('kernel unreachable during the token mint → 502, not 500', async () => {
+    stubKernel(() => {
+      throw new TypeError('fetch failed');
+    });
+
+    const res = await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] });
+
+    expect(res.status).toBe(502);
+    expect((await res.json()).error).toBe('kernel_unavailable');
+  });
+
+  it('GET /xai/v1/models and GET /v1/models answer instead of 404 (#2453)', async () => {
+    const modelsBody = { object: 'list', data: [{ id: 'grok-4', object: 'model' }] };
+    stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      if (url === MODELS_URL) return new Response(JSON.stringify(modelsBody), { status: 200, headers: jsonHeaders });
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+
+    for (const path of ['/xai/v1/models', '/v1/models', '/openai/v1/models']) {
+      const res = await fetch(`${baseUrl}${path}`);
+      expect(res.status, path).toBe(200);
+      expect(await res.json()).toEqual(modelsBody);
+    }
+  });
+
+  it('GET /models for an unconfigured provider → 404; for the mcp route → 404', async () => {
+    stubKernel(() => {
+      throw new Error('kernel must not be called');
+    });
+
+    expect((await fetch(`${baseUrl}/nope/v1/models`)).status).toBe(404);
+    expect((await fetch(`${baseUrl}/mcp/v1/models`)).status).toBe(404);
+  });
+
+  it('GET /openai/v1/models with the mint refused → 401, not 500', async () => {
+    stubKernel((url) => {
+      if (url === MINT_URL) return new Response(JSON.stringify({ error: 'attestation not found' }), { status: 404, headers: jsonHeaders });
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+
+    const res = await fetch(`${baseUrl}/openai/v1/models`);
+
+    expect(res.status).toBe(401);
   });
 });

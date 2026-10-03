@@ -76,3 +76,58 @@ describe('handleModels — GET /openai/v1/models passthrough (imajin-ai#2201)', 
     expect(result.status).toBe(401);
   });
 });
+
+describe('handleModels — route selection (imajin-ai#2453)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const route = (id: string) => ({ id, principalDid: 'did:imajin:x', attestationId: `att-${id}` });
+
+  function tokenRequests() {
+    const requested: string[] = [];
+    return {
+      requested,
+      getTokenProvider: (routeId: string) => {
+        requested.push(routeId);
+        return fakeTokenSource(['tok-1']);
+      },
+    };
+  }
+
+  it("uses the 'openai' seat when configured", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(MODELS_BODY, { status: 200 })));
+    const t = tokenRequests();
+    const result = await handleModels(baseDeps({ routes: [route('xai'), route('openai')], getTokenProvider: t.getTokenProvider }));
+    expect(result.status).toBe(200);
+    expect(t.requested).toEqual(['openai']);
+  });
+
+  it("falls back to another inference route when there is no 'openai' entry, instead of throwing", async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(MODELS_BODY, { status: 200 })));
+    const t = tokenRequests();
+    const result = await handleModels(baseDeps({ routes: [route('mcp'), route('xai')], getTokenProvider: t.getTokenProvider }));
+    expect(result.status).toBe(200);
+    expect(t.requested).toEqual(['xai']);
+  });
+
+  it('honors a named provider id', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(MODELS_BODY, { status: 200 })));
+    const t = tokenRequests();
+    await handleModels(baseDeps({ routes: [route('xai'), route('openai')], getTokenProvider: t.getTokenProvider }), 'xai');
+    expect(t.requested).toEqual(['xai']);
+  });
+
+  it('returns 404 for an unknown or non-inference provider id without minting', async () => {
+    const t = tokenRequests();
+    const deps = baseDeps({ routes: [route('xai'), route('mcp')], getTokenProvider: t.getTokenProvider });
+    expect((await handleModels(deps, 'nope')).status).toBe(404);
+    expect((await handleModels(deps, 'mcp')).status).toBe(404);
+    expect(t.requested).toEqual([]);
+  });
+
+  it('returns 422 no_route_configured when only non-inference routes exist', async () => {
+    const result = await handleModels(baseDeps({ routes: [route('mcp')] }));
+    expect(result.status).toBe(422);
+    expect(JSON.parse(await bodyToText(result.body)).error).toBe('no_route_configured');
+  });
+});
+

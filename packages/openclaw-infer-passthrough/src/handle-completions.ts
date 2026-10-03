@@ -57,10 +57,15 @@ export async function handleCompletions(
   const model = extractModel(req.bodyText);
   const route = resolveRoute(deps.routes, req.providerIdFromPath, model);
   if (!route) {
+    // No model at all on the unprefixed path mirrors the kernel's own 422
+    // NoModelSelected; a named-but-unroutable model/route is a 404 (#2453).
+    if (!req.providerIdFromPath && model === undefined) {
+      return jsonError(422, 'no_model_selected', 'Request body has no `model`; set one or use a path-prefixed route');
+    }
     return jsonError(
-      422,
+      404,
       'no_route_for_model',
-      req.providerIdFromPath
+      req.providerIdFromPath && model === undefined
         ? `No configured route '${req.providerIdFromPath}'`
         : `No route configured matches model ${JSON.stringify(model ?? null)}; use a path-prefixed route or add a modelPrefixes entry`,
     );
