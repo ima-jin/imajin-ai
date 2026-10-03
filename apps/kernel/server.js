@@ -6,7 +6,7 @@ envUtils.loadEnvFileIntoProcessEnv(envPath);
 const { createServer } = require('node:http');
 const { parse } = require('node:url');
 const next = require('next');
-const { setupWebSocket, setupBroadcastRoute } = require('./ws-server');
+const { setupWebSocket, setupBroadcastRoute, setupDidConnectionsRoute } = require('./ws-server');
 
 const dev = process.env.NODE_ENV !== 'production';
 const port = Number.parseInt(process.env.PORT || '3000');
@@ -27,6 +27,7 @@ app.prepare().then(() => {
 
   setupWebSocket(server);
   setupBroadcastRoute(server);
+  setupDidConnectionsRoute(server);
 
   server.listen(port, () => {
     console.log(`> Ready on http://localhost:${port}`);
