@@ -68,8 +68,10 @@ export async function getDidConnectionStates(dids: readonly string[]): Promise<M
     return states;
   }
 
-  for (const batch of chunk(unique, MAX_DIDS_PER_REQUEST)) {
-    const connected = await fetchConnected(batch, internalKey);
+  const batches = chunk(unique, MAX_DIDS_PER_REQUEST);
+  const results = await Promise.all(batches.map((batch) => fetchConnected(batch, internalKey)));
+  batches.forEach((batch, index) => {
+    const connected = results[index];
     for (const did of batch) {
       if (connected === null) {
         states.set(did, 'unknown');
@@ -77,6 +79,6 @@ export async function getDidConnectionStates(dids: readonly string[]): Promise<M
         states.set(did, connected.has(did) ? 'connected' : 'disconnected');
       }
     }
-  }
+  });
   return states;
 }
