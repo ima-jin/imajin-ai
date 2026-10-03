@@ -20,7 +20,7 @@ export const dynamic = 'force-dynamic';
  * A job with `stale: true` has had a scheduled tick pass with no run; if every
  * job is stale (or `schedulerSeen` is false) the scheduler process is down.
  */
-export async function GET(request: Request) {
+export function GET(request: Request) {
   const denied = requireCronAuth(request);
   if (denied) return denied;
 
