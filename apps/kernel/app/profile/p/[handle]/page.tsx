@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
 import { resolveRegistryAppsBySlug } from '@/src/lib/kernel/app-nav';
+import { PROFILE_WIDGET_APP_SLUGS } from '../../lib/registry-app-links';
 import {
   getViewerDid,
   getProfile,
@@ -89,16 +90,32 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
     return <GatedProfile profile={profile} viewerDid={viewerDid} />;
   }
 
-  const [counts, isFollowing, links, serviceApps] = await Promise.all([
+  // #2434: every "is app X on for this profile" question goes through
+  // resolveEnabledApps (legacy fields ∪ enabledApps) — including `links`,
+  // which used to read the legacy `featureToggles.links` field directly and
+  // so ignored a profile that enabled links via `enabledApps` only.
+  const enabledApps = resolveEnabledApps(profile.featureToggles);
+  const linksHandle = enabledApps.includes('links')
+    ? (profile.featureToggles?.links || profile.handle)
+    : null;
+
+  const [counts, isFollowing, links, registryApps] = await Promise.all([
     getProfileCounts(profile.did),
     viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
-    profile.featureToggles?.links ? getLinks(profile.featureToggles.links) : Promise.resolve([]),
-    // #2425 send-back: registry apps ∩ resolveEnabledApps — replaces
-    // ServiceLinks.tsx's own hard-coded 'links'/'coffee' literals. Public,
-    // unauthenticated read (the profile owner already opted these in via
-    // feature_toggles); see resolveRegistryAppsBySlug's docblock.
-    resolveRegistryAppsBySlug(resolveEnabledApps(profile.featureToggles)),
+    // The links service is keyed by the profile's handle — the value the legacy
+    // field always carried (see `profile/edit/page.tsx`'s write path); fall back
+    // to the current handle for a profile that enabled links via `enabledApps` only.
+    linksHandle ? getLinks(linksHandle) : Promise.resolve([]),
+    // One registry read covers both the owner-enabled service buttons
+    // (#2425 send-back: registry apps ∩ resolveEnabledApps — replaces
+    // ServiceLinks.tsx's own hard-coded 'links'/'coffee' literals) and the
+    // events/market widget apps (#2434). Public, unauthenticated read (the
+    // profile owner already opted in via feature_toggles); see
+    // resolveRegistryAppsBySlug's docblock.
+    resolveRegistryAppsBySlug([...enabledApps, ...PROFILE_WIDGET_APP_SLUGS]),
   ]);
+  const enabledAppSet = new Set(enabledApps);
+  const serviceApps = registryApps.filter((app) => enabledAppSet.has(app.slug));
 
   const viewer = {
     viewerDid,
@@ -107,7 +124,7 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
     isFollowing,
   };
 
-  const props = { profile, identity, viewer, counts, links, serviceApps };
+  const props = { profile, identity, viewer, counts, links, serviceApps, registryApps };
 
   switch (identity.scope) {
     case 'business':

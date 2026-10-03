@@ -432,6 +432,31 @@ describe('poll refresh', () => {
   });
 });
 
+// #2492: the 4s flash auto-dismiss used a bare `setTimeout` that outlived the
+// component — in CI it could fire after jsdom teardown (`window is not
+// defined`). It must be cancelled on unmount.
+describe('flash timer cleanup (#2492)', () => {
+  it('cancels the pending flash auto-dismiss timer on unmount', async () => {
+    installIntervalSpy();
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    const clearTimeoutSpy = vi.spyOn(globalThis, 'clearTimeout');
+    installFetch([{ isOperator: true, approvals: [approval()] }]);
+    const { unmount } = render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await screen.findByText('Proposal approve.');
+
+    const flashCallIndex = setTimeoutSpy.mock.calls.findIndex(([, ms]) => ms === 4000);
+    expect(flashCallIndex).toBeGreaterThanOrEqual(0);
+    const flashTimerId = setTimeoutSpy.mock.results[flashCallIndex].value;
+
+    unmount();
+
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(flashTimerId);
+  });
+});
+
 describe('network failure', () => {
   it('does not throw and stays hidden when the initial fetch rejects', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
@@ -774,6 +799,34 @@ describe('per-source renderer registry — access', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(screen.queryByTestId('revealed-bearer')).toBeNull();
+  });
+
+  // #2492: dismissing the box right after Copy unmounts the banner before the
+  // clipboard promise resolves; its `.then` must not arm a 2s reset timer that
+  // would outlive the component (and, in tests, jsdom teardown).
+  it('arms no copy-reset timer when the banner unmounts before the clipboard write resolves', async () => {
+    let resolveWrite: () => void = () => undefined;
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { resolveWrite = resolve; }));
+    Object.assign(navigator, { clipboard: { writeText } });
+    const setTimeoutSpy = vi.spyOn(globalThis, 'setTimeout');
+    installFetch(
+      [{ isOperator: true, approvals: [accessApproval()] }, { isOperator: true, approvals: [accessApproval({ status: 'approved' })] }],
+      { ok: true, body: { approval: accessApproval({ status: 'approved' }), data: { bearer: 'plaintext-secret-xyz', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z' } } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & mint bearer' });
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & mint bearer' }));
+    await screen.findByTestId('revealed-bearer');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
+    expect(screen.queryByTestId('revealed-bearer')).toBeNull();
+
+    resolveWrite();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(setTimeoutSpy.mock.calls.some(([, ms]) => ms === 2000)).toBe(false);
   });
 });
 
