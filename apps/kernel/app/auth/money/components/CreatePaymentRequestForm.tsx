@@ -88,6 +88,10 @@ export default function CreatePaymentRequestForm({ issuerDid, onCreated, onCance
       // Default ON exactly when the issuer has a tax registration on their profile.
       setChargeTax(drafts.length > 0);
       setTaxLoaded(true);
+    }).catch((err) => {
+      if (cancelled) return;
+      console.error('[CreatePaymentRequestForm] failed to load tax registrations', err);
+      setTaxLoaded(true);
     });
     return () => {
       cancelled = true;

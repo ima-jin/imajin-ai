@@ -63,4 +63,11 @@ export interface ProfileViewProps {
   links: LinkItem[];
   /** Registry apps (#2425) resolved for this profile's own enabled slugs — see `resolveRegistryAppsBySlug`. Consumed by `ServiceLinks`. */
   serviceApps: NavApp[];
+  /**
+   * Registry rows (#2434) for the apps the profile widgets link to (events,
+   * market — see `PROFILE_WIDGET_APP_SLUGS`), independent of whether the
+   * profile owner enabled them as service buttons. A widget renders only while
+   * its app is present here, so pruning an app (#1988/#1989) drops its widget.
+   */
+  registryApps: NavApp[];
 }
