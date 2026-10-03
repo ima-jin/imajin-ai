@@ -306,7 +306,11 @@ export function VaultPanel() {
       const response = await fetch('/api/vault/rotate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ field: input.field, value: input.value }),
+        body: JSON.stringify({
+          field: input.field,
+          value: input.value,
+          ...(input.confirmField === undefined ? {} : { confirmField: input.confirmField }),
+        }),
       });
 
       if (!response.ok) {

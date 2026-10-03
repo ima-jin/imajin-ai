@@ -192,6 +192,15 @@ interface CachedInstallationToken {
 let cachedInstallationToken: CachedInstallationToken | undefined;
 
 /**
+ * The in-flight load-credential-then-mint promise (#2431), shared by every
+ * concurrent {@link getInstallationToken} caller that finds the cache cold
+ * (or just expired). The vault field {@link GITHUB_ORG_CREDENTIAL_FIELD}
+ * holds exactly one installation, so one slot is one in-flight mint per
+ * installationId. Cleared as soon as the mint settles — success or failure.
+ */
+let inflightInstallationToken: Promise<string> | undefined;
+
+/**
  * Mint a short-lived RS256 App JWT (`iss: appId`, `iat` backdated 60s,
  * `exp` <= 10 minutes total lifetime — GitHub's own requirements). The key
  * is loaded via `node:crypto`'s `createPrivateKey` (rather than jose's own
@@ -248,20 +257,40 @@ async function mintInstallationToken(credential: OrgAppCredential): Promise<Cach
  * logged. Every GitHub call made with this token lands in the org audit
  * log as `imajin-provisioner[bot]`, not as any human or the kernel's own
  * identity.
+ *
+ * Concurrent callers on a cold/expired cache share ONE in-flight mint
+ * (#2431): the first caller starts it, the rest await the same promise, and
+ * the cache is filled once. A failed mint clears the in-flight slot and is
+ * never cached, so the next caller retries from scratch.
  */
-export async function getInstallationToken(): Promise<string> {
-  const now = Date.now();
-  if (cachedInstallationToken && cachedInstallationToken.expiresAtMs - INSTALLATION_TOKEN_REFRESH_MARGIN_MS > now) {
-    return cachedInstallationToken.token;
+export function getInstallationToken(): Promise<string> {
+  if (cachedInstallationToken && cachedInstallationToken.expiresAtMs - INSTALLATION_TOKEN_REFRESH_MARGIN_MS > Date.now()) {
+    return Promise.resolve(cachedInstallationToken.token);
   }
-  const credential = await loadOrgCredential();
-  cachedInstallationToken = await mintInstallationToken(credential);
-  return cachedInstallationToken.token;
+  if (inflightInstallationToken) {
+    return inflightInstallationToken;
+  }
+  const mint = loadCredentialAndMintToken().finally(() => {
+    // Only clear our own slot — never a newer in-flight promise.
+    if (inflightInstallationToken === mint) {
+      inflightInstallationToken = undefined;
+    }
+  });
+  inflightInstallationToken = mint;
+  return mint;
 }
 
-/** Test-only: reset the cached installation token between test cases. */
+async function loadCredentialAndMintToken(): Promise<string> {
+  const credential = await loadOrgCredential();
+  const minted = await mintInstallationToken(credential);
+  cachedInstallationToken = minted;
+  return minted.token;
+}
+
+/** Test-only: reset the cached installation token and in-flight mint between test cases. */
 export function __resetInstallationTokenCacheForTests(): void {
   cachedInstallationToken = undefined;
+  inflightInstallationToken = undefined;
 }
 
 /**

@@ -12,6 +12,8 @@ interface ServiceEntry {
   category: string;
   url: string;
   externalUrl?: string;
+  /** `registry` tiles come from `registry.apps` and are narrowed per identity (#2434); `static` ones are always listed. */
+  source?: 'static' | 'registry';
 }
 
 interface Groups {
@@ -72,6 +74,23 @@ function TileGroup({ label, services, onAuthRequired }: Readonly<{ label?: strin
   );
 }
 
+/**
+ * Slugs of the registry apps the signed-in identity may see on the launcher
+ * (#2434) — `GET /auth/api/apps?placement=launcher` is the same resolver the
+ * `/auth` hub uses (so an actor's feature toggles apply). `null` when the
+ * identity can't be resolved: the public list is shown un-narrowed.
+ */
+async function fetchIdentityAppSlugs(authUrl: string): Promise<Set<string> | null> {
+  try {
+    const res = await fetch(`${authUrl}/api/apps?placement=launcher`, { credentials: 'include' });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { apps?: Array<{ slug: string }> };
+    return new Set((data.apps ?? []).map((app) => app.slug));
+  } catch {
+    return null;
+  }
+}
+
 const SKELETON_KEYS = ['sk0', 'sk1', 'sk2', 'sk3', 'sk4', 'sk5', 'sk6', 'sk7', 'sk8', 'sk9'];
 
 function handleAuthRequired(nextUrl: string) {
@@ -84,6 +103,7 @@ export function LandingGrid() {
   const [authed, setAuthed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scopeEnabledServices, setScopeEnabledServices] = useState<string[] | null>(null);
+  const [identityAppSlugs, setIdentityAppSlugs] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     const registryUrl = buildPublicUrl('registry');
@@ -91,7 +111,8 @@ export function LandingGrid() {
     const actingAs = typeof localStorage === 'undefined'  ? null : localStorage.getItem('imajin:acting-as');
 
     const requests: Promise<unknown>[] = [
-      fetch(`${registryUrl}/api/specs`).then((r) => r.ok ? r.json() : null),
+      // #2434: tiles come from the registry (+ static kernel/project tiles), not services.ts alone.
+      fetch(`${registryUrl}/api/launcher`).then((r) => r.ok ? r.json() : null),
       fetch(`${authUrl}/api/session`, { credentials: 'include' }).then((r) => r.ok ? r.json() : null),
     ];
 
@@ -103,12 +124,16 @@ export function LandingGrid() {
       );
     }
 
-    Promise.all(requests).then(([specData, session, scopeConfig]) => {
+    Promise.all(requests).then(async ([specData, session, scopeConfig]) => {
       if ((specData as { services?: ServiceEntry[] } | null)?.services) {
         setServices((specData as { services: ServiceEntry[] }).services.filter((s) => s.visibility !== 'internal'));
       }
       const tier = (session as { tier?: string } | null)?.tier;
-      setAuthed(tier === 'preliminary' || tier === 'established' || tier === 'creator');
+      const isAuthed = tier === 'preliminary' || tier === 'established' || tier === 'creator';
+      setAuthed(isAuthed);
+      if (isAuthed) {
+        setIdentityAppSlugs(await fetchIdentityAppSlugs(authUrl));
+      }
       if (scopeConfig) {
         const cfg = scopeConfig as { enabledServices?: string[] };
         setScopeEnabledServices(cfg.enabledServices ?? null);
@@ -130,6 +155,11 @@ export function LandingGrid() {
   let visibleServices = authed
     ? services
     : services.filter((s) => s.visibility === 'public' || s.visibility === 'authenticated' || s.visibility === 'creator');
+
+  if (identityAppSlugs) {
+    // Registry tiles follow what this identity may see; static kernel/project tiles are always listed.
+    visibleServices = visibleServices.filter((s) => s.source !== 'registry' || identityAppSlugs.has(s.name));
+  }
 
   if (scopeEnabledServices && scopeEnabledServices.length > 0) {
     // Kernel services are always visible — only filter userspace by forest config

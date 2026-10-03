@@ -56,6 +56,22 @@ export interface TaxRegistration {
 
 /**
  * Profiles - public identity pages linked to DIDs
+ *
+ * Size caps on the user-writable jsonb columns (#2432), enforced by the single
+ * shared validator `validateJsonbSize` in `src/lib/profile/jsonb-limits.ts`
+ * (violations return 400 naming the field). Per column: max entries (array
+ * length or top-level keys) / max string length (any string, any depth) /
+ * max serialized JSON bytes (UTF-8):
+ *
+ *  - metadata         (POST /api/profile)          100 / 2000 / 32 KiB
+ *  - fieldVisibility  (PUT  /api/profile/:id)      100 /  500 / 32 KiB
+ *  - featureToggles   (PUT, checked after merge)   100 /  200 /  8 KiB
+ *  - agentPricing     (PUT  /api/profile/:id)       50 / 1000 / 16 KiB
+ *  - taxRegistrations (PUT  /api/profile/:id)       50 /  200 / 16 KiB
+ *
+ * `PROFILE_JSONB_LIMITS` is the source of truth; keep this list in sync.
+ * taxRegistrations additionally allows one entry per jurisdiction + kind.
+ * Limits are app-level only — no DB constraint, so no migration.
  */
 export const profiles = profileSchema.table('profiles', {
   did: text('did').primaryKey(),                              // did:imajin:xxx
