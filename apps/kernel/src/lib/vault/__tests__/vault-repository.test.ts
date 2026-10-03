@@ -9,7 +9,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { VAULT_ENTRY_VERSION_V1, VaultFileMissingError } from '@imajin/vault-core';
+import {
+  VAULT_ENTRY_VERSION_V1,
+  VaultFileMalformedError,
+  VaultFileMissingError,
+  VaultFileUnreadableError,
+} from '@imajin/vault-core';
 
 const { mockInfo, mockWarn, mockError } = vi.hoisted(() => ({
   mockInfo: vi.fn(),
@@ -130,6 +135,26 @@ describe('loadVaultAtBoot', () => {
   });
 });
 
+describe('loadVaultAtBoot with an unusable file (#2440)', () => {
+  it('throws a typed error, logs the stable code, and leaves a malformed file untouched', async () => {
+    const broken = '{"entries": [';
+    fs.writeFileSync(vaultPath, broken, 'utf8');
+
+    await expect(loadVaultAtBoot()).rejects.toBeInstanceOf(VaultFileMalformedError);
+
+    expect(fs.readFileSync(vaultPath, 'utf8')).toBe(broken);
+    expect(mockError).toHaveBeenCalledTimes(1);
+    expect(mockError.mock.calls[0]?.[0]).toEqual({ vaultPath, code: 'VAULT_FILE_MALFORMED' });
+  });
+
+  it('throws a typed error when the file exists but cannot be read', async () => {
+    fs.mkdirSync(vaultPath);
+
+    await expect(loadVaultAtBoot()).rejects.toBeInstanceOf(VaultFileUnreadableError);
+    expect(mockError.mock.calls[0]?.[0]).toEqual({ vaultPath, code: 'VAULT_FILE_UNREADABLE' });
+  });
+});
+
 describe('getVaultHealth', () => {
   it('reflects the loaded entry count, path and load time', async () => {
     writeVault(4);
@@ -197,5 +222,60 @@ describe('getVaultHealth', () => {
 
     expect(serialised).not.toContain('SECRET_FIELD');
     expect(serialised).not.toContain('ciphertext-should-never-surface');
+  });
+
+  it('reports `error` for a malformed file with a stable code and never its content', async () => {
+    fs.writeFileSync(vaultPath, '{"entries":[{"field":"SECRET_FIELD_0", oops', 'utf8');
+
+    const health = await getVaultHealth();
+
+    expect(health).toMatchObject({ status: 'error', path: vaultPath, error: 'VAULT_FILE_MALFORMED' });
+    expect(JSON.stringify(health)).not.toContain('SECRET_FIELD');
+  });
+
+  it('reports `error` for a file that exists but cannot be read', async () => {
+    fs.mkdirSync(vaultPath);
+
+    const health = await getVaultHealth();
+
+    expect(health).toMatchObject({ status: 'error', error: 'VAULT_FILE_UNREADABLE' });
+  });
+
+  it('re-stats the file on each call: goes `error` when the file disappears after a healthy check (#2440)', async () => {
+    writeVault(2);
+    await expect(getVaultHealth()).resolves.toMatchObject({ status: 'ok', entryCount: 2 });
+
+    fs.rmSync(vaultPath);
+
+    await expect(getVaultHealth()).resolves.toMatchObject({ status: 'error', error: 'VAULT_FILE_MISSING' });
+  });
+
+  it('re-validates on each call: goes `error` when the file is corrupted after a healthy check', async () => {
+    writeVault(2);
+    await expect(getVaultHealth()).resolves.toMatchObject({ status: 'ok' });
+
+    fs.writeFileSync(vaultPath, '{corrupt', 'utf8');
+
+    await expect(getVaultHealth()).resolves.toMatchObject({ status: 'error', error: 'VAULT_FILE_MALFORMED' });
+  });
+
+  it('recovers and tracks the current entry count once the file is restored', async () => {
+    writeVault(2);
+    await getVaultHealth();
+    fs.rmSync(vaultPath);
+    await expect(getVaultHealth()).resolves.toMatchObject({ status: 'error' });
+
+    writeVault(5);
+
+    await expect(getVaultHealth()).resolves.toMatchObject({ status: 'ok', entryCount: 5 });
+  });
+
+  it('does not create or modify the vault file while checking health', async () => {
+    await getVaultHealth();
+    expect(fs.existsSync(vaultPath)).toBe(false);
+
+    fs.writeFileSync(vaultPath, '{corrupt', 'utf8');
+    await getVaultHealth();
+    expect(fs.readFileSync(vaultPath, 'utf8')).toBe('{corrupt');
   });
 });
