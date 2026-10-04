@@ -115,6 +115,10 @@ is routed to that route's attestation and break-glass key. `GET /openai/v1/model
 5. `GET /healthz` reports `{ kernelOk, fallbackCount, fallbackRate, lastFallbackAt }` so
    an external alert can watch the fallback rate (the #1922 guardrail: "alert if
    fallback rate exceeds threshold"). Every fallback also emits a structured log line.
+   It also reports passthrough liveness (#2453): `{ passthroughOk, passthroughErrorCount,
+   lastPassthroughError: { status, at } | null }`. Any 5xx the shim returns (a mapped `502`,
+   an upstream 5xx forwarded from break-glass, or an unexpected `500`) flips `passthroughOk`
+   to `false` until the next successful response; `4xx` responses neither trip nor clear it.
 
 ```mermaid
 flowchart LR

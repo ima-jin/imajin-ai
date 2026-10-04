@@ -40,7 +40,15 @@ describe('proxy server (integration)', () => {
     const res = await fetch(`${baseUrl}/healthz`);
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toEqual({ kernelOk: true, fallbackCount: 0, fallbackRate: 0, lastFallbackAt: null });
+    expect(body).toEqual({
+      kernelOk: true,
+      fallbackCount: 0,
+      fallbackRate: 0,
+      lastFallbackAt: null,
+      passthroughOk: true,
+      passthroughErrorCount: 0,
+      lastPassthroughError: null,
+    });
   });
 
   it('mints a token and forwards a completions request end to end, streaming the response back', async () => {
@@ -433,6 +441,77 @@ describe('proxy server — proper status codes instead of a generic 500 (#2453)'
 
     expect(res.status).toBe(502);
     expect((await res.json()).error).toBe('kernel_unavailable');
+  });
+
+  async function healthz() {
+    return (await fetch(`${baseUrl}/healthz`)).json();
+  }
+
+  it('/healthz reflects a mapped 502 from a failing upstream, then recovers on the next success (#2453)', async () => {
+    let upstreamStatus = 500;
+    stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      if (url === COMPLETIONS_URL) {
+        return new Response(JSON.stringify({ error: upstreamStatus === 200 ? undefined : 'upstream exploded' }), {
+          status: upstreamStatus,
+          headers: jsonHeaders,
+        });
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+
+    expect((await healthz()).passthroughOk).toBe(true);
+
+    expect((await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] })).status).toBe(502);
+    const failed = await healthz();
+    expect(failed.passthroughOk).toBe(false);
+    expect(failed.passthroughErrorCount).toBe(1);
+    expect(failed.lastPassthroughError).toMatchObject({ status: 502 });
+    expect(typeof failed.lastPassthroughError.at).toBe('string');
+    // The incident shape: the kernel/fallback view stays green while completions fail.
+    expect(failed.kernelOk).toBe(true);
+
+    upstreamStatus = 200;
+    expect((await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] })).status).toBe(200);
+    const recovered = await healthz();
+    expect(recovered.passthroughOk).toBe(true);
+    // The last error stays visible for diagnosis after recovery.
+    expect(recovered.passthroughErrorCount).toBe(1);
+    expect(recovered.lastPassthroughError).toMatchObject({ status: 502 });
+  });
+
+  it('/healthz reflects a mapped 502 when the token mint cannot reach the kernel (#2453)', async () => {
+    stubKernel(() => {
+      throw new TypeError('fetch failed');
+    });
+
+    expect((await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] })).status).toBe(502);
+
+    const snapshot = await healthz();
+    expect(snapshot.passthroughOk).toBe(false);
+    expect(snapshot.lastPassthroughError).toMatchObject({ status: 502 });
+  });
+
+  it('/healthz reflects an upstream 5xx forwarded from the break-glass direct endpoint (#2453)', async () => {
+    stubKernel((url) => {
+      if (url === MINT_URL) return goodMint();
+      return new Response('{}', { status: 503, headers: jsonHeaders });
+    });
+
+    expect((await post('/openai/v1/chat/completions', { model: 'grok-4', messages: [] })).status).toBe(502);
+    expect((await healthz()).passthroughOk).toBe(false);
+  });
+
+  it('/healthz is not tripped by client errors (4xx) (#2453)', async () => {
+    stubKernel(() => {
+      throw new Error('kernel must not be called');
+    });
+
+    expect((await post('/v1/chat/completions', { model: 'no-such-model', messages: [] })).status).toBe(404);
+
+    const snapshot = await healthz();
+    expect(snapshot.passthroughOk).toBe(true);
+    expect(snapshot.passthroughErrorCount).toBe(0);
   });
 
   it('kernel unreachable during the token mint → 502, not 500', async () => {
