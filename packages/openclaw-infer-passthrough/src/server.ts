@@ -8,21 +8,23 @@
  * Routes:
  *   POST /:providerId/v1/chat/completions      — OpenAI-compatible, explicit route selection
  *   POST /v1/chat/completions                  — OpenAI-compatible, route selection via body.model
- *   GET  /openai/v1/models                     — OpenAI-compatible model discovery (imajin-ai#2201)
+ *   GET  /openai/v1/models                     — OpenAI-compatible model discovery (imajin-ai#2201); also /v1/models and /:providerId/v1/models (#2453)
  *   POST /anthropic/v1/messages                — Anthropic-format raw passthrough (imajin-ai#1959)
  *   POST /anthropic/v1/messages/count_tokens   — Anthropic-format token counting (imajin-ai#1959)
  *   POST /mcp                                  — native MCP JSON-RPC passthrough (imajin-ai#2368)
- *   GET  /healthz                              — break-glass observability (imajin-ai#1922 guardrail), shared by every format
+ *   GET  /healthz                              — break-glass + passthrough-liveness observability (imajin-ai#1922 guardrail, #2453), shared by every format
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
 import { loadConfig, resolveDirectApiKey } from './config.js';
 import { HealthTracker } from './health.js';
 import { handleCompletions } from './handle-completions.js';
+import { errorToProxyResponse } from './dispatch.js';
 import { handleModels } from './handle-models.js';
 import { handleAnthropicRequest, type AnthropicEndpoint } from './anthropic-handler.js';
 import { handleMcpRequest } from './mcp-handler.js';
 import { createLogger } from './logger.js';
+import { UnknownRouteError } from './router.js';
 import { RouteTokenProvider } from './token-provider.js';
 import { stripTrailingSlashes } from './url-utils.js';
 import type { ProxyConfig } from './types.js';
@@ -31,8 +33,8 @@ const log = createLogger('openclaw-infer-passthrough');
 
 const COMPLETIONS_PATH_RE = /^\/(?:([a-zA-Z0-9_-]+)\/)?v1\/chat\/completions\/?$/;
 
-/** `GET /openai/v1/models` — model discovery for the `openai` seat's OpenClaw custom-provider `baseUrl` (imajin-ai#2201). */
-const MODELS_PATH_RE = /^\/openai\/v1\/models\/?$/;
+/** `GET /openai/v1/models` — model discovery for the `openai` seat's OpenClaw custom-provider `baseUrl` (imajin-ai#2201); other providers' `baseUrl`s (`/xai/v1`) and the bare `/v1` form are accepted too (#2453). */
+const MODELS_PATH_RE = /^\/(?:([a-zA-Z0-9_-]+)\/)?v1\/models\/?$/;
 
 /** `/anthropic/v1/messages` or `/anthropic/v1/messages/count_tokens` — the fixed prefix a container points `ANTHROPIC_BASE_URL` at (imajin-ai#1959). */
 const ANTHROPIC_PATH_RE = /^\/anthropic\/v1\/messages(\/count_tokens)?\/?$/;
@@ -84,7 +86,19 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-async function writeProxyResponse(res: ServerResponse, status: number, headers: Record<string, string>, body: Response['body']): Promise<void> {
+/**
+ * Single choke point for every proxied response: records the status in the
+ * health tracker (imajin-ai#2453 — `/healthz` must reflect passthrough
+ * liveness, not just the kernel/fallback decision) before writing it out.
+ */
+async function writeProxyResponse(
+  res: ServerResponse,
+  health: HealthTracker,
+  status: number,
+  headers: Record<string, string>,
+  body: Response['body'],
+): Promise<void> {
+  health.recordPassthroughStatus(status);
   res.writeHead(status, headers);
   if (!body) {
     res.end();
@@ -104,6 +118,28 @@ function mcpResourceAudience(config: ProxyConfig): string {
   return `${stripTrailingSlashes(config.mcpPublicUrl)}/mcp`;
 }
 
+/**
+ * Last-resort handler for anything a route handler threw. Known failures
+ * (mint refused → 401, kernel/upstream unreachable → 502, unknown route →
+ * 404) keep their real status instead of a generic 500 (imajin-ai#2453); only
+ * a genuinely unexpected error is reported as `internal_error`.
+ */
+async function writeErrorResponse(res: ServerResponse, health: HealthTracker, err: unknown): Promise<void> {
+  const detail = err instanceof Error ? err.message : String(err);
+  const mapped = res.headersSent ? null : errorToProxyResponse(err);
+  if (mapped) {
+    log.warn({ err: detail, status: mapped.status }, 'request failed');
+    await writeProxyResponse(res, health, mapped.status, mapped.headers, mapped.body).catch(() => res.end());
+    return;
+  }
+  log.error({ err: detail }, 'unhandled request error');
+  health.recordPassthroughStatus(500);
+  if (!res.headersSent) {
+    res.writeHead(500, { 'Content-Type': 'application/json' });
+  }
+  res.end(JSON.stringify({ error: 'internal_error', message: 'The passthrough shim failed unexpectedly' }));
+}
+
 export function createProxyServer(config: ProxyConfig) {
   const health = new HealthTracker();
   const tokenProviders = new Map<string, RouteTokenProvider>();
@@ -113,7 +149,7 @@ export function createProxyServer(config: ProxyConfig) {
     let provider = tokenProviders.get(routeId);
     if (!provider) {
       const route = config.routes.find((r) => r.id === routeId);
-      if (!route) throw new Error(`Unknown route '${routeId}'`);
+      if (!route) throw new UnknownRouteError(routeId);
       // The `mcp` route mints with NO scope narrowing (`null`) and binds the
       // token to the kernel's MCP resource audience — every other route keeps
       // the pre-#2368 default (`infer:completions`, no audience). See
@@ -155,11 +191,7 @@ export function createProxyServer(config: ProxyConfig) {
 
   return createServer((req, res) => {
     void routeRequest(req, res, deps, anthropicDeps, mcpDeps, health).catch((err: unknown) => {
-      log.error({ err: err instanceof Error ? err.message : String(err) }, 'unhandled request error');
-      if (!res.headersSent) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-      }
-      res.end(JSON.stringify({ error: 'internal_error', message: 'The passthrough shim failed unexpectedly' }));
+      void writeErrorResponse(res, health, err);
     });
   });
 }
@@ -181,16 +213,17 @@ async function routeRequest(
     return;
   }
 
-  if (req.method === 'GET' && MODELS_PATH_RE.test(url.pathname)) {
-    const result = await handleModels(deps);
-    await writeProxyResponse(res, result.status, result.headers, result.body);
+  const modelsMatch = req.method === 'GET' ? MODELS_PATH_RE.exec(url.pathname) : null;
+  if (modelsMatch) {
+    const result = await handleModels(deps, modelsMatch[1]);
+    await writeProxyResponse(res, health, result.status, result.headers, result.body);
     return;
   }
 
   if (req.method === 'POST' && MCP_PATH_RE.test(url.pathname)) {
     const bodyText = await readBody(req);
     const result = await handleMcpRequest(mcpDeps, { bodyText, ...readMcpHeaders(req) });
-    await writeProxyResponse(res, result.status, result.headers, result.body);
+    await writeProxyResponse(res, health, result.status, result.headers, result.body);
     return;
   }
 
@@ -205,7 +238,7 @@ async function routeRequest(
       anthropicVersion: req.headers['anthropic-version'] as string | undefined,
       anthropicBeta: req.headers['anthropic-beta'] as string | undefined,
     });
-    await writeProxyResponse(res, result.status, result.headers, result.body);
+    await writeProxyResponse(res, health, result.status, result.headers, result.body);
     return;
   }
 
@@ -222,7 +255,7 @@ async function routeRequest(
     bodyText,
     ...readCorrelationHeaders(req),
   });
-  await writeProxyResponse(res, result.status, result.headers, result.body);
+  await writeProxyResponse(res, health, result.status, result.headers, result.body);
 }
 
 export function startServer(config: ProxyConfig = loadConfig()): ReturnType<typeof createServer> {

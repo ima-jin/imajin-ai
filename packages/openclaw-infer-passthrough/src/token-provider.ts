@@ -25,9 +25,26 @@
 import { randomBytes } from 'node:crypto';
 import { crypto } from '@imajin/auth';
 import type { MintedToken } from './types.js';
+import { UpstreamUnavailableError } from './upstream.js';
 import { stripTrailingSlashes } from './url-utils.js';
 
 const APP_TOKEN_SCOPE = 'infer:completions';
+
+/**
+ * The kernel refused (or failed) the app-token mint. `status` is the kernel's
+ * HTTP status so callers can tell an auth/grant problem (4xx → surfaced as
+ * 401, never retried against a fallback) from a kernel outage (5xx → treated
+ * like any other kernel failure, imajin-ai#2453).
+ */
+export class TokenMintError extends Error {
+  constructor(
+    readonly status: number,
+    detail: string,
+  ) {
+    super(`Failed to mint app token: ${status} ${detail}`);
+    this.name = 'TokenMintError';
+  }
+}
 
 /**
  * @param scope Single scope to narrow the mint to (must be one of the
@@ -62,17 +79,24 @@ export async function mintAppToken(
   // keeps `null` ones, so the two are not interchangeable here.
   const resolvedScope = scope === null ? undefined : scope;
 
-  const res = await fetch(`${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ appDid, attestationId, scope: resolvedScope, aud, nonce, timestamp, signature }),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ appDid, attestationId, scope: resolvedScope, aud, nonce, timestamp, signature }),
+    });
+  } catch (err) {
+    // Network failure reaching the kernel's mint endpoint: a kernel outage,
+    // not a shim bug — typed so it maps to a 502 / break-glass, not a 500.
+    throw new UpstreamUnavailableError('Kernel token endpoint', err instanceof Error ? err.message : String(err));
+  }
 
   if (!res.ok) {
     const body = (await res.json().catch(() => ({ error: res.statusText }))) as { error?: string };
     // Never interpolate the signature/challenge/nonce into this message —
     // only the kernel's own (non-secret) error string and HTTP status.
-    throw new Error(`Failed to mint app token: ${res.status} ${body.error ?? res.statusText}`);
+    throw new TokenMintError(res.status, body.error ?? res.statusText);
   }
 
   return (await res.json()) as MintedToken;

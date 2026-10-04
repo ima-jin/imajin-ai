@@ -1145,7 +1145,21 @@ paths:
       tags: [auth]
       operationId: resolveIdentity
       summary: Resolve a DID to its public key and metadata
-      description: Public endpoint. Returns did, publicKey, type, tier, and dfosDid (if chain exists).
+      description: |
+        Public endpoint. Returns did, publicKey, scope, subtype, tier, and dfosDid (if chain exists).
+
+        An agent is a first-class DID: `scope: actor`, `subtype: agent` (RFC-31 v2, #1758). For
+        such a DID, an **authenticated party to the relation** also receives `serviceOf` (#2407) —
+        the principal DID(s) that have bound it as an agent. Parties are the agent itself (its own
+        session DID) and a principal it serves (the session DID, or the group DID under
+        `X-Acting-As`); a principal sees only its own entry. Anonymous callers and third parties
+        do not get the field (it is omitted, not empty). `X-Acting-For` never widens visibility:
+        only the session DID is checked, never the principal being acted for. `serviceOf` is a
+        read-only view over active `role='agent'` `identity_members` rows; it confers no authority.
+      security:
+        - {}
+        - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - name: did
           in: path
@@ -1161,11 +1175,82 @@ paths:
                 properties:
                   did: { type: string }
                   publicKey: { type: string, description: "Ed25519 public key (hex)" }
-                  type: { type: string }
+                  scope: { type: string, example: actor }
+                  subtype: { type: string, nullable: true, example: agent }
                   tier: { type: string }
                   dfosDid: { type: string }
+                  serviceOf:
+                    type: array
+                    items: { type: string, example: "did:imajin:abc123" }
+                    description: Present only for an actor/agent, and only to a party to the relation (see above).
         "404":
           description: Identity not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/identity/{did}/agents:
+    get:
+      tags: [auth]
+      operationId: listServingAgents
+      summary: A principal's serving agents and their live connection state (#2407, RFC-31 Phase 1)
+      description: |
+        Resolves a principal DID to the `actor/agent` DID(s) bound to it via `serviceOf`, each with
+        the live state of that agent DID's own authenticated WebSocket to the kernel — the
+        plugin's outbound connection. The kernel addresses the agent DID, never a gateway.
+
+        `connection.state` is `connected`, `disconnected`, or `unknown`. `unknown` means the check
+        itself could not be completed and MUST NOT be treated as `disconnected`.
+
+        Read-only, no new authority. Only the principal itself may call this: the caller's own
+        session DID, or the group DID it operates as via `X-Acting-As`. Calls under
+        `X-Acting-For` are refused, and an `actor/agent` session can only ever read the list for
+        its own DID. Suspended agents, removed bindings, and `role='agent'` rows whose member is
+        not an `actor/agent` are not listed.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Serving agents (possibly empty)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  principal: { type: string }
+                  agents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        handle: { type: string, nullable: true }
+                        name: { type: string, nullable: true }
+                        scope: { type: string, enum: [actor] }
+                        subtype: { type: string, enum: [agent] }
+                        servingSince: { type: string, format: date-time, nullable: true }
+                        connection:
+                          type: object
+                          properties:
+                            state: { type: string, enum: [connected, disconnected, unknown] }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is not the principal, or is acting under X-Acting-For
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Resolution failed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

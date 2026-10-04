@@ -252,8 +252,13 @@ function validateTaxEntry(tax: unknown, i: number): string[] {
   return errors;
 }
 
-/** Validate the optional top-level `taxes[]` field (#2419). Absent entirely for manifests that predate/don't use trust-liability tax. */
-function validateTaxes(taxes: unknown): string[] {
+/**
+ * Validate the optional top-level `taxes[]` field (#2419). Absent entirely for manifests that predate/don't use trust-liability tax.
+ * Exported (#2435) so the generic checkout path — whose manifest is the
+ * share-based `chain` shape and so can't go through `validateManifest` — can
+ * apply the identical per-row rules before the webhook writes tax ledger rows.
+ */
+export function validateTaxes(taxes: unknown): string[] {
   if (taxes === undefined) return [];
   if (!Array.isArray(taxes)) return ["taxes must be an array"];
   const errors: string[] = [];

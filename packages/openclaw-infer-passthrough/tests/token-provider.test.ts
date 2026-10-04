@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { generateKeypair, crypto } from '@imajin/auth';
-import { mintAppToken, RouteTokenProvider } from '../src/token-provider.js';
+import { mintAppToken, RouteTokenProvider, TokenMintError } from '../src/token-provider.js';
+import { UpstreamUnavailableError } from '../src/upstream.js';
 
 const APP_DID = 'did:imajin:openclaw-app';
 const ATTESTATION_ID = 'att_test_infer_completions';
@@ -190,5 +191,31 @@ describe('RouteTokenProvider', () => {
     // A second call reuses the cached token/scopes rather than minting again.
     await provider.getScopes();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('mintAppToken — typed failures (imajin-ai#2453)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('throws a TokenMintError carrying the kernel status on a non-2xx mint', async () => {
+    const keypair = generateKeypair();
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: 'invalid signature' }, 401)));
+
+    const err = await mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID).catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(TokenMintError);
+    expect((err as TokenMintError).status).toBe(401);
+    expect((err as TokenMintError).message).toBe('Failed to mint app token: 401 invalid signature');
+  });
+
+  it('wraps a network failure reaching the mint endpoint in UpstreamUnavailableError', async () => {
+    const keypair = generateKeypair();
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new TypeError('fetch failed');
+    }));
+
+    await expect(mintAppToken('https://kernel.test', APP_DID, keypair.privateKey, ATTESTATION_ID)).rejects.toBeInstanceOf(UpstreamUnavailableError);
   });
 });

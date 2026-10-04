@@ -57,6 +57,16 @@
  * claim kept; nothing readable → generate, with an ERROR naming any
  * grantee left on a dead key. A boot never re-keys a shared secret.
  *
+ * ## The node's own grant never expires (#2451)
+ * The self-grant is how the kernel reads its own secret, so a TTL on it can
+ * only ever become a lockout (`not fetchable (status: expired)` on every
+ * lookup, then an env fallback nobody sees). A pre-#2446 rotate stamped one
+ * via `VAULT_GRANT_TTL_DAYS`, and re-tagging used to keep it. Now the re-tag
+ * AND every boot that finds an expiring self-grant clear it — re-signing the
+ * grant with the node key (`expiresAt` is part of the signed payload), no
+ * re-seal, no new key. Where the node cannot re-sign (Tier 1, foreign signer,
+ * erased key material) it WARNs with the expiry date instead.
+ *
  * ## Rotation (#2446)
  * The lookup resolves the CURRENT grant for `(subject, grantedTo, purpose)`
  * by filtering on `status = 'active'`. Rotation (`rotateAndStore` →
@@ -86,7 +96,15 @@ import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity } from './sealing';
 import { VaultDelegationError } from './errors';
 import { INTERNAL_SECRET_FIELD_PREFIX, isInternalSecretField } from './internal-secret-field';
-import { sealAndGrantStaticSecret, fetchGrantSecret, ackGrant, loadAndUnseal } from './index';
+import {
+  sealAndGrantStaticSecret,
+  fetchGrantSecret,
+  ackGrant,
+  loadAndUnseal,
+  clearSelfGrantExpiry,
+  activeGrantTuple,
+  type DbExecutor,
+} from './index';
 import { ensureVaultHotReloadReactorRegistered, subscribeToSecret } from './subscribe';
 
 const log = createLogger('kernel');
@@ -136,6 +154,8 @@ function sleep(ms: number): Promise<void> {
 
 interface ActiveInternalSecretGrant {
   grantId: string;
+  /** Set only on a grant that will stop being fetchable — see {@link ensureSelfGrantNeverExpires}. */
+  expiresAt: Date | null;
 }
 
 /**
@@ -146,7 +166,7 @@ interface ActiveInternalSecretGrant {
  */
 async function findActiveGrant(ownerDid: string, purpose: string): Promise<ActiveInternalSecretGrant | undefined> {
   const [row] = await db
-    .select({ grantId: vaultDelegationGrants.id })
+    .select({ grantId: vaultDelegationGrants.id, expiresAt: vaultDelegationGrants.expiresAt })
     .from(vaultDelegationGrants)
     .where(
       and(
@@ -157,7 +177,33 @@ async function findActiveGrant(ownerDid: string, purpose: string): Promise<Activ
       ),
     )
     .limit(1);
-  return row ? { grantId: row.grantId } : undefined;
+  return row ? { grantId: row.grantId, expiresAt: row.expiresAt instanceof Date ? row.expiresAt : null } : undefined;
+}
+
+/**
+ * Make the node's own grant non-expiring (#2451) so it can never silently
+ * lock the kernel out of its own secret. Best effort by design: a failure
+ * here must not turn a boot that could still read the secret into one that
+ * cannot, so it is logged and the caller carries on. Where the node cannot
+ * re-sign the grant itself, WARN with the date so an operator can rotate.
+ */
+async function ensureSelfGrantNeverExpires(purpose: string, grantId: string): Promise<void> {
+  try {
+    const result = await clearSelfGrantExpiry(grantId);
+    if (result.status === 'cleared') {
+      log.warn(
+        { purpose, grantId, previousExpiresAt: result.previousExpiresAt.toISOString() },
+        "getInternalSecret: the node's own grant carried an expiry — cleared it so the kernel can never lock itself out (#2451)",
+      );
+    } else if (result.status === 'blocked') {
+      log.warn(
+        { purpose, grantId, expiresAt: result.expiresAt.toISOString(), reason: result.reason },
+        "getInternalSecret: the node's own grant expires and the node cannot re-sign it itself — rotate it from /admin/vault before that date or the kernel falls back to env (#2451)",
+      );
+    }
+  } catch (err) {
+    log.error({ err: String(err), purpose, grantId }, 'getInternalSecret: could not clear the self-grant expiry (non-fatal) (#2451)');
+  }
 }
 
 /** Fetch an existing self-granted secret and send its one deferred `used` ack. */
@@ -198,11 +244,17 @@ const DEFAULT_SECRET_GENERATOR: SecretGenerator = () => randomBytes(32).toString
  *
  * Supersedes the prior self-grant for the field (whatever its purpose) via
  * `sealAndGrantStaticSecret`'s own rotation semantics.
+ *
+ * With `tx` (operator rotation, #2451) the grant and the provisions row are
+ * written on that transaction and the vault entry is NOT persisted: the
+ * caller saves it with `vaultService.set(entry)` as the last step inside the
+ * same transaction, so a failure anywhere rolls everything back.
  */
 export async function sealAndRecordInternalSecret(
   ownerDid: string,
   purpose: string,
   value: string,
+  tx?: DbExecutor,
 ): Promise<{ entry: VaultEntry; grantId: string }> {
   const field = internalSecretField(purpose);
   const { entry, grantId } = await sealAndGrantStaticSecret(field, value, {
@@ -210,6 +262,7 @@ export async function sealAndRecordInternalSecret(
     granteeDid: ownerDid,
     purpose,
     oneTime: false,
+    tx,
   });
 
   if (!grantId) {
@@ -223,7 +276,7 @@ export async function sealAndRecordInternalSecret(
     );
   }
 
-  await recordProvisionGrant(ownerDid, purpose, grantId);
+  await recordProvisionGrant(ownerDid, purpose, grantId, tx);
   return { entry, grantId };
 }
 
@@ -232,8 +285,13 @@ export async function sealAndRecordInternalSecret(
  * row when none exists (a field imported/rotated before it was ever
  * self-provisioned). Upsert on the same unique key the claim uses.
  */
-async function recordProvisionGrant(ownerDid: string, purpose: string, grantId: string): Promise<void> {
-  await db
+async function recordProvisionGrant(
+  ownerDid: string,
+  purpose: string,
+  grantId: string,
+  executor: DbExecutor = db,
+): Promise<void> {
+  await executor
     .insert(internalSecretProvisions)
     .values({ id: generateId('isp'), ownerDid, purpose, field: internalSecretField(purpose), grantId })
     .onConflictDoUpdate({
@@ -377,14 +435,7 @@ async function findSelfGrantForField(
       expiresAt: vaultDelegationGrants.expiresAt,
     })
     .from(vaultDelegationGrants)
-    .where(
-      and(
-        eq(vaultDelegationGrants.subject, ownerDid),
-        eq(vaultDelegationGrants.grantedTo, ownerDid),
-        eq(vaultDelegationGrants.field, field),
-        eq(vaultDelegationGrants.status, 'active'),
-      ),
-    );
+    .where(activeGrantTuple({ subject: ownerDid, grantedTo: ownerDid, field }));
   const now = Date.now();
   const live = rows.find((row) => !(row.expiresAt instanceof Date) || row.expiresAt.getTime() > now);
   return live ? { id: live.id, purpose: live.purpose ?? null } : undefined;
@@ -465,6 +516,7 @@ async function adoptOrGenerate(
     const value = await loadAndUnseal(field);
     if (value !== undefined) {
       const grantId = await retagSelfGrant(ownerDid, purpose, selfGrant.id);
+      await ensureSelfGrantNeverExpires(purpose, grantId);
       log.warn(
         { purpose, field, grantId, previousGrantId: stranded?.grantId ?? null },
         'getInternalSecret: no purpose-tagged grant, but the field is readable — re-tagged the existing grant and kept its value (#2446)',
@@ -526,6 +578,11 @@ async function resolveInternalSecret(purpose: string, generate: SecretGenerator)
 
   const existing = await findActiveGrant(ownerDid, purpose);
   if (existing) {
+    // A grant already tagged by a pre-#2451 boot can still carry the expiry a
+    // pre-#2446 rotate stamped on it — clear it before it locks the kernel out.
+    if (existing.expiresAt) {
+      await ensureSelfGrantNeverExpires(purpose, existing.grantId);
+    }
     return fetchAndAck(ownerDid, existing.grantId, purpose);
   }
 
