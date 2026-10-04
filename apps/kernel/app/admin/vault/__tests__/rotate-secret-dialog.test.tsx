@@ -1,11 +1,10 @@
 // @vitest-environment jsdom
 /**
- * RotateSecretDialog (#2450 step 1) — rotating re-seals under a new key and
- * only re-grants the node's own self-grant; any OTHER active grantee's copy
- * of the wrapped key silently stops decrypting. Pins that a rotate with
- * zero other grantees behaves exactly as before, and a rotate with N>0
- * shows the count + list and blocks Rotate until the operator types the
- * field name to confirm.
+ * RotateSecretDialog (#2450 step 1) — rotating re-seals under a new key, so
+ * every OTHER active grantee's copy of the wrapped key would stop decrypting.
+ * The server re-issues them on rotate; the dialog lists who is affected and
+ * only blocks Rotate when the server cannot re-issue (Tier 1 custody) or the
+ * grantee lookup failed (unknown is never treated as zero).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
@@ -54,7 +53,7 @@ describe('no other grantees', () => {
     installGranteesFetch([]);
     const { onSubmit } = renderDialog();
 
-    await waitFor(() => expect(screen.queryByText(/will need re-issue/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/will be re-issued/)).toBeNull());
 
     fireEvent.change(valueInput(), { target: { value: 'new-secret-value' } });
     expect(rotateButton()).toHaveProperty('disabled', false);
@@ -64,76 +63,60 @@ describe('no other grantees', () => {
   });
 });
 
-describe('N>0 other grantees (#2450)', () => {
-  it('shows the count and each grantee, and blocks Rotate until the field name is typed', async () => {
-    installGranteesFetch([
-      { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus-service-abc123', purpose: 'corpus-sync', oneTime: false, expiresAt: null },
-      { grantId: 'vdg_2', grantedTo: 'did:imajin:warp-runner-xyz789', purpose: null, oneTime: true, expiresAt: null },
-    ]);
+const CORPUS = { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus-service-abc123', purpose: 'corpus-sync', oneTime: false, expiresAt: null };
+const RUNNER = { grantId: 'vdg_2', grantedTo: 'did:imajin:warp-runner-xyz789', purpose: null, oneTime: true, expiresAt: null };
+
+describe('N>0 other grantees, rotate re-issues them (#2450)', () => {
+  it('shows the count and each grantee, and does not block Rotate', async () => {
+    installGranteesFetch([CORPUS, RUNNER], { reissuedOnRotate: true });
     const { onSubmit } = renderDialog();
 
-    await waitFor(() => expect(screen.getByText(/2 active grantees will need re-issue/)).toBeDefined());
+    await waitFor(() => expect(screen.getByText(/2 active grantees will be re-issued on the new key/)).toBeDefined());
     expect(screen.getByText(/corpus-sync/)).toBeDefined();
-    expect(screen.getByText(/stop decrypting/)).toBeDefined();
-
-    fireEvent.change(valueInput(), { target: { value: 'new-secret-value' } });
-    expect(rotateButton()).toHaveProperty('disabled', true);
-
-    fireEvent.click(rotateButton());
-    expect(onSubmit).not.toHaveBeenCalled();
-
-    fireEvent.change(screen.getByLabelText(/Type/), { target: { value: FIELD } });
-    expect(rotateButton()).toHaveProperty('disabled', false);
-
-    fireEvent.click(rotateButton());
-    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ field: FIELD, value: 'new-secret-value' }));
-  });
-
-  it('re-locks the confirmation gate if the dialog is reopened', async () => {
-    installGranteesFetch([{ grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null }]);
-    const { rerender } = render(
-      <RotateSecretDialog field={FIELD} open submitting={false} onClose={vi.fn()} onSubmit={vi.fn()} />,
-    );
-    await waitFor(() => expect(screen.getByText(/will need re-issue/)).toBeDefined());
-    fireEvent.change(screen.getByLabelText(/Type/), { target: { value: FIELD } });
-    expect(rotateButton()).toHaveProperty('disabled', true); // still needs a value
-
-    rerender(<RotateSecretDialog field={null} open={false} submitting={false} onClose={vi.fn()} onSubmit={vi.fn()} />);
-    rerender(<RotateSecretDialog field={FIELD} open submitting={false} onClose={vi.fn()} onSubmit={vi.fn()} />);
-
-    await waitFor(() => expect(screen.getByText(/will need re-issue/)).toBeDefined());
-    fireEvent.change(valueInput(), { target: { value: 'x' } });
-    expect(rotateButton()).toHaveProperty('disabled', true); // confirm text was reset on close
-  });
-});
-
-describe('internal-secret:* field (exempt — rotate re-issues grantees, #2450)', () => {
-  const INTERNAL_FIELD = 'internal-secret:kernel.attestation-internal-api-key';
-
-  it('needs no typed confirmation, shows no warning, and says grantees are re-issued automatically', async () => {
-    installGranteesFetch([], { reissuedOnRotate: true });
-    const { onSubmit } = renderDialog({ field: INTERNAL_FIELD });
-
-    await waitFor(() => expect(screen.getByText(/re-issued automatically/)).toBeDefined());
-    expect(screen.queryByText(/will need re-issue/)).toBeNull();
-    expect(screen.queryByText(/not do that automatically yet/)).toBeNull();
+    expect(screen.getByText(/operator-initiated/)).toBeDefined();
     expect(screen.queryByLabelText(/Type/)).toBeNull();
 
     fireEvent.change(valueInput(), { target: { value: 'new-secret-value' } });
     expect(rotateButton()).toHaveProperty('disabled', false);
 
     fireEvent.click(rotateButton());
-    expect(onSubmit).toHaveBeenCalledTimes(1);
     const [input] = onSubmit.mock.calls[0];
-    expect(input).toMatchObject({ field: INTERNAL_FIELD, value: 'new-secret-value' });
+    expect(input).toMatchObject({ field: FIELD, value: 'new-secret-value' });
     expect(input).not.toHaveProperty('confirmField');
   });
 
-  it('does not show the auto-reissue note for a guarded (non-exempt) field', async () => {
-    installGranteesFetch([], { reissuedOnRotate: false });
+  it('uses the singular for one grantee', async () => {
+    installGranteesFetch([CORPUS], { reissuedOnRotate: true });
     renderDialog();
+    await waitFor(() => expect(screen.getByText(/1 active grantee will be re-issued/)).toBeDefined());
+  });
+});
 
-    await waitFor(() => expect(screen.queryByText(/Checking for other active grantees/)).toBeNull());
-    expect(screen.queryByText(/re-issued automatically/)).toBeNull();
+describe('N>0 other grantees, rotate cannot re-issue them (Tier 1, #2450)', () => {
+  it('lists them and keeps Rotate disabled', async () => {
+    installGranteesFetch([CORPUS, RUNNER], { reissuedOnRotate: false });
+    const { onSubmit } = renderDialog();
+
+    await waitFor(() => expect(screen.getByText(/2 active grantees cannot be re-issued/)).toBeDefined());
+    expect(screen.getByText(/corpus-sync/)).toBeDefined();
+    expect(screen.getByText(/Revoke them first/)).toBeDefined();
+
+    fireEvent.change(valueInput(), { target: { value: 'new-secret-value' } });
+    expect(rotateButton()).toHaveProperty('disabled', true);
+    fireEvent.click(rotateButton());
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+describe('grantee lookup failure (#2450)', () => {
+  it('is treated as unknown, not zero: shows the error and blocks Rotate', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500, json: async () => ({}) }) as unknown as Response));
+    const { onSubmit } = renderDialog();
+
+    await waitFor(() => expect(screen.getByText(/Could not check for other active grantees/)).toBeDefined());
+    fireEvent.change(valueInput(), { target: { value: 'new-secret-value' } });
+    expect(rotateButton()).toHaveProperty('disabled', true);
+    fireEvent.click(rotateButton());
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

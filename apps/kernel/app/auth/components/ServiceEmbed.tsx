@@ -128,7 +128,7 @@ export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>)
       }
     }
 
-    check();
+    void check();
     return () => {
       cancelled = true;
     };

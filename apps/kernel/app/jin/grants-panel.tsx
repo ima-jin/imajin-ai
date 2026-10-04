@@ -26,6 +26,7 @@
  * lives on `/auth/agents`) — this panel only links to it.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useFlashNotice } from './use-flash-notice';
 import Link from 'next/link';
 
 type GrantSourceKind = 'auth-grant' | 'auth-membership' | 'vault-delegation' | 'access-bearer' | 'app-authorization';
@@ -236,13 +237,9 @@ export function GrantsPanel() {
   const [showRevoked, setShowRevoked] = useState(false);
   const [confirmingId, setConfirmingId] = useState('');
   const [busyId, setBusyId] = useState('');
-  const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const notify = useCallback((type: 'ok' | 'err', msg: string) => {
-    setFlash({ type, msg });
-    setTimeout(() => setFlash(null), 5000);
-  }, []);
+  const { flash, notify } = useFlashNotice(5000);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
