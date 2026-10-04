@@ -165,30 +165,82 @@ describe('resolveConnectedAccountFee — basisAmount vs gross (#2419)', () => {
   });
 });
 
-describe('validateCheckoutBody — reject taxes[] on the generic checkout path (#2419 review fix 2)', () => {
+describe('validateCheckoutBody — taxes[] on the generic checkout path (#2435)', () => {
+  const taxRow = {
+    jurisdiction: 'CA-ON',
+    kind: 'GST/HST',
+    rateBps: 1300,
+    basisAmount: 10_000,
+    amount: 1300,
+    registrationNumber: '123456789RT0001',
+    collectorDid: SELLER_DID,
+    remitTo: 'did:imajin:authority:ca-cra',
+  };
   const baseBody: CheckoutBody = {
     items: [{ name: 'Ticket', amount: 10_000, quantity: 1 }],
     currency: 'CAD',
     successUrl: 'https://x/success',
     cancelUrl: 'https://x/cancel',
+    sellerDid: SELLER_DID,
   };
+  const taxedBody = (overrides: Record<string, unknown> = {}): CheckoutBody => ({
+    ...baseBody,
+    fairManifest: { fair: '1.2', chain: [{ role: 'seller', share: 0.97 }], taxes: [taxRow], ...overrides },
+  });
 
   it('accepts a body without taxes (unchanged behavior)', () => {
     const result = validateCheckoutBody(baseBody);
     expect(result.ok).toBe(true);
   });
 
-  it('rejects a body whose fairManifest carries a non-empty taxes[]', () => {
-    const result = validateCheckoutBody({
-      ...baseBody,
-      fairManifest: { taxes: [{ jurisdiction: 'CA-ON', kind: 'GST/HST', amount: 1300, basisAmount: 10_000 }] },
-    });
-    expect(result).toMatchObject({ ok: false, status: 400 });
-    if (!result.ok) expect(result.error).toMatch(/taxes/);
+  it('no longer rejects a well-formed taxes[] (the #2426 400 is lifted)', () => {
+    expect(validateCheckoutBody(taxedBody())).toEqual({ ok: true });
   });
 
-  it('accepts a body whose fairManifest carries an EMPTY taxes[]', () => {
+  it('accepts a body whose fairManifest carries an EMPTY taxes[] and no 1.2 stamp', () => {
     const result = validateCheckoutBody({ ...baseBody, fairManifest: { taxes: [] } });
     expect(result.ok).toBe(true);
+  });
+
+  it.each([undefined, '1.0', '1.1', '1.20'])('rejects taxes[] when fair is %s — it must be exactly "1.2"', (fair) => {
+    const result = validateCheckoutBody(taxedBody({ fair }));
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/fair must be "1.2"/);
+  });
+
+  it('rejects a "1.2" stamp with no taxes[] to justify it', () => {
+    const result = validateCheckoutBody({ ...baseBody, fairManifest: { fair: '1.2', chain: [] } });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/requires a non-empty taxes/);
+  });
+
+  it('rejects a malformed tax row using the shared .fair taxes[] rules', () => {
+    const result = validateCheckoutBody(taxedBody({ taxes: [{ ...taxRow, registrationNumber: '' }] }));
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/registrationNumber/);
+  });
+
+  it('rejects a tax amount that does not match basisAmount × rateBps', () => {
+    const result = validateCheckoutBody(taxedBody({ taxes: [{ ...taxRow, amount: 1 }] }));
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/does not match basisAmount/);
+  });
+
+  it('rejects a basisAmount that is not the merchandise subtotal', () => {
+    const result = validateCheckoutBody(taxedBody({ taxes: [{ ...taxRow, basisAmount: 9_000, amount: 1170 }] }));
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/merchandise subtotal/);
+  });
+
+  it('rejects taxes[] without a sellerDid (no connected account to hold the tax in trust)', () => {
+    const result = validateCheckoutBody({ ...taxedBody(), sellerDid: undefined });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/requires sellerDid/);
+  });
+
+  it('rejects a collectorDid that is not the seller', () => {
+    const result = validateCheckoutBody(taxedBody({ taxes: [{ ...taxRow, collectorDid: 'did:imajin:someone-else' }] }));
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    if (!result.ok) expect(result.error).toMatch(/collectorDid/);
   });
 });
