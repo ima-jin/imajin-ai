@@ -142,8 +142,9 @@ function groupByTurnAndIssuer(rows: readonly StoredEvidenceRow[]): Map<string, S
 }
 
 function turnLinkage(turn: TurnEventRef | null, hash: string): TurnLinkage {
-  if (!turn || turn.outputHash === null) return 'unresolved';
-  return normalizeHash(turn.outputHash) === hash ? 'resolved' : 'mismatch';
+  const turnHash = turn?.outputHash ?? null;
+  if (turnHash === null) return 'unresolved';
+  return normalizeHash(turnHash) === hash ? 'resolved' : 'mismatch';
 }
 
 async function usageLinkage(

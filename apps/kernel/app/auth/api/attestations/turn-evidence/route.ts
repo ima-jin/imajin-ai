@@ -32,7 +32,7 @@ export const dynamic = 'force-dynamic';
 
 const log = createLogger('kernel:turn-evidence');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
