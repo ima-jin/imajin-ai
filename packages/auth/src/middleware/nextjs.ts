@@ -8,7 +8,7 @@
 import { createLogger } from '@imajin/logger';
 const log = createLogger('auth');
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server.js';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;

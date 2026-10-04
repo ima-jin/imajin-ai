@@ -1,0 +1,24 @@
+{
+  "name": "@imajin/provision-bootstrap",
+  "version": "0.8.13",
+  "private": true,
+  "description": "Build-time ESM compile of scripts/lib/provision-service-bootstrap.ts (+ the kernel sources it imports) for scripts/provision-service-bootstrap.mjs (#2485)",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "dependencies": {
+    "@imajin/auth": "workspace:*",
+    "@imajin/bus": "workspace:*",
+    "@imajin/db": "workspace:*",
+    "@imajin/logger": "workspace:*",
+    "@imajin/vault-core": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "next": ">=15.5.24"
+  },
+  "devDependencies": {
+    "tsup": "^8.0.0"
+  },
+  "scripts": {
+    "build": "tsup"
+  }
+}
