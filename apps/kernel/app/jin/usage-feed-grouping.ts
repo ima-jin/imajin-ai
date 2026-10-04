@@ -116,7 +116,8 @@ function isTurnUsageRow(value: unknown): value is TurnUsageRow {
     typeof cost === 'object' && cost !== null &&
     isNumber(cost.input) && isNumber(cost.output) && isNumber(cost.total) &&
     isStringOrNull(row.channel) &&
-    (isNumber(row.durationMs) || row.durationMs === null)
+    (isNumber(row.durationMs) || row.durationMs === null) &&
+    (row.evidenceCount === undefined || isNumber(row.evidenceCount))
   );
 }
 

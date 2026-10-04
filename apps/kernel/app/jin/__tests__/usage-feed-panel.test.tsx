@@ -418,6 +418,22 @@ describe('row fields', () => {
     expect(within(row).getByText('$0.2400')).toBeDefined();
   });
 
+  it('shows how many signed evidence attestations each turn has (#1978), 0 when the field is absent', async () => {
+    await renderPanel([
+      turn({ id: 'with', model: 'model/with-evidence', evidenceCount: 1234 }),
+      turn({ id: 'zero', model: 'model/zero-evidence', evidenceCount: 0 }),
+      turn({ id: 'absent', model: 'model/absent-evidence' }),
+    ]);
+
+    expect(screen.getByRole('columnheader', { name: 'Evidence' })).toBeDefined();
+    const evidenceCell = (model: string) =>
+      (screen.getByText(model).closest('tr') as HTMLElement).querySelector('td:last-child') as HTMLElement;
+    expect(evidenceCell('model/with-evidence').textContent).toBe('1,234');
+    expect(evidenceCell('model/zero-evidence').textContent).toBe('0');
+    expect(evidenceCell('model/absent-evidence').textContent).toBe('0');
+    expect(evidenceCell('model/with-evidence').getAttribute('title')).toContain('evidence');
+  });
+
   it('shows the full session id as a title attribute for hover, truncating the visible label', async () => {
     const longSession = 'agent:main:telegram:direct:8321865723';
     await renderPanel([turn({ id: 'row1', sessionKey: longSession })]);

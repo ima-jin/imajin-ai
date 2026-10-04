@@ -38,6 +38,102 @@ components:
       name: x-internal-key
       description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    TurnEvidencePayload:
+      type: object
+      description: |
+        Closed, redaction-safe vocabulary (#1978): hashes, DIDs and short identifiers only.
+        Any other key is rejected. `inputHash`/`outputHash` are `sha256:` + 64 lowercase hex
+        over the tool call's input/output (string -> UTF-8 bytes; structured value -> canonical
+        JSON with sorted keys; see `hashToolIo` in `@imajin/auth`).
+      required: [type, turnEventId, turnOutputHash, agentDid, principalDid, tool, inputHash, outputHash, observedAt, seq]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [agent.turn.evidence] }
+        turnEventId: { type: string, description: "Id of the turn event this evidence supports (the #1970 mention-ledger event)." }
+        turnOutputHash: { type: string, description: "outputHash of the turn itself — the claim this evidence supports; what GET /api/verify/turn/{hash} resolves." }
+        agentDid: { type: string }
+        principalDid: { type: string }
+        tool:
+          type: object
+          required: [name, provider]
+          additionalProperties: false
+          properties:
+            name: { type: string, example: web_fetch, description: "[A-Za-z0-9_.:-]{1,64}" }
+            provider: { type: string, example: openclaw }
+        inputHash: { type: string }
+        outputHash: { type: string }
+        outputRef: { type: string, description: "Optional media asset id of the retained raw output. Only for evidentiary tools (config allowlist); the asset must be owned by principalDid and hash to outputHash." }
+        usageRef: { type: string, description: "Optional id of the turn's agent.turn.usage attestation (#1863)." }
+        observedAt: { type: string, format: date-time, description: "ISO 8601 UTC, e.g. 2026-09-04T03:54:12Z" }
+        seq: { type: integer, minimum: 0, maximum: 9999, description: "Orders evidence within the turn; unique per (agent, turn)." }
+    TurnEvidenceIngestResult:
+      type: object
+      properties:
+        ok: { type: boolean }
+        turnEventId: { type: string }
+        attestations:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, example: "att_xxx" }
+              seq: { type: integer }
+        duplicateSeqs:
+          type: array
+          items: { type: integer }
+          description: Items skipped as idempotent replays.
+    TurnVerification:
+      type: object
+      properties:
+        hash: { type: string }
+        matches:
+          type: array
+          description: One entry per (turn, signer) with evidence committed under the hash.
+          items:
+            type: object
+            properties:
+              turnEventId: { type: string }
+              agentDid: { type: string }
+              signer:
+                type: object
+                properties:
+                  did: { type: string }
+                  keyId: { type: string, nullable: true, description: "Signer's current registered Ed25519 public key (hex); null if it no longer resolves." }
+              turn:
+                type: object
+                nullable: true
+                description: Minimal view of the resolved turn event; null until it exists.
+                properties:
+                  id: { type: string }
+                  eventType: { type: string }
+                  issuer: { type: string }
+                  occurredAt: { type: string, format: date-time }
+              linkage:
+                type: object
+                properties:
+                  turn: { type: string, enum: [resolved, unresolved, mismatch] }
+                  usage: { type: string, enum: [resolved, unresolved, none] }
+              signatureValid: { type: boolean, description: "Every evidence row's signature verifies." }
+              rejectedRows: { type: integer, description: "Rows under the hash that could not be read as valid evidence." }
+              valid: { type: boolean, description: "signatureValid, no rejected rows, and the turn event (if resolvable) agrees on the hash." }
+              evidence:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    attestationId: { type: string }
+                    seq: { type: integer }
+                    tool:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        provider: { type: string }
+                    inputHash: { type: string }
+                    outputHash: { type: string }
+                    observedAt: { type: string, format: date-time }
+                    issuedAt: { type: string, format: date-time }
+                    retained: { type: boolean, description: "Raw output is retained as a media asset (the reference is not disclosed)." }
+                    signatureValid: { type: boolean }
     DelegationAudience:
       type: object
       required: [type]
@@ -3043,6 +3139,123 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: Knock already responded to, or expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/attestations/turn-evidence:
+    post:
+      tags: [auth]
+      operationId: ingestTurnEvidence
+      summary: Signed batch ingest of agent.turn.evidence — tool I/O as the committed boundary of a turn (#1978)
+      description: |
+        Called once at turn finalization by the agent's harness hook (the OpenClaw Imajin
+        plugin) — never per tool call. Each item is one `agent.turn.evidence` attestation:
+        hashes of one tool call's input and output plus a timestamp, signed locally with the
+        agent's DID key over `turnEvidenceSigningMessage(payload, issued_at)` (`@imajin/auth`).
+        The signature is the credential; there is no session. The payload is a closed
+        vocabulary of hashes, DIDs and short identifiers — any other key is rejected, so raw
+        tool input/output and secrets cannot be persisted.
+
+        All-or-nothing: a bad signature, an agent with no authority over `principalDid`
+        (self, or an active `evidence:publish` delegation grant), an unresolvable `usageRef`,
+        or an `outputRef` that is not principal-owned / does not hash to `outputHash` /
+        names a tool outside the evidentiary allowlist rejects the whole batch before
+        anything is written. Replays are idempotent on (agent, turn, `seq`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [evidence]
+              properties:
+                evidence:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  description: One item per tool call; all items name the same turnEventId, turnOutputHash, agentDid and principalDid, with distinct `seq`.
+                  items:
+                    type: object
+                    required: [payload, issued_at, signature]
+                    properties:
+                      payload: { $ref: "#/components/schemas/TurnEvidencePayload" }
+                      issued_at: { type: integer, description: Unix epoch milliseconds the agent signed at (part of the signed form) }
+                      signature: { type: string, description: Ed25519 hex (128 chars) }
+      responses:
+        "201":
+          description: At least one evidence row was stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TurnEvidenceIngestResult" }
+        "200":
+          description: Every row was an idempotent replay; nothing new stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TurnEvidenceIngestResult" }
+        "400":
+          description: Malformed batch, unknown key in the payload, unresolvable agent DID, or invalid signature (`code` evidence_signature_invalid / evidence_agent_unknown)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Agent is not authorized to publish evidence for principalDid (`code` evidence_publisher_unauthorized)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: usageRef or outputRef check failed (`code` evidence_usage_ref_unresolved / evidence_tool_not_evidentiary / evidence_output_ref_invalid / evidence_output_ref_mismatch)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limited (per client IP); see Retry-After
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/verify/turn/{hash}:
+    get:
+      tags: [auth]
+      operationId: verifyTurnByHash
+      summary: Public, no-auth verification of a turn claim against its signed tool-call evidence (#1978)
+      description: |
+        `hash` is the turn's `outputHash` — the claim — as `sha256:<hex>` (bare 64-char hex is
+        accepted). Anyone can recompute the hash of the text they were shown and look it up
+        here without an account. Returns, per matching turn: the evidence chain (tool name,
+        input/output hashes, observed-at), the signer's DID and key id, per-row and overall
+        signature validity, and linkage status to the turn event and `agent.turn.usage`
+        attestation (`unresolved` until those records exist — never fabricated).
+
+        Signatures are re-verified from the stored row, so altering any stored byte reports
+        `signatureValid: false`. A hash nothing is committed under — including a claim altered
+        by one byte — is 404. Redaction-safe: hashes, tool names, timestamps and agent DIDs
+        only; never the principal, retained-output references, or turn payloads.
+      security: []
+      parameters:
+        - name: hash
+          in: path
+          required: true
+          schema: { type: string, example: "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae" }
+      responses:
+        "200":
+          description: Evidence chain(s) committed under the hash
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TurnVerification" }
+        "400":
+          description: Malformed hash
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No evidence is committed under this hash
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limited (per client IP, 30 requests/minute); see Retry-After
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
