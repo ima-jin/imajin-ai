@@ -12,6 +12,11 @@
 import { describe, it, expect, vi } from 'vitest';
 import { stubRegistryResolverEnv } from '@/src/lib/__tests__/registry-resolver-env';
 
+// Heavy suite (embedded PGlite / seed replay / dynamic imports): the 5000ms
+// default is too tight on contended CI runners (#2548). Scoped to this file;
+// the global default is intentionally left unchanged.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 const mocks = vi.hoisted(() => ({
   log: { warn: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));

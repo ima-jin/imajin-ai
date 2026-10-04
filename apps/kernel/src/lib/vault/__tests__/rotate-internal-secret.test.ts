@@ -24,7 +24,8 @@ import { unlink } from 'node:fs/promises';
 // fresh import), and the first one also pays the cold transform. ~1.6s for the
 // file on an idle machine, but under a loaded CI runner that first test can
 // outrun vitest's 5s default — a timeout, not a failure of what is under test.
-vi.setConfig({ testTimeout: 30_000 });
+// Scoped to this file; the global default is intentionally left unchanged (#2548).
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
