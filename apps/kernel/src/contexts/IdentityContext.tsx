@@ -57,7 +57,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
         setLoading(false);
       }
     }
-    checkSession();
+    void checkSession();
   }, []);
 
   const value = useMemo(() => ({ identity, loading, error }), [identity, loading, error]);

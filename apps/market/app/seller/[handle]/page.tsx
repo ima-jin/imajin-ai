@@ -39,7 +39,7 @@ function SellerPageContent() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [handle]);
 
   return (

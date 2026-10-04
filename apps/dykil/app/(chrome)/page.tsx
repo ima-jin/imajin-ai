@@ -18,7 +18,7 @@ export default function Home() {
       } catch { setIsLoggedIn(false); }
       finally { setCheckingAuth(false); }
     }
-    checkAuth();
+    void checkAuth();
   }, []);
 
   return (

@@ -70,7 +70,7 @@ export function BalanceBadge({ did, payUrl, authToken, className = '' }: Readonl
       }
     }
 
-    fetchBalance();
+    void fetchBalance();
 
     return () => {
       cancelled = true;

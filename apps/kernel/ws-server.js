@@ -285,9 +285,9 @@ async function handleAuthMessage(ws, meta, msg) {
   didSockets.get(authedDid).add(ws);
   ws.send(JSON.stringify({ type: 'connected' }));
   // Fire-and-forget, same as the cookie-auth path above (#2044).
-  notificationBacklog.replay(ws, authedDid);
+  void notificationBacklog.replay(ws, authedDid);
   if (didSockets.get(authedDid).size === 1) {
-    broadcastPresenceChange(authedDid, true);
+    void broadcastPresenceChange(authedDid, true);
   }
   console.log('[WS] Deferred auth succeeded for:', authedDid);
 }
@@ -382,7 +382,7 @@ async function ackNotification(id, did) {
 function handleNotificationAck(meta, msg) {
   if (typeof msg.id !== 'string' || !msg.id) return;
   if (!meta.did) return;
-  ackNotification(msg.id, meta.did);
+  void ackNotification(msg.id, meta.did);
 }
 
 /**
@@ -474,13 +474,13 @@ function cleanupSocket(ws, meta) {
   didSockets.delete(closeDid);
   // Fire-and-forget: both already swallow their own errors internally, and
   // neither result gates anything else in this cleanup.
-  updateLastSeen(closeDid);
+  void updateLastSeen(closeDid);
   for (const [convId, convTyping] of typingStatus.entries()) {
     if (convTyping.has(closeDid)) {
       handleStopTyping(convId, closeDid);
     }
   }
-  broadcastPresenceChange(closeDid, false);
+  void broadcastPresenceChange(closeDid, false);
 }
 
 function setupWebSocket(server) {
@@ -511,9 +511,9 @@ function setupWebSocket(server) {
         ws.send(JSON.stringify({ type: 'connected' }));
         // Fire-and-forget: a missed replay here is retried on the next
         // reconnect, never a reason to hold up the connection (#2044).
-        notificationBacklog.replay(ws, did);
+        void notificationBacklog.replay(ws, did);
         if (didSockets.get(did).size === 1) {
-          broadcastPresenceChange(did, true);
+          void broadcastPresenceChange(did, true);
         }
       } else {
         // Allow unauthenticated connection — must send 'auth' message first

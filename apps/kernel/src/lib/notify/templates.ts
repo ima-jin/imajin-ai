@@ -854,13 +854,17 @@ export const templates: NotifyTemplate[] = [
       subject: (_data) => 'Payment request settled',
       html: (data) => {
         const amount = escapeHtml(data.totalFormatted || 'This payment request');
-        const body = data.method === 'manual'
-          ? (data.role === 'issuer'
-            ? `You marked <strong style="color:#ffffff;">${amount}</strong> settled.`
-            : `<strong style="color:#ffffff;">${amount}</strong> was settled — the issuer marked this settled.`)
-          : (data.role === 'issuer'
-            ? `<strong style="color:#ffffff;">${amount}</strong> was settled automatically — confirmed by the platform.`
-            : `<strong style="color:#ffffff;">${amount}</strong> was settled — this was confirmed automatically (Stripe).`);
+        const strongAmount = `<strong style="color:#ffffff;">${amount}</strong>`;
+        let body: string;
+        if (data.method === 'manual') {
+          body = data.role === 'issuer'
+            ? `You marked ${strongAmount} settled.`
+            : `${strongAmount} was settled — the issuer marked this settled.`;
+        } else {
+          body = data.role === 'issuer'
+            ? `${strongAmount} was settled automatically — confirmed by the platform.`
+            : `${strongAmount} was settled — this was confirmed automatically (Stripe).`;
+        }
         return simpleEmailHtml('Payment request settled', body);
       },
     },

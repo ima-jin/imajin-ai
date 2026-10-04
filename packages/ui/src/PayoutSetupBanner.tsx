@@ -72,7 +72,7 @@ export function PayoutSetupBanner({
       }
     };
 
-    if (did) check();
+    if (did) void check();
     else setLoading(false);
   }, [did, payUrl]);
 

@@ -88,7 +88,7 @@ export default function LessonViewerPage() {
         setLoading(false);
       }
     }
-    load();
+    void load();
   }, [slug, lessonId]);
 
   async function markComplete() {

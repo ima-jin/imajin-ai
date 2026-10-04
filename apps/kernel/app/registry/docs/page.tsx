@@ -17,7 +17,7 @@ export default function DocsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/registry/api/specs')
+    void fetch('/registry/api/specs')
       .then(r => r.json())
       .then(data => {
         // Filter to services that have a spec endpoint (exclude meta: project, github, docs)

@@ -475,10 +475,10 @@ export default function DashboardPage() {
           action={confirmAction}
           onConfirm={() => {
             if (confirmAction.type === 'sold') {
-              patchStatus(confirmAction.id, 'sold');
+              void patchStatus(confirmAction.id, 'sold');
               setConfirmAction(null);
             } else {
-              removeListing(confirmAction.id);
+              void removeListing(confirmAction.id);
             }
           }}
           onCancel={() => setConfirmAction(null)}

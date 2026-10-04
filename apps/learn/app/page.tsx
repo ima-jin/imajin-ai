@@ -39,7 +39,7 @@ export default function DiscoveryPage() {
         setLoading(false);
       }
     }
-    loadCourses();
+    void loadCourses();
   }, []);
 
   const filtered = courses.filter(c =>

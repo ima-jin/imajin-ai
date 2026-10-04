@@ -137,18 +137,18 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      fetchNodes(null);
+      void fetchNodes(null);
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         locationRef.current = loc;
-        fetchNodes(loc);
+        void fetchNodes(loc);
       },
       () => {
         setGeoError('Location unavailable — showing all nodes');
-        fetchNodes(null);
+        void fetchNodes(null);
       },
       { timeout: 5000 }
     );
@@ -284,7 +284,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
       setTimeRemaining(left);
       if (left === 0) {
-        deactivate(session.sessionId);
+        void deactivate(session.sessionId);
         setState('idle');
       }
     };
@@ -305,7 +305,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
     tick();
     confirmTimer.current = setInterval(tick, 1000);
     autoDeclineTimer.current = setTimeout(() => {
-      handleConfirm(matchId, false);
+      void handleConfirm(matchId, false);
     }, Math.max(0, end - Date.now()));
   }
 
@@ -368,7 +368,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
         setTimeout(() => {
           const waveform = [...accelBuffer.current];
           const rotationRate = [...rotBuffer.current];
-          sendBumpEvent(waveform, rotationRate);
+          void sendBumpEvent(waveform, rotationRate);
         }, 250);
       }
     };
@@ -491,7 +491,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
   }
 
   function handleStop() {
-    if (session) deactivate(session.sessionId);
+    if (session) void deactivate(session.sessionId);
     setSession(null);
     sessionRef.current = null;
     setState('idle');
@@ -500,7 +500,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
   useEffect(() => {
     return () => {
       stopAccelerometer();
-      if (session) deactivate(session.sessionId);
+      if (session) void deactivate(session.sessionId);
       if (matchingTimer.current) clearTimeout(matchingTimer.current);
     };
   }, []);
@@ -554,7 +554,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       <div className="flex items-center justify-between p-4 shrink-0">
         <button type="button"
           onClick={() => {
-            if (isActive && session) deactivate(session.sessionId);
+            if (isActive && session) void deactivate(session.sessionId);
             onClose();
           }}
           className="text-gray-500 hover:text-gray-300 transition p-2 min-h-[48px] min-w-[48px] flex items-center justify-center"

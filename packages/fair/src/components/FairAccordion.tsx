@@ -21,7 +21,7 @@ function useDidNames(
     let cancelled = false;
     const toResolve = dids.filter(d => d && !names[d]);
     if (toResolve.length === 0) return;
-    Promise.all(
+    void Promise.all(
       toResolve.map(async (did) => {
         try {
           const p = await resolveProfile(did);

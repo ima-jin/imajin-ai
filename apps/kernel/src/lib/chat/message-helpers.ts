@@ -151,21 +151,29 @@ export function triggerLinkUnfurl(
   messageId: string,
 ): void {
   if (!message || contentType !== 'text' || typeof content !== 'string') return;
-  unfurlLinks(content).then(async (previews) => {
-    if (previews.length === 0) return;
-    await db
-      .update(messagesV2)
-      .set({ linkPreviews: previews })
-      .where(eq(messagesV2.id, messageId));
-    const port = process.env.PORT || '3007';
-    fetch(`http://localhost:${port}/__ws_broadcast`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        conversationId: conversationDid,
-        type: 'message_updated',
-        message: { ...message, linkPreviews: previews },
-      }),
-    }).catch(() => {});
+  unfurlAndBroadcast(message, content, conversationDid, messageId).catch(() => {});
+}
+
+async function unfurlAndBroadcast(
+  message: { id: string; [key: string]: unknown },
+  content: string,
+  conversationDid: string,
+  messageId: string,
+): Promise<void> {
+  const previews = await unfurlLinks(content);
+  if (previews.length === 0) return;
+  await db
+    .update(messagesV2)
+    .set({ linkPreviews: previews })
+    .where(eq(messagesV2.id, messageId));
+  const port = process.env.PORT || '3007';
+  fetch(`http://localhost:${port}/__ws_broadcast`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      conversationId: conversationDid,
+      type: 'message_updated',
+      message: { ...message, linkPreviews: previews },
+    }),
   }).catch(() => {});
 }

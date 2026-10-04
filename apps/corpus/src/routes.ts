@@ -24,7 +24,7 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   router.use('/corpus/:did', createAccessClaimMiddleware());
 
   router.post('/corpus/:did/ingest', (request, response) => {
-    handle(response, async () => {
+    void handle(response, async () => {
       const body: unknown = request.body;
       const did = request.params.did;
       const ingesterDid = ingesterDidFor(request);
@@ -46,11 +46,11 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   });
 
   router.post('/corpus/:did/search', (request, response) => {
-    handle(response, () => engine.search(request.params.did, request.body as CorpusSearchRequest));
+    void handle(response, () => engine.search(request.params.did, request.body as CorpusSearchRequest));
   });
 
   router.post('/corpus/:did/sources', (request, response) => {
-    handle(response, async () => {
+    void handle(response, async () => {
       const result = await registerSource(engine, request.params.did, request.body as SourceRegistration, options, ingesterDidFor(request));
       triggerEmbedSweep(engine, request.params.did);
       return result;
@@ -64,7 +64,7 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
       return;
     }
 
-    handle(response, async () => {
+    void handle(response, async () => {
       const result = await syncSource(engine, request.params.did, body.source as string, body.cursor ?? null, options, ingesterDidFor(request));
       triggerEmbedSweep(engine, request.params.did);
       return result;
@@ -72,7 +72,7 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   });
 
   router.post('/corpus/:did/crawl', (request, response) => {
-    handle(response, async () => {
+    void handle(response, async () => {
       const body = request.body as { source?: string };
       if (!body?.source) {
         throw new Error('source is required');
@@ -85,15 +85,15 @@ export function createCorpusRouter(engine: CorpusEngine, options: CorpusRouterOp
   });
 
   router.get('/corpus/:did/status', (request, response) => {
-    handle(response, () => engine.status(request.params.did));
+    void handle(response, () => engine.status(request.params.did));
   });
 
   router.get('/corpus/:did/attestations/:id', (request, response) => {
-    handle(response, () => engine.getAttestation(request.params.did, request.params.id));
+    void handle(response, () => engine.getAttestation(request.params.did, request.params.id));
   });
 
   router.delete('/corpus/:did/source', (request, response) => {
-    handle(response, () => {
+    void handle(response, () => {
       const body = request.body as { source?: string };
       return engine.deleteSource(request.params.did, body.source ?? '');
     });

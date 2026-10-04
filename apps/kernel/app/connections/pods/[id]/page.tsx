@@ -50,7 +50,7 @@ export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: st
 
   useEffect(() => {
     if (isLoggedIn) {
-      fetchPod();
+      void fetchPod();
     }
   }, [isLoggedIn, id]);
 
@@ -105,7 +105,7 @@ export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: st
       });
       if (res.ok) {
         setShowAddMember(false);
-        fetchPod();
+        void fetchPod();
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to add member');
@@ -129,7 +129,7 @@ export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: st
         body: JSON.stringify({ did: memberDid }),
       });
       if (res.ok) {
-        fetchPod();
+        void fetchPod();
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to remove member');

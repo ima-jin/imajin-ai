@@ -139,7 +139,7 @@ describe('loadFromVault happy path (#2257: no ack at fetch-time)', () => {
     expect(authBody.id).toBe(BOOTSTRAP_DID);
     expect(authBody.challengeId).toBe('ch_1');
     expect(typeof authBody.signature).toBe('string');
-    expect(authBody.signature.length).toBe(128); // 64-byte Ed25519 sig, hex-encoded
+    expect(authBody.signature).toHaveLength(128); // 64-byte Ed25519 sig, hex-encoded
   });
 });
 

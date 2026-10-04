@@ -23,7 +23,7 @@ export default function RecoveryCodesSection() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    loadStatus();
+    void loadStatus();
   }, []);
 
   async function loadStatus() {

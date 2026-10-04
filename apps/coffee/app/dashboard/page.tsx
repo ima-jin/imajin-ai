@@ -73,7 +73,7 @@ export default function DashboardPage() {
       }
     }
 
-    loadData();
+    void loadData();
   }, []);
 
   const formatAmount = (cents: number, currency: string) => {

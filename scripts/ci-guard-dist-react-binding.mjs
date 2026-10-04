@@ -74,8 +74,11 @@ const BARE_REACT_USAGE_RE = /(?<![.\w$])React\.\w+/g;
 
 // Anything that would put a binding literally named `React` (not `React2`,
 // not `import_react`) into this file's module scope.
-const REACT_BINDING_RE =
-  /(?:^|[\n;])\s*import\s+React\s*[,\s]|(?:^|[\n;])\s*import\s*\{[^}]*\bdefault\s+as\s+React\b[^}]*\}\s*from|(?:^|[\n;])\s*(?:var|let|const)\s+React\s*=/;
+const REACT_BINDING_RES = [
+  /(?:^|[\n;])\s*import\s+React\s*[,\s]/,
+  /(?:^|[\n;])\s*import\s*\{[^}]*\bdefault\s+as\s+React\b[^}]*\}\s*from/,
+  /(?:^|[\n;])\s*(?:var|let|const)\s+React\s*=/,
+];
 
 /** Recursively lists every `dist/*.js` / `dist/*.cjs` file under each `packages/*` package. */
 function listDistFiles() {
@@ -110,7 +113,7 @@ function scanFile(filePath) {
   const content = readFileSync(filePath, 'utf8');
   const usages = content.match(BARE_REACT_USAGE_RE);
   if (!usages || usages.length === 0) return null;
-  if (REACT_BINDING_RE.test(content)) return null;
+  if (REACT_BINDING_RES.some((re) => re.test(content))) return null;
   return { file: relative(ROOT, filePath).replaceAll('\\', '/'), count: usages.length };
 }
 

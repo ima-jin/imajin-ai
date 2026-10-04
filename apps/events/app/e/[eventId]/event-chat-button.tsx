@@ -32,7 +32,7 @@ export function EventChatButton({ eventId, chatUrl }: Readonly<EventChatButtonPr
         setLoading(false);
       }
     }
-    checkAccess();
+    void checkAccess();
   }, [eventId]);
 
   if (loading || !conversationId) return null;

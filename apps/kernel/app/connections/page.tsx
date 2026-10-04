@@ -87,7 +87,7 @@ function NicknameEditor({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
+            if (e.key === 'Enter') void save();
             if (e.key === 'Escape') setEditing(false);
           }}
           onBlur={save}
@@ -96,7 +96,7 @@ function NicknameEditor({
         />
         {value.trim() && (
           <button type="button"
-            onMouseDown={(e) => { e.preventDefault(); clear(); }}
+            onMouseDown={(e) => { e.preventDefault(); void clear(); }}
             className="text-gray-500 hover:text-red-400 transition text-xs"
             title="Clear nickname"
           >
@@ -426,7 +426,7 @@ export default function ConnectionsPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         if (confirm(`Disconnect from ${conn.nickname || conn.name || conn.handle || 'this person'}? You'll need a new invite to reconnect.`)) {
-                          disconnectFrom(conn.did);
+                          void disconnectFrom(conn.did);
                         }
                       }}
                       className="px-3 py-1.5 text-sm bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg transition"

@@ -6,7 +6,7 @@
  * same currency-aware way (no naive `amount / 100`, which breaks for
  * zero-decimal currencies like JPY).
  */
-import { format, fromDecimalString, minorUnitExponent, toDecimalString } from '@imajin/money';
+import { format, fromDecimalString, toDecimalString } from '@imajin/money';
 
 /** Locale-formatted display string for a minor-units amount, e.g. `formatMinorUnits(1999, 'USD')` -> "$19.99". */
 export function formatMinorUnits(amount: number, currency: string): string {
@@ -35,4 +35,4 @@ export function parsePositiveDecimalAmount(value: string, currency: string): num
   }
 }
 
-export { minorUnitExponent };
+export { minorUnitExponent } from '@imajin/money';

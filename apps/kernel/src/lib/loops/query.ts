@@ -161,7 +161,8 @@ async function listLoopsForPrincipalPage(filters: ListLoopsPageFilters): Promise
   const hasNextPage = rows.length > limit;
   const page = hasNextPage ? rows.slice(0, limit) : rows;
   const loops = page.map(serializeLoop);
-  const nextCursor = hasNextPage ? encodeLoopCursor(loops[loops.length - 1]) : null;
+  const lastLoop = loops.at(-1);
+  const nextCursor = hasNextPage && lastLoop ? encodeLoopCursor(lastLoop) : null;
   return { loops, hasNextPage, nextCursor };
 }
 

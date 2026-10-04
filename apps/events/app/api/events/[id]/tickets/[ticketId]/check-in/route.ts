@@ -93,7 +93,7 @@ export async function POST(
     // Fire-and-forget check-in webhook — do not block check-in on failure
     const webhookUrl = process.env.CHECKIN_WEBHOOK_URL;
     if (webhookUrl) {
-      (async () => {
+      void (async () => {
         try {
           const [countRow] = await sql`
             SELECT COUNT(*) as count FROM events.tickets

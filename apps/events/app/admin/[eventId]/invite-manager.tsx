@@ -98,7 +98,7 @@ export function InviteManager({ eventId, accessMode }: Readonly<Props>) {
   }
 
   function handleCopy(url: string, inviteId: string) {
-    navigator.clipboard.writeText(url);
+    void navigator.clipboard.writeText(url);
     setCopied(inviteId);
     setTimeout(() => setCopied(null), 2000);
   }

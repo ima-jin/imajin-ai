@@ -60,7 +60,7 @@ export async function mintAppToken(
   // treating a body with `"scope": null` as a truthy-check miss the same as
   // any other unexpected type. `JSON.stringify` drops `undefined` values but
   // keeps `null` ones, so the two are not interchangeable here.
-  const resolvedScope = scope === null ? undefined : scope;
+  const resolvedScope = scope ?? undefined;
 
   const res = await fetch(`${stripTrailingSlashes(kernelBaseUrl)}/auth/api/apps/token`, {
     method: 'POST',

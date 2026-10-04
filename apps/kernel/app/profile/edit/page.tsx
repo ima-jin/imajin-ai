@@ -97,7 +97,7 @@ function EditProfileContent() {
       return;
     }
 
-    loadProfile();
+    void loadProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identityLoading, isLoggedIn, did]);
 

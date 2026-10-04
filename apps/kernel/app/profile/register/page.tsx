@@ -151,7 +151,7 @@ function RegisterPage() {
   }, [handle]);
 
   function copyDid(did: string) {
-    navigator.clipboard.writeText(did);
+    void navigator.clipboard.writeText(did);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -307,7 +307,7 @@ function RegisterPage() {
       setTempDid(`did:imajin:${publicKeyBase58}`);
     }
     if (avatarMode === 'image' && !tempDid) {
-      generateTempDid();
+      void generateTempDid();
     }
   }, [avatarMode, tempDid]);
 

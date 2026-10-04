@@ -95,7 +95,7 @@ export function ImajinInput({
     e?.preventDefault();
     const trimmed = value.trim();
     if (!trimmed && !attachment) return;
-    if (trimmed) onSubmit(trimmed);
+    if (trimmed) void onSubmit(trimmed);
     setValue('');
     setAttachment(null);
     // Reset textarea height
@@ -160,14 +160,14 @@ export function ImajinInput({
       const file = new File([blob], `recording-${Date.now()}.webm`, {
         type: blob.type || 'audio/webm',
       });
-      onMediaReady(file);
+      void onMediaReady(file);
     }
   }
 
   function handleFileAttach(data: FileAttachmentData) {
     setAttachment(data);
     setShowAttachMenu(false);
-    if (onMediaReady) onMediaReady(data.file);
+    if (onMediaReady) void onMediaReady(data.file);
   }
 
   function handleLocation(loc: LocationData) {
@@ -207,7 +207,7 @@ export function ImajinInput({
         setTranscribing(false);
         setTranscribeProgress('');
         // Fallback: attach as media
-        if (onMediaReady) onMediaReady(file);
+        if (onMediaReady) void onMediaReady(file);
       });
 
     if (voiceMemoRef.current) voiceMemoRef.current.value = '';

@@ -506,7 +506,7 @@ export default function ListingDetail() {
         setLoading(false);
       }
     }
-    fetchListing();
+    void fetchListing();
   }, [id]);
 
   if (loading) {

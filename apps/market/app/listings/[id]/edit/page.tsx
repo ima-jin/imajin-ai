@@ -48,7 +48,7 @@ export default function EditListingPage() {
         setLoadError('Could not load this listing. Please try again.');
       }
     }
-    fetchListing();
+    void fetchListing();
   }, [id]);
 
   const handleSubmit = async (data: ListingFormData) => {

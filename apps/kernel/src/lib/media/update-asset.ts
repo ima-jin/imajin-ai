@@ -100,20 +100,25 @@ async function resignFairManifest(asset: Asset, assetId: string): Promise<Record
   const rawManifest = asset.fairManifest as FairManifest | null;
   if (!rawManifest || !isFairManifestV11(rawManifest)) return current;
 
-  return contentSigner
-    .sign(rawManifest as FairManifestV11)
-    .then(async (signed) => {
-      if (asset.fairPath) {
-        await writeFile(asset.fairPath, JSON.stringify(signed, null, 2)).catch((err: unknown) =>
-          log.warn({ err: String(err), assetId }, "Could not write re-signed .fair to disk (non-fatal)"),
-        );
-      }
-      return signed as unknown as Record<string, unknown>;
-    })
-    .catch((err: unknown) => {
-      log.warn({ err: String(err), assetId }, "Could not re-sign .fair after content edit (non-fatal)");
-      return current;
-    });
+  try {
+    const signed = await contentSigner.sign(rawManifest as FairManifestV11);
+    if (asset.fairPath) {
+      await mirrorFairToDisk(asset.fairPath, signed, assetId);
+    }
+    return signed as unknown as Record<string, unknown>;
+  } catch (err: unknown) {
+    log.warn({ err: String(err), assetId }, "Could not re-sign .fair after content edit (non-fatal)");
+    return current;
+  }
+}
+
+/** Writes the re-signed manifest next to the asset; a write failure only warns (the in-DB manifest is still updated). */
+async function mirrorFairToDisk(fairPath: string, signed: unknown, assetId: string): Promise<void> {
+  try {
+    await writeFile(fairPath, JSON.stringify(signed, null, 2));
+  } catch (err: unknown) {
+    log.warn({ err: String(err), assetId }, "Could not write re-signed .fair to disk (non-fatal)");
+  }
 }
 
 /**

@@ -498,7 +498,7 @@ export function MessageBubble({
                 <ActionSheet.Action icon="✏️" label="Edit" onPress={() => { setShowActionSheet(false); onEdit(); }} />
               )}
               {text && (
-                <ActionSheet.Action icon="📋" label="Copy text" onPress={() => { navigator.clipboard.writeText(text); setShowActionSheet(false); }} />
+                <ActionSheet.Action icon="📋" label="Copy text" onPress={() => { void navigator.clipboard.writeText(text); setShowActionSheet(false); }} />
               )}
             </ActionSheet.Actions>
             <ActionSheet.Actions>

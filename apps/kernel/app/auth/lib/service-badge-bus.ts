@@ -23,7 +23,7 @@ function notify(): void {
 }
 
 export function setServiceBadge(service: string, count: number): void {
-  const next = count > 0 ? count : 0;
+  const next = Math.max(count || 0, 0);
   if (badges[service] === next) return;
   badges = { ...badges, [service]: next };
   notify();

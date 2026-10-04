@@ -37,7 +37,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
         setLoading(false);
       }
     }
-    checkSession();
+    void checkSession();
   }, []);
 
   const logout = useCallback(async () => {

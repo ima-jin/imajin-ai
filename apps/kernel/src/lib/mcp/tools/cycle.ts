@@ -157,7 +157,7 @@ function parseScopeArg(args: Record<string, unknown>): ParseResult<CycleRunScope
   };
 }
 
-// ── Phase-runner seam (TODO: out of scope for #2316 — see file doc) ─────────
+// ── Phase-runner seam (follow-up, out of scope for #2316 — see file doc) ─────────
 
 /** Fixed reason recorded on every stub phase transition, so a `loops_get`/`cycle_status` reader — human or agent — sees WHY nothing happened rather than guessing at a silent skip. */
 const PHASE_RUNNER_NOT_IMPLEMENTED =
@@ -165,7 +165,7 @@ const PHASE_RUNNER_NOT_IMPLEMENTED =
   'wiring merge-sweep/hot-issue-raise/brief+provision/review-rounds/report is tracked as follow-up work';
 
 /**
- * TODO(follow-up to #2316): replace this stub with the real phase engine.
+ * Follow-up to #2316: replace this stub with the real phase engine.
  *
  * This is the ONE seam a future phase-runner PR should replace: it is
  * called once per requested phase, in fixed `CYCLE_PHASES` order, and owns
@@ -382,7 +382,7 @@ const cycleStatusTool: McpTool = {
     }
 
     const history = await getLoopWithHistory(correlationId, ctx.did);
-    if (!history || history.loop.kind !== CYCLE_LOOP_KIND) {
+    if (history?.loop.kind !== CYCLE_LOOP_KIND) {
       throw new Error('not_found: no cycle with that correlationId is visible to you');
     }
 

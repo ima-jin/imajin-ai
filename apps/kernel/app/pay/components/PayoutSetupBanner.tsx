@@ -61,7 +61,7 @@ export function PayoutSetupBanner({
     };
 
     if (did) {
-      checkConnectStatus();
+      void checkConnectStatus();
     } else {
       setLoading(false);
     }

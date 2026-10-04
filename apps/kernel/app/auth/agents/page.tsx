@@ -1084,7 +1084,7 @@ export default function AgentsPage() {
     },
   },
 }, null, 2);
-    navigator.clipboard.writeText(snippet).then(() => {
+    void navigator.clipboard.writeText(snippet).then(() => {
       showStatus('success', 'Config copied to clipboard');
     });
   }

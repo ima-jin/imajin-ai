@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
 
   useEffect(() => {
-    fetchSurveys();
+    void fetchSurveys();
   }, []);
 
   const fetchSurveys = async () => {
@@ -179,7 +179,7 @@ export default function DashboardPage() {
                           const handle = survey.handle || 'survey';
                           const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '/dykil';
                           const url = `${globalThis.location.origin}${basePath}/${handle}/${survey.id}`;
-                          navigator.clipboard.writeText(url);
+                          void navigator.clipboard.writeText(url);
                           toast.success('Survey link copied!');
                         }}
                         className="px-4 py-2 border border-gray-300 dark:border-gray-700 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition"

@@ -24,6 +24,12 @@ function recipientLabel(row: PaymentRequestRow): string {
   return row.recipientDid ?? 'Pending claim';
 }
 
+/** Row detail's settlement-reference text: `method`, plus ` — note` when a note was recorded. */
+function settlementRefLabel(ref: NonNullable<PaymentRequestRow['settlementRef']>): string {
+  const noteSuffix = ref.note ? ` — ${ref.note}` : '';
+  return `${ref.method}${noteSuffix}`;
+}
+
 export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props>) {
   const { toast } = useToast();
   const [expanded, setExpanded] = useState(false);
@@ -140,9 +146,7 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
             <div className="flex gap-2">
               <span className="w-28 shrink-0">Settlement ref</span>
               <span>
-                {row.settlementRef
-                  ? `${row.settlementRef.method}${row.settlementRef.note ? ` — ${row.settlementRef.note}` : ''}`
-                  : '—'}
+                {row.settlementRef ? settlementRefLabel(row.settlementRef) : '—'}
               </span>
             </div>
             <div className="flex gap-2">

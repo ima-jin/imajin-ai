@@ -37,7 +37,7 @@ export default function DashboardPage() {
   const [myDid, setMyDid] = useState<string | null>(null);
 
   useEffect(() => {
-    loadCourses();
+    void loadCourses();
   }, []);
 
   async function loadCourses() {

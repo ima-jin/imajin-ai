@@ -77,7 +77,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
         // ignore
       }
     }
-    fetchSession();
+    void fetchSession();
   }, [authUrl]);
 
   // Load attendee display pref from localStorage
@@ -103,7 +103,7 @@ export function EventChatWrapper({ did, eventId, compact }: Readonly<EventChatWr
         // fallback to default
       }
     }
-    fetchPolicy();
+    void fetchPolicy();
   }, [eventId]);
 
   // Lazily fetch a profile for name/handle resolution

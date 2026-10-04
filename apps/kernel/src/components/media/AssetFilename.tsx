@@ -187,7 +187,7 @@ export function AssetFilename({
       cancelledRef.current = false;
       return;
     }
-    commit();
+    void commit();
   };
 
   const renderName = () => {
@@ -203,7 +203,7 @@ export function AssetFilename({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commit();
+              void commit();
             }
             if (e.key === "Escape") {
               e.preventDefault();

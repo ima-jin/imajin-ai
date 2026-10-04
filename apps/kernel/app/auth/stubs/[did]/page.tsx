@@ -164,7 +164,7 @@ export default function EditStubPage() {
         setLoading(false);
       }
     }
-    fetchData();
+    void fetchData();
   }, [did]);
 
   // Watch device GPS
@@ -464,7 +464,7 @@ export default function EditStubPage() {
                   disabled={avatarUploading}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) { handleAvatarBannerUpload(file, 'avatar'); e.target.value = ''; }
+                    if (file) { void handleAvatarBannerUpload(file, 'avatar'); e.target.value = ''; }
                   }}
                 />
               </label>
@@ -495,7 +495,7 @@ export default function EditStubPage() {
               disabled={bannerUploading}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) { handleAvatarBannerUpload(file, 'banner'); e.target.value = ''; }
+                if (file) { void handleAvatarBannerUpload(file, 'banner'); e.target.value = ''; }
               }}
             />
           </label>
@@ -727,7 +727,7 @@ export default function EditStubPage() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
-                handleUpload(file);
+                void handleUpload(file);
                 e.target.value = '';
               }
             }}

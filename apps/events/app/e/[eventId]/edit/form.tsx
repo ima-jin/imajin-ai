@@ -251,7 +251,7 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
         setLoadingSurveys(false);
       }
     }
-    fetchSurveys();
+    void fetchSurveys();
   }, [DYKIL_URL]);
 
   // Pre-fill ticket tiers

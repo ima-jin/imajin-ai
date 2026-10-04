@@ -56,7 +56,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
 
   // Check localStorage on mount
   useEffect(() => {
-    loadIdentity().finally(() => setIsLoading(false));
+    void loadIdentity().finally(() => setIsLoading(false));
   }, []);
 
   async function loadIdentity() {

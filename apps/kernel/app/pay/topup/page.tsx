@@ -145,7 +145,7 @@ export default function TopupPage() {
 
   const handleCopyMemo = useCallback(() => {
     if (emtInstructions?.memo) {
-      navigator.clipboard.writeText(emtInstructions.memo);
+      void navigator.clipboard.writeText(emtInstructions.memo);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -410,7 +410,7 @@ export default function TopupPage() {
                   <span className="text-white font-mono text-sm">{emtInstructions.email}</span>
                   <button type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(emtInstructions.email);
+                      void navigator.clipboard.writeText(emtInstructions.email);
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}
