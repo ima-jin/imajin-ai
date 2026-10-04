@@ -51,7 +51,13 @@ vi.mock('@/src/db', async () => {
 
   const { select, update, insert } = createMockDb(state, limitResultFor);
 
-  return { db: { select, update, insert }, transactions, feeLedger, balances, balanceRollups };
+  return {
+    db: { select, update, insert, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert }) },
+    transactions,
+    feeLedger,
+    balances,
+    balanceRollups,
+  };
 });
 
 const { publishMock } = vi.hoisted(() => ({ publishMock: vi.fn().mockResolvedValue(undefined) }));
@@ -133,8 +139,15 @@ function taxedManifest(extra: Record<string, unknown> = {}) {
   };
 }
 
+// A multi-row `.values([...])` (the tax rows) is flattened to one entry per row.
 function inserts(table: string) {
-  return state.insertCalls.filter((c) => c.table === table);
+  return state.insertCalls
+    .filter((c) => c.table === table)
+    .flatMap((c) =>
+      Array.isArray(c.values)
+        ? (c.values as Array<Record<string, unknown>>).map((values) => ({ ...c, values }))
+        : [c],
+    );
 }
 
 async function settle(manifest: unknown, session: Record<string, unknown> = {}) {

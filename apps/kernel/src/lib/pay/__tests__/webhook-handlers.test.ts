@@ -19,12 +19,16 @@ const mocks = vi.hoisted(() => {
   const insertMock = vi.fn(() => ({ values: insertValuesMock }));
   const publishMock = vi.fn().mockResolvedValue(undefined);
   const generateIdMock = vi.fn((prefix: string) => `${prefix}_test`);
+  // db.transaction(cb) runs cb against a tx handle sharing the same insert mock.
+  const transactionMock = vi.fn(async (cb: (tx: { insert: typeof insertMock }) => Promise<unknown>) =>
+    cb({ insert: insertMock }),
+  );
 
-  return { onConflictDoUpdateMock, insertValuesMock, insertMock, publishMock, generateIdMock };
+  return { onConflictDoUpdateMock, insertValuesMock, insertMock, publishMock, generateIdMock, transactionMock };
 });
 
 vi.mock('@/src/db', () => ({
-  db: { insert: mocks.insertMock },
+  db: { insert: mocks.insertMock, transaction: mocks.transactionMock },
   feeLedger: { id: 'fl_col' },
   balances: { did: 'bal_did_col', unit: 'bal_unit_col', amount: 'bal_amount_col' },
   balanceRollups: {
@@ -360,10 +364,16 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
     mocks.insertValuesMock.mockImplementation(() => ({ onConflictDoUpdate: mocks.onConflictDoUpdateMock }));
   });
 
+  // Insert payloads, flattened: a multi-row `.values([...])` yields one entry per row.
+  function insertedRows(): Array<Record<string, unknown>> {
+    return mocks.insertValuesMock.mock.calls.flatMap((call) => {
+      const arg = (call as unknown[])[0];
+      return (Array.isArray(arg) ? arg : [arg]) as Array<Record<string, unknown>>;
+    });
+  }
+
   function feeLedgerRows(): Array<Record<string, unknown>> {
-    return mocks.insertValuesMock.mock.calls
-      .map((call) => (call as unknown[])[0] as Record<string, unknown>)
-      .filter((row) => typeof row.role === 'string' && 'amountCents' in row);
+    return insertedRows().filter((row) => typeof row.role === 'string' && 'amountCents' in row);
   }
 
   it('computes every share on totalAmountCents minus tax, never on the gross', async () => {
@@ -393,8 +403,7 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
       tx, totalAmountCents: 11300, currency, buyerDid: 'did:imajin:buyer', chain: [], taxes: [taxRow()],
     });
 
-    const rows = mocks.insertValuesMock.mock.calls.map((call) => (call as unknown[])[0] as Record<string, unknown>);
-    const taxTx = rows.find((row) => row.type === 'tax')!;
+    const taxTx = insertedRows().find((row) => row.type === 'tax')!;
     expect(taxTx).toMatchObject({
       toDid: 'did:imajin:seller', fromDid: 'did:imajin:buyer', amount: '13.00', currency, status: 'completed',
     });
@@ -412,6 +421,25 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
     });
     // fee-ledger row + transactions row only — no balances / balanceRollups insert for the tax
     expect(mocks.insertMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('books every row of a multi-tax manifest (GST + PST) in one transaction with two multi-row inserts', async () => {
+    const gst = taxRow({ jurisdiction: 'CA-BC', kind: 'GST', rateBps: 500, amount: 500, remitTo: 'did:imajin:authority:ca-cra' });
+    const pst = taxRow({ jurisdiction: 'CA-BC', kind: 'PST', rateBps: 700, amount: 700, remitTo: 'did:imajin:authority:ca-bc' });
+    await processChainDistribution({
+      tx, totalAmountCents: 11200, currency, buyerDid: 'did:imajin:buyer', chain: [], taxes: [gst, pst],
+    });
+
+    expect(mocks.transactionMock).toHaveBeenCalledTimes(1);
+    expect(mocks.insertMock).toHaveBeenCalledTimes(2); // one feeLedger insert + one transactions insert
+    expect(feeLedgerRows()).toEqual([
+      expect.objectContaining({ role: 'tax', amountCents: 500, status: 'held_in_trust' }),
+      expect.objectContaining({ role: 'tax', amountCents: 700, status: 'held_in_trust' }),
+    ]);
+    const taxTxRows = insertedRows().filter((row) => row.type === 'tax');
+    expect(taxTxRows.map((row) => (row.metadata as Record<string, unknown>).kind)).toEqual(['GST', 'PST']);
+    expect(taxTxRows.map((row) => row.amount)).toEqual(['5.00', '7.00']);
+    expect(mocks.publishMock).toHaveBeenCalledTimes(2);
   });
 
   it('does not book a zero-amount tax row', async () => {

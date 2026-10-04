@@ -365,49 +365,57 @@ async function recordTaxTrustLiabilities({
   currency,
   buyerDid,
 }: RecordTaxTrustLiabilitiesParams): Promise<void> {
-  for (const tax of taxes) {
-    if (tax.amount <= 0) continue;
+  const bookable = taxes.filter((tax) => tax.amount > 0);
+  if (bookable.length === 0) return;
 
-    await db.insert(feeLedger).values({
-      id: generateId('fl'),
-      transactionId: tx.id,
-      recipientDid: tax.collectorDid,
+  const feeLedgerRows = bookable.map((tax) => ({
+    id: generateId('fl'),
+    transactionId: tx.id,
+    recipientDid: tax.collectorDid,
+    role: 'tax',
+    amountCents: tax.amount,
+    currency,
+    status: 'held_in_trust',
+  }));
+
+  const transactionRows = bookable.map((tax) => ({
+    id: generateId('tx'),
+    service: tx.service || 'unknown',
+    type: 'tax',
+    fromDid: buyerDid,
+    toDid: tax.collectorDid,
+    amount: (tax.amount / 100).toFixed(2),
+    currency,
+    unit: MJN,
+    sourceKind: 'receipt',
+    status: 'completed',
+    source: 'external',
+    metadata: {
       role: 'tax',
-      amountCents: tax.amount,
-      currency,
-      status: 'held_in_trust',
-    });
+      tax: true,
+      jurisdiction: tax.jurisdiction,
+      kind: tax.kind,
+      rateBps: tax.rateBps,
+      remitTo: tax.remitTo,
+      registrationNumber: tax.registrationNumber,
+      trustLiability: true,
+      remitted: null,
+      funded: true,
+      funded_provider: 'stripe',
+      balance_skipped: true,
+      reason: 'externally_funded_seller',
+      checkoutTransactionId: tx.id,
+    },
+  }));
 
-    await db.insert(transactions).values({
-      id: generateId('tx'),
-      service: tx.service || 'unknown',
-      type: 'tax',
-      fromDid: buyerDid,
-      toDid: tax.collectorDid,
-      amount: (tax.amount / 100).toFixed(2),
-      currency,
-      unit: MJN,
-      sourceKind: 'receipt',
-      status: 'completed',
-      source: 'external',
-      metadata: {
-        role: 'tax',
-        tax: true,
-        jurisdiction: tax.jurisdiction,
-        kind: tax.kind,
-        rateBps: tax.rateBps,
-        remitTo: tax.remitTo,
-        registrationNumber: tax.registrationNumber,
-        trustLiability: true,
-        remitted: null,
-        funded: true,
-        funded_provider: 'stripe',
-        balance_skipped: true,
-        reason: 'externally_funded_seller',
-        checkoutTransactionId: tx.id,
-      },
-    });
+  // One transaction: a tax fee-ledger row can never land without its
+  // `transactions` twin (or the reverse).
+  await db.transaction(async (dbTx) => {
+    await dbTx.insert(feeLedger).values(feeLedgerRows);
+    await dbTx.insert(transactions).values(transactionRows);
+  });
 
+  for (const tax of bookable) {
     publish('fee.record', {
       issuer: process.env.PLATFORM_DID || 'system',
       subject: tax.collectorDid,
