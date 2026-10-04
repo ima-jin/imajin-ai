@@ -138,6 +138,25 @@ port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
 `scripts/__tests__/ecosystem-config.test.mjs`). Standalone app repos (e.g.
 `ima-jin/links`) must follow the same rule in their own pm2 entry.
 
+## Changing an app's start command: `pm2-reconcile.sh` (#2547)
+
+`pm2 restart <app>` and `pm2 startOrRestart <file> --only <app>` on an existing
+process keep the exec path pm2 stored when the app was first started; they only
+refresh args/env. After the ecosystem moved from `npm start` to the direct next
+binary, dev therefore ran `npm start -p 3104` (npm swallowed `-p`, `next start`
+treated `3104` as a project directory) and events, coffee, dykil, learn and
+market crash-looped on 2026-10-04. Prod processes are stored as `npm start` too.
+
+Both deploy workflows (and `scripts/build.sh`'s restart) now go through
+`scripts/pm2-reconcile.sh <ecosystem-file> <name>...`, which compares the
+ecosystem's `script` (resolved against `cwd`) and `interpreter` with pm2's
+stored `pm_exec_path` / `exec_interpreter` (`pm2 jlist`). When they differ, or
+pm2 doesn't have the app, it runs `pm2 delete <name>` then
+`pm2 start <file> --only <name>`; matching apps get the usual
+`pm2 startOrRestart`. The workflows then `pm2 save`, so a resurrect doesn't
+bring back the stale definition. No manual pm2 steps are needed: the first
+deploy carrying this recreates every stale app on its own.
+
 ## Explicit `kill_timeout` and crash-loop alert (#2547)
 
 prod-events crash-looped for ~12h (~48k restarts) behind a still-serving orphan
