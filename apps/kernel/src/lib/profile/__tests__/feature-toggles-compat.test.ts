@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveEnabledApps, isAppEnabled } from '../feature-toggles-compat';
+import { resolveEnabledApps, isAppEnabled, hasConfiguredAppToggles } from '../feature-toggles-compat';
 
 describe('resolveEnabledApps (#2425)', () => {
   it('returns an empty array for null/undefined feature toggles', () => {
@@ -47,5 +47,25 @@ describe('isAppEnabled (#2425)', () => {
 
   it('returns false for null feature toggles', () => {
     expect(isAppEnabled(null, 'coffee')).toBe(false);
+  });
+});
+
+describe('hasConfiguredAppToggles (#2434 — #2425 ruling b)', () => {
+  it('is false for null/undefined/empty toggles and for unrelated keys only', () => {
+    expect(hasConfiguredAppToggles(null)).toBe(false);
+    expect(hasConfiguredAppToggles(undefined)).toBe(false);
+    expect(hasConfiguredAppToggles({})).toBe(false);
+    expect(hasConfiguredAppToggles({ inference_enabled: true, show_events: true, show_market_items: false })).toBe(false);
+  });
+
+  it('is true when enabledApps exists, even if empty', () => {
+    expect(hasConfiguredAppToggles({ enabledApps: [] })).toBe(true);
+    expect(hasConfiguredAppToggles({ enabledApps: ['learn'] })).toBe(true);
+  });
+
+  it('is true when any legacy app field is present, including null (an app switched off)', () => {
+    expect(hasConfiguredAppToggles({ coffee: 'ryan' })).toBe(true);
+    expect(hasConfiguredAppToggles({ links: null })).toBe(true);
+    expect(hasConfiguredAppToggles({ links: '' })).toBe(true);
   });
 });

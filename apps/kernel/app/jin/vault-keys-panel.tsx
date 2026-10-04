@@ -26,6 +26,7 @@
  * up once the claim/pairing events exist.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useFlashNotice } from './use-flash-notice';
 
 type VaultKeyTimelineEventType = 'minted' | 'granted' | 'fetched' | 'acked' | 'rotated' | 'revoked';
 
@@ -386,15 +387,11 @@ export function VaultKeysPanel() {
   const [handProvisioned, setHandProvisioned] = useState<HandProvisionedField[]>([]);
   const [showHandProvisioned, setShowHandProvisioned] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [flash, setFlash] = useState<{ type: 'ok' | 'err'; msg: string } | null>(null);
   const [mintPurpose, setMintPurpose] = useState('');
   const [mintRequesterDid, setMintRequesterDid] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const notify = useCallback((type: 'ok' | 'err', msg: string) => {
-    setFlash({ type, msg });
-    setTimeout(() => setFlash(null), 5000);
-  }, []);
+  const { flash, notify } = useFlashNotice(5000);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);

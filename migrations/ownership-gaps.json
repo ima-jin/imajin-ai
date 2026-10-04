@@ -1,0 +1,321 @@
+{
+  "$comment": "Cross-owner reads/writes found by the #2526 ownership map (phase 1 of #1991). open runtime gaps MUST equal migrations/cross-schema-allowlist.json (enforced by scripts/__tests__/ownership-map.test.mjs). Regenerate runtime entries from `node scripts/ci-guard-cross-schema-reads.mjs --list`.",
+  "issue": 2526,
+  "parent": 1991,
+  "gaps": [
+    {
+      "id": "events->auth.credentials",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "auth.credentials",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "apps/events/src/lib/confirm-payment.ts"
+      ],
+      "issue": 2537,
+      "contract": "kernel API"
+    },
+    {
+      "id": "events->auth.identities",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "auth.identities",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "apps/events/app/api/migrate-tickets/route.ts",
+        "apps/events/src/lib/balance-checkout-helpers.ts",
+        "apps/events/src/lib/confirm-payment.ts",
+        "apps/events/src/lib/contact-email.ts",
+        "apps/events/src/lib/etransfer-helpers.ts"
+      ],
+      "issue": 2537,
+      "contract": "kernel API"
+    },
+    {
+      "id": "events->auth.onboard_tokens",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "auth.onboard_tokens",
+      "access": [
+        "read",
+        "write"
+      ],
+      "files": [
+        "apps/events/app/api/events/[id]/tickets/[ticketId]/resend-email/route.ts",
+        "apps/events/app/checkout/success/page.tsx",
+        "apps/events/src/lib/confirm-payment.ts",
+        "apps/events/src/lib/free-checkout-helpers.ts",
+        "apps/events/src/lib/webhook-payment-helpers.ts"
+      ],
+      "issue": 2537,
+      "contract": "kernel API"
+    },
+    {
+      "id": "events->chat.conversations_v2",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "chat.conversations_v2",
+      "access": [
+        "write"
+      ],
+      "files": [
+        "apps/events/app/api/events/route.ts"
+      ],
+      "issue": 2539,
+      "contract": "kernel API"
+    },
+    {
+      "id": "events->connections.pod_members",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "connections.pod_members",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "apps/events/app/admin/[eventId]/page.tsx",
+        "apps/events/app/api/attending/[did]/route.ts",
+        "apps/events/app/api/events/[id]/my-ticket/route.ts",
+        "apps/events/app/e/[eventId]/edit/page.tsx",
+        "apps/events/app/e/[eventId]/page.tsx",
+        "apps/events/app/page.tsx",
+        "apps/events/src/lib/organizer.ts"
+      ],
+      "issue": 2538,
+      "contract": "kernel API"
+    },
+    {
+      "id": "events->dykil.survey_responses",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "dykil",
+      "table": "dykil.survey_responses",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "apps/events/app/api/events/[id]/guests/export.csv/route.ts",
+        "apps/events/app/api/events/[id]/guests/route.ts",
+        "apps/events/app/api/events/[id]/sales/route.ts",
+        "apps/events/app/api/events/[id]/tickets/[ticketId]/refund/route.ts",
+        "apps/events/app/api/events/[id]/tickets/[ticketId]/registration/route.ts",
+        "apps/events/app/api/events/[id]/tickets/[ticketId]/resend-email/route.ts",
+        "apps/events/app/api/register/[ticketId]/route.ts",
+        "apps/events/src/lib/guest-export-helpers.ts"
+      ],
+      "issue": 2542,
+      "contract": "cross-app (dykil-owned API / attestation)"
+    },
+    {
+      "id": "events->dykil.surveys",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "dykil",
+      "table": "dykil.surveys",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "apps/events/app/api/events/[id]/tickets/[ticketId]/registration/route.ts",
+        "apps/events/src/lib/guest-export-helpers.ts"
+      ],
+      "issue": 2542,
+      "contract": "cross-app (dykil-owned API / attestation)"
+    },
+    {
+      "id": "events->pay.transactions",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "pay.transactions",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "apps/events/app/api/events/[id]/sales/route.ts"
+      ],
+      "issue": 2540,
+      "contract": "kernel API"
+    },
+    {
+      "id": "events->profile.profiles",
+      "kind": "runtime",
+      "status": "open",
+      "from": "events",
+      "to": "kernel",
+      "table": "profile.profiles",
+      "access": [
+        "read",
+        "write"
+      ],
+      "files": [
+        "apps/events/app/api/webhook/payment/route.ts",
+        "apps/events/app/dashboard/page.tsx",
+        "apps/events/src/lib/checkout-common.ts"
+      ],
+      "issue": 2541,
+      "contract": "kernel API"
+    },
+    {
+      "id": "migration->shared-0001",
+      "kind": "migration",
+      "status": "open",
+      "from": "all",
+      "to": "all",
+      "table": "*",
+      "files": [
+        "migrations/0001_seed.sql"
+      ],
+      "issue": 2524,
+      "note": "Monolithic seed creates every schema (coffee, dykil, events, kernel, learn, links, market) in one file; resolved by per-app migration directories / kernel baseline (#2524, #2525)."
+    },
+    {
+      "id": "migration->shared-0025-0026",
+      "kind": "migration",
+      "status": "open",
+      "from": "events",
+      "to": "dykil",
+      "table": "dykil.survey_responses",
+      "files": [
+        "migrations/0025_backfill_survey_responses_for_orphan_registrations.sql",
+        "migrations/0026_clone_shared_survey_responses_per_ticket.sql"
+      ],
+      "issue": 2542,
+      "note": "DML joins dykil.survey_responses with events.ticket_registrations/events.tickets; grandfathered in ownership.json sharedMigrationAllowlist."
+    },
+    {
+      "id": "migration->links-no-app-dir",
+      "kind": "migration",
+      "status": "open",
+      "from": "links",
+      "to": "kernel",
+      "table": "links.*",
+      "files": [
+        "migrations/0001_seed.sql"
+      ],
+      "issue": 2524,
+      "note": "apps/links no longer exists in this monorepo but its 3 tables are still created by the kernel's root migrations; links is the phase-2 first mover (#2524)."
+    },
+    {
+      "id": "packages/money->money.fx_rates",
+      "kind": "watch",
+      "status": "watch",
+      "from": "packages/money",
+      "to": "kernel",
+      "table": "money.fx_rates",
+      "access": [
+        "read",
+        "write"
+      ],
+      "files": [
+        "packages/money/src/rates-cache.ts"
+      ],
+      "issue": null,
+      "note": "Shared package runs raw SQL against a kernel-owned table via the caller's db handle. Only apps/kernel imports @imajin/money today, so no app-side violation; becomes one if an app calls getRate()."
+    },
+    {
+      "id": "packages/trust-graph->connections.*",
+      "kind": "watch",
+      "status": "watch",
+      "from": "packages/trust-graph",
+      "to": "kernel",
+      "table": "connections.*",
+      "access": [
+        "read"
+      ],
+      "files": [
+        "packages/trust-graph/src/schema.ts"
+      ],
+      "issue": null,
+      "note": "Re-declares the 8 kernel connections.* tables in Drizzle. Only apps/kernel imports @imajin/trust-graph today; schema drift risk, not a runtime violation."
+    },
+    {
+      "id": "events->relay.relay_config",
+      "kind": "runtime",
+      "status": "fixed",
+      "from": "coffee|learn|market|events",
+      "to": "kernel",
+      "table": "relay.relay_config",
+      "access": [
+        "read"
+      ],
+      "files": [],
+      "issue": 2000,
+      "note": "Replaced by @imajin/config node-self helper over GET registry node/self."
+    },
+    {
+      "id": "coffee|learn|market|events->profile.forest_config",
+      "kind": "runtime",
+      "status": "fixed",
+      "from": "coffee|learn|market|events",
+      "to": "kernel",
+      "table": "profile.forest_config",
+      "access": [
+        "read"
+      ],
+      "files": [],
+      "issue": 2001,
+      "note": "Replaced by @imajin/config forest-config helper (#2001, #2057)."
+    },
+    {
+      "id": "learn|market->profile.profiles",
+      "kind": "runtime",
+      "status": "fixed",
+      "from": "learn|market",
+      "to": "kernel",
+      "table": "profile.profiles",
+      "access": [
+        "read"
+      ],
+      "files": [],
+      "issue": 2155,
+      "note": "Now via resolveIdentitiesForDids (#1998)."
+    },
+    {
+      "id": "events->connections.pod_members (cohosts)",
+      "kind": "runtime",
+      "status": "fixed",
+      "from": "events",
+      "to": "kernel",
+      "table": "connections.pod_members",
+      "access": [
+        "read",
+        "write"
+      ],
+      "files": [],
+      "issue": 2155,
+      "note": "cohosts route now uses the kernel pods API; remaining reads tracked in #2538."
+    },
+    {
+      "id": "events->auth.identities (contact_email write)",
+      "kind": "runtime",
+      "status": "fixed",
+      "from": "events",
+      "to": "kernel",
+      "table": "auth.identities",
+      "access": [
+        "write"
+      ],
+      "files": [],
+      "issue": 2058,
+      "note": "Now via POST /api/identity/{did}/contact (backfillContactEmail); remaining reads tracked in #2537."
+    }
+  ]
+}
