@@ -16,6 +16,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 import { GET } from '../route';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/warp-run-watch', { headers });
@@ -26,19 +27,16 @@ const EMPTY_OUTCOME = { checked: 0, completed: 0, failed: 0, blockedNotified: 0,
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/warp-run-watch', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) delete process.env.CRON_SECRET;
-    else process.env.CRON_SECRET = originalCronSecret;
+    _resetCronSecretForTests();
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockSweep.mockResolvedValue(EMPTY_OUTCOME);
 
     const response = await GET(makeRequest() as never);
@@ -47,7 +45,7 @@ describe('GET /api/cron/warp-run-watch', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockSweep.mockResolvedValue(EMPTY_OUTCOME);
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
@@ -55,7 +53,7 @@ describe('GET /api/cron/warp-run-watch', () => {
   });
 
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockSweep.mockResolvedValue(EMPTY_OUTCOME);
 
     const response = await GET(makeRequest({ authorization: 'Bearer test-secret' }) as never);
@@ -63,14 +61,14 @@ describe('GET /api/cron/warp-run-watch', () => {
   });
 
   it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(503);
   });
 
   it('runs the sweep and reports its outcome', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockSweep.mockResolvedValue({
       checked: 3,
       completed: 1,
@@ -97,7 +95,7 @@ describe('GET /api/cron/warp-run-watch', () => {
   });
 
   it('returns 500 when the sweep throws', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockSweep.mockRejectedValue(new Error('DB connection lost'));
 
     const response = await GET(makeRequest(CRON_AUTH) as never);

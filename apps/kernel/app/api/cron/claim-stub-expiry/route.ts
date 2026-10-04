@@ -113,7 +113,7 @@ async function sweepStub(did: string, now: Date): Promise<SweptStub | null> {
  */
 export async function GET(request: NextRequest) {
   // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
-  const denied = requireCronAuth(request);
+  const denied = await requireCronAuth(request);
   if (denied) return denied;
 
   try {

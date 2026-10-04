@@ -3,8 +3,9 @@
  *
  * Core of `scripts/provision-service-bootstrap.mjs`: provisions each userspace
  * service's vault bootstrap identity (`<SVC>_VAULT_BOOTSTRAP_DID` /
- * `_PRIVATE_KEY`) and ensures it holds the `ATTESTATION_INTERNAL_API_KEY`
- * grant (#2353).
+ * `_PRIVATE_KEY`) and ensures it holds its vault grant: the
+ * `ATTESTATION_INTERNAL_API_KEY` (#2353) for every userspace service, and the
+ * `CRON_SECRET` (#2550) for the kernel's `*-kernel-cron` scheduler identity.
  *
  * Contract:
  *  - Services are discovered from `apps/*\/.env.example`, never hardcoded;
@@ -21,7 +22,9 @@
  *    (the vault fetch authenticates by challenge/response against
  *    `auth.identities`), append the pair to `.env.local` atomically (0600).
  *  - The grant is ensured for EVERY service whose pair now exists, so a crash
- *    between the write and the grant self-heals on the next run.
+ *    between the write and the grant self-heals on the next run. Which grant
+ *    depends on the service ({@link grantKindFor}): the kernel's pair belongs to
+ *    its cron scheduler, which needs the cron secret and nothing else.
  *
  * The private key is never returned, logged or placed in an error message.
  * The DB/vault side effects are injected ({@link ProvisionDeps}) so the
@@ -61,7 +64,27 @@ export interface ProvisionDeps {
   registerIdentity(identity: { did: string; publicKey: string; name: string }): Promise<void>;
   /** Idempotent grant of the attestation internal API key. */
   ensureGrant(did: string): Promise<{ status: string; grantId?: string }>;
+  /** Idempotent grant of the kernel cron secret (#2550). */
+  ensureCronSecretGrant(did: string): Promise<{ status: string; grantId?: string }>;
 }
+
+/** Which vault secret a service's bootstrap identity is granted. */
+export type GrantKind = 'attestation-internal-api-key' | 'cron-secret';
+
+/**
+ * The grant a service's bootstrap identity needs. Userspace services fetch the
+ * attestation key; the kernel's own pair (`KERNEL_CRON_VAULT_BOOTSTRAP_*`) is
+ * the `*-kernel-cron` scheduler's, which only presents the cron secret to the
+ * kernel's routes and gets no more than that.
+ */
+export function grantKindFor(service: BootstrapService): GrantKind {
+  return service.name === 'kernel' ? 'cron-secret' : 'attestation-internal-api-key';
+}
+
+const GRANT_LABELS: Record<GrantKind, string> = {
+  'attestation-internal-api-key': 'ATTESTATION_INTERNAL_API_KEY',
+  'cron-secret': "CRON_SECRET (vault purpose 'kernel.cron-secret')",
+};
 
 const DID_SUFFIX = '_VAULT_BOOTSTRAP_DID';
 const PRIVATE_KEY_SUFFIX = '_VAULT_BOOTSTRAP_PRIVATE_KEY';
@@ -69,7 +92,7 @@ const DID_PREFIX = 'did:imajin:';
 
 const GRANT_FAILURES: Record<string, string> = {
   tier1_unsupported: 'this vault runs in Tier 1 (external owner agent) mode, which the grant path does not support',
-  no_reusable_grant: 'no reusable grant material found for the attestation key',
+  no_reusable_grant: 'no reusable grant material found for the secret',
 };
 
 // ── Discovery ────────────────────────────────────────────────────────────────
@@ -207,10 +230,11 @@ function inspectPair(repoRoot: string, service: BootstrapService): PairState {
 // ── Provisioning ─────────────────────────────────────────────────────────────
 
 async function ensureGrantOrThrow(deps: ProvisionDeps, service: BootstrapService, did: string): Promise<string> {
-  const outcome = await deps.ensureGrant(did);
+  const kind = grantKindFor(service);
+  const outcome = kind === 'cron-secret' ? await deps.ensureCronSecretGrant(did) : await deps.ensureGrant(did);
   if (outcome.status === 'ok' && outcome.grantId) return outcome.grantId;
   throw new Error(
-    `${service.name}: could not ensure the ATTESTATION_INTERNAL_API_KEY grant for ${did}: ` +
+    `${service.name}: could not ensure the ${GRANT_LABELS[kind]} grant for ${did}: ` +
       (GRANT_FAILURES[outcome.status] ?? `unexpected grant outcome '${outcome.status}'`),
   );
 }
@@ -338,10 +362,11 @@ export function formatResult(result: ProvisionResult): string {
 const loadAuth = () => import('@imajin/auth');
 const loadKernelDb = () => import('../../apps/kernel/src/db/index.js');
 const loadGrant = () => import('./attestation-internal-api-key-grant.js');
+const loadCronGrant = () => import('./cron-secret-grant.js');
 
 /** Load (without calling anything in) every module a real provisioning run imports. */
 export async function loadKernelModules(): Promise<void> {
-  await Promise.all([loadAuth(), loadKernelDb(), loadGrant()]);
+  await Promise.all([loadAuth(), loadKernelDb(), loadGrant(), loadCronGrant()]);
 }
 
 /**
@@ -380,6 +405,11 @@ export function createKernelDeps(grantedBy: string): ProvisionDeps {
     async ensureGrant(did) {
       const { ensureAttestationInternalApiKeyGrant } = await loadGrant();
       return ensureAttestationInternalApiKeyGrant(did, grantedBy);
+    },
+
+    async ensureCronSecretGrant(did) {
+      const { ensureCronSecretGrant } = await loadCronGrant();
+      return ensureCronSecretGrant(did, grantedBy);
     },
   };
 }

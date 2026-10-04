@@ -243,7 +243,9 @@ out of scope for #2245.
 Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the
 vault at boot authenticates with its own bootstrap identity:
 `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
-(today: learn, events, dykil, market, coffee). The pair stays **required**
+(today: learn, events, dykil, market, coffee; plus the kernel's own
+`KERNEL_CRON_VAULT_BOOTSTRAP_*` pair for its cron scheduler, which is granted the
+cron secret instead of the attestation key). The pair stays **required**
 (no `check-env` annotation) — but nobody mints it by hand any more.
 `scripts/provision-service-bootstrap.mjs` does, and the deploy runs it:
 
@@ -357,14 +359,26 @@ re-seal, silently overwrite — prod-sealed material. Splitting the file is
 the same trust boundary Postgres already draws, applied to the one piece of
 per-environment state that was missing it.
 
-### CRON_SECRET — kernel scheduled jobs (#2550)
+### Kernel cron secret — scheduled jobs (#2550)
 
-`CRON_SECRET` is required in the kernel's `.env.local` (non-empty; use a
-different value in dev and prod). It is the bearer token for every
-`/api/cron/*` route and `GET /api/admin/cron-status`. The routes fail closed
-(503 + WARN when unset, 401 on a wrong bearer), and the `prod-kernel-cron` /
-`dev-kernel-cron` pm2 apps refuse to start without it. `check-env` stops a deploy
-that lacks it. See `deploy/README.md` for the scheduler.
+There is **no `CRON_SECRET` env var**. The bearer token for every
+`/api/cron/*` route and `GET /api/admin/cron-status` is an internal generated
+secret (#2245 pattern, purpose `kernel.cron-secret`): generated in the vault, one
+value per environment (each env has its own vault file), never pasted anywhere.
+The kernel reads it in-process (`getInternalSecret`, memory only). The
+`prod-kernel-cron` / `dev-kernel-cron` scheduler fetches it at boot with
+`loadFromVault`, authenticating as its own bootstrap identity
+(`KERNEL_CRON_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in the kernel's
+`.env.local`), and sends one deferred ack on first use.
+
+That identity is provisioned like every other service's (see "Service
+bootstrap identities" above): `scripts/provision-service-bootstrap.mjs` mints it
+and grants it the cron secret on the deploy, after the `production` gate tap and
+before `check-env`. The routes still fail closed (503 + WARN when the vault
+cannot supply the secret, 401 on a wrong bearer); a missing identity or grant
+fails the deploy with an error that points at the vault/provisioning step, not at
+`.env.local`. Rotating the secret is a /jin card. See `deploy/README.md` for the
+scheduler.
 
 ## Deployment
 

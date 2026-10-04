@@ -76,6 +76,7 @@ vi.mock('@imajin/logger', () => ({
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -110,24 +111,18 @@ function makeGrant(overrides: Partial<VaultDelegationGrant> = {}): VaultDelegati
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/vault-grant-expiry', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
+    _resetCronSecretForTests();
   });
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest() as never);
@@ -135,7 +130,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
@@ -143,7 +138,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   });
 
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer test-secret' }) as never);
@@ -151,7 +146,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   });
 
   it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(503);
@@ -160,7 +155,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   // ── Sweep logic ─────────────────────────────────────────────────────────────
 
   it('expired active grant: transitions to revoked and emits bus event', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     const grant = makeGrant();
     mockReturning.mockResolvedValue([grant]);
 
@@ -200,7 +195,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   });
 
   it('emits one bus event per swept grant when multiple are swept', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     const grants = [makeGrant({ id: 'vdg_1', field: 'TOKEN_A' }), makeGrant({ id: 'vdg_2', field: 'TOKEN_B' })];
     mockReturning.mockResolvedValue(grants);
 
@@ -213,7 +208,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   });
 
   it('no-op: returns swept=0 and emits no bus events when no expired active grants exist', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     // This case covers both non-expired active rows and already-revoked/superseded rows:
     // the WHERE clause (status=active AND expiresAt IS NOT NULL AND expiresAt < now)
     // ensures only truly expired active rows are returned.  An empty result means none matched.
@@ -232,7 +227,7 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   // ── Error handling ──────────────────────────────────────────────────────────
 
   it('returns 500 when the DB update throws', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockRejectedValue(new Error('DB connection lost'));
 
     const response = await GET(makeRequest(CRON_AUTH) as never);

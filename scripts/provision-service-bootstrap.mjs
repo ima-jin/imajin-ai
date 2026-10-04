@@ -19,6 +19,11 @@
  * not, so a crash between the write and the grant self-heals on the next run.
  * Idempotent: a re-run with everything provisioned changes nothing.
  *
+ * Which grant a service gets: the attestation key for every userspace service;
+ * for the kernel's own `KERNEL_CRON_VAULT_BOOTSTRAP_*` pair (the `*-kernel-cron`
+ * scheduler's identity, #2550) the kernel cron secret instead. Both are
+ * vault-generated internal secrets (#2245 pattern) — nobody pastes either.
+ *
  * Runs as ESM under plain `node` (#2483), like scripts/migrate.mjs and the
  * other ops scripts that need ESM-only dependencies. The core logic stays
  * TypeScript (scripts/lib/provision-service-bootstrap.ts, which imports the

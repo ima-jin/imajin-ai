@@ -14,6 +14,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 import { GET } from '../route';
+import { _setCronSecretForTests } from '@/src/cron/secret';
 
 const AUTH = { authorization: 'Bearer test-secret' };
 
@@ -47,7 +48,7 @@ describe('GET /api/admin/cron-status', () => {
 
     beforeEach(() => {
       dir = mkdtempSync(join(tmpdir(), 'cron-status-route-'));
-      process.env.CRON_SECRET = 'test-secret';
+      _setCronSecretForTests('test-secret');
       process.env.CRON_STATE_PATH = join(dir, 'state.json');
     });
 

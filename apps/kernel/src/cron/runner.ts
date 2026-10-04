@@ -4,7 +4,8 @@
  *
  * Once a minute it checks each manifest job's schedule (UTC) and, for the ones
  * that are due, calls the route on localhost with
- * `Authorization: Bearer $CRON_SECRET`. Guarantees:
+ * `Authorization: Bearer <cron secret>`, where the secret is fetched from the
+ * vault at boot (`./vault-secret.ts`) and held in memory only. Guarantees:
  *
  *   - A job with `noOverlap` never runs concurrently with itself: a tick that
  *     fires while the previous run is still in flight is skipped and logged.
@@ -27,6 +28,7 @@ import {
   type CronJobState,
   type CronStateFile,
 } from './state';
+import { loadCronSecretFromVault, type VaultSecretDeps } from './vault-secret';
 
 export type RunStatus = 'success' | 'failure' | 'skipped';
 
@@ -45,6 +47,8 @@ export interface RunnerOptions {
   /** Abort a single route call after this long (the run is logged as a failure). */
   requestTimeoutMs?: number;
   fetchImpl?: typeof fetch;
+  /** Called with the HTTP status of every route response (the vault grant's deferred ack hangs off the first accepted one). */
+  onResponse?: (status: number) => void;
   now?: () => Date;
   log?: (line: CronLogLine) => void;
   writeState?: (path: string, state: CronStateFile) => void;
@@ -161,6 +165,7 @@ export class CronRunner {
     });
     // Drain the body so the connection is released; its content is not logged.
     await response.arrayBuffer();
+    this.opts.onResponse?.(response.status);
     return response.status;
   }
 
@@ -239,7 +244,6 @@ export function startTicker(runner: CronRunner, now: () => number = Date.now): {
 
 export interface SchedulerConfig {
   baseUrl: string;
-  secret: string;
   statePath: string;
   requestTimeoutMs: number;
 }
@@ -248,18 +252,14 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]']);
 
 /**
  * Build the scheduler config from the process environment. Throws (with a
- * message that never contains the secret) when it is unusable, so pm2 shows a
- * crash-loop instead of a scheduler that silently does nothing.
+ * message that never contains a secret) when it is unusable, so pm2 shows a
+ * crash-loop instead of a scheduler that silently does nothing. The bearer
+ * secret is not part of the config: it comes from the vault (`startScheduler`).
  */
 export function resolveSchedulerConfig(
   env: NodeJS.ProcessEnv,
   cwd: string = process.cwd(),
 ): SchedulerConfig {
-  const secret = env.CRON_SECRET;
-  if (!secret) {
-    throw new Error('CRON_SECRET is not set — the cron scheduler cannot authenticate to the routes');
-  }
-
   const baseUrl = env.CRON_BASE_URL?.trim() || `http://127.0.0.1:${env.PORT || 3000}`;
   let parsed: URL;
   try {
@@ -267,7 +267,7 @@ export function resolveSchedulerConfig(
   } catch {
     throw new Error('CRON_BASE_URL is not a valid URL');
   }
-  // The bearer secret must never leave the box.
+  // The bearer secret (and the bootstrap signature that fetches it) must never leave the box.
   if (!LOOPBACK_HOSTS.has(parsed.hostname)) {
     throw new Error(`CRON_BASE_URL must be a loopback address (got host "${parsed.hostname}")`);
   }
@@ -275,19 +275,36 @@ export function resolveSchedulerConfig(
   const timeout = Number(env.CRON_REQUEST_TIMEOUT_MS);
   return {
     baseUrl: parsed.origin,
-    secret,
     statePath: resolveCronStatePath(env, cwd),
     requestTimeoutMs: Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_REQUEST_TIMEOUT_MS,
   };
 }
 
-/** Wire config + manifest into a running scheduler. Returns a `stop()` for graceful shutdown. */
-export function startScheduler(
+/** A route response that proves the kernel accepted the presented secret (not 401 wrong-bearer / 503 unconfigured). */
+function secretWasAccepted(status: number): boolean {
+  return status !== 401 && status !== 503;
+}
+
+/**
+ * Wire config + manifest into a running scheduler. Fetches the cron secret from
+ * the vault first (memory only; see `./vault-secret.ts`), failing closed with a
+ * vault-pointing error if it cannot. Returns a `stop()` for graceful shutdown.
+ */
+export async function startScheduler(
   manifest: CronManifest,
   env: NodeJS.ProcessEnv = process.env,
-): { stop: () => void } {
+  vaultDeps: VaultSecretDeps = {},
+): Promise<{ stop: () => void }> {
   const config = resolveSchedulerConfig(env);
-  const runner = new CronRunner({ manifest, ...config });
+  const { secret, ack } = await loadCronSecretFromVault(env, `${config.baseUrl}/auth`, {
+    log: jsonLineLog,
+    ...vaultDeps,
+  });
+  // The grant's one deferred ack (#2257): sent on the first request the kernel accepts.
+  const onResponse = (status: number) => {
+    if (secretWasAccepted(status)) ack.used('first-request');
+  };
+  const runner = new CronRunner({ manifest, secret, onResponse, ...config });
   jsonLineLog({
     level: 'info',
     event: 'cron.scheduler-started',

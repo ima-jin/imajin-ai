@@ -36,6 +36,7 @@ vi.mock('@imajin/logger', () => ({
 // ── Import after mocks ───────────────────────────────────────────────────────
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -48,24 +49,18 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/attestation-cleanup', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
+    _resetCronSecretForTests();
   });
 
   // ── Auth ───────────────────────────────────────────────────────────────────
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest() as never);
@@ -73,7 +68,7 @@ describe('GET /api/cron/attestation-cleanup', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
@@ -81,7 +76,7 @@ describe('GET /api/cron/attestation-cleanup', () => {
   });
 
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer test-secret' }) as never);
@@ -89,7 +84,7 @@ describe('GET /api/cron/attestation-cleanup', () => {
   });
 
   it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(503);
@@ -98,7 +93,7 @@ describe('GET /api/cron/attestation-cleanup', () => {
   // ── Sweep logic ─────────────────────────────────────────────────────────────
 
   it('deletes expired attestations and returns their ids', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([{ id: 'att_1' }, { id: 'att_2' }]);
 
     const response = await GET(makeRequest(CRON_AUTH) as never);
@@ -113,7 +108,7 @@ describe('GET /api/cron/attestation-cleanup', () => {
   });
 
   it('no-op: returns deleted=0 and empty ids when no expired attestations exist', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest(CRON_AUTH) as never);
@@ -128,7 +123,7 @@ describe('GET /api/cron/attestation-cleanup', () => {
   // ── Error handling ──────────────────────────────────────────────────────────
 
   it('returns 500 when the DB delete throws', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockRejectedValue(new Error('DB connection lost'));
 
     const response = await GET(makeRequest(CRON_AUTH) as never);

@@ -49,7 +49,9 @@ components:
     cronBearer:
       type: http
       scheme: bearer
-      description: CRON_SECRET, shared by every /api/cron/* route in this repo.
+      description: >-
+        The vault-held cron secret (purpose kernel.cron-secret), shared by every
+        /api/cron/* route in this repo. Never an env var.
   schemas:
     GoogleScopeManifestStatus:
       type: object
@@ -346,6 +348,6 @@ paths:
                   results: { type: array, items: { type: object, properties: { ownerDid: { type: string } } } }
                   failures: { type: array, items: { type: object, properties: { ownerDid: { type: string }, error: { type: string } } } }
         "401":
-          description: Missing or wrong CRON_SECRET bearer
+          description: Missing or wrong cron secret bearer
         "500":
           description: Internal server error

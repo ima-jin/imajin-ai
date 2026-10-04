@@ -82,9 +82,10 @@ security assessment before restricted scopes can be granted.
 
 ## Environment variables (names only — never commit values)
 
-- `CRON_SECRET` — shared bearer secret gating `/api/cron/*` routes, including
-  the Gmail watch-renewal sweep this connector adds. Already used by every
-  other cron route in this repo.
+- The cron bearer secret gating `/api/cron/*` routes, including the Gmail
+  watch-renewal sweep this connector adds, is **not** an env var: it is a
+  vault-generated internal secret (purpose `kernel.cron-secret`) shared with the
+  `*-kernel-cron` scheduler by a vault grant. Nothing to set for this connector.
 - `GOOGLE_GMAIL_PUBSUB_TOPIC` — the fully-qualified Pub/Sub topic name
   (`projects/<project>/topics/<topic>`) Gmail publishes push notifications to.
   Provisioned once per Google Cloud project outside this repo (Pub/Sub topic +

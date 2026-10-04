@@ -15,6 +15,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 import { GET } from '../route';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 const WINDOW_START = new Date('2026-09-01T00:00:00.000Z');
 const WINDOW_END = new Date('2026-09-02T00:00:00.000Z');
@@ -26,8 +27,6 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/usage-rollup', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockPreviousUtcDayWindow.mockReturnValue({ windowStart: WINDOW_START, windowEnd: WINDOW_END });
@@ -35,15 +34,11 @@ describe('GET /api/cron/usage-rollup', () => {
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
+    _resetCronSecretForTests();
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
 
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(401);
@@ -51,28 +46,28 @@ describe('GET /api/cron/usage-rollup', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
     expect(response.status).toBe(401);
   });
 
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
 
     const response = await GET(makeRequest({ authorization: 'Bearer test-secret' }) as never);
     expect(response.status).toBe(200);
   });
 
   it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(503);
   });
 
   it('runs the rollup over the previous UTC day window and reports published/skipped counts', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunUsageRollup.mockResolvedValue([
       { principalDid: 'did:imajin:alice', contextId: 'c1', totalCostEstimateUsd: 2, breakdown: [], skipped: false },
       { principalDid: 'did:imajin:bob', contextId: 'c2', totalCostEstimateUsd: 0.1, breakdown: [], skipped: true },
@@ -99,7 +94,7 @@ describe('GET /api/cron/usage-rollup', () => {
   });
 
   it('returns 500 when the rollup throws', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunUsageRollup.mockRejectedValueOnce(new Error('DB unavailable'));
 
     const response = await GET(makeRequest(CRON_AUTH) as never);

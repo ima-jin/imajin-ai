@@ -339,43 +339,67 @@ describe('check-env vault file (#2412)', () => {
   });
 });
 
-// ── CRON_SECRET (#2550) ─────────────────────────────────────────────────────
+// ── Kernel cron secret (#2550, epic #2241) ──────────────────────────────────
 //
-// Every kernel cron route fails closed without it and the cron scheduler will
-// not start, so a deploy without a real value must stop here, before restart.
+// The cron bearer secret is a vault grant, not an env var: nothing about it may
+// be required in .env.local. The deploy fails closed through the scheduler's
+// bootstrap identity instead (minted + granted by provisioning), and when that
+// is missing the failure must point at the vault, not at a hand edit.
+
+const REAL_KERNEL_EXAMPLE = join(REPO_ROOT, 'apps', 'kernel', '.env.example');
 
 function makeCronRoot(localContent) {
   const dir = makeKernelRoot();
-  writeFileSync(join(dir, 'apps', 'kernel', '.env.example'), 'CRON_SECRET=""\n', 'utf8');
+  writeFileSync(
+    join(dir, 'apps', 'kernel', '.env.example'),
+    'KERNEL_CRON_VAULT_BOOTSTRAP_DID=\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=\n',
+    'utf8',
+  );
   writeFileSync(join(dir, 'apps', 'kernel', '.env.local'), localContent, 'utf8');
   return dir;
 }
 
-describe('check-env CRON_SECRET (#2550)', () => {
-  it('fails the deploy when CRON_SECRET is missing from the kernel .env.local', () => {
+describe('check-env kernel cron secret (#2550)', () => {
+  it('does not declare or require CRON_SECRET anywhere in the kernel .env.example', () => {
+    const example = readFileSync(REAL_KERNEL_EXAMPLE, 'utf8');
+    expect(example).not.toMatch(/^CRON_SECRET=/m);
+  });
+
+  it("declares the scheduler's bootstrap identity as required (no optional/vault-sourced annotation)", () => {
+    const lines = readFileSync(REAL_KERNEL_EXAMPLE, 'utf8').split('\n');
+    for (const key of ['KERNEL_CRON_VAULT_BOOTSTRAP_DID', 'KERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY']) {
+      const index = lines.findIndex((line) => line.startsWith(`${key}=`));
+      expect(index).toBeGreaterThan(-1);
+      // check-env treats a recognised annotation comment directly above a key as
+      // "not required"; it must not be present here.
+      expect(lines[index - 1]).not.toMatch(/^#\s*(optional|vault-sourced|deprecated)/);
+    }
+  });
+
+  it('passes without CRON_SECRET once the deploy has provisioned the scheduler identity', () => {
+    const result = runKernel(
+      makeCronRoot('KERNEL_CRON_VAULT_BOOTSTRAP_DID=did:imajin:abc\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=deadbeef\n'),
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('CRON_SECRET');
+  });
+
+  it('fails the deploy when the scheduler identity was not provisioned, and points at the vault, not .env.local', () => {
     const result = runKernel(makeCronRoot(''));
     expect(result.status).toBe(1);
-    expect(result.stdout).toContain('missing');
-    expect(result.stdout).toContain('CRON_SECRET');
+    expect(result.stdout).toContain('KERNEL_CRON_VAULT_BOOTSTRAP_DID');
+    expect(result.stdout).toContain('scripts/provision-service-bootstrap.mjs');
+    expect(result.stdout).toContain('do not hand-set');
+    expect(result.stdout).not.toContain('CRON_SECRET');
   });
 
-  it('fails the deploy when CRON_SECRET is present but empty', () => {
-    const result = runKernel(makeCronRoot('CRON_SECRET=""\n'));
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain('CRON_SECRET (empty)');
-  });
-
-  it('passes when CRON_SECRET has a value', () => {
-    const result = runKernel(makeCronRoot('CRON_SECRET=not-a-real-value\n'));
+  it('ignores a leftover CRON_SECRET in .env.local beyond the usual extra-key warning', () => {
+    const result = runKernel(
+      makeCronRoot(
+        'KERNEL_CRON_VAULT_BOOTSTRAP_DID=did:imajin:abc\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=deadbeef\nCRON_SECRET=stale\n',
+      ),
+    );
     expect(result.status).toBe(0);
-  });
-
-  it("declares CRON_SECRET in the kernel's real .env.example with no optional/vault-sourced annotation", () => {
-    const lines = readFileSync(join(REPO_ROOT, 'apps', 'kernel', '.env.example'), 'utf8').split('\n');
-    const index = lines.findIndex((line) => line.startsWith('CRON_SECRET='));
-    expect(index).toBeGreaterThan(-1);
-    // check-env treats a recognised annotation comment directly above a key as
-    // "not required"; it must not be present here.
-    expect(lines[index - 1]).not.toMatch(/^#\s*(optional|vault-sourced|deprecated)/);
+    expect(result.stdout).toContain('extra');
   });
 });

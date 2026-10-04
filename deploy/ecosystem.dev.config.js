@@ -37,21 +37,23 @@ module.exports = {
       // kernel's scheduled jobs (apps/kernel/src/cron/schedule.ts) only run if
       // something on this host calls them. This process reads that manifest and
       // calls each /api/cron/* route on loopback with
-      // `Authorization: Bearer $CRON_SECRET`, never overlapping a job with
+      // `Authorization: Bearer <cron secret>`, never overlapping a job with
       // itself, one structured JSON log line per run (`pm2 logs dev-kernel-cron`).
       // Last run + outcome per job: GET /api/admin/cron-status.
       //
       // Exec'd directly under `node --import tsx` (the dev-corpus pattern), NOT
       // via `npm start` (#2447/#2547): the pm2 pid is the process.
-      // `--env-file` loads CRON_SECRET from the kernel's untracked .env.local
-      // (dev-jin's own server.js loads the same file). Node EXITS if the file is
-      // missing, and the scheduler itself exits non-zero when CRON_SECRET is
-      // unset, so a misconfigured host crash-loops visibly instead of running
-      // nothing.
-      // check-env requires CRON_SECRET in the kernel env, so the deploy stops
-      // before restart if it is absent. CRON_BASE_URL must be loopback and match
-      // dev-jin's PORT above. The deploy workflow starts this app even when pm2
-      // has never seen it (see deploy-dev.yml "Restart dev services").
+      // `--env-file` loads the kernel's untracked .env.local (dev-jin's own
+      // server.js loads the same file) for the scheduler's vault bootstrap
+      // identity (KERNEL_CRON_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY), minted by the
+      // deploy's provisioning step. The bearer secret is NOT in that file: it is
+      // a vault grant the scheduler fetches at boot with loadFromVault and keeps
+      // in memory only. Node EXITS if the file is missing, and the scheduler
+      // exits non-zero if it cannot fetch the grant (the error points at the
+      // vault), so a misconfigured host crash-loops visibly instead of running
+      // nothing. CRON_BASE_URL must be loopback and match dev-jin's port above.
+      // The deploy workflow starts this app even when pm2 has never seen it (see
+      // deploy-dev.yml "Restart dev services").
       "name": "dev-kernel-cron",
       "cwd": "/home/jin/dev/imajin-ai/apps/kernel",
       "script": "src/cron/scheduler.ts",

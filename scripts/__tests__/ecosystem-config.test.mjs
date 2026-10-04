@@ -132,7 +132,7 @@ for (const env of ['dev', 'prod']) {
       expect(cron.node_args).toContain('--import tsx');
     });
 
-    it("runs in the kernel's directory and loads the kernel's .env.local (CRON_SECRET) via --env-file", () => {
+    it("runs in the kernel's directory and loads the kernel's .env.local (vault bootstrap identity) via --env-file", () => {
       expect(cron.cwd).toBe(kernel.cwd);
       expect(cron.node_args).toContain(`--env-file=${kernel.cwd}/.env.local`);
     });

@@ -279,16 +279,6 @@ function findWrongPortForKey(
   return null;
 }
 
-/**
- * Keys that must be present AND non-empty in a service's .env.local, beyond the
- * presence check every un-annotated .env.example key already gets. An empty
- * CRON_SECRET (#2550) would pass a presence check but leave every kernel cron
- * route failing closed with 503 and the cron scheduler unable to start.
- */
-const REQUIRED_NON_EMPTY: Readonly<Record<string, readonly string[]>> = {
-  kernel: ["CRON_SECRET"],
-};
-
 function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResult {
   const appDir = path.join(ROOT, "apps", svc.name);
   const examplePath = path.join(appDir, ".env.example");
@@ -349,11 +339,6 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     }
   }
 
-  // Present-but-empty values for keys that must carry a real value (#2550).
-  for (const key of REQUIRED_NON_EMPTY[svc.name] ?? []) {
-    if (example.has(key) && local.get(key) === "") missing.push(`${key} (empty)`);
-  }
-
   // Validate port values in .env.local
   const wrongPorts: { key: string; expected: number; actual: number }[] = [];
   for (const [key, val] of local.entries()) {
@@ -384,6 +369,9 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     warnings,
   };
 }
+
+/** `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` — provisioned by the deploy, never by hand. */
+const VAULT_BOOTSTRAP_KEY = /_VAULT_BOOTSTRAP_(DID|PRIVATE_KEY)$/;
 
 function printResult(result: ServiceResult, env: "dev" | "prod"): void {
   const {
@@ -427,6 +415,17 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
 
   for (const key of missing) {
     console.log(`       ${sym.arrow}  ${red("missing")}  ${cyan(key)}`);
+  }
+
+  // A missing vault bootstrap identity is never fixed by editing .env.local: the
+  // deploy's provisioning step mints the pair and the vault grants (#2442, #2550).
+  if (missing.some((key) => VAULT_BOOTSTRAP_KEY.test(key))) {
+    console.log(
+      `       ${sym.arrow}  ${dim(
+        "vault bootstrap identity: minted + granted in the vault by scripts/provision-service-bootstrap.mjs " +
+          "(the deploy runs it before this check) — do not hand-set; look at that step's log"
+      )}`
+    );
   }
 
   for (const { key, expected, actual } of wrongPorts) {

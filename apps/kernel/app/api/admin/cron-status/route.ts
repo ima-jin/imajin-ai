@@ -11,17 +11,18 @@ export const dynamic = 'force-dynamic';
  * GET /api/admin/cron-status — last run time and outcome for every scheduled
  * kernel job (#2550), as recorded by the `*-kernel-cron` scheduler process.
  *
- * Authenticated with the same fail-closed `Authorization: Bearer {CRON_SECRET}`
- * gate as the cron routes themselves (503 if CRON_SECRET is unset, 401 on a
- * wrong bearer). Example:
- *
- *   curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:7000/api/admin/cron-status
+ * Authenticated with the same fail-closed bearer gate as the cron routes
+ * themselves (503 if the vault-held cron secret is unavailable, 401 on a wrong
+ * bearer). The secret is a vault grant, never an env var or a file on the host
+ * (#2241), so there is no `$CRON_SECRET` to paste into a curl: the caller is the
+ * `*-kernel-cron` scheduler (or an agent holding a grant for the
+ * `kernel.cron-secret` purpose).
  *
  * A job with `stale: true` has had a scheduled tick pass with no run; if every
  * job is stale (or `schedulerSeen` is false) the scheduler process is down.
  */
-export function GET(request: Request) {
-  const denied = requireCronAuth(request);
+export async function GET(request: Request) {
+  const denied = await requireCronAuth(request);
   if (denied) return denied;
 
   return NextResponse.json(buildCronStatus(KERNEL_CRON_MANIFEST, resolveCronStatePath()));

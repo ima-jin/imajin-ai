@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   CronRunner,
@@ -13,6 +16,21 @@ import type { CronStateFile } from '../state';
 
 const SECRET = 'unit-test-cron-secret';
 const BASE_URL = 'http://127.0.0.1:7000';
+const VAULT_ENV = {
+  KERNEL_CRON_VAULT_BOOTSTRAP_DID: 'did:imajin:kernel-cron-test',
+  KERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY: 'bootstrap-private-key-for-tests',
+};
+
+function vaultDeps() {
+  const used = vi.fn();
+  const loadFromVault = vi.fn(async () => ({
+    values: { CRON_SECRET: SECRET },
+    dids: {},
+    degraded: [],
+    acks: { CRON_SECRET: { used, failed: vi.fn(), discarded: vi.fn() } },
+  }));
+  return { used, loadFromVault, deps: { loadFromVault, sleep: async () => undefined } };
+}
 
 const HOURLY: CronJob = { path: '/api/cron/hourly', schedule: '0 * * * *', noOverlap: true };
 const EVERY_MINUTE: CronJob = { path: '/api/cron/every-minute', schedule: '* * * * *', noOverlap: true };
@@ -317,25 +335,23 @@ describe('startTicker', () => {
 });
 
 describe('resolveSchedulerConfig', () => {
-  it('throws when CRON_SECRET is unset or empty, without echoing any value', () => {
-    expect(() => resolveSchedulerConfig({})).toThrow(/CRON_SECRET is not set/);
-    expect(() => resolveSchedulerConfig({ CRON_SECRET: '' })).toThrow(/CRON_SECRET is not set/);
-  });
-
-  it('defaults to loopback on PORT (or 3000) and to <cwd>/.cron-state.json', () => {
-    const withPort = resolveSchedulerConfig({ CRON_SECRET: SECRET, PORT: '7000' }, '/srv/kernel');
-    expect(withPort).toMatchObject({
+  it('defaults to loopback on PORT (or 3000) and to <cwd>/.cron-state.json, with no secret in the config', () => {
+    const withPort = resolveSchedulerConfig({ PORT: '7000' }, '/srv/kernel');
+    expect(withPort).toEqual({
       baseUrl: 'http://127.0.0.1:7000',
-      secret: SECRET,
       statePath: '/srv/kernel/.cron-state.json',
       requestTimeoutMs: DEFAULT_REQUEST_TIMEOUT_MS,
     });
-    expect(resolveSchedulerConfig({ CRON_SECRET: SECRET }, '/srv/kernel').baseUrl).toBe('http://127.0.0.1:3000');
+    expect(resolveSchedulerConfig({}, '/srv/kernel').baseUrl).toBe('http://127.0.0.1:3000');
+  });
+
+  it('never takes a secret from the environment', () => {
+    const config = resolveSchedulerConfig({ CRON_SECRET: SECRET });
+    expect(JSON.stringify(config)).not.toContain(SECRET);
   });
 
   it('honours CRON_BASE_URL, CRON_STATE_PATH and CRON_REQUEST_TIMEOUT_MS overrides', () => {
     const config = resolveSchedulerConfig({
-      CRON_SECRET: SECRET,
       CRON_BASE_URL: 'http://localhost:3000/',
       CRON_STATE_PATH: '/var/lib/cron.json',
       CRON_REQUEST_TIMEOUT_MS: '1234',
@@ -344,18 +360,16 @@ describe('resolveSchedulerConfig', () => {
   });
 
   it('ignores a nonsensical timeout', () => {
-    const config = resolveSchedulerConfig({ CRON_SECRET: SECRET, CRON_REQUEST_TIMEOUT_MS: '-5' });
+    const config = resolveSchedulerConfig({ CRON_REQUEST_TIMEOUT_MS: '-5' });
     expect(config.requestTimeoutMs).toBe(DEFAULT_REQUEST_TIMEOUT_MS);
   });
 
   it('refuses a non-loopback base URL so the bearer secret never leaves the box', () => {
-    expect(() => resolveSchedulerConfig({ CRON_SECRET: SECRET, CRON_BASE_URL: 'https://kernel.example.com' })).toThrow(
-      /loopback/,
-    );
+    expect(() => resolveSchedulerConfig({ CRON_BASE_URL: 'https://kernel.example.com' })).toThrow(/loopback/);
   });
 
   it('refuses an unparseable base URL', () => {
-    expect(() => resolveSchedulerConfig({ CRON_SECRET: SECRET, CRON_BASE_URL: 'not a url' })).toThrow(/not a valid URL/);
+    expect(() => resolveSchedulerConfig({ CRON_BASE_URL: 'not a url' })).toThrow(/not a valid URL/);
   });
 });
 
@@ -380,12 +394,23 @@ describe('logging', () => {
     expect(String(out.mock.calls[0][0]).endsWith('\n')).toBe(true);
   });
 
-  it('startScheduler logs a start line without the secret and returns a stoppable handle', () => {
+  it('startScheduler fetches the secret from the vault, logs a start line without it, and returns a stoppable handle', async () => {
     vi.useFakeTimers();
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const { deps, loadFromVault } = vaultDeps();
 
-    const handle = startScheduler(manifestOf(HOURLY), { CRON_SECRET: SECRET, PORT: '7000', CRON_STATE_PATH: '/srv/cron/state.json' });
+    const handle = await startScheduler(
+      manifestOf(HOURLY),
+      { ...VAULT_ENV, PORT: '7000', CRON_STATE_PATH: '/srv/cron/state.json' },
+      deps,
+    );
 
+    expect(loadFromVault).toHaveBeenCalledTimes(1);
+    expect(loadFromVault.mock.calls[0][0]).toMatchObject({
+      resolveGrantByPurpose: 'kernel.cron-secret',
+      authServiceUrl: `${BASE_URL}/auth`,
+      identity: { did: 'did:imajin:kernel-cron-test' },
+    });
     expect(out).toHaveBeenCalledTimes(1);
     const text = String(out.mock.calls[0][0]);
     expect(JSON.parse(text)).toMatchObject({ event: 'cron.scheduler-started', app: 'test', jobs: 1, baseUrl: BASE_URL });
@@ -393,7 +418,61 @@ describe('logging', () => {
     handle.stop();
   });
 
-  it('startScheduler throws on a bad config instead of starting a dead scheduler', () => {
-    expect(() => startScheduler(manifestOf(HOURLY), {})).toThrow(/CRON_SECRET is not set/);
+  it('startScheduler rejects on a bad config instead of starting a dead scheduler', async () => {
+    const { deps, loadFromVault } = vaultDeps();
+    await expect(startScheduler(manifestOf(HOURLY), { ...VAULT_ENV, CRON_BASE_URL: 'https://example.com' }, deps)).rejects.toThrow(
+      /loopback/,
+    );
+    expect(loadFromVault).not.toHaveBeenCalled();
+  });
+
+  it('startScheduler rejects with a vault-pointing error when the bootstrap identity is missing', async () => {
+    const { deps } = vaultDeps();
+    const failure = startScheduler(manifestOf(HOURLY), {}, deps);
+    await expect(failure).rejects.toThrow(/KERNEL_CRON_VAULT_BOOTSTRAP_DID/);
+    await expect(failure).rejects.not.toThrow(/set CRON_SECRET/);
+  });
+});
+
+describe('vault grant ack (one deferred ack, on first accepted use)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  async function runOneTick(status: number) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-04T10:00:10.000Z'));
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const stateDir = mkdtempSync(join(tmpdir(), 'cron-ack-'));
+    const fetchMock = vi.fn(async () => new Response('{}', { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { deps, used } = vaultDeps();
+
+    const handle = await startScheduler(
+      manifestOf(EVERY_MINUTE),
+      { ...VAULT_ENV, PORT: '7000', CRON_STATE_PATH: join(stateDir, 'state.json') },
+      deps,
+    );
+    await vi.advanceTimersByTimeAsync(60_000);
+    handle.stop();
+    rmSync(stateDir, { recursive: true, force: true });
+    return { used, fetchMock };
+  }
+
+  it('sends the ack once the kernel accepts the secret, and presents the vault-sourced bearer', async () => {
+    const { used, fetchMock } = await runOneTick(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const init = (fetchMock.mock.calls[0] as unknown as [URL, RequestInit])[1];
+    expect(init.headers).toEqual({ authorization: `Bearer ${SECRET}` });
+    expect(used).toHaveBeenCalledTimes(1);
+    expect(used).toHaveBeenCalledWith('first-request');
+  });
+
+  it('does not ack when the kernel rejects the secret (401) or reports it unconfigured (503)', async () => {
+    expect((await runOneTick(401)).used).not.toHaveBeenCalled();
+    expect((await runOneTick(503)).used).not.toHaveBeenCalled();
   });
 });

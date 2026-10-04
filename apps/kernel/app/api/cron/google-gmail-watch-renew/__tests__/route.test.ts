@@ -11,6 +11,7 @@ vi.mock('@/src/lib/google/connector', () => ({ listActiveGrantOwners: mockListAc
 vi.mock('@/src/lib/google/gmail', () => ({ listWatchExpirations: mockListWatchExpirations, watch: mockWatch }));
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 const JIN = 'did:imajin:jin';
 const OTHER = 'did:imajin:other';
@@ -22,41 +23,38 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockListWatchExpirations.mockResolvedValue([]);
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) delete process.env.CRON_SECRET;
-    else process.env.CRON_SECRET = originalCronSecret;
+    _resetCronSecretForTests();
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
     const response = await GET(makeRequest() as never);
     expect(response.status).toBe(401);
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
     expect(response.status).toBe(401);
   });
 
   it('fails closed with 503 (and does no work) when CRON_SECRET is not set (#2550)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests(null);
     const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(503);
     expect(mockListActiveGrantOwners).not.toHaveBeenCalled();
   });
 
   it('renews every owner with no prior watch row', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([JIN, OTHER]);
     mockListWatchExpirations.mockResolvedValue([]);
     mockWatch.mockResolvedValue({ historyId: '1', expiration: Date.now() + 7 * 24 * 60 * 60 * 1000, emailAddress: 'x@y.com' });
@@ -73,7 +71,7 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
   });
 
   it('skips an owner whose watch is not near expiry', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([JIN]);
     mockListWatchExpirations.mockResolvedValue([{ ownerDid: JIN, expiration: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000) }]);
 
@@ -86,7 +84,7 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
   });
 
   it('renews an owner whose watch expires within the renewal window', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([JIN]);
     mockListWatchExpirations.mockResolvedValue([{ ownerDid: JIN, expiration: new Date(Date.now() + 1000) }]);
     mockWatch.mockResolvedValue({ historyId: '1', expiration: Date.now(), emailAddress: 'x@y.com' });
@@ -97,7 +95,7 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
   });
 
   it('collects a per-owner failure without aborting the rest of the sweep', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([JIN, OTHER]);
     mockListWatchExpirations.mockResolvedValue([]);
     mockWatch
@@ -113,7 +111,7 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
   });
 
   it('returns 500 when enumerating owners throws', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockRejectedValue(new Error('DB connection lost'));
     const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);

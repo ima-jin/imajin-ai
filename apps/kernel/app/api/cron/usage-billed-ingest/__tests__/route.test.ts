@@ -12,6 +12,7 @@ vi.mock('@imajin/logger', () => ({
 vi.mock('@/src/lib/usage/billed/ingest-job', () => ({ runBilledUsageIngestion: mockRunBilledUsageIngestion }));
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests } from '@/src/cron/secret';
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/usage-billed-ingest', { headers });
@@ -26,7 +27,7 @@ describe('GET /api/cron/usage-billed-ingest (#1076 Stage 1)', () => {
   });
 
   it('runs the sweep and returns its result when auth passes', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunBilledUsageIngestion.mockResolvedValue({ owners: 2, results: [{ provider: 'anthropic' }], failures: [] });
 
     const response = await GET(makeRequest(CRON_AUTH) as never);
@@ -39,7 +40,7 @@ describe('GET /api/cron/usage-billed-ingest (#1076 Stage 1)', () => {
   });
 
   it('returns 500 when the sweep throws', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunBilledUsageIngestion.mockRejectedValue(new Error('DB connection lost'));
 
     const response = await GET(makeRequest(CRON_AUTH) as never);
