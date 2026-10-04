@@ -1,4 +1,4 @@
-import { buildPublicUrl, profilePath } from '@imajin/config';
+import { profilePath } from '@imajin/config';
 import { getForestConfig, getViewerMembership, getMembersByRole } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
@@ -13,8 +13,8 @@ import { Avatar } from '../Avatar';
 import { CopyDid } from '../CopyDid';
 
 import { CommunityPageClient } from './CommunityPageClient';
+import { resolveRegistryAppUrl, buildCommunityTabs } from '../../lib/registry-app-links';
 import type { ProfileViewProps } from '../../lib/types';
-import type { CommunityTab } from '../CommunityTabs';
 
 async function resolveCanJoin(
   profileDid: string,
@@ -45,7 +45,7 @@ async function resolveCanJoin(
   return { canJoin: true, joinVisibility };
 }
 
-export async function CommunityProfile({ profile, identity, viewer, links }: Readonly<ProfileViewProps>) {
+export async function CommunityProfile({ profile, identity, viewer, links, registryApps }: Readonly<ProfileViewProps>) {
   const selfViewerRole: string | null = viewer.isSelf ? 'owner' : null;
   const [forestConfig, viewerMemberRole] = await Promise.all([
     getForestConfig(profile.did),
@@ -69,21 +69,20 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Rea
 
   const enabledServices = forestConfig?.enabledServices ?? [];
 
-  // Determine which tabs to show
-  const enabledTabs: CommunityTab[] = ['overview'];
-  if (enabledServices.includes('events') || profile.featureToggles?.show_events) {
-    enabledTabs.push('events');
-  }
-  if (enabledServices.includes('chat')) {
-    enabledTabs.push('chat');
-  }
-  enabledTabs.push('members'); // always show members
-  if (enabledServices.includes('market') && profile.featureToggles?.show_market_items) {
-    enabledTabs.push('market');
-  }
+  // #2434: events/market links come from the registry (not hard-coded literals) — a
+  // pruned app yields null, which drops its tab and widget below.
+  const eventsUrl = resolveRegistryAppUrl(registryApps, 'events');
+  const marketUrl = resolveRegistryAppUrl(registryApps, 'market');
 
-  const showEvents = enabledServices.includes('events') && profile.featureToggles?.show_events;
-  const showMarket = enabledServices.includes('market') && profile.featureToggles?.show_market_items;
+  const enabledTabs = buildCommunityTabs({
+    enabledServices,
+    featureToggles: profile.featureToggles,
+    eventsUrl,
+    marketUrl,
+  });
+
+  const showEvents = Boolean(eventsUrl) && enabledServices.includes('events') && profile.featureToggles?.show_events;
+  const showMarket = Boolean(marketUrl) && enabledServices.includes('market') && profile.featureToggles?.show_market_items;
 
   // --- Build tab content sections ---
 
@@ -121,10 +120,10 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Rea
     </div>
   );
 
-  const eventsContent = showEvents ? (
+  const eventsContent = showEvents && eventsUrl ? (
     <UpcomingEvents
       did={profile.did}
-      eventsBaseUrl={buildPublicUrl('events')}
+      eventsBaseUrl={eventsUrl}
       viewerDid={viewer.viewerDid}
     />
   ) : (
@@ -140,11 +139,11 @@ export async function CommunityProfile({ profile, identity, viewer, links }: Rea
     />
   );
 
-  const marketContent = showMarket ? (
+  const marketContent = showMarket && marketUrl ? (
     <MarketItems
       did={profile.did}
       handle={profile.handle}
-      marketBaseUrl={buildPublicUrl('market')}
+      marketBaseUrl={marketUrl}
     />
   ) : null;
 

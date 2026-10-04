@@ -309,7 +309,6 @@ export function VaultPanel() {
         body: JSON.stringify({
           field: input.field,
           value: input.value,
-          ...(input.confirmField === undefined ? {} : { confirmField: input.confirmField }),
         }),
       });
 

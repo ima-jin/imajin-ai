@@ -1,17 +1,11 @@
 import type { AuthResult, AuthError } from "./types";
 import { requireAuth } from "./require-auth";
-import type { IdentityTier } from "./tiers";
-
-/** Explicit allowlist: established or higher. Anything else fails closed. */
-const ESTABLISHED_TIERS: ReadonlySet<IdentityTier> = new Set<IdentityTier>([
-  "established",
-  "steward",
-  "operator",
-]);
+import { isEstablishedTier } from "./tiers";
 
 /**
  * Require established DID authentication (keypair-based, fully onboarded).
- * Allows only established-or-higher tiers; rejects soft, preliminary, and any
+ * Allows only established-or-higher tiers, as defined by the single tier
+ * allowlist in `isEstablishedTier()`; rejects soft, preliminary, and any
  * missing or unknown tier (fail closed).
  */
 export async function requireEstablishedDID(
@@ -23,8 +17,9 @@ export async function requireEstablishedDID(
     return authResult;
   }
 
+  // Non-string tiers can never match, so they fail closed before the lookup.
   const tier: unknown = authResult.identity.tier;
-  if (typeof tier !== "string" || !ESTABLISHED_TIERS.has(tier as IdentityTier)) {
+  if (typeof tier !== "string" || !isEstablishedTier(tier)) {
     return {
       error: "This action requires an established identity",
       status: 403,

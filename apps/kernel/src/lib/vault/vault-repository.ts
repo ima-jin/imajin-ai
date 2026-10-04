@@ -9,7 +9,12 @@
  * with NODE_ENV=production on a machine that legitimately has no VAULT_PATH,
  * so resolving/loading must stay lazy (see ./vault-path.ts).
  */
-import { FileVaultRepository, VaultFileMissingError } from '@imajin/vault-core';
+import {
+  FileVaultRepository,
+  VaultFileMalformedError,
+  VaultFileMissingError,
+  VaultFileUnreadableError,
+} from '@imajin/vault-core';
 import { createLogger } from '@imajin/logger';
 import {
   VAULT_BOOTSTRAP_ENV,
@@ -19,6 +24,21 @@ import {
 } from './vault-path';
 
 const log = createLogger('kernel');
+
+type VaultFileError = VaultFileMissingError | VaultFileUnreadableError | VaultFileMalformedError;
+
+function isVaultFileError(error: unknown): error is VaultFileError {
+  return (
+    error instanceof VaultFileMissingError ||
+    error instanceof VaultFileUnreadableError ||
+    error instanceof VaultFileMalformedError
+  );
+}
+
+/** Stable machine code for a load failure — never a message that could carry vault content. */
+function vaultErrorCode(error: unknown): string {
+  return isVaultFileError(error) ? error.code : 'VAULT_LOAD_FAILED';
+}
 
 // Process-lifetime cache — constructed once, on first real vault operation.
 let cachedRepository: FileVaultRepository | undefined;
@@ -42,6 +62,21 @@ export function getVaultRepository(): FileVaultRepository {
   return cachedRepository;
 }
 
+function logBootFailure(error: unknown): void {
+  if (error instanceof VaultFileMissingError) {
+    log.error(
+      { vaultPath: error.vaultPath },
+      `vault: configured VAULT_PATH file is missing — refusing to boot. Restore it, fix VAULT_PATH, or set ${VAULT_BOOTSTRAP_ENV}=1 for a first-run bootstrap`,
+    );
+  } else if (isVaultFileError(error)) {
+    // #2440: exists but unreadable / malformed. The file is left untouched.
+    log.error(
+      { vaultPath: error.vaultPath, code: error.code },
+      `vault: configured VAULT_PATH file exists but is unusable (${error.code}) — refusing to boot. The file has not been modified; repair or restore it`,
+    );
+  }
+}
+
 /**
  * Load the vault once at server boot and log `vault: loaded N entries from <path>`.
  *
@@ -54,12 +89,7 @@ export async function loadVaultAtBoot(): Promise<void> {
   try {
     await repository.load();
   } catch (error) {
-    if (error instanceof VaultFileMissingError) {
-      log.error(
-        { vaultPath: error.vaultPath },
-        `vault: configured VAULT_PATH file is missing — refusing to boot. Restore it, fix VAULT_PATH, or set ${VAULT_BOOTSTRAP_ENV}=1 for a first-run bootstrap`,
-      );
-    }
+    logBootFailure(error);
     throw error;
   }
 
@@ -95,7 +125,10 @@ export interface VaultHealth {
  *
  * Loads the vault if this module instance has not yet done so (Next may
  * bundle instrumentation and route handlers separately, so the boot-time
- * load is not guaranteed to be visible here).
+ * load is not guaranteed to be visible here). After that, every call
+ * re-reads and re-validates the file on disk (#2440): a file that vanishes,
+ * becomes unreadable or is corrupted after boot must turn health to `error`
+ * immediately, not keep reporting the boot-time `ok`.
  */
 export async function getVaultHealth(): Promise<VaultHealth> {
   let repository: FileVaultRepository;
@@ -105,17 +138,16 @@ export async function getVaultHealth(): Promise<VaultHealth> {
     return { status: 'error', path: null, entryCount: null, lastLoadedAt: null, bootstrapped: false, error: 'VAULT_PATH_UNRESOLVED' };
   }
 
-  if (repository.getStatus().lastLoadedAt === null) {
-    try {
+  try {
+    if (repository.getStatus().lastLoadedAt === null) {
       await repository.load();
-    } catch (error) {
-      const code = error instanceof VaultFileMissingError ? error.code : 'VAULT_LOAD_FAILED';
-      return { ...repository.getStatus(), status: 'error', error: code };
     }
+    const entryCount = await repository.verify();
+    const status = { ...repository.getStatus(), entryCount };
+    return { ...status, status: entryCount === 0 ? 'empty' : 'ok' };
+  } catch (error) {
+    return { ...repository.getStatus(), status: 'error', error: vaultErrorCode(error) };
   }
-
-  const status = repository.getStatus();
-  return { ...status, status: status.entryCount === 0 ? 'empty' : 'ok' };
 }
 
 /** Reset the cache — only for use in tests. */

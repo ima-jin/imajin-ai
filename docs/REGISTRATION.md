@@ -170,6 +170,13 @@ placeholder — see "Legacy first-party rows vs. provisioned apps" below.)
   `registry.apps` row is written only after a real keypair already exists and is durably
   vault-sealed — a genuine seal failure (e.g. a sealed-but-invalid credential, not merely
   unsealed) never leaves a registry row pointing at a key nothing backs.
+- **A stale PAT still sealed fails closed with `OrgCredentialMalformedError` (#2436).** If
+  `github-org-provisioning` still holds a pre-#2416 PAT string (or any value that is not the
+  `{appId, installationId, privateKeyPem}` JSON blob), provisioning fails closed — at the first
+  step that consults the credential, which is `register` (the manifest read) when the repo
+  already exists, or `repo` when it must be created — instead of degrading like the unsealed
+  case. No registry row is written. Fix: reseal the `{appId, installationId, privateKeyPem}`
+  blob ("Operator setup" step 5 above), then re-propose.
 - **Retryable.** Re-proposing after a failure resumes from whichever step didn't already
   succeed (each step checks its own completion state first) — including a prior seal-skip: a
   retry with `sealedAt` still unset re-attempts sealing, which succeeds once an operator has
