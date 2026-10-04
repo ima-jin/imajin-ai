@@ -48,6 +48,7 @@ fi
 #   mismatch <reason>
 # for app $1, given pm2's process list in $PM2_JLIST. Exit 3 = unusable input.
 classify_app() {
+  local app_name="$1" status
   node -e '
     const path = require("path");
     const [ecosystem, name] = process.argv.slice(1);
@@ -86,7 +87,9 @@ classify_app() {
       }
     }
     console.log("match");
-  ' "$ECOSYSTEM" "$1"
+  ' "$ECOSYSTEM" "$app_name"
+  status=$?
+  return "$status"
 }
 
 FAILED=0
