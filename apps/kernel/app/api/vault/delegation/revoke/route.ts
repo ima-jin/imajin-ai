@@ -30,7 +30,8 @@ const log = createLogger('kernel');
  * IMPORTANT: revocation does NOT re-encrypt the ciphertext. Any in-process
  * loadAndUnseal that ran before revocation and holds the decrypted value in
  * memory is unaffected. To eliminate the old field key entirely, follow
- * revocation with a POST /api/vault/set to re-seal with a new random key.
+ * revocation with a POST /api/vault/rotate to re-seal with a new random key
+ * (Set refuses an existing field that has other active grantees, #2452).
  */
 export async function POST(request: NextRequest) {
   if (!(await requireAdmin())) {

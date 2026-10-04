@@ -2,7 +2,7 @@
  * POST /api/vault/set — the #2449 guards Rotate/Delete have, applied to Set (#2452).
  *
  *  - set on an EXISTING field with other active grantees re-seals it under a
- *    new key and strands them → 409 unless confirmField === field
+ *    new key and strands them → 409, unconditionally (no override; use Rotate)
  *  - set on internal-secret:* (the kernel's own secrets) → 409, always
  *
  * The real grantees helper runs; only the DB query it issues is mocked, via
@@ -108,7 +108,7 @@ describe('set on an existing field with active grantees (#2452)', () => {
     mockOtherGranteeRows.mockReturnValue([GRANTEE]);
   });
 
-  it('409s without confirmField, naming the grantees, and seals nothing', async () => {
+  it('409s, naming the grantees and pointing at Rotate, and seals nothing', async () => {
     const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'v' }) as never);
     expect(response.status).toBe(409);
     const body = (await response.json()) as { count: number; grantees: unknown[]; error: string };
@@ -120,12 +120,6 @@ describe('set on an existing field with active grantees (#2452)', () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
-  it('409s when confirmField does not equal the field exactly', async () => {
-    const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'v', confirmField: 'gh_token' }) as never);
-    expect(response.status).toBe(409);
-    expect(mockSealAndStore).not.toHaveBeenCalled();
-  });
-
   it('409s on the delegation-grant custody path too', async () => {
     const response = await POST(
       makeRequest({ field: 'GH_TOKEN', value: 'v', custodyScheme: 'delegation-grant' }) as never,
@@ -134,10 +128,15 @@ describe('set on an existing field with active grantees (#2452)', () => {
     expect(mockSealAndStoreV2).not.toHaveBeenCalled();
   });
 
-  it('proceeds when confirmField equals the field', async () => {
+  it('409s even when a confirmField is sent — there is no override', async () => {
     const response = await POST(makeRequest({ field: 'GH_TOKEN', value: 'v', confirmField: 'GH_TOKEN' }) as never);
-    expect(response.status).toBe(200);
-    expect(mockSealAndStore).toHaveBeenCalledWith('GH_TOKEN', 'v');
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: string };
+    expect(body.error).toMatch(/Rotate/);
+    expect(body.error).not.toMatch(/confirmField/);
+    expect(mockSealAndStore).not.toHaveBeenCalled();
+    expect(mockSealAndStoreV2).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   it('guards on the trimmed field name', async () => {
@@ -151,10 +150,10 @@ describe('set on internal-secret:* (#2452)', () => {
   it.each([
     ['a field that does not exist', null],
     ['an existing field', { field: 'internal-secret:x', cid: 'cid:old' }],
-  ])('409s for %s, even with confirmField, and never reaches the vault', async (_label, existing) => {
+  ])('409s for %s and never reaches the vault', async (_label, existing) => {
     mockVaultServiceGet.mockResolvedValue(existing);
     const response = await POST(
-      makeRequest({ field: 'internal-secret:x', value: 'v', confirmField: 'internal-secret:x' }) as never,
+      makeRequest({ field: 'internal-secret:x', value: 'v' }) as never,
     );
     expect(response.status).toBe(409);
     expect(mockVaultServiceGet).not.toHaveBeenCalled();
