@@ -9,6 +9,10 @@
 // so the pm2-managed pid *is* the listener. scripts/assert-pm2-listeners.sh
 // verifies this after every deploy restart.
 //
+// Every app sets an explicit `kill_timeout` (#2547) so pm2 waits long enough
+// for a clean shutdown before SIGKILL; scripts/check-pm2-restarts.sh alerts on
+// restart-count growth so a crash loop cannot stay silent.
+//
 // fixready / karaoke / scorecard live in separate repos whose start scripts
 // are not visible from here; they keep `npm start` until each is confirmed and
 // converted (tracked in the allowlist in scripts/__tests__/ecosystem-config.test.mjs).
@@ -47,7 +51,8 @@ module.exports = {
         "VAULT_PATH": "~/.imajin/vault.prod.json"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       // Kernel cron scheduler (#2550). We don't deploy on Vercel, so the
@@ -96,7 +101,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-registry",
@@ -110,7 +116,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-connections",
@@ -124,7 +131,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-pay",
@@ -138,7 +146,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-profile",
@@ -152,7 +161,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-events",
@@ -166,7 +176,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-chat",
@@ -179,7 +190,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-media",
@@ -193,7 +205,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-coffee",
@@ -207,7 +220,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-dykil",
@@ -221,7 +235,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-learn",
@@ -235,7 +250,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-market",
@@ -249,7 +265,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-fixready",
@@ -261,7 +278,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-karaoke",
@@ -273,7 +291,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "prod-scorecard",
@@ -285,7 +304,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     }
     // corpus is deliberately NOT listed here. Per #2232 (multi-host deploy),
     // corpus runs on gx10, not this host (the ProLiant) — Ryan decided

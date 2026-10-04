@@ -91,6 +91,12 @@ for (const env of ['dev', 'prod']) {
       }
     });
 
+    it('sets an explicit kill_timeout long enough for a clean Next shutdown (#2547)', () => {
+      for (const app of apps) {
+        expect(app.kill_timeout, app.name).toBeGreaterThanOrEqual(10000);
+      }
+    });
+
     it('execs the kernel directly', () => {
       const kernel = apps.find((a) => a.name === `${env}-jin`);
       expect(kernel).toBeDefined();

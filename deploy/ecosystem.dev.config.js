@@ -30,7 +30,8 @@ module.exports = {
         "VAULT_PATH": "~/.imajin/vault.dev.json"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       // Kernel cron scheduler (#2550). We don't deploy on Vercel, so the
@@ -79,7 +80,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-coffee",
@@ -93,7 +95,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-dykil",
@@ -107,7 +110,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-learn",
@@ -121,7 +125,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-market",
@@ -135,7 +140,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-fixready",
@@ -147,7 +153,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-karaoke",
@@ -159,7 +166,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       // See ecosystem.prod.config.js's corpus comment: corpus is an
@@ -195,7 +203,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     }
   ]
 };

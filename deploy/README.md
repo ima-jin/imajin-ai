@@ -135,7 +135,31 @@ port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
 
 `fixready`, `karaoke` and `scorecard` come from separate repos and still use
 `npm start`; convert them once their start scripts are confirmed (allowlisted in
-`scripts/__tests__/ecosystem-config.test.mjs`).
+`scripts/__tests__/ecosystem-config.test.mjs`). Standalone app repos (e.g.
+`ima-jin/links`) must follow the same rule in their own pm2 entry.
+
+## Explicit `kill_timeout` and crash-loop alert (#2547)
+
+prod-events crash-looped for ~12h (~48k restarts) behind a still-serving orphan
+and nobody was told. Two more guards:
+
+- **`kill_timeout: 15000`** on every app. pm2's default is 1600 ms, after which
+  it SIGKILLs; Next needs longer to drain connections and exit, and a kill that
+  races shutdown is how a process survives a restart. `ecosystem-config.test.mjs`
+  requires it (>= 10 s) on every entry.
+- **`scripts/check-pm2-restarts.sh <dev|prod>`** compares each app's pm2
+  `restart_time` with the samples it saved inside a sliding window and exits 1
+  (optionally POSTing `{"text": ...}` to a webhook) when an app restarted more
+  than N times in that window. It keeps running until the loop stops, so a
+  crash loop cannot hide behind a 200. Run it every minute on the host:
+
+  ```cron
+  * * * * * cd ~/prod/imajin-ai && RESTART_ALERT_WEBHOOK=https://... ./scripts/check-pm2-restarts.sh prod >> ~/prod/restart-alert.log 2>&1
+  ```
+
+  Tunables: `RESTART_ALERT_THRESHOLD` (default 5), `RESTART_ALERT_WINDOW`
+  (default 600 s), `RESTART_ALERT_STATE`, `RESTART_ALERT_WEBHOOK`. The cron
+  entry is host configuration and is not installed by the deploy workflow.
 
 ## Kernel cron scheduler: `prod-kernel-cron` / `dev-kernel-cron` (#2550)
 
