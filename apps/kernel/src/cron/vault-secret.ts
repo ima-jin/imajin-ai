@@ -80,6 +80,30 @@ function vaultFailure(did: string, timeoutMs: number, lastError: string): Error 
   );
 }
 
+/** One fetch attempt: the secret + its ack, or a (secret-free) description of why not. */
+async function tryFetch(
+  load: NonNullable<VaultSecretDeps['loadFromVault']>,
+  did: string,
+  privateKey: string,
+  authServiceUrl: string,
+): Promise<VaultCronSecret | { error: string }> {
+  try {
+    const credentials = await load({
+      resolveGrantByPurpose: CRON_SECRET_PURPOSE,
+      purpose: 'kernel-cron.boot.cron-secret',
+      keys: [{ key: SECRET_KEY, onMissing: 'fail' }],
+      identity: { did, privateKey },
+      authServiceUrl,
+    });
+    const secret = credentials.values[SECRET_KEY];
+    const ack = credentials.acks[SECRET_KEY];
+    return secret && ack ? { secret, ack } : { error: 'the vault returned no value for the grant' };
+  } catch (err) {
+    // loadFromVault's errors never contain a fetched value, key or token.
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 /**
  * Fetch the cron secret from the vault as the scheduler's bootstrap identity.
  *
@@ -109,27 +133,14 @@ export async function loadCronSecretFromVault(
   const timeoutMs = fetchTimeoutMs(env);
   const deadline = now() + timeoutMs;
 
-  let lastError = 'no attempt made';
-  for (;;) {
-    try {
-      const credentials = await load({
-        resolveGrantByPurpose: CRON_SECRET_PURPOSE,
-        purpose: 'kernel-cron.boot.cron-secret',
-        keys: [{ key: SECRET_KEY, onMissing: 'fail' }],
-        identity: { did, privateKey },
-        authServiceUrl,
-      });
-      const secret = credentials.values[SECRET_KEY];
-      const ack = credentials.acks[SECRET_KEY];
-      if (secret && ack) return { secret, ack };
-      lastError = 'the vault returned no value for the grant';
-    } catch (err) {
-      // loadFromVault's errors never contain a fetched value, key or token.
-      lastError = err instanceof Error ? err.message : String(err);
-    }
+  const attempt = async (): Promise<VaultCronSecret> => {
+    const outcome = await tryFetch(load, did, privateKey, authServiceUrl);
+    if ('secret' in outcome) return outcome;
 
-    if (now() + VAULT_FETCH_RETRY_INTERVAL_MS > deadline) throw vaultFailure(did, timeoutMs, lastError);
-    log({ level: 'warn', event: 'cron.vault-fetch-retry', error: lastError });
+    if (now() + VAULT_FETCH_RETRY_INTERVAL_MS > deadline) throw vaultFailure(did, timeoutMs, outcome.error);
+    log({ level: 'warn', event: 'cron.vault-fetch-retry', error: outcome.error });
     await sleep(VAULT_FETCH_RETRY_INTERVAL_MS);
-  }
+    return attempt();
+  };
+  return attempt();
 }
