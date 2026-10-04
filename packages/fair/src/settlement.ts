@@ -236,8 +236,10 @@ function distributeDrift(
   const step = Math.sign(driftCents);
   let remaining = driftCents;
   let skipped = 0;
-  for (let n = 0; remaining !== 0 && skipped < sellerIndexes.length; n++) {
-    const target = sellerIndexes[n % sellerIndexes.length]!;
+  let cursor = 0;
+  while (remaining !== 0 && skipped < sellerIndexes.length) {
+    const target = sellerIndexes[cursor % sellerIndexes.length]!;
+    cursor++;
     if (step < 0 && centsByIndex[target]! <= 0) {
       skipped++;
       continue;
@@ -323,9 +325,9 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     feeCents,
     sellerIndexes.map((i) => grossCents[i]!),
   );
-  sellerIndexes.forEach((chainIndex, n) => {
+  for (const [n, chainIndex] of sellerIndexes.entries()) {
     centsByIndex[chainIndex]! -= feeParts[n]!;
-  });
+  }
 
   // ── 4. Correct rounding drift ──────────────────────────────────────────────
   // Per-entry rounding can leave the chain a few cents off `expectedTotal`.
@@ -337,9 +339,9 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     sellerIndexes,
     Math.round(expectedTotal * 100) - centsByIndex.reduce((sum, c) => sum + c, 0),
   );
-  resolvedChain.forEach((entry, i) => {
+  for (const [i, entry] of resolvedChain.entries()) {
     entry.amount = Number.parseFloat((centsByIndex[i]! / 100).toFixed(2));
-  });
+  }
 
   // ── 4. Tax credits (#2419) ── full amount each, no fee deduction, no
   // proportional math; kept entirely separate from `resolvedChain`.
