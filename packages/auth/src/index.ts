@@ -40,6 +40,26 @@ export type {
   FunnelChainVerification,
 } from "./intro-funnel";
 export { verifyNostrSig, signNostrAttestation, getNostrPublicKey, nostrAttestationDigest } from "./nostr-crypto";
+// #1978 — agent.turn.evidence payload / hashing / signing contract, shared
+// with the agent side (the OpenClaw Imajin plugin's turn-finalization hook).
+export {
+  TURN_EVIDENCE_ATTESTATION_TYPE,
+  TURN_EVIDENCE_CONTEXT_TYPE,
+  TURN_EVIDENCE_MAX_BATCH,
+  sha256Hash,
+  hashToolIo,
+  normalizeHash,
+  buildTurnEvidencePayload,
+  parseTurnEvidencePayload,
+  turnEvidenceSigningFields,
+  turnEvidenceSigningMessage,
+} from "./turn-evidence";
+export type {
+  TurnEvidenceTool,
+  TurnEvidencePayload,
+  TurnEvidenceFields,
+  TurnEvidenceParseResult,
+} from "./turn-evidence";
 // createDbResolver deliberately does NOT live here — it's the only thing in
 // this package that references drizzle-orm, and bundling it into the root
 // entry drags a static, build-time-unresolvable `drizzle-orm` import into
