@@ -151,53 +151,79 @@ export function evaluateVaultPathSources(sources) {
 
   const provisioner = shell ?? envLocal ?? ecosystem;
   const restart = ecosystem ?? envLocal;
+  const ctx = {
+    processName,
+    ecosystemName: `deploy/ecosystem.${envName}.config.js`,
+    ecosystem,
+    envLocal,
+    shell,
+    live,
+    provisioner,
+    restart,
+  };
+
   const errors = [];
   const warnings = [];
+  const collect = (finding) => {
+    if (finding?.error) errors.push(finding.error);
+    if (finding?.warning) warnings.push(finding.warning);
+  };
 
-  const ecosystemName = `deploy/ecosystem.${envName}.config.js`;
-  if (!ecosystem) {
-    errors.push(
-      `${ecosystemName} does not set VAULT_PATH in the ${processName} env block — it is the single source of truth for the vault file; add it there.`,
-    );
-  }
-
-  if (envLocal && ecosystem && envLocal !== ecosystem) {
-    errors.push(
-      `apps/kernel/.env.local sets VAULT_PATH=${envLocal} but ${ecosystemName} sets ${ecosystem}. ` +
-        `The provisioning step would read ${envLocal} while ${processName} reads ${ecosystem}. ` +
-        'Remove VAULT_PATH from apps/kernel/.env.local.',
-    );
-  } else if (envLocal) {
-    warnings.push(
-      `apps/kernel/.env.local also sets VAULT_PATH (${envLocal}); it matches ${ecosystemName} today but is a second source of truth — remove it from .env.local.`,
-    );
-  }
-
-  if (shell && ecosystem && shell !== ecosystem) {
-    errors.push(
-      `The deploy shell env sets VAULT_PATH=${shell} but ${ecosystemName} sets ${ecosystem}: the provisioning step would use ${shell}, ${processName} uses ${ecosystem}.`,
-    );
-  }
-
-  if (running?.running) {
-    if (!live) {
-      errors.push(
-        `Running ${processName} has no VAULT_PATH in its pm2 env or apps/kernel/.env.local — it would not read the vault ${provisioner ?? 'the provisioner'} provisions into.`,
-      );
-    } else {
-      if (provisioner && live !== provisioner) {
-        errors.push(
-          `Vault file mismatch: the provisioning step would use ${provisioner} but the running ${processName} uses ${live}.`,
-        );
-      }
-      if (restart && live !== restart) {
-        errors.push(
-          `Running ${processName} uses ${live} (pm2 env) but a restart from the ecosystem config alone resolves ${restart}. ` +
-            'Fix the ecosystem config (or the hand-set pm2 env) so they agree.',
-        );
-      }
-    }
-  }
+  collect(checkEcosystemSet(ctx));
+  collect(checkEnvLocal(ctx));
+  collect(checkShell(ctx));
+  if (running?.running) errors.push(...checkRunning(ctx));
 
   return { errors, warnings, paths: { ecosystem, envLocal, shell, provisioner, restart, running: live } };
+}
+
+function checkEcosystemSet({ ecosystem, ecosystemName, processName }) {
+  if (ecosystem) return undefined;
+  return {
+    error: `${ecosystemName} does not set VAULT_PATH in the ${processName} env block — it is the single source of truth for the vault file; add it there.`,
+  };
+}
+
+function checkEnvLocal({ envLocal, ecosystem, ecosystemName, processName }) {
+  if (!envLocal) return undefined;
+  if (ecosystem && envLocal !== ecosystem) {
+    return {
+      error:
+        `apps/kernel/.env.local sets VAULT_PATH=${envLocal} but ${ecosystemName} sets ${ecosystem}. ` +
+        `The provisioning step would read ${envLocal} while ${processName} reads ${ecosystem}. ` +
+        'Remove VAULT_PATH from apps/kernel/.env.local.',
+    };
+  }
+  return {
+    warning: `apps/kernel/.env.local also sets VAULT_PATH (${envLocal}); it matches ${ecosystemName} today but is a second source of truth — remove it from .env.local.`,
+  };
+}
+
+function checkShell({ shell, ecosystem, ecosystemName, processName }) {
+  if (!shell || !ecosystem || shell === ecosystem) return undefined;
+  return {
+    error: `The deploy shell env sets VAULT_PATH=${shell} but ${ecosystemName} sets ${ecosystem}: the provisioning step would use ${shell}, ${processName} uses ${ecosystem}.`,
+  };
+}
+
+/** Errors for a live kernel whose pm2 env disagrees with the other sources. */
+function checkRunning({ live, provisioner, restart, processName }) {
+  if (!live) {
+    return [
+      `Running ${processName} has no VAULT_PATH in its pm2 env or apps/kernel/.env.local — it would not read the vault ${provisioner ?? 'the provisioner'} provisions into.`,
+    ];
+  }
+  const errors = [];
+  if (provisioner && live !== provisioner) {
+    errors.push(
+      `Vault file mismatch: the provisioning step would use ${provisioner} but the running ${processName} uses ${live}.`,
+    );
+  }
+  if (restart && live !== restart) {
+    errors.push(
+      `Running ${processName} uses ${live} (pm2 env) but a restart from the ecosystem config alone resolves ${restart}. ` +
+        'Fix the ecosystem config (or the hand-set pm2 env) so they agree.',
+    );
+  }
+  return errors;
 }
