@@ -3,6 +3,7 @@ import { handleCompletions, type HandleCompletionsDeps } from '../src/handle-com
 import { HealthTracker } from '../src/health.js';
 import { createLogger } from '../src/logger.js';
 import type { ProviderRouteConfig } from '../src/types.js';
+import { TokenMintError } from '../src/token-provider.js';
 import { bodyToText, fakeTokenSource, onAbortRejection } from './dispatch-test-support.js';
 
 const ROUTE_NO_FALLBACK: ProviderRouteConfig = {
@@ -120,13 +121,27 @@ describe('handleCompletions — 4xx is surfaced verbatim, never triggers fallbac
     expect(deps.health.snapshot().fallbackCount).toBe(0);
   });
 
-  it('returns 422 no_route_for_model without calling the network when no route matches', async () => {
+  it('returns 404 no_route_for_model without calling the network when no route matches (#2453)', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const deps = baseDeps();
     const result = await handleCompletions(deps, { bodyText: JSON.stringify({ model: 'unknown-model-xyz' }) });
-    expect(result.status).toBe(422);
+    expect(result.status).toBe(404);
+    expect(JSON.parse(await bodyToText(result.body)).error).toBe('no_route_for_model');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 for a path-named route that is not configured (#2453)', async () => {
+    const deps = baseDeps();
+    const result = await handleCompletions(deps, { providerIdFromPath: 'nope', bodyText: '{}' });
+    expect(result.status).toBe(404);
+  });
+
+  it('returns 422 no_model_selected when the unprefixed path carries no model', async () => {
+    const deps = baseDeps();
+    const result = await handleCompletions(deps, { bodyText: '{}' });
+    expect(result.status).toBe(422);
+    expect(JSON.parse(await bodyToText(result.body)).error).toBe('no_model_selected');
   });
 });
 
@@ -257,6 +272,43 @@ describe('handleCompletions — 5xx/timeout triggers break-glass fallback', () =
 
     expect(result.status).toBe(502);
     expect(fetchMock).toHaveBeenCalledTimes(1); // kernel only
+    expect(deps.health.snapshot().fallbackCount).toBe(0);
+  });
+});
+
+describe('handleCompletions — token mint failures (#2453)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function failingMint(err: Error) {
+    return () => ({
+      async getToken(): Promise<string> {
+        throw err;
+      },
+      invalidate() {},
+    });
+  }
+
+  it('falls back to the direct endpoint when the kernel mint itself 5xxs', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      expect(url).toBe('https://api.anthropic.example/v1/chat/completions');
+      return new Response(JSON.stringify({ id: 'direct-1' }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const deps = baseDeps({ getTokenProvider: failingMint(new TokenMintError(503, 'unavailable')) });
+
+    const result = await handleCompletions(deps, { bodyText: JSON.stringify({ model: 'claude-x' }) });
+
+    expect(result.status).toBe(200);
+    expect(deps.health.snapshot().fallbackCount).toBe(1);
+  });
+
+  it('rethrows a mint 4xx without any fallback so the server can map it to 401', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const deps = baseDeps({ getTokenProvider: failingMint(new TokenMintError(401, 'invalid signature')) });
+
+    await expect(handleCompletions(deps, { bodyText: JSON.stringify({ model: 'claude-x' }) })).rejects.toBeInstanceOf(TokenMintError);
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(deps.health.snapshot().fallbackCount).toBe(0);
   });
 });

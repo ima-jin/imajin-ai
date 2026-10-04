@@ -23,8 +23,9 @@
  */
 import type { HealthTracker } from './health.js';
 import type { Logger, LogFields } from './logger.js';
-import type { TokenSource } from './token-provider.js';
-import { UpstreamTimeoutError, UpstreamUnavailableError } from './upstream.js';
+import { UnknownRouteError } from './router.js';
+import { TokenMintError, type TokenSource } from './token-provider.js';
+import { NoDirectFallbackError, UpstreamTimeoutError, UpstreamUnavailableError } from './upstream.js';
 import type { ProviderRouteConfig } from './types.js';
 
 export interface ProxyResponse {
@@ -51,6 +52,28 @@ export function jsonError(status: number, error: string, message: string): Proxy
     headers: { 'Content-Type': 'application/json' },
     body: toBody(JSON.stringify({ error, message })),
   };
+}
+
+/**
+ * Map a known failure thrown anywhere in a request into the HTTP status it
+ * deserves (imajin-ai#2453), or `null` for a genuinely unexpected error the
+ * caller should treat as a 500. Message text only ever carries the kernel's
+ * own non-secret error string — never a token, key or signature.
+ *   - kernel refused the app-token mint (4xx) → 401 `unauthorized`
+ *   - kernel unreachable / timed out / mint 5xx / no fallback → 502
+ *   - route id not in the routes config → 404
+ */
+export function errorToProxyResponse(err: unknown): ProxyResponse | null {
+  if (err instanceof TokenMintError) {
+    return err.status >= 500
+      ? jsonError(502, 'kernel_unavailable', err.message)
+      : jsonError(401, 'unauthorized', err.message);
+  }
+  if (err instanceof UpstreamTimeoutError) return jsonError(502, 'upstream_timeout', err.message);
+  if (err instanceof UpstreamUnavailableError) return jsonError(502, 'upstream_unavailable', err.message);
+  if (err instanceof NoDirectFallbackError) return jsonError(502, 'kernel_unavailable', err.message);
+  if (err instanceof UnknownRouteError) return jsonError(404, 'route_not_found', err.message);
+  return null;
 }
 
 /**
@@ -106,11 +129,24 @@ export async function dispatchWithBreakGlass(
     deps.health.recordKernelSuccess();
     return toProxyResponse(kernelResponse, extraResponseHeaders);
   } catch (err) {
-    if (err instanceof UpstreamTimeoutError || err instanceof UpstreamUnavailableError) {
-      return await attemptFallback(deps, callDirect, err.message, logFields, extraResponseHeaders);
+    const reason = kernelFailureReason(err);
+    if (reason) {
+      return await attemptFallback(deps, callDirect, reason, logFields, extraResponseHeaders);
     }
     throw err;
   }
+}
+
+/**
+ * The reason string when `err` means "the kernel itself failed" (timeout,
+ * unreachable, or a mint 5xx) and break-glass applies; `undefined` otherwise.
+ * A mint 4xx is a grant problem, not an outage — it falls through to the
+ * caller's 401 mapping (`errorToProxyResponse`) instead of a fallback.
+ */
+function kernelFailureReason(err: unknown): string | undefined {
+  if (err instanceof UpstreamTimeoutError || err instanceof UpstreamUnavailableError) return err.message;
+  if (err instanceof TokenMintError && err.status >= 500) return err.message;
+  return undefined;
 }
 
 /** Call the kernel, retrying once with a freshly-minted token on a 401. */

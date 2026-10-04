@@ -78,6 +78,23 @@ this proxy becomes unnecessary — but as of this writing, it's the only path.
 
 ## How it works
 
+### Status codes (imajin-ai#2453)
+
+The shim never answers a known failure with a generic `500`:
+
+| Situation | Status |
+| --- | --- |
+| Kernel refuses the app-token mint (bad/missing app key, unknown attestation, any mint 4xx) | `401 unauthorized` |
+| Model/route not in the routes config (`/v1/chat/completions` with an unmatched `model`, or an unconfigured `/:providerId/`) | `404 no_route_for_model` |
+| Unprefixed request with no `model` at all | `422 no_model_selected` |
+| Kernel 5xx / timeout / unreachable (including the mint call) with no break-glass fallback | `502 kernel_unavailable` / `upstream_*` |
+| Kernel 4xx from the completions call (incl. its own `404` unknown model, `402` spend cap) | forwarded verbatim |
+| Anything genuinely unexpected | `500 internal_error` |
+
+`/openai/v1` is the generic seat OpenClaw points at: a model that another route claims by prefix (`grok-4` → `xai`)
+is routed to that route's attestation and break-glass key. `GET /openai/v1/models` (also `/v1/models` and
+`/:providerId/v1/models`) answers from any configured inference route when there is no explicit `openai` entry.
+
 ### OpenAI-compatible path
 
 1. OpenClaw sends an OpenAI-compatible `POST /v1/chat/completions` (or
@@ -98,6 +115,10 @@ this proxy becomes unnecessary — but as of this writing, it's the only path.
 5. `GET /healthz` reports `{ kernelOk, fallbackCount, fallbackRate, lastFallbackAt }` so
    an external alert can watch the fallback rate (the #1922 guardrail: "alert if
    fallback rate exceeds threshold"). Every fallback also emits a structured log line.
+   It also reports passthrough liveness (#2453): `{ passthroughOk, passthroughErrorCount,
+   lastPassthroughError: { status, at } | null }`. Any 5xx the shim returns (a mapped `502`,
+   an upstream 5xx forwarded from break-glass, or an unexpected `500`) flips `passthroughOk`
+   to `false` until the next successful response; `4xx` responses neither trip nor clear it.
 
 ```mermaid
 flowchart LR
