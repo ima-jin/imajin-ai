@@ -9,15 +9,17 @@
  * an expired grant, or a one-time grant already consumed, can't be used
  * again regardless of what Rotate does, so it is not counted.
  *
- * Exemption: `internal-secret:*` fields. Their rotate path
- * (`rotateInternalSecret`, #2446) already re-issues every external grantee on
- * the new key, so there is nothing to warn about or confirm.
- * `getRotateGranteeGuard` is the single place that decides this — the route's
- * 409 and the dialog's warning/typed-confirm both read its result.
+ * Rotate re-issues these grantees (#2450): `rotateAndStore` re-seals the
+ * field and re-issues every external grant on the new key, carrying each
+ * grant's expiry / one-time / purpose forward (`reissueFieldGrants`). The one
+ * case it cannot is Tier 1 vault custody — the node holds no owner key to sign
+ * a replacement grant — so there the guard stays fail-closed and the rotate is
+ * refused while grantees exist. `getRotateGranteeGuard` is the single place
+ * that decides this — the route's 409 and the dialog both read its result.
  */
 import { and, eq, gt, isNull, ne, or } from 'drizzle-orm';
 import { db, vaultDelegationGrants } from '@/src/db';
-import { isInternalSecretField } from './internal-secret';
+import { isVaultTier1 } from './sealing';
 
 export interface VaultGrantee {
   grantId: string;
@@ -57,20 +59,17 @@ export async function listOtherActiveGrantees(field: string, nodeDid: string): P
 }
 
 export interface RotateGranteeGuard {
-  /** Grantees a rotate would strand — always empty when the rotate path re-issues them. */
+  /** Every other active grantee on the field — what a rotate re-issues (or, under Tier 1, would strand). */
   grantees: VaultGrantee[];
-  /** True when rotating this field re-issues its grantees automatically (guard does not apply). */
+  /** True when rotating this field re-issues its grantees (Tier 0). False means rotate must be refused while `grantees` is non-empty. */
   reissuedOnRotate: boolean;
 }
 
 /**
  * What the rotate guard (route 409 + dialog) should act on for `field`.
- * Fail-closed for every field except `internal-secret:*`, which re-issues its
- * external grantees itself (#2446) and so is exempt (#2450, ruling 2026-09-30).
+ * Tier 0 re-issues every grantee itself, so nothing blocks. Tier 1 cannot
+ * re-issue, so a field with grantees is refused (fail-closed, #2450).
  */
 export async function getRotateGranteeGuard(field: string, nodeDid: string): Promise<RotateGranteeGuard> {
-  if (isInternalSecretField(field)) {
-    return { grantees: [], reissuedOnRotate: true };
-  }
-  return { grantees: await listOtherActiveGrantees(field, nodeDid), reissuedOnRotate: false };
+  return { grantees: await listOtherActiveGrantees(field, nodeDid), reissuedOnRotate: !isVaultTier1() };
 }
