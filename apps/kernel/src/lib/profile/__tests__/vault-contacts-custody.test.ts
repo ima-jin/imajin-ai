@@ -117,7 +117,11 @@ vi.mock('@/src/db', () => {
           }
           if (table.__table === 'grants') {
             return thenable(() => [...grantStore.values()], {
-              where: () => ({ limit: () => Promise.resolve(activeGrants().slice(0, 1)) }),
+              where: () => ({
+                limit: () => Promise.resolve(activeGrants().slice(0, 1)),
+                // rotateAndStore reads the active grantees newest-first (listActiveGrantsForField, #2450).
+                orderBy: () => Promise.resolve(activeGrants()),
+              }),
             });
           }
           // contactHashes / consentGrants — always empty (no prior state).

@@ -277,15 +277,14 @@ function activeGrantsFor(field: string): Row[] {
   return [...stores.grants.values()].filter((g) => g.field === field && g.status === 'active');
 }
 
-// Sends `confirmField` the way the admin panel does: since #2450 the route
-// refuses (409) to rotate a field with other active grantees unless the
-// operator confirms by re-typing the field name.
+// Rotates through the admin route exactly as the panel does. Since #2450 the
+// route re-issues every external grantee itself — no confirmation is sent.
 async function rotateViaRoute(field: string, value: string): Promise<Response> {
   const { POST } = await import('@/app/api/vault/rotate/route');
   const { NextRequest } = await import('next/server');
   return POST(new NextRequest('http://kernel.test/api/vault/rotate', {
     method: 'POST',
-    body: JSON.stringify({ field, value, confirmField: field }),
+    body: JSON.stringify({ field, value }),
   }));
 }
 
@@ -628,5 +627,269 @@ describe('verify-email confirm across rotate + restart (#2446)', () => {
     const res = await GET(new NextRequest(`http://kernel.test/profile/api/contact/verify-email/confirm?${qs}`));
 
     expect(res.headers.get('location')).toMatch(/verified=email$/);
+  });
+});
+
+// ── #2450: rotate re-issues EVERY delegation-grant field's external grantees ──
+
+type Boot = Awaited<ReturnType<typeof boot>>;
+
+interface GranteeTerms {
+  purpose?: string | null;
+  expiresAt?: Date | null;
+  oneTime?: boolean;
+  consumedAt?: Date | null;
+}
+
+/**
+ * Add another active grantee to `field` the way an operator grant does: a new
+ * owner-signed row reusing the field's current wrapped key (the wrap is to the
+ * NODE, `grantedTo` is only a label — see grant.ts). Test-only: lets one field
+ * carry several grantees whose terms differ.
+ */
+async function addGrantee(ctx: Boot, field: string, subject: string, granteeDid: string, terms: GranteeTerms = {}): Promise<string> {
+  const source = activeGrantsFor(field).find((g) => String(g.wrappedKey).length > 0)!;
+  const raw = {
+    subject, grantedTo: granteeDid, field,
+    ownerXPub: String(source.ownerXPub), wrappedKey: String(source.wrappedKey),
+    wrappedNonce: String(source.wrappedNonce), keyId: String(source.keyId),
+    expiresAt: terms.expiresAt ?? null,
+  };
+  const { crypto: authCrypto } = await import('@imajin/auth');
+  const ownerSignature = authCrypto.signSync(
+    ctx.vault.canonicalizeGrantPayload(raw),
+    ctx.sealing.getNodeSigningIdentity().privateKeyHex,
+  );
+  const id = `vdg_test_${granteeDid.slice(-8)}`;
+  stores.grants.set(id, {
+    id, createdAt: new Date(), ...raw, ownerSignature, status: 'active',
+    recipientXPub: source.recipientXPub, ownerEdPub: source.ownerEdPub,
+    purpose: terms.purpose ?? null, oneTime: terms.oneTime ?? false, consumedAt: terms.consumedAt ?? null,
+  });
+  return id;
+}
+
+async function grantFulfilledEvents(): Promise<Array<{ grantId: string; grantedTo: string; field: string }>> {
+  const bus = await import('@imajin/bus');
+  const calls = (bus.publish as unknown as { mock: { calls: Array<[string, { payload: Row }]> } }).mock.calls;
+  return calls
+    .filter(([type]) => type === 'vault.grant.fulfilled')
+    .map(([, event]) => event.payload as { grantId: string; grantedTo: string; field: string });
+}
+
+const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+describe('rotate re-issues external grantees — connector field `<purpose>:<did>` (#2450)', () => {
+  const PRINCIPAL = 'did:imajin:principal-test';
+  const FIELD_C = `agent-handoff:${PRINCIPAL}`;
+
+  async function sealConnectorField(ctx: Boot): Promise<void> {
+    await ctx.vault.sealAndGrantStaticSecret(FIELD_C, 'v1-connector-value', {
+      principalDid: PRINCIPAL, granteeDid: 'did:imajin:connector-a', purpose: 'agent.handoff',
+    });
+  }
+
+  it('every grantee still reads the field after Rotate, with its own terms carried forward', async () => {
+    const ctx = await boot();
+    await sealConnectorField(ctx);
+    await addGrantee(ctx, FIELD_C, PRINCIPAL, 'did:imajin:connector-b', { purpose: 'agent.audit', expiresAt: FUTURE, oneTime: true });
+    const rotated = randomBytes(24).toString('hex');
+
+    const res = await rotateViaRoute(FIELD_C, rotated);
+    expect(res.status).toBe(200);
+
+    const active = (did: string) => activeGrantsFor(FIELD_C).filter((g) => g.grantedTo === did);
+    expect(active('did:imajin:connector-a')).toHaveLength(1);
+    expect(active('did:imajin:connector-a')[0]).toMatchObject({ subject: PRINCIPAL, purpose: 'agent.handoff', oneTime: false, expiresAt: null });
+    expect(active('did:imajin:connector-b')[0]).toMatchObject({ subject: PRINCIPAL, purpose: 'agent.audit', oneTime: true, expiresAt: FUTURE });
+    await expect(ctx.vault.loadAndUnsealByGrantee(FIELD_C, 'did:imajin:connector-a')).resolves.toBe(rotated);
+    await expect(ctx.vault.loadAndUnsealByGrantee(FIELD_C, 'did:imajin:connector-b')).resolves.toBe(rotated);
+  });
+
+  it('never widens: the grantee set is unchanged, expired and consumed grants are not renewed', async () => {
+    const ctx = await boot();
+    await sealConnectorField(ctx);
+    await addGrantee(ctx, FIELD_C, PRINCIPAL, 'did:imajin:expired', { expiresAt: new Date(Date.now() - 1000) });
+    await addGrantee(ctx, FIELD_C, PRINCIPAL, 'did:imajin:consumed', { oneTime: true, consumedAt: new Date() });
+
+    expect((await rotateViaRoute(FIELD_C, randomBytes(24).toString('hex'))).status).toBe(200);
+
+    const nodeDid = ctx.sealing.getNodeSigningIdentity().senderDid;
+    const external = activeGrantsFor(FIELD_C).filter((g) => g.grantedTo !== nodeDid).map((g) => g.grantedTo);
+    expect(external).toEqual(['did:imajin:connector-a']);
+  });
+
+  it('supersedes and erases the old key material of every replaced grant', async () => {
+    const ctx = await boot();
+    await sealConnectorField(ctx);
+    const before = activeGrantsFor(FIELD_C).map((g) => String(g.id));
+
+    await rotateViaRoute(FIELD_C, randomBytes(24).toString('hex'));
+
+    for (const id of before) {
+      expect(stores.grants.get(id)).toMatchObject({ status: 'superseded', wrappedKey: '' });
+    }
+  });
+
+  it('publishes one vault.grant.fulfilled audit event per re-issued grant, attributed to the rotate', async () => {
+    const ctx = await boot();
+    await sealConnectorField(ctx);
+    await addGrantee(ctx, FIELD_C, PRINCIPAL, 'did:imajin:connector-b');
+    const bus = await import('@imajin/bus');
+    (bus.publish as unknown as { mockClear: () => void }).mockClear();
+
+    await rotateViaRoute(FIELD_C, randomBytes(24).toString('hex'));
+
+    const events = await grantFulfilledEvents();
+    expect(events.map((e) => e.grantedTo).sort()).toEqual(['did:imajin:connector-a', 'did:imajin:connector-b']);
+    const reissuedIds = activeGrantsFor(FIELD_C).filter((g) => g.grantedTo !== g.subject && g.subject === PRINCIPAL).map((g) => g.id);
+    expect(events.map((e) => e.grantId).sort()).toEqual(reissuedIds.map(String).sort());
+  });
+
+  it('a field with no external grantee rotates exactly as before (self-grant only)', async () => {
+    const ctx = await boot();
+    const nodeDid = ctx.sealing.getNodeSigningIdentity().senderDid;
+    await ctx.vault.sealAndGrantStaticSecret(FIELD_C, 'v1', { principalDid: nodeDid, granteeDid: nodeDid });
+
+    expect((await rotateViaRoute(FIELD_C, 'v2-value')).status).toBe(200);
+
+    expect(activeGrantsFor(FIELD_C)).toHaveLength(1);
+    expect(await ctx.vault.loadAndUnseal(FIELD_C)).toBe('v2-value');
+  });
+
+  it('Tier 1: refused with a 409 before anything is written — grantees are never stranded', async () => {
+    const first = await boot();
+    await sealConnectorField(first);
+    const before = {
+      grants: JSON.stringify([...stores.grants.values()]),
+      cid: (await first.vault.vaultService.peek(FIELD_C))?.cid,
+    };
+    process.env.VAULT_OWNER_X_PUB = randomBytes(32).toString('hex');
+    process.env.VAULT_OWNER_ED_PUB = randomBytes(32).toString('hex');
+
+    const tier1 = await boot();
+    const res = await rotateViaRoute(FIELD_C, randomBytes(24).toString('hex'));
+
+    expect(res.status).toBe(409);
+    expect(JSON.stringify([...stores.grants.values()])).toBe(before.grants);
+    expect((await tier1.vault.vaultService.peek(FIELD_C))?.cid).toBe(before.cid);
+    expect(stores.requests.size).toBe(0);
+  });
+
+  it('Tier 1: rotateAndStore itself refuses (defence in depth, no route guard needed)', async () => {
+    const first = await boot();
+    await sealConnectorField(first);
+    const grants = JSON.stringify([...stores.grants.values()]);
+    process.env.VAULT_OWNER_X_PUB = randomBytes(32).toString('hex');
+    process.env.VAULT_OWNER_ED_PUB = randomBytes(32).toString('hex');
+
+    const tier1 = await boot();
+    await expect(tier1.vault.rotateAndStore(FIELD_C, 'x')).rejects.toThrow(/Tier 1/);
+    expect(JSON.stringify([...stores.grants.values()])).toBe(grants);
+  });
+});
+
+describe('rotate re-issues external grantees — Warp / plugin sealed key (#2450)', () => {
+  const USER = 'did:imajin:warp-user-test';
+  const WARP_FIELD = `warp-agent-key:${USER}`;
+  const WARP_CONNECTOR = 'did:imajin:warp-connector';
+
+  it('the connector DID and an extra plugin grantee both still read the key after Rotate', async () => {
+    const ctx = await boot();
+    await ctx.vault.sealAndGrantStaticSecret(WARP_FIELD, 'v1-warp-key', {
+      principalDid: USER, granteeDid: WARP_CONNECTOR, purpose: 'warp.dispatch', expiresAt: FUTURE,
+    });
+    await addGrantee(ctx, WARP_FIELD, USER, 'did:imajin:openclaw-plugin', { purpose: 'plugin.dispatch', oneTime: false });
+    const rotated = randomBytes(24).toString('hex');
+
+    expect((await rotateViaRoute(WARP_FIELD, rotated)).status).toBe(200);
+
+    const connectorGrant = activeGrantsFor(WARP_FIELD).find((g) => g.grantedTo === WARP_CONNECTOR);
+    expect(connectorGrant).toMatchObject({ subject: USER, purpose: 'warp.dispatch', expiresAt: FUTURE });
+    const pluginGrant = activeGrantsFor(WARP_FIELD).find((g) => g.grantedTo === 'did:imajin:openclaw-plugin');
+    expect(pluginGrant).toMatchObject({ subject: USER, purpose: 'plugin.dispatch' });
+    await expect(ctx.vault.loadAndUnsealByGrantee(WARP_FIELD, WARP_CONNECTOR)).resolves.toBe(rotated);
+    await expect(ctx.vault.loadAndUnsealByGrantee(WARP_FIELD, 'did:imajin:openclaw-plugin')).resolves.toBe(rotated);
+  });
+
+  it('a revoked grantee stays revoked — rotate does not resurrect it', async () => {
+    const ctx = await boot();
+    await ctx.vault.sealAndGrantStaticSecret(WARP_FIELD, 'v1-warp-key', { principalDid: USER, granteeDid: WARP_CONNECTOR });
+    const pluginGrantId = await addGrantee(ctx, WARP_FIELD, USER, 'did:imajin:openclaw-plugin');
+    stores.grants.set(pluginGrantId, { ...stores.grants.get(pluginGrantId)!, status: 'revoked', wrappedKey: '', wrappedNonce: '' });
+
+    expect((await rotateViaRoute(WARP_FIELD, randomBytes(24).toString('hex'))).status).toBe(200);
+
+    expect(activeGrantsFor(WARP_FIELD).some((g) => g.grantedTo === 'did:imajin:openclaw-plugin')).toBe(false);
+  });
+});
+
+describe('rotate re-issues external grantees — internal-secret:* (#2450, generalizes #2446)', () => {
+  it('re-issues every grantee, carries terms forward, and audits each re-issued grant', async () => {
+    const ctx = await boot();
+    await ctx.internal.getInternalSecret(PURPOSE);
+    const nodeDid = ctx.sealing.getNodeSigningIdentity().senderDid;
+    await ctx.vault.grantInternalSecretTo(PURPOSE, 'did:imajin:corpus-test', 'test-operator');
+    await addGrantee(ctx, FIELD, nodeDid, 'did:imajin:second-consumer', { purpose: 'second.use', expiresAt: FUTURE });
+    const bus = await import('@imajin/bus');
+    (bus.publish as unknown as { mockClear: () => void }).mockClear();
+    const rotated = randomBytes(24).toString('hex');
+
+    expect((await rotateViaRoute(FIELD, rotated)).status).toBe(200);
+
+    const second = activeGrantsFor(FIELD).find((g) => g.grantedTo === 'did:imajin:second-consumer');
+    expect(second).toMatchObject({ purpose: 'second.use', expiresAt: FUTURE });
+    for (const did of ['did:imajin:corpus-test', 'did:imajin:second-consumer']) {
+      const grant = activeGrantsFor(FIELD).find((g) => g.grantedTo === did)!;
+      await expect(ctx.vault.fetchGrantSecret({ grantId: String(grant.id), granteeDid: did }))
+        .resolves.toMatchObject({ status: 'ok', value: rotated });
+    }
+    expect((await grantFulfilledEvents()).map((e) => e.grantedTo).sort())
+      .toEqual(['did:imajin:corpus-test', 'did:imajin:second-consumer']);
+  });
+});
+
+describe('reissueFieldGrants source guard (#2450)', () => {
+  it('refuses a source that is not the node\'s active self-grant for the field, and writes nothing', async () => {
+    const ctx = await boot();
+    await ctx.internal.getInternalSecret(PURPOSE);
+    await ctx.vault.grantInternalSecretTo(PURPOSE, 'did:imajin:corpus-test', 'test-operator');
+    const previousGrants = activeGrantsFor(FIELD) as never[];
+    const before = JSON.stringify([...stores.grants.values()]);
+    const { reissueFieldGrants } = await import('../shared-internal-secret.js');
+
+    await expect(
+      reissueFieldGrants({ field: FIELD, sourceGrantId: 'vdg_does_not_exist', previousGrants, grantedBy: 'test' }),
+    ).rejects.toThrow(/not the active self-grant/);
+    expect(JSON.stringify([...stores.grants.values()])).toBe(before);
+  });
+
+  it('is a no-op when the field has no external grantee', async () => {
+    const ctx = await boot();
+    await ctx.internal.getInternalSecret(PURPOSE);
+    const { reissueFieldGrants } = await import('../shared-internal-secret.js');
+
+    await expect(
+      reissueFieldGrants({ field: FIELD, sourceGrantId: 'unused', previousGrants: activeGrantsFor(FIELD) as never[], grantedBy: 'test' }),
+    ).resolves.toEqual({ reissued: [], dropped: [] });
+  });
+});
+
+describe('re-issue is operator-initiated only (#2245 countersign ruling)', () => {
+  it('a kernel boot never re-issues or adds a grant', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    await first.vault.grantInternalSecretTo(PURPOSE, 'did:imajin:corpus-test', 'test-operator');
+    // Reading a secret legitimately touches `lastFetchedAt`, so compare each
+    // grant's identity and state, not the whole row.
+    const shape = () => [...stores.grants.values()]
+      .map((g) => `${String(g.id)}|${String(g.grantedTo)}|${String(g.status)}|${String(g.wrappedKey)}`)
+      .sort();
+    const before = shape();
+
+    const restarted = await boot();
+    await restarted.internal.getInternalSecret(PURPOSE);
+
+    expect(shape()).toEqual(before);
   });
 });
