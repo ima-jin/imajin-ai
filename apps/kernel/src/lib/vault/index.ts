@@ -40,6 +40,7 @@ import { getVaultRepository } from './vault-repository';
 import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
+import { reissueFieldGrants } from './shared-internal-secret';
 
 const log = createLogger('kernel');
 
@@ -680,8 +681,7 @@ export async function rotateAndStore(field: string, plaintext: string): Promise<
     if (isInternalSecretField(field)) {
       return rotateInternalSecret(field, plaintext);
     }
-    const { entry } = await sealAndStoreV2(field, plaintext);
-    return entry;
+    return rotateDelegationGrantField(field, plaintext);
   }
 
   const sealKey = getSealKey();
@@ -697,6 +697,55 @@ export async function rotateAndStore(field: string, plaintext: string): Promise<
 
   await assertEntryIntegrity(entry, vaultAdapters);
   return vaultService.set(entry);
+}
+
+/** Attribution for grants re-issued by an operator rotation (the operator is on the rotate event itself). */
+const ROTATION_GRANTED_BY = 'vault.rotate';
+
+/**
+ * Rotate a v2 (`delegation-grant`) field that is NOT an internal secret, and
+ * re-issue every external grantee on the new key (#2450).
+ *
+ * `sealAndStoreV2` re-seals under a fresh field key and supersedes only the
+ * node's own self-grant; every OTHER active grant (connector
+ * `<purpose>:<did>`, Warp/plugin sealed key, …) would keep the OLD wrapped
+ * key and silently stop decrypting. So the external grantee set is read
+ * BEFORE the re-seal and each one is re-issued from the new self-grant with
+ * its own subject/purpose/expiry/one-time carried forward (expired or
+ * consumed grants are dropped, never widened) — see {@link reissueFieldGrants}.
+ *
+ * Tier 1 (external owner agent) cannot re-issue — the node cannot sign a new
+ * grant row — so a field with external grantees is refused BEFORE anything is
+ * written rather than stranding them. Operator-initiated only: no boot path
+ * reaches this function (#2245 countersign ruling).
+ */
+async function rotateDelegationGrantField(field: string, plaintext: string): Promise<VaultEntry> {
+  const ownerDid = getNodeSigningIdentity().senderDid;
+  const previousGrants = await listActiveGrantsForField(field);
+  const externalCount = previousGrants.filter((g) => g.grantedTo !== ownerDid).length;
+  if (externalCount > 0 && isVaultTier1()) {
+    throw new Error(
+      `vault rotate: '${field}' has ${externalCount} external grantee(s) and Tier 1 vault custody cannot re-issue ` +
+        'their grants — revoke them first; nothing was changed',
+    );
+  }
+
+  const { entry, grantId } = await sealAndStoreV2(field, plaintext);
+  if (externalCount === 0 || grantId === null) {
+    return entry;
+  }
+
+  const { reissued, dropped } = await reissueFieldGrants({
+    field,
+    sourceGrantId: grantId,
+    previousGrants,
+    grantedBy: ROTATION_GRANTED_BY,
+  });
+  log.info(
+    { field, grantId, reissuedGrantIds: reissued, droppedExpiredGrantees: dropped },
+    'Vault: rotated a delegation-grant field — external grantees moved to the new key',
+  );
+  return entry;
 }
 
 /**
