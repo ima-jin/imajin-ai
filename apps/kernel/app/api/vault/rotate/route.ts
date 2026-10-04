@@ -16,8 +16,6 @@ const nodeDid = process.env.NODE_DID ?? 'did:imajin:node';
 interface RotateVaultBody {
   field: string;
   value: string;
-  /** Required, and must equal `field` exactly, when the field has other active grantees (#2450) — never for internal-secret:*. */
-  confirmField?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -31,7 +29,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { field, value, confirmField } = body;
+  const { field, value } = body;
 
   if (typeof field !== 'string' || field.trim().length === 0) {
     return NextResponse.json({ error: 'field is required' }, { status: 400 });
@@ -48,18 +46,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Field not found' }, { status: 404 });
     }
 
-    // #2450 — fail-closed server-side, not just in the dialog: rotating
-    // re-seals under a new key and re-grants only the node's own self-grant,
-    // so any OTHER active grantee's copy of the wrapped key silently stops
-    // decrypting. Computed with the exact same query the admin panel's
-    // warning uses, so the two can't drift. internal-secret:* fields are
-    // exempt: their rotate path re-issues external grantees itself (#2446).
+    // #2450 — rotating re-seals under a new key, so every OTHER active
+    // grantee's copy of the wrapped key would stop decrypting. rotateAndStore
+    // re-issues them (same grantee set, expiry / one-time / purpose carried
+    // forward), so this only blocks when it cannot: Tier 1 vault custody,
+    // where the node has no owner key to sign replacement grants. Computed
+    // with the exact same query the admin panel's list uses, so the two
+    // can't drift; there is deliberately no confirm-and-strand override.
     const identity = getNodeSigningIdentity();
-    const { grantees: otherGrantees } = await getRotateGranteeGuard(trimmedField, identity.senderDid);
-    if (otherGrantees.length > 0 && confirmField !== trimmedField) {
+    const { grantees: otherGrantees, reissuedOnRotate } = await getRotateGranteeGuard(trimmedField, identity.senderDid);
+    if (otherGrantees.length > 0 && !reissuedOnRotate) {
       return NextResponse.json(
         {
-          error: `${otherGrantees.length} active grantee(s) hold a grant on '${trimmedField}' — resend with confirmField: "${trimmedField}" to proceed.`,
+          error: `${otherGrantees.length} active grantee(s) hold a grant on '${trimmedField}' and this node cannot re-issue them (Tier 1 vault custody) — revoke them first; nothing was changed.`,
           count: otherGrantees.length,
           grantees: otherGrantees,
         },
@@ -67,8 +66,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // rotateAndStore keeps the superseded grant's purpose; internal-secret:*
-    // fields also keep their provisions row + external grantees (#2446).
+    // rotateAndStore keeps the superseded grant's purpose and re-issues every
+    // external grantee on the new key (#2446 internal-secret:*, #2450 all).
     const entry = await rotateAndStore(trimmedField, value);
 
     let published = true;

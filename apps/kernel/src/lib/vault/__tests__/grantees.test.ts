@@ -5,7 +5,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockDbSelect } = vi.hoisted(() => ({ mockDbSelect: vi.fn() }));
+const { mockDbSelect, mockIsVaultTier1 } = vi.hoisted(() => ({ mockDbSelect: vi.fn(), mockIsVaultTier1: vi.fn(() => false) }));
+
+vi.mock('../sealing', () => ({ isVaultTier1: mockIsVaultTier1 }));
 
 vi.mock('@/src/db', () => ({
   db: { select: mockDbSelect },
@@ -31,6 +33,7 @@ function queryReturning(rows: unknown[]) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockIsVaultTier1.mockReturnValue(false);
 });
 
 describe('listOtherActiveGrantees', () => {
@@ -64,26 +67,28 @@ describe('listOtherActiveGrantees', () => {
 describe('getRotateGranteeGuard (#2450)', () => {
   const ROW = { grantId: 'vdg_1', grantedTo: 'did:imajin:corpus', purpose: 'corpus-sync', oneTime: false, expiresAt: null };
 
-  it('exempts internal-secret:* fields without querying — their rotate path re-issues grantees (#2446)', async () => {
+  it.each([
+    ['a connector field', 'quickbooks:did:imajin:user1'],
+    ['a Warp sealed key', 'warp-agent-key:did:imajin:user1'],
+    ['an internal-secret:* field', 'internal-secret:kernel.attestation-internal-api-key'],
+  ])('Tier 0: lists the grantees of %s and reports that rotate re-issues them', async (_label, field) => {
     queryReturning([ROW]);
-    const guard = await getRotateGranteeGuard('internal-secret:kernel.attestation-internal-api-key', 'did:imajin:node');
-    expect(guard).toEqual({ grantees: [], reissuedOnRotate: true });
-    expect(mockDbSelect).not.toHaveBeenCalled();
+    const guard = await getRotateGranteeGuard(field, 'did:imajin:node');
+    expect(guard).toEqual({ grantees: [ROW], reissuedOnRotate: true });
   });
 
-  it('stays fail-closed for any other field: returns its grantees, not exempt', async () => {
-    queryReturning([ROW]);
-    const guard = await getRotateGranteeGuard('GH_TOKEN', 'did:imajin:node');
-    expect(guard).toEqual({ grantees: [ROW], reissuedOnRotate: false });
+  it('Tier 0: a field with no other grantees reports an empty list', async () => {
+    queryReturning([]);
+    expect(await getRotateGranteeGuard('GH_TOKEN', 'did:imajin:node')).toEqual({ grantees: [], reissuedOnRotate: true });
   });
 
-  it('does not exempt a bare "internal-secret:" prefix or a lookalike', async () => {
+  it('Tier 1: stays fail-closed — grantees are listed and rotate does not re-issue them', async () => {
+    mockIsVaultTier1.mockReturnValue(true);
     queryReturning([ROW]);
-    expect((await getRotateGranteeGuard('internal-secret:', 'did:imajin:node')).reissuedOnRotate).toBe(false);
-    expect((await getRotateGranteeGuard('x-internal-secret:foo', 'did:imajin:node')).reissuedOnRotate).toBe(false);
+    expect(await getRotateGranteeGuard('GH_TOKEN', 'did:imajin:node')).toEqual({ grantees: [ROW], reissuedOnRotate: false });
   });
 
-  it('propagates a query failure for a non-exempt field', async () => {
+  it('propagates a query failure', async () => {
     mockDbSelect.mockReturnValue({ from: () => ({ where: () => Promise.reject(new Error('db down')) }) });
     await expect(getRotateGranteeGuard('GH_TOKEN', 'did:imajin:node')).rejects.toThrow('db down');
   });

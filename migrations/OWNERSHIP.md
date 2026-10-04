@@ -4,8 +4,12 @@ Phase 1 of #1991. Every table/view/type/function created anywhere in
 `migrations/` lives in exactly one Postgres schema, and every schema is
 assigned to exactly one owner. This document explains the rule, how the
 map was derived, and lists every gap the derivation surfaced. The machine-
-readable map is `migrations/ownership.json`; `scripts/check-migration-ownership.mjs`
-enforces it in CI (see [Rule](#rule) below).
+readable map is `migrations/ownership.json` (table → owner) and the machine-
+readable gap list is `migrations/ownership-gaps.json`;
+`scripts/check-migration-ownership.mjs` enforces the map in CI (see
+[Rule](#rule) below) and `scripts/__tests__/ownership-map.test.mjs` checks
+that the committed artifacts are complete, consistent with a fresh replay of
+`migrations/`, and agree with each other.
 
 **What phase 1 is not:** it does not move, rename, or squash any migration,
 and it does not fix any of the cross-owner reads/writes listed in
@@ -43,7 +47,7 @@ in `migrations/` in application order and tracks `CREATE TABLE`,
 `CREATE [OR REPLACE] FUNCTION`, `DROP TABLE`, `ALTER TABLE ... RENAME TO`,
 and generic `ALTER TABLE` (e.g. `ADD COLUMN`, which the map builder ignores
 but the CI guard treats as "touching" the table) (the only DDL forms
-actually present in this repo's 131 migration files, confirmed by grepping
+actually present in this repo's 167 migration files, confirmed by grepping
 for `CREATE VIEW`, `CREATE TYPE ... AS ENUM`, and `CREATE MATERIALIZED
 VIEW` — none exist today; the parser still recognizes them so a future
 migration that adds one is registered, not silently ignored). A
@@ -71,11 +75,12 @@ used. No table name required resolving ownership by grepping app code
 instead of by schema — see [Gaps](#gaps) for why this doesn't mean the
 current code respects those boundaries.
 
-**Counts** (155 tables, 2 functions, 0 views, 0 types):
+**Counts** (172 tables, 2 functions, 0 views, 0 types, across 167 migration
+files; `broker-agent` and `corpus` own 0):
 
 | Owner | Tables |
 |---|---|
-| kernel | 132 |
+| kernel | 149 |
 | events | 8 |
 | learn | 5 |
 | links | 3 |
@@ -152,59 +157,74 @@ Ownership assignment above was unambiguous for every table (all names are
 schema-qualified, and every schema maps to exactly one owner) — so there are
 **zero UNRESOLVED entries** in `ownership.json`.
 
-The real gap is not in *assigning* ownership, it's that several apps
-already violate it at the code level, reading or writing tables outside
-their own schema via raw SQL instead of going through the kernel's HTTP
-API. These are the same findings as the #1983 audit's kernel-side gaps
-6–9 (renumbered here to the specific tables involved), reproduced here
-because deliverable 1 requires this list to live with the ownership map,
-not just on the audit issue. Status as of #2155:
+The real gap is not in *assigning* ownership, it's that code still reaches
+across the line: reading or writing tables outside its own schema via raw
+SQL instead of going through the owner's API. The machine-readable list is
+`migrations/ownership-gaps.json` (status `open` / `fixed` / `watch`, with
+the filed issue for each); this section is the human summary, re-verified
+against the tree for #2526. The 2026-09 audit (#1983, gaps 6–9) and its
+follow-ups (#2155) closed most of the app-to-kernel reads; what remains is
+entirely `apps/events`.
 
-1. **`coffee`, `learn`, `market`, `events`** all read `relay.relay_config`
-   (kernel-owned) directly via raw SQL to get the node DID, instead of a
-   public `GET /registry/api/node/self`-style endpoint. 4 independent
-   re-implementations of the same read (audit gap #8). **Not yet fixed** —
-   tracked in `migrations/cross-schema-allowlist.json` for `events` (the
-   other three call sites predate the runtime guard's app scope check and
-   are outside #2155).
-2. **`coffee`, `learn`, `market`** all read `profile.forest_config`
-   (kernel-owned) directly, even though `profile.yaml` already documents
-   `/api/forest/{groupDid}/config` and `/config/public` — the audit flags
-   this as likely just unmigrated call sites rather than a missing route
-   (audit gap #9). **Not yet fixed.**
-3. **`learn`, `market`** read `profile.profiles` (kernel-owned) directly
-   instead of through a profile API. **Fixed by #2155** — both now call
-   the #1998 kernel profile service's batched `/api/resolve` route via
-   `@imajin/auth`'s `resolveIdentitiesForDids`; `grep -rn "profile.profiles"
-   apps/learn apps/market` returns 0.
-4. **`events`** is by far the heaviest violator — raw SQL against
-   `auth.identities`, `auth.credentials`, `auth.onboard_tokens` (including
-   `INSERT`), `connections.pod_members` / `connections.connections`
-   (including `INSERT`), `profile.profiles` (including `UPDATE`),
-   `relay.relay_config`, `chat.conversations_v2` (`UPDATE`), and
-   `pay.transactions` (`JOIN`) — 11 distinct kernel-owned tables touched
-   across ~15 files. Notably `events` also re-implements kernel's
-   hard-eligibility tier-upgrade logic with a direct
-   `UPDATE auth.identities` (audit gap #7) instead of calling an API kernel
-   doesn't yet expose. **Partially fixed by #2155** — the `cohosts` route's
-   `connections.pod_members` read + `INSERT` now goes through the kernel
-   connections service's `GET /api/pods/{id}` and
-   `POST /api/pods/{id}/members`. Every other call site in this app
-   (`organizer.ts`, `my-ticket`, guest/sales exports, the dykil survey
-   reads, the `auth.*`/`chat.*`/`pay.*` reads, etc.) is still raw SQL and
-   is listed in `migrations/cross-schema-allowlist.json`.
-5. **`packages/auth`** (imported by every app) itself runs raw SQL against
-   `auth.credentials`, `auth.identities`, `profile.profiles` from
-   `credentials.ts` — so the DB-layer coupling isn't purely an app habit,
-   it's partly baked into the shared library every app depends on (audit
-   gap #6, "no batched identity/email resolution endpoint"). **Fixed**
-   (#1998/#1992, predates #2155) — `credentials.ts` now calls the kernel
-   over HTTP; `packages/*` isn't in the runtime guard's scope anyway (it
-   only scans `apps/<x>`), but is noted here since it's the same gap.
+### Open runtime gaps (all `apps/events`: 33 `(file, table)` pairs across 27 files)
 
-Items 1, 2, and most of 4 are **not fixed here** — out of scope for #2155
-(item 2 was explicitly scoped to the `cohosts` route only). They're listed
-so the runtime guard below has a documented, honest baseline.
+| Target | Owner | Access | Files | Issue |
+|---|---|---|---|---|
+| `auth.identities`, `auth.credentials`, `auth.onboard_tokens` | kernel | read; **INSERT** `onboard_tokens` | 9 | #2537 |
+| `connections.pod_members` | kernel | read | 7 | #2538 |
+| `chat.conversations_v2` | kernel | **UPDATE** | 1 | #2539 |
+| `pay.transactions` | kernel | read (JOIN) | 1 | #2540 |
+| `profile.profiles` | kernel | read; **UPDATE** `contact_email` | 3 | #2541 |
+| `dykil.surveys`, `dykil.survey_responses` | dykil (app → app) | read / JOIN | 8 | #2542 |
+
+The `dykil` row is different in kind: it is events reading another *app's*
+tables, so the fix is a dykil-owned contract (or moving registration answers
+into events-owned storage, see #1985/#2395), not a kernel route.
+
+Each of these call sites is grandfathered in
+`migrations/cross-schema-allowlist.json`; the allowlist and the open runtime
+entries in `ownership-gaps.json` are kept identical by
+`scripts/__tests__/ownership-map.test.mjs`.
+
+### Open migration-level gaps
+
+- `0001_seed.sql` creates every owner's schema in one file, and
+  `0025`/`0026` mix `dykil` DML with `events` tables (see
+  [Shared migrations](#shared-migrations-1991-phase-2a)). Resolved by the
+  per-app migration directories and kernel baseline (#2524, #2525), not by
+  editing history.
+- `apps/links` no longer exists in this monorepo, but its three tables are
+  still created by the kernel's root migrations (#2524 — `links` is the
+  first mover).
+- No foreign key crosses an owner boundary (checked across every
+  `REFERENCES` in `migrations/`), so no table has to be moved together with
+  another owner's table.
+
+### Fixed since the #1983 audit (kept so the history is not re-litigated)
+
+- `relay.relay_config` reads in `coffee`/`learn`/`market`/`events` —
+  replaced by `@imajin/config`'s node-self helper (#2000).
+- `profile.forest_config` reads — replaced by `@imajin/config`'s
+  forest-config helper (#2001, #2057).
+- `profile.profiles` reads in `learn`/`market` — batched resolve route
+  (#1998, #2155).
+- `events` `cohosts` route `connections.pod_members` read + `INSERT` — kernel
+  pods API (#2155).
+- `events` `UPDATE auth.identities` (contact email, hard-eligibility) —
+  kernel contact/eligibility routes (#2058, #1999).
+- `packages/auth` raw SQL — now HTTP (#1992, #1998).
+
+### Watch-list (not violations today)
+
+Shared packages that run SQL against kernel-owned tables via the caller's
+db handle. Only `apps/kernel` imports them, so nothing crosses a boundary
+yet; they would the moment an app does: `packages/money`'s `getRate` →
+`money.fx_rates`, and `packages/trust-graph`'s Drizzle re-declaration of the
+`connections.*` tables. No issue is filed because there is no violation to
+fix; they are recorded as `watch` entries in `ownership-gaps.json`.
+
+The runtime guard below has a documented, honest baseline: every open gap
+above is a filed issue.
 
 ## Runtime cross-schema query guard
 
@@ -234,7 +254,10 @@ not a suppression:
   `node scripts/ci-guard-cross-schema-reads.mjs --list`.
 - Do not add a new entry to make CI pass without either migrating the call
   site or getting explicit sign-off that it's a deliberately deferred gap
-  (as items 1/2/most-of-4 above are for now).
+  (as every open gap in the table above is for now). Update
+  `migrations/ownership-gaps.json` in the same PR — a test
+  (`scripts/__tests__/ownership-map.test.mjs`) fails if the open runtime
+  gaps and the allowlist diverge.
 
 ## Shared migrations (#1991 phase 2a)
 
@@ -304,14 +327,15 @@ of mode. This was verified against a real Postgres instance, not just
 argued: a fresh database migrated with the plain no-flag command, and a
 fresh database migrated by running `--owner kernel/coffee/dykil/events/
 learn/links/market --include-shared` in that sequence, produce
-byte-identical `pg_dump --schema-only` output and the same 132-row
-`public._migrations` count. See `scripts/migrate.mjs`'s header comment for
+byte-identical `pg_dump --schema-only` output and the same row count in
+`public._migrations` (132 at the time of that verification; the
+migration set has since grown to 167 files).
 the full convergence argument.
 
 ## Deferred (explicitly out of scope for phase 1 and phase 2a)
 
-Per the issue decision (2026-09-09): baseline squash of the 131 existing
-migration files into a clean per-schema baseline, and splitting
+Per the issue decision (2026-09-09): baseline squash of the 167 existing
+migration files (as of #2526) into a clean per-schema baseline, and splitting
 `migrations/` into per-repo/per-app migration directories, are both
 deferred. `links` was the recommended first mover for a future per-repo
 migration split (0 entanglement per the #1983 audit — no internal imports,

@@ -94,13 +94,15 @@ vi.mock('@/src/db', () => {
 
   const envelopeKey = (data: Row) => `${String(data.field)}:${String(data.keyId)}`;
 
-  function queryable(rows: () => Row[]) {
+  function queryable(rows: () => Row[]): Record<string, unknown> {
     const p = Promise.resolve(rows());
     return {
       then: p.then.bind(p),
       catch: p.catch.bind(p),
       finally: p.finally.bind(p),
       limit: (n: number) => Promise.resolve(rows().slice(0, n)),
+      // rotateAndStore reads the active grantees newest-first (listActiveGrantsForField, #2450).
+      orderBy: () => queryable(rows),
     };
   }
 

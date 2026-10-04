@@ -22,7 +22,11 @@ export {
 export {
     IntegrityErrorCode,
     VaultIntegrityError,
-    VaultFileMissingError
+    VaultFileMissingError,
+    VaultFileUnreadableError,
+    VaultFileMalformedError,
+    VaultSaveRefusedError,
+    type VaultFileMalformedReason
 } from './errors.js';
 export {
     assertEntryIntegrity,
