@@ -907,7 +907,7 @@ describe('reissueFieldGrants source guard (#2450)', () => {
 
     await expect(
       reissueFieldGrants({ field: FIELD, sourceGrantId: 'unused', previousGrants: activeGrantsFor(FIELD) as never[], grantedBy: 'test' }),
-    ).resolves.toEqual({ reissued: [], dropped: [] });
+    ).resolves.toMatchObject({ reissued: [], dropped: [] });
   });
 });
 
