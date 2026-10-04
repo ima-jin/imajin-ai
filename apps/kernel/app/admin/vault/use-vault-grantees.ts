@@ -7,7 +7,7 @@ export interface VaultGranteesState {
   loading: boolean;
   grantees: VaultGranteeApiRow[];
   error: string | null;
-  /** The server says this field's rotate path re-issues its grantees (internal-secret:*) — no guard. */
+  /** The server says rotating this field re-issues its grantees; false means rotate is refused while any exist. */
   reissuedOnRotate: boolean;
 }
 
@@ -16,11 +16,9 @@ const EMPTY_STATE: VaultGranteesState = { loading: false, grantees: [], error: n
 /**
  * Fetches the OTHER active delegation grantees on `field` (#2450 step 1) —
  * GET /api/vault/grantees/[field] — whenever the Rotate dialog opens.
- * Rotate does not re-issue an existing grantee's copy of the wrapped key,
- * so each one silently stops decrypting unless the operator is warned —
- * except `internal-secret:*` fields, whose rotate path re-issues them
- * (#2446); the server reports that as `reissuedOnRotate`. This hook only
- * informs the warning.
+ * Rotate re-issues every external grantee on the new key; the server reports
+ * `reissuedOnRotate: false` only when it cannot (Tier 1 custody), in which
+ * case the dialog blocks Rotate. This hook only informs that decision.
  */
 export function useVaultGrantees(field: string | null, open: boolean): VaultGranteesState {
   const [state, setState] = useState<VaultGranteesState>(EMPTY_STATE);

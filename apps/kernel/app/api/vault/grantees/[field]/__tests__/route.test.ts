@@ -43,11 +43,11 @@ describe('GET /api/vault/grantees/[field]', () => {
   });
 
   it('returns an empty list for a field with no other grantees', async () => {
-    mockGetRotateGranteeGuard.mockResolvedValue({ grantees: [], reissuedOnRotate: false });
+    mockGetRotateGranteeGuard.mockResolvedValue({ grantees: [], reissuedOnRotate: true });
     const response = await GET(new Request('http://localhost') as never, makeParams('GH_TOKEN'));
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body).toEqual({ field: 'GH_TOKEN', count: 0, grantees: [], reissuedOnRotate: false });
+    expect(body).toEqual({ field: 'GH_TOKEN', count: 0, grantees: [], reissuedOnRotate: true });
     expect(mockGetRotateGranteeGuard).toHaveBeenCalledWith('GH_TOKEN', 'did:imajin:node');
   });
 
@@ -66,7 +66,7 @@ describe('GET /api/vault/grantees/[field]', () => {
     ]);
   });
 
-  it('reports reissuedOnRotate with no grantees for an exempt internal-secret field', async () => {
+  it('passes through reissuedOnRotate for an internal-secret field', async () => {
     mockGetRotateGranteeGuard.mockResolvedValue({ grantees: [], reissuedOnRotate: true });
     const response = await GET(
       new Request('http://localhost') as never,
