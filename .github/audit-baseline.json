@@ -9,6 +9,16 @@
       "severity": "high",
       "title": "bigint-buffer Vulnerable to Buffer Overflow via toBigIntLE() Function",
       "fix": null
+    },
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "module": "braces",
+      "severity": "high",
+      "title": "braces vulnerable to stack-exhaustion denial of service through deeply nested patterns",
+      "fix": null,
+      "added": "2026-10-03",
+      "issue": "https://github.com/ima-jin/imajin-ai/issues/2549",
+      "reason": "No patched version published. Only prod path is lint tooling: packages/eslint-config-imajin -> eslint-config-next / eslint-plugin-sonarjs -> fast-glob -> micromatch -> braces. Patterns come from our own lint/glob config, never user input; no app runtime reaches it. Remove when a fix is published (audit-gate --prune drops it once resolved)."
     }
   ]
 }
