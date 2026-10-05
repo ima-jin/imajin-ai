@@ -123,8 +123,9 @@ export function assertAppSchema(schema) {
 export function assertFileStaysInSchema(filename, content, schema) {
   const foreign = [...detectTouchedSchemas(content)].filter(s => ALL_SCHEMAS.has(s) && s !== schema);
   if (foreign.length > 0) {
+    foreign.sort((a, b) => a.localeCompare(b));
     throw new SchemaMismatchError(
-      `${filename} references schema(s) ${foreign.sort((a, b) => a.localeCompare(b)).join(', ')} ` +
+      `${filename} references schema(s) ${foreign.join(', ')} ` +
         `outside the app's own schema "${schema}"; app migrations may only touch their own schema.`,
     );
   }
