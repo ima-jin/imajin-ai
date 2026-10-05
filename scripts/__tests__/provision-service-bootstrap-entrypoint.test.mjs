@@ -71,8 +71,13 @@ describe('provision-service-bootstrap.mjs without the package build', () => {
     // The entrypoint locates the repo from its own path: a copy in a bare tree has no build.
     const root = mkdtempSync(join(tmpdir(), 'provision-nobuild-'));
     try {
-      mkdirSync(join(root, 'scripts'));
+      mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
       copyFileSync(entrypoint, join(root, 'scripts', 'provision-service-bootstrap.mjs'));
+      // The entrypoint statically imports the VAULT_PATH helper (#2487).
+      copyFileSync(
+        join(repoRoot, 'scripts', 'lib', 'vault-path-sources.mjs'),
+        join(root, 'scripts', 'lib', 'vault-path-sources.mjs'),
+      );
       const result = spawnSync(process.execPath, [join(root, 'scripts', 'provision-service-bootstrap.mjs'), '--all', '--dry-run'], {
         cwd: root,
         encoding: 'utf8',
