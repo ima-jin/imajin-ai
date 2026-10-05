@@ -2,7 +2,7 @@ import { createLogger } from '@imajin/logger';
 import { getVaultInternalApiKey } from "./internal-post";
 const log = createLogger('auth');
 
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server.js";
 import { SESSION_COOKIE_NAME } from "@imajin/config";
 import type { Identity, AuthResult, AuthError } from "./types";
 

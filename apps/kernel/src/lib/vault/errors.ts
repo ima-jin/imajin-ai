@@ -1,5 +1,5 @@
 import { IntegrityErrorCode, VaultIntegrityError } from '@imajin/vault-core';
-import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server.js';
 
 /**
  * Thrown by loadAndUnseal when a delegation-grant entry has no active grant
