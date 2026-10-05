@@ -45,7 +45,9 @@ const ABBREVIATED_PACKUMENT = 'application/vnd.npm.install-v1+json';
 
 /** `@ima-jin/logger` -> `@ima-jin%2Flogger`, the form every npm registry accepts. */
 export function packumentUrl(registry, name) {
-  return `${registry.replace(/\/+$/, '')}/${name.replace('/', '%2F')}`;
+  let end = registry.length;
+  while (end > 0 && registry[end - 1] === '/') end -= 1;
+  return `${registry.slice(0, end)}/${name.replace('/', '%2F')}`;
 }
 
 /**
