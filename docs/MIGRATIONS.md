@@ -20,6 +20,10 @@ node scripts/migrate.mjs
 # yet give any app true isolation (most owners still depend on 0001_seed.sql).
 node scripts/migrate.mjs --owner <app>
 node scripts/migrate.mjs --owner <app> --include-shared
+
+# Per-app mode (#1991 phase 2b, #2524): an extracted app applies ITS OWN
+# migrations from ITS OWN repo into ITS OWN schema. See "Per-app mode" below.
+node scripts/migrate.mjs --app-dir <dir> --schema <app-schema>
 ```
 
 ### Adding a Migration
@@ -82,3 +86,34 @@ enforces in CI that a migration only touches tables its declared owner
 actually owns, and that any new table it creates is registered in the map.
 See `migrations/OWNERSHIP.md` for the full rule, the current map, and the
 known cross-owner gaps that predate this guard and are not yet fixed.
+
+### Per-app mode (apps run their own migrations)
+
+`--app-dir <dir> --schema <name>` (both required, not combinable with `--owner`)
+applies `<dir>/*.sql` (sorted by name, resolved against the cwd) instead of the
+kernel's `migrations/` folder:
+
+- **Own ledger.** Applied files are tracked in `<schema>._migrations` (filename +
+  SHA-256 checksum) inside the app's schema — never in the kernel's
+  `public._migrations`. The schema and ledger are created if missing.
+- **Pinned `search_path`.** Each file runs in its own transaction with
+  `search_path` set to `<schema>`, so unqualified names land in the app's schema.
+- **Fails loud on schema mismatch**, before any SQL runs: `--schema` may not be a
+  kernel schema (`auth`, `kernel`, `pay`, ...) or `public`/`pg_*`, and no
+  migration file may reference any *other* known kernel or app schema.
+- **Idempotent.** Re-running applies nothing; a changed checksum warns and skips
+  (same as the kernel runner).
+- `DATABASE_URL` is read from the environment first (the kernel's
+  `apps/kernel/.env.local` is only a fallback); `postgres` is resolved from the
+  kernel checkout's `node_modules`, falling back to the app's own.
+
+From an extracted app's repo (e.g. `ima-jin/links`, schema `links`), with a
+checkout of this repo at `$IMAJIN_AI`:
+
+```bash
+DATABASE_URL=postgres://... node "$IMAJIN_AI/scripts/migrate.mjs" \
+  --app-dir ./migrations --schema links
+```
+
+The kernel's own `migrations/` folder is untouched by this mode; moving an app's
+existing files out of it (and squashing the kernel baseline) is #1991 phase 3.

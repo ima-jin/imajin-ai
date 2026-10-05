@@ -7,8 +7,27 @@
  *   node scripts/migrate.mjs                                 # apply every pending migration (default, unchanged)
  *   node scripts/migrate.mjs --owner <app>                    # apply only migrations owned solely by <app>
  *   node scripts/migrate.mjs --owner <app> --include-shared   # also apply migrations shared with other owners
+ *   node scripts/migrate.mjs --app-dir <dir> --schema <app>   # per-app mode: an app runs ITS OWN migrations (#2524)
  *
- * DATABASE_URL is read from apps/kernel/.env.local or environment.
+ * DATABASE_URL is read from apps/kernel/.env.local or environment (per-app
+ * mode prefers the environment variable, since an extracted app's repo has no
+ * kernel .env.local).
+ *
+ * ## Per-app mode (#1991 phase 2b, #2524)
+ *
+ * `--app-dir <dir> --schema <name>` makes the runner apply `<dir>/*.sql`
+ * (resolved against the cwd — typically the app's own repo) into the app's
+ * own schema, instead of the kernel's `migrations/` folder. Applied files are
+ * tracked in `<schema>._migrations` (a ledger inside the app's schema, never
+ * the kernel's `public._migrations`), each migration runs with `search_path`
+ * pinned to `<schema>`, and the run fails loud — before any SQL executes — if
+ * `--schema` is a kernel/reserved schema or any migration file references a
+ * different known schema. See `scripts/lib/migrate-app-mode.mjs`. Example,
+ * from an extracted app's repo:
+ *
+ *   node <imajin-ai>/scripts/migrate.mjs --app-dir ./migrations --schema links
+ *
+ * `--app-dir`/`--schema` cannot be combined with `--owner`.
  *
  * ## Per-owner mode (#1991 phase 2a)
  *
@@ -72,32 +91,46 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import envUtils from './env-utils.js';
-import { parseArgs, scopeForOwner } from './lib/migrate-owner-filter.mjs';
+import { scopeForOwner } from './lib/migrate-owner-filter.mjs';
+import { parseRunnerArgs, runAppMigrations } from './lib/migrate-app-mode.mjs';
 import { mapSequentially } from './lib/sequential.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
 const migrationsDir = resolve(baseDir, 'migrations');
 
-// CLI args are parsed and validated (scripts/lib/migrate-owner-filter.mjs)
-// before touching the database, so a typo in --owner fails fast instead of
+// CLI args are parsed and validated (scripts/lib/migrate-owner-filter.mjs,
+// scripts/lib/migrate-app-mode.mjs) before touching the database, so a typo in --owner fails fast instead of
 // after opening a connection.
 let args;
 try {
-  args = parseArgs(process.argv.slice(2));
+  args = parseRunnerArgs(process.argv.slice(2));
 } catch (err) {
   console.error(`❌ migrate.mjs: ${err.message}`);
   process.exit(1);
 }
 
-// Resolve postgres from kernel's node_modules (same pattern as migrate-service.mjs)
+const isAppMode = args.appDir !== null;
+
+// Resolve postgres from kernel's node_modules (same pattern as migrate-service.mjs).
+// Per-app mode may run from a checkout without the kernel's node_modules, so it
+// falls back to the app's own (cwd) `postgres` dependency.
 const kernelDir = resolve(baseDir, 'apps', 'kernel');
 const kernelRequire = createRequire(join(kernelDir, 'index.js'));
-const postgres = kernelRequire('postgres');
+let postgres;
+try {
+  postgres = kernelRequire('postgres');
+} catch (err) {
+  if (!isAppMode) throw err;
+  postgres = createRequire(join(process.cwd(), 'index.js'))('postgres');
+}
 
 // Read DATABASE_URL from apps/kernel/.env.local, fallback to env var
+// (per-app mode: env var first).
 const envPath = resolve(kernelDir, '.env.local');
-const databaseUrl = envUtils.readEnvValueFromFile(envPath, 'DATABASE_URL') || process.env.DATABASE_URL;
+const databaseUrl = isAppMode
+  ? process.env.DATABASE_URL || envUtils.readEnvValueFromFile(envPath, 'DATABASE_URL')
+  : envUtils.readEnvValueFromFile(envPath, 'DATABASE_URL') || process.env.DATABASE_URL;
 
 if (!databaseUrl) {
   console.error(`❌ No DATABASE_URL found in ${envPath} or environment`);
@@ -177,7 +210,11 @@ async function runMigrations() {
 }
 
 try {
-  await runMigrations();
+  if (isAppMode) {
+    await runAppMigrations({ sql, dir: args.appDir, schema: args.schema });
+  } else {
+    await runMigrations();
+  }
 } catch (err) {
   console.error('❌ Migration failed:', err.message ?? err);
   process.exit(1);
