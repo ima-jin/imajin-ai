@@ -51,6 +51,17 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => logMock,
 }));
 
+// `dispatch.ts` reaches `./loop-emit` through a dynamic `import()` on every
+// terminal/progress publish (#2296). That module pulls in the loop ingest, vault
+// signing and DB layers, so the first publish in a file paid a cold transitive
+// import inside the test body — ~0.5-0.7s idle, past the 5s testTimeout on a
+// loaded CI runner (#2616). The loop-rail bridge is covered by
+// `warp-run-loop-bridge.test.ts`; stubbing it here keeps this suite on the
+// light import graph.
+vi.mock('../loop-emit', () => ({
+  emitWarpRunLoopEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 /**
  * A faithful double of the migration 0128 claim table: a plain `Map` keyed by
  * `${runId}:${segment}`, with "insert if absent, return whether it was

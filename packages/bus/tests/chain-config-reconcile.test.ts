@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 
 // Force chain-config lookups to miss the DB so getChainConfig() falls back to
 // the hardcoded DEFAULTS map. This lets us assert the reconciled chains
@@ -157,16 +157,27 @@ describe('apps.signing-key.claimed chain (#2444)', () => {
   });
 });
 
-describe('broker reactor registry (#1874)', () => {
-  it('mutual-reach-consent reactor is exported from the bus package', async () => {
-    const { mutualReachConsentReactor } = await import('../src/index');
+// The bus barrel (`../src/index`) transitively loads the broker, every reactor
+// and the notify/emit/logger stack. Imported cold inside an `it()` it ate the
+// whole 5s testTimeout on a loaded CI runner (#2616) although it takes well
+// under a second on an idle one. This is a cold-import cost, not a hang, so pay
+// it once in a hook with an explicit budget instead of inside a test body.
+const BARREL_IMPORT_TIMEOUT_MS = 60_000;
 
-    expect(typeof mutualReachConsentReactor).toBe('function');
+const loadBus = () => import('../src/index');
+
+describe('broker reactor registry (#1874)', () => {
+  let bus: Awaited<ReturnType<typeof loadBus>>;
+
+  beforeAll(async () => {
+    bus = await loadBus();
+  }, BARREL_IMPORT_TIMEOUT_MS);
+
+  it('mutual-reach-consent reactor is exported from the bus package', () => {
+    expect(typeof bus.mutualReachConsentReactor).toBe('function');
   });
 
-  it('intersection-scope reactor is exported from the bus package', async () => {
-    const { intersectionScopeReactor } = await import('../src/index');
-
-    expect(typeof intersectionScopeReactor).toBe('function');
+  it('intersection-scope reactor is exported from the bus package', () => {
+    expect(typeof bus.intersectionScopeReactor).toBe('function');
   });
 });

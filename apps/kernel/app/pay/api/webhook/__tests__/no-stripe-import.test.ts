@@ -50,5 +50,8 @@ describe('type-leak guard: pay webhook ingress never imports the stripe SDK dire
   it('importing the pay webhook route module succeeds without STRIPE_SECRET_KEY/webhook secrets configured', async () => {
     const routeModule = await import('../route');
     expect(routeModule.POST).toBeTypeOf('function');
-  });
+    // The import itself is the assertion, so it cannot move into a hook. Give it
+    // an explicit budget for the cold transitive load instead of the 5s default,
+    // which a loaded CI runner can exhaust (#2616).
+  }, 60_000);
 });

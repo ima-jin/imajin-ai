@@ -6,7 +6,7 @@
  * contract every one of them must keep — a 204 with CORS headers — so the
  * `async` removal is covered for all of them.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { NextRequest } from 'next/server';
 
 // Several routes import the db client at module load, which only checks that the
@@ -80,9 +80,27 @@ const routes: Record<string, () => Promise<{ OPTIONS?: OptionsHandler }>> = {
   'tokens/app/verify': () => import('../tokens/app/verify/route'),
 };
 
+// Each route handler's first `import()` is a cold transitive load (db client,
+// auth, bus, vault...). Doing that inside the `it()` bodies put the first test
+// of the run on the clock for it and blew the 5s testTimeout on a loaded CI
+// runner (#2616: `access/bearers/[id]/revoke`, 5015ms; ~0.3s idle). That is
+// cold-import cost, not a hang, so load every handler once in a hook with an
+// explicit budget; the tests below then only measure the handler itself.
+const ROUTE_IMPORT_TIMEOUT_MS = 120_000;
+
+const handlers: Record<string, OptionsHandler | undefined> = {};
+
 describe('kernel auth OPTIONS preflight handlers', () => {
+  beforeAll(async () => {
+    await Promise.all(
+      Object.entries(routes).map(async ([name, load]) => {
+        handlers[name] = (await load()).OPTIONS;
+      }),
+    );
+  }, ROUTE_IMPORT_TIMEOUT_MS);
+
   it.each(Object.keys(routes))('%s responds 204 with CORS headers', async (name) => {
-    const { OPTIONS } = await routes[name]();
+    const OPTIONS = handlers[name];
     expect(typeof OPTIONS).toBe('function');
 
     const request = new NextRequest('https://test.imajin.ai/auth/api/x', {
