@@ -159,7 +159,7 @@ describe('fetchNodes call sites (geolocation effect)', () => {
     installFetch({ nodes: async () => { throw new Error('offline'); } });
     render(<BumpConnect onClose={vi.fn()} />);
 
-    await screen.findByText('No nodes found nearby.');
+    expect(await screen.findByText('No nodes found nearby.')).toBeDefined();
   });
 });
 
