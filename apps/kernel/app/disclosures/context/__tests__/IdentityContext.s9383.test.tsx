@@ -61,7 +61,9 @@ describe('session check on mount', () => {
     const boom = new Error('console broke');
     // First call is the component's own catch-block log: make it throw so the
     // promise returned by checkSession() rejects.
-    const errorSpy = vi.spyOn(console, 'error').mockImplementationOnce(() => { throw boom; }).mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      if (args[0] === 'Session check failed:') throw boom;
+    });
 
     renderProvider();
 
