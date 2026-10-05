@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface ConnectStatus {
   did: string;
@@ -61,7 +62,7 @@ export function PayoutSetupBanner({
     };
 
     if (did) {
-      checkConnectStatus();
+      fireAndForget(checkConnectStatus(), 'pay:PayoutSetupBanner:checkConnectStatus');
     } else {
       setLoading(false);
     }

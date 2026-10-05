@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { grossUpForProcessorFee } from '@imajin/fair';
 import { buildPublicUrl } from '@imajin/config';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 const PRESET_AMOUNTS = [20, 50, 100, 250, 1000];
 const MIN_TOPUP = 20;
@@ -145,7 +146,7 @@ export default function TopupPage() {
 
   const handleCopyMemo = useCallback(() => {
     if (emtInstructions?.memo) {
-      navigator.clipboard.writeText(emtInstructions.memo);
+      fireAndForget(navigator.clipboard.writeText(emtInstructions.memo), 'pay:topup:copyMemo');
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -410,7 +411,7 @@ export default function TopupPage() {
                   <span className="text-white font-mono text-sm">{emtInstructions.email}</span>
                   <button type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(emtInstructions.email);
+                      fireAndForget(navigator.clipboard.writeText(emtInstructions.email), 'pay:topup:copyEmail');
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}

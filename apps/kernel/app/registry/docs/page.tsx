@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface Service {
   name: string;
@@ -17,14 +18,17 @@ export default function DocsPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/registry/api/specs')
-      .then(r => r.json())
-      .then(data => {
-        // Filter to services that have a spec endpoint (exclude meta: project, github, docs)
-        const withSpecs = (data.services || []).filter((s: Service) => s.spec);
-        setServices(withSpecs);
-        if (withSpecs.length > 0) setSelected(withSpecs[0].name);
-      });
+    fireAndForget(
+      fetch('/registry/api/specs')
+        .then(r => r.json())
+        .then(data => {
+          // Filter to services that have a spec endpoint (exclude meta: project, github, docs)
+          const withSpecs = (data.services || []).filter((s: Service) => s.spec);
+          setServices(withSpecs);
+          if (withSpecs.length > 0) setSelected(withSpecs[0].name);
+        }),
+      'registry:docs:loadSpecs',
+    );
   }, []);
 
   useEffect(() => {
@@ -35,19 +39,22 @@ export default function DocsPage() {
     setSpec(null);
 
     // Fetch through local proxy (returns JSON)
-    fetch(`/registry/api/specs/${selected}`)
-      .then(r => {
-        if (!r.ok) throw new Error(`${r.status}`);
-        return r.json();
-      })
-      .then(data => {
-        setSpec(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError(`Could not load spec for ${selected}`);
-        setLoading(false);
-      });
+    fireAndForget(
+      fetch(`/registry/api/specs/${selected}`)
+        .then(r => {
+          if (!r.ok) throw new Error(`${r.status}`);
+          return r.json();
+        })
+        .then(data => {
+          setSpec(data);
+          setLoading(false);
+        })
+        .catch(() => {
+          setError(`Could not load spec for ${selected}`);
+          setLoading(false);
+        }),
+      'registry:docs:loadSpec',
+    );
   }, [selected]);
 
   const svc = services.find(s => s.name === selected);
