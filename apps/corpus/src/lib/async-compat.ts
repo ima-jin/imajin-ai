@@ -7,7 +7,11 @@
  * (an `async` function without `await` is a Sonar S7503 finding).
  */
 export function settle<T>(fn: () => T): Promise<T> {
-  return new Promise<T>(resolve => resolve(fn()));
+  try {
+    return Promise.resolve(fn());
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 /**
