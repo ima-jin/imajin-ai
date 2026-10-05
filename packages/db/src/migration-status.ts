@@ -85,7 +85,7 @@ export async function getMigrationStatus(
   }
 
   const appliedSorted = [...applied].sort((a, b) => a.localeCompare(b));
-  const migrationHead = appliedSorted.at(-1) ?? null;
+  const migrationHead = appliedSorted.length > 0 ? appliedSorted[appliedSorted.length - 1] : null;
 
   let pendingCount: number | null;
   try {
