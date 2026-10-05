@@ -9,6 +9,13 @@ name: Tag Release
 # to main), and the actual prod deploy still goes through deploy-prod.yml's
 # existing `production` GitHub Environment required-reviewer gate — the same
 # gate every other prod deploy already uses.
+#
+# After tagging, the `publish-npm` job publishes every publishable package to
+# npmjs at that version (#2578) by calling publish-packages.yml — the same
+# publish logic as a manual dispatch, idempotent per package. It runs as its
+# own job, parallel to (not behind) the prod-deploy approval, so a pending
+# `production` review never delays it and a publish failure never touches the
+# deploy dispatch.
 on:
   push:
     branches: [main]
@@ -20,14 +27,20 @@ permissions:
   # and why it doesn't bypass anything.
   actions: write
 
-concurrency:
-  group: tag-release
-  cancel-in-progress: false
-
 jobs:
   tag-and-deploy:
     name: Tag Release
     runs-on: ubuntu-latest
+    # Job-level (was workflow-level before #2578): the group only needs to
+    # serialize tagging + deploy dispatch. Held across the minutes-long npm
+    # publish below, GitHub's single pending-run slot could cancel a queued
+    # release-commit run behind it, and that release would never be tagged.
+    concurrency:
+      group: tag-release
+      cancel-in-progress: false
+    outputs:
+      is_release: ${{ steps.check.outputs.is_release }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,3 +135,29 @@ jobs:
         # deploy-prod.yml's `environment: production` required-reviewer
         # gate — nothing here bypasses that approval.
         run: gh workflow run deploy-prod.yml --ref "$TAG" -f ref="$TAG"
+
+  publish-npm:
+    name: Publish packages to npmjs
+    needs: tag-and-deploy
+    if: ${{ needs.tag-and-deploy.outputs.is_release == 'true' }}
+    # A called workflow can't hold more permission than its caller grants.
+    # publish-packages.yml's job declares `packages: write` (for its GitHub
+    # Packages leg, which this call doesn't use), so it must be granted here
+    # or the call is rejected at startup.
+    permissions:
+      contents: read
+      packages: write
+    # Publish exactly what the tag points at, to npmjs only. `package: all`
+    # expands to ALL_PACKAGES in publish-packages.yml (the single source of
+    # truth for what is publishable). Already-published versions are skipped
+    # per package (scripts/publish-package.sh), so re-running this job after a
+    # partial failure resumes instead of failing on the first package that
+    # already went out. Any other publish failure fails this job, and with it
+    # the run.
+    uses: ./.github/workflows/publish-packages.yml
+    with:
+      package: all
+      registries: npmjs
+      ref: ${{ needs.tag-and-deploy.outputs.tag }}
+    secrets:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

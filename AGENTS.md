@@ -100,6 +100,8 @@ scripts/init-taxonomy.sh ima-jin/imajin-ai --set universal --set platform
 2. **Merge that PR** like any other reviewed PR, keeping its `release: vX.Y.Z` commit message intact.
 3. **`tag-release.yml` takes it from there, automatically:** on the resulting push to `main`, it tags the merge commit `vX.Y.Z` and dispatches `deploy-prod.yml` against that tag — which still requires the `production` GitHub Environment's manual reviewer approval (see `deploy-prod.yml`), exactly like every other prod deploy. Nothing in this pipeline bypasses that gate or main's branch protection.
 
+**Publishing to npm is part of that same step, automatic (#2578):** in the same `tag-release.yml` run, a separate `publish-npm` job calls `publish-packages.yml` (`package: all`, `registries: npmjs`, checked out at the `vX.Y.Z` tag), so every publishable `@ima-jin/*` package lands on npmjs at the release version — nobody dispatches `publish-packages.yml` by hand for a release. It does not wait on the `production` approval, a version already on npm is skipped (so re-running the job is safe), and any other publish failure fails the run. See `docs/npm-publishing.md`.
+
 **Re-deploying an already-tagged/main commit** (no new version, e.g. redeploying after an infra fix): `gh workflow run deploy-prod.yml -f ref=main` (or the GitHub Actions UI).
 
 A manual `git pull` skips `build-changed.sh`, migrations, `reap-orphans`, and `pm2 restart`. The built `.next` stays stale and build failures are invisible (no failed CI run to inspect).

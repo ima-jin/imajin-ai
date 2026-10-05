@@ -49,6 +49,37 @@ on:
         required: false
         type: boolean
         default: false
+  # Called by tag-release.yml after it creates a `vX.Y.Z` release tag, with
+  # package=all registries=npmjs (#2578) — the same publish logic as a manual
+  # dispatch, not a copy of it. `workflow_call` has no `choice` input type, so
+  # these are plain strings; the values are the same ones the dispatch choices
+  # offer and are resolved by scripts/resolve-publish-params.mjs.
+  workflow_call:
+    inputs:
+      package:
+        description: "Package to publish (a workspace package name, or 'all')"
+        required: true
+        type: string
+      registries:
+        description: "Registries to publish to (both | npmjs | github-packages)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (skip actual publish)"
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: "Git ref to check out and publish from (the release tag). Empty = the caller's ref."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      # The existing org-level NPM_TOKEN, passed through by the caller — no new
+      # secret. Only read by the npmjs step; optional because a github-packages
+      # only call never needs it.
+      NPM_TOKEN:
+        required: false
 
 env:
   # Publish order matters — a package must be published before anything that
@@ -80,6 +111,11 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Release calls pin the exact tag so the published versions are the
+          # ones committed at that tag even if main has since moved on. Empty
+          # (every other trigger) falls back to the triggering ref.
+          ref: ${{ inputs.ref }}
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
