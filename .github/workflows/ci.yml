@@ -18,10 +18,6 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-
 jobs:
   check-migrations:
     name: Check Migrations
@@ -110,10 +106,18 @@ jobs:
       # GitHub's cache service (~574 MB) on every job. Content-addressed, so
       # sharing it across concurrent jobs is safe. Host dir already exists
       # (root:root 755) and the container runs as root.
+      #
+      # Turborepo's task cache (#2605) lives next to it on the runner host:
+      # LOCAL only, no Vercel/remote cache. Turbo's cache is content-addressed
+      # by task hash, so the five runners can share it; the per-app
+      # `.next/cache` copies under it are handled by scripts/ci-build-cache.sh.
       volumes:
         - /srv/ci/pnpm-store:/pnpm-store
+        - /srv/ci/turbo-cache:/turbo-cache
     env:
       npm_config_store_dir: /pnpm-store
+      TURBO_CACHE_DIR: /turbo-cache
+      TURBO_TELEMETRY_DISABLED: 1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -134,26 +138,31 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
-      - name: Lint
-        run: pnpm lint
-
-      # `pnpm typecheck` builds the type-dependency packages (cid, vault-core,
-      # db, money, fair, config, ui, pay — see root package.json's
-      # `build:types` script, the single source of truth for that list) before
-      # running `typecheck:only`, so CI matches a local `pnpm typecheck` run
-      # exactly. cid first — vault-core's declarations reference it. money
-      # before fair — fair re-exports money's Money type.
-      - name: Typecheck
-        run: pnpm typecheck
-
       # actions/checkout registers safe.directory in the RUNNER HOST's global
       # git config. This job's steps run inside the ci-runner container,
       # which has its own separate git config/HOME, so it never sees that —
       # git then refuses to touch the checked-out repo at all
       # ("Could not access 'origin/main...HEAD'"). Register it again here,
-      # inside the container, before anything needs to run git.
+      # inside the container, before anything needs to run git. Turborepo is
+      # one of those: it hashes task inputs through git, so this runs ahead of
+      # Lint/Typecheck (#2605).
       - name: Allow git to operate on the checked-out repo inside the container
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # `turbo run lint` (root `lint` script): per-package results come from the
+      # local turbo cache at /turbo-cache when the package and the shared
+      # eslint config are unchanged (#2605).
+      - name: Lint
+        run: pnpm lint
+
+      # `turbo run typecheck` (root `typecheck` script). Each package's
+      # `tsc --noEmit` needs its workspace dependencies' built declarations, so
+      # the task graph builds (or replays from the turbo cache) `^build` first.
+      # That is derived from the dependency graph, replacing the hand-kept
+      # `build:types` order (cid before vault-core, money before fair, ...);
+      # `build:types` stays as a local-dev shortcut.
+      - name: Typecheck
+        run: pnpm typecheck
 
       # Schema-boundary guard (#1991 phase 1): a migration may only touch
       # tables its declared "-- owner:" header actually owns, per
@@ -226,10 +235,18 @@ jobs:
       # GitHub's cache service (~574 MB) on every job. Content-addressed, so
       # sharing it across concurrent jobs is safe. Host dir already exists
       # (root:root 755) and the container runs as root.
+      #
+      # Turborepo's task cache (#2605) lives next to it on the runner host:
+      # LOCAL only, no Vercel/remote cache. Turbo's cache is content-addressed
+      # by task hash, so the five runners can share it; the per-app
+      # `.next/cache` copies under it are handled by scripts/ci-build-cache.sh.
       volumes:
         - /srv/ci/pnpm-store:/pnpm-store
+        - /srv/ci/turbo-cache:/turbo-cache
     env:
       npm_config_store_dir: /pnpm-store
+      TURBO_CACHE_DIR: /turbo-cache
+      TURBO_TELEMETRY_DISABLED: 1
     needs: [lint-and-typecheck, test]
     steps:
       - uses: actions/checkout@v4
@@ -245,6 +262,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # turbo hashes task inputs through git; see the identical note in the
+      # Lint & Typecheck job (#2605).
+      - name: Allow git to operate on the checked-out repo inside the container
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      # Incremental Next.js builds (#2605): for each app whose turbo build will
+      # miss the cache, seed .next/cache from the copy kept on the runner host
+      # (keyed per app, under /turbo-cache/next-cache). Apps replayed from the
+      # turbo cache are skipped. Needs the same env as the Build step below:
+      # DATABASE_URL is part of the build task's hash.
+      - name: Restore Next.js build cache
+        run: scripts/ci-build-cache.sh restore-next
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
+
+      # `turbo run build` (root `build` script). Untouched packages/apps are
+      # replayed from the local turbo cache (dist/ and .next/ outputs, minus
+      # .next/cache); a change to a package re-runs it and everything that
+      # depends on it.
       - name: Build
         run: pnpm build
         env:
@@ -259,6 +295,18 @@ jobs:
       # build` above since it inspects built dist output, not source.
       - name: Dist React-binding guard
         run: node scripts/ci-guard-dist-react-binding.mjs
+
+      # Publish the .next/cache of the apps that just rebuilt (only reached when
+      # the build and the guard passed, so a broken build never poisons the
+      # shared copy).
+      - name: Save Next.js build cache
+        run: scripts/ci-build-cache.sh save-next
+
+      # Ceiling for the append-only turbo cache on the runner host: drop
+      # entries written more than 14 days ago (they are simply rebuilt and
+      # re-cached if still wanted). Cheap, and idempotent across runners.
+      - name: Prune turbo cache
+        run: scripts/ci-build-cache.sh prune 14
 
   # Provisioning entrypoint (#2483): runs the REAL deploy entrypoint, with the
   # deploy step's exact command and working directory (repo root), against a
