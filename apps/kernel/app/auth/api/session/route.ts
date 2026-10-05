@@ -5,9 +5,6 @@ import { eq, and } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
-
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
@@ -77,3 +74,5 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     );
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

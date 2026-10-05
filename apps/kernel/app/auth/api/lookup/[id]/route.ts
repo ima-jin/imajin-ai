@@ -6,8 +6,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/lookup/:id
  * Look up identity by DID
@@ -74,3 +72,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

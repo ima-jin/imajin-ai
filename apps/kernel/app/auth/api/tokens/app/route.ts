@@ -29,8 +29,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -78,3 +76,5 @@ export async function POST(request: NextRequest) {
     { headers: cors }
   );
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

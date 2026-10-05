@@ -3,8 +3,6 @@ import { getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt'
 import { corsHeaders } from '@imajin/config';
 import { publish } from '@imajin/bus';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
   const cookieConfig = getSessionCookieOptions();
@@ -31,3 +29,5 @@ export async function POST(request: NextRequest) {
 
   return response;
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

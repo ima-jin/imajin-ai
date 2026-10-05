@@ -27,9 +27,6 @@ const EXPIRY_MAP: Record<string, number> = {
   '1y': 365 * 24 * 60 * 60 * 1000,
 };
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
-
 // ---------------------------------------------------------------------------
 // POST /api/documents — Create a document signing request
 // ---------------------------------------------------------------------------
@@ -217,3 +214,5 @@ async function buildRoleCondition(
   )!;
   return { conditions: [orCondition] };
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

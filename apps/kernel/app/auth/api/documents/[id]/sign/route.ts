@@ -23,7 +23,6 @@ function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
-
 /**
  * Copy a signed document to the signer's media storage.
  */
@@ -124,8 +123,6 @@ async function copyDocumentToSigner(
     return null;
   }
 }
-
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * POST /api/documents/[id]/sign — Sign a document
@@ -259,3 +256,5 @@ async function validateDocumentForSigning(
   }
   return null;
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

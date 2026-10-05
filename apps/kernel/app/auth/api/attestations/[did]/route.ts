@@ -1,7 +1,5 @@
 import { NextRequest } from 'next/server';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/attestations/:did
  * Shorthand for GET /api/attestations?subject_did=:did
@@ -25,3 +23,5 @@ export async function GET(
   const { GET: getAttestations } = await import('../route');
   return getAttestations(forwarded);
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -13,8 +13,6 @@ import { withLogger } from '@imajin/logger';
 
 const HANDOFF_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
@@ -104,3 +102,5 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     );
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -7,8 +7,6 @@ import { generateChallenge } from '@/src/lib/auth/crypto';
 import { CHALLENGE_TTL } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /auth/api/recovery-codes/challenge?did=...
  *
@@ -74,3 +72,5 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return NextResponse.json({ error: 'Failed to create challenge' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

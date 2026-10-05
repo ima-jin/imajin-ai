@@ -7,8 +7,6 @@ import { decryptSecret } from '@/src/lib/auth/encrypt';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * POST /api/keys/retrieve
  * Return the stored encrypted private key after MFA verification.
@@ -93,3 +91,5 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'Failed to retrieve key' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

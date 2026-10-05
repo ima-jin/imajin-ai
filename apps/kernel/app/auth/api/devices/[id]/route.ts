@@ -7,8 +7,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * DELETE /api/devices/[id]
  * Revoke a device (#306). Revocation is a soft-delete: the row (and its
@@ -38,3 +36,5 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     return NextResponse.json({ error: 'Failed to revoke device' }, { status: 500, headers: cors });
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

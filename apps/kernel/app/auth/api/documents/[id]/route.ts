@@ -7,8 +7,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel:documents');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/documents/[id] — Get document with all signatures
  */
@@ -89,3 +87,5 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to load document' }, { status: 500, headers: cors });
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

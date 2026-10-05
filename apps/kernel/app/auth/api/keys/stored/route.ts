@@ -5,8 +5,6 @@ import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt'
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * DELETE /api/keys/stored
  * Remove the stored encrypted key for the authenticated user.
@@ -43,3 +41,5 @@ export const DELETE = withLogger('kernel', async (request: NextRequest, { log })
     return NextResponse.json({ error: 'Failed to delete stored key' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

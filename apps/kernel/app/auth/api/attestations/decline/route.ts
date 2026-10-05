@@ -4,8 +4,6 @@ import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth } from '@/src/lib/auth/middleware';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * POST /api/attestations/decline
  *
@@ -61,3 +59,5 @@ export async function POST(request: NextRequest) {
     status: 'declined',
   }, { headers: cors });
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

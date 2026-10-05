@@ -37,8 +37,6 @@ async function visibleServiceOf(request: NextRequest, agentDid: string): Promise
   }
 }
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/identity/:did
  * Public endpoint — resolve a DID to its public key and metadata.
@@ -99,3 +97,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

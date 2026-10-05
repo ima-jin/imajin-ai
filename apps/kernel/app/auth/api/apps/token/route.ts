@@ -34,8 +34,6 @@ const log = createLogger('kernel');
 
 const MAX_CLOCK_SKEW_MS = 60_000;
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -150,3 +148,5 @@ export async function POST(request: NextRequest) {
     { headers: cors }
   );
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

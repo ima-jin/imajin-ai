@@ -6,8 +6,6 @@ import { withLogger } from '@imajin/logger';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { redeemRecoveryCode, logRecoveryAttempt } from '@/src/lib/auth/recovery-codes';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 // Generic, information-non-leaking error for every failure mode that could
 // otherwise act as a DID/code-existence oracle. Distinct outcomes are still
 // captured internally via the audit log (logRecoveryAttempt).
@@ -126,3 +124,5 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'Failed to process recovery request' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

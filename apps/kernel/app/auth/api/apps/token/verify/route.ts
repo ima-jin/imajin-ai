@@ -33,8 +33,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -71,3 +69,5 @@ export async function POST(request: NextRequest) {
     { headers: cors }
   );
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -6,8 +6,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/identity/:did/chain
  * Public endpoint — serve the DFOS identity chain for a DID.
@@ -49,3 +47,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

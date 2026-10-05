@@ -11,8 +11,6 @@ import { requireAuth } from '@/src/lib/auth/middleware';
 import { invalidateAllRecoveryCodes } from '@/src/lib/auth/recovery-codes';
 import type { KeyRoles } from '@/src/db';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * POST /api/identity/:did/rotate
  *
@@ -189,3 +187,5 @@ export async function POST(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

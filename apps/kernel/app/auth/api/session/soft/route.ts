@@ -9,8 +9,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * Backfill `name`/`contactEmail` on an identity when they're missing.
  * No-op (returns `identity` unchanged) when neither backfill applies.
@@ -190,3 +188,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

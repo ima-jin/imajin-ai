@@ -5,8 +5,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/resolve/dfos/:dfosDid
  * Public endpoint — resolve a did:dfos to its linked did:imajin identity.
@@ -37,3 +35,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

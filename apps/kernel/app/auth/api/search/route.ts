@@ -6,8 +6,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 interface SearchResult {
   did: string;
   handle: string | null;
@@ -84,3 +82,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

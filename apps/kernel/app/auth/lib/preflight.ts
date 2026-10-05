@@ -8,6 +8,9 @@ import { corsHeaders } from '@imajin/config';
  *
  *   export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
  *
+ * Keep that re-export at the end of the route file: at the top it sits at the
+ * start of the near-identical sibling route bodies and counts as duplication.
+ *
  * Deliberately a plain (non-async) function: it never awaits.
  */
 export function preflight(request: NextRequest): NextResponse {

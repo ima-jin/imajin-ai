@@ -8,8 +8,6 @@ const log = createLogger('kernel');
 import { hexToMultibase } from '@imajin/auth';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /api/identity/:did/verify
  * Public endpoint — verify a DID's DFOS chain and check DB consistency.
@@ -94,3 +92,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

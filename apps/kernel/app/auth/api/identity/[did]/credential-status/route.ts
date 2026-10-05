@@ -9,8 +9,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
-
 /**
  * GET /auth/api/identity/:did/credential-status
  * Public endpoint — check revocation status for a DID or a specific credential.
@@ -134,3 +132,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
