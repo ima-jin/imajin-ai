@@ -4,6 +4,7 @@ import { UsageFeedPanel } from './usage-feed-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
+import { ProvisionAppPanel } from './provision-app-panel';
 import { GrantsPanel } from './grants-panel';
 import { PushSubscribeButton } from './push-subscribe-button';
 
@@ -48,6 +49,12 @@ export default function JinPage() {
             raised knock's confirm card appears directly below it, same
             placement convention as VaultKeysPanel above. */}
         <AccessBearersPanel />
+
+        {/* Provision app (#2559) — form that proposes `apps.provision` via
+            the existing `POST /api/apps/provision`; operator-gated, renders
+            nothing otherwise. Rendered ABOVE the operator-approvals panel so
+            the raised proposal's confirm card appears directly below it. */}
+        <ProvisionAppPanel />
 
         {/* Operator approvals (#2059, generalized #2152, GitHub folded in
             #2293) — the single typed confirm queue: gateway restart/config,
