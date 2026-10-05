@@ -51,6 +51,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
+import { approvalCardAnchorId } from './approval-anchor';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -746,11 +747,6 @@ function SealSkippedBanner({
       </button>
     </div>
   );
-}
-
-/** Deep-link anchor id (#2291) — the web-push notificationclick handler opens `/jin?proposalId=<id>` to this card. */
-function approvalCardAnchorId(proposalId: string): string {
-  return `approval-${proposalId}`;
 }
 
 /**
