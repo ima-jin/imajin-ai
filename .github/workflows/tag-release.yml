@@ -20,17 +20,22 @@ on:
   push:
     branches: [main]
 
+# Read-only by default; the one job that writes (tagging) and the publish call
+# each declare exactly what they need at job level.
 permissions:
-  contents: write
-  # Only used to dispatch deploy-prod.yml (a workflow_dispatch call, not a
-  # push) — see the "Dispatch the prod deploy" step for why that's needed
-  # and why it doesn't bypass anything.
-  actions: write
+  contents: read
 
 jobs:
   tag-and-deploy:
     name: Tag Release
     runs-on: ubuntu-latest
+    permissions:
+      # Pushes the annotated release tag (never to main).
+      contents: write
+      # Only used to dispatch deploy-prod.yml (a workflow_dispatch call, not a
+      # push) — see the "Dispatch the prod deploy" step for why that's needed
+      # and why it doesn't bypass anything.
+      actions: write
     # Job-level (was workflow-level before #2578): the group only needs to
     # serialize tagging + deploy dispatch. Held across the minutes-long npm
     # publish below, GitHub's single pending-run slot could cancel a queued

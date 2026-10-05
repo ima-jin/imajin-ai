@@ -2,202 +2,280 @@
  * Tests for scripts/npm-package-published.mjs (#2578) — the skip-if-already-
  * published check scripts/publish-package.sh runs before `npm publish`.
  *
- * The registry is never contacted: `check` takes an injected `npm view`
- * runner, and the CLI/shell wiring is exercised against a fake `npm` on PATH.
+ * No real registry is contacted: the logic is tested with an injected
+ * `fetch`, and the CLI is exercised end-to-end against a throwaway local HTTP
+ * server standing in for the registry.
  */
-import { describe, it, expect } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { describe, it, expect, afterEach } from 'vitest';
+import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { check, classifyNpmView, runNpmView } from '../npm-package-published.mjs';
+import { check, lookupVersion, packumentUrl } from '../npm-package-published.mjs';
 
+const execFileAsync = promisify(execFile);
 const SCRIPT = fileURLToPath(new URL('../npm-package-published.mjs', import.meta.url));
-const REGISTRY = 'https://registry.npmjs.org';
+const REGISTRY = 'https://registry.example.test';
+const NAME = '@ima-jin/logger';
+const VERSION = '0.8.14';
+// Generated per run so no credential-shaped literal lives in the repo.
+const TOKEN = randomUUID();
 
-function preparedPackage(manifest = { name: '@ima-jin/logger', version: '0.8.14' }) {
+function preparedPackage(manifest = { name: NAME, version: VERSION }) {
   const dir = mkdtempSync(join(tmpdir(), 'npm-published-'));
   writeFileSync(join(dir, 'package.json'), JSON.stringify(manifest));
   return dir;
 }
 
-/** A fake `npm` that prints/exits as told, recording its argv. */
-function fakeNpmBin({ stdout = '', stderr = '', code = 0 }) {
-  const bin = mkdtempSync(join(tmpdir(), 'fake-npm-'));
-  mkdirSync(bin, { recursive: true });
-  const file = join(bin, 'npm');
-  writeFileSync(
-    file,
-    `#!/usr/bin/env bash\necho "$@" > "${bin}/argv"\nprintf '%s' ${JSON.stringify(stdout)}\nprintf '%s' ${JSON.stringify(stderr)} >&2\nexit ${code}\n`,
-  );
-  chmodSync(file, 0o755);
-  return bin;
+/** A fetch stand-in that answers every request with the given status/body. */
+function fakeFetch(status, body, calls = []) {
+  return async (url, init) => {
+    calls.push({ url, init });
+    return {
+      status,
+      json: async () => {
+        if (body instanceof Error) throw body;
+        return body;
+      },
+    };
+  };
 }
 
-describe('classifyNpmView', () => {
-  it('exit 0 with a version means the version is published', () => {
-    expect(classifyNpmView({ status: 0, stdout: '"0.8.14"\n', stderr: '' })).toBe('published');
+describe('packumentUrl', () => {
+  it('encodes the scope separator and tolerates trailing slashes on the registry', () => {
+    expect(packumentUrl('https://registry.npmjs.org', NAME)).toBe('https://registry.npmjs.org/@ima-jin%2Flogger');
+    expect(packumentUrl('https://npm.pkg.github.com//', NAME)).toBe('https://npm.pkg.github.com/@ima-jin%2Flogger');
+  });
+});
+
+describe('lookupVersion', () => {
+  it('is published when the packument lists the exact version', async () => {
+    const result = await lookupVersion({
+      name: NAME,
+      version: VERSION,
+      registry: REGISTRY,
+      fetchImpl: fakeFetch(200, { versions: { '0.8.7': {}, [VERSION]: {} } }),
+    });
+    expect(result).toBe('published');
   });
 
-  it('exit 0 with empty output is an error, never "published"', () => {
-    expect(classifyNpmView({ status: 0, stdout: '  \n', stderr: '' })).toBe('error');
+  it('is unpublished when the package exists but not at that version', async () => {
+    const result = await lookupVersion({
+      name: NAME,
+      version: VERSION,
+      registry: REGISTRY,
+      fetchImpl: fakeFetch(200, { versions: { '0.8.7': {} } }),
+    });
+    expect(result).toBe('unpublished');
+  });
+
+  it('does not match inherited object keys as versions', async () => {
+    const result = await lookupVersion({
+      name: NAME,
+      version: 'toString',
+      registry: REGISTRY,
+      fetchImpl: fakeFetch(200, { versions: {} }),
+    });
+    expect(result).toBe('unpublished');
+  });
+
+  it('is unpublished on 404 (the package was never published)', async () => {
+    const result = await lookupVersion({
+      name: NAME,
+      version: VERSION,
+      registry: REGISTRY,
+      fetchImpl: fakeFetch(404, null),
+    });
+    expect(result).toBe('unpublished');
+  });
+
+  it.each([401, 403, 429, 500, 503])('throws on HTTP %s rather than guessing', async (status) => {
+    await expect(
+      lookupVersion({ name: NAME, version: VERSION, registry: REGISTRY, fetchImpl: fakeFetch(status, null) }),
+    ).rejects.toThrow(`HTTP ${status}`);
   });
 
   it.each([
-    ['current npm', 'npm error code E404\nnpm error 404 No match found for version 0.8.14'],
-    ['older npm', 'npm ERR! code E404\nnpm ERR! 404 Not Found'],
-  ])('E404 (%s) means the version is not published', (_label, stderr) => {
-    expect(classifyNpmView({ status: 1, stdout: '', stderr })).toBe('unpublished');
+    ['a body that is not JSON', new SyntaxError('Unexpected token')],
+    ['a body with no versions map', {}],
+    ['a null versions map', { versions: null }],
+    ['a null body', null],
+  ])('throws on 200 with %s', async (_label, body) => {
+    await expect(
+      lookupVersion({ name: NAME, version: VERSION, registry: REGISTRY, fetchImpl: fakeFetch(200, body) }),
+    ).rejects.toThrow();
   });
 
-  it.each([
-    ['auth', 'npm error code E401'],
-    ['forbidden', 'npm error code E403'],
-    ['registry down', 'npm error code E503'],
-    ['network', 'npm error code ENOTFOUND'],
-    ['killed by signal', ''],
-  ])('%s failures are errors, not "unpublished"', (_label, stderr) => {
-    expect(classifyNpmView({ status: _label === 'killed by signal' ? null : 1, stdout: '', stderr })).toBe(
-      'error',
+  it('propagates network failures', async () => {
+    const fetchImpl = async () => {
+      throw new TypeError('fetch failed');
+    };
+    await expect(lookupVersion({ name: NAME, version: VERSION, registry: REGISTRY, fetchImpl })).rejects.toThrow(
+      'fetch failed',
     );
   });
 
-  it('does not mistake a longer code that merely contains 404 for E404', () => {
-    expect(classifyNpmView({ status: 1, stdout: '', stderr: 'npm error code E4040' })).toBe('error');
+  it('asks for the abbreviated packument and sends the token only when one is given', async () => {
+    const withToken = [];
+    await lookupVersion({
+      name: NAME,
+      version: VERSION,
+      registry: REGISTRY,
+      token: TOKEN,
+      fetchImpl: fakeFetch(404, null, withToken),
+    });
+    expect(withToken[0].url).toBe(`${REGISTRY}/@ima-jin%2Flogger`);
+    expect(withToken[0].init.headers).toEqual({
+      Accept: 'application/vnd.npm.install-v1+json',
+      Authorization: `Bearer ${TOKEN}`,
+    });
+
+    const withoutToken = [];
+    await lookupVersion({
+      name: NAME,
+      version: VERSION,
+      registry: REGISTRY,
+      fetchImpl: fakeFetch(404, null, withoutToken),
+    });
+    expect(withoutToken[0].init.headers).toEqual({ Accept: 'application/vnd.npm.install-v1+json' });
   });
 });
 
 describe('check', () => {
-  it('looks up the prepared copy name@version on the given registry', () => {
+  it('reads name@version from the prepared copy and reports published (exit 0)', async () => {
     const calls = [];
-    const result = check([preparedPackage(), REGISTRY], (name, version, registry) => {
-      calls.push([name, version, registry]);
-      return { status: 0, stdout: '"0.8.14"', stderr: '' };
+    const result = await check([preparedPackage(), REGISTRY], {
+      fetchImpl: fakeFetch(200, { versions: { [VERSION]: {} } }, calls),
     });
 
-    expect(calls).toEqual([['@ima-jin/logger', '0.8.14', REGISTRY]]);
     expect(result).toEqual({ code: 0, out: 'published', err: '' });
+    expect(calls[0].url).toBe(`${REGISTRY}/@ima-jin%2Flogger`);
   });
 
-  it('reports unpublished (exit 0) when the registry answers 404, so the publish proceeds', () => {
-    const result = check([preparedPackage(), REGISTRY], () => ({
-      status: 1,
-      stdout: '',
-      stderr: 'npm error code E404',
-    }));
-
+  it('reports unpublished (exit 0) so the publish proceeds', async () => {
+    const result = await check([preparedPackage(), REGISTRY], { fetchImpl: fakeFetch(404, null) });
     expect(result).toEqual({ code: 0, out: 'unpublished', err: '' });
   });
 
-  it('fails (exit 1) when the state cannot be determined, naming the package and registry', () => {
-    const result = check([preparedPackage(), REGISTRY], () => ({
-      status: 1,
-      stdout: '',
-      stderr: 'npm error code E503\nservice unavailable',
-    }));
+  it('fails (exit 1) when the state cannot be determined, naming the package and registry but never the token', async () => {
+    const result = await check([preparedPackage(), REGISTRY], { token: TOKEN, fetchImpl: fakeFetch(503, null) });
 
     expect(result.code).toBe(1);
     expect(result.out).toBe('');
-    expect(result.err).toContain('@ima-jin/logger@0.8.14');
+    expect(result.err).toContain(`${NAME}@${VERSION}`);
     expect(result.err).toContain(REGISTRY);
-    expect(result.err).toContain('E503');
+    expect(result.err).toContain('HTTP 503');
+    expect(result.err).not.toContain(TOKEN);
   });
 
-  it('falls back to stdout for the error detail when stderr is empty', () => {
-    const result = check([preparedPackage(), REGISTRY], () => ({ status: 2, stdout: 'odd output', stderr: '' }));
-
-    expect(result.code).toBe(1);
-    expect(result.err).toContain('odd output');
+  it('requires both arguments', async () => {
+    expect((await check([])).code).toBe(1);
+    expect((await check([preparedPackage()])).code).toBe(1);
+    expect((await check([])).err).toContain('usage');
   });
 
-  it('requires both arguments', () => {
-    expect(check([]).code).toBe(1);
-    expect(check([preparedPackage()]).code).toBe(1);
-    expect(check([]).err).toContain('usage');
-  });
-
-  it('fails when the package.json is missing or unparseable', () => {
+  it('fails when the package.json is missing or unparseable', async () => {
     const empty = mkdtempSync(join(tmpdir(), 'npm-published-empty-'));
-    expect(check([empty, REGISTRY]).err).toContain('cannot read');
+    expect((await check([empty, REGISTRY])).err).toContain('cannot read');
 
     const broken = mkdtempSync(join(tmpdir(), 'npm-published-broken-'));
     writeFileSync(join(broken, 'package.json'), '{not json');
-    expect(check([broken, REGISTRY]).code).toBe(1);
+    expect((await check([broken, REGISTRY])).code).toBe(1);
   });
 
   it.each([
     ['name', { version: '1.0.0' }],
     ['version', { name: '@ima-jin/x' }],
-  ])('fails when the manifest has no %s', (_field, manifest) => {
-    const result = check([preparedPackage(manifest), REGISTRY], () => {
-      throw new Error('must not query the registry');
-    });
+  ])('fails when the manifest has no %s, without querying the registry', async (_field, manifest) => {
+    const calls = [];
+    const result = await check([preparedPackage(manifest), REGISTRY], { fetchImpl: fakeFetch(200, {}, calls) });
 
     expect(result.code).toBe(1);
     expect(result.err).toContain('no name/version');
+    expect(calls).toHaveLength(0);
   });
 });
 
-describe('runNpmView', () => {
-  it('runs `npm view <name>@<version> version --json --registry <url>` and returns its output', () => {
-    const bin = fakeNpmBin({ stdout: '"0.8.14"' });
-    const original = process.env.PATH;
-    process.env.PATH = `${bin}:${original}`;
-    try {
-      const result = runNpmView('@ima-jin/logger', '0.8.14', REGISTRY);
-      expect(result).toEqual({ status: 0, stdout: '"0.8.14"', stderr: '' });
-    } finally {
-      process.env.PATH = original;
-    }
+describe('CLI against a local registry', () => {
+  let server;
 
-    const argv = execFileSync('cat', [join(bin, 'argv')], { encoding: 'utf8' }).trim();
-    expect(argv).toBe(`view @ima-jin/logger@0.8.14 version --json --registry ${REGISTRY}`);
+  afterEach(async () => {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    server = undefined;
   });
 
-  it('surfaces a spawn failure (npm not found) in stderr with a null status', () => {
-    const original = process.env.PATH;
-    process.env.PATH = mkdtempSync(join(tmpdir(), 'empty-path-'));
-    try {
-      const result = runNpmView('@ima-jin/logger', '0.8.14', REGISTRY);
-      expect(result.status).toBeNull();
-      expect(result.stderr).toContain('ENOENT');
-    } finally {
-      process.env.PATH = original;
-    }
-  });
-});
-
-describe('CLI', () => {
-  function run(bin, dir) {
-    return spawnSync(process.execPath, [SCRIPT, dir, REGISTRY], {
-      encoding: 'utf8',
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  /** Starts a registry stand-in; returns its URL and the requests it saw. */
+  async function startRegistry(respond) {
+    const seen = [];
+    server = createServer((req, res) => {
+      seen.push({ url: req.url, authorization: req.headers.authorization, accept: req.headers.accept });
+      respond(req, res);
     });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    return { url: `http://127.0.0.1:${server.address().port}`, seen };
   }
 
-  it('prints `published` and exits 0 for a version already on the registry', () => {
-    const result = run(fakeNpmBin({ stdout: '"0.8.14"' }), preparedPackage());
-    expect(result.status).toBe(0);
+  function run(registryUrl, extraEnv = {}) {
+    const { NODE_AUTH_TOKEN: _ignored, ...inherited } = process.env;
+    const env = { ...inherited, ...extraEnv };
+    return execFileAsync(process.execPath, [SCRIPT, preparedPackage(), registryUrl], { env }).then(
+      ({ stdout, stderr }) => ({ code: 0, stdout, stderr }),
+      (error) => ({ code: error.code, stdout: error.stdout, stderr: error.stderr }),
+    );
+  }
+
+  it('prints `published` and exits 0 for a version already on the registry, sending the bearer token', async () => {
+    const { url, seen } = await startRegistry((_req, res) => {
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ versions: { [VERSION]: {} } }));
+    });
+
+    const result = await run(url, { NODE_AUTH_TOKEN: TOKEN });
+
+    expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe('published');
+    expect(seen).toEqual([
+      { url: '/@ima-jin%2Flogger', authorization: `Bearer ${TOKEN}`, accept: 'application/vnd.npm.install-v1+json' },
+    ]);
   });
 
-  it('prints `unpublished` and exits 0 on E404', () => {
-    const result = run(fakeNpmBin({ stderr: 'npm error code E404', code: 1 }), preparedPackage());
-    expect(result.status).toBe(0);
+  it('prints `unpublished` and exits 0 on 404', async () => {
+    const { url } = await startRegistry((_req, res) => {
+      res.statusCode = 404;
+      res.end('{}');
+    });
+
+    const result = await run(url);
+
+    expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe('unpublished');
   });
 
-  it('exits 1 with a message on stderr (and nothing on stdout) when npm fails for another reason', () => {
-    const result = run(fakeNpmBin({ stderr: 'npm error code E401', code: 1 }), preparedPackage());
-    expect(result.status).toBe(1);
+  it('exits 1 with a message on stderr (and nothing on stdout) when the registry errors', async () => {
+    const { url } = await startRegistry((_req, res) => {
+      res.statusCode = 503;
+      res.end('down');
+    });
+
+    const result = await run(url);
+
+    expect(result.code).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('cannot determine');
+    expect(result.stderr).toContain('HTTP 503');
   });
 
-  it('exits 1 with usage when called without arguments', () => {
-    const result = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' });
-    expect(result.status).toBe(1);
+  it('exits 1 with usage when called without arguments', async () => {
+    const result = await execFileAsync(process.execPath, [SCRIPT]).then(
+      ({ stderr }) => ({ code: 0, stderr }),
+      (error) => ({ code: error.code, stderr: error.stderr }),
+    );
+
+    expect(result.code).toBe(1);
     expect(result.stderr).toContain('usage');
   });
 });
