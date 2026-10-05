@@ -191,6 +191,70 @@ const FALLBACK_PROCESSOR_FIXED_CENTS = 30; // CA$0.30 per transaction
 /** Sentinel used when NODE_DID is not configured. */
 const NODE_DID_UNRESOLVED = 'did:imajin:node-unresolved';
 
+// ── Integer-cent allocation helpers ────────────────────────────────────────────
+
+/**
+ * Split `totalCents` across `weights` pro rata using the largest-remainder
+ * method, so the parts are whole cents that sum to exactly `totalCents`.
+ * Ties on the remainder go to the earlier index, keeping the result
+ * deterministic. When every weight is zero the total is split evenly.
+ */
+function allocateProRata(totalCents: number, weights: readonly number[]): number[] {
+  if (weights.length === 0 || totalCents === 0) return weights.map(() => 0);
+
+  const effective = weights.reduce((sum, w) => sum + w, 0) > 0 ? weights : weights.map(() => 1);
+  const weightSum = effective.reduce((sum, w) => sum + w, 0);
+
+  const parts = effective.map((w) => Math.floor((totalCents * w) / weightSum));
+  let leftover = totalCents - parts.reduce((sum, p) => sum + p, 0);
+
+  const byRemainder = effective
+    .map((w, index) => ({ index, remainder: (totalCents * w) % weightSum }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index);
+  for (const { index } of byRemainder) {
+    if (leftover <= 0) break;
+    parts[index]! += 1;
+    leftover -= 1;
+  }
+  return parts;
+}
+
+/**
+ * Spread `driftCents` (signed) over `centsByIndex` in place, one cent at a time,
+ * round-robin across `sellerIndexes` in chain order. A negative step skips any
+ * entry already at zero so no amount goes negative. Whatever the sellers cannot
+ * absorb (including everything when there are no seller-role entries) goes to
+ * the largest entry.
+ */
+function distributeDrift(
+  centsByIndex: number[],
+  sellerIndexes: readonly number[],
+  driftCents: number,
+): void {
+  if (driftCents === 0 || centsByIndex.length === 0) return;
+
+  const step = Math.sign(driftCents);
+  let remaining = driftCents;
+  let skipped = 0;
+  let cursor = 0;
+  while (remaining !== 0 && skipped < sellerIndexes.length) {
+    const target = sellerIndexes[cursor % sellerIndexes.length]!;
+    cursor++;
+    if (step < 0 && centsByIndex[target]! <= 0) {
+      skipped++;
+      continue;
+    }
+    skipped = 0;
+    centsByIndex[target]! += step;
+    remaining -= step;
+  }
+
+  if (remaining !== 0) {
+    const largest = centsByIndex.indexOf(Math.max(...centsByIndex));
+    centsByIndex[largest]! += remaining;
+  }
+}
+
 // ── Chain resolution ───────────────────────────────────────────────────────────
 
 /**
@@ -200,8 +264,13 @@ const NODE_DID_UNRESOLVED = 'did:imajin:node-unresolved';
  *   1. Look up the `processor` fee entry (fallback: 3.7% + 30¢).
  *   2. Compute `estimatedFeeDollars` from that entry.
  *   3. For each chain entry: substitute placeholder DIDs; compute
- *      `share × totalDollars`; deduct `estimatedFeeDollars` from seller entries.
- *   4. Correct rounding drift so the chain sums exactly to `expectedTotal`.
+ *      `share × totalDollars`.
+ *   4. Split `estimatedFeeDollars` pro rata (by each seller-role entry's gross
+ *      share, largest-remainder in whole cents) across the seller-role entries
+ *      (#2472) — the fee is charged once in total, not once per seller.
+ *   5. Correct rounding drift so the chain sums exactly to `expectedTotal`,
+ *      spreading any remainder one cent at a time round-robin across the
+ *      seller-role entries instead of loading it all onto the first.
  *
  * The result is ready to pass as `fair_manifest.chain` in a POST /api/settle
  * body. I/O (posting to the pay service, writing DB snapshots) stays in the
@@ -232,32 +301,46 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     : computeFeeCents(grossCentsForFee, FALLBACK_PROCESSOR_RATE_BPS, FALLBACK_PROCESSOR_FIXED_CENTS);
   const estimatedFeeDollars = Number.parseFloat((estimatedFeeCents / 100).toFixed(2));
 
-  // ── 2. Resolve placeholder DIDs and compute per-entry amounts ──────────────
+  // ── 2. Resolve placeholder DIDs and compute per-entry gross amounts (cents) ──
+  const grossCents: number[] = [];
   const resolvedChain: ResolvedChainEntry[] = chain.map((entry) => {
     let did = entry.did;
     if (did === 'BUYER_PLACEHOLDER') did = buyerDid;
     if (did === 'NODE_PLACEHOLDER') did = nodeDid ?? NODE_DID_UNRESOLVED;
 
-    let amount = Number.parseFloat((totalDollars * entry.share).toFixed(2));
-    if (sellerRoles.has(entry.role)) {
-      amount = Number.parseFloat((amount - estimatedFeeDollars).toFixed(2));
-    }
-
-    return { did, role: entry.role, amount };
+    const gross = Number.parseFloat((totalDollars * entry.share).toFixed(2));
+    grossCents.push(Math.round(gross * 100));
+    return { did, role: entry.role, amount: gross };
   });
 
   const expectedTotal = Number.parseFloat((totalDollars - estimatedFeeDollars).toFixed(2));
 
-  // ── 3. Correct rounding drift ──────────────────────────────────────────────
-  const chainSum = resolvedChain.reduce((sum, e) => sum + e.amount, 0);
-  const drift = Number.parseFloat((expectedTotal - chainSum).toFixed(2));
-  if (drift !== 0 && resolvedChain.length > 0) {
-    // Prefer adjusting a seller entry; fall back to the largest entry
-    const seller = resolvedChain.find((e) => sellerRoles.has(e.role));
-    const target =
-      seller ??
-      resolvedChain.reduce((max, e) => (e.amount > max.amount ? e : max), resolvedChain[0]!);
-    target.amount = Number.parseFloat((target.amount + drift).toFixed(2));
+  // ── 3. Split the processor fee pro rata across seller-role entries (#2472) ──
+  // The fee is charged once in total; each seller bears a share proportional
+  // to its gross share. Done in whole cents so the parts sum to the fee exactly.
+  const sellerIndexes = resolvedChain.flatMap((e, i) => (sellerRoles.has(e.role) ? [i] : []));
+  const centsByIndex = resolvedChain.map((e) => Math.round(e.amount * 100));
+  const feeCents = Math.round(estimatedFeeDollars * 100);
+  const feeParts = allocateProRata(
+    feeCents,
+    sellerIndexes.map((i) => grossCents[i]!),
+  );
+  for (const [n, chainIndex] of sellerIndexes.entries()) {
+    centsByIndex[chainIndex]! -= feeParts[n]!;
+  }
+
+  // ── 4. Correct rounding drift ──────────────────────────────────────────────
+  // Per-entry rounding can leave the chain a few cents off `expectedTotal`.
+  // Spread the remainder one cent at a time, round-robin in chain order over the
+  // seller-role entries (never driving an entry negative). With no seller-role
+  // entry the whole remainder goes to the largest entry.
+  distributeDrift(
+    centsByIndex,
+    sellerIndexes,
+    Math.round(expectedTotal * 100) - centsByIndex.reduce((sum, c) => sum + c, 0),
+  );
+  for (const [i, entry] of resolvedChain.entries()) {
+    entry.amount = Number.parseFloat((centsByIndex[i]! / 100).toFixed(2));
   }
 
   // ── 4. Tax credits (#2419) ── full amount each, no fee deduction, no
