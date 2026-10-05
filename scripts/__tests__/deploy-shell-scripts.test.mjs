@@ -20,6 +20,8 @@ const SHELL_SELF_TESTS = [
   'lib/deploy-skip.test.sh',
   'reap-orphans.test.sh',
   'assert-pm2-listeners.test.sh',
+  'check-pm2-restarts.test.sh',
+  'pm2-reconcile.test.sh',
   'build-restart-failed.test.sh',
 ];
 

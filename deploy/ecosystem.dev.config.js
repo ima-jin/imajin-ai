@@ -30,7 +30,8 @@ module.exports = {
         "VAULT_PATH": "~/.imajin/vault.dev.json"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       // Kernel cron scheduler (#2550). We don't deploy on Vercel, so the
@@ -65,7 +66,12 @@ module.exports = {
         "CRON_BASE_URL": "http://127.0.0.1:3000"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      // Long-running ticker (no listener, autorestart on), not a one-shot: its
+      // SIGTERM handler stops the ticker and exits 0 immediately, so a clean
+      // stop is near-instant. We still set the same explicit kill_timeout as
+      // every other app (#2547) as a cap for an in-flight /api/cron/* call.
+      "kill_timeout": 15000
     },
     {
       "name": "dev-events",
@@ -79,7 +85,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-coffee",
@@ -93,7 +100,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-dykil",
@@ -107,7 +115,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-learn",
@@ -121,7 +130,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-market",
@@ -135,7 +145,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-fixready",
@@ -147,7 +158,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-karaoke",
@@ -159,7 +171,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       // See ecosystem.prod.config.js's corpus comment: corpus is an
@@ -195,7 +208,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     }
   ]
 };

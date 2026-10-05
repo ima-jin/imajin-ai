@@ -91,6 +91,12 @@ for (const env of ['dev', 'prod']) {
       }
     });
 
+    it('sets an explicit kill_timeout long enough for a clean Next shutdown (#2547)', () => {
+      for (const app of apps) {
+        expect(app.kill_timeout, app.name).toBeGreaterThanOrEqual(10000);
+      }
+    });
+
     it('execs the kernel directly', () => {
       const kernel = apps.find((a) => a.name === `${env}-jin`);
       expect(kernel).toBeDefined();
@@ -147,6 +153,13 @@ for (const env of ['dev', 'prod']) {
     it('has the same restart limits as the other apps', () => {
       expect(cron.max_restarts).toBe(10);
       expect(cron.min_uptime).toBe('20s');
+    });
+
+    it('sets the same explicit kill_timeout as the kernel (#2547)', () => {
+      // A long-running ticker, not a one-shot: no entry is exempt from the
+      // kill_timeout rule, so the scheduler gets the kernel's value.
+      expect(cron.autorestart).toBeUndefined();
+      expect(cron.kill_timeout).toBe(kernel.kill_timeout);
     });
   });
 }
