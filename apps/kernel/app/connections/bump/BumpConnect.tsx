@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { buildPublicUrl } from '@imajin/config';
 import { useToast } from '@imajin/ui';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import ProfileCard from './ProfileCard';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -137,18 +138,18 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      fetchNodes(null);
+      fireAndForget(fetchNodes(null), 'bump:fetchNodes:noGeo');
       return;
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         locationRef.current = loc;
-        fetchNodes(loc);
+        fireAndForget(fetchNodes(loc), 'bump:fetchNodes:geo');
       },
       () => {
         setGeoError('Location unavailable — showing all nodes');
-        fetchNodes(null);
+        fireAndForget(fetchNodes(null), 'bump:fetchNodes:geoError');
       },
       { timeout: 5000 }
     );
@@ -284,7 +285,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       const left = Math.max(0, Math.round((expiresAt - Date.now()) / 1000));
       setTimeRemaining(left);
       if (left === 0) {
-        deactivate(session.sessionId);
+        fireAndForget(deactivate(session.sessionId), 'bump:deactivate:expired');
         setState('idle');
       }
     };
@@ -305,7 +306,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
     tick();
     confirmTimer.current = setInterval(tick, 1000);
     autoDeclineTimer.current = setTimeout(() => {
-      handleConfirm(matchId, false);
+      fireAndForget(handleConfirm(matchId, false), 'bump:handleConfirm:autoDecline');
     }, Math.max(0, end - Date.now()));
   }
 
@@ -368,7 +369,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
         setTimeout(() => {
           const waveform = [...accelBuffer.current];
           const rotationRate = [...rotBuffer.current];
-          sendBumpEvent(waveform, rotationRate);
+          fireAndForget(sendBumpEvent(waveform, rotationRate), 'bump:sendBumpEvent');
         }, 250);
       }
     };
@@ -491,7 +492,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
   }
 
   function handleStop() {
-    if (session) deactivate(session.sessionId);
+    if (session) fireAndForget(deactivate(session.sessionId), 'bump:deactivate:stop');
     setSession(null);
     sessionRef.current = null;
     setState('idle');
@@ -500,7 +501,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
   useEffect(() => {
     return () => {
       stopAccelerometer();
-      if (session) deactivate(session.sessionId);
+      if (session) fireAndForget(deactivate(session.sessionId), 'bump:deactivate:unmount');
       if (matchingTimer.current) clearTimeout(matchingTimer.current);
     };
   }, []);
@@ -554,7 +555,7 @@ export default function BumpConnect({ onClose }: Readonly<Props>) {
       <div className="flex items-center justify-between p-4 shrink-0">
         <button type="button"
           onClick={() => {
-            if (isActive && session) deactivate(session.sessionId);
+            if (isActive && session) fireAndForget(deactivate(session.sessionId), 'bump:deactivate:close');
             onClose();
           }}
           className="text-gray-500 hover:text-gray-300 transition p-2 min-h-[48px] min-w-[48px] flex items-center justify-center"
