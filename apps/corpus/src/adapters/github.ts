@@ -387,18 +387,48 @@ function findClosingPullRequest(items: RawTimelineItem[]): string | undefined {
   return undefined;
 }
 
+// Sequential on purpose: every page can only be requested once the previous
+// page has returned the cursor to continue from.
 async function drainConnection<T>(
   initial: Connection<T>,
   fetchNext: (after: string) => Promise<Connection<T>>,
 ): Promise<T[]> {
-  let all = initial.nodes;
-  let pageInfo = initial.pageInfo;
-  while (pageInfo.hasNextPage && pageInfo.endCursor) {
-    const next = await fetchNext(pageInfo.endCursor);
-    all = all.concat(next.nodes);
-    pageInfo = next.pageInfo;
-  }
-  return all;
+  const { hasNextPage, endCursor } = initial.pageInfo;
+  if (!hasNextPage || !endCursor) return initial.nodes;
+  const next = await fetchNext(endCursor);
+  return initial.nodes.concat(await drainConnection(next, fetchNext));
+}
+
+/**
+ * Yields successive pages of a cursor-paginated connection, fetching the next
+ * page only after the consumer has finished with the current one. Aborts are
+ * checked before every fetch.
+ */
+async function* iteratePages<N>(
+  fetchPage: (after: string | null) => Promise<Connection<N>>,
+  signal: AbortSignal | undefined,
+  after: string | null = null,
+): AsyncGenerator<Connection<N>> {
+  checkAborted(signal);
+  const page = await fetchPage(after);
+  yield page;
+  const next = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
+  if (next) yield* iteratePages(fetchPage, signal, next);
+}
+
+/**
+ * Yields `build(node)` for each node, one at a time and in order. Sequential on
+ * purpose: `build` may issue follow-up GraphQL pages per node, and the consumer
+ * may stop early (sync limits), so nothing is fetched ahead of demand.
+ */
+async function* buildSequentially<N, D>(
+  nodes: readonly N[],
+  build: (node: N) => Promise<D>,
+  index = 0,
+): AsyncGenerator<D> {
+  if (index >= nodes.length) return;
+  yield await build(nodes[index]);
+  yield* buildSequentially(nodes, build, index + 1);
 }
 
 // ─── Resolution extraction ───────────────────────────────────────────────────
@@ -615,16 +645,13 @@ export class GitHubAdapter implements CorpusAdapter {
     repo: string,
     opts: { since: string | null; signal?: AbortSignal },
   ): AsyncGenerator<ThreadDocument> {
-    let after: string | null = null;
-    do {
-      checkAborted(opts.signal);
-      const issues = await this.fetchIssuePage(owner, repo, after, opts.since);
-      for (const node of issues.nodes) {
+    const pages = iteratePages(after => this.fetchIssuePage(owner, repo, after, opts.since), opts.signal);
+    for await (const issues of pages) {
+      yield* buildSequentially(issues.nodes, async node => {
         const comments = await this.collectNodeComments(node.id, node.comments);
-        yield buildIssueDocument(owner, repo, node, comments);
-      }
-      after = issues.pageInfo.hasNextPage ? issues.pageInfo.endCursor : null;
-    } while (after);
+        return buildIssueDocument(owner, repo, node, comments);
+      });
+    }
   }
 
   private async fetchIssuePage(
@@ -650,19 +677,22 @@ export class GitHubAdapter implements CorpusAdapter {
     repo: string,
     opts: { direction: 'ASC' | 'DESC'; signal?: AbortSignal },
   ): AsyncGenerator<ThreadDocument> {
-    let after: string | null = null;
-    do {
-      checkAborted(opts.signal);
-      const page = await this.fetchPullRequestPage(owner, repo, after, opts.direction);
-      for (const node of page.nodes) {
-        const [comments, reviews] = await Promise.all([
-          this.collectNodeComments(node.id, node.comments),
-          this.collectPullRequestReviews(node),
-        ]);
-        yield buildPullRequestDocument(owner, repo, node, comments, reviews);
-      }
-      after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
-    } while (after);
+    const pages = iteratePages(after => this.fetchPullRequestPage(owner, repo, after, opts.direction), opts.signal);
+    for await (const page of pages) {
+      yield* buildSequentially(page.nodes, node => this.buildPullRequestDocumentFor(owner, repo, node));
+    }
+  }
+
+  private async buildPullRequestDocumentFor(
+    owner: string,
+    repo: string,
+    node: RawPullRequestNode,
+  ): Promise<ThreadDocument> {
+    const [comments, reviews] = await Promise.all([
+      this.collectNodeComments(node.id, node.comments),
+      this.collectPullRequestReviews(node),
+    ]);
+    return buildPullRequestDocument(owner, repo, node, comments, reviews);
   }
 
   /**
@@ -676,20 +706,13 @@ export class GitHubAdapter implements CorpusAdapter {
     cursor: string | null,
     signal?: AbortSignal,
   ): AsyncGenerator<ThreadDocument> {
-    let after: string | null = null;
-    do {
-      checkAborted(signal);
-      const page = await this.fetchPullRequestPage(owner, repo, after, 'DESC');
-      for (const node of page.nodes) {
-        if (cursor && node.updatedAt <= cursor) return;
-        const [comments, reviews] = await Promise.all([
-          this.collectNodeComments(node.id, node.comments),
-          this.collectPullRequestReviews(node),
-        ]);
-        yield buildPullRequestDocument(owner, repo, node, comments, reviews);
-      }
-      after = page.pageInfo.hasNextPage ? page.pageInfo.endCursor : null;
-    } while (after);
+    const pages = iteratePages(after => this.fetchPullRequestPage(owner, repo, after, 'DESC'), signal);
+    for await (const page of pages) {
+      const boundary = cursor ? page.nodes.findIndex(node => node.updatedAt <= cursor) : -1;
+      const fresh = boundary === -1 ? page.nodes : page.nodes.slice(0, boundary);
+      yield* buildSequentially(fresh, node => this.buildPullRequestDocumentFor(owner, repo, node));
+      if (boundary !== -1) return;
+    }
   }
 
   private async fetchPullRequestPage(

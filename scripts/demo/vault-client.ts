@@ -54,16 +54,23 @@ class VaultCryptoClient implements VaultClient {
   private readonly key = deriveSealKey(process.env.AUTH_PRIVATE_KEY);
   private readonly store = new Map<string, VaultBlob>();
 
-  async seal(did: string, field: string, plaintext: string): Promise<void> {
-    this.store.set(nsField(did, field), sealSecret(plaintext, this.key));
+  // The cipher and the in-memory store are synchronous. The Promise contract is kept by running the
+  // body inside a Promise executor, so a throw still surfaces as a rejection (as it did when `async`).
+  seal(did: string, field: string, plaintext: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.store.set(nsField(did, field), sealSecret(plaintext, this.key));
+      resolve();
+    });
   }
 
-  async unseal(did: string, field: string): Promise<string> {
-    const blob = this.store.get(nsField(did, field));
-    if (blob === undefined) {
-      throw new Error(`vault has no sealed value for '${field}' under ${did}`);
-    }
-    return unsealSecret(blob, this.key);
+  unseal(did: string, field: string): Promise<string> {
+    return new Promise<string>((resolve) => {
+      const blob = this.store.get(nsField(did, field));
+      if (blob === undefined) {
+        throw new Error(`vault has no sealed value for '${field}' under ${did}`);
+      }
+      resolve(unsealSecret(blob, this.key));
+    });
   }
 }
 

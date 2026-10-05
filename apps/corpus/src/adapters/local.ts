@@ -9,6 +9,7 @@
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { extname, join, relative } from 'node:path';
+import { settle, toAsyncIterable } from '../lib/async-compat';
 import type {
   AdapterFetchOptions,
   AdapterSyncResult,
@@ -191,7 +192,14 @@ function buildDocument(source: string, root: string, file: WalkedFile): ThreadDo
 export class LocalAdapter implements CorpusAdapter {
   readonly sourceType: SourceType = 'local';
 
-  async *fetch(source: string, options: AdapterFetchOptions = {}): AsyncIterable<ThreadDocument> {
+  // The walk is entirely synchronous (readdirSync/statSync), so it is a plain
+  // generator adapted to the async contract: still lazy, and a throw during the
+  // walk still surfaces as a rejection of the consumer's `for await`.
+  fetch(source: string, options: AdapterFetchOptions = {}): AsyncIterable<ThreadDocument> {
+    return toAsyncIterable(this.walkDocuments(source, options));
+  }
+
+  private *walkDocuments(source: string, options: AdapterFetchOptions): Generator<ThreadDocument> {
     const root = parseLocalSource(source);
     const limit = options.limit;
     let emitted = 0;
@@ -204,7 +212,13 @@ export class LocalAdapter implements CorpusAdapter {
     }
   }
 
-  async sync(source: string, cursor: string | null, options: AdapterFetchOptions = {}): Promise<AdapterSyncResult> {
+  // Synchronous work behind a Promise contract: a sync throw (bad source,
+  // aborted signal) must still reject rather than throw from `sync()` itself.
+  sync(source: string, cursor: string | null, options: AdapterFetchOptions = {}): Promise<AdapterSyncResult> {
+    return settle(() => this.collectChanges(source, cursor, options));
+  }
+
+  private collectChanges(source: string, cursor: string | null, options: AdapterFetchOptions): AdapterSyncResult {
     const root = parseLocalSource(source);
     const limit = options.limit;
     const documents: ThreadDocument[] = [];

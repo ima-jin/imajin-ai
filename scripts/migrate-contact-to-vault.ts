@@ -18,6 +18,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import { mapSequentially } from './lib/sequential.mjs';
 import { getClient } from '@imajin/db';
 import { sealAndStore, loadAndUnseal } from '../apps/kernel/src/lib/vault/index.js';
 
@@ -115,7 +116,8 @@ async function main() {
   let successCount = 0;
   let failCount = 0;
 
-  for (const row of rows) {
+  // Sequential on purpose: one profile at a time keeps vault writes ordered and failures attributable.
+  await mapSequentially(rows, async (row) => {
     try {
       await migrateProfileRow(row);
       successCount++;
@@ -124,7 +126,7 @@ async function main() {
       failCount++;
       // Continue — do not abort the whole migration on a single failure
     }
-  }
+  });
 
   console.log(`\nDone. ${successCount} migrated, ${failCount} failed.`);
   if (failCount > 0) {

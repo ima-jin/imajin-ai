@@ -73,6 +73,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import envUtils from './env-utils.js';
 import { parseArgs, scopeForOwner } from './lib/migrate-owner-filter.mjs';
+import { mapSequentially } from './lib/sequential.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
@@ -135,7 +136,8 @@ async function runMigrations() {
 
   let ranCount = 0;
 
-  for (const filename of files) {
+  // Sequential on purpose: migrations must apply in filename order, each in its own transaction.
+  await mapSequentially(files, async filename => {
     const filePath = resolve(migrationsDir, filename);
     const content = readFileSync(filePath, 'utf-8');
     const hash = checksum(content);
@@ -146,13 +148,13 @@ async function runMigrations() {
       } else {
         console.log(`⏭  ${filename} — already applied`);
       }
-      continue;
+      return;
     }
 
     const scope = scopeForOwner(content, args.owner, args.includeShared);
     if (!scope.include) {
       console.log(`⏭  ${filename} — out of scope for --owner ${args.owner} (${scope.reason})`);
-      continue;
+      return;
     }
 
     console.log(`▶  ${filename} — applying...`);
@@ -165,7 +167,7 @@ async function runMigrations() {
     });
     console.log(`✅ ${filename}`);
     ranCount++;
-  }
+  });
 
   if (ranCount === 0) {
     console.log('✅ All migrations already applied.');

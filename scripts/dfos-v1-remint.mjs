@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { verifyIdentityChain } from '@metalabel/dfos-protocol';
 import envUtils from './env-utils.js';
+import { mapSequentially } from './lib/sequential.mjs';
 
 const APPLY = process.argv.includes('--apply');
 const DFOS_DID_PREFIX = 'did:dfos';
@@ -61,42 +62,47 @@ const didWidth = did => (did?.split(':')[2] ?? '').length;
 const sql = postgres(databaseUrl, { max: 1 });
 
 // --- derive new dids from genesis (read-only, fail fast) ---
-async function deriveRemints(preV1) {
-  const remints = [];
-  for (const row of preV1) {
-    const log = Array.isArray(row.log) ? row.log : JSON.parse(row.log);
-    let verified;
-    try {
-      verified = await verifyIdentityChain({ didPrefix: DFOS_DID_PREFIX, log });
-    } catch (err) {
-      throw new Error(
-        `verifyIdentityChain failed for ${row.dfos_did} (imajin ${row.did}): ${err?.message ?? err}`,
-      );
-    }
-    const newDid = verified.did;
-    if (didWidth(newDid) !== V1_WIDTH) {
-      throw new Error(
-        `re-derived did is not v1 width (${didWidth(newDid)}): ${newDid} — is the protocol lib v1 (idLength=31)?`,
-      );
-    }
-    if (newDid === row.dfos_did) {
-      throw new Error(`re-derived did unchanged for ${row.dfos_did} — expected widening`);
-    }
-    remints.push({ imajinDid: row.did, oldDid: row.dfos_did, newDid });
+function deriveRemints(preV1) {
+  // Independent per row (pure verification, no writes), so verify them all at once;
+  // Promise.all keeps the results in input order.
+  return Promise.all(preV1.map(deriveRemint));
+}
+
+async function deriveRemint(row) {
+  const log = Array.isArray(row.log) ? row.log : JSON.parse(row.log);
+  let verified;
+  try {
+    verified = await verifyIdentityChain({ didPrefix: DFOS_DID_PREFIX, log });
+  } catch (err) {
+    throw new Error(
+      `verifyIdentityChain failed for ${row.dfos_did} (imajin ${row.did}): ${err?.message ?? err}`,
+    );
   }
-  return remints;
+  const newDid = verified.did;
+  if (didWidth(newDid) !== V1_WIDTH) {
+    throw new Error(
+      `re-derived did is not v1 width (${didWidth(newDid)}): ${newDid} — is the protocol lib v1 (idLength=31)?`,
+    );
+  }
+  if (newDid === row.dfos_did) {
+    throw new Error(`re-derived did unchanged for ${row.dfos_did} — expected widening`);
+  }
+  return { imajinDid: row.did, oldDid: row.dfos_did, newDid };
 }
 
 // collision guard: a new 31-char did must not already exist as someone else's chain
 async function assertNoCollisions(remints) {
-  for (const r of remints) {
-    const clash = await sql`
-      SELECT did FROM auth.identity_chains WHERE dfos_did = ${r.newDid} AND did <> ${r.imajinDid}
-    `;
-    if (clash.length) {
-      throw new Error(`collision: ${r.newDid} already bound to ${clash[0].did}`);
-    }
-  }
+  // Independent read-only lookups; the single pooled connection (max: 1) bounds the concurrency.
+  await Promise.all(
+    remints.map(async r => {
+      const clash = await sql`
+        SELECT did FROM auth.identity_chains WHERE dfos_did = ${r.newDid} AND did <> ${r.imajinDid}
+      `;
+      if (clash.length) {
+        throw new Error(`collision: ${r.newDid} already bound to ${clash[0].did}`);
+      }
+    }),
+  );
 }
 
 // --- prune preview: foreign rows (not bound to ANY of our chains) ---
@@ -153,15 +159,18 @@ async function applyRemint(remints, ownDidsAll) {
     await tx`DELETE FROM relay.relay_peer_cursors`;
 
     // 2) RE-MINT: rewrite old -> new did across all references.
-    for (const r of remints) {
-      await tx`UPDATE auth.identity_chains          SET dfos_did = ${r.newDid} WHERE did = ${r.imajinDid}`;
-      await tx`UPDATE relay.relay_identity_chains   SET did      = ${r.newDid} WHERE did      = ${r.oldDid}`;
-      await tx`UPDATE relay.relay_operations        SET chain_id = ${r.newDid} WHERE chain_id = ${r.oldDid}`;
-      await tx`UPDATE relay.relay_operation_log     SET chain_id = ${r.newDid} WHERE chain_id = ${r.oldDid}`;
-      await tx`UPDATE relay.relay_beacons           SET did      = ${r.newDid} WHERE did      = ${r.oldDid}`;
-      await tx`UPDATE registry.nodes                SET chain_did= ${r.newDid} WHERE chain_did= ${r.oldDid}`;
-    }
+    // Sequential on purpose: one transaction connection, and the rewrites must apply in a fixed order.
+    await mapSequentially(remints, r => rewriteDid(tx, r));
   });
+}
+
+async function rewriteDid(tx, r) {
+  await tx`UPDATE auth.identity_chains          SET dfos_did = ${r.newDid} WHERE did = ${r.imajinDid}`;
+  await tx`UPDATE relay.relay_identity_chains   SET did      = ${r.newDid} WHERE did      = ${r.oldDid}`;
+  await tx`UPDATE relay.relay_operations        SET chain_id = ${r.newDid} WHERE chain_id = ${r.oldDid}`;
+  await tx`UPDATE relay.relay_operation_log     SET chain_id = ${r.newDid} WHERE chain_id = ${r.oldDid}`;
+  await tx`UPDATE relay.relay_beacons           SET did      = ${r.newDid} WHERE did      = ${r.oldDid}`;
+  await tx`UPDATE registry.nodes                SET chain_did= ${r.newDid} WHERE chain_did= ${r.oldDid}`;
 }
 
 function logWidthDistribution(after) {

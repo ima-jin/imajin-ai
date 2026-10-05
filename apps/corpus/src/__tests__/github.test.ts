@@ -377,6 +377,71 @@ describe('pagination', () => {
     expect(issuesHandler).toHaveBeenCalledTimes(2);
   });
 
+  it('does not fetch the next page once the consumer has stopped', async () => {
+    const issuesHandler = vi.fn(() => ({
+      repository: {
+        issues: {
+          nodes: [issueNode({ number: 1 }), issueNode({ number: 2 })],
+          pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+        },
+      },
+    }));
+    const graphqlClient = mockClient({ CorpusGitHubIssues: issuesHandler, CorpusGitHubPullRequests: emptyPullRequests });
+
+    const adapter = new GitHubAdapter(undefined, { graphqlClient });
+    const docs: ThreadDocument[] = [];
+    for await (const doc of adapter.fetch('github:ima-jin/imajin-ai', { limit: 1 })) docs.push(doc);
+
+    expect(docs).toHaveLength(1);
+    expect(issuesHandler).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects when a later page fails, after yielding the documents already produced', async () => {
+    const issuesHandler = vi.fn((variables: Record<string, unknown>) => {
+      if (variables.after) throw new Error('graphql down');
+      return {
+        repository: {
+          issues: {
+            nodes: [issueNode({ number: 1, title: 'First' })],
+            pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+          },
+        },
+      };
+    });
+    const graphqlClient = mockClient({ CorpusGitHubIssues: issuesHandler, CorpusGitHubPullRequests: emptyPullRequests });
+
+    const adapter = new GitHubAdapter(undefined, { graphqlClient });
+    const seen: string[] = [];
+    const run = async () => {
+      for await (const doc of adapter.fetch('github:ima-jin/imajin-ai')) seen.push(doc.title);
+    };
+
+    await expect(run()).rejects.toThrow('graphql down');
+    expect(seen).toEqual(['First']);
+  });
+
+  it('stops before the next page when the signal is aborted mid-pagination', async () => {
+    const controller = new AbortController();
+    const issuesHandler = vi.fn(() => ({
+      repository: {
+        issues: {
+          nodes: [issueNode({ number: 1 })],
+          pageInfo: { hasNextPage: true, endCursor: 'cursor-1' },
+        },
+      },
+    }));
+    const graphqlClient = mockClient({ CorpusGitHubIssues: issuesHandler, CorpusGitHubPullRequests: emptyPullRequests });
+
+    const adapter = new GitHubAdapter(undefined, { graphqlClient });
+    const iterator = adapter.fetch('github:ima-jin/imajin-ai', { signal: controller.signal })[Symbol.asyncIterator]();
+
+    await expect(iterator.next()).resolves.toMatchObject({ done: false });
+    controller.abort();
+
+    await expect(iterator.next()).rejects.toThrow(/aborted/);
+    expect(issuesHandler).toHaveBeenCalledTimes(1);
+  });
+
   it('pages past the first page of nested issue comments', async () => {
     const graphqlClient = mockClient({
       CorpusGitHubIssues: () => ({
