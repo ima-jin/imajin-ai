@@ -18,7 +18,7 @@ import { withLogger } from '@imajin/logger';
 
 const AUTH_URL = buildPublicUrlAbsolute('auth');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

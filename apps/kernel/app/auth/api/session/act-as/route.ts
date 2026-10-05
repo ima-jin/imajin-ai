@@ -5,7 +5,7 @@ import { requireAuth } from '@imajin/auth';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

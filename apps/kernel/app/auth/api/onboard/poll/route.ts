@@ -13,7 +13,7 @@ import { withLogger } from '@imajin/logger';
 
 const HANDOFF_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

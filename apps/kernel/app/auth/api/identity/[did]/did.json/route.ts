@@ -8,7 +8,7 @@ import { nodeUrl } from '@/src/lib/http/node-url';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

@@ -9,7 +9,7 @@ import { verifyWitnessJws } from '@/src/lib/auth/witness-jws';
 
 const log = createLogger('kernel:countersign');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

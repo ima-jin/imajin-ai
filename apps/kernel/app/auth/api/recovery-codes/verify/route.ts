@@ -6,7 +6,7 @@ import { withLogger } from '@imajin/logger';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { redeemRecoveryCode, logRecoveryAttempt } from '@/src/lib/auth/recovery-codes';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

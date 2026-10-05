@@ -4,7 +4,7 @@ import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { getRecoveryCodeStatus } from '@/src/lib/auth/recovery-codes';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

@@ -19,7 +19,7 @@ import { corsHeaders } from '@imajin/config';
 import { verifySessionAppTokenLocal } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

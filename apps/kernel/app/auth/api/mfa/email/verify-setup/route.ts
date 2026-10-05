@@ -7,7 +7,7 @@ import { verifyEmailMfaCode } from '@/src/lib/auth/email-mfa-codes';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

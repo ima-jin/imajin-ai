@@ -40,7 +40,7 @@ const log = createLogger('kernel');
 
 const MAX_CLOCK_SKEW_MS = 60_000;
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
