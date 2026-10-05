@@ -24,7 +24,7 @@ import { db, attestations } from '@/src/db';
 const log = createLogger('kernel');
 const LIMIT = 100;
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

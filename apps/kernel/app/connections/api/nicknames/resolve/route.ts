@@ -4,7 +4,7 @@ import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { eq, and, inArray } from 'drizzle-orm';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

@@ -32,7 +32,7 @@ const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

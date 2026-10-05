@@ -11,7 +11,7 @@ const KERNEL_SERVICES = new Set(
 
 const PORT = process.env.PORT || "3000";
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

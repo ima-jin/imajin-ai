@@ -36,7 +36,7 @@ function buildToken(did: string, nonce: string, exp: number): string {
   return createHmac('sha256', privateKey).update(message).digest('base64url');
 }
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

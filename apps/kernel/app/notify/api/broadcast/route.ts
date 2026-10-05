@@ -88,7 +88,7 @@ async function resolveAudienceDids(
   return dids;
 }
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
