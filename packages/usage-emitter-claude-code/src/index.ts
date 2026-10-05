@@ -79,3 +79,4 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 
 export { main };
+// probe for #2605 acceptance (leaf package touch) - do not merge
