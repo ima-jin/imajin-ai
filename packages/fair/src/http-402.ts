@@ -104,7 +104,7 @@ export function build402Response(opts: Build402ResponseOpts): Fair402Response {
 }
 
 function schemeToHeader(scheme: SettlementScheme): string {
-  // x402 → X-402, stripe-link → Stripe, etc.
+  // mjnx-direct → MjnxDirect, solana-pay → SolanaPay, etc.
   return scheme
     .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
