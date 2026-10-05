@@ -14,7 +14,12 @@
 #   - a bare PATH command (`npm`) stored as /usr/bin/npm counts as a match;
 #   - names the ecosystem doesn't declare are skipped, not touched;
 #   - a failing `pm2 start` / `pm2 delete` fails the run;
-#   - usage errors exit 2.
+#   - usage errors exit 2;
+#   - a `pm2 jlist` far larger than MAX_ARG_STRLEN (128 KiB) is classified
+#     correctly: it must reach node through a file, not env/argv (#2603);
+#   - unparseable `pm2 jlist` output fails every app (node exit 3) without
+#     issuing any pm2 start/delete;
+#   - the jlist temp file is removed on every run.
 #
 # Usage: scripts/pm2-reconcile.test.sh
 
@@ -65,9 +70,36 @@ export PM2_LOG="$WORK/pm2.log"
 
 FAILURES=0
 
+# The script's temp files go here, so each run can assert it left none behind.
+SCRIPT_TMP="$WORK/script-tmp"
+mkdir -p "$SCRIPT_TMP"
+
 # proc <name> <pm_exec_path> <exec_interpreter>
 proc() {
-  printf '{"name":"%s","pm2_env":{"pm_exec_path":"%s","exec_interpreter":"%s"}}' "$1" "$2" "$3"
+  local proc_name="$1" exec_path="$2" interpreter="$3"
+  printf '{"name":"%s","pm2_env":{"pm_exec_path":"%s","exec_interpreter":"%s"}}' \
+    "$proc_name" "$exec_path" "$interpreter"
+  return 0
+}
+
+# filler <count> <pad-bytes>: <count> comma-joined unrelated processes, each
+# carrying <pad-bytes> of env noise, to inflate the jlist the way a real pm2
+# (full env per process) does.
+filler() {
+  local count="$1" pad="$2"
+  node -e '
+    const [count, pad] = process.argv.slice(1).map(Number);
+    const noise = "x".repeat(pad);
+    const procs = [];
+    for (let i = 0; i < count; i++) {
+      procs.push(JSON.stringify({
+        name: "filler-" + i,
+        pm2_env: { pm_exec_path: "/usr/bin/filler", exec_interpreter: "none", env: { NOISE: noise } },
+      }));
+    }
+    process.stdout.write(procs.join(","));
+  ' "$count" "$pad"
+  return 0
 }
 
 # run_case <label> <expected-exit> <names...>; reads $JLIST_JSON, $EXPECT_LOG
@@ -77,10 +109,16 @@ run_case() {
   shift 2
   printf '[%s]' "$JLIST_JSON" > "$FAKE_JLIST"
   : > "$PM2_LOG"
-  out="$(bash "$RECONCILE" "$WORK/eco.config.js" "$@" 2>&1)" || status=$?
+  out="$(TMPDIR="$SCRIPT_TMP" bash "$RECONCILE" "$WORK/eco.config.js" "$@" 2>&1)" || status=$?
   echo "$out"
   if [[ "$status" -ne "$expected" ]]; then
     echo "❌ $label: expected exit $expected, got $status"
+    FAILURES=$((FAILURES + 1))
+    return
+  fi
+  if [[ -n "$(ls -A "$SCRIPT_TMP")" ]]; then
+    echo "❌ $label: temp files left behind:"
+    ls -A "$SCRIPT_TMP"
     FAILURES=$((FAILURES + 1))
     return
   fi
@@ -161,7 +199,29 @@ FAKE_PM2_FAIL_START=true run_case "failing pm2 start fails the run" 1 t-next
 EXPECT_LOG="delete t-next"
 FAKE_PM2_FAIL_DELETE=true run_case "failing pm2 delete fails the run and does not start" 1 t-next
 
-# 9. Usage errors.
+# 9. #2603: a jlist well over 256 KiB (2x the 128 KiB MAX_ARG_STRLEN) must be
+#    classified correctly. Handing it to node via env/argv fails every app with
+#    "Argument list too long". One run covers every verdict.
+JLIST_JSON="$(proc t-next /usr/bin/npm none),$(proc t-kernel /srv/t-kernel/server.js node),$(filler 200 2048),$(proc t-wrapped /usr/bin/npm none)"
+if [[ "${#JLIST_JSON}" -le 262144 ]]; then
+  echo "❌ test setup: synthetic jlist is only ${#JLIST_JSON} bytes, need > 262144"
+  FAILURES=$((FAILURES + 1))
+fi
+EXPECT_LOG="delete t-next
+start $ECO --only t-next --update-env
+start $ECO --only t-new --update-env
+startOrRestart $ECO --only t-kernel,t-wrapped --update-env"
+EXPECT_OUT="stored exec /usr/bin/npm != declared /srv/t-next/$NEXT"
+run_case "jlist > 256 KiB: mismatch/match/absent/undeclared all classified (#2603)" 0 t-next t-kernel t-new t-ghost t-wrapped
+
+# 10. Unusable pm2 output (node exit 3): every app fails, nothing is started or
+#    deleted.
+JLIST_JSON="this is not json"
+EXPECT_LOG=""
+EXPECT_OUT="t-next: could not compare ecosystem with pm2 state"
+run_case "unparseable pm2 jlist fails every app without touching pm2" 1 t-next t-kernel
+
+# 11. Usage errors.
 status=0
 bash "$RECONCILE" >/dev/null 2>&1 || status=$?
 if [[ "$status" -eq 2 ]]; then echo "✅ no args exits 2"; else echo "❌ no args: got $status"; FAILURES=$((FAILURES + 1)); fi

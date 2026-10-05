@@ -41,66 +41,96 @@ if [[ ! -f "$ECOSYSTEM" ]]; then
   exit 2
 fi
 
-# Prints one of:
+# The `pm2 jlist` output is handed to node through a temp file, never through
+# env or argv: on a busy host it outgrows the kernel's per-string exec limit
+# (MAX_ARG_STRLEN, 128 KiB) and every exec fails with "Argument list too long"
+# (#2603).
+JLIST_FILE="$(mktemp "${TMPDIR:-/tmp}/pm2-reconcile-jlist.XXXXXX")" || {
+  echo "pm2-reconcile: could not create a temp file" >&2
+  exit 1
+}
+trap 'rm -f "$JLIST_FILE"' EXIT
+
+# Classifies every app in APP_NAMES in one node run, given the ecosystem file
+# in $1 and pm2's process list (JSON) in the file $2.
+# Prints one `<name> <verdict>` line per app, in APP_NAMES order, where verdict
+# is one of:
 #   match
 #   absent
 #   undeclared
 #   mismatch <reason>
-# for app $1, given pm2's process list in $PM2_JLIST. Exit 3 = unusable input.
-classify_app() {
-  local app_name="$1" status
+# Exit 3 = unusable input (nothing is printed in that case).
+classify_apps() {
+  local ecosystem="$1" jlist_file="$2" status
   node -e '
+    const fs = require("fs");
     const path = require("path");
-    const [ecosystem, name] = process.argv.slice(1);
+    const [ecosystem, jlistFile, ...names] = process.argv.slice(1);
     let apps;
     try {
       const mod = require(path.resolve(ecosystem));
       apps = Array.isArray(mod) ? mod : mod.apps;
     } catch { process.exit(3); }
     let procs;
-    try { procs = JSON.parse(process.env.PM2_JLIST || "[]"); } catch { process.exit(3); }
-    if (!Array.isArray(apps)) process.exit(3);
+    try { procs = JSON.parse(fs.readFileSync(jlistFile, "utf8").trim() || "[]"); } catch { process.exit(3); }
+    if (!Array.isArray(apps) || !Array.isArray(procs)) process.exit(3);
 
-    const app = apps.find((a) => a && a.name === name);
-    if (!app) { console.log("undeclared"); process.exit(0); }
-    const proc = procs.find((p) => p && p.name === name);
-    if (!proc) { console.log("absent"); process.exit(0); }
+    const classify = (name) => {
+      const app = apps.find((a) => a && a.name === name);
+      if (!app) return "undeclared";
+      const proc = procs.find((p) => p && p.name === name);
+      if (!proc) return "absent";
 
-    const env = proc.pm2_env || {};
-    const stored = env.pm_exec_path || "";
-    const script = app.script || "";
-    const expected = path.resolve(app.cwd || process.cwd(), script);
-    // A bare command (e.g. `npm`) is resolved through PATH by pm2, so the
-    // stored path is wherever it was found; match on the command name.
-    const bare = script && !script.includes("/");
-    const sameExec = stored === expected || (bare && path.basename(stored) === script);
-    if (!sameExec) {
-      console.log("mismatch stored exec " + (stored || "<none>") + " != declared " + expected);
-      process.exit(0);
-    }
-    if (app.interpreter) {
-      const want = path.basename(String(app.interpreter));
-      const have = path.basename(String(env.exec_interpreter || ""));
-      if (want !== have) {
-        console.log("mismatch stored interpreter " + (have || "<none>") + " != declared " + want);
-        process.exit(0);
+      const env = proc.pm2_env || {};
+      const stored = env.pm_exec_path || "";
+      const script = app.script || "";
+      const expected = path.resolve(app.cwd || process.cwd(), script);
+      // A bare command (e.g. `npm`) is resolved through PATH by pm2, so the
+      // stored path is wherever it was found; match on the command name.
+      const bare = script && !script.includes("/");
+      const sameExec = stored === expected || (bare && path.basename(stored) === script);
+      if (!sameExec) {
+        return "mismatch stored exec " + (stored || "<none>") + " != declared " + expected;
       }
-    }
-    console.log("match");
-  ' "$ECOSYSTEM" "$app_name"
+      if (app.interpreter) {
+        const want = path.basename(String(app.interpreter));
+        const have = path.basename(String(env.exec_interpreter || ""));
+        if (want !== have) {
+          return "mismatch stored interpreter " + (have || "<none>") + " != declared " + want;
+        }
+      }
+      return "match";
+    };
+
+    console.log(names.map((name) => name + " " + classify(name)).join("\n"));
+  ' "$ecosystem" "$jlist_file" "${APP_NAMES[@]}"
   status=$?
   return "$status"
 }
 
 FAILED=0
 KEEP=""
+
+APP_NAMES=("$@")
+
+pm2 jlist 2>/dev/null > "$JLIST_FILE"
+classify_status=0
+verdict_lines="$(classify_apps "$ECOSYSTEM" "$JLIST_FILE")" || classify_status=$?
+verdicts=()
+if [[ "$classify_status" -eq 0 ]]; then
+  mapfile -t verdicts <<< "$verdict_lines"
+fi
+
+idx=0
 for name in "$@"; do
-  jlist="$(pm2 jlist 2>/dev/null)"
-  verdict="$(PM2_JLIST="$jlist" classify_app "$name")" || {
+  line="${verdicts[$idx]:-}"
+  idx=$((idx + 1))
+  if [[ "$classify_status" -ne 0 ]]; then
     echo "❌ $name: could not compare ecosystem with pm2 state" >&2
     FAILED=$((FAILED + 1))
     continue
-  }
+  fi
+  verdict="${line#"$name "}"
   case "$verdict" in
     match)
       KEEP="${KEEP:+$KEEP,}$name"
