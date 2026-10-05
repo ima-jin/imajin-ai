@@ -99,7 +99,7 @@ async function postForSigningKey(
     throw new Error(`loadAppSigningKey: ${failureContext} failed (${reason})`);
   }
   if (typeof responseBody?.appDid !== 'string' || typeof responseBody.privateKey !== 'string') {
-    throw new Error(`loadAppSigningKey: ${failureContext} response was malformed`);
+    throw new TypeError(`loadAppSigningKey: ${failureContext} response was malformed`);
   }
 
   return {

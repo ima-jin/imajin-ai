@@ -6,6 +6,7 @@ import { HistoryDialog } from './history-dialog';
 import { RevokeGrantDialog } from './revoke-grant-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
 import { SetSecretDialog } from './set-secret-dialog';
+import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
 import type {
   RotateSecretInput,
   SetSecretInput,
@@ -457,7 +458,7 @@ export function VaultPanel() {
                             {isUpgrading ? 'Upgrading…' : 'Upgrade'}
                           </button>
                         )}
-                        {hasActiveGrant && (
+                        {hasActiveGrant && !isInternalSecretField(secret.field) && (
                           <button
                             type="button"
                             onClick={() => setRevokeField(secret.field)}
@@ -523,7 +524,7 @@ export function VaultPanel() {
                     {isUpgrading ? 'Upgrading…' : 'Upgrade'}
                   </button>
                 )}
-                {hasActiveGrant && (
+                {hasActiveGrant && !isInternalSecretField(secret.field) && (
                   <button
                     type="button"
                     onClick={() => setRevokeField(secret.field)}
@@ -540,6 +541,7 @@ export function VaultPanel() {
 
       <SetSecretDialog
         open={setOpen}
+        existingFields={secrets.map((row) => row.field)}
         submitting={submitting}
         onClose={() => setSetOpen(false)}
         onSubmit={handleSetSecret}

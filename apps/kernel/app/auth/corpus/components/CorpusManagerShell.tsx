@@ -194,7 +194,7 @@ export default function CorpusManagerShell({ did }: Readonly<{ did: string }>) {
   const [message, setMessage] = useState<StatusMessage | null>(null);
 
   useEffect(() => {
-    fetchStatus();
+    void fetchStatus();
   }, [did]);
 
   function showMessage(type: StatusMessage['type'], text: string) {

@@ -117,7 +117,7 @@ export function resolveBaseVersion(gitBin, root, rootPackageJsonPath) {
 
   const currentVersion = JSON.parse(readFileSync(rootPackageJsonPath, 'utf8')).version;
   if (typeof currentVersion !== 'string') {
-    throw new Error(
+    throw new TypeError(
       `no vX.Y.Z tag reachable from HEAD, and root package.json at ${rootPackageJsonPath} has no "version" field.`,
     );
   }

@@ -73,6 +73,19 @@ describe('ci-guard-dist-react-binding', () => {
     expectPass(dir);
   });
 
+  it('passes when React is bound via `import { default as React } from "react"`', () => {
+    const dir = makeTempRepo();
+    writeDistFile(
+      dir,
+      'media',
+      'index.js',
+      'import { useState, default as React } from "react";\n' +
+        'function AssetCard() { return React.createElement("div", null, useState); }\n' +
+        'export { AssetCard };\n',
+    );
+    expectPass(dir);
+  });
+
   it('passes when the automatic JSX runtime is used (jsx()/jsxs() from react/jsx-runtime)', () => {
     const dir = makeTempRepo();
     writeDistFile(

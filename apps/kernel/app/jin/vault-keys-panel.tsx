@@ -22,7 +22,7 @@
  * needs a service/host-shaped extension of the #1834 claimable-stub
  * primitive that doesn't exist yet, and is called out as its own follow-up
  * in #2243's own PR description. Rendered here as an inert,
- * clearly-labelled stub until that follow-up lands. TODO(#2243): wire this
+ * clearly-labelled stub until that follow-up lands. Follow-up (#2243): wire this
  * up once the claim/pairing events exist.
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
@@ -340,7 +340,7 @@ function MintForm({
  * follow-up flagged in #2243's own PR description (#2243 itself, the
  * fetch-at-boot helper, is merged; the pairing/self-registration moment is
  * not). Always rendered, always disabled: this documents the intended
- * surface without pretending it works. TODO(#2243): replace this whole
+ * surface without pretending it works. Follow-up (#2243): replace this whole
  * component once that follow-up's claim/pairing events exist.
  */
 function ClaimPendingServiceStub() {

@@ -86,7 +86,17 @@ rail (#2059/#2152/#2082) — the same rail every other repo/identity-creating me
 rides. Any authenticated identity (a human, or an agent) may propose; nothing external happens
 until the node operator countersigns an `approve` decision on `/jin`.
 
-**Propose:**
+**Propose — from `/jin` (preferred):** open `/jin` as the node operator, fill in the **Provision app**
+form (`slug` and `displayName` are required; `template` defaults to `ima-jin/imajin-app-template`;
+`attestationTypes` is an optional comma-separated `<slug>/<type>` list), and click **Propose
+provision**. A bad slug is refused client-side before anything is proposed. The form shows the
+`proposalId` and links to its card in **Operator approvals** directly below; a `200` "already
+pending" is shown as such (not as an error). Approve the card there, and the form then shows the
+result from `GET /api/apps/provision?slug=` — `status`, `repoUrl`, `appDid`, or `failedStep` /
+`errorMessage` on failure — without any manual polling. The form calls the same route as the curl
+below; it adds no endpoint and no authority, and only the operator's approval runs the pipeline.
+
+**Propose — from a script or agent (curl):**
 
 ```bash
 curl -X POST "${IMAJIN_AUTH_URL}/api/apps/provision" \

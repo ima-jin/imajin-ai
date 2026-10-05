@@ -110,7 +110,7 @@ export default function RecipientPicker({
                   name="recipient-invite-delivery"
                   checked={invite.delivery === 'email'}
                   onChange={() => onInviteChange({ ...invite, delivery: 'email' })}
-                />
+                />{' '}
                 Email
               </label>
               <label htmlFor="recipient-invite-delivery-link" className="flex items-center gap-1.5 text-sm text-zinc-300">
@@ -120,7 +120,7 @@ export default function RecipientPicker({
                   name="recipient-invite-delivery"
                   checked={invite.delivery === 'link'}
                   onChange={() => onInviteChange({ ...invite, delivery: 'link' })}
-                />
+                />{' '}
                 Link only
               </label>
             </div>

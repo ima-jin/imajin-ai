@@ -123,7 +123,7 @@ export default function RetracePane({ initialArtifact = '' }: Readonly<RetracePa
   // chain appears immediately rather than requiring a second click.
   useEffect(() => {
     if (initialArtifact.trim()) {
-      runRetrace(initialArtifact);
+      void runRetrace(initialArtifact);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only on mount, keyed by initialArtifact by the caller
   }, []);
@@ -160,7 +160,7 @@ export default function RetracePane({ initialArtifact = '' }: Readonly<RetracePa
       </p>
 
       <form
-        onSubmit={(e) => { e.preventDefault(); runRetrace(artifact); }}
+        onSubmit={(e) => { e.preventDefault(); void runRetrace(artifact); }}
         className="flex items-center gap-2 mb-4"
       >
         <input

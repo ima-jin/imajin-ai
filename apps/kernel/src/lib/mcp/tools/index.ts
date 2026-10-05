@@ -43,7 +43,7 @@ import { meetTools as googleMeetTools } from './google-meet';
  * the sprint cycle — a thin MCP surface over the existing 'cycle' loopKind
  * (#2314, lib/loops/cycle.ts) and the DecisionCard emitter (#2315). Gated by
  * 'cycle:run'; every cycle is scoped to ctx.did. The phase engine itself is
- * stubbed behind a TODO seam (apps/kernel/src/lib/mcp/tools/cycle.ts) — out
+ * stubbed behind a follow-up seam (apps/kernel/src/lib/mcp/tools/cycle.ts) — out
  * of scope for #2316.
  * GitHub read depth (#1528): the connector's read verbs paginate the GitHub
  * Link header and report `has_more`, and cover pull requests, comments, and

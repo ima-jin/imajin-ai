@@ -244,8 +244,7 @@ export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>)
     <div className="relative w-full min-h-[600px]">
       {phase !== 'ready' && (
         <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-zinc-950/60">
-          <div
-            role="status"
+          <output
             aria-label={`Loading ${service}`}
             className="h-10 w-10 animate-spin rounded-full border-2 border-zinc-700 border-t-amber-500"
           />

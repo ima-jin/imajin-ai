@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { updateAssetContent } from '../update-asset';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -73,6 +73,8 @@ vi.mock('node:fs/promises', () => ({
 
 import { publish } from '@imajin/bus';
 import { writeFile } from 'node:fs/promises';
+import { isFairManifestV11 } from '@imajin/fair';
+import { contentSigner } from '@/src/lib/media/content-signer';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -331,5 +333,72 @@ describe('updateAssetContent — document-context frontmatter guard (#1870)', ()
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.articleWarning).toBeNull();
+  });
+});
+
+// ─── .fair manifest re-sign (non-fatal at every step) ──────────────────────
+
+describe('updateAssetContent — .fair manifest re-sign', () => {
+  const MANIFEST = { version: '1.1', owner: 'did:imajin:owner' };
+  const SIGNED = { ...MANIFEST, signature: 'sig-new' };
+
+  beforeEach(() => {
+    vi.mocked(isFairManifestV11).mockReturnValue(true);
+  });
+
+  afterEach(() => {
+    vi.mocked(isFairManifestV11).mockReturnValue(false);
+  });
+
+  function writtenFairManifest() {
+    const setCalls = mockSet.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    return setCalls.at(-1)?.[0]?.fairManifest;
+  }
+
+  it('re-signs the manifest, mirrors it to the .fair path on disk, and stores the signed manifest', async () => {
+    setupAsset({ fairManifest: MANIFEST, fairPath: '/mnt/media/asset_test.fair' });
+    vi.mocked(contentSigner.sign).mockResolvedValue(SIGNED as never);
+
+    const result = await updateAssetContent({ assetId: 'asset_test', requesterDid: 'did:imajin:owner', content: '# Hello' });
+
+    expect(result.ok).toBe(true);
+    expect(contentSigner.sign).toHaveBeenCalledWith(MANIFEST);
+    expect(writeFile).toHaveBeenCalledWith('/mnt/media/asset_test.fair', JSON.stringify(SIGNED, null, 2));
+    expect(writtenFairManifest()).toEqual(SIGNED);
+  });
+
+  it('re-signs without writing a .fair file when the asset has no fairPath', async () => {
+    setupAsset({ fairManifest: MANIFEST, fairPath: null });
+    vi.mocked(contentSigner.sign).mockResolvedValue(SIGNED as never);
+
+    await updateAssetContent({ assetId: 'asset_test', requesterDid: 'did:imajin:owner', content: '# Hello' });
+
+    expect(vi.mocked(writeFile).mock.calls.some(([path]) => String(path).endsWith('.fair'))).toBe(false);
+    expect(writtenFairManifest()).toEqual(SIGNED);
+  });
+
+  it('still stores the re-signed manifest when the .fair disk mirror fails (non-fatal)', async () => {
+    setupAsset({ fairManifest: MANIFEST, fairPath: '/mnt/media/asset_test.fair' });
+    vi.mocked(contentSigner.sign).mockResolvedValue(SIGNED as never);
+    vi.mocked(writeFile).mockImplementation(async (path) => {
+      if (String(path).endsWith('.fair')) throw new Error('disk full');
+    });
+
+    const result = await updateAssetContent({ assetId: 'asset_test', requesterDid: 'did:imajin:owner', content: '# Hello' });
+
+    expect(result.ok).toBe(true);
+    expect(writtenFairManifest()).toEqual(SIGNED);
+    vi.mocked(writeFile).mockReset();
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+  });
+
+  it('keeps the previous manifest when signing throws (non-fatal)', async () => {
+    setupAsset({ fairManifest: MANIFEST, fairPath: '/mnt/media/asset_test.fair' });
+    vi.mocked(contentSigner.sign).mockRejectedValue(new Error('signer offline'));
+
+    const result = await updateAssetContent({ assetId: 'asset_test', requesterDid: 'did:imajin:owner', content: '# Hello' });
+
+    expect(result.ok).toBe(true);
+    expect(writtenFairManifest()).toEqual(MANIFEST);
   });
 });

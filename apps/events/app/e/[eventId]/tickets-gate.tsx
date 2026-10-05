@@ -40,7 +40,7 @@ export function TicketsGate({ children, surveysRequired, initialCompleted, requi
 
     // Poll authoritative state for each required survey
     setChecking(true);
-    Promise.all(
+    void Promise.all(
       requiredSurveyIds.map(async (surveyId) => {
         // Prefer authoritative check; fallback to localStorage on failure
         const authoritative = await checkSurveyCompletion(surveyId);
@@ -66,6 +66,18 @@ export function TicketsGate({ children, surveysRequired, initialCompleted, requi
     // build the survey iframe's src, rather than assuming window.location.origin.
     const expectedOrigin = new URL(DYKIL_URL, window.location.href).origin;
 
+    const markCompletedIfAllDone = async (completedSurveyId: string) => {
+      const checks = await Promise.all(
+        requiredSurveyIds.map(async (id) => {
+          if (id === completedSurveyId) return true;
+          const done = await checkSurveyCompletion(id);
+          if (done) return true;
+          return localStorage.getItem(`survey_${id}_completed`) === 'true';
+        })
+      );
+      if (checks.every(Boolean)) setCompleted(true);
+    };
+
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== expectedOrigin) return;
       if (event.data?.type === 'survey-completed') {
@@ -77,16 +89,7 @@ export function TicketsGate({ children, surveysRequired, initialCompleted, requi
             .then((isDone) => {
               if (isDone) {
                 // Check if all required surveys are now done
-                Promise.all(
-                  requiredSurveyIds.map(async (id) => {
-                    if (id === completedSurveyId) return true;
-                    const done = await checkSurveyCompletion(id);
-                    if (done) return true;
-                    return localStorage.getItem(`survey_${id}_completed`) === 'true';
-                  })
-                ).then((checks) => {
-                  if (checks.every(Boolean)) setCompleted(true);
-                });
+                void markCompletedIfAllDone(completedSurveyId);
               }
             })
             .catch(() => {

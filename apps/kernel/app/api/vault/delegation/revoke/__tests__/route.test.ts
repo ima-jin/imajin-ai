@@ -123,6 +123,19 @@ describe('POST /api/vault/delegation/revoke', () => {
     expect(mockErase).not.toHaveBeenCalled();
   });
 
+  it('returns 409 for internal-secret:* and touches nothing (#2452)', async () => {
+    const response = await POST(makeRequest({ field: 'internal-secret:x' }) as never);
+    expect(response.status).toBe(409);
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockErase).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 for internal-secret:* even with surrounding whitespace (#2452)', async () => {
+    const response = await POST(makeRequest({ field: '  internal-secret:kernel.attestation-internal-api-key ' }) as never);
+    expect(response.status).toBe(409);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
   it('erases key material for the revoked grant', async () => {
     const grant = makeGrant();
     mockReturning.mockResolvedValue([grant]);

@@ -216,7 +216,7 @@ export default function CreatePaymentRequestForm({ issuerDid, onCreated, onCance
               type="checkbox"
               checked={allowOnPlatform}
               onChange={(e) => setAllowOnPlatform(e.target.checked)}
-            />
+            />{' '}
             Allow payment on platform
           </label>
         </div>

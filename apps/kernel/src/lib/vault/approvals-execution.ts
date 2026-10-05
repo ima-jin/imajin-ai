@@ -248,7 +248,7 @@ async function executeRevoke(card: OperatorApprovalCard, nodeDid: string, author
  * description, that pairing flow needs a service/host-shaped extension of
  * the #1834 claimable-stub primitive that doesn't exist yet, and is
  * flagged there as its own follow-up. Stubbed here so the proposal SHAPE
- * exists and is testable, but nothing executes — TODO(#2243): wire this up
+ * exists and is testable, but nothing executes — follow-up (#2243): wire this up
  * once that follow-up lands.
  */
 function executeClaim(): Promise<VaultExecutionResult> {
