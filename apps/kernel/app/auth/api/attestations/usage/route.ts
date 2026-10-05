@@ -4,7 +4,8 @@ import { eq, and, isNull, lt } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@/src/lib/auth/middleware';
-import { computeTurnUsageRollups, type RawTurnUsageRow } from './usage-rollup';
+import { computeTurnUsageRollups, type RawTurnUsageRow, type TurnUsageRow } from './usage-rollup';
+import { attachEvidenceCounts, countEvidenceByUsageRef } from '@/src/lib/turn-evidence/usage-counts';
 
 const USAGE_LIMIT_DEFAULT = 50;
 const USAGE_LIMIT_MAX = 200;
@@ -22,6 +23,29 @@ interface UsageSelectRow {
  * by convention.
  */
 const FORBIDDEN_BODY = { error: 'Forbidden' };
+
+/**
+ * Annotate a page of usage rows with their `agent.turn.evidence` count
+ * (#1978, `/jin` dashboard). Best-effort: the evidence count is a secondary
+ * annotation, so a failed lookup must not take the usage feed down with it —
+ * rows are returned without `evidenceCount` instead (the panel renders 0).
+ */
+async function withEvidenceCounts(
+  subjectDid: string,
+  page: TurnUsageRow[],
+  log: { warn: (ctx: Record<string, unknown>, message: string) => void },
+): Promise<TurnUsageRow[]> {
+  try {
+    const counts = await countEvidenceByUsageRef(
+      subjectDid,
+      page.map((row) => row.id),
+    );
+    return attachEvidenceCounts(page, counts);
+  } catch (error) {
+    log.warn({ err: String(error) }, 'Turn evidence count lookup failed; returning usage rows without evidenceCount');
+    return page;
+  }
+}
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -159,7 +183,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     const newestFirst = computedAscending.slice().reverse();
     const page = newestFirst.slice(0, limit);
 
-    return NextResponse.json(page, { headers: cors });
+    return NextResponse.json(await withEvidenceCounts(subjectDid, page, log), { headers: cors });
   } catch (error) {
     log.error({ err: String(error) }, 'Attestations usage GET error');
     return NextResponse.json({ error: 'Failed to query turn usage' }, { status: 500, headers: cors });

@@ -86,6 +86,12 @@ function TurnRow({ row }: Readonly<{ row: TurnUsageRow }>) {
         {deltaLabel(tone, row.tokenDelta)}
       </td>
       <td className="px-4 py-2 text-xs text-gray-300 text-right whitespace-nowrap">{formatCost(row.cost.total)}</td>
+      <td
+        className="px-4 py-2 text-xs text-gray-300 text-right whitespace-nowrap"
+        title="Signed tool-call evidence attestations committed for this turn (#1978)"
+      >
+        {(row.evidenceCount ?? 0).toLocaleString()}
+      </td>
     </tr>
   );
 }
@@ -134,6 +140,7 @@ function SessionSection({ group }: Readonly<{ group: SessionGroup }>) {
                 <th className="px-4 py-1.5 text-right font-medium">Tokens out</th>
                 <th className="px-4 py-1.5 text-right font-medium">Δ vs prev</th>
                 <th className="px-4 py-1.5 text-right font-medium">Cost</th>
+                <th className="px-4 py-1.5 text-right font-medium">Evidence</th>
               </tr>
             </thead>
             <tbody>

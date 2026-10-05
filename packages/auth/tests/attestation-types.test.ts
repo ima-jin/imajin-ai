@@ -32,6 +32,10 @@ describe('ATTESTATION_TYPES', () => {
     expect(ATTESTATION_TYPES_SET.has('agent.turn.usage')).toBe(true);
   });
 
+  it('contains agent.turn.evidence (#1978)', () => {
+    expect(ATTESTATION_TYPES_SET.has('agent.turn.evidence')).toBe(true);
+  });
+
   it('preserves all pre-existing types', () => {
     const preExisting = [
       'event.attendance',
