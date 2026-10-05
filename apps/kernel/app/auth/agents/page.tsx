@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { GRANT_SCOPE_REGISTRY } from '@imajin/auth/grant-scopes';
 import RetracePane from './retrace-panel';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 const NODE_URL = buildPublicUrlAbsolute('kernel');
 const CHAT_BASE_URL = buildPublicUrlAbsolute('chat');
@@ -1084,9 +1085,9 @@ export default function AgentsPage() {
     },
   },
 }, null, 2);
-    navigator.clipboard.writeText(snippet).then(() => {
+    fireAndForget(navigator.clipboard.writeText(snippet).then(() => {
       showStatus('success', 'Config copied to clipboard');
-    });
+    }), 'auth:agents:clipboard');
   }
 
   if (loading) {
