@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { BROKER_TOOLS, executeTool } from './tools.js';
 import type { KernelClient } from './client.js';
+import { mapSequentially } from './sequential.js';
 
 const SYSTEM_PROMPT = `You are the Imajin broker agent — a conversational interface for a privacy-first social coordination system.
 
@@ -62,19 +63,22 @@ export async function routeMessage(
     // Append Claude's response to the message history.
     messages.push({ role: 'assistant', content: response.content });
 
-    // Execute all tool calls and collect results.
-    const toolResults: Anthropic.ToolResultBlockParam[] = [];
-    for (const block of response.content) {
-      if (block.type !== 'tool_use') continue;
-      const result = await executeTool(
-        block.name,
-        block.input as Record<string, unknown>,
-        userDid,
-        kernelClient
-      ).catch((err: unknown) => `Error: ${String(err)}`);
+    // Execute all tool calls and collect results. Sequential on purpose: the
+    // tools act on the kernel for one user and may build on each other in a turn.
+    const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
+    const toolResults = await mapSequentially(
+      toolUses,
+      async (block): Promise<Anthropic.ToolResultBlockParam> => {
+        const result = await executeTool(
+          block.name,
+          block.input as Record<string, unknown>,
+          userDid,
+          kernelClient
+        ).catch((err: unknown) => `Error: ${String(err)}`);
 
-      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
-    }
+        return { type: 'tool_result', tool_use_id: block.id, content: result };
+      }
+    );
 
     messages.push({ role: 'user', content: toolResults });
   }

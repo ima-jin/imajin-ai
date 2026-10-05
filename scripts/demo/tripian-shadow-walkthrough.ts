@@ -208,8 +208,8 @@ async function seedConsent(sql: ReturnType<typeof postgres>, travelerDid: string
     // budget: intentionally NO grant -> broker denies it.
   ];
 
-  for (const grant of grants) {
-    await sql`
+  // Independent inserts (distinct generated ids, no ordering between grants): run them together.
+  await Promise.all(grants.map((grant) => sql`
       INSERT INTO kernel.consent_grants
         (id, subject, granted_to, purpose, allowed_fields, mode, status, consent_ref)
       VALUES (
@@ -217,9 +217,8 @@ async function seedConsent(sql: ReturnType<typeof postgres>, travelerDid: string
         ${travelerDid}, ${agentDid}, ${PURPOSE}, ${grant.fields}, ${grant.mode},
         'active', ${`cg_${randomUUID().replaceAll('-', '').slice(0, 16)}`}
       )
-    `;
-    info(`consent: ${grant.fields.join(',')} -> ${grant.mode}`);
-  }
+    `));
+  for (const grant of grants) info(`consent: ${grant.fields.join(',')} -> ${grant.mode}`);
   info('consent: budget -> (none, will be denied)');
 }
 
@@ -305,13 +304,11 @@ async function main(): Promise<void> {
     assert({ condition: restaurantDid !== travelerDid, message: 'restaurant and traveler are distinct DIDs' });
 
     step('Seal traveler prefs into the vault, then unseal (round-trip, #1227)');
-    for (const [field, value] of Object.entries(PREFS)) {
-      await vault.seal(travelerDid, field, value);
-    }
-    const unsealed: Record<string, string> = {};
-    for (const field of Object.keys(PREFS)) {
-      unsealed[field] = await vault.unseal(travelerDid, field);
-    }
+    // Independent fields: seal them together, then unseal them together (results keep PREFS order).
+    await Promise.all(Object.entries(PREFS).map(([field, value]) => vault.seal(travelerDid, field, value)));
+    const fields = Object.keys(PREFS);
+    const unsealedValues = await Promise.all(fields.map((field) => vault.unseal(travelerDid, field)));
+    const unsealed: Record<string, string> = Object.fromEntries(fields.map((field, i) => [field, unsealedValues[i]]));
     assert({
       condition: unsealed.dietary === PREFS.dietary
         && unsealed.allergies === PREFS.allergies

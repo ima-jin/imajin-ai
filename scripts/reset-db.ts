@@ -10,6 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { delimiter, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mapSequentially } from './lib/sequential.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -35,31 +36,30 @@ const SAFE_EXEC_PATH = process.platform === 'win32'
   ? ['C:/Windows/System32', 'C:/Windows'].join(delimiter)
   : ['/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter);
 
+// Sequential on purpose: schemas reference each other, so DDL runs one at a time in list order,
+// and a failure on one schema is logged without stopping the rest.
+function forEachSchema(buildSql: (schema: string) => string, done: string, failed: string): Promise<unknown> {
+  return mapSequentially(schemas, async (schema) => {
+    try {
+      await sql.unsafe(buildSql(schema));
+      console.log(`  ✅ ${done} ${schema}`);
+    } catch (error) {
+      console.error(`  ❌ Failed to ${failed} ${schema}:`, error);
+    }
+  });
+}
+
 async function main() {
   console.log('🔥 RESETTING DATABASE...\n');
   console.log('⚠️  This will DELETE ALL DATA!\n');
 
   // Drop all schemas
   console.log('💣 Dropping schemas...');
-  for (const schema of schemas) {
-    try {
-      await sql.unsafe(`DROP SCHEMA IF EXISTS ${schema} CASCADE`);
-      console.log(`  ✅ Dropped ${schema}`);
-    } catch (error) {
-      console.error(`  ❌ Failed to drop ${schema}:`, error);
-    }
-  }
+  await forEachSchema((schema) => `DROP SCHEMA IF EXISTS ${schema} CASCADE`, 'Dropped', 'drop');
 
   // Recreate schemas
   console.log('\n📦 Recreating schemas...');
-  for (const schema of schemas) {
-    try {
-      await sql.unsafe(`CREATE SCHEMA ${schema}`);
-      console.log(`  ✅ Created ${schema}`);
-    } catch (error) {
-      console.error(`  ❌ Failed to create ${schema}:`, error);
-    }
-  }
+  await forEachSchema((schema) => `CREATE SCHEMA ${schema}`, 'Created', 'create');
 
   await sql.end();
 
