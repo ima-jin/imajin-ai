@@ -329,7 +329,7 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
   const agentId = detailString(detail, 'agentId', '—');
   const sessionKey = detailString(detail, 'sessionKey', '—');
   const expiresAtRaw = detail?.expiresAt;
-  const expiresAtMs = typeof expiresAtRaw === 'string' ? Date.parse(expiresAtRaw) : NaN;
+  const expiresAtMs = typeof expiresAtRaw === 'string' ? Date.parse(expiresAtRaw) : Number.NaN;
   const countdown = formatExpiryCountdown(expiresAtMs, nowMs);
 
   return (
@@ -523,7 +523,7 @@ function GithubDetailView({ approval }: Readonly<{ approval: OperatorApprovalCar
 
   const approvedUntilRaw = outcome?.approvedUntil;
   const isSingleCall = status === 'approved' && approvedUntilRaw === null;
-  const approvedUntilMs = typeof approvedUntilRaw === 'string' ? Date.parse(approvedUntilRaw) : NaN;
+  const approvedUntilMs = typeof approvedUntilRaw === 'string' ? Date.parse(approvedUntilRaw) : Number.NaN;
   const countdown = status === 'approved' && !Number.isNaN(approvedUntilMs) ? formatExpiryCountdown(approvedUntilMs, nowMs) : '';
 
   return (

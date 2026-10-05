@@ -62,7 +62,7 @@ async function isValidAttestDelegationCapability(candidate: string, agentDid: st
   if (!parsed) return false;
 
   const app = await resolveActiveAttestDelegationApp(parsed.appId);
-  if (!app || app.appDid !== agentDid) return false;
+  if (app?.appDid !== agentDid) return false;
 
   return isKnownAttestationType(parsed.attestationType);
 }

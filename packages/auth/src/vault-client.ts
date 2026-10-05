@@ -379,7 +379,7 @@ const EXIT_ACK_HOOK_EVENTS = ['beforeExit', 'SIGTERM', 'SIGINT'] as const;
  * real signal.
  */
 function flushUnackedGrantsAsDiscarded(): void {
-  for (const discard of [...pendingGrantAcks.values()]) {
+  for (const discard of pendingGrantAcks.values()) {
     discard();
   }
 }

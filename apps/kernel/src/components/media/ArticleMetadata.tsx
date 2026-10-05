@@ -166,7 +166,7 @@ export function ArticleMetadata({ asset, isOwner, onSaved }: Readonly<ArticleMet
           className="flex items-center gap-1.5 text-xs text-gray-500 uppercase tracking-widest hover:text-gray-300 transition-colors"
           aria-expanded={expanded}
         >
-          <span aria-hidden="true">📝</span>
+          <span aria-hidden="true">📝</span>{' '}
           Has metadata
           <span className="text-[10px]" aria-hidden="true">{expanded ? "▲" : "▼"}</span>
         </button>

@@ -251,31 +251,17 @@ describe('payment_request.recipient_claimed', () => {
 });
 
 describe('idempotency (#2212 — replays must not double-send)', () => {
-  it('does not re-send the same (payment_request, event_type, recipient) notification twice', async () => {
+  // Two distinct targets (issuer, recipient) on the first `paid` call; the replay sends nothing.
+  it.each([
+    ['does not re-send the same (payment_request, event_type, recipient) notification twice', 'payment_request.issued', 'payment_request.issued', 1],
+    ['treats issuer and recipient legs of the same event as distinct dedup keys', 'payment_request.paid', 'payment_request.paid', 2],
+    ['allows a later, different event type for the same payment_request and recipient', 'payment_request.issued', 'payment_request.voided', 2],
+  ])('%s', async (_name, firstEvent, secondEvent, expectedSends) => {
     state.paymentRequest = paymentRequestRow();
 
-    await paymentRequestNotifyReactor(makeEvent('payment_request.issued'), {});
-    await paymentRequestNotifyReactor(makeEvent('payment_request.issued'), {});
+    await paymentRequestNotifyReactor(makeEvent(firstEvent), {});
+    await paymentRequestNotifyReactor(makeEvent(secondEvent), {});
 
-    expect(mockSend).toHaveBeenCalledTimes(1);
-  });
-
-  it('treats issuer and recipient legs of the same event as distinct dedup keys', async () => {
-    state.paymentRequest = paymentRequestRow();
-
-    await paymentRequestNotifyReactor(makeEvent('payment_request.paid'), {});
-    await paymentRequestNotifyReactor(makeEvent('payment_request.paid'), {});
-
-    // Two distinct targets (issuer, recipient) on the first call; the replay sends nothing.
-    expect(mockSend).toHaveBeenCalledTimes(2);
-  });
-
-  it('allows a later, different event type for the same payment_request and recipient', async () => {
-    state.paymentRequest = paymentRequestRow();
-
-    await paymentRequestNotifyReactor(makeEvent('payment_request.issued'), {});
-    await paymentRequestNotifyReactor(makeEvent('payment_request.voided'), {});
-
-    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledTimes(expectedSends);
   });
 });

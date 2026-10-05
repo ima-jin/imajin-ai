@@ -93,8 +93,8 @@ interface KeyAnnotation {
 }
 
 const OPTIONAL_ANNOTATION = /^#\s*optional\s*$/i;
-const VAULT_SOURCED_ANNOTATION = /^#\s*vault-sourced:\s*(.+)$/i;
-const DEPRECATED_ANNOTATION = /^#\s*deprecated:\s*(.+)$/i;
+const VAULT_SOURCED_ANNOTATION = /^#\s*vault-sourced:\s*(\S.*)$/i;
+const DEPRECATED_ANNOTATION = /^#\s*deprecated:\s*(\S.*)$/i;
 
 function parseAnnotationLine(rawLine: string): KeyAnnotation | null {
   const line = rawLine.trim();
@@ -279,6 +279,68 @@ function findWrongPortForKey(
   return null;
 }
 
+/**
+ * Splits `.env.example` keys absent from `.env.local` into hard-missing and
+ * `# optional`-annotated ones. vault-sourced / deprecated missing keys are
+ * fine and recorded nowhere.
+ */
+function classifyMissingKeys(
+  example: Map<string, string>,
+  local: Map<string, string>,
+  annotations: Map<string, KeyAnnotation>,
+): { missing: string[]; optionalMissing: string[] } {
+  const missing: string[] = [];
+  const optionalMissing: string[] = [];
+  for (const key of example.keys()) {
+    if (local.has(key)) continue;
+    const annotation = annotations.get(key);
+    if (!annotation) {
+      missing.push(key);
+    } else if (annotation.kind === "optional") {
+      optionalMissing.push(key);
+    }
+  }
+  return { missing, optionalMissing };
+}
+
+/**
+ * vault-sourced/deprecated keys that ARE set locally get a warning each —
+ * the former is exactly the "deprecated hand-provisioned value, remove
+ * after rotation" signal a prod rotation sweep looks for.
+ */
+function findAnnotatedPresentKeys(
+  annotations: Map<string, KeyAnnotation>,
+  local: Map<string, string>,
+): { vaultSourcedPresent: { key: string; reason?: string }[]; deprecatedPresent: { key: string; reason?: string }[] } {
+  const vaultSourcedPresent: { key: string; reason?: string }[] = [];
+  const deprecatedPresent: { key: string; reason?: string }[] = [];
+  for (const [key, annotation] of annotations.entries()) {
+    if (!local.has(key)) continue;
+    if (annotation.kind === "vault-sourced") {
+      vaultSourcedPresent.push({ key, reason: annotation.reason });
+    } else if (annotation.kind === "deprecated") {
+      deprecatedPresent.push({ key, reason: annotation.reason });
+    }
+  }
+  return { vaultSourcedPresent, deprecatedPresent };
+}
+
+/** Validates port values in `.env.local` against the service's expected ports. */
+function findWrongPorts(
+  local: Map<string, string>,
+  svc: ServiceDefinition,
+  env: "dev" | "prod",
+): { key: string; expected: number; actual: number }[] {
+  const wrongPorts: { key: string; expected: number; actual: number }[] = [];
+  for (const [key, val] of local.entries()) {
+    const wrongPort = findWrongPortForKey(key, val, svc, env);
+    if (wrongPort) {
+      wrongPorts.push(wrongPort);
+    }
+  }
+  return wrongPorts;
+}
+
 function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResult {
   const appDir = path.join(ROOT, "apps", svc.name);
   const examplePath = path.join(appDir, ".env.example");
@@ -310,43 +372,9 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     };
   }
 
-  // Check all keys from .env.example are present in .env.local — except
-  // annotated ones, which get their own (non-error) treatment below.
-  const missing: string[] = [];
-  const optionalMissing: string[] = [];
-  for (const key of example.keys()) {
-    if (local.has(key)) continue;
-    const annotation = annotations.get(key);
-    if (!annotation) {
-      missing.push(key);
-    } else if (annotation.kind === "optional") {
-      optionalMissing.push(key);
-    }
-    // vault-sourced / deprecated missing -> fine, nothing to record.
-  }
-
-  // vault-sourced/deprecated keys that ARE set locally get a warning each —
-  // the former is exactly the "deprecated hand-provisioned value, remove
-  // after rotation" signal a prod rotation sweep looks for.
-  const vaultSourcedPresent: { key: string; reason?: string }[] = [];
-  const deprecatedPresent: { key: string; reason?: string }[] = [];
-  for (const [key, annotation] of annotations.entries()) {
-    if (!local.has(key)) continue;
-    if (annotation.kind === "vault-sourced") {
-      vaultSourcedPresent.push({ key, reason: annotation.reason });
-    } else if (annotation.kind === "deprecated") {
-      deprecatedPresent.push({ key, reason: annotation.reason });
-    }
-  }
-
-  // Validate port values in .env.local
-  const wrongPorts: { key: string; expected: number; actual: number }[] = [];
-  for (const [key, val] of local.entries()) {
-    const wrongPort = findWrongPortForKey(key, val, svc, env);
-    if (wrongPort) {
-      wrongPorts.push(wrongPort);
-    }
-  }
+  const { missing, optionalMissing } = classifyMissingKeys(example, local, annotations);
+  const { vaultSourcedPresent, deprecatedPresent } = findAnnotatedPresentKeys(annotations, local);
+  const wrongPorts = findWrongPorts(local, svc, env);
 
   // Warn about extra keys in .env.local not in .env.example
   const extra = findExtraKeys(example, local);
@@ -410,6 +438,15 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
 
   console.log(`  ${errors > 0 ? sym.err : sym.warn}  ${label} ${portLabel}  ${summary}`);
 
+  printKeyIssues(missing, wrongPorts, optionalMissing);
+  printAnnotatedIssues(vaultSourcedPresent, deprecatedPresent, extra);
+}
+
+function printKeyIssues(
+  missing: string[],
+  wrongPorts: { key: string; expected: number; actual: number }[],
+  optionalMissing: string[],
+): void {
   for (const key of missing) {
     console.log(`       ${sym.arrow}  ${red("missing")}  ${cyan(key)}`);
   }
@@ -423,7 +460,13 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
     const keys = optionalMissing.map((k) => cyan(k)).join(", ");
     console.log(`       ${sym.arrow}  ${yellow("optional, not set")}  ${keys}`);
   }
+}
 
+function printAnnotatedIssues(
+  vaultSourcedPresent: { key: string; reason?: string }[],
+  deprecatedPresent: { key: string; reason?: string }[],
+  extra: string[],
+): void {
   for (const { key, reason } of vaultSourcedPresent) {
     const detail = reason
       ? `deprecated hand-provisioned value present; remove after rotation (${reason})`

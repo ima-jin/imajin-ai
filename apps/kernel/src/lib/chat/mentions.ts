@@ -163,7 +163,7 @@ export function processMentions(ctx: MentionContext): void {
           if (mention.did === EVERYONE_DID) {
             await processEveryoneMention(ctx, messageText);
           } else if (mention.did !== ctx.senderDid) {
-            publishMention(ctx, messageText, mention.did);
+            void publishMention(ctx, messageText, mention.did);
           }
         } catch (err) {
           log.error({ err: String(err) }, 'Mention processing error');
@@ -181,7 +181,7 @@ export function processMentions(ctx: MentionContext): void {
         try {
           const mentionedDid = await resolveHandleToDid(handle);
           if (!mentionedDid || mentionedDid === ctx.senderDid) continue;
-          publishMention(ctx, messageText, mentionedDid);
+          void publishMention(ctx, messageText, mentionedDid);
         } catch (err) {
           log.error({ err: String(err) }, 'Handle resolution error');
         }
