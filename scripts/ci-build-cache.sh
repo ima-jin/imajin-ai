@@ -40,7 +40,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CACHE_DIR="${TURBO_CACHE_DIR:-}"
 
 if [[ -z "$CACHE_DIR" ]]; then
-  echo "::error::TURBO_CACHE_DIR is not set — nothing to persist the build cache in"
+  echo "::error::TURBO_CACHE_DIR is not set — nothing to persist the build cache in" >&2
   exit 1
 fi
 
@@ -157,7 +157,7 @@ save_next() {
 prune() {
   local days="${1:-14}"
   if [[ ! "$days" =~ ^[0-9]+$ ]]; then
-    echo "::error::prune: max-age-days must be a whole number, got '$days'"
+    echo "::error::prune: max-age-days must be a whole number, got '$days'" >&2
     exit 2
   fi
   find "$CACHE_DIR" -maxdepth 1 -type f -mtime "+$days" -delete
