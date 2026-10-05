@@ -9,10 +9,6 @@ import { verifyWitnessJws } from '@/src/lib/auth/witness-jws';
 
 const log = createLogger('kernel:countersign');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /api/attestations/countersign
  *
@@ -150,3 +146,5 @@ export async function POST(request: NextRequest) {
     status: 'bilateral',
   }, { headers: cors });
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getAttestationForwardFailureCount } from '@imajin/auth';
 
-export async function GET() {
+export function GET() {
   return NextResponse.json({
     status: 'ok',
     service: 'auth',

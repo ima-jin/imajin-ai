@@ -18,10 +18,6 @@ import { withLogger } from '@imajin/logger';
 
 const AUTH_URL = buildPublicUrlAbsolute('auth');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
@@ -240,3 +236,5 @@ function onboardEmail({ verifyUrl, context, name }: { verifyUrl: string; context
 </html>
 `;
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

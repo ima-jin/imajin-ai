@@ -1,9 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders } from '@imajin/config';
-
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+import { NextRequest } from 'next/server';
 
 /**
  * GET /api/attestations/:did
@@ -28,3 +23,5 @@ export async function GET(
   const { GET: getAttestations } = await import('../route');
   return getAttestations(forwarded);
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -4,10 +4,6 @@ import { eq, and, isNotNull } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/account/methods?handle=xxx (or ?did=xxx)
  * Public endpoint to look up auth methods for an identity.
@@ -108,3 +104,5 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return NextResponse.json({ error: 'Failed to retrieve account methods' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -11,10 +11,6 @@ import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { invalidateAllRecoveryCodes } from '@/src/lib/auth/recovery-codes';
 import type { KeyRoles } from '@/src/db';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/identity/:did/keys
  * Authenticated — returns current key state for the authenticated identity.
@@ -211,3 +207,5 @@ export async function POST(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

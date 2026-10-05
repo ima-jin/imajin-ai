@@ -8,10 +8,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel:documents');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /api/documents/[id]/decline — Decline a document
  */
@@ -100,3 +96,5 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to decline document' }, { status: 500, headers: cors });
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

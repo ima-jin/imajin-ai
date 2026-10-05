@@ -4,10 +4,6 @@ import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { getRecoveryCodeStatus } from '@/src/lib/auth/recovery-codes';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /auth/api/recovery-codes/status
  *
@@ -34,3 +30,5 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return NextResponse.json({ error: 'Failed to retrieve recovery code status' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

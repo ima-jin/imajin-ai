@@ -7,10 +7,6 @@ import { decryptSecret } from '@/src/lib/auth/encrypt';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /api/mfa/totp/challenge
  * Verify a TOTP code during the login flow (MFA step).
@@ -76,3 +72,5 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'Failed to verify TOTP challenge' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

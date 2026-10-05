@@ -5,10 +5,6 @@ import { requireAuth } from '@imajin/auth';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 const ACT_AS_ROLES = ['owner', 'admin', 'maintainer'];
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
@@ -65,3 +61,5 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'Failed to switch identity' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

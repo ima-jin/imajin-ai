@@ -12,7 +12,7 @@ import { listDelegateGrantBearersForPrincipal } from '@/src/lib/access/delegate-
 
 export const dynamic = 'force-dynamic';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

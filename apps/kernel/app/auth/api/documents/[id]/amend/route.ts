@@ -17,11 +17,6 @@ function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
-
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /api/documents/[id]/amend — Create an amendment
  */
@@ -130,3 +125,5 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to amend document' }, { status: 500, headers: cors });
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
