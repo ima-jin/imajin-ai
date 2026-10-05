@@ -80,11 +80,11 @@ export class StripeWithdrawRail implements WithdrawRail {
     }));
   }
 
-  async confirmFromEvent(payload: unknown): Promise<{ intentId: string; externalRef: string } | null> {
-    if (!isTransferCreatedEvent(payload)) return null;
+  confirmFromEvent(payload: unknown): Promise<{ intentId: string; externalRef: string } | null> {
+    if (!isTransferCreatedEvent(payload)) return Promise.resolve(null);
     const transfer = payload.data.object;
     const intentId = transfer.metadata?.intent_id;
-    if (typeof intentId !== 'string') return null;
-    return { intentId, externalRef: transfer.id };
+    if (typeof intentId !== 'string') return Promise.resolve(null);
+    return Promise.resolve({ intentId, externalRef: transfer.id });
   }
 }

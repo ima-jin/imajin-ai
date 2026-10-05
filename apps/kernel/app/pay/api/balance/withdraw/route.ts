@@ -48,7 +48,7 @@ import { resolveWithdrawDestination } from '@/src/lib/pay/withdraw-destination';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

@@ -22,7 +22,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

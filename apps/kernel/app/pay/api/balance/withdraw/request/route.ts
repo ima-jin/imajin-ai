@@ -20,7 +20,7 @@ import { MJN, debitUnitIfSufficient, getBalanceRow, InsufficientBalanceError } f
 
 const MIN_WITHDRAWAL = 10; // $10.00 minimum
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return NextResponse.json({}, { headers: corsHeaders(request) });
 }
 

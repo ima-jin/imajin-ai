@@ -33,7 +33,7 @@ const log = createLogger('kernel');
 // (`apps/kernel/src/lib/pay/settle-core.ts`, #1073) — this route only owns
 // HTTP concerns: API-key auth, request parsing, and response mapping.
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

@@ -12,7 +12,7 @@ function getSpec(): string {
   return cachedSpec;
 }
 
-export async function GET() {
+export function GET() {
   const spec = getSpec();
   return new NextResponse(spec, {
     headers: { "Content-Type": "text/yaml" },

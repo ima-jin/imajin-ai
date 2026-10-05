@@ -19,7 +19,7 @@ import { withLogger } from '@imajin/logger';
 
 const MIN_TOPUP = 20; // $20 CAD minimum
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
