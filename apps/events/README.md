@@ -155,7 +155,7 @@ SMTP_FROM="Your Name <you@example.com>"
 
 ## License
 
-MIT
+[Imajin Network License (INL) v1.0](../../LICENSE.md) — see the root [README](../../README.md#license) for the summary.
 
 ---
 
