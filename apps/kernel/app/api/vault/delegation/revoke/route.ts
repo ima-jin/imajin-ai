@@ -6,6 +6,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
 
 const log = createLogger('kernel');
 
@@ -29,7 +30,8 @@ const log = createLogger('kernel');
  * IMPORTANT: revocation does NOT re-encrypt the ciphertext. Any in-process
  * loadAndUnseal that ran before revocation and holds the decrypted value in
  * memory is unaffected. To eliminate the old field key entirely, follow
- * revocation with a POST /api/vault/set to re-seal with a new random key.
+ * revocation with a POST /api/vault/rotate to re-seal with a new random key
+ * (Set refuses an existing field that has other active grantees, #2452).
  */
 export async function POST(request: NextRequest) {
   if (!(await requireAdmin())) {
@@ -48,8 +50,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'field is required' }, { status: 400 });
   }
 
-  const identity = getNodeSigningIdentity();
   const trimmedField = field.trim();
+
+  // #2452 — fail-closed, server-side: revoking the node's grant on an
+  // internal-secret:* field would strand the kernel from its own secret.
+  // Replacement goes through Rotate (which re-issues, #2446); the panel does
+  // not offer the button on these rows either.
+  if (isInternalSecretField(trimmedField)) {
+    return NextResponse.json(
+      { error: `'${trimmedField}' is a kernel-internal secret — its grant cannot be revoked by an operator.` },
+      { status: 409 },
+    );
+  }
+
+  const identity = getNodeSigningIdentity();
 
   const revoked = await db
     .update(vaultDelegationGrants)

@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { publish } from '@imajin/bus';
 import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { sealAndStore, sealAndStoreV2 } from '@/src/lib/vault';
+import { sealAndStore, sealAndStoreV2, vaultService } from '@/src/lib/vault';
 import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
+import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
+import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
 
 const log = createLogger('kernel');
 ensureVaultHotReloadReactorRegistered();
@@ -16,6 +19,42 @@ interface SetVaultBody {
   value: string;
   custodyScheme?: 'node-sealed' | 'delegation-grant';
   expiresAt?: string; // ISO 8601 — only used when custodyScheme === 'delegation-grant'
+}
+
+/**
+ * #2452 — the #2449 guards Rotate/Delete have, fail-closed and server-side.
+ * Returns a 409 response when the set must be refused, or null to proceed.
+ *
+ *  - internal-secret:* is the kernel's own secret: never operator-set
+ *    (provisioning is the internal-secret path, replacement is Rotate).
+ *  - set on an EXISTING field re-seals it under a new key — exactly the harm
+ *    Rotate guards against (#2450): any other active grantee's wrapped key
+ *    stops decrypting. Same guard query as Rotate, and like Rotate no
+ *    override: a set that would strand grantees is refused unconditionally
+ *    (#2450 / #2495: guard first, never strand). Rotate re-issues grantees.
+ */
+async function checkSetGuards(field: string): Promise<NextResponse | null> {
+  if (isInternalSecretField(field)) {
+    return NextResponse.json(
+      { error: `'${field}' is a kernel-internal secret and cannot be set by an operator.` },
+      { status: 409 },
+    );
+  }
+
+  if (!(await vaultService.get(field))) return null;
+
+  const identity = getNodeSigningIdentity();
+  const otherGrantees = await listOtherActiveGrantees(field, identity.senderDid);
+  if (otherGrantees.length === 0) return null;
+
+  return NextResponse.json(
+    {
+      error: `'${field}' already exists and ${otherGrantees.length} active grantee(s) hold a grant on it — use Rotate instead of Set.`,
+      count: otherGrantees.length,
+      grantees: otherGrantees,
+    },
+    { status: 409 },
+  );
 }
 
 export async function POST(request: NextRequest) {
@@ -50,12 +89,17 @@ export async function POST(request: NextRequest) {
     expiresAtDate = parsed;
   }
 
+  const trimmedField = field.trim();
+
   try {
+    const refusal = await checkSetGuards(trimmedField);
+    if (refusal) return refusal;
+
     if (custodyScheme === 'delegation-grant') {
-      return await handleDelegationGrantSet(field.trim(), value, expiresAtDate);
+      return await handleDelegationGrantSet(trimmedField, value, expiresAtDate);
     }
 
-    const entry = await sealAndStore(field.trim(), value);
+    const entry = await sealAndStore(trimmedField, value);
 
     let published = true;
     try {

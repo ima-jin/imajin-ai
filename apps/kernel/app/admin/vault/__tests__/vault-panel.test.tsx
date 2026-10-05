@@ -127,3 +127,53 @@ describe('status badge', () => {
     confirmed.forEach((el) => expect(el.getAttribute('title')).toBeTruthy());
   });
 });
+
+describe('#2452 guards in the panel', () => {
+  const INTERNAL = 'internal-secret:kernel.attestation-internal-api-key';
+
+  it('hides Revoke grant on internal-secret:* rows but keeps it on other active grants', async () => {
+    installFetch([granted(INTERNAL, 'active'), granted(FIELD, 'active')]);
+    render(<VaultPanel />);
+    await waitFor(() => expect(screen.queryByText('Loading vault entries…')).toBeNull());
+
+    // Each row renders twice (desktop table + mobile card).
+    expect(screen.getAllByRole('button', { name: 'Revoke grant' })).toHaveLength(2);
+    expect(screen.getAllByText(INTERNAL).length).toBeGreaterThan(0);
+  });
+
+  it('shows no Revoke grant at all when the only active grant is internal-secret:*', async () => {
+    installFetch([granted(INTERNAL, 'active')]);
+    render(<VaultPanel />);
+    await waitFor(() => expect(screen.queryByText('Loading vault entries…')).toBeNull());
+
+    expect(screen.queryAllByRole('button', { name: 'Revoke grant' })).toHaveLength(0);
+  });
+
+  it('refuses Save for a field that already exists, pointing at Rotate, without calling /set', async () => {
+    const spy = installFetch([granted(FIELD, 'active')]);
+    await openSetDialog();
+
+    fill('Field', FIELD);
+    fill('Value', 'secret');
+
+    expect(screen.getByRole('alert').textContent).toMatch(/already exists.*Rotate/);
+    const save = screen.getByRole('button', { name: 'Save Secret' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.submit(save.closest('form') as HTMLFormElement);
+    expect(setCalls(spy)).toHaveLength(0);
+  });
+
+  it('refuses Save for internal-secret:* without calling /set', async () => {
+    const spy = installFetch([]);
+    await openSetDialog();
+
+    fill('Field', INTERNAL);
+    fill('Value', 'secret');
+
+    expect(screen.getByRole('alert').textContent).toMatch(/kernel/);
+    const save = screen.getByRole('button', { name: 'Save Secret' }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.submit(save.closest('form') as HTMLFormElement);
+    expect(setCalls(spy)).toHaveLength(0);
+  });
+});
