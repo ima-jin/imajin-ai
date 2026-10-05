@@ -27,7 +27,10 @@ vi.mock('@/src/db', () => ({
   balances: { did: 'did', unit: 'unit', amount: 'amount' },
 }));
 
-vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
 
 import { GET } from '../route';
 

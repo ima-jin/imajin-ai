@@ -87,7 +87,10 @@ vi.mock('@/src/lib/fair/intro-attribution', () => ({
 vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_${state.idCounter++}`,
 }));
-vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
 
 import { POST } from '../route';
 

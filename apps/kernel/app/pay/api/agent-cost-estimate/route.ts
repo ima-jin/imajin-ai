@@ -46,9 +46,7 @@ interface EstimateBody {
   includeSessionInit?: boolean;
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);

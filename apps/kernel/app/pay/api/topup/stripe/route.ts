@@ -22,9 +22,7 @@ import { withLogger } from '@imajin/logger';
 const MIN_TOPUP = 20; // $20 CAD minimum
 const TOPUP_RAIL = 'stripe'; // keys the `grossUpForProcessorFee` fee-schedule lookup (#2177)
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

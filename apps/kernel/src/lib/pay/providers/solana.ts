@@ -101,14 +101,14 @@ export class SolanaProvider implements PaymentProvider {
     }
   }
   
-  private async prepareSOLTransfer(request: ChargeRequest, to: string): Promise<ChargeResult> {
+  private prepareSOLTransfer(request: ChargeRequest, to: string): Promise<ChargeResult> {
     // Note: We don't execute the transfer here.
     // We return instructions for the caller to sign and send.
     // This is the standard pattern for wallet integration.
     
     const lamports = request.amount; // Caller should provide lamports directly
     
-    return {
+    return Promise.resolve({
       id: `sol-pending-${Date.now()}-${randomUUID().replaceAll('-', '').slice(0, 12)}`,
       provider: 'solana',
       status: 'requires_action',
@@ -122,13 +122,13 @@ export class SolanaProvider implements PaymentProvider {
         instruction: 'sign_and_send',
         type: 'SOL_TRANSFER',
       },
-    };
+    });
   }
   
-  private async prepareSPLTransfer(request: ChargeRequest, to: string, mint: string): Promise<ChargeResult> {
+  private prepareSPLTransfer(request: ChargeRequest, to: string, mint: string): Promise<ChargeResult> {
     // Similar to SOL - return instructions for caller to execute
     
-    return {
+    return Promise.resolve({
       id: `spl-pending-${Date.now()}-${randomUUID().replaceAll('-', '').slice(0, 12)}`,
       provider: 'solana',
       status: 'requires_action',
@@ -142,17 +142,17 @@ export class SolanaProvider implements PaymentProvider {
         instruction: 'sign_and_send',
         type: 'SPL_TRANSFER',
       },
-    };
+    });
   }
   
   // ===========================================================================
   // Escrow (Future)
   // ===========================================================================
   
-  async escrow(_request: EscrowRequest): Promise<EscrowResult> {
+  escrow(_request: EscrowRequest): Promise<EscrowResult> {
     // see: escrow requires a custom Solana program (or an integration such as
     // Streamflow, or a multi-sig approach) — not yet implemented
-    throw new Error('Solana escrow not yet implemented');
+    return Promise.reject(new Error('Solana escrow not yet implemented'));
   }
   
   // ===========================================================================
