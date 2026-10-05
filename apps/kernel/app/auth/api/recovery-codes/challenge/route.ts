@@ -7,9 +7,7 @@ import { generateChallenge } from '@/src/lib/auth/crypto';
 import { CHALLENGE_TTL } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /auth/api/recovery-codes/challenge?did=...

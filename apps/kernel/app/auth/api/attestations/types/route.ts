@@ -23,9 +23,7 @@ import {
   resolveHandleForDid,
 } from '@/src/lib/auth/attestation-type-registry';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);

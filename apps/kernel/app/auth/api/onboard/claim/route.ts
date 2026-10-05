@@ -15,9 +15,7 @@ import { withLogger } from '@imajin/logger';
 
 const HANDOFF_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

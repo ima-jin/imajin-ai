@@ -25,9 +25,7 @@ import type { NostrKeyBindingClaim } from '@imajin/auth';
 
 const NOSTR_KEY_BINDING_TYPE = 'imajin/nostr-key-binding';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 export async function GET(
   request: NextRequest,

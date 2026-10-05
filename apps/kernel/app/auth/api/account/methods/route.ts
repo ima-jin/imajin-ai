@@ -4,9 +4,7 @@ import { eq, and, isNotNull } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /api/account/methods?handle=xxx (or ?did=xxx)

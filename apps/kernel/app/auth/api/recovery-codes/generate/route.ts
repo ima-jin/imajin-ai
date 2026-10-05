@@ -4,9 +4,7 @@ import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { generateRecoveryCodes, RECOVERY_DISCLOSURE } from '@/src/lib/auth/recovery-codes';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * POST /auth/api/recovery-codes/generate

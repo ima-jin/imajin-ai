@@ -27,9 +27,7 @@ const EXPIRY_MAP: Record<string, number> = {
   '1y': 365 * 24 * 60 * 60 * 1000,
 };
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 
 // ---------------------------------------------------------------------------

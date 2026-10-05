@@ -7,9 +7,7 @@ import { decryptSecret } from '@/src/lib/auth/encrypt';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * POST /api/keys/retrieve

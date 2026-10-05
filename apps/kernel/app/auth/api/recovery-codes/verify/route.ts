@@ -6,9 +6,7 @@ import { withLogger } from '@imajin/logger';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { redeemRecoveryCode, logRecoveryAttempt } from '@/src/lib/auth/recovery-codes';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 // Generic, information-non-leaking error for every failure mode that could
 // otherwise act as a DID/code-existence oracle. Distinct outcomes are still

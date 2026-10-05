@@ -5,9 +5,7 @@ import { requireAuth } from '@imajin/auth';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull, inArray } from 'drizzle-orm';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 const ACT_AS_ROLES = ['owner', 'admin', 'maintainer'];
 

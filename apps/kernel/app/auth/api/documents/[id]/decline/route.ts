@@ -8,9 +8,7 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel:documents');
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * POST /api/documents/[id]/decline — Decline a document

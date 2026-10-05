@@ -11,9 +11,7 @@ import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { invalidateAllRecoveryCodes } from '@/src/lib/auth/recovery-codes';
 import type { KeyRoles } from '@/src/db';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /api/identity/:did/keys

@@ -5,9 +5,7 @@ import { requireAuth, unauthorizedResponse } from '@/src/lib/auth/middleware';
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /api/devices

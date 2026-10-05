@@ -1,9 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders } from '@imajin/config';
+import { NextRequest } from 'next/server';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /api/attestations/:did

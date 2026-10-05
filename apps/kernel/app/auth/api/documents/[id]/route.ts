@@ -7,9 +7,7 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel:documents');
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /api/documents/[id] — Get document with all signatures

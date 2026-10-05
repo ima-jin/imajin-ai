@@ -13,9 +13,7 @@ function sha256hex(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * GET /api/access/[did]

@@ -152,9 +152,7 @@ async function resolveCallerDid(request: NextRequest): Promise<string | null> {
   return null;
 }
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
 
 /**
  * POST /api/attestations
