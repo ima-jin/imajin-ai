@@ -75,7 +75,7 @@ export function railAliasRoute(handlers: RailHandlers, annotate?: RailAnnotator)
 }
 
 /** CORS preflight handler for a rail-generic route (mirrors the Stripe-named routes' `OPTIONS`). */
-export async function railAliasOptions(request: NextRequest): Promise<Response> {
+export function railAliasOptions(request: NextRequest): Response {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
@@ -111,8 +111,11 @@ export function normalizeChargeRecipient(to: Record<string, unknown>): Normalize
   if (!('customerId' in to) && !('provider' in to)) return { ok: true, to };
 
   const { customerId, provider, ...rest } = to;
-  if (provider !== undefined && (typeof provider !== 'string' || !CHARGE_CUSTOMER_PROVIDERS.has(provider))) {
-    return { ok: false, error: `Unsupported recipient provider: ${String(provider)}` };
+  if (provider !== undefined) {
+    if (typeof provider !== 'string') return { ok: false, error: 'to.provider must be a string' };
+    if (!CHARGE_CUSTOMER_PROVIDERS.has(provider)) {
+      return { ok: false, error: `Unsupported recipient provider: ${provider}` };
+    }
   }
   if (customerId === undefined) return { ok: true, to: rest };
   if (typeof customerId !== 'string' || customerId === '') {

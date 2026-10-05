@@ -155,7 +155,11 @@ describe('normalizeChargeRecipient', () => {
     });
     expect(normalizeChargeRecipient({ provider: 42 })).toEqual({
       ok: false,
-      error: 'Unsupported recipient provider: 42',
+      error: 'to.provider must be a string',
+    });
+    expect(normalizeChargeRecipient({ provider: { toString: 'x' } })).toEqual({
+      ok: false,
+      error: 'to.provider must be a string',
     });
   });
 

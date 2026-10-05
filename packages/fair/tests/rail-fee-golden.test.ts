@@ -10,7 +10,7 @@
  * grossing (#2419), or rounding shows up as a diff here.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildFairManifest } from '../src/buildManifest';
@@ -111,6 +111,7 @@ describe('Stripe-rail golden output (pre-refactor baseline)', () => {
   if (process.env.UPDATE_GOLDEN === '1') {
     it('records the golden fixture', () => {
       writeFileSync(FIXTURE_PATH, JSON.stringify(snapshot(), null, 2) + '\n');
+      expect(existsSync(FIXTURE_PATH)).toBe(true);
     });
     return;
   }

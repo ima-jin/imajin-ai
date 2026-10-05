@@ -4,7 +4,7 @@
  * `{provider}` to the same handler; the response is unchanged.
  */
 import { GET as stripeGet } from '../../dashboard/route';
-import { railAliasOptions, railAliasRoute } from '@/src/lib/pay/rail-alias';
+import { railAliasRoute } from '@/src/lib/pay/rail-alias';
 
-export const OPTIONS = railAliasOptions;
+export { railAliasOptions as OPTIONS } from '@/src/lib/pay/rail-alias';
 export const GET = railAliasRoute({ stripe: stripeGet });

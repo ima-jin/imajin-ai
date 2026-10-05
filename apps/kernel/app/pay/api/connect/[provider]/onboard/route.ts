@@ -4,7 +4,7 @@
  * `{provider}` to the same handler; adds `provider` to the response.
  */
 import { POST as stripePost } from '../../onboard/route';
-import { railAliasOptions, railAliasRoute, annotateConnectProvider } from '@/src/lib/pay/rail-alias';
+import { railAliasRoute, annotateConnectProvider } from '@/src/lib/pay/rail-alias';
 
-export const OPTIONS = railAliasOptions;
+export { railAliasOptions as OPTIONS } from '@/src/lib/pay/rail-alias';
 export const POST = railAliasRoute({ stripe: stripePost }, annotateConnectProvider);
