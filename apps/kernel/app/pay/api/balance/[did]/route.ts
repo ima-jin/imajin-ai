@@ -7,16 +7,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
 
 const log = createLogger('kernel');
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export async function GET(
   request: NextRequest,

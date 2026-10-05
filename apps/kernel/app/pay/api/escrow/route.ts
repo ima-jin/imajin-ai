@@ -34,7 +34,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth, requireAppAuth, resolveEffectiveDid } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 
 interface EscrowBody {
@@ -50,9 +50,7 @@ interface EscrowBody {
   metadata?: Record<string, string>;
 }
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

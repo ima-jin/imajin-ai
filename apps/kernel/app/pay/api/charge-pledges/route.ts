@@ -27,7 +27,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
@@ -40,9 +40,7 @@ interface PledgeCharge {
   stripePaymentMethodId: string;
 }
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

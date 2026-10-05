@@ -23,7 +23,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { settlePayment } from '@/src/lib/pay/settle-core';
 
@@ -33,9 +33,7 @@ const log = createLogger('kernel');
 // (`apps/kernel/src/lib/pay/settle-core.ts`, #1073) — this route only owns
 // HTTP concerns: API-key auth, request parsing, and response mapping.
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);

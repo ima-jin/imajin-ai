@@ -85,7 +85,10 @@ vi.mock('@/src/db', () => ({
 }));
 
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: () => 'tx_reversal_test' }));
-vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
 vi.mock('@imajin/bus', () => ({ publish: mocks.publishMock }));
 
 // ─── Subject ────────────────────────────────────────────────────────────────

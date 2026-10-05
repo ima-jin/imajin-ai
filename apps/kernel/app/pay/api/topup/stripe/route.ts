@@ -14,16 +14,14 @@ import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
 import { withLogger } from '@imajin/logger';
 
 const MIN_TOPUP = 20; // $20 CAD minimum
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

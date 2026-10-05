@@ -63,7 +63,10 @@ vi.mock('@/src/lib/kernel/id', () => {
   let n = 0;
   return { generateId: (prefix: string) => `${prefix}_${n++}` };
 });
-vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
 
 import { POST } from '../route';
 

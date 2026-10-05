@@ -44,7 +44,10 @@ vi.mock('@imajin/auth', () => ({
     identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
-vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}),
+  corsOptions: () => new Response(null, { status: 204 }),
+}));
 
 // `../route` imports `InsufficientBalanceError`/`MJN` from `@/src/lib/pay/ledger`,
 // which imports the real `@/src/db` at module load time (eagerly constructing a

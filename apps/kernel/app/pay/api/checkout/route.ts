@@ -28,7 +28,7 @@ import { resolveActingDid } from '@imajin/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/src/lib/pay';
 import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import {
@@ -41,9 +41,7 @@ import {
 
 type CheckoutBody = CheckoutBodyBase & { currency: FiatCurrency };
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

@@ -32,7 +32,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 
 interface ChargeBody {
@@ -44,9 +44,7 @@ interface ChargeBody {
   idempotencyKey?: string;
 }
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

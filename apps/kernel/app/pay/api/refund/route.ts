@@ -22,7 +22,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import {
@@ -32,9 +32,7 @@ import {
   reverseSettlementEntries,
 } from '@/src/lib/pay/refund';
 
-export function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export const OPTIONS = corsOptions;
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log, correlationId }) => {
   const cors = corsHeaders(request);
