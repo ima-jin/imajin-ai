@@ -1,8 +1,9 @@
 /**
- * `ATTESTATION_INTERNAL_API_KEY` fetch-at-boot (#2245): the deprecated env
- * override, the vault fetch-at-boot path (dynamic grant discovery by
+ * `ATTESTATION_INTERNAL_API_KEY` fetch-at-boot (#2245, env fallback removed in
+ * #2353 step 4): the vault fetch-at-boot path (dynamic grant discovery by
  * purpose, reusing corpus's existing CORPUS_VAULT_BOOTSTRAP_* identity),
- * and the "neither configured" soft-fail — mirrors corpus-identity.test.ts's
+ * the "env var is ignored" guarantee, and the "no identity configured"
+ * loud soft-fail — mirrors corpus-identity.test.ts's
  * approach (mock global fetch, real module state).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -78,8 +79,8 @@ afterEach(() => {
   restoreEnv();
 });
 
-describe('deprecated ATTESTATION_INTERNAL_API_KEY env override (#2245)', () => {
-  it('is used verbatim, warns once, and never calls the vault fetch dance', async () => {
+describe('hand-set ATTESTATION_INTERNAL_API_KEY env var is ignored (#2353 step 4)', () => {
+  it('is never returned: with no vault identity the key stays null and the miss is logged loudly', async () => {
     process.env.ATTESTATION_INTERNAL_API_KEY = 'hand-set-legacy-key';
     const { bootstrapAttestationInternalApiKey, getAttestationInternalApiKey, _resetAttestationKeyStateForTests } = await import('../attestation-key');
     _resetAttestationKeyStateForTests();
@@ -88,25 +89,35 @@ describe('deprecated ATTESTATION_INTERNAL_API_KEY env override (#2245)', () => {
 
     await bootstrapAttestationInternalApiKey();
 
-    expect(getAttestationInternalApiKey()).toBe('hand-set-legacy-key');
+    expect(getAttestationInternalApiKey()).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(mocks.log.warn).toHaveBeenCalledTimes(1);
-    expect(mocks.log.warn.mock.calls[0][1]).toMatch(/DEPRECATED/);
+    expect(mocks.log.error).toHaveBeenCalledTimes(1);
   });
 
-  it('takes precedence even when the CORPUS_VAULT_BOOTSTRAP_* identity is also set', async () => {
+  it('does not shadow the vault-sourced value when both are present', async () => {
     process.env.ATTESTATION_INTERNAL_API_KEY = 'hand-set-legacy-key';
     process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
     process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
     const { bootstrapAttestationInternalApiKey, getAttestationInternalApiKey, _resetAttestationKeyStateForTests } = await import('../attestation-key');
     _resetAttestationKeyStateForTests();
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('fetch', fakeKernelFetch());
 
     await bootstrapAttestationInternalApiKey();
 
-    expect(getAttestationInternalApiKey()).toBe('hand-set-legacy-key');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getAttestationInternalApiKey()).toBe(VAULT_KEY_VALUE);
+  });
+
+  it('a vault fetch failure does not fall back to the env var', async () => {
+    process.env.ATTESTATION_INTERNAL_API_KEY = 'hand-set-legacy-key';
+    process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
+    process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;
+    const { bootstrapAttestationInternalApiKey, getAttestationInternalApiKey, _resetAttestationKeyStateForTests } = await import('../attestation-key');
+    _resetAttestationKeyStateForTests();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('ECONNREFUSED'); }));
+
+    await bootstrapAttestationInternalApiKey();
+
+    expect(getAttestationInternalApiKey()).toBeNull();
   });
 });
 
@@ -211,8 +222,8 @@ describe('grant ack semantics (#2257: one deferred ack, no fetch-time ack)', () 
   });
 });
 
-describe('neither path configured (#2245 no-op)', () => {
-  it('bootstrapAttestationInternalApiKey() is a no-op and getAttestationInternalApiKey() returns null', async () => {
+describe('no vault identity configured (fails loudly, never falls back)', () => {
+  it('bootstrapAttestationInternalApiKey() logs an error, fetches nothing, and getAttestationInternalApiKey() returns null', async () => {
     const { bootstrapAttestationInternalApiKey, getAttestationInternalApiKey, _resetAttestationKeyStateForTests } = await import('../attestation-key');
     _resetAttestationKeyStateForTests();
     const fetchMock = vi.fn();
@@ -222,9 +233,10 @@ describe('neither path configured (#2245 no-op)', () => {
 
     expect(getAttestationInternalApiKey()).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.log.error).toHaveBeenCalledTimes(1);
   });
 
-  it('is a no-op when only one of the two CORPUS_VAULT_BOOTSTRAP_* vars is set', async () => {
+  it('fails loudly when only one of the two CORPUS_VAULT_BOOTSTRAP_* vars is set', async () => {
     process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
     // CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY deliberately left unset.
     const { bootstrapAttestationInternalApiKey, getAttestationInternalApiKey, _resetAttestationKeyStateForTests } = await import('../attestation-key');
@@ -236,5 +248,6 @@ describe('neither path configured (#2245 no-op)', () => {
 
     expect(getAttestationInternalApiKey()).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+    expect(mocks.log.error).toHaveBeenCalledTimes(1);
   });
 });

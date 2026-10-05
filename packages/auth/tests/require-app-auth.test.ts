@@ -18,6 +18,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 import { requireAppAuth } from '../src/require-app-auth';
+import { setVaultInternalApiKey } from './support/internal-post-test-env';
 
 const AUTH_SERVICE_URL = 'https://auth.kernel.test/auth';
 
@@ -70,5 +71,44 @@ describe('requireAppAuth — bearer path notAppToken discrimination (#1812)', ()
     const result = await requireAppAuth(bearerRequest(), { scope: 'connections:read' });
 
     expect(result).toEqual({ appAuth });
+  });
+});
+
+describe('requireAppAuth — legacy X-App-* path vault key (#2353 step 4)', () => {
+  function legacyRequest(): Request {
+    return new Request('https://kernel.test/x/api/y', {
+      headers: { 'x-app-did': 'did:imajin:app', 'x-app-authorization': 'att_1' },
+    });
+  }
+
+  it('fails closed (503) when the vault key is missing, even if ATTESTATION_INTERNAL_API_KEY is hand-set', async () => {
+    setVaultInternalApiKey(undefined);
+    process.env.ATTESTATION_INTERNAL_API_KEY = 'env-value-must-be-ignored';
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      const result = await requireAppAuth(legacyRequest(), { scope: 'connections:read' });
+
+      expect(result).toEqual({ error: 'Auth service misconfigured', status: 503 });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.ATTESTATION_INTERNAL_API_KEY;
+    }
+  });
+
+  it('authenticates /api/apps/validate with the vault-sourced key', async () => {
+    setVaultInternalApiKey('vault-sourced-key');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'nope' }), { status: 403 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    try {
+      await requireAppAuth(legacyRequest(), { scope: 'connections:read' });
+
+      const init = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1];
+      expect((init.headers as Record<string, string>).Authorization).toBe('Bearer vault-sourced-key');
+    } finally {
+      setVaultInternalApiKey(undefined);
+    }
   });
 });

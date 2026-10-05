@@ -27,14 +27,13 @@
  * literal id — see `packages/auth/src/vault-client.ts`'s "Dynamic grant
  * discovery by purpose" docblock section for why.
  *
- * ## Precedence + soft-fail, same shape as `corpus-identity.ts`
- *  1. `ATTESTATION_INTERNAL_API_KEY` env var set -> DEPRECATED override,
- *     honored verbatim with a loud warning every boot it remains set.
- *  2. No override, but the bootstrap identity is configured -> fetch from
- *     the vault.
- *  3. Neither configured -> `null`; forwarding is skipped (soft-fail,
- *     `attestation-forwarder.ts` already tolerates a missing key exactly
- *     like a missing `AUTH_SERVICE_URL`).
+ * ## Vault-only + soft-fail, same shape as `corpus-identity.ts`
+ * The vault is the ONLY source (#2353 step 4 removed the deprecated
+ * `ATTESTATION_INTERNAL_API_KEY` env override — a hand-set env var is
+ * ignored). Bootstrap identity configured -> fetch from the vault; otherwise
+ * `null`, and forwarding is skipped with a loud error (soft-fail,
+ * `attestation-forwarder.ts` already tolerates a missing key exactly like a
+ * missing `AUTH_SERVICE_URL`).
  *
  * ## Ack (#2257, vault path only)
  * Deferred to first actual use — `markAttestationKeyUsedForForwarding()` is
@@ -56,34 +55,27 @@ const VAULT_SOURCED_KEY = 'ATTESTATION_INTERNAL_API_KEY';
 // `MINTED_KEY_FIELD_PREFIX` precedent already follows.
 const ATTESTATION_INTERNAL_API_KEY_PURPOSE = 'kernel.attestation-internal-api-key';
 
-let warnedDeprecatedEnvVar = false;
 let vaultSourcedKey: string | null = null;
 let vaultSourcedKeyAck: GrantAckHandle | null = null;
 
-/** Test-only: clears in-memory state so each test starts from a clean slate. */
-export function _resetAttestationKeyStateForTests(): void {
-  warnedDeprecatedEnvVar = false;
-  vaultSourcedKey = null;
+/** Test-only: seeds the vault-sourced key a successful boot fetch would have cached. */
+export function _setAttestationKeyForTests(key: string): void {
+  vaultSourcedKey = key;
   vaultSourcedKeyAck = null;
 }
 
-function warnDeprecatedEnvVarOnce(): void {
-  if (warnedDeprecatedEnvVar) return;
-  warnedDeprecatedEnvVar = true;
-  log.warn(
-    {},
-    'DEPRECATED: ATTESTATION_INTERNAL_API_KEY is set. Corpus now fetches this shared key from the vault at boot ' +
-      'instead (#2245) — see apps/corpus/.env.example. This override is honored as-is for now, but every boot ' +
-      'will keep logging this warning until you unset it.',
-  );
+/** Test-only: clears in-memory state so each test starts from a clean slate. */
+export function _resetAttestationKeyStateForTests(): void {
+  vaultSourcedKey = null;
+  vaultSourcedKeyAck = null;
 }
 
 /**
  * Called by the FIRST successful forward that used the vault-sourced key —
  * `attestation-forwarder.ts`'s `forwardIngestionAttestation`. Sends the
  * deferred `used` ack (#2257: fetching is not itself an ack; using it is).
- * A no-op when corpus has no vault-sourced key (deprecated env override, or
- * neither configured) — idempotent and safe to call on every forward.
+ * A no-op when corpus has no vault-sourced key — idempotent and safe to call
+ * on every forward.
  */
 export function markAttestationKeyUsedForForwarding(): void {
   vaultSourcedKeyAck?.used('first-forward');
@@ -91,23 +83,21 @@ export function markAttestationKeyUsedForForwarding(): void {
 
 /**
  * Runs once at process startup (see `index.ts`, alongside
- * `bootstrapCorpusIdentity()`). No-ops immediately under the deprecated env
- * override. Under the vault path, fetches and caches the key; any failure
- * (network, no active grant yet, vault refusal) is logged and left as "no
- * key" — forwarding degrades to skipped, never a boot failure.
+ * `bootstrapCorpusIdentity()`). Fetches and caches the key from the vault; any
+ * failure (network, no active grant yet, vault refusal) is logged and left as
+ * "no key" — forwarding degrades to skipped, never a boot failure.
  */
 export async function bootstrapAttestationInternalApiKey(): Promise<void> {
-  if (process.env.ATTESTATION_INTERNAL_API_KEY) {
-    warnDeprecatedEnvVarOnce();
-    return;
-  }
-
   const bootstrapDid = process.env.CORPUS_VAULT_BOOTSTRAP_DID;
   const bootstrapPrivateKey = process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY;
   if (!bootstrapDid || !bootstrapPrivateKey) {
-    // Neither path configured — attestation-forwarder.ts already warns
-    // lazily (via its existing "AUTH_SERVICE_URL or key not set" message)
-    // the first time it actually has something to forward.
+    // No hand-set env fallback exists (#2353 step 4): without the bootstrap
+    // identity the key can never be loaded, so say so at boot.
+    log.error(
+      {},
+      'attestation-key: CORPUS_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY not set — cannot fetch ATTESTATION_INTERNAL_API_KEY ' +
+        'from the vault; ingestion attestation forwarding will be skipped',
+    );
     return;
   }
 
@@ -143,16 +133,9 @@ export async function bootstrapAttestationInternalApiKey(): Promise<void> {
 }
 
 /**
- * Resolves the current `ATTESTATION_INTERNAL_API_KEY` per the precedence
- * documented on this module. Returns `null` when neither the deprecated
- * env override nor a vault-sourced key is available.
+ * The vault-sourced `ATTESTATION_INTERNAL_API_KEY`, or `null` when the boot
+ * fetch has not run / failed. Never reads `process.env` (#2353 step 4).
  */
 export function getAttestationInternalApiKey(): string | null {
-  const envOverride = process.env.ATTESTATION_INTERNAL_API_KEY;
-  if (envOverride) {
-    warnDeprecatedEnvVarOnce();
-    return envOverride;
-  }
-
   return vaultSourcedKey;
 }

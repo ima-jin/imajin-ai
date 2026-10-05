@@ -12,8 +12,20 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 
-const { mockLoadVaultAtBoot } = vi.hoisted(() => ({
+const { mockLoadVaultAtBoot, mockGetInternalSecret, mockProvideInternalApiKey, mockLogError } = vi.hoisted(() => ({
   mockLoadVaultAtBoot: vi.fn().mockResolvedValue(undefined),
+  mockGetInternalSecret: vi.fn().mockResolvedValue('vault-resolved-key'),
+  mockProvideInternalApiKey: vi.fn(),
+  mockLogError: vi.fn(),
+}));
+
+vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: mockGetInternalSecret }));
+vi.mock('@/src/lib/auth/require-internal-api-key', () => ({
+  ATTESTATION_INTERNAL_API_KEY_PURPOSE: 'kernel.attestation-internal-api-key',
+}));
+vi.mock('@imajin/auth', () => ({ provideInternalApiKey: mockProvideInternalApiKey }));
+vi.mock('@imajin/logger', () => ({
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: mockLogError }),
 }));
 
 vi.mock('@/src/lib/vault/vault-repository', () => ({
@@ -35,6 +47,9 @@ function setRuntime(value: string | undefined): void {
 afterEach(() => {
   setRuntime(originalRuntime);
   mockLoadVaultAtBoot.mockClear();
+  mockGetInternalSecret.mockReset().mockResolvedValue('vault-resolved-key');
+  mockProvideInternalApiKey.mockClear();
+  mockLogError.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
@@ -64,11 +79,31 @@ describe('kernel instrumentation register()', () => {
     await expect(register()).rejects.toThrow(/Configured vault file not found/);
   });
 
+  it('hands @imajin/auth the vault-resolved ATTESTATION_INTERNAL_API_KEY after the vault loads (#2353 step 4)', async () => {
+    setRuntime('nodejs');
+
+    await register();
+
+    expect(mockGetInternalSecret).toHaveBeenCalledWith('kernel.attestation-internal-api-key');
+    expect(mockProvideInternalApiKey).toHaveBeenCalledWith('vault-resolved-key');
+  });
+
+  it('logs an error (and does not register a key) when the vault cannot resolve it, without blocking boot', async () => {
+    setRuntime('nodejs');
+    mockGetInternalSecret.mockRejectedValueOnce(new Error('vault unavailable'));
+
+    await expect(register()).resolves.toBeUndefined();
+
+    expect(mockProvideInternalApiKey).not.toHaveBeenCalled();
+    expect(mockLogError).toHaveBeenCalledTimes(1);
+  });
+
   it('does not load the vault outside the nodejs runtime (e.g. edge)', async () => {
     setRuntime('edge');
 
     await register();
 
     expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
+    expect(mockProvideInternalApiKey).not.toHaveBeenCalled();
   });
 });

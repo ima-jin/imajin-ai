@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { useVaultInternalKey } from '../../../../__tests__/internal-api-key-auth-test-support';
 
 const API_KEY = 'internal-api-key';
 const DID = 'did:imajin:buyer';
@@ -30,6 +31,9 @@ function makeSelectChain(result: unknown[]) {
   chain.limit = vi.fn(async () => result);
   return chain;
 }
+
+vi.mock('@/src/lib/vault/internal-secret', async () =>
+  (await import('@/app/auth/api/__tests__/internal-api-key-auth-test-support')).internalSecretModuleMock);
 
 vi.mock('@/src/db', () => ({
   db: {
@@ -58,7 +62,7 @@ function makeParams(did: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.ATTESTATION_INTERNAL_API_KEY = API_KEY;
+  useVaultInternalKey(API_KEY);
 });
 
 describe('POST /auth/api/identity/:did/contact', () => {
@@ -68,8 +72,8 @@ describe('POST /auth/api/identity/:did/contact', () => {
     expect(h.mockDbUpdate).not.toHaveBeenCalled();
   });
 
-  it('rejects when ATTESTATION_INTERNAL_API_KEY is not configured server-side', async () => {
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  it('fails closed when the vault has no ATTESTATION_INTERNAL_API_KEY value', async () => {
+    useVaultInternalKey(undefined);
     const res = await POST(makeReq({ email: 'a@b.com' }), makeParams(DID));
     expect(res.status).toBe(401);
   });
