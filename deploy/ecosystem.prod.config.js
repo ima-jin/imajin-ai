@@ -87,7 +87,12 @@ module.exports = {
         "CRON_BASE_URL": "http://127.0.0.1:7000"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      // Long-running ticker (no listener, autorestart on), not a one-shot: its
+      // SIGTERM handler stops the ticker and exits 0 immediately, so a clean
+      // stop is near-instant. We still set the same explicit kill_timeout as
+      // every other app (#2547) as a cap for an in-flight /api/cron/* call.
+      "kill_timeout": 15000
     },
     {
       "name": "prod-auth",

@@ -34,6 +34,9 @@ cat > "$WORK/eco.config.js" <<'EOF'
 module.exports = { apps: [
   { name: 't-events' },
   { name: 't-auth' },
+  // One-shot / cron-style job (autorestart:false): pm2 leaves it `stopped` after
+  // a clean exit and never bumps restart_time, so it must not look like a crash loop.
+  { name: 't-oneshot', autorestart: false },
 ] };
 EOF
 
@@ -108,6 +111,15 @@ run_case "counter reset does not alert" 0 $((T0 + 60)) "t-events=1 t-auth=0"
 rm -f "$RESTART_ALERT_STATE"
 run_case "baseline with foreign app" 0 "$T0" "t-events=0 t-foreign=0"
 run_case "foreign app crash loop is ignored" 0 $((T0 + 60)) "t-events=0 t-foreign=9999"
+
+# A one-shot job that exits normally (stopped, autorestart:false) keeps a flat
+# restart counter however many times it has run, so it never trips the alert
+# (#2550 cron-style entries), while a real crash loop beside it still does.
+rm -f "$RESTART_ALERT_STATE"
+run_case "baseline with one-shot job" 0 "$T0" "t-events=0 t-oneshot=0"
+run_case "one-shot job exiting normally does not alert" 0 $((T0 + 60)) "t-events=0 t-oneshot=0" "no app exceeded"
+run_case "crash loop is still named next to a healthy one-shot job" 1 $((T0 + 120)) \
+  "t-events=50 t-oneshot=0" "t-events restarted 50 times"
 
 status=0
 bash "$CHECK_SCRIPT" bogus >/dev/null 2>&1 || status=$?

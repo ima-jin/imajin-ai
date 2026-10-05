@@ -154,5 +154,12 @@ for (const env of ['dev', 'prod']) {
       expect(cron.max_restarts).toBe(10);
       expect(cron.min_uptime).toBe('20s');
     });
+
+    it('sets the same explicit kill_timeout as the kernel (#2547)', () => {
+      // A long-running ticker, not a one-shot: no entry is exempt from the
+      // kill_timeout rule, so the scheduler gets the kernel's value.
+      expect(cron.autorestart).toBeUndefined();
+      expect(cron.kill_timeout).toBe(kernel.kill_timeout);
+    });
   });
 }
