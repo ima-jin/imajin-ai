@@ -47,7 +47,7 @@ taxes?: Array<{
    never reference any monetary total at all. In `resolveSettlementChain`
    / kernel `settle-core.ts`, `amountCents`/`total_amount` for chain
    purposes is always `basisAmount`, never the gross.
-3. **The processor (Stripe) fee applies to the GROSS amount** (subtotal +
+3. **The processor fee applies to the GROSS amount** (subtotal +
    tax). **The seller absorbs the fee on the tax portion** — consistent
    with the existing model where the seller already absorbs the
    processing fee on their own chain share. Concretely:

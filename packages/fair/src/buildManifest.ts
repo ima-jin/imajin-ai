@@ -10,10 +10,8 @@ import {
   BUYER_CREDIT_DEFAULT_BPS,
   PLATFORM_FEE_BPS,
   PLATFORM_DID,
-  STRIPE_RATE_BPS,
-  STRIPE_MIN_RATE_BPS,
-  STRIPE_FIXED_CENTS,
 } from './constants';
+import { processorFeeEntry } from './processorFee';
 
 export interface FairFeeManifest {
   version: string;
@@ -108,6 +106,8 @@ export function buildFairManifest(params: {
   taxes?: BuildFairManifestTaxInput[];
   /** #2419 — the pre-tax subtotal (cents) `taxes[].amount` is computed from. Required whenever `taxes` is non-empty. */
   basisAmountCents?: number;
+  /** #2177 — payment rail whose processor fee schedule is written into `fees[]`. Defaults to {@link DEFAULT_PROCESSOR_RAIL}. */
+  rail?: string;
 }): FairFeeManifest {
   const {
     creatorDid,
@@ -166,9 +166,7 @@ export function buildFairManifest(params: {
     { did: creatorDid, role: 'creator', share: 1 },
   ];
 
-  const fees: FairFee[] = [
-    { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, minRateBps: STRIPE_MIN_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
-  ];
+  const fees: FairFee[] = [processorFeeEntry(params.rail)];
 
   const taxes = computeTaxRows(params.taxes, params.basisAmountCents);
 
