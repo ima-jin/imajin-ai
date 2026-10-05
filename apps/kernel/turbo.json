@@ -1,0 +1,23 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      // The kernel renders repo-root docs at build time:
+      //   app/whitepaper/page.tsx      -> docs/mjn-whitepaper.md
+      //   app/developer-guide/page.tsx -> docs/developer-guide.md
+      //   app/page.tsx, app/project/   -> docs/matrix-status.json
+      // They live outside the package, so $TURBO_DEFAULT$ does not see them.
+      // `inputs` replaces the root list, so it is repeated here in full.
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "!**/__tests__/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!tests/**",
+        ".env*",
+        "$TURBO_ROOT$/docs/**"
+      ]
+    }
+  }
+}
