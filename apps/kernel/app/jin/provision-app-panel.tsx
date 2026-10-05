@@ -276,7 +276,7 @@ export function ProvisionAppPanel() {
         // Silent — the form simply stays hidden on a transient network error.
       }
     };
-    checkOperator();
+    void checkOperator();
     return () => {
       cancelled = true;
     };
@@ -293,7 +293,7 @@ export function ProvisionAppPanel() {
       const next = await resolveOutcome(trackedSlug, trackedProposalId);
       if (!cancelled) setOutcome(next);
     };
-    tick();
+    void tick();
     const timer = setInterval(tick, POLL_INTERVAL_MS);
     return () => {
       cancelled = true;
