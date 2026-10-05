@@ -67,6 +67,15 @@ export const GRANT_SCOPE_REGISTRY = [
   // principal (see apps/kernel/src/lib/loops/authorize-publisher.ts). No
   // event feed: this gates a write, not a subscription.
   { scope: 'loops:publish', origin: 'kernel', eventTypes: [] },
+  // #1978 — authorizes `agentDid` to publish `agent.turn.evidence`
+  // attestations (`POST /auth/api/attestations/turn-evidence`,
+  // apps/kernel/src/lib/turn-evidence/) naming the `delegatorDid` principal
+  // as `payload.principalDid`. Same shape as `loops:publish` (#2358): a
+  // valid agent signature only proves the agent controls its own key, so a
+  // publisher is accepted only when it is the principal itself or holds an
+  // active grant with this capability from that exact principal. No event
+  // feed: this gates a write, not a subscription.
+  { scope: 'evidence:publish', origin: 'kernel', eventTypes: [] },
 ] as const satisfies readonly {
   scope: string;
   origin: 'mcp' | 'kernel';

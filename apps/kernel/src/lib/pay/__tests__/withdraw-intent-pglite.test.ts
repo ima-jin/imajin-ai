@@ -19,6 +19,11 @@ import { MJN, InsufficientBalanceError } from '../ledger';
 import { withdrawalIntents } from '@/src/db/schemas/pay';
 import { createPgliteLedgerHarness, type PgliteLedgerHarness } from './pglite-pay-harness';
 
+// Heavy suite (embedded PGlite / seed replay / dynamic imports): the 5000ms
+// default is too tight on contended CI runners (#2548). Scoped to this file;
+// the global default is intentionally left unchanged.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 vi.mock('@/src/db', async () => {
   const pay = await import('@/src/db/schemas/pay');
   return { db: {}, balances: pay.balances, transactions: pay.transactions, withdrawalIntents: pay.withdrawalIntents };

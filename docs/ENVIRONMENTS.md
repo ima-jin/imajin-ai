@@ -305,10 +305,11 @@ corpus's missing `.env.local` is an error in dev (it's in
 
 `VAULT_PATH` is the absolute path to the kernel's on-disk sealed-secrets
 vault file (`FileVaultRepository` — owner GitHub OAuth tokens, connector
-config, Warp API keys sealed via `seal_key`, etc). It carries NO annotation
-in `apps/kernel/.env.example`, so `check-env` treats a missing value as a
-hard error for both the dev and prod kernel targets — the same posture as
-`DATABASE_URL`.
+config, Warp API keys sealed via `seal_key`, etc). It is **not** a key in
+`apps/kernel/.env.example` and must not be set in `apps/kernel/.env.local`
+(#2487): the pm2 ecosystem config is its single source of truth. `check-env`
+reports a stray `VAULT_PATH` in `.env.local` as an extra key, and the
+pre-deploy check below fails the deploy when it disagrees with the ecosystem.
 
 | Environment | pm2 process | `VAULT_PATH` |
 |-------------|--------------|--------------|
@@ -317,12 +318,34 @@ hard error for both the dev and prod kernel targets — the same posture as
 
 Both values are set directly in `deploy/ecosystem.{dev,prod}.config.js`'s
 `env` block (not `.env.local`), mirroring how `NODE_ENV` is already pinned
-there. A literal leading `~` is expanded to the process's home directory at
+there. pm2 env beats the kernel's `--env-file`, so a restart from the
+ecosystem file alone always resolves the same vault file. A literal leading `~` is expanded to the process's home directory at
 runtime (`apps/kernel/src/lib/vault/vault-path.ts`) — pm2 ecosystem configs
 are version-controlled and can't embed a concrete home directory. The kernel
 refuses to start in production when `VAULT_PATH` is unset (see
 `instrumentation.ts#register()`), rather than silently falling back to the
 shared `~/.imajin/vault.json` default used outside production.
+
+#### One source of truth, checked before every deploy (#2487)
+
+The deploy's provisioning step (#2442) runs as
+`node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs`,
+and `--env-file` values beat the ecosystem fallback. A `VAULT_PATH` in
+`.env.local` therefore made the provisioner write into one vault file while the
+running kernel (pm2 env) read another, and the provisioner refused to continue
+on the empty one. `deploy-prod.yml` / `deploy-dev.yml` now run
+`scripts/check-vault-path-consistency.mjs` first. It fails the deploy, naming
+both paths, when any of these disagree:
+
+- the ecosystem config's `VAULT_PATH` for the kernel app (`prod-jin`/`dev-jin`),
+- `VAULT_PATH` in `apps/kernel/.env.local` or the deploy shell (what the
+  provisioner would use),
+- `VAULT_PATH` in the **running** kernel's pm2 env (read from `pm2 jlist`;
+  skipped when the kernel is not running, e.g. a first deploy).
+
+A `.env.local` value that merely matches the ecosystem is a warning. The check
+prints paths and verdicts only (also to the step summary): it never opens the
+vault and reads nothing from `pm2 jlist` but `VAULT_PATH`.
 
 #### Fail-loud vault file (#2412)
 

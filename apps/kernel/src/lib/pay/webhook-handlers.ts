@@ -25,9 +25,29 @@ const log = createLogger('kernel');
 // Shared types
 // ---------------------------------------------------------------------------
 
+/** One `.fair` `taxes[]` row (#2419), cents-based — the subset the webhook needs to book the trust liability. */
+export interface FairManifestTax {
+  jurisdiction: string;
+  kind: string;
+  rateBps: number;
+  /** Pre-tax subtotal the rate applies to (cents). */
+  basisAmount: number;
+  /** Tax collected (cents) — held in trust, never fee base. */
+  amount: number;
+  collectorDid: string;
+  remitTo: string;
+  registrationNumber: string;
+}
+
 export interface FairManifest {
   fees?: Array<{ role: string; name: string; rateBps: number; fixedCents: number }>;
   chain?: Array<{ did: string; role: string; share: number }>;
+  taxes?: FairManifestTax[];
+}
+
+/** Σ`taxes[].amount` in cents. Zero for a manifest without `taxes[]` — fully backward compatible. */
+export function sumTaxCents(taxes: FairManifestTax[] | undefined): number {
+  return (taxes ?? []).reduce((sum, tax) => sum + tax.amount, 0);
 }
 
 /** Minimal shape of a kernel transaction row needed by these helpers. */
@@ -239,15 +259,25 @@ export async function verifyWebhookManifestSignature(params: VerifyWebhookManife
 
 export interface ProcessChainDistributionParams {
   tx: TxRow;
+  /** The full amount Stripe collected (cents) — tax included when `taxes` is supplied. */
   totalAmountCents: number;
   currency: string;
   buyerDid: string | null;
   chain: Array<{ did: string; role: string; share: number }>;
+  /** The manifest's `taxes[]` (#2435). When present, chain shares are computed on `totalAmountCents - Σtaxes.amount` only. */
+  taxes?: FairManifestTax[];
 }
 
 /**
  * Walk the .fair manifest chain and write a fee-ledger row, balance credit,
  * and daily rollup for every participant (node, scope, buyer_credit, etc.).
+ *
+ * #2435: tax is never fee base. When the manifest carries `taxes[]`, every
+ * share (seller, node, platform, protocol, scope, buyer_credit) is computed
+ * on the pre-tax basis — the Stripe total minus Σ`taxes[].amount` — and each
+ * tax row is then booked as a trust-liability credit
+ * (`recordTaxTrustLiabilities`). Without `taxes[]` the basis equals the
+ * total, so this is byte-identical to the pre-#2435 behavior.
  */
 export async function processChainDistribution({
   tx,
@@ -255,9 +285,22 @@ export async function processChainDistribution({
   currency,
   buyerDid,
   chain,
+  taxes,
 }: ProcessChainDistributionParams): Promise<void> {
+  const basisCents = totalAmountCents - sumTaxCents(taxes);
+  if (basisCents <= 0) {
+    // Stripe collected no more than the claimed tax: there is nothing to
+    // split, and distributing the (tax-only) total would skim tax. Fail
+    // closed rather than write any ledger row.
+    log.error(
+      { transactionId: tx.id, totalAmountCents, taxCents: sumTaxCents(taxes) },
+      '[webhook] Stripe total does not exceed manifest taxes[] — skipping chain distribution',
+    );
+    return;
+  }
+
   for (const entry of chain) {
-    const amountCents = Math.round(totalAmountCents * entry.share);
+    const amountCents = Math.round(basisCents * entry.share);
     if (amountCents <= 0) continue;
 
     const recipientDid =
@@ -288,6 +331,97 @@ export async function processChainDistribution({
       await updateRecipientBalance({ recipientDid, isBuyerCredit, amountCents, currency });
       await updateDailyRollup({ tx, recipientDid, amountCents });
     }
+  }
+
+  await recordTaxTrustLiabilities({ tx, taxes: taxes ?? [], currency, buyerDid });
+}
+
+interface RecordTaxTrustLiabilitiesParams {
+  tx: TxRow;
+  taxes: FairManifestTax[];
+  currency: string;
+  buyerDid: string | null;
+}
+
+/**
+ * Book each `.fair` `taxes[]` row as a trust-liability credit (#2435),
+ * mirroring what `settlePayment()`'s `creditTaxRows` records for the
+ * canonical path:
+ *  - a `feeLedger` row (`role: 'tax'`, status `held_in_trust`) — never
+ *    `accrued`, since tax is not a fee anyone has earned; and
+ *  - a `transactions` row tagged `{ tax, jurisdiction, kind, rateBps,
+ *    remitTo, registrationNumber, trustLiability: true, remitted: null }`,
+ *    the exact shape `getTaxRemittanceOwed` sums.
+ * No internal balance is credited: this checkout is a Stripe destination
+ * charge, so the tax money already sits in the collector's connected
+ * account (`validateCheckoutBody` guarantees the collector is the seller).
+ * The transactions row deliberately carries no `stripeId`, so the webhook's
+ * by-session idempotency lookup can never match it. Zero-amount rows are
+ * skipped, consistent with `taxLineItems` not sending them to Stripe.
+ */
+async function recordTaxTrustLiabilities({
+  tx,
+  taxes,
+  currency,
+  buyerDid,
+}: RecordTaxTrustLiabilitiesParams): Promise<void> {
+  const bookable = taxes.filter((tax) => tax.amount > 0);
+  if (bookable.length === 0) return;
+
+  const feeLedgerRows = bookable.map((tax) => ({
+    id: generateId('fl'),
+    transactionId: tx.id,
+    recipientDid: tax.collectorDid,
+    role: 'tax',
+    amountCents: tax.amount,
+    currency,
+    status: 'held_in_trust',
+  }));
+
+  const transactionRows = bookable.map((tax) => ({
+    id: generateId('tx'),
+    service: tx.service || 'unknown',
+    type: 'tax',
+    fromDid: buyerDid,
+    toDid: tax.collectorDid,
+    amount: (tax.amount / 100).toFixed(2),
+    currency,
+    unit: MJN,
+    sourceKind: 'receipt',
+    status: 'completed',
+    source: 'external',
+    metadata: {
+      role: 'tax',
+      tax: true,
+      jurisdiction: tax.jurisdiction,
+      kind: tax.kind,
+      rateBps: tax.rateBps,
+      remitTo: tax.remitTo,
+      registrationNumber: tax.registrationNumber,
+      trustLiability: true,
+      remitted: null,
+      funded: true,
+      funded_provider: 'stripe',
+      balance_skipped: true,
+      reason: 'externally_funded_seller',
+      checkoutTransactionId: tx.id,
+    },
+  }));
+
+  // One transaction: a tax fee-ledger row can never land without its
+  // `transactions` twin (or the reverse).
+  await db.transaction(async (dbTx) => {
+    await dbTx.insert(feeLedger).values(feeLedgerRows);
+    await dbTx.insert(transactions).values(transactionRows);
+  });
+
+  for (const tax of bookable) {
+    publish('fee.record', {
+      issuer: process.env.PLATFORM_DID || 'system',
+      subject: tax.collectorDid,
+      scope: 'pay',
+      payload: { transactionId: tx.id, recipientDid: tax.collectorDid, role: 'tax', amountCents: tax.amount, currency },
+    }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
   }
 }
 

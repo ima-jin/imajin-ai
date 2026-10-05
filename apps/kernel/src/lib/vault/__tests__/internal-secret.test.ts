@@ -135,20 +135,33 @@ vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 10)}`,
 }));
 
-const { sealAndGrantStaticSecretMock, fetchGrantSecretMock, ackGrantMock, loadAndUnsealMock, subscriptions, warnMock, errorMock } = vi.hoisted(() => ({
+const {
+  sealAndGrantStaticSecretMock, fetchGrantSecretMock, ackGrantMock, loadAndUnsealMock, clearSelfGrantExpiryMock,
+  subscriptions, warnMock, errorMock,
+} = vi.hoisted(() => ({
   sealAndGrantStaticSecretMock: vi.fn(),
   fetchGrantSecretMock: vi.fn(),
   ackGrantMock: vi.fn(),
   loadAndUnsealMock: vi.fn(),
+  clearSelfGrantExpiryMock: vi.fn(),
   subscriptions: new Map<string, Array<() => void>>(),
   warnMock: vi.fn(),
   errorMock: vi.fn(),
 }));
+
+/** Same predicate the real `activeGrantTuple` builds, over the in-memory grants store. */
+function activeGrantTupleDouble(tuple: { subject: string; grantedTo: string; field: string }): Predicate {
+  return (row) =>
+    row.status === 'active' && row.subject === tuple.subject && row.grantedTo === tuple.grantedTo && row.field === tuple.field;
+}
+
 vi.mock('../index', () => ({
   sealAndGrantStaticSecret: sealAndGrantStaticSecretMock,
   fetchGrantSecret: fetchGrantSecretMock,
   ackGrant: ackGrantMock,
   loadAndUnseal: loadAndUnsealMock,
+  clearSelfGrantExpiry: clearSelfGrantExpiryMock,
+  activeGrantTuple: activeGrantTupleDouble,
 }));
 
 // #2446 fix 3 — capture the vault hot-reload subscriptions getInternalSecret registers.
@@ -201,6 +214,7 @@ beforeEach(() => {
   warnMock.mockReset();
   errorMock.mockReset();
   loadAndUnsealMock.mockReset().mockResolvedValue(undefined);
+  clearSelfGrantExpiryMock.mockReset().mockResolvedValue({ status: 'none' });
   _resetInternalSecretCacheForTests();
 
   getNodeSigningIdentityMock.mockReset().mockReturnValue({
@@ -518,6 +532,86 @@ describe('getInternalSecret — no purpose-tagged grant: adopt before generating
     await expect(getInternalSecret(PURPOSE)).resolves.toBe('operator-rotated-value');
     expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_untagged');
     expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('getInternalSecret — the node\'s own grant never silently expires (#2451)', () => {
+  const claimKey = `${NODE_DID}::${PURPOSE}`;
+  const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const expiringUntagged = () => ({
+    id: 'vdg_untagged', subject: NODE_DID, grantedTo: NODE_DID, field: FIELD, purpose: null, status: 'active', expiresAt: expiry,
+  });
+
+  it('re-tag of an expiring self-grant clears its expiry and says so (WARN carries the old date)', async () => {
+    grantsStore.set('vdg_untagged', expiringUntagged());
+    loadAndUnsealMock.mockResolvedValue('operator-rotated-value');
+    clearSelfGrantExpiryMock.mockResolvedValue({ status: 'cleared', previousExpiresAt: expiry });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('operator-rotated-value');
+
+    expect(clearSelfGrantExpiryMock).toHaveBeenCalledTimes(1);
+    expect(clearSelfGrantExpiryMock).toHaveBeenCalledWith('vdg_untagged');
+    expect(provisionsStore.get(claimKey)?.grantId).toBe('vdg_untagged');
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ previousExpiresAt: expiry.toISOString() }),
+      expect.stringMatching(/cleared it/),
+    );
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it('a grant an earlier boot already re-tagged but left expiring is healed before it is fetched', async () => {
+    grantsStore.set('vdg_tagged', {
+      id: 'vdg_tagged', subject: NODE_DID, grantedTo: NODE_DID, purpose: PURPOSE, status: 'active', expiresAt: expiry,
+    });
+    clearSelfGrantExpiryMock.mockResolvedValue({ status: 'cleared', previousExpiresAt: expiry });
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'existing-secret-value' });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('existing-secret-value');
+
+    expect(clearSelfGrantExpiryMock).toHaveBeenCalledWith('vdg_tagged');
+    expect(clearSelfGrantExpiryMock.mock.invocationCallOrder[0]).toBeLessThan(fetchGrantSecretMock.mock.invocationCallOrder[0]!);
+  });
+
+  it('a non-expiring self-grant is left alone and a healthy boot stays quiet', async () => {
+    grantsStore.set('vdg_tagged', {
+      id: 'vdg_tagged', subject: NODE_DID, grantedTo: NODE_DID, purpose: PURPOSE, status: 'active', expiresAt: null,
+    });
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'existing-secret-value' });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('existing-secret-value');
+
+    expect(clearSelfGrantExpiryMock).not.toHaveBeenCalled();
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
+  it('where the node cannot re-sign (Tier 1 etc.) it WARNs with the expiry date and carries on', async () => {
+    grantsStore.set('vdg_tagged', {
+      id: 'vdg_tagged', subject: NODE_DID, grantedTo: NODE_DID, purpose: PURPOSE, status: 'active', expiresAt: expiry,
+    });
+    clearSelfGrantExpiryMock.mockResolvedValue({ status: 'blocked', expiresAt: expiry, reason: 'tier1' });
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'existing-secret-value' });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('existing-secret-value');
+
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ expiresAt: expiry.toISOString(), reason: 'tier1' }),
+      expect.stringMatching(/rotate it from \/admin\/vault/),
+    );
+  });
+
+  it('a failure while clearing the expiry never blocks the boot from reading its secret', async () => {
+    grantsStore.set('vdg_tagged', {
+      id: 'vdg_tagged', subject: NODE_DID, grantedTo: NODE_DID, purpose: PURPOSE, status: 'active', expiresAt: expiry,
+    });
+    clearSelfGrantExpiryMock.mockRejectedValue(new Error('db hiccup'));
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'existing-secret-value' });
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('existing-secret-value');
+
+    expect(errorMock).toHaveBeenCalledWith(
+      expect.objectContaining({ grantId: 'vdg_tagged' }),
+      expect.stringMatching(/could not clear the self-grant expiry/),
+    );
   });
 });
 

@@ -9,6 +9,14 @@
  * `metadata.remitted` is `null`; once a human/ops process remits it, the
  * row's `metadata.remitted` should be set to an ISO timestamp (out of
  * scope for this issue — #2419 ships the read-only query only).
+ *
+ * Grouping by jurisdiction + kind (not jurisdiction alone) is intentional
+ * (#2435 review question): one jurisdiction can carry several taxes that are
+ * filed and remitted separately — e.g. `CA-QC` GST/HST to the CRA and QST to
+ * Revenu Québec — so collapsing them to a single per-jurisdiction total would
+ * give a number nobody can remit against. Credits written by `settlePayment()`
+ * and by the Stripe webhook's tax path (#2435) share the same metadata shape,
+ * so both appear here.
  */
 import { and, eq, sql } from 'drizzle-orm';
 import { db, transactions } from '@/src/db';

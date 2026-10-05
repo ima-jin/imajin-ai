@@ -2,6 +2,7 @@ const { WebSocketServer } = require('ws');
 const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification-backlog');
 const { createHeartbeat } = require('./src/lib/ws/heartbeat');
+const { handleDidConnectionsRequest, DID_CONNECTIONS_PATH } = require('./src/lib/ws/did-connections');
 
 /** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
@@ -649,4 +650,25 @@ function setupBroadcastRoute(server) {
   });
 }
 
-module.exports = { setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute, sendToDid };
+/**
+ * Read-only internal route reporting which DIDs have an open own socket
+ * (#2407). Registered separately from `setupBroadcastRoute` so the push path
+ * stays untouched. Next routes reach it through
+ * `src/lib/auth/did-connections.ts`.
+ */
+function setupDidConnectionsRoute(server) {
+  const originalListeners = server.listeners('request').slice();
+  server.removeAllListeners('request');
+
+  server.on('request', (req, res) => {
+    if (req.method === 'POST' && req.url === DID_CONNECTIONS_PATH) {
+      handleDidConnectionsRequest(req, res, didSockets, process.env.AUTH_INTERNAL_API_KEY);
+      return;
+    }
+    for (const listener of originalListeners) {
+      listener.call(server, req, res);
+    }
+  });
+}
+
+module.exports = { setupWebSocket, broadcastMessage, broadcastEvent, setupBroadcastRoute, setupDidConnectionsRoute, sendToDid };

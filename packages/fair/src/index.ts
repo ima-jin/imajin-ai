@@ -29,7 +29,7 @@ export { isFairManifestV11 } from './types';
 export type { FairTemplate, TemplateConfig } from './templates';
 export { templates, getDefaultManifest } from './templates';
 
-export { validateManifest, isValidManifest } from './validate';
+export { validateManifest, isValidManifest, validateTaxes } from './validate';
 // createManifest removed — use getDefaultManifest() or buildFairManifest() instead
 export { canonicalize, canonicalizeForSigning } from './canonical';
 export { signManifest, verifyManifest, platformSign, verifyPlatformSignature } from './sign';

@@ -24,6 +24,11 @@ import * as ledgerNamespace from '../ledger';
 import { MJN } from '../ledger';
 import { createPgliteLedgerHarness, type PgliteLedgerHarness } from './pglite-pay-harness';
 
+// Heavy suite (embedded PGlite / seed replay / dynamic imports): the 5000ms
+// default is too tight on contended CI runners (#2548). Scoped to this file;
+// the global default is intentionally left unchanged.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 // Matches ledger.test.ts's existing mock: `ledger.ts` imports `{ db, balances }`
 // from `@/src/db`, whose barrel eagerly calls `createDb()` (and therefore
 // requires `DATABASE_URL`) at module-eval time. `db` is never used directly by
