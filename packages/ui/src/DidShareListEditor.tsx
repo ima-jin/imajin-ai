@@ -315,7 +315,7 @@ export function DidShareListEditor({
     const uniqueDids = [...new Set(dids)].filter((did) => !(did in resolvedCache));
     if (uniqueDids.length === 0) return;
 
-    void Promise.all(
+    Promise.all(
       uniqueDids.map(async (did) => {
         try {
           const profile = await resolveProfile(did);

@@ -240,7 +240,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
   const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    void fetchAll();
+    fetchAll();
   }, []);
 
   async function fetchAll() {
@@ -292,7 +292,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
         const data = await res.json();
         setGeneratedInvite({ url: data.url, code: data.invite.code });
         setInviteNote('');
-        void fetchSentInvites();
+        fetchSentInvites();
       } else {
         const err = await res.json();
         toast.error(err.error || 'Failed to generate invite');
@@ -327,11 +327,11 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
         );
         setInviteEmail('');
         setEmailNote('');
-        void fetchSentInvites();
+        fetchSentInvites();
       } else {
         setEmailResult({ type: 'error', message: data.error || 'Failed to send invite' });
         // If it's a pending invite issue, refresh the list
-        if (data.pendingInvite) void fetchSentInvites();
+        if (data.pendingInvite) fetchSentInvites();
       }
     } catch {
       setEmailResult({ type: 'error', message: 'An error occurred' });
@@ -344,7 +344,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
     try {
       const res = await fetch(`/connections/api/invites/${code}`, { method: 'DELETE' });
       if (res.ok) {
-        void fetchSentInvites();
+        fetchSentInvites();
       } else {
         toast.error('Failed to delete invite');
       }
@@ -354,7 +354,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
   }
 
   function copyLink(url: string, code: string) {
-    void navigator.clipboard.writeText(url);
+    navigator.clipboard.writeText(url);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
   }

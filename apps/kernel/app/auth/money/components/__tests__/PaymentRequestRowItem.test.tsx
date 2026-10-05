@@ -149,3 +149,37 @@ describe('PaymentRequestRowItem — void', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 });
+
+describe('PaymentRequestRowItem — settlement reference', () => {
+  it('shows the method and the note when a settlement note was recorded', () => {
+    render(
+      <PaymentRequestRowItem
+        row={row({ status: 'settled_manual', settlementRef: { method: 'etransfer', note: 'ref 42' } as PaymentRequestRow['settlementRef'] })}
+        onChanged={vi.fn()}
+      />,
+    );
+    expandRow();
+
+    expect(screen.getByText('etransfer — ref 42')).toBeDefined();
+  });
+
+  it('shows just the method when no note was recorded', () => {
+    render(
+      <PaymentRequestRowItem
+        row={row({ status: 'settled_manual', settlementRef: { method: 'cash' } as PaymentRequestRow['settlementRef'] })}
+        onChanged={vi.fn()}
+      />,
+    );
+    expandRow();
+
+    expect(screen.getByText('cash')).toBeDefined();
+  });
+
+  it('shows a dash placeholder when there is no settlement reference', () => {
+    render(<PaymentRequestRowItem row={row({ settlementRef: null })} onChanged={vi.fn()} />);
+    expandRow();
+
+    const label = screen.getByText('Settlement ref');
+    expect(label.nextElementSibling?.textContent).toBe('—');
+  });
+});

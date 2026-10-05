@@ -92,7 +92,7 @@ export default function HealthPage() {
   };
 
   useEffect(() => {
-    void checkHealth();
+    checkHealth();
     // Auto-refresh every 30 seconds
     const interval = setInterval(checkHealth, 30000);
     return () => clearInterval(interval);

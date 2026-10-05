@@ -86,7 +86,7 @@ export default function SecuritySettingsPage() {
   const [actionLoading, setActionLoading] = useState('');
 
   useEffect(() => {
-    void loadData();
+    loadData();
   }, []);
 
   async function loadData() {

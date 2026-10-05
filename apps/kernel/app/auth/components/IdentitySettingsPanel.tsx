@@ -41,7 +41,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
   const onboardUrl = `${authUrl}/auth/onboard?scope=${encodeURIComponent(groupDid)}`;
 
   useEffect(() => {
-    void loadData();
+    loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDid]);
 
@@ -302,7 +302,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
           </code>
           <button type="button"
             onClick={() => {
-              void navigator.clipboard.writeText(onboardUrl).then(() => {
+              navigator.clipboard.writeText(onboardUrl).then(() => {
                 setCopyLabel('Copied!');
                 setTimeout(() => setCopyLabel('Copy'), 2000);
               });

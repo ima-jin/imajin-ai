@@ -30,7 +30,7 @@ export default function SurveyResponsePage() {
   const [surveyModel, setSurveyModel] = useState<Model | null>(null);
 
   useEffect(() => {
-    void fetchSurvey();
+    fetchSurvey();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 

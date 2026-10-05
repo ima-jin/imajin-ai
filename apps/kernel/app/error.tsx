@@ -31,7 +31,7 @@ async function reportError(error: Error): Promise<void> {
 
 export default function ErrorBoundary({ error, reset }: Readonly<ErrorBoundaryProps>) {
   useEffect(() => {
-    void reportError(error);
+    reportError(error);
   }, [error]);
 
   return (

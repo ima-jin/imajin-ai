@@ -21,7 +21,7 @@ export default function UserSurveysPage() {
   const [surveys, setSurveys] = useState<Survey[]>([]);
 
   useEffect(() => {
-    void fetchSurveys();
+    fetchSurveys();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle]);
 

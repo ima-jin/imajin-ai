@@ -69,7 +69,7 @@ function FairEditModal({
             manifest={draft}
             mimeType={(draft as FairManifestV11).type}
             onChange={(m) => setDraft(m)}
-            onSave={() => { setSaving(true); void onSave(draft); setSaving(false); onCancel(); }}
+            onSave={() => { setSaving(true); onSave(draft); setSaving(false); onCancel(); }}
             readOnly={false}
           />
         ) : (

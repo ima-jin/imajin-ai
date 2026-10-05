@@ -67,7 +67,7 @@ export function EventLobbyAccordion({ eventId, eventDid }: Readonly<EventLobbyAc
         setHasAccess(false);
       }
     }
-    void checkAccess();
+    checkAccess();
   }, [eventId]);
 
   const handleUnreadChange = useCallback<React.Dispatch<React.SetStateAction<number>>>(

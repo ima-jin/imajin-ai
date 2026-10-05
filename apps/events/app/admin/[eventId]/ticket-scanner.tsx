@@ -25,7 +25,7 @@ function playTone(frequency: number, duration: number) {
     osc.frequency.value = frequency;
     osc.connect(ctx.destination);
     osc.start();
-    setTimeout(() => { osc.stop(); void ctx.close(); }, duration);
+    setTimeout(() => { osc.stop(); ctx.close(); }, duration);
   } catch {
     // Audio not available — fail silently
   }
@@ -103,7 +103,7 @@ export function TicketScanner({ eventId, onCheckIn, lookupGuest }: Readonly<Tick
   useEffect(() => {
     let mounted = true;
 
-    void (async () => {
+    (async () => {
       const { Html5Qrcode } = await import('html5-qrcode');
       if (!mounted) return;
       const scanner = new Html5Qrcode('qr-reader');
@@ -122,7 +122,7 @@ export function TicketScanner({ eventId, onCheckIn, lookupGuest }: Readonly<Tick
 
     return () => {
       mounted = false;
-      void stopScanner();
+      stopScanner();
       processingRef.current = false;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps

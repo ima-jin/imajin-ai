@@ -8,7 +8,7 @@ export function ShareButton() {
   return (
     <button type="button"
       onClick={() => {
-        void navigator.clipboard.writeText(globalThis.location.href);
+        navigator.clipboard.writeText(globalThis.location.href);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       }}

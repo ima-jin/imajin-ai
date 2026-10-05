@@ -75,10 +75,24 @@ const BARE_REACT_USAGE_RE = /(?<![.\w$])React\.\w+/g;
 // Anything that would put a binding literally named `React` (not `React2`,
 // not `import_react`) into this file's module scope.
 const REACT_BINDING_RES = [
-  /(?:^|[\n;])\s*import\s+React\s*[,\s]/,
-  /(?:^|[\n;])\s*import\s*\{[^}]*\bdefault\s+as\s+React\b[^}]*\}\s*from/,
+  /(?:^|[\n;])\s*import\s+React[,\s]/,
   /(?:^|[\n;])\s*(?:var|let|const)\s+React\s*=/,
 ];
+
+// `import { default as React } from ...` — matched in two linear steps (find
+// each named-import block, then look inside its braces) instead of one regex
+// with two `[^}]*` runs around the `default as React` core, which backtracks
+// super-linearly on a long non-matching brace block.
+const NAMED_IMPORT_BLOCK_RE = /(?:^|[\n;])\s*import\s*\{([^}]*)\}\s*from/g;
+const DEFAULT_AS_REACT_RE = /\bdefault\s+as\s+React\b/;
+
+/** True when `content` has an `import { ..., default as React, ... } from ...` block. */
+function hasDefaultAsReactImport(content) {
+  for (const match of content.matchAll(NAMED_IMPORT_BLOCK_RE)) {
+    if (DEFAULT_AS_REACT_RE.test(match[1])) return true;
+  }
+  return false;
+}
 
 /** Recursively lists every `dist/*.js` / `dist/*.cjs` file under each `packages/*` package. */
 function listDistFiles() {
@@ -113,7 +127,7 @@ function scanFile(filePath) {
   const content = readFileSync(filePath, 'utf8');
   const usages = content.match(BARE_REACT_USAGE_RE);
   if (!usages || usages.length === 0) return null;
-  if (REACT_BINDING_RES.some((re) => re.test(content))) return null;
+  if (REACT_BINDING_RES.some((re) => re.test(content)) || hasDefaultAsReactImport(content)) return null;
   return { file: relative(ROOT, filePath).replaceAll('\\', '/'), count: usages.length };
 }
 

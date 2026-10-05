@@ -21,7 +21,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void checkSession();
+    checkSession();
   }, []);
 
   async function checkSession() {

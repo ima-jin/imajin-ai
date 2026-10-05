@@ -241,7 +241,7 @@ export default function SurveyEmbedPage() {
   }, [loading, submitted, surveyData, getParentOrigin]);
 
   useEffect(() => {
-    void fetchSurvey();
+    fetchSurvey();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 

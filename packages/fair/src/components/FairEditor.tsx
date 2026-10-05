@@ -60,7 +60,7 @@ function useDidNames(
     const toResolve = dids.filter(d => d && !names[d]);
     if (toResolve.length === 0) return;
 
-    void Promise.all(
+    Promise.all(
       toResolve.map(async (did) => {
         try {
           const profile = await resolveProfile(did);

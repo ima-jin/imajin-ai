@@ -140,7 +140,7 @@ export function Chat({
   // Mark as read when messages load
   useEffect(() => {
     if (!isLoading && messages.length > 0) {
-      void markRead();
+      markRead();
     }
   }, [isLoading, messages.length, markRead]);
 
@@ -149,7 +149,7 @@ export function Chat({
     if (!lastMessage) return;
     if (lastMessage.type === 'new_message' && lastMessage.message) {
       pushMessage(lastMessage.message as ChatMessage);
-      void markRead();
+      markRead();
     } else if (lastMessage.type === 'message_edited' && lastMessage.message) {
       const edited = lastMessage.message as ChatMessage;
       updateMessage(edited.id, { content: edited.content, editedAt: edited.editedAt });
@@ -448,16 +448,16 @@ export function Chat({
                 onEdit={() => handleEdit(msg)}
                 onDelete={async () => {
                   removeMessage(msg.id);
-                  void deleteMessage(msg.id);
+                  deleteMessage(msg.id);
                 }}
                 reactions={computeReactions(msg.reactions, currentUserDid)}
                 onReactionToggle={(emoji, reacted) => {
                   if (reacted) {
                     if (currentUserDid) removeReactionFromMessage(msg.id, emoji, currentUserDid);
-                    void removeReaction(msg.id, emoji);
+                    removeReaction(msg.id, emoji);
                   } else {
                     if (currentUserDid) addReactionToMessage(msg.id, emoji, currentUserDid);
-                    void addReaction(msg.id, emoji);
+                    addReaction(msg.id, emoji);
                   }
                 }}
                 replyToMessage={replyToMsg ? toMsgShape(replyToMsg) : undefined}

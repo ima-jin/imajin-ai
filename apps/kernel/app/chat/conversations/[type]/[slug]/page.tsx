@@ -374,7 +374,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
                   onChange={(e) => setNameInput(e.target.value)}
                   onBlur={handleNameSave}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); void handleNameSave(); }
+                    if (e.key === 'Enter') { e.preventDefault(); handleNameSave(); }
                     if (e.key === 'Escape') setEditingName(false);
                   }}
                   className="font-semibold bg-transparent border-b border-orange-500 outline-none w-full text-base"
@@ -499,7 +499,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
               />
             ) : (
               <button type="button"
-                onClick={() => { setShowAddMember(true); void loadConnections(); }}
+                onClick={() => { setShowAddMember(true); loadConnections(); }}
                 className="text-xs text-orange-500 hover:text-orange-600 transition"
               >
                 + Add member

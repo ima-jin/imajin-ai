@@ -45,7 +45,7 @@ export default function ResultsPage() {
   const [aggregation, setAggregation] = useState<Aggregation>({});
 
   useEffect(() => {
-    void fetchData();
+    fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [surveyId]);
 

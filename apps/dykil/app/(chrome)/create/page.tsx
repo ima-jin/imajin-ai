@@ -238,7 +238,7 @@ function CreateSurveyContent() {
 
   useEffect(() => {
     if (editId) {
-      void fetchSurvey();
+      fetchSurvey();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editId]);

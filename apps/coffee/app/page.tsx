@@ -18,7 +18,7 @@ export default function CoffeePage() {
       } catch { setIsLoggedIn(false); }
       finally { setCheckingAuth(false); }
     }
-    void checkAuth();
+    checkAuth();
   }, []);
 
   return (

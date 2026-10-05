@@ -179,7 +179,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
     setDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file?.type === 'application/json') {
-      void handleFileSelect(file);
+      handleFileSelect(file);
     } else {
       setKeypairError('Please drop a valid JSON backup file');
     }
@@ -220,7 +220,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
             <input
               type="file"
               accept="application/json"
-              onChange={e => { const f = e.target.files?.[0]; if (f) void handleFileSelect(f); }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
               className="hidden"
               disabled={keypairLoading}
             />

@@ -148,7 +148,7 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
       }
     }
 
-    void checkSession();
+    checkSession();
 
     // Re-fetch when another tab or component signals a session change
     // (e.g. after onboarding claim in a polling flow)
