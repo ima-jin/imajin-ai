@@ -12,13 +12,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { db, connectedAccounts } from '@/src/db';
 import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
 import { withLogger } from '@imajin/logger';
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

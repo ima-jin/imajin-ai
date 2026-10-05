@@ -38,7 +38,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 import { MJN, InsufficientBalanceError } from '@/src/lib/pay/ledger';
@@ -48,7 +48,7 @@ import { resolveWithdrawDestination } from '@/src/lib/pay/withdraw-destination';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

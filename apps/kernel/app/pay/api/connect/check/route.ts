@@ -9,12 +9,12 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { db, connectedAccounts } from '@/src/db';
 import { withLogger } from '@imajin/logger';
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

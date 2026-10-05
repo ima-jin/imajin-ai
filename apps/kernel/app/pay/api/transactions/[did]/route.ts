@@ -10,12 +10,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { eq, and, desc, or } from 'drizzle-orm';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
   const params = await props.params;

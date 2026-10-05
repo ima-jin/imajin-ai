@@ -7,14 +7,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/src/db';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
 
 const log = createLogger('kernel');
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export async function GET(
   request: NextRequest,

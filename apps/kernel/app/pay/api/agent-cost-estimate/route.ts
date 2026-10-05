@@ -28,7 +28,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, profiles } from '@/src/db';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import {
@@ -46,7 +46,7 @@ interface EstimateBody {
   includeSessionInit?: boolean;
 }
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);

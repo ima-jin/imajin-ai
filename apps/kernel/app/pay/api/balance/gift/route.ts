@@ -29,11 +29,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, transactions } from '@/src/db';
 import { resolveEffectiveDid } from '@imajin/auth';
 import { generateId } from '@/src/lib/kernel/id';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { MJN, MJNX, creditUnit, debitFundedLegs, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 
-export const OPTIONS = corsOptions;
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
