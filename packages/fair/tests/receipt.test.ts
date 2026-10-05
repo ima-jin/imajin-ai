@@ -177,3 +177,11 @@ describe('signReceipt / verifyReceipt', () => {
     expect(await verifyReceipt(badBuyer, verifyKey)).toBeNull();
   });
 });
+
+describe('loadSigningKey Promise contract', () => {
+  it('returns a rejected promise (not a synchronous throw) for a wrong-length key', async () => {
+    let pending: Promise<CryptoKey> | undefined;
+    expect(() => { pending = loadSigningKey('aabb'); }).not.toThrow();
+    await expect(pending).rejects.toThrow(/32- or 48-byte hex/);
+  });
+});

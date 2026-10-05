@@ -27,7 +27,7 @@ export class InMemoryFieldLock implements VaultLock {
         });
     }
 
-    private async release(field: string): Promise<void> {
+    private release(field: string): Promise<void> {
         const queue = this.queues.get(field);
         if (queue && queue.length > 0) {
             const next = queue.shift()!;
@@ -35,6 +35,7 @@ export class InMemoryFieldLock implements VaultLock {
         } else {
             this.held.delete(field);
         }
+        return Promise.resolve();
     }
 }
 

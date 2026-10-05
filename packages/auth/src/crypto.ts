@@ -117,8 +117,9 @@ export function signSync(message: string | Uint8Array, privateKeyHex: string): s
 /**
  * Async version of sign (same result, but async for consistency)
  */
-export async function sign(message: string | Uint8Array, privateKeyHex: string): Promise<string> {
-  return signSync(message, privateKeyHex);
+export function sign(message: string | Uint8Array, privateKeyHex: string): Promise<string> {
+  // Keep the Promise contract: a synchronous throw becomes a rejection.
+  return new Promise<string>((resolve) => resolve(signSync(message, privateKeyHex)));
 }
 
 /**
@@ -147,12 +148,13 @@ export function verifySync(
 /**
  * Async version of verify (same result, but async for consistency)
  */
-export async function verify(
+export function verify(
   signature: string,
   message: string | Uint8Array,
   publicKeyHex: string
 ): Promise<boolean> {
-  return verifySync(signature, message, publicKeyHex);
+  // Keep the Promise contract: a synchronous throw becomes a rejection.
+  return new Promise<boolean>((resolve) => resolve(verifySync(signature, message, publicKeyHex)));
 }
 
 /**

@@ -34,3 +34,19 @@ describe('verifyVaultCid', () => {
         expect(await verifyVaultCid(blob, 'wrong-cid')).toBe(false);
     });
 });
+
+describe('vault CID helpers keep their Promise contract', () => {
+    it('computeVaultCid rejects (rather than throwing synchronously) for a missing blob', async () => {
+        const bad = undefined as unknown as { encrypted: string; nonce: string };
+        let pending: Promise<string> | undefined;
+        expect(() => { pending = computeVaultCid(bad); }).not.toThrow();
+        await expect(pending).rejects.toThrow();
+    });
+
+    it('verifyVaultCid rejects (rather than throwing synchronously) for a missing blob', async () => {
+        const bad = undefined as unknown as { encrypted: string; nonce: string };
+        let pending: Promise<boolean> | undefined;
+        expect(() => { pending = verifyVaultCid(bad, 'cid'); }).not.toThrow();
+        await expect(pending).rejects.toThrow();
+    });
+});

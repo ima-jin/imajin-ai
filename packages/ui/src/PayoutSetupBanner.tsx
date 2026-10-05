@@ -72,7 +72,7 @@ export function PayoutSetupBanner({
       }
     };
 
-    if (did) check();
+    if (did) void check().catch((err: unknown) => { console.error('PayoutSetupBanner: status check failed:', err); });
     else setLoading(false);
   }, [did, payUrl]);
 

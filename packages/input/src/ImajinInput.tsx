@@ -4,6 +4,17 @@ import { VoiceRecorder } from './VoiceRecorder';
 import { LocationPicker, type LocationData } from './LocationPicker';
 import { FileAttachment, type FileAttachmentData } from './FileAttachment';
 
+/**
+ * Hand a value to a consumer callback that may be sync or async. A rejected
+ * promise is logged instead of being left unhandled; a synchronous throw still
+ * propagates exactly as before.
+ */
+function settleCallback(name: string, result: void | Promise<void>): void {
+  void Promise.resolve(result).catch((err: unknown) => {
+    console.error(`ImajinInput: ${name} failed:`, err);
+  });
+}
+
 export type InputFeature = 'voice' | 'emoji' | 'files' | 'location';
 
 export interface TranscriptionMeta {
@@ -95,7 +106,7 @@ export function ImajinInput({
     e?.preventDefault();
     const trimmed = value.trim();
     if (!trimmed && !attachment) return;
-    if (trimmed) onSubmit(trimmed);
+    if (trimmed) settleCallback('onSubmit', onSubmit(trimmed));
     setValue('');
     setAttachment(null);
     // Reset textarea height
@@ -160,14 +171,14 @@ export function ImajinInput({
       const file = new File([blob], `recording-${Date.now()}.webm`, {
         type: blob.type || 'audio/webm',
       });
-      onMediaReady(file);
+      settleCallback('onMediaReady', onMediaReady(file));
     }
   }
 
   function handleFileAttach(data: FileAttachmentData) {
     setAttachment(data);
     setShowAttachMenu(false);
-    if (onMediaReady) onMediaReady(data.file);
+    if (onMediaReady) settleCallback('onMediaReady', onMediaReady(data.file));
   }
 
   function handleLocation(loc: LocationData) {
@@ -207,7 +218,7 @@ export function ImajinInput({
         setTranscribing(false);
         setTranscribeProgress('');
         // Fallback: attach as media
-        if (onMediaReady) onMediaReady(file);
+        if (onMediaReady) settleCallback('onMediaReady', onMediaReady(file));
       });
 
     if (voiceMemoRef.current) voiceMemoRef.current.value = '';

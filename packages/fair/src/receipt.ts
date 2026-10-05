@@ -155,11 +155,14 @@ function extractEd25519Seed(privateKeyHex: string): Buffer {
   throw new Error(`AUTH_PRIVATE_KEY must be 32- or 48-byte hex (got ${buf.length} bytes)`);
 }
 
-export async function loadSigningKey(privateKeyHex: string): Promise<CryptoKey> {
-  const seed = extractEd25519Seed(privateKeyHex);
-  const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
-  const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
-  return jose.importPKCS8(pkcs8Pem, 'EdDSA');
+export function loadSigningKey(privateKeyHex: string): Promise<CryptoKey> {
+  // Keep the Promise contract: a bad key (thrown synchronously while parsing) becomes a rejection.
+  return new Promise<CryptoKey>((resolve) => {
+    const seed = extractEd25519Seed(privateKeyHex);
+    const pkcs8Der = Buffer.concat([PKCS8_ED25519_PREFIX, seed]);
+    const pkcs8Pem = `-----BEGIN PRIVATE KEY-----\n${pkcs8Der.toString('base64')}\n-----END PRIVATE KEY-----`;
+    resolve(jose.importPKCS8(pkcs8Pem, 'EdDSA'));
+  });
 }
 
 /**

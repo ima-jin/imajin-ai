@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { attempt } from '../concurrency';
 import type { BrokerReactor } from '../types';
 import { makeRejection } from './rejection';
 
@@ -21,40 +22,41 @@ const log = createLogger('bus:broker:intersection-scope');
  *   arriverIntentId    string
  *   candidateIntentId  string
  */
-export const intersectionScopeReactor: BrokerReactor = async (state) => {
-  const { request } = state;
-  const data: Record<string, unknown> = request.data ?? {};
+export const intersectionScopeReactor: BrokerReactor = (state) =>
+  attempt(() => {
+    const { request } = state;
+    const data: Record<string, unknown> = request.data ?? {};
 
-  const overlapTags: string[] = Array.isArray(data.overlapTags)
-    ? data.overlapTags.filter((t): t is string => typeof t === 'string')
-    : [];
+    const overlapTags: string[] = Array.isArray(data.overlapTags)
+      ? data.overlapTags.filter((t): t is string => typeof t === 'string')
+      : [];
 
-  log.info(
-    { requester: request.requester, subject: request.subject, overlapTags },
-    'Applying intersection scope'
-  );
-
-  if (overlapTags.length === 0) {
-    log.warn(
-      { requester: request.requester, subject: request.subject },
-      'No overlap tags in intersection-scope — rejecting'
+    log.info(
+      { requester: request.requester, subject: request.subject, overlapTags },
+      'Applying intersection scope'
     );
-    return makeRejection(request.fields, 'no_consent', 'No overlapping tags between intent pair');
-  }
 
-  log.info(
-    { overlapTags, isSensitive: data.isSensitive },
-    'Intersection scope resolved'
-  );
+    if (overlapTags.length === 0) {
+      log.warn(
+        { requester: request.requester, subject: request.subject },
+        'No overlap tags in intersection-scope — rejecting'
+      );
+      return makeRejection(request.fields, 'no_consent', 'No overlapping tags between intent pair');
+    }
 
-  return {
-    ...state,
-    filteredData: {
-      overlap_tags: overlapTags,
-      is_sensitive: data.isSensitive === true,
-      delivery_policy: typeof data.deliveryPolicy === 'string' ? data.deliveryPolicy : 'staged',
-      arriver_intent_id: typeof data.arriverIntentId === 'string' ? data.arriverIntentId : '',
-      candidate_intent_id: typeof data.candidateIntentId === 'string' ? data.candidateIntentId : '',
-    },
-  };
-};
+    log.info(
+      { overlapTags, isSensitive: data.isSensitive },
+      'Intersection scope resolved'
+    );
+
+    return {
+      ...state,
+      filteredData: {
+        overlap_tags: overlapTags,
+        is_sensitive: data.isSensitive === true,
+        delivery_policy: typeof data.deliveryPolicy === 'string' ? data.deliveryPolicy : 'staged',
+        arriver_intent_id: typeof data.arriverIntentId === 'string' ? data.arriverIntentId : '',
+        candidate_intent_id: typeof data.candidateIntentId === 'string' ? data.candidateIntentId : '',
+      },
+    };
+  });

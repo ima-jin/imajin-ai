@@ -90,11 +90,12 @@ export async function createIdentityChain(input: {
 /**
  * Verify a DFOS identity chain log and return the resolved identity state.
  */
-export async function verifyChain(log: string[]): Promise<VerifiedIdentity> {
-  return verifyIdentityChain({
+export function verifyChain(log: string[]): Promise<VerifiedIdentity> {
+  // Keep the Promise contract: a synchronous throw becomes a rejection.
+  return new Promise<VerifiedIdentity>((resolve) => resolve(verifyIdentityChain({
     didPrefix: DFOS_DID_PREFIX,
     log,
-  });
+  })));
 }
 
 /**

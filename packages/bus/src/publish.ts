@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from './concurrency';
 import { getChainConfig } from './config';
 import { getReactor } from './registry';
 import { deliverToSubscribers } from './subscriptions';
@@ -70,8 +71,11 @@ export async function publish<T extends BusEventType>(
     );
   }
 
-  for (const reactor of config.reactors) {
-    if (!reactor.enabled) continue;
+  // Sequential on purpose: chain order is the contract — an awaited reactor
+  // (e.g. `attestation`) must finish before the next one reads what it stashed
+  // on the shared event (e.g. `attestationId` for `mjn`).
+  await forEachSequential(config.reactors, async (reactor) => {
+    if (!reactor.enabled) return;
 
     const handler = getReactor(reactor.type)!;
 
@@ -86,7 +90,7 @@ export async function publish<T extends BusEventType>(
     } catch (err) {
       log.error({ err: String(err), reactor: reactor.type, event: type }, 'Reactor threw');
     }
-  }
+  });
 
   const attestationId = fullEvent.payload?.attestationId;
   return typeof attestationId === 'string' ? { attestationId } : {};

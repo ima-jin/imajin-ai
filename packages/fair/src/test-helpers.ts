@@ -99,7 +99,7 @@ export function makeJsonRequest(url: string, method: string, body: Record<string
 
 /** Resolves `.returning()` with whatever was last passed to `.values(...)`, as a single-row array. */
 export function echoLastInsertedValue(valuesMock: { mock: { calls: unknown[][] } }) {
-  return async () => [valuesMock.mock.calls.at(-1)?.[0]];
+  return () => Promise.resolve([valuesMock.mock.calls.at(-1)?.[0]]);
 }
 
 interface MockLike {
