@@ -13,13 +13,16 @@ import { sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { processorFeeCents } from '@imajin/fair';
 import { fetchActualFee } from './providers/stripe-webhook';
 import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 
 const log = createLogger('kernel');
+
+/** Rail this webhook module serves — keys the `processorFee*` fee-schedule lookup (#2177). */
+const WEBHOOK_RAIL = 'stripe';
 
 // ---------------------------------------------------------------------------
 // Shared types
@@ -87,14 +90,14 @@ export async function fetchActualStripeFee(
 
 /**
  * Calculate the estimated processing fee from the .fair manifest's processor
- * entry, falling back to the platform-wide Stripe rate constants.
- * Pure function — no side effects.
+ * entry, falling back to this webhook's rail fee schedule (`processorFeeCents`,
+ * #2177). Pure function — no side effects.
  */
 export function calculateEstimatedFee(manifest: FairManifest, totalAmountCents: number): number {
   const feeEntry = manifest.fees?.find(f => f.role === 'processor');
   return feeEntry
     ? Math.round((totalAmountCents * feeEntry.rateBps) / 10000) + (feeEntry.fixedCents || 0)
-    : Math.round((totalAmountCents * STRIPE_RATE_BPS) / 10000) + STRIPE_FIXED_CENTS;
+    : processorFeeCents(WEBHOOK_RAIL, totalAmountCents);
 }
 
 // ---------------------------------------------------------------------------

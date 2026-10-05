@@ -12,26 +12,14 @@
  * caller; this module only performs the arithmetic and DID substitution.
  */
 import type { FairEntry } from './types';
+import { DEFAULT_PROCESSOR_RAIL, computeFeeCents, processorFee } from './processorFee';
 
 // ── Core formula ───────────────────────────────────────────────────────────────
 
-/**
- * Compute the fee amount in cents for a single fee entry.
- *
- * `amountCents * rateBps / 10_000 + fixedCents`
- *
- * @param amountCents - Transaction total in minor units (cents).
- * @param rateBps     - Fee rate in basis points (1 bps = 0.01%).
- * @param fixedCents  - Fixed per-transaction fee in minor units (cents).
- * @returns Fee amount in cents (unrounded — caller decides rounding).
- */
-export function computeFeeCents(
-  amountCents: number,
-  rateBps: number,
-  fixedCents: number,
-): number {
-  return (amountCents * rateBps) / 10_000 + fixedCents;
-}
+// `computeFeeCents` (`amountCents * rateBps / 10_000 + fixedCents`) lives in
+// `./processorFee` so the rail-keyed lookup and this module share one
+// definition without an import cycle; re-exported to keep the public API.
+export { computeFeeCents };
 
 // ── Chain resolution types ─────────────────────────────────────────────────────
 
@@ -101,10 +89,16 @@ export interface ResolveChainOptions {
   chain: FairSettlementEntry[];
   /**
    * Fee entries from the manifest (used to find the `processor` fee entry).
-   * If absent or if no `processor` role is found, falls back to
-   * 3.7% + CA$0.30 (Stripe international estimate).
+   * If absent or if no `processor` role is found, falls back to the
+   * {@link ResolveChainOptions.rail} processor fee estimate (see `processorFee`).
    */
   fees?: Array<{ role: string; rateBps: number; fixedCents: number }>;
+  /**
+   * Payment rail whose `processorFee` schedule backs the fallback estimate
+   * when `fees` carries no `processor` entry. Defaults to
+   * {@link DEFAULT_PROCESSOR_RAIL}.
+   */
+  rail?: string;
   /** Resolved DID of the buyer (substituted for 'BUYER_PLACEHOLDER'). */
   buyerDid: string;
   /**
@@ -119,7 +113,7 @@ export interface ResolveChainOptions {
   sellerRoles?: ReadonlySet<string>;
   /**
    * The manifest's `taxes[]` rows (#2419), cents-based. When present, the
-   * processor/Stripe fee is computed on the GROSS amount (`amountCents +
+   * processor fee is computed on the GROSS amount (`amountCents +
    * Σtaxes.amount`) per Ryan's ruling: the seller absorbs the processing
    * fee on the tax portion, same as they already absorb it on their own
    * share. Chain-share math is entirely unaffected (still `amountCents` =
@@ -174,19 +168,15 @@ export interface ResolvedTaxCredit {
 
 /**
  * Role set whose members have the processor fee deducted from their share.
- * Reflects that Stripe deducts `applicationFee` (which includes processing)
- * from the connected account transfer, so the seller's net payout is
- * `(total × share) - processorFee`.
+ * Reflects that the processor deducts `applicationFee` (which includes
+ * processing) from the connected account transfer, so the seller's net
+ * payout is `(total × share) - processorFee`.
  */
 export const DEFAULT_SELLER_ROLES: ReadonlySet<string> = new Set([
   'seller',
   'creator',
   'event',
 ]);
-
-/** Fallback processor-fee rate when no `processor` entry is in manifest.fees. */
-const FALLBACK_PROCESSOR_RATE_BPS = 370;   // 3.7% (Stripe international estimate)
-const FALLBACK_PROCESSOR_FIXED_CENTS = 30; // CA$0.30 per transaction
 
 /** Sentinel used when NODE_DID is not configured. */
 const NODE_DID_UNRESOLVED = 'did:imajin:node-unresolved';
@@ -261,7 +251,7 @@ function distributeDrift(
  * Resolve a .fair settlement chain to absolute dollar amounts.
  *
  * Steps:
- *   1. Look up the `processor` fee entry (fallback: 3.7% + 30¢).
+ *   1. Look up the `processor` fee entry (fallback: the rail's `processorFee`).
  *   2. Compute `estimatedFeeDollars` from that entry.
  *   3. For each chain entry: substitute placeholder DIDs; compute
  *      `share × totalDollars`.
@@ -281,6 +271,7 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
     amountCents,
     chain,
     fees = [],
+    rail = DEFAULT_PROCESSOR_RAIL,
     buyerDid,
     nodeDid,
     sellerRoles = DEFAULT_SELLER_ROLES,
@@ -289,16 +280,16 @@ export function resolveSettlementChain(opts: ResolveChainOptions): ResolvedChain
 
   const totalDollars = amountCents / 100;
   const totalTaxCents = taxes.reduce((sum, t) => sum + t.amount, 0);
-  // #2419 rule 3: the processor/Stripe fee applies to the GROSS amount
+  // #2419 rule 3: the processor fee applies to the GROSS amount
   // (basisAmount + tax) — identical to `amountCents` when there's no tax,
   // so this is a no-op for every pre-#2419 caller.
   const grossCentsForFee = amountCents + totalTaxCents;
 
   // ── 1. Find processor fee ──────────────────────────────────────────────────────────────────────
-  const processorFee = fees.find((f) => f.role === 'processor');
-  const estimatedFeeCents = processorFee
-    ? computeFeeCents(grossCentsForFee, processorFee.rateBps, processorFee.fixedCents)
-    : computeFeeCents(grossCentsForFee, FALLBACK_PROCESSOR_RATE_BPS, FALLBACK_PROCESSOR_FIXED_CENTS);
+  const manifestProcessorFee = fees.find((f) => f.role === 'processor');
+  const estimatedFeeCents = manifestProcessorFee
+    ? computeFeeCents(grossCentsForFee, manifestProcessorFee.rateBps, manifestProcessorFee.fixedCents)
+    : processorFee(rail, grossCentsForFee);
   const estimatedFeeDollars = Number.parseFloat((estimatedFeeCents / 100).toFixed(2));
 
   // ── 2. Resolve placeholder DIDs and compute per-entry gross amounts (cents) ──

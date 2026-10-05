@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { grossUpForProcessorFee } from '@imajin/fair';
 import { buildPublicUrl } from '@imajin/config';
 
 const PRESET_AMOUNTS = [20, 50, 100, 250, 1000];
@@ -19,7 +19,7 @@ function fmtCurrency(n: number) {
 function calcStripeCharge(amount: number, userAbsorbs: boolean): number {
   const amountCents = Math.round(amount * 100);
   if (userAbsorbs) {
-    return Math.ceil((amountCents + STRIPE_FIXED_CENTS) / (1 - STRIPE_RATE_BPS / 10000)) / 100;
+    return grossUpForProcessorFee('stripe', amountCents) / 100;
   }
   return amount;
 }

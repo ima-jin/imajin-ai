@@ -4,7 +4,10 @@ import type { Identity } from '@imajin/auth';
 import { db, connectedAccounts } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS, validateTaxes } from '@imajin/fair';
+import { processorFeeCents, validateTaxes } from '@imajin/fair';
+
+/** Rail this hosted checkout runs on — keys the `processorFee*` fee-schedule lookup (#2177). */
+const CHECKOUT_RAIL = 'stripe';
 
 export interface CheckoutItem {
   name: string;
@@ -245,7 +248,7 @@ function computeProcessingFeeCents(grossAmount: number, fairManifest: CheckoutBo
   if (feeEntry) {
     return Math.round(grossAmount * feeEntry.rateBps / 10000) + (feeEntry.fixedCents || 0);
   }
-  return Math.round(grossAmount * STRIPE_RATE_BPS / 10000) + STRIPE_FIXED_CENTS;
+  return processorFeeCents(CHECKOUT_RAIL, grossAmount);
 }
 
 /**
