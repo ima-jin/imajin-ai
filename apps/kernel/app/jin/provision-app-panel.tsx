@@ -22,6 +22,9 @@ import {
   DEFAULT_APP_TEMPLATE,
   buildProvisionPayload,
   hasProvisionErrors,
+  isGithubRepoUrl,
+  isLedgerNewerThanDecision,
+  isPendingCardExpired,
   validateProvisionForm,
   type ProvisionFormErrors,
   type ProvisionFormValues,
@@ -29,6 +32,8 @@ import {
 import { useFlashNotice } from './use-flash-notice';
 
 const POLL_INTERVAL_MS = 5000;
+/** Provision proposals live on the `apps` source — scope the poll to it. */
+const APPROVALS_URL = '/jin/api/operator-approvals?source=apps';
 
 /** Row shape of `GET /api/apps/provision?slug=` (the subset this panel shows). */
 interface ProvisionLedger {
@@ -38,6 +43,15 @@ interface ProvisionLedger {
   repoUrl: string | null;
   failedStep: string | null;
   errorMessage: string | null;
+  /** ISO timestamp of the row's last write — used to tell this run from a previous one for the same slug. */
+  updatedAt?: string;
+}
+
+/** The subset of one approvals card this panel reads. */
+interface CardSnapshot {
+  status: string;
+  /** When the operator decided the card, if they have. */
+  decidedAt: string | null;
 }
 
 type TrackedOutcome =
@@ -78,14 +92,31 @@ function isTerminal(outcome: TrackedOutcome | null): boolean {
   return outcome?.phase === 'succeeded' || outcome?.phase === 'failed' || outcome?.phase === 'declined';
 }
 
-/** Status of one approvals card, or null when it can't be read / isn't listed. */
-async function fetchCardStatus(proposalId: string): Promise<string | null> {
+interface ApprovalCardRow {
+  proposalId: string;
+  status: string;
+  detail?: Record<string, unknown> | null;
+  decision?: { decidedAt?: string } | null;
+}
+
+/**
+ * State of one approvals card, or null when it can't be read / isn't listed.
+ * Scoped to `source=apps` (the provision proposals' source) so the 5 s poll
+ * never pulls the operator's whole approvals queue. A still-`pending` card
+ * past its `detail.expiresAt` is reported as `expired`, because the list route
+ * never does.
+ */
+async function fetchCard(proposalId: string): Promise<CardSnapshot | null> {
   try {
-    const res = await fetch('/jin/api/operator-approvals', { credentials: 'include' });
+    const res = await fetch(APPROVALS_URL, { credentials: 'include' });
     if (!res.ok) return null;
-    const data = (await res.json()) as { approvals?: Array<{ proposalId: string; status: string }> };
+    const data = (await res.json()) as { approvals?: ApprovalCardRow[] };
     const card = (data.approvals ?? []).find((approval) => approval.proposalId === proposalId);
-    return card?.status ?? null;
+    if (!card) return null;
+    if (card.status === 'pending' && isPendingCardExpired(card.detail, Date.now())) {
+      return { status: 'expired', decidedAt: null };
+    }
+    return { status: card.status, decidedAt: card.decision?.decidedAt ?? null };
   } catch {
     return null;
   }
@@ -103,11 +134,15 @@ async function fetchLedger(slug: string): Promise<ProvisionLedger | null> {
 }
 
 async function resolveOutcome(slug: string, proposalId: string): Promise<TrackedOutcome> {
-  const cardStatus = await fetchCardStatus(proposalId);
+  const card = await fetchCard(proposalId);
+  const cardStatus = card?.status;
   if (cardStatus === 'pending') return { phase: 'awaiting-approval' };
   if (cardStatus && DECLINED_STATUSES.has(cardStatus)) return { phase: 'declined', status: cardStatus };
 
-  const ledger = await fetchLedger(slug);
+  // A ledger row last written before the card was decided belongs to an
+  // earlier run of this slug (e.g. a prior failure) — not this proposal's result.
+  const fetched = await fetchLedger(slug);
+  const ledger = fetched && isLedgerNewerThanDecision(fetched.updatedAt, card?.decidedAt) ? fetched : null;
   if (ledger?.status === 'succeeded') return { phase: 'succeeded', ledger };
   if (ledger?.status === 'failed') return { phase: 'failed', ledger };
   if (ledger?.status === 'pending' || cardStatus) return { phase: 'running' };
@@ -178,6 +213,17 @@ function ResultRow({ label, children }: Readonly<{ label: string; children: Reac
   );
 }
 
+/** Link only for a `https://github.com/` URL; any other value is shown as inert text. */
+function renderRepoUrl(url: string | null): ReactNode {
+  if (!url) return '—';
+  if (!isGithubRepoUrl(url)) return url;
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="text-amber-400 hover:underline">
+      {url}
+    </a>
+  );
+}
+
 function OutcomeDetails({ outcome, slug }: Readonly<{ outcome: TrackedOutcome; slug: string }>) {
   if (outcome.phase === 'succeeded') {
     const { ledger } = outcome;
@@ -187,13 +233,7 @@ function OutcomeDetails({ outcome, slug }: Readonly<{ outcome: TrackedOutcome; s
         <dl className="space-y-1">
           <ResultRow label="status">{ledger.status}</ResultRow>
           <ResultRow label="repoUrl">
-            {ledger.repoUrl ? (
-              <a href={ledger.repoUrl} target="_blank" rel="noreferrer" className="text-amber-400 hover:underline">
-                {ledger.repoUrl}
-              </a>
-            ) : (
-              '—'
-            )}
+            {renderRepoUrl(ledger.repoUrl)}
           </ResultRow>
           <ResultRow label="appDid">{ledger.appDid ?? '—'}</ResultRow>
         </dl>
@@ -214,7 +254,8 @@ function OutcomeDetails({ outcome, slug }: Readonly<{ outcome: TrackedOutcome; s
     );
   }
   if (outcome.phase === 'declined') {
-    return <p className="text-xs text-gray-400">The proposal was {outcome.status}. Nothing was provisioned.</p>;
+    const was = outcome.status === 'expired' ? 'expired' : `was ${outcome.status}`;
+    return <p className="text-xs text-gray-400">The proposal {was}. Nothing was provisioned.</p>;
   }
   if (outcome.phase === 'running') {
     return <p className="text-xs text-gray-400">Approved — provisioning {slug}…</p>;
