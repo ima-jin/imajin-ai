@@ -9,6 +9,9 @@ import {
   MAX_DISPLAY_NAME_LENGTH,
   buildProvisionPayload,
   hasProvisionErrors,
+  isGithubRepoUrl,
+  isLedgerNewerThanDecision,
+  isPendingCardExpired,
   parseAttestationTypes,
   validateProvisionForm,
   type ProvisionFormValues,
@@ -83,5 +86,65 @@ describe('buildProvisionPayload', () => {
 
   it('keeps a custom template', () => {
     expect(buildProvisionPayload(values({ template: 'ima-jin/other' })).template).toBe('ima-jin/other');
+  });
+});
+
+describe('isGithubRepoUrl', () => {
+  it('accepts only https://github.com/ URLs', () => {
+    expect(isGithubRepoUrl('https://github.com/ima-jin/coffee')).toBe(true);
+  });
+
+  it.each([
+    null,
+    undefined,
+    '',
+    'javascript:alert(1)',
+    'http://github.com/ima-jin/coffee',
+    'https://github.com.evil.example/x',
+    'https://github.com@evil.example/x',
+    'https://gitlab.com/ima-jin/coffee',
+    'HTTPS://GITHUB.COM/ima-jin/coffee',
+  ])('rejects %j', (url) => {
+    expect(isGithubRepoUrl(url)).toBe(false);
+  });
+});
+
+describe('isPendingCardExpired', () => {
+  const now = Date.parse('2026-06-01T12:00:00.000Z');
+
+  it('is true once expiresAt has passed (boundary included)', () => {
+    expect(isPendingCardExpired({ expiresAt: '2026-06-01T11:59:59.000Z' }, now)).toBe(true);
+    expect(isPendingCardExpired({ expiresAt: '2026-06-01T12:00:00.000Z' }, now)).toBe(true);
+  });
+
+  it('is false while expiresAt is in the future', () => {
+    expect(isPendingCardExpired({ expiresAt: '2026-06-01T12:00:01.000Z' }, now)).toBe(false);
+  });
+
+  it.each([null, undefined, {}, { expiresAt: 42 }, { expiresAt: 'not-a-date' }])('never expires for detail %j', (detail) => {
+    expect(isPendingCardExpired(detail as Record<string, unknown> | null | undefined, now)).toBe(false);
+  });
+});
+
+describe('isLedgerNewerThanDecision', () => {
+  const decided = '2026-06-01T12:00:00.000Z';
+
+  it('accepts a row written after the decision', () => {
+    expect(isLedgerNewerThanDecision('2026-06-01T12:00:01.000Z', decided)).toBe(true);
+  });
+
+  it('rejects a row written before or exactly at the decision', () => {
+    expect(isLedgerNewerThanDecision('2026-05-01T00:00:00.000Z', decided)).toBe(false);
+    expect(isLedgerNewerThanDecision(decided, decided)).toBe(false);
+  });
+
+  it.each([
+    [undefined, decided],
+    ['2026-06-01T12:00:01.000Z', undefined],
+    ['2026-06-01T12:00:01.000Z', null],
+    ['garbage', decided],
+    ['2026-06-01T12:00:01.000Z', 'garbage'],
+  ])('accepts the row when a timestamp is unusable (%j, %j)', (updatedAt, decidedAt) => {
+    expect(isLedgerNewerThanDecision(updatedAt, decidedAt)).toBe(true);
   });
 });

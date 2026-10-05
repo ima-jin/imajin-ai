@@ -95,3 +95,42 @@ export function buildProvisionPayload(values: ProvisionFormValues): ProvisionPay
     attestationTypes: parseAttestationTypes(values.attestationTypes),
   };
 }
+
+/** Only a `https://github.com/…` repo URL is ever rendered as a link; anything else stays plain text. */
+const GITHUB_REPO_URL_PREFIX = 'https://github.com/';
+
+export function isGithubRepoUrl(url: string | null | undefined): url is string {
+  return typeof url === 'string' && url.startsWith(GITHUB_REPO_URL_PREFIX);
+}
+
+/**
+ * True once a still-`pending` approvals card's own `detail.expiresAt` has
+ * passed. `listApprovalsForOperator` never reports status `expired` (expiry is
+ * only enforced at decide time), so the panel derives it. Missing or
+ * malformed `expiresAt` never expires.
+ */
+export function isPendingCardExpired(detail: Record<string, unknown> | null | undefined, now: number): boolean {
+  const expiresAt = detail?.expiresAt;
+  if (typeof expiresAt !== 'string') return false;
+  const expiresAtMs = Date.parse(expiresAt);
+  return !Number.isNaN(expiresAtMs) && expiresAtMs <= now;
+}
+
+/**
+ * True when a ledger row can belong to the run the card just approved: its
+ * `updatedAt` is strictly newer than the card's `decidedAt`. A row last
+ * touched at or before the decision is a previous run for the same slug
+ * (e.g. an old `failed`) and must not be shown as this run's result. When
+ * either timestamp is missing or unparseable there is nothing to compare,
+ * so the row is accepted.
+ */
+export function isLedgerNewerThanDecision(
+  ledgerUpdatedAt: string | null | undefined,
+  decidedAt: string | null | undefined,
+): boolean {
+  if (typeof ledgerUpdatedAt !== 'string' || typeof decidedAt !== 'string') return true;
+  const updatedMs = Date.parse(ledgerUpdatedAt);
+  const decidedMs = Date.parse(decidedAt);
+  if (Number.isNaN(updatedMs) || Number.isNaN(decidedMs)) return true;
+  return updatedMs > decidedMs;
+}
