@@ -8,6 +8,16 @@ on:
   merge_group:
   workflow_dispatch:
 
+# Superseded PR runs are cancelled when a newer push lands (a single
+# self-hosted runner otherwise backs up past the 60-min check timeout, and
+# merge-queue entries get kicked with checks_timed_out). merge_group, push and
+# workflow_dispatch runs are never cancelled: `cancel-in-progress` is only true
+# for pull_request events, and merge_group runs sit in their own group
+# (github.ref is the unique gh-readonly-queue ref).
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
   TURBO_TEAM: ${{ vars.TURBO_TEAM }}
@@ -50,7 +60,8 @@ jobs:
         with:
           version: 9
 
-      # Deliberately no `cache: 'pnpm'` here, unlike every other job. This job
+      # Deliberately no pnpm cache here (no `cache: 'pnpm'`, and no pnpm-store
+      # volume mount like the install jobs have, #2601). This job
       # never runs `pnpm install` (see below), so the pnpm store is never
       # populated — and setup-node's post-job cache *save* step then hard-fails
       # with "Path Validation Error: Path(s) specified in the action for caching
@@ -95,6 +106,14 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # pnpm store persisted on the runner host (#2601) instead of restored from
+      # GitHub's cache service (~574 MB) on every job. Content-addressed, so
+      # sharing it across concurrent jobs is safe. Host dir already exists
+      # (root:root 755) and the container runs as root.
+      volumes:
+        - /srv/ci/pnpm-store:/pnpm-store
+    env:
+      npm_config_store_dir: /pnpm-store
     steps:
       - uses: actions/checkout@v4
         with:
@@ -111,7 +130,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -151,6 +169,14 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # pnpm store persisted on the runner host (#2601) instead of restored from
+      # GitHub's cache service (~574 MB) on every job. Content-addressed, so
+      # sharing it across concurrent jobs is safe. Host dir already exists
+      # (root:root 755) and the container runs as root.
+      volumes:
+        - /srv/ci/pnpm-store:/pnpm-store
+    env:
+      npm_config_store_dir: /pnpm-store
     steps:
       - uses: actions/checkout@v4
 
@@ -161,7 +187,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -197,6 +222,14 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # pnpm store persisted on the runner host (#2601) instead of restored from
+      # GitHub's cache service (~574 MB) on every job. Content-addressed, so
+      # sharing it across concurrent jobs is safe. Host dir already exists
+      # (root:root 755) and the container runs as root.
+      volumes:
+        - /srv/ci/pnpm-store:/pnpm-store
+    env:
+      npm_config_store_dir: /pnpm-store
     needs: [lint-and-typecheck, test]
     steps:
       - uses: actions/checkout@v4
@@ -208,7 +241,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -245,6 +277,14 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # pnpm store persisted on the runner host (#2601) instead of restored from
+      # GitHub's cache service (~574 MB) on every job. Content-addressed, so
+      # sharing it across concurrent jobs is safe. Host dir already exists
+      # (root:root 755) and the container runs as root.
+      volumes:
+        - /srv/ci/pnpm-store:/pnpm-store
+    env:
+      npm_config_store_dir: /pnpm-store
     steps:
       - uses: actions/checkout@v4
 
@@ -256,7 +296,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       # Same flags as the deploy's install, except the lockfile is enforced.
       - name: Install dependencies
@@ -284,6 +323,14 @@ jobs:
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
+      # pnpm store persisted on the runner host (#2601) instead of restored from
+      # GitHub's cache service (~574 MB) on every job. Content-addressed, so
+      # sharing it across concurrent jobs is safe. Host dir already exists
+      # (root:root 755) and the container runs as root.
+      volumes:
+        - /srv/ci/pnpm-store:/pnpm-store
+    env:
+      npm_config_store_dir: /pnpm-store
     steps:
       - uses: actions/checkout@v4
         with:
@@ -300,7 +347,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
