@@ -62,7 +62,7 @@ async function validateActingAsCookie(
  * (use requireAuth there instead).
  */
 export async function getSession(options?: SessionOptions): Promise<Identity | null> {
-  const { cookies } = await import("next/headers");
+  const { cookies } = await import("next/headers.js");
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME);
 

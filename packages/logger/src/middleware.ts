@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server.js';
 import { nanoid } from 'nanoid';
 import { createLogger } from './adapters/pino';
 import type { Logger } from './types';

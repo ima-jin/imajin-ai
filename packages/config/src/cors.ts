@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server.js";
 
 // Match *.imajin.ai, dev-*.imajin.ai, and localhost for dev
 const ORIGIN_PATTERN = /^https:\/\/(dev-)?[a-z-]+\.imajin\.ai$/;

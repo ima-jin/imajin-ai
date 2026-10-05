@@ -347,7 +347,8 @@ export async function loadKernelModules(): Promise<void> {
 /**
  * The production {@link ProvisionDeps}. Kernel modules are imported lazily so
  * argument/`.env.local` validation errors surface without needing a database.
- * This file is bundled to ESM by scripts/lib/import-ts-as-esm.mjs, so every
+ * This file is compiled to one native ES module at package build time
+ * (packages/provision-bootstrap, #2485), so every
  * import below — including the ESM-only transitive ones (`@imajin/auth`,
  * `@ipld/dag-cbor` via `@imajin/cid`) — resolves with Node's ESM resolver (#2483).
  */
