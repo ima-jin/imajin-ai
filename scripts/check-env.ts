@@ -398,6 +398,9 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
   };
 }
 
+/** `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` — provisioned by the deploy, never by hand. */
+const VAULT_BOOTSTRAP_KEY = /_VAULT_BOOTSTRAP_(DID|PRIVATE_KEY)$/;
+
 function printResult(result: ServiceResult, env: "dev" | "prod"): void {
   const {
     service: svc,
@@ -449,6 +452,17 @@ function printKeyIssues(
 ): void {
   for (const key of missing) {
     console.log(`       ${sym.arrow}  ${red("missing")}  ${cyan(key)}`);
+  }
+
+  // A missing vault bootstrap identity is never fixed by editing .env.local: the
+  // deploy's provisioning step mints the pair and the vault grants (#2442, #2550).
+  if (missing.some((key) => VAULT_BOOTSTRAP_KEY.test(key))) {
+    console.log(
+      `       ${sym.arrow}  ${dim(
+        "vault bootstrap identity: minted + granted in the vault by scripts/provision-service-bootstrap.mjs " +
+          "(the deploy runs it before this check) — do not hand-set; look at that step's log"
+      )}`
+    );
   }
 
   for (const { key, expected, actual } of wrongPorts) {

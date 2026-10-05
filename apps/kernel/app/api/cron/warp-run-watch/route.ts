@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { sweepInFlightWarpRuns } from '@/src/lib/warp/run-watch-sweep';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
@@ -15,8 +16,8 @@ export const dynamic = 'force-dynamic';
  * whose in-request watch never reported a terminal state or a BLOCKED
  * transition (#1838).
  *
- * Vercel Cron job (schedule: "*\/10 * * * *" — every 10 minutes). Registered
- * in vercel.json. Protected by Authorization: Bearer {CRON_SECRET}, same
+ * Scheduled job (schedule: "*\/10 * * * *" — every 10 minutes). Registered
+ * in src/cron/schedule.ts. Protected by Authorization: Bearer {CRON_SECRET}, same
  * convention as every other /api/cron/* route.
  *
  * See `apps/kernel/src/lib/warp/run-watch-sweep.ts` for why this exists (the
@@ -27,13 +28,9 @@ export const dynamic = 'force-dynamic';
  * than duplicating them.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = await requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const outcome = await sweepInFlightWarpRuns();

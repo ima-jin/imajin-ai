@@ -7,6 +7,7 @@ import {
   discoverServices,
   dryRunServices,
   formatResult,
+  grantKindFor,
   provisionServices,
 } from '../lib/provision-service-bootstrap.ts';
 
@@ -47,6 +48,7 @@ function makeDeps(overrides = {}) {
     identityFromPrivateKey: vi.fn(async () => null),
     registerIdentity: vi.fn(async () => {}),
     ensureGrant: vi.fn(async (did) => ({ status: 'ok', grantId: `vdg_${did}` })),
+    ensureCronSecretGrant: vi.fn(async (did) => ({ status: 'ok', grantId: `vdg_cron_${did}` })),
     ...overrides,
   };
 }
@@ -81,6 +83,71 @@ describe('discoverServices', () => {
     expect(names).toEqual(expect.arrayContaining(['market', 'events', 'dykil', 'coffee', 'learn']));
     // corpus annotates its pair `# optional` (hand-provisioned) — not ours to mint.
     expect(names).not.toContain('corpus');
+  });
+
+  it("discovers the kernel's cron scheduler identity (KERNEL_CRON_VAULT_BOOTSTRAP_*) from the real kernel .env.example", () => {
+    const realRoot = join(import.meta.dirname, '..', '..');
+    const kernel = discoverServices(realRoot).find((s) => s.name === 'kernel');
+    expect(kernel).toEqual({
+      name: 'kernel',
+      didKey: 'KERNEL_CRON_VAULT_BOOTSTRAP_DID',
+      privateKeyKey: 'KERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY',
+    });
+  });
+});
+
+describe('cron-secret grant (#2550)', () => {
+  it('grants the cron secret to the kernel identity and the attestation key to every other service', () => {
+    expect(grantKindFor({ name: 'kernel' })).toBe('cron-secret');
+    for (const name of ['market', 'events', 'dykil', 'coffee', 'learn']) {
+      expect(grantKindFor({ name })).toBe('attestation-internal-api-key');
+    }
+  });
+
+  it('mints the kernel scheduler identity and grants ONLY the cron secret to it, with no hand-pasted value', async () => {
+    const root = makeRoot({ kernel: 'KERNEL_CRON', market: 'MARKET' });
+    const deps = makeDeps();
+
+    const results = await provisionServices(root, discoverServices(root), deps);
+
+    const kernel = results.find((r) => r.service === 'kernel');
+    expect(kernel).toMatchObject({ status: 'minted', grantId: `vdg_cron_${kernel.did}` });
+    expect(deps.ensureCronSecretGrant).toHaveBeenCalledTimes(1);
+    expect(deps.ensureCronSecretGrant).toHaveBeenCalledWith(kernel.did);
+    // The attestation key is only granted to the userspace service.
+    const market = results.find((r) => r.service === 'market');
+    expect(deps.ensureGrant).toHaveBeenCalledTimes(1);
+    expect(deps.ensureGrant).toHaveBeenCalledWith(market.did);
+
+    const local = readFileSync(envLocal(root, 'kernel'), 'utf8');
+    expect(local).toContain(`KERNEL_CRON_VAULT_BOOTSTRAP_DID=${kernel.did}`);
+    expect(local).toMatch(/^KERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=.+$/m);
+    expect(local).not.toContain('CRON_SECRET=');
+  });
+
+  it('re-ensures the cron grant for an existing kernel identity without touching its keys', async () => {
+    const root = makeRoot({ kernel: 'KERNEL_CRON' });
+    const content = 'KERNEL_CRON_VAULT_BOOTSTRAP_DID=did:imajin:existing\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=keep-me\n';
+    writeFileSync(envLocal(root, 'kernel'), content);
+    const deps = makeDeps();
+
+    const results = await provisionServices(root, discoverServices(root), deps);
+
+    expect(results[0]).toMatchObject({ service: 'kernel', status: 'existing', did: 'did:imajin:existing' });
+    expect(deps.ensureCronSecretGrant).toHaveBeenCalledWith('did:imajin:existing');
+    expect(deps.ensureGrant).not.toHaveBeenCalled();
+    expect(readFileSync(envLocal(root, 'kernel'), 'utf8')).toBe(content);
+  });
+
+  it('fails the deploy with an error that names the cron secret and the vault when the grant cannot be made', async () => {
+    const root = makeRoot({ kernel: 'KERNEL_CRON' });
+    const failing = makeDeps({ ensureCronSecretGrant: vi.fn(async () => ({ status: 'no_reusable_grant' })) });
+
+    const error = await provisionServices(root, discoverServices(root), failing).catch((err) => err);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toMatch(/kernel: could not ensure the CRON_SECRET \(vault purpose 'kernel\.cron-secret'\) grant/);
+    expect(error.message).not.toMatch(/\.env\.local/);
   });
 });
 

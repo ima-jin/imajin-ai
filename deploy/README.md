@@ -137,6 +137,56 @@ port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
 `npm start`; convert them once their start scripts are confirmed (allowlisted in
 `scripts/__tests__/ecosystem-config.test.mjs`).
 
+## Kernel cron scheduler: `prod-kernel-cron` / `dev-kernel-cron` (#2550)
+
+We don't deploy on Vercel, so the kernel's scheduled jobs are not run by any
+platform cron. They are declared in code in `apps/kernel/src/cron/schedule.ts`
+(path, UTC schedule, no-overlap flag; `apps/kernel/vercel.json` is gone) and run
+by one small process per environment, declared next to the kernel in these
+ecosystem files. It execs `src/cron/scheduler.ts` directly under
+`node --import tsx` (never `npm start`, see above), loads the kernel's
+`.env.local` via `--env-file` (for its vault bootstrap identity only), fetches
+the cron bearer secret from the vault at boot, and calls each `/api/cron/*` route
+on loopback (`CRON_BASE_URL`, must match the kernel's port) with
+`Authorization: Bearer <that secret>`.
+
+- A job never overlaps itself: a tick that fires while the previous run is still
+  in flight is skipped and logged (`status: "skipped"`).
+- One JSON log line per run (job, status, httpStatus, durationMs) in
+  `pm2 logs <env>-kernel-cron`. The secret is never logged.
+- Last run and outcome per job: `GET /api/admin/cron-status` with the same
+  bearer (the scheduler's, or an agent holding a grant for the purpose; there is
+  no env var to curl with). `stale: true` means a scheduled tick passed with no
+  run; `schedulerSeen: false` means the scheduler has never written state. State
+  lives in `apps/kernel/.cron-state.json` (gitignored; override with
+  `CRON_STATE_PATH`).
+- Every `/api/cron/*` route fails closed: a cron secret the vault cannot supply
+  gives 503 plus a WARN, a wrong bearer gives 401.
+- **The secret is a vault grant, never hand-set (epic #2241, #2245 pattern).**
+  `CRON_SECRET` is an internal secret generated in the vault, per environment
+  (purpose `kernel.cron-secret`). The kernel reads it in-process from its own
+  vault (memory only); the scheduler authenticates as its bootstrap identity
+  (`KERNEL_CRON_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in the kernel's
+  `.env.local`) and fetches the current grant at boot with `loadFromVault`,
+  keeping it in memory only. Each fetch sends one deferred ack (on first use).
+  `scripts/provision-service-bootstrap.mjs`, run by both deploy workflows after
+  the gate and before `check-env`, mints that identity and grants it the secret,
+  so **the only human step is the normal deploy tap: no SSH, no `.env.local`
+  edit.** If the identity or grant is missing the deploy still fails closed, but
+  the failure points at the vault: the provisioning step names the grant it could
+  not make, `check-env` points at provisioning, and the scheduler exits non-zero
+  with a vault-pointing error. (The scheduler retries for up to two minutes
+  while the kernel is still booting; `CRON_VAULT_FETCH_TIMEOUT_MS` overrides.)
+- Rotating the secret is a /jin card (a vault rotate): the kernel re-resolves it
+  without a restart, and the scheduler picks the new grant up on its next boot.
+- Both deploy workflows always include the scheduler in the restart set and
+  restart it from the ecosystem file, so `pm2 startOrRestart` starts it even
+  when pm2 has never seen it. No manual `pm2 start`.
+- Adding a cron route means adding a manifest entry (and vice versa):
+  `scripts/ci-guard-cron-manifest.mjs`, run by `scripts/__tests__/ci-guard-cron-manifest.test.mjs`
+  in the Test job, fails CI on drift. The manifest is per-app, so an app that
+  leaves the kernel brings its own `src/cron/schedule.ts`.
+
 ## Known drift captured on 2026-07-16 (documented, not yet reconciled)
 
 The prod file does **not** match what actually runs, in two ways. Both are

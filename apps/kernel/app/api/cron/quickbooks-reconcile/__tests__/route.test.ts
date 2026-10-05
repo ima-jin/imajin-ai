@@ -7,7 +7,7 @@ const { mockListActiveGrantOwners, mockResolveAppDidForOwner, mockSettlePaidInvo
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock('@/src/lib/quickbooks/connector', () => ({ listActiveGrantOwners: mockListActiveGrantOwners }));
@@ -15,6 +15,7 @@ vi.mock('@/src/lib/quickbooks/realm-index', () => ({ resolveAppDidForOwner: mock
 vi.mock('@/src/lib/quickbooks/settlement', () => ({ settlePaidInvoices: mockSettlePaidInvoices }));
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 const SCOTT = 'did:imajin:scott';
 const DAVID = 'did:imajin:david-farms';
@@ -24,26 +25,22 @@ function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/quickbooks-reconcile', { headers });
 }
 
-describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
+describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockResolveAppDidForOwner.mockResolvedValue(APP);
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
+    _resetCronSecretForTests();
   });
 
   // ── Auth ──────────────────────────────────────────────────────────────────
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
 
     const response = await GET(makeRequest() as never);
@@ -51,31 +48,30 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
     expect(response.status).toBe(401);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
-    delete process.env.CRON_SECRET;
-    mockListActiveGrantOwners.mockResolvedValue([]);
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   // ── Sweep logic ───────────────────────────────────────────────────────────
 
   it('settles every owner with an active quickbooks:read grant', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([SCOTT, DAVID]);
     mockSettlePaidInvoices
       .mockResolvedValueOnce({ settled: ['inv1'], skipped: [] })
       .mockResolvedValueOnce({ settled: [], skipped: ['inv2'] });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; owners: number; settled: number; results: unknown[] };
 
     expect(response.status).toBe(200);
@@ -89,10 +85,10 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
   });
 
   it('no-op: returns owners=0 when no active grants exist', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; owners: number; settled: number };
 
     expect(response.status).toBe(200);
@@ -103,13 +99,13 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
   });
 
   it('collects a per-owner failure without aborting the rest of the sweep', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([SCOTT, DAVID]);
     mockSettlePaidInvoices
       .mockRejectedValueOnce(new Error('quickbooks_no_tokens'))
       .mockResolvedValueOnce({ settled: ['inv2'], skipped: [] });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { owners: number; settled: number; failures: Array<{ ownerDid: string }> };
 
     expect(response.status).toBe(200);
@@ -121,10 +117,10 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
   // ── Error handling ────────────────────────────────────────────────────────
 
   it('returns 500 when enumerating owners throws', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockRejectedValue(new Error('DB connection lost'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = await response.json() as { error: string };
     expect(body.error).toBe('Internal server error');

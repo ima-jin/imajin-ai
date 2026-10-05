@@ -137,6 +137,15 @@ jobs:
           # keeps the name-based restart.
           source scripts/lib/pm2-owned.sh
           PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
+          # prod-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
+          # PROD_PROCS only lists what pm2 already runs, so on the first deploy
+          # that ships it (or after it was deleted) it would never be started and
+          # no job would ever fire. Always include it: startOrRestart below starts
+          # it from the ecosystem file when pm2 doesn't know it yet.
+          case " $PROD_PROCS " in
+            *" prod-kernel-cron "*) ;;
+            *) PROD_PROCS="$PROD_PROCS prod-kernel-cron" ;;
+          esac
           FILE_PROCS=""
           NAME_PROCS=""
           for proc in $PROD_PROCS; do

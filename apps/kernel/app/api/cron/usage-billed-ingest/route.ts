@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { runBilledUsageIngestion } from '@/src/lib/usage/billed/ingest-job';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
 /**
  * GET /api/cron/usage-billed-ingest (#1076 Stage 1)
  *
- * Vercel Cron job, scheduled daily — see vercel.json for the exact cron
+ * Scheduled job, scheduled daily — see src/cron/schedule.ts for the exact cron
  * expression. Protected by Authorization: Bearer {CRON_SECRET}, same pattern
  * as the other cron routes (e.g. /api/cron/quickbooks-reconcile).
  *
@@ -20,13 +21,9 @@ export const dynamic = 'force-dynamic';
  * `runBilledUsageIngestion`'s doc comment.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = await requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const sweep = await runBilledUsageIngestion();

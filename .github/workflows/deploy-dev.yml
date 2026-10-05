@@ -103,6 +103,15 @@ jobs:
           # next-server on restart (#2447). Anything not in the file keeps the
           # name-based restart.
           source scripts/lib/pm2-owned.sh
+          # dev-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
+          # DEV_PROCS only lists what pm2 already runs, so on the first deploy
+          # that ships it (or after it was deleted) it would never be started and
+          # no job would ever fire. Always include it: startOrRestart below starts
+          # it from the ecosystem file when pm2 doesn't know it yet.
+          case " $DEV_PROCS " in
+            *" dev-kernel-cron "*) ;;
+            *) DEV_PROCS="$DEV_PROCS dev-kernel-cron" ;;
+          esac
           FILE_PROCS=""
           NAME_PROCS=""
           for proc in $DEV_PROCS; do

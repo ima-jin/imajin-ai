@@ -51,7 +51,7 @@ functions:
   below.
 - **Scheduled sweep** — `sweepInFlightWarpRuns` (`run-watch-sweep.ts:366`),
   invoked from `GET /api/cron/warp-run-watch` on a 10-minute cron tick
-  (`apps/kernel/vercel.json`). It lists every run whose latest
+  (`apps/kernel/src/cron/schedule.ts`). It lists every run whose latest
   `warp.agent.dispatched`/`warp.run.resumed` activity is newer than its
   latest terminal row (`listInFlightRuns`, `run-watch-sweep.ts:169`) and
   re-checks each one (`checkOneRun`, `run-watch-sweep.ts:318`).
@@ -276,7 +276,7 @@ publishes `warp.run.still_running`, never `warp.run.timeout`
 There is also no kernel-side mechanism that could re-deliver a **stale**
 pre-#2033 `warp.run.timeout` notification row at 19:09:01: there is no
 redelivery-on-reconnect job anywhere in the kernel (see Hop 3 above — no cron
-in `vercel.json` touches `notify.notifications`, and `ws-server.js`'s
+in `apps/kernel/src/cron/schedule.ts` touches `notify.notifications`, and `ws-server.js`'s
 connection handler pushes nothing on connect, only `{type: 'connected'}` /
 `{type: 'auth_required'}`, `ws-server.js:257,263,278`). If a genuinely
 pre-#2033 timeout notification existed as an unread row, the only way it
@@ -351,7 +351,7 @@ A fresh (non-resumed) run dispatched via `POST /warp/api/dispatch` starts an
 in-request `watchRun` that can stay alive for up to 30 minutes
 (`dispatch.ts:214`, `WATCH_TIMEOUT_MS`), while the sweep independently
 re-checks every in-flight run every 10 minutes
-(`apps/kernel/vercel.json`). Any run that survives past one sweep tick while
+(`apps/kernel/src/cron/schedule.ts`). Any run that survives past one sweep tick while
 still being watched in-request — common for anything longer than a couple of
 minutes — has a real window where both the watch's poll and a sweep tick can
 call `getAgentRun`, both observe the same terminal state, and both call

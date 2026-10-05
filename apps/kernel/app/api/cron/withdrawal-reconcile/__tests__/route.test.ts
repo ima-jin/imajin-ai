@@ -5,34 +5,31 @@ const { mockRunReconciliation } = vi.hoisted(() => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock('@/src/lib/pay/reconciliation', () => ({ runReconciliation: mockRunReconciliation }));
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/withdrawal-reconcile', { headers });
 }
 
-describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
+describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
+    _resetCronSecretForTests();
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunReconciliation.mockResolvedValue({ rails: [] });
 
     const response = await GET(makeRequest() as never);
@@ -41,7 +38,7 @@ describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and the Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunReconciliation.mockResolvedValue({ rails: [] });
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong' }) as never);
@@ -49,7 +46,7 @@ describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
   });
 
   it('runs the sweep and returns per-rail results when authorized', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockRunReconciliation.mockResolvedValue({
       rails: [{ rail: 'stripe', matched: 2, externalWithoutLedger: 1, pendingTimeout: 0, newWatermark: new Date('2026-01-01T00:00:00Z') }],
     });
@@ -62,19 +59,18 @@ describe('GET /api/cron/withdrawal-reconcile (#2172)', () => {
     expect(body.rails).toHaveLength(1);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
-    delete process.env.CRON_SECRET;
-    mockRunReconciliation.mockResolvedValue({ rails: [] });
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   it('returns 500 when the sweep throws', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockRunReconciliation.mockRejectedValue(new Error('rail unreachable'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe('Internal server error');
