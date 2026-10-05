@@ -6,6 +6,7 @@ import { FairEditor } from "@imajin/fair/react";
 import { isFairManifestV11 } from "@imajin/fair";
 import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { FairManifestEditor } from "./FairManifestEditor";
+import { fireAndForget } from "@/src/lib/async/fire-and-forget";
 
 const PROFILE_URL = process.env.NEXT_PUBLIC_SERVICE_PREFIX
   ? `${process.env.NEXT_PUBLIC_SERVICE_PREFIX}profile.${process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai'}`
@@ -69,7 +70,7 @@ function FairEditModal({
             manifest={draft}
             mimeType={(draft as FairManifestV11).type}
             onChange={(m) => setDraft(m)}
-            onSave={() => { setSaving(true); onSave(draft); setSaving(false); onCancel(); }}
+            onSave={() => { setSaving(true); fireAndForget(Promise.resolve(onSave(draft)), 'media:AssetDetail:fairSave'); setSaving(false); onCancel(); }}
             readOnly={false}
           />
         ) : (

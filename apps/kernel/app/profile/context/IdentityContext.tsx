@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import * as ed from '@noble/ed25519';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -56,7 +57,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
 
   // Check localStorage on mount
   useEffect(() => {
-    loadIdentity().finally(() => setIsLoading(false));
+    fireAndForget(loadIdentity().finally(() => setIsLoading(false)), 'profile:loadIdentity');
   }, []);
 
   async function loadIdentity() {

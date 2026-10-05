@@ -9,6 +9,7 @@ import { useToast } from '@imajin/ui';
 import { buildPublicUrl } from '@imajin/config';
 import { DeleteConversationButton } from '@/app/chat/components/DeleteConversationButton';
 import { canDeleteConversation } from '@/src/lib/chat/conversation-permissions';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 // Inline DID parser (avoids importing Node.js crypto in client bundle)
 function parseConvDid(did: string): { type: string; slug?: string } {
@@ -374,7 +375,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
                   onChange={(e) => setNameInput(e.target.value)}
                   onBlur={handleNameSave}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter') { e.preventDefault(); handleNameSave(); }
+                    if (e.key === 'Enter') { e.preventDefault(); fireAndForget(handleNameSave(), 'chat:conversation:nameSave'); }
                     if (e.key === 'Escape') setEditingName(false);
                   }}
                   className="font-semibold bg-transparent border-b border-orange-500 outline-none w-full text-base"
@@ -499,7 +500,7 @@ function DIDConversationView({ did }: Readonly<{ did: string }>) {
               />
             ) : (
               <button type="button"
-                onClick={() => { setShowAddMember(true); loadConnections(); }}
+                onClick={() => { setShowAddMember(true); fireAndForget(loadConnections(), 'chat:conversation:loadConnections'); }}
                 className="text-xs text-orange-500 hover:text-orange-600 transition"
               >
                 + Add member
