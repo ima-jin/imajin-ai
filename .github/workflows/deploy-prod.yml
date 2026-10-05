@@ -59,6 +59,23 @@ jobs:
       - name: Rebuild native dependencies
         run: pnpm rebuild -r better-sqlite3
 
+      # VAULT_PATH single source of truth (#2487). The kernel's vault file is set
+      # ONLY in deploy/ecosystem.prod.config.js (pm2 env); apps/kernel/.env.local
+      # must not set it. Fails here, naming both paths, if the file the
+      # provisioning step below would write to differs from the one prod-jin is
+      # reading (or would read after a restart from the ecosystem file).
+      #
+      # `pm2 jlist` carries every process's full env, secrets included, so it goes
+      # to a 0600 temp file that is deleted on exit and only VAULT_PATH is ever
+      # read out of it; nothing from it is printed.
+      - name: Check VAULT_PATH single source of truth
+        run: |
+          umask 077
+          PM2_JLIST="$(mktemp)"
+          trap 'rm -f "$PM2_JLIST"' EXIT
+          pm2 jlist > "$PM2_JLIST"
+          node scripts/check-vault-path-consistency.mjs --env prod --pm2-jlist-file "$PM2_JLIST" --ecosystem-file "$ECOSYSTEM_FILE"
+
       # Service bootstrap identities (#2442). Runs only after the `production`
       # environment approval (this whole job is gated on it), so the gate tap is
       # the human countersign from #2245. It must come BEFORE check-env, which
@@ -78,7 +95,8 @@ jobs:
           NODE_ENV: production
         # Loads the kernel's env exactly like pm2 starts prod-jin
         # (`--env-file=<repo>/apps/kernel/.env.local`); --env prod takes VAULT_PATH
-        # from deploy/ecosystem.prod.config.js, where pm2 sets it.
+        # from deploy/ecosystem.prod.config.js, where pm2 sets it (the step above
+        # fails the deploy if .env.local sets a different one, #2487).
         run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod
 
       - name: Build changed apps

@@ -58,7 +58,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants, type VaultDelegationGrant } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
-import { canonicalizeGrantPayload, supersedeActiveGrant } from './index';
+import { canonicalizeGrantPayload, supersedeActiveGrant, type DbExecutor } from './index';
 import { getInternalSecret, internalSecretField } from './internal-secret';
 import { emitGrantEvents } from './grant';
 
@@ -135,27 +135,31 @@ export async function grantInternalSecretTo(
   }
 
   const grantId = await issueGrantFromSource({
-    field, subject: ownerDid, granteeDid, grantedBy, source,
+    field, subject: ownerDid, granteeDid, source,
     terms: { purpose, expiresAt: null, oneTime: false },
   });
+  announceIssuedGrant({ purpose, field, subject: ownerDid, granteeDid, grantedBy, grantId });
   return { status: 'ok', grantId };
 }
 
 /**
  * Insert a new active grant of `field` to `granteeDid`, reusing `source`'s
- * key material (no re-seal — see this module's docblock), then emit the
- * grant events. Shared by first-time grants and rotation re-issue (#2446).
+ * key material (no re-seal — see this module's docblock). Shared by
+ * first-time grants and rotation re-issue (#2446). Writes only: the log line
+ * and bus event are {@link announceIssuedGrant}, which a transactional caller
+ * (rotation, #2451) must run AFTER commit so a rolled-back grant is never
+ * announced.
  */
 async function issueGrantFromSource(params: {
   field: string;
   /** The grant's `subject` — the node for an internal secret, the principal DID for a connector/Warp grant (#2450). */
   subject: string;
   granteeDid: string;
-  grantedBy: string;
   source: VaultDelegationGrant;
   terms: GrantTerms;
+  executor?: DbExecutor;
 }): Promise<string> {
-  const { field, subject, granteeDid, grantedBy, source, terms } = params;
+  const { field, subject, granteeDid, source, terms, executor = db } = params;
   const { purpose, expiresAt, oneTime } = terms;
   const identity = getNodeSigningIdentity();
   const grantRaw = {
@@ -172,7 +176,7 @@ async function issueGrantFromSource(params: {
   const ownerSignature = authCrypto.signSync(canonicalizeGrantPayload(grantRaw), identity.privateKeyHex);
 
   const grantId = generateId('vdg');
-  await db.insert(vaultDelegationGrants).values({
+  await executor.insert(vaultDelegationGrants).values({
     id: grantId,
     ...grantRaw,
     ownerSignature,
@@ -183,6 +187,22 @@ async function issueGrantFromSource(params: {
     oneTime,
   });
 
+  return grantId;
+}
+
+interface IssuedGrantAnnouncement {
+  purpose: string | null;
+  field: string;
+  /** The grant's `subject` — the node for an internal secret, the principal DID for a connector/Warp grant (#2450). */
+  subject: string;
+  granteeDid: string;
+  grantedBy: string;
+  grantId: string;
+}
+
+/** Log + audit event for a grant {@link issueGrantFromSource} wrote. */
+function announceIssuedGrant(params: IssuedGrantAnnouncement): void {
+  const { purpose, field, subject, granteeDid, grantedBy, grantId } = params;
   log.info(
     { purpose, field, grantId, granteeDid, grantedBy },
     'Vault: issued a delegation grant to an external consumer (first grant or rotation re-issue)',
@@ -192,8 +212,6 @@ async function issueGrantFromSource(params: {
   // no signed attestation — `vault.grant.fulfilled` is not a registered
   // AttestationType (see packages/auth/src/types/attestation.ts).
   emitGrantEvents({ grantId, did: subject, field, grantedTo: granteeDid, grantedBy });
-
-  return grantId;
 }
 
 /** The unsigned + signed terms a grant is issued under — carried forward verbatim on re-issue. */
@@ -211,6 +229,13 @@ interface GrantTerms {
 function isStillExercisable(grant: VaultDelegationGrant, now: Date): boolean {
   if (grant.expiresAt instanceof Date && grant.expiresAt.getTime() <= now.getTime()) return false;
   return !(grant.oneTime && grant.consumedAt);
+}
+
+/** `announce` fires the log + bus events for the re-issued grants — call it only once the writes have committed (#2451). */
+interface ReissueResult {
+  reissued: string[];
+  dropped: string[];
+  announce: () => void;
 }
 
 /**
@@ -232,20 +257,27 @@ function isStillExercisable(grant: VaultDelegationGrant, now: Date): boolean {
  * Operator-initiated rotation only — a boot never calls this (#2245
  * countersign ruling). `sourceGrantId` is the node's new self-grant,
  * returned by the re-seal.
+ *
+ * Atomic with the caller (#2451): pass the rotation's transaction as
+ * `executor` and every supersede + insert here commits or rolls back together
+ * with the self re-seal, so a failure partway never leaves a grantee
+ * superseded-but-not-re-issued. The bus events are NOT sent here — the caller
+ * invokes the returned `announce` once the transaction has committed.
  */
 export async function reissueFieldGrants(params: {
   field: string;
   sourceGrantId: string;
   previousGrants: readonly VaultDelegationGrant[];
   grantedBy: string;
-}): Promise<{ reissued: string[]; dropped: string[] }> {
-  const { field, sourceGrantId, previousGrants, grantedBy } = params;
+  executor?: DbExecutor;
+}): Promise<ReissueResult> {
+  const { field, sourceGrantId, previousGrants, grantedBy, executor = db } = params;
   const ownerDid = getNodeSigningIdentity().senderDid;
   // The node's own self-grant is replaced by the re-seal itself.
   const prior = previousGrants.filter((g) => g.field === field && g.grantedTo !== ownerDid);
-  if (prior.length === 0) return { reissued: [], dropped: [] };
+  if (prior.length === 0) return { reissued: [], dropped: [], announce: () => undefined };
 
-  const [source] = await db
+  const [source] = await executor
     .select()
     .from(vaultDelegationGrants)
     .where(and(eq(vaultDelegationGrants.id, sourceGrantId), eq(vaultDelegationGrants.status, 'active')))
@@ -258,16 +290,27 @@ export async function reissueFieldGrants(params: {
   // One grant per (subject, grantedTo): newest first, so the newest grant's terms win.
   // Distinct tuples touch distinct rows, so the replacements are independent.
   const outcomes = await Promise.all(
-    uniqueByGrantee(prior).map((grant) => reissueOneGrant({ grant, field, source, grantedBy, now })),
+    uniqueByGrantee(prior).map((grant) => reissueOneGrant({ grant, field, source, grantedBy, now, executor })),
   );
 
   const reissued: string[] = [];
   const dropped: string[] = [];
+  const issued: IssuedGrantAnnouncement[] = [];
   for (const outcome of outcomes) {
-    if (outcome.reissuedGrantId === null) dropped.push(outcome.grantedTo);
-    else reissued.push(outcome.reissuedGrantId);
+    if (outcome.issued === null) {
+      dropped.push(outcome.grantedTo);
+    } else {
+      reissued.push(outcome.issued.grantId);
+      issued.push(outcome.issued);
+    }
   }
-  return { reissued, dropped };
+  return {
+    reissued,
+    dropped,
+    announce: () => {
+      for (const announcement of issued) announceIssuedGrant(announcement);
+    },
+  };
 }
 
 /** First (newest) grant per `(subject, grantedTo)` pair, preserving order. */
@@ -292,17 +335,22 @@ async function reissueOneGrant(params: {
   source: VaultDelegationGrant;
   grantedBy: string;
   now: Date;
-}): Promise<{ grantedTo: string; reissuedGrantId: string | null }> {
-  const { grant, field, source, grantedBy, now } = params;
-  await supersedeActiveGrant({ subject: grant.subject, grantedTo: grant.grantedTo, field });
+  executor: DbExecutor;
+}): Promise<{ grantedTo: string; issued: IssuedGrantAnnouncement | null }> {
+  const { grant, field, source, grantedBy, now, executor } = params;
+  await supersedeActiveGrant({ subject: grant.subject, grantedTo: grant.grantedTo, field }, executor);
   if (!isStillExercisable(grant, now)) {
-    return { grantedTo: grant.grantedTo, reissuedGrantId: null };
+    return { grantedTo: grant.grantedTo, issued: null };
   }
-  const reissuedGrantId = await issueGrantFromSource({
-    field, subject: grant.subject, granteeDid: grant.grantedTo, grantedBy, source,
+  const granteeDid = grant.grantedTo;
+  const grantId = await issueGrantFromSource({
+    field, subject: grant.subject, granteeDid, source, executor,
     terms: { purpose: grant.purpose, expiresAt: grant.expiresAt, oneTime: grant.oneTime },
   });
-  return { grantedTo: grant.grantedTo, reissuedGrantId };
+  return {
+    grantedTo: granteeDid,
+    issued: { purpose: grant.purpose, field, subject: grant.subject, granteeDid, grantedBy, grantId },
+  };
 }
 
 /** {@link reissueFieldGrants} for an `internal-secret:<purpose>` field (#2446). */
@@ -311,7 +359,8 @@ export async function reissueInternalSecretGrants(params: {
   sourceGrantId: string;
   previousGrants: readonly VaultDelegationGrant[];
   grantedBy: string;
-}): Promise<{ reissued: string[]; dropped: string[] }> {
+  executor?: DbExecutor;
+}): Promise<ReissueResult> {
   const { purpose, ...rest } = params;
   return reissueFieldGrants({ field: internalSecretField(purpose), ...rest });
 }

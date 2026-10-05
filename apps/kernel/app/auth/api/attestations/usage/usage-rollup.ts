@@ -54,6 +54,12 @@ export interface TurnUsageRow {
   sessionCostTotal: number;
   channel: string | null;
   durationMs: number | null;
+  /**
+   * Number of `agent.turn.evidence` attestations (#1978) committed for this
+   * turn. Attached by the route, not by {@link computeTurnUsageRollups};
+   * absent when the evidence lookup was unavailable.
+   */
+  evidenceCount?: number;
 }
 
 function numberOr0(value: unknown): number {

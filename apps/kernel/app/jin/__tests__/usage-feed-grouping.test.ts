@@ -144,6 +144,16 @@ describe('isTurnUsageRowArray', () => {
     expect(isTurnUsageRowArray(['not-a-row'])).toBe(false);
   });
 
+  it('accepts an evidenceCount number (#1978) and a row without one (older server)', () => {
+    expect(isTurnUsageRowArray([row({ evidenceCount: 3 })])).toBe(true);
+    expect(isTurnUsageRowArray([row()])).toBe(true);
+  });
+
+  it('rejects a non-numeric evidenceCount', () => {
+    expect(isTurnUsageRowArray([{ ...row(), evidenceCount: '3' }])).toBe(false);
+    expect(isTurnUsageRowArray([{ ...row(), evidenceCount: null }])).toBe(false);
+  });
+
   it('rejects a row missing a required numeric field', () => {
     const malformed = { ...row(), tokensIn: undefined };
     expect(isTurnUsageRowArray([malformed])).toBe(false);

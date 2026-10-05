@@ -29,6 +29,11 @@ vi.mock('@/src/db', async () => {
 
 import { listRecordEventsForPrincipal, resolveOwnedAgentDids } from '../record-events';
 
+// Heavy suite (embedded PGlite / seed replay / dynamic imports): the 5000ms
+// default is too tight on contended CI runners (#2548). Scoped to this file;
+// the global default is intentionally left unchanged.
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
+
 const PRINCIPAL_A = 'did:imajin:principal-a';
 const PRINCIPAL_B = 'did:imajin:principal-b';
 

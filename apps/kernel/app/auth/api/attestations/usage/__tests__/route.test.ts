@@ -19,7 +19,9 @@ const mocks = vi.hoisted(() => {
   const orderByMock = vi.fn(() => Promise.resolve(rows));
   const limitMock = vi.fn(() => Promise.resolve(membershipRows));
   const requireAuth = vi.fn();
-  return { rows, membershipRows, orderByMock, limitMock, requireAuth };
+  const countEvidence = vi.fn();
+  const logWarn = vi.fn();
+  return { rows, membershipRows, orderByMock, limitMock, requireAuth, countEvidence, logWarn };
 });
 
 vi.mock('@/src/db', () => ({
@@ -59,7 +61,13 @@ vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 
 vi.mock('@imajin/logger', () => ({
   withLogger: (_service: string, handler: (req: unknown, ctx: unknown) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
+    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: mocks.logWarn } }),
+}));
+
+// Real `attachEvidenceCounts`; only the DB-backed count is controllable (#1978).
+vi.mock('@/src/lib/turn-evidence/usage-counts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/src/lib/turn-evidence/usage-counts')>()),
+  countEvidenceByUsageRef: mocks.countEvidence,
 }));
 
 vi.mock('@/src/lib/auth/middleware', () => ({ requireAuth: mocks.requireAuth }));
@@ -110,6 +118,7 @@ beforeEach(() => {
   // Default: an authenticated caller who is the subject itself — the
   // simplest passing case. Individual tests override as needed.
   mocks.requireAuth.mockResolvedValue({ sub: SUBJECT });
+  mocks.countEvidence.mockResolvedValue(new Map());
 });
 
 describe('GET /auth/api/attestations/usage — auth (#1967)', () => {
@@ -257,5 +266,62 @@ describe('GET /auth/api/attestations/usage (#1863) — read contract', () => {
     const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`));
 
     expect(res.status).toBe(500);
+  });
+});
+
+describe('GET /auth/api/attestations/usage — evidence count per turn (#1978, /jin dashboard)', () => {
+  const url = `https://kernel.test/auth/api/attestations/usage?subject_did=${SUBJECT}`;
+
+  it('annotates each returned turn with how many agent.turn.evidence rows it has (0 when none)', async () => {
+    mocks.rows.push(
+      dbRow({ id: 'att_1', issuedAt: '2026-08-18T22:00:00.000Z', session: 's1' }),
+      dbRow({ id: 'att_2', issuedAt: '2026-08-18T22:05:00.000Z', session: 's1' }),
+    );
+    mocks.countEvidence.mockResolvedValue(new Map([['att_2', 3]]));
+
+    const res = await GET(makeGetReq(url));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.map((row: { id: string; evidenceCount: number }) => [row.id, row.evidenceCount])).toEqual([
+      ['att_2', 3],
+      ['att_1', 0],
+    ]);
+  });
+
+  it('counts evidence only for the authorized subject and only for the returned page', async () => {
+    for (let i = 0; i < 5; i++) {
+      mocks.rows.push(dbRow({ id: `att_${i}`, issuedAt: `2026-08-18T22:0${i}:00.000Z`, session: 's1' }));
+    }
+
+    await GET(makeGetReq(`${url}&limit=2`));
+
+    expect(mocks.countEvidence).toHaveBeenCalledTimes(1);
+    expect(mocks.countEvidence).toHaveBeenCalledWith(SUBJECT, ['att_4', 'att_3']);
+  });
+
+  it('does not count anything for an unauthorized caller', async () => {
+    mocks.requireAuth.mockResolvedValue({ sub: STRANGER });
+
+    const res = await GET(makeGetReq(url));
+
+    expect(res.status).toBe(403);
+    expect(mocks.countEvidence).not.toHaveBeenCalled();
+  });
+
+  it('degrades to rows without evidenceCount (and logs) when the count lookup fails, instead of failing the feed', async () => {
+    mocks.rows.push(dbRow({ id: 'att_1', issuedAt: '2026-08-18T22:00:00.000Z', session: 's1' }));
+    mocks.countEvidence.mockRejectedValue(new Error('count down'));
+
+    const res = await GET(makeGetReq(url));
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toHaveLength(1);
+    expect(body[0]).not.toHaveProperty('evidenceCount');
+    expect(mocks.logWarn).toHaveBeenCalledWith(
+      { err: 'Error: count down' },
+      'Turn evidence count lookup failed; returning usage rows without evidenceCount',
+    );
   });
 });
