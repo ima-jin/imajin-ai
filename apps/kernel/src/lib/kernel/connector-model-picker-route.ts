@@ -157,8 +157,8 @@ export function createConnectorModelPickerRoute<C extends ModelPickerCredentials
     };
   }
 
-  async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-    return corsOptions(request) as NextResponse;
+  function OPTIONS(request: NextRequest): Promise<NextResponse> {
+    return Promise.resolve(corsOptions(request) as NextResponse);
   }
 
   /**

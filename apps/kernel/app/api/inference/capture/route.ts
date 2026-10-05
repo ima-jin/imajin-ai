@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { inferMime, isAllowedMime } from '@/src/lib/media/create-asset';
@@ -15,10 +15,6 @@ import { mapBrainErrorToHttp } from '@/src/lib/inference/brain-http-errors';
 const log = createLogger('kernel:inference:capture-route');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /**
  * POST /api/inference/capture
@@ -191,3 +187,5 @@ function handlePipelineError(
     { status: 500, headers: cors },
   );
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

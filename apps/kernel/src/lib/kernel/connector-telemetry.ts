@@ -150,7 +150,7 @@ async function readAttestationCounts(
       )
     : or(eq(attestations.issuerDid, ownerDid), eq(attestations.subjectDid, ownerDid));
 
-  return db
+  return await db
     .select({
       type: attestations.type,
       count: sql<number>`COUNT(*)::int`,
@@ -190,7 +190,7 @@ async function readGithubActionCounts(
     );
   }
 
-  return db
+  return await db
     .select({
       tool: githubActionProposals.tool,
       count: sql<number>`COUNT(*)::int`,

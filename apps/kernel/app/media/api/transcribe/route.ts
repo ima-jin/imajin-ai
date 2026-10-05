@@ -1,7 +1,7 @@
 import { optionalAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit, getClientIP } from '@imajin/config';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -9,10 +9,6 @@ import { randomBytes } from 'node:crypto';
 import { withLogger, type Logger } from '@imajin/logger';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -209,3 +205,5 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   }
   return transcribeFile(body, gpuNodeUrl, gpuHeaders, cors, log);
 });
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

@@ -50,8 +50,8 @@ export interface ConnectorSpendCapRouteHandlers {
 }
 
 /** Identical across every connector — declared once at module scope rather than recreated per factory call. */
-async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-  return corsOptions(request) as NextResponse;
+function OPTIONS(request: NextRequest): Promise<NextResponse> {
+  return Promise.resolve(corsOptions(request) as NextResponse);
 }
 
 /**

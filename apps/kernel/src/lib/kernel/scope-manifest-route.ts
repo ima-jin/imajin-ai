@@ -25,8 +25,8 @@ import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 const log = createLogger('kernel');
 
 /** Shared stateless CORS-preflight handler for every connector scope-manifest route. */
-async function optionsHandler(request: NextRequest): Promise<NextResponse> {
-  return corsOptions(request) as NextResponse;
+function optionsHandler(request: NextRequest): Promise<NextResponse> {
+  return Promise.resolve(corsOptions(request) as NextResponse);
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

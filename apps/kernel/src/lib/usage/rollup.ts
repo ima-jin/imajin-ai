@@ -74,7 +74,7 @@ export function contextIdFor(principalDid: string, windowStart: Date): string {
 }
 
 async function readGroupedUsage(windowStart: Date, windowEnd: Date): Promise<GroupedUsageRow[]> {
-  return db
+  return await db
     .select({
       principalDid: usageIncurred.principalDid,
       resource: usageIncurred.resource,

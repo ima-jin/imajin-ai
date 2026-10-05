@@ -68,7 +68,6 @@
  * (`output_tokens`) on the stream. See `anthropic-messages/forward.ts`.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { applySealedModel, forwardAnthropicMessages } from '@/src/lib/inference/anthropic-messages/forward';
 import {
@@ -86,10 +85,6 @@ import { connectorRegistryId, readConnectorRegistration } from '@/src/lib/kernel
 const log = createLogger('kernel:inference:anthropic-messages-route');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function POST(request: NextRequest) {
   const guarded = await guardAnthropicRequest(request);
@@ -144,3 +139,5 @@ export async function POST(request: NextRequest) {
     });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

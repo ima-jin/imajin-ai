@@ -40,7 +40,7 @@ interface IncurredRow {
 }
 
 async function readIncurredByProvider(principalDid: string, from: Date, to: Date): Promise<IncurredRow[]> {
-  return db
+  return await db
     .select({
       provider: usageIncurred.provider,
       costUsd: sql<string | null>`SUM(${usageIncurred.costUsd})`,
@@ -58,7 +58,7 @@ interface BilledRow {
 }
 
 async function readBilledByProviderAndSource(principalDid: string, from: Date, to: Date): Promise<BilledRow[]> {
-  return db
+  return await db
     .select({
       provider: usageBilled.provider,
       source: usageBilled.source,

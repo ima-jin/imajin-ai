@@ -214,7 +214,7 @@ let inflightInstallationToken: Promise<string> | undefined;
 async function mintAppJwt(credential: OrgAppCredential): Promise<string> {
   const privateKey = createPrivateKey(credential.privateKeyPem);
   const issuedAt = Math.floor(Date.now() / 1000) - APP_JWT_CLOCK_SKEW_SECONDS;
-  return new SignJWT({})
+  return await new SignJWT({})
     .setProtectedHeader({ alg: 'RS256' })
     .setIssuedAt(issuedAt)
     .setExpirationTime(issuedAt + APP_JWT_MAX_LIFETIME_SECONDS)

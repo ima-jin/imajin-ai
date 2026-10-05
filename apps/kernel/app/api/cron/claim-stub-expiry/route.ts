@@ -36,7 +36,7 @@ interface SweptStub {
  * locked between the outer scan and this transaction.
  */
 async function sweepStub(did: string, now: Date): Promise<SweptStub | null> {
-  return db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     const [pendingInvite] = await tx
       .select({ id: invites.id })
       .from(invites)

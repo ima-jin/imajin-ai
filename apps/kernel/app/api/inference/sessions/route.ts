@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { db, inferenceSessions } from '@/src/db';
 import { eq, and, desc } from 'drizzle-orm';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /**
  * GET /api/inference/sessions
@@ -54,3 +50,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ count: rows.length, sessions: rows }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

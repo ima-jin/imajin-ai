@@ -84,8 +84,10 @@ Produce a ranked JSON array of candidate intents.
     );
   },
 
-  async resolve(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
-    return resolveAgriFortressIntent(intent, ownerDid);
+  resolve(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
+    // The Promise executor turns a synchronous throw into a rejection, so the
+    // `VocabularyAdapter.resolve` Promise contract (callers' `.catch`) holds.
+    return new Promise((resolve) => resolve(resolveAgriFortressIntent(intent, ownerDid)));
   },
 };
 

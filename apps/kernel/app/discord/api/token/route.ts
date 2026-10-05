@@ -16,15 +16,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { sealToken, vaultField } from '@/src/lib/discord/connector';
 import { vaultFieldExists } from '@/src/lib/vault';
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 // ── GET /discord/api/token ────────────────────────────────────────────────────
 
@@ -86,3 +82,5 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ sealed: true }, { status: 201, headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

@@ -280,6 +280,9 @@ describe('DELETE revoke', () => {
 
 describe('OPTIONS', () => {
   it('answers CORS pre-flight', async () => {
-    expect((await routes(makeConnector()).OPTIONS(makeReq())).status).toBe(204);
+    const pending = routes(makeConnector()).OPTIONS(makeReq());
+    // Keeps the `RouteHandler` Promise contract without being an `async` function (S7503).
+    expect(pending).toBeInstanceOf(Promise);
+    expect((await pending).status).toBe(204);
   });
 });

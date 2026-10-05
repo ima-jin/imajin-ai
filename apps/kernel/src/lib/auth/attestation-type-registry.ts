@@ -35,7 +35,7 @@ export async function isRegisteredAttestationType(type: string): Promise<boolean
 
 /** All live registry entries, platform and third-party, in registration order. */
 export async function listRegisteredAttestationTypes(): Promise<AttestationTypeRegistryEntry[]> {
-  return db
+  return await db
     .select()
     .from(attestationTypeRegistry)
     .where(isNull(attestationTypeRegistry.revokedAt));

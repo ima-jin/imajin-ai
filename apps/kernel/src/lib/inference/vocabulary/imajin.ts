@@ -57,19 +57,23 @@ Produce a ranked JSON array of candidate intents.
     return SILENT_TYPES.has(intentType) ? 'silent' : 'deliberate';
   },
 
-  async resolve(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
+  resolve(intent: CandidateIntent, ownerDid: string): Promise<ResolutionReceipt> {
     // Reference implementation — stubs the 6 primitives, including the
     // revoke.* family (#2027). Production child issues wire each primitive,
     // including tombstone storage, hard-destroy key handling, and
     // propagation transport, to its real handler.
-    const payload = { intentType: intent.intentType, ownerDid, metadata: intent.metadata };
-    const digest = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-    const resolvedAt = new Date().toISOString();
+    // The Promise executor turns a synchronous throw into a rejection, so the
+    // `VocabularyAdapter.resolve` Promise contract (callers' `.catch`) holds.
+    return new Promise((resolve) => {
+      const payload = { intentType: intent.intentType, ownerDid, metadata: intent.metadata };
+      const digest = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+      const resolvedAt = new Date().toISOString();
 
-    return {
-      primitiveType: intent.intentType,
-      digest,
-      resolvedAt,
-    };
+      resolve({
+        primitiveType: intent.intentType,
+        digest,
+        resolvedAt,
+      });
+    });
   },
 };

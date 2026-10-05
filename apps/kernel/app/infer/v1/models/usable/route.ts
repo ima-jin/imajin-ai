@@ -41,7 +41,7 @@
  * OpenAI-compatible client expects. Never includes anything unsealed.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
@@ -53,10 +53,6 @@ const log = createLogger('kernel:inference:usable-models-route');
 const USABLE_MODELS_SCOPE = 'infer:completions';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -110,3 +106,5 @@ function toModelList(brains: readonly ResolvedBrain[]) {
     })),
   };
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

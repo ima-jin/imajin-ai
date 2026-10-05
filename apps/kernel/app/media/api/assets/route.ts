@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db, assets, identities, type Asset } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
-import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
+import { corsHeaders } from "@/src/lib/kernel/cors";
 import { eq, and, sql, ilike, like } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
@@ -20,10 +20,6 @@ import { buildCompactAssetResponse } from "@/src/lib/media/compact-response";
 const log = createLogger("kernel");
 
 export const dynamic = "force-dynamic";
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /** Resolve (and optionally rename) the upload filename. */
 function resolveUploadFilename(file: Blob, formData: FormData): string {
@@ -352,3 +348,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
