@@ -109,6 +109,7 @@ nothing is re-migrated or re-granted.
 ## What this runbook does not cover
 
 - Per-environment `VAULT_PATH` splitting — tracked separately in #2357.
-- Key rotation — tracked separately in #2354.
+- Key rotation — tracked separately in #2354. For `AUTH_PRIVATE_KEY` rotation (the v1
+  entries must be at zero first) see `docs/security/node-key-roles-and-rotation.md` (#2081).
 - A reconnect UX for a field that ends up `pending-grant` — out of scope per
   #2311; that is a Tier 1 owner-agent liveness question, not a migration bug.

@@ -21,10 +21,11 @@
  *   - revoked/rotated key — the operator rotated keys (the existing
  *     `identity/:did/rotate` route updates `identities.publicKey`), so a
  *     signature from the old key no longer matches "current" either.
- * Multi-key/DFOS-chain-history-aware resolution (so a *former* key could
- * be distinguished from a key that was never valid) is #2081's separate,
- * not-yet-built follow-up — out of scope here, exactly as it is for
- * `witness-jws.ts` today.
+ * Multi-key/DFOS-chain-history-aware resolution of an *operator DID's*
+ * keys (so a *former* key could be distinguished from a key that was never
+ * valid) is not built — out of scope here, exactly as it is for
+ * `witness-jws.ts` today. (#2081 shipped history for the NODE's own key only:
+ * `key.rotated`, docs/security/node-key-roles-and-rotation.md.)
  */
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { createDbResolver } from '@imajin/auth/resolve-db';

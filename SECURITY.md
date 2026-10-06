@@ -81,6 +81,16 @@ close them as the work lands. As of this writing:
   The node operator *can technically decrypt* secrets stored on behalf of users. The system is
   encrypted at rest and access-controlled, but this is NOT zero-custody. Owner-sealed
   (zero-custody) storage is a tracked hardening milestone.
+- **The node key is a server secret.** `AUTH_PRIVATE_KEY` sits in the kernel's process
+  environment and plays every node role at once: signing identity, vault sealing and
+  delegation keys, session-token key. A kernel compromise can forge anything the node
+  signs. For operator approvals that means approval forgery (the kernel's witness
+  signature is the only proof in the shipped v1 model) until the operator's own
+  countersignature is required (`OPERATOR_COUNTERSIGN_REQUIRED=true`, #2082 — shipped,
+  off by default). Once it is required, a kernel compromise can forge timestamps and
+  withhold records but can no longer forge an approval. Hardware custody is tracked in
+  #1979. Role inventory and the key rotation runbook:
+  [`docs/security/node-key-roles-and-rotation.md`](docs/security/node-key-roles-and-rotation.md).
 - **Rate limiting is per-process.** In multi-worker deployments, in-memory limits apply per worker.
   A shared backing store is planned.
 
