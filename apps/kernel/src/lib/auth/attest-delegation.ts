@@ -18,6 +18,10 @@ import { db, registryApps } from '@/src/db';
 import { ATTESTATION_TYPES, parseAttestDelegationCapability } from '@imajin/auth';
 import { isRegisteredAttestationType } from './attestation-type-registry';
 import { createLogger } from '@imajin/logger';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
+
+/** Max capability lookups in flight at once while validating a grant's attest delegations. */
+const ATTEST_VALIDATION_CONCURRENCY = 8;
 
 const log = createLogger('kernel');
 
@@ -85,13 +89,17 @@ export async function validateAttestDelegationCapabilities(
   const valid: string[] = [];
   const invalid: string[] = [];
   // Candidates are a short, caller-bounded list (grant issuance request
-  // body) — sequential DB lookups keep this simple to reason about.
-  for (const candidate of candidates) {
-    if (await isValidAttestDelegationCapability(candidate, agentDid)) {
+  // body) — independent read-only lookups, so a small bounded window is safe.
+  // Verdicts come back in input order, so `valid`/`invalid` keep candidate order.
+  const verdicts = await mapWithConcurrency(candidates, ATTEST_VALIDATION_CONCURRENCY, (candidate) =>
+    isValidAttestDelegationCapability(candidate, agentDid),
+  );
+  candidates.forEach((candidate, i) => {
+    if (verdicts[i]) {
       valid.push(candidate);
     } else {
       invalid.push(candidate);
     }
-  }
+  });
   return { valid, invalid };
 }

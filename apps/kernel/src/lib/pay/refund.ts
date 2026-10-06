@@ -1,6 +1,7 @@
 import { db, transactions } from '@/src/db';
 import { and, eq, sql } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import type { Logger } from '@imajin/logger';
 import { findCheckoutSessionByPaymentIntent } from './providers/stripe-client';
 import { MJN, creditUnit, debitUnit } from './ledger';
@@ -199,13 +200,16 @@ export async function reverseSettlementEntries(params: {
   const refundFraction = requestedRefundDollars / txAmountDollars;
   const newSettlementStatus = isFullRefund ? 'refunded' : 'partially_refunded';
 
-  for (const stx of settlementTxs) {
-    if (stx.status === 'refunded') continue;
+  // Sequential on purpose: ledger writes — each settlement row's status flip,
+  // reversal insert and balance debit land in order, and the first failure stops
+  // every later reversal.
+  await forEachSequential(settlementTxs, async (stx) => {
+    if (stx.status === 'refunded') return;
 
     const stxAmount = Number.parseFloat(stx.amount);
     // Proportional reversal amount, rounded to 8 decimal places.
     const stxReversalAmount = Math.round(stxAmount * refundFraction * 1e8) / 1e8;
-    if (stxReversalAmount <= 0) continue;
+    if (stxReversalAmount <= 0) return;
 
     await db.update(transactions).set({ status: newSettlementStatus }).where(eq(transactions.id, stx.id));
 
@@ -233,5 +237,5 @@ export async function reverseSettlementEntries(params: {
     if (stx.toDid) {
       await debitUnit(db, stx.toDid, MJN, stxReversalAmount, { clampAtZero: true });
     }
-  }
+  });
 }

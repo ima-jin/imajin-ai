@@ -30,6 +30,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import type { WithdrawRail } from './rails/types';
 import { listRegisteredRails } from './rails/registry';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -181,10 +182,12 @@ async function classifyTransfers(rail: WithdrawRail, watermark: Date): Promise<{
 
   let matched = 0;
   let externalWithoutLedger = 0;
-  for (const transfer of transfers) {
+  // Sequential on purpose: each discrepancy emits a signed attestation — keep
+  // emission in the rail's transfer order and stop at the first failure.
+  await forEachSequential(transfers, async (transfer) => {
     if (transfer.intentId && completedIntentIds.has(transfer.intentId)) {
       matched += 1;
-      continue;
+      return;
     }
     externalWithoutLedger += 1;
     await emitReconciliationDiscrepancy({
@@ -196,7 +199,7 @@ async function classifyTransfers(rail: WithdrawRail, watermark: Date): Promise<{
       bucket: 'external_without_ledger',
       did: null,
     });
-  }
+  });
   return { matched, externalWithoutLedger };
 }
 
@@ -217,9 +220,11 @@ async function classifyPendingIntents(rail: WithdrawRail, runStartedAt: Date): P
   const timeoutMs = releaseTimeoutMs();
   let pendingTimeout = 0;
 
-  for (const intent of pendingIntents) {
+  // Sequential on purpose: one rail `list()` call per aged intent (the rail's
+  // API is rate-limited) and each timeout emits a signed attestation in order.
+  await forEachSequential(pendingIntents, async (intent) => {
     const createdAt = intent.createdAt ?? new Date(0);
-    if (runStartedAt.getTime() - createdAt.getTime() < timeoutMs) continue; // still within grace period
+    if (runStartedAt.getTime() - createdAt.getTime() < timeoutMs) return; // still within grace period
 
     const transfersSinceCreation = await rail.list({ since: createdAt });
     const hasExternalTransfer = transfersSinceCreation.some((t) => t.intentId === intent.id);
@@ -229,7 +234,7 @@ async function classifyPendingIntents(rail: WithdrawRail, runStartedAt: Date): P
       // safe timeout bucket. `classifyTransfers` above only sees this
       // transfer once it falls inside the shared watermark window; until
       // then, this per-intent check is what catches it.
-      continue;
+      return;
     }
 
     pendingTimeout += 1;
@@ -244,7 +249,7 @@ async function classifyPendingIntents(rail: WithdrawRail, runStartedAt: Date): P
       bucket: 'pending_timeout',
       did: intent.did,
     });
-  }
+  });
 
   return pendingTimeout;
 }
@@ -266,7 +271,10 @@ export async function runReconciliation(): Promise<RunReconciliationResult> {
   const rails = listRegisteredRails();
   const results: ReconcileRailResult[] = [];
 
-  for (const rail of rails) {
+  // Sequential on purpose: rails are swept one at a time (each rail's API is
+  // rate-limited) and a rail's watermark is only advanced once its own
+  // classification succeeded — a failure stops the sweep before later rails.
+  await forEachSequential(rails, async (rail) => {
     // Captured BEFORE `list()` so a transfer created mid-run is never
     // skipped by the next run's watermark.
     const runStartedAt = new Date();
@@ -274,7 +282,7 @@ export async function runReconciliation(): Promise<RunReconciliationResult> {
     const result = await reconcileRail(rail, watermark, runStartedAt);
     await setWatermark(rail.name, result.newWatermark);
     results.push(result);
-  }
+  });
 
   return { rails: results };
 }

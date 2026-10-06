@@ -60,6 +60,36 @@ describe('ingestBilledUsage', () => {
     expect(values1).toContain(null);
   });
 
+  it('writes lines one at a time, in order, and stops at the first failing upsert', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const models: unknown[] = [];
+    mockSql.mockImplementation(async (_strings: TemplateStringsArray, ...values: unknown[]) => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      models.push(values[6]);
+      await new Promise((r) => setTimeout(r, 1));
+      inFlight--;
+      if (values[6] === 'model-b') throw new Error('upsert failed');
+      return {};
+    });
+
+    await expect(
+      ingestBilledUsage({
+        principalDid: 'did:imajin:owner',
+        provider: 'anthropic',
+        period: PERIOD,
+        granularity: 'day',
+        lines: ['model-a', 'model-b', 'model-c'].map((model) => ({
+          model, tokensIn: 1, tokensOut: 1, billedUsd: 1, raw: {},
+        })),
+      }),
+    ).rejects.toThrow('upsert failed');
+
+    expect(models).toEqual(['model-a', 'model-b']); // model-c never attempted
+    expect(maxInFlight).toBe(1);
+  });
+
   it('serializes raw through sql.json for the jsonb column', async () => {
     const jsonMock = (mockSql as unknown as { json: ReturnType<typeof vi.fn> }).json;
     await ingestBilledUsage({

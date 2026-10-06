@@ -36,6 +36,7 @@ import type { PaymentRequest } from '@/src/db';
 import { publish } from '@imajin/bus';
 import { emitMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -53,9 +54,9 @@ export async function resolvePaymentRequestsOnRecipientClaim(claimedDid: string)
     .from(paymentRequests)
     .where(eq(paymentRequests.recipientStubId, claimedDid));
 
-  for (const row of addressed) {
-    await resolveOne(row, claimedDid);
-  }
+  // Sequential on purpose: each resolved request emits a signed attestation —
+  // keep emission in row order and stop at the first failure.
+  await forEachSequential(addressed, (row) => resolveOne(row, claimedDid));
 }
 
 async function resolveOne(row: PaymentRequest, claimedDid: string): Promise<void> {

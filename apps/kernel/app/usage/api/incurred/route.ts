@@ -32,6 +32,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { validateIncurredBatch, deriveProviderModel, deriveQuantityUnit, type ValidatedIncurredRow } from '@/src/lib/usage/incurred-ingest';
 import { getEmitter, callerMatchesEmitter, isActiveEmitter } from '@/src/lib/usage/emitters-store';
 import { publishUsageIncurred } from '@/src/lib/inference/usage-ledger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:usage:incurred-ingest');
 
@@ -82,12 +83,14 @@ export async function POST(request: NextRequest) {
   // almost always one emitter reporting many rows.
   const emitterCache = new Map<string, Awaited<ReturnType<typeof getEmitter>>>();
 
-  for (const row of accepted) {
+  // Sequential on purpose: rows insert in batch order and share `emitterCache`,
+  // so each source is looked up once rather than once per concurrent row.
+  await forEachSequential(accepted, async (row) => {
     const outcome = await processRow(row, callerDid, emitterCache);
     if (outcome.status === 'inserted') inserted++;
     else if (outcome.status === 'skipped') skipped++;
     else failures.push({ index: row.index, reason: outcome.reason });
-  }
+  });
 
   return NextResponse.json({ inserted, skipped, rejected: failures }, { status: 202, headers: cors });
 }

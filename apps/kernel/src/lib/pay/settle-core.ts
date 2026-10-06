@@ -17,6 +17,7 @@
 import { db, transactions, identities, identityChains } from '@/src/db';
 import { eq, inArray } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { verifyManifest } from '@imajin/fair';
 import type { FairManifest, FairManifestV11 } from '@imajin/fair';
 import { createDbResolver } from '@imajin/auth/resolve-db';
@@ -332,7 +333,10 @@ async function creditChainRecipients(tx: TxExecutor, ctx: CreditLoopContext): Pr
   const { from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified } = ctx;
   const txIds: string[] = [];
 
-  for (const recipient of fair_manifest.chain) {
+  // Sequential on purpose: ledger writes inside one settlement transaction —
+  // each recipient's audit row and balance credit land in manifest order, and the
+  // first failure aborts (and rolls back) every later credit.
+  await forEachSequential(fair_manifest.chain, async (recipient) => {
     const txId = generateId('tx');
     txIds.push(txId);
 
@@ -364,7 +368,7 @@ async function creditChainRecipients(tx: TxExecutor, ctx: CreditLoopContext): Pr
     if (!skipBalanceCredit) {
       await creditUnit(tx, recipient.did, unit, recipient.amount, { currency: settleCurrency });
     }
-  }
+  });
 
   return txIds;
 }
@@ -391,7 +395,10 @@ async function creditTaxRows(tx: TxExecutor, ctx: CreditLoopContext): Promise<st
     fair_manifest.chain.filter((r) => SELLER_ROLES.has(r.role)).map((r) => r.did),
   );
 
-  for (const credit of fair_manifest.taxCredits ?? []) {
+  // Sequential on purpose: trust-liability ledger writes inside the settlement
+  // transaction — rows and credits land in manifest order and the first failure
+  // aborts every later credit.
+  await forEachSequential(fair_manifest.taxCredits ?? [], async (credit) => {
     const txId = generateId('tx');
     txIds.push(txId);
 
@@ -431,7 +438,7 @@ async function creditTaxRows(tx: TxExecutor, ctx: CreditLoopContext): Promise<st
     if (!skipTaxBalanceCredit) {
       await creditUnit(tx, credit.did, unit, credit.amount, { currency: settleCurrency });
     }
-  }
+  });
 
   return txIds;
 }

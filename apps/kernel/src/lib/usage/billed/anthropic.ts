@@ -37,6 +37,7 @@
 import { createLogger } from '@imajin/logger';
 import type { BilledUsageReader, BilledPeriod, BilledGranularity, BilledLine } from './types';
 import { fetchBillingJson } from './http';
+import { forEachPage } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:usage:billed:anthropic');
 
@@ -51,18 +52,6 @@ interface AnthropicUsageResult {
   cache_creation?: { ephemeral_1h_input_tokens?: number; ephemeral_5m_input_tokens?: number };
 }
 
-interface AnthropicUsageBucket {
-  starting_at: string;
-  ending_at: string;
-  results: AnthropicUsageResult[];
-}
-
-interface AnthropicUsageReportResponse {
-  data: AnthropicUsageBucket[];
-  has_more: boolean;
-  next_page: string | null;
-}
-
 interface AnthropicCostResult {
   amount: string;
   description?: string | null;
@@ -70,14 +59,9 @@ interface AnthropicCostResult {
   cost_type?: string | null;
 }
 
-interface AnthropicCostBucket {
-  starting_at: string;
-  ending_at: string;
-  results: AnthropicCostResult[];
-}
-
-interface AnthropicCostReportResponse {
-  data: AnthropicCostBucket[];
+/** One page of either report: daily buckets of `R` results plus the pagination cursor. */
+interface AnthropicReportPage<R> {
+  data: Array<{ starting_at: string; ending_at: string; results: R[] }>;
   has_more: boolean;
   next_page: string | null;
 }
@@ -102,6 +86,32 @@ function anthropicGet<T>(
   });
 }
 
+/**
+ * Walk every page of one Admin API report over the window (daily buckets,
+ * grouped by `groupBy`) and hand each result to `onResult`.
+ */
+async function forEachReportResult<R>(
+  adminApiKey: string,
+  path: string,
+  groupBy: string,
+  period: BilledPeriod,
+  fetchImpl: typeof fetch,
+  onResult: (result: R) => void,
+): Promise<void> {
+  // Sequential on purpose: each page's request needs the previous page's cursor.
+  await forEachPage(
+    (page): Promise<AnthropicReportPage<R>> => anthropicGet(adminApiKey, path, {
+      starting_at: period.start.toISOString(),
+      ending_at: period.end.toISOString(),
+      bucket_width: '1d',
+      'group_by': [groupBy],
+      ...(page ? { page } : {}),
+    }, fetchImpl),
+    (response) => (response.has_more ? (response.next_page ?? undefined) : undefined),
+    (response) => response.data.forEach((bucket) => bucket.results.forEach(onResult)),
+  );
+}
+
 /** Accumulate token usage per model across every bucket in the window, paginating. */
 async function fetchUsageByModel(
   adminApiKey: string,
@@ -109,33 +119,18 @@ async function fetchUsageByModel(
   fetchImpl: typeof fetch,
 ): Promise<Map<string | null, { tokensIn: number; tokensOut: number; raw: AnthropicUsageResult[] }>> {
   const byModel = new Map<string | null, { tokensIn: number; tokensOut: number; raw: AnthropicUsageResult[] }>();
-  let page: string | undefined;
 
-  do {
-    const response: AnthropicUsageReportResponse = await anthropicGet(adminApiKey, '/usage_report/messages', {
-      starting_at: period.start.toISOString(),
-      ending_at: period.end.toISOString(),
-      bucket_width: '1d',
-      'group_by': ['model'],
-      ...(page ? { page } : {}),
-    }, fetchImpl);
-
-    for (const bucket of response.data) {
-      for (const result of bucket.results) {
-        const model = result.model ?? null;
-        const cacheCreation = (result.cache_creation?.ephemeral_1h_input_tokens ?? 0) + (result.cache_creation?.ephemeral_5m_input_tokens ?? 0);
-        const tokensIn = (result.uncached_input_tokens ?? 0) + (result.cache_read_input_tokens ?? 0) + cacheCreation;
-        const tokensOut = result.output_tokens ?? 0;
-        const existing = byModel.get(model) ?? { tokensIn: 0, tokensOut: 0, raw: [] };
-        existing.tokensIn += tokensIn;
-        existing.tokensOut += tokensOut;
-        existing.raw.push(result);
-        byModel.set(model, existing);
-      }
-    }
-
-    page = response.has_more ? (response.next_page ?? undefined) : undefined;
-  } while (page);
+  await forEachReportResult<AnthropicUsageResult>(adminApiKey, '/usage_report/messages', 'model', period, fetchImpl, (result) => {
+    const model = result.model ?? null;
+    const cacheCreation = (result.cache_creation?.ephemeral_1h_input_tokens ?? 0) + (result.cache_creation?.ephemeral_5m_input_tokens ?? 0);
+    const tokensIn = (result.uncached_input_tokens ?? 0) + (result.cache_read_input_tokens ?? 0) + cacheCreation;
+    const tokensOut = result.output_tokens ?? 0;
+    const existing = byModel.get(model) ?? { tokensIn: 0, tokensOut: 0, raw: [] };
+    existing.tokensIn += tokensIn;
+    existing.tokensOut += tokensOut;
+    existing.raw.push(result);
+    byModel.set(model, existing);
+  });
 
   return byModel;
 }
@@ -147,31 +142,16 @@ async function fetchCostByModel(
   fetchImpl: typeof fetch,
 ): Promise<Map<string | null, { billedUsd: number; raw: AnthropicCostResult[] }>> {
   const byModel = new Map<string | null, { billedUsd: number; raw: AnthropicCostResult[] }>();
-  let page: string | undefined;
 
-  do {
-    const response: AnthropicCostReportResponse = await anthropicGet(adminApiKey, '/cost_report', {
-      starting_at: period.start.toISOString(),
-      ending_at: period.end.toISOString(),
-      bucket_width: '1d',
-      'group_by': ['description'],
-      ...(page ? { page } : {}),
-    }, fetchImpl);
-
-    for (const bucket of response.data) {
-      for (const result of bucket.results) {
-        const model = result.model ?? null;
-        // See module doc comment for the cents-vs-dollars ambiguity this divide-by-100 resolves.
-        const amountUsd = Number(result.amount) / 100;
-        const existing = byModel.get(model) ?? { billedUsd: 0, raw: [] };
-        existing.billedUsd += amountUsd;
-        existing.raw.push(result);
-        byModel.set(model, existing);
-      }
-    }
-
-    page = response.has_more ? (response.next_page ?? undefined) : undefined;
-  } while (page);
+  await forEachReportResult<AnthropicCostResult>(adminApiKey, '/cost_report', 'description', period, fetchImpl, (result) => {
+    const model = result.model ?? null;
+    // See module doc comment for the cents-vs-dollars ambiguity this divide-by-100 resolves.
+    const amountUsd = Number(result.amount) / 100;
+    const existing = byModel.get(model) ?? { billedUsd: 0, raw: [] };
+    existing.billedUsd += amountUsd;
+    existing.raw.push(result);
+    byModel.set(model, existing);
+  });
 
   return byModel;
 }

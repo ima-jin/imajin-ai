@@ -1,6 +1,7 @@
 import { db, identities, identityMembers } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { buildAgentActorRow, buildAgentMembershipRows, type PromoteActorInput } from './agent-actor';
 
 const log = createLogger('kernel');
@@ -53,7 +54,10 @@ export async function promoteActorOnGrant(input: PromoteActorInput): Promise<voi
           set: { publicKey: row.publicKey },
         });
 
-      for (const membership of membershipRows) {
+      // Sequential on purpose: check-then-insert on one transaction connection —
+      // each membership is looked up and written in order, so a duplicate row in
+      // `membershipRows` sees the previous insert.
+      await forEachSequential(membershipRows, async (membership) => {
         const existing = await tx
           .select({ identityDid: identityMembers.identityDid })
           .from(identityMembers)
@@ -68,7 +72,7 @@ export async function promoteActorOnGrant(input: PromoteActorInput): Promise<voi
         if (existing.length === 0) {
           await tx.insert(identityMembers).values(membership);
         }
-      }
+      });
     });
   } catch (err) {
     log.error(

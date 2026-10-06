@@ -20,6 +20,7 @@ import { listBillingGrantOwners as listOpenaiOwners, loadOpenaiBillingCredential
 import { createAnthropicBilledUsageReader } from './anthropic';
 import { createOpenAIBilledUsageReader } from './openai';
 import { ingestBilledUsage } from './ingest';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { BillingApiError, type BilledUsageReader, type BilledPeriod, type BilledGranularity } from './types';
 
 const log = createLogger('kernel:usage:billed:ingest-job');
@@ -142,9 +143,11 @@ async function ingestOwnerProvider(
   const reader = config.buildReader(adminApiKey);
   const windows = [yesterdayWindow(now), monthToDateWindow(now)];
   const rows: Array<BilledIngestResult | BilledIngestFailure> = [];
-  for (const window of windows) {
+  // Sequential on purpose: the two windows hit the same rate-limited provider
+  // billing API with one admin key — one pull at a time, yesterday first.
+  await forEachSequential(windows, async (window) => {
     rows.push(await pullWindow(config.provider, ownerDid, reader, window));
-  }
+  });
   return rows;
 }
 
@@ -157,24 +160,27 @@ export async function runBilledUsageIngestion(now: Date = new Date()): Promise<B
   const failures: BilledIngestFailure[] = [];
   const ownersSeen = new Set<string>();
 
-  for (const config of PROVIDERS) {
+  // Sequential on purpose: providers and owners are swept one at a time so the
+  // rate-limited billing APIs see a single in-flight request, and results/
+  // failures are reported in provider-then-owner order.
+  await forEachSequential(PROVIDERS, async (config) => {
     let owners: string[];
     try {
       owners = await config.listOwners();
     } catch (err) {
       log.error({ err: String(err), provider: config.provider }, 'billed usage: failed to enumerate owners — skipping provider');
-      continue;
+      return;
     }
 
-    for (const ownerDid of owners) {
+    await forEachSequential(owners, async (ownerDid) => {
       ownersSeen.add(ownerDid);
       const rows = await ingestOwnerProvider(config, ownerDid, now);
       for (const row of rows) {
         if (isFailure(row)) failures.push(row);
         else results.push(row);
       }
-    }
-  }
+    });
+  });
 
   log.info(
     { owners: ownersSeen.size, results: results.length, failures: failures.length },

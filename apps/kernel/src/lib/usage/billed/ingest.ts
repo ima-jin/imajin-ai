@@ -21,6 +21,7 @@ import { getClient } from '@imajin/db';
 import { generateId } from '@/src/lib/kernel/id';
 import type postgres from 'postgres';
 import type { BilledGranularity, BilledLine, BilledPeriod } from './types';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export interface IngestBilledUsageParams {
   principalDid: string;
@@ -35,7 +36,9 @@ export async function ingestBilledUsage(params: IngestBilledUsageParams): Promis
   const { principalDid, provider, period, granularity, lines } = params;
   const sql = getClient();
 
-  for (const line of lines) {
+  // Sequential on purpose: upserts land in line order and the first failure
+  // stops the remaining writes for this pull.
+  await forEachSequential(lines, async (line) => {
     const billedUsd = line.billedUsd === null ? null : line.billedUsd.toFixed(8);
     // Deep-cloned so the value structurally satisfies `postgres`'s `JSONValue`
     // type — `line.raw` is `unknown` here (an adapter's own provider-shaped
@@ -58,7 +61,7 @@ export async function ingestBilledUsage(params: IngestBilledUsageParams): Promis
         raw = EXCLUDED.raw,
         fetched_at = EXCLUDED.fetched_at
     `;
-  }
+  });
 
   return lines.length;
 }

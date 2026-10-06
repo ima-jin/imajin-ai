@@ -31,6 +31,7 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 interface PledgeCharge {
   pledgeId: string;
@@ -89,7 +90,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     let charged = 0;
     let failed = 0;
 
-    for (const pledge of pledges) {
+    // Sequential on purpose: each pledge is an off-session Stripe charge — one
+    // card charge at a time (Stripe rate limits, no burst of simultaneous
+    // charges), with `results` reported in pledge order.
+    await forEachSequential(pledges, async (pledge) => {
       try {
         if (!pledge.stripeCustomerId || !pledge.stripePaymentMethodId) {
           results.push({
@@ -98,7 +102,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
             error: 'Missing Stripe customer or payment method',
           });
           failed++;
-          continue;
+          return;
         }
 
         const paymentIntent = await stripe.paymentIntents.create({
@@ -147,7 +151,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         });
         failed++;
       }
-    }
+    });
 
     return NextResponse.json({
       charged,

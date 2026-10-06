@@ -152,4 +152,33 @@ describe('validateAttestDelegationCapabilities', () => {
       invalid: ['attest:app_unknown:vouch.given'],
     });
   });
+
+  it('keeps candidate order in valid/invalid even when lookups settle out of order', async () => {
+    const slowActive = new Promise<unknown[]>((resolve) => {
+      setTimeout(() => resolve([{ id: APP_ID, appDid: APP_DID, status: 'active' }]), 20);
+    });
+    h.selectLimit
+      .mockReturnValueOnce(slowActive) // 1st candidate: slow, valid
+      .mockResolvedValueOnce([]) // 2nd candidate: fast, invalid
+      .mockResolvedValueOnce([{ id: APP_ID, appDid: APP_DID, status: 'active' }]); // 3rd: fast, valid
+
+    const candidates = [
+      `attest:${APP_ID}:vouch.given`,
+      'attest:app_unknown:vouch.given',
+      `attest:${APP_ID}:vouch.received`,
+    ];
+    const result = await validateAttestDelegationCapabilities(candidates, APP_DID);
+
+    expect(result.valid).toEqual([candidates[0], candidates[2]]);
+    expect(result.invalid).toEqual([candidates[1]]);
+  });
+
+  it('propagates a failing validation instead of silently classifying the candidate', async () => {
+    h.selectLimit.mockResolvedValue([{ id: APP_ID, appDid: APP_DID, status: 'active' }]);
+    h.isRegisteredAttestationType.mockRejectedValueOnce(new Error('registry lookup failed'));
+
+    await expect(
+      validateAttestDelegationCapabilities([`attest:${APP_ID}:dykil/survey_response`], APP_DID),
+    ).rejects.toThrow('registry lookup failed');
+  });
 });
