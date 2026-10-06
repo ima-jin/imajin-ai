@@ -30,6 +30,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { eq } from 'drizzle-orm';
 import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
@@ -38,6 +39,10 @@ import { withLogger } from '@imajin/logger';
 import { MJNX, creditUnit } from '@/src/lib/pay/ledger';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+
+function stringOrNull(value: unknown): string | null {
+  return typeof value === 'string' && value !== '' ? value : null;
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -102,33 +107,74 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // #2016: the attestation this emission was minted against, when the
     // caller (the bus's mjn reactor) supplied one. Lifted out of the
     // freeform metadata bag into a first-class column.
-    const attestationId: string | null =
-      typeof metadata.attestation_id === 'string' ? metadata.attestation_id : null;
+    const attestationId = stringOrNull(metadata.attestation_id);
+    // #2017: provenance of the schedule that produced this emission (the
+    // bus_chain_configs row id + version), and the caller's dedupe key.
+    const emissionConfigId = stringOrNull(metadata.emission_config_id);
+    const emissionConfigVersion = Number.isInteger(metadata.emission_config_version)
+      ? (metadata.emission_config_version as number)
+      : null;
+    const idempotencyKey = stringOrNull(metadata.idempotency_key);
 
     const txId = generateId('tx');
 
-    // Upsert the MJNx balance row.
-    await creditUnit(db, to_did, MJNX, amount, { currency: 'MJNx' });
+    // #2017: claim the transaction row and credit the balance atomically.
+    // The row goes first: with an `idempotency_key`, a retry of an emission
+    // that already landed hits the partial UNIQUE index, inserts nothing, and
+    // is credited zero times. A failed credit rolls the claim back, so a
+    // retry can still succeed.
+    const created = await db.transaction(async (tx) => {
+      const claimed = await tx
+        .insert(transactions)
+        .values({
+          id: txId,
+          service: 'emissions',
+          type: 'emission',
+          fromDid: null, // protocol mint, no sender
+          toDid: to_did,
+          amount: String(amount),
+          currency: 'MJNx',
+          unit: MJNX,
+          sourceKind: 'emission',
+          attestationId,
+          emissionConfigId,
+          emissionConfigVersion,
+          idempotencyKey,
+          status: 'completed',
+          source: 'emission',
+          metadata: {
+            reason,
+            ...metadata,
+          },
+        })
+        .onConflictDoNothing()
+        .returning({ id: transactions.id });
+      if (claimed.length === 0) return false;
 
-    // Log the emission transaction
-    await db.insert(transactions).values({
-      id: txId,
-      service: 'emissions',
-      type: 'emission',
-      fromDid: null, // protocol mint, no sender
-      toDid: to_did,
-      amount: String(amount),
-      currency: 'MJNx',
-      unit: MJNX,
-      sourceKind: 'emission',
-      attestationId,
-      status: 'completed',
-      source: 'emission',
-      metadata: {
-        reason,
-        ...metadata,
-      },
+      // Upsert the MJNx balance row.
+      await creditUnit(tx, to_did, MJNX, amount, { currency: 'MJNx' });
+      return true;
     });
+
+    if (!created) {
+      // Duplicate delivery of an emission that already landed: success, no second credit.
+      const [existing] = await db
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(eq(transactions.idempotencyKey, idempotencyKey as string))
+        .limit(1);
+      log.info({ idempotencyKey, txId: existing?.id }, '[emission] duplicate delivery ignored');
+      return NextResponse.json(
+        {
+          id: existing?.id ?? null,
+          amount: String(amount),
+          to_did,
+          status: 'completed',
+          duplicate: true,
+        },
+        { status: 200, headers: cors }
+      );
+    }
 
     log.info(
       { amount, toDid: to_did.slice(0, 20), reason, txId },

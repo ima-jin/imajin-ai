@@ -1036,6 +1036,12 @@
   "views": {},
   "types": {},
   "functions": {
+    "kernel.bus_chain_configs_bump_version": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0170_emission_config.sql",
+      "notes": ""
+    },
     "registry.cleanup_legacy_logs": {
       "owner": "kernel",
       "schema": "registry",

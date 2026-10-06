@@ -1,24 +1,27 @@
 /**
  * POST /api/connect/webhook
  *
- * Stripe Connect webhook handler for connected account events.
+ * Stripe Connect webhook ingress for connected account events.
  *
- * Events handled:
+ * Events relayed to the bus consumer:
  * - account.updated
  * - payout.paid
  * - payout.failed
  *
+ * #2177: ingress only — verifies the signature, then republishes the delivery
+ * onto the #1785 connector bus as a `stripe.<type>` event
+ * (`lib/pay/stripe-relay.ts`); the handlers now live in the `pay-stripe` bus
+ * consumer (`lib/pay/stripe-bus-consumer.ts`). A delivery the consumer fails
+ * to handle is answered 500 so Stripe retries.
+ *
  * #2175: signature verification and Stripe SDK access live entirely behind
- * `lib/pay/providers/stripe-webhook.ts` now — this route never imports the
- * `stripe` package or references a `Stripe.*` type; every case dispatches
- * on a normalized `RailEvent`.
+ * `lib/pay/providers/stripe-webhook.ts` — this route never imports the
+ * `stripe` package or references a `Stripe.*` type.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { eq } from 'drizzle-orm';
-import { db, connectedAccounts } from '@/src/db';
-import { verifyStripeWebhook, markStripeEventProcessed, toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
-import type { StripeAccountLike, StripePayoutLike } from '@/src/lib/pay/webhook-event-shapes';
+import { verifyStripeWebhook, markStripeEventProcessed } from '@/src/lib/pay/providers/stripe-webhook';
+import { relayVerifiedStripeEvent } from '@/src/lib/pay/stripe-relay';
 import { withLogger } from '@imajin/logger';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
@@ -36,66 +39,15 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  try {
-    switch (verified.eventType) {
-      case 'account.updated': {
-        const railEvent = toRailEvent(verified.event)!;
-        const account = railEvent.raw as unknown as StripeAccountLike;
-
-        const rows = await db
-          .select()
-          .from(connectedAccounts)
-          .where(eq(connectedAccounts.stripeAccountId, account.id))
-          .limit(1);
-
-        if (rows.length > 0) {
-          const chargesEnabled = account.charges_enabled ?? false;
-          const payoutsEnabled = account.payouts_enabled ?? false;
-          const detailsSubmitted = account.details_submitted ?? false;
-
-          await db
-            .update(connectedAccounts)
-            .set({
-              chargesEnabled,
-              payoutsEnabled,
-              detailsSubmitted,
-              onboardingComplete: chargesEnabled && payoutsEnabled && detailsSubmitted,
-              currentlyDue: account.requirements?.currently_due ?? [],
-              eventuallyDue: account.requirements?.eventually_due ?? [],
-              updatedAt: new Date(),
-            })
-            .where(eq(connectedAccounts.stripeAccountId, account.id));
-        }
-        break;
-      }
-
-      case 'payout.paid': {
-        const railEvent = toRailEvent(verified.event)!;
-        const payout = railEvent.raw as unknown as StripePayoutLike;
-        const connectAccountId = (verified.event as { account?: string } | undefined)?.account;
-        log.info({ account: connectAccountId, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.paid');
-        break;
-      }
-
-      case 'payout.failed': {
-        const railEvent = toRailEvent(verified.event)!;
-        const payout = railEvent.raw as unknown as StripePayoutLike;
-        const connectAccountId = (verified.event as { account?: string } | undefined)?.account;
-        log.info({ account: connectAccountId, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, 'Connect payout.failed');
-        break;
-      }
-
-      default:
-        log.info({ eventType: verified.eventType }, 'Unhandled connect event type');
-    }
-
-    markStripeEventProcessed(verified.eventId);
-    return NextResponse.json({ received: true });
-  } catch (error) {
-    log.error({ err: String(error) }, 'Connect webhook handler error');
-    return NextResponse.json(
-      { error: 'Webhook handler failed' },
-      { status: 500 }
-    );
+  const result = await relayVerifiedStripeEvent(verified.event, 'connect');
+  if (result.status === 'failed') {
+    log.error({ eventType: verified.eventType, reason: result.reason }, 'Connect webhook handler error');
+    return NextResponse.json({ error: 'Webhook handler failed' }, { status: 500 });
   }
+  if (result.status === 'ignored') {
+    log.info({ eventType: verified.eventType }, 'Unhandled connect event type');
+  }
+
+  markStripeEventProcessed(verified.eventId);
+  return NextResponse.json({ received: true });
 });

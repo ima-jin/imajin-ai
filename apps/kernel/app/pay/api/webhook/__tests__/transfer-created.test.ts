@@ -14,7 +14,8 @@ const state = vi.hoisted(() => ({
 }));
 
 vi.mock('@/src/db', () => ({ db: {}, transactions: {}, feeLedger: {} }));
-vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/bus', async () =>
+  (await import('@/src/lib/pay/__tests__/in-process-bus')).createInProcessBusMock(vi.fn().mockResolvedValue(undefined)));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({

@@ -157,6 +157,38 @@ describe('apps.signing-key.claimed chain (#2444)', () => {
   });
 });
 
+describe('stripe.* chains (#2177 pay webhook convergence, #1785 connector events)', () => {
+  // Every type the pay webhook ingress relays (plus the three the BYO connector
+  // also publishes) resolves, with no DB row, to ONE awaited `pay-stripe`
+  // reactor — the kernel-registered consumer. Awaited because the ingress must
+  // not answer 2xx before the handler finished; no `emit`/`attestation`
+  // because these are operational ingest, not signed claims.
+  it.each([
+    'stripe.payment_intent.succeeded',
+    'stripe.payment_intent.payment_failed',
+    'stripe.invoice.paid',
+    'stripe.payout.paid',
+    'stripe.payout.failed',
+    'stripe.checkout.session.completed',
+    'stripe.customer.subscription.created',
+    'stripe.customer.subscription.updated',
+    'stripe.customer.subscription.deleted',
+    'stripe.transfer.created',
+    'stripe.account.updated',
+  ])('%s routes to a single awaited pay-stripe reactor', async (eventType) => {
+    const cfg = await getChainConfig(eventType, 'stripe');
+
+    expect(cfg.source).toBe('defaults');
+    expect(cfg.reactors).toEqual([{ type: 'pay-stripe', config: {}, await: true, enabled: true }]);
+  });
+
+  it('does not add any stripe.* chain beyond the pay-handled set', async () => {
+    const cfg = await getChainConfig('stripe.charge.refunded', 'stripe');
+
+    expect(cfg.reactors).toEqual([]);
+  });
+});
+
 // The bus barrel (`../src/index`) transitively loads the broker, every reactor
 // and the notify/emit/logger stack. Imported cold inside an `it()` it ate the
 // whole 5s testTimeout on a loaded CI runner (#2616) although it takes well

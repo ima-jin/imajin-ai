@@ -63,6 +63,37 @@ export interface LoopEventPayload {
   [key: string]: unknown;
 }
 
+/**
+ * Which pay webhook endpoint (and therefore which signing secret) verified a
+ * platform-relayed Stripe delivery (#2177): the platform-account endpoint or
+ * the Connect endpoint.
+ */
+export type StripeRelaySource = 'platform' | 'connect';
+
+/**
+ * Payload of a platform-account Stripe delivery relayed onto the bus by the
+ * pay webhook ingress (#2177). Non-sensitive facts only — the verified Stripe
+ * event itself is handed to the consumer in-process via `relayId`, never
+ * carried here (see the `stripe.*` block in {@link BusEventMap}).
+ */
+export type StripePlatformRelayPayload = {
+  /** The platform DID — the platform's own Stripe account is the "owner" of these events. */
+  ownerDid: string;
+  /** Stripe event id (`evt_...`). */
+  eventId: string;
+  /** Id of the Stripe object the event is about (`pi_...`, `cs_...`, `sub_...`, ...). */
+  objectId: string;
+  /** Minor-unit amount when the object has one for this event type, else null. */
+  amount: number | null;
+  /** Upper-cased ISO currency when the object has one, else null. */
+  currency: string | null;
+  source: StripeRelaySource;
+  /** Opaque in-process hand-off key the `pay-stripe` reactor resolves. */
+  relayId: string;
+  context_id: string;
+  context_type: 'stripe';
+};
+
 /** Type-safe event payloads — compiler catches bad call sites */
 export interface BusEventMap {
   'identity.created': {
@@ -1820,11 +1851,17 @@ export interface BusEventMap {
    * `subject` on the envelope) so reactors can compose against them
    * `onBehalfOf` that identity.
    *
-   * #1073 settlement seam: this PR intentionally stops at the bus event. A
-   * follow-up reactor can subscribe to these three types and route them to
-   * the canonical `POST /api/settle`, the same way `.fair` manifests already
-   * converge platform-funded settlements — that convergence is NOT built here
-   * (see the connector's class doc for why).
+   * #2177 (#1073 settlement seam): the pay webhook ingress
+   * (`apps/kernel/app/pay/api/webhook`, `.../connect/webhook`) now republishes
+   * the PLATFORM account's verified deliveries onto these same `stripe.*`
+   * types — `ownerDid` is the platform DID and `source`/`relayId` are set — and
+   * the kernel's `pay-stripe` reactor consumes them (every `stripe.*` default
+   * chain in `config.ts` is that single awaited reactor). A connector (BYO)
+   * event has neither `source` nor `relayId`, which is how the reactor tells
+   * the two apart. Platform-relayed payloads carry only non-sensitive facts
+   * (ids, amount, currency): the verified Stripe event itself never rides in
+   * the bus payload, because these payloads are persisted and fanned out to
+   * subscribers.
    */
   'stripe.payment_intent.succeeded': {
     ownerDid: string;
@@ -1834,6 +1871,8 @@ export interface BusEventMap {
     currency: string;
     context_id: string;
     context_type: 'stripe';
+    source?: StripeRelaySource;
+    relayId?: string;
   };
   'stripe.invoice.paid': {
     ownerDid: string;
@@ -1843,6 +1882,8 @@ export interface BusEventMap {
     currency: string;
     context_id: string;
     context_type: 'stripe';
+    source?: StripeRelaySource;
+    relayId?: string;
   };
   'stripe.payout.paid': {
     ownerDid: string;
@@ -1853,7 +1894,22 @@ export interface BusEventMap {
     arrivalDate: string | null;
     context_id: string;
     context_type: 'stripe';
+    source?: StripeRelaySource;
+    relayId?: string;
   };
+  /**
+   * Platform-account deliveries relayed by the pay webhook ingress (#2177)
+   * for event types the BYO connector does not itself republish. Shared
+   * shape: see {@link StripePlatformRelayPayload}.
+   */
+  'stripe.payment_intent.payment_failed': StripePlatformRelayPayload;
+  'stripe.checkout.session.completed': StripePlatformRelayPayload;
+  'stripe.customer.subscription.created': StripePlatformRelayPayload;
+  'stripe.customer.subscription.updated': StripePlatformRelayPayload;
+  'stripe.customer.subscription.deleted': StripePlatformRelayPayload;
+  'stripe.transfer.created': StripePlatformRelayPayload;
+  'stripe.account.updated': StripePlatformRelayPayload;
+  'stripe.payout.failed': StripePlatformRelayPayload;
   /**
    * A resource was consumed, by an actor, on behalf of a principal (#1147,
    * #1148) — the Agent Resource-Accounting Layer's emitter/resource-agnostic

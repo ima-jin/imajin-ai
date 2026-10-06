@@ -39,7 +39,8 @@ export { registerReactor, getReactor } from './registry';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
 export { getChainConfig, getBrokerChainConfig } from './config';
 export { getLotChain, recentLotsBySupplier } from './supply-lots';
-export { EMISSION_SCHEDULE } from './emissions';
+export { loadEmissionConfig, parseEmissionRules, resolveAmount, resolveTarget } from './emissions';
+export type { EmissionConfig, EmissionRule, EmissionTarget } from './emissions';
 export { resolveConsent } from './broker-config';
 export { isBrokerRelease, isBrokerRejection } from './types';
 // Match engine broker reactors — registered in broker.ts alongside the core four.
@@ -54,6 +55,8 @@ export type {
   ReactorHandler,
   LoopRefs,
   LoopEventPayload,
+  StripeRelaySource,
+  StripePlatformRelayPayload,
   BrokerRequest,
   BrokerFieldReleaseMode,
   BrokerReleaseEnvelopeMode,
