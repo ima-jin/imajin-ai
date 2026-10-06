@@ -92,10 +92,14 @@ export async function createIdentityChain(input: {
  */
 export function verifyChain(log: string[]): Promise<VerifiedIdentity> {
   // Keep the Promise contract: a synchronous throw becomes a rejection.
-  return new Promise<VerifiedIdentity>((resolve) => resolve(verifyIdentityChain({
-    didPrefix: DFOS_DID_PREFIX,
-    log,
-  })));
+  try {
+    return Promise.resolve(verifyIdentityChain({
+      didPrefix: DFOS_DID_PREFIX,
+      log,
+    }));
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
 }
 
 /**

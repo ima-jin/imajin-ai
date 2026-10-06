@@ -47,5 +47,9 @@ export async function mapWithConcurrency<T, R>(
  * fires exactly as it would for an `async` function.
  */
 export function attempt<T>(fn: () => T): Promise<T> {
-  return new Promise<T>((resolve) => resolve(fn()));
+  try {
+    return Promise.resolve(fn());
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
 }

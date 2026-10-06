@@ -119,7 +119,11 @@ export function signSync(message: string | Uint8Array, privateKeyHex: string): s
  */
 export function sign(message: string | Uint8Array, privateKeyHex: string): Promise<string> {
   // Keep the Promise contract: a synchronous throw becomes a rejection.
-  return new Promise<string>((resolve) => resolve(signSync(message, privateKeyHex)));
+  try {
+    return Promise.resolve(signSync(message, privateKeyHex));
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
 }
 
 /**
@@ -154,7 +158,11 @@ export function verify(
   publicKeyHex: string
 ): Promise<boolean> {
   // Keep the Promise contract: a synchronous throw becomes a rejection.
-  return new Promise<boolean>((resolve) => resolve(verifySync(signature, message, publicKeyHex)));
+  try {
+    return Promise.resolve(verifySync(signature, message, publicKeyHex));
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
 }
 
 /**

@@ -6,7 +6,11 @@ import { type VaultBlob } from './models.js';
  */
 export function computeVaultCid(blob: VaultBlob): Promise<string> {
     // Keep the Promise contract: a synchronous throw (e.g. a missing blob) becomes a rejection.
-    return new Promise<string>((resolve) => resolve(computeCid({ encrypted: blob.encrypted, nonce: blob.nonce })));
+    try {
+        return Promise.resolve(computeCid({ encrypted: blob.encrypted, nonce: blob.nonce }));
+    } catch (err) {
+        return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
 }
 
 /**
@@ -14,5 +18,9 @@ export function computeVaultCid(blob: VaultBlob): Promise<string> {
  */
 export function verifyVaultCid(blob: VaultBlob, expectedCid: string): Promise<boolean> {
     // Keep the Promise contract: a synchronous throw (e.g. a missing blob) becomes a rejection.
-    return new Promise<boolean>((resolve) => resolve(verifyCid({ encrypted: blob.encrypted, nonce: blob.nonce }, expectedCid)));
+    try {
+        return Promise.resolve(verifyCid({ encrypted: blob.encrypted, nonce: blob.nonce }, expectedCid));
+    } catch (err) {
+        return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
 }

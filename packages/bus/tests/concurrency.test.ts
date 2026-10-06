@@ -90,4 +90,10 @@ describe('attempt', () => {
     }).not.toThrow();
     await expect(pending).rejects.toThrow('sync boom');
   });
+
+  it('runs the body synchronously, before returning', () => {
+    let ran = false;
+    void attempt(() => { ran = true; });
+    expect(ran).toBe(true);
+  });
 });

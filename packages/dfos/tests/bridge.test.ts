@@ -247,3 +247,13 @@ describe('verifyChain Promise contract', () => {
     await expect(pending).rejects.toThrow();
   });
 });
+
+describe('createSigner Promise contract', () => {
+  it('returns a rejected promise (not a synchronous throw) when signing throws', async () => {
+    const { privateKey } = generateKeypair();
+    const sign = createSigner(privateKey);
+    let pending: Promise<Uint8Array> | undefined;
+    expect(() => { pending = sign(undefined as unknown as Uint8Array); }).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(Error);
+  });
+});
