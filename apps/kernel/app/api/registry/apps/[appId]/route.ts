@@ -35,6 +35,44 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ appI
   return NextResponse.json(app);
 }
 
+type AppUpdates = Partial<typeof registryApps.$inferInsert>;
+
+/** The plain, unvalidated owner-editable fields of PATCH. */
+function buildFieldUpdates(body: Record<string, unknown>): AppUpdates {
+  const updates: AppUpdates = { updatedAt: new Date() };
+  if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim();
+  if (typeof body.description === 'string') updates.description = body.description || null;
+  if (typeof body.callbackUrl === 'string' && body.callbackUrl) updates.callbackUrl = body.callbackUrl;
+  if (typeof body.homepageUrl === 'string') updates.homepageUrl = body.homepageUrl || null;
+  if (typeof body.logoUrl === 'string') updates.logoUrl = body.logoUrl || null;
+  if (Array.isArray(body.requestedScopes)) updates.requestedScopes = body.requestedScopes;
+  return updates;
+}
+
+/**
+ * #2663: validate and collect `providesScopes` / `dependsOn` — only the ones the
+ * request actually sent. Nothing is validated, and nothing returned, when
+ * neither is present.
+ */
+async function buildDeclarationUpdates(
+  body: Record<string, unknown>,
+  slug: string | null,
+): Promise<{ ok: Pick<AppUpdates, 'providesScopes' | 'dependsOn'> } | { error: string }> {
+  if (body.providesScopes === undefined && body.dependsOn === undefined) return { ok: {} };
+
+  const declarations = await validateAppDeclarations({
+    providesScopes: body.providesScopes,
+    dependsOn: body.dependsOn,
+    slug,
+  });
+  if ('error' in declarations) return { error: declarations.error };
+
+  const ok: Pick<AppUpdates, 'providesScopes' | 'dependsOn'> = {};
+  if (body.providesScopes !== undefined) ok.providesScopes = declarations.ok.providesScopes;
+  if (body.dependsOn !== undefined) ok.dependsOn = declarations.ok.dependsOn;
+  return { ok };
+}
+
 // PATCH /api/registry/apps/:appId — update (owner only)
 export async function PATCH(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
   const params = await props.params;
@@ -63,30 +101,15 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const updates: Partial<typeof registryApps.$inferInsert> = {
-    updatedAt: new Date(),
-  };
-  if (typeof body.name === 'string' && body.name.trim()) updates.name = body.name.trim();
-  if (typeof body.description === 'string') updates.description = body.description || null;
-  if (typeof body.callbackUrl === 'string' && body.callbackUrl) updates.callbackUrl = body.callbackUrl;
-  if (typeof body.homepageUrl === 'string') updates.homepageUrl = body.homepageUrl || null;
-  if (typeof body.logoUrl === 'string') updates.logoUrl = body.logoUrl || null;
-  if (Array.isArray(body.requestedScopes)) updates.requestedScopes = body.requestedScopes;
+  const updates = buildFieldUpdates(body);
 
   // #2663: the app's own scopes and dependency list — same assignment model as
   // requestedScopes, validated the same way the register route validates them.
-  if (body.providesScopes !== undefined || body.dependsOn !== undefined) {
-    const declarations = await validateAppDeclarations({
-      providesScopes: body.providesScopes,
-      dependsOn: body.dependsOn,
-      slug: existing.slug,
-    });
-    if ('error' in declarations) {
-      return NextResponse.json({ error: declarations.error }, { status: 400 });
-    }
-    if (body.providesScopes !== undefined) updates.providesScopes = declarations.ok.providesScopes;
-    if (body.dependsOn !== undefined) updates.dependsOn = declarations.ok.dependsOn;
+  const declarationUpdates = await buildDeclarationUpdates(body, existing.slug);
+  if ('error' in declarationUpdates) {
+    return NextResponse.json({ error: declarationUpdates.error }, { status: 400 });
   }
+  Object.assign(updates, declarationUpdates.ok);
 
   const [updated] = await db
     .update(registryApps)

@@ -66,6 +66,11 @@ const {
   };
 });
 
+// #2663: the registry/auth-backed validator is covered by app-declarations.test.ts;
+// here it passes manifest declarations through unless a test overrides it.
+const { validateAppDeclarationsMock } = vi.hoisted(() => ({ validateAppDeclarationsMock: vi.fn() }));
+vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: validateAppDeclarationsMock }));
+
 vi.mock('@imajin/logger', () => ({ createLogger: () => logMock }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
 vi.mock('@imajin/auth', () => ({ emitAttestation: emitAttestationMock }));
@@ -234,6 +239,49 @@ beforeEach(() => {
   seedAttestationTypesMock.mockResolvedValue([]);
   grantExistingMintedKeyMock.mockResolvedValue({ status: 'ok', grantId: APP_SELF_GRANT_ID });
   issueSigningKeyClaimMock.mockResolvedValue(CLAIM_CODE);
+  validateAppDeclarationsMock.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[] }) => ({
+    ok: { providesScopes: input.providesScopes ?? [], dependsOn: input.dependsOn ?? [], requestedScopes: [] },
+  }));
+});
+
+describe('runAppProvision — #2663 scope declarations from the manifest', () => {
+  it('registers providesScopes + dependsOn from the manifest, validated against the app slug', async () => {
+    fetchAppManifestMock.mockResolvedValue({
+      providesScopes: ['dykil:read', 'dykil:write'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+    });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: 'dykil' }));
+    expect([...registryAppsStore.values()][0]).toMatchObject({
+      providesScopes: ['dykil:read', 'dykil:write'],
+      requestedScopes: ['dykil:read', 'dykil:write'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+    });
+  });
+
+  it('registers empty declarations when the manifest has none', async () => {
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0]).toMatchObject({ providesScopes: [], dependsOn: [] });
+  });
+
+  it('fails closed at the register step, writing no row, when the declarations are rejected', async () => {
+    fetchAppManifestMock.mockResolvedValue({ providesScopes: ['media:write'] });
+    validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('providesScopes rejected: media:write');
+    expect(registryAppsStore.size).toBe(0);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('runAppProvision — happy path', () => {

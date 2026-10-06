@@ -31,6 +31,8 @@ vi.mock('@/src/db', () => ({
     tier: 'registryApps.tier',
     status: 'registryApps.status',
     tokenAudiences: 'registryApps.tokenAudiences',
+    providesScopes: 'registryApps.providesScopes',
+    dependsOn: 'registryApps.dependsOn',
   },
 }));
 
@@ -46,12 +48,21 @@ vi.mock('@imajin/logger', () => ({
 
 import {
   resolveActiveAppByAudience,
+  resolveTokenAudiences,
   isAppDidActive,
   appNotRegisteredResponse,
   APP_NOT_REGISTERED_ERROR,
 } from '../app-registry';
 
-const ACTIVE_ROW = { id: 'app_first_party_coffee', appDid: 'did:imajin:app-coffee', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active' };
+const ACTIVE_ROW = {
+  id: 'app_first_party_coffee',
+  appDid: 'did:imajin:app-coffee',
+  ownerDid: 'did:imajin:platform',
+  tier: 'first_party',
+  status: 'active',
+  providesScopes: [] as string[],
+  dependsOn: [] as Array<{ aud: string; scopes: string[] }>,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -71,6 +82,25 @@ describe('resolveActiveAppByAudience (#1990)', () => {
     const result = await resolveActiveAppByAudience('coffee');
 
     expect(result).toEqual(ACTIVE_ROW);
+  });
+
+  it("returns the app's declared providesScopes and dependsOn (#2663)", async () => {
+    const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }];
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, providesScopes: ['dykil:read'], dependsOn }]);
+
+    const result = await resolveActiveAppByAudience('dykil');
+
+    expect(result?.providesScopes).toEqual(['dykil:read']);
+    expect(result?.dependsOn).toEqual(dependsOn);
+  });
+
+  it('normalises null declarations from a pre-0176 row to empty arrays (#2663)', async () => {
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, providesScopes: null, dependsOn: null }]);
+
+    const result = await resolveActiveAppByAudience('coffee');
+
+    expect(result?.providesScopes).toEqual([]);
+    expect(result?.dependsOn).toEqual([]);
   });
 
   it('returns null when no row matches the audience', async () => {
@@ -131,5 +161,64 @@ describe('appNotRegisteredResponse (#1990)', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body).toEqual(APP_NOT_REGISTERED_ERROR);
+  });
+});
+
+describe('resolveTokenAudiences (#2663)', () => {
+  const MEDIA = 'jin.imajin.ai';
+  const OTHER = 'events.imajin.ai';
+  const app = {
+    dependsOn: [
+      { aud: MEDIA, scopes: ['media:read', 'media:write'] },
+      { aud: OTHER, scopes: ['events:read'] },
+    ],
+  };
+
+  /** Make `resolveActiveAppByAudience` find an active row only for the given audiences. */
+  function registered(...auds: string[]): void {
+    let current = '';
+    mocks.whereMock.mockImplementation((cond: { arrayContains: unknown[] }) => {
+      current = (cond.arrayContains[1] as string[])[0];
+      return { limit: mocks.limitMock };
+    });
+    mocks.limitMock.mockImplementation(async () => (auds.includes(current) ? [ACTIVE_ROW] : []));
+  }
+
+  it('returns just the primary audience when the app declares no dependencies', async () => {
+    expect(await resolveTokenAudiences('dykil.imajin.ai', { dependsOn: [] }, ['dykil:read'])).toEqual(['dykil.imajin.ai']);
+    expect(mocks.selectMock).not.toHaveBeenCalled();
+  });
+
+  it('adds a dependency audience when a granted scope reaches it and it is still registered', async () => {
+    registered(MEDIA);
+
+    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['dykil:read', 'media:read'])).toEqual(['dykil.imajin.ai', MEDIA]);
+  });
+
+  it('adds every reached dependency, in declaration order', async () => {
+    registered(MEDIA, OTHER);
+
+    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['events:read', 'media:write'])).toEqual(['dykil.imajin.ai', MEDIA, OTHER]);
+  });
+
+  it('leaves out a dependency no granted scope reaches (least privilege)', async () => {
+    registered(MEDIA, OTHER);
+
+    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['dykil:read'])).toEqual(['dykil.imajin.ai']);
+    expect(mocks.selectMock).not.toHaveBeenCalled();
+  });
+
+  it('drops a dependency that is no longer registered or active rather than failing the mint', async () => {
+    registered(OTHER);
+
+    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['media:read', 'events:read'])).toEqual(['dykil.imajin.ai', OTHER]);
+  });
+
+  it('never duplicates the primary audience', async () => {
+    registered(MEDIA);
+
+    expect(
+      await resolveTokenAudiences(MEDIA, { dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] }, ['media:read']),
+    ).toEqual([MEDIA]);
   });
 });

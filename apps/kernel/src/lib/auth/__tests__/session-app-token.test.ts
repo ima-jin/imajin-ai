@@ -9,6 +9,7 @@
  * tokens defined earlier in this file.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import * as jose from 'jose';
 import {
   createSessionAppToken,
   verifySessionAppTokenLocal,
@@ -106,5 +107,48 @@ describe('session-app tokens are distinct from third-party app tokens (#1069 Pha
     const claims = await verifySessionAppTokenLocal(appToken, APP_HOST);
 
     expect(claims).toBeNull();
+  });
+});
+
+describe('session-app token with several audiences (#2663)', () => {
+  const MEDIA_HOST = 'jin.imajin.ai';
+
+  it('verifies for each audience it carries and reports the audience asked for', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes: ['profile:read'] });
+
+    const forApp = await verifySessionAppTokenLocal(token, APP_HOST);
+    const forMedia = await verifySessionAppTokenLocal(token, MEDIA_HOST);
+
+    expect(forApp).toMatchObject({ aud: APP_HOST, auds: [APP_HOST, MEDIA_HOST] });
+    expect(forMedia).toMatchObject({ aud: MEDIA_HOST, auds: [APP_HOST, MEDIA_HOST], scopes: ['profile:read'] });
+  });
+
+  it('reports the first audience as primary when none is asked for', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes: [] });
+
+    const claims = await verifySessionAppTokenLocal(token);
+
+    expect(claims).toMatchObject({ aud: APP_HOST, auds: [APP_HOST, MEDIA_HOST] });
+  });
+
+  it('rejects an audience the token does not carry', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes: [] });
+
+    await expect(verifySessionAppTokenLocal(token, OTHER_HOST)).resolves.toBeNull();
+  });
+
+  it('writes a single audience as a plain string claim, unchanged from before #2663', async () => {
+    const asString = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [] });
+    const asOneElementList = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST], scopes: [] });
+
+    expect(jose.decodeJwt(asString).aud).toBe(APP_HOST);
+    expect(jose.decodeJwt(asOneElementList).aud).toBe(APP_HOST);
+    await expect(verifySessionAppTokenLocal(asOneElementList, APP_HOST)).resolves.toMatchObject({ auds: [APP_HOST] });
+  });
+
+  it('writes several audiences as a list claim', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes: [] });
+
+    expect(jose.decodeJwt(token).aud).toEqual([APP_HOST, MEDIA_HOST]);
   });
 });
