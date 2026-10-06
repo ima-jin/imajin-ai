@@ -53,6 +53,19 @@ function loopLifecycleChain(): ReactorConfig[] {
   ];
 }
 
+/**
+ * The `mjn` reactor entry shared by every emitting chain (#2017). Deliberately
+ * carries NO amounts: the emission schedule (`emit[]`: recipients → amount or
+ * percent → unit) lives in the `kernel.bus_chain_configs` row — seeded by
+ * migration 0170 and operator-editable — and the reactor reads it from there
+ * at emission time. With no DB row, the chain still resolves but emits
+ * nothing. `await: true` so a lost emission surfaces in the publish path
+ * instead of being a detached, silent promise rejection.
+ */
+function mjnEmission(attestationType: string): ReactorConfig {
+  return { type: 'mjn', config: { attestationType }, await: true, enabled: true };
+}
+
 // Hardcoded defaults for Phase 1
 // DB-backed config is Phase 2 (future work order)
 // #2016: chains that run BOTH `attestation` and `mjn` mark the `attestation`
@@ -66,16 +79,16 @@ function loopLifecycleChain(): ReactorConfig[] {
 const DEFAULTS: Record<string, ReactorConfig[]> = {
   'identity.created': [
     { type: 'attestation', config: { attestationType: 'identity.created' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'identity.created' }, enabled: true },
+    mjnEmission('identity.created'),
     { type: 'emit', config: {}, enabled: true },
   ],
   'identity.verified.preliminary': [
     { type: 'attestation', config: { attestationType: 'identity.verified.preliminary' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'identity.verified.preliminary' }, enabled: true },
+    mjnEmission('identity.verified.preliminary'),
   ],
   'identity.verified.hard': [
     { type: 'attestation', config: { attestationType: 'identity.verified.hard' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'identity.verified.hard' }, enabled: true },
+    mjnEmission('identity.verified.hard'),
   ],
   'identity.verified.steward': [
     { type: 'attestation', config: { attestationType: 'identity.verified.steward' }, enabled: true },
@@ -85,16 +98,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'connection.accepted': [
     { type: 'attestation', config: { attestationType: 'connection.accepted' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'connection.accepted' }, enabled: true },
+    mjnEmission('connection.accepted'),
     { type: 'notify', config: { template: 'invite_accepted' }, enabled: true },
   ],
   'vouch': [
     { type: 'attestation', config: { attestationType: 'vouch' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'vouch' }, enabled: true },
+    mjnEmission('vouch'),
   ],
   'tip.granted': [
     { type: 'attestation', config: { attestationType: 'tip.granted' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'tip.granted' }, enabled: true },
+    mjnEmission('tip.granted'),
     { type: 'notify', config: { scope: 'coffee:tip' }, enabled: true },
   ],
   'tip.sent': [
@@ -102,7 +115,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'ticket.purchased': [
     { type: 'attestation', config: { attestationType: 'ticket.purchased' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'ticket.purchased' }, enabled: true },
+    mjnEmission('ticket.purchased'),
     { type: 'notify', config: { scope: 'event:ticket' }, enabled: true },
   ],
   'ticket.receipt': [
@@ -143,7 +156,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'listing.purchased': [
     { type: 'attestation', config: { attestationType: 'listing.purchased' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'listing.purchased' }, enabled: true },
+    mjnEmission('listing.purchased'),
     { type: 'settle', config: {}, await: true, enabled: true },
     { type: 'notify', config: { scope: 'market:purchase' }, enabled: true },
   ],
@@ -159,7 +172,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'group.created': [
     { type: 'attestation', config: { attestationType: 'group.created' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'group.created' }, enabled: true },
+    mjnEmission('group.created'),
   ],
   'group.controller.added': [
     { type: 'attestation', config: { attestationType: 'group.member.added' }, enabled: true },
@@ -175,7 +188,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'scope.onboard': [
     { type: 'attestation', config: { attestationType: 'scope.onboard' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'scope.onboard' }, enabled: true },
+    mjnEmission('scope.onboard'),
   ],
   'message.send': [
     { type: 'emit', config: {}, enabled: true },
@@ -246,7 +259,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'pay.reconciliation.discrepancy': attestationOnly('pay.reconciliation.discrepancy'),
   'handle.claimed': [
     { type: 'attestation', config: { attestationType: 'handle.claimed' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'handle.claimed' }, enabled: true },
+    mjnEmission('handle.claimed'),
   ],
   'profile.update': [
     { type: 'emit', config: {}, enabled: true },
@@ -289,11 +302,11 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'event.created': [
     { type: 'attestation', config: { attestationType: 'event.created' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'event.created' }, enabled: true },
+    mjnEmission('event.created'),
   ],
   'event.attendance': [
     { type: 'attestation', config: { attestationType: 'event.attendance' }, await: true, enabled: true },
-    { type: 'mjn', config: { attestationType: 'event.attendance' }, enabled: true },
+    mjnEmission('event.attendance'),
   ],
   'event.registration': [
     { type: 'notify', config: { scope: 'event:registration' }, enabled: true },

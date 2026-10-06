@@ -57,6 +57,11 @@ export function createMockDb(
   state: MockDbCallState,
   limitResultFor: (table: unknown) => Promise<unknown[]>,
   returningResultFor: (table: unknown, values: Record<string, unknown>) => Promise<unknown[]> = () => Promise.resolve([{}]),
+  // `insert(...).values(...).onConflictDoNothing().returning(...)` (#2017): rows
+  // actually inserted. Default: the insert succeeded, echoing the row id; `[]`
+  // means the conflict path (a duplicate idempotency key) fired.
+  insertReturningFor: (table: unknown, values: Record<string, unknown>) => Promise<unknown[]> = (_table, values) =>
+    Promise.resolve([{ id: values.id }]),
 ) {
   function whereClauseFor(table: unknown) {
     // Lazy + cached: `limitResultFor(table)` must run at most once per
@@ -107,6 +112,11 @@ export function createMockDb(
     };
   }
 
+  // Top-level helper (not nested inside `insert`) to keep function-nesting depth low.
+  function doNothingResult(table: unknown, values: Record<string, unknown>) {
+    return { returning: () => insertReturningFor(table, values) };
+  }
+
   function insert(table: unknown) {
     return {
       values(values: Record<string, unknown>) {
@@ -117,6 +127,10 @@ export function createMockDb(
           onConflictDoUpdate(conflict: unknown) {
             record.conflict = conflict;
             return Promise.resolve(undefined);
+          },
+          onConflictDoNothing() {
+            record.conflict = 'do-nothing';
+            return doNothingResult(table, values);
           },
         });
       },
@@ -157,6 +171,17 @@ export interface BalanceRouteDbMockOptions {
    * whose route never calls a guarded conditional UPDATE.
    */
   returningQueue?: Array<Record<string, unknown>[]>;
+  /**
+   * FIFO queue drained by `insert(...).onConflictDoNothing().returning()` calls,
+   * one entry per call (#2017). `[]` simulates the conflict path (the row
+   * already existed); omit / exhausted queue means "inserted".
+   */
+  insertReturningQueue?: Array<Record<string, unknown>[]>;
+  /**
+   * FIFO queue drained by `.limit()` calls against a table tagged
+   * `transactions` (supply that tag via `extra`), one row per call (#2017).
+   */
+  transactionRowQueue?: Array<Record<string, unknown> | undefined>;
   /** Extra mock module exports beyond `db`/`balances`/`transactions`, e.g. `{ withdrawalRequests: {} }`. */
   extra?: Record<string, unknown>;
 }
@@ -172,16 +197,24 @@ export interface BalanceRouteDbMockOptions {
  */
 export function balanceRouteDbModule(state: MockDbCallState, opts: BalanceRouteDbMockOptions = {}) {
   function limitResultFor(table: unknown) {
+    if (opts.transactionRowQueue && tableTag(table) === 'transactions') {
+      const row = opts.transactionRowQueue.shift();
+      return Promise.resolve(row ? [row] : []);
+    }
     if (!opts.balanceRowQueue || tableTag(table) !== 'balances') return Promise.resolve([]);
     const row = opts.balanceRowQueue.shift();
     return Promise.resolve(row ? [row] : []);
+  }
+  function insertReturningFor(_table: unknown, values: Record<string, unknown>) {
+    const rows = opts.insertReturningQueue?.shift();
+    return Promise.resolve(rows ?? [{ id: values.id }]);
   }
   function returningResultFor(table: unknown) {
     if (!opts.returningQueue || tableTag(table) !== 'balances') return Promise.resolve([{}]);
     const rows = opts.returningQueue.shift();
     return Promise.resolve(rows ?? [{}]);
   }
-  const { select, insert, update } = createMockDb(state, limitResultFor, returningResultFor);
+  const { select, insert, update } = createMockDb(state, limitResultFor, returningResultFor, insertReturningFor);
   return {
     db: { select, insert, update, transaction: (cb: (tx: unknown) => Promise<void>) => cb({ insert, update }) },
     balances: { __table: 'balances', did: 'did', unit: 'unit', amount: 'amount' },

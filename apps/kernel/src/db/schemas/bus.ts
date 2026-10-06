@@ -1,4 +1,4 @@
-import { pgSchema, text, boolean, timestamp, jsonb, index, unique, uniqueIndex, bigserial } from 'drizzle-orm/pg-core';
+import { pgSchema, text, boolean, integer, timestamp, jsonb, index, unique, uniqueIndex, bigserial } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const busSchema = pgSchema('kernel');
@@ -9,6 +9,10 @@ export const busChainConfigs = busSchema.table('bus_chain_configs', {
   scope: text('scope'),
   reactors: jsonb('reactors').notNull(),
   enabled: boolean('enabled').notNull().default(true),
+  // #2017: bumped by the `trg_bus_chain_configs_bump_version` trigger (migration
+  // 0170) whenever `reactors` or `enabled` changes. Emissions record the
+  // (id, version) of the row that produced them.
+  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
