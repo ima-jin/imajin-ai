@@ -179,3 +179,129 @@ describe('PayRequestActions — e-Transfer (#2665)', () => {
   });
 });
 
+const PAYER_DIDS_URL = '/pay/api/payment-requests/ph_1/payer-dids';
+const PICKER_BODY = {
+  dids: [
+    { did: 'did:imajin:eric', kind: 'personal', displayName: 'Eric' },
+    { did: 'did:imajin:artifact', kind: 'organization', displayName: 'Artifact' },
+  ],
+  defaultDid: 'did:imajin:eric',
+};
+
+/** Routes by URL: the picker feed, the checkout POST and the e-Transfer POST each get their own response. */
+function installRoutedFetch(routes: { payerDids: { ok: boolean; status?: number; body?: unknown }; checkout?: unknown; emt?: unknown }) {
+  const spy = vi.fn(async (url: string) => {
+    if (url.endsWith('/payer-dids')) {
+      const r = routes.payerDids;
+      return { ok: r.ok, status: r.status ?? (r.ok ? 200 : 401), json: async () => r.body ?? {} };
+    }
+    if (url.endsWith('/emt')) return { ok: true, status: 200, json: async () => routes.emt };
+    return { ok: true, status: 200, json: async () => routes.checkout };
+  });
+  vi.stubGlobal('fetch', spy);
+  return spy;
+}
+
+function bodyOfCall(spy: ReturnType<typeof vi.fn>, urlSuffix: string): Record<string, unknown> {
+  const call = spy.mock.calls.find(([url]) => String(url).endsWith(urlSuffix))!;
+  return JSON.parse((call[1] as { body: string }).body);
+}
+
+describe('PayRequestActions — "Pay as" picker (#2656)', () => {
+  it('an anonymous payer (payer-dids 401s) sees no picker and the checkout body carries no paidByDid', async () => {
+    const spy = installRoutedFetch({ payerDids: { ok: false, status: 401 }, checkout: { url: 'https://checkout.stripe.com/s1' } });
+    Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
+
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+    await waitFor(() => expect(spy).toHaveBeenCalledWith(PAYER_DIDS_URL));
+    expect(screen.queryByTestId('pay-as')).toBeNull();
+    expect(screen.queryByTestId('pay-as-single')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+    await waitFor(() => expect(globalThis.location.href).toBe('https://checkout.stripe.com/s1'));
+    expect(bodyOfCall(spy, '/checkout')).not.toHaveProperty('paidByDid');
+  });
+
+  it('a signed-in payer sees "Pay as" with their own DID and their businesses, defaulting to the server-chosen one', async () => {
+    installRoutedFetch({ payerDids: { ok: true, body: PICKER_BODY } });
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+
+    const select = (await screen.findByLabelText('Pay as')) as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Eric (you)', 'Artifact']);
+    expect(select.value).toBe('did:imajin:eric');
+  });
+
+  it('picking Artifact posts paidByDid to checkout', async () => {
+    const spy = installRoutedFetch({ payerDids: { ok: true, body: PICKER_BODY }, checkout: { url: 'https://checkout.stripe.com/s2' } });
+    Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+
+    fireEvent.change(await screen.findByLabelText('Pay as'), { target: { value: 'did:imajin:artifact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+
+    await waitFor(() => expect(globalThis.location.href).toBe('https://checkout.stripe.com/s2'));
+    expect(bodyOfCall(spy, '/checkout')).toMatchObject({ paidByDid: 'did:imajin:artifact' });
+  });
+
+  it('paying as the default personal DID still sends it explicitly', async () => {
+    const spy = installRoutedFetch({ payerDids: { ok: true, body: PICKER_BODY }, checkout: { url: 'https://checkout.stripe.com/s3' } });
+    Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+
+    await screen.findByLabelText('Pay as');
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+
+    await waitFor(() => expect(globalThis.location.href).toBe('https://checkout.stripe.com/s3'));
+    expect(bodyOfCall(spy, '/checkout')).toMatchObject({ paidByDid: 'did:imajin:eric' });
+  });
+
+  it('picking Artifact posts paidByDid to the e-Transfer route as well', async () => {
+    const spy = installRoutedFetch({
+      payerDids: { ok: true, body: PICKER_BODY },
+      emt: { success: true, instructions: { email: 'pay@acme.example', amountMinor: 11_300, currency: 'CAD', memo: 'INV-1' } },
+    });
+    render(<PayRequestActions handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
+
+    fireEvent.change(await screen.findByLabelText('Pay as'), { target: { value: 'did:imajin:artifact' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Pay by e-Transfer' }));
+
+    expect(await screen.findByTestId('emt-instructions')).toBeDefined();
+    expect(bodyOfCall(spy, '/emt')).toEqual({ paidByDid: 'did:imajin:artifact' });
+  });
+
+  it('a payer with only themselves sees who they are paying as, not a select', async () => {
+    installRoutedFetch({
+      payerDids: { ok: true, body: { dids: [PICKER_BODY.dids[0]], defaultDid: 'did:imajin:eric' } },
+    });
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+
+    expect((await screen.findByTestId('pay-as-single')).textContent).toContain('Eric');
+    expect(screen.queryByLabelText('Pay as')).toBeNull();
+  });
+
+  it('a server 403 on checkout (an identity the payer cannot act for) surfaces a specific message', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) =>
+        url.endsWith('/payer-dids')
+          ? { ok: true, status: 200, json: async () => PICKER_BODY }
+          : { ok: false, status: 403, json: async () => ({ error: 'nope' }) },
+      ),
+    );
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+
+    await screen.findByLabelText('Pay as');
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+
+    expect(await screen.findByText("You can't pay this request as the selected identity.")).toBeDefined();
+  });
+
+  it('an unexpected 200 body (not a picker feed) leaves the page exactly as it was', async () => {
+    installRoutedFetch({ payerDids: { ok: true, body: { url: 'https://example.test' } } });
+    render(<PayRequestActions handle="ph_1" status="issued" />);
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined());
+    expect(screen.queryByTestId('pay-as')).toBeNull();
+    expect(screen.queryByTestId('pay-as-single')).toBeNull();
+  });
+});

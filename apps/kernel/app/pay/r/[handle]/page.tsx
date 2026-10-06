@@ -123,6 +123,8 @@ function ReceiptDetails({ view }: Readonly<{ view: PaymentRequestInvoiceView }>)
       {view.settlement && (
         <MetaRow label="Settlement ref" value={settlementRefLabel(view.settlement)} testId="receipt-settlement-ref" />
       )}
+      {view.paidBy && <MetaRow label="Paid by" value={view.paidBy.displayName} testId="receipt-paid-by" />}
+      {view.paidBy && <MetaRow label="Paying DID" value={view.paidBy.did} testId="receipt-paid-by-did" />}
     </dl>
   );
 }

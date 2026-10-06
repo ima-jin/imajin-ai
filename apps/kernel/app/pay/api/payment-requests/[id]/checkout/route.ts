@@ -5,6 +5,10 @@
  * payment_request's own `line_items`/`currency`/`fair_manifest`/`issuer_did`.
  * Auth required — anonymous pay-link checkout is deferred to #2210.
  *
+ * #2656: the body may carry `paidByDid` — which of the caller's DIDs pays (their
+ * own, or an org/business they control as owner/admin). It is validated
+ * server-side: a DID the caller can't act for is a 403 and never stored.
+ *
  * See `apps/kernel/src/lib/pay/payment-requests/checkout.ts` for the
  * session-building logic this route delegates to.
  */
@@ -13,6 +17,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { createPaymentRequestCheckoutSession } from '@/src/lib/pay/payment-requests/checkout';
+import { payerPersonDidOf } from '@/src/lib/pay/payment-requests/payer-dids';
 import { isServiceError } from '@/src/lib/pay/payment-requests/service';
 
 const log = createLogger('kernel');
@@ -23,6 +28,7 @@ export function OPTIONS(request: NextRequest) {
 
 interface CheckoutRequestBody {
   customer_email?: unknown;
+  paidByDid?: unknown;
 }
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,12 +51,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if (body.customer_email !== undefined && typeof body.customer_email !== 'string') {
     return NextResponse.json({ error: 'customer_email must be a string' }, { status: 400, headers: cors });
   }
+  if (body.paidByDid !== undefined && body.paidByDid !== null && typeof body.paidByDid !== 'string') {
+    return NextResponse.json({ error: 'paidByDid must be a string' }, { status: 400, headers: cors });
+  }
 
   try {
     const result = await createPaymentRequestCheckoutSession({
       id,
       callerDid,
       customerEmail: body.customer_email,
+      ...(body.paidByDid ? { paidByDid: body.paidByDid, payerPersonDid: payerPersonDidOf(authResult.identity) } : {}),
     });
     if (isServiceError(result)) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });

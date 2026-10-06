@@ -23,6 +23,10 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
   createPaymentRequestCheckoutSession: mocks.createPaymentRequestCheckoutSession,
 }));
+// #2656: the route only needs the pure person-DID resolver; the real module pulls in '@/src/db'.
+vi.mock('@/src/lib/pay/payment-requests/payer-dids', () => ({
+  payerPersonDidOf: (identity: { actingFor?: string; id: string }) => identity.actingFor ?? identity.id,
+}));
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   isServiceError: (value: unknown) => typeof value === 'object' && value !== null && 'error' in value && 'status' in value,
 }));
@@ -45,6 +49,56 @@ function callCheckout(body: unknown, id = 'pr_1') {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAuth.mockResolvedValue({ identity: { id: ISSUER_DID } });
+});
+
+describe('POST /pay/api/payment-requests/:id/checkout — payer DID choice (#2656)', () => {
+  const OK = { id: 'cs_1', url: 'https://checkout.stripe.com/cs_1', expiresAt: '2026-01-01T00:00:00.000Z', reused: false };
+
+  it("passes paidByDid and the signed-in person's DID to the service", async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:eric' } });
+    mocks.createPaymentRequestCheckoutSession.mockResolvedValueOnce(OK);
+    const res = await callCheckout({ paidByDid: 'did:imajin:artifact' });
+    expect(res.status).toBe(200);
+    expect(mocks.createPaymentRequestCheckoutSession).toHaveBeenCalledWith({
+      id: 'pr_1',
+      callerDid: 'did:imajin:eric',
+      customerEmail: undefined,
+      paidByDid: 'did:imajin:artifact',
+      payerPersonDid: 'did:imajin:eric',
+    });
+  });
+
+  it('for an agent acting for a human, the person whose DIDs may be chosen is the human', async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:agent', actingFor: 'did:imajin:eric' } });
+    mocks.createPaymentRequestCheckoutSession.mockResolvedValueOnce(OK);
+    await callCheckout({ paidByDid: 'did:imajin:eric' });
+    expect(mocks.createPaymentRequestCheckoutSession).toHaveBeenCalledWith(
+      expect.objectContaining({ callerDid: 'did:imajin:eric', payerPersonDid: 'did:imajin:eric' }),
+    );
+  });
+
+  it('returns the service 403 for a DID the caller cannot act for', async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:eric' } });
+    mocks.createPaymentRequestCheckoutSession.mockResolvedValueOnce({
+      error: 'You are not authorized to pay as that identity',
+      status: 403,
+    });
+    const res = await callCheckout({ paidByDid: 'did:imajin:not-mine' });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'You are not authorized to pay as that identity' });
+  });
+
+  it('rejects a non-string paidByDid with 400, before the service is reached', async () => {
+    const res = await callCheckout({ paidByDid: { did: 'x' } });
+    expect(res.status).toBe(400);
+    expect(mocks.createPaymentRequestCheckoutSession).not.toHaveBeenCalled();
+  });
+
+  it('sends no choice at all when paidByDid is absent or null', async () => {
+    mocks.createPaymentRequestCheckoutSession.mockResolvedValue(OK);
+    await callCheckout({ paidByDid: null });
+    expect(mocks.createPaymentRequestCheckoutSession.mock.calls[0][0]).not.toHaveProperty('paidByDid');
+  });
 });
 
 describe('POST /pay/api/payment-requests/:id/checkout', () => {

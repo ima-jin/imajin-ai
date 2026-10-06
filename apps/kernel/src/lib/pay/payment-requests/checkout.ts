@@ -54,10 +54,11 @@ import type { CheckoutRequest, FiatCurrency } from '../types';
 import { settlePayment } from '../settle-core';
 import { getPayInRail } from '../rails/registry';
 import { EMT_RAIL_NAME } from '../rails/emt-pay-in-rail';
-import { getPaymentRequestById, type ServiceError } from './service';
+import { findLiveRowByHandle, getPaymentRequestById, type ServiceError } from './service';
 import { emitPaymentRequestSettledStripeAttestation } from './attestations';
 import { attestAndAnnounceEmtSettled } from './emt-announce';
-import { resolveSettlementPayerDid } from './settlement-payer';
+import { resolveSettlementPayerDid, payingDidOf } from './settlement-payer';
+import { resolvePayerDidChoice } from './payer-dids';
 import { taxBreakdownOf } from './tax';
 import type { PaymentRequestFairManifest, PaymentRequestLineItem, PaymentRequestSettlementRef } from './types';
 
@@ -84,10 +85,19 @@ function err(error: string, status: number): ServiceError {
 // ---------------------------------------------------------------------------
 
 export interface CreatePaymentRequestCheckoutInput {
+  /** The internal id, or the opaque pay-link handle (the public pay page only ever has the handle). */
   id: string;
   /** The authenticated caller's resolved effective DID. Must be the issuer or the recipient. */
   callerDid: string;
   customerEmail?: string;
+  /**
+   * #2656: the DID the payer chose to pay as. Must be the caller's own DID or
+   * an org/business DID they control (owner/admin) — enforced here, a 403
+   * otherwise. Omitted = no choice: the request settles as its recipient.
+   */
+  paidByDid?: string;
+  /** The person whose controlled DIDs `paidByDid` is checked against (`payerPersonDidOf`); defaults to `callerDid`. */
+  payerPersonDid?: string;
 }
 
 export interface CreatedPaymentRequestCheckoutSession {
@@ -144,20 +154,38 @@ function merchandiseTotal(items: CheckoutItem[]): number {
   return items.reduce((sum, item) => sum + item.amount * item.quantity, 0);
 }
 
+/** Persist the payer's validated DID choice on a still-open request (card and e-Transfer share this); `null` when it lost a race to a status change. */
+export async function recordPaidByDid(id: string, paidByDid: string): Promise<PaymentRequest | null> {
+  const [row] = await db
+    .update(paymentRequests)
+    .set({ paidByDid, updatedAt: new Date() })
+    .where(and(eq(paymentRequests.id, id), inArray(paymentRequests.status, [...OPEN_STATUSES])))
+    .returning();
+  return row ?? null;
+}
+
 /**
  * Create (or reuse) a Stripe Checkout session for a payment_request. Either
  * the issuer or the recipient may call this — anonymous pay-link checkout
  * (no recipient DID) is deferred to #2210. Refuses when the request isn't
  * `issued` or doesn't `allow_on_platform`.
+ *
+ * #2656: an optional `paidByDid` picks which of the caller's controlled DIDs
+ * pays. It is validated server-side (403 for a DID the person can't act for)
+ * and stored on the row, so the settle path — which reads the row — records it
+ * as the payer. The last choice made before the payment lands wins.
  */
 export async function createPaymentRequestCheckoutSession(
   input: CreatePaymentRequestCheckoutInput,
 ): Promise<CreatedPaymentRequestCheckoutSession | ServiceError> {
-  const existing = await getPaymentRequestById(input.id);
-  if (!existing) return err('payment_request not found', 404);
+  const found = (await getPaymentRequestById(input.id)) ?? (await findLiveRowByHandle(input.id));
+  if (!found) return err('payment_request not found', 404);
+  let existing: PaymentRequest = found;
   if (existing.issuerDid !== input.callerDid && existing.recipientDid !== input.callerDid) {
     return err('Not authorized to create a checkout session for this payment_request', 403);
   }
+  const paidByChoice = await resolvePayerDidChoice(input.paidByDid, input.payerPersonDid ?? input.callerDid);
+  if (typeof paidByChoice === 'object' && paidByChoice !== null) return paidByChoice;
   if (!isOpenStatus(existing.status)) {
     return err(
       `cannot create a checkout session for a payment_request in status '${existing.status}' (checkout is only valid from 'issued' or 'emt_pending')`,
@@ -166,6 +194,12 @@ export async function createPaymentRequestCheckoutSession(
   }
   if (!existing.allowOnPlatform) {
     return err('payment_request does not allow on-platform (Stripe) payment', 400);
+  }
+
+  if (paidByChoice) {
+    const updated = await recordPaidByDid(existing.id, paidByChoice);
+    if (!updated) return err('payment_request status changed concurrently — refresh and retry', 409);
+    existing = updated;
   }
 
   const reused = await findReusableCheckoutSession(existing.id);
@@ -228,7 +262,7 @@ export async function createPaymentRequestCheckoutSession(
     id: generateId('tx'),
     service: 'payment_request',
     type: 'payment_request_checkout',
-    fromDid: existing.recipientDid,
+    fromDid: payingDidOf(existing),
     toDid: existing.issuerDid,
     amount: (existing.totalAmount / 100).toString(),
     currency: existing.currency,
@@ -352,6 +386,7 @@ async function attestAndAnnounceStripeSettled(
     paymentRequestId: paymentRequest.id,
     issuerDid: paymentRequest.issuerDid,
     recipientDid: paymentRequest.recipientDid,
+    paidByDid: payingDidOf(paymentRequest),
     contentHash: paymentRequest.contentHash,
     totalAmount: paymentRequest.totalAmount,
     currency: paymentRequest.currency,
@@ -368,6 +403,7 @@ async function attestAndAnnounceStripeSettled(
       method: 'stripe',
       issuerDid: paymentRequest.issuerDid,
       recipientDid: paymentRequest.recipientDid,
+      paidByDid: payingDidOf(paymentRequest),
       totalAmount: paymentRequest.totalAmount,
       currency: paymentRequest.currency,
       contentHash: paymentRequest.contentHash,
@@ -396,7 +432,7 @@ export async function attemptSettlement(
 ): Promise<StripeSettlementOutcome> {
   try {
     const rail = settlementRailOf(settlementRef);
-    // The single seam for "who is the payer" — #2656 extends it, not this function.
+    // The single seam for "who is the payer" — prefers the row's `paid_by_did` (#2656) over the recipient.
     const buyerDid = resolveSettlementPayerDid(paymentRequest);
     const nodeDid = (await getNodeDid()) || null;
 
@@ -553,6 +589,7 @@ export async function settlePaymentRequestFromStripeCheckout(
       paymentRequestId: paidRow.id,
       issuerDid: paidRow.issuerDid,
       recipientDid: paidRow.recipientDid,
+      paidByDid: payingDidOf(paidRow),
       totalAmount: paidRow.totalAmount,
       currency: paidRow.currency,
       settlementRef: settlementRef as unknown as Record<string, unknown>,

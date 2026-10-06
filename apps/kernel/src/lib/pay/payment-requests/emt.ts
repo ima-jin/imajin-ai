@@ -27,8 +27,9 @@ import type { PaymentRequest } from '@/src/db';
 import { createLogger } from '@imajin/logger';
 import type { PayInInstructions } from '../rails/types';
 import { EMT_RAIL_NAME } from '../rails/emt-pay-in-rail';
-import { alertSettlementFailure, attemptSettlement } from './checkout';
+import { alertSettlementFailure, attemptSettlement, recordPaidByDid } from './checkout';
 import { emtInstructionsFor, emtMemoOf } from './emt-offer';
+import { resolvePayerDidChoice } from './payer-dids';
 import { findLiveRowByHandle, getPaymentRequestById, type ServiceError } from './service';
 import type { PaymentRequestSettlementRef } from './types';
 
@@ -69,13 +70,31 @@ async function markEmtPending(id: string): Promise<boolean> {
 }
 
 /**
+ * #2656: the payer's DID choice on the e-Transfer rail. Only an authenticated
+ * payer can make one, so the route supplies `personDid` (the signed-in person,
+ * `payerPersonDidOf`) alongside the `paidByDid` they picked.
+ */
+export interface EmtPayerChoice {
+  paidByDid: string;
+  personDid: string;
+}
+
+/**
  * The payer chose "Pay by e-Transfer" on `/pay/r/:handle`. Unauthenticated by
  * design (the pay link is the capability), keyed by the opaque `pay_handle`.
  * 404 for an unknown or void handle, 409 once the request is settled, 400
  * when e-Transfer can't be offered (no receiving email set, on-platform
  * payment disallowed, or a non-CAD request).
+ *
+ * #2656: a signed-in payer may also pass the DID they are paying as. It is
+ * validated server-side (403 when they don't control it) and stored on the
+ * row, so the issuer's "Mark paid" settles with `paid_by_did` as the payer.
+ * Without a choice nothing is written — an earlier choice is kept.
  */
-export async function requestEmtPayInstructions(handle: string): Promise<EmtPayInstructionsResult | ServiceError> {
+export async function requestEmtPayInstructions(
+  handle: string,
+  payer?: EmtPayerChoice,
+): Promise<EmtPayInstructionsResult | ServiceError> {
   const row = await findLiveRowByHandle(handle);
   if (!row) return err('payment_request not found', 404);
   if (row.status !== 'issued' && row.status !== 'emt_pending') {
@@ -84,6 +103,14 @@ export async function requestEmtPayInstructions(handle: string): Promise<EmtPayI
 
   const instructions = emtInstructionsFor(row, await fetchIssuerEtransferEmail(row.issuerDid));
   if (!instructions) return err('e-Transfer is not available for this payment_request', 400);
+
+  if (payer) {
+    const choice = await resolvePayerDidChoice(payer.paidByDid, payer.personDid);
+    if (typeof choice === 'object' && choice !== null) return choice;
+    if (choice && !(await recordPaidByDid(row.id, choice))) {
+      return err('payment_request status changed concurrently — refresh and retry', 409);
+    }
+  }
 
   if (row.status === 'emt_pending') return { instructions, alreadyPending: true };
 

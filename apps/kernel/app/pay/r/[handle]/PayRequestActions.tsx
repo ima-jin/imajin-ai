@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { formatMinorUnits } from '@/src/lib/pay/payment-requests/money-format';
 import type { EmtInstructionsView, EmtPayOption } from '@/src/lib/pay/payment-requests/emt-offer';
+import PayAsPicker, { usePayerDids } from './PayAsPicker';
 
 interface Props {
   handle: string;
@@ -26,6 +27,13 @@ interface Props {
 }
 
 const ERROR_CLASSES = 'text-xs text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2';
+
+/** The inline message for a failed checkout call; a 403 is the server refusing the chosen "Pay as" identity (#2656). */
+function checkoutErrorMessage(status: number): string {
+  if (status === 404) return "Online payment isn't available for this request yet.";
+  if (status === 403) return "You can't pay this request as the selected identity.";
+  return 'Unable to start checkout. Please try again.';
+}
 
 function InstructionRow({ label, value, testId }: Readonly<{ label: string; value: string; testId: string }>) {
   return (
@@ -68,6 +76,9 @@ function EmtInstructions({ instructions }: Readonly<{ instructions: EmtInstructi
  */
 export default function PayRequestActions({ handle, status, allowOnPlatform, emt }: Readonly<Props>) {
   const pathname = usePathname();
+  // #2656: a signed-in payer picks which of their DIDs pays; `paidByDid` is null (nothing sent) for an anonymous payer.
+  const payerPicker = usePayerDids(handle);
+  const { paidByDid } = payerPicker;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [emtLoading, setEmtLoading] = useState(false);
@@ -88,7 +99,13 @@ export default function PayRequestActions({ handle, status, allowOnPlatform, emt
     setEmtLoading(true);
     setEmtError(null);
     try {
-      const res = await fetch(`/pay/api/payment-requests/by-handle/${encodeURIComponent(handle)}/emt`, { method: 'POST' });
+      const emtUrl = `/pay/api/payment-requests/by-handle/${encodeURIComponent(handle)}/emt`;
+      const res = await fetch(
+        emtUrl,
+        paidByDid
+          ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ paidByDid }) }
+          : { method: 'POST' },
+      );
       if (!res.ok) {
         setEmtError('Unable to start the e-Transfer payment. Please try again.');
         return;
@@ -122,14 +139,11 @@ export default function PayRequestActions({ handle, status, allowOnPlatform, emt
         body: JSON.stringify({
           successUrl: globalThis.location.href,
           cancelUrl: globalThis.location.href,
+          ...(paidByDid ? { paidByDid } : {}),
         }),
       });
       if (!res.ok) {
-        setError(
-          res.status === 404
-            ? "Online payment isn't available for this request yet."
-            : 'Unable to start checkout. Please try again.',
-        );
+        setError(checkoutErrorMessage(res.status));
         return;
       }
       const data = await res.json();
@@ -147,6 +161,8 @@ export default function PayRequestActions({ handle, status, allowOnPlatform, emt
 
   return (
     <div className="space-y-3">
+      <PayAsPicker picker={payerPicker} />
+
       {error && <div className={ERROR_CLASSES}>{error}</div>}
 
       {isAllowed ? (

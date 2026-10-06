@@ -173,6 +173,8 @@ export async function emitPaymentRequestSettledAttestation(params: {
   paymentRequestId: string;
   issuerDid: string;
   recipientDid: string | null;
+  /** #2656 — the DID that paid (`paid_by_did ?? recipient_did`); omitted (no key in the payload) for a manual settlement. */
+  paidByDid?: string | null;
   method: 'manual' | 'stripe' | 'mjnx' | 'emt';
   assertedBy: string;
   note?: string;
@@ -194,6 +196,7 @@ export async function emitPaymentRequestSettledAttestation(params: {
       asserted_by: params.assertedBy,
       note: params.note ?? null,
       ...(params.reference ? { reference: params.reference } : {}),
+      ...(params.paidByDid ? { paid_by_did: params.paidByDid } : {}),
       total_amount: params.totalAmount,
       ...taxPayloadFields(params.tax),
       currency: params.currency,
@@ -215,6 +218,8 @@ export async function emitPaymentRequestSettledStripeAttestation(params: {
   paymentRequestId: string;
   issuerDid: string;
   recipientDid: string | null;
+  /** #2656 — the DID that paid (`paid_by_did ?? recipient_did`); omitted (no key in the payload) when unknown. */
+  paidByDid?: string | null;
   contentHash: string;
   totalAmount: number;
   currency: string;
@@ -230,6 +235,7 @@ export async function emitPaymentRequestSettledStripeAttestation(params: {
       payment_request_id: params.paymentRequestId,
       method: 'stripe',
       issuer_did: params.issuerDid,
+      ...(params.paidByDid ? { paid_by_did: params.paidByDid } : {}),
       total_amount: params.totalAmount,
       ...taxPayloadFields(params.tax),
       currency: params.currency,

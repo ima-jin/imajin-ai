@@ -56,6 +56,8 @@ export interface PaymentRequestRow {
   payeeAccount: string;
   recipientDid: string | null;
   recipientStubId: string | null;
+  /** #2656 — the DID the payer chose to pay as; `null` when they paid as the recipient. */
+  paidByDid?: string | null;
   lineItems: PaymentRequestLineItemView[];
   currency: string;
   /** The GRAND total the payer owes: `subtotalAmount + taxTotalAmount` (#2421). */
