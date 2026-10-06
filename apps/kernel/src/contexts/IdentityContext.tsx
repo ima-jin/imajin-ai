@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
 import { buildPublicUrl } from '@imajin/config';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 export interface Identity {
   did: string;
@@ -57,7 +58,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
         setLoading(false);
       }
     }
-    checkSession();
+    fireAndForget(checkSession(), 'contexts:checkSession');
   }, []);
 
   const value = useMemo(() => ({ identity, loading, error }), [identity, loading, error]);

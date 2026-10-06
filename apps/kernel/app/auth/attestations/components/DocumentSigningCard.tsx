@@ -4,6 +4,7 @@ import { useState } from 'react';
 import SignerList from './SignerList';
 import DocumentViewer from './DocumentViewer';
 import { buildDocumentSigningPayload } from '@/src/lib/auth/document-signing-payload';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 export interface Signature {
   id: string;
@@ -234,7 +235,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
         <div className="relative flex items-center gap-2 shrink-0">
           {canSign && (
             <button type="button"
-              onClick={(e) => { e.stopPropagation(); handleSign(); }}
+              onClick={(e) => { e.stopPropagation(); fireAndForget(handleSign(), 'auth:documentSigning:sign'); }}
               disabled={loading}
               className="px-3 py-1 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 text-black text-xs font-medium rounded-lg transition-colors"
             >
@@ -243,7 +244,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
           )}
           {canDecline && (
             <button type="button"
-              onClick={(e) => { e.stopPropagation(); handleDecline(); }}
+              onClick={(e) => { e.stopPropagation(); fireAndForget(handleDecline(), 'auth:documentSigning:decline'); }}
               disabled={loading}
               className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 disabled:bg-zinc-800 text-zinc-300 text-xs font-medium rounded-lg transition-colors"
             >

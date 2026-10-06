@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from './context/IdentityContext';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import InvitationsTab from './invitations-tab';
 import useSWR from 'swr';
 import { useToast } from '@imajin/ui';
@@ -87,7 +88,7 @@ function NicknameEditor({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') save();
+            if (e.key === 'Enter') fireAndForget(save(), 'connections:nickname:save');
             if (e.key === 'Escape') setEditing(false);
           }}
           onBlur={save}
@@ -96,7 +97,7 @@ function NicknameEditor({
         />
         {value.trim() && (
           <button type="button"
-            onMouseDown={(e) => { e.preventDefault(); clear(); }}
+            onMouseDown={(e) => { e.preventDefault(); fireAndForget(clear(), 'connections:nickname:clear'); }}
             className="text-gray-500 hover:text-red-400 transition text-xs"
             title="Clear nickname"
           >
@@ -426,7 +427,7 @@ export default function ConnectionsPage() {
                       onClick={(e) => {
                         e.stopPropagation();
                         if (confirm(`Disconnect from ${conn.nickname || conn.name || conn.handle || 'this person'}? You'll need a new invite to reconnect.`)) {
-                          disconnectFrom(conn.did);
+                          fireAndForget(disconnectFrom(conn.did), 'connections:disconnectFrom');
                         }
                       }}
                       className="px-3 py-1.5 text-sm bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 rounded-lg transition"
