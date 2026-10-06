@@ -3,6 +3,7 @@ import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 // GET /api/registry/apps/:appId — app detail (public)
 export async function GET(_request: NextRequest, props: { params: Promise<{ appId: string }> }) {
@@ -126,6 +127,8 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ ap
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   const { identity } = authResult;
+  const delegationDenied = enforceRoutePolicy(identity, 'kernel.registry-app.delete', { resourceId: params.appId });
+  if (delegationDenied) return delegationDenied;
 
   const [existing] = await db
     .select({ id: registryApps.id, ownerDid: registryApps.ownerDid })

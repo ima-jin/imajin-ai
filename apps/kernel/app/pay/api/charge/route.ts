@@ -36,6 +36,7 @@ import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { normalizeChargeRecipient } from '@/src/lib/pay/rail-alias';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 interface ChargeBody {
   amount: number;
@@ -102,6 +103,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       const authResult = await requireAuth(request);
       if (!('error' in authResult)) {
         fromDid = resolveActingDid(authResult.identity);
+        const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.charge', { headers: cors });
+        if (delegationDenied) return delegationDenied;
       }
     }
     

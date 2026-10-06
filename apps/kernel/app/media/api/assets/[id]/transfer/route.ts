@@ -9,6 +9,7 @@ import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { writeManifestToDisk } from "@/src/lib/media/manifest-helpers";
 import { publishContentEvent } from "@imajin/dfos";
 import { createLogger } from "@imajin/logger";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -201,6 +202,8 @@ export async function POST(
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   const actingDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.transfer", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   let body: { toDid?: unknown };
   try {

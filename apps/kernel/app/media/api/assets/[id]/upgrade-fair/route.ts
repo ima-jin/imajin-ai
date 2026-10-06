@@ -8,6 +8,7 @@ import { getNodeDid } from "@/src/lib/kernel/node-identity";
 import { signFairAsNode } from "@/src/lib/kernel/sign-fair-manifest";
 import { createLogger } from "@imajin/logger";
 import * as bus from "@imajin/bus";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -65,6 +66,8 @@ export async function POST(
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   const requesterDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.upgrade-fair", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   // 2. Load asset
   let asset;

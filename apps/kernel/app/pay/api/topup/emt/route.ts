@@ -16,6 +16,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const MIN_TOPUP = 20; // $20 CAD minimum
 
@@ -43,6 +44,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   const did = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.balance.topup-emt", { headers: cors });
+  if (delegationDenied) return delegationDenied;
   const handle = authResult.identity.handle || '';
 
   let body: { amount?: number };

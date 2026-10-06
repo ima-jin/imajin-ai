@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { corsHeaders } from "@/src/lib/kernel/cors";
 import { applyGrants } from "../apply-grants";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 export async function patchGrants(
   request: NextRequest,
@@ -18,6 +19,8 @@ export async function patchGrants(
     );
   }
   const requesterDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.grants", { resourceId: id, headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   // 2. Parse body
   let body: { add?: unknown; remove?: unknown };

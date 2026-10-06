@@ -26,6 +26,11 @@
       "import": "./dist/grant-scopes.js",
       "default": "./dist/grant-scopes.js"
     },
+    "./delegation-policy": {
+      "types": "./dist/delegation-policy.d.ts",
+      "import": "./dist/delegation-policy.js",
+      "default": "./dist/delegation-policy.js"
+    },
     "./resolve-db": {
       "types": "./dist/resolve-db.d.ts",
       "import": "./dist/resolve-db.js",

@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import { db, assets, type Asset } from "@/src/db";
-import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
+import { requireMediaAuth, mediaAuthErrorResponse, mediaDelegationGate } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { createLogger } from "@imajin/logger";
@@ -132,6 +132,8 @@ export async function PUT(
   if ("error" in authResult) {
     return mediaAuthErrorResponse(authResult);
   }
+  const delegationDenied = mediaDelegationGate(authResult.auth, "media.asset.content-write", id);
+  if (delegationDenied) return delegationDenied;
   const requesterDid = authResult.auth.did;
 
   let body: { content?: unknown; strict?: unknown };

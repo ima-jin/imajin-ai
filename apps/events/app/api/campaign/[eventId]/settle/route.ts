@@ -21,6 +21,7 @@ import { db, events, pledges } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
@@ -51,6 +52,8 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
   }
 
   const did = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "events.campaign.settle", { resourceId: eventId, headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const url = new URL(request.url);

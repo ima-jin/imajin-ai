@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAuth, resolveActingDid, verifyAppToken, type Identity, type Scope } from "@imajin/auth";
+import { enforceRoutePolicy, type DelegationRouteKey } from "@imajin/auth/delegation-policy";
 import { nodeUrl } from "@/src/lib/http/node-url";
 
 /**
@@ -94,27 +95,23 @@ export function mediaAuthErrorResponse(
 }
 
 /**
- * Approval-gate response for a destructive op (delete/rename) attempted via
- * `X-Acting-For` agent delegation on the session/legacy path — agents cannot
- * perform destructive operations on a human's behalf. Returns `null` (no
- * gate) when the call isn't under actingFor delegation, which is always true
- * on the scoped app-token path (#2393): a token's `sub` IS the resource
- * owner directly, with no separate delegate identity to gate here.
+ * Delegation-policy gate for a media mutation (#2360) — the media-route
+ * adapter over the blanket `enforceRoutePolicy` helper. `irreversible` /
+ * `value-moving` mutations attempted via `X-Acting-For` agent delegation on
+ * the session/legacy path get the 403 `AGENT_APPROVAL_REQUIRED` (the agent may
+ * propose, the owner must countersign); `reversible` ones pass through.
+ *
+ * Returns `null` (no gate) when the call isn't under actingFor delegation,
+ * which is always true on the scoped app-token path (#2393): a token's `sub`
+ * IS the resource owner directly, with no separate delegate identity to gate.
+ * `assetId` is kept in the body for existing clients (the generic policy
+ * body calls it `resourceId`).
  */
-export function agentApprovalRequiredResponse(
+export function mediaDelegationGate(
   auth: MediaAuth,
-  action: string,
+  key: DelegationRouteKey,
   assetId: string,
-): NextResponse | null {
-  if (!auth.identity?.actingFor) return null;
-  return NextResponse.json(
-    {
-      error: "Agent delegation does not permit destructive operations",
-      code: "AGENT_APPROVAL_REQUIRED",
-      action,
-      assetId,
-      ownerDid: auth.identity.actingFor,
-    },
-    { status: 403 },
-  );
+  cors?: Record<string, string>,
+): Response | null {
+  return enforceRoutePolicy(auth.identity, key, { resourceId: assetId, extra: { assetId }, headers: cors });
 }

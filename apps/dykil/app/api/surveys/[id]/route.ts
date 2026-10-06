@@ -5,6 +5,7 @@ import { db, surveys } from '@/db';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, corsHeaders, corsOptions } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -119,6 +120,8 @@ export async function DELETE(request: NextRequest, props: RouteParams) {
 
   const { identity } = authResult;
   const did = resolveActingDid(identity);
+  const delegationDenied = enforceRoutePolicy(identity, "dykil.survey.delete", { resourceId: id, headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const existing = await db.query.surveys.findFirst({

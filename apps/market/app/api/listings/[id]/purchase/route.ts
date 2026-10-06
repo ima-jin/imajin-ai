@@ -13,6 +13,7 @@ import { getSession, requireHardDID , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
@@ -47,9 +48,13 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         return errorResponse('This listing requires a verified identity to purchase', 403);
       }
       buyerDid = resolveActingDid(authResult.identity);
+      const delegationDenied = enforceRoutePolicy(authResult.identity, 'market.listing.purchase', { resourceId: id });
+      if (delegationDenied) return delegationDenied;
     } else {
       const session = await getSession();
       buyerDid = session ? resolveActingDid(session) : undefined;
+      const delegationDenied = enforceRoutePolicy(session, 'market.listing.purchase', { resourceId: id });
+      if (delegationDenied) return delegationDenied;
     }
 
     // 3. Parse body for quantity

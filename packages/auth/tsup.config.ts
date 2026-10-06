@@ -10,6 +10,7 @@ export default defineConfig({
     'src/broker-consent-vocabulary.ts',
     'src/scope-vocabulary.ts',
     'src/grant-scopes.ts',
+    'src/delegation-policy.ts',
     'src/resolve-db.ts',
     // Pure Ed25519 key-rotation primitives (#2081) — standalone so the
     // operator script and external verifiers can load them without pulling in

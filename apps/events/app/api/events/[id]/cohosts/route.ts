@@ -6,6 +6,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 const log = createLogger('events');
 import { eq } from 'drizzle-orm';
 import { resolveCoHostDid, type ResolveCoHostResult } from '@/src/lib/cohost-helpers';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
 const CONNECTIONS_SERVICE_URL = process.env.CONNECTIONS_SERVICE_URL || 'http://localhost:3003';
@@ -211,6 +212,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
   const { identity } = authResult;
   const did = resolveActingDid(identity);
+  const delegationDenied = enforceRoutePolicy(identity, "events.event.cohost-add", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
   const { id } = params;
 
   try {

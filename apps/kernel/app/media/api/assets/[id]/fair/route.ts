@@ -15,6 +15,7 @@ import { createLogger } from "@imajin/logger";
 import { renderFairHtml } from "@/src/lib/media/render-fair-html";
 import { getAccessType } from "@/src/lib/media/read-access";
 import { authorizeAssetRead } from "@/src/lib/media/authorize-read";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -145,6 +146,8 @@ export async function PUT(
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   const requesterDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.fair-update", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   let asset;
   try {

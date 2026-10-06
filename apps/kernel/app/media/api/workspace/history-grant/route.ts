@@ -5,6 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 import { corsHeaders } from "@/src/lib/kernel/cors";
 import { nanoid } from "nanoid";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const ownerDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.workspace.history-grant", { headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   // 2. Parse body
   let body: { granteeDid?: unknown };

@@ -6,6 +6,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP, buildPublicUrl } from '@imajin/config';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 // Pay is a kernel service reached through the kernel's port with the /pay
 // path prefix (#2046) — the previous localhost:3004 fallback predated the
@@ -247,6 +248,14 @@ export async function POST(request: NextRequest) {
 
     // Get sender identity if authenticated
     const { fromDid, fromHumanDid } = await resolveSender(request);
+
+    // A delegate (fromHumanDid = the agent, fromDid = who it acts for) may not
+    // move the owner's money on its own (#2360).
+    const delegationDenied = enforceRoutePolicy(
+      fromHumanDid ? { id: fromHumanDid, actingFor: fromDid } : null,
+      'coffee.tip',
+    );
+    if (delegationDenied) return delegationDenied;
 
     // Create tip record (pending)
     const tipId = generateId('tip');

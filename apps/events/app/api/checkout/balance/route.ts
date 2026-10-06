@@ -27,6 +27,7 @@ import {
   publishBalanceTicketsPurchased,
   sendBalanceConfirmationEmails,
 } from '@/src/lib/balance-checkout-helpers';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 // PAY_SERVICE_URL already includes the /pay path prefix (kernel-hosted
 // service convention, e.g. http://localhost:3000/pay in dev) — callers
@@ -58,6 +59,8 @@ export const POST = withLogger('events', async (request, { log }) => {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     const buyerDid = resolveActingDid(authResult.identity);
+    const delegationDenied = enforceRoutePolicy(authResult.identity, "events.checkout.balance");
+    if (delegationDenied) return delegationDenied;
 
     const body: BalanceCheckoutRequest = await request.json();
 

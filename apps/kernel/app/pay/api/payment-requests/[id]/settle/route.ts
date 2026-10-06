@@ -17,6 +17,7 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { isServiceError, settlePaymentRequestManual } from '@/src/lib/pay/payment-requests/service';
 import { settlePaymentRequestEmt } from '@/src/lib/pay/payment-requests/emt';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger('kernel');
 
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const callerDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.payment-request.settle", { resourceId: id, headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   let body: SettleRequestBody;
   try {

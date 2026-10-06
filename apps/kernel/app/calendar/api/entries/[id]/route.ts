@@ -4,6 +4,7 @@ import { db, calendarEntries } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { VISIBILITIES, publishCalendarEntry, syncCalendarConnectionGrant } from '@/src/lib/calendar';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger('kernel');
 
@@ -75,6 +76,8 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const did = resolveActingDid(auth.identity);
+  const delegationDenied = enforceRoutePolicy(auth.identity, "kernel.calendar.entry.delete", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   const [deleted] = await db
     .delete(calendarEntries)

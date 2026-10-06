@@ -11,6 +11,7 @@ import type { FairFeeManifest } from '@imajin/fair';
 import { getNodeSelf, getForestScopeConfig } from '@imajin/config';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const STATUS_TRANSITIONS: Record<string, string[]> = {
   active:      ['paused', 'sold', 'rented', 'unavailable'],
@@ -248,6 +249,8 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
     }
 
     const did = resolveActingDid(identity);
+    const delegationDenied = enforceRoutePolicy(identity, "market.listing.delete", { resourceId: id });
+    if (delegationDenied) return delegationDenied;
     if (listing.sellerDid !== did) {
       return errorResponse('Forbidden', 403);
     }

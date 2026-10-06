@@ -17,6 +17,7 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { withLogger } from '@imajin/logger';
 import { MJN, debitUnitIfSufficient, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const MIN_WITHDRAWAL = 10; // $10.00 minimum
 
@@ -33,6 +34,8 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers });
   }
   const did = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.balance.withdraw-request");
+  if (delegationDenied) return delegationDenied;
 
   // Parse body
   let body: { amount?: number; emt_email?: string };
