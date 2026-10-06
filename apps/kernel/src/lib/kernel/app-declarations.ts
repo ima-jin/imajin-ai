@@ -51,10 +51,8 @@ export async function validateAppDeclarations(input: AppDeclarationsInput): Prom
   if (deps.invalid.length > 0) {
     return { error: `dependsOn entries must be { aud, scopes[] } with platform-vocabulary scopes: ${deps.invalid.join(', ')}` };
   }
-  const unregistered: string[] = [];
-  for (const dep of deps.valid) {
-    if (!(await resolveActiveAppByAudience(dep.aud))) unregistered.push(dep.aud);
-  }
+  const registered = await Promise.all(deps.valid.map((dep) => resolveActiveAppByAudience(dep.aud)));
+  const unregistered = deps.valid.filter((_dep, i) => !registered[i]).map((dep) => dep.aud);
   if (unregistered.length > 0) {
     return { error: `dependsOn audiences are not registered apps: ${unregistered.join(', ')}` };
   }
