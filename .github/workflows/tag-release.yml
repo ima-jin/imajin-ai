@@ -9,9 +9,21 @@ name: Tag Release
 # to main), and the actual prod deploy still goes through deploy-prod.yml's
 # existing `production` GitHub Environment required-reviewer gate — the same
 # gate every other prod deploy already uses.
+#
+# Manual recovery (#2622): `workflow_dispatch` with the release MERGE commit's
+# sha runs the very same steps against that commit (its HEAD^2 carries the
+# release message), for a release whose automatic tagging step failed. It
+# still only pushes a tag and dispatches deploy-prod.yml, so the `production`
+# environment gate applies unchanged. The sha must already be on main.
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Release merge commit on main to tag and deploy (its HEAD^2 must be the `release: vX.Y.Z` commit)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -48,11 +60,33 @@ jobs:
         # two-parent merge commit, HEAD^2 is the actual tip of the merged
         # branch (release/vX.Y.Z has exactly one commit); fall back to HEAD
         # itself for a fast-forward/squash/direct push.
+        #
+        # On a workflow_dispatch the commit to inspect (and later tag) is the
+        # `sha` input instead of the checked-out HEAD. The input reaches the
+        # script through env only (never interpolated into the shell text),
+        # must look like a git sha, and must already be on main.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_SHA: ${{ inputs.sha }}
         run: |
-          if git rev-parse -q --verify HEAD^2 >/dev/null 2>&1; then
-            MESSAGE="$(git log -1 --format=%B HEAD^2)"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            if [[ ! "$DISPATCH_SHA" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              echo "::error::sha input is not a git commit sha: $DISPATCH_SHA"
+              exit 1
+            fi
+            TARGET="$(git rev-parse --verify "${DISPATCH_SHA}^{commit}")"
+            if ! git merge-base --is-ancestor "$TARGET" origin/main; then
+              echo "::error::$TARGET is not on main — refusing to tag it."
+              exit 1
+            fi
           else
-            MESSAGE="$(git log -1 --format=%B HEAD)"
+            TARGET="$(git rev-parse HEAD)"
+          fi
+          echo "target_sha=$TARGET" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "${TARGET}^2" >/dev/null 2>&1; then
+            MESSAGE="$(git log -1 --format=%B "${TARGET}^2")"
+          else
+            MESSAGE="$(git log -1 --format=%B "$TARGET")"
           fi
           FIRST_LINE="$(head -n1 <<< "$MESSAGE")"
           echo "first_line=$FIRST_LINE" >> "$GITHUB_OUTPUT"
@@ -68,9 +102,14 @@ jobs:
         if: steps.check.outputs.is_release == 'true'
         env:
           FIRST_LINE: ${{ steps.check.outputs.first_line }}
+        # The version is the leading `vX.Y.Z` token; trailing text after
+        # whitespace (e.g. " (re-stamp after main merge into release branch)")
+        # is allowed, a malformed version still fails (#2622). The parser lives
+        # in scripts/lib/parse-release-version.sh so a test can cover it.
         run: |
-          VERSION="${FIRST_LINE#release: v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          # shellcheck source=scripts/lib/parse-release-version.sh
+          source scripts/lib/parse-release-version.sh
+          if ! VERSION="$(parse_release_version "$FIRST_LINE")"; then
             echo "::error::Could not parse a vX.Y.Z version out of commit message: $FIRST_LINE"
             exit 1
           fi
@@ -81,13 +120,14 @@ jobs:
         if: steps.check.outputs.is_release == 'true'
         env:
           TAG: ${{ steps.version.outputs.tag }}
+          TARGET_SHA: ${{ steps.check.outputs.target_sha }}
         run: |
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1; then
             echo "ℹ️  Tag $TAG already exists — skipping creation (still checking dispatch below)."
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
-            git tag -a "$TAG" -m "release: $TAG"
+            git tag -a "$TAG" -m "release: $TAG" "$TARGET_SHA"
             git push origin "refs/tags/$TAG"
           fi
 
