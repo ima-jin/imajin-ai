@@ -278,3 +278,38 @@ describe('resolveEmailForDid — migrated onto /api/resolve (#1998)', () => {
     expect(result).toBeNull();
   });
 });
+
+describe('resolveIdentitiesForDids — concurrent batches', () => {
+  beforeEach(() => {
+    vi.stubEnv('PROFILE_SERVICE_URL', 'https://kernel.test/profile');
+    vi.stubEnv('PROFILE_INTERNAL_API_KEY', 'internal-secret');
+  });
+
+  it('splits >200 DIDs into batches, merges every batch, and skips a failed batch', async () => {
+    const dids = Array.from({ length: 450 }, (_, i) => `did:imajin:u${i}`);
+    const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
+      const batch = (JSON.parse(init.body) as { dids: string[] }).dids;
+      if (batch[0] === 'did:imajin:u200') throw new Error('profile service down'); // middle batch fails soft
+      return {
+        ok: true,
+        json: async () => ({ results: [...batch.map((did) => ({ did, handle: did.slice(-3) })), { handle: 'no-did' }] }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await resolveIdentitiesForDids(dids);
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result.size).toBe(250); // 200 + 50, entry without a did dropped
+    expect(result.has('did:imajin:u0')).toBe(true);
+    expect(result.has('did:imajin:u200')).toBe(false);
+    expect(result.has('did:imajin:u449')).toBe(true);
+    // Merged in batch order.
+    expect([...result.keys()][0]).toBe('did:imajin:u0');
+  });
+
+  it('treats a non-ok batch response as no entries', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
+    expect((await resolveIdentitiesForDids([DID])).size).toBe(0);
+  });
+});

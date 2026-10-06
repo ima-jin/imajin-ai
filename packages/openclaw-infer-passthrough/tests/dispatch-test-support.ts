@@ -11,9 +11,9 @@ export function fakeTokenSource(tokens: string[]): TokenSource & { calls: number
   let i = 0;
   return {
     calls: 0,
-    async getToken() {
+    getToken() {
       this.calls += 1;
-      return tokens[Math.min(i, tokens.length - 1)];
+      return Promise.resolve(tokens[Math.min(i, tokens.length - 1)]);
     },
     invalidate() {
       i += 1;
@@ -26,8 +26,8 @@ export function fakeScopedTokenSource(tokens: string[], scopes: string[]): Scope
   const base = fakeTokenSource(tokens);
   return {
     ...base,
-    async getScopes() {
-      return scopes;
+    getScopes() {
+      return Promise.resolve(scopes);
     },
   };
 }

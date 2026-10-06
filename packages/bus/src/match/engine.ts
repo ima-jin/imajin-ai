@@ -1,5 +1,6 @@
 import { createLogger } from '@imajin/logger';
 import type { BusEvent, ReactorHandler } from '../types';
+import { forEachSequential, mapWithConcurrency } from '../concurrency';
 import { broker } from '../broker';
 import { isBrokerRelease } from '../types';
 import { publish } from '../publish';
@@ -12,6 +13,9 @@ import { rankCandidates } from './rank';
 import { recordMatch, getSpentIntents } from './records';
 import { deliveryPolicy } from './deliver';
 const log = createLogger('bus:match:engine');
+
+/** Max candidate evaluations (each may hit the DB for reach rings) in flight at once. */
+const EVALUATE_CONCURRENCY = 8;
 
 interface SurvivingPair {
   candidateIntentId: string;
@@ -189,11 +193,12 @@ export const matchEngineReactor: ReactorHandler = async (
 
   const arriverRings = await resolveReachRings(arriverDid);
 
-  const survivingPairs: SurvivingPair[] = [];
-  for (const candidate of candidates) {
-    const pair = await evaluateCandidate(intentId, arriverDid, arriverReach, arriverTags, arriverSensitiveTags, arriverRings, candidate);
-    if (pair) survivingPairs.push(pair);
-  }
+  // Candidate evaluation is read-only and independent per candidate; results
+  // come back in candidate order, so ranking input order is unchanged.
+  const evaluated = await mapWithConcurrency(candidates, EVALUATE_CONCURRENCY, (candidate) =>
+    evaluateCandidate(intentId, arriverDid, arriverReach, arriverTags, arriverSensitiveTags, arriverRings, candidate)
+  );
+  const survivingPairs: SurvivingPair[] = evaluated.filter((pair): pair is SurvivingPair => pair !== null);
 
   if (survivingPairs.length === 0) {
     log.info({ intentId, arriverDid }, 'All candidates rejected — run complete (provable silence)');
@@ -206,11 +211,13 @@ export const matchEngineReactor: ReactorHandler = async (
   ).map((r, i) => survivingPairs.find((p) => p.candidateIntentId === r.intent.id) ?? survivingPairs[i]);
 
   let disclosed = 0;
-  for (const pair of rankedPairs) {
+  // Sequential on purpose: pairs are disclosed in rank order, and each one
+  // spends the match record and runs the broker chain before the next starts.
+  await forEachSequential(rankedPairs, async (pair) => {
     if (pair && await disclosePair(intentId, arriverDid, arriverReach, arriverRings.favouritesSet, pair)) {
       disclosed++;
     }
-  }
+  });
 
   log.info({ intentId, arriverDid, disclosed }, 'Match engine run complete');
 };

@@ -33,7 +33,7 @@ function useDidNames(
       const updates: Record<string, string> = {};
       for (const [did, name] of results) { if (name) updates[did] = name; }
       if (Object.keys(updates).length > 0) setNames(prev => ({ ...prev, ...updates }));
-    });
+    }).catch((err: unknown) => { console.error('FairAccordion: resolving profile names failed:', err); });
     return () => { cancelled = true; };
   }, [dids.join(','), resolveProfile]);
   return names;

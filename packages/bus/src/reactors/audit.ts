@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
+import { attempt } from '../concurrency';
 import { publish } from '../publish';
 import type { BrokerPipelineState, BrokerReactor, BrokerResult } from '../types';
 
@@ -84,76 +85,77 @@ async function writeAuditLogRow(row: {
  * Uses publish() fire-and-forget semantics.
  * Skipped entirely when request.preview === true.
  */
-export const auditReactor: BrokerReactor = async (state) => {
-  const { request, envelope, filteredData } = state;
-  const shadow = request.mode === 'shadow';
+export const auditReactor: BrokerReactor = (state) =>
+  attempt(() => {
+    const { request, envelope, filteredData } = state;
+    const shadow = request.mode === 'shadow';
 
-  if (request.preview) {
-    log.info({ preview: true }, 'Audit skipped (preview mode)');
-    return state;
-  }
+    if (request.preview) {
+      log.info({ preview: true }, 'Audit skipped (preview mode)');
+      return state;
+    }
 
-  if (!envelope) {
-    log.error({}, 'Audit reactor called without envelope');
-    throw new Error('Audit reactor: envelope missing');
-  }
+    if (!envelope) {
+      log.error({}, 'Audit reactor called without envelope');
+      throw new Error('Audit reactor: envelope missing');
+    }
 
-  log.info({ releaseId: envelope.releaseId }, 'Firing broker.release audit event');
+    log.info({ releaseId: envelope.releaseId }, 'Firing broker.release audit event');
 
-  // Persist to queryable audit log (fire-and-forget).
-  const releasedFields = Object.keys(filteredData || {});
-  const releasedAt = envelope.issuedAt;
-  writeAuditLogRow({
-    type: 'release',
-    requester: request.requester,
-    subject: request.subject,
-    purpose: request.purpose,
-    scope: request.scope,
-    fieldsRequested: request.fields,
-    fieldsReleased: releasedFields,
-    status: 'RELEASED',
-    mode: envelope.mode,
-    consentRef: envelope.consentReference ?? null,
-    reason: null,
-    shadow,
-  }).catch((err: unknown) => {
-    log.error({ err: String(err) }, 'writeAuditLogRow (release) failed');
-  });
-
-  // Notify the subject of the disclosure (non-shadow releases only).
-  if (!shadow) {
-    sendDisclosureReceipt({
-      subjectDid: request.subject,
-      requesterDid: request.requester,
-      purpose: request.purpose,
-      fields: releasedFields,
-      releasedAt,
-    }).catch((err: unknown) => {
-      log.error({ err: String(err) }, 'sendDisclosureReceipt failed');
-    });
-  }
-
-  publish('broker.release', {
-    issuer: request.requester,
-    subject: request.subject,
-    scope: request.scope,
-    payload: {
-      releaseId: envelope.releaseId,
+    // Persist to queryable audit log (fire-and-forget).
+    const releasedFields = Object.keys(filteredData || {});
+    const releasedAt = envelope.issuedAt;
+    writeAuditLogRow({
+      type: 'release',
       requester: request.requester,
       subject: request.subject,
-      fields: Object.keys(filteredData || {}),
       purpose: request.purpose,
       scope: request.scope,
+      fieldsRequested: request.fields,
+      fieldsReleased: releasedFields,
+      status: 'RELEASED',
       mode: envelope.mode,
-      fieldModes: envelope.fieldModes,
-      issuedAt: envelope.issuedAt,
-    },
-  }).catch((err: unknown) => {
-    log.error({ err: String(err), releaseId: envelope.releaseId }, 'Audit publish failed');
-  });
+      consentRef: envelope.consentReference ?? null,
+      reason: null,
+      shadow,
+    }).catch((err: unknown) => {
+      log.error({ err: String(err) }, 'writeAuditLogRow (release) failed');
+    });
 
-  return state;
-};
+    // Notify the subject of the disclosure (non-shadow releases only).
+    if (!shadow) {
+      sendDisclosureReceipt({
+        subjectDid: request.subject,
+        requesterDid: request.requester,
+        purpose: request.purpose,
+        fields: releasedFields,
+        releasedAt,
+      }).catch((err: unknown) => {
+        log.error({ err: String(err) }, 'sendDisclosureReceipt failed');
+      });
+    }
+
+    publish('broker.release', {
+      issuer: request.requester,
+      subject: request.subject,
+      scope: request.scope,
+      payload: {
+        releaseId: envelope.releaseId,
+        requester: request.requester,
+        subject: request.subject,
+        fields: Object.keys(filteredData || {}),
+        purpose: request.purpose,
+        scope: request.scope,
+        mode: envelope.mode,
+        fieldModes: envelope.fieldModes,
+        issuedAt: envelope.issuedAt,
+      },
+    }).catch((err: unknown) => {
+      log.error({ err: String(err), releaseId: envelope.releaseId }, 'Audit publish failed');
+    });
+
+    return state;
+  });
 
 /**
  * Fire a rejection audit event.
@@ -161,49 +163,51 @@ export const auditReactor: BrokerReactor = async (state) => {
  * This is called by the broker orchestrator when a reactor returns a rejection.
  * Skipped in preview mode.
  */
-export async function auditRejection(
+export function auditRejection(
   request: BrokerPipelineState['request'],
   result: Extract<BrokerResult, { status: 'rejected' }>
 ): Promise<void> {
-  if (request.preview) {
-    log.info({ preview: true }, 'Audit rejection skipped (preview mode)');
-    return;
-  }
+  return attempt(() => {
+    if (request.preview) {
+      log.info({ preview: true }, 'Audit rejection skipped (preview mode)');
+      return;
+    }
 
-  log.info({ reason: result.reason }, 'Firing broker.rejection audit event');
+    log.info({ reason: result.reason }, 'Firing broker.rejection audit event');
 
-  // Persist to queryable audit log (fire-and-forget).
-  writeAuditLogRow({
-    type: 'rejection',
-    requester: request.requester,
-    subject: request.subject,
-    purpose: request.purpose,
-    scope: request.scope,
-    fieldsRequested: request.fields,
-    fieldsReleased: null,
-    status: 'DENIED',
-    mode: null,
-    consentRef: null,
-    reason: result.reason,
-    shadow: request.mode === 'shadow',
-  }).catch((err: unknown) => {
-    log.error({ err: String(err) }, 'writeAuditLogRow (rejection) failed');
-  });
-
-  publish('broker.rejection', {
-    issuer: request.requester,
-    subject: request.subject,
-    scope: request.scope,
-    payload: {
+    // Persist to queryable audit log (fire-and-forget).
+    writeAuditLogRow({
+      type: 'rejection',
       requester: request.requester,
       subject: request.subject,
-      fields: result.fields || request.fields,
       purpose: request.purpose,
       scope: request.scope,
+      fieldsRequested: request.fields,
+      fieldsReleased: null,
+      status: 'DENIED',
+      mode: null,
+      consentRef: null,
       reason: result.reason,
-      details: result.details,
-    },
-  }).catch((err: unknown) => {
-    log.error({ err: String(err), reason: result.reason }, 'Audit rejection publish failed');
+      shadow: request.mode === 'shadow',
+    }).catch((err: unknown) => {
+      log.error({ err: String(err) }, 'writeAuditLogRow (rejection) failed');
+    });
+
+    publish('broker.rejection', {
+      issuer: request.requester,
+      subject: request.subject,
+      scope: request.scope,
+      payload: {
+        requester: request.requester,
+        subject: request.subject,
+        fields: result.fields || request.fields,
+        purpose: request.purpose,
+        scope: request.scope,
+        reason: result.reason,
+        details: result.details,
+      },
+    }).catch((err: unknown) => {
+      log.error({ err: String(err), reason: result.reason }, 'Audit rejection publish failed');
+    });
   });
 }

@@ -117,8 +117,13 @@ export function signSync(message: string | Uint8Array, privateKeyHex: string): s
 /**
  * Async version of sign (same result, but async for consistency)
  */
-export async function sign(message: string | Uint8Array, privateKeyHex: string): Promise<string> {
-  return signSync(message, privateKeyHex);
+export function sign(message: string | Uint8Array, privateKeyHex: string): Promise<string> {
+  // Keep the Promise contract: a synchronous throw becomes a rejection.
+  try {
+    return Promise.resolve(signSync(message, privateKeyHex));
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
 }
 
 /**
@@ -147,12 +152,15 @@ export function verifySync(
 /**
  * Async version of verify (same result, but async for consistency)
  */
-export async function verify(
+export function verify(
   signature: string,
   message: string | Uint8Array,
   publicKeyHex: string
 ): Promise<boolean> {
-  return verifySync(signature, message, publicKeyHex);
+  // Keep the Promise contract: a synchronous throw becomes a rejection.
+  // verifySync handles every failure internally (returns false) and never throws,
+  // so no sync-throw-to-rejection guard is needed here.
+  return Promise.resolve(verifySync(signature, message, publicKeyHex));
 }
 
 /**

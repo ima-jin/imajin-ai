@@ -189,8 +189,8 @@ export async function forwardMcpToKernel(
  * signature, mirroring the same defensive guard `forwardDirect`/
  * `forwardAnthropicDirect` use for a route that omits `directBaseUrl`.
  */
-export async function forwardMcpDirect(route: ProviderRouteConfig): Promise<Response> {
-  throw new NoDirectFallbackError(route.id);
+export function forwardMcpDirect(route: ProviderRouteConfig): Promise<Response> {
+  return Promise.reject(new NoDirectFallbackError(route.id));
 }
 
 /** The two Anthropic-format endpoints this shim forwards (imajin-ai#1959). */

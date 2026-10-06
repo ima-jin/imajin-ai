@@ -21,8 +21,13 @@ export function createSigner(privateKeyHex: string): Signer {
   const privateKeyBytes = hexToBytes(privateKeyHex);
   const { privateKey } = importEd25519Keypair(privateKeyBytes);
 
-  return async (message: Uint8Array): Promise<Uint8Array> => {
-    return signPayloadEd25519(message, privateKey);
+  // Keep the Promise contract: a synchronous throw from signing becomes a rejection.
+  return (message: Uint8Array): Promise<Uint8Array> => {
+    try {
+      return Promise.resolve(signPayloadEd25519(message, privateKey));
+    } catch (err) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
   };
 }
 

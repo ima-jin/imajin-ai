@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { attempt } from '../concurrency';
 import type { BrokerReactor } from '../types';
 import { makeRejection } from './rejection';
 
@@ -24,48 +25,49 @@ const log = createLogger('bus:broker:mutual-reach-consent');
  *   arriverIntentId         string
  *   candidateIntentId       string
  */
-export const mutualReachConsentReactor: BrokerReactor = async (state) => {
-  const { request } = state;
-  const data: Record<string, unknown> = request.data ?? {};
+export const mutualReachConsentReactor: BrokerReactor = (state) =>
+  attempt(() => {
+    const { request } = state;
+    const data: Record<string, unknown> = request.data ?? {};
 
-  const arriverAdmitsCandidate = data.arriverAdmitsCandidate === true;
-  const candidateAdmitsArriver = data.candidateAdmitsArriver === true;
+    const arriverAdmitsCandidate = data.arriverAdmitsCandidate === true;
+    const candidateAdmitsArriver = data.candidateAdmitsArriver === true;
 
-  log.info(
-    {
-      requester: request.requester,
-      subject: request.subject,
-      arriverAdmitsCandidate,
-      candidateAdmitsArriver,
-    },
-    'Resolving mutual reach consent'
-  );
-
-  if (!arriverAdmitsCandidate || !candidateAdmitsArriver) {
-    const reason = arriverAdmitsCandidate
-      ? 'candidate reach does not admit arriver'
-      : 'arriver reach does not admit candidate';
-
-    log.warn(
-      { requester: request.requester, subject: request.subject, reason },
-      'Mutual reach check failed — rejecting (fail-closed)'
+    log.info(
+      {
+        requester: request.requester,
+        subject: request.subject,
+        arriverAdmitsCandidate,
+        candidateAdmitsArriver,
+      },
+      'Resolving mutual reach consent'
     );
 
-    return makeRejection(request.fields, 'no_consent', `Mutual reach not satisfied: ${reason}`);
-  }
+    if (!arriverAdmitsCandidate || !candidateAdmitsArriver) {
+      const reason = arriverAdmitsCandidate
+        ? 'candidate reach does not admit arriver'
+        : 'arriver reach does not admit candidate';
 
-  const intentA = typeof data.arriverIntentId === 'string' ? data.arriverIntentId : '';
-  const intentB = typeof data.candidateIntentId === 'string' ? data.candidateIntentId : '';
+      log.warn(
+        { requester: request.requester, subject: request.subject, reason },
+        'Mutual reach check failed — rejecting (fail-closed)'
+      );
 
-  log.info(
-    { requester: request.requester, subject: request.subject },
-    'Mutual reach consent granted'
-  );
+      return makeRejection(request.fields, 'no_consent', `Mutual reach not satisfied: ${reason}`);
+    }
 
-  return {
-    ...state,
-    allowedFields: ['overlap_tags'],
-    mode: 'attestation' as const,
-    consentReference: `mutual-reach:${intentA}:${intentB}`,
-  };
-};
+    const intentA = typeof data.arriverIntentId === 'string' ? data.arriverIntentId : '';
+    const intentB = typeof data.candidateIntentId === 'string' ? data.candidateIntentId : '';
+
+    log.info(
+      { requester: request.requester, subject: request.subject },
+      'Mutual reach consent granted'
+    );
+
+    return {
+      ...state,
+      allowedFields: ['overlap_tags'],
+      mode: 'attestation' as const,
+      consentReference: `mutual-reach:${intentA}:${intentB}`,
+    };
+  });

@@ -558,8 +558,15 @@ export async function loadFromVault(params: LoadFromVaultParams): Promise<VaultC
   const token = await authenticateBootstrapIdentity(authServiceUrl, params.identity);
 
   const result: VaultCredentials = { values: {}, dids: {}, degraded: [], acks: {} };
-  for (const keySpec of params.keys) {
-    await loadOneKey(authServiceUrl, token, params.grant, params.resolveGrantByPurpose, params.purpose, keySpec, result);
-  }
+  // Sequential on purpose: keys are loaded in declared order, each may mint a
+  // grant / append to `degraded` / register an ack on the shared `result`, and
+  // the first failure must stop the remaining loads.
+  await params.keys.reduce<Promise<void>>(
+    (chain, keySpec) =>
+      chain.then(() =>
+        loadOneKey(authServiceUrl, token, params.grant, params.resolveGrantByPurpose, params.purpose, keySpec, result)
+      ),
+    Promise.resolve()
+  );
   return result;
 }

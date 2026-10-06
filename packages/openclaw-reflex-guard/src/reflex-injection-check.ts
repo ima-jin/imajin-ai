@@ -15,9 +15,9 @@ import type { ConcernFinding, InjectionChecker, ReflexTurnContext, WarrantTrigge
 
 export function createStubInjectionChecker(): InjectionChecker {
   return {
-    async checkConcerns(_turn: ReflexTurnContext, _triggers: WarrantTrigger[]): Promise<ConcernFinding[]> {
+    checkConcerns(_turn: ReflexTurnContext, _triggers: WarrantTrigger[]): Promise<ConcernFinding[]> {
       // No concerns are ever tripped by the stub — see module doc above.
-      return [];
+      return Promise.resolve([]);
     },
   };
 }

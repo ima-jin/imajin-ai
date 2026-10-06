@@ -70,9 +70,13 @@ export function createImajinChatAdapter(config: ImajinChatAdapterConfig): NanoCl
       await connection.start();
     },
 
-    async teardown(): Promise<void> {
-      connection?.stop();
-      connection = null;
+    teardown(): Promise<void> {
+      // Keep the Promise contract: a synchronous throw from stop() becomes a rejection.
+      return new Promise<void>((resolve) => {
+        connection?.stop();
+        connection = null;
+        resolve();
+      });
     },
 
     isConnected(): boolean {

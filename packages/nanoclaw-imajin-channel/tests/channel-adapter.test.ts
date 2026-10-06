@@ -166,3 +166,31 @@ describe('createImajinChatAdapter', () => {
     expect(result).toBeUndefined();
   });
 });
+
+describe('teardown Promise contract', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    FakeWebSocket.instances = [];
+  });
+
+  it('rejects (rather than throwing synchronously) when stopping the connection throws', async () => {
+    stubAuthFetch();
+    vi.stubGlobal('WebSocket', FakeWebSocket as unknown as typeof WebSocket);
+
+    const adapter = createImajinChatAdapter({
+      kernelBaseUrl: 'https://kernel.example.com',
+      agentDid: 'did:imajin:agent-poc',
+      privateKeyHex: '22'.repeat(32),
+    });
+    await adapter.setup({ onInbound: vi.fn(), onMetadata: vi.fn(), onAction: vi.fn() });
+
+    const ws = FakeWebSocket.instances.at(-1)!;
+    ws.close = () => {
+      throw new Error('close boom');
+    };
+
+    let pending: Promise<void> | undefined;
+    expect(() => { pending = adapter.teardown(); }).not.toThrow();
+    await expect(pending).rejects.toThrow('close boom');
+  });
+});

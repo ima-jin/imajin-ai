@@ -46,13 +46,19 @@ interface PostSummary {
 async function postAllBatches(config: EmitterEnv, rows: ReturnType<typeof mapJsonlLines>): Promise<PostSummary> {
   const batches = chunkRows(rows);
   let summary: PostSummary = { inserted: 0, skipped: 0 };
-  for (const batch of batches) {
-    const result = await postIncurredBatch({ kernelUrl: config.kernelUrl, token: config.token }, batch);
-    summary = { inserted: summary.inserted + result.inserted, skipped: summary.skipped + result.skipped };
-    if (result.rejected.length > 0) {
-      console.warn(`usage-emitter: ${result.rejected.length} row(s) rejected:`, result.rejected);
-    }
-  }
+  // Sequential on purpose: the cursor is only saved after every batch posts, so the
+  // first failed batch must stop the run before later batches are sent.
+  await batches.reduce<Promise<void>>(
+    (chain, batch) =>
+      chain.then(async () => {
+        const result = await postIncurredBatch({ kernelUrl: config.kernelUrl, token: config.token }, batch);
+        summary = { inserted: summary.inserted + result.inserted, skipped: summary.skipped + result.skipped };
+        if (result.rejected.length > 0) {
+          console.warn(`usage-emitter: ${result.rejected.length} row(s) rejected:`, result.rejected);
+        }
+      }),
+    Promise.resolve()
+  );
   return summary;
 }
 
