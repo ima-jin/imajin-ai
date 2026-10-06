@@ -12,12 +12,16 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 
-const { mockLoadVaultAtBoot } = vi.hoisted(() => ({
+const { mockLoadVaultAtBoot, mockProvideVaultInternalApiKey } = vi.hoisted(() => ({
   mockLoadVaultAtBoot: vi.fn().mockResolvedValue(undefined),
+  mockProvideVaultInternalApiKey: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('@/src/lib/vault/vault-repository', () => ({
   loadVaultAtBoot: mockLoadVaultAtBoot,
+}));
+vi.mock('@/src/lib/auth/provide-vault-internal-api-key', () => ({
+  provideVaultInternalApiKey: mockProvideVaultInternalApiKey,
 }));
 
 import { register } from '../instrumentation';
@@ -35,6 +39,7 @@ function setRuntime(value: string | undefined): void {
 afterEach(() => {
   setRuntime(originalRuntime);
   mockLoadVaultAtBoot.mockClear();
+  mockProvideVaultInternalApiKey.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
@@ -64,11 +69,32 @@ describe('kernel instrumentation register()', () => {
     await expect(register()).rejects.toThrow(/Configured vault file not found/);
   });
 
+  it('hands @imajin/auth the vault-resolved ATTESTATION_INTERNAL_API_KEY after the vault loads (#2353 step 4)', async () => {
+    setRuntime('nodejs');
+    const order: string[] = [];
+    mockLoadVaultAtBoot.mockImplementationOnce(async () => { order.push('vault'); });
+    mockProvideVaultInternalApiKey.mockImplementationOnce(async () => { order.push('key'); });
+
+    await register();
+
+    expect(order).toEqual(['vault', 'key']);
+  });
+
+  it('does not hand over a key when the vault itself failed to load (boot refuses to start)', async () => {
+    setRuntime('nodejs');
+    mockLoadVaultAtBoot.mockRejectedValueOnce(new Error('Configured vault file not found'));
+
+    await expect(register()).rejects.toThrow();
+
+    expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
+  });
+
   it('does not load the vault outside the nodejs runtime (e.g. edge)', async () => {
     setRuntime('edge');
 
     await register();
 
     expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
+    expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
   });
 });

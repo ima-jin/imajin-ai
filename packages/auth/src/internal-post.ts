@@ -58,6 +58,18 @@ export async function bootstrapInternalApiKey(service: string): Promise<void> {
 }
 
 /**
+ * Hands packages/auth the already-resolved `ATTESTATION_INTERNAL_API_KEY` for a
+ * process that does not fetch it through `bootstrapInternalApiKey` — i.e. the
+ * kernel, which hosts the vault and resolves the value itself
+ * (`getInternalSecret`). The value must come from the vault; packages/auth
+ * never reads it from `process.env` (#2353 step 4).
+ */
+export function provideInternalApiKey(key: string): void {
+  if (!key) throw new Error('provideInternalApiKey: refusing to register an empty key');
+  globalState[VAULT_KEY_STATE] = { key, ack: null };
+}
+
+/**
  * The vault-sourced `ATTESTATION_INTERNAL_API_KEY`, or `undefined` if the
  * boot fetch has not run / failed. The first read sends the deferred `used`
  * ack for the grant (#2257: fetching is not itself an ack; using it is).

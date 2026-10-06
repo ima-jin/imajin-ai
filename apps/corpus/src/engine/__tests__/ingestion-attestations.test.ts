@@ -6,12 +6,12 @@ import { crypto as authCrypto } from '@imajin/auth';
 import { CorpusEngine } from '../index';
 import { AttestationNotFoundError } from '../errors';
 import { bootstrapCorpusIdentity, _resetCorpusIdentityStateForTests } from '../../lib/corpus-identity';
+import { _resetAttestationKeyStateForTests, _setAttestationKeyForTests } from '../../lib/attestation-key';
 import type { ThreadDocument } from '../types';
 
 const ORIGINAL_CORPUS_DID = process.env.CORPUS_DID;
 const ORIGINAL_CORPUS_DID_PRIVATE_KEY = process.env.CORPUS_DID_PRIVATE_KEY;
 const ORIGINAL_AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL;
-const ORIGINAL_ATTESTATION_KEY = process.env.ATTESTATION_INTERNAL_API_KEY;
 
 const CORPUS_KEYPAIR = authCrypto.generateKeypair();
 
@@ -46,8 +46,7 @@ function restoreEnv(): void {
   else process.env.CORPUS_DID_PRIVATE_KEY = ORIGINAL_CORPUS_DID_PRIVATE_KEY;
   if (ORIGINAL_AUTH_SERVICE_URL === undefined) delete process.env.AUTH_SERVICE_URL;
   else process.env.AUTH_SERVICE_URL = ORIGINAL_AUTH_SERVICE_URL;
-  if (ORIGINAL_ATTESTATION_KEY === undefined) delete process.env.ATTESTATION_INTERNAL_API_KEY;
-  else process.env.ATTESTATION_INTERNAL_API_KEY = ORIGINAL_ATTESTATION_KEY;
+  _resetAttestationKeyStateForTests();
 }
 
 describe('CorpusEngine ingestion attestations (#1750)', () => {
@@ -60,7 +59,7 @@ describe('CorpusEngine ingestion attestations (#1750)', () => {
     delete process.env.CORPUS_DID;
     delete process.env.CORPUS_DID_PRIVATE_KEY;
     delete process.env.AUTH_SERVICE_URL;
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+    _resetAttestationKeyStateForTests();
   });
 
   afterEach(() => {
@@ -117,7 +116,8 @@ describe('CorpusEngine ingestion attestations (#1750)', () => {
   it('records a failed forward as pending and retries it on the next ingest', async () => {
     setCorpusIdentityEnv();
     process.env.AUTH_SERVICE_URL = 'http://kernel.test';
-    process.env.ATTESTATION_INTERNAL_API_KEY = 'test-key';
+    // The vault-sourced key a successful boot fetch would have cached (#2353 step 4: no env path).
+    _setAttestationKeyForTests('test-key');
 
     const fetchMock = vi.fn(async () => new Response('unavailable', { status: 503 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -140,7 +140,8 @@ describe('CorpusEngine ingestion attestations (#1750)', () => {
   it('keeps ingesting successfully even when every forward attempt fails', async () => {
     setCorpusIdentityEnv();
     process.env.AUTH_SERVICE_URL = 'http://kernel.test';
-    process.env.ATTESTATION_INTERNAL_API_KEY = 'test-key';
+    // The vault-sourced key a successful boot fetch would have cached (#2353 step 4: no env path).
+    _setAttestationKeyForTests('test-key');
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => {
@@ -190,7 +191,7 @@ describe('CorpusEngine + vault-sourced identity grant ack (#2257)', () => {
     engine = new CorpusEngine({ dataDir, now: () => new Date('2026-09-01T00:00:00.000Z') });
     delete process.env.CORPUS_DID;
     delete process.env.CORPUS_DID_PRIVATE_KEY;
-    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+    _resetAttestationKeyStateForTests();
     process.env.CORPUS_VAULT_GRANT_ID = GRANT_ID;
     process.env.CORPUS_VAULT_BOOTSTRAP_DID = BOOTSTRAP_DID;
     process.env.CORPUS_VAULT_BOOTSTRAP_PRIVATE_KEY = BOOTSTRAP_PRIVATE_KEY;

@@ -11,10 +11,29 @@
  * vitest never collects it as a suite on its own (see vitest.config.ts's
  * `include`).
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const ATTESTATION_INTERNAL_API_KEY_ENV = 'ATTESTATION_INTERNAL_API_KEY';
+const ATTESTATION_INTERNAL_API_KEY_LABEL = 'ATTESTATION_INTERNAL_API_KEY';
+
+/**
+ * Stand-in for `@/src/lib/vault/internal-secret` — the ONLY source of the
+ * expected key (#2353 step 4: no `process.env` fallback). Route tests install
+ * it with:
+ *
+ *   vi.mock('@/src/lib/vault/internal-secret', async () =>
+ *     (await import('@/app/auth/api/__tests__/internal-api-key-auth-test-support')).internalSecretModuleMock);
+ */
+export const internalSecretModuleMock = { getInternalSecret: vi.fn() };
+
+/** Seeds the vault-resolved key, or (with `undefined`) simulates a vault with no value for it. */
+export function useVaultInternalKey(key: string | undefined): void {
+  if (key === undefined) {
+    internalSecretModuleMock.getInternalSecret.mockReset().mockRejectedValue(new Error('no vault value'));
+  } else {
+    internalSecretModuleMock.getInternalSecret.mockReset().mockResolvedValue(key);
+  }
+}
 
 type PostHandler = (request: NextRequest) => Promise<Response>;
 
@@ -40,19 +59,33 @@ export function describeInternalApiKeyAuth(params: {
 }): void {
   const { routeLabel, post, apiKey, validBody, assertNoSideEffect } = params;
 
-  describe(`${routeLabel} — caller authentication (${ATTESTATION_INTERNAL_API_KEY_ENV})`, () => {
+  describe(`${routeLabel} — caller authentication (${ATTESTATION_INTERNAL_API_KEY_LABEL})`, () => {
     it('rejects when the API key is missing or wrong', async () => {
+      useVaultInternalKey(apiKey);
       const res = await post(makeInternalKeyRequest(validBody, 'wrong-key'));
 
       expect(res.status).toBe(401);
       assertNoSideEffect?.();
     });
 
-    it(`rejects when ${ATTESTATION_INTERNAL_API_KEY_ENV} is not configured server-side`, async () => {
-      delete process.env[ATTESTATION_INTERNAL_API_KEY_ENV];
+    it(`fails closed (401) when the vault has no ${ATTESTATION_INTERNAL_API_KEY_LABEL} value`, async () => {
+      useVaultInternalKey(undefined);
       const res = await post(makeInternalKeyRequest(validBody, apiKey));
 
       expect(res.status).toBe(401);
+      assertNoSideEffect?.();
+    });
+
+    it(`ignores a hand-set ${ATTESTATION_INTERNAL_API_KEY_LABEL} env var when the vault has no value (#2353 step 4)`, async () => {
+      useVaultInternalKey(undefined);
+      process.env.ATTESTATION_INTERNAL_API_KEY = apiKey;
+      try {
+        const res = await post(makeInternalKeyRequest(validBody, apiKey));
+
+        expect(res.status).toBe(401);
+      } finally {
+        delete process.env.ATTESTATION_INTERNAL_API_KEY;
+      }
     });
   });
 }

@@ -162,7 +162,6 @@ fi
 step "Generating secrets"
 
 AUTH_PRIVATE_KEY=$(gen_ed25519_key)
-ATTESTATION_KEY=$(gen_secret)
 AUTH_INTERNAL_KEY=$(gen_secret)
 GROUP_KEY_SECRET=$(gen_secret)
 MEDIA_INTERNAL_KEY=$(gen_secret)
@@ -171,7 +170,7 @@ NOTIFY_SECRET=$(gen_secret)
 PAY_API_KEY=$(gen_secret)
 
 ok "Ed25519 AUTH_PRIVATE_KEY"
-ok "Shared internal API keys (ATTESTATION, AUTH, NOTIFY, PAY)"
+ok "Shared internal API keys (AUTH, NOTIFY, PAY) — ATTESTATION_INTERNAL_API_KEY is vault-sourced, not generated here"
 ok "Kernel-only secrets (GROUP_KEY, MEDIA, TRUST)"
 
 # ── Copy and patch .env.local files ──────────────────────────────────────────
@@ -212,7 +211,6 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "GROUP_KEY_ENCRYPTION_SECRET"   "\"${GROUP_KEY_SECRET}\""
     set_env "$local_env" "MEDIA_INTERNAL_API_KEY"        "\"${MEDIA_INTERNAL_KEY}\""
     set_env "$local_env" "TRUST_INTERNAL_API_KEY"        "\"${TRUST_INTERNAL_KEY}\""
-    set_env "$local_env" "ATTESTATION_INTERNAL_API_KEY"  "\"${ATTESTATION_KEY}\""
     set_env "$local_env" "AUTH_INTERNAL_API_KEY"         "\"${AUTH_INTERNAL_KEY}\""
     set_env "$local_env" "NOTIFY_WEBHOOK_SECRET"         "\"${NOTIFY_SECRET}\""
     set_env "$local_env" "PAY_SERVICE_API_KEY"           "\"${PAY_API_KEY}\""
@@ -263,7 +261,6 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "REGISTRY_SERVICE_URL"     "${KERNEL_URL}/registry"
 
     # ── Shared secrets (must match kernel) ─────────────────────────────────
-    set_env "$local_env" "ATTESTATION_INTERNAL_API_KEY" "\"${ATTESTATION_KEY}\""
     set_env "$local_env" "AUTH_INTERNAL_API_KEY"        "\"${AUTH_INTERNAL_KEY}\""
 
     case "$app" in

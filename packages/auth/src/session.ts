@@ -21,9 +21,9 @@ async function validateActingAsCookie(
   service?: string
 ): Promise<{ valid: boolean; allowedServices?: string[] | null }> {
   const authUrl = getAuthUrl();
-  const internalApiKey = getVaultInternalApiKey() ?? process.env.ATTESTATION_INTERNAL_API_KEY;
+  const internalApiKey = getVaultInternalApiKey();
   if (!internalApiKey) {
-    log.warn({}, "[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as in getSession");
+    log.error({}, "[AUTH] vault-sourced ATTESTATION_INTERNAL_API_KEY not loaded — cannot validate act-as in getSession");
     return { valid: false };
   }
   try {

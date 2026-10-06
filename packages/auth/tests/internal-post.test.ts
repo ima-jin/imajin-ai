@@ -100,6 +100,23 @@ describe('bootstrapInternalApiKey', () => {
   });
 });
 
+describe('provideInternalApiKey (kernel-hosted vault, #2353 step 4)', () => {
+  it('makes the provided vault-resolved value the one resolveInternalApiKey returns', async () => {
+    const { provideInternalApiKey, resolveInternalApiKey } = await import('../src/internal-post');
+
+    provideInternalApiKey(VAULT_KEY);
+
+    expect(resolveInternalApiKey()).toBe(VAULT_KEY);
+  });
+
+  it('throws on an empty value instead of silently registering nothing', async () => {
+    const { provideInternalApiKey, resolveInternalApiKey } = await import('../src/internal-post');
+
+    expect(() => provideInternalApiKey('')).toThrow(/empty key/);
+    expect(resolveInternalApiKey()).toBeUndefined();
+  });
+});
+
 describe('postInternal without a vault-sourced key (fail closed)', () => {
   it('ignores a hand-set ATTESTATION_INTERNAL_API_KEY env var and skips the call', async () => {
     process.env.AUTH_SERVICE_URL = 'https://auth.kernel.test';

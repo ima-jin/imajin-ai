@@ -114,6 +114,18 @@ describe('getSession — next/headers.js dynamic import', () => {
     expect(session?.actingAs).toBeUndefined();
   });
 
+  it('drops actingAs without reading process.env when the vault key is missing, even if ATTESTATION_INTERNAL_API_KEY is hand-set (#2353 step 4)', async () => {
+    process.env.ATTESTATION_INTERNAL_API_KEY = 'env-value-must-be-ignored';
+    stubCookies({ [SESSION_COOKIE_NAME]: 'tok', 'x-acting-as': 'did:imajin:group' });
+    fetchMock.mockResolvedValueOnce(jsonResponse({ did: 'did:imajin:alice' }));
+
+    const session = await getSession();
+
+    expect(session?.actingAs).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  });
+
   it('drops actingAs when no internal API key is configured', async () => {
     stubCookies({ [SESSION_COOKIE_NAME]: 'tok', 'x-acting-as': 'did:imajin:group' });
     fetchMock.mockResolvedValueOnce(jsonResponse({ did: 'did:imajin:alice' }));
