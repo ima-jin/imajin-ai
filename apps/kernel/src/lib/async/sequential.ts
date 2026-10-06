@@ -30,23 +30,34 @@ export function forEachSequential<T>(
 }
 
 /**
- * Map `items` through `fn` with at most `limit` calls in flight (processed in
- * windows of `limit`). Results keep input order regardless of completion order.
+ * Map `items` through `fn` with at most `limit` calls in flight, using a small
+ * pool of workers that each pull the next unclaimed index. Results keep input
+ * order regardless of completion order. After the first rejection no new item
+ * is started (calls already in flight still settle) and the rejection propagates.
  */
 export async function mapWithConcurrency<T, R>(
   items: readonly T[],
   limit: number,
   fn: (item: T, index: number) => Promise<R>,
 ): Promise<R[]> {
-  const size = Math.max(1, Math.floor(limit));
-  const windowStarts: number[] = [];
-  for (let start = 0; start < items.length; start += size) windowStarts.push(start);
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  let failed = false;
 
-  const results: R[] = [];
-  await forEachSequential(windowStarts, async (start) => {
-    const window = items.slice(start, start + size);
-    results.push(...(await Promise.all(window.map((item, offset) => fn(item, start + offset)))));
-  });
+  const worker = async (): Promise<void> => {
+    const index = nextIndex++;
+    if (failed || index >= items.length) return;
+    try {
+      results[index] = await fn(items[index], index);
+    } catch (err) {
+      failed = true;
+      throw err;
+    }
+    return worker();
+  };
+
+  const workerCount = Math.min(Math.max(1, Math.floor(limit)), items.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
   return results;
 }
 

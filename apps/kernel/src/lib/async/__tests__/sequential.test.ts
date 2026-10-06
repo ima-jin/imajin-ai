@@ -85,6 +85,27 @@ describe('mapWithConcurrency', () => {
       }),
     ).rejects.toThrow('nope');
   });
+
+  it('starts no new item after a rejection', async () => {
+    const started: number[] = [];
+    await expect(
+      mapWithConcurrency([1, 2, 3, 4, 5, 6], 2, async (n) => {
+        started.push(n);
+        await tick();
+        if (n === 2) throw new Error('stop here');
+        return n;
+      }),
+    ).rejects.toThrow('stop here');
+    // Items 1 and 2 were in flight together; item 1's worker may claim 3 before
+    // 2 rejects, but nothing past that is ever started.
+    expect(started.length).toBeLessThanOrEqual(3);
+    expect(started).not.toContain(6);
+  });
+
+  it('handles an empty list and a limit larger than the list', async () => {
+    await expect(mapWithConcurrency([], 4, async (n: number) => n)).resolves.toEqual([]);
+    await expect(mapWithConcurrency([1, 2], 10, async (n) => n * 2)).resolves.toEqual([2, 4]);
+  });
 });
 
 describe('forEachPage', () => {
