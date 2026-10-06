@@ -16,6 +16,8 @@ import ServiceEmbed from '../ServiceEmbed';
 import { resetServiceBadges, getServiceBadges } from '../../lib/service-badge-bus';
 
 const ORIGIN = 'https://coffee.example';
+/** Mirrors `HANDSHAKE_TIMEOUT_MS` in ServiceEmbed.tsx (not exported). */
+const HANDSHAKE_TIMEOUT_MS = 10_000;
 
 const mocks = vi.hoisted(() => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
@@ -108,17 +110,22 @@ describe('ServiceEmbed loading/error states (#2275)', () => {
     render(<ServiceEmbed service="coffee" did="did:imajin:abc" baseUrl={ORIGIN} />);
     await screen.findByTitle('coffee dashboard');
 
-    // Fire the handshake-timeout callback directly rather than waiting out
-    // the real 10s window or fighting fake timers against already-resolved
-    // fetch promises.
-    const timeoutCallIndex = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === 10_000);
-    expect(timeoutCallIndex).toBeGreaterThanOrEqual(0);
-    const [callback] = setTimeoutSpy.mock.calls[timeoutCallIndex];
-    const timerId = setTimeoutSpy.mock.results[timeoutCallIndex]!.value;
-    act(() => {
-      (callback as () => void)();
+    // #2614: the iframe mounts as soon as the health-check fetch chain flips
+    // `phase` to 'loading', but the handshake-timeout `setTimeout` is armed by a
+    // passive effect that React may not have flushed yet when `findByTitle`
+    // resolves. Poll until that registration exists instead of assuming it
+    // already does — the timer itself is still real, so we fire its callback
+    // directly rather than waiting out the 10s window.
+    const registration = await vi.waitFor(() => {
+      const index = setTimeoutSpy.mock.calls.findIndex(([, delay]) => delay === HANDSHAKE_TIMEOUT_MS);
+      expect(index).toBeGreaterThanOrEqual(0);
+      return { callback: setTimeoutSpy.mock.calls[index]![0], timerId: setTimeoutSpy.mock.results[index]!.value };
     });
-    clearTimeout(timerId as ReturnType<typeof setTimeout>);
+
+    act(() => {
+      (registration.callback as () => void)();
+    });
+    clearTimeout(registration.timerId as ReturnType<typeof setTimeout>);
 
     expect(screen.getByText(/taking too long to load/i)).toBeDefined();
   });
