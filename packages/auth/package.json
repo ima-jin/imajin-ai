@@ -30,6 +30,11 @@
       "types": "./dist/resolve-db.d.ts",
       "import": "./dist/resolve-db.js",
       "default": "./dist/resolve-db.js"
+    },
+    "./key-rotation": {
+      "types": "./dist/key-rotation.d.ts",
+      "import": "./dist/key-rotation.js",
+      "default": "./dist/key-rotation.js"
     }
   },
   "files": [

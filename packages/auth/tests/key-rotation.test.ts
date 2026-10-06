@@ -126,7 +126,8 @@ describe('verifyKeyRotatedPayload', () => {
     expect(verifyKeyRotatedPayload(null).ok).toBe(false);
     expect(verifyKeyRotatedPayload([]).ok).toBe(false);
     expect(verifyKeyRotatedPayload('x').ok).toBe(false);
-    const { newKeySignature: _dropped, ...partial } = good;
+    const partial: Partial<KeyRotatedPayload> = { ...good };
+    delete partial.newKeySignature;
     expect(verifyKeyRotatedPayload(partial)).toEqual({
       ok: false,
       error: 'key.rotated payload.newKeySignature must be a non-empty string',

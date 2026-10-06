@@ -225,6 +225,23 @@ export function verifyKeyRotationChain(
   }
   if (verified.length === 0) return { ok: true, keys: [], currentKid: null };
 
+  const ordered = orderRotations(verified);
+  if (!Array.isArray(ordered)) return ordered;
+
+  if (options.anchorPublicKey !== undefined && ordered[0].oldPublicKey !== options.anchorPublicKey) {
+    return fail('key history does not start at the pinned anchor key');
+  }
+
+  const keys = toKeyHistory(ordered);
+  return { ok: true, keys, currentKid: keys.at(-1)?.kid ?? null };
+}
+
+/**
+ * Put individually-valid rotations into chain order, or explain why they are
+ * not ONE linear history: a fork, no single starting key, a reused key, or a
+ * rotation dated before the one that introduced its old key.
+ */
+function orderRotations(verified: readonly KeyRotatedPayload[]): KeyRotatedPayload[] | { ok: false; error: string } {
   const byOldKid = new Map<string, KeyRotatedPayload>();
   for (const payload of verified) {
     if (byOldKid.has(payload.oldKid)) {
@@ -257,11 +274,11 @@ export function verifyKeyRotationChain(
   if (ordered.length !== verified.length) {
     return fail('key history has rotations that are not part of the chain');
   }
+  return ordered;
+}
 
-  if (options.anchorPublicKey !== undefined && ordered[0].oldPublicKey !== options.anchorPublicKey) {
-    return fail('key history does not start at the pinned anchor key');
-  }
-
+/** The keys of an ordered chain with their validity windows (open at both ends). */
+function toKeyHistory(ordered: readonly KeyRotatedPayload[]): KeyHistoryEntry[] {
   const keys: KeyHistoryEntry[] = [
     {
       kid: ordered[0].oldKid,
@@ -278,7 +295,7 @@ export function verifyKeyRotationChain(
       validUntil: ordered[i + 1]?.effectiveAt ?? null,
     });
   }
-  return { ok: true, keys, currentKid: keys.at(-1)?.kid ?? null };
+  return keys;
 }
 
 /**

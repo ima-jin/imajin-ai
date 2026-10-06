@@ -19,14 +19,15 @@
  * during a rotation is whatever the operator explicitly names via
  * `AUTH_PREVIOUS_PUBLIC_KEY` (+ a required `..._VALID_UNTIL` bound, so
  * dual trust can never linger indefinitely by omission). See
- * `getPreviousKeyEntries()`.
+ * `getPreviousKeyEntries()`. The rotation ceremony that sets these, and
+ * the dual-signed `key.rotated` attestation that records the handover
+ * (#2081), are in docs/security/node-key-roles-and-rotation.md.
  *
  * Never touches or derives anything beyond the read-only
  * `authCrypto.getPublicKey()` projection of the configured private key; no
  * private material is held in the returned document or anywhere near it.
  */
-import { createHash } from 'node:crypto';
-import { crypto as authCrypto } from '@imajin/auth';
+import { computeKeyKid, crypto as authCrypto } from '@imajin/auth';
 
 export const KERNEL_SIGNING_KEY_ALG = 'Ed25519' as const;
 
@@ -61,9 +62,8 @@ export function _resetKernelSigningKeyIssuedAtForTests(): void {
   cachedIssuedAt = null;
 }
 
-function computeKid(publicKeyHex: string): string {
-  return `auth-${createHash('sha256').update(publicKeyHex).digest('hex').slice(0, 16)}`;
-}
+// Single source of truth shared with every `key.rotated` attestation payload (#2081).
+const computeKid = computeKeyKid;
 
 /**
  * Optional grace-window entry for a just-rotated-out key (#2244). Requires
