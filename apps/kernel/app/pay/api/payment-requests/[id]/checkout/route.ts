@@ -19,7 +19,7 @@ import { createLogger } from '@imajin/logger';
 import { createPaymentRequestCheckoutSession } from '@/src/lib/pay/payment-requests/checkout';
 import { payerPersonDidOf } from '@/src/lib/pay/payment-requests/payer-dids';
 import { isServiceError } from '@/src/lib/pay/payment-requests/service';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('kernel');
 
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const callerDid = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.payment-request.checkout", { resourceId: id, headers: cors });
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.payment-request.checkout', { resourceId: id, headers: cors });
   if (delegationDenied) return delegationDenied;
 
   let body: CheckoutRequestBody = {};

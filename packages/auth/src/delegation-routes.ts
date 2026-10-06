@@ -7,7 +7,7 @@
  * with a key that is not registered here. Adding a route to the policy is one
  * line here plus one `enforceRoutePolicy(...)` call in the handler.
  *
- * Keep in sync with the inventory table in docs/delegation-policy.md.
+ * Keep in sync with the inventory table in docs/auth/delegation-policy.md.
  */
 
 export type MutationClass = "reversible" | "irreversible" | "value-moving";
@@ -112,14 +112,14 @@ export const DELEGATION_ROUTES = {
     why: "moves money into an event balance",
   },
   "pay.balance.topup-emt": {
-    class: "value-moving", action: "topup-emt", app: "kernel", method: "POST",
+    class: "reversible", action: "topup-emt", app: "kernel", method: "POST",
     path: "/pay/api/topup/emt",
-    why: "e-Transfer top-up",
+    why: "initiates a pending e-Transfer top-up; money only moves when the owner sends it (proposal artifact)",
   },
   "pay.balance.topup-stripe": {
-    class: "value-moving", action: "topup-stripe", app: "kernel", method: "POST",
+    class: "reversible", action: "topup-stripe", app: "kernel", method: "POST",
     path: "/pay/api/topup/stripe",
-    why: "card top-up",
+    why: "creates a hosted Stripe Checkout session; the owner still pays with their own card (proposal artifact)",
   },
   "pay.payment-request.settle": {
     class: "value-moving", action: "settle", app: "kernel", method: "POST",
@@ -132,9 +132,9 @@ export const DELEGATION_ROUTES = {
     why: "voids a payment request",
   },
   "pay.payment-request.checkout": {
-    class: "value-moving", action: "checkout", app: "kernel", method: "POST",
+    class: "reversible", action: "checkout", app: "kernel", method: "POST",
     path: "/pay/api/payment-requests/[id]/checkout",
-    why: "payer pays a request",
+    why: "creates a hosted Stripe Checkout session; the payer still pays with their own card (proposal artifact)",
   },
   "events.campaign.cancel": {
     class: "irreversible", action: "cancel", app: "events", method: "POST",
@@ -147,14 +147,14 @@ export const DELEGATION_ROUTES = {
     why: "settles a funded campaign",
   },
   "events.campaign.pledge": {
-    class: "value-moving", action: "pledge", app: "events", method: "POST",
+    class: "reversible", action: "pledge", app: "events", method: "POST",
     path: "/api/campaign/pledge",
-    why: "commits money to a campaign",
+    why: "creates a Stripe SetupIntent; the owner still authorises the card (proposal artifact)",
   },
   "events.campaign.pledge-confirm": {
-    class: "value-moving", action: "pledge-confirm", app: "events", method: "POST",
+    class: "reversible", action: "pledge-confirm", app: "events", method: "POST",
     path: "/api/campaign/pledge/confirm",
-    why: "confirms a pledge payment",
+    why: "verifies a SetupIntent the owner already authorised in Stripe.js",
   },
   "events.checkout.balance": {
     class: "value-moving", action: "balance", app: "events", method: "POST",
@@ -202,9 +202,9 @@ export const DELEGATION_ROUTES = {
     why: "refunds an order",
   },
   "market.listing.purchase": {
-    class: "value-moving", action: "purchase", app: "market", method: "POST",
+    class: "reversible", action: "purchase", app: "market", method: "POST",
     path: "/api/listings/[id]/purchase",
-    why: "buys a listing",
+    why: "starts a hosted checkout session via pay; the buyer still authorises it (proposal artifact)",
   },
   "market.listing.delete": {
     class: "irreversible", action: "delete", app: "market", method: "DELETE",
@@ -212,14 +212,14 @@ export const DELEGATION_ROUTES = {
     why: "deletes a listing",
   },
   "market.seller.settings": {
-    class: "value-moving", action: "settings", app: "market", method: "PATCH",
+    class: "reversible", action: "settings", app: "market", method: "PATCH",
     path: "/api/seller/settings",
-    why: "changes payout settings",
+    why: "market-items visibility toggle",
   },
   "coffee.tip": {
-    class: "value-moving", action: "tip", app: "coffee", method: "POST",
+    class: "reversible", action: "tip", app: "coffee", method: "POST",
     path: "/api/tip",
-    why: "sends a tip",
+    why: "starts a hosted Stripe/Solana checkout; the payer still authorises it (proposal artifact)",
   },
   "coffee.page.delete": {
     class: "irreversible", action: "delete", app: "coffee", method: "DELETE",

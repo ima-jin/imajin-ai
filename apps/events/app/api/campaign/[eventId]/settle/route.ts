@@ -21,13 +21,19 @@ import { db, events, pledges } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+}
+
+/** True when the campaign has a target and the confirmed pledges fall short of it. */
+function campaignTargetUnmet(targetAmount: number | null, confirmedPledges: Array<{ amount: number }>): boolean {
+  const totalPledged = confirmedPledges.reduce((sum, p) => sum + p.amount, 0);
+  return Boolean(targetAmount) && totalPledged < (targetAmount ?? 0);
 }
 
 export const POST = withLogger('events', async (request: NextRequest, { log }) => {
@@ -52,7 +58,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
   }
 
   const did = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "events.campaign.settle", { resourceId: eventId, headers: cors });
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'events.campaign.settle', { headers: cors });
   if (delegationDenied) return delegationDenied;
 
   try {
@@ -105,8 +111,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
     }
 
     // Check if target is met
-    const totalPledged = confirmedPledges.reduce((sum, p) => sum + p.amount, 0);
-    if (event.targetAmount && totalPledged < event.targetAmount) {
+    if (campaignTargetUnmet(event.targetAmount, confirmedPledges)) {
       return NextResponse.json(
         { error: 'Campaign target has not been met' },
         { status: 400, headers: cors }

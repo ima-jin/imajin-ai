@@ -36,7 +36,7 @@ import { requireAuth, requireAppAuth, resolveEffectiveDid } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 interface EscrowBody {
   amount: number;
@@ -81,7 +81,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
     const depositorDid = auth.effectiveDid;
-    const delegationDenied = enforceRoutePolicy(auth, "pay.escrow.create", { headers: cors });
+    const delegationDenied = enforceRoutePolicy(auth, 'pay.escrow.create', { headers: cors });
     if (delegationDenied) return delegationDenied;
 
     // Verify the authenticated user is the depositor

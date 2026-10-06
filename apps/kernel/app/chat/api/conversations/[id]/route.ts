@@ -5,7 +5,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/src/lib/kernel/utils';
 import { checkAccess } from '@/src/lib/kernel/access';
 import { createLogger } from '@imajin/logger';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('kernel');
 
@@ -141,9 +141,9 @@ export async function DELETE(
 
   const { identity } = authResult;
   const effectiveDid = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "kernel.chat.conversation.delete", { resourceId: id });
-  if (delegationDenied) return delegationDenied;
   const { id } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'kernel.chat.conversation.delete', { resourceId: id });
+  if (delegationDenied) return delegationDenied;
   const conversationDid = decodeURIComponent(id);
 
   try {

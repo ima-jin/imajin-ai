@@ -18,7 +18,7 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 import { grossUpForProcessorFee } from '@imajin/fair';
 import { withLogger } from '@imajin/logger';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const MIN_TOPUP = 20; // $20 CAD minimum
 const TOPUP_RAIL = 'stripe'; // keys the `grossUpForProcessorFee` fee-schedule lookup (#2177)
@@ -47,7 +47,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   const did = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.balance.topup-stripe", { headers: cors });
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.balance.topup-stripe', { headers: cors });
   if (delegationDenied) return delegationDenied;
   const handle = authResult.identity.handle || '';
 

@@ -9,7 +9,7 @@ import { eq, sql } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const sqlClient = getClient();
 
@@ -206,9 +206,9 @@ export async function POST(
 
   const { identity } = authResult;
   const did = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "events.ticket.refund", { resourceId: ticketId });
-  if (delegationDenied) return delegationDenied;
   const { id, ticketId } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'events.ticket.refund', { resourceId: ticketId });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);

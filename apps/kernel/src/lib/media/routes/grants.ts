@@ -7,7 +7,7 @@ import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 export async function patchGrants(
   request: NextRequest,
   id: string
-): Promise<NextResponse> {
+): Promise<Response> {
   const cors = corsHeaders(request);
 
   // 1. Auth

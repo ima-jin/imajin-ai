@@ -88,7 +88,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await params;
+  const { id } = await params;
 
   // Require authentication — caller must be the asset owner
   const authResult = await requireAuth(request);

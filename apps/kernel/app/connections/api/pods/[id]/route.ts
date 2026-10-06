@@ -2,7 +2,7 @@
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -43,7 +43,7 @@ export async function DELETE(request: Request, props: { params: Promise<{ id: st
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const effectiveDid = resolveActingDid(auth.identity);
-  const delegationDenied = enforceRoutePolicy(auth.identity, "kernel.connections.pod.delete", { resourceId: id });
+  const delegationDenied = enforceRoutePolicy(auth.identity, 'kernel.connections.pod.delete', { resourceId: params.id });
   if (delegationDenied) return delegationDenied;
   const [deleted] = await db
     .delete(pods)

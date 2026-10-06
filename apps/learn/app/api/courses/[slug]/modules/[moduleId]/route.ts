@@ -4,7 +4,7 @@ import { courses, modules } from '@/db/schema';
 import { requireHardDID , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and } from 'drizzle-orm';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 type RouteParams = { params: Promise<{ slug: string; moduleId: string }> };
 
@@ -58,7 +58,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   if ('error' in authResult) return errorResponse(authResult.error, authResult.status);
 
   const did = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "learn.module.delete", { resourceId: moduleId });
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'learn.module.delete', { resourceId: moduleId });
   if (delegationDenied) return delegationDenied;
   const result = await getOwnerCourseModule(slug, moduleId, did);
   if ('error' in result) return errorResponse(result.error, result.status);

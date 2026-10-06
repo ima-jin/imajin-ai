@@ -5,7 +5,7 @@ import { db, sellerSettings } from '@/db';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 /**
  * GET /api/seller/settings — Get settings for authenticated seller
@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest) {
 
   const { identity } = authResult;
   const did = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "market.seller.settings");
+  const delegationDenied = enforceRoutePolicy(identity, 'market.seller.settings');
   if (delegationDenied) return delegationDenied;
 
   try {

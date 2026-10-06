@@ -17,7 +17,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { confirmHeldTickets } from '@/src/lib/confirm-payment';
 import { eq, and } from 'drizzle-orm';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('events');
 
@@ -34,9 +34,9 @@ export async function POST(
 
   const { identity } = authResult;
   const did = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "events.ticket.confirm-payment", { resourceId: id });
-  if (delegationDenied) return delegationDenied;
   const { id } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'events.ticket.confirm-payment', { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   try {
     // Find the ticket

@@ -171,15 +171,23 @@ describe('POST /api/balance/withdraw — MJN-only, reserve -> external -> confir
     expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
   });
 
-  it('resolves the destination for the acting PRINCIPAL, not the delegate, under actingFor delegation (#2190)', async () => {
+  it('refuses a delegate acting for the principal — a payout is value-moving, the owner must countersign (#2360, supersedes the #2190 delegate path)', async () => {
     state.requireAuthMock.mockResolvedValueOnce({
       identity: { id: 'did:imajin:agent', actingFor: 'did:imajin:principal' },
     });
-    state.executeWithdrawalMock.mockResolvedValueOnce({ transactionId: 'tx_1', externalRef: 'fake_tr_1' });
 
-    await POST(makeRequest({ amount: 500 }) as never);
+    const res = await POST(makeRequest({ amount: 500 }) as never);
 
-    expect(state.resolveWithdrawDestinationMock).toHaveBeenCalledWith('did:imajin:principal', undefined);
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED',
+      action: 'withdraw',
+      class: 'value-moving',
+      ownerDid: 'did:imajin:principal',
+      delegateDid: 'did:imajin:agent',
+    });
+    expect(state.resolveWithdrawDestinationMock).not.toHaveBeenCalled();
+    expect(state.executeWithdrawalMock).not.toHaveBeenCalled();
   });
 
   it('maps InsufficientBalanceError to 402 (the reservation guard failed — no rail was ever called)', async () => {

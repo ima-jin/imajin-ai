@@ -9,11 +9,11 @@ import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { getSession, requireHardDID , resolveActingDid } from '@imajin/auth';
+import { getSession, requireHardDID , resolveActingDid, type Identity } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
@@ -41,21 +41,21 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     // 2. Get buyer identity — trust_gated requires hard DID (preliminary+)
-    let buyerDid: string | undefined;
+    let buyerIdentity: Identity | null;
     if (listing.sellerTier === 'trust_gated') {
       const authResult = await requireHardDID(request);
       if ('error' in authResult) {
         return errorResponse('This listing requires a verified identity to purchase', 403);
       }
-      buyerDid = resolveActingDid(authResult.identity);
-      const delegationDenied = enforceRoutePolicy(authResult.identity, 'market.listing.purchase', { resourceId: id });
-      if (delegationDenied) return delegationDenied;
+      buyerIdentity = authResult.identity;
     } else {
-      const session = await getSession();
-      buyerDid = session ? resolveActingDid(session) : undefined;
-      const delegationDenied = enforceRoutePolicy(session, 'market.listing.purchase', { resourceId: id });
-      if (delegationDenied) return delegationDenied;
+      buyerIdentity = await getSession();
     }
+    const buyerDid = buyerIdentity ? resolveActingDid(buyerIdentity) : undefined;
+
+    // Buying moves the owner's money — a delegate may not do it alone (#2360).
+    const delegationDenied = enforceRoutePolicy(buyerIdentity, 'market.listing.purchase', { resourceId: params.id });
+    if (delegationDenied) return delegationDenied;
 
     // 3. Parse body for quantity
     let quantity = 1;

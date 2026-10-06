@@ -14,7 +14,7 @@ import type { JsonbSizeResult, ProfileJsonbField } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
 import { loadAndUnseal } from '@/src/lib/vault';
 import { processEmailUpdate, processPhoneUpdate } from '@/src/lib/profile/vault-contacts';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('kernel');
 

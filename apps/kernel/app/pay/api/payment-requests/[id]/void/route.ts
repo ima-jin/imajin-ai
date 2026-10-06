@@ -6,7 +6,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { isServiceError, voidPaymentRequest } from '@/src/lib/pay/payment-requests/service';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('kernel');
 
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
   const callerDid = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.payment-request.void", { resourceId: id, headers: cors });
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.payment-request.void', { resourceId: id, headers: cors });
   if (delegationDenied) return delegationDenied;
 
   try {

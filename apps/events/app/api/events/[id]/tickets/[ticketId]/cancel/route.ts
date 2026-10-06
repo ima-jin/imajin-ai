@@ -10,7 +10,7 @@ import { db, tickets } from '@/src/db';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { createLogger } from '@imajin/logger';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('events');
 
@@ -25,9 +25,9 @@ export async function POST(
 
   const { identity } = authResult;
   const actingDid = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "events.ticket.cancel", { resourceId: ticketId });
-  if (delegationDenied) return delegationDenied;
   const { id: eventId, ticketId } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'events.ticket.cancel', { resourceId: ticketId });
+  if (delegationDenied) return delegationDenied;
 
   // Verify event ownership (creator or cohost)
   const orgCheck = await isEventOrganizer(eventId, actingDid);

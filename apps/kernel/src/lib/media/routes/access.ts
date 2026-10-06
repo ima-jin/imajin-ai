@@ -16,7 +16,7 @@ type AccessType = (typeof ACCESS_TYPES)[number];
 export async function patchAccess(
   request: NextRequest,
   id: string
-): Promise<NextResponse> {
+): Promise<Response> {
   const cors = corsHeaders(request);
 
   // 1. Auth — session cookie / legacy Bearer PAT, or (#2535) a scoped

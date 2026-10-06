@@ -3,7 +3,7 @@ import { db, connections } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 /**
  * DELETE /api/connections/:did - Disconnect from a connection
@@ -19,10 +19,9 @@ export async function DELETE(
   }
   const { identity } = authResult;
   const effectiveDid = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "kernel.connections.connection.delete", { resourceId: did });
-  if (delegationDenied) return delegationDenied;
-
   const { did: targetDid } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'kernel.connections.connection.delete', { resourceId: targetDid });
+  if (delegationDenied) return delegationDenied;
 
   // Sort DIDs lexically to find the connection row
   const [didA, didB] = [effectiveDid, targetDid].sort((a, b) => a.localeCompare(b));

@@ -17,7 +17,7 @@ const log = createLogger("kernel");
 export async function patchArticle(
   request: NextRequest,
   id: string
-): Promise<NextResponse> {
+): Promise<Response> {
   const cors = corsHeaders(request);
 
   // 1. Auth

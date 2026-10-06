@@ -27,7 +27,7 @@ import {
   publishBalanceTicketsPurchased,
   sendBalanceConfirmationEmails,
 } from '@/src/lib/balance-checkout-helpers';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 // PAY_SERVICE_URL already includes the /pay path prefix (kernel-hosted
 // service convention, e.g. http://localhost:3000/pay in dev) — callers
@@ -40,6 +40,15 @@ interface BalanceCheckoutRequest {
   quantity?: number;
   items?: { ticketTypeId: string; quantity: number }[];
   invite?: string;
+}
+
+/** Bump the invite's usedCount when the purchase came through an invite-only link. */
+async function recordInviteUse(inviteRecord: { id: string; usedCount: number } | null | undefined): Promise<void> {
+  if (!inviteRecord) return;
+  await db
+    .update(eventInvites)
+    .set({ usedCount: inviteRecord.usedCount + 1 })
+    .where(eq(eventInvites.id, inviteRecord.id));
 }
 
 export const POST = withLogger('events', async (request, { log }) => {
@@ -59,7 +68,7 @@ export const POST = withLogger('events', async (request, { log }) => {
       return NextResponse.json({ error: authResult.error }, { status: authResult.status });
     }
     const buyerDid = resolveActingDid(authResult.identity);
-    const delegationDenied = enforceRoutePolicy(authResult.identity, "events.checkout.balance");
+    const delegationDenied = enforceRoutePolicy(authResult.identity, 'events.checkout.balance');
     if (delegationDenied) return delegationDenied;
 
     const body: BalanceCheckoutRequest = await request.json();
@@ -142,12 +151,7 @@ export const POST = withLogger('events', async (request, { log }) => {
     });
 
     // Increment invite usedCount if invite-only
-    if (inviteRecord) {
-      await db
-        .update(eventInvites)
-        .set({ usedCount: inviteRecord.usedCount + 1 })
-        .where(eq(eventInvites.id, inviteRecord.id));
-    }
+    await recordInviteUse(inviteRecord);
 
     // Fire ticket.purchased for each ticket (same pattern as webhook)
     publishBalanceTicketsPurchased(tickets, event, buyerDid, currency, log);

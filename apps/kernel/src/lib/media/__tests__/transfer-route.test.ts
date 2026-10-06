@@ -194,6 +194,29 @@ describe('POST /media/api/assets/[id]/transfer', () => {
     });
   });
 
+  it('refuses an actingFor delegate with 403 AGENT_APPROVAL_REQUIRED — value-moving, owner must countersign (#2360)', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: mockIdentity({ id: 'did:imajin:agent', actingFor: OWNER_DID }),
+    });
+
+    const res = await POST(transferRequest({ toDid: NEW_OWNER_DID }), { params });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED',
+      action: 'transfer',
+      class: 'value-moving',
+      resourceId: ASSET_ID,
+      ownerDid: OWNER_DID,
+      delegateDid: 'did:imajin:agent',
+    });
+    // Nothing was read, signed, written or anchored on the delegate's behalf.
+    expect(mockSelect).not.toHaveBeenCalled();
+    expect(mockSignFairAsNode).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockPublishContentEvent).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when the requester is not the owner', async () => {
     authAs('did:imajin:intruder');
     setupDb(baseAsset(), undefined);

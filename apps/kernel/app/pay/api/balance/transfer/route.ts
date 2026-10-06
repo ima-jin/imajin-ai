@@ -30,7 +30,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { MJN, assertKnownUnit, creditUnit, debitUnitIfSufficient, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -46,7 +46,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
     const effectiveDid = auth.effectiveDid;
-    const delegationDenied = enforceRoutePolicy(auth, "pay.balance.transfer", { headers: cors });
+    const delegationDenied = enforceRoutePolicy(auth, 'pay.balance.transfer', { headers: cors });
     if (delegationDenied) return delegationDenied;
 
     const body = await request.json();

@@ -101,9 +101,9 @@ export async function DELETE(
 
   const { identity } = authResult;
   const effectiveDid = resolveActingDid(identity);
+  const { did, msgId } = await params;
   const delegationDenied = enforceRoutePolicy(identity, "kernel.chat.message.delete", { resourceId: msgId, headers: cors });
   if (delegationDenied) return delegationDenied;
-  const { did, msgId } = await params;
 
   try {
     const existing = await db.query.messagesV2.findFirst({

@@ -4,7 +4,7 @@ import { courses, lessons, enrollments } from '@/db/schema';
 import { requireHardDID, optionalAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq, and } from 'drizzle-orm';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 type RouteParams = { params: Promise<{ slug: string; moduleId: string; lessonId: string }> };
 
@@ -99,7 +99,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   const courseResult = await db.select().from(courses).where(eq(courses.slug, slug)).limit(1);
   if (!courseResult[0]) return errorResponse('Course not found', 404);
   const did = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "learn.lesson.delete", { resourceId: lessonId });
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'learn.lesson.delete', { resourceId: lessonId });
   if (delegationDenied) return delegationDenied;
   if (courseResult[0].creatorDid !== did) return errorResponse('Not authorized', 403);
 

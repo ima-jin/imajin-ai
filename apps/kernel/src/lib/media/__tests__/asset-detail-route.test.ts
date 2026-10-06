@@ -122,6 +122,17 @@ describe('DELETE /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.code).toBe('AGENT_APPROVAL_REQUIRED');
+    // #2360: irreversible class — the delegate may propose, never execute.
+    expect(body).toMatchObject({
+      action: 'delete',
+      class: 'irreversible',
+      assetId: 'asset_test',
+      resourceId: 'asset_test',
+      ownerDid: 'did:imajin:owner',
+      delegateDid: 'did:imajin:agent',
+    });
+    expect(mockDeleteWhere).not.toHaveBeenCalled();
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
   it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {
@@ -183,16 +194,27 @@ describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
-  it('still blocks actingFor agent delegation on the session path', async () => {
+  it('lets an actingFor delegate rename on the owner\'s behalf — reversible metadata (#2360)', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({
       identity: { id: 'did:imajin:agent', scope: 'actor', actingFor: 'did:imajin:owner' },
     });
 
     const res = await PATCH(makeRequest('PATCH', { filename: 'renamed.bin' }), { params });
 
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, filename: 'renamed.bin' });
+    expect(mockUpdateWhere).toHaveBeenCalled();
+  });
+
+  it('still enforces ownership on a delegate rename — the owner DID is the acting DID', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: { id: 'did:imajin:agent', scope: 'actor', actingFor: 'did:imajin:someone-else' },
+    });
+
+    const res = await PATCH(makeRequest('PATCH', { filename: 'renamed.bin' }), { params });
+
     expect(res.status).toBe(403);
-    const body = await res.json();
-    expect(body.code).toBe('AGENT_APPROVAL_REQUIRED');
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
   it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {

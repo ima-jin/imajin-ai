@@ -28,7 +28,7 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { MJN, MJNX, creditUnit, debitFundedLegs, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 import { forEachSequential } from '@/src/lib/async/sequential';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -45,7 +45,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const effectiveDid = resolveActingDid(authResult.identity);
-    const delegationDenied = enforceRoutePolicy(authResult.identity, "pay.balance.event-topup", { headers: cors });
+    const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.balance.event-topup', { headers: cors });
     if (delegationDenied) return delegationDenied;
 
     const body = await request.json();

@@ -6,7 +6,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse, generateId } from '@/lib/utils';
 import { rateLimit, getClientIP, buildPublicUrl } from '@imajin/config';
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 // Pay is a kernel service reached through the kernel's port with the /pay
 // path prefix (#2046) — the previous localhost:3004 fallback predated the
