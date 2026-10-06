@@ -4,7 +4,7 @@
  * `corsOptions` handler: a synchronous 204 with CORS headers. Routes are
  * imported for real; only their heavy collaborators are stubbed.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { NextRequest } from 'next/server';
 
 // Some routes pull `@imajin/db` in at import time; the postgres client connects
@@ -67,10 +67,25 @@ const ROUTES: Record<string, () => Promise<{ OPTIONS: (req: NextRequest) => unkn
   'warp/api/runs': () => import('../warp/api/runs/route'),
 };
 
+// Cold route imports belong in a hook with an explicit budget, not inside the
+// first `it()` that triggers them: on a loaded CI runner that cost blew the 5s
+// testTimeout elsewhere in the kernel suite (#2616).
+const ROUTE_IMPORT_TIMEOUT_MS = 120_000;
+
+type OptionsHandler = (req: NextRequest) => unknown;
+const handlers: Record<string, OptionsHandler> = {};
+
 describe('kernel route CORS preflight (S7503)', () => {
-  it.each(Object.keys(ROUTES))('%s OPTIONS returns a synchronous 204 with CORS headers', async (name) => {
-    const { OPTIONS } = await ROUTES[name]();
-    const response = OPTIONS(
+  beforeAll(async () => {
+    await Promise.all(
+      Object.entries(ROUTES).map(async ([name, load]) => {
+        handlers[name] = (await load()).OPTIONS;
+      }),
+    );
+  }, ROUTE_IMPORT_TIMEOUT_MS);
+
+  it.each(Object.keys(ROUTES))('%s OPTIONS returns a synchronous 204 with CORS headers', (name) => {
+    const response = handlers[name](
       new NextRequest('http://localhost/x', { method: 'OPTIONS', headers: { origin: 'http://localhost:3000' } }),
     ) as Response;
     // Not a Promise: the handler is synchronous now that it no longer awaits anything.

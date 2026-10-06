@@ -7,7 +7,7 @@
  * parse URL from /input` before any request is made — which permanently
  * marked prod "degraded" for a config bug rather than a real outage.
  */
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 const SINGLE_DOMAIN_ENV = {
   NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/',
@@ -43,6 +43,15 @@ vi.mock('@imajin/db', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@imajin/db')>();
   return { ...actual, checkAppMigrations: checkAppMigrationsMock };
 });
+
+// Warm the route module's cold transitive import (config, db, vault) in a hook
+// with an explicit budget. Left to the first `it()` it counted against the 5s
+// testTimeout on a loaded CI runner (#2616). Modules are cached across tests
+// here (no resetModules), so the per-test `import('../route')` below resolves
+// instantly and still sees whatever env the test stubbed.
+beforeAll(async () => {
+  await import('../route');
+}, 60_000);
 
 beforeEach(() => {
   // Prod runs in single-domain mode (base URL + path) without a
