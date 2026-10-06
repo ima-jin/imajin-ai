@@ -22,6 +22,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@imajin/config": "workspace:*",
     "@imajin/logger": "workspace:*",
     "@imajin/auth": "workspace:*",
     "@imajin/emit": "workspace:*",

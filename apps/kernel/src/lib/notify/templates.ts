@@ -49,7 +49,7 @@ function connectorLifecycleTitle(
   return actor.onBehalfOfOwner ? ownerActorSentence(actor, delegatedAction) : firstPartyTitle;
 }
 
-function simpleEmailHtml(title: string, body: string): string {
+function simpleEmailHtml(title: string, body: string, cta = ""): string {
   return emailWrapper(`
     <tr>
       <td style="background-color:#111111;border-radius:8px 8px 0 0;padding:32px 32px 24px;">
@@ -57,12 +57,30 @@ function simpleEmailHtml(title: string, body: string): string {
         <p style="margin:0;font-size:16px;color:#a1a1aa;line-height:1.5;">${body}</p>
       </td>
     </tr>
+    ${cta}
     <tr>
       <td style="background-color:#111111;padding:0 32px 32px;border-radius:0 0 8px 8px;">
         <div style="border-top:1px solid #262626;padding-top:20px;"></div>
       </td>
     </tr>
   `);
+}
+
+/**
+ * Pay CTA block for the payment-request email (#2660): a button (same style
+ * as the ticket email's CTA) plus the URL as visible text, so the link still
+ * works where buttons are stripped. Empty when there is no safe http(s) URL.
+ */
+function payCtaHtml(payUrl: unknown): string {
+  if (typeof payUrl !== 'string' || !/^https?:\/\//i.test(payUrl)) return '';
+  const url = escapeHtml(payUrl);
+  return `
+    <tr>
+      <td style="background-color:#111111;padding:0 32px 24px;">
+        <a href="${url}" style="display:inline-block;background-color:#ffffff;color:#000000;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;letter-spacing:-0.2px;">Pay now →</a>
+        <p style="margin:16px 0 0;font-size:13px;color:#71717a;line-height:1.5;">Or copy and paste this link into your browser:<br/><a href="${url}" style="color:#a1a1aa;word-break:break-all;">${url}</a></p>
+      </td>
+    </tr>`;
 }
 
 // =============================================================================
@@ -806,7 +824,7 @@ export const templates: NotifyTemplate[] = [
         const body = amount
           ? `<strong style="color:#ffffff;">${issuer}</strong> is requesting <strong style="color:#ffffff;">${amount}</strong>.`
           : `<strong style="color:#ffffff;">${issuer}</strong> sent you a payment request.`;
-        return simpleEmailHtml('New payment request', body);
+        return simpleEmailHtml('New payment request', body, payCtaHtml(data.payUrl));
       },
     },
   },
