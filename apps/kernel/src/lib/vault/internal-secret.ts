@@ -78,6 +78,15 @@
  * hot-reload subscription, so a rotated value is picked up without a
  * restart.
  *
+ * ## Revoke (#2582)
+ * `revokeInternalSecret(purpose)` (`internal-secret-revoke.ts`) is the named
+ * revoke for a self-provisioned secret: it revokes the node's self-grant and
+ * deletes the provisions row in one transaction, so the next
+ * {@link getInternalSecret} re-provisions a brand-new value instead of
+ * finding a claim row with no grant behind it. Rotate to KEEP consumers
+ * working on a new value; revoke to withdraw the secret outright. See
+ * docs/ENVIRONMENTS.md "Rotate vs. revoke".
+ *
  * ## Fetch + ack (#2231/#2235/#2257)
  * Reading an EXISTING grant goes through the exact same agent-facing
  * `fetchGrantSecret`/`ackGrant` pair every other purpose-bound grant

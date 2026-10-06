@@ -1173,12 +1173,17 @@ export async function loadAndUnsealByGrantee(
  *
  * Does NOT delete the vault entry — the sealed ciphertext remains, but future
  * calls to loadAndUnsealByGrantee will return undefined (fail-closed).
+ *
+ * Pass a transaction as `executor` to make the revoke part of a larger atomic
+ * change (`revokeInternalSecret`, #2582); the default is the shared pool, so
+ * every existing caller behaves exactly as before.
  */
 export async function revokeStaticSecretGrant(
   field: string,
   granteeDid: string,
+  executor: DbExecutor = db,
 ): Promise<boolean> {
-  const updated = await db
+  const updated = await executor
     .update(vaultDelegationGrants)
     .set({ status: 'revoked', revokedAt: new Date() })
     .where(
@@ -1196,7 +1201,7 @@ export async function revokeStaticSecretGrant(
 
   // Status alone would leave the wrapped key readable to anyone with nodeXPriv and
   // database access, so revocation would not actually withdraw anything.
-  await eraseGrantKeyMaterial(updated);
+  await eraseGrantKeyMaterial(updated, executor);
 
   return updated.length > 0;
 }
