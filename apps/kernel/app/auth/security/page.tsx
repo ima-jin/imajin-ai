@@ -2,6 +2,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import RecoveryCodesSection from './components/RecoveryCodesSection';
 import StatusBanner, { type StatusMessage } from './components/StatusBanner';
 import PasswordLoginSection from './components/PasswordLoginSection';
@@ -86,7 +87,7 @@ export default function SecuritySettingsPage() {
   const [actionLoading, setActionLoading] = useState('');
 
   useEffect(() => {
-    loadData();
+    fireAndForget(loadData(), 'auth:security:loadData');
   }, []);
 
   async function loadData() {

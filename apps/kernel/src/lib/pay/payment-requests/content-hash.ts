@@ -31,7 +31,7 @@ export interface PaymentRequestContentFields {
 export async function computePaymentRequestContentHash(
   fields: PaymentRequestContentFields,
 ): Promise<string> {
-  return computeCid({
+  const cid = await computeCid({
     kind: fields.kind,
     issuerDid: fields.issuerDid,
     payeeAccount: fields.payeeAccount,
@@ -44,4 +44,5 @@ export async function computePaymentRequestContentHash(
     dueAt: fields.dueAt,
     allowOnPlatform: fields.allowOnPlatform,
   });
+  return cid;
 }

@@ -28,4 +28,5 @@
 # expected "no tag yet" outcome.
 compute_git_tag_version() {
   git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true
+  return 0
 }

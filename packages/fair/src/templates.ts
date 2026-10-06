@@ -6,10 +6,8 @@ import {
   BUYER_CREDIT_DEFAULT_BPS,
   PLATFORM_FEE_BPS,
   PLATFORM_DID,
-  STRIPE_RATE_BPS,
-  STRIPE_MIN_RATE_BPS,
-  STRIPE_FIXED_CENTS,
 } from './constants';
+import { processorFeeEntry } from './processorFee';
 
 export type FairTemplate = "media" | "ticket" | "course" | "module" | "document" | "custom";
 
@@ -148,9 +146,10 @@ function mimeBucket(mimeType: string): 'text' | 'image' | 'audio' | 'video' | 'o
  *
  * @param mimeType — e.g. "image/png", "audio/mpeg", "text/markdown"
  * @param ownerDid — the uploader's DID
+ * @param rail — payment rail whose processor fee schedule is written into `fees[]` (default: {@link DEFAULT_PROCESSOR_RAIL})
  * @returns a complete FairManifestV11
  */
-export function getDefaultManifest(mimeType: string, ownerDid: string): FairManifestV11 {
+export function getDefaultManifest(mimeType: string, ownerDid: string, rail?: string): FairManifestV11 {
   const bucket = mimeBucket(mimeType);
   const now = new Date().toISOString();
 
@@ -216,9 +215,7 @@ export function getDefaultManifest(mimeType: string, ownerDid: string): FairMani
     ],
     distribution,
     transfer: { allowed: true, requiresAttribution: true, price: transferPrice, resaleRoyaltyBps: 500 },
-    fees: [
-      { role: 'processor', name: 'Stripe', rateBps: STRIPE_RATE_BPS, minRateBps: STRIPE_MIN_RATE_BPS, fixedCents: STRIPE_FIXED_CENTS },
-    ],
+    fees: [processorFeeEntry(rail)],
     training: { allowed: false },
     commercial: { allowed: false, contactRequired: true },
     tipping: { enabled: true },

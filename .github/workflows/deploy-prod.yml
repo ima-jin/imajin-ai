@@ -121,8 +121,8 @@ jobs:
           # came back up without AUTH_PRIVATE_KEY, signed vault entries with a
           # deterministic dev key, and reported nothing wrong.
           #
-          # startOrRestart also covers the case where prod-jin is not running yet.
-          pm2 startOrRestart "$ECOSYSTEM_FILE" --only prod-jin --update-env
+          # pm2-reconcile.sh also starts prod-jin when pm2 doesn't have it yet.
+          ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" prod-jin
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
           # Everything else (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, …).
@@ -130,26 +130,39 @@ jobs:
           # longer among these.
           #
           # Services declared in the ecosystem file are restarted FROM the file for
-          # the same reason as prod-jin: a name-based `pm2 restart` reuses the saved
-          # definition, so a service pm2 still has saved as `npm start` would keep
-          # the npm wrapper that orphans next-server on restart (#2447) and never
-          # pick up the direct-exec config. Anything pm2 runs that is NOT in the file
+          # the same reason as prod-jin, through scripts/pm2-reconcile.sh (#2547):
+          # neither `pm2 restart` nor `pm2 startOrRestart` replaces the exec path pm2
+          # stored at first start, and prod's processes are stored as `npm start`.
+          # Without reconcile, the cutover to the direct next binary would run
+          # `npm start -p <port>` and crash-loop (as dev did on 2026-10-04), and the
+          # npm wrapper would keep orphaning next-server on restart (#2447).
+          # reconcile deletes + starts any app whose stored exec differs from the
+          # file and restarts the rest. Anything pm2 runs that is NOT in the file
           # keeps the name-based restart.
           source scripts/lib/pm2-owned.sh
           PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
+          # prod-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
+          # PROD_PROCS only lists what pm2 already runs, so on the first deploy
+          # that ships it (or after it was deleted) it would never be started and
+          # no job would ever fire. Always include it: startOrRestart below starts
+          # it from the ecosystem file when pm2 doesn't know it yet.
+          case " $PROD_PROCS " in
+            *" prod-kernel-cron "*) ;;
+            *) PROD_PROCS="$PROD_PROCS prod-kernel-cron" ;;
+          esac
           FILE_PROCS=""
           NAME_PROCS=""
           for proc in $PROD_PROCS; do
             [ "$proc" = "prod-jin" ] && continue
             if ecosystem_has_app "$proc" "$ECOSYSTEM_FILE"; then
-              FILE_PROCS="${FILE_PROCS:+$FILE_PROCS,}$proc"
+              FILE_PROCS="$FILE_PROCS $proc"
             else
               NAME_PROCS="$NAME_PROCS $proc"
             fi
           done
           if [ -n "$FILE_PROCS" ]; then
-            echo "Restarting from $ECOSYSTEM_FILE: $FILE_PROCS"
-            pm2 startOrRestart "$ECOSYSTEM_FILE" --only "$FILE_PROCS" --update-env
+            echo "Reconciling against $ECOSYSTEM_FILE:$FILE_PROCS"
+            ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" $FILE_PROCS
           fi
           if [ -n "$NAME_PROCS" ]; then
             echo "Restarting by name:$NAME_PROCS"

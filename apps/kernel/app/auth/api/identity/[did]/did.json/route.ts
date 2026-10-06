@@ -8,10 +8,6 @@ import { nodeUrl } from '@/src/lib/http/node-url';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /auth/api/identity/:did/did.json
  * Public endpoint — returns a W3C DID Document for a did:imajin DID.
@@ -96,3 +92,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

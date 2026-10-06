@@ -35,6 +35,7 @@
  *   constraint every other kind on this rail already has.)
  */
 import { getClient } from '@imajin/db';
+import { mapSequentially } from './lib/sequential.mjs';
 import { computeApprovalContentHash, getOperatorDid } from '../apps/kernel/src/lib/notify/operator-approvals.js';
 import { GITHUB_SOURCE, GITHUB_APPEND_KIND, GITHUB_MUTATE_KIND } from '../apps/kernel/src/lib/github/approvals-execution.js';
 
@@ -120,7 +121,8 @@ async function main() {
   let successCount = 0;
   let failCount = 0;
 
-  for (const row of rows) {
+  // Sequential on purpose: one proposal at a time keeps approval writes ordered and failures attributable.
+  await mapSequentially(rows, async (row) => {
     try {
       await backfillRow(row, operatorDid);
       successCount++;
@@ -129,7 +131,7 @@ async function main() {
       failCount++;
       // Continue — do not abort the whole backfill on a single failure.
     }
-  }
+  });
 
   console.log(`\nDone. ${successCount} backfilled (or already present), ${failCount} failed.`);
   if (failCount > 0) {

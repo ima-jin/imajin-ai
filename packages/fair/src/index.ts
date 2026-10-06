@@ -49,13 +49,19 @@ export {
   BUYER_CREDIT_MAX_BPS,
   BUYER_CREDIT_DEFAULT_BPS,
   SCOPE_FEE_DEFAULT_BPS,
-  STRIPE_RATE_BPS,
-  STRIPE_MIN_RATE_BPS,
-  STRIPE_FIXED_CENTS,
   AUTHORITY_DID_CA_CRA,
   AUTHORITY_LABELS,
   authorityLabel,
 } from './constants';
+export {
+  DEFAULT_PROCESSOR_RAIL,
+  processorFee,
+  processorFeeCents,
+  processorFeeEntry,
+  processorFeeSchedule,
+  grossUpForProcessorFee,
+} from './processorFee';
+export type { ProcessorFeeSchedule } from './processorFee';
 export { taxLineLabel } from './taxLabel';
 
 export { buildFairManifest } from './buildManifest';

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -336,5 +336,70 @@ describe('check-env vault file (#2412)', () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).not.toContain('vault');
+  });
+});
+
+// ── Kernel cron secret (#2550, epic #2241) ──────────────────────────────────
+//
+// The cron bearer secret is a vault grant, not an env var: nothing about it may
+// be required in .env.local. The deploy fails closed through the scheduler's
+// bootstrap identity instead (minted + granted by provisioning), and when that
+// is missing the failure must point at the vault, not at a hand edit.
+
+const REAL_KERNEL_EXAMPLE = join(REPO_ROOT, 'apps', 'kernel', '.env.example');
+
+function makeCronRoot(localContent) {
+  const dir = makeKernelRoot();
+  writeFileSync(
+    join(dir, 'apps', 'kernel', '.env.example'),
+    'KERNEL_CRON_VAULT_BOOTSTRAP_DID=\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=\n',
+    'utf8',
+  );
+  writeFileSync(join(dir, 'apps', 'kernel', '.env.local'), localContent, 'utf8');
+  return dir;
+}
+
+describe('check-env kernel cron secret (#2550)', () => {
+  it('does not declare or require CRON_SECRET anywhere in the kernel .env.example', () => {
+    const example = readFileSync(REAL_KERNEL_EXAMPLE, 'utf8');
+    expect(example).not.toMatch(/^CRON_SECRET=/m);
+  });
+
+  it("declares the scheduler's bootstrap identity as required (no optional/vault-sourced annotation)", () => {
+    const lines = readFileSync(REAL_KERNEL_EXAMPLE, 'utf8').split('\n');
+    for (const key of ['KERNEL_CRON_VAULT_BOOTSTRAP_DID', 'KERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY']) {
+      const index = lines.findIndex((line) => line.startsWith(`${key}=`));
+      expect(index).toBeGreaterThan(-1);
+      // check-env treats a recognised annotation comment directly above a key as
+      // "not required"; it must not be present here.
+      expect(lines[index - 1]).not.toMatch(/^#\s*(optional|vault-sourced|deprecated)/);
+    }
+  });
+
+  it('passes without CRON_SECRET once the deploy has provisioned the scheduler identity', () => {
+    const result = runKernel(
+      makeCronRoot('KERNEL_CRON_VAULT_BOOTSTRAP_DID=did:imajin:abc\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=deadbeef\n'),
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('CRON_SECRET');
+  });
+
+  it('fails the deploy when the scheduler identity was not provisioned, and points at the vault, not .env.local', () => {
+    const result = runKernel(makeCronRoot(''));
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('KERNEL_CRON_VAULT_BOOTSTRAP_DID');
+    expect(result.stdout).toContain('scripts/provision-service-bootstrap.mjs');
+    expect(result.stdout).toContain('do not hand-set');
+    expect(result.stdout).not.toContain('CRON_SECRET');
+  });
+
+  it('ignores a leftover CRON_SECRET in .env.local beyond the usual extra-key warning', () => {
+    const result = runKernel(
+      makeCronRoot(
+        'KERNEL_CRON_VAULT_BOOTSTRAP_DID=did:imajin:abc\nKERNEL_CRON_VAULT_BOOTSTRAP_PRIVATE_KEY=deadbeef\nCRON_SECRET=stale\n',
+      ),
+    );
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('extra');
   });
 });

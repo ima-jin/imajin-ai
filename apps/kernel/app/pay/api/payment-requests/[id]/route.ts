@@ -9,7 +9,7 @@ import { getPaymentRequestById } from '@/src/lib/pay/payment-requests/service';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

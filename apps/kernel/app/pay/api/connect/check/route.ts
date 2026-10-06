@@ -14,9 +14,7 @@ import { rateLimit, getClientIP } from '@imajin/config';
 import { db, connectedAccounts } from '@/src/db';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const GET = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);

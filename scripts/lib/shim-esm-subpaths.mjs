@@ -72,8 +72,8 @@ function isPathWithin(root, target) {
 // `next/dist/...`) are never matched, so this can never try to shim
 // something that isn't a public, single-segment subpath import.
 function subpathUsageRegExp(peerName) {
-  const escapedPeerName = peerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:from|import\\(|require\\()\\s*['"]${escapedPeerName}/([A-Za-z0-9_-]+)['"]`, 'g');
+  const escapedPeerName = peerName.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
+  return new RegExp(String.raw`(?:from|import\(|require\()\s*['"]${escapedPeerName}/([A-Za-z0-9_-]+)['"]`, 'g');
 }
 
 /**
@@ -103,7 +103,7 @@ function collectJsFiles(dir) {
     const entryPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...collectJsFiles(entryPath));
-    } else if (entry.isFile() && /\.(m|c)?js$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.[mc]?js$/.test(entry.name)) {
       files.push(entryPath);
     }
   }
@@ -126,6 +126,22 @@ export function ensureEsmSubpathShim(peerDir, subpath) {
   if (!existsSync(sourceFile) || existsSync(targetFile)) return false;
   writeFileSync(targetFile, `module.exports = require('./${subpath}.js');\n`);
   return true;
+}
+
+/**
+ * @param {string} scopeDir the installed `@ima-jin` scope directory
+ * @param {string} peerName e.g. "next"
+ * @returns {Set<string>} every `<peerName>/<subpath>` subpath referenced by any compiled file under `scopeDir`
+ */
+function collectSubpathsUsed(scopeDir, peerName) {
+  const subpathsUsed = new Set();
+  for (const jsFile of collectJsFiles(scopeDir)) {
+    const source = readFileSync(jsFile, 'utf8');
+    for (const subpath of findPeerSubpathsUsed(source, peerName)) {
+      subpathsUsed.add(subpath);
+    }
+  }
+  return subpathsUsed;
 }
 
 /**
@@ -160,15 +176,7 @@ export function shimEsmSubpaths(scratchDir, peerNames) {
     // would fight, not fix, that map.
     if (peerPkgJson.exports) continue;
 
-    const subpathsUsed = new Set();
-    for (const jsFile of collectJsFiles(scopeDir)) {
-      const source = readFileSync(jsFile, 'utf8');
-      for (const subpath of findPeerSubpathsUsed(source, peerName)) {
-        subpathsUsed.add(subpath);
-      }
-    }
-
-    for (const subpath of subpathsUsed) {
+    for (const subpath of collectSubpathsUsed(scopeDir, peerName)) {
       if (ensureEsmSubpathShim(peerDir, subpath)) {
         written.push({ peerName, subpath });
       }

@@ -156,7 +156,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
     typeof window === 'undefined'  ? (process.env.NEXT_PUBLIC_AUTH_URL ?? '') : globalThis.location.origin;
 
   useEffect(() => {
-    loadData();
+    void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDid]);
 

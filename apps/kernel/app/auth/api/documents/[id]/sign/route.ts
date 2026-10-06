@@ -23,7 +23,6 @@ function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
-
 /**
  * Copy a signed document to the signer's media storage.
  */
@@ -123,10 +122,6 @@ async function copyDocumentToSigner(
     log.error({ err: String(err), signerDid, documentId }, 'Copy document to signer failed');
     return null;
   }
-}
-
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 
 /**
@@ -261,3 +256,5 @@ async function validateDocumentForSigning(
   }
   return null;
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

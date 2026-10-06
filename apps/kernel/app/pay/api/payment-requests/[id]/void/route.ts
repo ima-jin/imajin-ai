@@ -9,7 +9,7 @@ import { isServiceError, voidPaymentRequest } from '@/src/lib/pay/payment-reques
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

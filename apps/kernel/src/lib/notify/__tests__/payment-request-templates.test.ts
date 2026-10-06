@@ -50,6 +50,29 @@ describe('pay:payment_request-settled template', () => {
     expect(stripe).toContain('confirmed automatically');
     expect(manual).not.toBe(stripe);
   });
+
+  it.each([
+    ['manual', 'issuer', 'You marked', 'settled.'],
+    ['manual', 'recipient', 'the issuer marked this settled', 'was settled'],
+    ['stripe', 'issuer', 'confirmed by the platform', 'was settled automatically'],
+    ['stripe', 'recipient', 'confirmed automatically (Stripe)', 'was settled'],
+  ])('renders the email html for method=%s role=%s with the amount emphasised', (method, role, ...fragments) => {
+    const template = getTemplate('pay:payment_request-settled')!;
+
+    const html = template.email!.html({ role, method, totalFormatted: '$5.00' });
+
+    expect(html).toContain('<strong style="color:#ffffff;">$5.00</strong>');
+    for (const fragment of fragments) {
+      expect(html).toContain(fragment);
+    }
+  });
+
+  it('escapes the amount in the email html and falls back when it is missing', () => {
+    const template = getTemplate('pay:payment_request-settled')!;
+
+    expect(template.email!.html({ role: 'issuer', method: 'manual', totalFormatted: '<b>$1</b>' })).toContain('&lt;b&gt;$1&lt;/b&gt;');
+    expect(template.email!.html({ role: 'issuer', method: 'manual' })).toContain('This payment request');
+  });
 });
 
 describe('pay:payment_request-voided template', () => {

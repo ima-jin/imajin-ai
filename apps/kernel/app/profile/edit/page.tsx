@@ -11,6 +11,7 @@ import { ImageUpload } from '../components/ImageUpload';
 import type { FeatureToggles } from '@/src/db/schemas/profile';
 import { mergeFeatureToggles } from '@/src/lib/profile/feature-toggles-merge';
 import { isAppEnabled } from '@/src/lib/profile/feature-toggles-compat';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface Profile {
   did: string;
@@ -97,7 +98,7 @@ function EditProfileContent() {
       return;
     }
 
-    loadProfile();
+    fireAndForget(loadProfile(), 'profile:edit:loadProfile');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [identityLoading, isLoggedIn, did]);
 

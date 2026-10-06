@@ -33,7 +33,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAppAuth, requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import {
   listConsentRequestCards,
@@ -47,10 +47,6 @@ const log = createLogger('kernel:consent:requests');
 export const dynamic = 'force-dynamic';
 
 const CONSENT_WRITE_SCOPE = 'consent:write';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -146,3 +142,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to list consent requests' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

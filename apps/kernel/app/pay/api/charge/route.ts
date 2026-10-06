@@ -9,7 +9,8 @@
  * {
  *   amount: number,          // cents for fiat, lamports for SOL, base units for tokens
  *   currency: string,        // USD, CAD, SOL, USDC, MJN
- *   to: { stripeCustomerId?: string, solanaAddress?: string, did?: string },
+ *   to: { customerId?: string, provider?: "stripe", solanaAddress?: string, did?: string,
+ *         stripeCustomerId?: string },   // stripeCustomerId = legacy alias of customerId
  *   description?: string,
  *   metadata?: Record<string, string>,
  *   idempotencyKey?: string
@@ -22,7 +23,7 @@
  *   status: "pending" | "requires_action" | "succeeded" | "failed",
  *   amount: number,
  *   currency: string,
- *   clientSecret?: string,   // Stripe - for frontend confirmation
+ *   clientSecret?: string,   // rail client confirmation secret (Stripe PaymentIntent) - for frontend confirmation
  *   signature?: string,      // Solana - if already signed
  *   metadata?: object
  * }
@@ -34,6 +35,7 @@ import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
+import { normalizeChargeRecipient } from '@/src/lib/pay/rail-alias';
 
 interface ChargeBody {
   amount: number;
@@ -44,9 +46,7 @@ interface ChargeBody {
   idempotencyKey?: string;
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -75,6 +75,16 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
     
+    // #2177: accept the rail-generic recipient ({ customerId, provider }) alongside
+    // the original { stripeCustomerId } shape.
+    const recipient = normalizeChargeRecipient(body.to as unknown as Record<string, unknown>);
+    if (!recipient.ok) {
+      return NextResponse.json(
+        { error: recipient.error },
+        { status: 400, headers: cors }
+      );
+    }
+
     // Optional: capture fromDid if authenticated
     let fromDid: string | undefined;
 
@@ -100,7 +110,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const chargeRequest: ChargeRequest = {
       amount: body.amount,
       currency: body.currency,
-      to: body.to,
+      to: recipient.to as unknown as Recipient,
       from: fromDid,
       description: body.description,
       metadata: body.metadata,

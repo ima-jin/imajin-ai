@@ -64,6 +64,28 @@ describe('PgxClient — never touches the network (fetchImpl is always injected)
     expect(vectors).toHaveLength(5);
   });
 
+  it('embed() sends batches one at a time, in order, and stops at the first failing batch', async () => {
+    const started: string[] = [];
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const fetchImpl: FetchLike = vi.fn(async (_url, init) => {
+      const input = parseBody(init).input as string[];
+      started.push(input.join(''));
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      inFlight--;
+      if (input.includes('c')) return jsonResponse({ error: 'overloaded' }, 503);
+      return jsonResponse({ data: input.map((_text, index) => ({ index, embedding: [index] })) });
+    });
+
+    const client = new PgxClient({ embedUrl: EMBED_URL, fetchImpl, batchSize: 2 });
+    await expect(client.embed(['a', 'b', 'c', 'd', 'e'])).rejects.toThrow(PgxUnavailableError);
+
+    expect(started).toEqual(['ab', 'cd']);
+    expect(maxInFlight).toBe(1);
+  });
+
   it('embed() returns [] without calling fetch for an empty input array', async () => {
     const fetchImpl: FetchLike = vi.fn();
     const client = new PgxClient({ embedUrl: EMBED_URL, fetchImpl });

@@ -19,15 +19,11 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 import { saveBaseUrl, readBaseUrl, clearBaseUrl, LocalBaseUrlRejectedError } from '@/src/lib/local/connector';
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /** Returns `{ baseUrl: string }` — empty string when unset, matching the generic settings-section contract. */
 export async function GET(request: NextRequest) {
@@ -91,3 +87,5 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ baseUrl: '' }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

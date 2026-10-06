@@ -13,10 +13,6 @@ function sha256hex(input: string): string {
   return createHash('sha256').update(input).digest('hex');
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/access/[did]
  * Checks whether the authenticated requester has access to the resource identified by the given DID.
@@ -207,3 +203,5 @@ async function checkFallbackAccess(
 
   return NextResponse.json({ allowed: false }, { headers: cors });
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -72,7 +72,7 @@ export function ActAsBanner({ sessionDid, actingDid }: Readonly<ActAsBannerProps
       className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-700/70 bg-amber-950/50 px-6 py-2"
     >
       <p className="text-xs text-amber-200">
-        <span className="font-semibold uppercase tracking-wide mr-2">Acting as</span>
+        <span className="font-semibold uppercase tracking-wide mr-2">Acting as</span>{' '}
         You are signed in as <span className="font-mono text-amber-100">{shortDid(sessionDid)}</span>, acting as{' '}
         <span className="font-mono text-amber-100">{shortDid(actingDid)}</span>. Approvals are self-only — drop act-as to
         decide as yourself.

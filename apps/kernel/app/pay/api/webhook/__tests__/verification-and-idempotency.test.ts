@@ -115,7 +115,7 @@ describe('POST /pay/api/webhook — replayed event id produces no double RailEve
     expect(replay.status).toBe(200);
     expect(replayBody.duplicate).toBe(true);
     // No new writes on replay — the event never reached the dispatch switch a second time.
-    expect(state.updateCalls.length).toBe(updateCountAfterFirst);
+    expect(state.updateCalls).toHaveLength(updateCountAfterFirst);
   });
 
   it('two different event ids for the same underlying object are each processed (not conflated with each other)', async () => {

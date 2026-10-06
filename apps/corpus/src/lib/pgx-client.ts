@@ -12,6 +12,7 @@
  * never let it propagate into an unhandled rejection or a 500.
  */
 import { PgxNotConfiguredError, PgxUnavailableError } from '../engine/errors';
+import { mapSequentially } from './sequential';
 
 export const BGE_M3_DIMENSIONS = 1024;
 const DEFAULT_BATCH_SIZE = 64;
@@ -95,13 +96,14 @@ export class PgxClient {
       return [];
     }
 
-    const embeddings: number[][] = [];
+    const embedUrl = this.embedUrl;
+    const batches: string[][] = [];
     for (let start = 0; start < texts.length; start += this.batchSize) {
-      const batch = texts.slice(start, start + this.batchSize);
-      const batchEmbeddings = await this.embedBatch(this.embedUrl, batch);
-      embeddings.push(...batchEmbeddings);
+      batches.push(texts.slice(start, start + this.batchSize));
     }
-    return embeddings;
+    // Sequential on purpose: one batch in flight at a time keeps load on the single PGX host bounded.
+    const batchEmbeddings = await mapSequentially(batches, batch => this.embedBatch(embedUrl, batch));
+    return batchEmbeddings.flat();
   }
 
   /**

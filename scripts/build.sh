@@ -331,7 +331,16 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
       PORT_REAP_FAILURES+=("${app}(${port})")
       continue
     fi
-    if pm2 restart "$name" --update-env >> "$REPORT" 2>&1; then
+    # Services declared in the ecosystem file go through pm2-reconcile.sh: a
+    # plain `pm2 restart` keeps the exec path pm2 stored at first start, so
+    # after the `npm start` -> direct `next` cutover it ran `npm start -p <port>`
+    # and crash-looped (#2547). Reconcile recreates an app whose stored exec
+    # differs from the file, and restarts the rest from it.
+    if [[ -f "$ECOSYSTEM_FILE" ]] && ecosystem_has_app "$name" "$ECOSYSTEM_FILE"; then
+      if "$REPO_ROOT/scripts/pm2-reconcile.sh" "$ECOSYSTEM_FILE" "$name" >> "$REPORT" 2>&1; then
+        continue
+      fi
+    elif pm2 restart "$name" --update-env >> "$REPORT" 2>&1; then
       continue
     fi
     # pm2 doesn't know this process yet — try to cold-start from ecosystem config.

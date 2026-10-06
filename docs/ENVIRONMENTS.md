@@ -238,12 +238,44 @@ service via `packages/auth/src/internal-post.ts`, that has not moved onto
 the vault path yet — generalizing this pattern to those other callers is
 out of scope for #2245.
 
+### Rotate vs. revoke an internal secret (#2354, #2446, #2582)
+
+Two operator actions, one per intent. Both are code-level today
+(`apps/kernel/src/lib/vault/`); neither needs a file edit or a hand-set env var.
+
+| | Rotate | Revoke |
+|---|---|---|
+| Function | `rotateAndStore(field, value)` → `rotateInternalSecret` (`internal-secret-rotate.ts`); the /admin/vault Rotate action | `revokeInternalSecret(purpose)` (`internal-secret-revoke.ts`) |
+| Intent | Replace the value and keep everyone working | Withdraw the secret outright |
+| Self-grant | Replaced, purpose kept | Revoked, key material erased |
+| `internal_secret_provisions` row | Kept, repointed at the new grant | Deleted, in the same transaction |
+| External grantees (e.g. corpus) | Re-issued on the new key, terms carried forward | Untouched — revoke an external grantee on its own with `revokeStaticSecretGrant` |
+| Next `getInternalSecret(purpose)` | Resolves the rotated value, no restart | Re-provisions a NEW generated value (as on first boot) |
+
+**Rotate** when you want a new value (suspected leak, scheduled rotation) and
+the consumers must keep working: the operator supplies the value, the kernel
+re-issues each external grantee on the new key.
+
+**Revoke** when the secret should stop being usable under its current value
+and you accept a fresh one taking its place — e.g. decommissioning, or
+recovering from a compromise where you do not want to choose the replacement.
+The self-grant revoke and the provisions-row delete commit together, so a
+revoke can never strand the row and break `getInternalSecret` on next boot
+(#2354). Every external grantee still holds the OLD wrapped key and no longer
+matches the kernel's new value: the re-provision logs an ERROR naming them, and
+an operator must re-grant (`grantInternalSecretTo`) or revoke each. On Tier 1
+revoke is refused before anything is written (as rotate is), because the node
+cannot self-grant to re-provision. Only the calling process's cached value is
+dropped; other running processes keep theirs until restart.
+
 ### Service bootstrap identities (#2353, #2442)
 
 Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the
 vault at boot authenticates with its own bootstrap identity:
 `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
-(today: learn, events, dykil, market, coffee). The pair stays **required**
+(today: learn, events, dykil, market, coffee; plus the kernel's own
+`KERNEL_CRON_VAULT_BOOTSTRAP_*` pair for its cron scheduler, which is granted the
+cron secret instead of the attestation key). The pair stays **required**
 (no `check-env` annotation) — but nobody mints it by hand any more.
 `scripts/provision-service-bootstrap.mjs` does, and the deploy runs it:
 
@@ -379,6 +411,27 @@ same `~/.imajin/vault.json`, so a dev process could read — and, on any
 re-seal, silently overwrite — prod-sealed material. Splitting the file is
 the same trust boundary Postgres already draws, applied to the one piece of
 per-environment state that was missing it.
+
+### Kernel cron secret — scheduled jobs (#2550)
+
+There is **no `CRON_SECRET` env var**. The bearer token for every
+`/api/cron/*` route and `GET /api/admin/cron-status` is an internal generated
+secret (#2245 pattern, purpose `kernel.cron-secret`): generated in the vault, one
+value per environment (each env has its own vault file), never pasted anywhere.
+The kernel reads it in-process (`getInternalSecret`, memory only). The
+`prod-kernel-cron` / `dev-kernel-cron` scheduler fetches it at boot with
+`loadFromVault`, authenticating as its own bootstrap identity
+(`KERNEL_CRON_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in the kernel's
+`.env.local`), and sends one deferred ack on first use.
+
+That identity is provisioned like every other service's (see "Service
+bootstrap identities" above): `scripts/provision-service-bootstrap.mjs` mints it
+and grants it the cron secret on the deploy, after the `production` gate tap and
+before `check-env`. The routes still fail closed (503 + WARN when the vault
+cannot supply the secret, 401 on a wrong bearer); a missing identity or grant
+fails the deploy with an error that points at the vault/provisioning step, not at
+`.env.local`. Rotating the secret is a /jin card. See `deploy/README.md` for the
+scheduler.
 
 ## Deployment
 

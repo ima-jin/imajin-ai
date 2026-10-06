@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useIdentity } from '../../context/IdentityContext';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import { ConnectionPicker, useToast } from '@imajin/ui';
 
 import { buildPublicUrl } from '@imajin/config';
@@ -50,7 +51,7 @@ export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: st
 
   useEffect(() => {
     if (isLoggedIn) {
-      fetchPod();
+      fireAndForget(fetchPod(), 'pod:fetchPod:effect');
     }
   }, [isLoggedIn, id]);
 
@@ -105,7 +106,7 @@ export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: st
       });
       if (res.ok) {
         setShowAddMember(false);
-        fetchPod();
+        fireAndForget(fetchPod(), 'pod:fetchPod:addMember');
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to add member');
@@ -129,7 +130,7 @@ export default function PodDetailPage(props: Readonly<{ params: Promise<{ id: st
         body: JSON.stringify({ did: memberDid }),
       });
       if (res.ok) {
-        fetchPod();
+        fireAndForget(fetchPod(), 'pod:fetchPod:removeMember');
       } else {
         const data = await res.json();
         toast.error(data.error || 'Failed to remove member');

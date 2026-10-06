@@ -25,7 +25,6 @@ on:
           - vault-core
           - db
           - fair
-          - pay
           - auth-client
           - auth
           - logger
@@ -85,10 +84,10 @@ env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
   # cid → vault-core; tokens → config → ui; fair → ui; auth/logger → config;
-  # db/pay/auth-client are independent (the "Build workspace type dependencies"
+  # db/auth-client are independent (the "Build workspace type dependencies"
   # step below builds each selected package's @imajin/* deps automatically,
   # regardless of order).
-  ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client auth logger"
+  ALL_PACKAGES: "cid tokens config ui vault-core db fair auth-client auth logger"
   # The install closure a `packages-v*` tag must publish for the four
   # out-of-repo SDK packages (#1982) to actually be installable by an
   # external consumer (#2376): `ui` hard-depends on `fair` (a regular
@@ -164,7 +163,7 @@ jobs:
           for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Building workspace deps for $pkg"
             # --if-present tolerates workspace deps with no build script
-            # (e.g. @imajin/auth is an optional peer dep of pay that ships
+            # (e.g. a workspace package that ships
             # raw src/ with no dist/ build step). It must precede the script
             # name -- pnpm forwards anything listed after the script name to
             # the script itself, which broke tsup with 'Unknown option

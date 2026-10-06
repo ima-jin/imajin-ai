@@ -25,7 +25,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
@@ -39,10 +39,6 @@ export const dynamic = 'force-dynamic';
 const VAULT_PROPOSAL_KINDS = new Set(['mint', 'grant', 'rotate', 'revoke']);
 const REVOKE_TIERS = new Set(['withdraw', 'tombstone', 'destroy']);
 const MAX_PURPOSE_LENGTH = 200;
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 interface VaultProposalBody {
   kind?: unknown;
@@ -212,3 +208,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to raise vault proposal' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

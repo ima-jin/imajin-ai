@@ -20,16 +20,12 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 import { loadTypesafeSealedCredentials, typesafeKeyPending } from '@/src/lib/typesafe/connector';
 import { getModels, TypesafeUpstreamError } from '@/src/lib/typesafe/client';
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -70,3 +66,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'typesafe_models: failed to reach TypeSafe.ai' }, { status: 502, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

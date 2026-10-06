@@ -1,6 +1,7 @@
 import { Bot } from 'grammy';
 import { KernelClient, type PendingNotification } from './client.js';
 import { routeMessage } from './agent.js';
+import { mapSequentially } from './sequential.js';
 
 const POLL_INTERVAL_MS = Number.parseInt(process.env.MATCH_POLL_INTERVAL_MS ?? '30000', 10);
 
@@ -131,18 +132,21 @@ export function startMatchDelivery(bot: Bot, kernelClient: KernelClient): NodeJS
       const { notifications } = await kernelClient.getPendingMatches();
       if (notifications.length === 0) return;
 
-      const delivered: string[] = [];
-
-      for (const n of notifications) {
-        if (!n.channelUid) continue; // no chat to deliver to
-        try {
-          const text = renderMatch(n);
-          await bot.api.sendMessage(n.channelUid, text, { parse_mode: 'Markdown' });
-          delivered.push(n.id);
-        } catch (err) {
-          console.error(`[delivery] Failed to deliver match ${n.id} to ${n.channelUid}:`, err);
+      // Sequential on purpose: Telegram rate-limits sends, so matches go out one at a time.
+      const outcomes = await mapSequentially(
+        notifications.filter((n) => n.channelUid), // skip: no chat to deliver to
+        async (n): Promise<string | null> => {
+          try {
+            const text = renderMatch(n);
+            await bot.api.sendMessage(n.channelUid as string, text, { parse_mode: 'Markdown' });
+            return n.id;
+          } catch (err) {
+            console.error(`[delivery] Failed to deliver match ${n.id} to ${n.channelUid}:`, err);
+            return null;
+          }
         }
-      }
+      );
+      const delivered = outcomes.filter((id): id is string => id !== null);
 
       if (delivered.length > 0) {
         await kernelClient.markMatchesDelivered(delivered);

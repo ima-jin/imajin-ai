@@ -5,10 +5,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/resolve/dfos/:dfosDid
  * Public endpoint — resolve a did:dfos to its linked did:imajin identity.
@@ -39,3 +35,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

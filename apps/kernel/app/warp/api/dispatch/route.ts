@@ -50,7 +50,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { CORPUS_CONTEXT_MAX_LIMIT, type CorpusContextInput } from '@/src/lib/warp/corpus-context';
 import {
   dispatchAgentRun,
@@ -65,10 +65,6 @@ import { claimTerminalPublish } from '@/src/lib/warp/run-watch-sweep';
 const CORPUS_CONTEXT_MAX_CHARS_CEILING = 100_000;
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /** Optional non-empty string field, or undefined when absent or malformed. */
 function optionalString(value: unknown): string | undefined {
@@ -229,3 +225,5 @@ export async function POST(request: NextRequest) {
     return warpErrorResponse(err, cors);
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

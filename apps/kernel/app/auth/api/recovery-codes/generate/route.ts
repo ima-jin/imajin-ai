@@ -4,10 +4,6 @@ import { withLogger } from '@imajin/logger';
 import { requireAuth } from '@/src/lib/auth/middleware';
 import { generateRecoveryCodes, RECOVERY_DISCLOSURE } from '@/src/lib/auth/recovery-codes';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /auth/api/recovery-codes/generate
  *
@@ -71,3 +67,5 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'Failed to generate recovery codes' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -126,11 +126,12 @@ export class LoreBlobStore implements BlobStore {
    * #1122 will implement soft-supersede: mark the revision as HEAD-minus-N,
    * enabling rollback, and allowing Lore's GC to eventually reclaim the chunks.
    */
-  async gc(ownerDid: string, loreRef: string): Promise<void> {
+  gc(ownerDid: string, loreRef: string): Promise<void> {
     log.info(
       { ownerDid, loreRef },
       "LoreBlobStore.gc: no-op in Phase B — soft-supersede deferred to #1122",
     );
+    return Promise.resolve();
   }
 }
 

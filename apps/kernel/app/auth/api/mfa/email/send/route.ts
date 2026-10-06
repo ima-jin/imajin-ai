@@ -6,10 +6,6 @@ import { generateEmailMfaCode, storeEmailMfaCode } from '@/src/lib/auth/email-mf
 import { corsHeaders } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /api/mfa/email/send
  * Send a 6-digit MFA code to the user's registered email.
@@ -76,3 +72,5 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     return NextResponse.json({ error: 'Failed to send email code' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

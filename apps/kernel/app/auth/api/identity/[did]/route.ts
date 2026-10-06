@@ -37,10 +37,6 @@ async function visibleServiceOf(request: NextRequest, agentDid: string): Promise
   }
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/identity/:did
  * Public endpoint — resolve a DID to its public key and metadata.
@@ -101,3 +97,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

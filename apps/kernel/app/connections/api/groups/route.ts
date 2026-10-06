@@ -5,7 +5,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

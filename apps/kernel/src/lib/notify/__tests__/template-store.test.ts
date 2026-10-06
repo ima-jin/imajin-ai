@@ -185,4 +185,23 @@ describe('notify.template.updated bus hot-reload', () => {
       ),
     ).resolves.toBeUndefined();
   });
+
+  it('rejects (rather than throwing synchronously) when the event cannot be read', async () => {
+    const reactor = getReactor('notify-template-hot-reload')!;
+    const hostileEvent = {
+      type: 'notify.template.updated',
+      issuer: 'did:imajin:node',
+      subject: 'did:imajin:node',
+      scope: 'notify',
+      get payload(): Record<string, unknown> {
+        throw new Error('payload unreadable');
+      },
+    };
+
+    let pending: Promise<void> | undefined;
+    expect(() => {
+      pending = reactor(hostileEvent as never, {});
+    }).not.toThrow();
+    await expect(pending).rejects.toThrow('payload unreadable');
+  });
 });

@@ -67,7 +67,9 @@ function fmtOptions(card: DecisionCard): string {
 
 function fmtPr(evidence?: DecisionCardPrEvidence): string {
   if (!evidence) return '?';
-  const mergeable = evidence.mergeable === null ? 'unknown' : evidence.mergeable ? 'mergeable' : 'conflict';
+  let mergeable = 'conflict';
+  if (evidence.mergeable === null) mergeable = 'unknown';
+  else if (evidence.mergeable) mergeable = 'mergeable';
   return `#${evidence.number}(${evidence.draft ? 'draft' : 'ready'},${mergeable})`;
 }
 
@@ -94,7 +96,8 @@ function fmtBlockers(evidence?: DecisionCardBlockersEvidence): string {
 }
 
 function fmtAuthority(evidence: DecisionCardAuthorityEvidence | undefined): string {
-  return evidence ? (evidence.canActWithoutHuman ? 'auto' : 'human') : '?';
+  if (!evidence) return '?';
+  return evidence.canActWithoutHuman ? 'auto' : 'human';
 }
 
 /**

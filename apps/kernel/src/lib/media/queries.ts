@@ -128,5 +128,5 @@ export function isTextReadable(mimeType: string): boolean {
 
 /** Read an asset's UTF-8 text content from storage. */
 export async function readAssetTextContent(asset: Asset): Promise<string> {
-  return readFile(asset.storagePath, 'utf-8');
+  return await readFile(asset.storagePath, 'utf-8');
 }

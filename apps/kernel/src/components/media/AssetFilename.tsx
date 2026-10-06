@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { fireAndForget } from "@/src/lib/async/fire-and-forget";
 
 /**
  * Inline rename affordance for an asset filename (#1543).
@@ -187,7 +188,7 @@ export function AssetFilename({
       cancelledRef.current = false;
       return;
     }
-    commit();
+    fireAndForget(commit(), 'media:AssetFilename:blurCommit');
   };
 
   const renderName = () => {
@@ -203,7 +204,7 @@ export function AssetFilename({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              commit();
+              fireAndForget(commit(), 'media:AssetFilename:enterCommit');
             }
             if (e.key === "Escape") {
               e.preventDefault();

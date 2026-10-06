@@ -14,7 +14,7 @@
  *
  * Grain: DAILY. #1147 left daily-vs-hourly TBD; daily matches
  * `pay.balance_rollups`'s existing cadence and every other kernel cron in
- * vercel.json, so it is the deliberate default here (documented in the PR
+ * src/cron/schedule.ts, so it is the deliberate default here (documented in the PR
  * as a decision for review, not re-litigated per emitter).
  *
  * Idempotency: best-effort. Each rollup's `context_id` is
@@ -74,7 +74,7 @@ export function contextIdFor(principalDid: string, windowStart: Date): string {
 }
 
 async function readGroupedUsage(windowStart: Date, windowEnd: Date): Promise<GroupedUsageRow[]> {
-  return db
+  return await db
     .select({
       principalDid: usageIncurred.principalDid,
       resource: usageIncurred.resource,

@@ -47,10 +47,6 @@ async function withEvidenceCounts(
   }
 }
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * Does `memberDid` hold an active (not-removed) `identity_members` row on
  * `subjectDid`, regardless of role (#1967)?
@@ -189,3 +185,5 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     return NextResponse.json({ error: 'Failed to query turn usage' }, { status: 500, headers: cors });
   }
 });
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

@@ -30,7 +30,48 @@ module.exports = {
         "VAULT_PATH": "~/.imajin/vault.dev.json"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
+    },
+    {
+      // Kernel cron scheduler (#2550). We don't deploy on Vercel, so the
+      // kernel's scheduled jobs (apps/kernel/src/cron/schedule.ts) only run if
+      // something on this host calls them. This process reads that manifest and
+      // calls each /api/cron/* route on loopback with
+      // `Authorization: Bearer <cron secret>`, never overlapping a job with
+      // itself, one structured JSON log line per run (`pm2 logs dev-kernel-cron`).
+      // Last run + outcome per job: GET /api/admin/cron-status.
+      //
+      // Exec'd directly under `node --import tsx` (the dev-corpus pattern), NOT
+      // via `npm start` (#2447/#2547): the pm2 pid is the process.
+      // `--env-file` loads the kernel's untracked .env.local (dev-jin's own
+      // server.js loads the same file) for the scheduler's vault bootstrap
+      // identity (KERNEL_CRON_VAULT_BOOTSTRAP_DID/_PRIVATE_KEY), minted by the
+      // deploy's provisioning step. The bearer secret is NOT in that file: it is
+      // a vault grant the scheduler fetches at boot with loadFromVault and keeps
+      // in memory only. Node EXITS if the file is missing, and the scheduler
+      // exits non-zero if it cannot fetch the grant (the error points at the
+      // vault), so a misconfigured host crash-loops visibly instead of running
+      // nothing. CRON_BASE_URL must be loopback and match dev-jin's port above.
+      // The deploy workflow starts this app even when pm2 has never seen it (see
+      // deploy-dev.yml "Restart dev services").
+      "name": "dev-kernel-cron",
+      "cwd": "/home/jin/dev/imajin-ai/apps/kernel",
+      "script": "src/cron/scheduler.ts",
+      "interpreter": "node",
+      "node_args": "--env-file=/home/jin/dev/imajin-ai/apps/kernel/.env.local --import tsx",
+      "exec_mode": "fork",
+      "env": {
+        "NODE_ENV": "production",
+        "CRON_BASE_URL": "http://127.0.0.1:3000"
+      },
+      "max_restarts": 10,
+      "min_uptime": "20s",
+      // Long-running ticker (no listener, autorestart on), not a one-shot: its
+      // SIGTERM handler stops the ticker and exits 0 immediately, so a clean
+      // stop is near-instant. We still set the same explicit kill_timeout as
+      // every other app (#2547) as a cap for an in-flight /api/cron/* call.
+      "kill_timeout": 15000
     },
     {
       "name": "dev-events",
@@ -44,7 +85,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-coffee",
@@ -58,7 +100,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-dykil",
@@ -72,7 +115,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-learn",
@@ -86,7 +130,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-market",
@@ -100,7 +145,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-fixready",
@@ -112,7 +158,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       "name": "dev-karaoke",
@@ -124,7 +171,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     },
     {
       // See ecosystem.prod.config.js's corpus comment: corpus is an
@@ -160,7 +208,8 @@ module.exports = {
         "NODE_ENV": "production"
       },
       "max_restarts": 10,
-      "min_uptime": "20s"
+      "min_uptime": "20s",
+      "kill_timeout": 15000
     }
   ]
 };

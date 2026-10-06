@@ -8,6 +8,7 @@ import { normalizeHandleInput, profilePath } from '@imajin/config';
 import * as ed from '@noble/ed25519';
 import { useIdentity } from '../context/IdentityContext';
 import { ImageUpload } from '../components/ImageUpload';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -151,7 +152,7 @@ function RegisterPage() {
   }, [handle]);
 
   function copyDid(did: string) {
-    navigator.clipboard.writeText(did);
+    fireAndForget(navigator.clipboard.writeText(did), 'profile:register:clipboard');
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
@@ -307,7 +308,7 @@ function RegisterPage() {
       setTempDid(`did:imajin:${publicKeyBase58}`);
     }
     if (avatarMode === 'image' && !tempDid) {
-      generateTempDid();
+      fireAndForget(generateTempDid(), 'profile:register:generateTempDid');
     }
   }, [avatarMode, tempDid]);
 

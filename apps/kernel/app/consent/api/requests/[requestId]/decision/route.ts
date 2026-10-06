@@ -13,17 +13,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { decideConsentRequest } from '@/src/lib/consent-requests/consent-requests';
 
 const log = createLogger('kernel:consent:decision');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function POST(
   request: NextRequest,
@@ -65,3 +61,5 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to record decision' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

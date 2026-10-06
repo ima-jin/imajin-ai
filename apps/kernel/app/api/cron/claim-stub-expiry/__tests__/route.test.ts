@@ -98,12 +98,13 @@ vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
 // ── Mock: logger ──────────────────────────────────────────────────────────────
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────
 
 import { GET } from '../route.js';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -122,9 +123,9 @@ function queueSuccessfulSweep(opts: { lapsedAttestationIds?: string[]; lapsedInv
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('GET /api/cron/claim-stub-expiry', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
+describe('GET /api/cron/claim-stub-expiry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     // `clearAllMocks` empties call history but does NOT drain any queued
@@ -141,17 +142,13 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) {
-      delete process.env.CRON_SECRET;
-    } else {
-      process.env.CRON_SECRET = originalCronSecret;
-    }
+    _resetCronSecretForTests();
   });
 
   // ── Auth ────────────────────────────────────────────────────────────────────
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     queueOuterSelect([]);
 
     const response = await GET(makeRequest() as never);
@@ -159,7 +156,7 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     queueOuterSelect([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
@@ -167,28 +164,27 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     queueOuterSelect([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer test-secret' }) as never);
     expect(response.status).toBe(200);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
-    delete process.env.CRON_SECRET;
-    queueOuterSelect([]);
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   // ── No-op ─────────────────────────────────────────────────────────────────
 
   it('no-op: returns swept=0 and does not open a transaction when there are no candidates', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     queueOuterSelect([]);
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { ok: boolean; swept: number; dids: string[] };
 
     expect(response.status).toBe(200);
@@ -202,12 +198,12 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   // ── Sweep logic ─────────────────────────────────────────────────────────────
 
   it('sweeps a candidate stub: flips to expired, cascades attestations/invites to lapsed, publishes identity.stub.lapsed', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     const did = 'did:imajin:stub-under-sweep';
     queueOuterSelect([{ did }]);
     queueSuccessfulSweep({ lapsedAttestationIds: ['att_1', 'att_2'], lapsedInviteIds: ['inv_1'] });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { ok: boolean; swept: number; dids: string[] };
 
     expect(response.status).toBe(200);
@@ -235,12 +231,12 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('skips a candidate with a still-pending invite (reminder-ladder guard, design consideration 1)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     const did = 'did:imajin:has-pending-invite';
     queueOuterSelect([{ did }]);
     queueTxSelect([{ id: 'inv_pending' }]); // pending invite exists — guard trips
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { swept: number; dids: string[] };
 
     expect(body.swept).toBe(0);
@@ -250,13 +246,13 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('skips a candidate whose identity tier is no longer soft (already claimed)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     const did = 'did:imajin:already-claimed';
     queueOuterSelect([{ did }]);
     queueTxSelect([]); // no pending invite
     queueTxSelect([{ tier: 'preliminary' }]); // already claimed
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { swept: number };
 
     expect(body.swept).toBe(0);
@@ -265,14 +261,14 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('is a no-op when the CAS update loses the race (already expired concurrently)', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     const did = 'did:imajin:concurrently-expired';
     queueOuterSelect([{ did }]);
     queueTxSelect([]); // no pending invite
     queueTxSelect([{ tier: 'soft' }]); // still soft
     queueTxUpdate([]); // CAS: no row matched (lost the race)
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { swept: number };
 
     expect(body.swept).toBe(0);
@@ -282,7 +278,7 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('sweeps multiple candidates independently: guarded ones are skipped, eligible ones are swept', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     const skippedDid = 'did:imajin:skip-me';
     const sweptDid = 'did:imajin:sweep-me';
     queueOuterSelect([{ did: skippedDid }, { did: sweptDid }]);
@@ -290,7 +286,7 @@ describe('GET /api/cron/claim-stub-expiry', () => {
     queueTxSelect([{ id: 'inv_pending' }]); // skippedDid: pending invite guard trips
     queueSuccessfulSweep(); // sweptDid: clean sweep
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { swept: number; dids: string[] };
 
     expect(body.swept).toBe(1);
@@ -300,12 +296,12 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   });
 
   it('defensively cascades a pending invite even when the reminder-ladder guard already should have excluded it', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     const did = 'did:imajin:race-window';
     queueOuterSelect([{ did }]);
     queueSuccessfulSweep({ lapsedInviteIds: ['inv_race'] });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = (await response.json()) as { swept: number };
 
     expect(body.swept).toBe(1);
@@ -318,25 +314,25 @@ describe('GET /api/cron/claim-stub-expiry', () => {
   // ── Error handling ──────────────────────────────────────────────────────────
 
   it('returns 500 when the initial candidate scan throws', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockOuterSelect.mockImplementationOnce(() => {
       throw new Error('DB connection lost');
     });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     const body = (await response.json()) as { error: string };
     expect(body.error).toBe('Internal server error');
   });
 
   it('returns 500 when a per-DID transaction throws', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     queueOuterSelect([{ did: 'did:imajin:boom' }]);
     mockTransaction.mockImplementationOnce(async () => {
       throw new Error('transaction failed');
     });
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
   });
 });

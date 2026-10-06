@@ -10,16 +10,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { listRecordEventsForPrincipal, type RecordEventFilters } from '@/src/lib/jin/record-events';
 
 const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /** Non-empty trimmed value for a query param, or undefined when absent. */
 function param(params: URLSearchParams, key: string): string | undefined {
@@ -61,3 +57,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to list events' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

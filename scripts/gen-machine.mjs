@@ -15,6 +15,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { mapSequentially } from "./lib/sequential.mjs";
 
 // Plaintext http is deliberate: Ollama serves its API without TLS, and this
 // default addresses a private-LAN host rather than the internet. Point
@@ -118,9 +119,10 @@ async function main() {
   if (process.argv.includes("--all")) {
     const list = JSON.parse(gh([kind, "list", "--repo", REPO, "--state", "open", "--limit", "500", "--json", "number"]));
     console.log(`generating for ${list.length} open ${kind}s...`);
-    for (const { number } of list) {
+    // Sequential on purpose: each item shells out to `gh`, so one at a time stays inside the GitHub API rate limit.
+    await mapSequentially(list, async ({ number }) => {
       try { await genOne(kind, number); } catch (e) { console.error(`#${number}: ERROR ${e.message}`); }
-    }
+    });
     return;
   }
   await genOne(kind, target);

@@ -26,7 +26,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyBootstrapFetchAuth, type BootstrapFetchAuthOutcome } from '@/src/lib/apps/bootstrap-fetch-auth';
 import {
   resolveSigningKeyForGrant,
@@ -41,10 +41,6 @@ const log = createLogger('kernel:apps-signing-key-fetch-route');
 export const dynamic = 'force-dynamic';
 
 const MAX_NONCE_LENGTH = 200;
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 interface FetchRequestBody {
   appDid?: unknown;
@@ -154,3 +150,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to fetch signing key' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

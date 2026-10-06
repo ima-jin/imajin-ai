@@ -5,7 +5,7 @@ import { db, bumpSessions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

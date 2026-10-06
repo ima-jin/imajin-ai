@@ -15,7 +15,7 @@ const sql = getClient();
 /**
  * OPTIONS /api/d/:did/members/leave - CORS preflight
  */
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

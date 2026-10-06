@@ -5,10 +5,6 @@ export const dynamic = "force-dynamic";
 import { corsHeaders } from "@imajin/config";
 import { transcribeAsset } from "@/src/lib/media/transcribe-asset";
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/assets/[id]/transcribe
  *
@@ -43,3 +39,5 @@ export async function GET(
 
   return NextResponse.json({ transcript: result.transcript, cached: result.cached }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

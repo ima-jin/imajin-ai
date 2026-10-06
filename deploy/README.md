@@ -135,7 +135,100 @@ port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
 
 `fixready`, `karaoke` and `scorecard` come from separate repos and still use
 `npm start`; convert them once their start scripts are confirmed (allowlisted in
-`scripts/__tests__/ecosystem-config.test.mjs`).
+`scripts/__tests__/ecosystem-config.test.mjs`). Standalone app repos (e.g.
+`ima-jin/links`) must follow the same rule in their own pm2 entry.
+
+## Changing an app's start command: `pm2-reconcile.sh` (#2547)
+
+`pm2 restart <app>` and `pm2 startOrRestart <file> --only <app>` on an existing
+process keep the exec path pm2 stored when the app was first started; they only
+refresh args/env. After the ecosystem moved from `npm start` to the direct next
+binary, dev therefore ran `npm start -p 3104` (npm swallowed `-p`, `next start`
+treated `3104` as a project directory) and events, coffee, dykil, learn and
+market crash-looped on 2026-10-04. Prod processes are stored as `npm start` too.
+
+Both deploy workflows (and `scripts/build.sh`'s restart) now go through
+`scripts/pm2-reconcile.sh <ecosystem-file> <name>...`, which compares the
+ecosystem's `script` (resolved against `cwd`) and `interpreter` with pm2's
+stored `pm_exec_path` / `exec_interpreter` (`pm2 jlist`). When they differ, or
+pm2 doesn't have the app, it runs `pm2 delete <name>` then
+`pm2 start <file> --only <name>`; matching apps get the usual
+`pm2 startOrRestart`. The workflows then `pm2 save`, so a resurrect doesn't
+bring back the stale definition. No manual pm2 steps are needed: the first
+deploy carrying this recreates every stale app on its own.
+
+## Explicit `kill_timeout` and crash-loop alert (#2547)
+
+prod-events crash-looped for ~12h (~48k restarts) behind a still-serving orphan
+and nobody was told. Two more guards:
+
+- **`kill_timeout: 15000`** on every app. pm2's default is 1600 ms, after which
+  it SIGKILLs; Next needs longer to drain connections and exit, and a kill that
+  races shutdown is how a process survives a restart. `ecosystem-config.test.mjs`
+  requires it (>= 10 s) on every entry.
+- **`scripts/check-pm2-restarts.sh <dev|prod>`** compares each app's pm2
+  `restart_time` with the samples it saved inside a sliding window and exits 1
+  (optionally POSTing `{"text": ...}` to a webhook) when an app restarted more
+  than N times in that window. It keeps running until the loop stops, so a
+  crash loop cannot hide behind a 200. Run it every minute on the host:
+
+  ```cron
+  * * * * * cd ~/prod/imajin-ai && RESTART_ALERT_WEBHOOK=https://... ./scripts/check-pm2-restarts.sh prod >> ~/prod/restart-alert.log 2>&1
+  ```
+
+  Tunables: `RESTART_ALERT_THRESHOLD` (default 5), `RESTART_ALERT_WINDOW`
+  (default 600 s), `RESTART_ALERT_STATE`, `RESTART_ALERT_WEBHOOK`. The cron
+  entry is host configuration and is not installed by the deploy workflow.
+
+## Kernel cron scheduler: `prod-kernel-cron` / `dev-kernel-cron` (#2550)
+
+We don't deploy on Vercel, so the kernel's scheduled jobs are not run by any
+platform cron. They are declared in code in `apps/kernel/src/cron/schedule.ts`
+(path, UTC schedule, no-overlap flag; `apps/kernel/vercel.json` is gone) and run
+by one small process per environment, declared next to the kernel in these
+ecosystem files. It execs `src/cron/scheduler.ts` directly under
+`node --import tsx` (never `npm start`, see above), loads the kernel's
+`.env.local` via `--env-file` (for its vault bootstrap identity only), fetches
+the cron bearer secret from the vault at boot, and calls each `/api/cron/*` route
+on loopback (`CRON_BASE_URL`, must match the kernel's port) with
+`Authorization: Bearer <that secret>`.
+
+- A job never overlaps itself: a tick that fires while the previous run is still
+  in flight is skipped and logged (`status: "skipped"`).
+- One JSON log line per run (job, status, httpStatus, durationMs) in
+  `pm2 logs <env>-kernel-cron`. The secret is never logged.
+- Last run and outcome per job: `GET /api/admin/cron-status` with the same
+  bearer (the scheduler's, or an agent holding a grant for the purpose; there is
+  no env var to curl with). `stale: true` means a scheduled tick passed with no
+  run; `schedulerSeen: false` means the scheduler has never written state. State
+  lives in `apps/kernel/.cron-state.json` (gitignored; override with
+  `CRON_STATE_PATH`).
+- Every `/api/cron/*` route fails closed: a cron secret the vault cannot supply
+  gives 503 plus a WARN, a wrong bearer gives 401.
+- **The secret is a vault grant, never hand-set (epic #2241, #2245 pattern).**
+  `CRON_SECRET` is an internal secret generated in the vault, per environment
+  (purpose `kernel.cron-secret`). The kernel reads it in-process from its own
+  vault (memory only); the scheduler authenticates as its bootstrap identity
+  (`KERNEL_CRON_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in the kernel's
+  `.env.local`) and fetches the current grant at boot with `loadFromVault`,
+  keeping it in memory only. Each fetch sends one deferred ack (on first use).
+  `scripts/provision-service-bootstrap.mjs`, run by both deploy workflows after
+  the gate and before `check-env`, mints that identity and grants it the secret,
+  so **the only human step is the normal deploy tap: no SSH, no `.env.local`
+  edit.** If the identity or grant is missing the deploy still fails closed, but
+  the failure points at the vault: the provisioning step names the grant it could
+  not make, `check-env` points at provisioning, and the scheduler exits non-zero
+  with a vault-pointing error. (The scheduler retries for up to two minutes
+  while the kernel is still booting; `CRON_VAULT_FETCH_TIMEOUT_MS` overrides.)
+- Rotating the secret is a /jin card (a vault rotate): the kernel re-resolves it
+  without a restart, and the scheduler picks the new grant up on its next boot.
+- Both deploy workflows always include the scheduler in the restart set and
+  restart it from the ecosystem file, so `pm2 startOrRestart` starts it even
+  when pm2 has never seen it. No manual `pm2 start`.
+- Adding a cron route means adding a manifest entry (and vice versa):
+  `scripts/ci-guard-cron-manifest.mjs`, run by `scripts/__tests__/ci-guard-cron-manifest.test.mjs`
+  in the Test job, fails CI on drift. The manifest is per-app, so an app that
+  leaves the kernel brings its own `src/cron/schedule.ts`.
 
 ## Known drift captured on 2026-07-16 (documented, not yet reconciled)
 

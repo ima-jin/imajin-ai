@@ -16,16 +16,12 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { getAgentRun } from '@/src/lib/warp/dispatch';
 import { warpActingDid, warpRunId } from '@/src/lib/warp/route-context';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest, props: { params: Promise<{ runId: string }> }) {
   const params = await props.params;
@@ -48,3 +44,5 @@ export async function GET(request: NextRequest, props: { params: Promise<{ runId
     return warpErrorResponse(err, cors);
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

@@ -16,31 +16,31 @@ vi.mock('@/src/db', () => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
 vi.mock('@imajin/auth', () => ({ EVENT_SUBSCRIPTION_RETENTION: 14 * 24 * 60 * 60 * 1000 }));
 
 import { GET } from '../route';
+import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
 
 function makeRequest(headers: Record<string, string> = {}): Request {
   return new Request('http://localhost/api/cron/event-subscription-cleanup', { headers });
 }
 
-describe('GET /api/cron/event-subscription-cleanup', () => {
-  const originalCronSecret = process.env.CRON_SECRET;
+const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
+describe('GET /api/cron/event-subscription-cleanup', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    if (originalCronSecret === undefined) delete process.env.CRON_SECRET;
-    else process.env.CRON_SECRET = originalCronSecret;
+    _resetCronSecretForTests();
   });
 
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest() as never);
@@ -48,27 +48,35 @@ describe('GET /api/cron/event-subscription-cleanup', () => {
     expect(mockDelete).not.toHaveBeenCalled();
   });
 
+  it('returns 401 when CRON_SECRET is set and Authorization header is wrong', async () => {
+    _setCronSecretForTests('test-secret');
+    mockReturning.mockResolvedValue([]);
+
+    const response = await GET(makeRequest({ authorization: 'Bearer wrong-secret' }) as never);
+    expect(response.status).toBe(401);
+    expect(mockDelete).not.toHaveBeenCalled();
+  });
+
   it('passes auth when CRON_SECRET matches Bearer token', async () => {
-    process.env.CRON_SECRET = 'test-secret';
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
     const response = await GET(makeRequest({ authorization: 'Bearer test-secret' }) as never);
     expect(response.status).toBe(200);
   });
 
-  it('passes auth (dev mode) when CRON_SECRET is not set', async () => {
-    delete process.env.CRON_SECRET;
-    mockReturning.mockResolvedValue([]);
+  it('fails closed with 503 when CRON_SECRET is not set (#2550)', async () => {
+    _setCronSecretForTests(null);
 
     const response = await GET(makeRequest() as never);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(503);
   });
 
   it('deletes rows older than the retention window and reports the count', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; deleted: number };
 
     expect(response.status).toBe(200);
@@ -77,19 +85,19 @@ describe('GET /api/cron/event-subscription-cleanup', () => {
   });
 
   it('no-op: returns deleted=0 when nothing is past retention', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockReturning.mockResolvedValue([]);
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { ok: boolean; deleted: number };
     expect(body).toEqual({ ok: true, deleted: 0 });
   });
 
   it('returns 500 when the DB delete throws', async () => {
-    delete process.env.CRON_SECRET;
+    _setCronSecretForTests('test-secret');
     mockReturning.mockRejectedValue(new Error('DB connection lost'));
 
-    const response = await GET(makeRequest() as never);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
   });
 });

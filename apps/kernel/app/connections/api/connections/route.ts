@@ -3,7 +3,7 @@ import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
 import { resolveEffectiveDid } from '@imajin/auth';
 import { listConnections } from '@/src/lib/connections/list';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

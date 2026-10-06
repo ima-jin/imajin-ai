@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import envUtils from './env-utils.js';
+import { mapSequentially } from './lib/sequential.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
@@ -71,14 +72,15 @@ try {
 
   let seededCount = 0;
 
-  for (const filename of files) {
+  // Sequential on purpose: rows are marked in filename order so the tracking table mirrors apply order.
+  await mapSequentially(files, async filename => {
     const filePath = resolve(migrationsDir, filename);
     const content = readFileSync(filePath, 'utf-8');
     const hash = checksum(content);
 
     if (tracked.has(filename)) {
       console.log(`⏭  ${filename} — already tracked`);
-      continue;
+      return;
     }
 
     if (dryRun) {
@@ -92,7 +94,7 @@ try {
       console.log(`✅ Marked: ${filename}`);
     }
     seededCount++;
-  }
+  });
 
   if (seededCount === 0) {
     console.log('✅ All migrations already tracked — nothing to do.');

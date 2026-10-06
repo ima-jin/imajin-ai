@@ -178,7 +178,7 @@ async function ensureMintedKeypair(
 ): Promise<{ did: string; publicKey: string; privateKey: string }> {
   if (existingAppDid) {
     const existing = await getMintedKeyByDid(existingAppDid);
-    if (existing && existing.status === 'active') {
+    if (existing?.status === 'active') {
       const privateKey = await loadAndUnsealByGrantee(existing.field, nodeDid);
       if (privateKey === undefined) {
         throw new Error(`apps.provision: minted key for '${existingAppDid}' exists but its sealed private key could not be unsealed`);

@@ -1,31 +1,21 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { importTsAsEsm } from '../lib/import-ts-as-esm.mjs';
 
 // #2483: scripts/provision-service-bootstrap.mjs must run as ESM. The deploy
 // step used to run a .ts entrypoint through `tsx`, which compiles it (and the
 // kernel sources it imports) to CommonJS, so every ESM-only transitive
 // dependency (@ipld/dag-cbor) failed with `No "exports" main defined`.
+// #2485: the TypeScript is compiled to a native ES module at package build
+// time (packages/provision-bootstrap); nothing is bundled at deploy time.
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const entrypoint = join(repoRoot, 'scripts', 'provision-service-bootstrap.mjs');
-const tsxBin = join(repoRoot, 'node_modules', '.bin', 'tsx');
-
-const tmpRoots = [];
-afterAll(() => {
-  for (const root of tmpRoots) rmSync(root, { recursive: true, force: true });
-});
-
-function makeTmp() {
-  const root = mkdtempSync(join(tmpdir(), 'provision-esm-test-'));
-  tmpRoots.push(root);
-  return root;
-}
+const builtLib = join(repoRoot, 'packages', 'provision-bootstrap', 'dist', 'index.mjs');
 
 function runEntrypoint(args, { cwd = repoRoot, env = {} } = {}) {
   return spawnSync(process.execPath, [entrypoint, ...args], {
@@ -35,48 +25,18 @@ function runEntrypoint(args, { cwd = repoRoot, env = {} } = {}) {
   });
 }
 
-describe('importTsAsEsm', () => {
-  /** A temp project: an ESM-only dependency (an `import`-only export map, like @ipld/dag-cbor) and a typeless-package .ts entry using it. */
-  function makeProjectWithEsmOnlyDep() {
-    const root = makeTmp();
-    const dep = join(root, 'node_modules', 'esm-only-dep');
-    mkdirSync(dep, { recursive: true });
-    writeFileSync(
-      join(dep, 'package.json'),
-      JSON.stringify({ name: 'esm-only-dep', type: 'module', exports: { '.': { import: './index.js' } } }),
-    );
-    writeFileSync(join(dep, 'index.js'), 'export const answer = 42;\n');
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'fixture' })); // no "type": "module"
-    const entry = join(root, 'entry.ts');
-    writeFileSync(entry, "import { answer } from 'esm-only-dep';\nexport const value: number = answer;\n");
-    return { root, entry };
-  }
-
-  it('loads an ESM-only dependency (import-only export map) from a typeless-package .ts entry', async () => {
-    const { entry } = makeProjectWithEsmOnlyDep();
-    const loaded = await importTsAsEsm(entry);
-    expect(loaded.value).toBe(42);
-  });
-
-  it('control: the same entry under tsx (CommonJS) fails exactly like #2483', () => {
-    const { root, entry } = makeProjectWithEsmOnlyDep();
-    const result = spawnSync(tsxBin, [entry], { cwd: root, encoding: 'utf8' });
-    expect(result.status).not.toBe(0);
-    expect(result.stderr).toMatch(/No "exports" main defined|ERR_PACKAGE_PATH_NOT_EXPORTED/);
-  });
-
-  it('rejects when a dependency cannot be resolved (module-resolution errors are not swallowed)', async () => {
-    const root = makeTmp();
-    const entry = join(root, 'entry.ts');
-    writeFileSync(entry, "import { nope } from 'definitely-not-installed-pkg';\nexport const value = nope;\n");
-    await expect(importTsAsEsm(entry)).rejects.toThrow(/definitely-not-installed-pkg/);
-  });
-});
-
 describe('provision-service-bootstrap.mjs CLI', () => {
   it('is a plain ES module entrypoint, not tsx-run TypeScript', () => {
     expect(existsSync(join(repoRoot, 'scripts', 'provision-service-bootstrap.ts'))).toBe(false);
     expect(readFileSync(entrypoint, 'utf8').startsWith('#!/usr/bin/env node\n')).toBe(true);
+  });
+
+  it('has no runtime bundler in the deploy path (#2485)', () => {
+    expect(existsSync(join(repoRoot, 'scripts', 'lib', 'import-ts-as-esm.mjs'))).toBe(false);
+    const source = readFileSync(entrypoint, 'utf8');
+    expect(source).not.toMatch(/esbuild|import-ts-as-esm|importTsAsEsm/);
+    const rootManifest = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
+    expect(rootManifest.devDependencies).not.toHaveProperty('esbuild');
   });
 
   it.each([
@@ -94,7 +54,41 @@ describe('provision-service-bootstrap.mjs CLI', () => {
 // The real entrypoint needs the workspace packages built (the deploy builds
 // them first). The CI "Provisioning entrypoint" job always runs this against a
 // production-style install; locally this runs once `pnpm -r --filter './packages/**' build` has.
-const packagesBuilt = existsSync(join(repoRoot, 'packages', 'auth', 'dist', 'index.js'));
+const packagesBuilt = existsSync(builtLib) && existsSync(join(repoRoot, 'packages', 'auth', 'dist', 'index.js'));
+
+describe.skipIf(!packagesBuilt)('pre-built provisioning module (#2485)', () => {
+  it('is a self-contained native ES module that needs no runtime bundling', () => {
+    const source = readFileSync(builtLib, 'utf8');
+    expect(source).not.toMatch(/__require\(|Dynamic require/);
+    // Repo-local kernel TypeScript is inlined; dependencies stay external imports.
+    expect(source).not.toMatch(/from ['"]@\//);
+    expect(source).toMatch(/from ['"]drizzle-orm/);
+  });
+});
+
+describe('provision-service-bootstrap.mjs without the package build', () => {
+  it('exits non-zero with a build hint when the pre-built module is missing', () => {
+    // The entrypoint locates the repo from its own path: a copy in a bare tree has no build.
+    const root = mkdtempSync(join(tmpdir(), 'provision-nobuild-'));
+    try {
+      mkdirSync(join(root, 'scripts', 'lib'), { recursive: true });
+      copyFileSync(entrypoint, join(root, 'scripts', 'provision-service-bootstrap.mjs'));
+      // The entrypoint statically imports the VAULT_PATH helper (#2487).
+      copyFileSync(
+        join(repoRoot, 'scripts', 'lib', 'vault-path-sources.mjs'),
+        join(root, 'scripts', 'lib', 'vault-path-sources.mjs'),
+      );
+      const result = spawnSync(process.execPath, [join(root, 'scripts', 'provision-service-bootstrap.mjs'), '--all', '--dry-run'], {
+        cwd: root,
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/packages\/provision-bootstrap\/dist\/index\.mjs is missing — run `pnpm -r --filter '\.\/packages\/\*\*' build` first/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe.skipIf(!packagesBuilt)('provision-service-bootstrap.mjs --dry-run (built workspace)', () => {
   it('loads every module a real run imports and exits 0, touching nothing', () => {

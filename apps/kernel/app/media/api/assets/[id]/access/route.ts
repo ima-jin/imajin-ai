@@ -1,12 +1,7 @@
 import { NextRequest } from "next/server";
 import { patchAccess } from "@/src/lib/media/routes/access";
-import { corsOptions } from "@/src/lib/kernel/cors";
 
 export const dynamic = "force-dynamic";
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function PATCH(
   request: NextRequest,
@@ -15,3 +10,5 @@ export async function PATCH(
   const { id } = await params;
   return patchAccess(request, id);
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

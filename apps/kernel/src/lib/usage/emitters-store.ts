@@ -35,7 +35,7 @@ export async function getEmitter(source: string): Promise<UsageEmitter | undefin
  * registrations, never the full registry.
  */
 export async function listEmittersForIssuer(issuerDid: string): Promise<UsageEmitter[]> {
-  return db
+  return await db
     .select()
     .from(usageEmitters)
     .where(eq(usageEmitters.issuerDid, issuerDid))

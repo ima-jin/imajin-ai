@@ -11,6 +11,8 @@ import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-libra
 import { ProvisionAppPanel } from '../provision-app-panel';
 import { installIntervalSpy } from './panel-test-support';
 
+const APPROVALS_POLL_URL = '/jin/api/operator-approvals?source=apps';
+
 interface Reply {
   ok?: boolean;
   status?: number;
@@ -20,7 +22,12 @@ interface Reply {
 interface FetchOptions {
   isOperator?: boolean;
   approvalsOk?: boolean;
-  approvals?: Array<{ proposalId: string; status: string }>;
+  approvals?: Array<{
+    proposalId: string;
+    status: string;
+    detail?: Record<string, unknown> | null;
+    decision?: { decidedAt?: string } | null;
+  }>;
   post?: Reply;
   ledger?: Reply;
 }
@@ -46,7 +53,7 @@ function installFetch(initial: FetchOptions = {}) {
     if (url.startsWith('/api/apps/provision?slug=')) {
       return reply(state.ledger ?? {});
     }
-    if (url === '/jin/api/operator-approvals') {
+    if (url === '/jin/api/operator-approvals' || url === APPROVALS_POLL_URL) {
       return reply({ ok: state.approvalsOk, body: { isOperator: state.isOperator, approvals: state.approvals } });
     }
     throw new Error(`unexpected fetch ${url}`);
@@ -251,6 +258,144 @@ describe('ProvisionAppPanel submit', () => {
 
     expect(await screen.findByText('Unexpected response from apps.provision')).toBeDefined();
     expect(screen.queryByTestId('provision-result')).toBeNull();
+  });
+});
+
+/** Approvals-list fetches made by the poll (everything except the operator-gate check). */
+function pollCalls(spy: ReturnType<typeof installFetch>['spy']) {
+  return spy.mock.calls.filter(([url]) => String(url).startsWith('/jin/api/operator-approvals?'));
+}
+
+const ISO_PAST = '2026-01-01T00:00:00.000Z';
+const ISO_DECIDED = '2026-06-01T12:00:00.000Z';
+const ISO_AFTER = '2026-06-01T12:00:05.000Z';
+
+function failedLedger(updatedAt?: string): Reply {
+  return {
+    status: 200,
+    body: { slug: 'coffee', status: 'failed', appDid: null, repoUrl: null, failedStep: 'register', errorMessage: 'old failure', updatedAt },
+  };
+}
+
+describe('ProvisionAppPanel poll scope', () => {
+  it('requests only source=apps approvals on every poll tick', async () => {
+    const callbacks = installIntervalSpy();
+    const { spy } = installFetch({ approvals: [{ proposalId: 'appprov_1', status: 'pending' }] });
+    await renderVisible();
+    await proposeCoffee();
+    await waitFor(() => expect(pollCalls(spy).length).toBeGreaterThan(0));
+    await tick(callbacks);
+
+    const polls = pollCalls(spy);
+    expect(polls.length).toBeGreaterThanOrEqual(2);
+    for (const [url, init] of polls) {
+      expect(url).toBe(APPROVALS_POLL_URL);
+      expect((init as RequestInit).credentials).toBe('include');
+    }
+    // No unscoped list fetch beyond the one-time operator gate.
+    const unscoped = spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals');
+    expect(unscoped).toHaveLength(1);
+  });
+});
+
+describe('ProvisionAppPanel expired proposals', () => {
+  it('shows a pending card past its expiresAt as expired and stops polling', async () => {
+    installIntervalSpy();
+    const { spy } = installFetch({
+      approvals: [{ proposalId: 'appprov_1', status: 'pending', detail: { expiresAt: ISO_PAST } }],
+    });
+    await renderVisible();
+    await proposeCoffee();
+
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('declined'));
+    expect(screen.getByText(/The proposal expired\. Nothing was provisioned\./)).toBeDefined();
+    expect(screen.queryByText('Waiting for your approval below.')).toBeNull();
+    expect(vi.mocked(globalThis.clearInterval)).toHaveBeenCalled();
+
+    // Terminal: only the immediate tick ran, the interval was cleared, and no ledger read was needed.
+    expect(pollCalls(spy)).toHaveLength(1);
+    expect(spy.mock.calls.some(([url]) => String(url).startsWith('/api/apps/provision?slug='))).toBe(false);
+  });
+
+  it('keeps a pending card with a future expiresAt awaiting approval', async () => {
+    installIntervalSpy();
+    installFetch({
+      approvals: [{ proposalId: 'appprov_1', status: 'pending', detail: { expiresAt: '2999-01-01T00:00:00.000Z' } }],
+    });
+    await renderVisible();
+    await proposeCoffee();
+
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('awaiting-approval'));
+  });
+
+  it('shows an expired status reported by the card as declined', async () => {
+    installIntervalSpy();
+    installFetch({ approvals: [{ proposalId: 'appprov_1', status: 'expired' }] });
+    await renderVisible();
+    await proposeCoffee();
+
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('declined'));
+  });
+});
+
+describe('ProvisionAppPanel stale ledger on re-propose', () => {
+  it('does not show a failure older than the approval as the new result', async () => {
+    const callbacks = installIntervalSpy();
+    const { state } = installFetch({
+      approvals: [{ proposalId: 'appprov_2', status: 'approved', decision: { decidedAt: ISO_DECIDED } }],
+      ledger: failedLedger(ISO_PAST),
+      post: { status: 201, body: { status: 'pending', proposalId: 'appprov_2' } },
+    });
+    await renderVisible();
+    await proposeCoffee();
+
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('running'));
+    expect(screen.queryByText('old failure')).toBeNull();
+
+    // The new run starts: ledger is flipped to pending after the decision, then succeeds.
+    state.ledger = { status: 200, body: { slug: 'coffee', status: 'pending', appDid: null, repoUrl: null, failedStep: null, errorMessage: null, updatedAt: ISO_AFTER } };
+    await tick(callbacks);
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('running'));
+
+    state.ledger = failedLedger(ISO_AFTER);
+    await tick(callbacks);
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('failed'));
+    expect(screen.getByText('old failure')).toBeDefined();
+  });
+
+  it('accepts a ledger row that is newer than the decision', async () => {
+    installIntervalSpy();
+    installFetch({
+      approvals: [{ proposalId: 'appprov_1', status: 'applied', decision: { decidedAt: ISO_DECIDED } }],
+      ledger: failedLedger(ISO_AFTER),
+    });
+    await renderVisible();
+    await proposeCoffee();
+
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('failed'));
+  });
+});
+
+describe('ProvisionAppPanel repoUrl guard', () => {
+  async function renderSucceededWith(repoUrl: string) {
+    installFetch({
+      post: { status: 200, body: { status: 'succeeded', slug: 'coffee', appDid: 'did:imajin:app1', repoUrl, secretsSet: [] } },
+    });
+    await renderVisible();
+    await proposeCoffee();
+    await screen.findByText('Already provisioned');
+  }
+
+  it('renders a non-GitHub repoUrl as plain text, not a link', async () => {
+    await renderSucceededWith('javascript:alert(1)');
+    expect(screen.getByText('javascript:alert(1)')).toBeDefined();
+    expect(screen.queryByRole('link', { name: 'javascript:alert(1)' })).toBeNull();
+  });
+
+  it('renders an https URL on another host as plain text', async () => {
+    await renderSucceededWith('https://evil.example/ima-jin/coffee');
+    expect(screen.queryByRole('link', { name: /evil\.example/ })).toBeNull();
+    expect(screen.getByText('https://evil.example/ima-jin/coffee')).toBeDefined();
   });
 });
 

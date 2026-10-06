@@ -6,10 +6,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * GET /api/lookup/:id
  * Look up identity by DID
@@ -76,3 +72,5 @@ export async function GET(
     );
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

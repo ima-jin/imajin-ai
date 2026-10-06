@@ -117,7 +117,10 @@ describe('OPTIONS', () => {
     });
     const { corsOptions } = await import('@/src/lib/kernel/cors');
     const req = makeRequest();
-    await OPTIONS(req);
+    const pending = OPTIONS(req);
+    // Keeps the `RouteHandler` Promise contract without being an `async` function (S7503).
+    expect(pending).toBeInstanceOf(Promise);
+    await pending;
     expect(corsOptions).toHaveBeenCalledWith(req);
   });
 });

@@ -14,9 +14,7 @@ import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export async function GET(
   request: NextRequest,

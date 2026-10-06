@@ -571,12 +571,13 @@ export async function listPaymentRequests(input: ListPaymentRequestsInput): Prom
 
   const limit = Math.min(Math.max(1, input.limit ?? LIST_LIMIT_DEFAULT), LIST_LIMIT_MAX);
 
-  return db
+  const rows = await db
     .select()
     .from(paymentRequests)
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(paymentRequests.createdAt))
     .limit(limit);
+  return rows;
 }
 
 /**

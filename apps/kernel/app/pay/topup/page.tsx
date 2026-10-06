@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { grossUpForProcessorFee } from '@imajin/fair';
 import { buildPublicUrl } from '@imajin/config';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 const PRESET_AMOUNTS = [20, 50, 100, 250, 1000];
 const MIN_TOPUP = 20;
@@ -19,7 +20,7 @@ function fmtCurrency(n: number) {
 function calcStripeCharge(amount: number, userAbsorbs: boolean): number {
   const amountCents = Math.round(amount * 100);
   if (userAbsorbs) {
-    return Math.ceil((amountCents + STRIPE_FIXED_CENTS) / (1 - STRIPE_RATE_BPS / 10000)) / 100;
+    return grossUpForProcessorFee('stripe', amountCents) / 100;
   }
   return amount;
 }
@@ -145,7 +146,7 @@ export default function TopupPage() {
 
   const handleCopyMemo = useCallback(() => {
     if (emtInstructions?.memo) {
-      navigator.clipboard.writeText(emtInstructions.memo);
+      fireAndForget(navigator.clipboard.writeText(emtInstructions.memo), 'pay:topup:copyMemo');
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -410,7 +411,7 @@ export default function TopupPage() {
                   <span className="text-white font-mono text-sm">{emtInstructions.email}</span>
                   <button type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(emtInstructions.email);
+                      fireAndForget(navigator.clipboard.writeText(emtInstructions.email), 'pay:topup:copyEmail');
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}

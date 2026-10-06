@@ -15,6 +15,7 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import { mapSequentially } from './lib/sequential.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
@@ -175,7 +176,9 @@ async function main() {
   let skipped = 0;
   let errors = 0;
 
-  for (const filename of filenames) {
+  // Sequential on purpose: the seed writes files and rows article by article, in filename order,
+  // and one article's failure is reported without disturbing the rest.
+  await mapSequentially(filenames, async (filename) => {
     const baseName = filename.replaceAll('.md', '');
     const slug = slugMap[baseName] || baseName;
     const order = getOrderFromSlugMap(baseName);
@@ -195,7 +198,7 @@ async function main() {
     if (existing.length > 0) {
       console.log(`⏭  ${filename} — already exists (${existing[0].id})`);
       skipped++;
-      continue;
+      return;
     }
 
     const assetId = `asset_${nanoid(16)}`;
@@ -272,7 +275,7 @@ async function main() {
       console.error(`❌ ${filename} — insert failed: ${err.message}`);
       errors++;
     }
-  }
+  });
 
   console.log(`\n📊 Done: ${inserted} inserted, ${skipped} skipped, ${errors} errors`);
 

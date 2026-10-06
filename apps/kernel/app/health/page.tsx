@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ImajinFooter } from '@imajin/ui';
 import { APP_DISPLAY_NAME } from '@imajin/config';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface ServiceCheck {
   name: string;
@@ -92,7 +93,7 @@ export default function HealthPage() {
   };
 
   useEffect(() => {
-    checkHealth();
+    fireAndForget(checkHealth(), 'health:checkHealth');
     // Auto-refresh every 30 seconds
     const interval = setInterval(checkHealth, 30000);
     return () => clearInterval(interval);

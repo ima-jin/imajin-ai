@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { SERVICES, buildPublicUrl } from '@imajin/config';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 type JoinVisibility = 'open' | 'network' | 'invite';
 
@@ -41,7 +42,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
   const onboardUrl = `${authUrl}/auth/onboard?scope=${encodeURIComponent(groupDid)}`;
 
   useEffect(() => {
-    loadData();
+    fireAndForget(loadData(), 'auth:identitySettings:loadData');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDid]);
 
@@ -302,10 +303,10 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
           </code>
           <button type="button"
             onClick={() => {
-              navigator.clipboard.writeText(onboardUrl).then(() => {
+              fireAndForget(navigator.clipboard.writeText(onboardUrl).then(() => {
                 setCopyLabel('Copied!');
                 setTimeout(() => setCopyLabel('Copy'), 2000);
-              });
+              }), 'auth:identitySettings:clipboard');
             }}
             className="px-3 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm text-gray-300 transition whitespace-nowrap"
           >

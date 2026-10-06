@@ -12,9 +12,17 @@ function getSpec(): string {
   return cachedSpec;
 }
 
-export async function GET() {
-  const spec = getSpec();
-  return new NextResponse(spec, {
-    headers: { "Content-Type": "text/yaml" },
-  });
+export function GET(): Promise<NextResponse> {
+  // getSpec() reads from disk and can throw; surface that as a rejected promise
+  // (as the former async function did) rather than a synchronous throw.
+  try {
+    const spec = getSpec();
+    return Promise.resolve(
+      new NextResponse(spec, {
+        headers: { "Content-Type": "text/yaml" },
+      })
+    );
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }

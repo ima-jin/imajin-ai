@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { corsHeaders, corsOptions, SERVICES, buildPublicUrl } from "@imajin/config";
 import type { ServiceVisibility, ServiceCategory } from "@imajin/config";
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
-export async function GET(request: NextRequest) {
+export function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
   return NextResponse.json({

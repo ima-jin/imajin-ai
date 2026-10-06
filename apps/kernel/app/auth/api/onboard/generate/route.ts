@@ -21,10 +21,6 @@ import { addScopeMembership } from '@/src/lib/auth/onboard';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -137,3 +133,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to onboard identity' }, { status: 500, headers: cors });
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

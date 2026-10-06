@@ -16,14 +16,13 @@ import { db, transactions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
-import { STRIPE_RATE_BPS, STRIPE_FIXED_CENTS } from '@imajin/fair';
+import { grossUpForProcessorFee } from '@imajin/fair';
 import { withLogger } from '@imajin/logger';
 
 const MIN_TOPUP = 20; // $20 CAD minimum
+const TOPUP_RAIL = 'stripe'; // keys the `grossUpForProcessorFee` fee-schedule lookup (#2177)
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -71,8 +70,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   if (absorbFees === false) {
     // User absorbs fees: they pay more, receive exact amount
-    // chargeAmount = (amount + 0.30) / (1 - 0.029)
-    chargeAmountCents = Math.ceil((amountCents + STRIPE_FIXED_CENTS) / (1 - STRIPE_RATE_BPS / 10000));
+    // chargeAmount = (amount + fixed) / (1 - rate), from the rail's fee schedule
+    chargeAmountCents = grossUpForProcessorFee(TOPUP_RAIL, amountCents);
   } else {
     // Platform absorbs fees: charge = amount
     chargeAmountCents = amountCents;

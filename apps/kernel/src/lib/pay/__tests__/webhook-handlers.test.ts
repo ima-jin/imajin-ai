@@ -55,8 +55,8 @@ vi.mock('@imajin/logger', () => ({
 vi.mock('@imajin/bus', () => ({ publish: mocks.publishMock }));
 
 vi.mock('@imajin/fair', () => ({
-  STRIPE_RATE_BPS: 290,   // 2.9%
-  STRIPE_FIXED_CENTS: 30, // $0.30
+  // Rail fee schedule under test: 2.9% + $0.30 (#2177 — was STRIPE_RATE_BPS / STRIPE_FIXED_CENTS).
+  processorFeeCents: (_rail: string, amountCents: number) => Math.round((amountCents * 290) / 10000) + 30,
 }));
 
 vi.mock('../providers/stripe-webhook', () => ({ fetchActualFee: vi.fn() }));

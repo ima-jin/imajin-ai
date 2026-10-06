@@ -12,7 +12,7 @@ import { isServiceError, settlePaymentRequestManual } from '@/src/lib/pay/paymen
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

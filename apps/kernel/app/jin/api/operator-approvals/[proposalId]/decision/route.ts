@@ -42,7 +42,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
@@ -59,10 +59,6 @@ export const dynamic = 'force-dynamic';
 
 const VALID_DECISIONS = new Set(['approve', 'reject', 'withdrawn']);
 const MAX_MODE_LENGTH = 128;
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /**
  * #2247/#2252: approving on the canvas IS the signing event for a vault:*
@@ -220,3 +216,5 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to record decision' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

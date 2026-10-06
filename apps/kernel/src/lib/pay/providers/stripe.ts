@@ -79,7 +79,7 @@ export class StripeProvider implements PaymentProvider {
   // ===========================================================================
   
   async charge(request: ChargeRequest): Promise<ChargeResult> {
-    const recipientInfo = await this.resolveRecipient(request.to);
+    const recipientInfo = this.resolveRecipient(request.to);
     
     const params: Stripe.PaymentIntentCreateParams = {
       amount: request.amount,
@@ -276,7 +276,7 @@ export class StripeProvider implements PaymentProvider {
   // Helpers
   // ===========================================================================
   
-  private async resolveRecipient(recipient: Recipient): Promise<{ customerId?: string; accountId?: string }> {
+  private resolveRecipient(recipient: Recipient): { customerId?: string; accountId?: string } {
     // see: DID resolution via @imajin/auth is not yet implemented
     if ('did' in recipient) {
       // For now, throw - will implement DID resolution later

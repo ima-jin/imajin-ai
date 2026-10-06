@@ -9,7 +9,7 @@
 // test`/`pnpm test:coverage` so they run on every PR instead of only when
 // someone remembers to run them by hand.
 import { describe, it, expect } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,6 +20,8 @@ const SHELL_SELF_TESTS = [
   'lib/deploy-skip.test.sh',
   'reap-orphans.test.sh',
   'assert-pm2-listeners.test.sh',
+  'check-pm2-restarts.test.sh',
+  'pm2-reconcile.test.sh',
   'build-restart-failed.test.sh',
 ];
 
@@ -27,16 +29,12 @@ describe('deploy script self-tests (#2344, #2382)', () => {
   for (const relativePath of SHELL_SELF_TESTS) {
     it(`${relativePath} passes`, () => {
       const scriptPath = path.join(scriptsDir, relativePath);
-      try {
-        execFileSync('bash', [scriptPath], { encoding: 'utf8', stdio: 'pipe' });
-      } catch (err) {
-        // Surface the script's own ✅/❌ output in the test failure instead of
-        // just "exit code 1", so a CI failure is diagnosable from the log
-        // alone.
-        const output = [err.stdout, err.stderr].filter(Boolean).join('\n');
-        throw new Error(`${relativePath} failed:\n${output}`);
-      }
-      expect(true).toBe(true);
+      const result = spawnSync('bash', [scriptPath], { encoding: 'utf8' });
+      // Surface the script's own ✅/❌ output in the test failure instead of
+      // just "exit code 1", so a CI failure is diagnosable from the log
+      // alone.
+      const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+      expect(result.status, `${relativePath} failed:\n${output}`).toBe(0);
     });
   }
 });

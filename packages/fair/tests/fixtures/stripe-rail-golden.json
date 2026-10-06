@@ -1,0 +1,2964 @@
+{
+  "manifests": {
+    "default": {
+      "version": "0.4.0",
+      "fees": [
+        {
+          "role": "processor",
+          "name": "Stripe",
+          "rateBps": 370,
+          "minRateBps": 290,
+          "fixedCents": 30
+        }
+      ],
+      "chain": [
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "protocol",
+          "share": 0.01
+        },
+        {
+          "did": "NODE_PLACEHOLDER",
+          "role": "node",
+          "share": 0.005
+        },
+        {
+          "did": "BUYER_PLACEHOLDER",
+          "role": "buyer_credit",
+          "share": 0.0025
+        },
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "platform",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "share": 0.9725
+        }
+      ],
+      "distributions": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ],
+      "attribution": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ]
+    },
+    "scope": {
+      "version": "0.4.0",
+      "fees": [
+        {
+          "role": "processor",
+          "name": "Stripe",
+          "rateBps": 370,
+          "minRateBps": 290,
+          "fixedCents": 30
+        }
+      ],
+      "chain": [
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "protocol",
+          "share": 0.01
+        },
+        {
+          "did": "NODE_PLACEHOLDER",
+          "role": "node",
+          "share": 0.005
+        },
+        {
+          "did": "BUYER_PLACEHOLDER",
+          "role": "buyer_credit",
+          "share": 0.0025
+        },
+        {
+          "did": "did:imajin:scope",
+          "role": "scope",
+          "share": 0.005
+        },
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "platform",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "share": 0.9675
+        }
+      ],
+      "distributions": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ],
+      "attribution": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ]
+    },
+    "collaborators": {
+      "version": "0.4.0",
+      "fees": [
+        {
+          "role": "processor",
+          "name": "Stripe",
+          "rateBps": 370,
+          "minRateBps": 290,
+          "fixedCents": 30
+        }
+      ],
+      "chain": [
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "protocol",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "share": 0.01
+        },
+        {
+          "did": "BUYER_PLACEHOLDER",
+          "role": "buyer_credit",
+          "share": 0.005
+        },
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "platform",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "share": 0.965
+        }
+      ],
+      "distributions": [
+        {
+          "did": "did:imajin:x",
+          "role": "author",
+          "share": 0.6
+        },
+        {
+          "did": "did:imajin:y",
+          "role": "editor",
+          "share": 0.4
+        }
+      ],
+      "attribution": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ]
+    },
+    "taxed": {
+      "version": "0.5.0",
+      "fees": [
+        {
+          "role": "processor",
+          "name": "Stripe",
+          "rateBps": 370,
+          "minRateBps": 290,
+          "fixedCents": 30
+        }
+      ],
+      "chain": [
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "protocol",
+          "share": 0.01
+        },
+        {
+          "did": "NODE_PLACEHOLDER",
+          "role": "node",
+          "share": 0.005
+        },
+        {
+          "did": "BUYER_PLACEHOLDER",
+          "role": "buyer_credit",
+          "share": 0.0025
+        },
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "platform",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "share": 0.9725
+        }
+      ],
+      "distributions": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ],
+      "attribution": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ],
+      "taxes": [
+        {
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "basisAmount": 10000,
+          "amount": 1300,
+          "registrationNumber": "123456789RT0001",
+          "collectorDid": "did:imajin:collector",
+          "remitTo": "did:imajin:authority:ca-cra"
+        }
+      ]
+    },
+    "defaultTemplate": {
+      "fair": "1.1",
+      "version": "1.1",
+      "id": "",
+      "type": "image/png",
+      "owner": "did:imajin:creator",
+      "source": "upload",
+      "access": {
+        "type": "private"
+      },
+      "attribution": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ],
+      "chain": [
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "protocol",
+          "share": 0.01
+        },
+        {
+          "did": "NODE_PLACEHOLDER",
+          "role": "node",
+          "share": 0.005
+        },
+        {
+          "did": "BUYER_PLACEHOLDER",
+          "role": "buyer_credit",
+          "share": 0.0025
+        },
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "platform",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "share": 0.9725
+        }
+      ],
+      "distribution": {
+        "reproduction": {
+          "mode": "allowed"
+        },
+        "streaming": {
+          "mode": "allowed",
+          "price": {
+            "amount": 1,
+            "currency": "USD"
+          }
+        },
+        "derivative": {
+          "mode": "allow-with-attribution"
+        },
+        "syndication": {
+          "mode": "allow-with-attribution"
+        }
+      },
+      "transfer": {
+        "allowed": true,
+        "requiresAttribution": true,
+        "price": {
+          "amount": 100000,
+          "currency": "USD"
+        },
+        "resaleRoyaltyBps": 500
+      },
+      "fees": [
+        {
+          "role": "processor",
+          "name": "Stripe",
+          "rateBps": 370,
+          "minRateBps": 290,
+          "fixedCents": 30
+        }
+      ],
+      "training": {
+        "allowed": false
+      },
+      "commercial": {
+        "allowed": false,
+        "contactRequired": true
+      },
+      "tipping": {
+        "enabled": true
+      }
+    },
+    "defaultTemplateText": {
+      "fair": "1.1",
+      "version": "1.1",
+      "id": "",
+      "type": "text/markdown",
+      "owner": "did:imajin:creator",
+      "source": "upload",
+      "access": {
+        "type": "private"
+      },
+      "attribution": [
+        {
+          "did": "did:imajin:creator",
+          "role": "creator",
+          "share": 1
+        }
+      ],
+      "chain": [
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "protocol",
+          "share": 0.01
+        },
+        {
+          "did": "NODE_PLACEHOLDER",
+          "role": "node",
+          "share": 0.005
+        },
+        {
+          "did": "BUYER_PLACEHOLDER",
+          "role": "buyer_credit",
+          "share": 0.0025
+        },
+        {
+          "did": "did:imajin:c6e6c109db4a1cc52995c0836f73cc6833d7e4624bc86e048118d72820873213",
+          "role": "platform",
+          "share": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "share": 0.9725
+        }
+      ],
+      "distribution": {
+        "reproduction": {
+          "mode": "quote-with-attribution",
+          "quote": {
+            "maxPercent": 25,
+            "maxWords": 200
+          }
+        },
+        "streaming": {
+          "mode": "allowed",
+          "price": {
+            "amount": 1,
+            "currency": "USD"
+          }
+        },
+        "derivative": {
+          "mode": "allow-with-attribution"
+        },
+        "syndication": {
+          "mode": "allow-with-attribution"
+        }
+      },
+      "transfer": {
+        "allowed": true,
+        "requiresAttribution": true,
+        "price": {
+          "amount": 100000,
+          "currency": "USD"
+        },
+        "resaleRoyaltyBps": 500
+      },
+      "fees": [
+        {
+          "role": "processor",
+          "name": "Stripe",
+          "rateBps": 370,
+          "minRateBps": 290,
+          "fixedCents": 30
+        }
+      ],
+      "training": {
+        "allowed": false
+      },
+      "commercial": {
+        "allowed": false,
+        "contactRequired": true
+      },
+      "tipping": {
+        "enabled": true
+      }
+    }
+  },
+  "settlements": {
+    "standard split | 1 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": -0.29
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 1 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": -0.29
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 1 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": -0.29
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0
+    },
+    "standard split | 30 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": -0.01
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 30 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": -0.01
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 30 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": -0.01
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.04,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.04
+    },
+    "standard split | 99 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 0.63
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 99 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 0.63
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 99 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 0.63
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.13
+    },
+    "standard split | 100 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 0.63
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 100 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 0.63
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 100 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 0.63
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.13
+    },
+    "standard split | 333 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.02
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 2.82
+        }
+      ],
+      "expectedTotal": 2.91,
+      "estimatedFeeDollars": 0.42,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 333 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.02
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 2.82
+        }
+      ],
+      "expectedTotal": 2.91,
+      "estimatedFeeDollars": 0.42,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 333 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.02
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 2.8
+        }
+      ],
+      "expectedTotal": 2.89,
+      "estimatedFeeDollars": 0.44,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.43,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.43
+    },
+    "standard split | 1234 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.06
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 11.25
+        }
+      ],
+      "expectedTotal": 11.58,
+      "estimatedFeeDollars": 0.76,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 1234 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.06
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 11.25
+        }
+      ],
+      "expectedTotal": 11.58,
+      "estimatedFeeDollars": 0.76,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 1234 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.06
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 11.19
+        }
+      ],
+      "expectedTotal": 11.52,
+      "estimatedFeeDollars": 0.82,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 1.6,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 1.6
+    },
+    "standard split | 10001 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.5
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.25
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 93.26
+        }
+      ],
+      "expectedTotal": 96.01,
+      "estimatedFeeDollars": 4,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 10001 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.5
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.25
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 93.26
+        }
+      ],
+      "expectedTotal": 96.01,
+      "estimatedFeeDollars": 4,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 10001 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 0.5
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 0.25
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 92.78
+        }
+      ],
+      "expectedTotal": 95.53,
+      "estimatedFeeDollars": 4.48,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 13
+    },
+    "standard split | 99999 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 5
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 2.5
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 935.19
+        }
+      ],
+      "expectedTotal": 962.69,
+      "estimatedFeeDollars": 37.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 99999 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 5
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 2.5
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 935.19
+        }
+      ],
+      "expectedTotal": 962.69,
+      "estimatedFeeDollars": 37.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 99999 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 5
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 2.5
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 930.38
+        }
+      ],
+      "expectedTotal": 957.88,
+      "estimatedFeeDollars": 42.11,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 130,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 130
+    },
+    "standard split | 500000 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 25
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 12.5
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 4677.2
+        }
+      ],
+      "expectedTotal": 4814.7,
+      "estimatedFeeDollars": 185.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 500000 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 25
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 12.5
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 4677.2
+        }
+      ],
+      "expectedTotal": 4814.7,
+      "estimatedFeeDollars": 185.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "standard split | 500000 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:node",
+          "role": "node",
+          "amount": 25
+        },
+        {
+          "did": "did:imajin:buyer",
+          "role": "buyer_credit",
+          "amount": 12.5
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:creator",
+          "role": "seller",
+          "amount": 4653.15
+        }
+      ],
+      "expectedTotal": 4790.65,
+      "estimatedFeeDollars": 209.35,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 650,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 650
+    },
+    "multi-seller pro rata (#2472) | 1 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": -0.29
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 1 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": -0.29
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 1 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": -0.29
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 30 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": -0.01
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 30 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": -0.01
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 30 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": -0.01
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.04,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.04
+    },
+    "multi-seller pro rata (#2472) | 99 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0.32
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.19
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.12
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 99 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0.32
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.19
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.12
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 99 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0.32
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.19
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.12
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.13
+    },
+    "multi-seller pro rata (#2472) | 100 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0.33
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.19
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.12
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 100 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0.33
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.19
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.12
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 100 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.01
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 0.33
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.19
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.12
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.13
+    },
+    "multi-seller pro rata (#2472) | 333 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 1.46
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.87
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.52
+        }
+      ],
+      "expectedTotal": 2.91,
+      "estimatedFeeDollars": 0.42,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 333 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 1.46
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.87
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.52
+        }
+      ],
+      "expectedTotal": 2.91,
+      "estimatedFeeDollars": 0.42,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 333 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.03
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 1.44
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 0.87
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 0.52
+        }
+      ],
+      "expectedTotal": 2.89,
+      "estimatedFeeDollars": 0.44,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.43,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.43
+    },
+    "multi-seller pro rata (#2472) | 1234 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 5.79
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 3.47
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 2.08
+        }
+      ],
+      "expectedTotal": 11.58,
+      "estimatedFeeDollars": 0.76,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 1234 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 5.79
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 3.47
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 2.08
+        }
+      ],
+      "expectedTotal": 11.58,
+      "estimatedFeeDollars": 0.76,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 1234 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 5.76
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 3.45
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 2.07
+        }
+      ],
+      "expectedTotal": 11.52,
+      "estimatedFeeDollars": 0.82,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 1.6,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 1.6
+    },
+    "multi-seller pro rata (#2472) | 10001 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 47.97
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 28.78
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 17.26
+        }
+      ],
+      "expectedTotal": 96.01,
+      "estimatedFeeDollars": 4,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 10001 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 47.97
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 28.78
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 17.26
+        }
+      ],
+      "expectedTotal": 96.01,
+      "estimatedFeeDollars": 4,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 10001 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 47.72
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 28.63
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 17.18
+        }
+      ],
+      "expectedTotal": 95.53,
+      "estimatedFeeDollars": 4.48,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 13
+    },
+    "multi-seller pro rata (#2472) | 99999 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 480.96
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 288.58
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 173.15
+        }
+      ],
+      "expectedTotal": 962.69,
+      "estimatedFeeDollars": 37.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 99999 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 480.96
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 288.58
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 173.15
+        }
+      ],
+      "expectedTotal": 962.69,
+      "estimatedFeeDollars": 37.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 99999 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 10
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 478.5
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 287.11
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 172.27
+        }
+      ],
+      "expectedTotal": 957.88,
+      "estimatedFeeDollars": 42.11,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 130,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 130
+    },
+    "multi-seller pro rata (#2472) | 500000 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 2405.46
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 1443.28
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 865.96
+        }
+      ],
+      "expectedTotal": 4814.7,
+      "estimatedFeeDollars": 185.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 500000 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 2405.46
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 1443.28
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 865.96
+        }
+      ],
+      "expectedTotal": 4814.7,
+      "estimatedFeeDollars": 185.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "multi-seller pro rata (#2472) | 500000 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 50
+        },
+        {
+          "did": "did:imajin:a",
+          "role": "seller",
+          "amount": 2393.19
+        },
+        {
+          "did": "did:imajin:b",
+          "role": "creator",
+          "amount": 1435.91
+        },
+        {
+          "did": "did:imajin:c",
+          "role": "event",
+          "amount": 861.55
+        }
+      ],
+      "expectedTotal": 4790.65,
+      "estimatedFeeDollars": 209.35,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 650,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 650
+    },
+    "no seller-role entry | 1 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": -0.29
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 1 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": -0.29
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 1 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": -0.29
+        }
+      ],
+      "expectedTotal": -0.29,
+      "estimatedFeeDollars": 0.3,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 30 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": -0.13
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 30 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": -0.13
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 30 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.12
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": -0.13
+        }
+      ],
+      "expectedTotal": -0.01,
+      "estimatedFeeDollars": 0.31,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.04,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.04
+    },
+    "no seller-role entry | 99 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.4
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.25
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 99 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.4
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.25
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 99 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.4
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.25
+        }
+      ],
+      "expectedTotal": 0.65,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.13
+    },
+    "no seller-role entry | 100 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.4
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.26
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 100 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.4
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.26
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 100 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 0.4
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 0.26
+        }
+      ],
+      "expectedTotal": 0.66,
+      "estimatedFeeDollars": 0.34,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.13
+    },
+    "no seller-role entry | 333 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1.33
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1.58
+        }
+      ],
+      "expectedTotal": 2.91,
+      "estimatedFeeDollars": 0.42,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 333 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1.33
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1.58
+        }
+      ],
+      "expectedTotal": 2.91,
+      "estimatedFeeDollars": 0.42,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 333 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 1.33
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 1.56
+        }
+      ],
+      "expectedTotal": 2.89,
+      "estimatedFeeDollars": 0.44,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 0.43,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 0.43
+    },
+    "no seller-role entry | 1234 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 4.94
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 6.64
+        }
+      ],
+      "expectedTotal": 11.58,
+      "estimatedFeeDollars": 0.76,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 1234 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 4.94
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 6.64
+        }
+      ],
+      "expectedTotal": 11.58,
+      "estimatedFeeDollars": 0.76,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 1234 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 4.94
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 6.58
+        }
+      ],
+      "expectedTotal": 11.52,
+      "estimatedFeeDollars": 0.82,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 1.6,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 1.6
+    },
+    "no seller-role entry | 10001 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 40
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 56.01
+        }
+      ],
+      "expectedTotal": 96.01,
+      "estimatedFeeDollars": 4,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 10001 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 40
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 56.01
+        }
+      ],
+      "expectedTotal": 96.01,
+      "estimatedFeeDollars": 4,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 10001 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 40
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 55.53
+        }
+      ],
+      "expectedTotal": 95.53,
+      "estimatedFeeDollars": 4.48,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 13,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 13
+    },
+    "no seller-role entry | 99999 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 400
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 562.69
+        }
+      ],
+      "expectedTotal": 962.69,
+      "estimatedFeeDollars": 37.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 99999 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 400
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 562.69
+        }
+      ],
+      "expectedTotal": 962.69,
+      "estimatedFeeDollars": 37.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 99999 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 400
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 557.88
+        }
+      ],
+      "expectedTotal": 957.88,
+      "estimatedFeeDollars": 42.11,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 130,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 130
+    },
+    "no seller-role entry | 500000 | manifest fees": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 2000
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 2814.7
+        }
+      ],
+      "expectedTotal": 4814.7,
+      "estimatedFeeDollars": 185.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 500000 | fallback": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 2000
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 2814.7
+        }
+      ],
+      "expectedTotal": 4814.7,
+      "estimatedFeeDollars": 185.3,
+      "taxCredits": [],
+      "totalTaxDollars": 0
+    },
+    "no seller-role entry | 500000 | taxed": {
+      "resolvedChain": [
+        {
+          "did": "did:imajin:protocol",
+          "role": "protocol",
+          "amount": 2000
+        },
+        {
+          "did": "did:imajin:platform",
+          "role": "platform",
+          "amount": 2790.65
+        }
+      ],
+      "expectedTotal": 4790.65,
+      "estimatedFeeDollars": 209.35,
+      "taxCredits": [
+        {
+          "did": "did:imajin:collector",
+          "amount": 650,
+          "jurisdiction": "CA-ON",
+          "kind": "HST",
+          "rateBps": 1300,
+          "remitTo": "did:imajin:authority:ca-cra",
+          "registrationNumber": "123456789RT0001"
+        }
+      ],
+      "totalTaxDollars": 650
+    }
+  }
+}

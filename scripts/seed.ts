@@ -6,6 +6,7 @@
  */
 
 import postgres from 'postgres';
+import { mapSequentially } from './lib/sequential.mjs';
 
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) {
@@ -22,10 +23,11 @@ async function main() {
   const schemas = ['auth', 'chat', 'coffee', 'connections', 'dykil', 'events', 'links', 'pay', 'profile', 'registry', 'www'];
 
   console.log('📦 Ensuring schemas exist...');
-  for (const schema of schemas) {
+  // Sequential on purpose: schemas are created one at a time in list order, stopping at the first failure.
+  await mapSequentially(schemas, async (schema) => {
     await sql.unsafe(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
     console.log(`  ✅ ${schema}`);
-  }
+  });
 
   // Seed Jin profile
   console.log('\n👤 Seeding Jin profile...');

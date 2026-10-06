@@ -10,7 +10,6 @@
  * review note 4 scopes metering to the `/v1/messages` usage object only).
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { applySealedModel, forwardAnthropicCountTokens } from '@/src/lib/inference/anthropic-messages/forward';
 import {
@@ -24,10 +23,6 @@ import {
 const log = createLogger('kernel:inference:anthropic-count-tokens-route');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function POST(request: NextRequest) {
   const guarded = await guardAnthropicRequest(request);
@@ -55,3 +50,5 @@ export async function POST(request: NextRequest) {
     });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

@@ -15,9 +15,7 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
   const params = await props.params;

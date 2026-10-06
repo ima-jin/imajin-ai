@@ -11,10 +11,6 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 /**
  * POST /api/login/mfa
  * Complete MFA challenge and create a session.
@@ -150,3 +146,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to complete MFA' }, { status: 500, headers: cors });
   }
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

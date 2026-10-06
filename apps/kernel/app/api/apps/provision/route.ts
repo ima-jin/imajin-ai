@@ -27,7 +27,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { getOperatorDid, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
@@ -43,10 +43,6 @@ const SLUG_PATTERN = /^[a-z][a-z0-9-]{0,38}$/;
 const MAX_DISPLAY_NAME_LENGTH = 200;
 const MAX_TEMPLATE_LENGTH = 200;
 const MAX_ATTESTATION_TYPES = 20;
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 interface ProvisionRequestBody {
   slug?: unknown;
@@ -218,3 +214,5 @@ export async function GET(request: NextRequest) {
     { headers: cors },
   );
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

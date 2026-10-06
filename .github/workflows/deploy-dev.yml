@@ -97,29 +97,45 @@ jobs:
             echo "⚠️  No dev-* pm2 processes found to restart"
             exit 0
           fi
-          # Services declared in the ecosystem file are restarted FROM the file: a
-          # name-based `pm2 restart` reuses the saved definition, so a service pm2
-          # still has saved as `npm start` would keep the npm wrapper that orphans
-          # next-server on restart (#2447). Anything not in the file keeps the
-          # name-based restart.
+          # Services declared in the ecosystem file are restarted FROM the file via
+          # scripts/pm2-reconcile.sh (#2547). Neither `pm2 restart` nor
+          # `pm2 startOrRestart` on an existing process replaces the exec path pm2
+          # stored at first start, so a service still stored as `npm start` ran
+          # `npm start -p <port>` once the ecosystem switched to the direct next
+          # binary (#2447) and crash-looped. reconcile deletes + starts any app
+          # whose stored exec differs from the file (or that pm2 lacks), and
+          # restarts the rest. Anything not in the file keeps the name-based
+          # restart.
           source scripts/lib/pm2-owned.sh
+          # dev-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
+          # DEV_PROCS only lists what pm2 already runs, so on the first deploy
+          # that ships it (or after it was deleted) it would never be started and
+          # no job would ever fire. Always include it: startOrRestart below starts
+          # it from the ecosystem file when pm2 doesn't know it yet.
+          case " $DEV_PROCS " in
+            *" dev-kernel-cron "*) ;;
+            *) DEV_PROCS="$DEV_PROCS dev-kernel-cron" ;;
+          esac
           FILE_PROCS=""
           NAME_PROCS=""
           for proc in $DEV_PROCS; do
             if ecosystem_has_app "$proc" "$ECOSYSTEM_FILE"; then
-              FILE_PROCS="${FILE_PROCS:+$FILE_PROCS,}$proc"
+              FILE_PROCS="$FILE_PROCS $proc"
             else
               NAME_PROCS="$NAME_PROCS $proc"
             fi
           done
           if [ -n "$FILE_PROCS" ]; then
-            echo "Restarting from $ECOSYSTEM_FILE: $FILE_PROCS"
-            pm2 startOrRestart "$ECOSYSTEM_FILE" --only "$FILE_PROCS" --update-env
+            echo "Reconciling against $ECOSYSTEM_FILE:$FILE_PROCS"
+            ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" $FILE_PROCS
           fi
           if [ -n "$NAME_PROCS" ]; then
             echo "Restarting by name:$NAME_PROCS"
             pm2 restart $NAME_PROCS
           fi
+          # Persist the process list so a pm2 resurrect (reboot) brings back the
+          # new definitions, not the stale `npm start` ones (#2547).
+          pm2 save
           echo "✅ Dev services restarted"
 
       # #2447: fail the deploy unless every port's listener is the pm2-managed

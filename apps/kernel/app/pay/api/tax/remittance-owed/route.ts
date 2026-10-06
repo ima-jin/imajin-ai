@@ -17,7 +17,7 @@ import { getTaxRemittanceOwed } from '@/src/lib/pay/tax-remittance';
 
 const log = createLogger('kernel');
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

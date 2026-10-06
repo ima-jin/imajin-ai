@@ -152,16 +152,15 @@ function detectMethods(source: string): HttpMethod[] {
 async function findRoutesRecursive(dir: string): Promise<string[]> {
   if (!existsSync(dir)) return [];
   const entries = await readdir(dir, { withFileTypes: true });
-  const results: string[] = [];
-  for (const entry of entries) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      results.push(...(await findRoutesRecursive(full)));
-    } else if (entry.isFile() && entry.name === 'route.ts') {
-      results.push(full);
-    }
-  }
-  return results;
+  // Sibling directories are independent, so walk them concurrently; Promise.all keeps entry order.
+  const found = await Promise.all(
+    entries.map(async (entry): Promise<string[]> => {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) return findRoutesRecursive(full);
+      return entry.isFile() && entry.name === 'route.ts' ? [full] : [];
+    }),
+  );
+  return found.flat();
 }
 
 /**
@@ -422,26 +421,31 @@ async function generateSpec(service: ServiceConfig, repoRoot: string): Promise<v
   const routes: Array<{ urlPath: string; methods: HttpMethod[]; source: string }> = [];
   const allSchemes = new Set<string>();
 
-  for (const routeRoot of service.routeRoots) {
-    const routeRootAbs = join(serviceDir, routeRoot);
-    const files = await findRoutesRecursive(routeRootAbs);
+  // Route roots and the files in them are independent, so read them all concurrently;
+  // Promise.all keeps root and file order, so the collected routes are unchanged.
+  const rootFiles = await Promise.all(
+    service.routeRoots.map(async (routeRoot) => {
+      const routeRootAbs = join(serviceDir, routeRoot);
+      const files = await findRoutesRecursive(routeRootAbs);
+      const sources = await Promise.all(files.map((file) => readFile(file, 'utf-8')));
+      return files.map((file, i) => ({ file, source: sources[i], routeRootAbs }));
+    }),
+  );
 
-    for (const file of files) {
-      const source = await readFile(file, 'utf-8');
-      const methods = detectMethods(source);
-      if (methods.length === 0) continue;
+  for (const { file, source, routeRootAbs } of rootFiles.flat()) {
+    const methods = detectMethods(source);
+    if (methods.length === 0) continue;
 
-      const urlPath = filePathToUrlPath(file, routeRootAbs);
+    const urlPath = filePathToUrlPath(file, routeRootAbs);
 
-      // Collect security schemes used
-      for (const method of methods) {
-        for (const s of detectSecurity(source, method)) {
-          allSchemes.add(s);
-        }
+    // Collect security schemes used
+    for (const method of methods) {
+      for (const s of detectSecurity(source, method)) {
+        allSchemes.add(s);
       }
-
-      routes.push({ urlPath, methods, source });
     }
+
+    routes.push({ urlPath, methods, source });
   }
 
   // Sort paths for deterministic output

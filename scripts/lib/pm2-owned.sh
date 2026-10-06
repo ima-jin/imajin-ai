@@ -56,6 +56,7 @@ pm2_god_daemon_pid() {
     pid="$(pgrep -f 'PM2 v[0-9][0-9.]*: God Daemon' 2>/dev/null | head -1 || true)"
   fi
   printf '%s' "$pid"
+  return 0
 }
 
 # Is $1 owned by pm2, walking up the ancestor chain up to 6 levels? Expects

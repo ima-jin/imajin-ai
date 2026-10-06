@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { runReconciliation } from '@/src/lib/pay/reconciliation';
+import { requireCronAuth } from '@/src/cron/auth';
 
 const log = createLogger('kernel');
 
@@ -11,8 +12,8 @@ export const dynamic = 'force-dynamic';
  * GET /api/cron/withdrawal-reconcile (#2172) — belt-and-suspenders sweep
  * closing the "Stripe succeeded, ledger commit failed" gap.
  *
- * Same auth/shape as `/api/cron/quickbooks-reconcile`: Vercel Cron,
- * protected by `Authorization: Bearer {CRON_SECRET}` — see `vercel.json`
+ * Same auth/shape as `/api/cron/quickbooks-reconcile`: Scheduled job,
+ * protected by `Authorization: Bearer {CRON_SECRET}` — see `src/cron/schedule.ts`
  * for the schedule. The webhook fast path
  * (`app/pay/api/webhook/route.ts`'s `transfer.created` case) confirms most
  * intents immediately; this sweep is what catches everything a dropped or
@@ -21,13 +22,9 @@ export const dynamic = 'force-dynamic';
  * Writes no balances — see `src/lib/pay/reconciliation.ts`'s docblock.
  */
 export async function GET(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-  }
+  // Fail closed (#2550): 503 when CRON_SECRET is unset, 401 on a wrong bearer.
+  const denied = await requireCronAuth(request);
+  if (denied) return denied;
 
   try {
     const result = await runReconciliation();

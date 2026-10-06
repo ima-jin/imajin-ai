@@ -23,10 +23,6 @@ import {
   resolveHandleForDid,
 } from '@/src/lib/auth/attestation-type-registry';
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
-}
-
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
   const entries = await listRegisteredAttestationTypes();
@@ -77,3 +73,5 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(result.entry, { status: 201, headers: cors });
 }
+
+export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

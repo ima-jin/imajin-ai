@@ -66,7 +66,7 @@ export function FileEditor({ asset, isOwner }: Readonly<FileEditorProps>) {
 
   // Load editor and highlighter lazily
   useEffect(() => {
-    Promise.all([
+    void Promise.all([
       import("react-simple-code-editor"),
       getHighlighter(),
       import("react-markdown"),

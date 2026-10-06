@@ -22,7 +22,7 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 import { requireGrantAndKey, TYPESAFE_DECIDE_SCOPE } from '@/src/lib/typesafe/connector';
 import {
@@ -42,7 +42,7 @@ const REQUEST_ID_HEADER = 'x-typesafe-request-id';
 
 const DEFAULT_MODEL: TypesafeModelId = 'jev-latest';
 const VALID_MODELS: readonly TypesafeModelId[] = [DEFAULT_MODEL, 'jev-1.13.0', 'jev-preview'];
-const VALID_QUESTION_TYPES: readonly TypesafeQuestionType[] = ['noul', 'choice', 'score'];
+const VALID_QUESTION_TYPES: ReadonlySet<TypesafeQuestionType> = new Set<TypesafeQuestionType>(['noul', 'choice', 'score']);
 
 /** Fail-closed grant-gate error prefixes thrown by `requireGrantAndKey` (`createConnectorTokenPaste`). */
 const GRANT_ERROR_NO_GRANT = 'typesafe_no_grant';
@@ -52,10 +52,6 @@ const GRANT_ERROR_NO_KEY = 'typesafe_no_key';
 /** Attach `x-typesafe-request-id` to a headers object when present, leaving it untouched otherwise. */
 function withRequestIdHeader(headers: Record<string, string>, requestId: string | null): Record<string, string> {
   return requestId ? { ...headers, [REQUEST_ID_HEADER]: requestId } : headers;
-}
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
 }
 
 interface DecideRequestBody {
@@ -75,7 +71,7 @@ function isValidState(state: unknown): state is DecideRequestBody['state'] {
 function isValidQuestion(question: unknown): question is TypesafeQuestion {
   if (typeof question !== 'object' || question === null) return false;
   const q = question as Partial<TypesafeQuestion>;
-  if (!VALID_QUESTION_TYPES.includes(q.type as TypesafeQuestionType)) return false;
+  if (!VALID_QUESTION_TYPES.has(q.type as TypesafeQuestionType)) return false;
   if (typeof q.instructions !== 'string' || q.instructions.trim().length === 0) return false;
   // criteria is required for choice/score, absent for noul.
   if ((q.type === 'choice' || q.type === 'score') && q.criteria === undefined) return false;
@@ -210,3 +206,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'typesafe_decide_failed', detail: String(err) }, { status: 502, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

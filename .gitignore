@@ -52,3 +52,7 @@ audit-report.txt
 
 # Per-DID corpus SQLite indexes (generated at runtime, never checked in)
 apps/corpus/data/
+
+# Kernel cron scheduler last-run state (#2550); written by the *-kernel-cron pm2 app
+apps/kernel/.cron-state.json
+apps/kernel/.cron-state.json.*.tmp

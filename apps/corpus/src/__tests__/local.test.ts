@@ -151,6 +151,38 @@ describe('LocalAdapter#fetch', () => {
   });
 });
 
+describe('LocalAdapter Promise contract', () => {
+  it('fetch() does not throw synchronously; an invalid source rejects on first iteration', async () => {
+    const adapter = new LocalAdapter();
+    let iterable: AsyncIterable<ThreadDocument> | undefined;
+    expect(() => {
+      iterable = adapter.fetch('github:not-local');
+    }).not.toThrow();
+    await expect(collect(iterable as AsyncIterable<ThreadDocument>)).rejects.toThrow(/Invalid local source/);
+  });
+
+  it('sync() rejects (rather than throwing synchronously) on an invalid source', async () => {
+    const adapter = new LocalAdapter();
+    let promise: Promise<unknown> | undefined;
+    expect(() => {
+      promise = adapter.sync('github:not-local', null);
+    }).not.toThrow();
+    await expect(promise).rejects.toThrow(/Invalid local source/);
+  });
+
+  it('sync() rejects when the signal is already aborted', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'corpus-local-abort-test-'));
+    try {
+      writeFile(dir, 'a.md', '# A');
+      const controller = new AbortController();
+      controller.abort();
+      await expect(new LocalAdapter().sync(`local:${dir}`, null, { signal: controller.signal })).rejects.toThrow(/aborted/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('LocalAdapter#sync', () => {
   let dir: string;
 

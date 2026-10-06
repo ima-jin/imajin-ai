@@ -25,7 +25,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import {
   clearEnvironmentId,
   isValidEnvironmentId,
@@ -34,10 +34,6 @@ import {
 } from '@/src/lib/warp/environment';
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /**
  * Resolve the acting DID, or the error response to return instead.
@@ -134,3 +130,5 @@ export async function DELETE(request: NextRequest) {
 
   return NextResponse.json({ cleared, environmentId: null }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
