@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
-import { eq, and, isNull, ne, desc, notInArray, inArray } from 'drizzle-orm';
+import { eq, and, isNull, ne, desc, notInArray, inArray, sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
@@ -15,8 +15,28 @@ import { resolveCallerDid } from './caller-did';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
+import { encodeAttestationCursor, parseAttestationCursor } from './attestation-cursor';
+import type { AttestationCursor } from './attestation-cursor';
 
 const ATTESTATION_LIMIT_MAX = 100;
+const ATTESTATION_REF_MAX_LENGTH = 256;
+/** Response header carrying the cursor for the next (older) page — see GET. */
+const NEXT_CURSOR_HEADER = 'X-Next-Cursor';
+
+type RefResolution = { ok: true; ref: string | null } | { ok: false; error: string };
+
+/**
+ * Validate the optional `ref` on POST (#2534): absent/null -> null; otherwise a
+ * non-empty string of at most ATTESTATION_REF_MAX_LENGTH chars. It is an opaque
+ * lookup key, so no further shape is imposed.
+ */
+function resolveRef(value: unknown): RefResolution {
+  if (value === undefined || value === null) return { ok: true, ref: null };
+  if (typeof value !== 'string' || value.length === 0 || value.length > ATTESTATION_REF_MAX_LENGTH) {
+    return { ok: false, error: `ref must be a non-empty string of at most ${ATTESTATION_REF_MAX_LENGTH} characters` };
+  }
+  return { ok: true, ref: value };
+}
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
@@ -188,7 +208,11 @@ function resolveNostrSignature(
  * Issue a new attestation.
  * Requires session cookie or Bearer token.
  *
- * Body: { issuer_did, subject_did, type, context_id?, context_type?, payload?, signature, issued_at?, nostr_sig? }
+ * Body: { issuer_did, subject_did, type, context_id?, context_type?, ref?, payload?, signature, issued_at?, nostr_sig? }
+ *
+ * `ref` (#2534) is an optional, indexed, app-specific lookup key (e.g. a
+ * ticketId). It is stored verbatim and is NOT part of the signed canonical
+ * form below — the signed `payload` remains the source of truth.
  *
  * Signature MUST be Ed25519 over:
  *   canonicalize({ subject_did, type, context_id, context_type, payload, issued_at })
@@ -251,6 +275,11 @@ export async function POST(request: NextRequest) {
   const { delegatorDid, disclosureScope, prevEventRef, supersedes } = envelopeResult.envelope;
   const retireOneSidedId = envelopeResult.supersedesOneSided ? supersedes : null;
 
+  const refResult = resolveRef(body.ref);
+  if (!refResult.ok) {
+    return NextResponse.json({ error: refResult.error }, { status: 400, headers: cors });
+  }
+
   const issuedAtMs = resolveIssuedAt(issued_at);
 
   // Canonical form that was signed
@@ -308,6 +337,7 @@ export async function POST(request: NextRequest) {
       type: type as AttestationType,
       contextId: (context_id as string | undefined) ?? null,
       contextType: (context_type as string | undefined) ?? null,
+      ref: refResult.ref,
       payload: (payload as Record<string, unknown> | undefined) ?? null,
       signature,
       cid,
@@ -356,6 +386,41 @@ const EVIDENCE_GRADE_TO_STATUS: Record<string, string> = {
   disputed: 'declined',
 };
 
+type CursorResolution = { ok: true; cursor: AttestationCursor | null } | { ok: false; error: string };
+
+/** Parse the optional `before` query param (#2533); absent -> first page. */
+function resolveCursor(beforeParam: string | null): CursorResolution {
+  if (!beforeParam) return { ok: true, cursor: null };
+  const cursor = parseAttestationCursor(beforeParam);
+  return cursor ? { ok: true, cursor } : { ok: false, error: 'before must be <issued_at,id>' };
+}
+
+/**
+ * Split a `limit + 1` fetch into the page and the cursor for the next one.
+ * The cursor comes from the last row of the DB page, before any
+ * disclosure_scope filtering, so a page that loses rows to that filter still
+ * advances.
+ */
+function splitPage(fetched: Attestation[], limit: number): { rows: Attestation[]; nextCursor: string | null } {
+  if (fetched.length <= limit) return { rows: fetched, nextCursor: null };
+  const rows = fetched.slice(0, limit);
+  return { rows, nextCursor: encodeAttestationCursor(rows[rows.length - 1]) };
+}
+
+/**
+ * issued_at truncated to the millisecond. The cursor carries a JS timestamp
+ * (ms precision) but rows written with the column default (`now()`) have
+ * microsecond precision; truncating on both the ORDER BY and the cursor
+ * comparison keeps the two consistent so no row is skipped or repeated
+ * across a page boundary.
+ */
+const issuedAtTruncated = () => sql`date_trunc('milliseconds', ${attestations.issuedAt})`;
+
+/** Keyset predicate (#2533): strictly older than the cursor row in (issued_at DESC, id DESC) order. */
+function beforeCursorCondition(cursor: AttestationCursor) {
+  return sql`(${issuedAtTruncated()}, ${attestations.id}) < (${cursor.issuedAt}::timestamptz, ${cursor.id})`;
+}
+
 /**
  * Build the `and(...)` condition list for the GET list query. Extracted
  * from GET so the handler's own branching stays under the
@@ -367,8 +432,10 @@ function buildListConditions(params: {
   issuerFilter: string | null;
   statusFilter: string | null;
   contextIdFilter: string | null;
+  refFilter: string | null;
+  cursor: AttestationCursor | null;
 }) {
-  const { subjectDid, typeFilter, issuerFilter, statusFilter, contextIdFilter } = params;
+  const { subjectDid, typeFilter, issuerFilter, statusFilter, contextIdFilter, refFilter, cursor } = params;
   const conditions = [
     eq(attestations.subjectDid, subjectDid),
     isNull(attestations.revokedAt),
@@ -377,6 +444,9 @@ function buildListConditions(params: {
   if (issuerFilter) conditions.push(eq(attestations.issuerDid, issuerFilter));
   // #2396: exact match on the indexed context_id column.
   if (contextIdFilter) conditions.push(eq(attestations.contextId, contextIdFilter));
+  // #2534: exact match on the indexed ref column. Never a payload query.
+  if (refFilter) conditions.push(eq(attestations.ref, refFilter));
+  if (cursor) conditions.push(beforeCursorCondition(cursor));
   if (statusFilter) {
     conditions.push(eq(attestations.attestationStatus, statusFilter));
   } else {
@@ -430,10 +500,23 @@ async function filterVisibleRows(rows: Attestation[], request: NextRequest): Pro
 }
 
 /**
- * GET /api/attestations?subject_did=...&type=...&issuer_did=...&context_id=...&limit=...&evidence_grade=...
+ * GET /api/attestations?subject_did=...&type=...&issuer_did=...&context_id=...&ref=...&limit=...&evidence_grade=...&before=...
  * Returns non-revoked attestations for a subject, newest first, annotated
  * with a computed `evidenceGrade`.
  * subject_did is required.
+ *
+ * Cursor paging (#2533): order is (issued_at DESC, id DESC) — stable, with the
+ * id as tiebreak for same-timestamp rows. Pass `before=<issued_at,id>` (the
+ * value of the previous page's `X-Next-Cursor` response header) to get the
+ * next, older page; the header is only present when more rows exist. No
+ * offset paging. The body stays a bare array so existing callers are
+ * unaffected. `next_cursor` is taken from the last row of the DB page, before
+ * disclosure_scope filtering, so a page that loses rows to that filter still
+ * advances.
+ *
+ * `ref` (#2534) is an exact-match filter on the indexed `ref` column; it only
+ * narrows the same disclosure_scope-gated result set — it never widens access
+ * and there is no payload querying.
  *
  * disclosure_scope (#1885) is enforced only for attestation types present in
  * the attestation_type_registry (i.e. the new envelope-aware vocabulary —
@@ -466,21 +549,33 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
   const typeFilter = searchParams.get('type');
   const issuerFilter = searchParams.get('issuer_did');
   const contextIdFilter = searchParams.get('context_id');
+  const refFilter = searchParams.get('ref');
+  const cursorResult = resolveCursor(searchParams.get('before'));
+  if (!cursorResult.ok) {
+    return NextResponse.json({ error: cursorResult.error }, { status: 400, headers: cors });
+  }
+  const { cursor } = cursorResult;
   const evidenceGradeFilter = searchParams.get('evidence_grade'); // 'unilateral' | 'corroborated' | 'disputed'
   const statusFilter = searchParams.get('status') ?? // 'pending' | 'bilateral' | 'declined'
     (evidenceGradeFilter ? EVIDENCE_GRADE_TO_STATUS[evidenceGradeFilter] : null);
   const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
 
-  const conditions = buildListConditions({ subjectDid, typeFilter, issuerFilter, statusFilter, contextIdFilter });
+  const conditions = buildListConditions({ subjectDid, typeFilter, issuerFilter, statusFilter, contextIdFilter, refFilter, cursor });
 
   try {
-    const rows = await db
+    // Fetch one extra row: its presence is how we know a next page exists.
+    const fetched = await db
       .select()
       .from(attestations)
       .where(and(...conditions))
-      .orderBy(desc(attestations.issuedAt))
-      .limit(limit);
+      .orderBy(desc(issuedAtTruncated()), desc(attestations.id))
+      .limit(limit + 1);
+
+    const { rows, nextCursor } = splitPage(fetched, limit);
+    const responseHeaders = nextCursor
+      ? { ...cors, [NEXT_CURSOR_HEADER]: nextCursor, 'Access-Control-Expose-Headers': NEXT_CURSOR_HEADER }
+      : cors;
 
     const visibleRows = await filterVisibleRows(rows, request);
 
@@ -489,7 +584,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
       evidenceGrade: evidenceGradeForAttestationStatus(row.attestationStatus),
     }));
 
-    return NextResponse.json(annotatedRows, { headers: cors });
+    return NextResponse.json(annotatedRows, { headers: responseHeaders });
   } catch (error) {
     log.error({ err: String(error) }, 'Attestations GET error');
     return NextResponse.json({ error: 'Failed to query attestations' }, { status: 500, headers: cors });

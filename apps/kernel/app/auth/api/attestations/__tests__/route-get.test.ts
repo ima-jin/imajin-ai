@@ -40,6 +40,8 @@ vi.mock('@/src/db', () => ({
     contextId: 'attestations.contextId',
     attestationStatus: 'attestations.attestationStatus',
     issuedAt: 'attestations.issuedAt',
+    id: 'attestations.id',
+    ref: 'attestations.ref',
   },
   attestationTypeRegistry: { typeName: 'attestationTypeRegistry.typeName', revokedAt: 'attestationTypeRegistry.revokedAt' },
   tokens: {},
@@ -54,6 +56,7 @@ vi.mock('drizzle-orm', () => ({
   desc: (...args: unknown[]): Op => ({ op: 'desc', args }),
   notInArray: (...args: unknown[]): Op => ({ op: 'notInArray', args }),
   inArray: (...args: unknown[]): Op => ({ op: 'inArray', args }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]): Op => ({ op: 'sql', args: [strings.join('?'), ...values] }),
 }));
 
 vi.mock('@/src/lib/auth/jwt', () => ({
@@ -254,4 +257,112 @@ describe('GET /auth/api/attestations — operative-vs-history reads (#1790)', ()
 
     expect(hasNe(whereArgs())).toBe(false);
   });
+});
+
+// #2534 — optional exact-match `ref` filter (indexed column).
+describe('GET /auth/api/attestations — ref filter (#2534)', () => {
+  const base = 'https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob';
+
+  it('filters on attestations.ref when ref is provided', async () => {
+    await GET(makeGetReq(`${base}&ref=ticket_42`));
+
+    const args = whereArgs();
+    expect(hasEq(args, 'attestations.ref', 'ticket_42')).toBe(true);
+    expect(hasEq(args, 'attestations.subjectDid', 'did:imajin:bob')).toBe(true);
+  });
+
+  it('adds no ref filter when ref is omitted or empty (backward compatible)', async () => {
+    await GET(makeGetReq(base));
+    expect(hasEqOnColumn(whereArgs(), 'attestations.ref')).toBe(false);
+
+    vi.clearAllMocks();
+    mocks.limitMock.mockResolvedValue([]);
+    await GET(makeGetReq(`${base}&ref=`));
+    expect(hasEqOnColumn(whereArgs(), 'attestations.ref')).toBe(false);
+  });
+
+  it('combines ref with context_id and type (all ANDed)', async () => {
+    await GET(makeGetReq(`${base}&type=vouch&context_id=asset_survey_1&ref=ticket_42`));
+
+    const args = whereArgs();
+    expect(hasEq(args, 'attestations.type', 'vouch')).toBe(true);
+    expect(hasEq(args, 'attestations.contextId', 'asset_survey_1')).toBe(true);
+    expect(hasEq(args, 'attestations.ref', 'ticket_42')).toBe(true);
+  });
+});
+
+// #2533 — keyset (cursor) paging: `before=<issued_at,id>` in, X-Next-Cursor out.
+describe('GET /auth/api/attestations — cursor paging (#2533)', () => {
+  const base = 'https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob';
+
+  function pageRow(id: string, issuedAt: string) {
+    return { id, type: 'vouch', issuerDid: 'did:imajin:alice', subjectDid: 'did:imajin:bob', issuedAt: new Date(issuedAt) };
+  }
+
+  function hasSql(args: unknown[]): boolean {
+    return args.some((arg) => (arg as Op).op === 'sql');
+  }
+
+  it('fetches limit + 1 rows to detect a further page', async () => {
+    await GET(makeGetReq(`${base}&limit=5`));
+
+    expect(mocks.limitMock).toHaveBeenCalledWith(6);
+  });
+
+  it('orders by issued_at then id, both descending (stable tiebreak, no offset)', async () => {
+    await GET(makeGetReq(base));
+
+    const orderArgs = mocks.orderByMock.mock.calls[0] as unknown as Op[];
+    expect(orderArgs.map((arg) => arg.op)).toEqual(['desc', 'desc']);
+    expect(orderArgs[1].args).toEqual(['attestations.id']);
+  });
+
+  it('omits the cursor header and trims nothing when the page is not full', async () => {
+    mocks.limitMock.mockResolvedValue([pageRow('att_2', '2026-10-06T10:00:02.000Z'), pageRow('att_1', '2026-10-06T10:00:01.000Z')]);
+
+    const res = await GET(makeGetReq(`${base}&limit=2`));
+
+    expect(res.headers.get('X-Next-Cursor')).toBeNull();
+    expect(await res.json()).toHaveLength(2);
+  });
+
+  it('returns X-Next-Cursor from the last row of the page when more rows exist, and drops the probe row', async () => {
+    mocks.limitMock.mockResolvedValue([
+      pageRow('att_3', '2026-10-06T10:00:03.000Z'),
+      pageRow('att_2', '2026-10-06T10:00:02.000Z'),
+      pageRow('att_1', '2026-10-06T10:00:01.000Z'),
+    ]);
+
+    const res = await GET(makeGetReq(`${base}&limit=2`));
+
+    expect(res.headers.get('X-Next-Cursor')).toBe('2026-10-06T10:00:02.000Z,att_2');
+    expect(res.headers.get('Access-Control-Expose-Headers')).toBe('X-Next-Cursor');
+    const body = await res.json();
+    expect(body.map((row: { id: string }) => row.id)).toEqual(['att_3', 'att_2']);
+  });
+
+  it('adds a keyset condition when before is given', async () => {
+    await GET(makeGetReq(`${base}&before=${encodeURIComponent('2026-10-06T10:00:02.000Z,att_2')}`));
+
+    const sqlCondition = whereArgs().find((arg) => (arg as Op).op === 'sql') as Op;
+    expect(sqlCondition.args).toEqual(
+      expect.arrayContaining(['2026-10-06T10:00:02.000Z', 'att_2']),
+    );
+  });
+
+  it('adds no keyset condition on the first page', async () => {
+    await GET(makeGetReq(base));
+
+    expect(hasSql(whereArgs())).toBe(false);
+  });
+
+  it.each(['garbage', 'att_1', '2026-10-06T10:00:02.000Z', '2026-10-06T10:00:02.000Z,', 'not-a-date,att_1', ',att_1'])(
+    'rejects malformed before=%s with 400',
+    async (before) => {
+      const res = await GET(makeGetReq(`${base}&before=${encodeURIComponent(before)}`));
+
+      expect(res.status).toBe(400);
+      expect(mocks.selectMock).not.toHaveBeenCalled();
+    },
+  );
 });

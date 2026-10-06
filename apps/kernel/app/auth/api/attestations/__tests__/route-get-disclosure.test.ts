@@ -52,6 +52,7 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn(),
   notInArray: vi.fn(),
   inArray: vi.fn(),
+  sql: vi.fn(),
 }));
 
 vi.mock('@/src/lib/auth/jwt', () => ({
