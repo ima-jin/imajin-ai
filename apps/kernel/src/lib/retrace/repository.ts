@@ -14,6 +14,7 @@ import { and, desc, eq, isNull, lt } from 'drizzle-orm';
 import { db, attestations, agentProvisions, auditLog, identities, type Attestation, type AgentProvisionRow, type AuditLogRow } from '@/src/db';
 import { canonicalize, verifySync, isDisclosureScope, capabilityForDelegatedAttestationType } from '@imajin/auth';
 import { trustRadius } from '@imajin/trust-graph';
+import { verifyNodeSignatureAcrossKeyHistory } from '@/src/lib/auth/node-key-rotation';
 import { canReadHop } from './authorize';
 import type { ArtifactKind, ArtifactRef, HopRecord, HopSignatureStatus, RetraceRepository } from './types';
 
@@ -58,7 +59,19 @@ async function verifyAttestationSignature(row: Attestation): Promise<HopSignatur
     issued_at: new Date(row.issuedAt).getTime(),
   });
 
-  return verifySync(row.signature, canonicalPayload, issuer.publicKey) ? 'verified' : 'invalid';
+  if (verifySync(row.signature, canonicalPayload, issuer.publicKey)) return 'verified';
+
+  // A node-issued attestation signed before a key rotation no longer verifies
+  // against the node's current key; the dual-signed `key.rotated` history (#2081)
+  // says which key was signing at `issuedAt`.
+  const acrossHistory = await verifyNodeSignatureAcrossKeyHistory({
+    issuerDid: row.issuerDid,
+    currentPublicKey: issuer.publicKey,
+    signature: row.signature,
+    message: canonicalPayload,
+    issuedAt: row.issuedAt,
+  });
+  return acrossHistory ? 'verified' : 'invalid';
 }
 
 /**

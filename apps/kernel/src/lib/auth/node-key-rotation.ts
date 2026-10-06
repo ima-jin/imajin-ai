@@ -15,6 +15,9 @@
  *   - {@link verifyNodeKeyHistory} — the machine check: load every live
  *     `key.rotated` this node issued, verify the dual signatures and the
  *     linear chain, and assert the chain ends at the key currently loaded.
+ *   - {@link verifyNodeSignatureAcrossKeyHistory} — what makes old node-issued
+ *     attestations stay verifiable after a rotation: accept a signature made
+ *     by the key the verified history says was signing at `issuedAt`.
  *
  * The pure cryptography lives in `@imajin/auth` (`key-rotation.ts`); this
  * file only adds the node's DB and env.
@@ -25,6 +28,7 @@ import {
   KEY_ROTATED_CONTEXT_TYPE,
   computeKeyKid,
   crypto as authCrypto,
+  trustedPublicKeysAt,
   verifyKeyRotatedPayload,
   verifyKeyRotationChain,
   type KeyHistoryEntry,
@@ -209,4 +213,36 @@ export async function verifyNodeKeyHistory(options: { anchorPublicKey?: string }
   }
 
   return { ok: errors.length === 0, errors, warnings, nodeDid, currentKid, rotations: stored.length, history: chain.keys };
+}
+
+/**
+ * Verify a signature the NODE made (issuer === this node's DID) against the
+ * key history instead of only the current key — the fallback that keeps old
+ * node-issued attestations verifiable after the key rotates.
+ *
+ * Only the key(s) the verified `key.rotated` chain says were signing at
+ * `issuedAt` are tried, never every key ever seen. The history is trusted
+ * only if it is a valid linear chain whose head is `currentPublicKey` (the key
+ * the node identity row carries now): a chain that does not lead to the
+ * current key proves nothing about it. Returns false for any other issuer, an
+ * empty/invalid history, or a signature no in-window key made.
+ */
+export async function verifyNodeSignatureAcrossKeyHistory(params: {
+  issuerDid: string;
+  /** Public key the node identity row carries now — the history must end here. */
+  currentPublicKey: string;
+  signature: string;
+  message: string;
+  issuedAt: Date | number;
+}): Promise<boolean> {
+  const nodeDid = await getNodeDid();
+  if (!nodeDid || params.issuerDid !== nodeDid) return false;
+
+  const chain = verifyKeyRotationChain(await loadStoredRotationPayloads(nodeDid));
+  if (!chain.ok || chain.keys.length === 0) return false;
+  if (chain.keys.at(-1)?.publicKey !== params.currentPublicKey) return false;
+
+  return trustedPublicKeysAt(chain.keys, params.issuedAt).some((publicKey) =>
+    authCrypto.verifySync(params.signature, params.message, publicKey),
+  );
 }

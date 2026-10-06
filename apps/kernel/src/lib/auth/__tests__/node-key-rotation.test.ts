@@ -48,7 +48,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
-import { recordKeyRotation, verifyNodeKeyHistory } from '../node-key-rotation';
+import { recordKeyRotation, verifyNodeKeyHistory, verifyNodeSignatureAcrossKeyHistory } from '../node-key-rotation';
 
 const NODE_DID = 'did:imajin:test-node';
 const ORIGINAL_KEY = process.env.AUTH_PRIVATE_KEY;
@@ -343,5 +343,105 @@ describe('verifyNodeKeyHistory', () => {
     expect(report.ok).toBe(false);
     expect(report.nodeDid).toBeNull();
     expect(h.attestationRows).not.toHaveBeenCalled();
+  });
+});
+
+describe('verifyNodeSignatureAcrossKeyHistory', () => {
+  const MESSAGE = 'canonical attestation payload';
+  const ROTATED_AT = new Date('2026-09-01T00:00:00.000Z');
+
+  function history() {
+    const oldKey = authCrypto.generateKeypair();
+    const newKey = authCrypto.generateKeypair();
+    h.attestationRows.mockResolvedValue([
+      { payload: createKeyRotatedPayload({ oldPrivateKey: oldKey.privateKey, newPrivateKey: newKey.privateKey, effectiveAt: ROTATED_AT }) },
+    ]);
+    return { oldKey, newKey };
+  }
+
+  function params(overrides: Record<string, unknown>) {
+    return { issuerDid: NODE_DID, message: MESSAGE, ...overrides } as Parameters<typeof verifyNodeSignatureAcrossKeyHistory>[0];
+  }
+
+  it('accepts an old-key signature made before the rotation took effect', async () => {
+    const { oldKey, newKey } = history();
+    const signature = authCrypto.signSync(MESSAGE, oldKey.privateKey);
+
+    const ok = await verifyNodeSignatureAcrossKeyHistory(
+      params({ signature, currentPublicKey: newKey.publicKey, issuedAt: new Date('2026-06-01T00:00:00.000Z') }),
+    );
+
+    expect(ok).toBe(true);
+  });
+
+  it('accepts a new-key signature made after the rotation', async () => {
+    const { newKey } = history();
+    const signature = authCrypto.signSync(MESSAGE, newKey.privateKey);
+
+    const ok = await verifyNodeSignatureAcrossKeyHistory(
+      params({ signature, currentPublicKey: newKey.publicKey, issuedAt: new Date('2026-10-01T00:00:00.000Z') }),
+    );
+
+    expect(ok).toBe(true);
+  });
+
+  it('rejects an old-key signature claiming to be issued after the rotation (retired key cannot back-date forward)', async () => {
+    const { oldKey, newKey } = history();
+    const signature = authCrypto.signSync(MESSAGE, oldKey.privateKey);
+
+    const ok = await verifyNodeSignatureAcrossKeyHistory(
+      params({ signature, currentPublicKey: newKey.publicKey, issuedAt: new Date('2026-10-01T00:00:00.000Z') }),
+    );
+
+    expect(ok).toBe(false);
+  });
+
+  it('rejects a signature from a key that was never in the history', async () => {
+    const { newKey } = history();
+    const signature = authCrypto.signSync(MESSAGE, authCrypto.generateKeypair().privateKey);
+
+    const ok = await verifyNodeSignatureAcrossKeyHistory(
+      params({ signature, currentPublicKey: newKey.publicKey, issuedAt: new Date('2026-06-01T00:00:00.000Z') }),
+    );
+
+    expect(ok).toBe(false);
+  });
+
+  it('never applies the node key history to another issuer', async () => {
+    const { oldKey, newKey } = history();
+    const signature = authCrypto.signSync(MESSAGE, oldKey.privateKey);
+
+    const ok = await verifyNodeSignatureAcrossKeyHistory(
+      params({ issuerDid: 'did:imajin:someone-else', signature, currentPublicKey: newKey.publicKey, issuedAt: new Date('2026-06-01T00:00:00.000Z') }),
+    );
+
+    expect(ok).toBe(false);
+    expect(h.attestationRows).not.toHaveBeenCalled();
+  });
+
+  it('does not trust a history that does not end at the current identity key', async () => {
+    const { oldKey } = history();
+    const signature = authCrypto.signSync(MESSAGE, oldKey.privateKey);
+
+    const ok = await verifyNodeSignatureAcrossKeyHistory(
+      params({ signature, currentPublicKey: authCrypto.generateKeypair().publicKey, issuedAt: new Date('2026-06-01T00:00:00.000Z') }),
+    );
+
+    expect(ok).toBe(false);
+  });
+
+  it('returns false with no recorded history, with a corrupt one, and with no node DID', async () => {
+    const key = authCrypto.generateKeypair();
+    const signature = authCrypto.signSync(MESSAGE, key.privateKey);
+    const base = params({ signature, currentPublicKey: key.publicKey, issuedAt: new Date('2026-06-01T00:00:00.000Z') });
+
+    h.attestationRows.mockResolvedValue([]);
+    expect(await verifyNodeSignatureAcrossKeyHistory(base)).toBe(false);
+
+    h.attestationRows.mockResolvedValue([{ payload: { not: 'a rotation' } }]);
+    expect(await verifyNodeSignatureAcrossKeyHistory(base)).toBe(false);
+
+    h.getNodeDid.mockResolvedValue('');
+    expect(await verifyNodeSignatureAcrossKeyHistory(base)).toBe(false);
   });
 });
