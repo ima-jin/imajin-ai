@@ -90,7 +90,7 @@ function parseRule(raw: unknown, index: number): EmissionRule {
  */
 export function parseEmissionRules(config: Record<string, unknown>): EmissionRule[] {
   const unit = config.unit ?? EMISSION_UNIT;
-  if (unit !== EMISSION_UNIT) throw new Error(`emission unit must be ${EMISSION_UNIT}, got ${String(unit)}`);
+  if (unit !== EMISSION_UNIT) throw new Error(`emission unit must be ${EMISSION_UNIT}, got ${JSON.stringify(unit)}`);
   if (!Array.isArray(config.emit)) throw new Error('mjn reactor config has no emit[] schedule');
   return config.emit.map((raw, index) => parseRule(raw, index));
 }

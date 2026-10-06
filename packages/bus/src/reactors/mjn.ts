@@ -66,15 +66,13 @@ async function postEmission(body: string): Promise<AttemptResult> {
 async function deliver(
   body: string,
   maxAttempts: number,
-  retryDelayMs: number
+  retryDelayMs: number,
+  attempt = 1
 ): Promise<AttemptResult & { attempts: number }> {
-  let result: AttemptResult = { ok: false, retryable: true };
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    result = await postEmission(body);
-    if (result.ok || !result.retryable || attempt === maxAttempts) return { ...result, attempts: attempt };
-    await sleep(retryDelayMs * 2 ** (attempt - 1));
-  }
-  return { ...result, attempts: maxAttempts };
+  const result = await postEmission(body);
+  if (result.ok || !result.retryable || attempt >= maxAttempts) return { ...result, attempts: attempt };
+  await sleep(retryDelayMs * 2 ** (attempt - 1));
+  return deliver(body, maxAttempts, retryDelayMs, attempt + 1);
 }
 
 interface EmissionContext {
