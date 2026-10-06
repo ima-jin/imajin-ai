@@ -95,6 +95,11 @@ export const profiles = profileSchema.table('profiles', {
   // the shared profiles table like every other profile field. Additive
   // jsonb column; see migrations/0166_add_tax_registrations.sql.
   taxRegistrations: jsonb('tax_registrations').$type<TaxRegistration[]>().notNull().default([]),
+  // Interac e-Transfer receiving email (#2665) — business scope only, owner-editable,
+  // next to taxRegistrations. NULL = the business does not accept e-Transfer. NOT public
+  // profile data: the profile read returns it to the owner only. See
+  // migrations/0174_profile_etransfer_email.sql.
+  etransferEmail: text('etransfer_email'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   claimedBy: text('claimed_by'),                              // owner DID, null = unclaimed stub

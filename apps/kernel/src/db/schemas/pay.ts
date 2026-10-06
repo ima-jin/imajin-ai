@@ -182,7 +182,8 @@ export type NewWithdrawalRequest = typeof withdrawalRequests.$inferInsert;
 export const paymentRequestKindValues = ['invoice', 'request'] as const;
 export type PaymentRequestKind = typeof paymentRequestKindValues[number];
 
-export const paymentRequestStatusValues = ['issued', 'paid', 'settled_manual', 'void'] as const;
+// #2665: `emt_pending` = the payer chose to pay by Interac e-Transfer and the issuer has not yet confirmed receipt (migration 0173).
+export const paymentRequestStatusValues = ['issued', 'emt_pending', 'paid', 'settled_manual', 'void'] as const;
 export type PaymentRequestStatus = typeof paymentRequestStatusValues[number];
 
 export const paymentRequests = paySchema.table('payment_request', {
@@ -202,7 +203,7 @@ export const paymentRequests = paySchema.table('payment_request', {
   fairManifest: jsonb('fair_manifest').notNull(),          // .fair manifest — every payment_request carries one
   dueAt: timestamp('due_at', { withTimezone: true }),
   allowOnPlatform: boolean('allow_on_platform').notNull().default(true),
-  status: text('status').notNull().default('issued'),      // issued | paid | settled_manual | void
+  status: text('status').notNull().default('issued'),      // issued | emt_pending | paid | settled_manual | void
   settlementRef: jsonb('settlement_ref'),                  // stripe session id | mjnx tx | manual {note, asserted_by}
   contentHash: text('content_hash').notNull(),              // attestations bind this, never bytes
   // #2210: opaque, unguessable "pay link" handle — GET

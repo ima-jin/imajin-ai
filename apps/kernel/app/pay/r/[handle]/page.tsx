@@ -16,7 +16,8 @@ const STATUS_NOTES: Record<string, string> = {
 };
 
 function StatusNote({ status }: Readonly<{ status: string }>) {
-  if (status === 'issued') return null;
+  // `emt_pending` (#2665) is still an open request: the actions block shows the e-Transfer instructions.
+  if (status === 'issued' || status === 'emt_pending') return null;
   return (
     <div data-print="hide" className="text-sm text-center text-zinc-500 bg-black/30 border border-zinc-800 rounded-lg px-3 py-2">
       {STATUS_NOTES[status] ?? 'This payment request is no longer active.'}
@@ -203,7 +204,7 @@ export default async function PayByHandlePage({ params }: Readonly<{ params: Pro
         <StatusNote status={view.status} />
 
         <div data-print="hide">
-          <PayRequestActions handle={handle} status={view.status} />
+          <PayRequestActions handle={handle} status={view.status} emt={view.emt ?? null} />
         </div>
       </div>
     </div>

@@ -10,7 +10,7 @@
  */
 
 export type PaymentRequestKind = 'invoice' | 'request';
-export type PaymentRequestStatus = 'issued' | 'paid' | 'settled_manual' | 'void';
+export type PaymentRequestStatus = 'issued' | 'emt_pending' | 'paid' | 'settled_manual' | 'void';
 
 export interface PaymentRequestLineItemView {
   name: string;
@@ -38,6 +38,8 @@ export interface SettlementRefView {
   note?: string;
   asserted_by: string;
   settled_at: string;
+  /** `method: 'emt'` only (#2665) — the e-Transfer memo the deposit was matched against. */
+  reference?: string;
 }
 
 export interface PaymentRequestInviteView {

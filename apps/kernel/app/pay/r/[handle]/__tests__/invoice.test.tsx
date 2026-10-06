@@ -148,6 +148,24 @@ describe('printable invoice — receipt mode once paid (#2661)', () => {
     expect(text('receipt-settlement-ref')).not.toContain('·');
   });
 
+  it('#2665: an e-Transfer settlement renders the same receipt — paid stamp, date, total paid — naming the rail and the memo', async () => {
+    await renderPage({
+      ...PAID_VIEW,
+      settlement: { method: 'emt', reference: 'INV-3F9A1C07D2' },
+    });
+
+    expect(screen.getByTestId('paid-stamp').textContent).toBe('Paid');
+    expect(text('invoice-status')).toContain('Paid on 2026-10-09');
+    expect(text('receipt-paid-date')).toContain('2026-10-09');
+    expect(text('receipt-settlement-ref')).toContain('e-Transfer · INV-3F9A1C07D2');
+    expect(screen.getByText('Receipt from')).toBeDefined();
+    expect(screen.getByText('Total paid')).toBeDefined();
+    // Settled: no pay actions, e-Transfer or card, on the receipt.
+    expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pay now' })).toBeNull();
+    expect(screen.queryByTestId('emt-instructions')).toBeNull();
+  });
+
   it('degrades to a plain "Paid" status when no payment date was recorded', async () => {
     await renderPage({ ...PAID_VIEW, paidAt: null, settlement: null });
 

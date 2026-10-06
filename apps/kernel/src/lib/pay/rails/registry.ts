@@ -7,8 +7,9 @@
  * this registry for a rail by name or by unit.
  */
 import type { Unit } from '../ledger';
-import type { WithdrawRail } from './types';
+import type { PayInRail, WithdrawRail } from './types';
 import { StripeWithdrawRail, STRIPE_RAIL_NAME } from '../providers/stripe-withdraw-rail';
+import { EmtPayInRail, EMT_RAIL_NAME } from './emt-pay-in-rail';
 
 export interface RailRegistryEntry {
   /** Lazily constructed — mirrors `getStripeClient()`'s own lazy init, so importing the registry never requires `STRIPE_SECRET_KEY` to be set (e.g. in tests that never call `execute`/`list`). */
@@ -57,4 +58,42 @@ export function defaultRailForUnit(unit: Unit): WithdrawRail | null {
 /** Every registered rail, regardless of unit — used by the reconciliation sweep, which iterates all rails. */
 export function listRegisteredRails(): WithdrawRail[] {
   return Object.values(REGISTRY).map((entry) => entry.getRail());
+}
+
+// ---------------------------------------------------------------------------
+// Pay-in direction (#2665)
+//
+// A separate map from the withdraw REGISTRY above on purpose: the withdraw
+// registry is iterated by the reconciliation sweep (`listRegisteredRails`)
+// and by `defaultRailForUnit`, both of which call `execute()` / `list()` on
+// every entry — a pay-in-only rail like EMT has neither. A rail that supports
+// both directions (EMT, once #2014 lands) registers in each map under the
+// SAME name.
+// ---------------------------------------------------------------------------
+
+let emtPayInRailSingleton: EmtPayInRail | null = null;
+function getEmtPayInRail(): EmtPayInRail {
+  emtPayInRailSingleton ??= new EmtPayInRail();
+  return emtPayInRailSingleton;
+}
+
+/** Adding a pay-in rail is an adapter + one entry here. */
+const PAY_IN_REGISTRY: Record<string, () => PayInRail> = {
+  [EMT_RAIL_NAME]: getEmtPayInRail,
+};
+
+/** Look up a pay-in rail by its registered name. */
+export function getPayInRail(rail: string): PayInRail | null {
+  return PAY_IN_REGISTRY[rail]?.() ?? null;
+}
+
+/** Resolve a pay-in rail by name, but only if it can collect `currency`. */
+export function getPayInRailForCurrency(rail: string, currency: string): PayInRail | null {
+  const found = getPayInRail(rail);
+  return found?.supportsCurrency(currency) ? found : null;
+}
+
+/** Every registered pay-in rail. */
+export function listPayInRails(): PayInRail[] {
+  return Object.values(PAY_IN_REGISTRY).map((get) => get());
 }

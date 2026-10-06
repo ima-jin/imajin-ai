@@ -118,6 +118,26 @@ describe('pay:payment_request-settled template', () => {
     }
   });
 
+  it('#2665: an e-Transfer settlement tells the payer their transfer was received, and the issuer that they confirmed it — not "settled automatically"', () => {
+    const template = getTemplate('pay:payment_request-settled')!;
+
+    const payer = template.body({ role: 'recipient', totalFormatted: '$5.00', method: 'emt' });
+    const issuer = template.body({ role: 'issuer', totalFormatted: '$5.00', method: 'emt' });
+
+    expect(payer).toBe('Your e-Transfer of $5.00 was received — the issuer confirmed it.');
+    expect(issuer).toBe('You marked $5.00 paid by e-Transfer.');
+    expect(payer).not.toContain('automatically');
+    expect(issuer).not.toContain('platform');
+  });
+
+  it.each([
+    ['issuer', 'You marked <strong style="color:#ffffff;">$5.00</strong> paid by e-Transfer.'],
+    ['recipient', 'Your e-Transfer of <strong style="color:#ffffff;">$5.00</strong> was received — the issuer confirmed it.'],
+  ])('#2665: renders the e-Transfer email html for role=%s', (role, expected) => {
+    const template = getTemplate('pay:payment_request-settled')!;
+    expect(template.email!.html({ role, method: 'emt', totalFormatted: '$5.00' })).toContain(expected);
+  });
+
   it('escapes the amount in the email html and falls back when it is missing', () => {
     const template = getTemplate('pay:payment_request-settled')!;
 

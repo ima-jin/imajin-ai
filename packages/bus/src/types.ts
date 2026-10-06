@@ -2055,7 +2055,8 @@ export interface BusEventMap {
   };
   'payment_request.settled': {
     paymentRequestId: string;
-    method: 'manual' | 'stripe' | 'mjnx';
+    // `emt` (#2665): the issuer confirmed an Interac e-Transfer deposit — issuer-asserted like `manual`, but naming the rail.
+    method: 'manual' | 'stripe' | 'mjnx' | 'emt';
     issuerDid: string;
     recipientDid: string | null;
     totalAmount: number;
@@ -2090,7 +2091,7 @@ export interface BusEventMap {
     recipientDid: string | null;
     totalAmount: number;
     currency: string;
-    method: 'stripe';
+    method: 'stripe' | 'emt';
     context_id: string;
     context_type: 'payment_request';
   };

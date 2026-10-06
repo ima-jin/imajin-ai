@@ -77,6 +77,40 @@ beforeEach(() => {
   mocks.insertValuesMock.mockResolvedValue(undefined);
 });
 
+describe('emitPaymentRequestSettledAttestation — e-Transfer (#2665)', () => {
+  const base = {
+    paymentRequestId: 'pr_1',
+    issuerDid: ISSUER_DID,
+    recipientDid: RECIPIENT_DID,
+    assertedBy: ISSUER_DID,
+    contentHash: 'bafy-content',
+    totalAmount: 5000,
+    currency: 'CAD',
+  };
+
+  it('names the rail in the payload and records the memo it was matched against, signed by the issuer', async () => {
+    await emitPaymentRequestSettledAttestation({ ...base, method: 'emt', reference: 'INV-0123456789' });
+
+    const inserted = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(inserted.issuerDid).toBe(ISSUER_DID);
+    expect(inserted.type).toBe('payment_request.settled');
+    expect(inserted.payload).toMatchObject({
+      method: 'emt',
+      asserted_by: ISSUER_DID,
+      reference: 'INV-0123456789',
+      total_amount: 5000,
+      content_hash: 'bafy-content',
+    });
+  });
+
+  it('leaves the payload byte-identical for a settlement with no reference (manual) — no reference key at all', async () => {
+    await emitPaymentRequestSettledAttestation({ ...base, method: 'manual' });
+
+    const payload = (mocks.insertValuesMock.mock.calls[0][0] as { payload: Record<string, unknown> }).payload;
+    expect('reference' in payload).toBe(false);
+  });
+});
+
 describe('emitPaymentRequestIssuedAttestation', () => {
   it('records issuerDid as the payment_request issuer, never a platform DID', async () => {
     await emitPaymentRequestIssuedAttestation({

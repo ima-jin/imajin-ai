@@ -8,7 +8,7 @@
  * route/lib split already used for `/api/settle` (`settle-core.ts`) and
  * `/usage/api/billed` (`lib/usage/billed/manual.ts`).
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db, paymentRequests, profiles } from '@/src/db';
 import type { PaymentRequest, PaymentRequestKind } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
@@ -18,6 +18,7 @@ import { isConnected } from '@/src/lib/chat/connection-check';
 import { createPaymentRequestInvite } from '@/src/lib/connections/payment-request-invite';
 import type { TaxRegistration } from '@/src/lib/profile/tax-registrations';
 import { computePaymentRequestContentHash } from './content-hash';
+import { emtOptionOf, type EmtPayOption } from './emt-offer';
 import { invoiceNumberOf, issuerAddressOf, publicSettlementOf, type PublicSettlement } from './invoice';
 import {
   FAIR_VERSION_WITH_TAXES,
@@ -533,6 +534,12 @@ export interface PaymentRequestInvoiceView extends PaymentRequestPublicView {
   paidAt: string | null;
   /** Sanitised settlement reference; `null` until settled. */
   settlement: PublicSettlement | null;
+  /**
+   * #2665 — the e-Transfer option; `null` (nothing renders) unless the issuer
+   * has set a receiving email AND the request is still open. The receiving
+   * email itself is only ever included once the payer has chosen e-Transfer.
+   */
+  emt: EmtPayOption | null;
 }
 
 type IssuerProfile = typeof profiles.$inferSelect;
@@ -548,7 +555,7 @@ function issuerDisplayNameOf(profile: IssuerProfile | undefined, issuerDid: stri
 }
 
 /** The row behind an opaque `pay_handle`, or `null` when unknown or `void` (both 404 the same). */
-async function findLiveRowByHandle(handle: string): Promise<PaymentRequest | null> {
+export async function findLiveRowByHandle(handle: string): Promise<PaymentRequest | null> {
   const [row] = await db.select().from(paymentRequests).where(eq(paymentRequests.payHandle, handle)).limit(1);
   if (!row || row.status === 'void') return null;
   return row;
@@ -616,6 +623,7 @@ export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<
     issuerAddress: issuerAddressOf(profile),
     paidAt,
     settlement,
+    emt: emtOptionOf(row, profile?.etransferEmail),
   };
 }
 
@@ -650,23 +658,27 @@ export async function listPaymentRequests(input: ListPaymentRequestsInput): Prom
 }
 
 /**
- * Void a payment_request: issuer-only, and only valid from `issued` — a
- * `settled_manual` or already-`void` request rejects cleanly (409) rather
- * than silently no-op'ing, so a replayed void call is never mistaken for
- * a fresh one.
+ * Void a payment_request: issuer-only, and only valid while it is still open
+ * — `issued`, or `emt_pending` (#2665: a payer choosing e-Transfer must not
+ * be able to lock the issuer out of voiding). A `paid`, `settled_manual` or
+ * already-`void` request rejects cleanly (409) rather than silently
+ * no-op'ing, so a replayed void call is never mistaken for a fresh one.
  */
 export async function voidPaymentRequest(params: { id: string; callerDid: string }): Promise<PaymentRequest | ServiceError> {
   const existing = await getPaymentRequestById(params.id);
   if (!existing) return err('payment_request not found', 404);
   if (existing.issuerDid !== params.callerDid) return err('only the issuer may void this payment_request', 403);
-  if (existing.status !== 'issued') {
-    return err(`cannot void a payment_request in status '${existing.status}' (void is only valid from 'issued')`, 409);
+  if (existing.status !== 'issued' && existing.status !== 'emt_pending') {
+    return err(
+      `cannot void a payment_request in status '${existing.status}' (void is only valid from 'issued' or 'emt_pending')`,
+      409,
+    );
   }
 
   const [row] = await db
     .update(paymentRequests)
     .set({ status: 'void', updatedAt: new Date() })
-    .where(and(eq(paymentRequests.id, params.id), eq(paymentRequests.status, 'issued')))
+    .where(and(eq(paymentRequests.id, params.id), inArray(paymentRequests.status, ['issued', 'emt_pending'])))
     .returning();
   if (!row) {
     // Lost a race against a concurrent void/settle between the read above and this guarded update.
