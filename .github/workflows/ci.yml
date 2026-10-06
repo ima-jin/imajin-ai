@@ -408,10 +408,15 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       # Version-bump-is-a-release-only-event guard (#2285): fails when any
-      # package.json "version" field differs from origin/main, unless the
-      # head commit message starts with "release:" (the Release workflow's
-      # own commit shape — see .github/workflows/release.yml).
+      # package.json "version" field differs from origin/main, unless the PR
+      # head ref matches "release/v*" or any commit in origin/main..HEAD has a
+      # message starting with "release:" (the Release workflow's own shapes —
+      # see .github/workflows/release.yml; #2619). The head ref is passed via
+      # env (never interpolated into the script) and is empty outside
+      # pull_request events, where only the commit-range check applies.
       - name: Version bump guard
+        env:
+          CI_GUARD_PR_HEAD_REF: ${{ github.head_ref }}
         run: node scripts/ci-guard-version-bump.mjs
 
       # Version-tag-sync guard (#2349): fails when root package.json's

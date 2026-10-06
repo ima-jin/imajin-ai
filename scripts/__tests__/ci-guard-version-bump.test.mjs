@@ -53,7 +53,15 @@ function runGuard(dir, env = {}) {
     const stdout = execFileSync(process.execPath, [SCRIPT], {
       encoding: 'utf8',
       cwd: dir,
-      env: { ...process.env, NODE_PATH: join(process.cwd(), 'node_modules'), CI_GUARD_WORKDIR: dir, ...env },
+      env: {
+        ...process.env,
+        NODE_PATH: join(process.cwd(), 'node_modules'),
+        CI_GUARD_WORKDIR: dir,
+        // Neutralise ambient values: on a release/v* PR the runner itself sets GITHUB_HEAD_REF.
+        GITHUB_HEAD_REF: '',
+        CI_GUARD_PR_HEAD_REF: '',
+        ...env,
+      },
     });
     return { stdout, stderr: '', status: 0 };
   } catch (e) {
@@ -150,5 +158,72 @@ describe('ci-guard-version-bump', () => {
     git(dir, ['merge', '--no-ff', '-q', '-m', 'Merge feature into main', featureSha]);
 
     expectFail(runGuard(dir), 'packages/ui/package.json', 'release:');
+  });
+
+  describe('"Update branch" merge commit on top of the PR branch (#2619)', () => {
+    /** Branch off base with a version-bumping commit, then merge a newer main into it. */
+    function makeBranchWithUpdateBranchMerge(bumpMessage) {
+      const dir = makeBaseRepo();
+      writePackageJson(dir, 'package.json', { name: 'imajin-ai', version: '0.8.1', private: true });
+      writePackageJson(dir, 'packages/ui/package.json', { name: '@imajin/ui', version: '1.3.0' });
+      commitAll(dir, bumpMessage);
+
+      // main moves on (unrelated change), and origin/main follows.
+      git(dir, ['checkout', '-q', 'main']);
+      writeFileSync(join(dir, 'CHANGELOG.md'), 'newer main\n', 'utf8');
+      commitAll(dir, 'docs: newer main');
+      git(dir, ['update-ref', 'refs/remotes/origin/main', git(dir, ['rev-parse', 'HEAD']).trim()]);
+
+      // "Update branch": merge main into the PR branch -> merge commit is the head.
+      git(dir, ['checkout', '-q', 'feature']);
+      git(dir, ['merge', '--no-ff', '-q', '-m', "Merge branch 'main' into feature", 'main']);
+      expect(git(dir, ['log', '-1', '--format=%P']).trim().split(' ')).toHaveLength(2);
+      return dir;
+    }
+
+    it('passes when a release: commit sits below the merge commit', () => {
+      const dir = makeBranchWithUpdateBranchMerge('release: v0.8.1');
+      const result = runGuard(dir);
+      expectPass(result);
+      expect(result.stdout).toContain('release:');
+    });
+
+    it('passes a release/v* head ref even with no release: commit anywhere', () => {
+      const dir = makeBranchWithUpdateBranchMerge('chore: bump versions');
+      const result = runGuard(dir, { GITHUB_HEAD_REF: 'release/v0.8.1' });
+      expectPass(result);
+      expect(result.stdout).toContain('release/v*');
+    });
+
+    it('reads the head ref from CI_GUARD_PR_HEAD_REF, as ci.yml passes it', () => {
+      const dir = makeBranchWithUpdateBranchMerge('chore: bump versions');
+      expectPass(runGuard(dir, { CI_GUARD_PR_HEAD_REF: 'release/v0.8.1' }));
+    });
+
+    it('still fails a feature branch whose head is a merge commit and which bumps a version', () => {
+      const dir = makeBranchWithUpdateBranchMerge('feat: bump ui by hand');
+      expectFail(runGuard(dir, { GITHUB_HEAD_REF: 'feat/bump-ui' }), 'packages/ui/package.json', 'release/v*', 'release:');
+    });
+
+    it('does not treat a branch-name lookalike (feature/release/v*) as a release branch', () => {
+      const dir = makeBranchWithUpdateBranchMerge('feat: bump ui by hand');
+      expectFail(runGuard(dir, { GITHUB_HEAD_REF: 'feature/release/v0.8.1' }), 'packages/ui/package.json');
+    });
+
+    it('does not use a release: commit that is already on the base (not in base..head)', () => {
+      const dir = makeBaseRepo();
+      // A release commit lands on main and the base ref advances past it.
+      git(dir, ['checkout', '-q', 'main']);
+      writeFileSync(join(dir, 'RELEASES.md'), 'v0.8.0\n', 'utf8');
+      commitAll(dir, 'release: v0.8.0');
+      git(dir, ['update-ref', 'refs/remotes/origin/main', git(dir, ['rev-parse', 'HEAD']).trim()]);
+
+      git(dir, ['checkout', '-q', 'feature']);
+      writePackageJson(dir, 'packages/ui/package.json', { name: '@imajin/ui', version: '1.3.0' });
+      commitAll(dir, 'feat: bump ui by hand');
+      git(dir, ['merge', '--no-ff', '-q', '-m', "Merge branch 'main' into feature", 'main']);
+
+      expectFail(runGuard(dir), 'packages/ui/package.json');
+    });
   });
 });

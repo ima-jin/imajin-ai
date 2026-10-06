@@ -21,20 +21,28 @@
  * ## What it checks
  *
  * Every `package.json` tracked in both this ref and `origin/main` has its
- * `"version"` field compared. Any difference fails the run UNLESS the head
- * commit's message starts with `release:` — the one and only shape of commit
- * the Release workflow itself produces (`release: vX.Y.Z`, see
- * release.yml). A brand-new `package.json` (not present on `origin/main` at
- * all, e.g. a newly added package) is not a "bump" and is skipped.
+ * `"version"` field compared. Any difference fails the run UNLESS either:
  *
- * ## Which commit counts as "head"
+ *   1. the PR head ref (`GITHUB_HEAD_REF`, pull_request events only) starts
+ *      with `release/v` — the branch the Release workflow opens; or
+ *   2. any commit in `origin/main..HEAD` has a message starting with
+ *      `release:` — the one shape of commit the Release workflow itself
+ *      produces (`release: vX.Y.Z`, see release.yml).
  *
- * A pull_request run checks out GitHub's synthetic merge commit
- * (`refs/pull/N/merge`), whose second parent (`HEAD^2`) is the actual last
- * commit pushed to the PR branch — that's the one a contributor wrote, and
- * the one whose message this guard should read. When there is no second
- * parent (a direct push to `main`, e.g. the Release workflow's own commit,
- * or a squash-merged history), `HEAD` itself is used.
+ * A brand-new `package.json` (not present on `origin/main` at all, e.g. a
+ * newly added package) is not a "bump" and is skipped.
+ *
+ * ## Why the whole range, not just the head commit (#2619)
+ *
+ * Required checks are strict, so a release PR that falls behind `main` gets
+ * "Update branch", which puts `Merge branch 'main' into release/vX.Y.Z` on
+ * top of the `release:` commit. Reading only the head commit then failed the
+ * release. The range check finds the `release:` commit wherever it sits. A
+ * merge commit on a feature branch carries neither signal (its message is
+ * not `release:` and its branch is not `release/v*`), so it opens no bypass.
+ * In merge_group / push events `GITHUB_HEAD_REF` is empty and only the range
+ * check applies. The decision itself is a pure function in
+ * `scripts/lib/version-bump-decision.mjs`.
  *
  * ## Sonar-clean notes
  *
@@ -51,7 +59,9 @@
  *   - `CI_GUARD_WORKDIR`               — repo root (default: one level up from this file)
  *   - `CI_GUARD_VERSION_BASE_REF`      — git ref to diff against (default: `origin/main`)
  *   - `CI_GUARD_VERSION_HEAD_REF`      — git ref to treat as the PR tip (default: `HEAD`)
- *   - `CI_GUARD_HEAD_COMMIT_MESSAGE`   — skip git entirely and use this as the head commit message
+ *   - `CI_GUARD_HEAD_COMMIT_MESSAGE`   — skip git for the commit range and use this as its only message
+ *   - `CI_GUARD_PR_HEAD_REF`           — PR head ref (ci.yml passes `github.head_ref` via env); falls back to
+ *                                        `GITHUB_HEAD_REF`, which GitHub sets on pull_request events
  *   - `GIT_BIN`                        — absolute path to the git binary
  */
 
@@ -59,13 +69,16 @@ import { execFileSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveGitBinary, ensureSafeDirectory } from './lib/git-version.mjs';
+import { decideVersionBump, RELEASE_COMMIT_PREFIX, RELEASE_BRANCH_PREFIX } from './lib/version-bump-decision.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
   : resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASE_REF = process.env.CI_GUARD_VERSION_BASE_REF || 'origin/main';
 const HEAD_REF = process.env.CI_GUARD_VERSION_HEAD_REF || 'HEAD';
-const RELEASE_PREFIX = 'release:';
+// Only set by GitHub on pull_request events; empty in merge_group/push, where
+// the guard falls back to the commit-range check alone.
+const PR_HEAD_REF = process.env.CI_GUARD_PR_HEAD_REF || process.env.GITHUB_HEAD_REF || '';
 
 function git(gitBin, root, args) {
   return execFileSync(gitBin, args, { cwd: root, encoding: 'utf8' });
@@ -123,17 +136,20 @@ function readVersionAt(gitBin, root, ref, filePath) {
 }
 
 /**
- * Resolves the message of the commit a human actually wrote for this PR.
- * See the "Which commit counts as 'head'" note above for why `HEAD^2` is
- * preferred when it exists.
+ * Messages of every non-merge commit reachable from `headRef` but not from
+ * `baseRef` (`base..head`). On a pull_request checkout this includes the PR
+ * branch's own commits even when "Update branch" put a merge commit on top.
+ * `CI_GUARD_HEAD_COMMIT_MESSAGE` (tests) short-circuits git entirely.
  */
-function resolveHeadCommitMessage(gitBin, root, headRef) {
+function resolveRangeCommitMessages(gitBin, root, baseRef, headRef) {
   if (process.env.CI_GUARD_HEAD_COMMIT_MESSAGE !== undefined) {
-    return process.env.CI_GUARD_HEAD_COMMIT_MESSAGE;
+    return [process.env.CI_GUARD_HEAD_COMMIT_MESSAGE];
   }
-  const prBranchTip = `${headRef}^2`;
-  const ref = refExists(gitBin, root, prBranchTip) ? prBranchTip : headRef;
-  return git(gitBin, root, ['log', '-1', '--format=%B', ref]);
+  const out = git(gitBin, root, ['log', '--no-merges', '--format=%B%x00', `${baseRef}..${headRef}`]);
+  return out
+    .split('\0')
+    .map((m) => m.trim())
+    .filter(Boolean);
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -164,9 +180,6 @@ function main() {
     }
   }
 
-  const headMessage = resolveHeadCommitMessage(gitBin, ROOT, HEAD_REF).trim();
-  const isReleaseCommit = headMessage.toLowerCase().startsWith(RELEASE_PREFIX);
-
   const headFiles = new Set(listPackageJsonFiles(gitBin, ROOT, HEAD_REF));
   const baseFiles = new Set(listPackageJsonFiles(gitBin, ROOT, BASE_REF));
   // A package.json that doesn't exist on the base ref is a new package, not
@@ -189,19 +202,27 @@ function main() {
     return;
   }
 
-  if (isReleaseCommit) {
-    console.log(
-      `PASS: ${violations.length} version field(s) differ from ${BASE_REF}, but the head commit message ` +
-        `starts with "${RELEASE_PREFIX}" (the Release workflow's own commit), so this is allowed:`,
-    );
+  const decision = decideVersionBump({
+    violations,
+    headRef: PR_HEAD_REF,
+    commitMessages: resolveRangeCommitMessages(gitBin, ROOT, BASE_REF, HEAD_REF),
+  });
+
+  if (decision.allowed) {
+    const why =
+      decision.reason === 'release-branch'
+        ? `the PR head ref "${PR_HEAD_REF}" matches "${RELEASE_BRANCH_PREFIX}*" (a Release workflow branch)`
+        : `a commit in ${BASE_REF}..${HEAD_REF} has a message starting with "${RELEASE_COMMIT_PREFIX}" (the Release workflow's own commit)`;
+    console.log(`PASS: ${violations.length} version field(s) differ from ${BASE_REF}, but ${why}, so this is allowed:`);
     for (const v of violations) console.log(`  - ${v}`);
     process.exit(0);
     return;
   }
 
   fail(
-    `${violations.length} package.json "version" field(s) differ from ${BASE_REF}, but the head commit ` +
-      `message does not start with "${RELEASE_PREFIX}". Feature PRs must never bump version fields — ` +
+    `${violations.length} package.json "version" field(s) differ from ${BASE_REF}, but the PR head ref does not ` +
+      `match "${RELEASE_BRANCH_PREFIX}*" and no commit in ${BASE_REF}..${HEAD_REF} has a message starting with ` +
+      `"${RELEASE_COMMIT_PREFIX}". Feature PRs must never bump version fields — ` +
       `versions are only ever changed by the Release workflow (.github/workflows/release.yml), never by hand.`,
     violations,
   );
