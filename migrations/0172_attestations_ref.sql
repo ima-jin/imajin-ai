@@ -1,3 +1,5 @@
+-- 0172_attestations_ref.sql
+-- owner: kernel
 -- #2534: generic, optional, indexed `ref` on auth.attestations.
 --
 -- A free-form pointer that lets an app link an attestation to its own
