@@ -2,10 +2,20 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 
-const getPaymentRequestByHandleMock = vi.fn();
+const getInvoiceMock = vi.fn();
+
+/** Printable-view fields (#2661) the older pay-page cases don't care about. */
+const INVOICE_FIELDS = {
+  invoiceNumber: 'INV-3F9A1C07D2',
+  issuedAt: '2026-10-01T15:30:00.000Z',
+  dueAt: null,
+  issuerAddress: null,
+  paidAt: null,
+  settlement: null,
+};
 
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
-  getPaymentRequestByHandle: getPaymentRequestByHandleMock,
+  getPaymentRequestInvoiceByHandle: getInvoiceMock,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -24,7 +34,8 @@ afterEach(() => {
 
 describe('GET /pay/r/:handle — route wiring', () => {
   it('looks up the payment_request by the handle from the URL params', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Consulting', amount: 1999, quantity: 1 }],
       totalAmount: 1999,
@@ -39,11 +50,12 @@ describe('GET /pay/r/:handle — route wiring', () => {
     const jsx = await PayByHandlePage({ params: Promise.resolve({ handle: 'ph_1' }) });
     render(jsx);
 
-    expect(getPaymentRequestByHandleMock).toHaveBeenCalledWith('ph_1');
+    expect(getInvoiceMock).toHaveBeenCalledWith('ph_1');
   });
 
   it('renders the issuer name, line items, and total — no PII beyond the by-handle view', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Consulting', amount: 1999, quantity: 2 }],
       totalAmount: 3998,
@@ -64,7 +76,8 @@ describe('GET /pay/r/:handle — route wiring', () => {
   });
 
   it('shows a status note and no Pay button once already paid', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Consulting', amount: 1999, quantity: 1 }],
       totalAmount: 1999,
@@ -84,7 +97,8 @@ describe('GET /pay/r/:handle — route wiring', () => {
   });
 
   it('without tax: renders exactly as before — no subtotal row, no tax lines, just the total', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Consulting', amount: 1999, quantity: 1 }],
       totalAmount: 1999,
@@ -108,7 +122,8 @@ describe('GET /pay/r/:handle — route wiring', () => {
   });
 
   it('with tax: shows subtotal → each tax line (kind, jurisdiction, rate, registration number) → total', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Consulting', amount: 5000, quantity: 2 }],
       totalAmount: 11_300,
@@ -141,7 +156,8 @@ describe('GET /pay/r/:handle — route wiring', () => {
   });
 
   it('with multiple taxes (GST + PST): one line per registration, each with its own number and rate', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Build', amount: 20_002, quantity: 1 }],
       totalAmount: 22_402,
@@ -168,7 +184,8 @@ describe('GET /pay/r/:handle — route wiring', () => {
   });
 
   it('still offers Pay now for a taxed request (the server derives the Stripe tax line item)', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue({
+    getInvoiceMock.mockResolvedValue({
+      ...INVOICE_FIELDS,
       kind: 'invoice',
       lineItems: [{ name: 'Consulting', amount: 5000, quantity: 1 }],
       totalAmount: 5650,
@@ -185,7 +202,7 @@ describe('GET /pay/r/:handle — route wiring', () => {
   });
 
   it('404s for an unknown or void handle, same as the underlying by-handle route', async () => {
-    getPaymentRequestByHandleMock.mockResolvedValue(null);
+    getInvoiceMock.mockResolvedValue(null);
 
     await expect(PayByHandlePage({ params: Promise.resolve({ handle: 'does-not-exist' }) })).rejects.toThrow('NEXT_NOT_FOUND');
   });

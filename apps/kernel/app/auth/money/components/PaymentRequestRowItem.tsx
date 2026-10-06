@@ -41,6 +41,8 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
   const badge = STATUS_BADGES[row.status];
   const payUrl = `${buildPublicUrl('pay')}/r/${row.payHandle}`;
   const canAct = row.status === 'issued';
+  // #2661 — the same opaque-handle invoice/receipt the payer sees; `?print=1` opens the print dialog on load.
+  const printUrl = `${payUrl}?print=1`;
 
   async function handleSettle() {
     setSubmitting(true);
@@ -129,6 +131,16 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
               <code className="text-xs text-amber-300 flex-1 truncate">{payUrl}</code>
               <CopyButton text={payUrl} label="Copy pay link" />
             </div>
+            {row.status !== 'void' && (
+              <a
+                href={printUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-2 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
+              >
+                Print / Download PDF
+              </a>
+            )}
           </div>
 
           <div>
