@@ -20,10 +20,24 @@
  * `resolvePublishParams` mirrors the original bash exactly:
  *   - `push` (a `packages-v*` tag): `list` = `sdkPackages`, GitHub Packages
  *     only, never a dry run. `NPM_TOKEN` is never read on this path.
- *   - `workflow_dispatch`: `list` = `allPackages` when `inputPackage` is
+ *   - `workflow_dispatch` — or a `workflow_call` (#2578): `list` = `allPackages` when `inputPackage` is
  *     `"all"`, else `inputPackage` itself; `doNpmjs`/`doGhp` follow
  *     `inputRegistries` (`both` / `npmjs` / `github-packages`); `dryRun`
  *     passes `inputDryRun` through unchanged.
+ *
+ * ## Called from another workflow (#2578)
+ *
+ * Inside a reusable workflow, `github.event_name` and `github.ref` are the
+ * CALLER's, not `workflow_call`'s. tag-release.yml runs on `push` (to main),
+ * so the reusable publish job also sees `GITHUB_EVENT_NAME=push` — which by
+ * event name alone is indistinguishable from a `packages-v*` tag push, and
+ * would silently publish the wrong package set to the wrong registry. The ref
+ * disambiguates: a real tag push has `GITHUB_REF=refs/tags/packages-v*`, the
+ * release call has `refs/heads/main`. The tag path is therefore keyed on
+ * BOTH event and ref, so it can never be reached from inputs (and a tag push
+ * still can never reach npmjs, whatever stale inputs it carries — #1982).
+ * Anything else is input-driven, and an input-driven run with no `package`
+ * is an error rather than a guess.
  *
  * No in-workflow version bump exists here, deliberately — see
  * docs/packages/PUBLISHING.md's "Maintainer: bump, tag, publish" section and
@@ -43,6 +57,8 @@
  * Reads (all optional except `eventName`, which defaults to
  * `GITHUB_EVENT_NAME`):
  *   - `GITHUB_EVENT_NAME`   — `push` or `workflow_dispatch`
+ *   - `GITHUB_REF`          — the triggering ref; a `refs/tags/packages-v*`
+ *     ref on a `push` selects the SDK tag path
  *   - `INPUT_PACKAGE`       — `inputs.package` (workflow_dispatch only)
  *   - `INPUT_REGISTRIES`    — `inputs.registries` (workflow_dispatch only)
  *   - `INPUT_DRY_RUN`       — `inputs.dry_run` (workflow_dispatch only)
@@ -54,20 +70,30 @@
 
 import { appendFileSync } from 'node:fs';
 
+const PACKAGES_TAG_REF_PREFIX = 'refs/tags/packages-v';
+
 /**
  * Pure resolution — no env/fs access, so it's trivial to unit test every
  * branch without a real GitHub Actions context.
  */
 export function resolvePublishParams({
   eventName,
+  ref,
   inputPackage,
   inputRegistries,
   inputDryRun,
   allPackages,
   sdkPackages,
 }) {
-  if (eventName === 'push') {
+  if (eventName === 'push' && typeof ref === 'string' && ref.startsWith(PACKAGES_TAG_REF_PREFIX)) {
     return { list: sdkPackages, doNpmjs: false, doGhp: true, dryRun: false };
+  }
+
+  if (!inputPackage) {
+    throw new Error(
+      `No publish package given for event "${eventName}" on ref "${ref}": expected a ` +
+        `${PACKAGES_TAG_REF_PREFIX}* tag push, or a dispatch/call with a package input.`,
+    );
   }
 
   const list = inputPackage === 'all' ? allPackages : inputPackage;
@@ -86,6 +112,7 @@ export function formatAsGithubOutput({ list, doNpmjs, doGhp, dryRun }) {
 function main() {
   const params = resolvePublishParams({
     eventName: process.env.GITHUB_EVENT_NAME,
+    ref: process.env.GITHUB_REF,
     inputPackage: process.env.INPUT_PACKAGE,
     inputRegistries: process.env.INPUT_REGISTRIES,
     inputDryRun: process.env.INPUT_DRY_RUN,

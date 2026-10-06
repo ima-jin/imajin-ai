@@ -35,7 +35,9 @@ only sanctioned path: `gh workflow run release.yml -f bump=patch|minor` bumps ev
 (`release.yml:72-155`); merging it (`tag-release.yml`, triggered on push to `main`) tags the merge
 commit and dispatches `deploy-prod.yml` against that tag (`tag-release.yml:80-124`) — which still
 waits on the same `production` environment reviewer. Nothing in the chain bypasses branch protection
-or that gate.
+or that gate. The same `tag-release.yml` run also publishes every publishable package to npmjs at the
+release version automatically (#2578; the `publish-npm` job calls `publish-packages.yml` — see
+`docs/npm-publishing.md`); it runs independently of the `production` approval and never touches it.
 
 **Human steps, named:** (1) deciding to dispatch `release.yml` and picking `patch` vs `minor`; (2)
 reviewing/merging the release PR; (3) approving the `production` environment's pending deployment in

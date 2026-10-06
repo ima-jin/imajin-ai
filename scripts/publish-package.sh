@@ -59,6 +59,18 @@ case "$REGISTRY" in
 esac
 
 cd "$PUBLISH_DIR"
+
+# Idempotency (#2578): a version already on this registry is skipped, not a
+# failure, so re-running a release publish (or resuming a partial one) is safe.
+# Runs from $PUBLISH_DIR so the GitHub Packages .npmrc above applies to the
+# lookup too. If the registry state can't be determined (auth/network/5xx) the
+# helper exits non-zero and `set -e` fails the step — never a silent skip.
+ALREADY_PUBLISHED="$(node "$REPO_ROOT/scripts/npm-package-published.mjs" "$PUBLISH_DIR" "$REGISTRY")"
+if [[ "$ALREADY_PUBLISHED" = "published" ]]; then
+  echo "Skipping $PKG on $REGISTRY — this version is already published."
+  exit 0
+fi
+
 if [[ "$DRY_RUN" = "true" ]]; then
   echo "DRY RUN — skipping publish to $REGISTRY"
   npm publish --dry-run "${PUBLISH_ARGS[@]}" 2>&1 || true
