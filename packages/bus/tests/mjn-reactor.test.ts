@@ -84,8 +84,17 @@ function failResponse(status: number) {
   return { ok: false, status, text: async () => `status ${status}` };
 }
 
-function postedBodies(): Array<Record<string, any>> {
-  return fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string));
+interface PostedBody {
+  to_did: string;
+  amount: number;
+  unit: string;
+  reason: string;
+  currency?: string;
+  metadata: Record<string, unknown>;
+}
+
+function postedBodies(): PostedBody[] {
+  return fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string) as PostedBody);
 }
 
 async function runReactor(event: BusEvent, config: Record<string, unknown> = { attestationType: 'identity.created' }) {

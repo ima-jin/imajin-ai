@@ -112,6 +112,11 @@ export function createMockDb(
     };
   }
 
+  // Top-level helper (not nested inside `insert`) to keep function-nesting depth low.
+  function doNothingResult(table: unknown, values: Record<string, unknown>) {
+    return { returning: () => insertReturningFor(table, values) };
+  }
+
   function insert(table: unknown) {
     return {
       values(values: Record<string, unknown>) {
@@ -125,7 +130,7 @@ export function createMockDb(
           },
           onConflictDoNothing() {
             record.conflict = 'do-nothing';
-            return { returning: () => insertReturningFor(table, values) };
+            return doNothingResult(table, values);
           },
         });
       },
