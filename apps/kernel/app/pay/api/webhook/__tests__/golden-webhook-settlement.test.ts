@@ -73,7 +73,8 @@ vi.mock('@/src/db', async () => {
 });
 
 const { publishMock } = vi.hoisted(() => ({ publishMock: vi.fn().mockResolvedValue(undefined) }));
-vi.mock('@imajin/bus', () => ({ publish: publishMock }));
+vi.mock('@imajin/bus', async () =>
+  (await import('@/src/lib/pay/__tests__/in-process-bus')).createInProcessBusMock(publishMock));
 
 vi.mock('@/src/lib/kernel/id', () => ({
   generateId: (prefix: string) => `${prefix}_${state.idCounter++}`,

@@ -54,6 +54,8 @@ export type {
   ReactorHandler,
   LoopRefs,
   LoopEventPayload,
+  StripeRelaySource,
+  StripePlatformRelayPayload,
   BrokerRequest,
   BrokerFieldReleaseMode,
   BrokerReleaseEnvelopeMode,

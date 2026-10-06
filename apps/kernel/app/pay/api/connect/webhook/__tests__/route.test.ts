@@ -63,6 +63,16 @@ vi.mock('@/src/db', () => ({
   connectedAccounts: { stripeAccountId: 'stripeAccountId' },
 }));
 
+// #2177: the route now loads the pay-stripe consumer, which imports the payment_request
+// checkout settler (and transitively `node-identity.ts`'s module-scope `getClient()`).
+vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
+  settlePaymentRequestFromStripeCheckout: vi.fn(),
+}));
+
+const { publishMock } = vi.hoisted(() => ({ publishMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/bus', async () =>
+  (await import('@/src/lib/pay/__tests__/in-process-bus')).createInProcessBusMock(publishMock));
+
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
   getStripeClient: () => ({ webhooks: { constructEvent: state.constructEventMock } }),
 }));

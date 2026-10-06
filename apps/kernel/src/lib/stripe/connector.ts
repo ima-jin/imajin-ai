@@ -43,14 +43,19 @@
  * told to call (`/stripe/api/webhook/{routingId}`); `webhook-index.ts` is the
  * reverse lookup from that id back to `{ ownerDid, endpointId }`.
  *
- * ## Settlement seam (#1073) — intentionally NOT built here
+ * ## Settlement seam (#1073, converged by #2177)
  * Verified events are republished onto the bus (`stripe.payment_intent.
  * succeeded`, `stripe.invoice.paid`, `stripe.payout.paid`), tagged with the
  * owning principal DID, gated behind the owner's own `stripe:events` grant.
- * That is the seam: a follow-up reactor can subscribe to these and route them
- * to the canonical `POST /api/settle`. Building that convergence is out of
- * scope for this PR (see the issue's "Shape of the work" checklist) — this
- * only lands the bus event.
+ * The pay webhook ingress (`app/pay/api/webhook`, `.../connect/webhook`)
+ * now republishes the PLATFORM account's deliveries onto these same `stripe.*`
+ * types, and the kernel's `pay-stripe` reactor
+ * (`lib/pay/stripe-bus-consumer.ts`, which settles payment_request checkouts
+ * through the canonical `settlePayment()` core) consumes them. It handles only
+ * events the pay ingress relayed — never an owner's BYO event published here,
+ * which must not touch the platform ledger. This module only needs the
+ * reactor REGISTERED before it publishes: the `stripe.*` default chains name
+ * `pay-stripe`, and `publish()` throws on an unregistered reactor.
  *
  * ## Non-goals
  * No Stripe Connect, no Account Links, no destination charges, anywhere in
@@ -60,6 +65,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { sealAndStore, loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
 import { generateId } from '@/src/lib/kernel/id';
+import { ensurePayStripeReactorRegistered } from '@/src/lib/pay/stripe-bus-consumer';
 import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import {
   createConnectorTokenPaste,
@@ -325,6 +331,8 @@ async function publishStripeEvent(ownerDid: string, event: StripeEventLike): Pro
 
   const object = event.data?.object ?? {};
   const envelope = { issuer: ownerDid, subject: ownerDid, scope: 'stripe' } as const;
+
+  ensurePayStripeReactorRegistered();
 
   try {
     switch (event.type) {

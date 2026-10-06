@@ -37,6 +37,9 @@ vi.mock('@/src/db', () => ({
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', id: 'id' },
 }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
+// #2177: the connector registers the pay-stripe consumer before publishing; the consumer
+// (and its DB-backed handlers) is irrelevant to what this suite asserts.
+vi.mock('@/src/lib/pay/stripe-bus-consumer', () => ({ ensurePayStripeReactorRegistered: vi.fn() }));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
