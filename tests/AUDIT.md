@@ -34,7 +34,6 @@
 | Package | Status | Notes |
 |---------|--------|-------|
 | **@imajin/auth** | ✅ Working | Ed25519, DIDs, signing |
-| **@imajin/pay** | ✅ Working | Unified payments |
 | **@imajin/db** | 🟡 Planned | Database utilities |
 | **@imajin/ui** | 🟡 Planned | Shared components |
 
