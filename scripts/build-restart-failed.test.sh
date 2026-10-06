@@ -16,6 +16,9 @@
 #   2. an app's build genuinely fails -> must still exit 1, unchanged, since
 #      deploy-prod.yml/build-changed.sh only check "was the exit non-zero",
 #      never the specific value, but the value itself must stay stable.
+#   3. (#2572) the service is declared in the ecosystem file and
+#      pm2-reconcile.sh fails -> must exit 2 and must NOT fall through to the
+#      cold-start (which succeeds here and would have hidden the failure).
 #
 # Usage: scripts/build-restart-failed.test.sh
 
@@ -51,10 +54,14 @@ assert_contains() {
 # PATH-shimmed fake bin dir, then runs build.sh in it.
 #
 # Args: app_name  has_next_config(true|false)  fail_pnpm_build(true|false)
-#       pm2_restart_exit_code
+#       pm2_restart_exit_code  [reconcile_scenario(true|false)]
+# With reconcile_scenario=true the fixture declares the app in an ecosystem
+# file, ships a pm2-reconcile.sh that always fails, and a pm2 whose cold
+# `start` succeeds and whose jlist lists the app afterwards.
 # Sets (via stdout, one line each): EXIT_CODE, then the full captured output.
 run_build_sh_scenario() {
   local app="$1" has_next_config="$2" fail_pnpm_build="$3" pm2_restart_exit="$4"
+  local reconcile_scenario="${5:-false}"
   local outer repo fake_bin name
 
   outer="$(mktemp -d "${TMPDIR:-/tmp}/build-restart-failed-test.XXXXXX")"
@@ -68,10 +75,19 @@ run_build_sh_scenario() {
   cp "$SCRIPT_DIR/lib/build-version.sh" "$repo/scripts/lib/build-version.sh"
   cp "$SCRIPT_DIR/lib/pm2-owned.sh" "$repo/scripts/lib/pm2-owned.sh"
   cp "$SCRIPT_DIR/lib/deploy-skip.sh" "$repo/scripts/lib/deploy-skip.sh"
+  cp "$SCRIPT_DIR/lib/reap-port.sh" "$repo/scripts/lib/reap-port.sh"
   echo '{"name":"fake-repo","version":"0.0.0-test"}' > "$repo/package.json"
 
   if [[ "$has_next_config" = true ]]; then
     echo "module.exports = {};" > "$repo/apps/$app/next.config.js"
+  fi
+
+  if [[ "$reconcile_scenario" = true ]]; then
+    # Ecosystem file one level above the repo root, as build.sh expects, and a
+    # reconcile that always fails. ecosystem_has_app requires() the file.
+    echo "module.exports = { apps: [{ name: 'dev-${app}' }] };" > "$outer/ecosystem.config.js"
+    printf '#!/usr/bin/env bash\necho "fake pm2-reconcile failing" >&2\nexit 1\n' > "$repo/scripts/pm2-reconcile.sh"
+    chmod +x "$repo/scripts/pm2-reconcile.sh"
   fi
 
   # Untagged, single-commit git history — enough for build.sh's
@@ -135,6 +151,11 @@ case "\$1" in
   restart)
     exit $pm2_restart_exit
     ;;
+  start)
+    # The cold-start fallback: succeeds, so a build.sh that fell through to it
+    # after a failed reconcile would wrongly report success.
+    exit 0
+    ;;
   *)
     exit 0
     ;;
@@ -177,6 +198,22 @@ OUTPUT_2="$(echo "$RESULT_2" | tail -n +2)"
 
 assert_eq "a build FAILED still exits 1 (unchanged by #2382's fix)" "1" "$EXIT_2"
 assert_contains "summary names the app that failed to build" "$OUTPUT_2" "Failed: brokenapp"
+
+# --- Scenario 3 (#2572): a failing pm2-reconcile.sh is not masked by the ----
+# --- cold-start fallback. ---------------------------------------------------
+RESULT_3="$(run_build_sh_scenario "recapp" false false 0 true)"
+EXIT_3="$(echo "$RESULT_3" | head -1)"
+OUTPUT_3="$(echo "$RESULT_3" | tail -n +2)"
+
+assert_eq "a failing pm2-reconcile exits 2 even though a cold start would succeed (#2572)" "2" "$EXIT_3"
+assert_contains "output says reconcile failed for the service" "$OUTPUT_3" "pm2-reconcile failed for dev-recapp"
+assert_contains "summary names the service that failed to restart" "$OUTPUT_3" "Restart failures: dev-recapp"
+if [[ "$OUTPUT_3" == *"started from ecosystem config"* ]]; then
+  echo "❌ build.sh fell through to the cold start after a failed reconcile"
+  FAILURES=$((FAILURES + 1))
+else
+  echo "✅ no cold-start fallback after a failed reconcile"
+fi
 
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "$FAILURES assertion(s) failed."

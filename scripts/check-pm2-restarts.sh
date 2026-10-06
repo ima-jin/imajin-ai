@@ -30,6 +30,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/alert-webhook.sh
+source "$SCRIPT_DIR/lib/alert-webhook.sh"
 SCOPE="${1:-dev}"
 case "$SCOPE" in
   dev|prod) ;;
@@ -119,9 +121,5 @@ while read -r name delta secs; do
   MESSAGE="$MESSAGE $line;"
 done <<< "$OFFENDERS"
 
-if [[ -n "$WEBHOOK" ]]; then
-  payload="$(MSG="$MESSAGE" node -e 'console.log(JSON.stringify({ text: process.env.MSG }))')"
-  curl -fsS -m 10 -X POST -H 'Content-Type: application/json' -d "$payload" "$WEBHOOK" >/dev/null \
-    || echo "⚠️  check-pm2-restarts: webhook delivery failed" >&2
-fi
+send_alert_webhook check-pm2-restarts "$WEBHOOK" "$MESSAGE"
 exit 1

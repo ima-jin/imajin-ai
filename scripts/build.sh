@@ -229,67 +229,17 @@ source "$REPO_ROOT/scripts/lib/pm2-owned.sh"
 # shellcheck source=scripts/lib/deploy-skip.sh
 source "$REPO_ROOT/scripts/lib/deploy-skip.sh"
 
-# Reap any listener on $port that pm2 doesn't own, then verify (short bounded
-# wait) that the port is actually free. Returns 1 only when the port is truly
-# stuck AND pm2 doesn't report the app online; returns 0 (with a warning, not
-# an error) when the remaining listener turns out to be pm2-owned or pm2
-# otherwise reports the app healthy — see the exit-status note below (#2344).
-# Expects the global PM2_PIDS to already be populated via pm2_managed_pids.
-reap_orphan_port() {
-  local app="$1" port="$2"
-  local pid cmd listeners stray name
-  name="$(pm2_name "$app")"
-
-  if ! command -v ss >/dev/null 2>&1; then
-    echo "ℹ️  ss not found — skipping orphan-port check for $app (:$port)" | tee -a "$REPORT"
-    return 0
-  fi
-
-  # Refresh before every use, not just once for the whole restart batch: pm2
-  # can respawn an app (with a brand-new pid) between when PM2_PIDS was last
-  # captured and now — e.g. right after this same function killed a pid one
-  # app ago, or in the retry loop below right after killing this app's own
-  # stray. A stale snapshot is exactly what produced #2344's false failure.
-  PM2_PIDS="$(pm2_managed_pids)"
-
-  listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
-  for pid in $listeners; do
-    [[ -z "$pid" ]] && continue
-    is_pm2_owned "$pid" && continue
-    cmd="$(ps -o cmd= -p "$pid" 2>/dev/null || echo '?')"
-    echo "⚠️  Orphan on :$port ($app) — pid $pid ($cmd) not owned by pm2. Reaping." | tee -a "$REPORT"
-    kill "$pid" 2>/dev/null || true
-    sleep 2
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -9 "$pid" 2>/dev/null || true
-    fi
-  done
-
-  for _ in 1 2 3 4 5; do
-    stray=""
-    PM2_PIDS="$(pm2_managed_pids)"
-    listeners="$(ss -ltnpH "sport = :$port" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u || true)"
-    for pid in $listeners; do
-      [[ -z "$pid" ]] && continue
-      is_pm2_owned "$pid" || stray="$pid"
-    done
-    [[ -z "$stray" ]] && return 0
-    sleep 0.5
-  done
-
-  cmd="$(ps -o cmd= -p "$stray" 2>/dev/null || echo '?')"
-  # A pid we still can't attribute to pm2 is, by itself, an ownership/
-  # reporting mismatch, not proof the service is down (#2344) — pm2's own
-  # "online" status is the actual health signal. Only fail the build when
-  # pm2 agrees something is wrong.
-  if pm2_app_is_online "$name"; then
-    echo "⚠️  Port $port ($app) still shows pid $stray ($cmd) after reaping, but pm2 reports $name online — treating as pm2-managed, not a failure." | tee -a "$REPORT"
-    return 0
-  fi
-
-  echo "❌ Port $port ($app) still held by pid $stray ($cmd) after reaping, and pm2 does not report $name online — refusing to restart $app." | tee -a "$REPORT"
-  return 1
+# reap_orphan_port <app> <port> <pm2-name> comes from the shared helper (also
+# used by scripts/pm2-reconcile.sh to free the port after its own `pm2 delete`,
+# #2572). It reaps any listener on $port that pm2 doesn't own, then verifies
+# (short bounded wait) that the port is actually free. Returns 1 only when the
+# port is truly stuck AND pm2 doesn't report the app online (#2344). Its
+# messages go to the console and the build report.
+reap_log() {
+  echo "$*" | tee -a "$REPORT"
 }
+# shellcheck source=scripts/lib/reap-port.sh
+source "$REPO_ROOT/scripts/lib/reap-port.sh"
 
 # Restart services that built successfully.
 # Restart each one individually so a single missing/unknown process can't abort
@@ -325,7 +275,7 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
       continue
     fi
 
-    if [[ -n "$port" && "$port" != "0" ]] && ! reap_orphan_port "$app" "$port"; then
+    if [[ -n "$port" && "$port" != "0" ]] && ! reap_orphan_port "$app" "$port" "$name"; then
       RESTART_FAILED+=("$name")
       PORT_REAP_FAILED=true
       PORT_REAP_FAILURES+=("${app}(${port})")
@@ -340,6 +290,13 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
       if "$REPO_ROOT/scripts/pm2-reconcile.sh" "$ECOSYSTEM_FILE" "$name" >> "$REPORT" 2>&1; then
         continue
       fi
+      # Reconcile already tried to delete/start from the file and failed (or
+      # pm2/the ecosystem file is missing, #2572). Falling through to the
+      # cold-start below could mask that as a success; fail loudly instead so
+      # build.sh exits 2 and the deploy goes red.
+      echo "❌ pm2-reconcile failed for $name — see $REPORT; not retrying with a cold start" | tee -a "$REPORT"
+      RESTART_FAILED+=("$name")
+      continue
     elif pm2 restart "$name" --update-env >> "$REPORT" 2>&1; then
       continue
     fi
