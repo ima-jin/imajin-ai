@@ -117,10 +117,10 @@ publish_npmjs() {
     return 0
   fi
   if [[ -z "$FALLBACK_TOKEN" ]]; then
-    echo "::error::OIDC publish of $PKG failed and no NPM_TOKEN fallback is configured. Check the Trusted Publisher config for this package — see docs/npm-publishing.md."
+    echo "::error::OIDC publish of $PKG failed and no NPM_TOKEN fallback is configured. Check the Trusted Publisher config for this package — see docs/npm-publishing.md." >&2
     return 1
   fi
-  echo "::warning::OIDC publish of $PKG failed — retrying with the legacy NPM_TOKEN fallback. Configure a Trusted Publisher for this package so the token can be retired (docs/npm-publishing.md)."
+  echo "::warning::OIDC publish of $PKG failed — retrying with the legacy NPM_TOKEN fallback. Configure a Trusted Publisher for this package so the token can be retired (docs/npm-publishing.md)." >&2
   NPM_FALLBACK_AUTH="$FALLBACK_TOKEN" NPM_CONFIG_USERCONFIG="$TOKEN_NPMRC" npm publish "${PUBLISH_ARGS[@]}"
   echo "Authenticated via legacy NPM_TOKEN fallback."
 }

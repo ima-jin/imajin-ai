@@ -134,12 +134,15 @@ jobs:
 
       # Trusted Publishing needs npm >= 11.5.1 (Node 22 bundles npm 10, which
       # doesn't know the OIDC exchange and would fail much later as a generic
-      # auth error). Pinned to the 11 major rather than `latest` so a future
-      # major that raises its Node floor can't break a release job. The floor
-      # is then asserted, not assumed.
+      # auth error). Pinned to an exact version (not `latest`, not a range) so a
+      # future npm release that raises its Node floor can't break a release job
+      # and the toolchain is reproducible; bump it deliberately. 11.21.0 needs
+      # Node ^20.17 || >=22.9, which `node-version: 22` satisfies. Lifecycle
+      # scripts are skipped. The floor is then asserted, not assumed, so
+      # lowering the pin below 11.5.1 fails loudly.
       - name: Install npm with Trusted Publishing support
         run: |
-          npm install -g npm@^11
+          npm install -g --ignore-scripts npm@11.21.0
           node -e '
             const v = process.argv[1];
             const [a, b, c] = v.split(".").map(Number);
