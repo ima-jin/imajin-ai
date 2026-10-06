@@ -27,6 +27,7 @@ const routes: Record<string, () => Promise<{ OPTIONS?: OptionsHandler }>> = {
   'apps/token/service': () => import('../apps/token/service/route'),
   'apps/token/verify': () => import('../apps/token/verify/route'),
   'attestations/[did]': () => import('../attestations/[did]/route'),
+  'attestations/[did]/revoke': () => import('../attestations/[did]/revoke/route'),
   'attestations/countersign': () => import('../attestations/countersign/route'),
   'attestations/decline': () => import('../attestations/decline/route'),
   'attestations/nostr/[npub]': () => import('../attestations/nostr/[npub]/route'),

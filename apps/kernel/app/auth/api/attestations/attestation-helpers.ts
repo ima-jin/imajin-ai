@@ -151,21 +151,68 @@ export function checkSupersessionEligibility(
   return { ok: true };
 }
 
-export type SupersedesValidationResult = { ok: true } | { ok: false; error: string };
+export type OneSidedSupersessionTarget = Pick<Attestation, 'issuerDid' | 'attestationStatus' | 'authorJws' | 'revokedAt'>;
+
+/**
+ * A "one-sided" attestation is a single-signer one: it carries no
+ * countersign state (`attestationStatus` is null — see POST
+ * /api/attestations, which only assigns a status when `author_jws` opens the
+ * bilateral flow) and no author JWS.
+ */
+export function isOneSidedAttestation(target: Pick<Attestation, 'attestationStatus' | 'authorJws'>): boolean {
+  return target.attestationStatus === null && !target.authorJws;
+}
+
+/**
+ * Same-issuer supersession (#2649): the issuer of a one-sided attestation may
+ * replace it with a new attestation signed by the same DID (e.g. a
+ * respondent changing their survey answers). Unlike the bilateral amendment
+ * flow (#1790) there is no counterparty to wait for, so the old row flips to
+ * `superseded` as soon as the replacement is written.
+ *
+ * Pure and DB-independent, mirroring `checkSupersessionEligibility`.
+ */
+export function checkOneSidedSupersession(
+  target: OneSidedSupersessionTarget,
+  proposerDid: string,
+): SupersessionEligibilityResult {
+  if (target.issuerDid !== proposerDid) {
+    return {
+      ok: false,
+      error: `supersedes must reference an attestation issued by "${proposerDid}"`,
+    };
+  }
+  if (target.revokedAt) {
+    return { ok: false, error: 'supersedes must not reference a revoked attestation' };
+  }
+  return { ok: true };
+}
+
+// `oneSided: true` means the target is a one-sided attestation the caller must
+// flip to `superseded` immediately, in the same transaction as the insert (#2649).
+export type SupersedesValidationResult = { ok: true; oneSided?: true } | { ok: false; error: string };
 
 /**
  * Creation-time validation for a `supersedes` reference: it must resolve to
- * an existing attestation, and `checkSupersessionEligibility` must pass for
- * `proposerDid` (the new attestation's issuer). Shared by both
- * attestation-creation routes so the check can never drift between them.
+ * an existing attestation, and either `checkSupersessionEligibility`
+ * (bilateral target) or — only when `allowOneSided` is set — the same-issuer
+ * one-sided rule (#2649) must pass for `proposerDid` (the new attestation's
+ * issuer). Shared by both attestation-creation routes so the check can never
+ * drift between them; the internal route leaves `allowOneSided` off so it
+ * keeps its bilateral-only behavior.
  */
 export async function validateSupersedesReference(
   supersedes: string,
   proposerDid: string,
+  options: { allowOneSided?: boolean } = {},
 ): Promise<SupersedesValidationResult> {
   const [target] = await db.select().from(attestations).where(eq(attestations.id, supersedes)).limit(1);
   if (!target) {
     return { ok: false, error: `supersedes "${supersedes}" does not reference an existing attestation` };
+  }
+  if (options.allowOneSided && isOneSidedAttestation(target)) {
+    const oneSided = checkOneSidedSupersession(target, proposerDid);
+    return oneSided.ok ? { ok: true, oneSided: true } : oneSided;
   }
   return checkSupersessionEligibility(target, proposerDid);
 }
