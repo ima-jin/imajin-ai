@@ -74,7 +74,9 @@ export const PAY_STRIPE_REACTOR = 'pay-stripe';
 type StripeEventHandler = (stripeEvent: unknown) => Promise<void>;
 
 /** Adapt a `RailEvent` handler: normalize the verified Stripe event first. */
-function onRailEvent(handler: (event: RailEvent, stripeEvent: unknown) => Promise<void>): StripeEventHandler {
+function onRailEvent(
+  handler: (event: RailEvent, stripeEvent: unknown) => Promise<void> | void,
+): StripeEventHandler {
   return async (stripeEvent) => {
     const railEvent = toRailEvent(stripeEvent);
     if (!railEvent) {
@@ -201,7 +203,7 @@ async function handleAccountUpdated(event: RailEvent): Promise<void> {
     .where(eq(connectedAccounts.stripeAccountId, account.id));
 }
 
-async function handlePayoutEvent(label: string, event: RailEvent, stripeEvent: unknown): Promise<void> {
+function handlePayoutEvent(label: string, event: RailEvent, stripeEvent: unknown): void {
   const payout = event.raw as unknown as StripePayoutLike;
   const connectAccountId = (stripeEvent as { account?: string } | undefined)?.account;
   log.info({ account: connectAccountId, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, label);
