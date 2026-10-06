@@ -404,7 +404,7 @@ function resolveCursor(beforeParam: string | null): CursorResolution {
 function splitPage(fetched: Attestation[], limit: number): { rows: Attestation[]; nextCursor: string | null } {
   if (fetched.length <= limit) return { rows: fetched, nextCursor: null };
   const rows = fetched.slice(0, limit);
-  return { rows, nextCursor: encodeAttestationCursor(rows[rows.length - 1]) };
+  return { rows, nextCursor: encodeAttestationCursor(rows.at(-1) as Attestation) };
 }
 
 /**
