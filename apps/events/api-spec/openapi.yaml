@@ -726,6 +726,61 @@ paths:
                   conversationId: { type: string }
                   lobbyConversationId: { type: string }
 
+  /api/events/{id}/access:
+    get:
+      tags: [events]
+      operationId: getEventAccessGate
+      summary: Boolean ticket-holder gate for third-party apps
+      description: |
+        Composable gate (#2395): answers whether a DID holds a ticket for an
+        event, as a bare boolean. Never returns ticket rows or any ticket,
+        price, or organizer data. Requires a scoped app token with `events:read`;
+        session cookies are not accepted.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Event id
+        - name: did
+          in: query
+          required: true
+          schema: { type: string }
+          description: DID whose ticket holding is being checked
+      responses:
+        "200":
+          description: Whether the DID holds a ticket (and nothing else)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [hasAccess]
+                properties:
+                  hasAccess: { type: boolean }
+        "400":
+          description: Missing `did` query parameter
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Missing, invalid, or expired app token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Token lacks the `events:read` scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/events/{id}/fair:
     patch:
       tags: [events]
