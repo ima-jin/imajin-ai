@@ -76,6 +76,7 @@ vi.mock('@/src/lib/connections/payment-request-invite', () => ({ createPaymentRe
 import {
   createPaymentRequest,
   getPaymentRequestByHandle,
+  getPaymentRequestInvoiceByHandle,
   isServiceError,
   listPaymentRequests,
   settlePaymentRequestManual,
@@ -731,6 +732,135 @@ describe('getPaymentRequestByHandle (#2210)', () => {
     // state — the request stays payable through the same handle regardless
     // of whether the recipient has claimed yet.
     expect(beforeClaim).toEqual(afterClaim);
+  });
+});
+
+describe('getPaymentRequestInvoiceByHandle (#2661)', () => {
+  const ROW = {
+    id: 'pr_3f9a1c07d2aabbccddeeff00',
+    kind: 'invoice',
+    issuerDid: ISSUER_DID,
+    recipientDid: RECIPIENT_DID,
+    recipientStubId: null,
+    lineItems: VALID_LINE_ITEMS,
+    totalAmount: 5650,
+    subtotalAmount: 5000,
+    taxTotalAmount: 650,
+    fairManifest: { chain: [], total: { amount: 5000, currency: 'CAD' }, taxes: [TAX_ROW_ON] },
+    currency: 'CAD',
+    status: 'issued',
+    settlementRef: null,
+    payHandle: 'ph_abc',
+    createdAt: new Date('2026-10-01T15:30:00.000Z'),
+    dueAt: new Date('2026-10-06T00:00:00.000Z'),
+  };
+  const PROFILE = { displayName: 'Imajin Inc', metadata: { location: ' 1 Example St, Toronto ' }, fieldVisibility: {} };
+
+  it('returns null for an unknown handle and for a void request — the same gate as the pay page', async () => {
+    state.selectQueue.push([]);
+    expect(await getPaymentRequestInvoiceByHandle('ph_bad')).toBeNull();
+
+    state.selectQueue.push([{ ...ROW, status: 'void' }]);
+    expect(await getPaymentRequestInvoiceByHandle('ph_abc')).toBeNull();
+  });
+
+  it('adds the document number, dates and issuer address to the public view, keeping its tax breakdown', async () => {
+    state.selectQueue.push([ROW]);
+    state.selectQueue.push([PROFILE]);
+
+    const result = await getPaymentRequestInvoiceByHandle('ph_abc');
+
+    expect(result).toMatchObject({
+      kind: 'invoice',
+      totalAmount: 5650,
+      subtotalAmount: 5000,
+      issuerDisplayName: 'Imajin Inc',
+      invoiceNumber: 'INV-3F9A1C07D2',
+      issuedAt: '2026-10-01T15:30:00.000Z',
+      dueAt: '2026-10-06T00:00:00.000Z',
+      issuerAddress: '1 Example St, Toronto',
+      paidAt: null,
+      settlement: null,
+    });
+    expect(result?.taxes).toEqual([
+      { jurisdiction: 'CA-ON', kind: 'GST/HST', rateBps: 1300, amount: 650, registrationNumber: '123456789RT0001' },
+    ]);
+  });
+
+  it('exposes no DID, recipient, manifest or handle', async () => {
+    state.selectQueue.push([ROW]);
+    state.selectQueue.push([PROFILE]);
+
+    const json = JSON.stringify(await getPaymentRequestInvoiceByHandle('ph_abc'));
+
+    for (const leaked of [ISSUER_DID, RECIPIENT_DID, 'recipient', 'fairManifest', 'collectorDid', 'remitTo', 'contentHash', 'ph_abc']) {
+      expect(json).not.toContain(leaked);
+    }
+  });
+
+  it('once paid via Stripe: the payment date and the processor reference, but never the note or asserter', async () => {
+    state.selectQueue.push([
+      {
+        ...ROW,
+        status: 'paid',
+        settlementRef: {
+          method: 'stripe',
+          settled_at: '2026-10-09T18:45:00.000Z',
+          checkout_session_id: 'cs_1',
+          payment_intent_id: 'pi_1',
+          note: 'private note',
+          asserted_by: ISSUER_DID,
+        },
+      },
+    ]);
+    state.selectQueue.push([PROFILE]);
+
+    const result = await getPaymentRequestInvoiceByHandle('ph_abc');
+
+    expect(result?.paidAt).toBe('2026-10-09T18:45:00.000Z');
+    expect(result?.settlement).toEqual({ method: 'stripe', reference: 'pi_1' });
+    expect(JSON.stringify(result)).not.toContain('private note');
+    expect(JSON.stringify(result)).not.toContain(ISSUER_DID);
+  });
+
+  it('a manual settlement carries its method and date with no reference', async () => {
+    state.selectQueue.push([
+      { ...ROW, status: 'settled_manual', settlementRef: { method: 'manual', settled_at: '2026-10-09T18:45:00.000Z', note: 'e-transfer' } },
+    ]);
+    state.selectQueue.push([PROFILE]);
+
+    const result = await getPaymentRequestInvoiceByHandle('ph_abc');
+    expect(result?.settlement).toEqual({ method: 'manual', reference: null });
+    expect(result?.paidAt).toBe('2026-10-09T18:45:00.000Z');
+  });
+
+  it('never surfaces settlement details while the request is still issued', async () => {
+    state.selectQueue.push([{ ...ROW, settlementRef: { method: 'stripe', settled_at: '2026-10-09T18:45:00.000Z' } }]);
+    state.selectQueue.push([PROFILE]);
+
+    const result = await getPaymentRequestInvoiceByHandle('ph_abc');
+    expect(result?.paidAt).toBeNull();
+    expect(result?.settlement).toBeNull();
+  });
+
+  it('omits the address when the profile has none or hides the location field', async () => {
+    state.selectQueue.push([ROW]);
+    state.selectQueue.push([{ displayName: 'Acme', metadata: {}, fieldVisibility: {} }]);
+    expect((await getPaymentRequestInvoiceByHandle('ph_abc'))?.issuerAddress).toBeNull();
+
+    state.selectQueue.push([ROW]);
+    state.selectQueue.push([{ ...PROFILE, fieldVisibility: { location: { level: 'private' } } }]);
+    expect((await getPaymentRequestInvoiceByHandle('ph_abc'))?.issuerAddress).toBeNull();
+  });
+
+  it('tolerates a request with no due date and no issuer profile', async () => {
+    state.selectQueue.push([{ ...ROW, dueAt: null }]);
+    state.selectQueue.push([]);
+
+    const result = await getPaymentRequestInvoiceByHandle('ph_abc');
+    expect(result?.dueAt).toBeNull();
+    expect(result?.issuerAddress).toBeNull();
+    expect(result?.issuerDisplayName).toBe(ISSUER_DID.slice(0, 16));
   });
 });
 

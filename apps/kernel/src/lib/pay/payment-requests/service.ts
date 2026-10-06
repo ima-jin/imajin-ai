@@ -18,6 +18,7 @@ import { isConnected } from '@/src/lib/chat/connection-check';
 import { createPaymentRequestInvite } from '@/src/lib/connections/payment-request-invite';
 import type { TaxRegistration } from '@/src/lib/profile/tax-registrations';
 import { computePaymentRequestContentHash } from './content-hash';
+import { invoiceNumberOf, issuerAddressOf, publicSettlementOf, type PublicSettlement } from './invoice';
 import {
   FAIR_VERSION_WITH_TAXES,
   buildDefaultPaymentRequestManifest,
@@ -518,10 +519,53 @@ export interface PaymentRequestPublicView {
   status: string;
 }
 
-/** Best-effort display name for the issuer — falls back to a truncated DID rather than failing the whole read. */
-async function resolveIssuerDisplayName(issuerDid: string): Promise<string> {
+/** `PaymentRequestPublicView` + the printable invoice / receipt fields (#2661) — see `getPaymentRequestInvoiceByHandle`. */
+export interface PaymentRequestInvoiceView extends PaymentRequestPublicView {
+  /** Human-facing document number (`INV-…` / `REQ-…`), derived from the internal id. */
+  invoiceNumber: string;
+  /** ISO instant the request was issued. */
+  issuedAt: string | null;
+  /** Calendar due date stored as UTC midnight (#2651) — render with `formatDueDate`. */
+  dueAt: string | null;
+  /** The issuer's public business address, when the profile has one. */
+  issuerAddress: string | null;
+  /** ISO instant of payment; `null` until settled. */
+  paidAt: string | null;
+  /** Sanitised settlement reference; `null` until settled. */
+  settlement: PublicSettlement | null;
+}
+
+type IssuerProfile = typeof profiles.$inferSelect;
+
+async function findIssuerProfile(issuerDid: string): Promise<IssuerProfile | undefined> {
   const [profile] = await db.select().from(profiles).where(eq(profiles.did, issuerDid)).limit(1);
+  return profile;
+}
+
+/** Best-effort display name for the issuer — falls back to a truncated DID rather than failing the whole read. */
+function issuerDisplayNameOf(profile: IssuerProfile | undefined, issuerDid: string): string {
   return profile?.displayName || profile?.handle || issuerDid.slice(0, 16);
+}
+
+/** The row behind an opaque `pay_handle`, or `null` when unknown or `void` (both 404 the same). */
+async function findLiveRowByHandle(handle: string): Promise<PaymentRequest | null> {
+  const [row] = await db.select().from(paymentRequests).where(eq(paymentRequests.payHandle, handle)).limit(1);
+  if (!row || row.status === 'void') return null;
+  return row;
+}
+
+function publicViewOf(row: PaymentRequest, profile: IssuerProfile | undefined): PaymentRequestPublicView {
+  return {
+    kind: row.kind as PaymentRequestKind,
+    lineItems: row.lineItems as PaymentRequestLineItem[],
+    totalAmount: row.totalAmount,
+    subtotalAmount: row.subtotalAmount,
+    taxTotalAmount: row.taxTotalAmount,
+    taxes: taxBreakdownOf(row)?.taxes ?? [],
+    currency: row.currency,
+    issuerDisplayName: issuerDisplayNameOf(profile, row.issuerDid),
+    status: row.status,
+  };
 }
 
 /**
@@ -534,19 +578,44 @@ async function resolveIssuerDisplayName(issuerDid: string): Promise<string> {
  * Hidden (404, same as an unknown handle) once `void`.
  */
 export async function getPaymentRequestByHandle(handle: string): Promise<PaymentRequestPublicView | null> {
-  const [row] = await db.select().from(paymentRequests).where(eq(paymentRequests.payHandle, handle)).limit(1);
-  if (!row || row.status === 'void') return null;
+  const row = await findLiveRowByHandle(handle);
+  if (!row) return null;
+  return publicViewOf(row, await findIssuerProfile(row.issuerDid));
+}
+
+/** ISO string for a nullable timestamp column, `null` when unset. */
+function isoOrNull(value: Date | string | null | undefined): string | null {
+  return value ? new Date(value).toISOString() : null;
+}
+
+/**
+ * #2661 — the public view plus exactly what a printable invoice / receipt
+ * needs on top of it, behind the SAME opaque `pay_handle` gate (unknown and
+ * `void` handles are `null`, same as the pay page). Used only by the
+ * server-rendered pay page: `GET /pay/api/payment-requests/by-handle/:handle`
+ * keeps returning `getPaymentRequestByHandle`'s narrower view, unchanged.
+ *
+ * Adds a document number, issue/due dates, the issuer's public business
+ * address, and — only once settled — the payment date and a sanitised
+ * settlement reference (see `invoice.ts`). Still no issuer/recipient DIDs,
+ * recipient PII, settlement note or asserter, fair_manifest or content_hash.
+ */
+export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<PaymentRequestInvoiceView | null> {
+  const row = await findLiveRowByHandle(handle);
+  if (!row) return null;
+
+  const profile = await findIssuerProfile(row.issuerDid);
+  const settled = row.status === 'paid' || row.status === 'settled_manual';
+  const { paidAt, settlement } = settled ? publicSettlementOf(row.settlementRef) : { paidAt: null, settlement: null };
 
   return {
-    kind: row.kind as PaymentRequestKind,
-    lineItems: row.lineItems as PaymentRequestLineItem[],
-    totalAmount: row.totalAmount,
-    subtotalAmount: row.subtotalAmount,
-    taxTotalAmount: row.taxTotalAmount,
-    taxes: taxBreakdownOf(row)?.taxes ?? [],
-    currency: row.currency,
-    issuerDisplayName: await resolveIssuerDisplayName(row.issuerDid),
-    status: row.status,
+    ...publicViewOf(row, profile),
+    invoiceNumber: invoiceNumberOf(row.kind as PaymentRequestKind, row.id),
+    issuedAt: isoOrNull(row.createdAt),
+    dueAt: isoOrNull(row.dueAt),
+    issuerAddress: issuerAddressOf(profile),
+    paidAt,
+    settlement,
   };
 }
 

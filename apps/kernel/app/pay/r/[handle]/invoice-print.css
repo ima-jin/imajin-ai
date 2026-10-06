@@ -1,0 +1,74 @@
+/*
+ * Print layout for the pay page's invoice / receipt (#2661).
+ *
+ * Styling hooks (asserted by __tests__/invoice-print.test.ts):
+ *   .invoice-page            outer wrapper — loses its screen padding/width cap
+ *   .invoice-sheet           the document itself — flat, black on white
+ *   .invoice-muted           secondary text — dark grey
+ *   .invoice-stamp           the PAID stamp — keeps its green
+ *   [data-print='hide']      screen-only chrome: print button, billed-to input,
+ *                            status note, Pay now / sign-in actions
+ *   [data-invoice-row]       a row that must not split across pages
+ *
+ * The root layout's nav bar (and any other sibling of the page) is hidden by
+ * the `:has(.invoice-sheet)` rule, so nothing outside the sheet prints.
+ */
+@media print {
+  @page {
+    size: letter;
+    margin: 0.6in;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #111 !important;
+    /* The root layout's `min-h-screen` would otherwise stretch the body past one page and print a blank second sheet. */
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  [data-print='hide'] {
+    display: none !important;
+  }
+
+  body:has(.invoice-sheet) > *:not(:has(.invoice-sheet)) {
+    display: none !important;
+  }
+
+  .invoice-page {
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .invoice-sheet {
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .invoice-sheet,
+  .invoice-sheet * {
+    color: #111 !important;
+    background: transparent !important;
+    border-color: #bbb !important;
+  }
+
+  .invoice-sheet .invoice-muted {
+    color: #555 !important;
+  }
+
+  .invoice-sheet .invoice-stamp {
+    color: #166534 !important;
+    border-color: #166534 !important;
+  }
+
+  .invoice-sheet [data-invoice-row] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

@@ -215,3 +215,27 @@ describe('PaymentRequestRowItem — settlement reference', () => {
     expect(label.nextElementSibling?.textContent).toBe('—');
   });
 });
+
+describe('PaymentRequestRowItem — Print / Download PDF (#2661)', () => {
+  it('links to the handle-gated invoice with ?print=1 so the print dialog opens on load', () => {
+    render(<PaymentRequestRowItem row={row()} onChanged={vi.fn()} />);
+    expandRow();
+
+    const link = screen.getByRole('link', { name: 'Print / Download PDF' });
+    expect(link.getAttribute('href')).toBe('https://pay.example/r/ph_1?print=1');
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+  });
+
+  it('is offered on a paid row (the receipt)', () => {
+    render(<PaymentRequestRowItem row={row({ status: 'paid' })} onChanged={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /invoice/ }));
+    expect(screen.getByRole('link', { name: 'Print / Download PDF' })).toBeDefined();
+  });
+
+  it('is not offered on a void row — its pay link 404s', () => {
+    render(<PaymentRequestRowItem row={row({ status: 'void' })} onChanged={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /invoice/ }));
+    expect(screen.queryByRole('link', { name: 'Print / Download PDF' })).toBeNull();
+  });
+});
