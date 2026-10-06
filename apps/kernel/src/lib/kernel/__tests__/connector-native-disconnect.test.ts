@@ -223,3 +223,14 @@ describe('createNativeDisconnectHandler — fail-closed', () => {
     expect(publishBusMock).not.toHaveBeenCalled();
   });
 });
+
+describe('createNativeDisconnectHandler — OPTIONS', () => {
+  it('answers CORS pre-flight with a Promise, keeping the handler contract without `async`', async () => {
+    const { OPTIONS } = handlerWith();
+
+    const pending = OPTIONS(makeRequest());
+
+    expect(pending).toBeInstanceOf(Promise);
+    expect((await pending).status).toBe(204);
+  });
+});

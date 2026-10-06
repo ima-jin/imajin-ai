@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 import { haversineDistance } from '@/src/lib/registry/bump-correlation';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

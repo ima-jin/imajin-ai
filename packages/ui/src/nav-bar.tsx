@@ -148,7 +148,7 @@ function useAutoIdentity(servicePrefix: string, domain: string, overrides?: Serv
       }
     }
 
-    checkSession();
+    void checkSession().catch((err: unknown) => { console.error('NavBar: session check failed:', err); });
 
     // Re-fetch when another tab or component signals a session change
     // (e.g. after onboarding claim in a polling flow)

@@ -4,7 +4,7 @@
  * first byte arrives, never mid-stream.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { forwardToKernel, UpstreamTimeoutError } from '../src/upstream.js';
+import { forwardMcpDirect, forwardToKernel, NoDirectFallbackError, UpstreamTimeoutError } from '../src/upstream.js';
 import { onAbortRejection } from './dispatch-test-support.js';
 
 describe('forwardToKernel — TTFB timeout bounds time-to-first-byte only', () => {
@@ -37,5 +37,14 @@ describe('forwardToKernel — TTFB timeout bounds time-to-first-byte only', () =
     vi.stubGlobal('fetch', fetchMock);
 
     await expect(forwardToKernel('https://kernel.test', 'tok', '{}', timeoutMs)).rejects.toThrow(UpstreamTimeoutError);
+  });
+});
+
+describe('forwardMcpDirect — MCP has no direct fallback', () => {
+  it('rejects with NoDirectFallbackError rather than throwing synchronously', async () => {
+    const route = { id: 'mcp' } as Parameters<typeof forwardMcpDirect>[0];
+    let pending: Promise<Response> | undefined;
+    expect(() => { pending = forwardMcpDirect(route); }).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(NoDirectFallbackError);
   });
 });

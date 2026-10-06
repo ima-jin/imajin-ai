@@ -70,9 +70,18 @@ deliberately no second, competing bump path here.
    `.github/workflows/smoke-sdk-install.yml`) against the version just
    published — see "Smoke-testing a published version" below.
 
-Ad hoc/other-package publishes (the wider `cid`/`tokens`/`vault-core`/`db`/
-`fair`/`pay`/`auth-client` set, or a re-publish to npmjs.org) still go through
-`workflow_dispatch` on the same workflow. Like the tag path, `workflow_dispatch`
+**npmjs.org is automatic (#2578):** when the release PR merges,
+`tag-release.yml` tags `vX.Y.Z` and, in the same run, publishes every
+publishable package (the four above plus the rest of `ALL_PACKAGES`) to
+npmjs.org at that version by calling `publish-packages.yml` — nobody has to
+remember to run it. A version already on npm is skipped, so re-running is safe;
+a failed publish fails the run. See `docs/npm-publishing.md`'s "Automatic npm
+publish on a release tag". The `packages-v*` tag above remains the GitHub
+Packages path for the four SDK packages.
+
+Ad hoc publishes outside a release (backfilling a package, or a one-off
+re-publish) still go through `workflow_dispatch` on the same workflow, which is
+safe to run against versions that already exist. Like the tag path, `workflow_dispatch`
 has no version-bump input either — every publish, for every package, ships
 exactly the version already committed in that package's `package.json`. Bump
 it in a normal PR, merge, *then* dispatch/tag.

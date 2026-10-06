@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, ReactNode } from 'react';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface IdentityContextType {
   did: string | null;
@@ -21,7 +22,7 @@ export function IdentityProvider({ children }: Readonly<{ children: ReactNode }>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    checkSession();
+    fireAndForget(checkSession(), 'identity:checkSession');
   }, []);
 
   async function checkSession() {

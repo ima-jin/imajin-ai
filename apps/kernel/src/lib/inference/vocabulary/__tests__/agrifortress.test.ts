@@ -66,4 +66,14 @@ describe('agrifortressVocabulary.resolve (#1850)', () => {
     expect(edited.digest).not.toBe(original.digest);
     expect(otherOwner.digest).not.toBe(original.digest);
   });
+
+  it('rejects (rather than throwing synchronously) when the intent cannot be digested', async () => {
+    const unserialisable = { ...SUPPLY_INTENT, metadata: { qty: BigInt(1) } };
+
+    let pending: Promise<unknown> | undefined;
+    expect(() => {
+      pending = agrifortressVocabulary.resolve(unserialisable, 'did:imajin:owner');
+    }).not.toThrow();
+    await expect(pending).rejects.toThrow(TypeError);
+  });
 });

@@ -1155,3 +1155,131 @@ describe('the node\'s own internal-secret grant never silently expires (#2451)',
     expect(stores.grants.get(grantId)).toMatchObject({ expiresAt });
   });
 });
+
+// ── #2582: revokeInternalSecret ──────────────────────────────────────────────
+
+/** A booted kernel with the revoke module loaded from the SAME module graph (shared cache). */
+async function bootWithRevoke() {
+  const booted = await boot();
+  const { revokeInternalSecret } = await import('../internal-secret-revoke.js');
+  return { ...booted, revokeInternalSecret };
+}
+
+/** Make deleting a provisions row throw — the injected failure after the self-grant was revoked. */
+function failProvisionsDelete() {
+  const real = dbDouble.delete.bind(dbDouble);
+  return vi.spyOn(dbDouble, 'delete').mockImplementation((table) => {
+    if (table.__table === 'provisions') throw new Error('injected: provisions delete failed');
+    return real(table);
+  });
+}
+
+describe('revokeInternalSecret — self-provisioned secret (#2582)', () => {
+  const corpusDid = 'did:imajin:corpus-test';
+
+  it('revokes the self-grant and clears the provisions row; the next get re-provisions a fresh value', async () => {
+    const ctx = await bootWithRevoke();
+    const original = await ctx.internal.getInternalSecret(PURPOSE);
+    const nodeDid = ctx.sealing.getNodeSigningIdentity().senderDid;
+    const selfGrantId = String(activeGrantsFor(FIELD).find((g) => g.grantedTo === nodeDid)!.id);
+
+    await expect(ctx.revokeInternalSecret(PURPOSE)).resolves.toEqual({ selfGrantRevoked: true, provisionCleared: true });
+
+    expect(stores.grants.get(selfGrantId)).toMatchObject({ status: 'revoked', wrappedKey: '', wrappedNonce: '' });
+    expect(stores.provisions.size).toBe(0);
+    expect(activeGrantsFor(FIELD)).toHaveLength(0);
+
+    const fresh = await ctx.internal.getInternalSecret(PURPOSE); // same process: the cache was dropped
+    expect(fresh).toMatch(/^[0-9a-f]{64}$/);
+    expect(fresh).not.toBe(original);
+    const [active] = activeGrantsFor(FIELD);
+    expect(active).toMatchObject({ purpose: PURPOSE, grantedTo: nodeDid });
+    expect(active!.id).not.toBe(selfGrantId);
+    expect([...stores.provisions.values()]).toHaveLength(1);
+    expect([...stores.provisions.values()][0]!.grantId).toBe(active!.id);
+
+    const restarted = await boot(); // and it sticks across a restart — no stranded row
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(fresh);
+    expect(logSpies.error).not.toHaveBeenCalled();
+  });
+
+  it('leaves external grantees untouched, and the re-provision ERRORs naming them', async () => {
+    const ctx = await bootWithRevoke();
+    await ctx.internal.getInternalSecret(PURPOSE);
+    const granted = await ctx.vault.grantInternalSecretTo(PURPOSE, corpusDid, 'test-operator');
+    const corpusGrantId = granted.status === 'ok' ? granted.grantId : '';
+
+    await ctx.revokeInternalSecret(PURPOSE);
+
+    expect(stores.grants.get(corpusGrantId)?.status).toBe('active');
+    await ctx.internal.getInternalSecret(PURPOSE);
+    expect(logSpies.error).toHaveBeenCalledWith(
+      expect.objectContaining({ staleGrantees: [corpusDid] }),
+      expect.stringMatching(/re-granted by an operator/),
+    );
+  });
+
+  it('is atomic: a failure clearing the provisions row rolls the grant revoke back too', async () => {
+    const ctx = await bootWithRevoke();
+    const original = await ctx.internal.getInternalSecret(PURPOSE);
+    const before = await stateOfRotatedField(ctx.vault);
+    const failing = failProvisionsDelete();
+
+    await expect(ctx.revokeInternalSecret(PURPOSE)).rejects.toThrow(/injected: provisions delete failed/);
+    failing.mockRestore();
+
+    expect(await stateOfRotatedField(ctx.vault)).toEqual(before);
+    expect(activeGrantsFor(FIELD)).toHaveLength(1);
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(original);
+  });
+
+  it('is idempotent: with nothing left to revoke it changes nothing', async () => {
+    const ctx = await bootWithRevoke();
+    await ctx.internal.getInternalSecret(PURPOSE);
+    await ctx.revokeInternalSecret(PURPOSE);
+    const before = await stateOfRotatedField(ctx.vault);
+
+    await expect(ctx.revokeInternalSecret(PURPOSE)).resolves.toEqual({ selfGrantRevoked: false, provisionCleared: false });
+    await expect(ctx.revokeInternalSecret('kernel.never-provisioned')).resolves.toEqual({ selfGrantRevoked: false, provisionCleared: false });
+
+    expect(await stateOfRotatedField(ctx.vault)).toEqual(before);
+  });
+
+  it('Tier 1: refused before anything is written', async () => {
+    const first = await boot();
+    await first.internal.getInternalSecret(PURPOSE);
+    const before = { grants: JSON.stringify([...stores.grants.entries()]), provisions: JSON.stringify([...stores.provisions.entries()]) };
+    process.env.VAULT_OWNER_X_PUB = randomBytes(32).toString('hex');
+    process.env.VAULT_OWNER_ED_PUB = randomBytes(32).toString('hex');
+
+    const tier1 = await bootWithRevoke();
+
+    await expect(tier1.revokeInternalSecret(PURPOSE)).rejects.toThrow(/Tier 1.*nothing was changed/);
+    expect(JSON.stringify([...stores.grants.entries()])).toBe(before.grants);
+    expect(JSON.stringify([...stores.provisions.entries()])).toBe(before.provisions);
+  });
+});
+
+describe('external revoke is unchanged (#2582)', () => {
+  const corpusDid = 'did:imajin:corpus-test';
+
+  it('revokeStaticSecretGrant on an external grantee revokes only that grant: the kernel keeps its secret and its provisions row', async () => {
+    const ctx = await boot();
+    const value = await ctx.internal.getInternalSecret(PURPOSE);
+    const granted = await ctx.vault.grantInternalSecretTo(PURPOSE, corpusDid, 'test-operator');
+    const corpusGrantId = granted.status === 'ok' ? granted.grantId : '';
+    const provisionsBefore = JSON.stringify([...stores.provisions.entries()]);
+
+    await expect(ctx.vault.revokeStaticSecretGrant(FIELD, corpusDid)).resolves.toBe(true);
+
+    expect(stores.grants.get(corpusGrantId)).toMatchObject({ status: 'revoked', wrappedKey: '' });
+    await expect(ctx.vault.fetchGrantSecret({ grantId: corpusGrantId, granteeDid: corpusDid }))
+      .resolves.not.toMatchObject({ status: 'ok' });
+    expect(JSON.stringify([...stores.provisions.entries()])).toBe(provisionsBefore);
+    expect(activeGrantsFor(FIELD)).toHaveLength(1);
+    const restarted = await boot();
+    await expect(restarted.internal.getInternalSecret(PURPOSE)).resolves.toBe(value);
+    await expect(ctx.vault.revokeStaticSecretGrant(FIELD, corpusDid)).resolves.toBe(false);
+  });
+});

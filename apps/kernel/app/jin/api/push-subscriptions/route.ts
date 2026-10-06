@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { db, pushSubscriptions } from '@/src/db';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
@@ -28,10 +28,6 @@ export const dynamic = 'force-dynamic';
 const MAX_ENDPOINT_LENGTH = 2000;
 const MAX_KEY_LENGTH = 512;
 const MAX_USER_AGENT_LENGTH = 300;
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 interface SubscribeBody {
   endpoint?: unknown;
@@ -176,3 +172,5 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to remove push subscription' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

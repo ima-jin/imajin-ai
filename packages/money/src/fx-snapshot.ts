@@ -32,7 +32,10 @@ export async function signFxSnapshot(snapshot: FxSnapshot, privateKeyHex: string
   return { ...snapshot, signature };
 }
 
-export async function verifyFxSnapshot(signed: SignedFxSnapshot, publicKeyHex: string): Promise<boolean> {
-  const { signature, ...snapshot } = signed;
-  return crypto.verify(signature, canonicalize(snapshot), publicKeyHex);
+export function verifyFxSnapshot(signed: SignedFxSnapshot, publicKeyHex: string): Promise<boolean> {
+  // Keep the Promise contract: a synchronous throw (e.g. canonicalizing) becomes a rejection.
+  return new Promise<boolean>((resolve) => {
+    const { signature, ...snapshot } = signed;
+    resolve(crypto.verify(signature, canonicalize(snapshot), publicKeyHex));
+  });
 }

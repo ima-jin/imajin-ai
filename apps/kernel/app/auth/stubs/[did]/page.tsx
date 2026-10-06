@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { normalizeHandleInput, profilePath } from '@imajin/config';
 import { DeviceLocationStatus } from '../../lib/device-location-status';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 const MAX_IMAGES = 6;
@@ -164,7 +165,7 @@ export default function EditStubPage() {
         setLoading(false);
       }
     }
-    fetchData();
+    fireAndForget(fetchData(), 'auth:stubs:fetchData');
   }, [did]);
 
   // Watch device GPS
@@ -464,7 +465,7 @@ export default function EditStubPage() {
                   disabled={avatarUploading}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) { handleAvatarBannerUpload(file, 'avatar'); e.target.value = ''; }
+                    if (file) { fireAndForget(handleAvatarBannerUpload(file, 'avatar'), 'auth:stubs:avatarUpload'); e.target.value = ''; }
                   }}
                 />
               </label>
@@ -495,7 +496,7 @@ export default function EditStubPage() {
               disabled={bannerUploading}
               onChange={(e) => {
                 const file = e.target.files?.[0];
-                if (file) { handleAvatarBannerUpload(file, 'banner'); e.target.value = ''; }
+                if (file) { fireAndForget(handleAvatarBannerUpload(file, 'banner'), 'auth:stubs:bannerUpload'); e.target.value = ''; }
               }}
             />
           </label>
@@ -727,7 +728,7 @@ export default function EditStubPage() {
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) {
-                handleUpload(file);
+                fireAndForget(handleUpload(file), 'auth:stubs:galleryUpload');
                 e.target.value = '';
               }
             }}

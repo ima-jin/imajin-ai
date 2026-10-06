@@ -9,14 +9,10 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { getLoopWithHistory } from '@/src/lib/loops/query';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest, props: { params: Promise<{ loopId: string }> }) {
   const params = await props.params;
@@ -40,3 +36,5 @@ export async function GET(request: NextRequest, props: { params: Promise<{ loopI
 
   return NextResponse.json(result, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

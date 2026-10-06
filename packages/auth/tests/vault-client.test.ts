@@ -534,6 +534,104 @@ describe('resolveGrantByPurpose (#2245 dynamic grant discovery)', () => {
 
     expect(result.degraded).toEqual(['ATTESTATION_INTERNAL_API_KEY']);
   });
+
+  /** Stubs the kernel so only the grants-list call differs; any other vault route fails the test. */
+  function stubGrantsListStatus(status: number, body: Record<string, unknown>) {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (urlEndsWith(url, '/api/challenge')) {
+        return new Response(JSON.stringify({ challengeId: 'ch_1', challenge: 'raw' }), { status: 200 });
+      }
+      if (urlEndsWith(url, '/api/authenticate')) {
+        return new Response(JSON.stringify({ token: BEARER_TOKEN }), { status: 200 });
+      }
+      if (url.includes('/api/vault/delegation/grants?purpose=')) {
+        return new Response(JSON.stringify(body), { status });
+      }
+      throw new Error(`unexpected fetch to ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  function loadAttestationKey(onMissing: 'degrade' | 'fail') {
+    return import('../src/vault-client').then(({ loadFromVault }) =>
+      loadFromVault({
+        resolveGrantByPurpose: PURPOSE,
+        purpose: 'corpus.boot.attestation-key',
+        keys: [{ key: 'ATTESTATION_INTERNAL_API_KEY', onMissing }],
+        identity: { did: BOOTSTRAP_DID, privateKey: BOOTSTRAP_PRIVATE_KEY },
+        authServiceUrl: AUTH_SERVICE_URL,
+      }),
+    );
+  }
+
+  it.each([404, 500, 503])('logs a %i grants-list response as a lookup failure with its status, not as "no active grant"', async (status) => {
+    stubGrantsListStatus(status, { error: 'secret-looking-body-must-not-be-logged' });
+
+    const result = await loadAttestationKey('degrade');
+
+    expect(result.degraded).toEqual(['ATTESTATION_INTERNAL_API_KEY']);
+    expect(mocks.log.error).toHaveBeenCalledWith(
+      expect.objectContaining({ purpose: PURPOSE, status }),
+      expect.stringContaining('NOT "no active grant"'),
+    );
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'ATTESTATION_INTERNAL_API_KEY', reason: `grant lookup failed (HTTP ${status})` }),
+      expect.any(String),
+    );
+    expect(mocks.log.warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'no active grant' }),
+      expect.any(String),
+    );
+    const logged = allLoggedText();
+    expect(logged).not.toContain('secret-looking-body-must-not-be-logged');
+    expect(logged).not.toContain(BEARER_TOKEN);
+  });
+
+  it('names the grants-list status in the error thrown for a required key', async () => {
+    stubGrantsListStatus(404, { error: 'Not Found' });
+
+    await expect(loadAttestationKey('fail')).rejects.toThrow(
+      "loadFromVault: required key 'ATTESTATION_INTERNAL_API_KEY' could not be fetched from the vault (grant lookup failed (HTTP 404))",
+    );
+  });
+
+  it('still reports an empty grants list as "no active grant", without a lookup-failure log', async () => {
+    stubGrantsListStatus(200, { grants: [] });
+
+    await expect(loadAttestationKey('fail')).rejects.toThrow(/\(no active grant\)/);
+    expect(mocks.log.error).not.toHaveBeenCalled();
+  });
+
+  it('reports a thrown grants-list request as a lookup failure with no status', async () => {
+    const fetchMock = vi.fn(async (url: string) => {
+      if (urlEndsWith(url, '/api/challenge')) {
+        return new Response(JSON.stringify({ challengeId: 'ch_1', challenge: 'raw' }), { status: 200 });
+      }
+      if (urlEndsWith(url, '/api/authenticate')) {
+        return new Response(JSON.stringify({ token: BEARER_TOKEN }), { status: 200 });
+      }
+      throw new TypeError('network error');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(loadAttestationKey('fail')).rejects.toThrow(/grant lookup failed \(request error\)/);
+  });
+
+  it('names the fetch status in the error thrown when the resolved grant is refused', async () => {
+    const { loadFromVault } = await import('../src/vault-client');
+    vi.stubGlobal('fetch', fakeKernelFetch({ fetchStatus: 410, fetchBody: { error: 'consumed' } }));
+
+    await expect(
+      loadFromVault({
+        grant: GRANT_ID,
+        purpose: 'corpus.boot',
+        keys: [{ key: 'K', onMissing: 'fail' }],
+        identity: { did: BOOTSTRAP_DID, privateKey: BOOTSTRAP_PRIVATE_KEY },
+        authServiceUrl: AUTH_SERVICE_URL,
+      }),
+    ).rejects.toThrow(/grant fetch refused \(HTTP 410\)/);
+  });
 });
 
 describe('configuration errors', () => {

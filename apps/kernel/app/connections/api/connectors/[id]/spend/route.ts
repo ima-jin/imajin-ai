@@ -28,7 +28,7 @@ export const dynamic = 'force-dynamic';
 /** The only connector ids `usage.incurred` can ever name for this emitter (see `brain.ts`'s `BRAIN_CONNECTORS`). */
 const BRAIN_CONNECTOR_IDS: ReadonlySet<string> = new Set(['gemini', 'anthropic', 'xai', 'openai', 'moonshot', 'zai']);
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

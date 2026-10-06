@@ -25,6 +25,31 @@ function chunk<T>(items: T[], size: number): T[][] {
   return chunks;
 }
 
+/** Fetch one batch of identity summaries. Fails soft: any problem yields no entries. */
+async function resolveDidBatch(
+  profileUrl: string,
+  internalKey: string | undefined,
+  batch: string[]
+): Promise<ResolvedIdentitySummary[]> {
+  try {
+    const res = await fetch(`${profileUrl}/api/resolve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(internalKey ? { Authorization: `Bearer ${internalKey}` } : {}),
+      },
+      body: JSON.stringify({ dids: batch }),
+      cache: 'no-store',
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return ((data.results ?? []) as ResolvedIdentitySummary[]).filter((entry) => entry?.did);
+  } catch {
+    // Fail soft — the batch just contributes no entries.
+    return [];
+  }
+}
+
 /**
  * Batched DID -> { handle, displayName, email? } resolution via the kernel
  * profile service's `POST /api/resolve` (#1998) — the public replacement for
@@ -52,25 +77,14 @@ export async function resolveIdentitiesForDids(dids: string[]): Promise<Map<stri
   if (!profileUrl) return result;
   const internalKey = process.env.PROFILE_INTERNAL_API_KEY;
 
-  for (const batch of chunk(uniqueDids, RESOLVE_BATCH_SIZE)) {
-    try {
-      const res = await fetch(`${profileUrl}/api/resolve`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(internalKey ? { Authorization: `Bearer ${internalKey}` } : {}),
-        },
-        body: JSON.stringify({ dids: batch }),
-        cache: 'no-store',
-      });
-      if (!res.ok) continue;
-      const data = await res.json();
-      for (const entry of (data.results ?? []) as ResolvedIdentitySummary[]) {
-        if (entry?.did) result.set(entry.did, entry);
-      }
-    } catch {
-      // Fail soft — the batch just contributes no entries.
-    }
+  // Batches are independent profile-service reads (at most one request per
+  // RESOLVE_BATCH_SIZE DIDs), so they run concurrently; entries are merged in
+  // batch order, so the returned map is populated exactly as before.
+  const batches = await Promise.all(
+    chunk(uniqueDids, RESOLVE_BATCH_SIZE).map((batch) => resolveDidBatch(profileUrl, internalKey, batch))
+  );
+  for (const entries of batches) {
+    for (const entry of entries) result.set(entry.did, entry);
   }
   return result;
 }

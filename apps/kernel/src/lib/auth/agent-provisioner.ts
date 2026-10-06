@@ -141,7 +141,7 @@ export async function getProvision(id: string): Promise<AgentProvisionRow | null
 }
 
 export async function listProvisions(servingDid: string): Promise<AgentProvisionRow[]> {
-  return db
+  return await db
     .select()
     .from(agentProvisions)
     .where(eq(agentProvisions.servingDid, servingDid))

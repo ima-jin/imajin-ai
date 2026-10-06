@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '../concurrency';
 import type { ReactorHandler } from '../types';
 import { EMISSION_SCHEDULE, resolveAmount, resolveTarget } from '../emissions';
 
@@ -34,15 +35,17 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
   // mutated this shared event object by the time we read it here.
   const attestationId = typeof event.payload?.attestationId === 'string' ? event.payload.attestationId : undefined;
 
-  for (const rule of spec.emit) {
+  // Sequential on purpose: emissions credit a ledger (one pay-service write per
+  // rule, in schedule order) — later credits must not land before earlier ones.
+  await forEachSequential(spec.emit, async (rule) => {
     const targetDid = resolveTarget(rule, context);
     if (!targetDid) {
       log.warn({ rule: rule.to, type: attestationType }, '[mjn] No target DID — skipping');
-      continue;
+      return;
     }
 
     const amount = resolveAmount(rule, settlementCents);
-    if (amount <= 0) continue;
+    if (amount <= 0) return;
 
     try {
       const response = await fetch(`${PAY_SERVICE_URL}/api/emission`, {
@@ -79,5 +82,5 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
     } catch (err) {
       log.error({ err: String(err), targetDid, attestationType }, '[mjn] Emission request error');
     }
-  }
+  });
 };

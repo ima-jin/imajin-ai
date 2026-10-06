@@ -9,7 +9,7 @@ import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 const log = createLogger('kernel');
 
 // CORS preflight — external verifiers must be able to call this.
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
 

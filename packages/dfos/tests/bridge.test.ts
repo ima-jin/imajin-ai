@@ -239,3 +239,21 @@ describe('cross-protocol verification', () => {
     expect(contentChain.isDeleted).toBe(false);
   });
 });
+
+describe('verifyChain Promise contract', () => {
+  it('returns a rejected promise (not a synchronous throw) for a malformed chain log', async () => {
+    let pending: Promise<unknown> | undefined;
+    expect(() => { pending = verifyChain(['not-a-jws']); }).not.toThrow();
+    await expect(pending).rejects.toThrow();
+  });
+});
+
+describe('createSigner Promise contract', () => {
+  it('returns a rejected promise (not a synchronous throw) when signing throws', async () => {
+    const { privateKey } = generateKeypair();
+    const sign = createSigner(privateKey);
+    let pending: Promise<Uint8Array> | undefined;
+    expect(() => { pending = sign(undefined as unknown as Uint8Array); }).not.toThrow();
+    await expect(pending).rejects.toBeInstanceOf(Error);
+  });
+});

@@ -561,8 +561,8 @@ export function createConfigureHandler<TConfig extends BaseOAuthConfig>(opts: {
   supportsDeviceFlow?: boolean;
 }) {
   return {
-    OPTIONS: async (request: NextRequest) =>
-      new NextResponse(null, { status: 204, headers: corsHeaders(request) }),
+    OPTIONS: (request: NextRequest) =>
+      Promise.resolve(new NextResponse(null, { status: 204, headers: corsHeaders(request) })),
 
     POST: async (request: NextRequest) => {
       const cors = corsHeaders(request);

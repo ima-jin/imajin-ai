@@ -8,7 +8,7 @@ import { withLogger } from '@imajin/logger';
 
 const rawSql = getClient();
 
-export async function OPTIONS(req: NextRequest) {
+export function OPTIONS(req: NextRequest) {
   return corsOptions(req);
 }
 

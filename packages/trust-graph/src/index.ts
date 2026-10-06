@@ -34,9 +34,12 @@ export async function resolvePodMembers(db: DB, podId: string, maxDepth = 3): Pr
       .from(schema.podLinks)
       .where(and(eq(schema.podLinks.parentPodId, currentPodId), isNull(schema.podLinks.unlinkedAt)));
 
-    for (const link of links) {
-      await resolve(link.childPodId, depth + 1);
-    }
+    // Sequential on purpose: the shared `visited`/`dids` sets make the traversal
+    // order-dependent (first path to reach a pod claims it), so siblings must not race.
+    await links.reduce<Promise<void>>(
+      (chain, link) => chain.then(() => resolve(link.childPodId, depth + 1)),
+      Promise.resolve()
+    );
   }
 
   await resolve(podId, 0);

@@ -22,12 +22,19 @@ function getSecret(config: SessionConfig): Uint8Array {
   return new TextEncoder().encode(config.secret);
 }
 
-export async function createSessionToken(user: SessionUser, config: SessionConfig): Promise<string> {
-  return new SignJWT({ user })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime(`${config.maxAge ?? DEFAULT_MAX_AGE}s`)
-    .sign(getSecret(config));
+export function createSessionToken(user: SessionUser, config: SessionConfig): Promise<string> {
+  // Keep the Promise contract: a synchronous throw while building the JWT becomes a rejection.
+  try {
+    return Promise.resolve(
+      new SignJWT({ user })
+        .setProtectedHeader({ alg: 'HS256' })
+        .setIssuedAt()
+        .setExpirationTime(`${config.maxAge ?? DEFAULT_MAX_AGE}s`)
+        .sign(getSecret(config))
+    );
+  } catch (err) {
+    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+  }
 }
 
 export async function verifySessionToken(token: string, config: SessionConfig): Promise<SessionUser | null> {

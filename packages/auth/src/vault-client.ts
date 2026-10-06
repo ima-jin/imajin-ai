@@ -298,27 +298,47 @@ interface ListGrantsResponse {
 }
 
 /**
+ * Outcome of resolving which grant id to fetch a key from. `'none'` (a
+ * well-formed answer: nothing is active for the purpose) is deliberately a
+ * different kind from `'lookup-failed'` (the grants route itself answered
+ * non-2xx, e.g. a 404 for an unmounted route or a 5xx, or the request threw)
+ * — conflating them hid #2624's wrong-URL 404 behind "no active grant".
+ * `status` is `null` when the request threw before any response arrived.
+ */
+type GrantResolution =
+  | { kind: 'resolved'; grantId: string }
+  | { kind: 'none' }
+  | { kind: 'lookup-failed'; status: number | null };
+
+/**
  * `GET /api/vault/delegation/grants?purpose=` (#2231, self-service grant
  * enumeration) — resolves the CURRENT `status: 'active'` grant id for
- * `purpose`, or `null` when none is active (never fetched yet, or
- * everything for this purpose has been revoked/superseded). See this
- * module's "Dynamic grant discovery by purpose" docblock section. Never
- * throws — a non-2xx or malformed response is treated the same as "no
- * active grant", so the caller's own `onMissing` handling in `loadOneKey`
- * decides what happens next.
+ * `purpose`: `'resolved'` with that id, `'none'` when no grant is active
+ * (never fetched yet, or everything for this purpose has been
+ * revoked/superseded), or `'lookup-failed'` when the route answered non-2xx
+ * or the request threw. See this module's "Dynamic grant discovery by
+ * purpose" docblock section. Never throws — the caller's own `onMissing`
+ * handling in `loadOneKey` decides what happens next. Only the purpose and
+ * HTTP status are ever logged: never the bearer token or a response body.
  */
-async function resolveActiveGrantId(authServiceUrl: string, token: string, purpose: string): Promise<string | null> {
+async function resolveActiveGrantId(authServiceUrl: string, token: string, purpose: string): Promise<GrantResolution> {
   try {
     const res = await fetch(`${authServiceUrl}/api/vault/delegation/grants?purpose=${encodeURIComponent(purpose)}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      log.error(
+        { purpose, status: res.status },
+        'loadFromVault: grants lookup returned a non-2xx response — this is a lookup failure, NOT "no active grant"',
+      );
+      return { kind: 'lookup-failed', status: res.status };
+    }
     const body = (await res.json().catch(() => null)) as ListGrantsResponse | null;
     const active = body?.grants?.find((grant) => grant.status === 'active' && typeof grant.grantId === 'string');
-    return active && typeof active.grantId === 'string' ? active.grantId : null;
+    return active && typeof active.grantId === 'string' ? { kind: 'resolved', grantId: active.grantId } : { kind: 'none' };
   } catch (err) {
     log.warn({ purpose, err: String(err) }, 'loadFromVault: resolveGrantByPurpose lookup failed');
-    return null;
+    return { kind: 'lookup-failed', status: null };
   }
 }
 
@@ -454,9 +474,10 @@ function createGrantAckHandle(
  * Resolves the grant id to fetch `keySpec` from: a literal `grant` (per-key,
  * else the top-level default) always wins; otherwise a purpose-based
  * dynamic lookup (per-key, else the top-level default) — see this module's
- * "Dynamic grant discovery by purpose" docblock section. `null` means
- * neither resolved to anything — the caller's `onMissing` handling decides
- * what happens next, same as an ordinary fetch refusal.
+ * "Dynamic grant discovery by purpose" docblock section. A `'none'` or
+ * `'lookup-failed'` resolution means nothing usable was resolved — the
+ * caller's `onMissing` handling decides what happens next, same as an
+ * ordinary fetch refusal, but the two kinds are reported distinctly.
  */
 async function resolveGrantId(
   authServiceUrl: string,
@@ -464,14 +485,34 @@ async function resolveGrantId(
   defaultGrant: string | undefined,
   defaultResolveGrantByPurpose: string | undefined,
   keySpec: VaultKeySpec,
-): Promise<string | null> {
+): Promise<GrantResolution> {
   const literal = keySpec.grant ?? defaultGrant;
-  if (literal) return literal;
+  if (literal) return { kind: 'resolved', grantId: literal };
 
   const purposeToResolve = keySpec.resolveGrantByPurpose ?? defaultResolveGrantByPurpose;
-  if (!purposeToResolve) return null;
+  if (!purposeToResolve) return { kind: 'none' };
 
   return resolveActiveGrantId(authServiceUrl, token, purposeToResolve);
+}
+
+/** Short, value-free reason a key could not be fetched — safe to log and to put in a thrown message. */
+function describeMissingKey(resolution: GrantResolution, fetchStatus: number | undefined): string {
+  if (resolution.kind === 'lookup-failed') {
+    return resolution.status === null
+      ? 'grant lookup failed (request error)'
+      : `grant lookup failed (HTTP ${resolution.status})`;
+  }
+  if (resolution.kind === 'none') return 'no active grant';
+  return `grant fetch refused (HTTP ${fetchStatus})`;
+}
+
+/** Handles a key that could not be fetched: throws for `'fail'`, else records it as degraded. */
+function handleMissingKey(keySpec: VaultKeySpec, reason: string, result: VaultCredentials): void {
+  log.warn({ key: keySpec.key, reason }, `loadFromVault: could not fetch key '${keySpec.key}'`);
+  if (keySpec.onMissing === 'fail') {
+    throw new Error(`loadFromVault: required key '${keySpec.key}' could not be fetched from the vault (${reason})`);
+  }
+  result.degraded.push(keySpec.key);
 }
 
 /** Fetches one `VaultKeySpec`, mutating `result` in place. Throws only for an `onMissing: 'fail'` key. No ack is sent here (#2257) — a successful fetch instead gets a deferred `GrantAckHandle` in `result.acks`. */
@@ -484,20 +525,16 @@ async function loadOneKey(
   keySpec: VaultKeySpec,
   result: VaultCredentials,
 ): Promise<void> {
-  const grantId = await resolveGrantId(authServiceUrl, token, defaultGrant, defaultResolveGrantByPurpose, keySpec);
-  const outcome: FetchGrantResult = grantId
-    ? await fetchGrant(authServiceUrl, grantId, token)
-    : { ok: false, status: 404, error: 'no grant id resolved' };
+  const resolution = await resolveGrantId(authServiceUrl, token, defaultGrant, defaultResolveGrantByPurpose, keySpec);
+  if (resolution.kind !== 'resolved') {
+    handleMissingKey(keySpec, describeMissingKey(resolution, undefined), result);
+    return;
+  }
 
+  const { grantId } = resolution;
+  const outcome = await fetchGrant(authServiceUrl, grantId, token);
   if (!outcome.ok) {
-    log.warn(
-      { key: keySpec.key, status: outcome.status },
-      `loadFromVault: could not fetch key '${keySpec.key}'`,
-    );
-    if (keySpec.onMissing === 'fail') {
-      throw new Error(`loadFromVault: required key '${keySpec.key}' could not be fetched from the vault`);
-    }
-    result.degraded.push(keySpec.key);
+    handleMissingKey(keySpec, describeMissingKey(resolution, outcome.status), result);
     return;
   }
 
@@ -507,7 +544,7 @@ async function loadOneKey(
     result.dids[keySpec.key] = did;
   }
 
-  result.acks[keySpec.key] = createGrantAckHandle(authServiceUrl, grantId as string, token, purpose);
+  result.acks[keySpec.key] = createGrantAckHandle(authServiceUrl, grantId, token, purpose);
 }
 
 /**
@@ -521,8 +558,15 @@ export async function loadFromVault(params: LoadFromVaultParams): Promise<VaultC
   const token = await authenticateBootstrapIdentity(authServiceUrl, params.identity);
 
   const result: VaultCredentials = { values: {}, dids: {}, degraded: [], acks: {} };
-  for (const keySpec of params.keys) {
-    await loadOneKey(authServiceUrl, token, params.grant, params.resolveGrantByPurpose, params.purpose, keySpec, result);
-  }
+  // Sequential on purpose: keys are loaded in declared order, each may mint a
+  // grant / append to `degraded` / register an ack on the shared `result`, and
+  // the first failure must stop the remaining loads.
+  await params.keys.reduce<Promise<void>>(
+    (chain, keySpec) =>
+      chain.then(() =>
+        loadOneKey(authServiceUrl, token, params.grant, params.resolveGrantByPurpose, params.purpose, keySpec, result)
+      ),
+    Promise.resolve()
+  );
   return result;
 }

@@ -91,7 +91,7 @@ function ConsentRequestCard({
     }
   }
 
-  async function handleDeny() {
+  function handleDeny() {
     setBusy('deny');
     onDone();
   }

@@ -38,14 +38,20 @@ async function main(): Promise<void> {
 
   let inserted = 0;
   let skipped = 0;
-  for (const batch of chunkRows(rows)) {
-    const result = await postIncurredBatch({ kernelUrl, token }, batch);
-    inserted += result.inserted;
-    skipped += result.skipped;
-    if (result.rejected.length > 0) {
-      console.warn(`usage-emitter-claude-code: ${result.rejected.length} row(s) rejected:`, result.rejected);
-    }
-  }
+  // Sequential on purpose: the cursor is only saved after every batch posts, so the
+  // first failed batch must stop the run before later batches are sent.
+  await chunkRows(rows).reduce<Promise<void>>(
+    (chain, batch) =>
+      chain.then(async () => {
+        const result = await postIncurredBatch({ kernelUrl, token }, batch);
+        inserted += result.inserted;
+        skipped += result.skipped;
+        if (result.rejected.length > 0) {
+          console.warn(`usage-emitter-claude-code: ${result.rejected.length} row(s) rejected:`, result.rejected);
+        }
+      }),
+    Promise.resolve()
+  );
 
   // Persisted only after every batch posts successfully — a failed request
   // leaves the cursor where it was, so the next run re-tails (and re-dedupes

@@ -1,6 +1,6 @@
 {
   "name": "@imajin/provision-bootstrap",
-  "version": "0.8.13",
+  "version": "0.8.14",
   "private": true,
   "description": "Build-time ESM compile of scripts/lib/provision-service-bootstrap.ts (+ the kernel sources it imports) for scripts/provision-service-bootstrap.mjs (#2485)",
   "license": "MIT",

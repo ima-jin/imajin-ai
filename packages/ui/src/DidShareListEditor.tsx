@@ -332,7 +332,7 @@ export function DidShareListEditor({
         }
         return next;
       });
-    });
+    }).catch((err: unknown) => { console.error('DidShareListEditor: resolving profiles failed:', err); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolveProfile, value.map((e) => e.did).join(',')]);
 

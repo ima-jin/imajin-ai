@@ -70,7 +70,7 @@ export function BalanceBadge({ did, payUrl, authToken, className = '' }: Readonl
       }
     }
 
-    fetchBalance();
+    void fetchBalance().catch((err: unknown) => { console.error('Failed to fetch balance:', err); });
 
     return () => {
       cancelled = true;

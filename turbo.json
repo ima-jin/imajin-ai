@@ -1,0 +1,90 @@
+{
+  // Turborepo task graph (#2605). Cache correctness beats speed: every task
+  // declares what it reads (inputs), what it produces (outputs), and which
+  // upstream tasks must finish first (dependsOn), so a change to a shared
+  // package invalidates the hash of every dependent and nothing is replayed
+  // stale. The cache is LOCAL ONLY: in CI it lives in the runner host dir
+  // mounted at /turbo-cache (TURBO_CACHE_DIR, see .github/workflows/ci.yml);
+  // there is no remote/Vercel cache and no TURBO_TOKEN/TURBO_TEAM.
+  "$schema": "https://turbo.build/schema.json",
+
+  // `loose`: tasks keep seeing the whole environment, exactly as `pnpm -r` did
+  // (CI passes DATABASE_URL, PATH-adjacent tooling, etc.). Only the variables
+  // listed in a task's `env` below are folded into its hash.
+  "envMode": "loose",
+  "ui": "stream",
+
+  // Files that affect EVERY task in EVERY package. The lockfile is already
+  // hashed per package by turbo (resolved external deps); the shared tsconfig
+  // is extended by each package's tsconfig.json but is not part of any package.
+  "globalDependencies": ["tsconfig.base.json"],
+
+  "tasks": {
+    // A package build consumes the built output (dist/) of its workspace
+    // dependencies, so `^build` makes dependents wait for — and be re-hashed
+    // against — their dependencies' builds.
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        // Not part of the build output; editing a test must not rebuild.
+        "!**/__tests__/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!tests/**",
+        // Next.js inlines .env* and NEXT_PUBLIC_* at build time. .env.local
+        // is gitignored, so it is not in $TURBO_DEFAULT$.
+        ".env*"
+      ],
+      "env": ["NODE_ENV", "NEXT_PUBLIC_*", "DATABASE_URL"],
+      "outputs": [
+        // tsup / tokens / provision-bootstrap
+        "dist/**",
+        // Next.js apps. `.next/cache/**` is excluded on purpose: it is huge,
+        // changes on every build and is persisted separately per app by
+        // scripts/ci-build-cache.sh (incremental Next.js builds).
+        ".next/**",
+        "!.next/cache/**",
+        "*.tsbuildinfo"
+      ]
+    },
+
+    // Type-checking a package resolves its workspace dependencies through
+    // their built declarations (dist/*.d.ts), so it needs `^build`. This
+    // replaces the hand-maintained `build:types` list in package.json: turbo
+    // derives the same prerequisite set from the dependency graph (a superset
+    // that can never go stale when a new dependency edge is added).
+    // Source of the package itself is covered by $TURBO_DEFAULT$ — tests too,
+    // because `tsc --noEmit` type-checks them.
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "outputs": ["*.tsbuildinfo"]
+    },
+
+    // ESLint here is not type-aware (no parserOptions.project), so the result
+    // depends only on the package's own files plus the shared flat config.
+    "lint": {
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/eslint.config.mjs",
+        "$TURBO_ROOT$/packages/eslint-config-imajin/**",
+        "$TURBO_ROOT$/tsconfig.base.json"
+      ],
+      "outputs": []
+    },
+
+    // Tests always run, and are never cached. The root `vitest run` is what
+    // produces coverage/lcov.info for SonarCloud; replaying a cached result
+    // would skip the run and ship an empty/partial coverage report (Sonar then
+    // reports new_coverage=0). CI keeps `pnpm test:coverage` as a plain vitest
+    // invocation; these entries exist so that routing a test script through
+    // turbo can never silently cache it.
+    "//#test": {
+      "cache": false
+    },
+    "//#test:coverage": {
+      "cache": false,
+      "outputs": ["coverage/**"]
+    }
+  }
+}

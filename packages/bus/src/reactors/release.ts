@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { emitAttestation } from '@imajin/auth';
+import { forEachSequential } from '../concurrency';
 import type {
   BrokerFieldReleaseMode,
   BrokerPredicateClaim,
@@ -65,8 +66,10 @@ async function emitPredicateClaimAttestations(
   claims: BrokerPredicateClaim[],
   request: { subject: string }
 ): Promise<void> {
-  for (const claim of claims) {
-    if (claim.cached) continue;
+  // Sequential on purpose: each attestation is appended to the subject's chain,
+  // so they must land in claim order, one at a time.
+  await forEachSequential(claims, async (claim) => {
+    if (claim.cached) return;
     try {
       await emitAttestation({
         issuer_did: request.subject,
@@ -83,7 +86,7 @@ async function emitPredicateClaimAttestations(
         'emitAttestation (broker.predicate) failed'
       );
     }
-  }
+  });
 }
 
 function fieldModesForState(

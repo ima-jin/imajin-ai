@@ -241,6 +241,36 @@ routes 401, act-as validation denies, internal posts are skipped). The
 kernel itself hands its vault-resolved value to `@imajin/auth` at boot
 (`provideInternalApiKey`, `apps/kernel/instrumentation.ts`).
 
+### Rotate vs. revoke an internal secret (#2354, #2446, #2582)
+
+Two operator actions, one per intent. Both are code-level today
+(`apps/kernel/src/lib/vault/`); neither needs a file edit or a hand-set env var.
+
+| | Rotate | Revoke |
+|---|---|---|
+| Function | `rotateAndStore(field, value)` → `rotateInternalSecret` (`internal-secret-rotate.ts`); the /admin/vault Rotate action | `revokeInternalSecret(purpose)` (`internal-secret-revoke.ts`) |
+| Intent | Replace the value and keep everyone working | Withdraw the secret outright |
+| Self-grant | Replaced, purpose kept | Revoked, key material erased |
+| `internal_secret_provisions` row | Kept, repointed at the new grant | Deleted, in the same transaction |
+| External grantees (e.g. corpus) | Re-issued on the new key, terms carried forward | Untouched — revoke an external grantee on its own with `revokeStaticSecretGrant` |
+| Next `getInternalSecret(purpose)` | Resolves the rotated value, no restart | Re-provisions a NEW generated value (as on first boot) |
+
+**Rotate** when you want a new value (suspected leak, scheduled rotation) and
+the consumers must keep working: the operator supplies the value, the kernel
+re-issues each external grantee on the new key.
+
+**Revoke** when the secret should stop being usable under its current value
+and you accept a fresh one taking its place — e.g. decommissioning, or
+recovering from a compromise where you do not want to choose the replacement.
+The self-grant revoke and the provisions-row delete commit together, so a
+revoke can never strand the row and break `getInternalSecret` on next boot
+(#2354). Every external grantee still holds the OLD wrapped key and no longer
+matches the kernel's new value: the re-provision logs an ERROR naming them, and
+an operator must re-grant (`grantInternalSecretTo`) or revoke each. On Tier 1
+revoke is refused before anything is written (as rotate is), because the node
+cannot self-grant to re-provision. Only the calling process's cached value is
+dropped; other running processes keep theirs until restart.
+
 ### Service bootstrap identities (#2353, #2442)
 
 Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the

@@ -94,9 +94,12 @@ export function createSessionHandler(config: ImajinAuthConfig) {
 
 /** Create the POST handler for /api/auth/logout */
 export function createLogoutHandler(config: ImajinAuthConfig) {
-  return async function POST(req: NextRequest) {
-    const res = redirectTo(config.logoutRedirect ?? '/', req, config);
-    res.cookies.set(clearCookieOptions(config));
-    return res;
+  return function POST(req: NextRequest): Promise<NextResponse> {
+    // Keep the Promise contract: a synchronous throw becomes a rejection.
+    return new Promise<NextResponse>((resolve) => {
+      const res = redirectTo(config.logoutRedirect ?? '/', req, config);
+      res.cookies.set(clearCookieOptions(config));
+      resolve(res);
+    });
   };
 }

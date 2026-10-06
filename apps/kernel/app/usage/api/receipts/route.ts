@@ -31,7 +31,7 @@ const MAX_VENDOR_LENGTH = 128;
 const MAX_CATEGORY_LENGTH = 64;
 const MAX_DESCRIPTION_LENGTH = 1024;
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

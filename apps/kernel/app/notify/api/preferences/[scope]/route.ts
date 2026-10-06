@@ -5,7 +5,7 @@ import { nanoid } from 'nanoid';
 import { db, preferences } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

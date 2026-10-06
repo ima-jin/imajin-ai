@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 // Base58 encoding for DIDs
 const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
@@ -179,7 +180,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
     setDragOver(false);
     const file = e.dataTransfer.files[0];
     if (file?.type === 'application/json') {
-      handleFileSelect(file);
+      fireAndForget(handleFileSelect(file), 'auth:keyAuth:dropFile');
     } else {
       setKeypairError('Please drop a valid JSON backup file');
     }
@@ -220,7 +221,7 @@ export default function KeyAuthTab({ nextUrl, onMfaRequired, onSuccess }: Readon
             <input
               type="file"
               accept="application/json"
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) fireAndForget(handleFileSelect(f), 'auth:keyAuth:selectFile'); }}
               className="hidden"
               disabled={keypairLoading}
             />

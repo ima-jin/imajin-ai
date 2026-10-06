@@ -230,8 +230,10 @@ export function describeModelPickerAuthAndValidationContract<Req>(
     });
 
     it('answers CORS pre-flight', async () => {
-      const res = await OPTIONS(makeReq());
-      expect(res.status).toBe(204);
+      const pending = OPTIONS(makeReq());
+      // Keeps the `RouteHandler` Promise contract without being an `async` function (S7503).
+      expect(pending).toBeInstanceOf(Promise);
+      expect((await pending).status).toBe(204);
     });
   });
 

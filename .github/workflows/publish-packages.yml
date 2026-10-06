@@ -25,7 +25,6 @@ on:
           - vault-core
           - db
           - fair
-          - pay
           - auth-client
           - auth
           - logger
@@ -49,15 +48,46 @@ on:
         required: false
         type: boolean
         default: false
+  # Called by tag-release.yml after it creates a `vX.Y.Z` release tag, with
+  # package=all registries=npmjs (#2578) — the same publish logic as a manual
+  # dispatch, not a copy of it. `workflow_call` has no `choice` input type, so
+  # these are plain strings; the values are the same ones the dispatch choices
+  # offer and are resolved by scripts/resolve-publish-params.mjs.
+  workflow_call:
+    inputs:
+      package:
+        description: "Package to publish (a workspace package name, or 'all')"
+        required: true
+        type: string
+      registries:
+        description: "Registries to publish to (both | npmjs | github-packages)"
+        required: true
+        type: string
+      dry_run:
+        description: "Dry run (skip actual publish)"
+        required: false
+        type: boolean
+        default: false
+      ref:
+        description: "Git ref to check out and publish from (the release tag). Empty = the caller's ref."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      # The existing org-level NPM_TOKEN, passed through by the caller — no new
+      # secret. Only read by the npmjs step; optional because a github-packages
+      # only call never needs it.
+      NPM_TOKEN:
+        required: false
 
 env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
   # cid → vault-core; tokens → config → ui; fair → ui; auth/logger → config;
-  # db/pay/auth-client are independent (the "Build workspace type dependencies"
+  # db/auth-client are independent (the "Build workspace type dependencies"
   # step below builds each selected package's @imajin/* deps automatically,
   # regardless of order).
-  ALL_PACKAGES: "cid tokens config ui vault-core db fair pay auth-client auth logger"
+  ALL_PACKAGES: "cid tokens config ui vault-core db fair auth-client auth logger"
   # The install closure a `packages-v*` tag must publish for the four
   # out-of-repo SDK packages (#1982) to actually be installable by an
   # external consumer (#2376): `ui` hard-depends on `fair` (a regular
@@ -80,6 +110,11 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Release calls pin the exact tag so the published versions are the
+          # ones committed at that tag even if main has since moved on. Empty
+          # (every other trigger) falls back to the triggering ref.
+          ref: ${{ inputs.ref }}
 
       - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
@@ -128,7 +163,7 @@ jobs:
           for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Building workspace deps for $pkg"
             # --if-present tolerates workspace deps with no build script
-            # (e.g. @imajin/auth is an optional peer dep of pay that ships
+            # (e.g. a workspace package that ships
             # raw src/ with no dist/ build step). It must precede the script
             # name -- pnpm forwards anything listed after the script name to
             # the script itself, which broke tsup with 'Unknown option

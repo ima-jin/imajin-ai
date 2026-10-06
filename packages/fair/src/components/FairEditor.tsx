@@ -78,7 +78,7 @@ function useDidNames(
       if (Object.keys(updates).length > 0) {
         setNames(prev => ({ ...prev, ...updates }));
       }
-    });
+    }).catch((err: unknown) => { console.error('FairEditor: resolving profile names failed:', err); });
 
     return () => { cancelled = true; };
   }, [dids.join(','), resolveProfile]);

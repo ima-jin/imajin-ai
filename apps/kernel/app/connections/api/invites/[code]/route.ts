@@ -5,7 +5,7 @@ import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

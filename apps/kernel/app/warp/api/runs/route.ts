@@ -18,7 +18,7 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { listAgentRuns, type ListAgentRunsInput } from '@/src/lib/warp/dispatch';
 import { warpActingDid } from '@/src/lib/warp/route-context';
 import { warpErrorResponse } from '@/src/lib/warp/route-errors';
@@ -26,10 +26,6 @@ import { warpErrorResponse } from '@/src/lib/warp/route-errors';
 const log = createLogger('kernel');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /** Non-empty trimmed value for a query param, or undefined when absent. */
 function param(params: URLSearchParams, key: string): string | undefined {
@@ -82,3 +78,5 @@ export async function GET(request: NextRequest) {
     return warpErrorResponse(err, cors);
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

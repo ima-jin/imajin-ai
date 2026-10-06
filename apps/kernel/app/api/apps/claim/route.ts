@@ -44,7 +44,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { claimSigningKey, type ClaimSigningKeyOutcome } from '@/src/lib/apps/signing-key-claims';
 import {
   resolveSigningKeyForGrant,
@@ -63,10 +63,6 @@ const MAX_APP_DID_LENGTH = 256;
 
 /** 32-byte Ed25519 public key, hex-encoded. */
 const HEX_PUBLIC_KEY_PATTERN = /^[0-9a-fA-F]{64}$/;
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 interface ClaimRequestBody {
   claimCode?: unknown;
@@ -216,3 +212,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to redeem claim code' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

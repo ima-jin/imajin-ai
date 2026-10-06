@@ -4,7 +4,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, notifications } from '@/src/db';
 import { eq, and, lt, desc } from 'drizzle-orm';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

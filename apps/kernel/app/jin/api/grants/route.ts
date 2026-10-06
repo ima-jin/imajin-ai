@@ -17,15 +17,11 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { listGrantsForOperator } from '@/src/lib/jin/grants-lane';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -43,3 +39,5 @@ export async function GET(request: NextRequest) {
   const grants = await listGrantsForOperator(operatorDid);
   return NextResponse.json({ isOperator: true, grants }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

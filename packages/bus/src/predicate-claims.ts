@@ -5,9 +5,14 @@ import {
   isBrokerPredicateName,
   normalizeBrokerTerm,
 } from '@imajin/auth/broker-consent-vocabulary';
+import { mapWithConcurrency } from './concurrency';
 import type { BrokerPredicateClaim, BrokerPredicateRequest } from './types';
 
 const DEFAULT_CLAIM_TTL_MS = 60 * 60 * 1000;
+
+/** Max concurrent warm-cache reads when resolving a field's declared terms / posed predicates. */
+const TERM_CONCURRENCY = 8;
+const PREDICATE_CONCURRENCY = 8;
 
 interface PredicateClaimOptions {
   subject: string;
@@ -216,30 +221,42 @@ function claimFromPayload(row: CachedAttestationRow): BrokerPredicateClaim | und
   };
 }
 
-async function readCachedPredicateClaim(params: {
-  subject: string;
-  cacheKey: string;
-}): Promise<BrokerPredicateClaim | undefined> {
-  try {
-    const { getClient } = await import('@imajin/db');
-    const sql = getClient();
-    const rows = await sql`
-      SELECT id, payload, issued_at, expires_at
-      FROM auth.attestations
-      WHERE subject_did = ${params.subject}
-        AND type = 'broker.release'
-        AND context_id = ${params.cacheKey}
-        AND context_type = 'broker.predicate'
-        AND revoked_at IS NULL
-        AND (expires_at IS NULL OR expires_at > now())
-      ORDER BY issued_at DESC
-      LIMIT 1
-    `;
-    const [row] = rows as CachedAttestationRow[];
-    return row ? claimFromPayload(row) : undefined;
-  } catch {
-    return undefined;
-  }
+type CachedClaimReader = (params: { subject: string; cacheKey: string }) => Promise<BrokerPredicateClaim | undefined>;
+
+/**
+ * Build a warm-cache reader that loads the DB client lazily, once, and shares
+ * it across every read made through it (so concurrent reads don't each repeat
+ * the dynamic import). Fails soft: any DB problem reads as a cache miss.
+ */
+function createCachedClaimReader(): CachedClaimReader {
+  let client: Promise<ReturnType<typeof import('@imajin/db').getClient> | undefined> | undefined;
+  const loadClient = () => {
+    client ??= import('@imajin/db').then(({ getClient }) => getClient()).catch(() => undefined);
+    return client;
+  };
+
+  return async (params) => {
+    try {
+      const sql = await loadClient();
+      if (!sql) return undefined;
+      const rows = await sql`
+        SELECT id, payload, issued_at, expires_at
+        FROM auth.attestations
+        WHERE subject_did = ${params.subject}
+          AND type = 'broker.release'
+          AND context_id = ${params.cacheKey}
+          AND context_type = 'broker.predicate'
+          AND revoked_at IS NULL
+          AND (expires_at IS NULL OR expires_at > now())
+        ORDER BY issued_at DESC
+        LIMIT 1
+      `;
+      const [row] = rows as CachedAttestationRow[];
+      return row ? claimFromPayload(row) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 }
 
 function assertPredicateAllowed(field: string, predicate: BrokerPredicateRequest['predicate']): void {
@@ -266,6 +283,7 @@ async function resolveContainsPrimitive(options: {
   term: string;
   now: Date;
   expiresAt: Date;
+  readCached: CachedClaimReader;
 }): Promise<{ claim: BrokerPredicateClaim; fresh: boolean }> {
   const cacheKey = brokerPredicateCacheKey({
     subject: options.subject,
@@ -274,7 +292,7 @@ async function resolveContainsPrimitive(options: {
     arg: options.term,
   });
 
-  const cached = await readCachedPredicateClaim({ subject: options.subject, cacheKey });
+  const cached = await options.readCached({ subject: options.subject, cacheKey });
   if (cached) return { claim: cached, fresh: false };
 
   return {
@@ -314,6 +332,7 @@ async function resolveOverlapsClaim(options: {
   declaredArg: unknown;
   now: Date;
   expiresAt: Date;
+  readCached: CachedClaimReader;
 }): Promise<{ claim: BrokerPredicateClaim; cacheWrites: BrokerPredicateClaim[] }> {
   // `contains` is the primitive `overlaps` is defined in terms of, so a field
   // that permits `overlaps` must also permit `contains`. The vocabulary pairs
@@ -321,21 +340,22 @@ async function resolveOverlapsClaim(options: {
   assertPredicateAllowed(options.field, 'contains');
 
   const declaredTerms = [...new Set(normalizeSet(options.field, options.declaredArg))];
-  const cacheWrites: BrokerPredicateClaim[] = [];
-  const inputs: BrokerPredicateClaim[] = [];
-
-  for (const term of declaredTerms) {
-    const { claim, fresh } = await resolveContainsPrimitive({
+  // Each term is an independent cache read, so they resolve concurrently
+  // (bounded). Results keep declared-term order, so `composedFrom` and the
+  // cache-write order are unchanged.
+  const primitives = await mapWithConcurrency(declaredTerms, TERM_CONCURRENCY, (term) =>
+    resolveContainsPrimitive({
       subject: options.subject,
       field: options.field,
       value: options.value,
       term,
       now: options.now,
       expiresAt: options.expiresAt,
-    });
-    inputs.push(claim);
-    if (fresh) cacheWrites.push(claim);
-  }
+      readCached: options.readCached,
+    })
+  );
+  const inputs: BrokerPredicateClaim[] = primitives.map(({ claim }) => claim);
+  const cacheWrites: BrokerPredicateClaim[] = primitives.filter(({ fresh }) => fresh).map(({ claim }) => claim);
 
   return {
     cacheWrites,
@@ -358,60 +378,72 @@ async function resolveOverlapsClaim(options: {
   };
 }
 
+/** Resolve one posed predicate to its claim (plus any cache rows it should add). */
+async function resolvePredicateRequest(
+  options: PredicateClaimOptions,
+  predicateRequest: BrokerPredicateRequest,
+  now: Date,
+  expiresAt: Date,
+  readCached: CachedClaimReader
+): Promise<{ claim: BrokerPredicateClaim; cacheWrites: BrokerPredicateClaim[] }> {
+  const { predicate } = predicateRequest;
+  assertPredicateAllowed(options.field, predicate);
+
+  // `overlaps` composes over the warm `contains` cache rather than being
+  // evaluated and cached as its own opaque claim.
+  if (predicate === 'overlaps') {
+    return resolveOverlapsClaim({
+      subject: options.subject,
+      field: options.field,
+      value: options.value,
+      declaredArg: predicateRequest.arg,
+      now,
+      expiresAt,
+      readCached,
+    });
+  }
+
+  const arg = normalizePredicateArg(options.field, predicate, predicateRequest.arg);
+  const cacheKey = brokerPredicateCacheKey({
+    subject: options.subject,
+    field: options.field,
+    predicate,
+    arg,
+  });
+  const cached = await readCached({ subject: options.subject, cacheKey });
+  if (cached) return { claim: cached, cacheWrites: [] };
+
+  const claim: BrokerPredicateClaim = {
+    field: options.field,
+    predicate,
+    arg,
+    result: evaluatePredicate(options.field, options.value, predicate, predicateRequest.arg),
+    valueHash: hashJson(options.value),
+    cacheKey,
+    issuedAt: now.toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  };
+  return { claim, cacheWrites: [claim] };
+}
+
 export async function resolveBrokerPredicateClaimsForField(
   options: PredicateClaimOptions
 ): Promise<BrokerPredicateResolution> {
   const now = options.now ?? new Date();
   const expiresAt = new Date(now.getTime() + DEFAULT_CLAIM_TTL_MS);
-  const claims: BrokerPredicateClaim[] = [];
-  const cacheWrites: BrokerPredicateClaim[] = [];
 
-  for (const predicateRequest of normalizePredicates(options.predicates)) {
-    const { predicate } = predicateRequest;
-    assertPredicateAllowed(options.field, predicate);
+  const readCached = createCachedClaimReader();
 
-    // `overlaps` composes over the warm `contains` cache rather than being
-    // evaluated and cached as its own opaque claim.
-    if (predicate === 'overlaps') {
-      const composed = await resolveOverlapsClaim({
-        subject: options.subject,
-        field: options.field,
-        value: options.value,
-        declaredArg: predicateRequest.arg,
-        now,
-        expiresAt,
-      });
-      claims.push(composed.claim);
-      cacheWrites.push(...composed.cacheWrites);
-      continue;
-    }
+  // Each posed predicate is an independent cache read, so they resolve
+  // concurrently (bounded); `claims` and `cacheWrites` keep request order.
+  const resolved = await mapWithConcurrency(
+    normalizePredicates(options.predicates),
+    PREDICATE_CONCURRENCY,
+    (predicateRequest) => resolvePredicateRequest(options, predicateRequest, now, expiresAt, readCached)
+  );
 
-    const arg = normalizePredicateArg(options.field, predicate, predicateRequest.arg);
-    const cacheKey = brokerPredicateCacheKey({
-      subject: options.subject,
-      field: options.field,
-      predicate,
-      arg,
-    });
-    const cached = await readCachedPredicateClaim({ subject: options.subject, cacheKey });
-    if (cached) {
-      claims.push(cached);
-      continue;
-    }
-
-    const claim: BrokerPredicateClaim = {
-      field: options.field,
-      predicate,
-      arg,
-      result: evaluatePredicate(options.field, options.value, predicate, predicateRequest.arg),
-      valueHash: hashJson(options.value),
-      cacheKey,
-      issuedAt: now.toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    };
-    claims.push(claim);
-    cacheWrites.push(claim);
-  }
-
-  return { claims, cacheWrites };
+  return {
+    claims: resolved.map(({ claim }) => claim),
+    cacheWrites: resolved.flatMap(({ cacheWrites }) => cacheWrites),
+  };
 }

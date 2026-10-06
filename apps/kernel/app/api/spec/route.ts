@@ -28,7 +28,7 @@ paths:
           description: Subscribed
 `;
 
-export async function GET() {
+export function GET() {
   return new NextResponse(spec, {
     headers: { "Content-Type": "text/yaml" },
   });

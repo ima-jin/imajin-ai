@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import Link from 'next/link';
+import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface ErrorBoundaryProps {
   error: Error & { digest?: string };
@@ -31,7 +32,7 @@ async function reportError(error: Error): Promise<void> {
 
 export default function ErrorBoundary({ error, reset }: Readonly<ErrorBoundaryProps>) {
   useEffect(() => {
-    reportError(error);
+    fireAndForget(reportError(error), 'error:reportError');
   }, [error]);
 
   return (

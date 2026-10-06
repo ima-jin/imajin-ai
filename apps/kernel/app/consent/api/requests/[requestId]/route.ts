@@ -11,17 +11,13 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { getConsentRequestCard } from '@/src/lib/consent-requests/consent-requests';
 
 const log = createLogger('kernel:consent:request');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(
   request: NextRequest,
@@ -51,3 +47,5 @@ export async function GET(
     return NextResponse.json({ error: 'Failed to read consent request' }, { status: 500, headers: cors });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
