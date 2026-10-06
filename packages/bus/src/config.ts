@@ -10,6 +10,19 @@ function attestationOnly(attestationType: string): ReactorConfig[] {
 }
 
 /**
+ * The `stripe.*` chain (#2177): a single awaited `pay-stripe` reactor, the
+ * kernel-registered consumer of the pay webhook ingress's republished
+ * deliveries (`apps/kernel/src/lib/pay/stripe-bus-consumer.ts`). Shared by
+ * every `stripe.*` type below for the same no-duplication reason as
+ * `attestationOnly`. Deliberately NO `emit`/`attestation`: these events are
+ * operational ingest of money movement, not signed claims, and the pay
+ * consumer handles them in full.
+ */
+function payStripeChain(): ReactorConfig[] {
+  return [{ type: 'pay-stripe', config: {}, await: true, enabled: true }];
+}
+
+/**
  * Shorthand for the `emit` + `notify` two-reactor chain shape used by several
  * `warp.run.*` entries below (#2032 — same reasoning as `attestationOnly`:
  * keeps two new, structurally-identical additions, `warp.run.resumed` and
@@ -688,6 +701,25 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'notify.template.updated': [
     { type: 'notify-template-hot-reload', config: {}, await: true, enabled: true },
   ],
+  // #2177 (#1073 seam) — pay webhook convergence onto the #1785 connector
+  // bus. The pay webhook ingress republishes verified platform-account
+  // deliveries as these types and the kernel's `pay-stripe` reactor (awaited:
+  // the ingress answers 500 for Stripe to retry when it fails) runs the
+  // handlers that used to live inline in the routes. The BYO connector
+  // publishes payment_intent.succeeded / invoice.paid / payout.paid too; the
+  // reactor ignores those (no `relayId`). No DB row is seeded: no schema
+  // change — getChainConfig falls back to these entries.
+  'stripe.payment_intent.succeeded': payStripeChain(),
+  'stripe.payment_intent.payment_failed': payStripeChain(),
+  'stripe.invoice.paid': payStripeChain(),
+  'stripe.payout.paid': payStripeChain(),
+  'stripe.payout.failed': payStripeChain(),
+  'stripe.checkout.session.completed': payStripeChain(),
+  'stripe.customer.subscription.created': payStripeChain(),
+  'stripe.customer.subscription.updated': payStripeChain(),
+  'stripe.customer.subscription.deleted': payStripeChain(),
+  'stripe.transfer.created': payStripeChain(),
+  'stripe.account.updated': payStripeChain(),
   // #2444 — a third-party app redeemed its one-time signing-key claim code.
   // `attestation` is awaited so the created attestation's id is stashed on
   // the shared event (see `reactors/attestation.ts`) and handed back to the

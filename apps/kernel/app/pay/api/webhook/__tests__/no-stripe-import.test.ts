@@ -28,7 +28,8 @@ function readSource(relativeUrl: string): string {
 }
 
 vi.mock('@/src/db', () => ({ db: {}, transactions: {}, feeLedger: {} }));
-vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/bus', async () =>
+  (await import('@/src/lib/pay/__tests__/in-process-bus')).createInProcessBusMock(vi.fn().mockResolvedValue(undefined)));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
   settlePaymentRequestFromStripeCheckout: vi.fn(),
@@ -41,6 +42,12 @@ describe('type-leak guard: pay webhook ingress never imports the stripe SDK dire
 
   it('the connect webhook route source has no stripe import', () => {
     expect(readSource('../../connect/webhook/route.ts')).not.toMatch(STRIPE_IMPORT_RE);
+  });
+
+  it('the #2177 bus relay and consumer sources have no stripe import', () => {
+    expect(readSource('../../../../../src/lib/pay/stripe-relay.ts')).not.toMatch(STRIPE_IMPORT_RE);
+    expect(readSource('../../../../../src/lib/pay/stripe-relay-store.ts')).not.toMatch(STRIPE_IMPORT_RE);
+    expect(readSource('../../../../../src/lib/pay/stripe-bus-consumer.ts')).not.toMatch(STRIPE_IMPORT_RE);
   });
 
   it('webhook-handlers.ts source has no stripe import', () => {

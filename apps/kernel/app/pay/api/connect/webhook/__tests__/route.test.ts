@@ -18,11 +18,13 @@ const state = vi.hoisted(() => ({
   constructEventMock: vi.fn(),
   accountRow: undefined as AccountRow | undefined,
   updateCalls: [] as Array<{ values: Record<string, unknown> }>,
+  failUpdate: false,
 }));
 
 function resetState() {
   state.accountRow = undefined;
   state.updateCalls = [];
+  state.failUpdate = false;
 }
 
 vi.mock('@imajin/logger', async () => {
@@ -49,7 +51,7 @@ function selectAccount() {
 
 function recordUpdate(values: Record<string, unknown>) {
   state.updateCalls.push({ values });
-  return Promise.resolve(undefined);
+  return state.failUpdate ? Promise.reject(new Error('db down')) : Promise.resolve(undefined);
 }
 function updateSetClause(values: Record<string, unknown>) {
   return { where: () => recordUpdate(values) };
@@ -62,6 +64,16 @@ vi.mock('@/src/db', () => ({
   db: { select: selectAccount, update: updateAccount },
   connectedAccounts: { stripeAccountId: 'stripeAccountId' },
 }));
+
+// #2177: the route now loads the pay-stripe consumer, which imports the payment_request
+// checkout settler (and transitively `node-identity.ts`'s module-scope `getClient()`).
+vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
+  settlePaymentRequestFromStripeCheckout: vi.fn(),
+}));
+
+const { publishMock } = vi.hoisted(() => ({ publishMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/bus', async () =>
+  (await import('@/src/lib/pay/__tests__/in-process-bus')).createInProcessBusMock(publishMock));
 
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
   getStripeClient: () => ({ webhooks: { constructEvent: state.constructEventMock } }),
@@ -170,6 +182,37 @@ describe('POST /pay/api/connect/webhook (#2175)', () => {
 
     const res = await POST(makeRequest());
     expect(res.status).toBe(200);
+  });
+
+  it('acknowledges an event type the connect endpoint has no handler for (200, no writes)', async () => {
+    state.constructEventMock.mockReturnValue({
+      id: 'evt_unhandled_connect',
+      type: 'capability.updated',
+      data: { object: { id: 'cap_1' } },
+    });
+
+    const res = await POST(makeRequest());
+
+    expect(res.status).toBe(200);
+    expect(state.updateCalls).toHaveLength(0);
+  });
+
+  it('answers 500 when the bus consumer fails, and the retry is not treated as a duplicate (#2177)', async () => {
+    state.accountRow = { stripeAccountId: 'acct_retry' };
+    state.constructEventMock.mockReturnValue({
+      id: 'evt_connect_retry',
+      type: 'account.updated',
+      data: { object: { id: 'acct_retry', charges_enabled: true, payouts_enabled: true, details_submitted: true } },
+    });
+    state.failUpdate = true;
+
+    const failed = await POST(makeRequest());
+    expect(failed.status).toBe(500);
+
+    state.failUpdate = false;
+    const retried = await POST(makeRequest());
+    expect(retried.status).toBe(200);
+    expect((await retried.json()).duplicate).toBeUndefined();
   });
 
   it('a replayed event id produces no second write (idempotency)', async () => {
