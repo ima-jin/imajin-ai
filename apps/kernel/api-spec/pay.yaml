@@ -157,7 +157,13 @@ components:
         currency: { type: string }
         totalAmount: { type: integer, description: "Minor units" }
         fairManifest: { type: object, description: ".fair manifest — never null" }
-        dueAt: { type: [string, "null"], format: date-time }
+        dueAt:
+          type: [string, "null"]
+          format: date-time
+          description: >-
+            Due date, a CALENDAR date (#2651) stored as UTC midnight of the day the issuer picked
+            (e.g. `2026-10-06T00:00:00.000Z` is due on 2026-10-06). Read the date component in UTC —
+            never convert to the viewer's local zone, which shows the previous day west of UTC.
         allowOnPlatform: { type: boolean }
         status: { type: string, enum: [issued, paid, settled_manual, void] }
         settlementRef:
@@ -1535,7 +1541,14 @@ paths:
                       amount: { type: integer, description: "Unit price in minor units" }
                       quantity: { type: integer }
                 currency: { type: string, default: CAD }
-                due_at: { type: string, format: date-time }
+                due_at:
+                  description: >-
+                    Due date, a calendar date (#2651). Send `YYYY-MM-DD`; it is stored as UTC midnight of that
+                    day. A full ISO date-time is also accepted, and its UTC date is the due date.
+                  anyOf:
+                    - { type: string, format: date }
+                    - { type: string, format: date-time }
+                  examples: ["2026-10-06"]
                 allow_on_platform: { type: boolean, default: true }
                 fair_manifest: { type: object, description: "Optional — defaulted via buildFairManifest when omitted" }
       responses:

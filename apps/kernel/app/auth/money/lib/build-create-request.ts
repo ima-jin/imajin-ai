@@ -1,5 +1,6 @@
 import { add as moneyAdd, type Money } from '@imajin/money';
 import { parsePositiveDecimalAmount } from '@/src/lib/pay/payment-requests/money-format';
+import { calendarDateToDueAt } from '@/src/lib/pay/payment-requests/due-date';
 import { buildTaxFields } from './tax-form';
 import type { LineItemDraft, RecipientInviteDraft, SelectedConnection, TaxRowDraft } from './types';
 
@@ -113,6 +114,10 @@ export function buildCreatePaymentRequestBody(issuerDid: string, state: CreateFo
   const recipientResult = validateRecipient(state);
   if (!recipientResult.ok) return recipientResult;
 
+  // The due date is a calendar date (#2651): sent as UTC midnight of the picked day, never via the local zone.
+  const dueAt = state.dueAt ? calendarDateToDueAt(state.dueAt) : null;
+  if (state.dueAt && dueAt === null) return { ok: false, error: 'Due date must be a valid date' };
+
   const subtotal = sumLineItems(lineItemsResult.value, state.currency);
   const taxResult = buildTaxFields(state.chargeTax, state.taxRows, subtotal, state.currency);
   if (!taxResult.ok) return taxResult;
@@ -124,7 +129,7 @@ export function buildCreatePaymentRequestBody(issuerDid: string, state: CreateFo
       kind: state.kind,
       line_items: lineItemsResult.value,
       currency: state.currency,
-      ...(state.dueAt ? { due_at: new Date(state.dueAt).toISOString() } : {}),
+      ...(dueAt ? { due_at: dueAt } : {}),
       allow_on_platform: state.allowOnPlatform,
       ...recipientResult.value,
       ...taxResult.value,

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useToast } from '@imajin/ui';
 import { buildPublicUrl } from '@imajin/config';
 import { formatMinorUnits } from '@/src/lib/pay/payment-requests/money-format';
+import { formatDueDate } from '@/src/lib/pay/payment-requests/due-date';
 import CopyButton from './CopyButton';
 import type { PaymentRequestRow, PaymentRequestStatus } from '../lib/types';
 
@@ -100,7 +101,7 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
           </div>
           <div className="text-xs text-zinc-500 mt-0.5 truncate">
             {recipientLabel(row)}
-            {row.dueAt && <span className="ml-2">· due {new Date(row.dueAt).toLocaleDateString()}</span>}
+            {row.dueAt && <span className="ml-2">· due {formatDueDate(row.dueAt)}</span>}
           </div>
         </div>
       </button>
