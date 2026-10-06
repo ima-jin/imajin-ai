@@ -143,6 +143,11 @@ export const attestations = authSchema.table('attestations', {
   // time and re-verified atomically at countersign time — see
   // app/auth/api/attestations/attestation-helpers.ts.
   supersedes: text('supersedes'),
+  // #2534: generic, optional, indexed app-specific lookup key (e.g. an events
+  // ticketId). Set at POST, filtered with `&ref=` at GET. A pointer only — not
+  // part of the signed canonical form and never a payload query surface; reads
+  // stay under disclosure_scope. See migrations/0172_attestations_ref.sql.
+  ref: text('ref'),
   issuedAt: timestamp('issued_at', { withTimezone: true }).defaultNow().notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -163,6 +168,8 @@ export const attestations = authSchema.table('attestations', {
   supersedesIdx: index('idx_auth_attestations_supersedes').on(table.supersedes).where(sql`${table.supersedes} IS NOT NULL`),
   // #2396: backs the `context_id` filter on GET /auth/api/attestations.
   contextIdIdx: index('idx_auth_attestations_context_id').on(table.contextId).where(sql`${table.contextId} IS NOT NULL`),
+  // #2534: backs the `ref` filter on GET /auth/api/attestations.
+  refIdx: index('idx_auth_attestations_ref').on(table.ref).where(sql`${table.ref} IS NOT NULL`),
 }));
 
 /**

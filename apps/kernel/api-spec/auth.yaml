@@ -1734,6 +1734,18 @@ paths:
                 type: { type: string, description: "Attestation type (from ATTESTATION_TYPES registry)" }
                 context_id: { type: string }
                 context_type: { type: string }
+                ref:
+                  type: string
+                  minLength: 1
+                  maxLength: 256
+                  description: |
+                    (#2534) Optional, indexed, app-specific lookup key linking the attestation to an
+                    identifier the issuing app owns (e.g. a `ticketId`). Stored verbatim and read back
+                    with `GET /api/attestations?ref=`. A pointer only: it is NOT part of the signed
+                    canonical form (the signed `payload` stays the source of truth), it does not
+                    change `disclosure_scope` enforcement on reads, and there is no querying of
+                    `payload`. Omit or send null for none; an empty, non-string or over-long value is
+                    rejected with 400.
                 payload:
                   type: object
                   description: |
@@ -1763,11 +1775,12 @@ paths:
                   type: { type: string }
                   attestationStatus: { type: string, enum: [pending, bilateral, declined, superseded, "null"] }
                   supersedes: { type: string, nullable: true, description: "Attestation this one amends (#1790, bilateral) or replaces (#2649, one-sided, same issuer), if any" }
+                  ref: { type: string, nullable: true, description: "App-specific lookup key supplied at creation, if any (#2534)" }
                   delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897, #2394)" }
                   delegatorDid: { type: string, nullable: true, description: "DID that authorized issuerDid to act on its behalf, if any (#2394 — distinguishes a delegated attestation from a self-signed one)" }
                   issuedAt: { type: string, format: date-time }
         "400":
-          description: Invalid request or signature, or an invalid/ineligible payload.supersedes reference (#1790)
+          description: Invalid request or signature, an invalid/ineligible payload.supersedes reference (#1790), or an invalid `ref` (#2534)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1792,7 +1805,21 @@ paths:
       tags: [auth]
       operationId: listAttestations
       summary: List non-revoked attestations for a subject DID
-      description: Returns attestations newest first. subject_did is required.
+      description: |
+        Returns attestations newest first, in the stable order `(issued_at DESC, id DESC)` — the
+        id breaks ties between rows with the same `issued_at`. subject_did is required.
+
+        **Cursor paging (#2533).** There is no offset paging. Pass `before=<issued_at,id>` to get
+        the next, older page. When more rows exist, the response carries the cursor for that page
+        in the `X-Next-Cursor` header (exposed to browsers via `Access-Control-Expose-Headers`);
+        the header is absent on the last page. The body stays a bare array so existing callers are
+        unaffected. Loop until `X-Next-Cursor` is absent to read everything. The cursor is taken
+        from the last row of the underlying page *before* `disclosure_scope` filtering, so a page
+        with hidden rows can come back short (even empty) while still carrying a cursor — keep
+        following it rather than treating a short page as the end.
+
+        `disclosure_scope` enforcement applies to every filter, including `ref`: filters only
+        narrow the result set, they never widen who may read a row.
       parameters:
         - name: subject_did
           in: query
@@ -1810,6 +1837,20 @@ paths:
           description: |
             (#2396) Exact-match filter on the attestation's `context_id` (e.g. a survey's asset id).
             Combined with `subject_did` and any other filters using AND. Omit for unchanged behaviour.
+        - name: ref
+          in: query
+          schema: { type: string }
+          description: |
+            (#2534) Exact-match filter on the attestation's indexed `ref` (e.g. a `ticketId` set at
+            creation). ANDed with the other filters. Matches `ref` only — never `payload`.
+        - name: before
+          in: query
+          schema: { type: string, example: "2026-10-06T10:00:02.123Z,att_abc123" }
+          description: |
+            (#2533) Keyset cursor `<issued_at>,<id>`: `issued_at` is an ISO-8601 timestamp and `id`
+            the attestation id; returns rows strictly older than that position in
+            `(issued_at DESC, id DESC)` order. Use the `X-Next-Cursor` value from the previous page
+            verbatim. Omit for the first (newest) page. A malformed value is rejected with 400.
         - name: status
           in: query
           schema: { type: string, enum: [pending, bilateral, declined, superseded] }
@@ -1824,9 +1865,16 @@ paths:
         - name: limit
           in: query
           schema: { type: integer, default: 20, maximum: 100 }
+          description: Page size (1-100).
       responses:
         "200":
           description: Attestation list (or, with `history_of`, a `{ chain, openDisputes }` chain-history object)
+          headers:
+            X-Next-Cursor:
+              description: |
+                (#2533) Cursor for the next (older) page — pass as `before`. Present only when more
+                rows exist beyond this page.
+              schema: { type: string, example: "2026-10-06T10:00:02.123Z,att_abc123" }
           content:
             application/json:
               schema:
@@ -1841,13 +1889,14 @@ paths:
                     type: { type: string }
                     contextId: { type: string }
                     contextType: { type: string }
+                    ref: { type: string, nullable: true, description: "App-specific lookup key, if set at creation (#2534)" }
                     payload: { type: object }
                     attestationStatus: { type: string }
                     supersedes: { type: string, nullable: true, description: "Bilateral attestation this one proposes to amend, if any (#1790)" }
                     delegatorDid: { type: string, nullable: true, description: "DID that authorized issuerDid to act on its behalf, if any (#2394)" }
                     issuedAt: { type: string, format: date-time }
         "400":
-          description: subject_did required
+          description: subject_did required, or `before` is not a well-formed `<issued_at>,<id>` cursor
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

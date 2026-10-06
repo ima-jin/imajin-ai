@@ -556,3 +556,44 @@ describe('caller auth via scoped app-token (#2394)', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// #2534 — optional, indexed, app-specific `ref` lookup key.
+describe('ref column (#2534)', () => {
+  function insertedValues(): Record<string, unknown> {
+    return h.mockInsertValues.mock.calls[0][0] as Record<string, unknown>;
+  }
+
+  it('persists ref when supplied', async () => {
+    const res = await POST(makeReq(baseBody({ ref: 'ticket_42' })));
+
+    expect(res.status).toBe(201);
+    expect(insertedValues().ref).toBe('ticket_42');
+  });
+
+  it('stores null when ref is omitted or null (backward compatible)', async () => {
+    await POST(makeReq(baseBody()));
+    expect(insertedValues().ref).toBeNull();
+
+    h.mockInsertValues.mockClear();
+    await POST(makeReq(baseBody({ ref: null })));
+    expect(insertedValues().ref).toBeNull();
+  });
+
+  it.each([
+    ['empty string', ''],
+    ['non-string', 42],
+    ['object', { id: 1 }],
+    ['over-long string', 'x'.repeat(257)],
+  ])('rejects an invalid ref (%s) with 400 and writes nothing', async (_label, ref) => {
+    const res = await POST(makeReq(baseBody({ ref })));
+
+    expect(res.status).toBe(400);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('accepts a ref of exactly the maximum length', async () => {
+    const res = await POST(makeReq(baseBody({ ref: 'x'.repeat(256) })));
+
+    expect(res.status).toBe(201);
+  });
+});

@@ -807,8 +807,12 @@ Authorization: Bearer {ATTESTATION_INTERNAL_API_KEY}
 
 ```
 GET /auth/api/attestations?subject_did={did}&type=vouch&limit=20
+GET /auth/api/attestations?subject_did={did}&ref={app-specific-key}   // optional indexed `ref` set at POST
+GET /auth/api/attestations?subject_did={did}&before={issued_at,id}      // next (older) page
 GET /auth/api/attestations/{did}   // shorthand
 ```
+
+Results are newest first, ordered by `(issued_at, id)`. When more rows exist the response carries an `X-Next-Cursor` header; pass its value as `before` to fetch the next page (no offset paging).
 
 ### Countersigning
 
