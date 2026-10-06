@@ -12,6 +12,7 @@
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { requireGrantAndToken, googleApiFetch } from './connector';
+import { forEachSequential } from '../async/sequential';
 
 const log = createLogger('kernel');
 
@@ -68,8 +69,9 @@ export async function listTranscripts(ownerDid: string, conferenceRecordId: stri
   );
   const transcripts = data.transcripts ?? [];
 
-  for (const transcript of transcripts) {
-    if (transcript.state !== 'ENDED') continue;
+  // Sequential on purpose: transcript events are published in listing order.
+  await forEachSequential(transcripts, async (transcript) => {
+    if (transcript.state !== 'ENDED') return;
     try {
       await publish('meet.transcript.available', {
         issuer: ownerDid,
@@ -87,7 +89,7 @@ export async function listTranscripts(ownerDid: string, conferenceRecordId: stri
     } catch (err) {
       log.error({ err: String(err), transcriptId: transcript.name }, 'meet.transcript.available publish failed (non-fatal)');
     }
-  }
+  });
 
   return transcripts;
 }

@@ -363,15 +363,21 @@ async function claimProvisioning(ownerDid: string, purpose: string, field: strin
 }
 
 /** Poll for the claim winner's active grant to appear. Throws once POLL_ATTEMPTS is exhausted. */
-async function pollForActiveGrant(ownerDid: string, purpose: string): Promise<ActiveInternalSecretGrant> {
-  for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
-    const grant = await findActiveGrant(ownerDid, purpose);
-    if (grant) return grant;
-    await sleep(POLL_INTERVAL_MS);
+async function pollForActiveGrant(
+  ownerDid: string,
+  purpose: string,
+  attempt = 0,
+): Promise<ActiveInternalSecretGrant> {
+  if (attempt >= POLL_ATTEMPTS) {
+    throw new Error(
+      `getInternalSecret: lost the provisioning race for purpose '${purpose}' and the winner's grant never appeared`,
+    );
   }
-  throw new Error(
-    `getInternalSecret: lost the provisioning race for purpose '${purpose}' and the winner's grant never appeared`,
-  );
+  const grant = await findActiveGrant(ownerDid, purpose);
+  if (grant) return grant;
+  // Sequential on purpose: each poll waits out POLL_INTERVAL_MS before checking again.
+  await sleep(POLL_INTERVAL_MS);
+  return pollForActiveGrant(ownerDid, purpose, attempt + 1);
 }
 
 /** What a provisions row says about its claim — enough to tell a live race from a stranded row. */

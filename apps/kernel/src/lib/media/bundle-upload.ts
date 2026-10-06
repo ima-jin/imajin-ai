@@ -6,6 +6,7 @@ import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { checkArticleFrontmatter, type ArticleFrontmatterCheck } from "@/src/lib/media/article-guard";
 import { buildAssetViewUrl } from "@/src/lib/media/view-url";
 import { normalizeLocalPath, rewriteMarkdownRefs, type RewriteMarkdownRefsResult } from "@/src/lib/media/markdown-refs";
+import { forEachSequential } from "@/src/lib/async/sequential";
 
 const log = createLogger("kernel");
 
@@ -201,7 +202,8 @@ async function materializeIndex(input: {
 
 /** Step 4 — see module doc. Non-fatal: logged and swallowed per edge. */
 async function recordDocAssetEdges(docAssetId: string, assetIds: readonly string[]): Promise<void> {
-  for (const assetId of assetIds) {
+  // Sequential on purpose: edges are written in asset order, one row at a time.
+  await forEachSequential(assetIds, async (assetId) => {
     try {
       await db
         .insert(assetDocEdges)
@@ -210,7 +212,7 @@ async function recordDocAssetEdges(docAssetId: string, assetIds: readonly string
     } catch (err) {
       log.error({ err: String(err), docAssetId, assetId }, "Doc-asset edge recording failed (non-fatal)");
     }
-  }
+  });
 }
 
 export async function processBundleUpload(input: BundleUploadInput): Promise<BundleUploadResult> {

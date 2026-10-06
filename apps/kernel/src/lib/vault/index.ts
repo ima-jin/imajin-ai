@@ -41,8 +41,12 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
+import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
+
+/** Max owner envelopes scanned concurrently when building the grant-renewal worklist. */
+const RENEWABLE_SCAN_CONCURRENCY = 5;
 
 /**
  * What the grant/envelope helpers below run their statements on: the shared
@@ -1385,9 +1389,12 @@ export async function listRenewableGrants(options: {
   const horizon = new Date(now.getTime() + (options.withinMs ?? 0));
 
   const envelopes = await db.select().from(vaultOwnerEnvelopes);
-  const renewable: RenewableGrant[] = [];
 
-  for (const envelope of envelopes) {
+  // Each envelope's grant lookups are independent reads: scan a few envelopes at a
+  // time, then flatten in envelope order so the worklist order is unchanged.
+  const perEnvelope = await mapWithConcurrency(envelopes, RENEWABLE_SCAN_CONCURRENCY, async (envelope) => {
+    const renewable: RenewableGrant[] = [];
+
     // Every grantee this field has been granted to, in any state. A revoked or
     // superseded row still names a grantee whose access is meant to be renewable;
     // the node is always included so a never-granted field is still reported.
@@ -1401,7 +1408,8 @@ export async function listRenewableGrants(options: {
       grantees.add(row.grantedTo);
     }
 
-    for (const grantedTo of grantees) {
+    // Sequential within one envelope: a handful of grantees, reported in grantee order.
+    await forEachSequential(grantees, async (grantedTo) => {
       const rows = await db
         .select({
           expiresAt: vaultDelegationGrants.expiresAt,
@@ -1432,7 +1440,7 @@ export async function listRenewableGrants(options: {
         // Revoked, expired-and-swept, or never granted. Either way the grantee
         // cannot read this field until the owner issues a grant.
         renewable.push({ ...common, reason: 'missing', expiresAt: null });
-        continue;
+        return;
       }
 
       if (active.expiresAt !== null && active.expiresAt <= horizon) {
@@ -1442,10 +1450,12 @@ export async function listRenewableGrants(options: {
           expiresAt: active.expiresAt.toISOString(),
         });
       }
-    }
-  }
+    });
 
-  return renewable;
+    return renewable;
+  });
+
+  return perEnvelope.flat();
 }
 
 // ── Delegation helpers ───────────────────────────────────────────────────

@@ -9,6 +9,10 @@ import { conversationPath } from '@/src/lib/chat/conversation-did';
 import { canDeleteConversation } from '@/src/lib/chat/conversation-permissions';
 import { useWebSocket } from '@/src/hooks/useWebSocket';
 import { buildPublicUrl } from '@imajin/config';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
+
+/** Max concurrent presence lookups against the profile service. */
+const PRESENCE_FETCH_CONCURRENCY = 5;
 
 interface Conversation {
   did: string;
@@ -141,7 +145,8 @@ export default function ConversationsPage() {
           didsToCheck.add(conv.otherParticipant.did);
         }
       });
-      for (const did of Array.from(didsToCheck)) {
+      // Presence lookups are independent reads: fetch a few at a time instead of one by one.
+      await mapWithConcurrency(Array.from(didsToCheck), PRESENCE_FETCH_CONCURRENCY, async (did) => {
         try {
           const presenceRes = await fetch(`${profileUrl}/api/presence/${encodeURIComponent(did)}`);
           if (presenceRes.ok) {
@@ -151,7 +156,7 @@ export default function ConversationsPage() {
         } catch {
           // Ignore presence errors
         }
-      }
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {

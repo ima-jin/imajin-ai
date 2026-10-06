@@ -321,8 +321,9 @@ async function pollUntilReadable(
   sleep: (ms: number) => Promise<void>,
 ): Promise<PollOutcome> {
   const deadline = Date.now() + timeoutMs;
-  let lastError: unknown;
-  for (;;) {
+  // Sequential on purpose: each attempt depends on the previous one not having succeeded, and waits out the poll interval first.
+  const poll = async (): Promise<PollOutcome> => {
+    let lastError: unknown;
     try {
       const plaintext = await loadAndUnseal(field);
       if (plaintext === expectedPlaintext) {
@@ -342,7 +343,9 @@ async function pollUntilReadable(
       return { readable: false, lastError };
     }
     await sleep(Math.min(pollIntervalMs, remaining));
-  }
+    return poll();
+  };
+  return poll();
 }
 
 /**

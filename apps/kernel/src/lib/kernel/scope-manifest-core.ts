@@ -26,6 +26,7 @@ import { updateAssetContent } from '@/src/lib/media/update-asset';
 import { generateId } from '@/src/lib/kernel/id';
 import { addAssetToGrantsFolder } from '@/src/lib/media/folders';
 import { syncConnectorRegistrationScopes } from '@/src/lib/kernel/connector-registry-store';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -249,8 +250,9 @@ export async function syncConnectorConsentGrants(
   const grantedTo = appDid ?? connectorDid;
   const refPrefix = consentRefPrefix(manifestAssetId, appDid);
 
-  for (const scopeName of requestedScopes) {
-    if (!isOnConsent(scopeName)) continue;
+  // Sequential on purpose: each scope is a read-then-write upsert on consent_grants, applied in request order.
+  await forEachSequential(requestedScopes, async (scopeName) => {
+    if (!isOnConsent(scopeName)) return;
 
     const ref = connectorConsentRef(manifestAssetId, scopeName, appDid);
     const [existing] = await db
@@ -276,7 +278,7 @@ export async function syncConnectorConsentGrants(
         consentRef: ref,
       });
     }
-  }
+  });
 
   const existingRows = await db
     .select({ id: consentGrants.id, consentRef: consentGrants.consentRef })
@@ -291,7 +293,8 @@ export async function syncConnectorConsentGrants(
       ),
     );
 
-  for (const row of existingRows) {
+  // Sequential on purpose: revocations are applied one row at a time, in query order.
+  await forEachSequential(existingRows, async (row) => {
     const scopeName = row.consentRef.slice(refPrefix.length);
     if (!requestedSet.has(scopeName)) {
       await db
@@ -299,7 +302,7 @@ export async function syncConnectorConsentGrants(
         .set({ status: 'revoked', updatedAt: new Date() })
         .where(eq(consentGrants.id, row.id));
     }
-  }
+  });
 }
 
 // ── Publish orchestration ─────────────────────────────────────────────────────
@@ -407,7 +410,8 @@ export async function publishConnectorScopeManifest(opts: {
   // never collides with the connector-wide row's — both can share the same
   // manifest asset + channelUid, distinguished by the (channel, channelUid,
   // appDid) unique index the upsert targets below.
-  for (const scopeName of scopes) {
+  // Sequential on purpose: channel_links upserts are applied in manifest order, one row at a time.
+  await forEachSequential(scopes, async (scopeName) => {
     const channelUid = `${assetId}${SCOPE_UID_SEP}${scopeName}`;
     const linkId = appDid
       ? `clink_${assetId}_${scopeName.replaceAll(':', '_')}_${sanitizeIdSuffix(appDid)}`
@@ -429,7 +433,7 @@ export async function publishConnectorScopeManifest(opts: {
         target: [channelLinks.channel, channelLinks.channelUid, channelLinks.appDid],
         set: { scopes: [scopeName], status: 'active', revokedAt: null },
       });
-  }
+  });
 
   // Revoke active rows for scopes tied to this manifest that are no longer
   // requested — scoped to this same grantee, so publishing for one client
@@ -445,7 +449,8 @@ export async function publishConnectorScopeManifest(opts: {
         like(channelLinks.channelUid, `${assetId}${SCOPE_UID_SEP}%`),
       ),
     );
-  for (const row of existingLinks) {
+  // Sequential on purpose: revocations are applied one row at a time, in query order.
+  await forEachSequential(existingLinks, async (row) => {
     const scopeName = row.channelUid.slice(assetId.length + SCOPE_UID_SEP.length);
     if (!requestedSet.has(scopeName)) {
       await db
@@ -453,7 +458,7 @@ export async function publishConnectorScopeManifest(opts: {
         .set({ status: 'revoked', revokedAt: now })
         .where(eq(channelLinks.id, row.id));
     }
-  }
+  });
 
   // Refresh the consolidated registry's scope snapshot (#1924). `channel` is
   // the connector's registry id by convention (pinned by the #1253 projection

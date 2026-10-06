@@ -14,6 +14,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { db, assets, folders, assetFolders } from "@/src/db";
 import { eq, and } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
+import { forEachSequential } from "@/src/lib/async/sequential";
 
 const log = createLogger("kernel");
 
@@ -163,7 +164,8 @@ export async function POST(request: NextRequest) {
   try {
     await mkdir(dirPath, { recursive: true });
 
-    for (const file of seedFiles) {
+    // Sequential on purpose: each file is written to disk, then recorded in the DB, in order; the first failure stops the seed.
+    await forEachSequential(seedFiles, async (file) => {
       const assetId = `asset_${nanoid(16)}`;
       const buffer = Buffer.from(file.content, "utf-8");
       const hash = createHash("sha256").update(buffer).digest("hex");
@@ -209,7 +211,7 @@ export async function POST(request: NextRequest) {
         .onConflictDoNothing();
 
       assetIds.push(assetId);
-    }
+    });
   } catch (err) {
     log.error({ err: String(err) }, "File seeding failed");
     return NextResponse.json(

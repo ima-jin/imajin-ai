@@ -17,6 +17,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, googleWorkspaceState } from '@/src/db';
 import { generateId } from '../kernel/id';
+import { forEachSequential } from '../async/sequential';
 import { requireGrantAndToken, googleApiFetch } from './connector';
 
 const log = createLogger('kernel');
@@ -247,46 +248,67 @@ interface GmailHistoryRecord {
  */
 export async function processHistorySince(ownerDid: string, startHistoryId: string): Promise<string> {
   const token = await requireGrantAndToken(ownerDid, 'google:gmail:read');
+  return processHistoryPage({ ownerDid, token, startHistoryId, latestHistoryId: startHistoryId });
+}
 
-  let latestHistoryId = startHistoryId;
-  let pageToken: string | undefined;
+interface GmailHistoryPage {
+  history?: GmailHistoryRecord[];
+  historyId?: string;
+  nextPageToken?: string;
+}
 
-  do {
-    const params = new URLSearchParams({ startHistoryId, historyTypes: 'messageAdded' });
-    if (pageToken) params.set('pageToken', pageToken);
+interface HistoryPageCursor {
+  ownerDid: string;
+  token: string;
+  startHistoryId: string;
+  latestHistoryId: string;
+  pageToken?: string;
+}
 
-    const data = await callGmailApi<{
-      history?: GmailHistoryRecord[];
-      historyId?: string;
-      nextPageToken?: string;
-    }>({ path: `/history?${params.toString()}`, token });
+/**
+ * Fetch one history page, publish its `mail.received` events, then follow
+ * `nextPageToken`. Sequential on purpose: page N+1's request needs page N's
+ * cursor, and events are published in feed order before the next page is
+ * fetched (a later page failing must not undo events already emitted).
+ */
+async function processHistoryPage(cursor: Readonly<HistoryPageCursor>): Promise<string> {
+  const { ownerDid, token, startHistoryId, pageToken } = cursor;
+  const params = new URLSearchParams({ startHistoryId, historyTypes: 'messageAdded' });
+  if (pageToken) params.set('pageToken', pageToken);
 
-    for (const record of data.history ?? []) {
-      for (const added of record.messagesAdded ?? []) {
-        try {
-          await publish('mail.received', {
-            issuer: ownerDid,
-            subject: ownerDid,
-            scope: 'google',
-            payload: {
-              ownerDid,
-              onBehalfOf: ownerDid,
-              messageId: added.message.id,
-              threadId: added.message.threadId,
-              historyId: record.id,
-              context_id: added.message.id,
-              context_type: 'google',
-            },
-          });
-        } catch (err) {
-          log.error({ err: String(err), messageId: added.message.id }, 'mail.received publish failed (non-fatal)');
-        }
-      }
-    }
+  const data = await callGmailApi<GmailHistoryPage>({ path: `/history?${params.toString()}`, token });
 
-    if (data.historyId) latestHistoryId = data.historyId;
-    pageToken = data.nextPageToken;
-  } while (pageToken);
+  await forEachSequential(data.history ?? [], (record) =>
+    forEachSequential(record.messagesAdded ?? [], (added) => publishMailReceived(ownerDid, record.id, added)),
+  );
 
-  return latestHistoryId;
+  const latestHistoryId = data.historyId ?? cursor.latestHistoryId;
+  if (!data.nextPageToken) return latestHistoryId;
+  return processHistoryPage({ ...cursor, latestHistoryId, pageToken: data.nextPageToken });
+}
+
+/** Emit `mail.received` for one added message; a publish failure is logged, never thrown. */
+async function publishMailReceived(
+  ownerDid: string,
+  historyRecordId: string,
+  added: NonNullable<GmailHistoryRecord['messagesAdded']>[number],
+): Promise<void> {
+  try {
+    await publish('mail.received', {
+      issuer: ownerDid,
+      subject: ownerDid,
+      scope: 'google',
+      payload: {
+        ownerDid,
+        onBehalfOf: ownerDid,
+        messageId: added.message.id,
+        threadId: added.message.threadId,
+        historyId: historyRecordId,
+        context_id: added.message.id,
+        context_type: 'google',
+      },
+    });
+  } catch (err) {
+    log.error({ err: String(err), messageId: added.message.id }, 'mail.received publish failed (non-fatal)');
+  }
 }

@@ -3,6 +3,7 @@ import { createLogger } from '@imajin/logger';
 import { listActiveGrantOwners } from '@/src/lib/google/connector';
 import { listWatchExpirations, watch } from '@/src/lib/google/gmail';
 import { requireCronAuth } from '@/src/cron/auth';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -56,7 +57,8 @@ export async function GET(request: NextRequest) {
     const results: RenewResult[] = [];
     const failures: RenewFailure[] = [];
 
-    for (const ownerDid of dueForRenewal) {
+    // Sequential on purpose: one Gmail API call at a time keeps the sweep under Google's per-user rate limits.
+    await forEachSequential(dueForRenewal, async (ownerDid) => {
       try {
         await watch(ownerDid);
         results.push({ ownerDid });
@@ -64,7 +66,7 @@ export async function GET(request: NextRequest) {
         log.error({ err: String(err), ownerDid }, 'Gmail watch renewal: owner failed');
         failures.push({ ownerDid, error: String(err) });
       }
-    }
+    });
 
     log.info(
       { owners: owners.length, dueForRenewal: dueForRenewal.length, renewed: results.length, failed: failures.length },

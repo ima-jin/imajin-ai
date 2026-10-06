@@ -28,6 +28,7 @@ import { loadConfig } from '@/src/lib/quickbooks/connector';
 import { resolveRealmOwner } from '@/src/lib/quickbooks/realm-index';
 import { verifyIntuitWebhookSignature } from '@/src/lib/quickbooks/webhook-verify';
 import { settlePaidInvoices } from '@/src/lib/quickbooks/settlement';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -72,11 +73,12 @@ function distinctRealmIds(payload: Readonly<QuickBooksWebhookPayload>): string[]
  * the response is sent (see `after()` below) — Intuit does not wait for this.
  */
 async function settleWebhookPayload(payload: Readonly<QuickBooksWebhookPayload>): Promise<void> {
-  for (const realmId of distinctRealmIds(payload)) {
+  // Sequential on purpose: settlement runs write to the ledger, so realms are settled one at a time in first-seen order.
+  await forEachSequential(distinctRealmIds(payload), async (realmId) => {
     const owner = await resolveRealmOwner(realmId);
     if (!owner) {
       log.warn({ realmId }, 'QuickBooks webhook: settle skipped — realmId not indexed');
-      continue;
+      return;
     }
     try {
       const result = await settlePaidInvoices(owner.ownerDid, owner.appDid);
@@ -87,7 +89,7 @@ async function settleWebhookPayload(payload: Readonly<QuickBooksWebhookPayload>)
     } catch (err) {
       log.error({ err: String(err), realmId, ownerDid: owner.ownerDid }, 'QuickBooks webhook: settlement run failed');
     }
-  }
+  });
 }
 
 export async function POST(request: NextRequest) {

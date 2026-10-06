@@ -4,6 +4,7 @@
  * Provisions {hostname}.imajin.ai pointing to the node's origin
  */
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '../async/sequential';
 
 const log = createLogger('kernel');
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
@@ -141,12 +142,13 @@ export async function removeSubdomain(hostname: string): Promise<void> {
   }
 
   // Delete each matching record
-  for (const record of records) {
+  // Sequential on purpose: one Cloudflare API call at a time keeps DNS deletes under the API's rate limit.
+  await forEachSequential<DNSRecord>(records, async (record) => {
     await cfFetch(
       `/zones/${config.zoneId}/dns_records/${record.id}`,
       { method: 'DELETE' }
     );
-  }
+  });
 }
 
 /**

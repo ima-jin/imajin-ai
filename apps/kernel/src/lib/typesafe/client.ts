@@ -132,27 +132,23 @@ async function safeJson(res: Response): Promise<unknown> {
  * Every other status (including 422) is returned as-is on the first
  * attempt — the caller maps a non-ok response to {@link TypesafeUpstreamError}.
  */
-async function typesafeFetch(path: string, init: RequestInit, apiKey: string): Promise<Response> {
-  let response: Response;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    response = await fetch(`${TYPESAFE_BASE_URL}${path}`, {
-      ...init,
-      headers: {
-        ...(init.headers as Record<string, string> | undefined),
-        Authorization: `Bearer ${apiKey}`,
-      },
-    });
+async function typesafeFetch(path: string, init: RequestInit, apiKey: string, attempt = 1): Promise<Response> {
+  const response = await fetch(`${TYPESAFE_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init.headers as Record<string, string> | undefined),
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
 
-    const shouldRetry = !response.ok && isRetryableStatus(response.status) && attempt < MAX_ATTEMPTS;
-    if (!shouldRetry) {
-      return response;
-    }
-
-    await sleep(retryDelayMs(response.headers.get('retry-after'), attempt));
+  const shouldRetry = !response.ok && isRetryableStatus(response.status) && attempt < MAX_ATTEMPTS;
+  if (!shouldRetry) {
+    return response;
   }
-  // Unreachable — the loop always returns by its final iteration — but kept
-  // for exhaustiveness so this function's return type stays non-optional.
-  throw new Error('typesafe_client: retry loop exited without a response');
+
+  // Sequential on purpose: each retry waits out the backoff (honouring `retry-after`) before the next attempt.
+  await sleep(retryDelayMs(response.headers.get('retry-after'), attempt));
+  return typesafeFetch(path, init, apiKey, attempt + 1);
 }
 
 function requestId(res: Response): string | null {

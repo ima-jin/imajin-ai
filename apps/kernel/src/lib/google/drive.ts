@@ -13,6 +13,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, googleWorkspaceState } from '@/src/db';
 import { generateId } from '../kernel/id';
+import { forEachSequential } from '../async/sequential';
 import { requireGrantAndToken, googleApiFetch, googleApiRequest } from './connector';
 
 const log = createLogger('kernel');
@@ -173,7 +174,8 @@ export async function listChanges(ownerDid: string): Promise<ListChangesResult> 
     cursor = next;
   }
 
-  for (const change of changes) {
+  // Sequential on purpose: change events are published in feed order.
+  await forEachSequential(changes, async (change) => {
     try {
       await publish('drive.file.changed', {
         issuer: ownerDid,
@@ -191,7 +193,7 @@ export async function listChanges(ownerDid: string): Promise<ListChangesResult> 
     } catch (err) {
       log.error({ err: String(err), fileId: change.fileId }, 'drive.file.changed publish failed (non-fatal)');
     }
-  }
+  });
 
   if (newStartPageToken) await storePageToken(ownerDid, newStartPageToken);
 

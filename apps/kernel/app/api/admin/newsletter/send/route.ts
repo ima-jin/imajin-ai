@@ -7,6 +7,7 @@ import { generateUnsubscribeToken } from '@/src/lib/www/subscribe-tokens';
 import { randomUUID } from 'node:crypto';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { resolveNewsletterAudience, resolveTestRecipient } from '@/src/lib/admin/newsletter-send';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const sql = getClient();
 
@@ -27,8 +28,12 @@ interface SendBatchOptions {
 
 async function sendBatch({ emails, subject, html, text, replyTo, listSlug }: SendBatchOptions) {
   const BATCH_SIZE = 10;
+  const batches: string[][] = [];
   for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-    const batch = emails.slice(i, i + BATCH_SIZE);
+    batches.push(emails.slice(i, i + BATCH_SIZE));
+  }
+  // Sequential on purpose: batches are paced (200ms apart) to stay under the email provider's rate limit.
+  await forEachSequential(batches, async (batch, index) => {
     await Promise.all(
       batch.map((to) => sendEmail({
         to,
@@ -39,10 +44,10 @@ async function sendBatch({ emails, subject, html, text, replyTo, listSlug }: Sen
         unsubscribeUrl: listSlug ? buildUnsubscribeUrl(to, listSlug) : undefined,
       }))
     );
-    if (i + BATCH_SIZE < emails.length) {
+    if (index < batches.length - 1) {
       await new Promise((r) => setTimeout(r, 200));
     }
-  }
+  });
 }
 
 export const POST = withLogger('kernel', async (req, { log }) => {

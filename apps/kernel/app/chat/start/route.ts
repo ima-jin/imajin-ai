@@ -5,6 +5,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { dmDid, conversationPath } from '@/src/lib/chat/conversation-did';
 import { canInitiateDm, DM_CONNECTION_REQUIRED } from '@/src/lib/chat/connection-check';
 import { buildPublicUrl } from '@imajin/config';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const APP_URL = buildPublicUrl('chat');
 
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest) {
   }
 
   // Ensure both participants are in conversation_members
-  for (const memberDid of [myDid, did]) {
+  // Sequential on purpose: the requester's membership row is written first, then the target's.
+  await forEachSequential([myDid, did], async (memberDid) => {
     await db
       .insert(conversationMembers)
       .values({
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
         role: 'participant',
       })
       .onConflictDoNothing();
-  }
+  });
 
   return redirect(`/conversations/${conversationPath(convDid)}`);
 }

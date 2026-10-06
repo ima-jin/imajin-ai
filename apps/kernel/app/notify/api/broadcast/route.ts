@@ -9,6 +9,7 @@ import { db, notifications, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 import { fetchAudienceFromRegistry, checkRegistryPreferences } from './registry';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
 
@@ -157,10 +158,13 @@ export async function POST(request: NextRequest) {
   let skipped = 0;
   let errors = 0;
 
-  // Process in batches
+  const batches: string[][] = [];
   for (let batchStart = 0; batchStart < audienceDids.length; batchStart += BATCH_SIZE) {
-    const batch = audienceDids.slice(batchStart, batchStart + BATCH_SIZE);
+    batches.push(audienceDids.slice(batchStart, batchStart + BATCH_SIZE));
+  }
 
+  // Process in batches. Sequential on purpose: batches are paced (BATCH_DELAY_MS apart) to stay under the email provider's rate limit.
+  await forEachSequential(batches, async (batch, batchIndex) => {
     await Promise.all(
       batch.map(async (did) => {
         try {
@@ -221,10 +225,10 @@ export async function POST(request: NextRequest) {
     );
 
     // Rate limit: pause between batches
-    if (batchStart + BATCH_SIZE < audienceDids.length) {
+    if (batchIndex < batches.length - 1) {
       await sleep(BATCH_DELAY_MS);
     }
-  }
+  });
 
   log.info({ scope, sent, skipped, errors }, 'broadcast complete');
 

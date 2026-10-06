@@ -11,6 +11,7 @@ import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
 import { db, supplyLots } from '@/src/db';
 import { readInvoices } from './connector';
+import { forEachSequential } from '../async/sequential';
 
 export type SupplyFairManifest = ReturnType<typeof buildFairManifest>;
 
@@ -84,16 +85,17 @@ export async function settlePaidInvoices(ownerDid: string, appDid?: string): Pro
   const settled: string[] = [];
   const skipped: string[] = [];
 
-  for (const invoice of invoices) {
+  // Sequential on purpose: settlement writes to the ledger (publish order.completed, then flip the lot), one invoice at a time.
+  await forEachSequential(invoices, async (invoice) => {
     if (invoice.balance !== 0 || !invoice.correlationId) {
       skipped.push(invoice.id);
-      continue;
+      return;
     }
 
     const lot = await loadLot(invoice.correlationId);
     if (!lot?.fairManifest || lot.status === 'settled') {
       skipped.push(invoice.id);
-      continue;
+      return;
     }
 
     await publish('order.completed', {
@@ -117,7 +119,7 @@ export async function settlePaidInvoices(ownerDid: string, appDid?: string): Pro
 
     await markLotSettled(invoice.correlationId);
     settled.push(invoice.id);
-  }
+  });
 
   return { settled, skipped };
 }

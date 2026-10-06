@@ -4,6 +4,7 @@ import { getClient } from '@imajin/db';
 import { createLogger } from '@imajin/logger';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { nanoid } from 'nanoid';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -135,7 +136,8 @@ export async function POST(request: Request) {
   try {
     const sql = getClient();
 
-    for (const payload of payloads) {
+    // Sequential on purpose: rows are written in submission order and the first failed insert stops the rest.
+    await forEachSequential(payloads, async (payload) => {
       const id = `cerr_${nanoid(16)}`;
       const metadata = JSON.stringify({
         userAgent: payload.userAgent,
@@ -160,7 +162,7 @@ export async function POST(request: Request) {
             now()
           )
       `;
-    }
+    });
   } catch (error) {
     log.error({ err: String(error), ip }, 'failed to write client error to registry.logs');
   }

@@ -25,6 +25,7 @@ import { db, notifications } from '@/src/db';
 import { and, asc, eq, isNull } from 'drizzle-orm';
 import { buildNotificationFrame, type NotificationWsFrame } from './ws-push';
 import { claimNotificationForWsSend, WS_MAX_ATTEMPTS } from './delivery';
+import { forEachSequential } from '../async/sequential';
 
 const log = createLogger('kernel');
 
@@ -69,9 +70,10 @@ export async function getNotificationBacklog(recipientDid: string): Promise<Noti
   const toClaim = candidates.slice(0, BACKLOG_LIMIT);
 
   const frames: NotificationWsFrame[] = [];
-  for (const row of toClaim) {
+  // Sequential on purpose: each row is claimed atomically one at a time, so frames replay oldest-first.
+  await forEachSequential(toClaim, async (row) => {
     const { claimed, attempts } = await claimNotificationForWsSend(row.id);
-    if (!claimed) continue;
+    if (!claimed) return;
     if (attempts >= WS_MAX_ATTEMPTS) {
       log.warn({ id: row.id, recipientDid, attempts }, 'Notification WS re-offer cap reached');
     }
@@ -86,7 +88,7 @@ export async function getNotificationBacklog(recipientDid: string): Promise<Noti
       }),
       replay: true,
     });
-  }
+  });
 
   return { frames, truncated };
 }

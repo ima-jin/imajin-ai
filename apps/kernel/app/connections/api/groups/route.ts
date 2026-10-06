@@ -4,6 +4,7 @@ import { eq, and, isNull, inArray, sql, ne } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -93,7 +94,8 @@ export async function POST(request: NextRequest) {
 
   // Add additional members if provided
   const memberDids: string[] = body.memberDids || [];
-  for (const did of memberDids) {
+  // Sequential on purpose: members are added in request order, and the first failed insert stops the rest.
+  await forEachSequential(memberDids, async (did) => {
     if (did !== session.did) {
       await db.insert(podMembers).values({
         podId: id,
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
         joinedAt: now,
       });
     }
-  }
+  });
 
   const memberCount = 1 + memberDids.filter(d => d !== session.did).length;
 

@@ -4,6 +4,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { corsOptions, corsHeaders } from "@/src/lib/kernel/cors";
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -81,9 +82,10 @@ export async function POST(
     let alreadyExists = 0;
     const backfilledEntries: Array<{ attestationId: string; event: string; occurredAt: string }> = [];
 
-    for (const att of attestations) {
+    // Sequential on purpose: system messages are backfilled in attestation order, and the first failed insert stops the replay.
+    await forEachSequential(attestations, async (att) => {
       const event = eventMap[att.type as string];
-      if (!event) continue;
+      if (!event) return;
 
       const actorDid = att.issuer_did as string;
       const targetDid = att.subject_did as string;
@@ -91,7 +93,7 @@ export async function POST(
 
       if (existingSet.has(key)) {
         alreadyExists++;
-        continue;
+        return;
       }
 
       // Insert backfilled system message
@@ -120,7 +122,7 @@ export async function POST(
 
       // Add to set so we don't duplicate within this run
       existingSet.add(key);
-    }
+    });
 
     // Validation: find orphaned system messages (no matching attestation)
     const attestationKeys = new Set(
