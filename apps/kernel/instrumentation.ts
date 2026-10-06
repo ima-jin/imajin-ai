@@ -30,5 +30,10 @@ export async function register() {
 
     const { loadVaultAtBoot } = await import('@/src/lib/vault/vault-repository');
     await loadVaultAtBoot();
+
+    // Hand @imajin/auth the vault-resolved ATTESTATION_INTERNAL_API_KEY (#2353
+    // step 4) — packages/auth has no process.env fallback any more.
+    const { provideVaultInternalApiKey } = await import('@/src/lib/auth/provide-vault-internal-api-key');
+    await provideVaultInternalApiKey();
   }
 }

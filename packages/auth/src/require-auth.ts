@@ -173,9 +173,9 @@ async function validateActingAs(
   service?: string
 ): Promise<ActingAsResult> {
   const authUrl = getAuthUrl();
-  const internalApiKey = getVaultInternalApiKey() ?? process.env.ATTESTATION_INTERNAL_API_KEY;
+  const internalApiKey = getVaultInternalApiKey();
   if (!internalApiKey) {
-    log.warn({}, "[AUTH] ATTESTATION_INTERNAL_API_KEY not set — cannot validate act-as");
+    log.error({}, "[AUTH] vault-sourced ATTESTATION_INTERNAL_API_KEY not loaded — cannot validate act-as");
     return { valid: false };
   }
   try {

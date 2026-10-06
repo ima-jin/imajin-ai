@@ -12,6 +12,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { useVaultInternalKey } from '../../../__tests__/internal-api-key-auth-test-support';
 
 const ISSUER = 'did:imajin:alice';
 const SUBJECT = 'did:imajin:bob';
@@ -24,6 +25,9 @@ const h = vi.hoisted(() => ({
   mockInsertValues: vi.fn(),
   mockIntrospectGrant: vi.fn(),
 }));
+
+vi.mock('@/src/lib/vault/internal-secret', async () =>
+  (await import('@/app/auth/api/__tests__/internal-api-key-auth-test-support')).internalSecretModuleMock);
 
 vi.mock('@/src/db', () => ({
   db: {
@@ -77,7 +81,7 @@ function publishedPayload(): Record<string, unknown> {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.ATTESTATION_INTERNAL_API_KEY = API_KEY;
+  useVaultInternalKey(API_KEY);
   process.env.AUTH_PRIVATE_KEY = 'fake-private-key';
   h.mockReturning.mockResolvedValue([{ id: 'att_internal_123' }]);
   h.mockPublish.mockResolvedValue(undefined);

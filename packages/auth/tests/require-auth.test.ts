@@ -6,6 +6,7 @@
  * dual-read endpoint itself is unreachable or unconfigured.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { setVaultInternalApiKey } from './support/internal-post-test-env';
 
 const AGENT = 'did:imajin:jin';
 const PRINCIPAL = 'did:imajin:ryan';
@@ -33,7 +34,7 @@ beforeEach(() => {
   vi.resetModules();
   process.env.AUTH_SERVICE_URL = 'https://auth.test';
   process.env.AUTH_INTERNAL_API_KEY = INTERNAL_KEY;
-  process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+  setVaultInternalApiKey(ATTESTATION_KEY); // vault-sourced; never process.env (#2353 step 4)
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -42,6 +43,7 @@ afterEach(() => {
   delete process.env.AUTH_SERVICE_URL;
   delete process.env.AUTH_INTERNAL_API_KEY;
   delete process.env.ATTESTATION_INTERNAL_API_KEY;
+  setVaultInternalApiKey(undefined);
   vi.unstubAllGlobals();
   vi.resetModules();
 });
@@ -96,6 +98,19 @@ describe('requireAuth — X-Acting-For grants-first resolution (#1887)', () => {
 
     expect('identity' in result && result.identity.actingFor).toBe(PRINCIPAL);
     expect('identity' in result && result.identity.actingForRole).toBe('agent');
+  });
+
+  it('fails closed (never reads process.env) when the vault key is missing, even if ATTESTATION_INTERNAL_API_KEY is hand-set (#2353 step 4)', async () => {
+    delete process.env.AUTH_INTERNAL_API_KEY; // force the legacy controllers path
+    setVaultInternalApiKey(undefined);
+    process.env.ATTESTATION_INTERNAL_API_KEY = ATTESTATION_KEY;
+    const { requireAuth } = await import('../src/require-auth');
+    mockSessionOk();
+
+    const result = await requireAuth(sessionRequest({ 'x-acting-for': PRINCIPAL }));
+
+    expect(result).toEqual({ error: 'Not authorized to act for this identity', status: 403 });
+    expect(fetchMock).toHaveBeenCalledTimes(1); // session only — the controllers call was never attempted
   });
 
   it('falls back to the legacy membership check when the dual-read endpoint errors', async () => {

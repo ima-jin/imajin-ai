@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
-import { describeInternalApiKeyAuth, makeInternalKeyRequest } from '../../../__tests__/internal-api-key-auth-test-support';
+import { describeInternalApiKeyAuth, makeInternalKeyRequest, useVaultInternalKey } from '../../../__tests__/internal-api-key-auth-test-support';
 
 const API_KEY = 'internal-api-key';
 const DID = 'did:imajin:attendee';
@@ -33,6 +33,9 @@ function makeQueryChain(result: unknown) {
   chain.then = (resolve: (v: unknown) => void) => resolve(result);
   return chain;
 }
+
+vi.mock('@/src/lib/vault/internal-secret', async () =>
+  (await import('@/app/auth/api/__tests__/internal-api-key-auth-test-support')).internalSecretModuleMock);
 
 vi.mock('@/src/db', () => ({
   db: {
@@ -78,7 +81,7 @@ beforeEach(() => {
   // leak into the next test's call order.
   h.mockDbSelect.mockReset();
   h.mockDbUpdate.mockReset();
-  process.env.ATTESTATION_INTERNAL_API_KEY = API_KEY;
+  useVaultInternalKey(API_KEY);
   h.mockEmitAttestation.mockResolvedValue(undefined);
   h.mockGetNodeDid.mockResolvedValue('did:imajin:node');
   h.mockDbUpdate.mockReturnValue(makeQueryChain([{ id: DID }]));

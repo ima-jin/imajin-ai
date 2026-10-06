@@ -98,9 +98,9 @@ export async function requireAppAuth(
     return { error: 'Auth service unavailable', status: 503 };
   }
 
-  const internalApiKey = getVaultInternalApiKey() ?? process.env.ATTESTATION_INTERNAL_API_KEY;
+  const internalApiKey = getVaultInternalApiKey();
   if (!internalApiKey) {
-    log.warn({}, '[APP-AUTH] ATTESTATION_INTERNAL_API_KEY not set');
+    log.error({}, '[APP-AUTH] vault-sourced ATTESTATION_INTERNAL_API_KEY not loaded — cannot validate app authorization');
     return { error: 'Auth service misconfigured', status: 503 };
   }
 

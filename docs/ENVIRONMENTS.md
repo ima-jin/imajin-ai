@@ -231,12 +231,15 @@ the new value on their next boot.
 
 `ATTESTATION_INTERNAL_API_KEY` carries NO `.env.example` line on either
 side anymore (kernel or corpus) — same "deleted entirely" posture as a
-single-consumer internal secret. Both `require-internal-api-key.ts` and
-`attestation-key.ts` still accept a hand-set env var as a DEPRECATED
-fallback (logged once) for any deployment, or any OTHER not-yet-migrated
-service via `packages/auth/src/internal-post.ts`, that has not moved onto
-the vault path yet — generalizing this pattern to those other callers is
-out of scope for #2245.
+single-consumer internal secret. It is **vault-only** (#2353 step 4): the
+deprecated hand-set env fallback was removed from
+`require-internal-api-key.ts`, corpus's `attestation-key.ts`, and
+`packages/auth` (`require-auth.ts`, `session.ts`, `require-app-auth.ts`,
+`internal-post.ts`). A hand-set `ATTESTATION_INTERNAL_API_KEY` is ignored; a
+service without the vault value fails closed with an error log (kernel
+routes 401, act-as validation denies, internal posts are skipped). The
+kernel itself hands its vault-resolved value to `@imajin/auth` at boot
+(`provideInternalApiKey`, `apps/kernel/instrumentation.ts`).
 
 ### Rotate vs. revoke an internal secret (#2354, #2446, #2582)
 

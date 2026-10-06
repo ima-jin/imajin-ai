@@ -192,7 +192,8 @@ module.exports = {
       // error in dev (as it is today) while it's a warning in prod.
       //
       // Secrets (#1750, apps/corpus/.env.example): CORPUS_DID,
-      // CORPUS_DID_PRIVATE_KEY, AUTH_SERVICE_URL, ATTESTATION_INTERNAL_API_KEY.
+      // CORPUS_DID_PRIVATE_KEY, AUTH_SERVICE_URL (ATTESTATION_INTERNAL_API_KEY
+      // is vault-sourced via the CORPUS_VAULT_BOOTSTRAP_* identity, #2353).
       // Deliberately NOT listed in this file's "env" block, matching the
       // existing CORPUS_KERNEL_PUBLIC_KEY precedent (#2024) — this config is
       // version-controlled, so real secret values belong in the process
