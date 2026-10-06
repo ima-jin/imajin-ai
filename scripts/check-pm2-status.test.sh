@@ -88,6 +88,12 @@ mkdir -p "$SCRIPT_TMP"
 
 FAILURES=0
 
+# Strings the cases below assert on repeatedly.
+NO_PROBLEMS="no declared app"
+LOG_EVENTS_ERRORED="t-events is errored in pm2"
+MSG_EVENTS_ERRORED="t-events is errored;"
+SPEC_EVENTS_ERRORED="t-events=errored"
+
 # jl "name=status ..." -> a pm2 jlist for those processes.
 jl() {
   local spec="$1"
@@ -143,48 +149,48 @@ run_case "all declared apps online passes" 0 "$T0" "t-events=online t-auth=onlin
 
 reset_state
 run_case "errored app fails, is named and POSTed to the webhook" 1 "$T0" "t-events=errored t-auth=online" 1 \
-  "t-events is errored in pm2" "https://hook.example/alert" '"text":"pm2 apps down on' "t-events is errored;"
+  "$LOG_EVENTS_ERRORED" "https://hook.example/alert" '"text":"pm2 apps down on' "$MSG_EVENTS_ERRORED"
 
 reset_state
 run_case "stopped app fails and is POSTed" 1 "$T0" "t-events=online t-auth=stopped" 1 "t-auth is stopped in pm2" "t-auth is stopped;"
 
 reset_state
-run_case "stopped one-shot (autorestart:false) does not alert" 0 "$T0" "t-events=online t-oneshot=stopped" 0 "no declared app"
+run_case "stopped one-shot (autorestart:false) does not alert" 0 "$T0" "t-events=online t-oneshot=stopped" 0 "$NO_PROBLEMS"
 
 reset_state
 run_case "errored one-shot still alerts" 1 "$T0" "t-events=online t-oneshot=errored" 1 "t-oneshot is errored in pm2"
 
 reset_state
 run_case "transient states (launching, waiting restart, stopping) do not alert" 0 "$T0" \
-  "t-events=launching t-auth=waiting_restart t-oneshot=stopping" 0 "no declared app"
+  "t-events=launching t-auth=waiting_restart t-oneshot=stopping" 0 "$NO_PROBLEMS"
 
 reset_state
-run_case "errored app the ecosystem does not declare is ignored" 0 "$T0" "t-events=online t-foreign=errored" 0 "no declared app"
+run_case "errored app the ecosystem does not declare is ignored" 0 "$T0" "t-events=online t-foreign=errored" 0 "$NO_PROBLEMS"
 
 reset_state
-run_case "declared app unknown to pm2 (not hosted here) is ignored" 0 "$T0" "t-events=online" 0 "no declared app"
+run_case "declared app unknown to pm2 (not hosted here) is ignored" 0 "$T0" "t-events=online" 0 "$NO_PROBLEMS"
 
 reset_state
 run_case "two parked apps are both named in one POST" 1 "$T0" "t-events=errored t-auth=stopped" 1 \
-  "t-events is errored in pm2" "t-auth is stopped in pm2" "t-events is errored; t-auth is stopped;"
+  "$LOG_EVENTS_ERRORED" "t-auth is stopped in pm2" "t-events is errored; t-auth is stopped;"
 
 # Repeat interval: a parked app keeps failing every run but is POSTed only once
 # per STATUS_ALERT_REPEAT; it is POSTed again after the interval, and again
 # after it recovered and relapsed.
 reset_state
-run_case "first run of a parked app POSTs" 1 "$T0" "t-events=errored" 1 "t-events is errored"
-run_case "still parked a minute later: fails but is not re-POSTed" 1 $((T0 + 60)) "t-events=errored" 0 "t-events is errored in pm2"
-run_case "still parked after the repeat interval: POSTs again" 1 $((T0 + 3700)) "t-events=errored" 1 "t-events is errored;"
-run_case "recovered passes" 0 $((T0 + 3760)) "t-events=online" 0 "no declared app"
-run_case "relapse after recovery POSTs immediately" 1 $((T0 + 3820)) "t-events=errored" 1 "t-events is errored;"
+run_case "first run of a parked app POSTs" 1 "$T0" "$SPEC_EVENTS_ERRORED" 1 "t-events is errored"
+run_case "still parked a minute later: fails but is not re-POSTed" 1 $((T0 + 60)) "$SPEC_EVENTS_ERRORED" 0 "$LOG_EVENTS_ERRORED"
+run_case "still parked after the repeat interval: POSTs again" 1 $((T0 + 3700)) "$SPEC_EVENTS_ERRORED" 1 "$MSG_EVENTS_ERRORED"
+run_case "recovered passes" 0 $((T0 + 3760)) "t-events=online" 0 "$NO_PROBLEMS"
+run_case "relapse after recovery POSTs immediately" 1 $((T0 + 3820)) "$SPEC_EVENTS_ERRORED" 1 "$MSG_EVENTS_ERRORED"
 
 # A new problem is POSTed even while another one is inside its repeat window,
 # and only the new one is in the message.
 reset_state
-run_case "baseline for a second problem" 1 "$T0" "t-events=errored" 1 "t-events is errored"
+run_case "baseline for a second problem" 1 "$T0" "$SPEC_EVENTS_ERRORED" 1 "t-events is errored"
 run_case "new problem POSTs alone while the old one is quiet" 1 $((T0 + 60)) "t-events=errored t-auth=stopped" 1 \
   "t-auth is stopped;"
-if grep -qF "t-events is errored;" "$CURL_LOG"; then
+if grep -qF "$MSG_EVENTS_ERRORED" "$CURL_LOG"; then
   echo "❌ quiet problem was repeated in the new POST"
   FAILURES=$((FAILURES + 1))
 else
@@ -193,7 +199,7 @@ fi
 
 # Webhook behaviour.
 reset_state
-jl "t-events=errored" > "$FAKE_JLIST"
+jl "$SPEC_EVENTS_ERRORED" > "$FAKE_JLIST"
 : > "$CURL_LOG"
 status=0
 out="$(env -u STATUS_ALERT_WEBHOOK STATUS_ALERT_NOW="$T0" bash "$CHECK_SCRIPT" prod "$ECO" 2>&1)" || status=$?
@@ -262,7 +268,7 @@ expect_exit_2() {
   fi
 }
 
-jl "t-events=errored" > "$FAKE_JLIST"
+jl "$SPEC_EVENTS_ERRORED" > "$FAKE_JLIST"
 expect_exit_2 "unknown scope exits 2" "unknown scope" bash "$CHECK_SCRIPT" bogus "$ECO"
 expect_exit_2 "missing ecosystem file exits 2" "ecosystem file not found" bash "$CHECK_SCRIPT" prod "$WORK/nope.config.js"
 expect_exit_2 "non-numeric repeat exits 2" "STATUS_ALERT_REPEAT" env STATUS_ALERT_REPEAT=soon bash "$CHECK_SCRIPT" prod "$ECO"

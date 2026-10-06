@@ -65,6 +65,7 @@ export PM2_ALERT_WEBHOOK_FILE="$WORK/webhook"
 unset RESTART_ALERT_WEBHOOK STATUS_ALERT_WEBHOOK || true
 
 FAILURES=0
+ENV_HOOK="https://env.example/hook"
 
 # jl "name=status:restarts ..."
 jl() {
@@ -111,7 +112,7 @@ run_case() {
 reset_state() { rm -f "$RESTART_ALERT_STATE" "$STATUS_ALERT_STATE"; }
 T0=1000000
 
-export RESTART_ALERT_WEBHOOK="https://env.example/hook"
+export RESTART_ALERT_WEBHOOK="$ENV_HOOK"
 
 reset_state
 run_case "healthy pm2 passes and reports both checks" 0 "$T0" "t-events=online:0 t-auth=online:0" 0 \
@@ -165,8 +166,8 @@ fi
 reset_state
 : > "$CURL_LOG"
 status=0
-RESTART_ALERT_WEBHOOK="https://env.example/hook" RESTART_ALERT_NOW="$T0" STATUS_ALERT_NOW="$T0" bash "$HEALTH" prod "$ECO" >/dev/null 2>&1 || status=$?
-if [[ "$status" -eq 1 && "$(cat "$CURL_LOG")" = "https://env.example/hook" ]]; then
+RESTART_ALERT_WEBHOOK="$ENV_HOOK" RESTART_ALERT_NOW="$T0" STATUS_ALERT_NOW="$T0" bash "$HEALTH" prod "$ECO" >/dev/null 2>&1 || status=$?
+if [[ "$status" -eq 1 && "$(cat "$CURL_LOG")" = "$ENV_HOOK" ]]; then
   echo "✅ the environment's webhook wins over the file"
 else
   echo "❌ env webhook: exit $status, POSTs: $(cat "$CURL_LOG")"

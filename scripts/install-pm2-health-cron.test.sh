@@ -82,7 +82,10 @@ FAILURES=0
 pass() { echo "✅ $1"; }
 fail() { echo "❌ $1"; FAILURES=$((FAILURES + 1)); }
 
-count_lines() { grep -cF -- "$1" "$CRONTAB_FILE" || true; }
+count_lines() {
+  local needle="$1"
+  grep -cF -- "$needle" "$CRONTAB_FILE" || true
+}
 
 # 1. First install: one every-minute entry for dev.
 rm -f "$CRONTAB_FILE"

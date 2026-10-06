@@ -307,11 +307,14 @@ EXPECT_LOG=""
 EXPECT_OUT="t-next: could not compare ecosystem with pm2 state"
 run_case "unparseable pm2 jlist fails every app without touching pm2" 1 t-next t-kernel
 
+# An orphan (pid 9001) squatting on :3104, the port t-next declares.
+ORPHAN_3104="3104 9001"
+
 # 11. #2572: the port is freed between `pm2 delete` and `pm2 start`. The
 #     `npm start` tree's next-server (pid 9001) outlives the delete and holds
 #     :3104; it must be killed before the new definition starts into it.
 JLIST_JSON="$(proc t-next /usr/bin/npm none)"
-PORT_HELD="3104 9001"
+PORT_HELD="$ORPHAN_3104"
 EXPECT_LOG="delete t-next
 start $ECO --only t-next --update-env"
 EXPECT_EVENTS="delete
@@ -351,7 +354,7 @@ PORT_HELD=""
 # An orphan that survives SIGTERM and SIGKILL: the app must NOT be started into
 # a held port, and the run fails.
 JLIST_JSON="$(proc t-next /usr/bin/npm none)"
-PORT_HELD="3104 9001"
+PORT_HELD="$ORPHAN_3104"
 EXPECT_LOG="delete t-next"
 EXPECT_EVENTS="delete
 kill 9001
@@ -371,7 +374,7 @@ FAKE_KILL_FREES=true run_case "orphan on an absent app's port is reaped before s
 # A matching app is only restarted: its port is held by its own pm2 process,
 # which must never be reaped or even looked up.
 JLIST_JSON="$(proc t-next "/srv/t-next/$NEXT" node)"
-PORT_HELD="3104 9001"
+PORT_HELD="$ORPHAN_3104"
 EXPECT_LOG="startOrRestart $ECO --only t-next --update-env"
 EXPECT_EVENTS=""
 EXPECT_OUT=""
@@ -380,7 +383,7 @@ FAKE_KILL_FREES=true run_case "matching app's port is not reaped (#2572)" 0 t-ne
 # An app without a port (t-wrapped: npm start, no env.PORT, no -p) never
 # consults ss or kill.
 JLIST_JSON="$(proc t-wrapped /usr/bin/node none)"
-PORT_HELD="3104 9001"
+PORT_HELD="$ORPHAN_3104"
 EXPECT_LOG="delete t-wrapped
 start $ECO --only t-wrapped --update-env"
 EXPECT_EVENTS="delete
