@@ -14,6 +14,15 @@ interface Props {
   onInviteChange: (invite: RecipientInviteDraft) => void;
 }
 
+/**
+ * Shown when the picker is empty (#2651). The Money tab is business-only, and the
+ * server only accepts a `recipient_did` the issuing business is itself connected
+ * to (`service.ts` — the recipient must be the issuer's connection), so the list
+ * is the BUSINESS's connections, not the signed-in person's.
+ */
+export const BUSINESS_EMPTY_MESSAGE =
+  "This list shows this business's connections, and it has none yet. Add the person as a client of this business, or use Invite new to send them an invite.";
+
 const TAB_BASE = 'flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-colors';
 const TAB_ACTIVE = 'border-amber-500/50 bg-amber-500/10 text-amber-300';
 const TAB_INACTIVE = 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:text-zinc-200';
@@ -81,7 +90,8 @@ export default function RecipientPicker({
             onSelect={(connection) =>
               onSelectConnection({ did: connection.did, name: connection.name, handle: connection.handle })
             }
-            placeholder="Search your connections…"
+            placeholder="Search this business's connections…"
+            emptyMessage={BUSINESS_EMPTY_MESSAGE}
           />
         ))}
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { buildCreatePaymentRequestBody, previewSubtotal, type CreateFormState } from '../build-create-request';
 import type { LineItemDraft, TaxRowDraft } from '../types';
 
@@ -136,12 +136,36 @@ describe('buildCreatePaymentRequestBody — other fields', () => {
     }
   });
 
-  it('ISO-encodes due_at when set', () => {
+  it('encodes due_at as UTC midnight of the picked calendar date', () => {
     const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ dueAt: '2026-03-01' }));
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.body.due_at).toBe(new Date('2026-03-01').toISOString());
+      expect(result.body.due_at).toBe('2026-03-01T00:00:00.000Z');
     }
+  });
+
+  it('rejects a due date that is not a real calendar date instead of throwing', () => {
+    const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ dueAt: '2026-02-31' }));
+    expect(result).toEqual({ ok: false, error: 'Due date must be a valid date' });
+  });
+
+  describe('in a negative-UTC-offset zone (#2651)', () => {
+    beforeAll(() => {
+      vi.stubEnv('TZ', 'America/Toronto');
+    });
+    afterAll(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it('sends the entered date, not the previous day', () => {
+      expect(new Date('2026-10-06T12:00:00Z').getTimezoneOffset()).toBeGreaterThan(0);
+      const result = buildCreatePaymentRequestBody(ISSUER_DID, baseState({ dueAt: '2026-10-06' }));
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.body.due_at).toBe('2026-10-06T00:00:00.000Z');
+        expect(String(result.body.due_at).slice(0, 10)).toBe('2026-10-06');
+      }
+    });
   });
 
   it('carries kind, currency, allow_on_platform, and issuer_did through as-is', () => {

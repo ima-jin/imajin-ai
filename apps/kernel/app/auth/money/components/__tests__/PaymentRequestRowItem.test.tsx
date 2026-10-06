@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import PaymentRequestRowItem from '../PaymentRequestRowItem';
 import type { PaymentRequestRow } from '../../lib/types';
@@ -52,6 +52,38 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('PaymentRequestRowItem — due date (#2651)', () => {
+  beforeAll(() => {
+    vi.stubEnv('TZ', 'America/Toronto');
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // Date.UTC avoids depending on the process locale for the expected text.
+  const expectedDue = (y: number, m: number, d: number) =>
+    new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { timeZone: 'UTC' });
+
+  it('renders the entered date for a row stored as UTC midnight (the day-early bug)', () => {
+    const stored = '2026-10-06T00:00:00.000Z';
+    // Guard: the old local-zone rendering really is a day early in this zone, so the test can fail.
+    expect(new Date(stored).toLocaleDateString()).not.toBe(expectedDue(2026, 10, 6));
+
+    render(<PaymentRequestRowItem row={row({ dueAt: stored })} onChanged={vi.fn()} />);
+    expect(screen.getByText(`· due ${expectedDue(2026, 10, 6)}`)).toBeDefined();
+  });
+
+  it('renders the entered date at a year boundary', () => {
+    render(<PaymentRequestRowItem row={row({ dueAt: '2027-01-01T00:00:00.000Z' })} onChanged={vi.fn()} />);
+    expect(screen.getByText(`· due ${expectedDue(2027, 1, 1)}`)).toBeDefined();
+  });
+
+  it('renders no due text when the request has no due date', () => {
+    render(<PaymentRequestRowItem row={row({ dueAt: null })} onChanged={vi.fn()} />);
+    expect(screen.queryByText(/· due /)).toBeNull();
+  });
 });
 
 describe('PaymentRequestRowItem — actions visibility', () => {
