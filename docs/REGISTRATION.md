@@ -202,6 +202,48 @@ the existing attestation-type registry (`registerAttestationType`, #1885) — th
 instead of a human's own `identities.handle`. A type outside `<slug>/` is refused (per-type;
 it never fails the rest of provisioning).
 
+### Scopes the app defines, and services it depends on (#2663)
+
+Two more declarations ride the same `registry.apps` row that already carries `requestedScopes`
+(the existing app scope-assignment model) — nothing parallel:
+
+| Field | Meaning |
+|---|---|
+| `providesScopes` | Scope strings the app defines and enforces itself, e.g. `["dykil:read", "dykil:write"]`. |
+| `dependsOn` | Other registered audiences the app's tokens must also satisfy, with the platform scopes it needs there, e.g. `[{ "aud": "jin.imajin.ai", "scopes": ["media:read", "media:write"] }]`. |
+
+Both default to `[]`. An `apps.provision` app declares them in its `imajin.app.json`
+(`providesScopes`, `dependsOn`); a self-service or admin registration passes them in the body of
+`POST /api/registry/apps` / `POST /api/admin/registry/apps`, and the owner can change them with
+`PATCH /api/registry/apps/:appId`. They are validated at write time and a bad one is a `400`
+(`apps.provision` fails closed at `register`, writing no row):
+
+- A `providesScopes` entry must be `namespace:verb` (lowercase), must not already be in the platform
+  `SCOPE_VOCABULARY`, and must not sit in a namespace the vocabulary owns (`media:`, `wallet:`, ...).
+  When the app has a `slug` (every `apps.provision` app does), the namespace must be that slug.
+- A `dependsOn` entry's `aud` must be a registered, active app, and its `scopes` must be platform
+  vocabulary scopes.
+
+**Gap 1 — the app's own scopes.** `POST /auth/api/tokens/app` clamps the requested scopes to the
+platform vocabulary *plus* the `providesScopes` of the app whose `aud` the token is for, so a token
+minted for dykil carries `dykil:read` / `dykil:write`. One app's scopes are never granted on another
+app's audience.
+
+**Gap 2 — one token for the app and the services it fronts.** The same route mints the token with
+the requested `aud` first, then the `aud` of each `dependsOn` entry that (a) one of the granted
+scopes reaches, and (b) is still a registered, active app. So a dykil token minted with
+`media:read` also carries the node's own host and is accepted by `requireMediaAuth`, with no second
+token and no change to the media routes. The response reports every audience in `aud`. Verification
+re-checks the registry for *every* audience on the token, so revoking either end stops the token at
+both.
+
+```bash
+curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
+  -H "Content-Type: application/json" -H "Cookie: <the user's session cookie>" \
+  -d '{ "aud": "dykil.imajin.ai", "scopes": ["dykil:read", "dykil:write", "media:read", "media:write"] }'
+# -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
+```
+
 ### What gets sealed, and where
 
 One Actions secret is sealed into the app's repo, by name:
