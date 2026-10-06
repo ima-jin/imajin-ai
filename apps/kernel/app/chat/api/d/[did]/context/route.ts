@@ -9,7 +9,7 @@ import { checkAccess } from '@/src/lib/kernel/access';
 /**
  * OPTIONS /api/d/:did/context - CORS preflight
  */
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

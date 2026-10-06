@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 /**
  * POST /api/auth/logout - Clear the auth session cookie
  */
-export async function POST(request: NextRequest) {
+export function POST(request: NextRequest) {
   const response = NextResponse.json({ success: true });
 
   const isProduction = process.env.NODE_ENV === 'production';

@@ -11,7 +11,7 @@ const log = createLogger('kernel');
 /**
  * OPTIONS /api/d/:did/read - CORS preflight
  */
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
