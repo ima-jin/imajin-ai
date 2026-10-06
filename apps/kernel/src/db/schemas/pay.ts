@@ -1,4 +1,5 @@
-import { text, timestamp, jsonb, integer, numeric, boolean, index, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, integer, numeric, boolean, index, uniqueIndex, primaryKey, pgSchema } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 
 export const paySchema = pgSchema('pay');
 
@@ -26,6 +27,16 @@ export const transactions = paySchema.table('transactions', {
   // ever populated for sourceKind='emission' rows going forward — historical
   // rows and non-emission rows are NULL (never captured before this issue).
   attestationId: text('attestation_id'),
+  // #2017: provenance of an emission — the `kernel.bus_chain_configs` row id and
+  // row `version` whose schedule minted it. With `attestationId` above, every
+  // emission row is traceable to (attestation id, config version). NULL on
+  // non-emission rows.
+  emissionConfigId: text('emission_config_id'),
+  emissionConfigVersion: integer('emission_config_version'),
+  // #2017: caller-supplied dedupe key (the bus `mjn` reactor sends
+  // `emission:<attestationId>:<ruleIndex>:<role>`). Partial UNIQUE index below,
+  // so a retried emission can never credit twice. NULL = not idempotent.
+  idempotencyKey: text('idempotency_key'),
   status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded | partially_refunded
   source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
@@ -43,6 +54,7 @@ export const transactions = paySchema.table('transactions', {
   stripeIdIdx: index('idx_transactions_stripe_id').on(table.stripeId),
   unitIdx: index('idx_transactions_unit').on(table.unit),
   attestationIdIdx: index('idx_transactions_attestation_id').on(table.attestationId),
+  idempotencyKeyUniq: uniqueIndex('uniq_transactions_idempotency_key').on(table.idempotencyKey).where(sql`${table.idempotencyKey} IS NOT NULL`),
 }));
 
 /**
