@@ -1706,6 +1706,18 @@ paths:
         this one proposes to amend. Once this attestation itself goes bilateral via
         POST /api/attestations/countersign, the referenced attestation atomically flips to
         `superseded` — it stays authoritative until then and remains readable afterwards.
+
+        Same-issuer supersede of a one-sided attestation (#2649): `payload.supersedes` may also
+        name a one-sided (single-signer: `attestationStatus` null, no `author_jws`) attestation
+        whose `issuerDid` equals this request's `issuer_did`. There is no counterparty to wait
+        for, so the old row flips to `superseded` immediately, in the same db transaction as the
+        insert of the replacement (a failure rolls both back). The replacement must itself be
+        one-sided — combining `author_jws` with a one-sided `supersedes` is rejected with 400 —
+        and a revoked target is rejected with 400. If the target stops being an active one-sided
+        attestation between validation and the write (e.g. a concurrent supersede or revoke),
+        the request fails with 409 and nothing is written. This is how a respondent replaces
+        their earlier answers (e.g. a dykil survey response); to withdraw an attestation without
+        replacing it, see `POST /api/attestations/{id}/revoke`. No schema change.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1731,6 +1743,8 @@ paths:
                     proposes to amend. Accepted only when the caller (issuer_did) is a party
                     (issuer or subject) to that attestation and it is currently `bilateral`;
                     rejected with 400 otherwise. Deliberately independent of prev_event_ref.
+                    `supersedes` may alternatively (#2649) name a one-sided attestation issued by
+                    the same `issuer_did`; the old row is then marked `superseded` immediately.
                 signature: { type: string, description: "Ed25519 signature over canonical payload (hex)" }
                 issued_at: { type: number, description: "Unix timestamp ms (defaults to now)" }
                 author_jws: { type: string, description: "Optional JWS for bilateral attestation flow" }
@@ -1748,7 +1762,7 @@ paths:
                   subjectDid: { type: string }
                   type: { type: string }
                   attestationStatus: { type: string, enum: [pending, bilateral, declined, superseded, "null"] }
-                  supersedes: { type: string, nullable: true, description: "Bilateral attestation this one proposes to amend, if any (#1790)" }
+                  supersedes: { type: string, nullable: true, description: "Attestation this one amends (#1790, bilateral) or replaces (#2649, one-sided, same issuer), if any" }
                   delegationGrantId: { type: string, nullable: true, description: "Grant verified against payload.delegator_did, if any (#1895, #1897, #2394)" }
                   delegatorDid: { type: string, nullable: true, description: "DID that authorized issuerDid to act on its behalf, if any (#2394 — distinguishes a delegated attestation from a self-signed one)" }
                   issuedAt: { type: string, format: date-time }
@@ -1764,6 +1778,13 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: payload.delegator_did asserted but no live delegation grant covers this action
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            The one-sided attestation named by `payload.supersedes` (#2649) was superseded or
+            revoked concurrently, so it can no longer be replaced. Nothing was written.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1855,6 +1876,58 @@ paths:
               schema:
                 type: array
                 items: { type: object }
+
+  /api/attestations/{id}/revoke:
+    post:
+      tags: [auth]
+      operationId: revokeAttestation
+      summary: Revoke an attestation (issuer-only)
+      description: |
+        (#2649) Stamps `revokedAt` on the attestation, withdrawing it: revoked attestations are
+        excluded from `GET /api/attestations`. Only the attestation's issuer may revoke. Callable
+        with a session cookie, a legacy full-identity Bearer token, or (#2394) a scoped app-token
+        minted by `POST /auth/api/tokens/app`. An app-token resolves to the user who minted it, so
+        for an app-issued (delegated) attestation — `issuerDid` is the app, `delegatorDid` the
+        user — the delegator the issuer acted for is accepted as the issuer. No schema change.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: Attestation id (`att_...`)
+      responses:
+        "200":
+          description: Attestation revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string }
+                  revokedAt: { type: string, format: date-time }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is not the attestation's issuer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Attestation not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Attestation is already revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/attestations/countersign:
     post:

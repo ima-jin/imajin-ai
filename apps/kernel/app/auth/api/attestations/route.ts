@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, attestations, tokens, attestationTypeRegistry } from '@/src/db';
+import { db, attestations, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
-import { eq, and, isNull, ne, gt, desc, notInArray, inArray } from 'drizzle-orm';
+import { eq, and, isNull, ne, desc, notInArray, inArray } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { verifySessionToken, verifySessionAppTokenLocal, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
-import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference, resolveAttestationHistory, resolveIssuerCredentials } from './attestation-helpers';
+import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference, resolveAttestationHistory, resolveIssuerCredentials, SupersessionError } from './attestation-helpers';
+import type { EnvelopeFields } from './attestation-helpers';
+import { resolveCallerDid } from './caller-did';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
-import { resolveActiveAppByAudience } from '@/src/lib/kernel/app-registry';
 import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
 
@@ -22,18 +22,23 @@ function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
 
-type EnvelopeResolution = ReturnType<typeof resolveEnvelopeFields>;
+type EnvelopeResolution =
+  | { ok: true; envelope: EnvelopeFields; supersedesOneSided: boolean }
+  | { ok: false; error: string };
 
 /**
  * Resolve + validate the intro-funnel envelope fields carried in `payload`,
  * including that `prev_event_ref` (when present) resolves to an existing
- * attestation, and that `supersedes` (when present) resolves to a bilateral
- * attestation `proposerDid` is a party to (#1790 — amendment-by-supersession;
- * deliberately a separate check from prevEventRef, see attestation-helpers).
+ * attestation, and that `supersedes` (when present) resolves either to a
+ * bilateral attestation `proposerDid` is a party to (#1790 — amendment-by-
+ * supersession; deliberately a separate check from prevEventRef, see
+ * attestation-helpers) or to a one-sided attestation issued by the same
+ * `proposerDid` (#2649 — the old row is retired immediately on write, so the
+ * replacement must itself be one-sided, i.e. carry no `author_jws`).
  * Extracted from POST so the handler's own branching stays under the
  * cognitive-complexity budget (#1885).
  */
-async function resolveEnvelope(payload: unknown, proposerDid: string): Promise<EnvelopeResolution> {
+async function resolveEnvelope(payload: unknown, proposerDid: string, hasAuthorJws: boolean): Promise<EnvelopeResolution> {
   const envelopeResult = resolveEnvelopeFields(payload);
   if (!envelopeResult.ok) return envelopeResult;
 
@@ -46,12 +51,71 @@ async function resolveEnvelope(payload: unknown, proposerDid: string): Promise<E
     }
   }
 
+  let supersedesOneSided = false;
   if (supersedes) {
-    const supersedesResult = await validateSupersedesReference(supersedes, proposerDid);
+    const supersedesResult = await validateSupersedesReference(supersedes, proposerDid, { allowOneSided: true });
     if (!supersedesResult.ok) return supersedesResult;
+    supersedesOneSided = supersedesResult.oneSided === true;
+    if (supersedesOneSided && hasAuthorJws) {
+      return { ok: false, error: 'author_jws cannot be combined with supersedes on a one-sided attestation' };
+    }
   }
 
-  return envelopeResult;
+  return { ...envelopeResult, supersedesOneSided };
+}
+
+type PersistResult =
+  | { ok: true; attestation: Attestation }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Insert the new attestation. When it replaces a one-sided attestation
+ * (#2649), flip the old row to `superseded` in the same transaction — guarded
+ * on issuer / still-one-sided / not-revoked so a concurrent supersede or
+ * revoke can't be overwritten (the update then matches zero rows and the
+ * whole transaction rolls back with a 409). Extracted from POST to keep the
+ * handler's own branching under the cognitive-complexity budget.
+ */
+async function persistAttestation(
+  values: typeof attestations.$inferInsert,
+  retireOneSidedId: string | null,
+): Promise<PersistResult> {
+  if (!retireOneSidedId) {
+    const [attestation] = await db.insert(attestations).values(values).returning();
+    return { ok: true, attestation };
+  }
+
+  try {
+    const attestation = await db.transaction(async (tx) => {
+      const retired = await tx
+        .update(attestations)
+        .set({ attestationStatus: 'superseded' })
+        .where(
+          and(
+            eq(attestations.id, retireOneSidedId),
+            eq(attestations.issuerDid, values.issuerDid),
+            isNull(attestations.attestationStatus),
+            isNull(attestations.revokedAt),
+          ),
+        )
+        .returning({ id: attestations.id });
+      if (retired.length === 0) {
+        throw new SupersessionError(
+          `supersedes "${retireOneSidedId}" is no longer an active one-sided attestation`,
+          409,
+        );
+      }
+
+      const [inserted] = await tx.insert(attestations).values(values).returning();
+      return inserted;
+    });
+    return { ok: true, attestation };
+  } catch (err) {
+    if (err instanceof SupersessionError) {
+      return { ok: false, status: err.status, error: err.message };
+    }
+    throw err;
+  }
 }
 
 type IssuerAndDelegationResult =
@@ -100,56 +164,23 @@ async function verifyIssuerAndDelegation(params: {
   return { ok: true, grantId: delegationCheck.grantId };
 }
 
-/** The legacy full-identity Bearer token path (`auth.tokens`). */
-async function resolveLegacyBearerDid(token: string): Promise<string | null> {
-  const [tok] = await db
-    .select({ identityId: tokens.identityId })
-    .from(tokens)
-    .where(
-      and(
-        eq(tokens.id, token),
-        isNull(tokens.revokedAt),
-        gt(tokens.expiresAt, new Date())
-      )
-    )
-    .limit(1);
-  return tok?.identityId ?? null;
-}
+type NostrResolution = { ok: true; nostrSig: string | null } | { ok: false; error: string };
 
 /**
- * #2394: accept a session-scoped app token (minted by
- * POST /auth/api/tokens/app from the caller's own kernel session) as an
- * alternate Bearer credential — this is how a registered third-party app
- * authenticates an inbound call to this route on behalf of the user who
- * minted the token (Ryan's 2026-09-26 ruling: dykil's inbound auth is a
- * scoped app-token, verified the same way requireSessionOrAppToken does).
- * The token's `sub` (the minting user's own DID) becomes the caller
- * identity; its `aud` must still resolve to a live, active registered app
- * on every call (#1990), not just at mint time.
+ * For `imajin/nostr-key-binding` only: require + verify the Nostr key's
+ * Schnorr signature proving the submitter also controls the Nostr key they
+ * are binding. A no-op for every other type. Extracted from POST to keep the
+ * handler's own branching under the cognitive-complexity budget.
  */
-async function resolveSessionAppTokenDid(token: string): Promise<string | null> {
-  const claims = await verifySessionAppTokenLocal(token);
-  if (!claims) return null;
-  const app = await resolveActiveAppByAudience(claims.aud);
-  return app ? claims.sub : null;
-}
-
-/** Resolve calling identity from session cookie or Bearer token (legacy identity token or a scoped app token, #2394). */
-async function resolveCallerDid(request: NextRequest): Promise<string | null> {
-  const cookieConfig = getSessionCookieOptions();
-  const sessionToken = request.cookies.get(cookieConfig.name)?.value;
-  if (sessionToken) {
-    const session = await verifySessionToken(sessionToken);
-    if (session?.sub) return session.sub;
-  }
-
-  const auth = request.headers.get('authorization');
-  if (auth?.startsWith('Bearer ')) {
-    const token = auth.slice(7);
-    return (await resolveLegacyBearerDid(token)) ?? (await resolveSessionAppTokenDid(token));
-  }
-
-  return null;
+function resolveNostrSignature(
+  type: string,
+  nostrSig: unknown,
+  payload: unknown,
+  canonicalPayload: string,
+): NostrResolution {
+  if (type !== 'imajin/nostr-key-binding') return { ok: true, nostrSig: null };
+  const nostrResult = validateNostrKeyBinding(nostrSig, payload, canonicalPayload);
+  return nostrResult.ok ? { ok: true, nostrSig: nostrResult.nostrSigToStore } : { ok: false, error: nostrResult.error };
 }
 
 /**
@@ -208,12 +239,17 @@ export async function POST(request: NextRequest) {
   // Intro-funnel envelope fields (#1885) ride inside `payload`, which is
   // already part of the signed canonical form below — see resolveEnvelope.
   // The proposer for a `supersedes` reference (#1790) is the issuer of this
-  // new attestation, i.e. whoever is signing the amendment.
-  const envelopeResult = await resolveEnvelope(payload, issuer_did);
+  // new attestation, i.e. whoever is signing the amendment. For a one-sided
+  // target (#2649) that same issuer retires its own earlier row.
+  // author_jws is accepted for new-style bilateral attestations.
+  const authorJws = (body.author_jws as string | undefined) ?? null;
+
+  const envelopeResult = await resolveEnvelope(payload, issuer_did, Boolean(authorJws));
   if (!envelopeResult.ok) {
     return NextResponse.json({ error: envelopeResult.error }, { status: 400, headers: cors });
   }
   const { delegatorDid, disclosureScope, prevEventRef, supersedes } = envelopeResult.envelope;
+  const retireOneSidedId = envelopeResult.supersedesOneSided ? supersedes : null;
 
   const issuedAtMs = resolveIssuedAt(issued_at);
 
@@ -239,16 +275,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: verification.error }, { status: verification.status, headers: cors });
   }
 
-  // For imajin/nostr-key-binding: require + verify the Nostr key's Schnorr signature
-  // proving the submitter also controls the Nostr key they are binding.
-  let nostrSigToStore: string | null = null;
-  if (type === 'imajin/nostr-key-binding') {
-    const nostrResult = validateNostrKeyBinding(body.nostr_sig, payload, canonicalPayload);
-    if (!nostrResult.ok) {
-      return NextResponse.json({ error: nostrResult.error }, { status: 400, headers: cors });
-    }
-    nostrSigToStore = nostrResult.nostrSigToStore;
+  const nostrResolution = resolveNostrSignature(type, body.nostr_sig, payload, canonicalPayload);
+  if (!nostrResolution.ok) {
+    return NextResponse.json({ error: nostrResolution.error }, { status: 400, headers: cors });
   }
+  const nostrSigToStore = nostrResolution.nostrSig;
 
   const id = genId('att');
 
@@ -269,12 +300,8 @@ export async function POST(request: NextRequest) {
     // Non-fatal — old-style attestation still works without CID
   }
 
-  // Accept optional author_jws for new-style bilateral attestations
-  const authorJws = (body.author_jws as string | undefined) ?? null;
-
-  const [attestation] = await db
-    .insert(attestations)
-    .values({
+  const persisted = await persistAttestation(
+    {
       id,
       issuerDid: issuer_did,
       subjectDid: subject_did,
@@ -293,8 +320,13 @@ export async function POST(request: NextRequest) {
       supersedes,
       delegationGrantId: verification.grantId,
       issuedAt: new Date(issuedAtMs),
-    })
-    .returning();
+    },
+    retireOneSidedId,
+  );
+  if (!persisted.ok) {
+    return NextResponse.json({ error: persisted.error }, { status: persisted.status, headers: cors });
+  }
+  const { attestation } = persisted;
 
   publish('attestation.created', {
     issuer: issuer_did,

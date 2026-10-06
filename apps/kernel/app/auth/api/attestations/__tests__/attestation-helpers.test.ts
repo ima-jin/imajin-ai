@@ -61,6 +61,8 @@ import {
   resolveEnvelopeFields,
   checkSupersessionEligibility,
   validateSupersedesReference,
+  isOneSidedAttestation,
+  checkOneSidedSupersession,
   resolveAttestationHistory,
   resolveIssuerCredentials,
 } from '../attestation-helpers';
@@ -398,6 +400,107 @@ describe('validateSupersedesReference (#1790)', () => {
     h.selectQueue = [[{ id: V1_ID, issuerDid: PROPOSER, subjectDid: 'did:imajin:other', attestationStatus: 'bilateral' }]];
 
     const result = await validateSupersedesReference(V1_ID, PROPOSER);
+
+    expect(result).toEqual({ ok: true });
+  });
+});
+
+// #2649 — same-issuer supersession of one-sided (single-signer) attestations.
+describe('isOneSidedAttestation (#2649)', () => {
+  it('treats a null-status attestation with no author_jws as one-sided', () => {
+    expect(isOneSidedAttestation({ attestationStatus: null, authorJws: null })).toBe(true);
+  });
+
+  it('treats an attestation with a countersign status as not one-sided', () => {
+    expect(isOneSidedAttestation({ attestationStatus: 'pending', authorJws: null })).toBe(false);
+    expect(isOneSidedAttestation({ attestationStatus: 'bilateral', authorJws: null })).toBe(false);
+  });
+
+  it('treats an attestation carrying an author_jws as not one-sided', () => {
+    expect(isOneSidedAttestation({ attestationStatus: null, authorJws: 'jws' })).toBe(false);
+  });
+});
+
+describe('checkOneSidedSupersession (#2649)', () => {
+  const ISSUER_DID = 'did:imajin:alice';
+
+  it('accepts when the proposer is the issuer of an unrevoked one-sided target', () => {
+    const result = checkOneSidedSupersession(
+      { issuerDid: ISSUER_DID, attestationStatus: null, authorJws: null, revokedAt: null },
+      ISSUER_DID,
+    );
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('rejects when the proposer is not the issuer — being the subject is not enough', () => {
+    const result = checkOneSidedSupersession(
+      { issuerDid: 'did:imajin:bob', attestationStatus: null, authorJws: null, revokedAt: null },
+      ISSUER_DID,
+    );
+    expect(result).toMatchObject({ ok: false });
+    expect((result as { error: string }).error).toMatch(/issued by/);
+  });
+
+  it('rejects a revoked target', () => {
+    const result = checkOneSidedSupersession(
+      { issuerDid: ISSUER_DID, attestationStatus: null, authorJws: null, revokedAt: new Date() },
+      ISSUER_DID,
+    );
+    expect(result).toMatchObject({ ok: false });
+    expect((result as { error: string }).error).toMatch(/revoked/);
+  });
+});
+
+describe('validateSupersedesReference — one-sided targets (#2649)', () => {
+  const V1_ID = 'att_v1';
+  const PROPOSER = 'did:imajin:alice';
+  const oneSidedRow = (overrides: Record<string, unknown> = {}) => ({
+    id: V1_ID,
+    issuerDid: PROPOSER,
+    subjectDid: 'did:imajin:other',
+    attestationStatus: null,
+    authorJws: null,
+    revokedAt: null,
+    ...overrides,
+  });
+
+  it('accepts a same-issuer one-sided target and flags it oneSided when allowOneSided is set', async () => {
+    h.selectQueue = [[oneSidedRow()]];
+
+    const result = await validateSupersedesReference(V1_ID, PROPOSER, { allowOneSided: true });
+
+    expect(result).toEqual({ ok: true, oneSided: true });
+  });
+
+  it('rejects a one-sided target issued by someone else', async () => {
+    h.selectQueue = [[oneSidedRow({ issuerDid: 'did:imajin:other' })]];
+
+    const result = await validateSupersedesReference(V1_ID, PROPOSER, { allowOneSided: true });
+
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it('rejects a revoked one-sided target', async () => {
+    h.selectQueue = [[oneSidedRow({ revokedAt: new Date() })]];
+
+    const result = await validateSupersedesReference(V1_ID, PROPOSER, { allowOneSided: true });
+
+    expect(result).toMatchObject({ ok: false });
+  });
+
+  it('keeps one-sided targets rejected (bilateral-only) when allowOneSided is not set', async () => {
+    h.selectQueue = [[oneSidedRow()]];
+
+    const result = await validateSupersedesReference(V1_ID, PROPOSER);
+
+    expect(result).toMatchObject({ ok: false });
+    expect((result as { error: string }).error).toMatch(/bilateral/);
+  });
+
+  it('still routes a bilateral target through the bilateral check when allowOneSided is set', async () => {
+    h.selectQueue = [[oneSidedRow({ attestationStatus: 'bilateral' })]];
+
+    const result = await validateSupersedesReference(V1_ID, PROPOSER, { allowOneSided: true });
 
     expect(result).toEqual({ ok: true });
   });

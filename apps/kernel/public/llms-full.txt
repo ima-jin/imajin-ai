@@ -818,6 +818,14 @@ POST /auth/api/attestations/countersign
 ```
 Transitions status from `pending` → `bilateral`. Only the subject can countersign.
 
+### Replacing and revoking (issuer)
+
+```
+POST /auth/api/attestations            // payload.supersedes = "att_old" (same issuer, one-sided)
+POST /auth/api/attestations/{id}/revoke
+```
+A one-sided attestation's issuer can replace it by issuing a new one whose `payload.supersedes` names the old id — the old row flips to `superseded` immediately. The issuer can also withdraw an attestation with `/revoke`, which sets `revokedAt` (issuer-only).
+
 ---
 
 ## 10. .fair Attribution

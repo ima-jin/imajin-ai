@@ -24,23 +24,39 @@ const h = vi.hoisted(() => ({
   mockResolveActiveAppByAudience: vi.fn(),
   mockInsertValues: vi.fn(),
   mockIntrospectGrant: vi.fn(),
+  mockTransaction: vi.fn(),
+  mockUpdateSet: vi.fn(),
+  mockUpdateReturning: vi.fn(),
 }));
 
-vi.mock('@/src/db', () => ({
-  db: {
-    select: () => ({ from: () => ({ where: () => ({ limit: h.mockSelectLimit }) }) }),
-    insert: () => ({
-      values: (values: Record<string, unknown>) => {
-        h.mockInsertValues(values);
-        return { returning: h.mockReturning };
+vi.mock('@/src/db', () => {
+  const insert = () => ({
+    values: (values: Record<string, unknown>) => {
+      h.mockInsertValues(values);
+      return { returning: h.mockReturning };
+    },
+  });
+  const update = () => ({
+    set: (values: Record<string, unknown>) => {
+      h.mockUpdateSet(values);
+      return { where: () => ({ returning: h.mockUpdateReturning }) };
+    },
+  });
+  return {
+    db: {
+      select: () => ({ from: () => ({ where: () => ({ limit: h.mockSelectLimit }) }) }),
+      insert,
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+        h.mockTransaction();
+        return fn({ insert, update });
       },
-    }),
-  },
-  identities: {},
-  registryApps: {},
-  attestations: {},
-  tokens: {},
-}));
+    },
+    identities: {},
+    registryApps: {},
+    attestations: {},
+    tokens: {},
+  };
+});
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
@@ -324,6 +340,103 @@ describe('amendment-by-supersession (#1790)', () => {
     // Only the issuer-identity lookup runs — a single select() call.
     expect(h.mockSelectLimit).toHaveBeenCalledTimes(1);
     expect(h.mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ supersedes: null }));
+  });
+});
+
+// #2649 — same-issuer supersession of a one-sided (single-signer) attestation:
+// the old row flips to `superseded` immediately, in the same transaction as the
+// replacement insert.
+describe('same-issuer supersede of a one-sided attestation (#2649)', () => {
+  const OLD_ID = 'att_old_one_sided';
+
+  function oneSidedTarget(overrides: Record<string, unknown> = {}) {
+    return {
+      id: OLD_ID,
+      issuerDid: ISSUER,
+      subjectDid: SUBJECT,
+      attestationStatus: null,
+      authorJws: null,
+      revokedAt: null,
+      ...overrides,
+    };
+  }
+
+  function supersedingBody(overrides: Record<string, unknown> = {}) {
+    return baseBody({ payload: { supersedes: OLD_ID }, ...overrides });
+  }
+
+  beforeEach(() => {
+    h.mockUpdateReturning.mockResolvedValue([{ id: OLD_ID }]);
+  });
+
+  it('inserts the replacement and flips the old row to superseded in one transaction', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([oneSidedTarget()]);
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(201);
+    expect(h.mockTransaction).toHaveBeenCalledTimes(1);
+    expect(h.mockUpdateSet).toHaveBeenCalledWith({ attestationStatus: 'superseded' });
+    expect(h.mockInsertValues).toHaveBeenCalledWith(
+      expect.objectContaining({ supersedes: OLD_ID, attestationStatus: null, authorJws: null }),
+    );
+    expect(h.mockPublish).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects with 400 when the issuer is not the issuer of the one-sided target', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([oneSidedTarget({ issuerDid: 'did:imajin:mallory', subjectDid: ISSUER })]);
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(400);
+    expect(h.mockTransaction).not.toHaveBeenCalled();
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 400 when the one-sided target has been revoked', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([oneSidedTarget({ revokedAt: new Date() })]);
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/revoked/);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('rejects with 400 when the replacement carries author_jws (it would be pending, not one-sided)', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([oneSidedTarget()]);
+
+    const res = await POST(makeReq(supersedingBody({ author_jws: 'node-signature-token' })));
+
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.error).toMatch(/author_jws/);
+    expect(h.mockTransaction).not.toHaveBeenCalled();
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 and inserts nothing when the old row stopped being an active one-sided attestation mid-flight', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([oneSidedTarget()]);
+    h.mockUpdateReturning.mockResolvedValue([]); // guarded update matched zero rows (concurrent supersede/revoke)
+
+    const res = await POST(makeReq(supersedingBody()));
+
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/no longer an active one-sided attestation/);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+    expect(h.mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('does not open a transaction for a bilateral amendment (flip still happens at countersign)', async () => {
+    h.mockSelectLimit.mockResolvedValueOnce([oneSidedTarget({ attestationStatus: 'bilateral' })]);
+
+    const res = await POST(makeReq(supersedingBody({ author_jws: 'node-signature-token' })));
+
+    expect(res.status).toBe(201);
+    expect(h.mockTransaction).not.toHaveBeenCalled();
+    expect(h.mockUpdateSet).not.toHaveBeenCalled();
   });
 });
 
