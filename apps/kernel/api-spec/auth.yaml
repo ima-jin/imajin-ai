@@ -1783,6 +1783,12 @@ paths:
         - name: issuer_did
           in: query
           schema: { type: string }
+        - name: context_id
+          in: query
+          schema: { type: string }
+          description: |
+            (#2396) Exact-match filter on the attestation's `context_id` (e.g. a survey's asset id).
+            Combined with `subject_did` and any other filters using AND. Omit for unchanged behaviour.
         - name: status
           in: query
           schema: { type: string, enum: [pending, bilateral, declined, superseded] }

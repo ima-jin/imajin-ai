@@ -334,14 +334,17 @@ function buildListConditions(params: {
   typeFilter: string | null;
   issuerFilter: string | null;
   statusFilter: string | null;
+  contextIdFilter: string | null;
 }) {
-  const { subjectDid, typeFilter, issuerFilter, statusFilter } = params;
+  const { subjectDid, typeFilter, issuerFilter, statusFilter, contextIdFilter } = params;
   const conditions = [
     eq(attestations.subjectDid, subjectDid),
     isNull(attestations.revokedAt),
   ];
   if (typeFilter) conditions.push(eq(attestations.type, typeFilter));
   if (issuerFilter) conditions.push(eq(attestations.issuerDid, issuerFilter));
+  // #2396: exact match on the indexed context_id column.
+  if (contextIdFilter) conditions.push(eq(attestations.contextId, contextIdFilter));
   if (statusFilter) {
     conditions.push(eq(attestations.attestationStatus, statusFilter));
   } else {
@@ -395,7 +398,7 @@ async function filterVisibleRows(rows: Attestation[], request: NextRequest): Pro
 }
 
 /**
- * GET /api/attestations?subject_did=...&type=...&issuer_did=...&limit=...&evidence_grade=...
+ * GET /api/attestations?subject_did=...&type=...&issuer_did=...&context_id=...&limit=...&evidence_grade=...
  * Returns non-revoked attestations for a subject, newest first, annotated
  * with a computed `evidenceGrade`.
  * subject_did is required.
@@ -430,13 +433,14 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
 
   const typeFilter = searchParams.get('type');
   const issuerFilter = searchParams.get('issuer_did');
+  const contextIdFilter = searchParams.get('context_id');
   const evidenceGradeFilter = searchParams.get('evidence_grade'); // 'unilateral' | 'corroborated' | 'disputed'
   const statusFilter = searchParams.get('status') ?? // 'pending' | 'bilateral' | 'declined'
     (evidenceGradeFilter ? EVIDENCE_GRADE_TO_STATUS[evidenceGradeFilter] : null);
   const limitParam = Number.parseInt(searchParams.get('limit') ?? '20', 10);
   const limit = Math.min(Math.max(1, Number.isNaN(limitParam) ? 20 : limitParam), ATTESTATION_LIMIT_MAX);
 
-  const conditions = buildListConditions({ subjectDid, typeFilter, issuerFilter, statusFilter });
+  const conditions = buildListConditions({ subjectDid, typeFilter, issuerFilter, statusFilter, contextIdFilter });
 
   try {
     const rows = await db
