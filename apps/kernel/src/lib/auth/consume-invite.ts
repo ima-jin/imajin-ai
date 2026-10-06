@@ -3,6 +3,7 @@ import { publish } from '@imajin/bus';
 import { db, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections, profiles } from '@/src/db';
 import { eq, and, or } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/kernel/verification';
 
 const log = createLogger('kernel');
@@ -37,15 +38,18 @@ export async function consumePendingInvites(opts: {
 
     if (pendingInvites.length === 0) return;
 
-    for (const invite of pendingInvites) {
+    // Sequential on purpose: each invite creates a pod, members, a connection and
+    // marks itself accepted — invites are consumed one at a time in order, and a
+    // failure on one is logged without blocking the next.
+    await forEachSequential(pendingInvites, async (invite) => {
       // Skip self-invites
-      if (invite.fromDid === did) continue;
+      if (invite.fromDid === did) return;
 
       // Skip expired invites
-      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) continue;
+      if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) return;
 
       // Skip fully used invites
-      if (invite.usedCount >= invite.maxUses) continue;
+      if (invite.usedCount >= invite.maxUses) return;
 
       try {
         // Create connection pod
@@ -128,7 +132,7 @@ export async function consumePendingInvites(opts: {
       } catch (err) {
         log.error({ err: String(err), inviteId: invite.id }, '[consume-invite] Failed to consume invite');
       }
-    }
+    });
   } catch (err) {
     log.error({ err: String(err), did }, '[consume-invite] Error looking up pending invites');
   }

@@ -22,6 +22,7 @@ import type {
 import type { PaymentProvider, HealthCheckResult } from './providers/types';
 import { StripeProvider } from './providers/stripe';
 import { SolanaProvider } from './providers/solana';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export class PaymentService {
   private readonly providers: Map<string, PaymentProvider> = new Map();
@@ -83,9 +84,11 @@ export class PaymentService {
   async healthCheck(): Promise<Record<string, HealthCheckResult>> {
     const results: Record<string, HealthCheckResult> = {};
     
-    for (const [name, provider] of this.providers) {
+    // Sequential on purpose: providers are probed one at a time in registration
+    // order, so `results` keeps that key order and the first throw stops the sweep.
+    await forEachSequential(this.providers, async ([name, provider]) => {
       results[name] = await provider.healthCheck();
-    }
+    });
     
     return results;
   }

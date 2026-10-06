@@ -27,6 +27,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { MJN, MJNX, creditUnit, debitFundedLegs, getBalanceRow, InsufficientBalanceError } from '@/src/lib/pay/ledger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -112,7 +113,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         // (bonus) leg land on separate per-unit balance rows (MJN / MJNx),
         // so each nonzero leg gets its own transaction row instead of one row
         // spanning both buckets.
-        for (const recipientDid of recipient_dids) {
+        // Sequential on purpose: ledger writes on one transaction — recipients are
+        // credited in order and the first failure rolls back the whole transaction.
+        await forEachSequential(recipient_dids, async (recipientDid) => {
           if (cashPerRecipient > 0) {
             const txId = generateId('tx');
             txIds.push(txId);
@@ -154,7 +157,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
             });
             await creditUnit(tx, recipientDid, MJNX, creditPerRecipient, { currency: topupCurrency });
           }
-        }
+        });
       });
     } catch (err) {
       if (err instanceof InsufficientBalanceError) {

@@ -31,6 +31,7 @@ import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, usageIncurred, attestations } from '@/src/db';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:usage-rollup');
 
@@ -116,7 +117,10 @@ export async function runUsageRollup(windowStart: Date, windowEnd: Date): Promis
   const nodeDid = await getNodeDid();
   const results: UsageRollupResult[] = [];
 
-  for (const [principalDid, principalRows] of byPrincipal) {
+  // Sequential on purpose: each principal's rollup is a signed attestation that
+  // is checked for idempotency and then published — emit in principal order, one
+  // at a time, so the `alreadyRolledUp` guard always sees the previous publish.
+  await forEachSequential(byPrincipal, async ([principalDid, principalRows]) => {
     const contextId = contextIdFor(principalDid, windowStart);
     const breakdown: UsageRollupBreakdownRow[] = principalRows.map((row) => ({
       resource: row.resource,
@@ -129,7 +133,7 @@ export async function runUsageRollup(windowStart: Date, windowEnd: Date): Promis
 
     if (await alreadyRolledUp(contextId)) {
       results.push({ principalDid, contextId, totalCostEstimateUsd, breakdown, skipped: true });
-      continue;
+      return;
     }
 
     try {
@@ -155,7 +159,7 @@ export async function runUsageRollup(windowStart: Date, windowEnd: Date): Promis
     }
 
     results.push({ principalDid, contextId, totalCostEstimateUsd, breakdown, skipped: false });
-  }
+  });
 
   return results;
 }

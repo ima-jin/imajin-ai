@@ -17,6 +17,7 @@ import { processorFeeCents } from '@imajin/fair';
 import { fetchActualFee } from './providers/stripe-webhook';
 import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 
 const log = createLogger('kernel');
@@ -302,9 +303,12 @@ export async function processChainDistribution({
     return;
   }
 
-  for (const entry of chain) {
+  // Sequential on purpose: ledger writes — each recipient's fee row, publish and
+  // balance/rollup update land in chain order, and the first failure stops every
+  // later recipient.
+  await forEachSequential(chain, async (entry) => {
     const amountCents = Math.round(basisCents * entry.share);
-    if (amountCents <= 0) continue;
+    if (amountCents <= 0) return;
 
     const recipientDid =
       entry.did === 'BUYER_PLACEHOLDER' ? (buyerDid || 'unresolved') : entry.did;
@@ -334,7 +338,7 @@ export async function processChainDistribution({
       await updateRecipientBalance({ recipientDid, isBuyerCredit, amountCents, currency });
       await updateDailyRollup({ tx, recipientDid, amountCents });
     }
-  }
+  });
 
   await recordTaxTrustLiabilities({ tx, taxes: taxes ?? [], currency, buyerDid });
 }

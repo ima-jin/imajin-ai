@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { verifyChainLog } from './chain-providers';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { registryServiceUrl, hasRegistryServiceUrl } from '@imajin/config';
 
 const log = createLogger('kernel');
@@ -224,13 +225,15 @@ export async function checkAllChainConsistency(): Promise<Array<{
   const chains = await db.select().from(identityChains);
   const issues: Array<{ did: string; dfosDid: string; issue: string }> = [];
 
-  for (const chain of chains) {
+  // Sequential on purpose: admin consistency sweep — one chain verification and
+  // one DB read at a time, with `issues` reported in chain order.
+  await forEachSequential(chains, async (chain) => {
     try {
       const result = await verifyChainLog(chain.log as string[]);
 
       if (!result.valid) {
         issues.push({ did: chain.did, dfosDid: chain.dfosDid, issue: result.error || 'Verification failed' });
-        continue;
+        return;
       }
 
       const [identity] = await db
@@ -241,7 +244,7 @@ export async function checkAllChainConsistency(): Promise<Array<{
 
       if (!identity) {
         issues.push({ did: chain.did, dfosDid: chain.dfosDid, issue: 'Identity missing from DB' });
-        continue;
+        return;
       }
 
       const dbMultibase = hexToMultibase(identity.publicKey);
@@ -261,7 +264,7 @@ export async function checkAllChainConsistency(): Promise<Array<{
         issue: `Verification error: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
-  }
+  });
 
   return issues;
 }

@@ -10,6 +10,7 @@
  */
 import { db, balances } from '@/src/db';
 import { and, eq, gte, sql } from 'drizzle-orm';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 /** The two wallet units this ledger understands today. ISO fiat codes are a reserved future unit (see migration 0133) but are not issued by any code path yet. */
 export type Unit = 'MJN' | 'MJNx';
@@ -228,11 +229,13 @@ export async function debitFundedLegs(
   did: string,
   legs: readonly FundedLeg[],
 ): Promise<void> {
-  for (const leg of legs) {
-    if (leg.amount <= 0) continue;
+  // Sequential on purpose: legs are debited in declared order and the first
+  // underfunded leg must throw before any later leg is attempted.
+  await forEachSequential(legs, async (leg) => {
+    if (leg.amount <= 0) return;
     const result = await debitUnitIfSufficient(executor, did, leg.unit, leg.amount);
     if (!result.ok) {
       throw new InsufficientBalanceError(leg.unit);
     }
-  }
+  });
 }

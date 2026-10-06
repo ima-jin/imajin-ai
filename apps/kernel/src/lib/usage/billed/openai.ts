@@ -33,6 +33,7 @@
 import { createLogger } from '@imajin/logger';
 import type { BilledUsageReader, BilledPeriod, BilledGranularity, BilledLine } from './types';
 import { fetchBillingJson } from './http';
+import { forEachPage } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:usage:billed:openai');
 
@@ -109,31 +110,31 @@ async function fetchUsageByModel(
   fetchImpl: typeof fetch,
 ): Promise<Map<string | null, { tokensIn: number; tokensOut: number; raw: OpenAIUsageCompletionsResult[] }>> {
   const byModel = new Map<string | null, { tokensIn: number; tokensOut: number; raw: OpenAIUsageCompletionsResult[] }>();
-  let page: string | undefined;
 
-  do {
-    const response: OpenAIUsageResponse = await openaiGet(adminApiKey, '/usage/completions', {
+  // Sequential on purpose: each page's request needs the previous page's cursor.
+  await forEachPage(
+    (page): Promise<OpenAIUsageResponse> => openaiGet(adminApiKey, '/usage/completions', {
       start_time: String(toUnixSeconds(period.start)),
       end_time: String(toUnixSeconds(period.end)),
       bucket_width: '1d',
       'group_by': ['model'],
       limit: '31',
       ...(page ? { page } : {}),
-    }, fetchImpl);
-
-    for (const bucket of response.data) {
-      for (const result of bucket.results) {
-        const model = result.model ?? null;
-        const existing = byModel.get(model) ?? { tokensIn: 0, tokensOut: 0, raw: [] };
-        existing.tokensIn += result.input_tokens ?? 0;
-        existing.tokensOut += result.output_tokens ?? 0;
-        existing.raw.push(result);
-        byModel.set(model, existing);
+    }, fetchImpl),
+    (response) => (response.has_more ? (response.next_page ?? undefined) : undefined),
+    (response) => {
+      for (const bucket of response.data) {
+        for (const result of bucket.results) {
+          const model = result.model ?? null;
+          const existing = byModel.get(model) ?? { tokensIn: 0, tokensOut: 0, raw: [] };
+          existing.tokensIn += result.input_tokens ?? 0;
+          existing.tokensOut += result.output_tokens ?? 0;
+          existing.raw.push(result);
+          byModel.set(model, existing);
+        }
       }
-    }
-
-    page = response.has_more ? (response.next_page ?? undefined) : undefined;
-  } while (page);
+    },
+  );
 
   return byModel;
 }
@@ -146,26 +147,26 @@ async function fetchTotalCost(
 ): Promise<{ billedUsd: number; raw: OpenAICostsResult[] }> {
   let billedUsd = 0;
   const raw: OpenAICostsResult[] = [];
-  let page: string | undefined;
 
-  do {
-    const response: OpenAICostsResponse = await openaiGet(adminApiKey, '/costs', {
+  // Sequential on purpose: each page's request needs the previous page's cursor.
+  await forEachPage(
+    (page): Promise<OpenAICostsResponse> => openaiGet(adminApiKey, '/costs', {
       start_time: String(toUnixSeconds(period.start)),
       end_time: String(toUnixSeconds(period.end)),
       bucket_width: '1d',
       limit: '31',
       ...(page ? { page } : {}),
-    }, fetchImpl);
-
-    for (const bucket of response.data) {
-      for (const result of bucket.results) {
-        billedUsd += result.amount?.value ?? 0;
-        raw.push(result);
+    }, fetchImpl),
+    (response) => (response.has_more ? (response.next_page ?? undefined) : undefined),
+    (response) => {
+      for (const bucket of response.data) {
+        for (const result of bucket.results) {
+          billedUsd += result.amount?.value ?? 0;
+          raw.push(result);
+        }
       }
-    }
-
-    page = response.has_more ? (response.next_page ?? undefined) : undefined;
-  } while (page);
+    },
+  );
 
   return { billedUsd, raw };
 }
