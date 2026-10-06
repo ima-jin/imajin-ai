@@ -1,12 +1,13 @@
 /**
  * Unit tests for the shared internal-API-key auth preamble (#1999, made
- * vault-sourced with a deprecated env fallback in #2245).
+ * vault-sourced in #2245; env fallback removed in #2353 step 4).
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
 
-const { getInternalSecretMock } = vi.hoisted(() => ({
+const { getInternalSecretMock, logErrorMock } = vi.hoisted(() => ({
   getInternalSecretMock: vi.fn(),
+  logErrorMock: vi.fn(),
 }));
 
 vi.mock('../../vault/internal-secret', () => ({
@@ -14,7 +15,7 @@ vi.mock('../../vault/internal-secret', () => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: logErrorMock }),
 }));
 
 import { requireInternalApiKey } from '../require-internal-api-key';
@@ -45,7 +46,7 @@ describe('requireInternalApiKey', () => {
     expect(getInternalSecretMock).toHaveBeenCalledWith('kernel.attestation-internal-api-key');
   });
 
-  it('returns a 401 with { error: "Unauthorized" } when the key matches neither the vault-sourced nor legacy key', async () => {
+  it('returns a 401 with { error: "Unauthorized" } when the key does not match the vault-sourced key', async () => {
     const result = await requireInternalApiKey(makeRequest('wrong-key'));
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
@@ -71,27 +72,26 @@ describe('requireInternalApiKey', () => {
     expect(result!.status).toBe(401);
   });
 
-  it('falls back to the deprecated ATTESTATION_INTERNAL_API_KEY env var when the caller sends that value instead (#2245 migration window)', async () => {
+  it('does NOT accept the hand-set ATTESTATION_INTERNAL_API_KEY env var (#2353 step 4: vault-only)', async () => {
     process.env.ATTESTATION_INTERNAL_API_KEY = LEGACY_KEY;
-    expect(await requireInternalApiKey(makeRequest(LEGACY_KEY))).toBeNull();
-  });
-
-  it('rejects the legacy key when no ATTESTATION_INTERNAL_API_KEY env var is configured', async () => {
     const result = await requireInternalApiKey(makeRequest(LEGACY_KEY));
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
   });
 
-  it('fails closed (401) — never falls through to an open check — when getInternalSecret rejects and no legacy env var is set', async () => {
+  it('fails closed (401) and logs an error when getInternalSecret rejects', async () => {
     getInternalSecretMock.mockReset().mockRejectedValue(new Error('vault unavailable'));
     const result = await requireInternalApiKey(makeRequest(VAULT_KEY));
     expect(result).not.toBeNull();
     expect(result!.status).toBe(401);
+    expect(logErrorMock).toHaveBeenCalledTimes(1);
   });
 
-  it('still accepts the deprecated legacy key when getInternalSecret rejects', async () => {
+  it('fails closed (401) even when a matching env var is set and the vault has no value', async () => {
     getInternalSecretMock.mockReset().mockRejectedValue(new Error('vault unavailable'));
     process.env.ATTESTATION_INTERNAL_API_KEY = LEGACY_KEY;
-    expect(await requireInternalApiKey(makeRequest(LEGACY_KEY))).toBeNull();
+    const result = await requireInternalApiKey(makeRequest(LEGACY_KEY));
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe(401);
   });
 });

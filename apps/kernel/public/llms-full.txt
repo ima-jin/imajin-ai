@@ -1544,7 +1544,6 @@ await publish('myapp.action', {
 AUTH_SERVICE_URL=https://jin.imajin.ai/auth   (kernel path, not separate service)
 PAY_SERVICE_URL=https://jin.imajin.ai/pay
 CHAT_SERVICE_URL=https://jin.imajin.ai/chat
-ATTESTATION_INTERNAL_API_KEY=...
 AUTH_PRIVATE_KEY=64-char-hex...
 NODE_DID=did:imajin:node_xxx
 MCP_PUBLIC_URL=https://mcp.imajin.ai

@@ -16,12 +16,11 @@
  * docblock for the full generate/fetch/concurrency contract), and
  * separately grants the SAME value to corpus (`grantInternalSecretTo`,
  * `shared-internal-secret.ts`) so it can forward ingestion attestations
- * here. `process.env.ATTESTATION_INTERNAL_API_KEY` is still honored as a
- * deprecated fallback — checked ONLY when the vault-sourced value doesn't
- * match — so any other not-yet-migrated caller of these routes (a
- * hand-set deployment, `packages/auth/src/internal-post.ts` callers other
- * than corpus) keeps working unchanged until it too moves onto the vault
- * path. Do not rely on that fallback for new code.
+ * here. The vault is the ONLY source (#2353 step 4): the deprecated
+ * `process.env.ATTESTATION_INTERNAL_API_KEY` fallback has been removed now
+ * that every caller (corpus and every userspace service via
+ * `packages/auth/src/internal-post.ts`) fetches the value from the vault.
+ * A request with no vault value to compare against is rejected (401).
  */
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
@@ -40,27 +39,15 @@ const log = createLogger('kernel');
  */
 export const ATTESTATION_INTERNAL_API_KEY_PURPOSE = 'kernel.attestation-internal-api-key';
 
-let deprecatedEnvKeyWarned = false;
-
-function warnDeprecatedEnvKeyOnce(): void {
-  if (deprecatedEnvKeyWarned) return;
-  deprecatedEnvKeyWarned = true;
-  log.warn(
-    {},
-    'requireInternalApiKey: a caller authenticated with the deprecated hand-set ATTESTATION_INTERNAL_API_KEY ' +
-      'env var (#2245) — the canonical value is now vault-sourced (getInternalSecret). Migrate the caller onto ' +
-      'the vault path; this fallback will be removed once every caller has.',
-  );
-}
-
 /**
  * Verify the request's `Authorization: Bearer <key>` header against the
- * vault-sourced `ATTESTATION_INTERNAL_API_KEY` (falling back to a
- * deprecated hand-set env var — see this module's docblock).
+ * vault-sourced `ATTESTATION_INTERNAL_API_KEY` (vault-only — see this
+ * module's docblock).
  *
  * Returns a ready-to-return 401 `NextResponse` (same shape every caller used
  * before this extraction: `{ error: 'Unauthorized' }`) when the caller's key
- * doesn't match either candidate, or `null` when the caller is authorized.
+ * doesn't match, or the vault value could not be resolved (fail closed), or
+ * `null` when the caller is authorized.
  *
  * Usage:
  *   const authError = await requireInternalApiKey(request);
@@ -78,19 +65,12 @@ export async function requireInternalApiKey(request: NextRequest): Promise<NextR
   try {
     expectedKey = await getInternalSecret(ATTESTATION_INTERNAL_API_KEY_PURPOSE);
   } catch (err) {
-    // Fail closed on a vault hiccup — never fall through to "no expected key
-    // configured, reject everything" silently. The deprecated env fallback
-    // below still gets a chance.
-    log.error({ err: String(err) }, 'requireInternalApiKey: getInternalSecret failed — falling back to the deprecated env var only');
+    // Fail closed on a vault hiccup, and say so loudly — there is no env
+    // fallback to fall back to (#2353 step 4).
+    log.error({ err: String(err) }, 'requireInternalApiKey: getInternalSecret failed — rejecting (no env fallback)');
   }
 
   if (expectedKey && apiKey === expectedKey) {
-    return null;
-  }
-
-  const legacyKey = process.env.ATTESTATION_INTERNAL_API_KEY;
-  if (legacyKey && apiKey === legacyKey) {
-    warnDeprecatedEnvKeyOnce();
     return null;
   }
 
