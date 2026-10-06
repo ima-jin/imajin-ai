@@ -35,8 +35,8 @@ import type { ConnectorStaticSecret } from './connector-static-secret';
 const log = createLogger('kernel');
 
 // Module-level CORS pre-flight handler — no closure dependency on factory opts.
-async function handleOptions(request: NextRequest): Promise<NextResponse> {
-  return corsOptions(request) as NextResponse;
+function handleOptions(request: NextRequest): Promise<NextResponse> {
+  return Promise.resolve(corsOptions(request) as NextResponse);
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

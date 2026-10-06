@@ -23,7 +23,7 @@
  * error (422), never a 500 — handled by the shared `mapBrainErrorToHttp`.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { resolveInferenceAuth } from '@/src/lib/inference/auth';
@@ -43,10 +43,6 @@ const log = createLogger('kernel:inference:completions-route');
 const COMPLETIONS_SCOPE = 'infer:completions';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -169,3 +165,5 @@ function handleCompletionsError(err: unknown, ownerDid: string, cors: Record<str
     { status: 500, headers: cors },
   );
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

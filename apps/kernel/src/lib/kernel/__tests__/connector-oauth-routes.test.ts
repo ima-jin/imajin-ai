@@ -45,13 +45,22 @@ vi.mock('@/src/lib/vault', () => ({ deleteFromVault: vi.fn() }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
 
 vi.mock('next/server', () => ({
-  NextResponse: {
-    json: vi.fn((body: unknown, init?: { status?: number }) => ({
-      status: init?.status ?? 200,
-      json: async () => body,
-    })),
-    redirect: vi.fn((url: string | URL) => ({ status: 307, headers: { location: String(url) } })),
-  },
+  NextResponse: Object.assign(
+    // Constructible so `new NextResponse(null, { status: 204 })` (the OPTIONS preflight) works.
+    class {
+      status: number;
+      constructor(_body: unknown, init?: { status?: number }) {
+        this.status = init?.status ?? 200;
+      }
+    },
+    {
+      json: vi.fn((body: unknown, init?: { status?: number }) => ({
+        status: init?.status ?? 200,
+        json: async () => body,
+      })),
+      redirect: vi.fn((url: string | URL) => ({ status: 307, headers: { location: String(url) } })),
+    },
+  ),
   NextRequest: class {},
 }));
 
@@ -544,6 +553,22 @@ describe('createCallbackHandler behind a reverse proxy', () => {
     process.env.APP_URL = 'https://configured.imajin.ai';
     const res = await callProxied(googleHandler(), { 'x-forwarded-host': 'jin.imajin.ai' });
     expect(res.headers.location).toBe('https://configured.imajin.ai/auth/connectors/google?connected=google');
+  });
+});
+
+// ─── CORS preflight (S7503) ──────────────────────────────────────────────────
+
+describe('createConfigureHandler — OPTIONS', () => {
+  it('answers CORS pre-flight with a Promise, keeping the handler contract without `async`', async () => {
+    const { OPTIONS } = createConfigureHandler<BaseOAuthConfig>({
+      buildConfig: (base) => base,
+      storeConfig: vi.fn().mockResolvedValue(undefined),
+    });
+
+    const pending = OPTIONS(makeJsonRequest({}));
+
+    expect(pending).toBeInstanceOf(Promise);
+    expect((await pending).status).toBe(204);
   });
 });
 

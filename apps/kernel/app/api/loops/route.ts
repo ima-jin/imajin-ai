@@ -27,16 +27,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { parseLoopIngestRequest } from '@/src/lib/loops/types';
 import { ingestLoopEvent } from '@/src/lib/loops/ingest';
 import { listLoops } from '@/src/lib/loops/query';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -99,3 +95,5 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({ loops }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

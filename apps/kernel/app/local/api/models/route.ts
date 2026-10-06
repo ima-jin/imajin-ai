@@ -30,7 +30,7 @@ export const { GET, PUT, OPTIONS } = createConnectorModelPickerRoute<LocalCreden
   loadSealedCredentials: loadLocalSealedCredentials,
   // Readiness is baseUrl-based, not bearer-token-based (#1957) — there is no
   // Tier-1-pending state that meaningfully applies to the model picker here.
-  keyPending: async () => false,
+  keyPending: () => Promise.resolve(false),
   setModelId,
   listModels,
   probeModel,

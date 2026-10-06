@@ -23,16 +23,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { actAsContext } from '@/src/lib/notify/act-as-guard';
 import { listApprovalsForOperator } from '@/src/lib/notify/operator-approvals-service';
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -55,3 +51,5 @@ export async function GET(request: NextRequest) {
     { headers: cors },
   );
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

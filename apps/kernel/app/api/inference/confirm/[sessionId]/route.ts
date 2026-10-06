@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { db, inferenceSessions } from '@/src/db';
 import { eq } from 'drizzle-orm';
@@ -12,10 +12,6 @@ import { validateConfirmedMetadata } from '@/src/lib/inference/metadata-validati
 const log = createLogger('kernel:inference:confirm-route');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 /**
  * POST /api/inference/confirm/:sessionId
@@ -145,3 +141,5 @@ export async function POST(request: NextRequest, props: { params: Promise<{ sess
     );
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

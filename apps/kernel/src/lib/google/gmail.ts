@@ -227,7 +227,7 @@ export async function advanceHistoryId(ownerDid: string, historyId: string): Pro
 
 /** Every (ownerDid, watch expiration) pair with a live Gmail watch, for the renewal cron. */
 export async function listWatchExpirations(): Promise<Array<{ ownerDid: string; expiration: Date | null }>> {
-  return db
+  return await db
     .select({ ownerDid: googleWorkspaceState.ownerDid, expiration: googleWorkspaceState.gmailWatchExpiration })
     .from(googleWorkspaceState);
 }

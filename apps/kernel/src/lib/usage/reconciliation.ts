@@ -62,7 +62,7 @@ async function readComputed(query: ReconciliationQuery): Promise<ComputedRow[]> 
   if (query.from) conditions.push(gte(usageIncurred.createdAt, query.from));
   if (query.to) conditions.push(lt(usageIncurred.createdAt, query.to));
 
-  return db
+  return await db
     .select({
       date: sql<string>`to_char(date_trunc('day', ${usageIncurred.createdAt}), 'YYYY-MM-DD')`,
       provider: usageIncurred.provider,
@@ -94,7 +94,7 @@ async function readBilled(query: ReconciliationQuery): Promise<BilledRow[]> {
   if (query.from) conditions.push(gte(usageBilled.periodStart, query.from));
   if (query.to) conditions.push(lt(usageBilled.periodStart, query.to));
 
-  return db
+  return await db
     .select({
       date: sql<string>`to_char(date_trunc('day', ${usageBilled.periodStart}), 'YYYY-MM-DD')`,
       provider: usageBilled.provider,

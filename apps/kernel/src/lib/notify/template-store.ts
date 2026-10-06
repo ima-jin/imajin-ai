@@ -162,7 +162,7 @@ function extractScope(event: BusEvent): string | null {
   return typeof scope === "string" && scope.length > 0 ? scope : null;
 }
 
-const notifyTemplateHotReloadReactor: ReactorHandler = async (event) => {
+function invalidateOnTemplateUpdated(event: BusEvent): void {
   const scope = extractScope(event);
   if (!scope) {
     log.warn({ type: event.type }, "notify.template.updated missing payload.scope — nothing to invalidate");
@@ -170,7 +170,15 @@ const notifyTemplateHotReloadReactor: ReactorHandler = async (event) => {
   }
   invalidateNotifyTemplateCache(scope);
   log.debug({ scope }, "notify.templates cache invalidated by notify.template.updated");
-};
+}
+
+// The Promise executor turns a synchronous throw into a rejection, so the
+// `ReactorHandler` Promise contract (the bus's error handling) is unchanged.
+const notifyTemplateHotReloadReactor: ReactorHandler = (event) =>
+  new Promise<void>((resolve) => {
+    invalidateOnTemplateUpdated(event);
+    resolve();
+  });
 
 let reactorRegistered = false;
 

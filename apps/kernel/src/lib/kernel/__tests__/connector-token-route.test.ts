@@ -272,6 +272,9 @@ describe('token route — POST', () => {
 
 describe('token route — OPTIONS', () => {
   it('answers CORS pre-flight', async () => {
-    expect((await OPTIONS(makeReq())).status).toBe(204);
+    const pending = OPTIONS(makeReq());
+    // Keeps the `RouteHandler` Promise contract without being an `async` function (S7503).
+    expect(pending).toBeInstanceOf(Promise);
+    expect((await pending).status).toBe(204);
   });
 });

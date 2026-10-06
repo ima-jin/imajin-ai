@@ -15,7 +15,6 @@
  * listing models spends nothing.
  */
 import { NextRequest } from 'next/server';
-import { corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { forwardAnthropicModelsList } from '@/src/lib/inference/anthropic-messages/forward';
 import {
@@ -28,10 +27,6 @@ import {
 const log = createLogger('kernel:inference:anthropic-models-route');
 
 export const dynamic = 'force-dynamic';
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 export async function GET(request: NextRequest) {
   const guarded = await guardAnthropicAuth(request);
@@ -52,3 +47,5 @@ export async function GET(request: NextRequest) {
     });
   }
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

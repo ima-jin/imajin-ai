@@ -7,7 +7,7 @@ export async function createCustomRelay(options: {
   content?: boolean;
   peers?: PeerConfig[];
 }): Promise<CreatedRelay> {
-  return createRelay({
+  return await createRelay({
     ...options,
     peers: options.peers,
     peerClient: options.peers?.length ? createHttpPeerClient() : undefined,

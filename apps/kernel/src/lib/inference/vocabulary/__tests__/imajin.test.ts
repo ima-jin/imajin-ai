@@ -70,4 +70,14 @@ describe('imajinVocabulary.resolve (stub reference implementation)', () => {
 
     expect(withdraw.digest).not.toBe(tombstone.digest);
   });
+
+  it('rejects (rather than throwing synchronously) when the intent cannot be digested', async () => {
+    const unserialisable = { ...candidate('revoke.withdraw'), metadata: { n: BigInt(1) } };
+
+    let pending: Promise<unknown> | undefined;
+    expect(() => {
+      pending = imajinVocabulary.resolve(unserialisable, 'did:imajin:owner');
+    }).not.toThrow();
+    await expect(pending).rejects.toThrow(TypeError);
+  });
 });

@@ -12,15 +12,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 import { disconnectAndDeprovision } from '@/src/lib/stripe/connector';
 
 const log = createLogger('kernel');
-
-export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-  return corsOptions(request) as NextResponse;
-}
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const cors = corsHeaders(request);
@@ -56,3 +52,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   return NextResponse.json({ connected: false, revoked, deprovisioned }, { headers: cors });
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

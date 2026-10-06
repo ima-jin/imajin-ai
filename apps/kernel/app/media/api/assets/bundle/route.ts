@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, identities } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
-import { corsHeaders, corsOptions } from "@/src/lib/kernel/cors";
+import { corsHeaders } from "@/src/lib/kernel/cors";
 import { eq } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
@@ -13,10 +13,6 @@ import { articleWarningFields } from "@/src/lib/media/article-guard";
 const log = createLogger("kernel");
 
 export const dynamic = "force-dynamic";
-
-export async function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
-}
 
 interface ParsedBundle {
   files: BundleFileInput[];
@@ -175,3 +171,5 @@ export async function POST(request: NextRequest) {
     { status: 201, headers: cors },
   );
 }
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';

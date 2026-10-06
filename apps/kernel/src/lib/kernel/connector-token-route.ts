@@ -49,8 +49,8 @@ function optionalString(value: unknown): string | undefined {
 }
 
 /** Shared stateless CORS-preflight handler, reused by every route factory below. */
-async function optionsHandler(request: NextRequest): Promise<NextResponse> {
-  return corsOptions(request) as NextResponse;
+function optionsHandler(request: NextRequest): Promise<NextResponse> {
+  return Promise.resolve(corsOptions(request) as NextResponse);
 }
 
 /**
