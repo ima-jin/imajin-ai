@@ -74,9 +74,11 @@ on:
         type: string
         default: ""
     secrets:
-      # The existing org-level NPM_TOKEN, passed through by the caller — no new
-      # secret. Only read by the npmjs step; optional because a github-packages
-      # only call never needs it.
+      # OPTIONAL legacy fallback (#1589). npmjs.org publishes authenticate with
+      # OIDC Trusted Publishing first; this token is only used, per package, if
+      # that OIDC publish fails — i.e. until the operator has configured a
+      # Trusted Publisher for every package. Delete the NPM_TOKEN secret (and
+      # this entry) once docs/npm-publishing.md's cut-over checklist is done.
       NPM_TOKEN:
         required: false
 
@@ -108,6 +110,13 @@ jobs:
       # GITHUB_TOKEN. Publishing from a workflow in this repo is also what
       # auto-connects each package to the repo (and so renders the sidebar).
       packages: write
+      # npm Trusted Publishing (#1589): lets the job mint the GitHub OIDC token
+      # npm exchanges for a short-lived publish credential, and that sigstore
+      # signs the `--provenance` attestation with. Without it there is no
+      # keyless credential and the publish falls back to NPM_TOKEN (if set).
+      # Callers of this reusable workflow must grant it too (a called workflow
+      # can't hold more than its caller).
+      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -122,6 +131,24 @@ jobs:
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
+
+      # Trusted Publishing needs npm >= 11.5.1 (Node 22 bundles npm 10, which
+      # doesn't know the OIDC exchange and would fail much later as a generic
+      # auth error). Pinned to the 11 major rather than `latest` so a future
+      # major that raises its Node floor can't break a release job. The floor
+      # is then asserted, not assumed.
+      - name: Install npm with Trusted Publishing support
+        run: |
+          npm install -g npm@^11
+          node -e '
+            const v = process.argv[1];
+            const [a, b, c] = v.split(".").map(Number);
+            if (a < 11 || (a === 11 && (b < 5 || (b === 5 && c < 1)))) {
+              console.error(`::error::npm ${v} is below 11.5.1, which Trusted Publishing requires`);
+              process.exit(1);
+            }
+            console.log(`npm ${v} supports Trusted Publishing`);
+          ' "$(npm --version)"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
@@ -189,14 +216,23 @@ jobs:
 
       # npmjs.org first: it is the canonical registry and the only install path
       # for consumers, so a GitHub Packages failure must never be able to block
-      # it. Each registry gets its own step so its token is scoped to just that
-      # step — NPM_TOKEN is never present while publishing to GitHub Packages,
-      # and vice versa. Never runs for a tag push (do_npmjs is always 'false'
-      # there) — a `packages-v*` tag never touches NPM_TOKEN.
+      # it. Each registry gets its own step so its credentials are scoped to
+      # just that step — the legacy NPM_TOKEN is never present while publishing
+      # to GitHub Packages, and vice versa. Never runs for a tag push
+      # (do_npmjs is always 'false' there) — a `packages-v*` tag never touches
+      # NPM_TOKEN.
+      #
+      # Auth (#1589): OIDC Trusted Publishing first, with `--provenance`, via
+      # `id-token: write` above — see scripts/publish-package.sh. NPM_TOKEN is
+      # handed over only as NPM_FALLBACK_TOKEN, which the script uses solely to
+      # retry a package whose OIDC publish failed (no Trusted Publisher yet).
+      # NODE_AUTH_TOKEN is deliberately blanked: setup-node exports a
+      # placeholder for it that would otherwise ride along into npm.
       - name: Publish to npmjs.org
         if: steps.params.outputs.do_npmjs == 'true'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ""
+          NPM_FALLBACK_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for pkg in ${{ steps.params.outputs.list }}; do
             echo "::group::Publishing @ima-jin/$pkg to npmjs.org"

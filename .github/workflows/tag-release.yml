@@ -187,11 +187,18 @@ jobs:
     if: ${{ needs.tag-and-deploy.outputs.is_release == 'true' }}
     # A called workflow can't hold more permission than its caller grants.
     # publish-packages.yml's job declares `packages: write` (for its GitHub
-    # Packages leg, which this call doesn't use), so it must be granted here
-    # or the call is rejected at startup.
+    # Packages leg, which this call doesn't use) and `id-token: write` (npm
+    # Trusted Publishing, #1589), so both must be granted here or the call is
+    # rejected at startup.
+    #
+    # Operator note: for a reusable-workflow call, npm validates the *calling*
+    # workflow's filename against the package's Trusted Publisher config — so
+    # the release path authenticates as `tag-release.yml`, not
+    # `publish-packages.yml`. Register both (docs/npm-publishing.md).
     permissions:
       contents: read
       packages: write
+      id-token: write
     # Publish exactly what the tag points at, to npmjs only. `package: all`
     # expands to ALL_PACKAGES in publish-packages.yml (the single source of
     # truth for what is publishable). Already-published versions are skipped
@@ -205,4 +212,8 @@ jobs:
       registries: npmjs
       ref: ${{ needs.tag-and-deploy.outputs.tag }}
     secrets:
+      # Optional legacy fallback only (#1589): publishes try OIDC Trusted
+      # Publishing first and use this token solely for packages that don't have
+      # a Trusted Publisher yet. Remove once the cut-over checklist in
+      # docs/npm-publishing.md is complete.
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -17,7 +17,7 @@ import {
   mkdirSync,
   readdirSync,
 } from "node:fs";
-import { join, resolve, sep, extname } from "node:path";
+import { join, resolve, sep, extname, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -271,8 +271,25 @@ export function rewritePeerDependenciesMeta(pkg) {
   pkg.peerDependenciesMeta = newMeta;
 }
 
+// npm provenance (#1589) is verified against this repository: the registry
+// rejects a `--provenance` publish with a 422 when the manifest's
+// `repository.url` is missing or doesn't match the GitHub repo that built it.
+// A package that already declares its own `repository` is left untouched.
+export const PROVENANCE_REPOSITORY_URL = "git+https://github.com/ima-jin/imajin-ai.git";
+
+/** Fill in `repository` on the publish copy when the workspace manifest omits it. */
+export function ensureRepositoryForProvenance(pkg, pkgDirName) {
+  if (pkg.repository) return;
+  pkg.repository = {
+    type: "git",
+    url: PROVENANCE_REPOSITORY_URL,
+    directory: `packages/${pkgDirName}`,
+  };
+  console.log("  Added repository metadata (required for npm provenance)");
+}
+
 /** Apply every manifest rewrite needed to turn a workspace package.json into a publishable one. */
-export function rewriteManifestForPublish(pkg, packagesDir) {
+export function rewriteManifestForPublish(pkg, packagesDir, pkgDirName) {
   // Rewrite package name: @imajin/* → @ima-jin/*
   pkg.name = pkg.name.replaceAll("@imajin/", "@ima-jin/");
   // Remove private flag
@@ -286,6 +303,7 @@ export function rewriteManifestForPublish(pkg, packagesDir) {
   rewriteEntryPoints(pkg);
   rewriteWorkspaceDependencies(pkg, packagesDir);
   rewritePeerDependenciesMeta(pkg);
+  if (pkgDirName) ensureRepositoryForProvenance(pkg, pkgDirName);
 }
 
 export function main() {
@@ -304,7 +322,7 @@ export function main() {
   const rewrittenFileCount = rewriteScopeInTree(destDir);
   console.log(`  Rewrote @imajin/ → @ima-jin/ in ${rewrittenFileCount} file(s)`);
 
-  rewriteManifestForPublish(pkg, packagesDir);
+  rewriteManifestForPublish(pkg, packagesDir, basename(srcDir));
 
   // Write modified package.json to output
   writeFileSync(join(destDir, "package.json"), JSON.stringify(pkg, null, 2) + "\n");

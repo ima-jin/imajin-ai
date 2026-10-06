@@ -28,6 +28,8 @@ import {
   rewriteWorkspaceDependencies,
   rewritePeerDependenciesMeta,
   rewriteManifestForPublish,
+  ensureRepositoryForProvenance,
+  PROVENANCE_REPOSITORY_URL,
 } from '../prepare-npm-publish.mjs';
 
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
@@ -279,6 +281,46 @@ describe('rewriteManifestForPublish', () => {
     } finally {
       logSpy.mockRestore();
     }
+  });
+});
+
+describe('ensureRepositoryForProvenance (#1589)', () => {
+  let logSpy;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    logSpy.mockRestore();
+  });
+
+  it('adds the monorepo repository + package directory when the manifest has none', () => {
+    const pkg = { name: '@ima-jin/logger' };
+    ensureRepositoryForProvenance(pkg, 'logger');
+    expect(pkg.repository).toEqual({
+      type: 'git',
+      url: PROVENANCE_REPOSITORY_URL,
+      directory: 'packages/logger',
+    });
+    expect(PROVENANCE_REPOSITORY_URL).toBe('git+https://github.com/ima-jin/imajin-ai.git');
+  });
+
+  it('leaves an existing repository untouched', () => {
+    const repository = { type: 'git', url: 'git+https://example.test/x.git' };
+    const pkg = { repository };
+    ensureRepositoryForProvenance(pkg, 'logger');
+    expect(pkg.repository).toBe(repository);
+  });
+
+  it('is applied by rewriteManifestForPublish only when a package dir name is given', () => {
+    const withDir = { name: '@imajin/fixture', version: '1.0.0' };
+    rewriteManifestForPublish(withDir, PACKAGES_ROOT, 'fixture');
+    expect(withDir.repository.directory).toBe('packages/fixture');
+
+    const withoutDir = { name: '@imajin/fixture', version: '1.0.0' };
+    rewriteManifestForPublish(withoutDir, PACKAGES_ROOT);
+    expect(withoutDir.repository).toBeUndefined();
   });
 });
 

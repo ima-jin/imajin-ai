@@ -23,7 +23,7 @@ This repo's release version and the repo's npm-package versions (below) are two 
 Before #2578, `release.yml` bumped every `package.json` in lockstep but publishing was a hand-run `workflow_dispatch` of `publish-packages.yml`, so npm drifted behind `main` (`@ima-jin/logger` sat at `0.8.7` while `main` was at `0.8.13`, which made `@ima-jin/auth@0.8.13` uninstallable). Now, in the same `tag-release.yml` run that creates the `vX.Y.Z` tag, a second job — `publish-npm` — calls `publish-packages.yml` as a reusable workflow (`workflow_call`) with `package: all`, `registries: npmjs` and `ref: vX.Y.Z`. There is no second copy of the publish logic: the manual dispatch, the `packages-v*` tag path and this call all run the same job.
 
 - **What gets published:** `ALL_PACKAGES` in `publish-packages.yml` — the single list of what is publishable — to npmjs only, at exactly the version committed at the tag (the job checks out the tag itself, so a later push to `main` can't change what ships). GitHub Packages is not touched by this path.
-- **Token:** only the existing org `NPM_TOKEN`, passed by `tag-release.yml` as `secrets: NPM_TOKEN: ${{ secrets.NPM_TOKEN }}`. No new secret.
+- **Auth (#1589):** OIDC Trusted Publishing first, with provenance — see "npm Trusted Publishing (OIDC)" below. The legacy org `NPM_TOKEN`, still passed by `tag-release.yml` as `secrets: NPM_TOKEN: ${{ secrets.NPM_TOKEN }}`, is now only an optional per-package fallback. No new secret.
 - **Idempotent:** `scripts/publish-package.sh` runs `scripts/npm-package-published.mjs` before every `npm publish`. It fetches the package's abbreviated packument straight from the target registry (the document `npm view` reads, using `NODE_AUTH_TOKEN` as a bearer token when set — GitHub Packages needs it even for reads): a version listed there is skipped with a log line, not a failure; a 404 (never published) or a packument without that version means "not published yet" and the publish proceeds. Any other answer (401/403, 5xx, network error, malformed body) fails the step rather than guessing — an unknown state is never treated as published or as unpublished. Re-running the `publish-npm` job after a partial failure therefore resumes where it stopped.
 - **Failure is visible:** a failed publish fails the `publish-npm` job and so the `Tag Release` run. Packages publish in dependency order and the loop stops at the first failure, so a half-published release shows up as a red run, never a silent success; fix the cause and re-run the failed job.
 - **Independent of the deploy:** `publish-npm` is a separate job that runs after the tag exists. It does not wait for, and cannot bypass or delay, `deploy-prod.yml`'s `production` reviewer approval, and a publish failure does not stop the deploy dispatch (which happens earlier, in the tagging job). It doesn't touch the release-PR review flow either.
@@ -41,7 +41,7 @@ Before #2578, `release.yml` bumped every `package.json` in lockstep but publishi
 
 `.github/workflows/publish-packages.yml` publishes each selected package to **two** registries ([#1595](https://github.com/ima-jin/imajin-ai/issues/1595)):
 
-- **npmjs.org — canonical.** The only install path. `imajin-cli`, `fixready`, and `karaoke` install `@ima-jin/*` from here anonymously, with no auth and no `.npmrc`. Authenticated with `secrets.NPM_TOKEN`.
+- **npmjs.org — canonical.** The only install path. `imajin-cli`, `fixready`, and `karaoke` install `@ima-jin/*` from here anonymously, with no auth and no `.npmrc`. Authenticated with OIDC Trusted Publishing and published with `--provenance` (#1589); the legacy `secrets.NPM_TOKEN` is only an optional fallback.
 - **`npm.pkg.github.com` — visibility only.** Its sole purpose is populating the `ima-jin/imajin-ai` → **Packages** sidebar, which GitHub renders only for packages actually hosted on GitHub Packages (the `repository` + `directory` fields give the npm→GitHub backlink on the npmjs page, but do nothing for the sidebar). Nothing installs from here. Authenticated with the ephemeral `GITHUB_TOKEN` — **never a PAT**; publishing from a workflow in this repo is also what auto-connects each package to the repo. Requires `packages: write` on the job.
 
 Both publishes run from the same prepared tarball via `scripts/publish-package.sh <pkg> <registry-url> <dry-run>`, in separate steps so each registry's token is only in scope for its own step. npmjs goes first, so a GitHub Packages failure can never block the canonical publish.
@@ -55,6 +55,65 @@ Pushing a `packages-vX.Y.Z` tag runs the same job with fixed parameters instead 
 Defaults to `both`; `npmjs` and `github-packages` publish to just one. The single-registry options date from when **npm returned a 409 for a version that already exists**, failing the whole step — so publishing a version that was live on one registry but missing from the other (e.g. the original GitHub Packages backfill of `0.8.0`/`0.6.1`) required skipping the registry that already had it. Since #2578, `scripts/publish-package.sh` skips a version that is already on the target registry instead of failing, so `both` is safe to re-run too; the single-registry options remain for when you simply want only one (the automatic release publish uses `npmjs`).
 
 `.npmrc` note: `actions/setup-node` only writes auth for `registry.npmjs.org`, so `publish-package.sh` writes a throwaway project-level `.npmrc` into the temp publish dir for the GitHub Packages leg. The `${NODE_AUTH_TOKEN}` in it is single-quoted on purpose — npm expands it when reading the file, so no token value ever lands on disk, and npm never packs `.npmrc` into a tarball. Do not "fix" it into a real interpolation.
+
+## npm Trusted Publishing (OIDC) — #1589
+
+npm is retiring 2FA-bypass "Automation" tokens (publishing with them stops working around January 2027), so npmjs.org publishes no longer *depend* on the long-lived `NPM_TOKEN`. They authenticate with **GitHub Actions OIDC** instead: the job mints a short-lived identity token, npm exchanges it for a one-shot publish credential, and every npmjs publish carries a signed **provenance attestation** (`--provenance`, Sigstore) linking the tarball to this repo, workflow and commit. Nothing long-lived is stored for that path.
+
+### What the workflow does
+
+- `publish-packages.yml`'s job has `id-token: write` (alongside `contents: read`, `packages: write`). `tag-release.yml`'s `publish-npm` job grants the same, because a reusable workflow can't hold more permission than its caller.
+- A step installs `npm@^11` and fails the job if npm is below **11.5.1** (Trusted Publishing needs it; Node 22 bundles npm 10, which would otherwise fail later with a generic auth error that looks like a credentials problem). Pinned to a major, not `latest`, so a future npm major can't break a release.
+- `scripts/publish-package.sh` publishes to npmjs with `--access public --provenance`. It does **not** rely on `actions/setup-node`'s `.npmrc`: `setup-node` exports a placeholder `NODE_AUTH_TOKEN`, and a token present in the environment can stop npm from ever attempting the OIDC exchange. Instead each attempt gets its own throwaway npm user config — the OIDC attempt has no `_authToken` at all; the fallback attempt's `_authToken` is an `${ENV_VAR}` reference that npm expands in memory (no token ever lands on disk or in logs).
+- GitHub Packages is unchanged: ephemeral `GITHUB_TOKEN`, and no `--provenance` (GitHub Packages doesn't take npm provenance).
+- `scripts/prepare-npm-publish.mjs` adds `repository` (`git+https://github.com/ima-jin/imajin-ai.git` + `directory`) to the **publish copy** when a package's manifest omits it (`auth` and `logger` do). npm rejects a `--provenance` publish with a 422 when `repository.url` is missing or doesn't match the GitHub repo that built it. No `package.json` in the repo is touched.
+
+### Fallback behavior (until the operator has finished cut-over)
+
+For each package on npmjs, `publish-package.sh` tries OIDC first:
+
+1. **OIDC succeeds** → published with provenance; log line `Authenticated via OIDC Trusted Publishing`. `NPM_TOKEN` is never read.
+2. **OIDC fails and the `NPM_TOKEN` secret exists** → a `::warning::` annotation names the package, then the publish is retried **once** with the token (still with `--provenance`; log line `Authenticated via legacy NPM_TOKEN fallback`). A `::warning::` in a run means that package still has no (or a broken) Trusted Publisher.
+3. **OIDC fails and there is no `NPM_TOKEN`** → `::error::` and the step fails, like any publish failure (see "Failure is visible" above). Re-run after fixing the package's Trusted Publisher config; already-published versions are skipped.
+
+The skip-if-already-published check is unaffected, so a retry or re-run never double-publishes. A **dry run** (`dry_run=true`) does not perform the OIDC exchange, so it cannot validate Trusted Publisher configuration — only a real publish can.
+
+### Operator steps (npmjs.org — not doable from this repo)
+
+The npm owner of the `@ima-jin` scope must do this once **per package**. Publishable packages are `ALL_PACKAGES` in `publish-packages.yml`: `cid`, `tokens`, `config`, `ui`, `vault-core`, `db`, `fair`, `auth-client`, `auth`, `logger` (published as `@ima-jin/<name>`).
+
+1. On npmjs.com open `https://www.npmjs.com/package/@ima-jin/<name>/access` → **Trusted Publisher** → **GitHub Actions**.
+2. Fill in exactly:
+   - Organization or user: `ima-jin`
+   - Repository: `imajin-ai`
+   - Workflow filename: see step 3 (filename only, with `.yml`; no path)
+   - Environment name: leave empty (the publish job uses no GitHub Environment)
+   - Allowed actions: `npm publish`
+3. **Register both workflow filenames** where the registry allows more than one publisher per package:
+   - `tag-release.yml` — the automatic release publish. npm validates the **calling** workflow's filename for a reusable-workflow call, so the `publish-npm` job authenticates as `tag-release.yml`, not `publish-packages.yml`.
+   - `publish-packages.yml` — manual `workflow_dispatch` backfills.
+
+   If a package only accepts one publisher (check with `npm trust list @ima-jin/<name>`), register `tag-release.yml`: it is the path every release uses. Manual dispatches for that package then take the fallback path until a second publisher can be added. Do not rename either workflow file afterwards — the registration is bound to the filename.
+4. Equivalent CLI (npm >= 11.15, account 2FA on): `npm trust github @ima-jin/<name> --repo ima-jin/imajin-ai --file tag-release.yml --allow-publish`, repeated with `--file publish-packages.yml`.
+5. A new configuration must complete a successful publish within 2 days or it expires and has to be recreated, so verify promptly (next section).
+
+### Verifying a package (acceptance test)
+
+The version in the package's `package.json` must not already be on npm (an existing version is skipped, which proves nothing). For a package whose version is unpublished, run a real publish:
+
+```bash
+gh workflow run publish-packages.yml -f package=<pkg> -f registries=both -f dry_run=false
+```
+
+In the run's *Publish to npmjs.org* step expect `Authenticated via OIDC Trusted Publishing (provenance attached).` and **no** `::warning::` for that package; the package's npmjs page then shows the provenance badge ("Built and signed on GitHub Actions"). The GitHub Packages leg of `registries=both` is independent and unchanged.
+
+### Cut-over checklist (retiring `NPM_TOKEN`)
+
+Do these in order, only after **every** package in `ALL_PACKAGES` has published via OIDC with no fallback warning — and well before the ~January 2027 token cutoff:
+
+1. On each package: **Settings → Publishing access → "Require two-factor authentication and disallow tokens"** (Trusted Publishers keep working; this blocks any leaked token).
+2. Revoke the Automation token on npmjs.com and delete the `NPM_TOKEN` GitHub secret.
+3. In a follow-up PR remove the now-dead plumbing: the `NPM_TOKEN` secret declaration in `publish-packages.yml`, the `secrets:` block in `tag-release.yml`'s `publish-npm`, `NPM_FALLBACK_TOKEN` in the npmjs publish step, and the fallback branch in `scripts/publish-package.sh`.
 
 ## The mechanism
 
