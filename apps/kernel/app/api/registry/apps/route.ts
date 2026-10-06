@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { db, registryApps } from '@/src/db';
 import { eq, desc, and } from 'drizzle-orm';
-import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid, validateScopes } from '@imajin/auth';
+import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { withLogger } from '@imajin/logger';
 
 // POST /api/registry/apps — register a new app (authenticated)
@@ -24,13 +25,15 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, publicKey: suppliedPublicKey } = body as {
+  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, providesScopes, dependsOn, publicKey: suppliedPublicKey } = body as {
     name?: string;
     description?: string;
     callbackUrl?: string;
     homepageUrl?: string;
     logoUrl?: string;
     requestedScopes?: string[];
+    providesScopes?: string[];
+    dependsOn?: Array<{ aud: string; scopes: string[] }>;
     publicKey?: string;
   };
 
@@ -62,7 +65,13 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
 
   // #1990: no ad-hoc scope strings — clamp to the declarative SCOPE_VOCABULARY
   // (#1253), the same clamp every scoped-token mint route already applies.
-  const { valid: scopes } = validateScopes(Array.isArray(requestedScopes) ? requestedScopes : []);
+  // #2663: widened by the app's own declared `providesScopes`, and the app's
+  // `dependsOn` audiences are checked against the registry.
+  const declarations = await validateAppDeclarations({ providesScopes, dependsOn, requestedScopes });
+  if ('error' in declarations) {
+    return NextResponse.json({ error: declarations.error }, { status: 400 });
+  }
+  const { requestedScopes: scopes, providesScopes: ownScopes, dependsOn: dependencies } = declarations.ok;
 
   // #1990: self-service registration always yields a third_party app.
   // first_party is reserved for the admin surface (POST /api/admin/registry/apps).
@@ -86,6 +95,8 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     homepageUrl: typeof homepageUrl === 'string' ? homepageUrl || null : null,
     logoUrl: typeof logoUrl === 'string' ? logoUrl || null : null,
     requestedScopes: scopes,
+    providesScopes: ownScopes,
+    dependsOn: dependencies,
     tier: 'third_party',
     allowedRedirectHosts,
     // #1348: this surface only ever takes a single callbackUrl, so the
@@ -137,6 +148,8 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
       homepageUrl: registryApps.homepageUrl,
       logoUrl: registryApps.logoUrl,
       requestedScopes: registryApps.requestedScopes,
+      providesScopes: registryApps.providesScopes,
+      dependsOn: registryApps.dependsOn,
       status: registryApps.status,
       createdAt: registryApps.createdAt,
     })

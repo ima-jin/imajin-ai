@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { arrayContains, eq } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
 import { corsHeaders } from '@imajin/config';
+import { tokenAudiences, type AppDependency } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -22,6 +23,10 @@ export interface ActiveRegistryApp {
   ownerDid: string;
   tier: string;
   status: string;
+  /** Scopes the app defines itself (#2663); granted on tokens minted for its audience. */
+  providesScopes: string[];
+  /** Other registered audiences a token for this app must also carry (#2663). */
+  dependsOn: AppDependency[];
 }
 
 /**
@@ -42,16 +47,42 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
         ownerDid: registryApps.ownerDid,
         tier: registryApps.tier,
         status: registryApps.status,
+        providesScopes: registryApps.providesScopes,
+        dependsOn: registryApps.dependsOn,
       })
       .from(registryApps)
       .where(arrayContains(registryApps.tokenAudiences, [aud]))
       .limit(1);
     if (row?.status !== 'active') return null;
-    return row;
+    return { ...row, providesScopes: row.providesScopes ?? [], dependsOn: row.dependsOn ?? [] };
   } catch (err) {
     log.error({ err: String(err), aud }, 'resolveActiveAppByAudience: lookup failed');
     return null;
   }
+}
+
+/**
+ * The `aud` claim for a token minted for `app` (#2663): `aud` itself, plus the
+ * audience of every `dependsOn` entry that
+ *   - the granted scopes actually reach (least privilege: a token with none of a
+ *     dependency's scopes doesn't get that audience), and
+ *   - still resolves to an active registered app (a revoked or deregistered
+ *     dependency is dropped rather than failing the mint).
+ *
+ * One token can then satisfy both the app and the services it fronts, e.g. the
+ * kernel media routes, which verify `aud = this node's host`.
+ */
+export async function resolveTokenAudiences(
+  aud: string,
+  app: Pick<ActiveRegistryApp, 'dependsOn'>,
+  grantedScopes: readonly string[],
+): Promise<string[]> {
+  const granted = new Set(grantedScopes);
+  const reached = app.dependsOn.filter((dep) => dep.scopes.some((s) => granted.has(s)));
+  const resolved = await Promise.all(
+    reached.map(async (dep) => ((await resolveActiveAppByAudience(dep.aud)) ? dep.aud : null)),
+  );
+  return tokenAudiences(aud, resolved.filter((a): a is string => a !== null));
 }
 
 /**

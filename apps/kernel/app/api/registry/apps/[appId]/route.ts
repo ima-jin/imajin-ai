@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 
 // GET /api/registry/apps/:appId — app detail (public)
 export async function GET(_request: NextRequest, props: { params: Promise<{ appId: string }> }) {
@@ -18,6 +19,8 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ appI
       homepageUrl: registryApps.homepageUrl,
       logoUrl: registryApps.logoUrl,
       requestedScopes: registryApps.requestedScopes,
+      providesScopes: registryApps.providesScopes,
+      dependsOn: registryApps.dependsOn,
       status: registryApps.status,
       createdAt: registryApps.createdAt,
       updatedAt: registryApps.updatedAt,
@@ -42,7 +45,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   const { identity } = authResult;
 
   const [existing] = await db
-    .select({ id: registryApps.id, ownerDid: registryApps.ownerDid })
+    .select({ id: registryApps.id, ownerDid: registryApps.ownerDid, slug: registryApps.slug })
     .from(registryApps)
     .where(eq(registryApps.id, params.appId));
 
@@ -69,6 +72,21 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   if (typeof body.homepageUrl === 'string') updates.homepageUrl = body.homepageUrl || null;
   if (typeof body.logoUrl === 'string') updates.logoUrl = body.logoUrl || null;
   if (Array.isArray(body.requestedScopes)) updates.requestedScopes = body.requestedScopes;
+
+  // #2663: the app's own scopes and dependency list — same assignment model as
+  // requestedScopes, validated the same way the register route validates them.
+  if (body.providesScopes !== undefined || body.dependsOn !== undefined) {
+    const declarations = await validateAppDeclarations({
+      providesScopes: body.providesScopes,
+      dependsOn: body.dependsOn,
+      slug: existing.slug,
+    });
+    if ('error' in declarations) {
+      return NextResponse.json({ error: declarations.error }, { status: 400 });
+    }
+    if (body.providesScopes !== undefined) updates.providesScopes = declarations.ok.providesScopes;
+    if (body.dependsOn !== undefined) updates.dependsOn = declarations.ok.dependsOn;
+  }
 
   const [updated] = await db
     .update(registryApps)

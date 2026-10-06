@@ -11,9 +11,14 @@
  *
  * Body: { aud: string, scopes?: string[] }
  *   aud    — the target app host this token is scoped to (required)
- *   scopes — requested scopes, clamped to the SCOPES vocabulary (default: [])
+ *   scopes — requested scopes, clamped to the SCOPES vocabulary plus the scopes
+ *            the target app declared in `registry.apps.provides_scopes`
+ *            (#2663; default: [])
  *
- * Returns: { token, expiresIn, scopes }
+ * Returns: { token, expiresIn, scopes, aud }
+ *   aud — every audience the token carries: the requested `aud`, plus each
+ *         `registry.apps.depends_on` audience the granted scopes reach
+ *         (#2663), so one token can satisfy the app and e.g. kernel media.
  *
  * This is a Phase 1 primitive: shipping it does not change any existing
  * app's default auth behavior. Nothing calls this endpoint unless an app
@@ -22,9 +27,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, getSessionCookieOptions } from '@imajin/config';
-import { validateScopes } from '@imajin/auth';
+import { resolveAppScopes } from '@imajin/auth';
 import { verifySessionToken, createSessionAppToken } from '@/src/lib/auth/jwt';
-import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
+import { resolveActiveAppByAudience, resolveTokenAudiences, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -65,14 +70,24 @@ export async function POST(request: NextRequest) {
     return appNotRegisteredResponse(request);
   }
 
-  const { valid: grantedScopes } = validateScopes(Array.isArray(scopes) ? scopes : []);
+  // #2663: the platform vocabulary PLUS the scopes this app declared for
+  // itself (`registry.apps.provides_scopes`) — e.g. dykil:read / dykil:write.
+  // An app's own scopes are only ever granted on a token for that app's `aud`.
+  const { valid: grantedScopes } = resolveAppScopes(
+    Array.isArray(scopes) ? scopes : [],
+    registeredApp.providesScopes,
+  );
 
-  const token = await createSessionAppToken({ sub: session.sub, aud, scopes: grantedScopes });
+  // #2663: one token for the app AND the services it declared in `dependsOn`
+  // (e.g. kernel media), so the app doesn't need a second token per service.
+  const audiences = await resolveTokenAudiences(aud, registeredApp, grantedScopes);
 
-  log.info({ did: session.sub, aud, scopes: grantedScopes }, 'minted session app token');
+  const token = await createSessionAppToken({ sub: session.sub, aud: audiences, scopes: grantedScopes });
+
+  log.info({ did: session.sub, aud, audiences, scopes: grantedScopes }, 'minted session app token');
 
   return NextResponse.json(
-    { token, expiresIn: 600, scopes: grantedScopes },
+    { token, expiresIn: 600, scopes: grantedScopes, aud: audiences },
     { headers: cors }
   );
 }

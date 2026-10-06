@@ -60,6 +60,7 @@ import {
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
 import { assertValidEntryUrl } from './entry-url';
+import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
 
 const log = createLogger('kernel:apps:provision');
@@ -330,6 +331,19 @@ async function registerApp(params: {
   }
 
   const navMetadata = resolveNavMetadata(slug, manifest);
+
+  // #2663: scopes the app defines for itself + the audiences its tokens must
+  // also carry, both read from the manifest. Fail-closed like `entryUrl`: a
+  // bad declaration throws here, so no half-declared row is written.
+  const declarations = await validateAppDeclarations({
+    providesScopes: manifest?.providesScopes,
+    dependsOn: manifest?.dependsOn,
+    slug,
+  });
+  if ('error' in declarations) {
+    throw new Error(`apps.provision: invalid imajin.app.json scope declarations — ${declarations.error}`);
+  }
+
   const id = `app_${nanoid(16)}`;
   await db.insert(registryApps).values({
     id,
@@ -350,6 +364,9 @@ async function registerApp(params: {
     entryUrl: navMetadata.entryUrl,
     placements: navMetadata.placements,
     requiredScope: navMetadata.requiredScope,
+    requestedScopes: declarations.ok.providesScopes,
+    providesScopes: declarations.ok.providesScopes,
+    dependsOn: declarations.ok.dependsOn,
   });
   return id;
 }
