@@ -14,6 +14,7 @@ import {
 import { db, assets } from "@/src/db";
 import { eq } from "drizzle-orm";
 import { parseReleasePolicy, type FieldReleasePolicy } from "./release-policy";
+import { forEachSequential } from "../async/sequential";
 
 /**
  * Release-gated projection reactor (#1207, EPIC #1204) — the heart of the
@@ -305,13 +306,14 @@ async function reconcileFields(
 ): Promise<Reconciled> {
   const released: Record<string, unknown> = {};
   const removed: string[] = [];
-  for (const field of fields) {
+  // Sequential on purpose: each broker decision is audited, so fields are decided one at a time in declaration order.
+  await forEachSequential(fields, async (field) => {
     const value = data[field];
     if (value === undefined) {
       // Declared but absent in truth-data → its data line was deleted. Reconcile
       // it OUT of the projection (and revoke it) rather than leaving it stale.
       removed.push(field);
-      continue;
+      return;
     }
     const decision = await decideFieldRelease(ctx, field, value, releasePolicy[field]);
     if (decision.release) {
@@ -321,13 +323,14 @@ async function reconcileFields(
       // projection; de-materialize any prior materialization and revoke.
       removed.push(field);
     }
-  }
+  });
   return { released, removed };
 }
 
 /** Fan the reconciled result out to every registered surface (non-fatal each). */
 async function applyToSurfaces(ctx: ProjectionContext, { released, removed }: Reconciled): Promise<void> {
-  for (const surface of surfaces) {
+  // Sequential on purpose: surfaces are applied in registration order, apply before remove for each.
+  await forEachSequential(surfaces, async (surface) => {
     try {
       await surface.apply(ctx, released);
     } catch (err) {
@@ -336,7 +339,7 @@ async function applyToSurfaces(ctx: ProjectionContext, { released, removed }: Re
         "projection surface apply failed (non-fatal)",
       );
     }
-    if (removed.length === 0) continue;
+    if (removed.length === 0) return;
     try {
       await surface.remove(ctx, removed);
     } catch (err) {
@@ -345,7 +348,7 @@ async function applyToSurfaces(ctx: ProjectionContext, { released, removed }: Re
         "projection surface remove failed (non-fatal)",
       );
     }
-  }
+  });
 }
 
 /**

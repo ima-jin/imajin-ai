@@ -204,6 +204,43 @@ describe('processBundleUpload — article-frontmatter guard (#1542/#1870)', () =
   });
 });
 
+describe('processBundleUpload — doc-asset edge recording is sequential and non-fatal', () => {
+  const FILE_A: BundleFileInput = { path: 'a.png', buffer: Buffer.from('A'), mimeType: 'image/png' };
+  const FILE_B: BundleFileInput = { path: 'b.png', buffer: Buffer.from('B'), mimeType: 'image/png' };
+
+  it('swallows a failed edge insert, still records the remaining edges in asset order, and succeeds', async () => {
+    mockCreateAsset.mockImplementation(async (input: { mimeType: string; buffer: Buffer; filename: string }) => ({
+      asset: assetFor(
+        input.mimeType === 'text/markdown' ? 'asset_index' : `asset_${input.filename}`,
+        input.mimeType,
+        input.buffer,
+      ),
+      deduplicated: false,
+    }));
+
+    const attempted: string[] = [];
+    const edgeValues = vi.fn((row: { assetId: string }) => ({
+      onConflictDoNothing: vi.fn(async () => {
+        attempted.push(row.assetId);
+        if (row.assetId === 'asset_a.png') throw new Error('edge insert failed');
+      }),
+    }));
+    mockInsert.mockImplementation(() => ({ values: edgeValues as unknown as typeof mockInsertValues }));
+
+    const result = await processBundleUpload({
+      ownerDid: 'did:imajin:owner',
+      uploadedBy: 'did:imajin:owner',
+      files: [INDEX_FILE, FILE_A, FILE_B],
+      indexPath: 'index.md',
+      baseUrl: BASE_URL,
+    });
+
+    expect(result.ok).toBe(true);
+    // The first edge failed, yet the second was still attempted afterwards, in order.
+    expect(attempted).toEqual(['asset_a.png', 'asset_b.png']);
+  });
+});
+
 describe('processBundleUpload — update semantics (indexAssetId)', () => {
   it('updates the existing index asset in place, preserving its id', async () => {
     mockUpdateAssetContent.mockResolvedValueOnce({

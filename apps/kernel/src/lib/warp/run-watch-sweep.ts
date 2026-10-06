@@ -93,6 +93,7 @@
  */
 import { getClient } from '@imajin/db';
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from '../async/sequential';
 import {
   getAgentRun,
   isTerminalRunState,
@@ -483,7 +484,8 @@ export async function sweepInFlightWarpRuns(
     return outcome;
   }
 
-  for (const candidate of candidates) {
+  // Sequential on purpose: one Warp API read at a time keeps the sweep under Warp's rate limits.
+  await forEachSequential(candidates, async (candidate) => {
     outcome.checked += 1;
     try {
       await checkOneRun(candidate, outcome, lookbackMs);
@@ -495,7 +497,7 @@ export async function sweepInFlightWarpRuns(
         'Warp run watch sweep: could not check run',
       );
     }
-  }
+  });
 
   return outcome;
 }

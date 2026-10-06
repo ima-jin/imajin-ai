@@ -6,6 +6,7 @@ import { publish } from "@imajin/bus";
 import { db, assets, channelLinks } from "@/src/db";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { parseFrontmatter } from "./frontmatter";
+import { forEachSequential } from "../async/sequential";
 import {
   registerProjectionSurface,
   type ProjectionContext,
@@ -165,7 +166,8 @@ async function revokeLinkRows(
   ctx: ProjectionContext,
   rows: Array<{ id: string; channel: string; did: string; appDid: string }>,
 ): Promise<void> {
-  for (const row of rows) {
+  // Sequential on purpose: each row is revoked, then its revoke event is fired, one row at a time in query order.
+  await forEachSequential(rows, async (row) => {
     await db
       .update(channelLinks)
       .set({ status: "revoked", revokedAt: new Date() })
@@ -193,7 +195,7 @@ async function revokeLinkRows(
         "channel.link.revoked publish failed (non-fatal)",
       ),
     );
-  }
+  });
 }
 
 /**
@@ -216,7 +218,8 @@ export const channelLinksSurface: ProjectionSurface = {
     // (channel, channelUid, appDid) pair — re-adding a previously-revoked scope
     // flips it back to active (re-grant).
     const now = new Date();
-    for (const scope of releasedScopes) {
+    // Sequential on purpose: upserts are applied in manifest order, one row at a time.
+    await forEachSequential(releasedScopes, async (scope) => {
       await db
         .insert(channelLinks)
         .values({
@@ -234,7 +237,7 @@ export const channelLinksSurface: ProjectionSurface = {
           target: [channelLinks.channel, channelLinks.channelUid, channelLinks.appDid],
           set: { scopes: [scope], status: "active", revokedAt: null },
         });
-    }
+    });
 
     // FOOTPRINT-RECONCILE (closes the full-declaration-deletion gap for row
     // surfaces): revoke any ACTIVE row for THIS manifest asset whose scope is no

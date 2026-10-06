@@ -13,8 +13,12 @@ import {
 import { notifyBumpDid } from '@/src/lib/registry/bump-notify';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
+
+/** Max peer-session event lookups in flight while searching for a bump match. */
+const BUMP_PEER_READ_CONCURRENCY = 5;
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -113,8 +117,10 @@ export async function POST(request: NextRequest) {
 
       let bestCandidate: { other: typeof otherSessions[0]; otherEvent: typeof bumpEvents.$inferSelect; score: number } | null = null;
 
-      for (const other of otherSessions) {
-        const [otherEvent] = await db
+      // Each peer's latest in-window event is an independent read; fetch them a few at a time,
+      // then score in session order so tie-breaking between equal scores is unchanged.
+      const otherEvents = await mapWithConcurrency(otherSessions, BUMP_PEER_READ_CONCURRENCY, async (other) => {
+        const [latest] = await db
           .select()
           .from(bumpEvents)
           .where(and(
@@ -128,7 +134,11 @@ export async function POST(request: NextRequest) {
           ))
           .orderBy(desc(bumpEvents.createdAt))
           .limit(1);
+        return latest;
+      });
 
+      for (const [index, other] of otherSessions.entries()) {
+        const otherEvent = otherEvents[index];
         if (!otherEvent) continue;
 
         // Check location proximity (skip if either side has no location)

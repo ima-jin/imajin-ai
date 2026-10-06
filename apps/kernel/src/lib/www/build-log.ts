@@ -48,23 +48,25 @@ export async function getBuildEntries(): Promise<BuildEntry[]> {
   const normalized = raw.replaceAll('\r\n', '\n');
   const sections = splitSectionsByHeading(normalized);
 
-  const entries: BuildEntry[] = [];
+  const parsedSections = sections
+    .map((section) => parseSectionHeader(section))
+    .filter((parsed): parsed is NonNullable<ReturnType<typeof parseSectionHeader>> => parsed !== null);
 
-  for (const section of sections) {
-    const parsed = parseSectionHeader(section);
-    if (!parsed) continue;
+  // Independent markdown renders; Promise.all keeps the entries in section order.
+  const entries: BuildEntry[] = await Promise.all(
+    parsedSections.map(async (parsed) => {
+      const processed = await remark()
+        .use(remarkGfm)
+        .use(html, { sanitize: false })
+        .process(parsed.content);
 
-    const processed = await remark()
-      .use(remarkGfm)
-      .use(html, { sanitize: false })
-      .process(parsed.content);
-
-    entries.push({
-      date: parsed.date,
-      title: parsed.title,
-      contentHtml: processed.toString(),
-    });
-  }
+      return {
+        date: parsed.date,
+        title: parsed.title,
+        contentHtml: processed.toString(),
+      };
+    }),
+  );
 
   return entries;
 }

@@ -4,6 +4,7 @@ import { db, publicKeys, preKeys } from '@/src/db';
 import { requireAuth } from '@imajin/auth';
 import { jsonResponse, errorResponse, generateId } from '@/src/lib/kernel/utils';
 import { withLogger } from '@imajin/logger';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 /**
  * POST /api/keys - Upload/update public key bundle
@@ -64,13 +65,14 @@ export const POST = withLogger('kernel', async (request, { log }) => {
 
     // Add one-time pre-keys if provided
     if (oneTimePreKeys && Array.isArray(oneTimePreKeys)) {
-      for (const key of oneTimePreKeys) {
+      // Sequential on purpose: pre-keys are inserted in upload order, and the first failed insert stops the rest.
+      await forEachSequential(oneTimePreKeys, async (key) => {
         await db.insert(preKeys).values({
           id: generateId('pk'),
           did: identity.id,
           key,
         });
-      }
+      });
     }
 
     return jsonResponse({ 

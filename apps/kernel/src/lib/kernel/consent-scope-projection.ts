@@ -60,6 +60,7 @@ import {
 } from '@imajin/auth/scope-vocabulary';
 import { connectorScopeDescriptors, requiresConsentRow } from '@/src/lib/kernel/scope-projections';
 import { publishConnectorScopeManifest } from '@/src/lib/kernel/scope-manifest-core';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -146,7 +147,8 @@ export async function projectConsentedScopes(opts: {
   const groups = groupByConnector(scopes);
   const outcomes: ConsentProjectionOutcome[] = [];
 
-  for (const [connector, granted] of groups) {
+  // Sequential on purpose: each connector's manifest publish writes channel_links, one connector at a time.
+  await forEachSequential(groups, async ([connector, granted]) => {
     const connectorDid = CONNECTOR_DIDS[connector];
     const channel = CONNECTOR_CHANNELS[connector];
 
@@ -182,7 +184,7 @@ export async function projectConsentedScopes(opts: {
         'auto-publish-on-consent: scope-manifest publish failed (non-fatal)',
       );
     }
-  }
+  });
 
   return outcomes;
 }

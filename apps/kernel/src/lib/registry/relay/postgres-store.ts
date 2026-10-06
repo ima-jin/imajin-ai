@@ -24,6 +24,10 @@ import {
   relayRevocations,
   relayPublicCredentials,
 } from '@/src/db/schemas/relay';
+import { mapWithConcurrency } from '@/src/lib/async/sequential';
+
+/** Max document blob reads in flight while assembling one `getDocuments` page. */
+const DOCUMENT_BLOB_READ_CONCURRENCY = 5;
 
 interface ReadLogResult {
   entries: LogEntry[];
@@ -520,17 +524,14 @@ export class PostgresRelayStore implements RelayStore {
     const page = entries.slice(startIdx, startIdx + params.limit);
 
     // Fetch blobs for entries that have a documentCID
-    const documents = [];
-    for (const entry of page) {
-      const document = await this.resolveDocumentForEntry(entry, chain.state.creatorDID);
-      documents.push({
-        operationCID: entry.cid,
-        documentCID: entry.documentCID,
-        document,
-        signerDID: entry.signerDID,
-        createdAt: entry.createdAt,
-      });
-    }
+    // Independent blob reads: fetch a few at a time; results keep the page's order.
+    const documents = await mapWithConcurrency(page, DOCUMENT_BLOB_READ_CONCURRENCY, async (entry) => ({
+      operationCID: entry.cid,
+      documentCID: entry.documentCID,
+      document: await this.resolveDocumentForEntry(entry, chain.state.creatorDID),
+      signerDID: entry.signerDID,
+      createdAt: entry.createdAt,
+    }));
 
     const lastPage = page.at(-1);
     const cursor = page.length === params.limit && lastPage ? lastPage.cid : null;

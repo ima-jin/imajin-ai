@@ -2,6 +2,7 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { eq, and, isNull, ilike } from 'drizzle-orm';
 import { db, conversationMembers, profiles } from '@/src/db';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -154,9 +155,10 @@ export function processMentions(ctx: MentionContext): void {
   if (structuredMentions.length > 0) {
     (async () => {
       const seen = new Set<string>();
-      for (const mention of structuredMentions) {
-        if (!validateMention(mention, messageText)) continue;
-        if (seen.has(mention.did)) continue;
+      // Sequential on purpose: mentions are processed in message order so notifications go out in that order.
+      await forEachSequential(structuredMentions, async (mention) => {
+        if (!validateMention(mention, messageText)) return;
+        if (seen.has(mention.did)) return;
         seen.add(mention.did);
 
         try {
@@ -168,7 +170,7 @@ export function processMentions(ctx: MentionContext): void {
         } catch (err) {
           log.error({ err: String(err) }, 'Mention processing error');
         }
-      }
+      });
     })().catch(() => {});
   } else {
     // Regex fallback for clients that don't send structured mentions
@@ -177,15 +179,16 @@ export function processMentions(ctx: MentionContext): void {
 
     const uniqueHandles = [...new Set<string>(matches)];
     (async () => {
-      for (const handle of uniqueHandles) {
+      // Sequential on purpose: handles resolve and notify in message order.
+      await forEachSequential(uniqueHandles, async (handle) => {
         try {
           const mentionedDid = await resolveHandleToDid(handle);
-          if (!mentionedDid || mentionedDid === ctx.senderDid) continue;
+          if (!mentionedDid || mentionedDid === ctx.senderDid) return;
           void publishMention(ctx, messageText, mentionedDid);
         } catch (err) {
           log.error({ err: String(err) }, 'Handle resolution error');
         }
-      }
+      });
     })().catch(() => {});
   }
 }

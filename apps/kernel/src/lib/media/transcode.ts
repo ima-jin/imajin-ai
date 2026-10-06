@@ -57,10 +57,12 @@ export function isTranscoding(originalPath: string, quality: VideoQuality): bool
 }
 
 export async function getAvailableVariants(originalPath: string): Promise<Record<VideoQuality, boolean>> {
+  // Independent filesystem checks over a fixed, 3-entry list: run them together.
+  const exists = await Promise.all(VIDEO_QUALITIES.map((q) => variantExists(originalPath, q)));
   const result = {} as Record<VideoQuality, boolean>;
-  for (const q of VIDEO_QUALITIES) {
-    result[q] = await variantExists(originalPath, q);
-  }
+  VIDEO_QUALITIES.forEach((q, index) => {
+    result[q] = exists[index];
+  });
   return result;
 }
 

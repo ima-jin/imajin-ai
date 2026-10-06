@@ -77,6 +77,7 @@ import type { LoopEventJson } from '../../loops/serialize';
 import { getOperatorDid } from '../../notify/operator-approvals';
 import { listApprovalsForOperator } from '../../notify/operator-approvals-service';
 import { emitDecisionCard, DECISION_APPROVAL_SOURCE } from '../../decisions/emit';
+import { forEachSequential } from '../../async/sequential';
 
 const CYCLE_SCOPE = 'cycle:run';
 
@@ -284,10 +285,11 @@ const cycleRunTool: McpTool = {
     const { correlationId } = started;
 
     const cardIds: string[] = [];
-    for (const phase of plannedPhases) {
+    // Sequential on purpose: phases run in the fixed cycle order (merge-sweep -> report).
+    await forEachSequential(plannedPhases, async (phase) => {
       const { cardId } = await runCyclePhaseStub(correlationId, phase, scopeResult.value, dryRun);
       if (cardId !== null) cardIds.push(cardId);
-    }
+    });
 
     await finishCycle(correlationId, {
       status: 'completed',

@@ -668,13 +668,13 @@ export function createConnectorOAuth<
   ): Promise<void> {
     const sleep = options.sleep ?? defaultSleep;
     const budgetMs = (options.expiresIn ?? DEFAULT_DEVICE_EXPIRY_SECONDS) * 1000;
-    let waitMs = (options.interval ?? DEFAULT_DEVICE_INTERVAL_SECONDS) * 1000;
+
+    // Each poll depends on the previous answer (and on the interval it may have
+    // widened), so polls are strictly sequential: poll, wait, poll again.
     // Elapsed time is accumulated from the waits we actually performed rather
     // than read off the clock, so the deadline is deterministic under an
     // injected `sleep` (and unaffected by how slow the provider is to answer).
-    let elapsedMs = 0;
-
-    for (;;) {
+    const pollFrom = async (waitMs: number, elapsedMs: number): Promise<void> => {
       const status = await pollDeviceTokenOnce(ownerDid, deviceCode);
       if (status === 'authorized') return;
       if (status === 'denied') {
@@ -683,15 +683,15 @@ export function createConnectorOAuth<
       if (status === 'expired') {
         throw new Error(`${opts.name}_device_expired: the device code expired before it was authorized`);
       }
-      if (status === 'slow_down') {
-        waitMs += SLOW_DOWN_INCREMENT_SECONDS * 1000;
-      }
-      if (elapsedMs + waitMs > budgetMs) {
+      const nextWaitMs = status === 'slow_down' ? waitMs + SLOW_DOWN_INCREMENT_SECONDS * 1000 : waitMs;
+      if (elapsedMs + nextWaitMs > budgetMs) {
         throw new Error(`${opts.name}_device_expired: the device code expired before it was authorized`);
       }
-      await sleep(waitMs);
-      elapsedMs += waitMs;
-    }
+      await sleep(nextWaitMs);
+      await pollFrom(nextWaitMs, elapsedMs + nextWaitMs);
+    };
+
+    await pollFrom((options.interval ?? DEFAULT_DEVICE_INTERVAL_SECONDS) * 1000, 0);
   }
 
   async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {

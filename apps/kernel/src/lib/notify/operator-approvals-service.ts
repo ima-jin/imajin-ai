@@ -25,6 +25,7 @@ import {
 } from './operator-approvals';
 import { verifyOperatorCountersignature } from './operator-countersign';
 import { pushWebNotificationToOperator } from './web-push';
+import { forEachSequential } from '../async/sequential';
 import {
   EXEC_COMMAND_KIND,
   asExecCommandDetail,
@@ -321,7 +322,8 @@ async function publishApprovalDecided(
   payload: OperatorApprovalDecidedPayload,
 ): Promise<void> {
   const recipients = new Set([operatorDid, ...(signerDid ? [signerDid] : [])]);
-  for (const subject of recipients) {
+  // Sequential on purpose: the operator is notified first, then the requesting agent.
+  await forEachSequential(recipients, async (subject) => {
     try {
       await bus.publish('operator.approval.decided', {
         issuer: operatorDid,
@@ -332,7 +334,7 @@ async function publishApprovalDecided(
     } catch (err) {
       log.error({ err: String(err), proposalId, subject }, 'operator.approval.decided publish failed (non-fatal)');
     }
-  }
+  });
 }
 
 /**

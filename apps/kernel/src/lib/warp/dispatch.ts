@@ -2148,7 +2148,9 @@ async function pollUntilTerminal(
   let lastKnownState = UNKNOWN_STATE;
   let consecutiveErrors = 0;
 
-  for (let attempt = 0; ; attempt += 1) {
+  // Sequential by nature: each poll waits out its interval, and what the previous read
+  // returned (terminal, error streak, last state) decides whether there is a next one.
+  const pollAttempt = async (attempt: number): Promise<WatchOutcome> => {
     const remaining = deadline - Date.now();
     if (remaining <= 0) return { kind: 'timeout', lastKnownState, elapsedMs: Date.now() - startedAt };
 
@@ -2168,7 +2170,7 @@ async function pollUntilTerminal(
       if (fatal || consecutiveErrors >= WATCH_MAX_CONSECUTIVE_ERRORS) {
         return { kind: 'abandoned', lastKnownState };
       }
-      continue;
+      return pollAttempt(attempt + 1);
     }
 
     lastKnownState = run.state ?? lastKnownState;
@@ -2182,7 +2184,10 @@ async function pollUntilTerminal(
     if (reportsProgress) {
       await reportProgress(principalDid, runId, run, tracker);
     }
-  }
+    return pollAttempt(attempt + 1);
+  };
+
+  return pollAttempt(0);
 }
 
 /**

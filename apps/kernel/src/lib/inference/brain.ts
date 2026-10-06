@@ -39,6 +39,7 @@ import { loadZaiCredentials, ZAI_BASE_URL } from '@/src/lib/zai/connector';
 import { loadLocalCredentials } from '@/src/lib/local/connector';
 import { loadOpenrouterCredentials, OPENROUTER_BASE_URL } from '@/src/lib/openrouter/connector';
 import { lookupAppRegistrantDid } from '@/src/lib/kernel/app-registrant';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:inference:brain');
 
@@ -668,17 +669,18 @@ export async function listUsableBrains(
 
   const seen = new Set<string>();
   const brains: ResolvedBrain[] = [];
-  for (const did of dids) {
-    for (const connector of candidateConnectors) {
-      const outcome = await probeConnector(connector, did);
-      if (outcome.kind !== 'usable') continue;
+  // DID-major, then connector table order — the same (DID, connector) pairs the nested loops visited.
+  const pairs = dids.flatMap((did) => candidateConnectors.map((connector) => ({ did, connector })));
+  // Sequential on purpose: resolution order is priority (first occurrence wins the dedupe below).
+  await forEachSequential(pairs, async ({ did, connector }) => {
+    const outcome = await probeConnector(connector, did);
+    if (outcome.kind !== 'usable') return;
 
-      const key = `${outcome.brain.connector}::${outcome.brain.modelId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      brains.push(outcome.brain);
-    }
-  }
+    const key = `${outcome.brain.connector}::${outcome.brain.modelId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    brains.push(outcome.brain);
+  });
   return brains;
 }
 

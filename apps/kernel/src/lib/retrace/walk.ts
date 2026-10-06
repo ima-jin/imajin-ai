@@ -70,16 +70,16 @@ export async function walkRetrace(
 
   const hops: RetraceNode[] = [];
   const visited = new Set<string>();
-  let current: HopRecord | null = first;
-  let currentCanRead: boolean = canReadFirst;
   let truncated = false;
   let terminal: RetraceResult['terminal'] = { reached: false, ref: null, reason: null };
 
-  while (current) {
+  // Sequential by nature: a hop's parent is only known once that hop has been fetched,
+  // so each step fetches the next hop and recurses (newest hop first).
+  const walkHop = async (current: HopRecord, currentCanRead: boolean): Promise<void> => {
     const key = refKey(current.ref);
     if (visited.has(key)) {
       truncated = true;
-      break;
+      return;
     }
     visited.add(key);
 
@@ -87,21 +87,22 @@ export async function walkRetrace(
 
     if (!current.parent) {
       terminal = { reached: true, ref: current.ref, reason: current.terminalReason };
-      break;
+      return;
     }
     if (visited.size >= maxDepth) {
       truncated = true;
-      break;
+      return;
     }
 
     const parentRecord: HopRecord | null = await repo.fetch(current.parent);
     if (!parentRecord) {
       terminal = { reached: true, ref: null, reason: `Parent artifact not found: ${refKey(current.parent)}` };
-      break;
+      return;
     }
-    current = parentRecord;
-    currentCanRead = await repo.canRead(viewerDid, current.audience);
-  }
+    await walkHop(parentRecord, await repo.canRead(viewerDid, parentRecord.audience));
+  };
+
+  await walkHop(first, canReadFirst);
 
   return { hops, terminal, truncated };
 }

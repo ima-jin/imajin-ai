@@ -4,6 +4,7 @@ import { listActiveGrantOwners } from '@/src/lib/quickbooks/connector';
 import { resolveAppDidForOwner } from '@/src/lib/quickbooks/realm-index';
 import { settlePaidInvoices } from '@/src/lib/quickbooks/settlement';
 import { requireCronAuth } from '@/src/cron/auth';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -51,14 +52,15 @@ export async function GET(request: NextRequest) {
     const results: OwnerReconcileResult[] = [];
     const failures: OwnerReconcileFailure[] = [];
 
-    for (const ownerDid of owners) {
+    // Sequential on purpose: settlement runs write to the ledger and hit the rate-limited QuickBooks API, one owner at a time.
+    await forEachSequential(owners, async (ownerDid) => {
       try {
         results.push(await reconcileOwner(ownerDid));
       } catch (err) {
         log.error({ err: String(err), ownerDid }, 'QuickBooks reconcile sweep: owner failed');
         failures.push({ ownerDid, error: String(err) });
       }
-    }
+    });
 
     const settled = results.reduce((sum, r) => sum + r.settled, 0);
     log.info({ owners: owners.length, settled, failed: failures.length }, 'QuickBooks reconcile sweep complete');

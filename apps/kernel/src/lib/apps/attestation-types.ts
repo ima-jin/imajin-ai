@@ -14,6 +14,7 @@
  * route's `requireEstablishedDID` gate should also accept app-auth calls.
  */
 import { registerAttestationType, type RegisterAttestationTypeResult } from '@/src/lib/auth/attestation-type-registry';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export interface AttestationTypeSeedOutcome {
   type: string;
@@ -70,8 +71,9 @@ export async function seedAttestationTypes(
   types: readonly string[],
 ): Promise<AttestationTypeSeedOutcome[]> {
   const outcomes: AttestationTypeSeedOutcome[] = [];
-  for (const type of types) {
+  // Sequential on purpose: registry writes happen in declaration order, so outcomes line up with `types`.
+  await forEachSequential(types, async (type) => {
     outcomes.push(await seedOne(appDid, slug, type));
-  }
+  });
   return outcomes;
 }

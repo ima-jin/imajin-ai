@@ -9,6 +9,10 @@ import { inferMime, isAllowedMime, type AssetContext } from "@/src/lib/media/cre
 import { getUploadLimitBytes } from "@/src/lib/media/upload-limits";
 import { processBundleUpload, type BundleFileInput } from "@/src/lib/media/bundle-upload";
 import { articleWarningFields } from "@/src/lib/media/article-guard";
+import { mapWithConcurrency } from "@/src/lib/async/sequential";
+
+/** Max uploaded files buffered concurrently while parsing a bundle. */
+const BUNDLE_READ_CONCURRENCY = 8;
 
 const log = createLogger("kernel");
 
@@ -36,13 +40,13 @@ async function parseBundleFormData(formData: FormData): Promise<ParseBundleResul
     return { ok: false, status: 400, error: "At least one file is required (field: files)" };
   }
 
-  const files: BundleFileInput[] = [];
-  for (const entry of entries) {
-    const path = entry.name || `file_${files.length}`;
+  // Buffering each upload is an independent read; results keep the upload order.
+  const files: BundleFileInput[] = await mapWithConcurrency(entries, BUNDLE_READ_CONCURRENCY, async (entry, index) => {
+    const path = entry.name || `file_${index}`;
     const buffer = Buffer.from(await entry.arrayBuffer());
     const mimeType = inferMime(entry.type, path);
-    files.push({ path, buffer, mimeType });
-  }
+    return { path, buffer, mimeType };
+  });
 
   const indexField = formData.get("index");
   let indexPath: string;

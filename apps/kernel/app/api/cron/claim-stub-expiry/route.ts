@@ -5,6 +5,7 @@ import { createLogger } from '@imajin/logger';
 import { db, claimStubIndex, identities, attestations, invites } from '@/src/db';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { requireCronAuth } from '@/src/cron/auth';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -134,10 +135,11 @@ export async function GET(request: NextRequest) {
       );
 
     const swept: SweptStub[] = [];
-    for (const candidate of candidates) {
+    // Sequential on purpose: one DID transaction at a time keeps DB load flat and the sweep order deterministic.
+    await forEachSequential(candidates, async (candidate) => {
       const result = await sweepStub(candidate.did, now);
       if (result) swept.push(result);
-    }
+    });
 
     if (swept.length > 0) {
       const nodeDid = await getNodeDid();

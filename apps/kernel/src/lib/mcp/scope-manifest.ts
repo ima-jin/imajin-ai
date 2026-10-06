@@ -36,6 +36,7 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { MCP_CONNECTOR_DID, MCP_CHANNEL } from './oauth-config';
 
 const log = createLogger('kernel');
@@ -182,9 +183,10 @@ export async function widenMcpClientScopes(
     const incoming = [...new Set(scopes.filter((scope) => ceiling.has(scope)))];
     if (incoming.length === 0) return;
 
-    for (const clientId of await activeMcpClientIds(ownerDid)) {
-      await widenOneClientRegistration(clientId, incoming);
-    }
+    // Sequential on purpose: each client registration is a read-modify-write on registry_apps, one client at a time.
+    await forEachSequential(await activeMcpClientIds(ownerDid), (clientId) =>
+      widenOneClientRegistration(clientId, incoming),
+    );
   } catch (err) {
     log.error(
       { err: String(err), ownerDid },
