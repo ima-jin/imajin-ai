@@ -1,5 +1,5 @@
 /**
- * @imajin/pay - Type definitions
+ * Kernel pay provider - Type definitions
  * 
  * Unified payment types that work across providers (Stripe, Solana).
  */

@@ -1,10 +1,10 @@
 /**
- * @imajin/pay - Unified Payment Infrastructure
+ * Kernel pay provider - Unified Payment Infrastructure
  * 
  * One interface. Two worlds. No lock-in.
  * 
  * @example
- * import { PaymentService } from '@imajin/pay';
+ * import { PaymentService } from '@/src/lib/pay';
  * 
  * // #2174: the Stripe client itself always comes from the shared adapter
  * // singleton (providers/stripe-client.ts), which reads STRIPE_SECRET_KEY
