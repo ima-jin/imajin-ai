@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
-import { requireAuth, resolveActingDid } from "@imajin/auth";
+import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { isFairManifestV11 } from "@imajin/fair";
 import type { FairManifest, FairManifestV11 } from "@imajin/fair";
@@ -19,15 +19,13 @@ export async function patchAccess(
 ): Promise<NextResponse> {
   const cors = corsHeaders(request);
 
-  // 1. Auth
-  const authResult = await requireAuth(request);
+  // 1. Auth — session cookie / legacy Bearer PAT, or (#2535) a scoped
+  // app-token carrying `media:write` (see requireMediaAuth).
+  const authResult = await requireMediaAuth(request, "media:write");
   if ("error" in authResult) {
-    return NextResponse.json(
-      { error: authResult.error },
-      { status: authResult.status, headers: cors }
-    );
+    return mediaAuthErrorResponse(authResult, cors);
   }
-  const requesterDid = resolveActingDid(authResult.identity);
+  const requesterDid = authResult.auth.did;
 
   // 2. Parse body
   let body: { access?: unknown };

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { patchAccess } from '../routes/access';
+import { createAuthMock, createNodeUrlMock, appToken, APP_TOKEN_READ_ONLY, APP_TOKEN_WRITE_ONLY } from './media-auth-test-helpers';
 import { mockIdentity, mockRequest } from './test-helpers';
+import { patchAccess } from '../routes/access';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -20,12 +21,10 @@ vi.mock('@/src/db', () => ({
   assets: { id: 'id', ownerDid: 'owner_did', status: 'status', fairManifest: 'fair_manifest', fairPath: 'fair_path', fairDfosEventId: 'fair_dfos_event_id', createdAt: 'created_at', mimeType: 'mime_type' },
 }));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: vi.fn(),
-  resolveActingDid: vi.fn((identity: { actingFor?: string; actingAs?: string; id: string }) =>
-    identity.actingFor ?? identity.actingAs ?? identity.id
-  ),
-}));
+const mockVerifyAppToken = vi.hoisted(() => vi.fn(async () => null));
+
+vi.mock('@imajin/auth', () => createAuthMock(mockVerifyAppToken));
+vi.mock('@/src/lib/http/node-url', () => createNodeUrlMock());
 
 vi.mock('@imajin/fair', () => ({
   isFairManifestV11: vi.fn((m: unknown) => !!(m && typeof m === 'object' && 'version' in m && (m as { version: string }).version === '1.1')),
@@ -49,8 +48,10 @@ import { updateManifestFlow } from '@/src/lib/media/manifest-helpers';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function makeRequest(body: unknown, url = 'https://test.imajin.ai/media/api/assets/asset_test/access') {
-  return mockRequest(body, url);
+function makeRequest(body: unknown, url = 'https://test.imajin.ai/media/api/assets/asset_test/access', bearer?: string) {
+  const req = mockRequest(body, url);
+  if (bearer) req.headers.set('Authorization', `Bearer ${bearer}`);
+  return req;
 }
 
 function setupAsset(overrides: Record<string, unknown> = {}) {
@@ -83,6 +84,7 @@ function setupAsset(overrides: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockVerifyAppToken.mockResolvedValue(null);
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -235,5 +237,69 @@ describe('PATCH /media/api/assets/[id]/access', () => {
 
     const res = await patchAccess(makeRequest({ access: 'public' }), 'asset_test');
     expect(res.status).toBe(200);
+  });
+
+  // ─── #2535: scoped app-token auth ────────────────────────────────────────
+  describe('app-token auth (#2535)', () => {
+    function queueAsset() {
+      const asset = setupAsset();
+      const updatedAsset = { ...asset, fairManifest: { ...asset.fairManifest, access: { type: 'public' } } };
+
+      mockFrom.mockReturnValueOnce({ where: mockWhere });
+      mockWhere.mockReturnValueOnce({ limit: mockLimit });
+      mockLimit.mockResolvedValueOnce([asset]);
+
+      mockFrom.mockReturnValueOnce({ where: mockWhere });
+      mockWhere.mockReturnValueOnce({ limit: mockLimit });
+      mockLimit.mockResolvedValueOnce([updatedAsset]);
+
+      vi.mocked(updateManifestFlow).mockResolvedValueOnce({
+        signedManifest: updatedAsset.fairManifest as never,
+        dfosEventId: 'evt_new',
+      });
+    }
+
+    it('accepts a media:write app-token whose sub owns the asset', async () => {
+      mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:owner'));
+      queueAsset();
+
+      const res = await patchAccess(makeRequest({ access: 'public' }, undefined, 'scoped-app-token'), 'asset_test');
+      expect(res.status).toBe(200);
+      expect(requireAuth).not.toHaveBeenCalled();
+      expect(updateManifestFlow).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'asset_test', ownerDid: 'did:imajin:owner' }),
+        expect.objectContaining({ access: { type: 'public' } }),
+        expect.any(String)
+      );
+    });
+
+    it('returns 403 for an app-token without media:write and never falls back to session auth', async () => {
+      mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_READ_ONLY, 'did:imajin:owner'));
+
+      const res = await patchAccess(makeRequest({ access: 'public' }, undefined, 'read-only-app-token'), 'asset_test');
+      expect(res.status).toBe(403);
+      const body = await res.json();
+      expect(body.error).toBe('Missing required scope: media:write');
+      expect(requireAuth).not.toHaveBeenCalled();
+      expect(updateManifestFlow).not.toHaveBeenCalled();
+    });
+
+    it('returns 403 when the app-token sub does not own the asset', async () => {
+      mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:intruder'));
+      setupAsset();
+
+      const res = await patchAccess(makeRequest({ access: 'public' }, undefined, 'scoped-app-token'), 'asset_test');
+      expect(res.status).toBe(403);
+      expect(updateManifestFlow).not.toHaveBeenCalled();
+    });
+
+    it('falls through to session auth when the bearer is not a verifiable app-token', async () => {
+      mockVerifyAppToken.mockResolvedValueOnce(null);
+      vi.mocked(requireAuth).mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
+
+      const res = await patchAccess(makeRequest({ access: 'public' }, undefined, 'legacy-pat'), 'asset_test');
+      expect(res.status).toBe(401);
+      expect(requireAuth).toHaveBeenCalledTimes(1);
+    });
   });
 });

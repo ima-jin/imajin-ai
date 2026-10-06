@@ -1,10 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets, identities, type Asset } from "@/src/db";
-import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
 import { corsHeaders } from "@/src/lib/kernel/cors";
-import { eq, and, sql, ilike, like } from "drizzle-orm";
+import { eq, and, sql, ilike, like, type SQL } from "drizzle-orm";
 import { rateLimit, getClientIP } from "@imajin/config";
 import { createLogger } from "@imajin/logger";
 import { createAsset, inferMime, isAllowedMime, type AssetContext } from "@/src/lib/media/create-asset";
@@ -156,16 +155,40 @@ async function resolveListOwnerDid(
     return { ownerDid: ownerDidHeader, isAgentQuery: false };
   }
 
-  const authResult = await requireAuth(request);
+  // #2648: accepts a scoped app-token (requires `media:read`) alongside the
+  // pre-existing session cookie / legacy Bearer PAT — additive, see
+  // requireMediaAuth's own docblock.
+  const authResult = await requireMediaAuth(request, "media:read");
   if ("error" in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+    return mediaAuthErrorResponse(authResult, cors);
   }
-  const { identity } = authResult;
+  const { auth } = authResult;
   const didParam = searchParams.get("did");
-  if (didParam && didParam !== identity.id) {
+  // The caller's own raw identity: the session identity when present, else
+  // the app-token's `sub` (which has no separate delegate identity).
+  const callerDid = auth.identity?.id ?? auth.did;
+  if (didParam && didParam !== callerDid) {
     return { ownerDid: didParam, isAgentQuery: true };
   }
-  return { ownerDid: resolveActingDid(identity), isAgentQuery: false };
+  return { ownerDid: auth.did, isAgentQuery: false };
+}
+
+/**
+ * Filter conditions on the upload context persisted at
+ * `assets.metadata.context` (#2648) — `context_app` / `context_feature`.
+ * Values are bound as parameters; an absent/empty param adds no condition.
+ */
+function contextFilterConditions(searchParams: URLSearchParams): SQL[] {
+  const conditions: SQL[] = [];
+  const contextApp = searchParams.get("context_app");
+  const contextFeature = searchParams.get("context_feature");
+  if (contextApp) {
+    conditions.push(sql`${assets.metadata}->'context'->>'app' = ${contextApp}`);
+  }
+  if (contextFeature) {
+    conditions.push(sql`${assets.metadata}->'context'->>'feature' = ${contextFeature}`);
+  }
+  return conditions;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +349,9 @@ export async function GET(request: NextRequest) {
     // DB-level MIME prefix and filename filters
     if (type) conditions.push(like(assets.mimeType, `${type}/%`));
     if (search) conditions.push(ilike(assets.filename, `%${search}%`));
+
+    // Upload-context filters (#2648)
+    conditions.push(...contextFilterConditions(searchParams));
 
     const rows = await db
       .select()
