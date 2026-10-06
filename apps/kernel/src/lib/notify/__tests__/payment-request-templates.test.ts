@@ -26,6 +26,57 @@ describe('pay:payment_request-issued template', () => {
   });
 });
 
+describe('pay:payment_request-issued email pay link (#2660)', () => {
+  const payUrl = 'https://jin.imajin.ai/pay/r/ph_abc123';
+
+  it('renders a Pay button and a plain-text fallback URL pointing at the pay page', () => {
+    const html = getTemplate('pay:payment_request-issued')!.email!.html({
+      issuerName: 'Acme Co',
+      totalFormatted: '$19.99',
+      payUrl,
+    });
+
+    expect(html).toContain(`<a href="${payUrl}"`);
+    expect(html).toContain('Pay now');
+    // Fallback: the URL appears as visible link text too, not only as the button href.
+    expect(html).toContain(`>${payUrl}</a>`);
+    expect(html.split(payUrl).length - 1).toBeGreaterThanOrEqual(3);
+  });
+
+  it('escapes the URL in both the href and the fallback text', () => {
+    const hostile = 'https://jin.imajin.ai/pay/r/x"><script>alert(1)</script>&y=\'z';
+    const html = getTemplate('pay:payment_request-issued')!.email!.html({ totalFormatted: '$1.00', payUrl: hostile });
+
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).not.toContain(hostile);
+    expect(html).toContain('https://jin.imajin.ai/pay/r/x&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;&amp;y=&#39;z');
+  });
+
+  it.each([
+    ['javascript:alert(1)'],
+    ['/pay/r/ph_abc123'],
+    [undefined],
+    [42],
+  ])('omits the CTA for a missing or non-absolute-http(s) payUrl (%s)', (bad) => {
+    const html = getTemplate('pay:payment_request-issued')!.email!.html({ totalFormatted: '$1.00', payUrl: bad });
+
+    expect(html).not.toContain('Pay now');
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('is requesting');
+  });
+
+  it('keeps the issuer and amount copy alongside the link', () => {
+    const html = getTemplate('pay:payment_request-issued')!.email!.html({
+      issuerName: 'Imajin <Inc>',
+      totalFormatted: 'CA$2,260.00',
+      payUrl,
+    });
+
+    expect(html).toContain('Imajin &lt;Inc&gt;');
+    expect(html).toContain('CA$2,260.00');
+  });
+});
+
 describe('pay:payment_request-paid template', () => {
   it('renders issuer vs recipient copy from data.role', () => {
     const template = getTemplate('pay:payment_request-paid')!;

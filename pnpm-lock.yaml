@@ -879,6 +879,9 @@ importers:
       '@imajin/auth':
         specifier: workspace:*
         version: link:../auth
+      '@imajin/config':
+        specifier: workspace:*
+        version: link:../config
       '@imajin/db':
         specifier: workspace:*
         version: link:../db

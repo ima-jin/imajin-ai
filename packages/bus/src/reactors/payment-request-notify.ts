@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { send } from '@imajin/notify';
 import { format as formatMoney } from '@imajin/money';
+import { buildPublicUrlAbsolute } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import type { ReactorHandler } from '../types';
 
@@ -40,6 +41,7 @@ interface PaymentRequestRow {
   totalAmount: number;
   currency: string;
   kind: string;
+  payHandle: string | null;
 }
 
 /** Fetch the canonical request row — the event payload alone doesn't always carry `recipient_stub_id` (e.g. `.paid`/`.settled`). */
@@ -48,7 +50,7 @@ async function fetchPaymentRequest(id: string): Promise<PaymentRequestRow | null
     const { getClient } = await import('@imajin/db');
     const sql = getClient();
     const rows = await sql`
-      SELECT issuer_did, recipient_did, recipient_stub_id, total_amount, currency, kind
+      SELECT issuer_did, recipient_did, recipient_stub_id, total_amount, currency, kind, pay_handle
       FROM pay.payment_request
       WHERE id = ${id}
       LIMIT 1
@@ -62,11 +64,23 @@ async function fetchPaymentRequest(id: string): Promise<PaymentRequestRow | null
       totalAmount: Number(row.total_amount),
       currency: row.currency as string,
       kind: row.kind as string,
+      payHandle: (row.pay_handle as string | null) ?? null,
     };
   } catch (err) {
     log.error({ err: String(err), paymentRequestId: id }, 'payment_request lookup failed');
     return null;
   }
+}
+
+/**
+ * Public pay-page URL for a request (#2660): `<pay>/r/<payHandle>`, the same
+ * path the issuer UI's "Copy pay link" builds (PaymentRequestRowItem). Uses
+ * the absolute variant of `buildPublicUrl` because this lands in an email,
+ * where a relative `/pay/...` path is unusable. Undefined when the row has no
+ * handle (never expected post-0144) so the template just omits the CTA.
+ */
+function buildPayUrl(payHandle: string | null): string | undefined {
+  return payHandle ? `${buildPublicUrlAbsolute('pay')}/r/${encodeURIComponent(payHandle)}` : undefined;
 }
 
 /** Best-effort issuer display name for the "who sent this" line. Fails open to `undefined` — never blocks the notification. */
@@ -231,7 +245,13 @@ export const paymentRequestNotifyReactor: ReactorHandler = async (event) => {
         targetDid: target.targetDid,
         isStub: target.isStub,
         scope: ISSUED_SCOPE,
-        data: { issuerName, totalFormatted, currency: request.currency, kind: request.kind },
+        data: {
+          issuerName,
+          totalFormatted,
+          currency: request.currency,
+          kind: request.kind,
+          payUrl: buildPayUrl(request.payHandle),
+        },
       });
       return;
     }

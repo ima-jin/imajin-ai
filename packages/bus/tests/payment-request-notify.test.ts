@@ -77,6 +77,7 @@ const { state, fakeSql, resetState } = vi.hoisted(() => {
 
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
+import { buildPublicUrlAbsolute } from '@imajin/config';
 import { paymentRequestNotifyReactor } from '../src/reactors/payment-request-notify';
 import type { BusEvent } from '../src/types';
 
@@ -93,6 +94,7 @@ function paymentRequestRow(overrides: Record<string, unknown> = {}): Record<stri
     total_amount: 1999,
     currency: 'USD',
     kind: 'invoice',
+    pay_handle: 'ph_handle1',
     ...overrides,
   };
 }
@@ -142,6 +144,38 @@ describe('payment_request.issued', () => {
     const data = sent.data as Record<string, unknown>;
     expect(data.email).toBe('invitee@example.com');
     expect(data.stub).toBe(true);
+  });
+
+  it('passes payUrl (<pay>/r/<payHandle>) in the notify data for a known DID recipient (#2660)', async () => {
+    state.paymentRequest = paymentRequestRow();
+
+    await paymentRequestNotifyReactor(makeEvent('payment_request.issued'), {});
+
+    const data = (mockSend.mock.calls[0][0] as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.payUrl).toBe(`${buildPublicUrlAbsolute('pay')}/r/ph_handle1`);
+    expect(data.payUrl).toMatch(/^https?:\/\/.+\/r\/ph_handle1$/);
+  });
+
+  it('passes the same payUrl in the single notify for a new-counterparty stub recipient (#2660)', async () => {
+    state.paymentRequest = paymentRequestRow({ recipient_did: null, recipient_stub_id: STUB });
+    state.inviteEmail = 'invitee@example.com';
+
+    await paymentRequestNotifyReactor(makeEvent('payment_request.issued'), {});
+
+    // One send => one email carrying the link (the invite path sends no email of its own).
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    const data = (mockSend.mock.calls[0][0] as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.email).toBe('invitee@example.com');
+    expect(data.payUrl).toBe(`${buildPublicUrlAbsolute('pay')}/r/ph_handle1`);
+  });
+
+  it('leaves payUrl undefined when the row has no pay handle', async () => {
+    state.paymentRequest = paymentRequestRow({ pay_handle: null });
+
+    await paymentRequestNotifyReactor(makeEvent('payment_request.issued'), {});
+
+    const data = (mockSend.mock.calls[0][0] as Record<string, unknown>).data as Record<string, unknown>;
+    expect(data.payUrl).toBeUndefined();
   });
 
   it('skips sending when no invite email can be resolved for a stub recipient', async () => {
