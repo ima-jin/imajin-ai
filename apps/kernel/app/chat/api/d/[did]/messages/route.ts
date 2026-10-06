@@ -51,7 +51,7 @@ async function verifyDidAccess(requesterDid: string, targetDid: string): Promise
 /**
  * OPTIONS /api/d/:did/messages - CORS preflight
  */
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

@@ -44,7 +44,7 @@ function publicKeyFromDid(did: string): Uint8Array | null {
 }
 
 /** Verify Ed25519 signed request headers */
-async function verifySignedRequest(request: NextRequest, body: string): Promise<{ valid: boolean; did?: string; error?: string }> {
+function verifySignedRequest(request: NextRequest, body: string): { valid: boolean; did?: string; error?: string } {
   const signature = request.headers.get('x-signature');
   const timestamp = request.headers.get('x-timestamp');
   const did = request.headers.get('x-did');
@@ -240,14 +240,14 @@ async function checkProfileOwnership(
 }
 
 /** If x-signature header is present, verify the Ed25519 signature. Returns an error response or null. */
-async function validateSignatureIfPresent(
+function validateSignatureIfPresent(
   request: NextRequest,
   bodyText: string,
   identity: { id: string },
   cors: HeadersInit
-): Promise<NextResponse | null> {
+): NextResponse | null {
   if (!request.headers.get('x-signature')) return null;
-  const sigResult = await verifySignedRequest(request, bodyText);
+  const sigResult = verifySignedRequest(request, bodyText);
   if (!sigResult.valid) {
     return NextResponse.json({ error: `Signature verification failed: ${sigResult.error}` }, { status: 401, headers: cors });
   }
@@ -432,7 +432,7 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
@@ -509,7 +509,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (ownerError) return ownerError;
 
     const bodyText = await request.text();
-    const sigError = await validateSignatureIfPresent(request, bodyText, identity, cors);
+    const sigError = validateSignatureIfPresent(request, bodyText, identity, cors);
     if (sigError) return sigError;
 
     const body = JSON.parse(bodyText);

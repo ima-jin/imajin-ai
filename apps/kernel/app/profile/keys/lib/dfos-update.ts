@@ -99,7 +99,15 @@ export async function buildSignedUpdate(input: {
   };
 
   const { privateKey } = importEd25519Keypair(hexToBytes(input.controllerPrivateKeyHex));
-  const signer = async (message: Uint8Array) => signPayloadEd25519(message, privateKey);
+  // Signer contract is Promise-returning; signing itself is synchronous. A sync
+  // throw must still surface as a rejection, as it did when this was `async`.
+  const signer = (message: Uint8Array): Promise<Uint8Array> => {
+    try {
+      return Promise.resolve(signPayloadEd25519(message, privateKey));
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  };
 
   const { jwsToken, operationCID } = await signIdentityOperation({
     operation,

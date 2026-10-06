@@ -28,7 +28,7 @@ type EmailAuth =
   | { mode: 'self'; did: string }
   | { mode: 'none' };
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

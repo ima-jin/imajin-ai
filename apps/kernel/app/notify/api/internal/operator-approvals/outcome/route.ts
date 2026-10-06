@@ -21,7 +21,7 @@ import { attachApprovalOutcome } from '@/src/lib/notify/operator-approvals-servi
 
 const MAX_OUTPUT_HASH_LENGTH = 128;
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 

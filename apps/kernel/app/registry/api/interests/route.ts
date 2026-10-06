@@ -4,7 +4,7 @@ import { db, interests } from '@/src/db';
 import { asc } from 'drizzle-orm';
 import { withLogger } from '@imajin/logger';
 
-export async function OPTIONS(request: NextRequest) {
+export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
 }
 
