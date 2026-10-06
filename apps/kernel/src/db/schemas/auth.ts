@@ -161,6 +161,8 @@ export const attestations = authSchema.table('attestations', {
   disclosureScopeIdx: index('idx_auth_attestations_disclosure_scope').on(table.disclosureScope),
   delegationGrantIdx: index('idx_auth_attestations_delegation_grant').on(table.delegationGrantId).where(sql`${table.delegationGrantId} IS NOT NULL`),
   supersedesIdx: index('idx_auth_attestations_supersedes').on(table.supersedes).where(sql`${table.supersedes} IS NOT NULL`),
+  // #2396: backs the `context_id` filter on GET /auth/api/attestations.
+  contextIdIdx: index('idx_auth_attestations_context_id').on(table.contextId).where(sql`${table.contextId} IS NOT NULL`),
 }));
 
 /**

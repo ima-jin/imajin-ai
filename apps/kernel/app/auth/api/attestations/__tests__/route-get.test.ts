@@ -37,6 +37,7 @@ vi.mock('@/src/db', () => ({
     revokedAt: 'attestations.revokedAt',
     type: 'attestations.type',
     issuerDid: 'attestations.issuerDid',
+    contextId: 'attestations.contextId',
     attestationStatus: 'attestations.attestationStatus',
     issuedAt: 'attestations.issuedAt',
   },
@@ -107,6 +108,19 @@ function hasNe(args: unknown[]): boolean {
   return args.some((arg) => (arg as Op).op === 'ne');
 }
 
+/** The `eq(column, value)` conditions in the where-list, as `[column, value]` pairs. */
+function eqPairs(args: unknown[]): unknown[][] {
+  return args.filter((arg) => (arg as Op).op === 'eq').map((arg) => (arg as Op).args);
+}
+
+function hasEq(args: unknown[], column: string, value: string): boolean {
+  return eqPairs(args).some(([col, val]) => col === column && val === value);
+}
+
+function hasEqOnColumn(args: unknown[], column: string): boolean {
+  return eqPairs(args).some(([col]) => col === column);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.limitMock.mockResolvedValue([]);
@@ -139,6 +153,64 @@ describe('GET /auth/api/attestations — countersign-pending filter (#1822)', ()
     await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob'));
 
     expect(hasNotInArray(whereArgs())).toBe(false);
+  });
+});
+
+// #2396 — optional exact-match `context_id` filter (indexed column).
+describe('GET /auth/api/attestations — context_id filter (#2396)', () => {
+  const base = 'https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob';
+
+  it('filters on attestations.contextId when context_id is provided', async () => {
+    await GET(makeGetReq(`${base}&context_id=asset_survey_1`));
+
+    const args = whereArgs();
+    expect(hasEq(args, 'attestations.contextId', 'asset_survey_1')).toBe(true);
+    expect(hasEq(args, 'attestations.subjectDid', 'did:imajin:bob')).toBe(true);
+  });
+
+  it('adds no context filter when context_id is omitted (backward compatible)', async () => {
+    await GET(makeGetReq(base));
+
+    const args = whereArgs();
+    expect(hasEqOnColumn(args, 'attestations.contextId')).toBe(false);
+    expect(hasEq(args, 'attestations.subjectDid', 'did:imajin:bob')).toBe(true);
+  });
+
+  it('adds no context filter when context_id is empty', async () => {
+    await GET(makeGetReq(`${base}&context_id=`));
+
+    expect(hasEqOnColumn(whereArgs(), 'attestations.contextId')).toBe(false);
+  });
+
+  it('combines context_id with type, issuer_did and status filters (all ANDed)', async () => {
+    await GET(
+      makeGetReq(
+        `${base}&type=vouch&issuer_did=did:imajin:alice&status=bilateral&context_id=asset_survey_1`,
+      ),
+    );
+
+    const args = whereArgs();
+    expect(hasEq(args, 'attestations.subjectDid', 'did:imajin:bob')).toBe(true);
+    expect(hasEq(args, 'attestations.type', 'vouch')).toBe(true);
+    expect(hasEq(args, 'attestations.issuerDid', 'did:imajin:alice')).toBe(true);
+    expect(hasEq(args, 'attestations.attestationStatus', 'bilateral')).toBe(true);
+    expect(hasEq(args, 'attestations.contextId', 'asset_survey_1')).toBe(true);
+  });
+
+  it('still applies the default superseded exclusion alongside context_id', async () => {
+    await GET(makeGetReq(`${base}&context_id=asset_survey_1`));
+
+    expect(hasNe(whereArgs())).toBe(true);
+  });
+
+  it('returns the rows the query yields for the context', async () => {
+    mocks.limitMock.mockResolvedValue([
+      { id: 'att_ctx', type: 'vouch', issuerDid: 'did:imajin:alice', subjectDid: 'did:imajin:bob', contextId: 'asset_survey_1' },
+    ]);
+
+    const res = await GET(makeGetReq(`${base}&context_id=asset_survey_1`));
+
+    expect(await res.json()).toEqual([expect.objectContaining({ id: 'att_ctx', contextId: 'asset_survey_1' })]);
   });
 });
 
