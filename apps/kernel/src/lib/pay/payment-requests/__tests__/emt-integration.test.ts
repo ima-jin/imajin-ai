@@ -26,7 +26,7 @@ const h = vi.hoisted(() => {
     let dir = dirname(fileURLToPath(import.meta.url));
     for (let i = 0; i < 12; i++) {
       const candidate = join(dir, 'migrations');
-      if (existsSync(join(candidate, '0174_profile_etransfer_email.sql'))) return candidate;
+      if (existsSync(join(candidate, '0175_pay_payment_request_paid_by_did.sql'))) return candidate;
       dir = dirname(dir);
     }
     throw new Error('could not locate migrations/ directory');
@@ -61,6 +61,8 @@ vi.mock('@/src/db', async () => {
     '0168_pay_payment_request_tax_amounts.sql',
     '0173_pay_payment_request_emt_pending.sql',
     '0174_profile_etransfer_email.sql',
+    // #2656: the drizzle schema now selects `paid_by_did` on every read of the request.
+    '0175_pay_payment_request_paid_by_did.sql',
   ]) {
     await client.exec(h.readMigration(name));
   }

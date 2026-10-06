@@ -349,3 +349,21 @@ describe('PaymentRequestRowItem — e-Transfer pending (#2665)', () => {
   });
 });
 
+describe('PaymentRequestRowItem — who paid (#2656)', () => {
+  it('shows the DID that paid when the payer chose a different DID than the recipient', () => {
+    render(
+      <PaymentRequestRowItem
+        row={row({ status: 'paid', paidByDid: 'did:imajin:artifact', settlementRef: { method: 'stripe', settled_at: '2026-01-02T00:00:00.000Z' } })}
+        onChanged={vi.fn()}
+      />,
+    );
+    expandRow();
+    expect(screen.getByTestId('paid-by-did').textContent).toContain('did:imajin:artifact');
+  });
+
+  it('shows no payer line when none was chosen', () => {
+    render(<PaymentRequestRowItem row={row()} onChanged={vi.fn()} />);
+    expandRow();
+    expect(screen.queryByTestId('paid-by-did')).toBeNull();
+  });
+});

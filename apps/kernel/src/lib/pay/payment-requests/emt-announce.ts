@@ -16,6 +16,7 @@ import type { PaymentRequest } from '@/src/db';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { emitPaymentRequestSettledAttestation } from './attestations';
+import { payingDidOf } from './settlement-payer';
 import { taxBreakdownOf } from './tax';
 import type { PaymentRequestSettlementRef } from './types';
 
@@ -31,6 +32,7 @@ export async function attestAndAnnounceEmtSettled(
     paymentRequestId: paymentRequest.id,
     issuerDid: paymentRequest.issuerDid,
     recipientDid: paymentRequest.recipientDid,
+    paidByDid: payingDidOf(paymentRequest),
     method: 'emt',
     assertedBy,
     reference: settlementRef.reference,
@@ -50,6 +52,7 @@ export async function attestAndAnnounceEmtSettled(
       method: 'emt',
       issuerDid: paymentRequest.issuerDid,
       recipientDid: paymentRequest.recipientDid,
+      paidByDid: payingDidOf(paymentRequest),
       totalAmount: paymentRequest.totalAmount,
       currency: paymentRequest.currency,
       contentHash: paymentRequest.contentHash,

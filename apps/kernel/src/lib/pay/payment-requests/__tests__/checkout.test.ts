@@ -103,6 +103,8 @@ vi.mock('@/src/lib/pay/checkout', () => ({
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: state.settlePaymentMock }));
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   getPaymentRequestById: state.getPaymentRequestByIdMock,
+  // #2656: checkout also resolves the opaque pay-link handle when the id lookup misses.
+  findLiveRowByHandle: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
   emitPaymentRequestSettledStripeAttestation: state.settledStripeAttestationMock,

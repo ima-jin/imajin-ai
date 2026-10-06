@@ -2047,6 +2047,8 @@ export interface BusEventMap {
     paymentRequestId: string;
     issuerDid: string;
     recipientDid: string | null;
+    /** #2656 — the DID that paid (`paid_by_did ?? recipient_did`); the invoice stays addressed to `recipientDid`. */
+    paidByDid?: string | null;
     totalAmount: number;
     currency: string;
     settlementRef: Record<string, unknown>;
@@ -2059,6 +2061,8 @@ export interface BusEventMap {
     method: 'manual' | 'stripe' | 'mjnx' | 'emt';
     issuerDid: string;
     recipientDid: string | null;
+    /** #2656 — the DID that paid (`paid_by_did ?? recipient_did`); the invoice stays addressed to `recipientDid`. */
+    paidByDid?: string | null;
     totalAmount: number;
     currency: string;
     contentHash: string;

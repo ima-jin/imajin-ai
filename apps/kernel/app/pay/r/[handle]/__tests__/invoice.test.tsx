@@ -36,6 +36,7 @@ const ISSUED_VIEW = {
   dueAt: '2026-10-06T00:00:00.000Z',
   paidAt: null,
   settlement: null,
+  paidBy: null,
 };
 
 const PAID_VIEW = {
@@ -164,6 +165,19 @@ describe('printable invoice — receipt mode once paid (#2661)', () => {
     expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Pay now' })).toBeNull();
     expect(screen.queryByTestId('emt-instructions')).toBeNull();
+  });
+
+  it('#2656: the receipt names the paying DID — Artifact when Eric paid as Artifact', async () => {
+    await renderPage({ ...PAID_VIEW, paidBy: { did: 'did:imajin:artifact', displayName: 'Artifact' } });
+
+    expect(text('receipt-paid-by')).toContain('Artifact');
+    expect(text('receipt-paid-by-did')).toContain('did:imajin:artifact');
+  });
+
+  it('#2656: an open invoice names nobody as payer', async () => {
+    await renderPage(ISSUED_VIEW);
+    expect(screen.queryByTestId('receipt-paid-by')).toBeNull();
+    expect(screen.queryByTestId('receipt-paid-by-did')).toBeNull();
   });
 
   it('degrades to a plain "Paid" status when no payment date was recorded', async () => {

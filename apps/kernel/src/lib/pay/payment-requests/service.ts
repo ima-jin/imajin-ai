@@ -20,6 +20,7 @@ import type { TaxRegistration } from '@/src/lib/profile/tax-registrations';
 import { computePaymentRequestContentHash } from './content-hash';
 import { emtOptionOf, type EmtPayOption } from './emt-offer';
 import { invoiceNumberOf, issuerAddressOf, publicSettlementOf, type PublicSettlement } from './invoice';
+import { payingDidOf } from './settlement-payer';
 import {
   FAIR_VERSION_WITH_TAXES,
   buildDefaultPaymentRequestManifest,
@@ -535,6 +536,12 @@ export interface PaymentRequestInvoiceView extends PaymentRequestPublicView {
   /** Sanitised settlement reference; `null` until settled. */
   settlement: PublicSettlement | null;
   /**
+   * #2656 — who paid, once settled: `paid_by_did ?? recipient_did`, with the
+   * profile name when there is one. `null` until settled (and for a request
+   * settled with neither a chosen payer nor a resolved recipient).
+   */
+  paidBy: { did: string; displayName: string } | null;
+  /**
    * #2665 — the e-Transfer option; `null` (nothing renders) unless the issuer
    * has set a receiving email AND the request is still open. The receiving
    * email itself is only ever included once the payer has chosen e-Transfer.
@@ -590,6 +597,13 @@ export async function getPaymentRequestByHandle(handle: string): Promise<Payment
   return publicViewOf(row, await findIssuerProfile(row.issuerDid));
 }
 
+/** Who a settled request names as having paid (#2656) — the paying DID and its profile name; `null` when nobody is named. */
+async function paidByViewOf(row: PaymentRequest): Promise<PaymentRequestInvoiceView['paidBy']> {
+  const did = payingDidOf(row);
+  if (!did) return null;
+  return { did, displayName: issuerDisplayNameOf(await findIssuerProfile(did), did) };
+}
+
 /** ISO string for a nullable timestamp column, `null` when unset. */
 function isoOrNull(value: Date | string | null | undefined): string | null {
   return value ? new Date(value).toISOString() : null;
@@ -603,9 +617,10 @@ function isoOrNull(value: Date | string | null | undefined): string | null {
  * keeps returning `getPaymentRequestByHandle`'s narrower view, unchanged.
  *
  * Adds a document number, issue/due dates, the issuer's public business
- * address, and — only once settled — the payment date and a sanitised
- * settlement reference (see `invoice.ts`). Still no issuer/recipient DIDs,
- * recipient PII, settlement note or asserter, fair_manifest or content_hash.
+ * address, and — only once settled — the payment date, a sanitised
+ * settlement reference (see `invoice.ts`) and who paid (#2656: the paying DID,
+ * `paid_by_did ?? recipient_did`). Still no issuer DID, unsettled recipient,
+ * settlement note or asserter, fair_manifest or content_hash.
  */
 export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<PaymentRequestInvoiceView | null> {
   const row = await findLiveRowByHandle(handle);
@@ -614,6 +629,7 @@ export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<
   const profile = await findIssuerProfile(row.issuerDid);
   const settled = row.status === 'paid' || row.status === 'settled_manual';
   const { paidAt, settlement } = settled ? publicSettlementOf(row.settlementRef) : { paidAt: null, settlement: null };
+  const paidBy = settled ? await paidByViewOf(row) : null;
 
   return {
     ...publicViewOf(row, profile),
@@ -623,6 +639,7 @@ export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<
     issuerAddress: issuerAddressOf(profile),
     paidAt,
     settlement,
+    paidBy,
     emt: emtOptionOf(row, profile?.etransferEmail),
   };
 }

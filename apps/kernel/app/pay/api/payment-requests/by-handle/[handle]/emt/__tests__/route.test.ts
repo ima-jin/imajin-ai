@@ -4,8 +4,13 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requestEmtPayInstructions: vi.fn(),
   rateLimit: vi.fn(),
+  requireAuth: vi.fn(),
 }));
 
+vi.mock('@imajin/auth', () => ({ requireAuth: mocks.requireAuth }));
+vi.mock('@/src/lib/pay/payment-requests/payer-dids', () => ({
+  payerPersonDidOf: (identity: { actingFor?: string; id: string }) => identity.actingFor ?? identity.id,
+}));
 vi.mock('@imajin/config', () => ({
   rateLimit: mocks.rateLimit,
   getClientIP: () => '203.0.113.7',
@@ -82,6 +87,58 @@ describe('POST /pay/api/payment-requests/by-handle/:handle/emt (#2665)', () => {
   it('answers 500 when the service throws', async () => {
     mocks.requestEmtPayInstructions.mockRejectedValueOnce(new Error('db down'));
     expect((await callEmt()).status).toBe(500);
+  });
+
+  describe('payer DID choice (#2656)', () => {
+    function callEmtWithBody(body: string) {
+      return POST(
+        new NextRequest('https://kernel.test/pay/api/payment-requests/by-handle/ph_1/emt', {
+          method: 'POST',
+          body,
+          headers: { 'content-type': 'application/json' },
+        }),
+        { params: Promise.resolve({ handle: 'ph_1' }) },
+      );
+    }
+
+    it('an anonymous call with an empty-object body (no paidByDid) still needs no auth', async () => {
+      mocks.requestEmtPayInstructions.mockResolvedValueOnce({ instructions: INSTRUCTIONS, alreadyPending: false });
+      const res = await callEmtWithBody('{}');
+      expect(res.status).toBe(200);
+      expect(mocks.requireAuth).not.toHaveBeenCalled();
+      expect(mocks.requestEmtPayInstructions).toHaveBeenCalledWith('ph_1');
+    });
+
+    it('naming a paidByDid requires a signed-in caller — 401 otherwise, and the service is never reached', async () => {
+      mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
+      const res = await callEmtWithBody(JSON.stringify({ paidByDid: 'did:imajin:artifact' }));
+      expect(res.status).toBe(401);
+      expect(mocks.requestEmtPayInstructions).not.toHaveBeenCalled();
+    });
+
+    it("passes the choice plus the signed-in person's DID to the service", async () => {
+      mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:eric' } });
+      mocks.requestEmtPayInstructions.mockResolvedValueOnce({ instructions: INSTRUCTIONS, alreadyPending: false });
+      const res = await callEmtWithBody(JSON.stringify({ paidByDid: 'did:imajin:artifact' }));
+      expect(res.status).toBe(200);
+      expect(mocks.requestEmtPayInstructions).toHaveBeenCalledWith('ph_1', {
+        paidByDid: 'did:imajin:artifact',
+        personDid: 'did:imajin:eric',
+      });
+    });
+
+    it('a DID the person cannot act for is a 403 straight from the service', async () => {
+      mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:eric' } });
+      mocks.requestEmtPayInstructions.mockResolvedValueOnce({ error: 'You are not authorized to pay as that identity', status: 403 });
+      const res = await callEmtWithBody(JSON.stringify({ paidByDid: 'did:imajin:someone-elses' }));
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects a non-string paidByDid and an unparseable body with 400', async () => {
+      expect((await callEmtWithBody(JSON.stringify({ paidByDid: 42 }))).status).toBe(400);
+      expect((await callEmtWithBody('{not json')).status).toBe(400);
+      expect(mocks.requestEmtPayInstructions).not.toHaveBeenCalled();
+    });
   });
 
   it('answers CORS preflight', () => {

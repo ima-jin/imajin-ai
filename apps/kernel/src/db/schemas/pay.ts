@@ -193,6 +193,8 @@ export const paymentRequests = paySchema.table('payment_request', {
   payeeAccount: text('payee_account').notNull(),          // Stripe connected account id / business DID
   recipientDid: text('recipient_did'),                    // NULLABLE — exactly one of this / recipientStubId
   recipientStubId: text('recipient_stub_id'),             // NULLABLE — resolved to recipientDid on claim
+  // #2656: the DID the payer chose to pay as (own DID, or an org/business DID they control). NULL = no choice — settles as the recipient. Migration 0175.
+  paidByDid: text('paid_by_did'),
   lineItems: jsonb('line_items').notNull(),                // Array<{ name, description?, amount, quantity }>
   currency: text('currency').notNull().default('CAD'),
   // #2421: totalAmount is the GRAND total (subtotalAmount + taxTotalAmount, exactly);

@@ -229,6 +229,12 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
                 {row.settlementRef ? settlementRefLabel(row.settlementRef) : '—'}
               </span>
             </div>
+            {row.paidByDid && (
+              <div className="flex gap-2" data-testid="paid-by-did">
+                <span className="w-28 shrink-0">Paid by</span>
+                <span className="font-mono break-all">{row.paidByDid}</span>
+              </div>
+            )}
             <div className="flex gap-2">
               <span className="w-28 shrink-0">Attestation</span>
               <span className="font-mono">{row.attestationId ?? '—'}</span>
