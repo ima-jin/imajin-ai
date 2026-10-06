@@ -158,11 +158,9 @@ export function verify(
   publicKeyHex: string
 ): Promise<boolean> {
   // Keep the Promise contract: a synchronous throw becomes a rejection.
-  try {
-    return Promise.resolve(verifySync(signature, message, publicKeyHex));
-  } catch (err) {
-    return Promise.reject(err instanceof Error ? err : new Error(String(err)));
-  }
+  // verifySync handles every failure internally (returns false) and never throws,
+  // so no sync-throw-to-rejection guard is needed here.
+  return Promise.resolve(verifySync(signature, message, publicKeyHex));
 }
 
 /**
