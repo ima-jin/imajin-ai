@@ -157,6 +157,24 @@ pm2 doesn't have the app, it runs `pm2 delete <name>` then
 bring back the stale definition. No manual pm2 steps are needed: the first
 deploy carrying this recreates every stale app on its own.
 
+Follow-ups (#2572):
+
+- **The port is freed between delete and start.** Deleting an `npm start` tree
+  kills only the npm wrapper; its `next-server` grandchild is reparented to init
+  and keeps the port (the 2026-10-02 orphan). Before every `pm2 start`,
+  reconcile reaps any listener on the app's port (`env.PORT` or `-p <port>`)
+  that pm2 doesn't own, with the same logic `build.sh` uses
+  (`scripts/lib/reap-port.sh`). If the port can't be freed the app is **not**
+  started and the run fails.
+- **A failed reconcile fails the deploy.** Both workflows exit 1 with an
+  `::error::` annotation when `pm2-reconcile.sh` exits non-zero, and
+  `build.sh` records the service as a restart failure (exit 2) instead of
+  falling through to a cold start that could mask it. A failing `pm2 jlist` is a
+  failure too, not "every app is absent".
+- **Install check.** `pm2-reconcile.sh` (and the health check below) first
+  verify that `pm2` and `node` are on PATH and that the ecosystem file exists,
+  and exit 2 naming what is missing.
+
 ## Explicit `kill_timeout` and crash-loop alert (#2547)
 
 prod-events crash-looped for ~12h (~48k restarts) behind a still-serving orphan
@@ -177,8 +195,38 @@ and nobody was told. Two more guards:
   ```
 
   Tunables: `RESTART_ALERT_THRESHOLD` (default 5), `RESTART_ALERT_WINDOW`
-  (default 600 s), `RESTART_ALERT_STATE`, `RESTART_ALERT_WEBHOOK`. The cron
-  entry is host configuration and is not installed by the deploy workflow.
+  (default 600 s), `RESTART_ALERT_STATE`, `RESTART_ALERT_WEBHOOK`.
+
+## Scheduled pm2 health check: errored/stopped alert (#2572)
+
+Once pm2 parks an app `errored` (after `max_restarts`) or `stopped`, its restart
+counter stops moving, so the crash-loop alert above goes quiet and nothing says
+the service is down. Three scripts close that gap, and the deploy workflows
+install them, so no host needs a manual crontab edit:
+
+- **`scripts/check-pm2-status.sh <dev|prod>`** reads `pm2 jlist` and exits 1
+  (POSTing `{"text": ...}` to the same webhook) for every ecosystem-declared app
+  whose status is `errored` or `stopped`. It ignores transient states
+  (`launching`, `waiting restart`, which the restart check covers), apps pm2
+  doesn't know (declared but hosted elsewhere), and `stopped` apps declared with
+  `autorestart: false` (one-shot jobs). An app stays reported on every run but
+  is POSTed only when new or after `STATUS_ALERT_REPEAT` (default 3600 s), so a
+  parked app doesn't page every minute.
+- **`scripts/pm2-health-check.sh <dev|prod>`** runs the install check, then
+  both checks, and exits with the worst result.
+- **`scripts/install-pm2-health-cron.sh <dev|prod>`** (run by `deploy-dev.yml`
+  and `deploy-prod.yml` after every deploy; idempotent) checks pm2, node,
+  crontab and the ecosystem file exist, then installs a per-scope every-minute
+  crontab line (`# imajin-pm2-health:<scope>`) that logs only problems to
+  `~/.cache/imajin/pm2-health.<scope>.log`. The deploy then runs
+  `pm2-health-check.sh` once more, so a deploy that leaves an app errored,
+  stopped or crash-looping is red immediately.
+
+The webhook is the repo secret `PM2_ALERT_WEBHOOK` (optional): the installer
+stores it in the 0600 file `~/.config/imajin/pm2-alert-webhook.<scope>` (cron has
+no environment), and the checks also honour `RESTART_ALERT_WEBHOOK` /
+`STATUS_ALERT_WEBHOOK` in the environment. Without a webhook the problems still
+reach the log and the post-deploy step, and the installer warns.
 
 ## Kernel cron scheduler: `prod-kernel-cron` / `dev-kernel-cron` (#2550)
 

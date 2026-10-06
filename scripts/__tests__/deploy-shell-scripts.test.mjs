@@ -22,10 +22,13 @@ const SHELL_SELF_TESTS = [
   'assert-pm2-listeners.test.sh',
   'check-pm2-restarts.test.sh',
   'pm2-reconcile.test.sh',
+  'check-pm2-status.test.sh',
+  'pm2-health-check.test.sh',
+  'install-pm2-health-cron.test.sh',
   'build-restart-failed.test.sh',
 ];
 
-describe('deploy script self-tests (#2344, #2382)', () => {
+describe('deploy script self-tests (#2344, #2382, #2572)', () => {
   for (const relativePath of SHELL_SELF_TESTS) {
     it(`${relativePath} passes`, () => {
       const scriptPath = path.join(scriptsDir, relativePath);

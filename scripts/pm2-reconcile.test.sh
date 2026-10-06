@@ -19,7 +19,12 @@
 #     correctly: it must reach node through a file, not env/argv (#2603);
 #   - unparseable `pm2 jlist` output fails every app (node exit 3) without
 #     issuing any pm2 start/delete;
-#   - the jlist temp file is removed on every run.
+#   - the jlist temp file is removed on every run;
+#   - #2572: after `pm2 delete` (and before `pm2 start`) an orphan still
+#     holding the app's port is reaped, the app is NOT started when the port
+#     cannot be freed, and apps without a port never touch `ss`/`kill`;
+#   - #2572: a missing pm2 binary exits 2 before anything runs, and a failing
+#     `pm2 jlist` fails the run instead of reading as "every app is absent".
 #
 # Usage: scripts/pm2-reconcile.test.sh
 
@@ -48,25 +53,87 @@ module.exports = { apps: [
 ] };
 EOF
 
+# EVENT_LOG records, in order, the pm2 delete/start calls, every pid `kill` is
+# asked to signal, and whether the port was still held when pm2 start ran —
+# so the #2572 ordering (delete -> free port -> start) is asserted exactly.
 cat > "$FAKE_BIN/pm2" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$1" = "jlist" ]]; then
+  [[ "${FAKE_PM2_FAIL_JLIST:-}" = "true" ]] && exit 1
   cat "$FAKE_JLIST"
   exit 0
 fi
 echo "$*" >> "$PM2_LOG"
 case "$1" in
-  start)  [[ "${FAKE_PM2_FAIL_START:-}" = "true" ]] && exit 1 ;;
-  delete) [[ "${FAKE_PM2_FAIL_DELETE:-}" = "true" ]] && exit 1 ;;
+  start)
+    echo "start held=$([[ -e "$PORT_HELD_FILE" ]] && echo yes || echo no)" >> "$EVENT_LOG"
+    [[ "${FAKE_PM2_FAIL_START:-}" = "true" ]] && exit 1
+    ;;
+  delete)
+    echo "delete" >> "$EVENT_LOG"
+    [[ "${FAKE_PM2_FAIL_DELETE:-}" = "true" ]] && exit 1
+    ;;
 esac
 exit 0
 EOF
 chmod +x "$FAKE_BIN/pm2"
 
+# $PORT_HELD_FILE ("<port> <pid>") models an orphan squatting on a port. Absent
+# file = nothing listens anywhere.
+cat > "$FAKE_BIN/ss" <<'EOF'
+#!/usr/bin/env bash
+echo "ss $*" >> "$SS_LOG"
+[[ -e "$PORT_HELD_FILE" ]] || exit 0
+read -r held_port held_pid < "$PORT_HELD_FILE"
+case "$*" in
+  *":$held_port"*) echo "LISTEN 0 511 *:$held_port *:* users:((\"next-server\",pid=$held_pid,fd=19))" ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/ss"
+
+# The orphan is parented to init, so is_pm2_owned() does not claim it.
+cat > "$FAKE_BIN/ps" <<'EOF'
+#!/usr/bin/env bash
+case "$*" in
+  *ppid=*) echo 1 ;;
+  *) echo "next-server (v14)" ;;
+esac
+EOF
+chmod +x "$FAKE_BIN/ps"
+
+# `kill` is a bash builtin, so run_case runs the script with it disabled (see
+# there). The shim frees the port when FAKE_KILL_FREES=true; `kill -0` reports
+# the pid dead exactly when the port has been freed.
+cat > "$FAKE_BIN/kill" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" = "-0" ]]; then
+  [[ -e "$PORT_HELD_FILE" ]] && exit 0
+  exit 1
+fi
+for arg in "$@"; do
+  case "$arg" in
+    -*) ;;
+    *) echo "kill $arg" >> "$EVENT_LOG"; echo "$arg" >> "$KILL_LOG" ;;
+  esac
+done
+[[ "${FAKE_KILL_FREES:-}" = "true" ]] && rm -f "$PORT_HELD_FILE"
+exit 0
+EOF
+chmod +x "$FAKE_BIN/kill"
+
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_BIN/sleep"
+chmod +x "$FAKE_BIN/sleep"
+
 PATH="$FAKE_BIN:$PATH"
 export PATH
 export FAKE_JLIST="$WORK/jlist.json"
 export PM2_LOG="$WORK/pm2.log"
+export EVENT_LOG="$WORK/events.log"
+export KILL_LOG="$WORK/kills.log"
+export SS_LOG="$WORK/ss.log"
+export PORT_HELD_FILE="$WORK/port-held"
+export PM2_HOME="$WORK/pm2-home"
+export REAP_KILL_GRACE=0 REAP_POLL_INTERVAL=0
 
 FAILURES=0
 
@@ -103,13 +170,24 @@ filler() {
 }
 
 # run_case <label> <expected-exit> <names...>; reads $JLIST_JSON, $EXPECT_LOG
-# (newline-separated exact pm2 calls, in order) and optional $EXPECT_OUT.
+# (newline-separated exact pm2 calls, in order), optional $EXPECT_OUT, optional
+# $PORT_HELD ("<port> <pid>": an orphan squatting on that port) and optional
+# $EXPECT_EVENTS (exact ordered delete/kill/start events).
 run_case() {
   local label="$1" expected="$2" out status=0
   shift 2
   printf '[%s]' "$JLIST_JSON" > "$FAKE_JLIST"
   : > "$PM2_LOG"
-  out="$(TMPDIR="$SCRIPT_TMP" bash "$RECONCILE" "$WORK/eco.config.js" "$@" 2>&1)" || status=$?
+  : > "$EVENT_LOG"
+  : > "$KILL_LOG"
+  : > "$SS_LOG"
+  rm -f "$PORT_HELD_FILE"
+  if [[ -n "${PORT_HELD:-}" ]]; then
+    echo "$PORT_HELD" > "$PORT_HELD_FILE"
+  fi
+  # `enable -n kill` disables the bash builtin so the script's bare `kill`
+  # resolves to the shim above; sourcing keeps that in effect for the whole run.
+  out="$(TMPDIR="$SCRIPT_TMP" bash -c 'enable -n kill; source "$1" "${@:2}"' _ "$RECONCILE" "$WORK/eco.config.js" "$@" 2>&1)" || status=$?
   echo "$out"
   if [[ "$status" -ne "$expected" ]]; then
     echo "❌ $label: expected exit $expected, got $status"
@@ -127,6 +205,14 @@ run_case() {
     echo "$EXPECT_LOG"
     echo "actual:"
     cat "$PM2_LOG"
+    FAILURES=$((FAILURES + 1))
+    return
+  fi
+  if [[ -n "${EXPECT_EVENTS+x}" && "$(cat "$EVENT_LOG")" != "$EXPECT_EVENTS" ]]; then
+    echo "❌ $label: unexpected delete/kill/start order. expected:"
+    echo "$EXPECT_EVENTS"
+    echo "actual:"
+    cat "$EVENT_LOG"
     FAILURES=$((FAILURES + 1))
     return
   fi
@@ -221,7 +307,124 @@ EXPECT_LOG=""
 EXPECT_OUT="t-next: could not compare ecosystem with pm2 state"
 run_case "unparseable pm2 jlist fails every app without touching pm2" 1 t-next t-kernel
 
-# 11. Usage errors.
+# An orphan (pid 9001) squatting on :3104, the port t-next declares.
+ORPHAN_3104="3104 9001"
+
+# 11. #2572: the port is freed between `pm2 delete` and `pm2 start`. The
+#     `npm start` tree's next-server (pid 9001) outlives the delete and holds
+#     :3104; it must be killed before the new definition starts into it.
+JLIST_JSON="$(proc t-next /usr/bin/npm none)"
+PORT_HELD="$ORPHAN_3104"
+EXPECT_LOG="delete t-next
+start $ECO --only t-next --update-env"
+EXPECT_EVENTS="delete
+kill 9001
+start held=no"
+EXPECT_OUT="Orphan on :3104"
+FAKE_KILL_FREES=true run_case "orphan on the port after delete is reaped before start (#2572)" 0 t-next
+
+# Same, for an app whose port comes from env.PORT (no -p in args).
+cat > "$WORK/eco-envport.config.js" <<EOF2
+module.exports = { apps: [
+  { name: 't-envport', cwd: '/srv/t-envport', script: 'server.js', interpreter: 'node', env: { PORT: 3000 } },
+] };
+EOF2
+JLIST_JSON="$(proc t-envport /srv/t-envport/other.js node)"
+PORT_HELD="3000 9002"
+EXPECT_LOG="delete t-envport
+start $WORK/eco-envport.config.js --only t-envport --update-env"
+EXPECT_EVENTS="delete
+kill 9002
+start held=no"
+EXPECT_OUT="Orphan on :3000"
+printf '[%s]' "$JLIST_JSON" > "$FAKE_JLIST"
+: > "$PM2_LOG"; : > "$EVENT_LOG"; : > "$KILL_LOG"; : > "$SS_LOG"
+echo "$PORT_HELD" > "$PORT_HELD_FILE"
+status=0
+out="$(FAKE_KILL_FREES=true TMPDIR="$SCRIPT_TMP" bash -c 'enable -n kill; source "$1" "${@:2}"' _ "$RECONCILE" "$WORK/eco-envport.config.js" t-envport 2>&1)" || status=$?
+echo "$out"
+if [[ "$status" -eq 0 && "$(cat "$EVENT_LOG")" = "$EXPECT_EVENTS" && "$(cat "$PM2_LOG")" = "$EXPECT_LOG" ]] && grep -qF "$EXPECT_OUT" <<< "$out"; then
+  echo "✅ port declared via env.PORT is freed before start (#2572)"
+else
+  echo "❌ env.PORT app: exit $status; events:"; cat "$EVENT_LOG"
+  FAILURES=$((FAILURES + 1))
+fi
+PORT_HELD=""
+
+# An orphan that survives SIGTERM and SIGKILL: the app must NOT be started into
+# a held port, and the run fails.
+JLIST_JSON="$(proc t-next /usr/bin/npm none)"
+PORT_HELD="$ORPHAN_3104"
+EXPECT_LOG="delete t-next"
+EXPECT_EVENTS="delete
+kill 9001
+kill 9001"
+EXPECT_OUT="still held"
+FAKE_KILL_FREES=false run_case "port that cannot be freed fails the run and does not start (#2572)" 1 t-next
+
+# Apps absent from pm2 get the same pre-start port check.
+JLIST_JSON=""
+PORT_HELD="3105 9003"
+EXPECT_LOG="start $ECO --only t-new --update-env"
+EXPECT_EVENTS="kill 9003
+start held=no"
+EXPECT_OUT="Orphan on :3105"
+FAKE_KILL_FREES=true run_case "orphan on an absent app's port is reaped before start (#2572)" 0 t-new
+
+# A matching app is only restarted: its port is held by its own pm2 process,
+# which must never be reaped or even looked up.
+JLIST_JSON="$(proc t-next "/srv/t-next/$NEXT" node)"
+PORT_HELD="$ORPHAN_3104"
+EXPECT_LOG="startOrRestart $ECO --only t-next --update-env"
+EXPECT_EVENTS=""
+EXPECT_OUT=""
+FAKE_KILL_FREES=true run_case "matching app's port is not reaped (#2572)" 0 t-next
+
+# An app without a port (t-wrapped: npm start, no env.PORT, no -p) never
+# consults ss or kill.
+JLIST_JSON="$(proc t-wrapped /usr/bin/node none)"
+PORT_HELD="$ORPHAN_3104"
+EXPECT_LOG="delete t-wrapped
+start $ECO --only t-wrapped --update-env"
+EXPECT_EVENTS="delete
+start held=yes"
+EXPECT_OUT="recreating"
+FAKE_KILL_FREES=true run_case "app without a port is recreated without any port reaping (#2572)" 0 t-wrapped
+if [[ -s "$SS_LOG" ]]; then
+  echo "❌ app without a port consulted ss: $(cat "$SS_LOG")"
+  FAILURES=$((FAILURES + 1))
+else
+  echo "✅ app without a port never consulted ss"
+fi
+unset PORT_HELD EXPECT_EVENTS
+
+# 12. #2572: a failing `pm2 jlist` must not read as "every app is absent"
+#     (which would `pm2 start` them all over whatever is running).
+JLIST_JSON="[]"
+EXPECT_LOG=""
+EXPECT_OUT="'pm2 jlist' failed"
+FAKE_PM2_FAIL_JLIST=true run_case "failing pm2 jlist fails the run without starting anything" 1 t-next t-new
+
+# 13. #2572 install check: pm2 missing from the host exits 2 before anything
+#     else, naming what is missing. PATH holds only the few tools the script
+#     needs to reach its preflight, so pm2 is genuinely not found.
+NOPM2_BIN="$WORK/nopm2-bin"
+mkdir -p "$NOPM2_BIN"
+for tool in node dirname hostname; do
+  ln -sf "$(command -v "$tool")" "$NOPM2_BIN/$tool"
+done
+BASH_BIN="$(command -v bash)"
+status=0
+out="$(PATH="$NOPM2_BIN" "$BASH_BIN" "$RECONCILE" "$ECO" t-next 2>&1)" || status=$?
+echo "$out"
+if [[ "$status" -eq 2 ]] && grep -qF "'pm2' is not installed" <<< "$out"; then
+  echo "✅ pm2 missing from the host exits 2 with a clear message (#2572)"
+else
+  echo "❌ pm2 missing: expected exit 2 naming pm2, got $status"
+  FAILURES=$((FAILURES + 1))
+fi
+
+# 14. Usage errors.
 status=0
 bash "$RECONCILE" >/dev/null 2>&1 || status=$?
 if [[ "$status" -eq 2 ]]; then echo "✅ no args exits 2"; else echo "❌ no args: got $status"; FAILURES=$((FAILURES + 1)); fi

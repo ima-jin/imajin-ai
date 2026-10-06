@@ -127,7 +127,12 @@ jobs:
           done
           if [ -n "$FILE_PROCS" ]; then
             echo "Reconciling against $ECOSYSTEM_FILE:$FILE_PROCS"
-            ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" $FILE_PROCS
+            # Fail the deploy loudly if reconcile fails (#2572): a service left
+            # stopped or on a stale definition must never read as a green deploy.
+            if ! ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" $FILE_PROCS; then
+              echo "::error title=pm2-reconcile failed::pm2-reconcile.sh exited non-zero for:$FILE_PROCS (see the log above)"
+              exit 1
+            fi
           fi
           if [ -n "$NAME_PROCS" ]; then
             echo "Restarting by name:$NAME_PROCS"
@@ -142,3 +147,18 @@ jobs:
       # process (or its child), not an orphan surviving the restart.
       - name: Assert pm2 owns every service port
         run: ./scripts/assert-pm2-listeners.sh dev "$ECOSYSTEM_FILE"
+
+      # #2572: schedule the pm2 health check (crash loops + apps parked
+      # errored/stopped) on this host, every minute, from this deploy on. The
+      # installer is idempotent, verifies pm2/node/crontab and the ecosystem
+      # file exist first, and stores the optional PM2_ALERT_WEBHOOK secret in a
+      # 0600 file the cron job reads. No manual crontab edit.
+      - name: Install pm2 health check schedule
+        env:
+          PM2_ALERT_WEBHOOK: ${{ secrets.PM2_ALERT_WEBHOOK }}
+        run: ./scripts/install-pm2-health-cron.sh dev "$ECOSYSTEM_FILE"
+
+      # One check right now so a deploy that leaves an app errored/stopped (or
+      # crash-looping) is red here instead of waiting for the first cron tick.
+      - name: Post-deploy pm2 health check
+        run: ./scripts/pm2-health-check.sh dev "$ECOSYSTEM_FILE"

@@ -122,7 +122,13 @@ jobs:
           # deterministic dev key, and reported nothing wrong.
           #
           # pm2-reconcile.sh also starts prod-jin when pm2 doesn't have it yet.
-          ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" prod-jin
+          #
+          # A failed reconcile fails the deploy loudly (#2572): a service left
+          # stopped or on a stale definition must never read as a green deploy.
+          if ! ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" prod-jin; then
+            echo "::error title=pm2-reconcile failed::pm2-reconcile.sh exited non-zero for prod-jin (see the log above)"
+            exit 1
+          fi
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
           # Everything else (prod-events, prod-dykil, prod-coffee, prod-market, prod-learn, …).
@@ -162,7 +168,10 @@ jobs:
           done
           if [ -n "$FILE_PROCS" ]; then
             echo "Reconciling against $ECOSYSTEM_FILE:$FILE_PROCS"
-            ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" $FILE_PROCS
+            if ! ./scripts/pm2-reconcile.sh "$ECOSYSTEM_FILE" $FILE_PROCS; then
+              echo "::error title=pm2-reconcile failed::pm2-reconcile.sh exited non-zero for:$FILE_PROCS (see the log above)"
+              exit 1
+            fi
           fi
           if [ -n "$NAME_PROCS" ]; then
             echo "Restarting by name:$NAME_PROCS"
@@ -182,3 +191,18 @@ jobs:
       # listener is the pm2-managed process (or its child).
       - name: Assert pm2 owns every service port
         run: ./scripts/assert-pm2-listeners.sh prod "$ECOSYSTEM_FILE"
+
+      # #2572: schedule the pm2 health check (crash loops + apps parked
+      # errored/stopped) on this host, every minute, from this deploy on. The
+      # installer is idempotent, verifies pm2/node/crontab and the ecosystem
+      # file exist first, and stores the optional PM2_ALERT_WEBHOOK secret in a
+      # 0600 file the cron job reads. No manual crontab edit.
+      - name: Install pm2 health check schedule
+        env:
+          PM2_ALERT_WEBHOOK: ${{ secrets.PM2_ALERT_WEBHOOK }}
+        run: ./scripts/install-pm2-health-cron.sh prod "$ECOSYSTEM_FILE"
+
+      # One check right now so a deploy that leaves an app errored/stopped (or
+      # crash-looping) is red here instead of waiting for the first cron tick.
+      - name: Post-deploy pm2 health check
+        run: ./scripts/pm2-health-check.sh prod "$ECOSYSTEM_FILE"

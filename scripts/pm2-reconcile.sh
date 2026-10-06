@@ -17,16 +17,31 @@
 # (script resolved against cwd, plus interpreter when one is declared) with
 # pm2's stored pm_exec_path / exec_interpreter (from `pm2 jlist`):
 #   - app absent from pm2, or stored exec differs  -> `pm2 delete <name>` (when
-#     present) then `pm2 start <file> --only <name>`, so the new definition
-#     really takes effect;
+#     present), free the app's port of any process pm2 doesn't own (#2572),
+#     then `pm2 start <file> --only <name>`, so the new definition really
+#     takes effect;
 #   - otherwise -> kept for a normal `pm2 startOrRestart <file> --only ...`.
 # Names the ecosystem file does not declare are reported and skipped (the
 # caller restarts those by name).
 #
+# Why the port is freed between delete and start (#2572): the one-time
+# recreate deletes `npm start` trees, and pm2 only kills the npm wrapper — the
+# `next-server` grandchild is reparented to init and keeps the port (the
+# 2026-10-02 orphan). Starting the new definition into that port would
+# crash-loop on EADDRINUSE while the orphan serves the old build behind pm2's
+# back. The port comes from the app's `env.PORT` or `-p <port>` args; the
+# reaping is the shared scripts/lib/reap-port.sh used by build.sh. If the port
+# cannot be freed the app is NOT started and the run fails.
+#
+# Before touching anything it checks that pm2 and node are installed and the
+# ecosystem file exists (#2572).
+#
 # This script does not `pm2 save`; callers do that once after reconciling.
 #
 # Usage: scripts/pm2-reconcile.sh <ecosystem-file> <name> [<name> ...]
-# Exit:  0 all apps (re)started, 1 at least one failed, 2 usage error.
+# Env:   REAP_KILL_GRACE / REAP_POLL_INTERVAL tune the port reaping (see lib).
+# Exit:  0 all apps (re)started, 1 at least one failed, 2 usage / environment
+#        error (bad args, pm2 or node missing, ecosystem file missing).
 
 set -uo pipefail
 
@@ -36,10 +51,16 @@ if [[ $# -lt 2 ]]; then
 fi
 ECOSYSTEM="$1"
 shift
-if [[ ! -f "$ECOSYSTEM" ]]; then
-  echo "pm2-reconcile: ecosystem file not found: $ECOSYSTEM" >&2
-  exit 2
-fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/pm2-preflight.sh
+source "$SCRIPT_DIR/lib/pm2-preflight.sh"
+# shellcheck source=scripts/lib/pm2-owned.sh
+source "$SCRIPT_DIR/lib/pm2-owned.sh"
+# shellcheck source=scripts/lib/reap-port.sh
+source "$SCRIPT_DIR/lib/reap-port.sh"
+
+pm2_preflight pm2-reconcile "$ECOSYSTEM" || exit 2
 
 # The `pm2 jlist` output is handed to node through a temp file, never through
 # env or argv: on a busy host it outgrows the kernel's per-string exec limit
@@ -108,14 +129,60 @@ classify_apps() {
   return "$status"
 }
 
+# The port <name> listens on, per the ecosystem file: `env.PORT`, else the
+# `-p <port>` in args (same sources as scripts/assert-pm2-listeners.sh). Prints
+# nothing for apps without a port (daemons such as the kernel cron scheduler).
+ecosystem_port_for_app() {
+  local ecosystem="$1" name="$2" port status
+  port="$(node -e '
+    const path = require("path");
+    let apps;
+    try {
+      const mod = require(path.resolve(process.argv[1]));
+      apps = Array.isArray(mod) ? mod : mod.apps;
+    } catch { process.exit(3); }
+    const app = (apps || []).find((a) => a && a.name === process.argv[2]);
+    if (!app) process.exit(0);
+    const fromArgs = /(?:^|\s)-p\s+(\d+)/.exec(app.args || "");
+    const port = (app.env && app.env.PORT) || (fromArgs && fromArgs[1]);
+    if (port) process.stdout.write(String(port));
+  ' "$ecosystem" "$name" 2>/dev/null)"
+  status=$?
+  if [[ "$status" -ne 0 || ! "$port" =~ ^[0-9]+$ || "$port" -eq 0 ]]; then
+    return "$status"
+  fi
+  printf '%s' "$port"
+  return 0
+}
+
+# Free <name>'s port of anything pm2 does not own, right before it is started
+# from the file (after its `pm2 delete` when it had a stale definition).
+# Returns 1 when the port is still held (the caller must not start the app).
+free_port_before_start() {
+  local name="$1" port
+  port="$(ecosystem_port_for_app "$ECOSYSTEM" "$name")" || {
+    echo "❌ $name: could not read its port from $ECOSYSTEM" >&2
+    return 1
+  }
+  [[ -z "$port" ]] && return 0
+  reap_orphan_port "$name" "$port" "$name"
+}
+
 FAILED=0
 KEEP=""
 
 APP_NAMES=("$@")
 
-pm2 jlist 2>/dev/null > "$JLIST_FILE"
 classify_status=0
-verdict_lines="$(classify_apps "$ECOSYSTEM" "$JLIST_FILE")" || classify_status=$?
+verdict_lines=""
+if pm2 jlist 2>/dev/null > "$JLIST_FILE"; then
+  verdict_lines="$(classify_apps "$ECOSYSTEM" "$JLIST_FILE")" || classify_status=$?
+else
+  # A failed `pm2 jlist` leaves an empty file, which would read as "every app
+  # is absent" and start them all; fail loudly instead (#2572).
+  echo "pm2-reconcile: 'pm2 jlist' failed" >&2
+  classify_status=3
+fi
 verdicts=()
 if [[ "$classify_status" -eq 0 ]]; then
   mapfile -t verdicts <<< "$verdict_lines"
@@ -148,6 +215,13 @@ for name in "$@"; do
           FAILED=$((FAILED + 1))
           continue
         fi
+      fi
+      # Free the port before starting (#2572): after the delete above this is
+      # where the orphaned next-server of a deleted `npm start` tree is killed.
+      if ! free_port_before_start "$name"; then
+        echo "❌ $name: port still held — not starting (it would crash-loop on EADDRINUSE behind an old process)" >&2
+        FAILED=$((FAILED + 1))
+        continue
       fi
       if pm2 start "$ECOSYSTEM" --only "$name" --update-env; then
         echo "✅ $name started from $ECOSYSTEM"
