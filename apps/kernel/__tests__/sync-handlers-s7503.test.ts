@@ -6,7 +6,7 @@
  *  - OPTIONS preflights answer 204 with CORS headers, synchronously;
  *  - health/spec/logout/specs handlers return their Response synchronously.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { NextRequest } from 'next/server';
 import path from 'node:path';
 
@@ -80,6 +80,61 @@ const optionsRoutes: Record<string, () => Promise<RouteModule>> = {
   "usage/summary": () => import('@/app/usage/api/summary/route'),
 };
 
+type RouteLoaders = Record<string, () => Promise<RouteModule>>;
+
+const healthRoutes: RouteLoaders = {
+  chat: () => import('@/app/chat/api/health/route'),
+  connections: () => import('@/app/connections/api/health/route'),
+  profile: () => import('@/app/profile/api/health/route'),
+  registry: () => import('@/app/registry/api/health/route'),
+};
+
+const specRoutes: RouteLoaders = {
+  chat: () => import('@/app/chat/api/spec/route'),
+  connections: () => import('@/app/connections/api/spec/route'),
+  notify: () => import('@/app/notify/api/spec/route'),
+  profile: () => import('@/app/profile/api/spec/route'),
+  registry: () => import('@/app/registry/api/spec/route'),
+  usage: () => import('@/app/usage/api/spec/route'),
+};
+
+const logoutRoutes: RouteLoaders = {
+  connections: () => import('@/app/connections/api/auth/logout/route'),
+  profile: () => import('@/app/profile/api/auth/logout/route'),
+};
+
+// Every handler's first `import()` is a cold transitive load (db client, auth,
+// bus, vault...). Doing that inside the `it()` bodies charged it to whichever
+// test happened to run first and blew the 5s testTimeout on a loaded CI runner
+// (#2616: `chat/conversations/unread`, merge_group runs 37447030542 and
+// 37462621350). That is cold-import cost, not a hang, so load every handler once
+// in a hook with an explicit budget; the tests then only measure the handler.
+// None of these modules does work at import time that the tests depend on (the
+// spec handlers read their YAML lazily on `GET`), so loading early is safe.
+const ROUTE_IMPORT_TIMEOUT_MS = 120_000;
+
+const options: Record<string, RouteModule> = {};
+const health: Record<string, RouteModule> = {};
+const specs: Record<string, RouteModule> = {};
+const logout: Record<string, RouteModule> = {};
+
+async function loadInto(target: Record<string, RouteModule>, loaders: RouteLoaders): Promise<void> {
+  await Promise.all(
+    Object.entries(loaders).map(async ([name, load]) => {
+      target[name] = await load();
+    }),
+  );
+}
+
+beforeAll(async () => {
+  await Promise.all([
+    loadInto(options, optionsRoutes),
+    loadInto(health, healthRoutes),
+    loadInto(specs, specRoutes),
+    loadInto(logout, logoutRoutes),
+  ]);
+}, ROUTE_IMPORT_TIMEOUT_MS);
+
 function makeRequest(method: string, origin = 'https://test.imajin.ai'): NextRequest {
   return new NextRequest('https://test.imajin.ai/api/x', { method, headers: { origin } });
 }
@@ -89,8 +144,8 @@ afterEach(() => {
 });
 
 describe('OPTIONS preflight handlers', () => {
-  it.each(Object.keys(optionsRoutes))('%s responds 204 with CORS headers, synchronously', async (name) => {
-    const { OPTIONS } = await optionsRoutes[name]();
+  it.each(Object.keys(optionsRoutes))('%s responds 204 with CORS headers, synchronously', (name) => {
+    const { OPTIONS } = options[name];
     expect(typeof OPTIONS).toBe('function');
 
     const res = OPTIONS!(makeRequest('OPTIONS'));
@@ -101,8 +156,8 @@ describe('OPTIONS preflight handlers', () => {
     expect((res as Response).headers.get('Access-Control-Allow-Credentials')).toBe('true');
   });
 
-  it('blanks Access-Control-Allow-Origin for a disallowed origin', async () => {
-    const { OPTIONS } = await optionsRoutes['chat/ws-token']();
+  it('blanks Access-Control-Allow-Origin for a disallowed origin', () => {
+    const { OPTIONS } = options['chat/ws-token'];
 
     const res = OPTIONS!(makeRequest('OPTIONS', 'https://evil.example.com')) as Response;
 
@@ -112,13 +167,8 @@ describe('OPTIONS preflight handlers', () => {
 });
 
 describe('health handlers', () => {
-  it.each([
-    ['chat', () => import('@/app/chat/api/health/route')],
-    ['connections', () => import('@/app/connections/api/health/route')],
-    ['profile', () => import('@/app/profile/api/health/route')],
-    ['registry', () => import('@/app/registry/api/health/route')],
-  ] as const)('%s returns ok synchronously', async (service, load) => {
-    const { GET } = await load();
+  it.each(Object.keys(healthRoutes))('%s returns ok synchronously', async (service) => {
+    const { GET } = health[service];
 
     const res = (GET as () => Response)();
 
@@ -129,17 +179,10 @@ describe('health handlers', () => {
 });
 
 describe('spec handlers', () => {
-  it.each([
-    ['chat', () => import('@/app/chat/api/spec/route')],
-    ['connections', () => import('@/app/connections/api/spec/route')],
-    ['notify', () => import('@/app/notify/api/spec/route')],
-    ['profile', () => import('@/app/profile/api/spec/route')],
-    ['registry', () => import('@/app/registry/api/spec/route')],
-    ['usage', () => import('@/app/usage/api/spec/route')],
-  ] as const)('%s serves its yaml spec synchronously', async (_name, load) => {
+  it.each(Object.keys(specRoutes))('%s serves its yaml spec synchronously', async (name) => {
     // The handlers read api-spec/*.yaml relative to the kernel app root.
     vi.spyOn(process, 'cwd').mockReturnValue(path.resolve(__dirname, '..'));
-    const { GET } = await load();
+    const { GET } = specs[name];
 
     const res = (GET as () => Response)();
 
@@ -151,11 +194,8 @@ describe('spec handlers', () => {
 });
 
 describe('logout handlers', () => {
-  it.each([
-    ['connections', () => import('@/app/connections/api/auth/logout/route')],
-    ['profile', () => import('@/app/profile/api/auth/logout/route')],
-  ] as const)('%s clears the session cookie synchronously', async (_name, load) => {
-    const { POST } = await load();
+  it.each(Object.keys(logoutRoutes))('%s clears the session cookie synchronously', (name) => {
+    const { POST } = logout[name];
 
     const res = (POST as Handler)(makeRequest('POST')) as Response;
 
@@ -167,7 +207,7 @@ describe('logout handlers', () => {
 
 describe('registry specs listing', () => {
   it('lists services synchronously with CORS headers', async () => {
-    const { GET } = await import('@/app/registry/api/specs/route');
+    const { GET } = options['registry/specs'];
 
     const res = (GET as Handler)(makeRequest('GET')) as Response;
 

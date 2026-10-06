@@ -6,7 +6,7 @@
  * read still fails the request (a throw Next turns into a 500) instead of
  * being swallowed.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({ readFileSync: vi.fn() }));
 
@@ -18,7 +18,21 @@ const FILE_BACKED_SPECS: Record<string, () => Promise<{ GET: () => Response }>> 
   media: () => import('../media/api/spec/route'),
 };
 
+// Cold route imports belong in hooks with an explicit budget, not inside the
+// first `it()` that triggers them: on a loaded CI runner that cost blew the 5s
+// testTimeout elsewhere in the kernel suite (#2616).
+const ROUTE_IMPORT_TIMEOUT_MS = 120_000;
+
 describe('file-backed spec routes (S7503)', () => {
+  // These tests must re-import per test (`vi.resetModules()` below: the route
+  // caches its YAML at module scope), so the imports themselves cannot be
+  // hoisted. Warm the transform/transitive-import cost once beforehand instead;
+  // the warm module is discarded by the first `resetModules()`, the cold part is
+  // not.
+  beforeAll(async () => {
+    await Promise.all(Object.values(FILE_BACKED_SPECS).map((load) => load()));
+  }, ROUTE_IMPORT_TIMEOUT_MS);
+
   beforeEach(() => {
     vi.resetModules();
     state.readFileSync.mockReset();
@@ -49,17 +63,28 @@ describe('file-backed spec routes (S7503)', () => {
 });
 
 describe('static kernel routes (S7503)', () => {
+  let specRoute: typeof import('../api/spec/route');
+  let mediaHealthRoute: typeof import('../media/api/health/route');
+  let bumpOpengraph: typeof import('../bump/opengraph-image');
+
+  beforeAll(async () => {
+    [specRoute, mediaHealthRoute, bumpOpengraph] = await Promise.all([
+      import('../api/spec/route'),
+      import('../media/api/health/route'),
+      // next/og is the heavy one here.
+      import('../bump/opengraph-image'),
+    ]);
+  }, ROUTE_IMPORT_TIMEOUT_MS);
+
   it('GET /api/spec synchronously serves the inline YAML', async () => {
-    const { GET } = await import('../api/spec/route');
-    const response = GET();
+    const response = specRoute.GET();
     expect(response).not.toBeInstanceOf(Promise);
     expect(response.headers.get('Content-Type')).toBe('text/yaml');
     expect(await response.text()).toContain('title: imajin www');
   });
 
   it('GET /media/api/health synchronously reports ok', async () => {
-    const { GET } = await import('../media/api/health/route');
-    const response = GET();
+    const response = mediaHealthRoute.GET();
     expect(response).not.toBeInstanceOf(Promise);
     expect(response.status).toBe(200);
     const body = await response.json();
@@ -67,9 +92,8 @@ describe('static kernel routes (S7503)', () => {
     expect(Number.isNaN(Date.parse(body.timestamp))).toBe(false);
   });
 
-  it('bump opengraph-image default export is synchronous and renders a PNG response', async () => {
-    const mod = await import('../bump/opengraph-image');
-    const response = mod.default();
+  it('bump opengraph-image default export is synchronous and renders a PNG response', () => {
+    const response = bumpOpengraph.default();
     expect(response).not.toBeInstanceOf(Promise);
     expect(response.headers.get('content-type')).toBe('image/png');
   });
