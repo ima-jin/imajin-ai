@@ -854,11 +854,16 @@ export const templates: NotifyTemplate[] = [
     urgency: 'normal',
     title: (_data) => 'Payment request settled',
     // `method` states who asserted the settlement (#2209): the issuer
-    // themself for 'manual', the platform/Stripe for 'stripe'/'mjnx' — the
-    // issuer's own copy must not claim credit for a settlement they didn't
-    // assert.
+    // themself for 'manual' and 'emt' (#2665: they confirmed the e-Transfer
+    // deposit), the platform/Stripe for 'stripe'/'mjnx' — the issuer's own
+    // copy must not claim credit for a settlement they didn't assert.
     body: (data) => {
       const amount = typeof data.totalFormatted === 'string' ? data.totalFormatted : 'This payment request';
+      if (data.method === 'emt') {
+        return data.role === 'issuer'
+          ? `You marked ${amount} paid by e-Transfer.`
+          : `Your e-Transfer of ${amount} was received — the issuer confirmed it.`;
+      }
       if (data.method === 'manual') {
         return data.role === 'issuer'
           ? `You marked ${amount} settled.`
@@ -874,7 +879,11 @@ export const templates: NotifyTemplate[] = [
         const amount = escapeHtml(data.totalFormatted || 'This payment request');
         const strongAmount = `<strong style="color:#ffffff;">${amount}</strong>`;
         let body: string;
-        if (data.method === 'manual') {
+        if (data.method === 'emt') {
+          body = data.role === 'issuer'
+            ? `You marked ${strongAmount} paid by e-Transfer.`
+            : `Your e-Transfer of ${strongAmount} was received — the issuer confirmed it.`;
+        } else if (data.method === 'manual') {
           body = data.role === 'issuer'
             ? `You marked ${strongAmount} settled.`
             : `${strongAmount} was settled — the issuer marked this settled.`;

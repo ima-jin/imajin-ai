@@ -25,6 +25,10 @@ export type {
   TaxRegistrationsValidationResult,
 } from './tax-registrations';
 
+// e-Transfer receiving email (#2665) — validator used by the profile update route.
+export { validateEtransferEmail } from './etransfer-email';
+export type { EtransferEmailValidationResult } from './etransfer-email';
+
 /**
  * Release connections-gated metadata fields through the broker in a single batched request.
  * Mutates `result` in place. Fail-closed — on any broker error the fields stay sealed.

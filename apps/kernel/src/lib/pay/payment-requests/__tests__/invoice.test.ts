@@ -76,6 +76,19 @@ describe('publicSettlementOf (#2661)', () => {
     expect(JSON.stringify(result)).not.toContain('did:imajin');
   });
 
+  it('#2665: an e-Transfer settlement carries the memo as its reference — and still never the note or the asserter', () => {
+    const result = publicSettlementOf({
+      method: 'emt',
+      settled_at: '2026-10-09T18:45:00.000Z',
+      reference: 'INV-3F9A1C07D2',
+      asserted_by: 'did:imajin:issuer',
+      note: 'secret',
+    });
+    expect(result).toEqual({ paidAt: '2026-10-09T18:45:00.000Z', settlement: { method: 'emt', reference: 'INV-3F9A1C07D2' } });
+    expect(JSON.stringify(result)).not.toContain('did:imajin');
+    expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
   it('keeps the date even when the method is missing', () => {
     expect(publicSettlementOf({ settled_at: '2026-10-09T00:00:00.000Z' })).toEqual({ paidAt: '2026-10-09T00:00:00.000Z', settlement: null });
   });
@@ -93,5 +106,10 @@ describe('formatInvoiceDate / settlementRefLabel (#2661)', () => {
   it('joins method and reference, or shows the method alone', () => {
     expect(settlementRefLabel({ method: 'stripe', reference: 'pi_1' })).toBe('stripe · pi_1');
     expect(settlementRefLabel({ method: 'manual', reference: null })).toBe('manual');
+  });
+
+  it('#2665: names the e-Transfer rail readably on a receipt', () => {
+    expect(settlementRefLabel({ method: 'emt', reference: 'INV-3F9A1C07D2' })).toBe('e-Transfer · INV-3F9A1C07D2');
+    expect(settlementRefLabel({ method: 'emt', reference: null })).toBe('e-Transfer');
   });
 });

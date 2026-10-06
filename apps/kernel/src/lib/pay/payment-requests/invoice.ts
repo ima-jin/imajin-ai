@@ -43,9 +43,9 @@ export function issuerAddressOf(profile: { metadata?: unknown; fieldVisibility?:
 
 /** What the printed receipt may say about how a request was settled. */
 export interface PublicSettlement {
-  /** `stripe` | `manual` | `mjnx`. */
+  /** `stripe` | `manual` | `mjnx` | `emt`. */
   method: string;
-  /** The processor reference (Stripe PaymentIntent, else Checkout session) when there is one. Never the free-text note. */
+  /** The rail's own reference when there is one — the Stripe PaymentIntent (else Checkout session), or the e-Transfer memo (#2665). Never the free-text note. */
   reference: string | null;
 }
 
@@ -54,6 +54,7 @@ interface StoredSettlementRef {
   settled_at?: unknown;
   payment_intent_id?: unknown;
   checkout_session_id?: unknown;
+  reference?: unknown;
 }
 
 function nonEmptyString(value: unknown): string | null {
@@ -68,7 +69,11 @@ export function publicSettlementOf(settlementRef: unknown): { paidAt: string | n
   return {
     paidAt: nonEmptyString(ref.settled_at),
     settlement: method
-      ? { method, reference: nonEmptyString(ref.payment_intent_id) ?? nonEmptyString(ref.checkout_session_id) }
+      ? {
+          method,
+          reference:
+            nonEmptyString(ref.payment_intent_id) ?? nonEmptyString(ref.checkout_session_id) ?? nonEmptyString(ref.reference),
+        }
       : null,
   };
 }
@@ -83,7 +88,13 @@ export function formatInvoiceDate(instant: string): string {
   return formatDueDate(instant, 'en-CA');
 }
 
-/** `stripe · pi_123`, or just `manual` when the rail has no reference of its own. */
+/** How a rail is named on a receipt; a rail not listed prints its raw method. */
+const SETTLEMENT_METHOD_LABELS: Record<string, string> = {
+  emt: 'e-Transfer',
+};
+
+/** `stripe · pi_123`, `e-Transfer · INV-3F9A1C07D2`, or just `manual` when the rail has no reference of its own. */
 export function settlementRefLabel(settlement: PublicSettlement): string {
-  return settlement.reference ? `${settlement.method} · ${settlement.reference}` : settlement.method;
+  const method = SETTLEMENT_METHOD_LABELS[settlement.method] ?? settlement.method;
+  return settlement.reference ? `${method} · ${settlement.reference}` : method;
 }

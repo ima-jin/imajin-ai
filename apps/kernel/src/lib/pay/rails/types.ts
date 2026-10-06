@@ -125,3 +125,75 @@ export interface WithdrawRail {
    */
   confirmFromEvent(payload: unknown): Promise<{ intentId: string; externalRef: string } | null>;
 }
+
+// ---------------------------------------------------------------------------
+// Pay-in direction (#2665)
+//
+// `WithdrawRail` above is the OUT direction (reserve -> execute -> reconcile).
+// `PayInRail` is the IN direction: how a payer funds a payment. A rail keeps
+// ONE stable `name` across both directions (EMT is `'emt'` here and will be
+// `'emt'` as a `WithdrawRail` under #2014), so `pay.withdrawal_intents.rail`,
+// `settlement_ref.method` and the registry key all agree on what the rail is.
+// The two interfaces are deliberately separate: a manual rail like EMT has
+// no webhook, feed or SDK, so it implements only the direction it supports.
+// ---------------------------------------------------------------------------
+
+/**
+ * What the pay-in rail is asked to give a payer instructions for. Amounts
+ * are integer minor units (cents), per `packages/money` — never floats.
+ */
+export interface PayInRequest {
+  /** Rail-neutral reference the payer must quote so the receiver can match the deposit (EMT: the transfer memo). Unique to the thing being paid. */
+  reference: string;
+  /** Exact amount owed, in minor units. */
+  amountMinor: number;
+  /** ISO currency code, uppercase. */
+  currency: string;
+}
+
+/**
+ * What a payer is shown to fund a payment. `destination` is rail-specific
+ * and deliberately a plain string (EMT: the receiving email) — the same
+ * shape as `WithdrawalIntent.destination`, so the two directions can share a
+ * destination vocabulary under #2014.
+ */
+export interface PayInInstructions {
+  rail: string;
+  destination: string;
+  amountMinor: number;
+  currency: string;
+  reference: string;
+}
+
+/** A manifest `fees[]` entry, as `resolveSettlementChain` reads it. */
+export interface PayInFeeEntry {
+  role: string;
+  rateBps: number;
+  fixedCents: number;
+}
+
+/**
+ * A pay-in payment rail. Implementations own everything rail-specific
+ * (instruction format, accepted currencies, fee schedule) behind this
+ * interface; callers (payment requests today, the events app later) never
+ * branch on the rail name.
+ */
+export interface PayInRail {
+  /** Stable adapter name — equals the `WithdrawRail.name` for the same rail, and `settlement_ref.method`. */
+  readonly name: string;
+  /** ISO currencies this rail can collect. */
+  readonly currencies: readonly string[];
+  /** `'manual'` = a human confirms receipt (no webhook); `'automatic'` = the rail reports it. */
+  readonly confirmation: 'manual' | 'automatic';
+  /** Whether this rail can collect `currency`. */
+  supportsCurrency(currency: string): boolean;
+  /** The instructions a payer needs to fund `request` into `destination`. Pure. */
+  instructionsFor(request: PayInRequest, destination: string): PayInInstructions;
+  /**
+   * The `fees[]` to settle a manifest with when paid over this rail: the
+   * manifest's own entries with its `processor` entry replaced by this
+   * rail's schedule. A manifest is built against the default (card) rail's
+   * fee, which must never be charged on a rail that does not incur it.
+   */
+  settlementFees(manifestFees: readonly PayInFeeEntry[] | undefined): PayInFeeEntry[];
+}

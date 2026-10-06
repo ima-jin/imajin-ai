@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   settlePaymentRequestManual: vi.fn(),
+  settlePaymentRequestEmt: vi.fn(),
 }));
 
 vi.mock('@imajin/auth', () => ({
@@ -24,6 +25,11 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   isServiceError: (value: unknown) => typeof value === 'object' && value !== null && 'error' in value && 'status' in value,
   settlePaymentRequestManual: mocks.settlePaymentRequestManual,
+}));
+
+// Same reason as the service mock above: the real module pulls in '@/src/db'.
+vi.mock('@/src/lib/pay/payment-requests/emt', () => ({
+  settlePaymentRequestEmt: mocks.settlePaymentRequestEmt,
 }));
 
 import { POST } from '../route';
@@ -53,10 +59,13 @@ describe('POST /pay/api/payment-requests/:id/settle', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects a non-manual method (stripe/mjnx reserved for #2209)', async () => {
-    const res = await callSettle({ method: 'stripe' });
-    expect(res.status).toBe(400);
+  it('rejects methods other than manual/emt (stripe/mjnx reserved for #2209)', async () => {
+    for (const method of ['stripe', 'mjnx', undefined]) {
+      const res = await callSettle({ method });
+      expect(res.status).toBe(400);
+    }
     expect(mocks.settlePaymentRequestManual).not.toHaveBeenCalled();
+    expect(mocks.settlePaymentRequestEmt).not.toHaveBeenCalled();
   });
 
   it('rejects a non-string note', async () => {
@@ -75,5 +84,59 @@ describe('POST /pay/api/payment-requests/:id/settle', () => {
     mocks.settlePaymentRequestManual.mockResolvedValueOnce({ error: "cannot settle a payment_request in status 'settled_manual'", status: 409 });
     const res = await callSettle({ method: 'manual' });
     expect(res.status).toBe(409);
+  });
+});
+
+describe("POST /pay/api/payment-requests/:id/settle {method: 'emt'} — Mark paid (e-Transfer) (#2665)", () => {
+  it('fails closed on auth failure and never reaches the service', async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
+    const res = await callSettle({ method: 'emt' });
+    expect(res.status).toBe(401);
+    expect(mocks.settlePaymentRequestEmt).not.toHaveBeenCalled();
+  });
+
+  it('delegates to the e-Transfer service (not the manual one) with the resolved caller DID', async () => {
+    mocks.settlePaymentRequestEmt.mockResolvedValueOnce({ paymentRequest: { id: 'pr_1', status: 'paid' }, settled: true });
+    const res = await callSettle({ method: 'emt' });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ settled: true, paymentRequest: { status: 'paid' } });
+    expect(mocks.settlePaymentRequestEmt).toHaveBeenCalledWith({ id: 'pr_1', callerDid: ISSUER_DID });
+    expect(mocks.settlePaymentRequestManual).not.toHaveBeenCalled();
+  });
+
+  it("passes the ACTING business DID as the caller when someone acts for the issuer (resolveActingDid)", async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:delegate', actingFor: ISSUER_DID } });
+    mocks.settlePaymentRequestEmt.mockResolvedValueOnce({ paymentRequest: { id: 'pr_1' }, settled: true });
+    await callSettle({ method: 'emt' });
+    expect(mocks.settlePaymentRequestEmt).toHaveBeenCalledWith({ id: 'pr_1', callerDid: ISSUER_DID });
+  });
+
+  it('maps an unauthorized attempt (the service refuses a non-issuer) to a 403 — enforced server-side, not by the client', async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:stranger' } });
+    mocks.settlePaymentRequestEmt.mockResolvedValueOnce({
+      error: 'only the issuer, or someone acting for the issuer business, may mark this payment_request paid',
+      status: 403,
+    });
+
+    const res = await callSettle({ method: 'emt' });
+
+    expect(res.status).toBe(403);
+    expect(mocks.settlePaymentRequestEmt).toHaveBeenCalledWith({ id: 'pr_1', callerDid: 'did:imajin:stranger' });
+  });
+
+  it('a replay answers 200 with settled: false (idempotent), and a request already settled another way is a 409', async () => {
+    mocks.settlePaymentRequestEmt.mockResolvedValueOnce({ paymentRequest: { id: 'pr_1', status: 'paid' }, settled: false });
+    const replay = await callSettle({ method: 'emt' });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({ settled: false });
+
+    mocks.settlePaymentRequestEmt.mockResolvedValueOnce({ error: "cannot mark a payment_request in status 'paid' paid by e-Transfer", status: 409 });
+    expect((await callSettle({ method: 'emt' })).status).toBe(409);
+  });
+
+  it('answers 500 when the service throws', async () => {
+    mocks.settlePaymentRequestEmt.mockRejectedValueOnce(new Error('boom'));
+    expect((await callSettle({ method: 'emt' })).status).toBe(500);
   });
 });
