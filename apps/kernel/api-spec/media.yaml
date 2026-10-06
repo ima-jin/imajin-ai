@@ -38,8 +38,9 @@ components:
 
         Enforced scope (403 `Missing required scope: <scope>` when absent) is
         `media:write` on every mutation route (`POST /api/assets`,
-        `PUT`/`DELETE`/`PATCH` on an asset or its content) and `media:read` on
-        authenticated `GET /api/assets/{id}/content`. Scopes are ONLY checked
+        `PUT`/`DELETE`/`PATCH` on an asset or its content, and
+        `PATCH /api/assets/{id}/access`) and `media:read` on
+        `GET /api/assets` (list) and authenticated `GET /api/assets/{id}/content`. Scopes are ONLY checked
         on this token path — the pre-existing session cookie predates scoped
         grants, mirroring `requireSessionOrAppToken`'s own `requireScopes`.
   schemas:
@@ -210,11 +211,29 @@ paths:
     get:
       tags: [media]
       operationId: listAssets
-      summary: List assets for authenticated user — also accepts internal Bearer + X-Owner-DID for service-to-service
+      summary: List assets for authenticated user — also accepts internal Bearer + X-Owner-DID for service-to-service. App-token callers need `media:read`.
       security:
         - cookieAuth: []
         - bearerAuth: []
+        - appTokenAuth: []
       parameters:
+        - name: did
+          in: query
+          schema: { type: string }
+          description: |
+            List another identity's assets instead of the caller's own. When
+            `did` differs from the caller's DID the result is restricted to
+            assets whose `.fair` manifest access is `public`. Omitted (or equal
+            to the caller's own DID) lists the caller's own assets, of any
+            access level.
+        - name: context_app
+          in: query
+          schema: { type: string }
+          description: "Only assets whose stored upload context `app` equals this value (exact match). Combines with `context_feature` and the other filters (AND)."
+        - name: context_feature
+          in: query
+          schema: { type: string }
+          description: "Only assets whose stored upload context `feature` equals this value (exact match). Combines with `context_app` and the other filters (AND)."
         - name: type
           in: query
           schema: { type: string }
@@ -249,6 +268,16 @@ paths:
                   limit: { type: integer }
                   offset: { type: integer }
                   count: { type: integer }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: App-token missing the `media:read` scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/assets/{id}:
     get:
@@ -406,6 +435,63 @@ paths:
           description: Asset not found, or toDid does not resolve to a known identity
         "409":
           description: toDid is already the current owner
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/assets/{id}/access:
+    patch:
+      tags: [media]
+      operationId: updateAssetAccess
+      summary: Change an asset's `.fair` access level after creation (owner only). Re-signs and republishes the manifest. App-token callers need `media:write`.
+      security:
+        - cookieAuth: []
+        - appTokenAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [access]
+              properties:
+                access:
+                  type: string
+                  enum: [public, private, conversation]
+                  description: "New `.fair` access level; stored on the manifest as `access: { type: <value> }`."
+      responses:
+        "200":
+          description: Updated asset (with the re-signed `fairManifest`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Asset" }
+        "400":
+          description: Invalid JSON body, or `access` missing / not one of the allowed values
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller does not own the asset, the asset is immutable, or the app-token is missing the `media:write` scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Asset not found (or not active)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Database or manifest-update failure
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
