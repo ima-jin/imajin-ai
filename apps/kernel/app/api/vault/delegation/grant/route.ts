@@ -201,6 +201,20 @@ async function resolveRenewal(
 }
 
 /**
+ * Validate the grant's `field` against the vault field grammar, returning an
+ * error message or null. `field` is covered by the owner's signature, so it is
+ * validated but never trimmed or otherwise rewritten: what the owner signed is
+ * what is looked up.
+ */
+function validateSignedFieldName(field: string): string | null {
+  const parsedField = parseVaultFieldName(field);
+  if (!parsedField.ok) {
+    return parsedField.message;
+  }
+  return parsedField.value.field === field ? null : 'field must not have leading or trailing whitespace';
+}
+
+/**
  * Validate the optional #2231 metadata fields, returning an error message or
  * null. Extracted so `POST` itself stays under the cognitive-complexity
  * budget — this is pure input validation with no dependency on request state.
@@ -267,14 +281,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 
-  // `field` is covered by the owner's signature, so it is validated but never
-  // trimmed or otherwise rewritten: what the owner signed is what is looked up.
-  const parsedField = parseVaultFieldName(field);
-  if (!parsedField.ok || parsedField.value.field !== field) {
-    return NextResponse.json(
-      { error: parsedField.ok ? 'field must not have leading or trailing whitespace' : parsedField.message },
-      { status: 400 },
-    );
+  const fieldError = validateSignedFieldName(field);
+  if (fieldError) {
+    return NextResponse.json({ error: fieldError }, { status: 400 });
   }
 
   const metadataError = validateGrantMetadata(purpose, oneTime);
