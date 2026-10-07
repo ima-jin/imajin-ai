@@ -16,6 +16,15 @@ import {
 } from '@imajin/auth';
 import { resolveActiveAppByAudience } from '@/src/lib/kernel/app-registry';
 
+/**
+ * The 400 body self-service register/PATCH return for a `dependsOn` field.
+ * `dependsOn` hands an app's tokens another service's audience, so it is written
+ * only by an operator path: the admin registry route, or `apps.provision` (where
+ * the operator approves the list on the /jin card before anything is registered).
+ */
+export const DEPENDS_ON_OPERATOR_ONLY_ERROR =
+  'dependsOn can only be set by a node operator (admin registry route or apps.provision); it is not accepted on self-service registration';
+
 export interface AppDeclarationsInput {
   providesScopes?: unknown;
   dependsOn?: unknown;

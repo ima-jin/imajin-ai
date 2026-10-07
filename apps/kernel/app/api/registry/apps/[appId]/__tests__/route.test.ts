@@ -1,9 +1,10 @@
 /**
- * Tests for PATCH /api/registry/apps/:appId — providesScopes + dependsOn (#2663).
+ * Tests for PATCH /api/registry/apps/:appId — providesScopes (owner-editable) and dependsOn
+ * (operator-only, rejected here) (#2663).
  *
  * The owner-only gate and the generic field updates predate #2663; the cases here
- * cover how the new declarations are validated and persisted through the same
- * assignment path as `requestedScopes`.
+ * cover how `providesScopes` is validated and persisted through the same assignment
+ * path as `requestedScopes`, and that an owner can never self-assign `dependsOn`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -49,7 +50,10 @@ vi.mock('@imajin/auth', () => ({
   requireAuth: mocks.requireAuthMock,
   resolveActingDid: (identity: { id: string }) => identity.id,
 }));
-vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: mocks.validateAppDeclarationsMock }));
+vi.mock('@/src/lib/kernel/app-declarations', () => ({
+  validateAppDeclarations: mocks.validateAppDeclarationsMock,
+  DEPENDS_ON_OPERATOR_ONLY_ERROR: 'dependsOn is operator-only',
+}));
 
 import { PATCH } from '../route';
 
@@ -75,36 +79,23 @@ beforeEach(() => {
   }));
 });
 
-describe('PATCH /api/registry/apps/:appId — providesScopes + dependsOn (#2663)', () => {
-  it("validates against the app's slug and persists both fields", async () => {
-    const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }];
-
-    const res = await patch({ providesScopes: ['dykil:read'], dependsOn });
+describe('PATCH /api/registry/apps/:appId — providesScopes (#2663)', () => {
+  it("validates against the app's slug and persists it", async () => {
+    const res = await patch({ providesScopes: ['dykil:read'] });
 
     expect(res.status).toBe(200);
     expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith({
       providesScopes: ['dykil:read'],
-      dependsOn,
       slug: 'dykil',
     });
-    expect(mocks.setMock).toHaveBeenCalledWith(
-      expect.objectContaining({ providesScopes: ['dykil:read'], dependsOn }),
-    );
-  });
-
-  it('updates only the field that was sent', async () => {
-    await patch({ providesScopes: ['dykil:read'] });
-
-    const updates = (mocks.setMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
-    expect(updates).toHaveProperty('providesScopes', ['dykil:read']);
-    expect(updates).not.toHaveProperty('dependsOn');
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ providesScopes: ['dykil:read'] }));
   });
 
   it('clears the list when an empty array is sent', async () => {
-    await patch({ dependsOn: [] });
+    await patch({ providesScopes: [] });
 
     const updates = (mocks.setMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
-    expect(updates).toHaveProperty('dependsOn', []);
+    expect(updates).toHaveProperty('providesScopes', []);
   });
 
   it('does not run the declarations validator for an unrelated update', async () => {
@@ -115,6 +106,31 @@ describe('PATCH /api/registry/apps/:appId — providesScopes + dependsOn (#2663)
     const updates = (mocks.setMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
     expect(updates).not.toHaveProperty('providesScopes');
     expect(updates).not.toHaveProperty('dependsOn');
+  });
+
+  it.each([
+    ['a kernel-media dependency', [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }]],
+    ['an empty list', []],
+    ['a malformed value', 'jin.imajin.ai'],
+  ])('rejects dependsOn (%s) with 400: an owner cannot self-assign it, and nothing is written', async (_label, dependsOn) => {
+    const res = await patch({ dependsOn });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('dependsOn is operator-only');
+    expect(mocks.validateAppDeclarationsMock).not.toHaveBeenCalled();
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects dependsOn even when sent alongside valid owner-editable fields, writing none of them', async () => {
+    const res = await patch({
+      name: 'Dykil 2',
+      providesScopes: ['dykil:read'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+    });
+
+    expect(res.status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
   });
 
   it('rejects with 400 and writes nothing when the declarations are invalid', async () => {

@@ -17,8 +17,10 @@
  *
  * Returns: { token, expiresIn, scopes, aud }
  *   aud — every audience the token carries: the requested `aud`, plus each
- *         `registry.apps.depends_on` audience the granted scopes reach
+ *         `registry.apps.depends_on` audience the requested scopes reach
  *         (#2663), so one token can satisfy the app and e.g. kernel media.
+ *   scopes — with a dependency audience, clamped to the app's providesScopes
+ *         plus the dependency scopes the operator approved — nothing else.
  *
  * This is a Phase 1 primitive: shipping it does not change any existing
  * app's default auth behavior. Nothing calls this endpoint unless an app
@@ -29,7 +31,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, getSessionCookieOptions } from '@imajin/config';
 import { resolveAppScopes } from '@imajin/auth';
 import { verifySessionToken, createSessionAppToken } from '@/src/lib/auth/jwt';
-import { resolveActiveAppByAudience, resolveTokenAudiences, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
+import { resolveActiveAppByAudience, resolveTokenGrant, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -73,14 +75,15 @@ export async function POST(request: NextRequest) {
   // #2663: the platform vocabulary PLUS the scopes this app declared for
   // itself (`registry.apps.provides_scopes`) — e.g. dykil:read / dykil:write.
   // An app's own scopes are only ever granted on a token for that app's `aud`.
-  const { valid: grantedScopes } = resolveAppScopes(
+  const { valid: requestedScopes } = resolveAppScopes(
     Array.isArray(scopes) ? scopes : [],
     registeredApp.providesScopes,
   );
 
   // #2663: one token for the app AND the services it declared in `dependsOn`
-  // (e.g. kernel media), so the app doesn't need a second token per service.
-  const audiences = await resolveTokenAudiences(aud, registeredApp, grantedScopes);
+  // (e.g. kernel media). When it carries a dependency audience its scopes are
+  // clamped to exactly what the operator approved for the app.
+  const { audiences, scopes: grantedScopes } = await resolveTokenGrant(aud, registeredApp, requestedScopes);
 
   const token = await createSessionAppToken({ sub: session.sub, aud: audiences, scopes: grantedScopes });
 

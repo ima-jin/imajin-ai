@@ -244,36 +244,81 @@ beforeEach(() => {
   }));
 });
 
-describe('runAppProvision — #2663 scope declarations from the manifest', () => {
-  it('registers providesScopes + dependsOn from the manifest, validated against the app slug', async () => {
-    fetchAppManifestMock.mockResolvedValue({
-      providesScopes: ['dykil:read', 'dykil:write'],
-      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
-    });
+describe('runAppProvision — #2663 scope declarations: exactly what the operator approved', () => {
+  const declared = {
+    providesScopes: ['dykil:read', 'dykil:write'],
+    dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+  };
 
-    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+  it('registers the manifest declarations when they match the approved list, validated against the slug', async () => {
+    fetchAppManifestMock.mockResolvedValue(declared);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: declared });
 
     expect(outcome.status).toBe('succeeded');
     expect(validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: 'dykil' }));
     expect([...registryAppsStore.values()][0]).toMatchObject({
       providesScopes: ['dykil:read', 'dykil:write'],
       requestedScopes: ['dykil:read', 'dykil:write'],
-      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
     });
   });
 
-  it('registers empty declarations when the manifest has none', async () => {
-    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+  it('treats a reordered but identical list as the same list', async () => {
+    fetchAppManifestMock.mockResolvedValue({
+      providesScopes: ['dykil:write', 'dykil:read'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+    });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: declared });
+
+    expect(outcome.status).toBe('succeeded');
+  });
+
+  it('registers empty declarations when the manifest has none and none were approved', async () => {
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: null });
 
     expect(outcome.status).toBe('succeeded');
     expect([...registryAppsStore.values()][0]).toMatchObject({ providesScopes: [], dependsOn: [] });
   });
 
-  it('fails closed at the register step, writing no row, when the declarations are rejected', async () => {
+  it.each([
+    ['an extra dependency scope (media:write the operator never saw)', { ...declared, dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }] }],
+    ['an extra dependency audience', { ...declared, dependsOn: [...declared.dependsOn, { aud: 'events.imajin.ai', scopes: ['events:read'] }] }],
+    ['an extra providesScope', { ...declared, providesScopes: [...declared.providesScopes, 'dykil:admin'] }],
+    ['a missing providesScope', { ...declared, providesScopes: ['dykil:read'] }],
+  ])('fails closed at register, writing no row, when the manifest now declares %s', async (_label, drifted) => {
+    fetchAppManifestMock.mockResolvedValue(drifted);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: declared });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('differ from the list the operator approved');
+    expect(registryAppsStore.size).toBe(0);
+    expect(sealActionsSecretMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['null (no manifest was readable at proposal time)', null],
+    ['omitted', undefined],
+  ])('approves nothing when the approved list is %s: a manifest that declares anything fails closed', async (_label, approved) => {
+    fetchAppManifestMock.mockResolvedValue(declared);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: approved });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(registryAppsStore.size).toBe(0);
+  });
+
+  it('fails closed at the register step, writing no row, when the declarations are rejected as invalid', async () => {
     fetchAppManifestMock.mockResolvedValue({ providesScopes: ['media:write'] });
     validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
 
-    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: null });
 
     expect(outcome.status).toBe('failed');
     if (outcome.status !== 'failed') throw new Error('unreachable');

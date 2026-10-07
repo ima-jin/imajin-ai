@@ -51,7 +51,10 @@ const {
 });
 
 // #2663: the validator itself is covered by app-declarations.test.ts.
-vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: mockValidateAppDeclarations }));
+vi.mock('@/src/lib/kernel/app-declarations', () => ({
+  validateAppDeclarations: mockValidateAppDeclarations,
+  DEPENDS_ON_OPERATOR_ONLY_ERROR: 'dependsOn is operator-only',
+}));
 
 // The mocked `@/src/db` module intentionally does NOT export `identities` —
 // if the route regressed into importing/inserting it, this test file would
@@ -167,11 +170,10 @@ describe('POST /api/registry/apps — registry fields (#1990)', () => {
   });
 });
 
-describe('POST /api/registry/apps — #2663 providesScopes + dependsOn', () => {
-  it('stores the app\'s own scopes and dependency list, and its own scopes survive in requestedScopes', async () => {
-    const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }];
+describe('POST /api/registry/apps — #2663 providesScopes', () => {
+  it("stores the app's own scopes, and they survive in requestedScopes", async () => {
     mockValidateAppDeclarations.mockResolvedValue({
-      ok: { providesScopes: ['dykil:read', 'dykil:write'], dependsOn, requestedScopes: ['dykil:read', 'dykil:write'] },
+      ok: { providesScopes: ['dykil:read', 'dykil:write'], dependsOn: [], requestedScopes: ['dykil:read', 'dykil:write'] },
     });
 
     const res = await POST(
@@ -180,7 +182,6 @@ describe('POST /api/registry/apps — #2663 providesScopes + dependsOn', () => {
         callbackUrl: 'https://dykil.example.com/callback',
         requestedScopes: ['dykil:read', 'dykil:write'],
         providesScopes: ['dykil:read', 'dykil:write'],
-        dependsOn,
       }) as never,
     );
 
@@ -188,32 +189,69 @@ describe('POST /api/registry/apps — #2663 providesScopes + dependsOn', () => {
     const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedRow.requestedScopes).toEqual(['dykil:read', 'dykil:write']);
     expect(insertedRow.providesScopes).toEqual(['dykil:read', 'dykil:write']);
-    expect(insertedRow.dependsOn).toEqual(dependsOn);
   });
 
-  it('defaults both to empty arrays when the app declares nothing', async () => {
+  it('never writes dependsOn: the row is left to its empty default', async () => {
     const res = await POST(makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback' }) as never);
 
     expect(res.status).toBe(201);
     const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
     expect(insertedRow.providesScopes).toEqual([]);
-    expect(insertedRow.dependsOn).toEqual([]);
+    expect(insertedRow).not.toHaveProperty('dependsOn');
   });
 
-  it('rejects with 400 and inserts nothing when the declarations are invalid', async () => {
-    mockValidateAppDeclarations.mockResolvedValue({ error: 'dependsOn audiences are not registered apps: nope.example.com' });
+  it('rejects with 400 and inserts nothing when providesScopes is invalid', async () => {
+    mockValidateAppDeclarations.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
 
     const res = await POST(
-      makeRequest({
-        name: 'Test App',
-        callbackUrl: 'https://example.com/callback',
-        dependsOn: [{ aud: 'nope.example.com', scopes: ['media:read'] }],
-      }) as never,
+      makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', providesScopes: ['media:write'] }) as never,
     );
     const body = await res.json();
 
     expect(res.status).toBe(400);
-    expect(body.error).toContain('nope.example.com');
+    expect(body.error).toContain('media:write');
     expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/registry/apps — dependsOn is operator-only (#2663)', () => {
+  it.each([
+    ['a kernel-media dependency', [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }]],
+    ['an empty list', []],
+    ['a malformed value', 'jin.imajin.ai'],
+  ])('rejects %s with 400, before anything is validated or inserted', async (_label, dependsOn) => {
+    const res = await POST(
+      makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', dependsOn }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('dependsOn is operator-only');
+    expect(mockValidateAppDeclarations).not.toHaveBeenCalled();
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects dependsOn even alongside otherwise valid fields', async () => {
+    const res = await POST(
+      makeRequest({
+        name: 'Dykil',
+        callbackUrl: 'https://dykil.example.com/callback',
+        providesScopes: ['dykil:read'],
+        dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+      }) as never,
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('still authenticates first: an unauthenticated caller gets 401, not the dependsOn error', async () => {
+    mockRequireAuth.mockResolvedValue({ error: 'nope', status: 401 });
+
+    const res = await POST(
+      makeRequest({ name: 'X', callbackUrl: 'https://example.com/cb', dependsOn: [] }) as never,
+    );
+
+    expect(res.status).toBe(401);
   });
 });

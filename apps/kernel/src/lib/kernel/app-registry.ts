@@ -62,27 +62,38 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
 }
 
 /**
- * The `aud` claim for a token minted for `app` (#2663): `aud` itself, plus the
- * audience of every `dependsOn` entry that
- *   - the granted scopes actually reach (least privilege: a token with none of a
- *     dependency's scopes doesn't get that audience), and
+ * What a token minted for `app` carries (#2663): its audiences and its scopes.
+ *
+ * Audiences: `aud` itself, plus the audience of every `dependsOn` entry that
+ *   - the requested scopes actually reach (least privilege: a token asking for
+ *     none of a dependency's scopes doesn't get that audience), and
  *   - still resolves to an active registered app (a revoked or deregistered
  *     dependency is dropped rather than failing the mint).
  *
- * One token can then satisfy both the app and the services it fronts, e.g. the
- * kernel media routes, which verify `aud = this node's host`.
+ * Scopes: when the token carries any dependency audience, they are clamped to
+ * exactly what the operator approved — the app's own `providesScopes` plus the
+ * listed scopes of the dependencies actually added. Anything else the caller
+ * asked for (e.g. `media:write` when only `media:read` was declared) is dropped,
+ * because every scope on the token is honoured at every audience it carries.
+ * A token with no dependency audience is only valid at the app's own host and is
+ * left as requested.
  */
-export async function resolveTokenAudiences(
+export async function resolveTokenGrant(
   aud: string,
-  app: Pick<ActiveRegistryApp, 'dependsOn'>,
-  grantedScopes: readonly string[],
-): Promise<string[]> {
-  const granted = new Set(grantedScopes);
-  const reached = app.dependsOn.filter((dep) => dep.scopes.some((s) => granted.has(s)));
+  app: Pick<ActiveRegistryApp, 'dependsOn' | 'providesScopes'>,
+  requestedScopes: readonly string[],
+): Promise<{ audiences: string[]; scopes: string[] }> {
+  const requested = new Set(requestedScopes);
+  const reached = app.dependsOn.filter((dep) => dep.scopes.some((s) => requested.has(s)));
   const resolved = await Promise.all(
-    reached.map(async (dep) => ((await resolveActiveAppByAudience(dep.aud)) ? dep.aud : null)),
+    reached.map(async (dep) => ((await resolveActiveAppByAudience(dep.aud)) ? dep : null)),
   );
-  return tokenAudiences(aud, resolved.filter((a): a is string => a !== null));
+  const added = resolved.filter((dep): dep is AppDependency => dep !== null);
+  const audiences = tokenAudiences(aud, added.map((dep) => dep.aud));
+  if (added.length === 0) return { audiences, scopes: [...requestedScopes] };
+
+  const approved = new Set([...app.providesScopes, ...added.flatMap((dep) => dep.scopes)]);
+  return { audiences, scopes: requestedScopes.filter((s) => approved.has(s)) };
 }
 
 /**

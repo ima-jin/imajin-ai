@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
-import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
+import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 
 // GET /api/registry/apps/:appId — app detail (public)
 export async function GET(_request: NextRequest, props: { params: Promise<{ appId: string }> }) {
@@ -50,27 +50,18 @@ function buildFieldUpdates(body: Record<string, unknown>): AppUpdates {
 }
 
 /**
- * #2663: validate and collect `providesScopes` / `dependsOn` — only the ones the
- * request actually sent. Nothing is validated, and nothing returned, when
- * neither is present.
+ * #2663: validate and collect `providesScopes` — only when the request actually
+ * sent it. (`dependsOn` is operator-only and never reaches here: PATCH rejects it.)
  */
 async function buildDeclarationUpdates(
   body: Record<string, unknown>,
   slug: string | null,
-): Promise<{ ok: Pick<AppUpdates, 'providesScopes' | 'dependsOn'> } | { error: string }> {
-  if (body.providesScopes === undefined && body.dependsOn === undefined) return { ok: {} };
+): Promise<{ ok: Pick<AppUpdates, 'providesScopes'> } | { error: string }> {
+  if (body.providesScopes === undefined) return { ok: {} };
 
-  const declarations = await validateAppDeclarations({
-    providesScopes: body.providesScopes,
-    dependsOn: body.dependsOn,
-    slug,
-  });
+  const declarations = await validateAppDeclarations({ providesScopes: body.providesScopes, slug });
   if ('error' in declarations) return { error: declarations.error };
-
-  const ok: Pick<AppUpdates, 'providesScopes' | 'dependsOn'> = {};
-  if (body.providesScopes !== undefined) ok.providesScopes = declarations.ok.providesScopes;
-  if (body.dependsOn !== undefined) ok.dependsOn = declarations.ok.dependsOn;
-  return { ok };
+  return { ok: { providesScopes: declarations.ok.providesScopes } };
 }
 
 // PATCH /api/registry/apps/:appId — update (owner only)
@@ -101,10 +92,17 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  // #2663: `dependsOn` grants an app's tokens another service's audience (e.g.
+  // kernel media), so an app owner may not self-assign it — only an operator
+  // path (admin route, `apps.provision` with the /jin card approval) writes it.
+  if (body.dependsOn !== undefined) {
+    return NextResponse.json({ error: DEPENDS_ON_OPERATOR_ONLY_ERROR }, { status: 400 });
+  }
+
   const updates = buildFieldUpdates(body);
 
-  // #2663: the app's own scopes and dependency list — same assignment model as
-  // requestedScopes, validated the same way the register route validates them.
+  // #2663: the app's own scopes — same assignment model as requestedScopes,
+  // validated the same way the register route validates them.
   const declarationUpdates = await buildDeclarationUpdates(body, existing.slug);
   if ('error' in declarationUpdates) {
     return NextResponse.json({ error: declarationUpdates.error }, { status: 400 });

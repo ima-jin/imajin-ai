@@ -4,8 +4,32 @@ import { db, registryApps } from '@/src/db';
 import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
-import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
+import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { withLogger } from '@imajin/logger';
+
+/** `[origin]` of an absolute URL, or `null` when it isn't one. */
+function originOf(url: string): string[] | null {
+  try {
+    return [new URL(url).origin];
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Developer-supplied key (validated; the server never sees the private half), or a
+ * server-generated keypair whose private key is returned once and never stored.
+ */
+function resolveAppKey(
+  suppliedPublicKey: unknown,
+): { error: string } | { publicKey: string; keypairResponse?: { privateKey: string; publicKey: string } } {
+  if (typeof suppliedPublicKey === 'string' && suppliedPublicKey.trim()) {
+    if (!isValidPublicKey(suppliedPublicKey)) return { error: 'Invalid Ed25519 public key' };
+    return { publicKey: suppliedPublicKey.trim() };
+  }
+  const generated = generateKeypair();
+  return { publicKey: generated.publicKey, keypairResponse: generated };
+}
 
 // POST /api/registry/apps — register a new app (authenticated)
 // Two modes:
@@ -25,7 +49,14 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, providesScopes, dependsOn, publicKey: suppliedPublicKey } = body as {
+  // #2663: `dependsOn` grants an app's tokens another service's audience (e.g.
+  // kernel media), so only an operator path may write it — the admin route, or
+  // `apps.provision` where the operator approves the list on the /jin card.
+  if (body.dependsOn !== undefined) {
+    return NextResponse.json({ error: DEPENDS_ON_OPERATOR_ONLY_ERROR }, { status: 400 });
+  }
+
+  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, providesScopes, publicKey: suppliedPublicKey } = body as {
     name?: string;
     description?: string;
     callbackUrl?: string;
@@ -33,7 +64,6 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     logoUrl?: string;
     requestedScopes?: string[];
     providesScopes?: string[];
-    dependsOn?: Array<{ aud: string; scopes: string[] }>;
     publicKey?: string;
   };
 
@@ -44,43 +74,30 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: 'callbackUrl is required' }, { status: 400 });
   }
 
-  let publicKey: string;
-  let keypairResponse: { privateKey: string; publicKey: string } | undefined;
-
-  if (suppliedPublicKey && typeof suppliedPublicKey === 'string' && suppliedPublicKey.trim()) {
-    // Developer supplied their own key
-    if (!isValidPublicKey(suppliedPublicKey)) {
-      return NextResponse.json({ error: 'Invalid Ed25519 public key' }, { status: 400 });
-    }
-    publicKey = suppliedPublicKey.trim();
-  } else {
-    // Generate keypair server-side — return private key once
-    const generated = generateKeypair();
-    publicKey = generated.publicKey;
-    keypairResponse = generated;
+  const keyResult = resolveAppKey(suppliedPublicKey);
+  if ('error' in keyResult) {
+    return NextResponse.json({ error: keyResult.error }, { status: 400 });
   }
+  const { publicKey, keypairResponse } = keyResult;
 
   // Derive DID from public key
   const appDid = didFromPublicKey(publicKey);
 
   // #1990: no ad-hoc scope strings — clamp to the declarative SCOPE_VOCABULARY
   // (#1253), the same clamp every scoped-token mint route already applies.
-  // #2663: widened by the app's own declared `providesScopes`, and the app's
-  // `dependsOn` audiences are checked against the registry.
-  const declarations = await validateAppDeclarations({ providesScopes, dependsOn, requestedScopes });
+  // #2663: widened by the app's own declared `providesScopes`.
+  const declarations = await validateAppDeclarations({ providesScopes, requestedScopes });
   if ('error' in declarations) {
     return NextResponse.json({ error: declarations.error }, { status: 400 });
   }
-  const { requestedScopes: scopes, providesScopes: ownScopes, dependsOn: dependencies } = declarations.ok;
+  const { requestedScopes: scopes, providesScopes: ownScopes } = declarations.ok;
 
   // #1990: self-service registration always yields a third_party app.
   // first_party is reserved for the admin surface (POST /api/admin/registry/apps).
   // allowedRedirectHosts seeds from callbackUrl's own origin — a developer can
   // register additional hosts later via the admin surface.
-  let allowedRedirectHosts: string[] = [];
-  try {
-    allowedRedirectHosts = [new URL(callbackUrl).origin];
-  } catch {
+  const allowedRedirectHosts = originOf(callbackUrl);
+  if (!allowedRedirectHosts) {
     return NextResponse.json({ error: 'callbackUrl must be an absolute URL' }, { status: 400 });
   }
 
@@ -96,7 +113,6 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     logoUrl: typeof logoUrl === 'string' ? logoUrl || null : null,
     requestedScopes: scopes,
     providesScopes: ownScopes,
-    dependsOn: dependencies,
     tier: 'third_party',
     allowedRedirectHosts,
     // #1348: this surface only ever takes a single callbackUrl, so the

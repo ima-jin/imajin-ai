@@ -48,7 +48,7 @@ vi.mock('@imajin/logger', () => ({
 
 import {
   resolveActiveAppByAudience,
-  resolveTokenAudiences,
+  resolveTokenGrant,
   isAppDidActive,
   appNotRegisteredResponse,
   APP_NOT_REGISTERED_ERROR,
@@ -164,10 +164,11 @@ describe('appNotRegisteredResponse (#1990)', () => {
   });
 });
 
-describe('resolveTokenAudiences (#2663)', () => {
+describe('resolveTokenGrant (#2663)', () => {
   const MEDIA = 'jin.imajin.ai';
   const OTHER = 'events.imajin.ai';
   const app = {
+    providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [
       { aud: MEDIA, scopes: ['media:read', 'media:write'] },
       { aud: OTHER, scopes: ['events:read'] },
@@ -184,41 +185,135 @@ describe('resolveTokenAudiences (#2663)', () => {
     mocks.limitMock.mockImplementation(async () => (auds.includes(current) ? [ACTIVE_ROW] : []));
   }
 
-  it('returns just the primary audience when the app declares no dependencies', async () => {
-    expect(await resolveTokenAudiences('dykil.imajin.ai', { dependsOn: [] }, ['dykil:read'])).toEqual(['dykil.imajin.ai']);
-    expect(mocks.selectMock).not.toHaveBeenCalled();
+  describe('audiences', () => {
+    it('returns just the primary audience when the app declares no dependencies', async () => {
+      const grant = await resolveTokenGrant('dykil.imajin.ai', { providesScopes: [], dependsOn: [] }, ['dykil:read']);
+
+      expect(grant).toEqual({ audiences: ['dykil.imajin.ai'], scopes: ['dykil:read'] });
+      expect(mocks.selectMock).not.toHaveBeenCalled();
+    });
+
+    it('adds a dependency audience when a requested scope reaches it and it is still registered', async () => {
+      registered(MEDIA);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['dykil:read', 'media:read']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai', MEDIA]);
+    });
+
+    it('adds every reached dependency, in declaration order', async () => {
+      registered(MEDIA, OTHER);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['events:read', 'media:write']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai', MEDIA, OTHER]);
+    });
+
+    it('leaves out a dependency no requested scope reaches (least privilege)', async () => {
+      registered(MEDIA, OTHER);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['dykil:read']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai']);
+      expect(mocks.selectMock).not.toHaveBeenCalled();
+    });
+
+    it('drops a dependency that is no longer registered or active rather than failing the mint', async () => {
+      registered(OTHER);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['media:read', 'events:read']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai', OTHER]);
+    });
+
+    it('never duplicates the primary audience', async () => {
+      registered(MEDIA);
+
+      const grant = await resolveTokenGrant(
+        MEDIA,
+        { providesScopes: [], dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] },
+        ['media:read'],
+      );
+
+      expect(grant.audiences).toEqual([MEDIA]);
+    });
   });
 
-  it('adds a dependency audience when a granted scope reaches it and it is still registered', async () => {
-    registered(MEDIA);
+  describe('scopes: exactly what the operator approved', () => {
+    const readOnlyMedia = {
+      providesScopes: ['dykil:read'],
+      dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }],
+    };
 
-    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['dykil:read', 'media:read'])).toEqual(['dykil.imajin.ai', MEDIA]);
-  });
+    it('does not let a token reach media:write when only media:read was declared', async () => {
+      registered(MEDIA);
 
-  it('adds every reached dependency, in declaration order', async () => {
-    registered(MEDIA, OTHER);
+      const grant = await resolveTokenGrant('dykil.imajin.ai', readOnlyMedia, ['media:read', 'media:write']);
 
-    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['events:read', 'media:write'])).toEqual(['dykil.imajin.ai', MEDIA, OTHER]);
-  });
+      expect(grant.audiences).toEqual(['dykil.imajin.ai', MEDIA]);
+      expect(grant.scopes).toEqual(['media:read']);
+      expect(grant.scopes).not.toContain('media:write');
+    });
 
-  it('leaves out a dependency no granted scope reaches (least privilege)', async () => {
-    registered(MEDIA, OTHER);
+    it('keeps the app\'s own providesScopes next to the approved dependency scopes', async () => {
+      registered(MEDIA);
 
-    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['dykil:read'])).toEqual(['dykil.imajin.ai']);
-    expect(mocks.selectMock).not.toHaveBeenCalled();
-  });
+      const grant = await resolveTokenGrant('dykil.imajin.ai', readOnlyMedia, ['dykil:read', 'media:read', 'media:write']);
 
-  it('drops a dependency that is no longer registered or active rather than failing the mint', async () => {
-    registered(OTHER);
+      expect(grant.scopes).toEqual(['dykil:read', 'media:read']);
+    });
 
-    expect(await resolveTokenAudiences('dykil.imajin.ai', app, ['media:read', 'events:read'])).toEqual(['dykil.imajin.ai', OTHER]);
-  });
+    it('drops every other platform scope once the token carries a dependency audience', async () => {
+      registered(MEDIA);
 
-  it('never duplicates the primary audience', async () => {
-    registered(MEDIA);
+      const grant = await resolveTokenGrant('dykil.imajin.ai', readOnlyMedia, [
+        'profile:read',
+        'wallet:write',
+        'media:read',
+        'messages:write',
+      ]);
 
-    expect(
-      await resolveTokenAudiences(MEDIA, { dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] }, ['media:read']),
-    ).toEqual([MEDIA]);
+      expect(grant.scopes).toEqual(['media:read']);
+    });
+
+    it('keeps the full declared list when the app declared it all', async () => {
+      registered(MEDIA);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['dykil:write', 'media:read', 'media:write']);
+
+      expect(grant.scopes).toEqual(['dykil:write', 'media:read', 'media:write']);
+    });
+
+    it('unions the approved scopes of every dependency actually added', async () => {
+      registered(MEDIA, OTHER);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['media:write', 'events:read', 'events:write']);
+
+      expect(grant.scopes).toEqual(['media:write', 'events:read']);
+    });
+
+    it('does not keep a dependency\'s scopes when that dependency was not added (unregistered)', async () => {
+      registered(OTHER);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', app, ['media:read', 'events:read']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai', OTHER]);
+      expect(grant.scopes).toEqual(['events:read']);
+    });
+
+    it('clamps to nothing foreign when every reached dependency has been dropped', async () => {
+      registered();
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', readOnlyMedia, ['dykil:read', 'media:read', 'profile:read']);
+
+      // No dependency audience: the token is only valid at the app's own host, so it is left as requested.
+      expect(grant).toEqual({ audiences: ['dykil.imajin.ai'], scopes: ['dykil:read', 'media:read', 'profile:read'] });
+    });
+
+    it('leaves a token with no dependency audience exactly as requested', async () => {
+      const grant = await resolveTokenGrant('dykil.imajin.ai', readOnlyMedia, ['dykil:read', 'profile:read']);
+
+      expect(grant.scopes).toEqual(['dykil:read', 'profile:read']);
+    });
   });
 });
