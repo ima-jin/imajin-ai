@@ -51,7 +51,7 @@
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
-import { approvalCardAnchorId } from './approval-anchor';
+import { approvalCardAnchorId, APPROVALS_REFRESH_EVENT } from './approval-anchor';
 import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
@@ -988,6 +988,16 @@ function OperatorApprovalsPanelInner() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
+  }, [load]);
+
+  // #2367: a sibling form (static-bearer knock) just staged a card — re-fetch
+  // now so its `#<anchor>` hand-off link has a target without waiting a poll.
+  useEffect(() => {
+    const refresh = () => {
+      void load(true);
+    };
+    globalThis.addEventListener(APPROVALS_REFRESH_EVENT, refresh);
+    return () => globalThis.removeEventListener(APPROVALS_REFRESH_EVENT, refresh);
   }, [load]);
 
   // #2291: once the deep-linked proposal has actually loaded, scroll its
