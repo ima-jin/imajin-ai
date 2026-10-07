@@ -159,12 +159,12 @@ describe('confirmWithdrawal', () => {
       type: 'withdrawal',
       sourceKind: 'receipt',
       status: 'completed',
-      stripeId: 'fake_tr_1',
       externalRef: 'fake_tr_1',
       rail: 'fake',
       toDid: 'acct_1',
       metadata: { rail: 'fake', externalRef: 'fake_tr_1', intentId: 'wdi_1' },
     });
+    expect(state.insertedTransactions[0]).not.toHaveProperty('stripeId');
   });
 
   it('records the resolved destination\'s resolutionMode in the transaction metadata (#2190)', async () => {

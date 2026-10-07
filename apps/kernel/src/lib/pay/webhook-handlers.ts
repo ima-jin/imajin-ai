@@ -363,7 +363,7 @@ interface RecordTaxTrustLiabilitiesParams {
  * No internal balance is credited: this checkout is a Stripe destination
  * charge, so the tax money already sits in the collector's connected
  * account (`validateCheckoutBody` guarantees the collector is the seller).
- * The transactions row deliberately carries no `stripeId`, so the webhook's
+ * The transactions row deliberately carries no `externalRef`, so the webhook's
  * by-session idempotency lookup can never match it. Zero-amount rows are
  * skipped, consistent with `taxLineItems` not sending them to Stripe.
  */

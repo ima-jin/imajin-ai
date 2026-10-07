@@ -461,6 +461,13 @@ jobs:
       - name: Stripe import scope guard
         run: node scripts/ci-guard-stripe-import-scope.mjs
 
+      # stripe_id re-introduction guard (#2650): pay.transactions.stripe_id was
+      # dropped (migration 0181); fails on any reference under apps/ or
+      # packages/ outside scripts/stripe-id-allowlist.json (the deprecated
+      # public transactions-API field).
+      - name: No stripe_id guard
+        run: node scripts/ci-guard-no-stripe-id.mjs
+
   sonarcloud:
     name: SonarCloud
     runs-on: imajin-self-hosted

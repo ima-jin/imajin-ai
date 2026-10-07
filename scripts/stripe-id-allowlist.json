@@ -1,0 +1,10 @@
+{
+  "note": "Ratchet, NOT a general allowlist. pay.transactions.stripe_id was dropped (#2650, migration 0181); scripts/ci-guard-no-stripe-id.mjs fails on any reference under apps/ or packages/ not listed here, so this file only ever shrinks. The single entry below is the PUBLIC `stripe_id` field of the GET /pay/api/transactions/[did] response, which the #2650 ruling keeps for one more release, fed from `external_ref`. Remove it when that field is retired. Do not add an entry to make CI pass.",
+  "issue": "https://github.com/ima-jin/imajin-ai/issues/2650",
+  "violations": [
+    {
+      "file": "apps/kernel/app/pay/api/transactions/[did]/route.ts",
+      "reason": "Deprecated public response field name, kept one more release; value comes from `external_ref`."
+    }
+  ]
+}

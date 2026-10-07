@@ -77,7 +77,7 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: updateSetResult }),
   },
   paymentRequests: { __table: 'payment_request', id: 'id', status: 'status' },
-  transactions: { __table: 'transactions', id: 'id', service: 'service', type: 'type', metadata: 'metadata', status: 'status', createdAt: 'createdAt', stripeId: 'stripeId', externalRef: 'externalRef', rail: 'rail' },
+  transactions: { __table: 'transactions', id: 'id', service: 'service', type: 'type', metadata: 'metadata', status: 'status', createdAt: 'createdAt', externalRef: 'externalRef', rail: 'rail' },
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: state.publishMock }));
@@ -235,10 +235,10 @@ describe('createPaymentRequestCheckoutSession', () => {
 
     expect(state.insertCalls).toHaveLength(1);
     const inserted = state.insertCalls[0];
-    // #2176: dual-write — `external_ref` + `rail` are set, and the deprecated `stripe_id` alias agrees.
+    // #2176/#2650: `external_ref` + `rail` are set; the dropped `stripe_id` column is never written.
     expect(inserted.externalRef).toBe('cs_new');
     expect(inserted.rail).toBe('stripe');
-    expect(inserted.stripeId).toBe('cs_new');
+    expect(inserted).not.toHaveProperty('stripeId');
     expect(inserted.status).toBe('pending');
     expect(inserted.fairManifest).toBeUndefined();
     expect((inserted.metadata as Record<string, string>).payment_request_id).toBe('pr_1');

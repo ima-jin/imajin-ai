@@ -1,8 +1,8 @@
 /**
  * #2176 — the pay routes that write or read `pay.transactions.external_ref`:
  *
- *   - POST /api/checkout and POST /api/topup/stripe DUAL-WRITE `rail` + `external_ref` + the deprecated
- *     `stripe_id` alias (so step 5's DROP of `stripe_id` is safe);
+ *   - POST /api/checkout and POST /api/topup/stripe write `rail` + `external_ref` and nothing Stripe-named
+ *     (`stripe_id` was dropped in #2650);
  *   - GET /api/transactions/[did] keeps the public `stripe_id` field name, fed from `external_ref`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -77,8 +77,8 @@ beforeEach(() => {
   mocks.selectedRows.rows = [];
 });
 
-describe('writers dual-write rail + external_ref + stripe_id (#2176)', () => {
-  it('POST /api/checkout: the pending transaction carries rail, external_ref and the stripe_id alias', async () => {
+describe('writers set rail + external_ref and no stripe_id (#2176, #2650)', () => {
+  it('POST /api/checkout: the pending transaction carries rail + external_ref only', async () => {
     const res = await checkoutPOST(
       jsonRequest('https://kernel.test/api/checkout', {
         items: [{ name: 'Ticket', amount: 1000, quantity: 1 }],
@@ -95,11 +95,11 @@ describe('writers dual-write rail + external_ref + stripe_id (#2176)', () => {
       status: 'pending',
       rail: 'stripe',
       externalRef: 'cs_route_1',
-      stripeId: 'cs_route_1',
     });
+    expect(mocks.insertValues.mock.calls[0][0]).not.toHaveProperty('stripeId');
   });
 
-  it('POST /api/topup/stripe: the pending top-up transaction carries rail, external_ref and the stripe_id alias', async () => {
+  it('POST /api/topup/stripe: the pending top-up transaction carries rail + external_ref only', async () => {
     const res = await topupStripePOST(jsonRequest('https://kernel.test/pay/api/topup/stripe', { amount: 25 }));
 
     expect(res.status).toBe(200);
@@ -109,8 +109,8 @@ describe('writers dual-write rail + external_ref + stripe_id (#2176)', () => {
       status: 'pending',
       rail: 'stripe',
       externalRef: 'cs_route_1',
-      stripeId: 'cs_route_1',
     });
+    expect(mocks.insertValues.mock.calls[0][0]).not.toHaveProperty('stripeId');
   });
 });
 
@@ -136,8 +136,7 @@ describe('GET /api/transactions/[did] (#2176)', () => {
   }
 
   it('keeps the public `stripe_id` field name but feeds it from external_ref', async () => {
-    // `stripeId` deliberately disagrees: the response must come from `externalRef`.
-    mocks.selectedRows.rows = [{ ...txRow, externalRef: 'cs_from_external_ref', stripeId: 'cs_from_alias' }];
+    mocks.selectedRows.rows = [{ ...txRow, externalRef: 'cs_from_external_ref' }];
 
     const res = await get();
     const json = await res.json();
@@ -147,7 +146,7 @@ describe('GET /api/transactions/[did] (#2176)', () => {
   });
 
   it('returns a null stripe_id for a row with no external reference', async () => {
-    mocks.selectedRows.rows = [{ ...txRow, externalRef: null, stripeId: 'cs_alias_only' }];
+    mocks.selectedRows.rows = [{ ...txRow, externalRef: null }];
 
     const json = await (await get()).json();
 
