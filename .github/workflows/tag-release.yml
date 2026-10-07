@@ -17,18 +17,29 @@ name: Tag Release
 # `production` review never delays it and a publish failure never touches the
 # deploy dispatch.
 #
-# Manual recovery (#2622): `workflow_dispatch` with the release MERGE commit's
-# sha runs the very same steps against that commit (its HEAD^2 carries the
-# release message), for a release whose automatic tagging step failed. It
-# still only pushes a tag and dispatches deploy-prod.yml, so the `production`
-# environment gate applies unchanged. The sha must already be on main.
+# Release detection (#2685) lives in scripts/detect-release-commit.mjs. When a
+# push is a two-parent merge it walks the first-parent chain of HEAD^2 (the
+# merged branch, bounded, stopping at the merge-base with HEAD^1) for the
+# `release: vX.Y.Z` commit, so a release branch that had `main` merged into it
+# (v0.8.15) is still tagged — on the release commit itself. A plain release
+# merge (HEAD^2 IS the release commit) is tagged on the merge commit as always.
+# If the merged branch is `release/v*` and no release commit is found, the job
+# FAILS with an `::error::` — a release branch is never a green skip.
+#
+# Manual recovery (#2622, #2685): `workflow_dispatch` with the sha of the
+# release MERGE commit on main runs the very same detection and steps against
+# that commit, for a release whose automatic tagging step failed. The release
+# `release: vX.Y.Z` commit's own sha also works (it is inspected directly, as a
+# non-merge commit). It still only pushes a tag and dispatches deploy-prod.yml,
+# so the `production` environment gate applies unchanged. The sha must already
+# be on main.
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
       sha:
-        description: 'Release merge commit on main to tag and deploy (its HEAD^2 must be the `release: vX.Y.Z` commit)'
+        description: 'Release merge commit on main to tag and deploy (its merged branch must contain the `release: vX.Y.Z` commit), or that release commit itself'
         required: true
         type: string
 
@@ -70,19 +81,19 @@ jobs:
       - name: Determine whether this push is a release commit
         id: check
         # main is merged via GitHub's default "create a merge commit"
-        # strategy in this repo (see `git log --merges` on main), so on a
-        # merged PR, `github.event.head_commit.message` is the generic
-        # "Merge pull request #N from ..." message — NOT the release PR's
-        # own "release: vX.Y.Z" commit message. Read the real commit the
-        # same way scripts/ci-guard-version-bump.mjs does: when HEAD is a
-        # two-parent merge commit, HEAD^2 is the actual tip of the merged
-        # branch (release/vX.Y.Z has exactly one commit); fall back to HEAD
-        # itself for a fast-forward/squash/direct push.
+        # strategy in this repo, so on a merged PR the push's own message is
+        # the generic "Merge pull request #N from ..." — NOT the release PR's
+        # "release: vX.Y.Z" commit. scripts/detect-release-commit.mjs finds
+        # the real release commit on the merged branch (also when `main` was
+        # merged into the release branch, #2685), fails loudly for a
+        # `release/v*` merge without one, and falls back to the commit itself
+        # for a fast-forward/squash/direct push. It writes is_release,
+        # first_line and target_sha (the commit to tag) to $GITHUB_OUTPUT.
         #
-        # On a workflow_dispatch the commit to inspect (and later tag) is the
-        # `sha` input instead of the checked-out HEAD. The input reaches the
-        # script through env only (never interpolated into the shell text),
-        # must look like a git sha, and must already be on main.
+        # On a workflow_dispatch the commit to inspect is the `sha` input
+        # instead of the checked-out HEAD. The input reaches the script
+        # through env only (never interpolated into the shell text), must
+        # look like a git sha, and must already be on main.
         env:
           EVENT_NAME: ${{ github.event_name }}
           DISPATCH_SHA: ${{ inputs.sha }}
@@ -100,20 +111,7 @@ jobs:
           else
             TARGET="$(git rev-parse HEAD)"
           fi
-          echo "target_sha=$TARGET" >> "$GITHUB_OUTPUT"
-          if git rev-parse -q --verify "${TARGET}^2" >/dev/null 2>&1; then
-            MESSAGE="$(git log -1 --format=%B "${TARGET}^2")"
-          else
-            MESSAGE="$(git log -1 --format=%B "$TARGET")"
-          fi
-          FIRST_LINE="$(head -n1 <<< "$MESSAGE")"
-          echo "first_line=$FIRST_LINE" >> "$GITHUB_OUTPUT"
-          if [[ "$FIRST_LINE" == "release: v"* ]]; then
-            echo "is_release=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "is_release=false" >> "$GITHUB_OUTPUT"
-            echo "Not a release commit (first line: \"$FIRST_LINE\") — nothing to do."
-          fi
+          TARGET_SHA="$TARGET" node scripts/detect-release-commit.mjs
 
       - name: Extract the version
         id: version
