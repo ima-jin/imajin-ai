@@ -186,6 +186,63 @@ describe('listRecordEventsForPrincipal — approvalRef join (#2289 acceptance)',
     expect(page.events[0].approvalRef).toEqual({ proposalId: 'prop_2', source: 'access', kind: 'access:bearer-grant' });
   });
 
+  it('adds chosenOption to approvalRef for a decided decision:card, read off the decided payload mode (#2323)', async () => {
+    await insertApproval({ proposalId: 'dcard_1', operatorDid: PRINCIPAL_A, source: 'decision', kind: 'decision:card' });
+    await insertEvent({
+      id: 'evt_card_decided',
+      did: PRINCIPAL_A,
+      action: 'operator.approval.decided',
+      payload: { proposalId: 'dcard_1', decision: 'approve', mode: 'b' },
+    });
+
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
+    expect(page.events[0].approvalRef).toEqual({
+      proposalId: 'dcard_1',
+      source: 'decision',
+      kind: 'decision:card',
+      chosenOption: 'b',
+    });
+  });
+
+  it('omits chosenOption for a decision:card decided without an option letter (none of these)', async () => {
+    await insertApproval({ proposalId: 'dcard_2', operatorDid: PRINCIPAL_A, source: 'decision', kind: 'decision:card' });
+    await insertEvent({
+      id: 'evt_card_rejected',
+      did: PRINCIPAL_A,
+      action: 'operator.approval.decided',
+      payload: { proposalId: 'dcard_2', decision: 'reject' },
+    });
+
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
+    expect(page.events[0].approvalRef).toEqual({ proposalId: 'dcard_2', source: 'decision', kind: 'decision:card' });
+  });
+
+  it('omits chosenOption for a decision:card event that is not a decided event', async () => {
+    await insertApproval({ proposalId: 'dcard_3', operatorDid: PRINCIPAL_A, source: 'decision', kind: 'decision:card' });
+    await insertEvent({
+      id: 'evt_card_requested',
+      did: PRINCIPAL_A,
+      action: 'operator.approval.requested',
+      payload: { proposalId: 'dcard_3', mode: 'b' },
+    });
+
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
+    expect(page.events[0].approvalRef?.chosenOption).toBeUndefined();
+  });
+
+  it('never adds chosenOption for a non-decision kind, even if its payload carries a mode', async () => {
+    await insertApproval({ proposalId: 'prop_gh', operatorDid: PRINCIPAL_A, source: 'github', kind: 'github:append' });
+    await insertEvent({
+      id: 'evt_gh_decided',
+      did: PRINCIPAL_A,
+      action: 'operator.approval.decided',
+      payload: { proposalId: 'prop_gh', decision: 'approve', mode: '5m' },
+    });
+
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
+    expect(page.events[0].approvalRef).toEqual({ proposalId: 'prop_gh', source: 'github', kind: 'github:append' });
+  });
+
   it('leaves approvalRef null when the event carries no matching proposalId', async () => {
     await insertEvent({ id: 'evt_no_ref', did: PRINCIPAL_A, payload: { foo: 'bar' } });
 

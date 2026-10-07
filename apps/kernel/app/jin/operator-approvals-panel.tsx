@@ -40,6 +40,11 @@
  * kernel accepts that unless `OPERATOR_COUNTERSIGN_REQUIRED` is on, in
  * which case the resulting 400 surfaces through the existing error flash.
  *
+ * #2323: `source: 'decision'` (DecisionCard v1, `kind: 'decision:card'`)
+ * renders its a/b/c… options as countersign buttons through the same
+ * `renderPendingActions` hook (see `./decision-card-detail.tsx`); the chosen
+ * option letter rides in the decision POST's `mode`.
+ *
  * #2359: the confirm rail is self-only. When `GET /jin/api/operator-
  * approvals` reports an `actAs` context (the acting DID differs from the
  * real session DID), the queue still renders in full — hiding it would
@@ -53,6 +58,8 @@ import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
 import { approvalCardAnchorId, APPROVALS_REFRESH_EVENT } from './approval-anchor';
 import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
+import { DecisionCardDetail, DecisionCardOptions } from './decision-card-detail';
+import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decisions/view';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -142,7 +149,7 @@ interface OperatorApprovalCard {
   /** sha256 hex digest the operator's countersignature covers (#2082) — always present. */
   contentHash: string;
   status: ApprovalStatus;
-  decision: { decidedBy: string; decidedAt: string; reason?: string } | null;
+  decision: { decidedBy: string; decidedAt: string; reason?: string; mode?: string } | null;
   /** Post-exec outcome follow-up (#2221 exec.command exitCode/durationMs/outputHash; #2293 github approvedUntil/ownerAuthorization) — null until decided. */
   outcome: Record<string, unknown> | null;
   appliedAt: string | null;
@@ -593,7 +600,43 @@ const GITHUB_RENDERER: SourceRenderer = {
   renderPendingActions: renderGithubPendingActions,
 };
 
+// `decision` (#2323): DecisionCard v1 (`kind: 'decision:card'`, emitted by
+// `src/lib/decisions/emit.ts`). A multi-option call, so approve/reject is the
+// wrong verb: each a/b/c… option is a countersign button (`renderPendingActions`,
+// the #2293 hook) that goes out as the existing `approve` decision with the
+// option letter as its `mode` — same route, same signature, no new table.
+// "None of these" is the unchanged `reject`. Rows whose `detail` isn't a
+// usable card fall back to the generic summary body and only offer
+// "None of these", since there is no honest option letter to sign.
+function renderDecisionDetail(approval: OperatorApprovalCard): ReactNode {
+  const view = parseDecisionCardView(approval.detail);
+  if (!view) return renderDefaultDetail(approval);
+  return <DecisionCardDetail view={view} chosenLetter={approval.decision?.mode ?? null} />;
+}
+
+function renderDecisionPendingActions(
+  approval: OperatorApprovalCard,
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+  busy: boolean,
+): ReactNode {
+  return (
+    <DecisionCardOptions
+      view={parseDecisionCardView(approval.detail)}
+      busy={busy}
+      onChoose={({ decision, mode }) => onDecide(approval, decision, mode)}
+      onNone={() => onDecide(approval, 'reject')}
+    />
+  );
+}
+
+const DECISION_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Choose', reject: 'None of these' },
+  renderDetail: renderDecisionDetail,
+  renderPendingActions: renderDecisionPendingActions,
+};
+
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
+  [DECISION_APPROVAL_SOURCE]: DECISION_RENDERER,
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
   'gateway-exec': GATEWAY_EXEC_RENDERER,
   vault: VAULT_RENDERER,
