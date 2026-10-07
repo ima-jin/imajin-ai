@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatDistanceToNow } from 'date-fns';
+import { DeleteSecretDialog } from './delete-secret-dialog';
 import { HistoryDialog } from './history-dialog';
 import { RevokeGrantDialog } from './revoke-grant-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
@@ -87,6 +88,20 @@ function CustodyCell({ row }: Readonly<{ row: VaultSecretRow }>) {
   );
 }
 
+/** Delete is never offered on kernel-internal secrets — the server refuses them too (#2698). */
+function DeleteButton({ field, onDelete }: Readonly<{ field: string; onDelete: (field: string) => void }>) {
+  if (isInternalSecretField(field)) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onDelete(field)}
+      className="rounded-lg border border-red-300 dark:border-red-700 px-2 py-1 text-xs text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+    >
+      Delete
+    </button>
+  );
+}
+
 function toDisplaySender(senderDid: string): string {
   if (senderDid.length <= 18) return senderDid;
   return `${senderDid.slice(0, 12)}…${senderDid.slice(-6)}`;
@@ -149,6 +164,7 @@ export function VaultPanel() {
   const [rotateField, setRotateField] = useState<string | null>(null);
   const [historyField, setHistoryField] = useState<string | null>(null);
   const [revokeField, setRevokeField] = useState<string | null>(null);
+  const [deleteField, setDeleteField] = useState<string | null>(null);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -248,6 +264,33 @@ export function VaultPanel() {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : `Failed to revoke grant for ${field}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function handleDeleteSecret(field: string): Promise<void> {
+    setSubmitting(true);
+    try {
+      const response = await fetch('/api/vault/delete', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        // The operator typed the field name in the dialog — that is the explicit
+        // confirmation the server requires when other grantees hold a grant.
+        body: JSON.stringify({ field, confirmField: field }),
+      });
+      if (!response.ok) {
+        throw new Error(await readErrorMessage(response));
+      }
+      setSecrets((current) => current.filter((row) => row.field !== field));
+      setHistoryByField((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => key !== field)),
+      );
+      setDeleteField(null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Failed to delete ${field}`);
+      setDeleteField(null);
     } finally {
       setSubmitting(false);
     }
@@ -467,6 +510,7 @@ export function VaultPanel() {
                             Revoke grant
                           </button>
                         )}
+                        <DeleteButton field={secret.field} onDelete={setDeleteField} />
                       </div>
                     </td>
                   </tr>
@@ -533,6 +577,7 @@ export function VaultPanel() {
                     Revoke grant
                   </button>
                 )}
+                <DeleteButton field={secret.field} onDelete={setDeleteField} />
               </div>
             </div>
           );
@@ -565,6 +610,13 @@ export function VaultPanel() {
         submitting={submitting}
         onClose={() => setRevokeField(null)}
         onConfirm={handleRevokeGrant}
+      />
+      <DeleteSecretDialog
+        field={deleteField}
+        open={deleteField !== null}
+        submitting={submitting}
+        onClose={() => setDeleteField(null)}
+        onConfirm={handleDeleteSecret}
       />
     </div>
   );

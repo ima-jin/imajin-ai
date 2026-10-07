@@ -26,6 +26,21 @@ const FIELD = 'warp-agent-key:did:imajin:abc123';
 const TX = { marker: 'tx', update: vi.fn() };
 const TOMBSTONE = { field: FIELD, cid: 'cid:tombstone', timestamp: '2026-10-07T00:00:00.000Z' };
 
+/** drizzle's `update().set().where().returning()` chain, recording what status the revoke wrote. */
+function revokeChain() {
+  let status = '';
+  const returning = () => {
+    calls.push(`revoke:${status}`);
+    return Promise.resolve(state.revokedRows);
+  };
+  const where = () => ({ returning });
+  const set = (values: { status: string }) => {
+    status = values.status;
+    return { where };
+  };
+  return { set };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   calls.length = 0;
@@ -35,20 +50,7 @@ beforeEach(() => {
     { id: 'vdg_2', field: FIELD, keyId: 'k2', grantedTo: 'did:imajin:corpus' },
   ];
 
-  let setValues: unknown;
-  TX.update.mockImplementation(() => ({
-    set: (values: unknown) => {
-      setValues = values;
-      return {
-        where: () => ({
-          returning: () => {
-            calls.push(`revoke:${JSON.stringify((setValues as { status: string }).status)}`);
-            return Promise.resolve(state.revokedRows);
-          },
-        }),
-      };
-    },
-  }));
+  TX.update.mockImplementation(() => revokeChain());
   // Mimics drizzle: commit only when the callback resolves; a rejection rolls back and re-throws.
   mockTransaction.mockImplementation(async (callback: (tx: unknown) => Promise<unknown>) => {
     const result = await callback(TX);
@@ -69,7 +71,7 @@ describe('deleteSecretAndRevokeGrants', () => {
   it('revokes every active grant, erases their key material on the same transaction, then tombstones — in that order', async () => {
     const result = await deleteSecretAndRevokeGrants(FIELD);
 
-    expect(calls).toEqual(['revoke:"revoked"', 'erase', 'tombstone']);
+    expect(calls).toEqual(['revoke:revoked', 'erase', 'tombstone']);
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockErase).toHaveBeenCalledWith(state.revokedRows, TX);
     expect(mockDeleteFromVault).toHaveBeenCalledWith(FIELD);
