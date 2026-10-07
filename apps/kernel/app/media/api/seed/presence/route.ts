@@ -106,6 +106,10 @@ export async function POST(request: NextRequest) {
   if (!did || typeof did !== "string") {
     return NextResponse.json({ error: "did is required" }, { status: 400 });
   }
+  // The DID becomes a directory name below; `..` would survive didToPath().
+  if (!did.startsWith("did:")) {
+    return NextResponse.json({ error: "did must be a DID" }, { status: 400 });
+  }
 
   // Check if .imajin folder already exists for this DID
   const existing = await db

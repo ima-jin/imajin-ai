@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { extname } from "node:path";
+import { safeExtension } from "@/src/lib/media/safe-path";
 import { nanoid } from "nanoid";
 import { eq, and, sql } from "drizzle-orm";
 import { db, assets, assetFolders, type Asset } from "@/src/db";
@@ -228,7 +228,7 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
   }
 
   const assetId = `asset_${nanoid(16)}`;
-  const ext = extname(filename) || "";
+  const ext = safeExtension(filename);
   const size = buffer.byteLength;
 
   // SHA-256 (legacy identity) + CID (content-addressed identity, #1122 Layer A).
