@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 // ---------------------------------------------------------------------------
 // Hoist mocks before any imports so vi.mock factories can reference them
@@ -234,6 +236,18 @@ describe('POST /media/api/transcribe', () => {
       const [url, init] = mocks.fetch.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`${GPU_NODE_URL}/api/whisper/transcribe`);
       expect(init.method).toBe('POST');
+    });
+
+    it('never puts the uploaded file name into the tmp path (#2681)', async () => {
+      mocks.fetch.mockResolvedValue(gpuOk({ text: 'hi' }));
+
+      await POST(makeFileRequest({ fileName: '../../../../etc/cron.d/evil' }) as any);
+
+      expect(mocks.writeFile).toHaveBeenCalledOnce();
+      const tmpPath = String(mocks.writeFile.mock.calls[0][0]);
+      expect(path.dirname(tmpPath)).toBe(tmpdir());
+      expect(path.basename(tmpPath)).toMatch(/^transcribe-[0-9a-f]{16}$/);
+      expect(mocks.unlink).toHaveBeenCalledWith(tmpPath);
     });
 
     it('returns 502 when the GPU node responds with a non-ok status', async () => {

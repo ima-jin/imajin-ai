@@ -127,7 +127,7 @@ async function transcribeFile(
   log: Logger,
 ): Promise<NextResponse> {
   const fileBytes = Buffer.from(await body.file.arrayBuffer());
-  const tmpPath = join(tmpdir(), `transcribe-${randomBytes(8).toString('hex')}-${body.fileName}`);
+  const tmpPath = join(tmpdir(), `transcribe-${randomBytes(8).toString('hex')}`);
 
   try {
     await writeFile(tmpPath, fileBytes);

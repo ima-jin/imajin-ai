@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { writeFile } from 'node:fs/promises';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 //
@@ -205,6 +206,21 @@ describe('createAsset — article frontmatter projection (#1244)', () => {
     });
 
     expect(mockDeriveArticleProjection).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['photo.png', '.png'],
+    ['x.a\\..\\b', ''],
+    ['../../evil.png', '.png'],
+    ['x.' + 'a'.repeat(40), ''],
+  ])('derives a safe on-disk extension from the upload name %j (#2681)', async (filename, ext) => {
+    setupInsert();
+    vi.mocked(writeFile).mockClear();
+
+    await createAsset({ ...MARKDOWN_INPUT, filename, mimeType: 'image/png', classify: false });
+
+    const storagePath = String(vi.mocked(writeFile).mock.calls[0][0]);
+    expect(storagePath).toBe(`/mnt/media/did_imajin_owner/assets/asset_testid1234567890${ext}`);
   });
 
   it('is non-fatal: returns the asset even when deriveArticleProjection throws', async () => {

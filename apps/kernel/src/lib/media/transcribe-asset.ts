@@ -3,6 +3,7 @@ import path from "node:path";
 import { eq } from "drizzle-orm";
 import { db, assets, type Asset } from "@/src/db";
 import { createLogger } from "@imajin/logger";
+import { resolveInside } from "@/src/lib/media/safe-path";
 
 const log = createLogger("kernel");
 
@@ -36,15 +37,21 @@ export function isTranscribable(mime: string): boolean {
   return mime.startsWith("audio/") || mime.startsWith("video/");
 }
 
-/** Read the asset's bytes from disk, falling back to UPLOAD_DIR/filename. */
+/**
+ * Read the asset's bytes from disk, falling back to UPLOAD_DIR/filename.
+ * `asset.filename` is user-controlled (upload name / rename), so the fallback
+ * only applies when it resolves to a file inside UPLOAD_DIR (#2681).
+ */
 async function readAssetBytes(asset: Asset): Promise<Buffer | null> {
-  const dir = uploadDir();
-  const filePath = asset.storagePath || path.join(dir, asset.filename);
+  const fallbackPath = resolveInside(uploadDir(), asset.filename);
+  const filePath = asset.storagePath || fallbackPath;
+  if (!filePath) return null;
   try {
     return await readFile(filePath);
   } catch {
+    if (!fallbackPath) return null;
     try {
-      return await readFile(path.join(dir, asset.filename));
+      return await readFile(fallbackPath);
     } catch {
       return null;
     }

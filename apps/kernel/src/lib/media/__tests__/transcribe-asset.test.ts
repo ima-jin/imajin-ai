@@ -111,6 +111,45 @@ describe('transcribeAsset — file lookup', () => {
   });
 });
 
+describe('transcribeAsset — filename fallback stays inside UPLOAD_DIR (#2681)', () => {
+  const UPLOAD_DIR = '/srv/uploads';
+
+  beforeEach(() => {
+    process.env.UPLOAD_DIR = UPLOAD_DIR;
+  });
+
+  afterEach(() => {
+    delete process.env.UPLOAD_DIR;
+  });
+
+  it.each(['../../etc/passwd', '..\\..\\secret', 'a/b.mp3', '/etc/passwd'])(
+    'never reads %j through the UPLOAD_DIR fallback',
+    async (filename) => {
+      setupAsset({ filename, storagePath: '' });
+      const result = await transcribeAsset('asset_audio', OWNER);
+      expect(result).toEqual({ ok: false, status: 404, message: 'Asset file not found on disk' });
+      expect(mockReadFile).not.toHaveBeenCalled();
+    },
+  );
+
+  it('skips the fallback for an unsafe filename when storagePath is unreadable', async () => {
+    const asset = setupAsset({ filename: '../../etc/passwd' });
+    mockReadFile.mockRejectedValue(new Error('ENOENT'));
+    const result = await transcribeAsset('asset_audio', OWNER);
+    expect(result).toEqual({ ok: false, status: 404, message: 'Asset file not found on disk' });
+    expect(mockReadFile).toHaveBeenCalledTimes(1);
+    expect(mockReadFile).toHaveBeenCalledWith(asset.storagePath);
+  });
+
+  it('still falls back to UPLOAD_DIR/filename for a safe filename', async () => {
+    setupAsset({ filename: 'memo.mp3' });
+    mockReadFile.mockRejectedValueOnce(new Error('ENOENT'));
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' }));
+    await transcribeAsset('asset_audio', OWNER);
+    expect(mockReadFile).toHaveBeenLastCalledWith(`${UPLOAD_DIR}/memo.mp3`);
+  });
+});
+
 describe('transcribeAsset — Whisper relay', () => {
   it('relays bytes to Whisper, pins the transcript, and returns cached: false', async () => {
     setupAsset();

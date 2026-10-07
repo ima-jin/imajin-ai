@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile, unlink, rename } from "node:fs/promises";
-import path from "node:path";
+import { readFile, unlink } from "node:fs/promises";
 import { db, assets, assetReferences } from "@/src/db";
 import { requireMediaAuth, mediaAuthErrorResponse, agentApprovalRequiredResponse } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
@@ -10,6 +9,7 @@ import { getActiveAsset } from "@/src/lib/media/queries";
 import { resolveManifest, buildFairHeaders } from "@/src/lib/media/resolve-manifest";
 import { determineAction, handleSettlement } from "@/src/lib/media/settle";
 import { checkAssetReadAccess, serveAssetResponse } from "@/src/lib/media/serve-asset";
+import { validateFilename } from "@/src/lib/media/safe-path";
 
 const log = createLogger("kernel");
 
@@ -135,6 +135,13 @@ export async function DELETE(
 
 // ---------------------------------------------------------------------------
 // PATCH /api/assets/[id] — rename asset filename (owner only)
+//
+// #2681: `filename` is a display name only. The on-disk name
+// (`{assetId}{ext}`) never depends on it, so rename updates the `filename`
+// column and leaves `storagePath` / `fairPath` alone — nothing on disk moves,
+// so nothing can be overwritten or escape the owner folder. The name is still
+// validated as a single safe segment because other code (downloads, legacy
+// fallbacks) treats it as a filename.
 // ---------------------------------------------------------------------------
 export async function PATCH(
   request: NextRequest,
@@ -163,10 +170,11 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { filename } = body;
-  if (!filename || typeof filename !== "string" || !filename.trim()) {
-    return NextResponse.json({ error: "filename is required" }, { status: 400 });
+  const check = validateFilename(body.filename);
+  if (!check.ok) {
+    return NextResponse.json({ error: check.error }, { status: 400 });
   }
+  const newFilename = check.filename;
 
   let asset;
   try {
@@ -189,17 +197,7 @@ export async function PATCH(
     return NextResponse.json({ error: "Immutable asset — cannot rename" }, { status: 403 });
   }
 
-  const newFilename = filename.trim();
-  const newStoragePath = path.join(path.dirname(asset.storagePath), newFilename);
-
-  try {
-    await rename(asset.storagePath, newStoragePath);
-  } catch (err) {
-    log.error({ err: String(err) }, "File rename failed");
-    return NextResponse.json({ error: "File rename failed" }, { status: 500 });
-  }
-
-  await db.update(assets).set({ filename: newFilename, storagePath: newStoragePath }).where(eq(assets.id, id));
+  await db.update(assets).set({ filename: newFilename }).where(eq(assets.id, id));
 
   return NextResponse.json({ ok: true, filename: newFilename });
 }
