@@ -76,7 +76,7 @@ const PAY_RELEVANT_MIGRATIONS = [
   // #2172 — pay.withdrawal_intents / pay.reconciliation_watermarks.
   '0142_pay_withdrawal_intents.sql',
   // #2176 — pay.transactions.rail / external_ref (the drizzle schema selects and inserts them).
-  '0177_pay_transactions_rail_external_ref.sql',
+  '0178_pay_transactions_rail_external_ref.sql',
 ] as const;
 
 type PgliteLedgerSchema = { balances: typeof balances };

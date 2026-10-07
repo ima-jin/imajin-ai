@@ -1,4 +1,4 @@
--- 0177_pay_transactions_rail_external_ref.sql
+-- 0178_pay_transactions_rail_external_ref.sql
 -- owner: kernel
 --
 -- #2176 (step 4 of 5 of the #2173 pay-rail boundary) — `rail` + `external_ref`

@@ -1,5 +1,5 @@
 /**
- * #2176 — `rail` + `external_ref` on `pay.transactions` (migration 0177), against a real embedded
+ * #2176 — `rail` + `external_ref` on `pay.transactions` (migration 0178), against a real embedded
  * Postgres (pglite): a fake executor can never evaluate `ADD COLUMN IF NOT EXISTS`, a backfill
  * `UPDATE` or an index, which is the point of this suite.
  *
@@ -25,7 +25,7 @@ import { STRIPE_RAIL, externalRefColumns, whereExternalRef } from '../external-r
 // Heavy suite (embedded PGlite / seed replay): the 5000ms default is too tight on contended CI runners (#2548).
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
-const MIGRATION = '0177_pay_transactions_rail_external_ref.sql';
+const MIGRATION = '0178_pay_transactions_rail_external_ref.sql';
 
 function findMigrationsDir(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
@@ -51,7 +51,7 @@ interface TxRow {
   stripe_id: string | null;
 }
 
-describe('migration 0177 — pay.transactions rail + external_ref', () => {
+describe('migration 0178 — pay.transactions rail + external_ref', () => {
   let client: PGlite;
 
   beforeAll(async () => {
