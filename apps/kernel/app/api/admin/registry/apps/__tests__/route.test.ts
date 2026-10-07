@@ -343,6 +343,9 @@ describe('POST /api/admin/registry/apps — #2638/#2641 emittableEvents (operato
     ['an uppercase type', ['Tip.Granted']],
     ['a non-string entry', [7]],
     ['a non-array value', 'tip.granted'],
+    ['a kernel-owned payment_request type', ['payment_request.paid']],
+    ['a kernel-owned loop type', ['tip.granted', 'loop.completed']],
+    ['a kernel-owned vault type', ['vault.secret_read']],
   ])('rejects %s with 400 and inserts nothing', async (_label, emittableEvents) => {
     const res = await POST(makePostRequest({ ...base, emittableEvents }) as never);
 

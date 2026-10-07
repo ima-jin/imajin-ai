@@ -788,6 +788,21 @@ export async function getChainConfig(eventType: string, scope: string): Promise<
 }
 
 /**
+ * Exact-scope variant of {@link getChainConfig} (#2717).
+ *
+ * Returns the chain configured in `kernel.bus_chain_configs` for exactly
+ * `{eventType, scope}`, or an EMPTY chain when there is no such row. It never
+ * falls back to the node-default (`scope IS NULL`) row or to the hardcoded
+ * {@link DEFAULTS}, so a caller that publishes under a dedicated scope — app-origin
+ * events under `apps` — only ever runs what an operator configured for that scope,
+ * never a kernel chain that happens to share the event type.
+ */
+export async function getScopedChainConfig(eventType: string, scope: string): Promise<ChainConfig> {
+  const dbConfig = await fetchChainConfigFromDb(eventType, scope, true);
+  return dbConfig ?? { eventType, scope, reactors: [], source: 'defaults' };
+}
+
+/**
  * Broker-chain variant of {@link getChainConfig}.
  *
  * Returns the DB-backed chain config for a broker event/scope, or `null` when
@@ -812,9 +827,10 @@ export async function getBrokerChainConfig(
  */
 async function fetchChainConfigFromDb(
   eventType: string,
-  scope: string
+  scope: string,
+  exactScopeOnly = false
 ): Promise<ChainConfig | null> {
-  const key = cacheKey(eventType, scope);
+  const key = exactScopeOnly ? `${cacheKey(eventType, scope)}:exact` : cacheKey(eventType, scope);
   const cached = getCached(key);
   if (cached !== undefined) {
     return cached;
@@ -843,7 +859,7 @@ async function fetchChainConfigFromDb(
         reactors: row.enabled ? (row.reactors as ReactorConfig[]) : [],
         source: 'db',
       };
-    } else {
+    } else if (!exactScopeOnly) {
       // 2. Fall back to node default (scope IS NULL)
       const defaultRows = await sql`
         SELECT reactors, enabled

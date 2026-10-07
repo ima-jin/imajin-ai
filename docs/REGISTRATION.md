@@ -309,9 +309,14 @@ Money stays on one audited path: market settlement goes through the settle route
 
 | Field | Meaning |
 |---|---|
-| `emittableEvents` | Event types the app may emit, e.g. `["tip.granted", "tip.sent"]` (coffee) or `["listing.created", "listing.purchased"]` (market). Lowercase dotted names, no wildcards, at most 50. |
+| `emittableEvents` | Event types the app may emit, e.g. `["tip.granted", "tip.sent"]` (coffee) or `["listing.created", "listing.purchased"]` (market). Lowercase dotted names, no wildcards, at most 50, none in a kernel-owned namespace. |
 
 - **Default: `[]`.** An app can emit nothing until an operator approves a list.
+- **Never kernel-owned types (#2717).** A list containing a type in a kernel-owned namespace —
+  `payment_request.*`, `loop.*`, `attestation.*`, `identity.*`, `vault.*`, `settlement.*`, `order.*`, ... (the
+  full set is `KERNEL_EVENT_NAMESPACES` in `apps/kernel/src/lib/kernel/emittable-events.ts`) — is refused
+  with `400` by every approval path (the admin registry routes, and `apps.provision` at both the card preview
+  and `register`). App-domain namespaces such as `tip.*`, `listing.*` and `ticket.*` stay approvable.
 - **Operator-only.** `POST /api/registry/apps` and `PATCH /api/registry/apps/:appId` reject an
   `emittableEvents` field with `400`; an app never picks its own list.
 - **`apps.provision`:** the app *requests* the list in its `imajin.app.json` (`"emittableEvents": [...]`).
@@ -338,16 +343,23 @@ curl -X POST "${IMAJIN_KERNEL_URL}/api/events" \
 
 | Status | When |
 |---|---|
-| `401` | No bearer, or it is not a valid app-service token. A user-delegated app token or a session token is also `401`: only the app itself, proven by its key, may speak as the app. |
-| `400` | Malformed body: `type` must be a lowercase dotted event type, `subject` a DID, `payload` an object of at most 16 KB. `scope` is not accepted — the kernel fixes it. |
-| `403` | `event_type_not_approved` — `type` is not on this app's approved list (including every type, for an app whose list is empty); or `app_not_registered` — the app has been revoked. |
+| `401` | No bearer, or it is not a valid app-service token. A user-delegated app token or a session token is also `401`: only the app itself, proven by its key, may speak as the app. So is a validly signed service token minted for another audience (#2717): the token's `aud` must be `imajin:apps` (what `POST /auth/api/apps/token/service` mints) or the kernel's registry audience `jin` — never another app's slug or a host. |
+| `429` | The app is over its emit budget (#2717): 60 events a minute per app, with a `Retry-After` header. Uses the kernel's shared `rateLimit` helper. |
+| `400` | Malformed body: `type` must be a lowercase dotted event type, `subject` a DID, `payload` an object of at most 16 KB. `payload.interestDids`, when present, must be an array of at most 25 DIDs (#2717). `scope` is not accepted — the kernel fixes it. |
+| `403` | `event_type_not_approved` — `type` is not on this app's approved list (including every type, for an app whose list is empty); `event_type_reserved` — `type` is in a kernel-owned namespace, refused even if a stored list holds it (#2717); or `app_not_registered` — the app has been revoked. |
 
-**What an accepted event can trigger — notify and audit only.** The kernel runs the event's configured
+**Chain configs: scope `apps` only (#2717).** App events use chain configs from scope `apps` only: the
+kernel looks up the `kernel.bus_chain_configs` row for exactly `{type, scope: 'apps'}`. It never falls back to
+the node-default (`scope IS NULL`) row or to the hardcoded kernel defaults, so an app event cannot pick up a
+kernel chain that happens to share its type. An approved type with no `apps` row leaves an audit record and
+sends no notification — the operator adds the `apps`-scope row (with a `notify` reactor) to turn notification on.
+
+**What an accepted event can trigger — notify and audit only.** The kernel runs the event's `apps`-scope
 chain *intersected with* `{notify, audit-log}`, enforced in code (`publishAppEvent`,
 `packages/bus/src/publish-app-event.ts`) no matter what `bus_chain_configs` says:
 
 - `audit-log` always runs first, so the record exists even if a notification then fails.
-- the chain's `notify` reactor runs if it has one (`tip.granted` -> the coffee tip notification).
+- the `apps`-scope chain's `notify` reactor runs if it has one (e.g. an `apps` row for `tip.granted` -> the coffee tip notification).
 - `settle`, `mjn` (MJN emission), `attestation` (attestation issuance) and every other reactor are
   **never** run for an app-origin event. An app-sent `listing.purchased` notifies the buyer; it does not
   settle, credit MJN, or write an attestation.

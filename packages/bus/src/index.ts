@@ -39,7 +39,7 @@ export type { AppEventInput, AppEventResult } from './publish-app-event';
 export { broker } from './broker';
 export { registerReactor, getReactor } from './registry';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
-export { getChainConfig, getBrokerChainConfig } from './config';
+export { getChainConfig, getScopedChainConfig, getBrokerChainConfig } from './config';
 export { getLotChain, recentLotsBySupplier } from './supply-lots';
 export { loadEmissionConfig, parseEmissionRules, resolveAmount, resolveTarget } from './emissions';
 export type { EmissionConfig, EmissionRule, EmissionTarget } from './emissions';

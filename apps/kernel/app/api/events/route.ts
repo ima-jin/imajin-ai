@@ -4,16 +4,21 @@
  * kernel-internal `@imajin/bus`).
  *
  * Ruled (Ryan, 2026-10-07): an app-sent event can only NOTIFY and AUDIT — never
- * move money. Three independent gates, in order:
+ * move money. Independent gates, in order:
  *
  *  1. Authentication — a registered app's app-service token
  *     (`Authorization: Bearer <token from POST /auth/api/apps/token/service>`),
  *     i.e. the app proving possession of its registered keypair. Anything else —
  *     missing, malformed, expired, a user-delegated or session token — is 401.
- *  2. Allowlist — `registry.apps.emittable_events`, the list the operator approved
+ *  2. Audience (#2717) — the token must have been minted for an audience this
+ *     endpoint serves (`EVENTS_API_AUDIENCES`); a token minted for another
+ *     audience is 401.
+ *  3. Rate limit (#2717) — per app, via the kernel's `rateLimit` helper; 429.
+ *  4. Allowlist — `registry.apps.emittable_events`, the list the operator approved
  *     for THIS app (default: empty). An event type not on it is 403, as is an app
- *     that is no longer active.
- *  3. Ceiling — an accepted event goes through `publishAppEvent`, which runs the
+ *     that is no longer active, and as is ANY kernel-owned namespace type
+ *     (`payment_request.*`, `loop.*`, ...) even if a stored list somehow holds one.
+ *  5. Ceiling — an accepted event goes through `publishAppEvent`, which runs the
  *     notify and audit-log reactors only. Settle, MJN emission and attestation
  *     issuance never run for an app-origin event, whatever the chain config says.
  *
@@ -23,16 +28,25 @@
  * Body: { type: string, subject: string, payload?: object, correlationId?: string }
  *   type    — dotted event type, must be on the app's approved list
  *   subject — DID the event is about / the notification recipient
+ *   payload.interestDids — optional list of DIDs to signal interest to; at most
+ *             MAX_INTEREST_DIDS (400 over the cap)
  * `scope` is not accepted: the kernel fixes it, so an app cannot steer which chain
  * row is resolved.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { publishAppEvent } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { rateLimit } from '@imajin/config';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 import { APP_NOT_REGISTERED_ERROR } from '@/src/lib/kernel/app-registry';
-import { isValidEventType } from '@/src/lib/kernel/emittable-events';
+import {
+  MAX_INTEREST_DIDS,
+  MAX_INTEREST_DID_LENGTH,
+  hasEventsApiAudience,
+  isKernelEventType,
+  isValidEventType,
+} from '@/src/lib/kernel/emittable-events';
 import { resolveEmittableEvents } from '@/src/lib/kernel/app-emittable-events';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +56,9 @@ const log = createLogger('kernel');
 const MAX_SUBJECT_LENGTH = 256;
 const MAX_CORRELATION_ID_LENGTH = 128;
 const MAX_PAYLOAD_BYTES = 16 * 1024;
+/** Per-app emit budget: 60 events a minute. */
+const RATE_LIMIT_MAX = 60;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
 interface ParsedEmit {
   type: string;
@@ -60,7 +77,20 @@ function parsePayload(value: unknown): { ok: Record<string, unknown> | undefined
   if (JSON.stringify(value).length > MAX_PAYLOAD_BYTES) {
     return { error: `payload exceeds ${MAX_PAYLOAD_BYTES} bytes` };
   }
+  const interest = parseInterestDids(value.interestDids);
+  if (interest) return { error: interest };
   return { ok: value };
+}
+
+/** An error message when `payload.interestDids` is present but malformed or over the cap; else `null`. */
+function parseInterestDids(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return 'payload.interestDids must be an array of DIDs';
+  if (value.length > MAX_INTEREST_DIDS) {
+    return `payload.interestDids may list at most ${MAX_INTEREST_DIDS} DIDs`;
+  }
+  const allDids = value.every((v) => typeof v === 'string' && v.startsWith('did:') && v.length <= MAX_INTEREST_DID_LENGTH);
+  return allDids ? null : 'payload.interestDids must be an array of DIDs';
 }
 
 /** Wire-shape validation only; whether the app may emit `type` is the allowlist's call. */
@@ -81,7 +111,7 @@ function parseEmitBody(body: unknown): { ok: ParsedEmit } | { error: string } {
   return { ok: { type, subject, payload: parsedPayload.ok, correlationId } };
 }
 
-/** The calling app's DID, from a verified app-service token; `null` for anything else. */
+/** The calling app's DID, from a verified app-service token minted for this endpoint's audience; `null` otherwise. */
 async function authenticateApp(request: NextRequest): Promise<string | null> {
   const header = request.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) return null;
@@ -91,6 +121,13 @@ async function authenticateApp(request: NextRequest): Promise<string | null> {
   // app token (app+jwt) is the app acting for a user, and a session-app token carries
   // no app identity at all — neither may speak as the app on the event bus.
   if (!claims?.isServiceToken || !claims.azp) return null;
+
+  // #2717: a validly signed token is not enough — it must have been minted for an
+  // audience this endpoint serves, so a token minted for another audience can't be replayed here.
+  if (!hasEventsApiAudience(claims.aud)) {
+    log.warn({ appDid: claims.azp, aud: claims.aud }, 'app event refused — token minted for another audience');
+    return null;
+  }
   return claims.azp;
 }
 
@@ -100,6 +137,14 @@ export async function POST(request: NextRequest) {
   const appDid = await authenticateApp(request);
   if (!appDid) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
+  }
+
+  const rl = rateLimit(`app-events:${appDid}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'rate_limited', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } },
+    );
   }
 
   let body: unknown;
@@ -113,6 +158,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error }, { status: 400, headers: cors });
   }
   const { type, subject, payload, correlationId } = parsed.ok;
+
+  if (isKernelEventType(type)) {
+    log.warn({ appDid, type }, 'app event refused — kernel-owned namespace');
+    return NextResponse.json(
+      { error: 'event_type_reserved', error_description: `'${type}' is in a kernel-owned namespace; apps cannot emit it.` },
+      { status: 403, headers: cors },
+    );
+  }
 
   const approved = await resolveEmittableEvents(appDid);
   if (approved === null) {

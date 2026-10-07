@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   verifyAppTokenMock: vi.fn(),
   resolveEmittableEventsMock: vi.fn(),
   publishAppEventMock: vi.fn(),
+  rateLimitMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }) }));
@@ -23,14 +24,16 @@ vi.mock('@/src/lib/kernel/app-emittable-events', () => ({ resolveEmittableEvents
 vi.mock('@/src/lib/kernel/app-registry', () => ({
   APP_NOT_REGISTERED_ERROR: { error: 'app_not_registered', error_description: 'not registered' },
 }));
+vi.mock('@imajin/config', () => ({ rateLimit: mocks.rateLimitMock }));
 vi.mock('@imajin/bus', () => ({ publishAppEvent: mocks.publishAppEventMock }));
 
 import { POST, OPTIONS } from '../route';
+import { MAX_INTEREST_DIDS } from '@/src/lib/kernel/emittable-events';
 
 const APP_DID = 'did:imajin:app_coffee';
 const RECIPIENT = 'did:imajin:alice';
 
-const SERVICE_CLAIMS = { sub: APP_DID, azp: APP_DID, scope: '', isServiceToken: true, attestationId: '' };
+const SERVICE_CLAIMS = { sub: APP_DID, azp: APP_DID, scope: '', aud: 'imajin:apps', isServiceToken: true, attestationId: '' };
 
 function req(body: unknown, headers: Record<string, string> = { authorization: 'Bearer good-token' }): Request {
   return new Request('https://kernel.test/api/events', {
@@ -40,11 +43,16 @@ function req(body: unknown, headers: Record<string, string> = { authorization: '
   });
 }
 
+function manyDids(n: number): string[] {
+  return Array.from({ length: n }, (_, i) => `did:imajin:user${i}`);
+}
+
 const validBody = { type: 'tip.granted', subject: RECIPIENT, payload: { amount: 3, currency: 'USD' } };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.verifyAppTokenMock.mockResolvedValue(SERVICE_CLAIMS);
+  mocks.rateLimitMock.mockReturnValue({ limited: false, retryAfter: 0 });
   mocks.resolveEmittableEventsMock.mockResolvedValue(['tip.granted', 'tip.sent']);
   mocks.publishAppEventMock.mockResolvedValue({ eventType: 'tip.granted', origin: APP_DID, ran: ['audit-log', 'notify'], skipped: ['attestation', 'mjn'] });
 });
@@ -96,6 +104,65 @@ describe('POST /api/events — authentication (401)', () => {
   });
 });
 
+describe('POST /api/events — token audience (#2717)', () => {
+  it.each([
+    ['another app\'s audience', 'market'],
+    ['a host-shaped audience', 'kernel.test'],
+    ['several audiences, none of them this endpoint\'s', ['market', 'coffee']],
+    ['no audience', undefined],
+  ])('rejects a validly signed service token minted for %s', async (_label, aud) => {
+    mocks.verifyAppTokenMock.mockResolvedValue({ ...SERVICE_CLAIMS, aud });
+
+    const res = await POST(req(validBody) as never);
+
+    expect(res.status).toBe(401);
+    expect(mocks.resolveEmittableEventsMock).not.toHaveBeenCalled();
+    expect(mocks.publishAppEventMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the generic apps audience', 'imajin:apps'],
+    ['the kernel\'s registry audience', 'jin'],
+    ['a multi-audience token that includes the kernel\'s', ['market', 'jin']],
+  ])('accepts a service token minted for %s', async (_label, aud) => {
+    mocks.verifyAppTokenMock.mockResolvedValue({ ...SERVICE_CLAIMS, aud });
+
+    const res = await POST(req(validBody) as never);
+
+    expect(res.status).toBe(201);
+  });
+});
+
+describe('POST /api/events — rate limit per app (#2717)', () => {
+  it('limits per verified app DID, with the kernel rateLimit helper', async () => {
+    await POST(req(validBody) as never);
+
+    expect(mocks.rateLimitMock).toHaveBeenCalledTimes(1);
+    const [key, limit, windowMs] = mocks.rateLimitMock.mock.calls[0];
+    expect(key).toContain(APP_DID);
+    expect(limit).toBeGreaterThan(0);
+    expect(windowMs).toBe(60_000);
+  });
+
+  it('answers 429 with Retry-After and publishes nothing once the app is over budget', async () => {
+    mocks.rateLimitMock.mockReturnValue({ limited: true, retryAfter: 17 });
+
+    const res = await POST(req(validBody) as never);
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('17');
+    expect(await res.json()).toEqual({ error: 'rate_limited', retryAfter: 17 });
+    expect(mocks.resolveEmittableEventsMock).not.toHaveBeenCalled();
+    expect(mocks.publishAppEventMock).not.toHaveBeenCalled();
+  });
+
+  it('does not spend an app\'s budget on an unauthenticated request', async () => {
+    await POST(req(validBody, {}) as never);
+
+    expect(mocks.rateLimitMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/events — body validation (400)', () => {
   it.each([
     ['invalid JSON', 'not json'],
@@ -110,11 +177,61 @@ describe('POST /api/events — body validation (400)', () => {
     ['a payload over the size cap', { ...validBody, payload: { blob: 'x'.repeat(17 * 1024) } }],
     ['a non-string correlationId', { ...validBody, correlationId: 7 }],
     ['an over-long correlationId', { ...validBody, correlationId: 'c'.repeat(200) }],
+    ['interestDids over the cap', { ...validBody, payload: { interestDids: manyDids(MAX_INTEREST_DIDS + 1) } }],
+    ['interestDids far over the cap', { ...validBody, payload: { interestDids: manyDids(5000) } }],
+    ['interestDids that is not an array', { ...validBody, payload: { interestDids: 'did:imajin:a' } }],
+    ['an interestDids entry that is not a DID', { ...validBody, payload: { interestDids: ['did:imajin:a', 'alice@example.com'] } }],
+    ['an interestDids entry that is not a string', { ...validBody, payload: { interestDids: [7] } }],
+    ['an over-long interestDids entry', { ...validBody, payload: { interestDids: [`did:imajin:${'x'.repeat(300)}`] } }],
   ])('rejects %s without publishing', async (_label, body) => {
     const res = await POST(req(body) as never);
 
     expect(res.status).toBe(400);
     expect(mocks.publishAppEventMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/events — payload.interestDids cap (#2717)', () => {
+  it('accepts exactly the cap and hands the list to the bus untouched', async () => {
+    const interestDids = manyDids(MAX_INTEREST_DIDS);
+
+    const res = await POST(req({ ...validBody, payload: { interestDids } }) as never);
+
+    expect(res.status).toBe(201);
+    expect(mocks.publishAppEventMock.mock.calls[0][1].payload).toEqual({ interestDids });
+  });
+
+  it('accepts an empty list', async () => {
+    const res = await POST(req({ ...validBody, payload: { interestDids: [] } }) as never);
+    expect(res.status).toBe(201);
+  });
+
+  it('names the cap in the 400 so the caller can fix it', async () => {
+    const res = await POST(req({ ...validBody, payload: { interestDids: manyDids(MAX_INTEREST_DIDS + 1) } }) as never);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain(String(MAX_INTEREST_DIDS));
+  });
+});
+
+describe('POST /api/events — kernel-owned namespaces (403)', () => {
+  it.each(['payment_request.paid', 'loop.completed', 'attestation.created', 'vault.secret_read'])(
+    'refuses %s even when a stored allowlist somehow holds it',
+    async (type) => {
+      mocks.resolveEmittableEventsMock.mockResolvedValue([type]);
+
+      const res = await POST(req({ ...validBody, type }) as never);
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toBe('event_type_reserved');
+      expect(mocks.publishAppEventMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not even consult the allowlist for a kernel-owned type', async () => {
+    await POST(req({ ...validBody, type: 'payment_request.paid' }) as never);
+
+    expect(mocks.resolveEmittableEventsMock).not.toHaveBeenCalled();
   });
 });
 

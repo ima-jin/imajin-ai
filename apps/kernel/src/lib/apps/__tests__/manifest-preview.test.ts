@@ -71,6 +71,8 @@ describe('previewManifestDeclarations (#2663)', () => {
     ['an uppercase type', ['Tip.Granted']],
     ['a non-string entry', [7]],
     ['a non-array value', 'tip.granted'],
+    ['a kernel-owned payment_request type (#2717)', ['payment_request.paid']],
+    ['a kernel-owned loop type (#2717)', ['tip.granted', 'loop.completed']],
   ])('#2638: rejects a manifest whose emittableEvents has %s, so the card never shows an unapprovable list', async (_label, emittableEvents) => {
     mocks.fetchAppManifestMock.mockResolvedValue({ emittableEvents });
 

@@ -1,6 +1,6 @@
 import { createLogger } from '@imajin/logger';
 import { forEachSequential } from './concurrency';
-import { getChainConfig } from './config';
+import { getScopedChainConfig } from './config';
 import { getReactor } from './registry';
 import type { BusEvent } from './types';
 
@@ -70,7 +70,9 @@ async function runReactor(type: string, config: Record<string, unknown>, event: 
  * Publish an event on behalf of a registered app (#2638 / #2641).
  *
  * Unlike {@link publish}, which runs whatever the chain config says, this runs
- * the configured chain *intersected with* {@link APP_EVENT_REACTORS}:
+ * the chain configured for scope `apps` ONLY (#2717 — no node-default row, no
+ * hardcoded default; an event type with no `apps` row is audit-only) *intersected
+ * with* {@link APP_EVENT_REACTORS}:
  *  1. one `audit-log` write, always, naming the app as origin — before anything
  *     else, so the record exists even if a notification then fails;
  *  2. the chain's `notify` reactor(s), if it has any.
@@ -93,7 +95,7 @@ export async function publishAppEvent(type: string, event: AppEventInput, appDid
     timestamp: new Date().toISOString(),
   };
 
-  const chain = await getChainConfig(type, APP_EVENT_SCOPE);
+  const chain = await getScopedChainConfig(type, APP_EVENT_SCOPE);
   const enabled = chain.reactors.filter((r) => r.enabled);
   const notifyReactors = enabled.filter((r) => r.type === 'notify');
   const skipped = enabled.filter((r) => !APP_EVENT_REACTORS.has(r.type)).map((r) => r.type);

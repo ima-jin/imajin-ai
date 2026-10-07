@@ -1,10 +1,12 @@
 /**
  * publishAppEvent() — the app-origin publish path (#2638 / #2641, ruled "b").
  *
- * The real DEFAULTS chain config is used (fake DB returns no rows), so these
- * tests prove the ceiling against the chains that actually exist:
+ * The fake DB serves `kernel.bus_chain_configs` rows, so these tests prove the
+ * ceiling against money-moving chains an operator could configure for scope `apps`:
  * `listing.purchased` = attestation + mjn + settle + notify and
  * `tip.granted` = attestation + mjn + notify. Only notify and audit-log may run.
+ * The chain is resolved from scope `apps` ONLY (#2717): the node-default row and
+ * the hardcoded DEFAULTS are never consulted.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -12,9 +14,18 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn(), debug: vi.fn() }),
 }));
 
-const { fakeSql } = vi.hoisted(() => ({
-  fakeSql: (_strings: TemplateStringsArray, ..._values: unknown[]) => Promise.resolve([]),
-}));
+type Row = { reactors: Array<{ type: string; config: Record<string, unknown>; enabled: boolean }>; enabled: boolean };
+
+/** `kernel.bus_chain_configs` rows keyed `<event_type>|<scope or null>`. */
+const { chainRows, fakeSql } = vi.hoisted(() => {
+  const chainRows = new Map<string, Row>();
+  // The scoped query binds (event_type, scope); the node-default query binds (event_type) only.
+  const fakeSql = (_strings: TemplateStringsArray, ...values: unknown[]) => {
+    const row = chainRows.get(`${values[0]}|${values.length > 1 ? values[1] : null}`);
+    return Promise.resolve(row ? [row] : []);
+  };
+  return { chainRows, fakeSql };
+});
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
 const { handlers } = vi.hoisted(() => ({
@@ -31,14 +42,33 @@ vi.mock('../src/registry', () => ({
   getReactor: (type: string) => handlers[type],
 }));
 
-import { publishAppEvent, APP_EVENT_REACTORS, APP_EVENT_SCOPE } from '../src/publish-app-event';
+import type { publishAppEvent as PublishAppEvent } from '../src/publish-app-event';
+import { APP_EVENT_REACTORS, APP_EVENT_SCOPE } from '../src/publish-app-event';
 
 const APP_DID = 'did:imajin:app_market';
 const BUYER = 'did:imajin:buyer';
 
-beforeEach(() => {
+let publishAppEvent: typeof PublishAppEvent;
+
+/** Seed a chain row for `{type, scope}`; reactors are `enabled` unless stated. */
+function seedChain(type: string, scope: string | null, reactors: Array<[string, Record<string, unknown>?]>): void {
+  chainRows.set(`${type}|${scope}`, {
+    enabled: true,
+    reactors: reactors.map(([rType, config]) => ({ type: rType, config: config ?? {}, enabled: true })),
+  });
+}
+
+beforeEach(async () => {
   vi.clearAllMocks();
   for (const h of Object.values(handlers)) h.mockResolvedValue(undefined);
+  chainRows.clear();
+  // config.ts caches chain lookups for minutes — a fresh module per test keeps the seeded rows honest.
+  vi.resetModules();
+  ({ publishAppEvent } = await import('../src/publish-app-event'));
+  seedChain('listing.purchased', APP_EVENT_SCOPE, [['attestation'], ['mjn'], ['settle'], ['notify']]);
+  seedChain('tip.granted', APP_EVENT_SCOPE, [['attestation'], ['mjn'], ['notify', { scope: 'coffee:tip' }]]);
+  seedChain('tip.sent', APP_EVENT_SCOPE, [['notify']]);
+  seedChain('listing.create', APP_EVENT_SCOPE, [['emit']]);
 });
 
 describe('APP_EVENT_REACTORS ceiling', () => {
@@ -89,6 +119,48 @@ describe('publishAppEvent — money never moves', () => {
     const result = await publishAppEvent('thing.nobody.configured', { subject: BUYER }, APP_DID);
     expect(result.ran).toEqual(['audit-log']);
     expect(result.skipped).toEqual([]);
+  });
+});
+
+describe('publishAppEvent — chain configs come from scope apps only (#2717)', () => {
+  it('ignores the node-default (scope NULL) row for the same event type', async () => {
+    chainRows.clear();
+    seedChain('tip.granted', null, [['settle'], ['notify', { scope: 'kernel:tip' }]]);
+
+    const result = await publishAppEvent('tip.granted', { subject: BUYER }, APP_DID);
+
+    expect(result.ran).toEqual(['audit-log']);
+    expect(result.skipped).toEqual([]);
+    expect(handlers.notify).not.toHaveBeenCalled();
+    expect(handlers.settle).not.toHaveBeenCalled();
+  });
+
+  it('ignores a chain configured for another scope', async () => {
+    chainRows.clear();
+    seedChain('tip.granted', 'coffee', [['notify']]);
+
+    const result = await publishAppEvent('tip.granted', { subject: BUYER }, APP_DID);
+
+    expect(result.ran).toEqual(['audit-log']);
+    expect(handlers.notify).not.toHaveBeenCalled();
+  });
+
+  it('does not fall back to the hardcoded kernel DEFAULTS: no apps row means audit-only', async () => {
+    chainRows.clear();
+
+    const result = await publishAppEvent('tip.granted', { subject: BUYER }, APP_DID);
+
+    expect(result.ran).toEqual(['audit-log']);
+    expect(handlers.notify).not.toHaveBeenCalled();
+    expect(handlers.attestation).not.toHaveBeenCalled();
+  });
+
+  it('honours a disabled apps row as an empty chain', async () => {
+    chainRows.set('tip.granted|apps', { enabled: false, reactors: [{ type: 'notify', config: {}, enabled: true }] });
+
+    const result = await publishAppEvent('tip.granted', { subject: BUYER }, APP_DID);
+
+    expect(result.ran).toEqual(['audit-log']);
   });
 });
 
