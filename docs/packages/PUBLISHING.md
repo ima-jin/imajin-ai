@@ -77,7 +77,10 @@ npmjs.org at that version by calling `publish-packages.yml` — nobody has to
 remember to run it. A version already on npm is skipped, so re-running is safe;
 a failed publish fails the run. See `docs/npm-publishing.md`'s "Automatic npm
 publish on a release tag". The `packages-v*` tag above remains the GitHub
-Packages path for the four SDK packages.
+Packages path for the four SDK packages. npmjs publishes authenticate with OIDC
+Trusted Publishing and carry provenance (#1589); the one-time npmjs.org operator
+setup and the `NPM_TOKEN` fallback/cut-over are in `docs/npm-publishing.md`'s
+"npm Trusted Publishing (OIDC)".
 
 Ad hoc publishes outside a release (backfilling a package, or a one-off
 re-publish) still go through `workflow_dispatch` on the same workflow, which is
