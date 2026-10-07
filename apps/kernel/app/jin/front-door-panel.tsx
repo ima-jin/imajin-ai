@@ -114,7 +114,7 @@ function TopicRow({
             onChange={(e) => onChange(option.term, { published: e.target.checked })}
             aria-label={`Publish ${option.label} on card`}
           />
-          publish on card
+          <span>publish on card</span>
         </label>
         <select
           value={topic.mode}
@@ -145,7 +145,7 @@ function DailyCapField({
           onChange={(e) => onChange(e.target.checked ? DEFAULT_CAP_WHEN_ENABLED : null)}
           aria-label="Limit messages per day"
         />
-        Limit delivered messages per day
+        <span>Limit delivered messages per day</span>
       </label>
       {value !== null && (
         <input
