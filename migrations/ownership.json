@@ -700,7 +700,7 @@
       "owner": "kernel",
       "schema": "pay",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "#2176 \u2014 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref (stripe_id kept as deprecated alias until #2650)"
     },
     "pay.withdrawal_requests": {
       "owner": "kernel",

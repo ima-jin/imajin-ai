@@ -10,6 +10,7 @@
 
 import { db, feeLedger, balanceRollups, transactions } from '@/src/db';
 import { sql } from 'drizzle-orm';
+import { externalRefColumns } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -519,7 +520,7 @@ export async function handleTopupCheckout(session: StripeCheckoutSessionLike): P
       unit: MJN,
       sourceKind: 'receipt',
       status: 'completed',
-      stripeId: session.id,
+      ...externalRefColumns(session.id),
       source: 'fiat',
       metadata: { ...session.metadata, checkoutSessionId: session.id },
     });

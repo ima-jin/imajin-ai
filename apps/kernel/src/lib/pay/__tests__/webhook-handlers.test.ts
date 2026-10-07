@@ -408,6 +408,7 @@ describe('processChainDistribution with taxes[] (#2435)', () => {
       toDid: 'did:imajin:seller', fromDid: 'did:imajin:buyer', amount: '13.00', currency, status: 'completed',
     });
     expect(taxTx).not.toHaveProperty('stripeId');
+    expect(taxTx).not.toHaveProperty('externalRef');
     expect(taxTx.metadata).toMatchObject({
       tax: true,
       jurisdiction: 'CA-ON',

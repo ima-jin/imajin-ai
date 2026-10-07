@@ -34,7 +34,7 @@ function makeTx(overrides: Partial<Transaction> = {}): Transaction {
     currency: 'CAD',
     status: 'completed',
     source: 'fiat',
-    stripeId: null,
+    externalRef: null,
     metadata: {},
     fairManifest: null,
     batchId: null,

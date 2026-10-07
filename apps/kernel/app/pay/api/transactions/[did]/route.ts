@@ -99,7 +99,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
       amount: Number.parseFloat(tx.amount),
       currency: tx.currency,
       status: tx.status,
-      stripe_id: tx.stripeId,
+      stripe_id: tx.externalRef, // deprecated field name kept (#2176); fed from external_ref
       metadata: tx.metadata,
       fair_manifest: tx.fairManifest,
       batch_id: tx.batchId,

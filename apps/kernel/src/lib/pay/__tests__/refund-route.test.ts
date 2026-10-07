@@ -76,6 +76,8 @@ vi.mock('@/src/db', () => ({
   },
   transactions: {
     stripeId: 'col_stripeId',
+    externalRef: 'col_externalRef',
+    rail: 'col_rail',
     id: 'col_id',
     type: 'col_type',
     metadata: 'col_metadata',
@@ -127,7 +129,7 @@ const BASE_TX = {
   currency: 'CAD',
   status: 'completed',
   source: 'fiat',
-  stripeId: 'cs_test_session_abc',
+  externalRef: 'cs_test_session_abc',
   metadata: {},
 };
 
@@ -172,7 +174,7 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
   });
 
   it('returns 404 when no transaction matches the paymentId', async () => {
-    nextSelect([]);   // no tx found by stripeId
+    nextSelect([]);   // no tx found by externalRef
     const res = await POST(makeRequest({ paymentId: 'cs_unknown' }) as any);
     expect(res.status).toBe(404);
     const body = await res.json();
@@ -194,7 +196,7 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     // originalTx: $550 total, no prior refunds, no settlement entries
     nextSelect([BASE_TX]);   // (1) find original tx
     nextSelect([]);          // (2) existing refund txs — none yet
-    nextSelect([]);          // (3) settlement txs — none (stripeId = cs_ so checkoutStripeId is set, but returns empty)
+    nextSelect([]);          // (3) settlement txs — none (externalRef = cs_ so the checkout ref is set, but returns empty)
 
     const res = await POST(makeRequest({ paymentId: 'cs_test_session_abc', amount: 27500 }) as any);
 
@@ -208,6 +210,25 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
       paymentId: 'cs_test_session_abc',
       amount: 27500,
       reason: undefined,
+    });
+  });
+
+  it('dual-writes the reversal row: rail + external_ref carry the refund id and the stripe_id alias agrees (#2176)', async () => {
+    nextSelect([BASE_TX]);
+    nextSelect([]);
+    nextSelect([]);
+
+    const res = await POST(makeRequest({ paymentId: 'cs_test_session_abc', amount: 27500 }) as any);
+    expect(res.status).toBe(200);
+
+    const reversal = mocks.insertValuesMock.mock.calls
+      .map((c: any[]) => c[0])
+      .find((v: any) => v?.type === 'refund');
+    expect(reversal).toMatchObject({
+      rail: 'stripe',
+      externalRef: 're_test_stripe',
+      stripeId: 're_test_stripe',
+      metadata: expect.objectContaining({ originalTxId: 'tx_original_1', originalStripeId: 'cs_test_session_abc' }),
     });
   });
 

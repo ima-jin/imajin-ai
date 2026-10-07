@@ -23,6 +23,7 @@
  */
 import { eq } from 'drizzle-orm';
 import { db, transactions, withdrawalIntents } from '@/src/db';
+import { externalRefColumns } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import {
@@ -82,10 +83,10 @@ export async function reserveWithdrawal(params: ReserveWithdrawalParams): Promis
 
 /**
  * Tx 2 (confirm): intent -> `completed` with its `externalRef`, plus the
- * `pay.transactions` receipt row. `stripeId` is populated with the
- * (possibly non-Stripe) `externalRef` for backward-compatible indexing —
- * see `idx_transactions_stripe_id` — while `metadata.rail`/`externalRef`
- * carry the rail-agnostic record. `metadata.resolutionMode` (#2190) records
+ * `pay.transactions` receipt row. `rail` / `external_ref` carry the
+ * rail-agnostic reference (#2176) and the deprecated `stripe_id` alias is
+ * dual-written with the same (possibly non-Stripe) `externalRef` until #2650
+ * drops it; `metadata.rail`/`externalRef` keep the record alongside. `metadata.resolutionMode` (#2190) records
  * how `toDid` (the resolved destination) was decided — `toDid` itself is
  * always the server-resolved value, never the raw client-supplied one, so
  * this is the attestation of what the kernel actually did.
@@ -111,7 +112,7 @@ export async function confirmWithdrawal(intent: WithdrawalIntent, externalRef: s
       sourceKind: 'receipt',
       status: 'completed',
       source: 'fiat',
-      stripeId: externalRef,
+      ...externalRefColumns(externalRef, intent.rail),
       metadata: { rail: intent.rail, externalRef, intentId: intent.id, resolutionMode: intent.resolutionMode },
     });
   });

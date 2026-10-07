@@ -39,6 +39,11 @@ export const transactions = paySchema.table('transactions', {
   idempotencyKey: text('idempotency_key'),
   status: text('status').notNull().default('pending'),   // pending | completed | failed | refunded | partially_refunded
   source: text('source').notNull().default('fiat'),      // 'fiat' | 'credit' | 'mixed'
+  // #2176: which rail moved the money ('stripe' | 'emt' | ...) and that rail's opaque reference for it.
+  // Code READS `externalRef`; writers set `stripeId` too (dual-write) until #2650 drops it.
+  rail: text('rail'),
+  externalRef: text('external_ref'),                     // payment intent / invoice / checkout session (Stripe today)
+  /** @deprecated #2176 — alias of `externalRef` for Stripe rows; do not read. Dropped in #2650. */
   stripeId: text('stripe_id'),                           // payment intent / invoice / checkout session
   metadata: jsonb('metadata').default({}),
   fairManifest: jsonb('fair_manifest'),                  // .fair attribution chain
@@ -52,6 +57,7 @@ export const transactions = paySchema.table('transactions', {
   statusIdx: index('idx_transactions_status').on(table.status),
   createdIdx: index('idx_transactions_created').on(table.createdAt),
   stripeIdIdx: index('idx_transactions_stripe_id').on(table.stripeId),
+  railExternalRefIdx: index('idx_transactions_rail_external_ref').on(table.rail, table.externalRef),
   unitIdx: index('idx_transactions_unit').on(table.unit),
   attestationIdIdx: index('idx_transactions_attestation_id').on(table.attestationId),
   idempotencyKeyUniq: uniqueIndex('uniq_transactions_idempotency_key').on(table.idempotencyKey).where(sql`${table.idempotencyKey} IS NOT NULL`),
