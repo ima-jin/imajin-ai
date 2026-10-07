@@ -2,6 +2,13 @@
   "name": "@imajin/media",
   "version": "0.8.15",
   "private": true,
+  "description": "Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ima-jin/imajin-ai.git",
+    "directory": "packages/media"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
