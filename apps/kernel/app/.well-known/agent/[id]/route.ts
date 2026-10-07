@@ -3,6 +3,7 @@ import { db, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { nodeUrl, agentCardUrl } from '@/src/lib/http/node-url';
 import { createLogger } from '@imajin/logger';
+import { publishedTopicLabels } from '@/src/lib/jin/front-door';
 
 const log = createLogger('kernel');
 
@@ -33,7 +34,7 @@ export async function GET(
     const column = rawId.startsWith('did:imajin:') ? identities.id : identities.handle;
 
     const [identity] = await db
-      .select({ id: identities.id, handle: identities.handle, name: identities.name })
+      .select({ id: identities.id, handle: identities.handle, name: identities.name, metadata: identities.metadata })
       .from(identities)
       .where(eq(column, rawId))
       .limit(1);
@@ -46,6 +47,7 @@ export async function GET(
     }
 
     const node = nodeUrl();
+    const publishedTopics = publishedTopicLabels(identity.metadata);
     const card = {
       schemaVersion: '0.1',
       principalDid: identity.id,
@@ -56,6 +58,10 @@ export async function GET(
         protocol: 'imajin-agent-reach/0.1',
         description:
           'Signed reach request under a principal-authored gate. Returns only a boolean answer — never the underlying data. Requires an active agent:reach delegation grant from this principal.',
+        // #2598 — only the topic labels the principal opted to publish (ruled
+        // 2026-10-05); gate rules stay private and unpublished topics answer
+        // boolean-only. Omitted entirely when nothing is published.
+        ...(publishedTopics.length > 0 ? { topics: publishedTopics } : {}),
       },
       authentication: {
         schemes: ['did-imajin'],

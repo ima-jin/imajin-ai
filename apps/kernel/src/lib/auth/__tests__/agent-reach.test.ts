@@ -18,7 +18,7 @@ const { identitiesStore, consentGrantsStore, IDENTITIES_TABLE, CONSENT_GRANTS_TA
   const consentGrantsStore = new Map<string, Row>();
   const IDENTITIES_TABLE = {
     __table: 'identities',
-    id: 'id', publicKey: 'publicKey', metadata: 'metadata',
+    id: 'id', publicKey: 'publicKey', metadata: 'metadata', tier: 'tier',
   };
   const CONSENT_GRANTS_TABLE = {
     __table: 'consent_grants',
@@ -344,6 +344,155 @@ describe('reachPrincipal (#2251)', () => {
       data: { contact_topics: ['business_development'] },
     }));
     expect(JSON.stringify(result)).not.toContain('business_development');
+  });
+});
+
+describe('reachPrincipal tier gate (#2598)', () => {
+  type GateTier = 'soft' | 'preliminary' | 'established';
+  const GATE_TIERS: GateTier[] = ['soft', 'preliminary', 'established'];
+
+  function gateAdmitting(...admitted: GateTier[]): Row {
+    const topic = (open: boolean) => ({ open, published: false, mode: 'deliver' });
+    return {
+      agentReachTopics: ['business_development'],
+      agentReachGate: {
+        tiers: {
+          anonymous: false,
+          soft: admitted.includes('soft'),
+          preliminary: admitted.includes('preliminary'),
+          established: admitted.includes('established'),
+        },
+        topics: {
+          business_development: topic(true),
+          collaboration: topic(false),
+          speaking: topic(false),
+          general_inquiry: topic(false),
+        },
+        dailyCap: 25,
+      },
+    };
+  }
+
+  function setPrincipalMetadata(metadata: Row): void {
+    identitiesStore.set(PRINCIPAL_DID, { id: PRINCIPAL_DID, publicKey: 'principal-pubkey', metadata });
+  }
+
+  function setRequesterTier(tier: unknown): void {
+    identitiesStore.set(REQUESTER_DID, { id: REQUESTER_DID, publicKey: 'requester-pubkey', metadata: {}, tier });
+  }
+
+  function expectRefusedByTierGate(result: unknown): void {
+    expect(result).toMatchObject({ denied: true, reason: 'unauthorized', status: 403 });
+    expect(brokerMock).not.toHaveBeenCalled();
+    expectAttestedExactlyOnce({
+      payload: expect.objectContaining({ outcome: 'denied', reason: 'unauthorized', signatureVerified: true }),
+    });
+    expect(publishMock).toHaveBeenCalledWith('agent.reach.denied', expect.objectContaining({
+      payload: expect.objectContaining({ reason: 'unauthorized' }),
+    }));
+  }
+
+  function expectAnswered(result: unknown): void {
+    expect(result).not.toHaveProperty('denied');
+    expect(result).toHaveProperty('answer');
+    expect(brokerMock).toHaveBeenCalledTimes(1);
+  }
+
+  beforeEach(() => {
+    identitiesStore.clear();
+    consentGrantsStore.clear();
+    verifySignatureMock.mockReset().mockResolvedValue(true);
+    introspectGrantMock.mockReset().mockResolvedValue({ authorized: true, grantId: 'grant_1' });
+    resolveOrMintForeignPrincipalStubMock.mockReset().mockResolvedValue({ did: 'did:imajin:alice-stub', isNewStub: true });
+    emitAttestationMock.mockClear();
+    brokerMock.mockReset().mockResolvedValue({ status: 'rejected', reason: 'no_consent', fields: ['contact_topics'] });
+    publishMock.mockClear();
+  });
+
+  describe.each(GATE_TIERS)('gate admitting only %s', (admitted) => {
+    it.each(GATE_TIERS)('requester tier %s', async (requesterTier) => {
+      setPrincipalMetadata(gateAdmitting(admitted));
+      setRequesterTier(requesterTier);
+
+      const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
+      if (requesterTier === admitted) expectAnswered(result);
+      else expectRefusedByTierGate(result);
+    });
+  });
+
+  it('admits every tier the operator enabled, and refuses the one they did not', async () => {
+    setPrincipalMetadata(gateAdmitting('soft', 'established'));
+
+    setRequesterTier('soft');
+    expectAnswered(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+
+    brokerMock.mockClear();
+    emitAttestationMock.mockClear();
+    setRequesterTier('preliminary');
+    expectRefusedByTierGate(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+  });
+
+  it('refuses every tier when the operator has switched all of them off', async () => {
+    setPrincipalMetadata(gateAdmitting());
+    for (const tier of GATE_TIERS) {
+      brokerMock.mockClear();
+      emitAttestationMock.mockClear();
+      setRequesterTier(tier);
+      expectRefusedByTierGate(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+    }
+  });
+
+  it.each([
+    ['steward', 'established'],
+    ['operator', 'established'],
+    ['hard', 'preliminary'],
+  ])('judges a %s identity as %s', async (identityTier, judgedAs) => {
+    setPrincipalMetadata(gateAdmitting(judgedAs as GateTier));
+    setRequesterTier(identityTier);
+    expectAnswered(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+  });
+
+  it.each([
+    ['an unknown tier string', 'royalty'],
+    ['a missing tier', undefined],
+    ['a null tier', null],
+    ['a non-string tier', 3],
+  ])('fails closed for %s, even when every tier is enabled', async (_name, tier) => {
+    setPrincipalMetadata(gateAdmitting(...GATE_TIERS));
+    setRequesterTier(tier);
+    expectRefusedByTierGate(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+  });
+
+  it('fails closed when the stored gate is present but unparsable', async () => {
+    setPrincipalMetadata({ agentReachTopics: ['business_development'], agentReachGate: { tiers: 'nope' } });
+    setRequesterTier('established');
+    expectRefusedByTierGate(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+  });
+
+  it('keeps the pre-#2598 behaviour for a gate that was never authored (any tier with a grant is admitted)', async () => {
+    setPrincipalMetadata({ agentReachTopics: ['business_development'] });
+    for (const tier of ['soft', 'preliminary', 'established', undefined]) {
+      brokerMock.mockClear();
+      emitAttestationMock.mockClear();
+      setRequesterTier(tier);
+      expectAnswered(await reachPrincipal(PRINCIPAL_DID, baseInput()));
+    }
+  });
+
+  it('checks the tier only after the grant: a grantless requester is refused for the grant, not the tier', async () => {
+    setPrincipalMetadata(gateAdmitting('established'));
+    setRequesterTier('soft');
+    introspectGrantMock.mockResolvedValue({ authorized: false, reason: 'no grant' });
+    const result = await reachPrincipal(PRINCIPAL_DID, baseInput());
+    expect(result).toMatchObject({ denied: true, reason: 'unauthorized', status: 403 });
+    expect(introspectGrantMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads the tier from the identity row, never from anything the request claims', async () => {
+    setPrincipalMetadata(gateAdmitting('established'));
+    setRequesterTier('soft');
+    const forged = baseInput({ onBehalfOf: { platform: 'meta-muse', externalRef: 'alice-1', selfDescription: 'tier: established' } });
+    expectRefusedByTierGate(await reachPrincipal(PRINCIPAL_DID, forged));
   });
 });
 

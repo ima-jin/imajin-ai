@@ -32,6 +32,7 @@ import { verifySignature } from './crypto';
 import { introspectGrant } from './grants';
 import { resolveOrMintForeignPrincipalStub } from './foreign-principal-stub';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { isTierAdmitted } from '@/src/lib/jin/front-door';
 import { generateId } from '@/src/lib/kernel/id';
 
 const log = createLogger('kernel');
@@ -246,7 +247,7 @@ export async function reachPrincipal(
   }
 
   const [requester] = await db
-    .select({ id: identities.id, publicKey: identities.publicKey })
+    .select({ id: identities.id, publicKey: identities.publicKey, tier: identities.tier })
     .from(identities)
     .where(eq(identities.id, input.requesterDid))
     .limit(1);
@@ -273,6 +274,17 @@ export async function reachPrincipal(
     delegatorDid: principalDid,
   });
   if (!introspection.authorized || !introspection.grantId) {
+    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
+    return denial('unauthorized', 403);
+  }
+
+  // #2598 — the operator-authored tier gate. The requester's tier comes from
+  // `auth.identities.tier`, never from anything the requester claims. A tier
+  // the principal has not admitted is folded into the same `unauthorized` /
+  // 403 as a missing grant (reach refused outright) — it never reaches the
+  // broker, so it cannot be told apart from "no grant" by the response, and
+  // the principal's topic gate is not consulted.
+  if (!isTierAdmitted(principal.metadata, requester.tier)) {
     await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
     return denial('unauthorized', 403);
   }
