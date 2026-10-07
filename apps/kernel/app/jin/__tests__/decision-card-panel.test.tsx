@@ -365,9 +365,50 @@ describe('decision card — round-trip from the #2315 emitter fixture', () => {
     expect(body.decision).toBe('approve');
     expect(body.mode).toBe('b');
 
-    // The countersignature covers the card's own contentHash.
+    // #2693: the countersignature covers the card's own contentHash AND the chosen
+    // letter — picking the option IS the signing event, so "b" is inside the signed bytes.
     const signature = body.operatorSignature as { keyId: string; sig: string };
-    const signed = canonicalize({ contentHash: emitted.card.contentHash, decidedAt: body.decidedAt, decision: 'approve' });
-    expect(authCrypto.verifySync(signature.sig, signed, publicKey)).toBe(true);
+    const fields = { contentHash: emitted.card.contentHash, decidedAt: body.decidedAt, decision: 'approve' };
+    expect(authCrypto.verifySync(signature.sig, canonicalize({ ...fields, mode: 'b' }), publicKey)).toBe(true);
+    // ...and it does NOT verify as the pre-#2693 letter-less shape, nor as any other letter.
+    expect(authCrypto.verifySync(signature.sig, canonicalize(fields), publicKey)).toBe(false);
+    expect(authCrypto.verifySync(signature.sig, canonicalize({ ...fields, mode: 'a' }), publicKey)).toBe(false);
+  });
+});
+
+describe('decision card — the countersignature binds the chosen letter (#2693)', () => {
+  async function chooseAndCapture(buttonName: string) {
+    const { privateKey, publicKey } = authCrypto.generateKeypair();
+    localStorage.setItem('imajin_keypair', JSON.stringify({ privateKey, publicKey }));
+    const spy = installFetch([decisionApproval()]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: buttonName });
+    fireEvent.click(screen.getByRole('button', { name: buttonName }));
+    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('/decision'))).toBe(true));
+    return { body: decisionCall(spy).body, publicKey };
+  }
+
+  it.each([
+    ['a', 'a) Merge now'],
+    ['b', 'b) Fix the Sonar warning first'],
+    ['c', 'c) Close the PR'],
+  ])('option %s: the signature verifies over that letter only', async (letter, buttonName) => {
+    const { body, publicKey } = await chooseAndCapture(buttonName);
+    const sig = (body.operatorSignature as { sig: string }).sig;
+    const fields = { contentHash: 'a'.repeat(64), decidedAt: body.decidedAt, decision: 'approve' };
+
+    expect(authCrypto.verifySync(sig, canonicalize({ ...fields, mode: letter }), publicKey)).toBe(true);
+    for (const other of ['a', 'b', 'c'].filter((l) => l !== letter)) {
+      expect(authCrypto.verifySync(sig, canonicalize({ ...fields, mode: other }), publicKey)).toBe(false);
+    }
+  });
+
+  it('None of these signs the original three fields only (a reject carries no letter)', async () => {
+    const { body, publicKey } = await chooseAndCapture('None of these');
+    const sig = (body.operatorSignature as { sig: string }).sig;
+
+    expect(body.mode).toBeUndefined();
+    const fields = { contentHash: 'a'.repeat(64), decidedAt: body.decidedAt, decision: 'reject' };
+    expect(authCrypto.verifySync(sig, canonicalize(fields), publicKey)).toBe(true);
   });
 });

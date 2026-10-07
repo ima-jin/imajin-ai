@@ -19,6 +19,7 @@
  *
  * Pure and DB-free so the service, tests, and any future caller share it.
  */
+import { DECISION_APPROVAL_KIND, parseDecisionCardView } from '../decisions/view';
 import { EXEC_COMMAND_KIND, validateExecCommandDecisionMode } from './exec-command-approvals';
 import type { ApprovalDecision } from './operator-approvals';
 
@@ -30,9 +31,6 @@ export const GITHUB_TTL_MODES = ['single', '5m', '24h'] as const;
 
 const GITHUB_TTL_LIST = GITHUB_TTL_MODES.map((m) => `'${m}'`).join(', ');
 
-/** `'<source>:<subkind>'` of a DecisionCard approval (#2315) — see `../decisions/emit.ts`. */
-export const DECISION_CARD_KIND = 'decision:card';
-
 export type DecisionModeValidation = { ok: true } | { ok: false; error: string };
 
 export interface DecisionModeSubject {
@@ -41,16 +39,15 @@ export interface DecisionModeSubject {
   detail: Record<string, unknown> | null;
 }
 
-/** The option letters a decision card's untrusted `detail` offers (empty when it offers none usable). */
+/**
+ * The option letters a decision card's untrusted `detail` offers — exactly
+ * the letters the /jin Inbox renders as buttons (`parseDecisionCardView`,
+ * #2323), so the route accepts what the card showed and nothing else. Empty
+ * when the detail isn't a usable card (the Inbox then offers only "None of
+ * these").
+ */
 export function decisionCardOptionLetters(detail: Record<string, unknown> | null): string[] {
-  const options = detail?.options;
-  if (!Array.isArray(options)) return [];
-  const letters: string[] = [];
-  for (const option of options) {
-    const letter = (option as { letter?: unknown } | null)?.letter;
-    if (typeof letter === 'string' && letter.length > 0) letters.push(letter);
-  }
-  return letters;
+  return parseDecisionCardView(detail)?.options.map((option) => option.letter) ?? [];
 }
 
 function validateDecisionCardMode(
@@ -92,7 +89,7 @@ export function validateDecisionMode(
   decision: ApprovalDecision,
   mode: string | undefined,
 ): DecisionModeValidation {
-  if (subject.kind === DECISION_CARD_KIND) return validateDecisionCardMode(decision, mode, subject.detail);
+  if (subject.kind === DECISION_APPROVAL_KIND) return validateDecisionCardMode(decision, mode, subject.detail);
   if (subject.kind === EXEC_COMMAND_KIND) return validateExecCommandDecisionMode(decision, mode);
   if (subject.source === GITHUB_SOURCE) return validateGithubMode(decision, mode);
   if (mode === undefined) return { ok: true };

@@ -4,8 +4,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { EXEC_COMMAND_KIND, EXEC_COMMAND_SOURCE } from '../exec-command-approvals';
+import { DECISION_APPROVAL_KIND } from '../../decisions/view';
 import {
-  DECISION_CARD_KIND,
   GITHUB_SOURCE,
   GITHUB_TTL_MODES,
   decisionCardOptionLetters,
@@ -14,13 +14,16 @@ import {
 
 const CARD = {
   source: 'decision',
-  kind: DECISION_CARD_KIND,
+  kind: DECISION_APPROVAL_KIND,
   detail: {
+    subject: { kind: 'pr', ref: 'ima-jin/imajin-ai#1', url: 'https://example.test/pr/1' },
+    question: 'Merge?',
     options: [
       { letter: 'a', label: 'Merge', consequence: '' },
       { letter: 'b', label: 'Hold', consequence: '' },
       { letter: 'c', label: 'Close', consequence: '' },
     ],
+    rec: { letter: 'a', why: 'green' },
   },
 };
 const GITHUB = { source: GITHUB_SOURCE, kind: 'github:append', detail: null };
@@ -46,6 +49,8 @@ describe('validateDecisionMode — decision:card', () => {
     expect(validateDecisionMode({ ...CARD, detail: null }, 'approve', 'a').ok).toBe(false);
     expect(validateDecisionMode({ ...CARD, detail: { options: [] } }, 'approve', 'a').ok).toBe(false);
     expect(validateDecisionMode({ ...CARD, detail: { options: [{ letter: '' }, null, 7, {}] } }, 'approve', 'a').ok).toBe(false);
+    // Same bar as the Inbox: a card the Inbox can't render offers no letters (rec must name an option).
+    expect(validateDecisionMode({ ...CARD, detail: { ...CARD.detail, rec: { letter: 'z', why: '' } } }, 'approve', 'a').ok).toBe(false);
   });
 
   it.each(['reject', 'withdrawn'] as const)('%s carries no mode', (decision) => {
@@ -111,9 +116,9 @@ describe('validateDecisionMode — every other kind', () => {
 });
 
 describe('decisionCardOptionLetters', () => {
-  it('lists the letters, skipping malformed options', () => {
+  it('lists the letters the Inbox would render; a card with any malformed option offers none', () => {
     expect(decisionCardOptionLetters(CARD.detail)).toEqual(['a', 'b', 'c']);
-    expect(decisionCardOptionLetters({ options: [{ letter: 'x' }, { letter: 3 }, null] })).toEqual(['x']);
+    expect(decisionCardOptionLetters({ ...CARD.detail, options: [{ letter: 'x', label: 'X' }, { letter: 3 }], rec: { letter: 'x', why: '' } })).toEqual([]);
     expect(decisionCardOptionLetters(null)).toEqual([]);
     expect(decisionCardOptionLetters({ options: 'a,b' })).toEqual([]);
   });
