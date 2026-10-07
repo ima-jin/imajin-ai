@@ -22,7 +22,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -209,5 +209,53 @@ describe('prepare-npm-publish.mjs — secret isolation', () => {
     const source = readFileSync(SCRIPT, 'utf8');
 
     expect(source).not.toMatch(/process\.env/);
+  });
+});
+
+describe('prepare-npm-publish.mjs: repository metadata only reaches the publish copy (#1589)', () => {
+  // The script derives its repo root (and so the `packages/` it will read
+  // from) from its own location, so a copy of it inside a throwaway sandbox
+  // repo in the OS temp dir lets the fixtures live entirely outside the real
+  // packages/ directory.
+  function inSandbox(manifest, check) {
+    const sandbox = mkdtempSync(join(tmpdir(), 'prepare-npm-publish-sandbox-'));
+    const outDir = mkdtempSync(join(tmpdir(), 'prepare-npm-publish-out-'));
+    try {
+      mkdirSync(join(sandbox, 'scripts'));
+      const sandboxScript = join(sandbox, 'scripts', 'prepare-npm-publish.mjs');
+      cpSync(SCRIPT, sandboxScript);
+      const srcDir = join(sandbox, 'packages', 'widget');
+      writePackageFixture(srcDir, manifest);
+      const manifestPath = join(srcDir, 'package.json');
+      const before = readFileSync(manifestPath);
+
+      // Run the sandbox copy (not the real script): its repo root, and so the
+      // packages/ dir it accepts, is the sandbox.
+      execFileSync(process.execPath, [sandboxScript, srcDir, outDir], { encoding: 'utf8' });
+
+      // Source manifest: byte-for-byte what it was before the run.
+      expect(readFileSync(manifestPath).equals(before)).toBe(true);
+      check(JSON.parse(readFileSync(join(outDir, 'package.json'), 'utf8')));
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  }
+
+  it('injects repository into the publish copy only, leaving the source manifest byte-identical', () => {
+    inSandbox({ name: '@imajin/widget', version: '1.0.0', private: true }, (published) => {
+      expect(published.repository).toEqual({
+        type: 'git',
+        url: 'git+https://github.com/ima-jin/imajin-ai.git',
+        directory: 'packages/widget',
+      });
+    });
+  });
+
+  it('keeps a declared repository in the publish copy and leaves the source byte-identical', () => {
+    const repository = { type: 'git', url: 'git+https://example.test/x.git', directory: 'x' };
+    inSandbox({ name: '@imajin/widget', version: '1.0.0', repository }, (published) => {
+      expect(published.repository).toEqual(repository);
+    });
   });
 });

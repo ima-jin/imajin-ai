@@ -10,12 +10,25 @@
  * "already published?" lookup (scripts/npm-package-published.mjs) resolves
  * without network access. The registry URL contains `registry.npmjs.org` so
  * the script takes its npmjs branch.
+ *
+ * Fixtures never touch the real repo: the scripts under test are copied into
+ * a throwaway "sandbox repo" in the OS temp dir (they derive the repo root,
+ * and so the `packages/` they will read from, from their own location), and
+ * every fixture package lives in that sandbox's `packages/`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -23,9 +36,13 @@ import { fileURLToPath } from 'node:url';
 
 const execFileAsync = promisify(execFile);
 
-const SCRIPT = fileURLToPath(new URL('../publish-package.sh', import.meta.url));
-const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
-const PACKAGES_ROOT = join(REPO_ROOT, 'packages');
+const REAL_SCRIPTS = fileURLToPath(new URL('..', import.meta.url));
+const REAL_REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+const SCRIPTS_UNDER_TEST = [
+  'publish-package.sh',
+  'prepare-npm-publish.mjs',
+  'npm-package-published.mjs',
+];
 
 // Generated per run so no credential-shaped literal lives in the repo.
 const FALLBACK_TOKEN = randomUUID();
@@ -51,6 +68,9 @@ exit 0
 let registry; // local HTTP server standing in for the registry
 let registryUrl;
 let binDir;
+let sandboxRoot; // throwaway repo root holding copies of the scripts + packages/
+let sandboxScript;
+let packageCounter = 0;
 const cleanups = [];
 
 beforeAll(async () => {
@@ -65,27 +85,40 @@ beforeAll(async () => {
   binDir = mkdtempSync(join(tmpdir(), 'fake-npm-bin-'));
   writeFileSync(join(binDir, 'npm'), FAKE_NPM);
   chmodSync(join(binDir, 'npm'), 0o755);
+
+  sandboxRoot = mkdtempSync(join(tmpdir(), 'publish-sandbox-'));
+  mkdirSync(join(sandboxRoot, 'scripts'));
+  mkdirSync(join(sandboxRoot, 'packages'));
+  for (const file of SCRIPTS_UNDER_TEST) {
+    cpSync(join(REAL_SCRIPTS, file), join(sandboxRoot, 'scripts', file));
+  }
+  sandboxScript = join(sandboxRoot, 'scripts', 'publish-package.sh');
 });
 
 afterAll(async () => {
   await new Promise((r) => registry.close(r));
   rmSync(binDir, { recursive: true, force: true });
+  rmSync(sandboxRoot, { recursive: true, force: true });
   for (const dir of cleanups) rmSync(dir, { recursive: true, force: true });
 });
 
+/** Writes a fixture package into the sandbox repo and remembers its exact bytes. */
 function makePackage(manifest = {}) {
-  const dir = mkdtempSync(join(PACKAGES_ROOT, '.tmp-publish-package-'));
-  cleanups.push(dir);
-  writeFileSync(
-    join(dir, 'package.json'),
-    JSON.stringify({ name: '@imajin/fixture', version: '1.2.3', private: true, ...manifest }),
-  );
-  return dir;
+  packageCounter += 1;
+  const name = `fixture-${packageCounter}`;
+  const dir = join(sandboxRoot, 'packages', name);
+  mkdirSync(dir);
+  const manifestPath = join(dir, 'package.json');
+  const json = { name: '@imajin/fixture', version: '1.2.3', private: true, ...manifest };
+  // Pretty-printed with a trailing newline, like a real manifest, so a script
+  // that re-serialized the source file would change its bytes.
+  writeFileSync(manifestPath, `${JSON.stringify(json, null, 2)}\n`);
+  return { name, dir, manifestPath, originalBytes: readFileSync(manifestPath) };
 }
 
 // Async on purpose: the fake registry lives in this process, so a blocking
 // spawnSync would stop it answering the script's lookup and deadlock.
-async function runPublish({ pkgDir, dryRun = 'false', env = {} }) {
+async function runPublish({ pkg, dryRun = 'false', env = {} }) {
   const logDir = mkdtempSync(join(tmpdir(), 'fake-npm-log-'));
   cleanups.push(logDir);
   const log = join(logDir, 'npm.log');
@@ -97,11 +130,10 @@ async function runPublish({ pkgDir, dryRun = 'false', env = {} }) {
     FAKE_NPM_LOG: log,
     NODE_AUTH_TOKEN: PLACEHOLDER_TOKEN,
   };
-  const result = await execFileAsync(
-    'bash',
-    [SCRIPT, pkgDir.split('/').pop(), registryUrl, dryRun],
-    { encoding: 'utf8', env: { ...baseEnv, ...env } },
-  ).catch((e) => e);
+  const result = await execFileAsync('bash', [sandboxScript, pkg.name, registryUrl, dryRun], {
+    encoding: 'utf8',
+    env: { ...baseEnv, ...env },
+  }).catch((e) => e);
   const status = typeof result.code === 'number' ? result.code : 0;
   return {
     status,
@@ -110,12 +142,23 @@ async function runPublish({ pkgDir, dryRun = 'false', env = {} }) {
       .split('ARGS: ')
       .slice(1)
       .map((c) => `ARGS: ${c}`),
+    // The injected `repository` must only ever reach the publish copy.
+    sourceUnchanged: readFileSync(pkg.manifestPath).equals(pkg.originalBytes),
   };
 }
 
-describe('publish-package.sh — npmjs.org OIDC Trusted Publishing (#1589)', () => {
+describe('publish-package.sh: fixture isolation', () => {
+  it('keeps every fixture inside a temp sandbox, outside the real packages/ dir', () => {
+    const pkg = makePackage();
+    expect(sandboxRoot.startsWith(tmpdir())).toBe(true);
+    expect(pkg.dir.startsWith(join(REAL_REPO_ROOT, 'packages'))).toBe(false);
+    expect(pkg.dir.startsWith(join(sandboxRoot, 'packages'))).toBe(true);
+  });
+});
+
+describe('publish-package.sh: npmjs.org OIDC Trusted Publishing (#1589)', () => {
   it('publishes with --provenance over OIDC: no credential visible to npm', async () => {
-    const { status, output, calls } = await runPublish({ pkgDir: makePackage() });
+    const { status, output, calls, sourceUnchanged } = await runPublish({ pkg: makePackage() });
 
     expect(status).toBe(0);
     expect(calls).toHaveLength(1);
@@ -128,11 +171,12 @@ describe('publish-package.sh — npmjs.org OIDC Trusted Publishing (#1589)', () 
     expect(calls[0]).not.toMatch(/_authToken/);
     expect(output).toContain('Authenticated via OIDC Trusted Publishing');
     expect(output).not.toContain(PLACEHOLDER_TOKEN);
+    expect(sourceUnchanged).toBe(true);
   });
 
   it('fails when OIDC fails and no fallback token is configured', async () => {
-    const { status, output, calls } = await runPublish({
-      pkgDir: makePackage(),
+    const { status, output, calls, sourceUnchanged } = await runPublish({
+      pkg: makePackage(),
       env: { FAKE_NPM_FAIL_ATTEMPTS: '5' },
     });
 
@@ -140,11 +184,12 @@ describe('publish-package.sh — npmjs.org OIDC Trusted Publishing (#1589)', () 
     expect(calls).toHaveLength(1);
     expect(output).toContain('no NPM_TOKEN fallback is configured');
     expect(output).not.toContain('Published @');
+    expect(sourceUnchanged).toBe(true);
   });
 
   it('retries with the legacy token when OIDC fails and a fallback is configured', async () => {
-    const { status, output, calls } = await runPublish({
-      pkgDir: makePackage(),
+    const { status, output, calls, sourceUnchanged } = await runPublish({
+      pkg: makePackage(),
       env: { FAKE_NPM_FAIL_ATTEMPTS: '1', NPM_FALLBACK_TOKEN: FALLBACK_TOKEN },
     });
 
@@ -162,11 +207,12 @@ describe('publish-package.sh — npmjs.org OIDC Trusted Publishing (#1589)', () 
     expect(output).toContain('retrying with the legacy NPM_TOKEN fallback');
     expect(output).toContain('Authenticated via legacy NPM_TOKEN fallback');
     expect(output).not.toContain(FALLBACK_TOKEN);
+    expect(sourceUnchanged).toBe(true);
   });
 
   it('does not touch the fallback token when OIDC succeeds', async () => {
     const { status, calls, output } = await runPublish({
-      pkgDir: makePackage(),
+      pkg: makePackage(),
       env: { NPM_FALLBACK_TOKEN: FALLBACK_TOKEN },
     });
 
@@ -178,8 +224,8 @@ describe('publish-package.sh — npmjs.org OIDC Trusted Publishing (#1589)', () 
   });
 
   it('dry run uses the credential-free config and never retries', async () => {
-    const { status, calls } = await runPublish({
-      pkgDir: makePackage(),
+    const { status, calls, sourceUnchanged } = await runPublish({
+      pkg: makePackage(),
       dryRun: 'true',
       env: { FAKE_NPM_FAIL_ATTEMPTS: '5', NPM_FALLBACK_TOKEN: FALLBACK_TOKEN },
     });
@@ -189,31 +235,44 @@ describe('publish-package.sh — npmjs.org OIDC Trusted Publishing (#1589)', () 
     expect(calls[0]).toContain('--dry-run');
     expect(calls[0]).toContain('--provenance');
     expect(calls[0]).not.toMatch(/_authToken/);
+    expect(sourceUnchanged).toBe(true);
   });
+});
 
-  it('adds repository metadata to the publish copy when the manifest omits it', async () => {
-    const pkgDir = makePackage();
-    const { status, output } = await runPublish({ pkgDir, dryRun: 'true' });
+describe('publish-package.sh: repository metadata only reaches the publish copy (#1589)', () => {
+  it('adds repository to the publish copy when the manifest omits it, leaving the source byte-identical', async () => {
+    const pkg = makePackage();
+    const { status, output, sourceUnchanged } = await runPublish({ pkg, dryRun: 'true' });
 
     expect(status).toBe(0);
     expect(output).toContain('Added repository metadata');
     expect(output).toContain('git+https://github.com/ima-jin/imajin-ai.git');
-    expect(output).toContain(`"directory": "packages/${pkgDir.split('/').pop()}"`);
+    expect(output).toContain(`"directory": "packages/${pkg.name}"`);
+    // The injected field is in the publish copy printed above, never the source.
+    expect(sourceUnchanged).toBe(true);
+    expect(readFileSync(pkg.manifestPath, 'utf8')).not.toContain('repository');
   });
 
-  it('keeps an existing repository field untouched', async () => {
+  it('keeps an existing repository field untouched in both the publish copy and the source', async () => {
     const repository = {
       type: 'git',
       url: 'git+https://github.com/ima-jin/imajin-ai.git',
       directory: 'packages/custom',
     };
-    const { status, output } = await runPublish({
-      pkgDir: makePackage({ repository }),
-      dryRun: 'true',
-    });
+    const pkg = makePackage({ repository });
+    const { status, output, sourceUnchanged } = await runPublish({ pkg, dryRun: 'true' });
 
     expect(status).toBe(0);
     expect(output).not.toContain('Added repository metadata');
     expect(output).toContain('"directory": "packages/custom"');
+    expect(sourceUnchanged).toBe(true);
+  });
+
+  it('leaves the source byte-identical on a real (non-dry-run) publish too', async () => {
+    const pkg = makePackage();
+    const { status, sourceUnchanged } = await runPublish({ pkg });
+
+    expect(status).toBe(0);
+    expect(sourceUnchanged).toBe(true);
   });
 });
