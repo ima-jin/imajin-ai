@@ -78,6 +78,17 @@ describe('DELETE /api/vault/delete — request validation', () => {
     expect(response.status).toBe(400);
     expect(mockDeleteSecretAndRevokeGrants).not.toHaveBeenCalled();
   });
+
+  it.each(['bad field!', 'a::b', 'a:', ':a', 'has/slash'])(
+    'rejects a field outside the vault field grammar with a 400: %s',
+    async (field) => {
+      const response = await DELETE(makeRequest({ field }) as never);
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toMatch(/not a valid vault field name/);
+      expect(mockVaultServicePeek).not.toHaveBeenCalled();
+      expect(mockDeleteSecretAndRevokeGrants).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('internal-secret:* refusal', () => {

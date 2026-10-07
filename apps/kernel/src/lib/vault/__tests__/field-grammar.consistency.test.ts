@@ -60,6 +60,7 @@ const TAKES_FIELD_NAME =
 const EXPECTED_FIELD_ROUTES = [
   'app/api/vault/delegation/grant/route.ts',
   'app/api/vault/delegation/revoke/route.ts',
+  'app/api/vault/delete/route.ts',
   'app/api/vault/grantees/[field]/route.ts',
   'app/api/vault/history/[field]/route.ts',
   'app/api/vault/migrate-custody/route.ts',

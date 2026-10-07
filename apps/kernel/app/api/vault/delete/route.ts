@@ -5,7 +5,7 @@ import { vaultService } from '@/src/lib/vault';
 import { deleteSecretAndRevokeGrants } from '@/src/lib/vault/delete-secret';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
-import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
+import { isInternalSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 
 const log = createLogger('kernel');
@@ -52,10 +52,11 @@ export async function DELETE(request: NextRequest) {
   }
 
   const { field, confirmField } = body ?? {};
-  if (typeof field !== 'string' || field.trim().length === 0) {
-    return NextResponse.json({ error: 'field is required' }, { status: 400 });
+  const parsedField = parseVaultFieldName(field);
+  if (!parsedField.ok) {
+    return NextResponse.json({ error: parsedField.message }, { status: 400 });
   }
-  const trimmedField = field.trim();
+  const trimmedField = parsedField.value.field;
 
   if (isInternalSecretField(trimmedField)) {
     return NextResponse.json(
