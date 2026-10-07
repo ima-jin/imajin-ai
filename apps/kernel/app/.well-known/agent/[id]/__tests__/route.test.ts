@@ -50,8 +50,11 @@ function whereClause(projection: Record<string, string>) {
 
 vi.mock('@/src/db', () => ({
   db: { select: (projection: Record<string, string>) => ({ from: () => whereClause(projection) }) },
-  identities: { id: 'id', handle: 'handle', name: 'name' },
+  identities: { id: 'id', handle: 'handle', name: 'name', metadata: 'metadata' },
 }));
+
+// front-door.ts (imported for publishedTopicLabels) also pulls the bus; the card route only needs the pure helper.
+vi.mock('@imajin/bus', () => ({ publish: vi.fn() }));
 
 const { GET } = await import('../route');
 
@@ -85,5 +88,39 @@ describe('GET /.well-known/agent/:id (#2251)', () => {
     const body = (response as { body: { onboarding: { flow: string; endpoint: string } } }).body;
     expect(body.onboarding.flow).toBe('knock');
     expect(body.onboarding.endpoint).toBe('https://imajin.ai/auth/api/knock');
+  });
+
+  describe('published topics (#2598)', () => {
+    type Card = { reach: { topics?: string[] } };
+
+    it('omits topics entirely when nothing is published', async () => {
+      const response = await GET({} as never, { params: Promise.resolve({ id: 'did:imajin:ryan' }) });
+      expect('topics' in (response as { body: Card }).body.reach).toBe(false);
+    });
+
+    it('publishes only the labels of open topics the principal opted to publish', async () => {
+      const topic = (open: boolean, published: boolean) => ({ open, published, mode: 'deliver' });
+      identitiesStore.set('did:imajin:ryan', {
+        id: 'did:imajin:ryan',
+        handle: 'ryan',
+        name: 'Ryan',
+        metadata: {
+          agentReachTopics: ['collaboration', 'speaking'],
+          agentReachGate: {
+            tiers: { anonymous: false, verified: true, attested: false },
+            topics: {
+              collaboration: topic(true, true),
+              speaking: topic(true, false),
+              business_development: topic(false, false),
+            },
+            dailyCap: 25,
+          },
+        },
+      });
+      const response = await GET({} as never, { params: Promise.resolve({ id: 'did:imajin:ryan' }) });
+      const body = (response as { body: Card }).body;
+      expect(body.reach.topics).toEqual(['Collaboration']);
+      expect(JSON.stringify(body)).not.toContain('Speaking');
+    });
   });
 });

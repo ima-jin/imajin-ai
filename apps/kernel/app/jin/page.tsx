@@ -6,6 +6,7 @@ import { VaultKeysPanel } from './vault-keys-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
 import { ProvisionAppPanel } from './provision-app-panel';
 import { GrantsPanel } from './grants-panel';
+import { FrontDoorPanel } from './front-door-panel';
 import { PushSubscribeButton } from './push-subscribe-button';
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -55,6 +56,12 @@ export default function JinPage() {
             nothing otherwise. Rendered ABOVE the operator-approvals panel so
             the raised proposal's confirm card appears directly below it. */}
         <ProvisionAppPanel />
+
+        {/* Front door (#2598) — author the agent-reach gate: tiers, open /
+            published topics, deliver vs decline, daily cap. Operator-gated,
+            renders nothing otherwise. Writes through the existing
+            primitives only; a save is live on the next reach call. */}
+        <FrontDoorPanel />
 
         {/* Operator approvals (#2059, generalized #2152, GitHub folded in
             #2293) — the single typed confirm queue: gateway restart/config,
