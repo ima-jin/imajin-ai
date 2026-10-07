@@ -104,7 +104,7 @@ import { db, vaultDelegationGrants, internalSecretProvisions } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeSigningIdentity } from './sealing';
 import { VaultDelegationError } from './errors';
-import { INTERNAL_SECRET_FIELD_PREFIX, isInternalSecretField } from './internal-secret-field';
+import { INTERNAL_SECRET_FIELD_PREFIX, isInternalSecretField, parseVaultFieldName } from './field-grammar';
 import {
   sealAndGrantStaticSecret,
   fetchGrantSecret,
@@ -129,10 +129,11 @@ export function internalSecretField(purpose: string): string {
 
 /** Inverse of {@link internalSecretField}: the purpose an `internal-secret:*` field is for. */
 export function purposeFromInternalSecretField(field: string): string {
-  if (!isInternalSecretField(field)) {
+  const parsed = parseVaultFieldName(field);
+  if (!parsed.ok || !isInternalSecretField(parsed.value.field)) {
     throw new Error(`purposeFromInternalSecretField: '${field}' is not an internal-secret field`);
   }
-  return field.slice(INTERNAL_SECRET_FIELD_PREFIX.length);
+  return parsed.value.name;
 }
 
 // Process-lifetime cache: getInternalSecret only ever fetches-or-generates

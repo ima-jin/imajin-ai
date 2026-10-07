@@ -6,7 +6,7 @@ import { HistoryDialog } from './history-dialog';
 import { RevokeGrantDialog } from './revoke-grant-dialog';
 import { RotateSecretDialog } from './rotate-secret-dialog';
 import { SetSecretDialog } from './set-secret-dialog';
-import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
+import { isInternalSecretField } from '@/src/lib/vault/field-grammar';
 import type {
   RotateSecretInput,
   SetSecretInput,

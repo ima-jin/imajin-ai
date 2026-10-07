@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAdmin, verifySync } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 import { db, vaultDelegationGrants, vaultGrantRequests } from '@/src/db';
 import {
   canonicalizeGrantPayload,
@@ -264,6 +265,16 @@ export async function POST(request: NextRequest) {
   if (!subject || !grantedTo || !field || !ownerXPub ||
       !wrappedKey || !wrappedNonce || !keyId || !ownerSignature) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  // `field` is covered by the owner's signature, so it is validated but never
+  // trimmed or otherwise rewritten: what the owner signed is what is looked up.
+  const parsedField = parseVaultFieldName(field);
+  if (!parsedField.ok || parsedField.value.field !== field) {
+    return NextResponse.json(
+      { error: parsedField.ok ? 'field must not have leading or trailing whitespace' : parsedField.message },
+      { status: 400 },
+    );
   }
 
   const metadataError = validateGrantMetadata(purpose, oneTime);

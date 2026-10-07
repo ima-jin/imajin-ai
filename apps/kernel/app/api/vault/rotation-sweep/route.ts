@@ -5,6 +5,7 @@ import { createLogger } from '@imajin/logger';
 import { loadAndUnseal, sealAndStoreV2 } from '@/src/lib/vault';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -143,15 +144,16 @@ async function handleReimport(
 
   try {
     for (const { field, plaintext } of fields) {
-      if (typeof field !== 'string' || field.trim().length === 0) {
-        return NextResponse.json({ error: 'Each entry must have a non-empty field name' }, { status: 400 });
+      const parsedField = parseVaultFieldName(field);
+      if (!parsedField.ok) {
+        return NextResponse.json({ error: `Each entry must have a valid field name: ${parsedField.message}` }, { status: 400 });
       }
       if (typeof plaintext !== 'string') {
         return NextResponse.json({ error: `plaintext for field '${field}' must be a string` }, { status: 400 });
       }
 
       try {
-        await sealAndStoreV2(field.trim(), plaintext);
+        await sealAndStoreV2(parsedField.value.field, plaintext);
       } catch (err) {
         // Fail loudly — do not silently skip.  The operator must re-run with the
         // full field list once the underlying issue is resolved.

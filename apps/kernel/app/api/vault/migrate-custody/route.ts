@@ -3,6 +3,7 @@ import { requireAdmin } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { migrateCustody } from '@/src/lib/vault/migrate-custody';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -70,14 +71,15 @@ export async function POST(request: NextRequest) {
 
   let fields: string[] | undefined;
   if (body?.fields !== undefined) {
-    const isNonEmptyStringArray =
-      Array.isArray(body.fields) &&
-      body.fields.length > 0 &&
-      body.fields.every((field): field is string => typeof field === 'string' && field.trim().length > 0);
-    if (!isNonEmptyStringArray) {
-      return NextResponse.json({ error: 'fields must be a non-empty array of non-empty strings' }, { status: 400 });
+    if (!Array.isArray(body.fields) || body.fields.length === 0) {
+      return NextResponse.json({ error: 'fields must be a non-empty array of vault field names' }, { status: 400 });
     }
-    fields = body.fields as string[];
+    const parsedFields = body.fields.map((candidate: unknown) => parseVaultFieldName(candidate));
+    const rejected = parsedFields.find((parsed) => !parsed.ok);
+    if (rejected && !rejected.ok) {
+      return NextResponse.json({ error: `fields: ${rejected.message}` }, { status: 400 });
+    }
+    fields = parsedFields.flatMap((parsed) => (parsed.ok ? [parsed.value.field] : []));
   }
 
   try {

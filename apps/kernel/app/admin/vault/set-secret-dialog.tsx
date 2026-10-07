@@ -1,20 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
+import {
+  isEnvStyleFieldName,
+  isInternalSecretField,
+  isValidVaultFieldName,
+  VAULT_FIELD_NAME_RULE,
+} from '@/src/lib/vault/field-grammar';
 import type { SetSecretInput, VaultCustodyScheme } from './types';
-
-/** Vault field names: letters/digits to start, then letters, digits, `_ . : -` (covers `GH_TOKEN`, `github-org-provisioning`, `<purpose>:<did>`). */
-const FIELD_NAME_GRAMMAR = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
-const ENV_STYLE_FIELD = /^[A-Z0-9_]+$/;
-
-export function isValidFieldName(field: string): boolean {
-  return FIELD_NAME_GRAMMAR.test(field);
-}
 
 /** ENV_STYLE names are plain node-sealed secrets; every namespaced field the kernel reads is a delegation grant. */
 export function defaultCustody(field: string): VaultCustodyScheme {
-  return ENV_STYLE_FIELD.test(field) ? 'node-sealed' : 'delegation-grant';
+  return isEnvStyleFieldName(field) ? 'node-sealed' : 'delegation-grant';
 }
 
 interface SetSecretDialogProps {
@@ -37,7 +34,7 @@ export function SetSecretDialog({ open, existingFields = [], submitting, onClose
   }
 
   const trimmedField = field.trim();
-  const fieldInvalid = trimmedField.length > 0 && !isValidFieldName(trimmedField);
+  const fieldInvalid = trimmedField.length > 0 && !isValidVaultFieldName(trimmedField);
   const custodyScheme = custodyChoice ?? defaultCustody(trimmedField);
   // #2452 — the server refuses both (409); the dialog says so up front instead
   // of offering a Save that re-seals over grantees or touches the kernel's own secrets.
@@ -47,7 +44,7 @@ export function SetSecretDialog({ open, existingFields = [], submitting, onClose
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!isValidFieldName(trimmedField) || fieldBlocked) return;
+    if (!isValidVaultFieldName(trimmedField) || fieldBlocked) return;
     await onSubmit({
       field: trimmedField,
       value,
@@ -92,7 +89,7 @@ export function SetSecretDialog({ open, existingFields = [], submitting, onClose
             )}
             {fieldInvalid && (
               <p role="alert" className="mt-1 text-xs text-red-600 dark:text-red-400">
-                Letters, digits and _ . : - only, starting with a letter or digit. Case is preserved.
+                {VAULT_FIELD_NAME_RULE}. Case is preserved.
               </p>
             )}
           </div>
