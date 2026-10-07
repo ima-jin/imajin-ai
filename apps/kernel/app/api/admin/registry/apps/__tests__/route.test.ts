@@ -27,8 +27,12 @@ const mocks = vi.hoisted(() => {
   const requireAdminMock = vi.fn();
   const emitAttestationMock = vi.fn().mockResolvedValue(undefined);
   const generateKeypairMock = vi.fn(() => ({ privateKey: 'priv', publicKey: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9' }));
-  return { orderByMock, selectMock, insertValuesMock, insertMock, requireAdminMock, emitAttestationMock, generateKeypairMock };
+  const validateAppDeclarationsMock = vi.fn();
+  return { orderByMock, selectMock, insertValuesMock, insertMock, requireAdminMock, emitAttestationMock, generateKeypairMock, validateAppDeclarationsMock };
 });
+
+// #2663: the validator itself is covered by app-declarations.test.ts.
+vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: mocks.validateAppDeclarationsMock }));
 
 vi.mock('@/src/db', () => ({
   db: { select: mocks.selectMock, insert: mocks.insertMock },
@@ -62,7 +66,6 @@ vi.mock('@imajin/auth', () => ({
   requireAdmin: mocks.requireAdminMock,
   generateKeypair: mocks.generateKeypairMock,
   isValidPublicKey: () => true,
-  validateScopes: (scopes: string[]) => ({ valid: scopes, invalid: [] }),
   emitAttestation: mocks.emitAttestationMock,
 }));
 
@@ -85,6 +88,9 @@ function makePostRequest(body: Record<string, unknown>): Request {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.orderByMock.mockResolvedValue([]);
+  mocks.validateAppDeclarationsMock.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[]; requestedScopes?: string[] }) => ({
+    ok: { providesScopes: input.providesScopes ?? [], dependsOn: input.dependsOn ?? [], requestedScopes: input.requestedScopes ?? [] },
+  }));
 });
 
 describe('GET /api/admin/registry/apps (#1990)', () => {
@@ -169,5 +175,55 @@ describe('POST /api/admin/registry/apps (#1990)', () => {
 
     expect(res.status).toBe(400);
     expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/admin/registry/apps — #2663 providesScopes + dependsOn', () => {
+  beforeEach(() => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+  });
+
+  it('persists validated providesScopes and dependsOn, and keeps own scopes in requestedScopes', async () => {
+    const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }];
+    mocks.validateAppDeclarationsMock.mockResolvedValue({
+      ok: { providesScopes: ['dykil:read'], dependsOn, requestedScopes: ['dykil:read', 'media:read'] },
+    });
+
+    const res = await POST(
+      makePostRequest({
+        name: 'Dykil',
+        callbackUrl: 'https://dykil.example.com/cb',
+        ownerDid: 'did:imajin:owner',
+        requestedScopes: ['dykil:read', 'media:read'],
+        providesScopes: ['dykil:read'],
+        dependsOn,
+      }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ providesScopes: ['dykil:read'], dependsOn, requestedScopes: ['dykil:read', 'media:read'] }),
+    );
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.providesScopes).toEqual(['dykil:read']);
+    expect(insertedRow.dependsOn).toEqual(dependsOn);
+    expect(insertedRow.requestedScopes).toEqual(['dykil:read', 'media:read']);
+    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ providesScopes: ['dykil:read'], dependsOn }) }),
+    );
+  });
+
+  it('rejects with 400 and inserts nothing when the declarations are invalid', async () => {
+    mocks.validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
+
+    const res = await POST(
+      makePostRequest({ name: 'X', callbackUrl: 'https://x.example.com', ownerDid: 'did:imajin:owner', providesScopes: ['media:write'] }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('media:write');
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
   });
 });

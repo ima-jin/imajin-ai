@@ -124,3 +124,51 @@ describe('POST /auth/api/tokens/app/verify — registry revocation recheck (#199
     expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith(APP_HOST);
   });
 });
+
+describe('POST /auth/api/tokens/app/verify — multi-audience tokens (#2663 gap 2)', () => {
+  const MEDIA_HOST = 'jin.imajin.ai';
+  const scopes = ['dykil:read', 'media:read'];
+
+  it('verifies the same token for the app audience and for the dependency audience', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes });
+
+    const forApp = await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+    const forMedia = await POST(verifyRequest({ token, aud: MEDIA_HOST }) as never);
+
+    expect(forApp.status).toBe(200);
+    expect(await forApp.json()).toEqual({ sub: USER_DID, aud: APP_HOST, scopes });
+    expect(forMedia.status).toBe(200);
+    // `aud` is the audience this verification succeeded for, not just the first claim.
+    expect(await forMedia.json()).toEqual({ sub: USER_DID, aud: MEDIA_HOST, scopes });
+  });
+
+  it('still rejects an audience the token does not carry', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes });
+
+    const res = await POST(verifyRequest({ token, aud: 'market.imajin.ai' }) as never);
+
+    expect(res.status).toBe(401);
+  });
+
+  it('re-checks the registry for EVERY audience on the token', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes });
+
+    await POST(verifyRequest({ token, aud: MEDIA_HOST }) as never);
+
+    expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith(APP_HOST);
+    expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith(MEDIA_HOST);
+  });
+
+  it('rejects with 403 app_not_registered when the app end is revoked, even when verifying for the dependency', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes });
+    mocks.resolveActiveAppByAudienceMock.mockImplementation(async (aud: string) =>
+      aud === APP_HOST ? null : { id: 'app_kernel', appDid: 'did:imajin:kernel', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active' },
+    );
+
+    const res = await POST(verifyRequest({ token, aud: MEDIA_HOST }) as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('app_not_registered');
+  });
+});

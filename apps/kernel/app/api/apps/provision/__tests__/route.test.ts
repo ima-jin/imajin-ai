@@ -12,6 +12,7 @@ const {
   recordApprovalRequestedMock,
   findPendingAppsProvisionProposalMock,
   getAppProvisionStatusMock,
+  previewManifestDeclarationsMock,
 } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   resolveActingDidMock: vi.fn(),
@@ -20,6 +21,7 @@ const {
   recordApprovalRequestedMock: vi.fn(),
   findPendingAppsProvisionProposalMock: vi.fn(),
   getAppProvisionStatusMock: vi.fn(),
+  previewManifestDeclarationsMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -62,6 +64,10 @@ vi.mock('@/src/lib/apps/provision', () => ({
   getAppProvisionStatus: getAppProvisionStatusMock,
 }));
 
+vi.mock('@/src/lib/apps/manifest-preview', () => ({
+  previewManifestDeclarations: previewManifestDeclarationsMock,
+}));
+
 import { OPTIONS, POST, GET } from '../route';
 
 const ACTING_DID = 'did:imajin:agent';
@@ -83,6 +89,9 @@ beforeEach(() => {
   computeApprovalContentHashMock.mockReturnValue('a'.repeat(64));
   getAppProvisionStatusMock.mockResolvedValue(undefined);
   findPendingAppsProvisionProposalMock.mockResolvedValue(undefined);
+  recordApprovalRequestedMock.mockResolvedValue(undefined);
+  // Default: no manifest was readable at proposal time.
+  previewManifestDeclarationsMock.mockResolvedValue({ ok: null });
 });
 
 describe('POST /api/apps/provision — auth + validation', () => {
@@ -234,6 +243,53 @@ describe('POST /api/apps/provision — raising a new proposal', () => {
 
     expect(response.status).toBe(500);
     expect(body).toEqual({ error: 'Failed to raise apps.provision proposal' });
+  });
+});
+
+describe('POST /api/apps/provision — scope declarations on the card (#2663)', () => {
+  const declarations = {
+    providesScopes: ['dykil:read', 'dykil:write'],
+    dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+  };
+
+  it('snapshots the manifest declarations into the proposal detail the operator signs', async () => {
+    previewManifestDeclarationsMock.mockResolvedValue({ ok: declarations });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+
+    expect(response.status).toBe(201);
+    expect(previewManifestDeclarationsMock).toHaveBeenCalledWith('dykil');
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
+    expect(recorded.detail.manifestDeclarations).toEqual(declarations);
+    // ...and the same detail is what the content hash covers.
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ detail: recorded.detail }));
+  });
+
+  it('records null — "nothing was read" — when no manifest was readable', async () => {
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+
+    expect(response.status).toBe(201);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
+    expect(recorded.detail).toHaveProperty('manifestDeclarations', null);
+  });
+
+  it('refuses with 400 and raises no proposal when the manifest declares something invalid', async () => {
+    previewManifestDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(body.error).toContain('media:write');
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+
+  it('does not read the manifest when an existing result or pending proposal is reused', async () => {
+    findPendingAppsProvisionProposalMock.mockResolvedValue({ proposalId: 'appprov_existing' });
+
+    await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
+
+    expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
   });
 });
 

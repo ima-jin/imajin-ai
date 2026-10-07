@@ -971,6 +971,47 @@ describe('per-source renderer registry — apps', () => {
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
   });
 
+  it('shows the providesScopes / dependsOn list on the card BEFORE approval, read-only, next to the approve button (#2663)', async () => {
+    installFetch([
+      {
+        isOperator: true,
+        approvals: [
+          appsApproval({
+            detail: {
+              slug: 'dykil',
+              displayName: 'Dykil',
+              template: 'ima-jin/imajin-app-template',
+              manifestDeclarations: {
+                providesScopes: ['dykil:read', 'dykil:write'],
+                dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+              },
+            },
+          }),
+        ],
+      },
+    ]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & provision' });
+
+    const preview = screen.getByTestId('provision-declarations-preview');
+    expect(within(preview).getByTestId('provision-declarations-provides').textContent).toBe('dykil:read, dykil:write');
+    const dependency = within(preview).getByTestId('provision-declarations-dependency');
+    expect(within(dependency).getByText('jin.imajin.ai')).toBeDefined();
+    expect(within(dependency).getByText('media:read')).toBeDefined();
+    // The card itself still has exactly the approve/deny decision — the preview adds no control.
+    expect(within(preview).queryAllByRole('button')).toHaveLength(0);
+  });
+
+  it('tells the operator nothing was read when the proposal carries no manifest snapshot (#2663)', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & provision' });
+
+    const preview = screen.getByTestId('provision-declarations-preview');
+    expect(preview.getAttribute('data-state')).toBe('unread');
+    expect(preview.textContent).toMatch(/registers none/);
+  });
+
   it('reveals the claim code plus a paste-at URL derived from the origin and slug (#2427)', async () => {
     installFetch(
       [{ isOperator: true, approvals: [appsApproval()] }, { isOperator: true, approvals: [appsApproval({ status: 'approved' })] }],

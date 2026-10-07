@@ -60,6 +60,8 @@ import {
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
 import { assertValidEntryUrl } from './entry-url';
+import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
+import { NO_DECLARATIONS, sameDeclarations, type ManifestDeclarations } from './declarations-approval';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
 
 const log = createLogger('kernel:apps:provision');
@@ -84,6 +86,13 @@ export interface AppProvisionParams {
   template?: string;
   /** Optional `<slug>/<type>` attestation types to seed (2026-09-26 refinement). */
   attestationTypes?: string[];
+  /**
+   * The `providesScopes` / `dependsOn` list the operator approved on the /jin card
+   * (#2663), snapshotted into the proposal at propose time. `registerApp` registers
+   * the manifest's declarations only when they match this exactly; `null` /
+   * omitted approves none.
+   */
+  approvedDeclarations?: ManifestDeclarations | null;
 }
 
 export interface AppProvisionSuccess {
@@ -316,8 +325,9 @@ async function registerApp(params: {
   appDid: string;
   publicKey: string;
   manifest: AppManifest | null;
+  approvedDeclarations: ManifestDeclarations | null;
 }): Promise<string> {
-  const { slug, displayName, appDid, publicKey, manifest } = params;
+  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations } = params;
 
   const [existing] = await db
     .select({ id: registryApps.id })
@@ -330,6 +340,27 @@ async function registerApp(params: {
   }
 
   const navMetadata = resolveNavMetadata(slug, manifest);
+
+  // #2663: scopes the app defines for itself + the audiences its tokens must
+  // also carry, both read from the manifest. Fail-closed like `entryUrl`: a
+  // bad declaration throws here, so no half-declared row is written.
+  const declarations = await validateAppDeclarations({
+    providesScopes: manifest?.providesScopes,
+    dependsOn: manifest?.dependsOn,
+    slug,
+  });
+  if ('error' in declarations) {
+    throw new Error(`apps.provision: invalid imajin.app.json scope declarations — ${declarations.error}`);
+  }
+  // The operator approved a specific list on the /jin card; nothing beyond it is
+  // granted. A manifest that changed since (or declares anything when none was
+  // readable at proposal time) fails closed — re-propose to review the current list.
+  if (!sameDeclarations(declarations.ok, approvedDeclarations ?? NO_DECLARATIONS)) {
+    throw new Error(
+      'apps.provision: imajin.app.json scope declarations differ from the list the operator approved — re-propose to review the current providesScopes/dependsOn',
+    );
+  }
+
   const id = `app_${nanoid(16)}`;
   await db.insert(registryApps).values({
     id,
@@ -350,6 +381,9 @@ async function registerApp(params: {
     entryUrl: navMetadata.entryUrl,
     placements: navMetadata.placements,
     requiredScope: navMetadata.requiredScope,
+    requestedScopes: declarations.ok.providesScopes,
+    providesScopes: declarations.ok.providesScopes,
+    dependsOn: declarations.ok.dependsOn,
   });
   return id;
 }
@@ -531,7 +565,14 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   try {
     const manifestToken = await tryGetInstallationToken();
     const manifest = await fetchAppManifest(slug, manifestToken);
-    registryAppId = await registerApp({ slug, displayName, appDid, publicKey: keypair.publicKey, manifest });
+    registryAppId = await registerApp({
+      slug,
+      displayName,
+      appDid,
+      publicKey: keypair.publicKey,
+      manifest,
+      approvedDeclarations: params.approvedDeclarations ?? null,
+    });
     await upsertProvisionRow(slug, { registeredAt: new Date() });
     emitRegisteredAttestation(nodeDid, appDid, registryAppId, displayName, slug);
   } catch (err) {

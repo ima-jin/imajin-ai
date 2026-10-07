@@ -631,6 +631,28 @@ describe('fetchAppManifest (#2425)', () => {
     await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
   });
 
+  it('#2663: passes providesScopes and dependsOn through for later validation', async () => {
+    const declarations = {
+      providesScopes: ['dykil:read', 'dykil:write'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+    };
+    fetchMock.mockResolvedValueOnce(contentsResponse({ name: 'Dykil', ...declarations }));
+
+    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toEqual({ name: 'Dykil', ...declarations });
+  });
+
+  it.each([
+    ['providesScopes is not an array', { providesScopes: 'dykil:read' }],
+    ['providesScopes holds a non-string', { providesScopes: ['dykil:read', 7] }],
+    ['dependsOn is not an array', { dependsOn: 'jin.imajin.ai' }],
+    ['dependsOn holds a non-object', { dependsOn: ['jin.imajin.ai'] }],
+    ['dependsOn holds null', { dependsOn: [null] }],
+  ])('#2663: returns null when %s', async (_label, manifest) => {
+    fetchMock.mockResolvedValueOnce(contentsResponse(manifest));
+
+    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
+  });
+
   it('returns null when a field has the wrong type', async () => {
     fetchMock.mockResolvedValueOnce(contentsResponse({ icon: 42 }));
 

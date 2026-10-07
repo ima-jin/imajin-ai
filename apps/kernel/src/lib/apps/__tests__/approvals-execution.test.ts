@@ -106,6 +106,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       displayName: 'dykil',
       template: undefined,
       attestationTypes: [],
+      approvedDeclarations: null,
     });
   });
 
@@ -158,6 +159,33 @@ describe('executeAppsProvisionApproval — execution', () => {
     expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({
       attestationTypes: ['dykil/survey-response'],
     }));
+  });
+
+  it('#2663: hands the pipeline the providesScopes/dependsOn list the operator saw on the card', async () => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'register', error: 'x' });
+    const manifestDeclarations = {
+      providesScopes: ['dykil:read', 'dykil:write'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+    };
+
+    await executeAppsProvisionApproval(card({ detail: { slug: 'dykil', displayName: 'dykil', manifestDeclarations } }));
+
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({ approvedDeclarations: manifestDeclarations }));
+  });
+
+  it.each([
+    ['absent (no manifest was readable at proposal time)', undefined],
+    ['null', null],
+    ['not an object', 'dykil:read'],
+    ['missing dependsOn', { providesScopes: ['dykil:read'] }],
+    ['a non-string scope', { providesScopes: [1], dependsOn: [] }],
+    ['a malformed dependency', { providesScopes: [], dependsOn: [{ aud: 'jin.imajin.ai' }] }],
+  ])('#2663: approves nothing when the proposal detail snapshot is %s', async (_label, manifestDeclarations) => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'register', error: 'x' });
+
+    await executeAppsProvisionApproval(card({ detail: { slug: 'dykil', displayName: 'dykil', manifestDeclarations } }));
+
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({ approvedDeclarations: null }));
   });
 
   it('never throws — an unexpected pipeline exception is reported as a generic failure', async () => {

@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { arrayContains, eq } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
 import { corsHeaders } from '@imajin/config';
+import { tokenAudiences, type AppDependency } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -22,6 +23,10 @@ export interface ActiveRegistryApp {
   ownerDid: string;
   tier: string;
   status: string;
+  /** Scopes the app defines itself (#2663); granted on tokens minted for its audience. */
+  providesScopes: string[];
+  /** Other registered audiences a token for this app must also carry (#2663). */
+  dependsOn: AppDependency[];
 }
 
 /**
@@ -42,16 +47,53 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
         ownerDid: registryApps.ownerDid,
         tier: registryApps.tier,
         status: registryApps.status,
+        providesScopes: registryApps.providesScopes,
+        dependsOn: registryApps.dependsOn,
       })
       .from(registryApps)
       .where(arrayContains(registryApps.tokenAudiences, [aud]))
       .limit(1);
     if (row?.status !== 'active') return null;
-    return row;
+    return { ...row, providesScopes: row.providesScopes ?? [], dependsOn: row.dependsOn ?? [] };
   } catch (err) {
     log.error({ err: String(err), aud }, 'resolveActiveAppByAudience: lookup failed');
     return null;
   }
+}
+
+/**
+ * What a token minted for `app` carries (#2663): its audiences and its scopes.
+ *
+ * Audiences: `aud` itself, plus the audience of every `dependsOn` entry that
+ *   - the requested scopes actually reach (least privilege: a token asking for
+ *     none of a dependency's scopes doesn't get that audience), and
+ *   - still resolves to an active registered app (a revoked or deregistered
+ *     dependency is dropped rather than failing the mint).
+ *
+ * Scopes: when the token carries any dependency audience, they are clamped to
+ * exactly what the operator approved — the app's own `providesScopes` plus the
+ * listed scopes of the dependencies actually added. Anything else the caller
+ * asked for (e.g. `media:write` when only `media:read` was declared) is dropped,
+ * because every scope on the token is honoured at every audience it carries.
+ * A token with no dependency audience is only valid at the app's own host and is
+ * left as requested.
+ */
+export async function resolveTokenGrant(
+  aud: string,
+  app: Pick<ActiveRegistryApp, 'dependsOn' | 'providesScopes'>,
+  requestedScopes: readonly string[],
+): Promise<{ audiences: string[]; scopes: string[] }> {
+  const requested = new Set(requestedScopes);
+  const reached = app.dependsOn.filter((dep) => dep.scopes.some((s) => requested.has(s)));
+  const resolved = await Promise.all(
+    reached.map(async (dep) => ((await resolveActiveAppByAudience(dep.aud)) ? dep : null)),
+  );
+  const added = resolved.filter((dep): dep is AppDependency => dep !== null);
+  const audiences = tokenAudiences(aud, added.map((dep) => dep.aud));
+  if (added.length === 0) return { audiences, scopes: [...requestedScopes] };
+
+  const approved = new Set([...app.providesScopes, ...added.flatMap((dep) => dep.scopes)]);
+  return { audiences, scopes: requestedScopes.filter((s) => approved.has(s)) };
 }
 
 /**

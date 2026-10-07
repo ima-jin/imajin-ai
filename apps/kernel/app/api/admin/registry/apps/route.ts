@@ -15,8 +15,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { desc } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
-import { requireAdmin, generateKeypair, isValidPublicKey, validateScopes, emitAttestation } from '@imajin/auth';
+import { requireAdmin, generateKeypair, isValidPublicKey, emitAttestation } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
+import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { REGISTRY_APP_TIERS, type RegistryAppTier } from '@/src/db/schemas/registry';
 import { createLogger } from '@imajin/logger';
 
@@ -38,6 +39,8 @@ type RegisterBody = {
   homepageUrl?: string;
   logoUrl?: string;
   requestedScopes?: string[];
+  providesScopes?: string[];
+  dependsOn?: Array<{ aud: string; scopes: string[] }>;
   publicKey?: string;
   tier?: string;
   allowedRedirectHosts?: string[];
@@ -109,6 +112,8 @@ export async function GET(_request: NextRequest) {
       appDid: registryApps.appDid,
       callbackUrl: registryApps.callbackUrl,
       requestedScopes: registryApps.requestedScopes,
+      providesScopes: registryApps.providesScopes,
+      dependsOn: registryApps.dependsOn,
       status: registryApps.status,
       tier: registryApps.tier,
       allowedRedirectHosts: registryApps.allowedRedirectHosts,
@@ -153,7 +158,16 @@ export async function POST(request: NextRequest) {
   const appDid = didFromPublicKey(publicKey);
 
   // #1990: no ad-hoc scope strings — clamp to the declarative SCOPE_VOCABULARY (#1253).
-  const { valid: scopes } = validateScopes(asStringArray(body.requestedScopes));
+  // #2663: widened by the app's own `providesScopes`; `dependsOn` audiences must be registered apps.
+  const declarations = await validateAppDeclarations({
+    providesScopes: body.providesScopes,
+    dependsOn: body.dependsOn,
+    requestedScopes: asStringArray(body.requestedScopes),
+  });
+  if ('error' in declarations) {
+    return NextResponse.json({ error: declarations.error }, { status: 400 });
+  }
+  const { requestedScopes: scopes, providesScopes, dependsOn } = declarations.ok;
 
   const hostsResult = resolveAllowedRedirectHosts(body.allowedRedirectHosts, callbackUrl);
   if ('error' in hostsResult) {
@@ -178,6 +192,8 @@ export async function POST(request: NextRequest) {
       homepageUrl: typeof homepageUrl === 'string' ? homepageUrl || null : null,
       logoUrl: typeof logoUrl === 'string' ? logoUrl || null : null,
       requestedScopes: scopes,
+      providesScopes,
+      dependsOn,
       tier,
       allowedRedirectHosts,
       tokenAudiences,
@@ -195,7 +211,7 @@ export async function POST(request: NextRequest) {
     type: 'registry.app.registered',
     context_id: id,
     context_type: 'registry_app',
-    payload: { appId: id, name: app.name, tier, ownerDid, scopes, allowedRedirectHosts, tokenAudiences },
+    payload: { appId: id, name: app.name, tier, ownerDid, scopes, providesScopes, dependsOn, allowedRedirectHosts, tokenAudiences },
   }).catch((err: unknown) => log.error({ err: String(err), appId: id }, 'registry.app.registered attestation failed'));
 
   const response: Record<string, unknown> = { ...app };

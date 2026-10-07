@@ -52,6 +52,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
 import { approvalCardAnchorId } from './approval-anchor';
+import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -488,6 +489,8 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
       <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
       <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
       <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Template</span><span className="font-mono">{template}</span></div>
+      {/* #2663: the providesScopes/dependsOn list the operator is approving, read-only, before they approve it. */}
+      <ProvisionDeclarationsPreview detail={detail} />
     </div>
   );
 }

@@ -202,6 +202,70 @@ the existing attestation-type registry (`registerAttestationType`, #1885) — th
 instead of a human's own `identities.handle`. A type outside `<slug>/` is refused (per-type;
 it never fails the rest of provisioning).
 
+### Scopes the app defines, and services it depends on (#2663)
+
+Two more declarations ride the same `registry.apps` row that already carries `requestedScopes`
+(the existing app scope-assignment model) — nothing parallel:
+
+| Field | Meaning |
+|---|---|
+| `providesScopes` | Scope strings the app defines and enforces itself, e.g. `["dykil:read", "dykil:write"]`. |
+| `dependsOn` | Other registered audiences the app's tokens must also satisfy, with the platform scopes it needs there, e.g. `[{ "aud": "jin.imajin.ai", "scopes": ["media:read", "media:write"] }]`. |
+
+Both default to `[]`. They have different authority:
+
+- `providesScopes` is the app's own vocabulary. An app owner may set it on `POST /api/registry/apps`
+  and `PATCH /api/registry/apps/:appId`, an operator on `POST /api/admin/registry/apps`, and an
+  `apps.provision` app declares it in its `imajin.app.json`.
+- `dependsOn` hands an app's tokens *another service's* audience (e.g. kernel media), so it is
+  **operator-only**: only the admin route and `apps.provision` write it. Self-service register and
+  PATCH reject a `dependsOn` field with `400`.
+
+Both are validated at write time and a bad one is a `400` (`apps.provision` fails closed at
+`register`, writing no row):
+
+- A `providesScopes` entry must be `namespace:verb` (lowercase), must not already be in the platform
+  `SCOPE_VOCABULARY`, and must not sit in a namespace the vocabulary owns (`media:`, `wallet:`, ...).
+  When the app has a `slug` (every `apps.provision` app does), the namespace must be that slug.
+- A `dependsOn` entry's `aud` must be a registered, active app, and its `scopes` must be platform
+  vocabulary scopes.
+
+**The operator approves the list on the apps.provision card.** When `POST /api/apps/provision`
+raises the proposal it reads `providesScopes` / `dependsOn` from the app's `imajin.app.json` and
+snapshots them into the proposal's `detail` (`manifestDeclarations`), which is covered by the hash the
+operator signs. The `/jin` approval card shows that list, read-only, before the operator approves:
+the scopes the app provides, and each dependency audience with its scopes. Approving registers
+**exactly that list and nothing beyond it** — if the manifest has changed since the proposal, or
+declares anything when no manifest was readable at proposal time (unsealed org credential, repo not
+created yet), `apps.provision` fails closed at `register` and the app is re-proposed so the operator
+reviews the current list. A manifest that declares something invalid is refused with `400` when the
+proposal is raised, so the operator is never asked to approve it.
+
+**Gap 1 — the app's own scopes.** `POST /auth/api/tokens/app` clamps the requested scopes to the
+platform vocabulary *plus* the `providesScopes` of the app whose `aud` the token is for, so a token
+minted for dykil carries `dykil:read` / `dykil:write`. One app's scopes are never granted on another
+app's audience.
+
+**Gap 2 — one token for the app and the services it fronts.** The same route mints the token with
+the requested `aud` first, then the `aud` of each `dependsOn` entry that (a) one of the requested
+scopes reaches, and (b) is still a registered, active app. So a dykil token minted with `media:read`
+also carries the node's own host and is accepted by `requireMediaAuth`, with no second token and no
+change to the media routes. The response reports every audience in `aud`. Verification re-checks the
+registry for *every* audience on the token, so revoking either end stops the token at both.
+
+**Exactly the approved scopes.** Every scope on a token is honoured at every audience it carries, so
+once a token carries a dependency audience its scopes are clamped to the app's `providesScopes` plus
+the listed scopes of the dependencies actually added — nothing else. An app that declared only
+`media:read` and asks for `media:read media:write` gets a token with `media:read` only. A token with
+no dependency audience is valid only at the app's own host and is not clamped further.
+
+```bash
+curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
+  -H "Content-Type: application/json" -H "Cookie: <the user's session cookie>" \
+  -d '{ "aud": "dykil.imajin.ai", "scopes": ["dykil:read", "dykil:write", "media:read", "media:write"] }'
+# -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...only the approved ones], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
+```
+
 ### What gets sealed, and where
 
 One Actions secret is sealed into the app's repo, by name:

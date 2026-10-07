@@ -362,6 +362,20 @@ export const registryApps = registrySchema.table('apps', {
   entryUrl: text('entry_url'),
   placements: text('placements').array().notNull().default(sql`'{}'::text[]`),
   requiredScope: text('required_scope'),
+  /**
+   * Scopes this app defines and enforces itself (#2663,
+   * 0176_registry_apps_provides_scopes_depends_on.sql) — e.g. `dykil:read`.
+   * Granted by `POST /auth/api/tokens/app` on a token minted for this app's
+   * audience, in addition to the platform SCOPE_VOCABULARY. Same row, same
+   * assignment model as `requestedScopes`.
+   */
+  providesScopes: jsonb('provides_scopes').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /**
+   * Other registered audiences a token minted for this app must also carry, with
+   * the vocabulary scopes the app needs there (#2663). Lets one token satisfy
+   * both the app and e.g. the kernel media routes.
+   */
+  dependsOn: jsonb('depends_on').$type<Array<{ aud: string; scopes: string[] }>>().notNull().default(sql`'[]'::jsonb`),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),

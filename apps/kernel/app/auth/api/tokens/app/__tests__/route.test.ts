@@ -22,17 +22,20 @@ const mocks = vi.hoisted(() => ({
   verifySessionTokenMock: vi.fn(),
   createSessionAppTokenMock: vi.fn().mockResolvedValue('signed.session-app.jwt'),
   resolveActiveAppByAudienceMock: vi.fn(),
+  resolveTokenGrantMock: vi.fn(),
 }));
 
 vi.mock('@imajin/config', () => ({
   corsHeaders: () => ({}),
   getSessionCookieOptions: () => ({ name: 'imajin_session_dev', options: {} }),
 }));
+// Stand-in for the platform vocabulary (profile:read, connections:read, media:*) plus the app's
+// own `providesScopes` — the real clamp is covered by packages/auth/tests/app-scopes.test.ts.
 vi.mock('@imajin/auth', () => ({
-  validateScopes: (scopes: string[]) => ({
-    valid: scopes.filter((s) => s === 'profile:read' || s === 'connections:read'),
-    invalid: scopes.filter((s) => s !== 'profile:read' && s !== 'connections:read'),
-  }),
+  resolveAppScopes: (scopes: string[], provides: string[] = []) => {
+    const known = new Set(['profile:read', 'connections:read', 'media:read', 'media:write', ...provides]);
+    return { valid: scopes.filter((s) => known.has(s)), invalid: scopes.filter((s) => !known.has(s)) };
+  },
 }));
 vi.mock('@/src/lib/auth/jwt', () => ({
   verifySessionToken: mocks.verifySessionTokenMock,
@@ -40,6 +43,7 @@ vi.mock('@/src/lib/auth/jwt', () => ({
 }));
 vi.mock('@/src/lib/kernel/app-registry', () => ({
   resolveActiveAppByAudience: mocks.resolveActiveAppByAudienceMock,
+  resolveTokenGrant: mocks.resolveTokenGrantMock,
   appNotRegisteredResponse: () =>
     new Response(JSON.stringify({ error: 'app_not_registered', error_description: 'not registered' }), {
       status: 403,
@@ -72,7 +76,9 @@ beforeEach(() => {
   mocks.createSessionAppTokenMock.mockResolvedValue('signed.session-app.jwt');
   // Default every test to an aud that IS registered — #1990 enforcement
   // tests below override this to exercise the unregistered path.
-  mocks.resolveActiveAppByAudienceMock.mockResolvedValue({ id: 'app_first_party_coffee', appDid: 'did:imajin:app-coffee', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active' });
+  mocks.resolveActiveAppByAudienceMock.mockResolvedValue({ id: 'app_first_party_coffee', appDid: 'did:imajin:app-coffee', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active', providesScopes: [], dependsOn: [] });
+  // Default: no dependency audiences — the token carries only the requested aud and scopes.
+  mocks.resolveTokenGrantMock.mockImplementation(async (aud: string, _app: unknown, scopes: string[]) => ({ audiences: [aud], scopes }));
 });
 
 describe('POST /auth/api/tokens/app — requires a valid session (#1069 Phase 1)', () => {
@@ -115,7 +121,7 @@ describe('POST /auth/api/tokens/app — minting (#1069 Phase 1)', () => {
     expect(body.scopes).toEqual(['profile:read']);
     expect(mocks.createSessionAppTokenMock).toHaveBeenCalledWith({
       sub: USER_DID,
-      aud: 'coffee.imajin.ai',
+      aud: ['coffee.imajin.ai'],
       scopes: ['profile:read'],
     });
   });
@@ -154,5 +160,117 @@ describe('POST /auth/api/tokens/app — refuses an unregistered audience (#1990)
     expect(body.error).toBe('app_not_registered');
     expect(mocks.createSessionAppTokenMock).not.toHaveBeenCalled();
     expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledWith('evil.example.com');
+  });
+});
+
+describe('POST /auth/api/tokens/app — app-declared scopes (#2663 gap 1)', () => {
+  const DYKIL_HOST = 'dykil.imajin.ai';
+  const dykilApp = {
+    id: 'app_dykil',
+    appDid: 'did:imajin:app-dykil',
+    ownerDid: 'did:imajin:platform',
+    tier: 'third_party',
+    status: 'active',
+    providesScopes: ['dykil:read', 'dykil:write'],
+    dependsOn: [],
+  };
+
+  beforeEach(() => {
+    mocks.verifySessionTokenMock.mockResolvedValue({ sub: USER_DID });
+  });
+
+  it("grants the app's own providesScopes alongside vocabulary scopes", async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(dykilApp);
+
+    const res = await POST(
+      makeRequest({ aud: DYKIL_HOST, scopes: ['dykil:read', 'dykil:write', 'profile:read'] }, 'good-token') as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.scopes).toEqual(['dykil:read', 'dykil:write', 'profile:read']);
+  });
+
+  it('still drops scopes the app did not declare', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(dykilApp);
+
+    const res = await POST(
+      makeRequest({ aud: DYKIL_HOST, scopes: ['dykil:read', 'dykil:admin', 'coffee:write'] }, 'good-token') as never,
+    );
+    const body = await res.json();
+
+    expect(body.scopes).toEqual(['dykil:read']);
+  });
+
+  it("does not grant one app's scopes on another app's audience", async () => {
+    // coffee's registry row declares nothing, so dykil:read is just an unknown scope there.
+    const res = await POST(makeRequest({ aud: 'coffee.imajin.ai', scopes: ['dykil:read'] }, 'good-token') as never);
+    const body = await res.json();
+
+    expect(body.scopes).toEqual([]);
+  });
+});
+
+describe('POST /auth/api/tokens/app — one token for the app and its dependencies (#2663 gap 2)', () => {
+  const DYKIL_HOST = 'dykil.imajin.ai';
+  const MEDIA_HOST = 'jin.imajin.ai';
+  const dependsOn = [{ aud: MEDIA_HOST, scopes: ['media:read', 'media:write'] }];
+
+  beforeEach(() => {
+    mocks.verifySessionTokenMock.mockResolvedValue({ sub: USER_DID });
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue({
+      id: 'app_dykil',
+      appDid: 'did:imajin:app-dykil',
+      ownerDid: 'did:imajin:platform',
+      tier: 'third_party',
+      status: 'active',
+      providesScopes: ['dykil:read'],
+      dependsOn,
+    });
+  });
+
+  it('mints with every audience resolveTokenGrant returns, primary first, and reports them', async () => {
+    mocks.resolveTokenGrantMock.mockResolvedValue({ audiences: [DYKIL_HOST, MEDIA_HOST], scopes: ['dykil:read', 'media:read'] });
+
+    const res = await POST(
+      makeRequest({ aud: DYKIL_HOST, scopes: ['dykil:read', 'media:read'] }, 'good-token') as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.aud).toEqual([DYKIL_HOST, MEDIA_HOST]);
+    expect(mocks.createSessionAppTokenMock).toHaveBeenCalledWith({
+      sub: USER_DID,
+      aud: [DYKIL_HOST, MEDIA_HOST],
+      scopes: ['dykil:read', 'media:read'],
+    });
+  });
+
+  it('resolves the grant from the registered app and the vocabulary-clamped requested scopes', async () => {
+    await POST(makeRequest({ aud: DYKIL_HOST, scopes: ['dykil:read', 'media:read', 'not-a-scope'] }, 'good-token') as never);
+
+    expect(mocks.resolveTokenGrantMock).toHaveBeenCalledWith(
+      DYKIL_HOST,
+      expect.objectContaining({ dependsOn, providesScopes: ['dykil:read'] }),
+      ['dykil:read', 'media:read'],
+    );
+  });
+
+  it('puts the CLAMPED scopes on the token and in the response, not the requested ones (no media:write when only media:read was approved)', async () => {
+    mocks.resolveTokenGrantMock.mockResolvedValue({ audiences: [DYKIL_HOST, MEDIA_HOST], scopes: ['dykil:read', 'media:read'] });
+
+    const res = await POST(
+      makeRequest({ aud: DYKIL_HOST, scopes: ['dykil:read', 'media:read', 'media:write'] }, 'good-token') as never,
+    );
+    const body = await res.json();
+
+    expect(mocks.resolveTokenGrantMock).toHaveBeenCalledWith(DYKIL_HOST, expect.anything(), ['dykil:read', 'media:read', 'media:write']);
+    expect(body.scopes).toEqual(['dykil:read', 'media:read']);
+    expect(body.scopes).not.toContain('media:write');
+    expect(mocks.createSessionAppTokenMock).toHaveBeenCalledWith({
+      sub: USER_DID,
+      aud: [DYKIL_HOST, MEDIA_HOST],
+      scopes: ['dykil:read', 'media:read'],
+    });
   });
 });

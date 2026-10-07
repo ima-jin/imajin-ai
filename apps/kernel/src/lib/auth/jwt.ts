@@ -255,7 +255,12 @@ const SESSION_APP_TOKEN_EXPIRY_SECONDS = 600; // 10 minutes — matches the desi
 
 export interface SessionAppTokenPayload {
   sub: string;      // caller's DID, from their verified session
-  aud: string;      // target app host this token is scoped to
+  /**
+   * Target app host this token is scoped to. An array (#2663) carries several
+   * audiences, so one token satisfies the app and the services it depends on;
+   * the primary audience must come first.
+   */
+  aud: string | string[];
   scopes: string[]; // requested scopes, already clamped to the SCOPES vocabulary by the caller
 }
 
@@ -272,20 +277,26 @@ export async function createSessionAppToken(payload: SessionAppTokenPayload): Pr
     .setIssuer(JWT_ISSUER)
     .setIssuedAt()
     .setExpirationTime(`${SESSION_APP_TOKEN_EXPIRY_SECONDS}s`)
-    .setAudience(payload.aud)
+    // A one-element list is written as a plain string so single-audience
+    // tokens stay byte-for-byte what they were before #2663.
+    .setAudience(Array.isArray(payload.aud) && payload.aud.length === 1 ? payload.aud[0] : payload.aud)
     .sign(privateKey);
 }
 
 export interface SessionAppTokenClaims {
   sub: string;
+  /** Primary audience — the first `aud` entry. */
   aud: string;
+  /** Every audience the token carries (#2663); always includes `aud`. */
+  auds: string[];
   scopes: string[];
 }
 
 /**
  * Verify a session-app token locally (EdDSA signature + expiry + `typ`).
- * When `expectedAud` is supplied, the token's `aud` claim must match exactly
- * — a token minted for one app must never verify for another.
+ * When `expectedAud` is supplied, it must match one of the token's audiences
+ * exactly — a token minted for one app must never verify for another. A token
+ * with several audiences (#2663) verifies for each of them.
  */
 export async function verifySessionAppTokenLocal(
   token: string,
@@ -298,11 +309,17 @@ export async function verifySessionAppTokenLocal(
       ...(expectedAud ? { audience: expectedAud } : {}),
     });
     if (protectedHeader.typ !== 'session-app+jwt') return null;
-    const aud = Array.isArray(payload.aud) ? payload.aud[0] : payload.aud;
+    const auds = (Array.isArray(payload.aud) ? payload.aud : [payload.aud]).filter(
+      (a): a is string => typeof a === 'string' && a.length > 0,
+    );
+    // When the caller named an audience, report that one as `aud` — it is the
+    // audience this verification succeeded for, even on a multi-audience token.
+    const aud = expectedAud && auds.includes(expectedAud) ? expectedAud : auds[0];
     if (!aud) return null;
     return {
       sub: payload.sub as string,
       aud,
+      auds,
       scopes: payload.scope ? (payload.scope as string).split(' ').filter(Boolean) : [],
     };
   } catch (error) {

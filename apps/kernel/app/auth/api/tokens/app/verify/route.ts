@@ -46,8 +46,12 @@ export async function POST(request: NextRequest) {
   // take effect within one verify cycle — a token minted before revocation
   // stops verifying on its very next use, rather than staying valid for the
   // rest of its (short) TTL.
-  const registeredApp = await resolveActiveAppByAudience(claims.aud);
-  if (!registeredApp) {
+  //
+  // #2663: a token may carry several audiences (the app plus its `dependsOn`
+  // services). EVERY one must still resolve to an active app, so revoking
+  // either end stops the token verifying at both.
+  const registered = await Promise.all(claims.auds.map((a) => resolveActiveAppByAudience(a)));
+  if (registered.some((app) => !app)) {
     return appNotRegisteredResponse(request);
   }
 

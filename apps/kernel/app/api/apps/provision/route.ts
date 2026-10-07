@@ -34,6 +34,7 @@ import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-ser
 import { findPendingAppsProvisionProposal } from '@/src/lib/apps/provision-proposals';
 import { APPS_SOURCE, APPS_PROVISION_KIND } from '@/src/lib/apps/approvals-execution';
 import { getAppProvisionStatus } from '@/src/lib/apps/provision';
+import { previewManifestDeclarations } from '@/src/lib/apps/manifest-preview';
 
 const log = createLogger('kernel:apps-provision-route');
 
@@ -148,9 +149,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // #2663: read the app's `providesScopes` / `dependsOn` from imajin.app.json NOW,
+  // so the operator sees (and, by signing the card, approves) exactly that list.
+  // `null` = no manifest was readable; provisioning then registers none.
+  const preview = await previewManifestDeclarations(slug);
+  if ('error' in preview) {
+    return NextResponse.json(
+      { error: `imajin.app.json scope declarations rejected: ${preview.error}` },
+      { status: 400, headers: cors },
+    );
+  }
+
   const proposalId = generateId('appprov');
   const summary = `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential.`;
-  const detail: Record<string, unknown> = { slug, displayName, template, attestationTypes };
+  const detail: Record<string, unknown> = { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok };
   const contentHash = computeApprovalContentHash({
     proposalId,
     source: APPS_SOURCE,

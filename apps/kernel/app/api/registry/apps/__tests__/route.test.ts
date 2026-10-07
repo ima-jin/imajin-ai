@@ -27,6 +27,7 @@ const {
   mockDbSelect,
   mockRequireAuth,
   mockGenerateKeypair,
+  mockValidateAppDeclarations,
 } = vi.hoisted(() => {
   const mockDbInsertValues = vi.fn(() => ({
     returning: vi.fn().mockResolvedValue([
@@ -45,8 +46,15 @@ const {
     privateKey: 'priv',
     publicKey: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9',
   }));
-  return { mockDbInsertValues, mockDbInsert, mockDbSelect, mockRequireAuth, mockGenerateKeypair };
+  const mockValidateAppDeclarations = vi.fn();
+  return { mockDbInsertValues, mockDbInsert, mockDbSelect, mockRequireAuth, mockGenerateKeypair, mockValidateAppDeclarations };
 });
+
+// #2663: the validator itself is covered by app-declarations.test.ts.
+vi.mock('@/src/lib/kernel/app-declarations', () => ({
+  validateAppDeclarations: mockValidateAppDeclarations,
+  DEPENDS_ON_OPERATOR_ONLY_ERROR: 'dependsOn is operator-only',
+}));
 
 // The mocked `@/src/db` module intentionally does NOT export `identities` —
 // if the route regressed into importing/inserting it, this test file would
@@ -69,7 +77,6 @@ vi.mock('@imajin/auth', () => ({
   isValidPublicKey: () => true,
   resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
     identity.actingFor ?? identity.actingAs ?? identity.id,
-  validateScopes: (scopes: string[]) => ({ valid: scopes, invalid: [] }),
 }));
 
 vi.mock('@/src/lib/auth/crypto', () => ({
@@ -95,6 +102,9 @@ function makeRequest(body: Record<string, unknown>): Request {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockValidateAppDeclarations.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[]; requestedScopes?: string[] }) => ({
+    ok: { providesScopes: input.providesScopes ?? [], dependsOn: input.dependsOn ?? [], requestedScopes: input.requestedScopes ?? [] },
+  }));
   mockRequireAuth.mockResolvedValue({ identity: { id: 'did:imajin:developer' } });
   mockGenerateKeypair.mockReturnValue({
     privateKey: 'priv',
@@ -157,5 +167,91 @@ describe('POST /api/registry/apps — registry fields (#1990)', () => {
 
     expect(res.status).toBe(400);
     expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/registry/apps — #2663 providesScopes', () => {
+  it("stores the app's own scopes, and they survive in requestedScopes", async () => {
+    mockValidateAppDeclarations.mockResolvedValue({
+      ok: { providesScopes: ['dykil:read', 'dykil:write'], dependsOn: [], requestedScopes: ['dykil:read', 'dykil:write'] },
+    });
+
+    const res = await POST(
+      makeRequest({
+        name: 'Dykil',
+        callbackUrl: 'https://dykil.example.com/callback',
+        requestedScopes: ['dykil:read', 'dykil:write'],
+        providesScopes: ['dykil:read', 'dykil:write'],
+      }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.requestedScopes).toEqual(['dykil:read', 'dykil:write']);
+    expect(insertedRow.providesScopes).toEqual(['dykil:read', 'dykil:write']);
+  });
+
+  it('never writes dependsOn: the row is left to its empty default', async () => {
+    const res = await POST(makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback' }) as never);
+
+    expect(res.status).toBe(201);
+    const insertedRow = mockDbInsertValues.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.providesScopes).toEqual([]);
+    expect(insertedRow).not.toHaveProperty('dependsOn');
+  });
+
+  it('rejects with 400 and inserts nothing when providesScopes is invalid', async () => {
+    mockValidateAppDeclarations.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
+
+    const res = await POST(
+      makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', providesScopes: ['media:write'] }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('media:write');
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/registry/apps — dependsOn is operator-only (#2663)', () => {
+  it.each([
+    ['a kernel-media dependency', [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }]],
+    ['an empty list', []],
+    ['a malformed value', 'jin.imajin.ai'],
+  ])('rejects %s with 400, before anything is validated or inserted', async (_label, dependsOn) => {
+    const res = await POST(
+      makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', dependsOn }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toBe('dependsOn is operator-only');
+    expect(mockValidateAppDeclarations).not.toHaveBeenCalled();
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects dependsOn even alongside otherwise valid fields', async () => {
+    const res = await POST(
+      makeRequest({
+        name: 'Dykil',
+        callbackUrl: 'https://dykil.example.com/callback',
+        providesScopes: ['dykil:read'],
+        dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:write'] }],
+      }) as never,
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('still authenticates first: an unauthenticated caller gets 401, not the dependsOn error', async () => {
+    mockRequireAuth.mockResolvedValue({ error: 'nope', status: 401 });
+
+    const res = await POST(
+      makeRequest({ name: 'X', callbackUrl: 'https://example.com/cb', dependsOn: [] }) as never,
+    );
+
+    expect(res.status).toBe(401);
   });
 });
