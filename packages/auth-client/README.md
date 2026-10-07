@@ -104,6 +104,42 @@ bootstrap key so it can never authenticate a fetch again.
 | `IMAJIN_APP_CLAIM_CODE` | First boot only (or after a `reissueClaim: true` rebind) |
 | `IMAJIN_APP_KEYSTORE` | Optional — defaults to `./.imajin/keystore.json` |
 
+### 5. Mint an app token from client components (`/browser`)
+
+The `.` entry also imports `fs`, `crypto` and `path` (via `loadAppSigningKey()`
+and the keystore), so importing anything from it into a client component
+fails the Next.js build (`Module not found: Can't resolve 'fs'`). For code
+that runs in the browser, import from the browser-safe subpath instead:
+
+```ts
+'use client';
+import { requestAppToken } from '@ima-jin/auth-client/browser';
+import type { RequestAppTokenOptions, RequestAppTokenResult } from '@ima-jin/auth-client/browser';
+
+const minted = await requestAppToken({
+  authUrl: process.env.NEXT_PUBLIC_IMAJIN_KERNEL_URL!,
+  aud: window.location.host,
+  scopes: ['profile:read'],
+});
+// minted: { token, expiresIn, scopes } | null
+```
+
+`requestAppToken` calls `POST {authUrl}/auth/api/tokens/app` with
+`credentials: 'include'` (so the user's kernel session cookie is sent) and
+returns `null` on any failure.
+
+**When to use which entry**
+
+| Entry | Use it for |
+|---|---|
+| `@ima-jin/auth-client/browser` | Client components / any browser bundle — only `requestAppToken` and its types |
+| `@ima-jin/auth-client` | Server code — sessions, route handlers, `loadAppSigningKey()` (it also still exports `requestAppToken`, so existing imports keep working) |
+| `@ima-jin/auth-client/handlers` | Next.js route handler factories |
+
+The browser entry's import graph is guaranteed free of node built-ins,
+`next/headers`, and keystore/signing-key code; `tests/browser-entry.test.ts`
+bundles it for a browser target to enforce that.
+
 ## Part of Imajin
 
 [Imajin](https://imajin.ai) — sovereign technology infrastructure. Open source.
