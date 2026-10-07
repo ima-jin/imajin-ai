@@ -206,6 +206,7 @@ export type {
 export { requireAppAuth } from "./require-app-auth";
 export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
 export { verifyAppToken } from "./app-token";
+export { resolveAppAudience, isAppAudienceSlug, APP_AUD_ENV } from "./app-audience";
 export type { AppTokenVerification } from "./app-token";
 export { requireSessionOrAppToken } from "./require-session-or-app-token";
 export type {

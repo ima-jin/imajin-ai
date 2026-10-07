@@ -63,10 +63,12 @@ vi.mock('drizzle-orm', () => ({
   desc: (...args: unknown[]) => ({ desc: args }),
 }));
 
-vi.mock('@imajin/auth', () => ({
+vi.mock('@imajin/auth', async () => ({
   requireAdmin: mocks.requireAdminMock,
   generateKeypair: mocks.generateKeypairMock,
   isValidPublicKey: () => true,
+  // The real helper, not a copy — a duplicated regex here would hide drift.
+  isAppAudienceSlug: (await import('../../../../../../../../packages/auth/src/app-audience')).isAppAudienceSlug,
   emitAttestation: mocks.emitAttestationMock,
 }));
 
@@ -149,6 +151,22 @@ describe('POST /api/admin/registry/apps (#1990)', () => {
     expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'registry.app.registered', issuer_did: 'did:imajin:node' }),
     );
+  });
+
+  it('rejects a host as a token audience (#2706) — audiences are slugs', async () => {
+    const res = await POST(
+      makePostRequest({
+        name: 'Dykil',
+        callbackUrl: 'https://your-node.imajin.ai/dykil',
+        ownerDid: 'did:imajin:platform',
+        tokenAudiences: ['dykil', 'dev-jin.imajin.ai'],
+      }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('dev-jin.imajin.ai');
+    expect(mocks.insertMock).not.toHaveBeenCalled();
   });
 
   it('rejects an invalid tier', async () => {

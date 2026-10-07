@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { desc } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
-import { requireAdmin, generateKeypair, isValidPublicKey, emitAttestation } from '@imajin/auth';
+import { requireAdmin, generateKeypair, isValidPublicKey, emitAttestation, isAppAudienceSlug } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
@@ -230,6 +230,15 @@ export async function POST(request: NextRequest) {
   }
   const allowedRedirectHosts = hostsResult.ok;
   const tokenAudiences = asStringArray(body.tokenAudiences);
+  // #2706: audiences are registry slugs. A host (every path-routed app shares one)
+  // would make apps accept each other's tokens and can never be minted per app.
+  const hostAudiences = tokenAudiences.filter((aud) => !isAppAudienceSlug(aud));
+  if (hostAudiences.length > 0) {
+    return NextResponse.json(
+      { error: `tokenAudiences must be app slugs, not hosts or URLs: ${hostAudiences.join(', ')}` },
+      { status: 400 },
+    );
+  }
 
   const { description, homepageUrl, logoUrl } = body;
   const id = `app_${nanoid(16)}`;

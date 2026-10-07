@@ -5,6 +5,8 @@
  * mid-step (naming the failed step, for every step), retry-resumes, and a
  * no-raw-key-leak contract test.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const PRIVATE_KEY_PLAINTEXT = 'ed25519-secret-do-not-leak-1234567890abcdef';
@@ -73,7 +75,11 @@ vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: v
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => logMock }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
-vi.mock('@imajin/auth', () => ({ emitAttestation: emitAttestationMock }));
+vi.mock('@imajin/auth', async () => ({
+  emitAttestation: emitAttestationMock,
+  // The real helper, not a copy — a duplicated regex here would hide drift from the provision pattern.
+  isAppAudienceSlug: (await import('../../../../../../packages/auth/src/app-audience')).isAppAudienceSlug,
+}));
 vi.mock('nanoid', () => ({ nanoid: () => 'testnanoid1234567' }));
 
 vi.mock('drizzle-orm', () => ({
@@ -196,6 +202,8 @@ vi.mock('../signing-key-claims', () => ({
 }));
 
 import { runAppProvision, getAppProvisionStatus } from '../provision';
+import { isAppAudienceSlug } from '@imajin/auth';
+import { SLUG_PATTERN as PROVISION_SLUG_PATTERN } from '@/app/jin/provision-app-validation';
 
 const CLAIM_CODE = 'claim_test_code_0000000000000000';
 const APP_SELF_GRANT_ID = 'vdg_appself_1';
@@ -412,6 +420,10 @@ describe('runAppProvision — happy path', () => {
     expect(registryRow?.tier).toBe('third_party');
     expect(registryRow?.status).toBe('active');
     expect(registryRow?.slug).toBe('dykil');
+    // #2706: the audience apps.provision registers is the slug — never a host — so a Bearer
+    // token minted for it verifies at the app with no post-provision registry edit.
+    expect(registryRow?.tokenAudiences).toEqual(['dykil']);
+    expect(isAppAudienceSlug((registryRow?.tokenAudiences as string[])[0])).toBe(true);
     // #2425: no manifest present (fetchAppManifestMock defaults to null) — falls back to defaults.
     expect(registryRow?.icon).toBeNull();
     expect(registryRow?.entryUrl).toBe('/dykil');
@@ -1121,5 +1133,40 @@ describe('runAppProvision — no raw key leak', () => {
     // The private key is only ever handed directly to sealActionsSecret's own
     // argument (asserted separately in the happy-path test) — never anywhere else.
     expect(sealActionsSecretMock).toHaveBeenCalledWith(expect.any(String), 'IMAJIN_APP_PRIVATE_KEY', PRIVATE_KEY_PLAINTEXT);
+  });
+});
+
+describe('provision slug pattern vs audience slug pattern (#2706) — they must not drift', () => {
+  const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789-';
+
+  /** Every string of length 1..3 over the slug alphabet plus a few out-of-alphabet shapes. */
+  function* candidates(): Generator<string> {
+    let layer = [''];
+    for (let len = 1; len <= 3; len++) {
+      layer = layer.flatMap((prefix) => [...ALPHABET].map((c) => prefix + c));
+      yield* layer;
+    }
+    yield 'a'.padEnd(39, 'b');
+    yield 'a'.padEnd(40, 'b');
+    yield* ['app-', 'a--b', 'My-App', 'my_app', 'dev-jin.imajin.ai', 'jin.imajin.ai:443', 'https://x/y', ''];
+  }
+
+  it('every slug the provision pattern accepts is a valid token audience (and vice versa)', () => {
+    let accepted = 0;
+    for (const candidate of candidates()) {
+      const provisionable = PROVISION_SLUG_PATTERN.test(candidate);
+      expect(isAppAudienceSlug(candidate), JSON.stringify(candidate)).toBe(provisionable);
+      if (provisionable) accepted += 1;
+    }
+    expect(accepted).toBeGreaterThan(1000);
+  });
+
+  it("the /jin form's pattern is the provision route's pattern", () => {
+    const routeSource = readFileSync(
+      resolve(__dirname, '../../../../app/api/apps/provision/route.ts'),
+      'utf8',
+    );
+    const match = /const SLUG_PATTERN = (\/.*\/);/.exec(routeSource);
+    expect(match?.[1]).toBe(String(PROVISION_SLUG_PATTERN));
   });
 });
