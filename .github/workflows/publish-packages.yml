@@ -27,6 +27,7 @@ on:
           - fair
           - auth-client
           - media
+          - onboard
           - auth
           - logger
           - all
@@ -87,10 +88,10 @@ env:
   # Publish order matters — a package must be published before anything that
   # depends on it, since workspace:* deps resolve against the sibling versions.
   # cid → vault-core; tokens → config → ui; fair → ui; auth/logger → config;
-  # db/auth-client/media are independent (the "Build workspace type dependencies"
+  # db/auth-client/media/onboard are independent (the "Build workspace type dependencies"
   # step below builds each selected package's @imajin/* deps automatically,
   # regardless of order).
-  ALL_PACKAGES: "cid tokens config ui vault-core db fair auth-client media auth logger"
+  ALL_PACKAGES: "cid tokens config ui vault-core db fair auth-client media onboard auth logger"
   # The install closure a `packages-v*` tag must publish for the four
   # out-of-repo SDK packages (#1982) to actually be installable by an
   # external consumer (#2376): `ui` hard-depends on `fair` (a regular
