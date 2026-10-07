@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,10 +40,16 @@ describe('provision-service-bootstrap.mjs CLI', () => {
   });
 
   it.each([
-    [[], /Pass exactly one of --all or <service>/],
-    [['--all', 'market'], /Pass exactly one of --all or <service>/],
+    [[], /Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>/],
+    [['--all', 'market'], /Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>/],
+    [['--app', 'links', '--service-dir', '/tmp/links'], /Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>/],
+    [['--app', 'links', 'market'], /Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>/],
     [['--all', '--env', 'staging'], /--env must be 'dev' or 'prod'/],
     [['--all', '--bogus'], /Unexpected argument '--bogus'/],
+    [['--app'], /--app needs a value/],
+    [['--service-dir', '--dry-run'], /--service-dir needs a value/],
+    [['--app', '../links'], /--app takes a slug like 'links'/],
+    [['--app', 'Links/../x'], /--app takes a slug like 'links'/],
   ])('rejects bad arguments %j with a non-zero exit', (args, message) => {
     const result = runEntrypoint(args);
     expect(result.status).toBe(1);
@@ -102,6 +108,72 @@ describe.skipIf(!packagesBuilt)('provision-service-bootstrap.mjs --dry-run (buil
     const result = runEntrypoint(['market', '--dry-run']);
     expect(result.status).toBe(0);
     expect(result.stdout).not.toMatch(/PRIVATE_KEY|did:imajin:/);
+  });
+});
+
+// #2712: a standalone app's checkout is provisioned through the same entrypoint.
+describe.skipIf(!packagesBuilt)('provision-service-bootstrap.mjs --service-dir (built workspace)', () => {
+  const tmpDirs = [];
+  const makeCheckout = (name, { example, envLocal } = {}) => {
+    const root = mkdtempSync(join(tmpdir(), 'provision-external-'));
+    tmpDirs.push(root);
+    const dir = join(root, name);
+    mkdirSync(dir);
+    writeFileSync(join(dir, '.env.example'), example ?? `${name.toUpperCase()}_VAULT_BOOTSTRAP_DID=\n${name.toUpperCase()}_VAULT_BOOTSTRAP_PRIVATE_KEY=\n`);
+    if (envLocal !== undefined) writeFileSync(join(dir, '.env.local'), envLocal);
+    return dir;
+  };
+  afterEach(() => {
+    for (const dir of tmpDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('dry-runs a checkout without writing anything or printing key material', () => {
+    const dir = makeCheckout('links', { envLocal: 'PORT=3102\n' });
+    const result = runEntrypoint(['--service-dir', dir, '--dry-run']);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.stdout).toMatch(/links · dry-run · would mint/);
+    expect(result.stdout).not.toMatch(/PRIVATE_KEY|did:imajin:/);
+    expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe('PORT=3102\n');
+  });
+
+  it('resolves --app <slug> next to the kernel checkout', () => {
+    const result = runEntrypoint(['--app', 'no-such-app-2712', '--dry-run']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(`no-such-app-2712: ${join(dirname(repoRoot), 'no-such-app-2712')} has no .env.example`);
+  });
+
+  it('exits non-zero when the checkout has no .env.example', () => {
+    const dir = makeCheckout('links');
+    rmSync(join(dir, '.env.example'));
+    const result = runEntrypoint(['--service-dir', dir, '--dry-run']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/has no \.env\.example/);
+  });
+
+  it('exits non-zero when the checkout declares no bootstrap DID', () => {
+    const dir = makeCheckout('links', { example: 'PORT=\n' });
+    const result = runEntrypoint(['--service-dir', dir, '--dry-run']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/declares no required <SVC>_VAULT_BOOTSTRAP_DID/);
+  });
+
+  it('exits non-zero, naming the file, when the checkout has no .env.local', () => {
+    const dir = makeCheckout('links');
+    const result = runEntrypoint(['--service-dir', dir, '--dry-run']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/does not exist — create it first/);
+    expect(existsSync(join(dir, '.env.local'))).toBe(false);
+  });
+
+  it('exits non-zero on a half-written pair without echoing the key or touching the file', () => {
+    const content = 'LINKS_VAULT_BOOTSTRAP_PRIVATE_KEY=half-secret-value\n';
+    const dir = makeCheckout('links', { envLocal: content });
+    const result = runEntrypoint(['--service-dir', dir, '--dry-run']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/must define both LINKS_VAULT_BOOTSTRAP_DID and LINKS_VAULT_BOOTSTRAP_PRIVATE_KEY/);
+    expect(result.stdout + result.stderr).not.toContain('half-secret-value');
+    expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe(content);
   });
 });
 

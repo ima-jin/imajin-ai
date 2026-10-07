@@ -317,6 +317,46 @@ migrations. To provision (or re-check) by hand:
 `node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all`
 (or pass a single `<service>`, e.g. `market`).
 
+#### Standalone apps in their own repo (#2712)
+
+An app that was pruned from this repo (links, #1986) has no `apps/<svc>/` here,
+so `--all` and `<service>` never see it. Point the same script at its checkout
+instead, from the kernel checkout on the same host, with the same env as the
+deploy (kernel `.env.local` via `--env-file`, `VAULT_PATH` via `--env`):
+
+```bash
+# links is checked out next to the kernel (~/dev/imajin-ai + ~/dev/links):
+node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --app links --env dev
+# or any checkout path:
+node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --service-dir ~/dev/links --env dev
+# validate only (nothing minted, written, registered or granted, no database):
+node scripts/provision-service-bootstrap.mjs --app links --dry-run
+```
+
+- `--app <slug>` is `--service-dir <kernel checkout>/../<slug>` (the slug is one
+  path segment: `[a-z][a-z0-9-]*`). `--service-dir <path>` takes any checkout.
+  Pass exactly one of `--all`, `<service>`, `--service-dir`, `--app`.
+- **Contract:** the checkout's `.env.example` must declare a required
+  `<SVC>_VAULT_BOOTSTRAP_DID` (links: `LINKS_VAULT_BOOTSTRAP_DID` /
+  `_PRIVATE_KEY`), exactly as the kernel's apps do; the app's name is the
+  directory name (the slug for `--app`).
+- **Same flow, one command:** mint + register the identity, write the pair to
+  `<checkout>/.env.local` (temp file + rename, mode 0600), then ensure the
+  `ATTESTATION_INTERNAL_API_KEY` grant — no separate
+  `grant-attestation-internal-api-key.ts` run, no symlink into `apps/`, no
+  hand-made keys. It is idempotent and never rotates an existing pair.
+- **Differences from the kernel's own apps:** the checkout's `.env.local` must
+  already exist (you named the app, so a missing file fails the run instead of
+  being skipped — create it from the app's `.env.<env>.example`, mode 0600), and
+  an external app always gets the attestation key, never the kernel cron secret,
+  whatever its directory is called.
+- **Output:** `service · did · minted|existing · grantId`, nothing else. The
+  private key never reaches stdout, stderr, error messages or
+  `$GITHUB_STEP_SUMMARY`; a half-written pair (one key, or an empty one) exits
+  non-zero and changes nothing.
+- Restart the app afterwards so it fetches the key at boot (links:
+  `scripts/deploy.sh <env>` or `pm2 startOrReload`; see its `docs/DEPLOY.md`).
+
 The entrypoint runs as ESM under plain `node` (#2483), like `scripts/migrate.mjs`:
 run through `tsx` the kernel's TypeScript compiles to CommonJS, which cannot load
 ESM-only dependencies such as `@ipld/dag-cbor`. `--dry-run` validates every
