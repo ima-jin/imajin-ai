@@ -558,7 +558,7 @@ describe('operator countersignature binds the chosen mode (#2693)', () => {
 
   async function clickAndCaptureDecision(fixture: ApprovalFixture, buttonName: string, publicKeyPair: { privateKey: string; publicKey: string }) {
     localStorage.setItem('imajin_keypair', JSON.stringify(publicKeyPair));
-    const withHash = Object.assign({}, fixture, { contentHash: CONTENT_HASH });
+    const withHash = { ...fixture, contentHash: CONTENT_HASH };
     const spy = installFetch(
       [{ isOperator: true, approvals: [withHash] }, { isOperator: true, approvals: [{ ...withHash, status: 'approved' as const }] }],
       { ok: true, body: { approval: { ...withHash, status: 'approved' } } },
