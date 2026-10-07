@@ -553,7 +553,7 @@ describe('app-delegated attestations (#2394)', () => {
 // re-checked against the live app registry on every call.
 describe('caller auth via scoped app-token (#2394)', () => {
   it('authenticates the caller from a valid session-app-token whose aud is a live registered app', async () => {
-    h.mockVerifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'dykil.example.com', scopes: [] });
+    h.mockVerifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'dykil.example.com', auds: ['dykil.example.com'], scopes: [] });
     h.mockResolveActiveAppByAudience.mockResolvedValue({ id: 'app_dykil', appDid: 'did:imajin:app-dykil', status: 'active' });
 
     const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
@@ -563,13 +563,57 @@ describe('caller auth via scoped app-token (#2394)', () => {
   });
 
   it('rejects with 401 when the token verifies but its aud is not a live registered app', async () => {
-    h.mockVerifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'unregistered.example.com', scopes: [] });
+    h.mockVerifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'unregistered.example.com', auds: ['unregistered.example.com'], scopes: [] });
     h.mockResolveActiveAppByAudience.mockResolvedValue(null);
 
     const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
 
     expect(res.status).toBe(401);
     expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
+
+  // #2674: the same per-audience revocation check /auth/api/tokens/app/verify makes.
+  describe('multi-audience token (#2674)', () => {
+    const APP_AUD = 'dykil.example.com';
+    const MEDIA_AUD = 'jin.example.com';
+    const LIVE = { id: 'app_live', appDid: 'did:imajin:app-live', status: 'active' };
+
+    beforeEach(() => {
+      h.mockVerifySessionAppTokenLocal.mockResolvedValue({
+        sub: DELEGATOR,
+        aud: APP_AUD,
+        auds: [APP_AUD, MEDIA_AUD],
+        scopes: ['dykil:read', 'media:read'],
+      });
+    });
+
+    it('authenticates when EVERY audience still resolves to a live app', async () => {
+      h.mockResolveActiveAppByAudience.mockResolvedValue(LIVE);
+
+      const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
+
+      expect(res.status).toBe(201);
+      expect(h.mockResolveActiveAppByAudience).toHaveBeenCalledWith(APP_AUD);
+      expect(h.mockResolveActiveAppByAudience).toHaveBeenCalledWith(MEDIA_AUD);
+    });
+
+    it('rejects with 401 once the DEPENDENCY app is revoked, even though the primary app is live', async () => {
+      h.mockResolveActiveAppByAudience.mockImplementation(async (aud: string) => (aud === MEDIA_AUD ? null : LIVE));
+
+      const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
+
+      expect(res.status).toBe(401);
+      expect(h.mockInsertValues).not.toHaveBeenCalled();
+    });
+
+    it('rejects with 401 once the primary app is revoked, even though the dependency is live', async () => {
+      h.mockResolveActiveAppByAudience.mockImplementation(async (aud: string) => (aud === APP_AUD ? null : LIVE));
+
+      const res = await POST(makeBearerReq(baseBody(), 'scoped-app-token'));
+
+      expect(res.status).toBe(401);
+      expect(h.mockInsertValues).not.toHaveBeenCalled();
+    });
   });
 
   it('rejects with 401 when the bearer token is neither a legacy identity token nor a valid session-app-token', async () => {

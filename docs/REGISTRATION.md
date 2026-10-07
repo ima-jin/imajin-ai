@@ -214,9 +214,11 @@ Two more declarations ride the same `registry.apps` row that already carries `re
 
 Both default to `[]`. They have different authority:
 
-- `providesScopes` is the app's own vocabulary. An app owner may set it on `POST /api/registry/apps`
-  and `PATCH /api/registry/apps/:appId`, an operator on `POST /api/admin/registry/apps`, and an
-  `apps.provision` app declares it in its `imajin.app.json`.
+- `providesScopes` is the app's own vocabulary, and it needs a registered `slug` (#2674): the
+  `<slug>:` namespace is reserved for the app that holds that slug. An `apps.provision` app declares
+  it in its `imajin.app.json`, an operator on `POST /api/admin/registry/apps` (which takes an
+  optional `slug` for exactly this), and an owner may *narrow* it via `PATCH /api/registry/apps/:appId`.
+  A self-service app (`POST /api/registry/apps`) has no slug, so it declares none.
 - `dependsOn` hands an app's tokens *another service's* audience (e.g. kernel media), so it is
   **operator-only**: only the admin route and `apps.provision` write it. Self-service register and
   PATCH reject a `dependsOn` field with `400`.
@@ -226,7 +228,8 @@ Both are validated at write time and a bad one is a `400` (`apps.provision` fail
 
 - A `providesScopes` entry must be `namespace:verb` (lowercase), must not already be in the platform
   `SCOPE_VOCABULARY`, and must not sit in a namespace the vocabulary owns (`media:`, `wallet:`, ...).
-  When the app has a `slug` (every `apps.provision` app does), the namespace must be that slug.
+  The namespace must be the app's own `slug` (every `apps.provision` app has one) — an app with no
+  slug can't declare any, so it can't squat another app's namespace (`dykil:read`) (#2674).
 - A `dependsOn` entry's `aud` must be a registered, active app, and its `scopes` must be platform
   vocabulary scopes.
 
@@ -251,13 +254,34 @@ the requested `aud` first, then the `aud` of each `dependsOn` entry that (a) one
 scopes reaches, and (b) is still a registered, active app. So a dykil token minted with `media:read`
 also carries the node's own host and is accepted by `requireMediaAuth`, with no second token and no
 change to the media routes. The response reports every audience in `aud`. Verification re-checks the
-registry for *every* audience on the token, so revoking either end stops the token at both.
+registry for *every* audience on the token, so revoking either end stops the token at both — on
+`POST /auth/api/tokens/app/verify` and on the caller-DID path the attestation routes use (#2674).
 
 **Exactly the approved scopes.** Every scope on a token is honoured at every audience it carries, so
 once a token carries a dependency audience its scopes are clamped to the app's `providesScopes` plus
 the listed scopes of the dependencies actually added — nothing else. An app that declared only
 `media:read` and asks for `media:read media:write` gets a token with `media:read` only. A token with
 no dependency audience is valid only at the app's own host and is not clamped further.
+
+**Scopes are bound to their audience at verify time (#2674).** The token carries one flat scope list,
+but verifying it *for a dependency* honours only the scopes the app's `dependsOn` lists for that
+dependency: with two dependencies A and B, A's scopes are not honoured at B, and the app's own
+`providesScopes` are honoured at neither. The primary audience (the app itself) honours the whole
+token. `POST /auth/api/tokens/app/verify` returns the scopes for the audience it verified. A
+dependency the app no longer lists honours none.
+
+**The approved list is the ceiling (#2674).** `apps.provision` records the whole approved list in the
+row — `providesScopes`, `dependsOn`, and `requestedScopes` (the app's own scopes plus the approved
+dependency scopes). Two things hold the app to it:
+
+- *At mint*, `POST /auth/api/tokens/app` never grants a scope outside `requestedScopes` ∪
+  `providesScopes` ∪ the approved `dependsOn` scopes, so a third-party app with nothing assigned is
+  granted nothing. (Legacy `first_party` rows seeded with `requested_scopes = []` by `0139` predate
+  scope assignment and are left unconstrained; a `first_party` row with an assignment is held to it.)
+- *After approval*, `PATCH /api/registry/apps/:appId` may narrow `providesScopes` (and, on an app with a
+  slug, `requestedScopes`) but never widen it past that list; widening is a `400`. The ceiling is
+  computed from the stored row, not the request body, so one request can't raise it and spend it.
+  Adding a scope means re-proposing `apps.provision`, so the operator sees it on the card.
 
 ```bash
 curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
@@ -419,9 +443,9 @@ idempotency ledger.
    first-party row for the same app. `POST /api/admin/registry/apps` (admin-scoped) with
    `{"name": "<displayName>", "ownerDid": "did:imajin:platform", "callbackUrl":
    "https://your-node.imajin.ai/<slug>", "tier": "third_party", "publicKey": "<from step 2>",
-   "tokenAudiences": ["<slug>"], "allowedRedirectHosts": ["<slug>"]}`. Set the row's `slug`
-   column directly in the database (the admin route predates #2375's `slug` column) so future
-   `apps.provision` calls treat it as idempotent. If a legacy row for this slug still has
+   "tokenAudiences": ["<slug>"], "allowedRedirectHosts": ["<slug>"], "slug": "<slug>"}`. Passing
+   `slug` (#2674) makes future `apps.provision` calls treat the row as idempotent, and is what lets
+   the app declare `providesScopes` in its own namespace. A taken slug is a `409`. If a legacy row for this slug still has
    `slug` set, clear it first (see "Legacy first-party rows vs. provisioned apps" below) —
    `slug` is globally unique.
 4. **Seal the deploy secret:** fetch the repo's Actions public key

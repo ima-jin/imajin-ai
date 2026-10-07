@@ -381,7 +381,9 @@ async function registerApp(params: {
     entryUrl: navMetadata.entryUrl,
     placements: navMetadata.placements,
     requiredScope: navMetadata.requiredScope,
-    requestedScopes: declarations.ok.providesScopes,
+    // #2674: the whole approved list — the app's own scopes plus the scopes of the
+    // dependencies the operator approved — is the ceiling PATCH and mint hold it to.
+    requestedScopes: [...new Set([...declarations.ok.providesScopes, ...declarations.ok.dependsOn.flatMap((dep) => dep.scopes)])],
     providesScopes: declarations.ok.providesScopes,
     dependsOn: declarations.ok.dependsOn,
   });

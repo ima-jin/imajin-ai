@@ -34,6 +34,7 @@ describe('validateAppDeclarations (#2663)', () => {
     const result = await validateAppDeclarations({
       providesScopes: ['dykil:read', 'dykil:write'],
       requestedScopes: ['dykil:read', 'dykil:write', 'media:read', 'not-a-scope'],
+      slug: 'dykil',
     });
 
     expect(result).toEqual({
@@ -52,9 +53,37 @@ describe('validateAppDeclarations (#2663)', () => {
   });
 
   it('rejects providesScopes that collide with the platform vocabulary', async () => {
-    const result = await validateAppDeclarations({ providesScopes: ['media:write'] });
+    const result = await validateAppDeclarations({ providesScopes: ['media:write'], slug: 'dykil' });
 
     expect(result).toEqual({ error: expect.stringContaining('media:write') });
+  });
+
+  describe('namespaces are reserved by slug (#2674)', () => {
+    it('rejects a slug-less app declaring ANOTHER app\'s namespace (dykil:read)', async () => {
+      const result = await validateAppDeclarations({ providesScopes: ['dykil:read'] });
+
+      expect(result).toEqual({ error: expect.stringContaining('dykil:read') });
+      expect((result as { error: string }).error).toMatch(/without a registered slug/);
+    });
+
+    it('rejects a slug-less app declaring any app-namespaced scope, even an unclaimed one', async () => {
+      expect(await validateAppDeclarations({ providesScopes: ['brand-new:read'], slug: null })).toEqual({
+        error: expect.stringContaining('brand-new:read'),
+      });
+    });
+
+    it('names the foreign namespace, without the no-slug hint, for a slugged app', async () => {
+      const result = await validateAppDeclarations({ providesScopes: ['dykil:read'], slug: 'links' });
+
+      expect(result).toEqual({ error: expect.stringContaining('dykil:read') });
+      expect((result as { error: string }).error).not.toMatch(/without a registered slug/);
+    });
+
+    it('accepts a slug-less app that declares nothing', async () => {
+      expect(await validateAppDeclarations({ providesScopes: [], requestedScopes: ['profile:read'] })).toEqual({
+        ok: { providesScopes: [], dependsOn: [], requestedScopes: ['profile:read'] },
+      });
+    });
   });
 
   it('rejects providesScopes outside the app\'s slug namespace', async () => {

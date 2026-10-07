@@ -43,17 +43,26 @@ function namespaceOf(scope: string): string {
   return scope.split(':')[0];
 }
 
+/** True iff `slug` is set and `scope` is in the `<slug>:` namespace. */
+function inSlugNamespace(scope: string, slug: string | null | undefined): boolean {
+  return typeof slug === 'string' && slug.length > 0 && namespaceOf(scope) === slug;
+}
+
 function dedupe<T>(items: readonly T[]): T[] {
   return [...new Set(items)];
 }
 
 /**
- * Validate the scopes an app wants to declare as its own.
+ * Validate the scopes an app wants to declare as its own (#2674).
  *
- * A scope is rejected when it is not a string, is malformed, is already in the
- * platform vocabulary, or sits in a namespace the vocabulary owns. When the app
- * has a `slug`, every scope must also be in that namespace (`dykil:*` for
- * `dykil`), so one app can't squat another's namespace.
+ * Namespaces are reserved by registered slug: an app may only declare scopes in
+ * the namespace of its own `slug` (`dykil:*` for `dykil`). An app with no slug
+ * owns no namespace, so it can't declare any app-namespaced scope — without that,
+ * a slug-less self-service app could declare `dykil:read` and squat another app's
+ * namespace. (Every valid app scope is namespaced, so a slug-less app declares none.)
+ *
+ * A scope is also rejected when it is not a string, is malformed, is already in the
+ * platform vocabulary, or sits in a namespace the vocabulary owns.
  */
 export function validateProvidedScopes(
   scopes: unknown,
@@ -67,14 +76,23 @@ export function validateProvidedScopes(
       invalid.push(String(s));
       continue;
     }
-    const ns = namespaceOf(s);
-    if (RESERVED_NAMESPACES.has(ns) || (options.slug && ns !== options.slug)) {
+    if (RESERVED_NAMESPACES.has(namespaceOf(s)) || !inSlugNamespace(s, options.slug)) {
       invalid.push(s);
       continue;
     }
     valid.push(s);
   }
   return { valid: dedupe(valid), invalid: dedupe(invalid) };
+}
+
+/**
+ * The subset of an app's stored `providesScopes` that sit in its own slug
+ * namespace. Write-side validation already enforces this; applying it again when
+ * a row is read closes the same gap for rows written before it did, so a legacy
+ * slug-less row can't keep honouring `dykil:read` at mint.
+ */
+export function ownNamespaceScopes(providesScopes: readonly string[], slug: string | null | undefined): string[] {
+  return providesScopes.filter((s) => inSlugNamespace(s, slug));
 }
 
 /**
@@ -135,4 +153,61 @@ export function validateDependsOn(input: unknown): { valid: AppDependency[]; inv
  */
 export function tokenAudiences(aud: string, activeDependencyAuds: readonly string[]): string[] {
   return dedupe([aud, ...activeDependencyAuds]);
+}
+
+/** What an app's registry row says it may be granted (the existing scope-assignment fields). */
+export interface ScopeAssignment {
+  /** `registry.apps.requested_scopes` — the scope-assignment record the approved list is written into. */
+  requestedScopes?: readonly string[] | null;
+  providesScopes?: readonly string[] | null;
+  dependsOn?: readonly AppDependency[] | null;
+  tier?: string | null;
+}
+
+/**
+ * The most an app may ever be granted (#2674): its assigned `requestedScopes`, the
+ * scopes it declared it provides, and the scopes of the dependencies an operator
+ * approved. `providesScopes` and `dependsOn` are only ever written by an approved
+ * path (`apps.provision` or the admin route; PATCH is capped by this same ceiling),
+ * so the ceiling can't be raised after approval.
+ */
+export function approvedScopeCeiling(app: ScopeAssignment): Set<string> {
+  return new Set([
+    ...(app.requestedScopes ?? []),
+    ...(app.providesScopes ?? []),
+    ...(app.dependsOn ?? []).flatMap((dep) => dep.scopes),
+  ]);
+}
+
+/**
+ * Clamp `scopes` to the app's {@link approvedScopeCeiling}. The one exemption is a
+ * legacy `first_party` row with nothing assigned (`requested_scopes = []`, as seeded
+ * by 0139): those predate scope assignment and are operator-registered, so an empty
+ * list there means "never assigned", not "nothing allowed". Every other tier —
+ * including a third-party app with an empty list — gets exactly its ceiling.
+ */
+export function clampToApprovedCeiling(scopes: readonly string[], app: ScopeAssignment): string[] {
+  const ceiling = approvedScopeCeiling(app);
+  if (app.tier === 'first_party' && ceiling.size === 0) return [...scopes];
+  return scopes.filter((s) => ceiling.has(s));
+}
+
+/**
+ * The scopes of a multi-audience token that are honoured at `aud` (#2674).
+ *
+ * Scopes ride on the token as one flat list, so without this a token carrying two
+ * dependency audiences would honour dependency A's scopes at dependency B. The
+ * token's primary audience (the app itself) honours everything on the token; each
+ * dependency honours only the scopes listed for it in the app's `dependsOn`. A
+ * dependency the app no longer lists honours none.
+ */
+export function scopesForAudience(
+  aud: string,
+  primaryAud: string,
+  tokenScopes: readonly string[],
+  dependsOn: readonly AppDependency[],
+): string[] {
+  if (aud === primaryAud) return [...tokenScopes];
+  const listed = new Set(dependsOn.filter((dep) => dep.aud === aud).flatMap((dep) => dep.scopes));
+  return tokenScopes.filter((s) => listed.has(s));
 }

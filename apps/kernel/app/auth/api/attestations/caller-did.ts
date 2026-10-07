@@ -35,12 +35,17 @@ async function resolveLegacyBearerDid(token: string): Promise<string | null> {
  * The token's `sub` (the minting user's own DID) becomes the caller
  * identity; its `aud` must still resolve to a live, active registered app
  * on every call (#1990), not just at mint time.
+ *
+ * #2674: a token may carry several audiences (the app plus its `dependsOn`
+ * services, #2663). EVERY one must still resolve — the same per-audience check
+ * `POST /auth/api/tokens/app/verify` makes — so revoking a dependency app stops
+ * the token here too, not only the app named by its first audience.
  */
 async function resolveSessionAppTokenDid(token: string): Promise<string | null> {
   const claims = await verifySessionAppTokenLocal(token);
   if (!claims) return null;
-  const app = await resolveActiveAppByAudience(claims.aud);
-  return app ? claims.sub : null;
+  const registered = await Promise.all(claims.auds.map((a) => resolveActiveAppByAudience(a)));
+  return registered.every(Boolean) ? claims.sub : null;
 }
 
 /** Resolve calling identity from session cookie or Bearer token (legacy identity token or a scoped app token, #2394). */

@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { arrayContains, eq } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
 import { corsHeaders } from '@imajin/config';
-import { tokenAudiences, type AppDependency } from '@imajin/auth';
+import { clampToApprovedCeiling, ownNamespaceScopes, tokenAudiences, type AppDependency } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -23,7 +23,14 @@ export interface ActiveRegistryApp {
   ownerDid: string;
   tier: string;
   status: string;
-  /** Scopes the app defines itself (#2663); granted on tokens minted for its audience. */
+  /** The app's registered slug, or `null` for a slug-less (e.g. self-service) app. */
+  slug: string | null;
+  /** `registry.apps.requested_scopes` — the scope assignment; with `providesScopes` / `dependsOn`, the mint ceiling (#2674). */
+  requestedScopes: string[];
+  /**
+   * Scopes the app defines itself (#2663); granted on tokens minted for its audience.
+   * Only those in the app's own slug namespace (#2674): a slug-less row has none.
+   */
   providesScopes: string[];
   /** Other registered audiences a token for this app must also carry (#2663). */
   dependsOn: AppDependency[];
@@ -47,6 +54,8 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
         ownerDid: registryApps.ownerDid,
         tier: registryApps.tier,
         status: registryApps.status,
+        slug: registryApps.slug,
+        requestedScopes: registryApps.requestedScopes,
         providesScopes: registryApps.providesScopes,
         dependsOn: registryApps.dependsOn,
       })
@@ -54,7 +63,13 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
       .where(arrayContains(registryApps.tokenAudiences, [aud]))
       .limit(1);
     if (row?.status !== 'active') return null;
-    return { ...row, providesScopes: row.providesScopes ?? [], dependsOn: row.dependsOn ?? [] };
+    return {
+      ...row,
+      slug: row.slug ?? null,
+      requestedScopes: row.requestedScopes ?? [],
+      providesScopes: ownNamespaceScopes(row.providesScopes ?? [], row.slug),
+      dependsOn: row.dependsOn ?? [],
+    };
   } catch (err) {
     log.error({ err: String(err), aud }, 'resolveActiveAppByAudience: lookup failed');
     return null;
@@ -77,12 +92,17 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
  * because every scope on the token is honoured at every audience it carries.
  * A token with no dependency audience is only valid at the app's own host and is
  * left as requested.
+ *
+ * Before any of that, the requested scopes are clamped to the app's approved
+ * ceiling (#2674) — its `requestedScopes`, `providesScopes`, and approved
+ * `dependsOn` scopes — so an app is never minted a scope nobody assigned it.
  */
 export async function resolveTokenGrant(
   aud: string,
-  app: Pick<ActiveRegistryApp, 'dependsOn' | 'providesScopes'>,
-  requestedScopes: readonly string[],
+  app: Pick<ActiveRegistryApp, 'dependsOn' | 'providesScopes' | 'requestedScopes' | 'tier'>,
+  wantedScopes: readonly string[],
 ): Promise<{ audiences: string[]; scopes: string[] }> {
+  const requestedScopes = clampToApprovedCeiling(wantedScopes, app);
   const requested = new Set(requestedScopes);
   const reached = app.dependsOn.filter((dep) => dep.scopes.some((s) => requested.has(s)));
   const resolved = await Promise.all(

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
+import { requireAuth, resolveActingDid, approvedScopeCeiling, type AppDependency } from '@imajin/auth';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
@@ -50,19 +50,61 @@ function buildFieldUpdates(body: Record<string, unknown>): AppUpdates {
   return updates;
 }
 
+/** The row's assignment as it stood BEFORE this request — never the request body. */
+interface ExistingAssignment {
+  slug: string | null;
+  requestedScopes: string[] | null;
+  providesScopes: string[];
+  dependsOn: AppDependency[];
+}
+
+/**
+ * #2674: the approved list is the ceiling. An app registered through
+ * `apps.provision` had its `providesScopes` / `dependsOn` approved on the /jin
+ * card, and that list is recorded in the row (`requestedScopes` + the declarations
+ * themselves). A later PATCH may narrow it but never widen it, so an edit made
+ * after approval can't hand the app a scope the operator never saw.
+ *
+ * The ceiling is computed from the stored row, not the request body, so a single
+ * PATCH can't raise `requestedScopes` and spend the new headroom on `providesScopes`.
+ */
+function beyondApprovedList(scopes: readonly string[], existing: ExistingAssignment): string[] {
+  const ceiling = approvedScopeCeiling(existing);
+  return scopes.filter((s) => !ceiling.has(s));
+}
+
 /**
  * #2663: validate and collect `providesScopes` — only when the request actually
  * sent it. (`dependsOn` is operator-only and never reaches here: PATCH rejects it.)
  */
 async function buildDeclarationUpdates(
   body: Record<string, unknown>,
-  slug: string | null,
+  existing: ExistingAssignment,
 ): Promise<{ ok: Pick<AppUpdates, 'providesScopes'> } | { error: string }> {
   if (body.providesScopes === undefined) return { ok: {} };
 
-  const declarations = await validateAppDeclarations({ providesScopes: body.providesScopes, slug });
+  const declarations = await validateAppDeclarations({ providesScopes: body.providesScopes, slug: existing.slug });
   if ('error' in declarations) return { error: declarations.error };
+
+  const over = beyondApprovedList(declarations.ok.providesScopes, existing);
+  if (over.length > 0) {
+    return { error: `providesScopes beyond the approved list (it can be narrowed, not widened): ${over.join(', ')}` };
+  }
   return { ok: { providesScopes: declarations.ok.providesScopes } };
+}
+
+/**
+ * #2674: for an app with a slug (one an operator provisioned), `requestedScopes`
+ * is part of the approved record, so PATCH may narrow it but not widen it.
+ * Slug-less self-service apps keep editing their own request list freely.
+ */
+function checkRequestedScopesCeiling(
+  body: Record<string, unknown>,
+  existing: ExistingAssignment,
+): string | null {
+  if (!existing.slug || !Array.isArray(body.requestedScopes)) return null;
+  const over = beyondApprovedList(body.requestedScopes.map(String), existing);
+  return over.length > 0 ? `requestedScopes beyond the approved list (it can be narrowed, not widened): ${over.join(', ')}` : null;
 }
 
 // PATCH /api/registry/apps/:appId — update (owner only)
@@ -75,7 +117,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   const { identity } = authResult;
 
   const [existing] = await db
-    .select({ id: registryApps.id, ownerDid: registryApps.ownerDid, slug: registryApps.slug })
+    .select({
+      id: registryApps.id,
+      ownerDid: registryApps.ownerDid,
+      slug: registryApps.slug,
+      requestedScopes: registryApps.requestedScopes,
+      providesScopes: registryApps.providesScopes,
+      dependsOn: registryApps.dependsOn,
+    })
     .from(registryApps)
     .where(eq(registryApps.id, params.appId));
 
@@ -100,11 +149,17 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
     return NextResponse.json({ error: DEPENDS_ON_OPERATOR_ONLY_ERROR }, { status: 400 });
   }
 
+  const requestedScopesError = checkRequestedScopesCeiling(body, existing);
+  if (requestedScopesError) {
+    return NextResponse.json({ error: requestedScopesError }, { status: 400 });
+  }
+
   const updates = buildFieldUpdates(body);
 
   // #2663: the app's own scopes — same assignment model as requestedScopes,
-  // validated the same way the register route validates them.
-  const declarationUpdates = await buildDeclarationUpdates(body, existing.slug);
+  // validated the same way the register route validates them (#2674: and capped
+  // by the approved list).
+  const declarationUpdates = await buildDeclarationUpdates(body, existing);
   if ('error' in declarationUpdates) {
     return NextResponse.json({ error: declarationUpdates.error }, { status: 400 });
   }

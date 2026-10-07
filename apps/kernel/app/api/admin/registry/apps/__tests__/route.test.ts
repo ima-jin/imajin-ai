@@ -227,3 +227,68 @@ describe('POST /api/admin/registry/apps — #2663 providesScopes + dependsOn', (
     expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
   });
 });
+
+// #2674: scope namespaces are reserved by registered slug, so the admin route takes the slug
+// the app's `providesScopes` must sit in (and persists it).
+describe('POST /api/admin/registry/apps — slug (#2674)', () => {
+  const base = { name: 'Dykil', callbackUrl: 'https://dykil.example.com/cb', ownerDid: 'did:imajin:owner' };
+
+  beforeEach(() => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+  });
+
+  it('validates providesScopes against the supplied slug and persists it', async () => {
+    const res = await POST(makePostRequest({ ...base, slug: 'dykil', providesScopes: ['dykil:read'] }) as never);
+
+    expect(res.status).toBe(201);
+    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: 'dykil', providesScopes: ['dykil:read'] }));
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.slug).toBe('dykil');
+    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ slug: 'dykil' }) }),
+    );
+  });
+
+  it('passes a null slug when none is supplied, so a slug-less app cannot declare scopes', async () => {
+    mocks.validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: dykil:read — without a registered slug' });
+
+    const res = await POST(makePostRequest({ ...base, providesScopes: ['dykil:read'] }) as never);
+
+    expect(res.status).toBe(400);
+    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: null }));
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
+  it('stores a null slug for an app that declares nothing and supplies none', async () => {
+    const res = await POST(makePostRequest(base) as never);
+
+    expect(res.status).toBe(201);
+    expect((mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>).slug).toBeNull();
+  });
+
+  it.each([['Dykil'], ['has space'], ['9lives'], ['x'.repeat(40)], [42]])('rejects a malformed slug (%j) with 400, inserting nothing', async (slug) => {
+    const res = await POST(makePostRequest({ ...base, slug }) as never);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/slug/);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 409, not 500, and emits no attestation when the slug is already registered', async () => {
+    mocks.insertValuesMock.mockReturnValueOnce({
+      returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value violates unique constraint "uniq_registry_apps_slug"'), { code: '23505' })),
+    });
+
+    const res = await POST(makePostRequest({ ...base, slug: 'dykil' }) as never);
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain('dykil');
+    expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
+  });
+
+  it('still surfaces an unrelated insert failure', async () => {
+    mocks.insertValuesMock.mockReturnValueOnce({ returning: vi.fn().mockRejectedValue(new Error('db down')) });
+
+    await expect(POST(makePostRequest({ ...base, slug: 'dykil' }) as never)).rejects.toThrow('db down');
+  });
+});

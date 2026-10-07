@@ -128,8 +128,17 @@ export { backfillContactEmail } from "./backfill-contact-email";
 export type { ContactEmailBackfillResult } from "./backfill-contact-email";
 export { SCOPES, validateScopes } from "./scopes";
 export type { Scope } from "./scopes";
-export { validateProvidedScopes, resolveAppScopes, validateDependsOn, tokenAudiences } from "./app-scopes";
-export type { AppDependency } from "./app-scopes";
+export {
+  validateProvidedScopes,
+  resolveAppScopes,
+  validateDependsOn,
+  tokenAudiences,
+  ownNamespaceScopes,
+  approvedScopeCeiling,
+  clampToApprovedCeiling,
+  scopesForAudience,
+} from "./app-scopes";
+export type { AppDependency, ScopeAssignment } from "./app-scopes";
 // Declarative scope vocabulary (#1253) — the single source of truth that SCOPES,
 // the MCP capability ceiling, connector scope-manifest descriptors, and the
 // connector-card UI list are all projections of. Client components should import

@@ -31,6 +31,26 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
+/** Same shape `apps.provision` accepts for a slug. */
+const SLUG_PATTERN = /^[a-z][a-z0-9-]{0,38}$/;
+
+/** Postgres unique_violation — `registry.apps.slug` is unique (uniq_registry_apps_slug). */
+function isUniqueViolation(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && (err as { code?: unknown }).code === '23505';
+}
+
+/** A non-empty string (optionally trimmed), else `null` — the row's nullable text columns. */
+function textOrNull(value: unknown, trim = false): string | null {
+  if (typeof value !== 'string') return null;
+  return (trim ? value.trim() : value) || null;
+}
+
+/** A valid slug, `null` when none was supplied, or `false` when it is malformed. */
+function parseSlug(value: unknown): string | null | false {
+  if (value === undefined || value === null) return null;
+  return typeof value === 'string' && SLUG_PATTERN.test(value) ? value : false;
+}
+
 type RegisterBody = {
   name?: string;
   description?: string;
@@ -41,6 +61,8 @@ type RegisterBody = {
   requestedScopes?: string[];
   providesScopes?: string[];
   dependsOn?: Array<{ aud: string; scopes: string[] }>;
+  /** Registered slug (#2674) — reserves the `<slug>:*` scope namespace; required to declare `providesScopes`. */
+  slug?: string;
   publicKey?: string;
   tier?: string;
   allowedRedirectHosts?: string[];
@@ -50,7 +72,7 @@ type RegisterBody = {
 /** Required-field + tier validation, extracted to keep POST's own cognitive complexity down. */
 function validateRegisterBody(
   body: RegisterBody,
-): { error: string } | { ok: { tier: RegistryAppTier; name: string; callbackUrl: string; ownerDid: string } } {
+): { error: string } | { ok: { tier: RegistryAppTier; name: string; callbackUrl: string; ownerDid: string; slug: string | null } } {
   if (!body.name || typeof body.name !== 'string' || body.name.trim().length === 0) {
     return { error: 'name is required' };
   }
@@ -63,12 +85,19 @@ function validateRegisterBody(
   if (body.tier !== undefined && !isRegistryAppTier(body.tier)) {
     return { error: `tier must be one of: ${REGISTRY_APP_TIERS.join(', ')}` };
   }
+  // #2674: an app's scope namespace is reserved by its registered slug, so an app
+  // only declares `providesScopes` once it has one.
+  const slug = parseSlug(body.slug);
+  if (slug === false) {
+    return { error: 'slug must be a lowercase, hyphenated identifier (e.g. \'dykil\')' };
+  }
   return {
     ok: {
       tier: isRegistryAppTier(body.tier) ? body.tier : 'third_party',
       name: body.name,
       callbackUrl: body.callbackUrl,
       ownerDid: body.ownerDid,
+      slug,
     },
   };
 }
@@ -93,6 +122,19 @@ function resolveAllowedRedirectHosts(requested: unknown, callbackUrl: string): {
     return { ok: [new URL(callbackUrl).origin] };
   } catch {
     return { error: 'callbackUrl must be an absolute URL' };
+  }
+}
+
+/** Insert the row; a taken `slug` (the unique index) is a conflict, not a 500. */
+async function insertRegistryApp(
+  values: typeof registryApps.$inferInsert,
+): Promise<{ app: typeof registryApps.$inferSelect } | { conflict: true }> {
+  try {
+    const [app] = await db.insert(registryApps).values(values).returning();
+    return { app };
+  } catch (err) {
+    if (values.slug && isUniqueViolation(err)) return { conflict: true };
+    throw err;
   }
 }
 
@@ -147,7 +189,7 @@ export async function POST(request: NextRequest) {
   if ('error' in validated) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }
-  const { tier, name, callbackUrl, ownerDid } = validated.ok;
+  const { tier, name, callbackUrl, ownerDid, slug } = validated.ok;
 
   const keyResult = resolvePublicKey(body.publicKey);
   if ('error' in keyResult) {
@@ -159,10 +201,12 @@ export async function POST(request: NextRequest) {
 
   // #1990: no ad-hoc scope strings — clamp to the declarative SCOPE_VOCABULARY (#1253).
   // #2663: widened by the app's own `providesScopes`; `dependsOn` audiences must be registered apps.
+  // #2674: `providesScopes` must sit in the app's slug namespace, so they need a `slug`.
   const declarations = await validateAppDeclarations({
     providesScopes: body.providesScopes,
     dependsOn: body.dependsOn,
     requestedScopes: asStringArray(body.requestedScopes),
+    slug,
   });
   if ('error' in declarations) {
     return NextResponse.json({ error: declarations.error }, { status: 400 });
@@ -179,31 +223,33 @@ export async function POST(request: NextRequest) {
   const { description, homepageUrl, logoUrl } = body;
   const id = `app_${nanoid(16)}`;
 
-  const [app] = await db
-    .insert(registryApps)
-    .values({
-      id,
-      ownerDid,
-      name: name.trim(),
-      description: typeof description === 'string' ? description.trim() || null : null,
-      appDid,
-      publicKey,
-      callbackUrl,
-      homepageUrl: typeof homepageUrl === 'string' ? homepageUrl || null : null,
-      logoUrl: typeof logoUrl === 'string' ? logoUrl || null : null,
-      requestedScopes: scopes,
-      providesScopes,
-      dependsOn,
-      tier,
-      allowedRedirectHosts,
-      tokenAudiences,
-      // #1348: the admin surface only takes a single callbackUrl, so the
-      // registered redirect_uris set is that one URI — keeps /oauth/authorize's
-      // exact-set match behaving identically to the pre-#1348 comparison for
-      // admin-registered apps.
-      redirectUris: [callbackUrl],
-    })
-    .returning();
+  const inserted = await insertRegistryApp({
+    id,
+    ownerDid,
+    name: name.trim(),
+    description: textOrNull(description, true),
+    appDid,
+    publicKey,
+    callbackUrl,
+    homepageUrl: textOrNull(homepageUrl),
+    logoUrl: textOrNull(logoUrl),
+    requestedScopes: scopes,
+    providesScopes,
+    dependsOn,
+    tier,
+    slug,
+    allowedRedirectHosts,
+    tokenAudiences,
+    // #1348: the admin surface only takes a single callbackUrl, so the
+    // registered redirect_uris set is that one URI — keeps /oauth/authorize's
+    // exact-set match behaving identically to the pre-#1348 comparison for
+    // admin-registered apps.
+    redirectUris: [callbackUrl],
+  });
+  if ('conflict' in inserted) {
+    return NextResponse.json({ error: `slug '${slug}' is already registered` }, { status: 409 });
+  }
+  const { app } = inserted;
 
   emitAttestation({
     issuer_did: session.actingAs,
@@ -211,7 +257,7 @@ export async function POST(request: NextRequest) {
     type: 'registry.app.registered',
     context_id: id,
     context_type: 'registry_app',
-    payload: { appId: id, name: app.name, tier, ownerDid, scopes, providesScopes, dependsOn, allowedRedirectHosts, tokenAudiences },
+    payload: { appId: id, name: app.name, tier, ownerDid, slug, scopes, providesScopes, dependsOn, allowedRedirectHosts, tokenAudiences },
   }).catch((err: unknown) => log.error({ err: String(err), appId: id }, 'registry.app.registered attestation failed'));
 
   const response: Record<string, unknown> = { ...app };
