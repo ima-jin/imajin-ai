@@ -104,6 +104,24 @@ bootstrap key so it can never authenticate a fetch again.
 | `IMAJIN_APP_CLAIM_CODE` | First boot only (or after a `reissueClaim: true` rebind) |
 | `IMAJIN_APP_KEYSTORE` | Optional — defaults to `./.imajin/keystore.json` |
 
+### 5. Mint an app token from the browser (#2643)
+
+Client components must import `requestAppToken` from the browser-safe
+`@ima-jin/auth-client/browser` subpath. The main entry also pulls in
+server-only code (`fs`, `crypto`, `path`, `next/headers`) that fails a
+client bundle.
+
+```ts
+'use client';
+import { requestAppToken } from '@ima-jin/auth-client/browser';
+
+const minted = await requestAppToken({
+  authUrl: 'https://jin.imajin.ai',
+  aud: 'coffee.example.com',
+  scopes: ['profile:read'],
+});
+```
+
 ## Part of Imajin
 
 [Imajin](https://imajin.ai) — sovereign technology infrastructure. Open source.
