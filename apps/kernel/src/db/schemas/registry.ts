@@ -392,7 +392,7 @@ export const registryApps = registrySchema.table('apps', {
   actAsAllowed: boolean('act_as_allowed').notNull().default(false),
   /**
    * Service scopes the OPERATOR approved for this app (#2711,
-   * 0177_registry_apps_approved_service_scopes.sql). Written only by the
+   * 0179_registry_apps_approved_service_scopes.sql). Written only by the
    * countersigned `apps:service-scopes` approval; widens the session-less
    * service token to `requestedScopes ∩ (serviceEligible ∪ this)`. Never
    * settable through app registration/`requestedScopes`.

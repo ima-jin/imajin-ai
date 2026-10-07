@@ -1,4 +1,4 @@
--- 0177_registry_apps_approved_service_scopes.sql
+-- 0179_registry_apps_approved_service_scopes.sql
 -- owner: kernel
 -- #2711: operator-approved, per-app service scopes.
 --
