@@ -131,8 +131,8 @@ function parseArgs(argv) {
     }
   }
   if (args.env !== null && args.env !== 'dev' && args.env !== 'prod') throw new Error(`--env must be 'dev' or 'prod'\n${USAGE}`);
-  const targets = [args.all, args.service, args.serviceDir, args.app].filter((target) => target !== false && target !== null);
-  if (targets.length !== 1) {
+  const targetCount = [args.all, args.service !== null, args.serviceDir !== null, args.app !== null].filter(Boolean).length;
+  if (targetCount !== 1) {
     throw new Error(`Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>\n${USAGE}`);
   }
   if (args.app !== null && !APP_SLUG.test(args.app)) {
