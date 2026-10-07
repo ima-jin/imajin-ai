@@ -80,12 +80,12 @@ describe('requireSessionOrAppToken — act-as (#2639 / #2644)', () => {
   it('surfaces the verified actingAs claim on the token path', async () => {
     mocks.verifyAppTokenMock.mockResolvedValue({
       sub: 'did:imajin:user',
-      aud: APP_HOST,
+      slug: APP_SLUG,
       scopes: ['profile:read'],
       actingAs: GROUP_DID,
     });
 
-    const result = await requireSessionOrAppToken(bearerRequest('good-token'), { aud: APP_HOST });
+    const result = await requireSessionOrAppToken(bearerRequest('good-token'), { slug: APP_SLUG });
 
     expect(result).toEqual({
       auth: { did: 'did:imajin:user', scopes: ['profile:read'], via: 'token', actingAs: GROUP_DID },
@@ -93,20 +93,20 @@ describe('requireSessionOrAppToken — act-as (#2639 / #2644)', () => {
   });
 
   it('leaves actingAs unset when the token carries no act-as claim', async () => {
-    mocks.verifyAppTokenMock.mockResolvedValue({ sub: 'did:imajin:user', aud: APP_HOST, scopes: [] });
+    mocks.verifyAppTokenMock.mockResolvedValue({ sub: 'did:imajin:user', slug: APP_SLUG, scopes: [] });
 
-    const result = await requireSessionOrAppToken(bearerRequest('good-token'), { aud: APP_HOST });
+    const result = await requireSessionOrAppToken(bearerRequest('good-token'), { slug: APP_SLUG });
 
     expect('auth' in result && 'actingAs' in result.auth).toBe(false);
   });
 
   it('does not let a caller-supplied x-acting-as header grant actingAs on the token path', async () => {
-    mocks.verifyAppTokenMock.mockResolvedValue({ sub: 'did:imajin:user', aud: APP_HOST, scopes: [] });
+    mocks.verifyAppTokenMock.mockResolvedValue({ sub: 'did:imajin:user', slug: APP_SLUG, scopes: [] });
     const request = new Request('https://market.imajin.ai/api/me', {
       headers: { authorization: 'Bearer good-token', 'x-acting-as': GROUP_DID },
     });
 
-    const result = await requireSessionOrAppToken(request, { aud: APP_HOST });
+    const result = await requireSessionOrAppToken(request, { slug: APP_SLUG });
 
     expect('auth' in result && 'actingAs' in result.auth).toBe(false);
   });
@@ -117,7 +117,7 @@ describe('requireSessionOrAppToken — act-as (#2639 / #2644)', () => {
       headers: { cookie: `${SESSION_COOKIE_NAME}=cookie-value`, 'x-acting-as': GROUP_DID },
     });
 
-    const result = await requireSessionOrAppToken(request, { aud: APP_HOST });
+    const result = await requireSessionOrAppToken(request, { slug: APP_SLUG });
 
     expect(result).toEqual({ auth: { did: 'did:imajin:cookie-user', scopes: [], via: 'cookie' } });
   });

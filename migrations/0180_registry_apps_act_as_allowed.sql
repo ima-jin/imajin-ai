@@ -1,4 +1,4 @@
--- 0178_registry_apps_act_as_allowed.sql
+-- 0180_registry_apps_act_as_allowed.sql
 -- owner: kernel
 -- #2639 / #2644: operator approval, per app, for a scoped app token to carry an
 -- act-as (group DID) claim.

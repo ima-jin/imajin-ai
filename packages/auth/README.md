@@ -49,7 +49,7 @@ app the operator approved for act-as; there is no per-request re-check, and the 
 staleness. Own records as `auth.actingAs ?? auth.did`. The session-cookie fallback never sets it.
 
 ```ts
-const result = await requireSessionOrAppToken(request, { aud: 'market.imajin.ai' });
+const result = await requireSessionOrAppToken(request, { slug: 'market' });
 if ('error' in result) return new Response(result.error, { status: result.status });
 const ownerDid = result.auth.actingAs ?? result.auth.did;
 ```
