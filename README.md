@@ -58,7 +58,7 @@ Extraction into separate repos is in progress, not finished ([#1981](https://git
 
 ## Build an app
 
-An app registers with the kernel as an identity, gets scoped tokens, and never reaches into kernel internals. Fork [imajin-app-template](https://github.com/ima-jin/imajin-app-template) — it carries the contract, the CI gates, and the agent rules a registered app needs. Registration mechanics: [docs/REGISTRATION.md](./docs/REGISTRATION.md). The contract itself: [#1981](https://github.com/ima-jin/imajin-ai/issues/1981).
+An app registers with the kernel as an identity, gets scoped tokens, and never reaches into kernel internals. Fork [imajin-app-template](https://github.com/ima-jin/imajin-app-template) — it carries the contract, the CI gates, and the agent rules a registered app needs. Registration mechanics: [docs/REGISTRATION.md](./docs/REGISTRATION.md) — including how an app emits events through `POST /api/events` (an operator-approved allowlist; notify and audit only, never money). The contract itself: [#1981](https://github.com/ima-jin/imajin-ai/issues/1981).
 
 The SDK packages an app needs (all four install from npm today — see [Packages](#packages-sdk)):
 

@@ -248,6 +248,7 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
   const declared = {
     providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+    emittableEvents: ['tip.granted', 'tip.sent'],
   };
 
   it('registers the manifest declarations when they match the approved list, validated against the slug', async () => {
@@ -263,6 +264,7 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
       providesScopes: ['dykil:read', 'dykil:write'],
       requestedScopes: ['dykil:read', 'dykil:write', 'media:read'],
       dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['tip.granted', 'tip.sent'],
     });
   });
 
@@ -287,6 +289,7 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     fetchAppManifestMock.mockResolvedValue({
       providesScopes: ['dykil:write', 'dykil:read'],
       dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['tip.sent', 'tip.granted'],
     });
 
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: declared });
@@ -298,7 +301,7 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: null });
 
     expect(outcome.status).toBe('succeeded');
-    expect([...registryAppsStore.values()][0]).toMatchObject({ providesScopes: [], dependsOn: [] });
+    expect([...registryAppsStore.values()][0]).toMatchObject({ providesScopes: [], dependsOn: [], emittableEvents: [] });
   });
 
   it.each([
@@ -306,6 +309,8 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     ['an extra dependency audience', { ...declared, dependsOn: [...declared.dependsOn, { aud: 'events.imajin.ai', scopes: ['events:read'] }] }],
     ['an extra providesScope', { ...declared, providesScopes: [...declared.providesScopes, 'dykil:admin'] }],
     ['a missing providesScope', { ...declared, providesScopes: ['dykil:read'] }],
+    ['an extra emittable event (listing.purchased the operator never saw)', { ...declared, emittableEvents: [...declared.emittableEvents, 'listing.purchased'] }],
+    ['a missing emittable event', { ...declared, emittableEvents: ['tip.granted'] }],
   ])('fails closed at register, writing no row, when the manifest now declares %s', async (_label, drifted) => {
     fetchAppManifestMock.mockResolvedValue(drifted);
 
@@ -330,6 +335,34 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     expect(outcome.status).toBe('failed');
     if (outcome.status !== 'failed') throw new Error('unreachable');
     expect(outcome.failedStep).toBe('register');
+    expect(registryAppsStore.size).toBe(0);
+  });
+
+  it('#2638: a manifest that asks to emit events when none were approved fails closed, writing no row', async () => {
+    fetchAppManifestMock.mockResolvedValue({ emittableEvents: ['tip.granted'] });
+
+    const outcome = await runAppProvision({ slug: 'coffee', displayName: 'coffee', approvedDeclarations: null });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('differ from the list the operator approved');
+    expect(registryAppsStore.size).toBe(0);
+  });
+
+  it.each([
+    ['a wildcard', ['tip.*']],
+    ['an uppercase type', ['Tip.Granted']],
+    ['a non-string entry', [42]],
+  ])('#2638: rejects a manifest whose emittableEvents has %s, writing no row', async (_label, emittableEvents) => {
+    fetchAppManifestMock.mockResolvedValue({ emittableEvents });
+
+    const outcome = await runAppProvision({ slug: 'coffee', displayName: 'coffee', approvedDeclarations: null });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('emittableEvents');
     expect(registryAppsStore.size).toBe(0);
   });
 

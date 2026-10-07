@@ -266,3 +266,43 @@ describe('PATCH /api/registry/apps/:appId — the approved list is the ceiling (
     expect(mocks.updateMock).not.toHaveBeenCalled();
   });
 });
+
+describe('PATCH /api/registry/apps/:appId — emittableEvents is operator-only (#2638/#2641)', () => {
+  it.each([
+    ['a market event list', ['listing.purchased']],
+    ['an empty list', []],
+    ['a malformed value', 'tip.granted'],
+  ])('rejects %s with 400: an owner cannot self-approve what their app may emit, and nothing is written', async (_label, emittableEvents) => {
+    const res = await patch({ emittableEvents });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('emittableEvents can only be set by a node operator');
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects emittableEvents even alongside valid owner-editable fields, writing none of them', async () => {
+    const res = await patch({ name: 'Coffee 2', emittableEvents: ['tip.granted'] });
+
+    expect(res.status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('an ordinary PATCH never writes emittableEvents', async () => {
+    const res = await patch({ name: 'Coffee 2' });
+
+    expect(res.status).toBe(200);
+    const updates = (mocks.setMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(updates).not.toHaveProperty('emittableEvents');
+  });
+
+  it('refuses emittableEvents before #2674\'s ceiling check runs (the operator-only 400 wins)', async () => {
+    const res = await patch({ emittableEvents: ['tip.granted'], requestedScopes: ['dykil:read', 'wallet:write'] });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('emittableEvents can only be set by a node operator');
+    expect(body.error).not.toContain('requestedScopes');
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+});

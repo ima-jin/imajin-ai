@@ -475,6 +475,8 @@ export interface AppManifest {
   providesScopes?: string[];
   /** Other registered audiences a token for this app must also carry (#2663). Validated at register time. */
   dependsOn?: Array<{ aud: string; scopes: string[] }>;
+  /** Event types the app asks to emit via `POST /api/events` (#2638 / #2641). A request only — the operator approves the list on the apps.provision card. */
+  emittableEvents?: string[];
 }
 
 /** Mirrors `src/lib/kernel/app-nav.ts`'s `AppPlacement` — duplicated here (rather than imported) to keep this GitHub-specific module independent of kernel nav internals. */
@@ -489,9 +491,10 @@ function isValidManifestPlacements(placements: unknown): boolean {
   return Array.isArray(placements) && placements.every((p) => typeof p === 'string' && VALID_MANIFEST_PLACEMENTS.has(p));
 }
 
-/** Shape only (#2663): the scope/audience rules live in `validateAppDeclarations`. */
+/** Shape only (#2663, #2638): the scope/audience/event-type rules live in `validateAppDeclarations` / `validateEmittableEvents`. */
 function isValidManifestDeclarations(v: Record<string, unknown>): boolean {
-  const { providesScopes, dependsOn } = v;
+  const { providesScopes, dependsOn, emittableEvents } = v;
+  if (emittableEvents !== undefined && !(Array.isArray(emittableEvents) && emittableEvents.every((e) => typeof e === 'string'))) return false;
   if (providesScopes !== undefined && !(Array.isArray(providesScopes) && providesScopes.every((s) => typeof s === 'string'))) return false;
   return dependsOn === undefined || (Array.isArray(dependsOn) && dependsOn.every((d) => typeof d === 'object' && d !== null));
 }

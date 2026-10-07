@@ -3,6 +3,7 @@ import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid, approvedScopeCeiling, type AppDependency } from '@imajin/auth';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
+import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 // GET /api/registry/apps/:appId — app detail (public)
@@ -22,6 +23,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ appI
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
+      emittableEvents: registryApps.emittableEvents,
       status: registryApps.status,
       createdAt: registryApps.createdAt,
       updatedAt: registryApps.updatedAt,
@@ -147,6 +149,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   // path (admin route, `apps.provision` with the /jin card approval) writes it.
   if (body.dependsOn !== undefined) {
     return NextResponse.json({ error: DEPENDS_ON_OPERATOR_ONLY_ERROR }, { status: 400 });
+  }
+  // #2638/#2641: which event types an app may emit is an operator approval, never self-assigned.
+  if (body.emittableEvents !== undefined) {
+    return NextResponse.json({ error: EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR }, { status: 400 });
   }
 
   const requestedScopesError = checkRequestedScopesCeiling(body, existing);

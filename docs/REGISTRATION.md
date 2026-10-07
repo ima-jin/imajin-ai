@@ -212,6 +212,9 @@ Two more declarations ride the same `registry.apps` row that already carries `re
 | `providesScopes` | Scope strings the app defines and enforces itself, e.g. `["dykil:read", "dykil:write"]`. |
 | `dependsOn` | Other registered audiences the app's tokens must also satisfy, with the platform scopes it needs there, e.g. `[{ "aud": "jin.imajin.ai", "scopes": ["media:read", "media:write"] }]`. |
 
+(A third declaration, `emittableEvents` — the event types the app may emit — is covered in
+[Emitting events from an app](#emitting-events-from-an-app-post-apievents-2638-2641) below.)
+
 Both default to `[]`. They have different authority:
 
 - `providesScopes` is the app's own vocabulary, and it needs a registered `slug` (#2674): the
@@ -289,6 +292,72 @@ curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
   -d '{ "aud": "dykil.imajin.ai", "scopes": ["dykil:read", "dykil:write", "media:read", "media:write"] }'
 # -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...only the approved ones], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
 ```
+
+### Emitting events from an app: `POST /api/events` (#2638, #2641)
+
+A standalone app cannot import `@imajin/bus` (kernel-internal, never published), so the kernel
+exposes the one public way to put a domain event on the bus. It is deliberately narrow — an app-sent
+event can **notify and audit, never move money**:
+
+> an operator-approved allowlist of event types, which can only notify and audit — never move money
+> (no settle, no attestation issuance from app-emitted events). *Ruled by Ryan, 2026-10-07.*
+
+Money stays on one audited path: market settlement goes through the settle route (#2642), not events.
+
+**The operator approves, per app, which event types it may emit.** It is one more declaration on the
+`registry.apps` row, with the same ceiling pattern as the approved scopes:
+
+| Field | Meaning |
+|---|---|
+| `emittableEvents` | Event types the app may emit, e.g. `["tip.granted", "tip.sent"]` (coffee) or `["listing.created", "listing.purchased"]` (market). Lowercase dotted names, no wildcards, at most 50. |
+
+- **Default: `[]`.** An app can emit nothing until an operator approves a list.
+- **Operator-only.** `POST /api/registry/apps` and `PATCH /api/registry/apps/:appId` reject an
+  `emittableEvents` field with `400`; an app never picks its own list.
+- **`apps.provision`:** the app *requests* the list in its `imajin.app.json` (`"emittableEvents": [...]`).
+  The proposal snapshots it into `detail.manifestDeclarations`, the `/jin` approval card shows it
+  (*May emit events — notify and audit only*), and approving registers **exactly that list** — a manifest
+  that has changed since the proposal fails closed at `register`, same as `providesScopes` / `dependsOn`.
+- **Already-registered apps:** the operator sets the full list with
+  `PATCH /api/admin/registry/apps/:appId` and body `{ "emittableEvents": [...] }` (replace, not merge;
+  `[]` withdraws everything). Every change is signed into the audit trail as a
+  `registry.app.emittable-events.updated` attestation carrying the before and after lists.
+- **Visible where the approved scopes are:** `GET /api/admin/registry/apps`,
+  `GET /api/registry/apps` and `GET /api/registry/apps/:appId` return `emittableEvents` next to
+  `requestedScopes` / `providesScopes` / `dependsOn`.
+
+**Emitting.** Authenticate as the app with an app-service token (`POST /auth/api/apps/token/service`
+— proof of possession of the app's registered keypair), then:
+
+```bash
+curl -X POST "${IMAJIN_KERNEL_URL}/api/events" \
+  -H "Authorization: Bearer ${APP_SERVICE_TOKEN}" -H "Content-Type: application/json" \
+  -d '{ "type": "tip.granted", "subject": "did:imajin:<recipient>", "payload": { "amount": 3, "currency": "USD" } }'
+# -> 201 { "ok": true, "type": "tip.granted", "origin": "did:imajin:<app>", "ran": ["audit-log", "notify"] }
+```
+
+| Status | When |
+|---|---|
+| `401` | No bearer, or it is not a valid app-service token. A user-delegated app token or a session token is also `401`: only the app itself, proven by its key, may speak as the app. |
+| `400` | Malformed body: `type` must be a lowercase dotted event type, `subject` a DID, `payload` an object of at most 16 KB. `scope` is not accepted — the kernel fixes it. |
+| `403` | `event_type_not_approved` — `type` is not on this app's approved list (including every type, for an app whose list is empty); or `app_not_registered` — the app has been revoked. |
+
+**What an accepted event can trigger — notify and audit only.** The kernel runs the event's configured
+chain *intersected with* `{notify, audit-log}`, enforced in code (`publishAppEvent`,
+`packages/bus/src/publish-app-event.ts`) no matter what `bus_chain_configs` says:
+
+- `audit-log` always runs first, so the record exists even if a notification then fails.
+- the chain's `notify` reactor runs if it has one (`tip.granted` -> the coffee tip notification).
+- `settle`, `mjn` (MJN emission), `attestation` (attestation issuance) and every other reactor are
+  **never** run for an app-origin event. An app-sent `listing.purchased` notifies the buyer; it does not
+  settle, credit MJN, or write an attestation.
+- event-subscription fan-out does not run for app-origin events.
+
+**Origin on the record.** The recorded event names the emitting app: `issuer` is the app's DID and the
+payload carries `origin: "app"` and `originAppDid`, so the operator's audit trail (`kernel.audit_log`)
+shows which app sent what. These keys, and `preview` / `attestationId`, are owned by the kernel — an
+app-supplied value for them is dropped, so an app cannot spoof another origin or opt out of the audit
+write.
 
 ### What gets sealed, and where
 

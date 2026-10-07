@@ -44,6 +44,7 @@ vi.mock('@/src/db', () => ({
     appDid: 'registryApps.appDid',
     callbackUrl: 'registryApps.callbackUrl',
     requestedScopes: 'registryApps.requestedScopes',
+    emittableEvents: 'registryApps.emittableEvents',
     status: 'registryApps.status',
     tier: 'registryApps.tier',
     allowedRedirectHosts: 'registryApps.allowedRedirectHosts',
@@ -290,5 +291,58 @@ describe('POST /api/admin/registry/apps — slug (#2674)', () => {
     mocks.insertValuesMock.mockReturnValueOnce({ returning: vi.fn().mockRejectedValue(new Error('db down')) });
 
     await expect(POST(makePostRequest({ ...base, slug: 'dykil' }) as never)).rejects.toThrow('db down');
+  });
+});
+
+describe('POST /api/admin/registry/apps — #2638/#2641 emittableEvents (operator-approved emit allowlist)', () => {
+  beforeEach(() => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+  });
+
+  const base = { name: 'Coffee', callbackUrl: 'https://coffee.example.com/cb', ownerDid: 'did:imajin:owner' };
+
+  it('defaults to an empty list: an app can emit nothing until an operator approves a list', async () => {
+    const res = await POST(makePostRequest(base) as never);
+
+    expect(res.status).toBe(201);
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.emittableEvents).toEqual([]);
+  });
+
+  it('persists the approved list, normalised, and records it in the signed attestation', async () => {
+    const res = await POST(makePostRequest({ ...base, emittableEvents: ['tip.sent', 'tip.granted', 'tip.sent'] }) as never);
+
+    expect(res.status).toBe(201);
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.emittableEvents).toEqual(['tip.granted', 'tip.sent']);
+    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ emittableEvents: ['tip.granted', 'tip.sent'] }) }),
+    );
+  });
+
+  it.each([
+    ['a wildcard', ['tip.*']],
+    ['an uppercase type', ['Tip.Granted']],
+    ['a non-string entry', [7]],
+    ['a non-array value', 'tip.granted'],
+  ])('rejects %s with 400 and inserts nothing', async (_label, emittableEvents) => {
+    const res = await POST(makePostRequest({ ...base, emittableEvents }) as never);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('emittableEvents');
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/admin/registry/apps — #2638/#2641 the operator sees each app\'s approved emit list', () => {
+  it('selects emittableEvents next to the approved scopes', async () => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+
+    await GET(makeGetRequest() as never);
+
+    const selection = (mocks.selectMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(selection).toHaveProperty('requestedScopes');
+    expect(selection).toHaveProperty('emittableEvents');
   });
 });
