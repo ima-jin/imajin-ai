@@ -5,6 +5,7 @@
  * mocked Drizzle executor.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import {
   createRecordEventsHarness,
   type RecordEventsHarness,
@@ -329,5 +330,71 @@ describe('listRecordEventsForPrincipal — pagination (#2289 acceptance)', () =>
     await insertEvent({ id: 'evt_solo2', did: PRINCIPAL_A });
     const page = await listRecordEventsForPrincipal(PRINCIPAL_A, { limit: -5 });
     expect(page.limit).toBe(50);
+  });
+});
+
+// #2693: the Record lane says whether the operator's signature covers the
+// chosen letter. A decision signed before #2693 is "letter not
+// countersigned" — never "invalid".
+describe('listRecordEventsForPrincipal — modeCountersign (#2693 acceptance)', () => {
+  const HASH = 'd'.repeat(64);
+  const DECIDED_AT = '2026-10-07T12:00:00.000Z';
+  const operatorKeys = authCrypto.generateKeypair();
+
+  /** A persisted `operator.approval.decided` payload; the operator signed `signedFields`. */
+  function decidedPayload(signedFields: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+    return {
+      proposalId: 'prop_mode',
+      source: 'decision',
+      kind: 'decision:card',
+      decision: 'approve',
+      decidedBy: PRINCIPAL_A,
+      decidedAt: DECIDED_AT,
+      contentHash: `sha256:${HASH}`,
+      operatorSignature: {
+        keyId: operatorKeys.publicKey,
+        alg: 'ed25519',
+        sig: authCrypto.signSync(canonicalize(signedFields), operatorKeys.privateKey),
+      },
+      ...extra,
+    };
+  }
+  const BASE = { contentHash: HASH, decidedAt: DECIDED_AT, decision: 'approve' };
+
+  async function rowFor(id: string, payload: Record<string, unknown>, action = 'operator.approval.decided') {
+    await insertEvent({ id, did: PRINCIPAL_A, action, payload });
+    const page = await listRecordEventsForPrincipal(PRINCIPAL_A);
+    const found = page.events.find((e) => e.id === id);
+    if (!found) throw new Error(`row ${id} not listed`);
+    return found;
+  }
+
+  it('countersigned: the signature covers the letter', async () => {
+    const row = await rowFor('evt_cs', decidedPayload({ ...BASE, mode: 'b' }, { mode: 'b' }));
+    expect(row.modeCountersign).toBe('countersigned');
+    expect(row.modeCountersignLabel).toBeNull();
+  });
+
+  it('pre-#2693 decision: shown as "letter not countersigned", not invalid', async () => {
+    const row = await rowFor('evt_old', decidedPayload(BASE, { mode: 'b' }));
+    expect(row.modeCountersign).toBe('not-countersigned');
+    expect(row.modeCountersignLabel).toBe('letter not countersigned');
+    expect(row.hasOperatorSignature).toBe(true);
+  });
+
+  it('a mode altered after signing is invalid', async () => {
+    const row = await rowFor('evt_tamper', decidedPayload({ ...BASE, mode: 'a' }, { mode: 'b' }));
+    expect(row.modeCountersign).toBe('invalid');
+    expect(row.modeCountersignLabel).toBeNull();
+  });
+
+  it('a mode-less decision (legacy shape) has nothing to cover', async () => {
+    const row = await rowFor('evt_nomode', decidedPayload(BASE));
+    expect(row.modeCountersign).toBe('not-applicable');
+  });
+
+  it('is not-applicable on any event that is not a decided approval, whatever its payload carries', async () => {
+    const row = await rowFor('evt_other', decidedPayload(BASE, { mode: 'b' }), 'vault.key.minted');
+    expect(row.modeCountersign).toBe('not-applicable');
   });
 });

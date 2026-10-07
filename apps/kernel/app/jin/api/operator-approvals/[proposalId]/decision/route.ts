@@ -26,15 +26,20 @@
  * `decision` is the open, source-agnostic vocabulary (#2152): the kernel
  * never interprets it, only witnesses it and carries it (plus `source` +
  * `kind` from the stored proposal) through on `operator.approval.decided`.
- * An optional `mode` (e.g. 'allow-once') is likewise opaque — chosen by
- * whatever source-adapter interprets the decision downstream.
+ * An optional `mode` is the operator's chosen option (#2693) — a
+ * decision-card option letter, exec `allow-once`/`deny`, or a github TTL.
+ * It is NOT opaque: `decideOperatorApproval` refuses (400) any `mode` the
+ * approval's kind doesn't offer (see `operator-decision-modes.ts`), and the
+ * operator countersignature below covers it.
  *
  * Body (JSON): { decision: 'approve' | 'reject' | 'withdrawn', mode?: string, reason?: string,
  *   operatorSignature?: { keyId: string; alg: 'ed25519'; sig: string }, decidedAt?: string }
  *
  * `operatorSignature` + `decidedAt` (#2082): the operator's own
- * countersignature over `canonicalize({contentHash, decision, decidedAt})`,
- * produced client-side on /jin. `decidedAt` is REQUIRED whenever
+ * countersignature over `canonicalize({contentHash, decision, decidedAt})`
+ * — plus `mode` whenever the decision carries one (#2693: a `mode` altered
+ * after signing, or added to a signature that didn't cover it, fails
+ * verification with 400) — produced client-side on /jin. `decidedAt` is REQUIRED whenever
  * `operatorSignature` is present (it's exactly what the client signed
  * over) and is verified for clock skew + against the signature in
  * `decideOperatorApproval`. Optional while `OPERATOR_COUNTERSIGN_REQUIRED`
@@ -129,6 +134,21 @@ function buildDecisionResponseBody(
   return body;
 }
 
+/**
+ * Shape-check the optional `mode` (#2693). Absent → undefined; anything
+ * that isn't a non-empty string within the length bound is refused here —
+ * an empty or non-string `mode` is never a chosen option, and silently
+ * dropping it would leave it out of what the operator signed. Whether the
+ * string is a mode this approval's kind OFFERS is `decideOperatorApproval`'s
+ * check (it needs the stored card).
+ */
+function parseMode(raw: unknown): { ok: true; mode: string | undefined } | { ok: false; error: string } {
+  if (raw === undefined) return { ok: true, mode: undefined };
+  if (typeof raw !== 'string' || raw.length === 0) return { ok: false, error: 'mode must be omitted or a non-empty string' };
+  if (raw.length > MAX_MODE_LENGTH) return { ok: false, error: `mode must be at most ${MAX_MODE_LENGTH} chars` };
+  return { ok: true, mode: raw };
+}
+
 export async function POST(
   request: NextRequest,
   props: { params: Promise<{ proposalId: string }> },
@@ -172,13 +192,11 @@ export async function POST(
     );
   }
   const reason = typeof body.reason === 'string' ? body.reason : undefined;
-  const mode = typeof body.mode === 'string' ? body.mode : undefined;
-  if (mode !== undefined && mode.length > MAX_MODE_LENGTH) {
-    return NextResponse.json(
-      { error: `mode must be at most ${MAX_MODE_LENGTH} chars` },
-      { status: 400, headers: cors },
-    );
+  const modeResult = parseMode(body.mode);
+  if (!modeResult.ok) {
+    return NextResponse.json({ error: modeResult.error }, { status: 400, headers: cors });
   }
+  const { mode } = modeResult;
 
   // #2082: shape-validate the optional operator countersignature here;
   // the service does the (async, DB-backed) cryptographic verification.

@@ -27,7 +27,8 @@
  * "not allowed".
  *
  * #2082: before POSTing a decision, this component signs `canonicalize({
- * contentHash, decidedAt, decision})` with the operator's OWN key — the
+ * contentHash, decidedAt, decision[, mode]})` (#2693: the chosen option
+ * — card letter / allow-once / TTL — is covered too) with the operator's OWN key — the
  * same Ed25519 keypair already held client-side in `localStorage.
  * imajin_keypair` for login/registration (see `../auth/login/components/
  * KeyAuthTab.tsx`, the pattern this mirrors: a dynamic `@noble/ed25519`
@@ -77,14 +78,22 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 /**
- * Canonical JSON for exactly `{contentHash, decidedAt, decision}` — sorted
- * alphabetically to match `@imajin/auth`'s `canonicalize` (contentHash <
- * decidedAt < decision), inlined rather than imported so this client
- * bundle never pulls in the server-oriented `@imajin/auth` package (see
- * module docs above).
+ * Canonical JSON for `{contentHash, decidedAt, decision}` plus `mode` when
+ * the decision carries one (#2693) — sorted alphabetically to match
+ * `@imajin/auth`'s `canonicalize` (contentHash < decidedAt < decision <
+ * mode), inlined rather than imported so this client bundle never pulls in
+ * the server-oriented `@imajin/auth` package (see module docs above).
+ * `mode` is left off entirely when absent, so a mode-less decision signs
+ * exactly what it did before #2693.
  */
-function canonicalizeCountersignFields(fields: { contentHash: string; decidedAt: string; decision: string }): string {
-  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}}`;
+export function canonicalizeCountersignFields(fields: {
+  contentHash: string;
+  decidedAt: string;
+  decision: string;
+  mode?: string;
+}): string {
+  const modePart = fields.mode === undefined ? '' : `,"mode":${JSON.stringify(fields.mode)}`;
+  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}${modePart}}`;
 }
 
 interface OperatorSignature {
@@ -94,15 +103,18 @@ interface OperatorSignature {
 }
 
 /**
- * Sign `{contentHash, decidedAt, decision}` with the operator's local
- * keypair, if one is present. Returns `null` (never throws) when there's
- * no local keypair or signing fails for any reason — the caller falls
- * back to submitting without `operatorSignature`.
+ * Sign `{contentHash, decidedAt, decision[, mode]}` with the operator's
+ * local keypair, if one is present. Returns `null` (never throws) when
+ * there's no local keypair or signing fails for any reason — the caller
+ * falls back to submitting without `operatorSignature`. `mode` is the
+ * chosen option (card letter / allow-once / TTL, #2693): picking it IS the
+ * signing event, so it is part of what's signed.
  */
 async function signOperatorDecision(fields: {
   contentHash: string;
   decidedAt: string;
   decision: string;
+  mode?: string;
 }): Promise<OperatorSignature | null> {
   if (typeof window === 'undefined') return null;
   const stored = localStorage.getItem('imajin_keypair');
@@ -206,6 +218,13 @@ interface DecisionLabels {
 interface SourceRenderer {
   /** Static for most sources; a function when the label depends on the approval itself (e.g. vault:revoke's tier, #2247). */
   decisionLabels: DecisionLabels | ((approval: OperatorApprovalCard) => DecisionLabels);
+  /**
+   * Optional (#2693): the `mode` the default two buttons submit with each
+   * decision, so the operator's countersignature covers WHICH choice they
+   * made (exec's `allow-once` / `deny`), not just approve/reject. Omitted
+   * for sources whose decisions carry no mode.
+   */
+  decisionModes?: { approve?: string; reject?: string };
   renderDetail: (approval: OperatorApprovalCard) => ReactNode;
   /**
    * Optional (#2293): when present, REPLACES the default two-button
@@ -358,6 +377,10 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
 
 const GATEWAY_EXEC_RENDERER: SourceRenderer = {
   decisionLabels: { approve: 'Allow once', reject: 'Deny' },
+  // #2693: the kernel accepts exactly these two modes for this kind
+  // (`validateExecCommandDecisionMode`); sending them makes the signed
+  // payload say "allow-once" / "deny" rather than leave it implied.
+  decisionModes: { approve: 'allow-once', reject: 'deny' },
   renderDetail: (approval) => <ExecCommandDetailView approval={approval} />,
 };
 
@@ -875,7 +898,7 @@ function CardActions({
     <div className="flex items-center gap-2 pt-1">
       <button
         type="button"
-        onClick={() => onDecide(approval, 'reject')}
+        onClick={() => onDecide(approval, 'reject', renderer.decisionModes?.reject)}
         disabled={busy}
         className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
@@ -883,7 +906,7 @@ function CardActions({
       </button>
       <button
         type="button"
-        onClick={() => onDecide(approval, 'approve')}
+        onClick={() => onDecide(approval, 'approve', renderer.decisionModes?.approve)}
         disabled={busy}
         ref={autoFocusRef}
         className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
@@ -1064,7 +1087,12 @@ function OperatorApprovalsPanelInner() {
       // verifies it (clock-skew bounds + the signature itself) rather than
       // substituting its own.
       const decidedAt = new Date().toISOString();
-      const operatorSignature = await signOperatorDecision({ contentHash: approval.contentHash, decidedAt, decision });
+      const operatorSignature = await signOperatorDecision({
+        contentHash: approval.contentHash,
+        decidedAt,
+        decision,
+        ...(mode ? { mode } : {}),
+      });
 
       const res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
         method: 'POST',
