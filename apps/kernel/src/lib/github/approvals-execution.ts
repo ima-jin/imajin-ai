@@ -44,12 +44,12 @@ import * as bus from '@imajin/bus';
 import { db, githubActionProposals, operatorApprovals } from '@/src/db';
 import { getNodeSigningIdentity } from '../vault/sealing';
 import type { OperatorApprovalCard } from '../notify/operator-approvals-service';
-import { GITHUB_SOURCE, GITHUB_TTL_MODES } from '../notify/operator-decision-modes';
+import { GITHUB_TTL_MODES } from '../notify/operator-decision-modes';
 
 const log = createLogger('kernel:github:approvals-execution');
 
 /** The open-vocabulary source this kind is filed under (#2152) — defined beside the per-kind decision-mode policy it keys (#2693). */
-export { GITHUB_SOURCE };
+export { GITHUB_SOURCE } from '../notify/operator-decision-modes';
 
 /** Namespaced kinds — one per write-gate risk tier, NOT per tool (#2293 DECISION FOR RYAN: preserves the existing tier-shared approval-window semantics; the exact tool lives in `detail.tool`). */
 export const GITHUB_APPEND_KIND = 'github:append';
