@@ -2,6 +2,13 @@
   "name": "@imajin/onboard",
   "version": "0.8.15",
   "private": true,
+  "description": "OnboardGate — React component that gates a page behind Imajin onboarding (handle/identity setup)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ima-jin/imajin-ai.git",
+    "directory": "packages/onboard"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
