@@ -108,6 +108,18 @@ const VALUE_FLAGS = new Map([
 // An app slug is one path segment: it is joined onto the kernel checkout's parent directory.
 const APP_SLUG = /^[a-z][a-z0-9-]*$/;
 
+/** Cross-flag rules, checked once every argument is read. Throws a usage error. */
+function validateArgs(args) {
+  if (args.env !== null && args.env !== 'dev' && args.env !== 'prod') throw new Error(`--env must be 'dev' or 'prod'\n${USAGE}`);
+  const targetCount = [args.all, args.service !== null, args.serviceDir !== null, args.app !== null].filter(Boolean).length;
+  if (targetCount !== 1) {
+    throw new Error(`Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>\n${USAGE}`);
+  }
+  if (args.app !== null && !APP_SLUG.test(args.app)) {
+    throw new Error(`--app takes a slug like 'links', not '${args.app}' — use --service-dir <path> for a path\n${USAGE}`);
+  }
+}
+
 /**
  * @param {readonly string[]} argv
  * @returns {{ all: boolean, service: string | null, serviceDir: string | null, app: string | null, env: 'dev' | 'prod' | null, dryRun: boolean }}
@@ -130,14 +142,7 @@ function parseArgs(argv) {
       args.service = arg;
     }
   }
-  if (args.env !== null && args.env !== 'dev' && args.env !== 'prod') throw new Error(`--env must be 'dev' or 'prod'\n${USAGE}`);
-  const targetCount = [args.all, args.service !== null, args.serviceDir !== null, args.app !== null].filter(Boolean).length;
-  if (targetCount !== 1) {
-    throw new Error(`Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>\n${USAGE}`);
-  }
-  if (args.app !== null && !APP_SLUG.test(args.app)) {
-    throw new Error(`--app takes a slug like 'links', not '${args.app}' — use --service-dir <path> for a path\n${USAGE}`);
-  }
+  validateArgs(args);
   return args;
 }
 
