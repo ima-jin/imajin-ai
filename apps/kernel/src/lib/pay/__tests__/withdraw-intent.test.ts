@@ -160,6 +160,8 @@ describe('confirmWithdrawal', () => {
       sourceKind: 'receipt',
       status: 'completed',
       stripeId: 'fake_tr_1',
+      externalRef: 'fake_tr_1',
+      rail: 'fake',
       toDid: 'acct_1',
       metadata: { rail: 'fake', externalRef: 'fake_tr_1', intentId: 'wdi_1' },
     });

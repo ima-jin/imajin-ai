@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   nextSql,
+  sqlCalls,
   resetResolveRouteMocks,
   resolveIdentitiesForDidsMock,
   testReturns401WhenAuthFails,
@@ -122,6 +123,32 @@ describe('GET .../sales — batched identity resolution (#1998)', () => {
     expect(res.headers.get('Content-Type')).toContain('text/csv');
     expect(text).toContain('Buyer Name');
     expect(text).toContain('buyer-handle');
+  });
+
+  it('joins pay.transactions on rail + external_ref, never the deprecated stripe_id (#2176)', async () => {
+    nextSql([EVENT_ROW]);
+    nextSql([ORDER_ROW]);
+    nextSql([]); // no orphans
+
+    const res = await GET(makeRequest() as any, ROUTE_PARAMS);
+    expect(res.status).toBe(200);
+
+    const salesQuery = sqlCalls.find((q) => q.includes('pay.transactions'));
+    expect(salesQuery).toBeDefined();
+    expect(salesQuery).toContain("tx.rail = 'stripe' AND tx.external_ref = o.stripe_session_id");
+    expect(salesQuery).toContain('tx.external_ref AS tx_external_ref');
+    expect(salesQuery).not.toMatch(/tx\.stripe_id/);
+  });
+
+  it('falls back to the joined transaction external_ref when the order carries no stripe_session_id (#2176)', async () => {
+    nextSql([EVENT_ROW]);
+    nextSql([{ ...ORDER_ROW, stripe_session_id: null, tx_external_ref: 'cs_from_tx' }]);
+    nextSql([]); // no orphans
+
+    const res = await GET(makeRequest() as any, ROUTE_PARAMS);
+    const json = await res.json();
+
+    expect(json.sales.find((s: any) => s.orderId === 'ord_1').stripeSessionId).toBe('cs_from_tx');
   });
 
   testReturns404WhenEventNotFound(GET, makeRequest, ROUTE_PARAMS);

@@ -14,6 +14,9 @@
  * include glob does not pick this up as a test suite of its own.
  */
 
+import { sql, type SQL } from 'drizzle-orm';
+import { PgDialect } from 'drizzle-orm/pg-core';
+
 export interface MockInsertCall {
   table: string;
   values: Record<string, unknown>;
@@ -32,9 +35,25 @@ export interface MockUpdateCall {
   where?: unknown;
 }
 
+export interface MockSelectCall {
+  table: string;
+  /** The condition object passed to `.where(...)` — render it with {@link renderWhere}. */
+  where?: unknown;
+}
+
 export interface MockDbCallState {
   insertCalls: MockInsertCall[];
   updateCalls: MockUpdateCall[];
+  /** Opt-in: when present, every `select().from(table).where(cond)` is recorded here (#2176). */
+  selectCalls?: MockSelectCall[];
+}
+
+/**
+ * Render a Drizzle `.where(...)` condition (built from REAL schema columns) to its SQL text + bind
+ * params, so a test can assert which columns a query actually filters on.
+ */
+export function renderWhere(cond: unknown): { sql: string; params: unknown[] } {
+  return new PgDialect().sqlToQuery(sql`${cond as SQL}`);
 }
 
 /** Read the `__table` tag every mock table object in these suites carries. */
@@ -77,7 +96,12 @@ export function createMockDb(
     };
   }
   function fromClauseFor() {
-    return (table: unknown) => ({ where: (_cond?: unknown) => whereClauseFor(table) });
+    return (table: unknown) => ({
+      where: (cond?: unknown) => {
+        state.selectCalls?.push({ table: tableTag(table), where: cond });
+        return whereClauseFor(table);
+      },
+    });
   }
   function select(_proj?: unknown) {
     return { from: fromClauseFor() };
