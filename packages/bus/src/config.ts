@@ -357,6 +357,12 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     { type: 'vault-hot-reload', config: {}, enabled: true, await: true },
     { type: 'emit', config: {}, enabled: true },
   ],
+  // #2445 defect 5 — admin-panel delete (tombstone). Audit trail only; see
+  // this event's docblock in types.ts for why there is no vault-hot-reload
+  // entry here.
+  'vault.secret.deleted': [
+    { type: 'emit', config: {}, enabled: true },
+  ],
   'vault.delegation.revoked': [
     { type: 'emit', config: {}, enabled: true },
   ],
