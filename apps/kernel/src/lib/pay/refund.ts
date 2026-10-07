@@ -1,5 +1,6 @@
 import { db, transactions } from '@/src/db';
 import { and, eq, sql } from 'drizzle-orm';
+import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import type { Logger } from '@imajin/logger';
@@ -27,7 +28,7 @@ async function resolveTransactionViaPaymentIntent(
     const [result] = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.stripeId, session.id))
+      .where(whereExternalRef(session.id))
       .limit(1);
     return result;
   } catch (e) {
@@ -38,8 +39,8 @@ async function resolveTransactionViaPaymentIntent(
 
 /**
  * Find the original transaction for a refund request. Pay stores the
- * checkout session ID (cs_xxx) as `stripeId`, but events tickets store the
- * payment intent ID (pi_xxx) — try `stripeId` first, then fall back to
+ * checkout session ID (cs_xxx) as `externalRef`, but events tickets store the
+ * payment intent ID (pi_xxx) — try `externalRef` first, then fall back to
  * resolving the payment intent to its session via the Stripe API.
  */
 export async function resolveOriginalTransaction(
@@ -49,7 +50,7 @@ export async function resolveOriginalTransaction(
   const [directMatch] = await db
     .select()
     .from(transactions)
-    .where(eq(transactions.stripeId, paymentId))
+    .where(whereExternalRef(paymentId))
     .limit(1);
   if (directMatch) return directMatch;
 
@@ -160,7 +161,7 @@ export async function applyRefundLedgerUpdates(params: {
     sourceKind: 'receipt',
     status: 'completed',
     source: 'fiat',
-    stripeId: refundStripeId,
+    ...externalRefColumns(refundStripeId),
     metadata: {
       originalTxId: originalTx.id,
       originalStripeId: paymentId,
@@ -176,7 +177,7 @@ export async function applyRefundLedgerUpdates(params: {
 /**
  * Reverse settlement entries (host share + platform fee) linked to the
  * checkout transaction. Settlement transactions link back via
- * `metadata.stripeSessionId` matching the checkout's `stripeId`. Each entry
+ * `metadata.stripeSessionId` matching the checkout's `externalRef`. Each entry
  * is wound back proportionally by `requestedRefundDollars / txAmountDollars`
  * so that N per-ticket refunds each reclaim their fair share without
  * over-reversing.
@@ -189,7 +190,7 @@ export async function reverseSettlementEntries(params: {
   reason?: string;
 }): Promise<void> {
   const { originalTx, requestedRefundDollars, txAmountDollars, isFullRefund, reason } = params;
-  const checkoutStripeId = originalTx.stripeId;
+  const checkoutStripeId = originalTx.externalRef;
   if (!checkoutStripeId) return;
 
   const settlementTxs = await db

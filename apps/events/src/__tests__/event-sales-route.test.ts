@@ -46,7 +46,7 @@ const ORDER_ROW = {
   transaction_id: 'tx_1',
   tx_amount: 5000,
   tx_status: 'succeeded',
-  tx_stripe_id: 'cs_1',
+  tx_external_ref: 'cs_1',
   tx_metadata: {},
 };
 

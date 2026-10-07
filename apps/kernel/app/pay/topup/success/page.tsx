@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@imajin/auth';
 import { buildPublicUrl } from '@imajin/config';
 import { db, transactions } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { whereExternalRef } from '@/src/lib/pay/external-ref';
 import Link from 'next/link';
 
 interface SuccessPageProps {
@@ -27,7 +27,7 @@ export default async function TopupSuccessPage(props: Readonly<SuccessPageProps>
     const [tx] = await db
       .select()
       .from(transactions)
-      .where(eq(transactions.stripeId, stripeSessionId))
+      .where(whereExternalRef(stripeSessionId))
       .limit(1);
 
     if (tx) {

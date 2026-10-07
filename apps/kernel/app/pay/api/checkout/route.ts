@@ -27,6 +27,7 @@ import { getPaymentService } from '@/src/lib/pay/pay';
 import { resolveActingDid } from '@imajin/auth';
 import type { CheckoutRequest, FiatCurrency } from '@/src/lib/pay';
 import { db, transactions } from '@/src/db';
+import { externalRefColumns } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
@@ -120,7 +121,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       amount: (totalAmount / 100).toString(), // Convert cents to dollars
       currency: body.currency || 'CAD',
       status: 'pending',
-      stripeId: result.id,
+      ...externalRefColumns(result.id),
       metadata: body.metadata,
       fairManifest: body.fairManifest || null,
     });
