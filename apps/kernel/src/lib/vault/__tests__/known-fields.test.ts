@@ -14,7 +14,7 @@ import { ATTESTATION_INTERNAL_API_KEY_PURPOSE } from '@/src/lib/auth/require-int
 import { PEPPER_PURPOSE } from '@/src/lib/auth/foreign-principal-stub';
 import { VAPID_KEYS_PURPOSE } from '@/src/lib/notify/vapid';
 import { internalSecretField } from '../internal-secret';
-import { isInternalSecretField } from '../internal-secret-field';
+import { isInternalSecretField, isValidVaultFieldName, parseVaultFieldName } from '../field-grammar';
 import { KNOWN_VAULT_FIELDS } from '../known-fields';
 
 describe('KNOWN_VAULT_FIELDS', () => {
@@ -48,6 +48,14 @@ describe('KNOWN_VAULT_FIELDS', () => {
   it('has unique names', () => {
     const names = KNOWN_VAULT_FIELDS.map((f) => f.name);
     expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('names every entry with a field that parses under the vault field grammar', () => {
+    for (const field of KNOWN_VAULT_FIELDS) {
+      expect(isValidVaultFieldName(field.name)).toBe(true);
+      const parsed = parseVaultFieldName(field.name);
+      expect(parsed.ok && parsed.value.field).toBe(field.name);
+    }
   });
 
   it('keeps namespace consistent with the field name', () => {
