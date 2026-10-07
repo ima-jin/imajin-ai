@@ -225,6 +225,7 @@ describe('Webhook checkout.session.completed with .fair taxes[] (#2435)', () => 
     });
     // Must never carry the checkout session id: the webhook's idempotency lookup keys on it.
     expect(taxTx!.values.stripeId).toBeUndefined();
+    expect(taxTx!.values.externalRef).toBeUndefined();
     expect(taxTx!.values.metadata).toMatchObject({
       tax: true,
       jurisdiction: 'CA-ON',

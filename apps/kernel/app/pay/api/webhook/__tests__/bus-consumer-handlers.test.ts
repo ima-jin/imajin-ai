@@ -19,7 +19,8 @@ interface TxFixture {
 const state = vi.hoisted(() => ({
   txRow: undefined as TxFixture | undefined,
   insertCalls: [] as Array<{ table: string; values: Record<string, unknown>; conflict?: unknown }>,
-  updateCalls: [] as Array<{ table: string; values: Record<string, unknown> }>,
+  updateCalls: [] as Array<{ table: string; values: Record<string, unknown>; where?: unknown }>,
+  selectCalls: [] as Array<{ table: string; where?: unknown }>,
   idCounter: 0,
   constructEventMock: vi.fn(),
 }));
@@ -27,7 +28,9 @@ const state = vi.hoisted(() => ({
 vi.mock('@/src/db', async () => {
   const { createMockDb, tableTag } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
 
-  const transactions = { __table: 'transactions' };
+  // The REAL pay.transactions columns (tagged for the mock db), so the `.where(...)` conditions the
+  // handlers build can be rendered and asserted on (#2176: they must filter on rail + external_ref).
+  const transactions = Object.assign((await import('@/src/db/schemas/pay')).transactions, { __table: 'transactions' });
   const feeLedger = { __table: 'feeLedger' };
 
   function limitResultFor(table: unknown) {
@@ -55,6 +58,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
 }));
 
 import { POST } from '../route';
+import { renderWhere } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 
 type NextRequestLike = Parameters<typeof POST>[0];
 
@@ -103,6 +107,7 @@ beforeEach(() => {
   state.txRow = undefined;
   state.insertCalls = [];
   state.updateCalls = [];
+  state.selectCalls = [];
   state.idCounter = 0;
   fetchMock.mockResolvedValue({ ok: true, text: () => Promise.resolve('') });
   vi.stubGlobal('fetch', fetchMock);
@@ -110,6 +115,52 @@ beforeEach(() => {
   process.env.PLATFORM_DID = 'did:imajin:platform';
   process.env.COFFEE_SERVICE_URL = 'http://coffee.test';
   process.env.COFFEE_WEBHOOK_SECRET = 'coffee_secret';
+});
+
+/** Assert a recorded `.where(...)` filters on the Stripe rail's `external_ref` — never the deprecated `stripe_id` alias. */
+function expectKeyedOnExternalRef(where: unknown, ref: string): void {
+  const rendered = renderWhere(where);
+  expect(rendered.sql).toContain('"external_ref"');
+  expect(rendered.sql).not.toContain('stripe_id');
+  expect(rendered.params).toEqual(['stripe', ref]);
+}
+
+describe('settlement + idempotency read external_ref (#2176)', () => {
+  it('payment_intent.succeeded: the idempotency lookup and the status update key on external_ref', async () => {
+    await deliver('payment_intent.succeeded', coffeeIntent);
+
+    const lookup = state.selectCalls.find((c) => c.table === 'transactions');
+    expectKeyedOnExternalRef(lookup?.where, 'pi_coffee');
+    const update = state.updateCalls.find((c) => c.table === 'transactions');
+    expectKeyedOnExternalRef(update?.where, 'pi_coffee');
+  });
+
+  it('payment_intent.succeeded: an already-completed row (found by external_ref) is skipped, not re-settled', async () => {
+    state.txRow = { id: 'tx_done', status: 'completed' };
+
+    await deliver('payment_intent.succeeded', coffeeIntent);
+
+    expect(state.updateCalls).toHaveLength(0);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('payment_intent.payment_failed: the failure update keys on external_ref', async () => {
+    await deliver('payment_intent.payment_failed', coffeeIntent);
+
+    const update = state.updateCalls.find((c) => c.table === 'transactions');
+    expect(update?.values).toEqual({ status: 'failed' });
+    expectKeyedOnExternalRef(update?.where, 'pi_coffee');
+  });
+
+  it('checkout.session.completed: the idempotency lookup, the completion update and the re-read all key on external_ref', async () => {
+    await deliver('checkout.session.completed', { id: 'cs_plain', metadata: {}, amount_total: 1000, currency: 'cad' });
+
+    const lookups = state.selectCalls.filter((c) => c.table === 'transactions');
+    expect(lookups.length).toBeGreaterThanOrEqual(2);
+    for (const lookup of lookups) expectKeyedOnExternalRef(lookup.where, 'cs_plain');
+    const update = state.updateCalls.find((c) => c.table === 'transactions' && c.values.status === 'completed');
+    expectKeyedOnExternalRef(update?.where, 'cs_plain');
+  });
 });
 
 describe('payment_intent.succeeded (relocated handler)', () => {
@@ -251,6 +302,8 @@ describe('customer.subscription.* (relocated handlers)', () => {
       currency: 'CAD',
       status: 'completed',
       stripeId: 'sub_1',
+      externalRef: 'sub_1',
+      rail: 'stripe',
     });
   });
 
@@ -336,6 +389,8 @@ describe('invoice.paid (relocated handler)', () => {
       currency: 'CAD',
       status: 'completed',
       stripeId: 'in_1',
+      externalRef: 'in_1',
+      rail: 'stripe',
       metadata: expect.objectContaining({ subscription_id: 'sub_9', invoice_number: 'INV-1' }),
     });
     expect(coffeePayload()).toMatchObject({ type: 'subscription.renewed', invoiceId: 'in_1', amount: 1500, subscriptionId: 'sub_9' });

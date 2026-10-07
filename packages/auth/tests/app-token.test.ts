@@ -21,29 +21,29 @@ beforeEach(() => {
 describe('verifyAppToken — success (#1069 Phase 1)', () => {
   it('resolves sub/aud/scopes on a 200 response', async () => {
     global.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ sub: 'did:imajin:user', aud: 'coffee.imajin.ai', scopes: ['profile:read'] }), {
+      new Response(JSON.stringify({ sub: 'did:imajin:user', aud: 'coffee', scopes: ['profile:read'] }), {
         status: 200,
       })
     ) as unknown as typeof fetch;
 
-    const result = await verifyAppToken('some-token', { aud: 'coffee.imajin.ai' });
+    const result = await verifyAppToken('some-token', { aud: 'coffee' });
 
-    expect(result).toEqual({ sub: 'did:imajin:user', aud: 'coffee.imajin.ai', scopes: ['profile:read'] });
+    expect(result).toEqual({ sub: 'did:imajin:user', aud: 'coffee', scopes: ['profile:read'] });
   });
 
   it('posts the token and aud to the kernel verify endpoint', async () => {
     const fetchMock = vi.fn(async () =>
-      new Response(JSON.stringify({ sub: 'did:imajin:user', aud: 'coffee.imajin.ai', scopes: [] }), { status: 200 })
+      new Response(JSON.stringify({ sub: 'did:imajin:user', aud: 'coffee', scopes: [] }), { status: 200 })
     );
     global.fetch = fetchMock as unknown as typeof fetch;
 
-    await verifyAppToken('some-token', { aud: 'coffee.imajin.ai' });
+    await verifyAppToken('some-token', { aud: 'coffee' });
 
     expect(fetchMock).toHaveBeenCalledWith(
       `${AUTH_SERVICE_URL}/api/tokens/app/verify`,
       expect.objectContaining({
         method: 'POST',
-        body: JSON.stringify({ token: 'some-token', aud: 'coffee.imajin.ai' }),
+        body: JSON.stringify({ token: 'some-token', aud: 'coffee' }),
       })
     );
   });
@@ -53,7 +53,7 @@ describe('verifyAppToken — failure modes (#1069 Phase 1)', () => {
   it('returns null on a non-2xx response (e.g. audience mismatch, expired)', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ error: 'nope' }), { status: 401 })) as unknown as typeof fetch;
 
-    const result = await verifyAppToken('some-token', { aud: 'coffee.imajin.ai' });
+    const result = await verifyAppToken('some-token', { aud: 'coffee' });
 
     expect(result).toBeNull();
   });
@@ -63,7 +63,7 @@ describe('verifyAppToken — failure modes (#1069 Phase 1)', () => {
       throw new Error('network down');
     }) as unknown as typeof fetch;
 
-    const result = await verifyAppToken('some-token', { aud: 'coffee.imajin.ai' });
+    const result = await verifyAppToken('some-token', { aud: 'coffee' });
 
     expect(result).toBeNull();
   });
@@ -72,9 +72,22 @@ describe('verifyAppToken — failure modes (#1069 Phase 1)', () => {
     delete process.env.AUTH_SERVICE_URL;
     global.fetch = vi.fn() as unknown as typeof fetch;
 
-    const result = await verifyAppToken('some-token', { aud: 'coffee.imajin.ai' });
+    const result = await verifyAppToken('some-token', { aud: 'coffee' });
 
     expect(result).toBeNull();
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it.each(['dev-jin.imajin.ai', 'jin.imajin.ai', 'https://jin.imajin.ai'])(
+    'refuses a host audience %s without calling the kernel (#2706)',
+    async (host) => {
+      const fetchMock = vi.fn();
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      const result = await verifyAppToken('some-token', { aud: host });
+
+      expect(result).toBeNull();
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
 });

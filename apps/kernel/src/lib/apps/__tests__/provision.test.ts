@@ -5,6 +5,8 @@
  * mid-step (naming the failed step, for every step), retry-resumes, and a
  * no-raw-key-leak contract test.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const PRIVATE_KEY_PLAINTEXT = 'ed25519-secret-do-not-leak-1234567890abcdef';
@@ -73,7 +75,11 @@ vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: v
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => logMock }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
-vi.mock('@imajin/auth', () => ({ emitAttestation: emitAttestationMock }));
+vi.mock('@imajin/auth', async () => ({
+  emitAttestation: emitAttestationMock,
+  // The real helper, not a copy — a duplicated regex here would hide drift from the provision pattern.
+  isAppAudienceSlug: (await import('../../../../../../packages/auth/src/app-audience')).isAppAudienceSlug,
+}));
 vi.mock('nanoid', () => ({ nanoid: () => 'testnanoid1234567' }));
 
 vi.mock('drizzle-orm', () => ({
@@ -196,6 +202,8 @@ vi.mock('../signing-key-claims', () => ({
 }));
 
 import { runAppProvision, getAppProvisionStatus } from '../provision';
+import { isAppAudienceSlug } from '@imajin/auth';
+import { SLUG_PATTERN as PROVISION_SLUG_PATTERN } from '@/app/jin/provision-app-validation';
 
 const CLAIM_CODE = 'claim_test_code_0000000000000000';
 const APP_SELF_GRANT_ID = 'vdg_appself_1';
@@ -248,6 +256,7 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
   const declared = {
     providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+    emittableEvents: ['tip.granted', 'tip.sent'],
   };
 
   it('registers the manifest declarations when they match the approved list, validated against the slug', async () => {
@@ -257,17 +266,38 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
 
     expect(outcome.status).toBe('succeeded');
     expect(validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: 'dykil' }));
+    // #2674: requested_scopes records the WHOLE approved list — the app's own scopes plus the
+    // approved dependency scopes — so it can serve as the ceiling mint and PATCH hold the app to.
     expect([...registryAppsStore.values()][0]).toMatchObject({
       providesScopes: ['dykil:read', 'dykil:write'],
-      requestedScopes: ['dykil:read', 'dykil:write'],
+      requestedScopes: ['dykil:read', 'dykil:write', 'media:read'],
       dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['tip.granted', 'tip.sent'],
     });
+  });
+
+  it('records no scope beyond the approved list in requested_scopes (#2674)', async () => {
+    const approved = {
+      providesScopes: ['dykil:read'],
+      dependsOn: [
+        { aud: 'jin.imajin.ai', scopes: ['media:read'] },
+        { aud: 'events.imajin.ai', scopes: ['media:read', 'events:read'] },
+      ],
+    };
+    fetchAppManifestMock.mockResolvedValue(approved);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: approved });
+
+    expect(outcome.status).toBe('succeeded');
+    // de-duplicated: media:read is listed under two dependencies but recorded once
+    expect([...registryAppsStore.values()][0]?.requestedScopes).toEqual(['dykil:read', 'media:read', 'events:read']);
   });
 
   it('treats a reordered but identical list as the same list', async () => {
     fetchAppManifestMock.mockResolvedValue({
       providesScopes: ['dykil:write', 'dykil:read'],
       dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['tip.sent', 'tip.granted'],
     });
 
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: declared });
@@ -279,7 +309,7 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: null });
 
     expect(outcome.status).toBe('succeeded');
-    expect([...registryAppsStore.values()][0]).toMatchObject({ providesScopes: [], dependsOn: [] });
+    expect([...registryAppsStore.values()][0]).toMatchObject({ providesScopes: [], dependsOn: [], emittableEvents: [] });
   });
 
   it.each([
@@ -287,6 +317,8 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     ['an extra dependency audience', { ...declared, dependsOn: [...declared.dependsOn, { aud: 'events.imajin.ai', scopes: ['events:read'] }] }],
     ['an extra providesScope', { ...declared, providesScopes: [...declared.providesScopes, 'dykil:admin'] }],
     ['a missing providesScope', { ...declared, providesScopes: ['dykil:read'] }],
+    ['an extra emittable event (listing.purchased the operator never saw)', { ...declared, emittableEvents: [...declared.emittableEvents, 'listing.purchased'] }],
+    ['a missing emittable event', { ...declared, emittableEvents: ['tip.granted'] }],
   ])('fails closed at register, writing no row, when the manifest now declares %s', async (_label, drifted) => {
     fetchAppManifestMock.mockResolvedValue(drifted);
 
@@ -311,6 +343,34 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     expect(outcome.status).toBe('failed');
     if (outcome.status !== 'failed') throw new Error('unreachable');
     expect(outcome.failedStep).toBe('register');
+    expect(registryAppsStore.size).toBe(0);
+  });
+
+  it('#2638: a manifest that asks to emit events when none were approved fails closed, writing no row', async () => {
+    fetchAppManifestMock.mockResolvedValue({ emittableEvents: ['tip.granted'] });
+
+    const outcome = await runAppProvision({ slug: 'coffee', displayName: 'coffee', approvedDeclarations: null });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('differ from the list the operator approved');
+    expect(registryAppsStore.size).toBe(0);
+  });
+
+  it.each([
+    ['a wildcard', ['tip.*']],
+    ['an uppercase type', ['Tip.Granted']],
+    ['a non-string entry', [42]],
+  ])('#2638: rejects a manifest whose emittableEvents has %s, writing no row', async (_label, emittableEvents) => {
+    fetchAppManifestMock.mockResolvedValue({ emittableEvents });
+
+    const outcome = await runAppProvision({ slug: 'coffee', displayName: 'coffee', approvedDeclarations: null });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('register');
+    expect(outcome.error).toContain('emittableEvents');
     expect(registryAppsStore.size).toBe(0);
   });
 
@@ -360,6 +420,10 @@ describe('runAppProvision — happy path', () => {
     expect(registryRow?.tier).toBe('third_party');
     expect(registryRow?.status).toBe('active');
     expect(registryRow?.slug).toBe('dykil');
+    // #2706: the audience apps.provision registers is the slug — never a host — so a Bearer
+    // token minted for it verifies at the app with no post-provision registry edit.
+    expect(registryRow?.tokenAudiences).toEqual(['dykil']);
+    expect(isAppAudienceSlug((registryRow?.tokenAudiences as string[])[0])).toBe(true);
     // #2425: no manifest present (fetchAppManifestMock defaults to null) — falls back to defaults.
     expect(registryRow?.icon).toBeNull();
     expect(registryRow?.entryUrl).toBe('/dykil');
@@ -1069,5 +1133,40 @@ describe('runAppProvision — no raw key leak', () => {
     // The private key is only ever handed directly to sealActionsSecret's own
     // argument (asserted separately in the happy-path test) — never anywhere else.
     expect(sealActionsSecretMock).toHaveBeenCalledWith(expect.any(String), 'IMAJIN_APP_PRIVATE_KEY', PRIVATE_KEY_PLAINTEXT);
+  });
+});
+
+describe('provision slug pattern vs audience slug pattern (#2706) — they must not drift', () => {
+  const ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789-';
+
+  /** Every string of length 1..3 over the slug alphabet plus a few out-of-alphabet shapes. */
+  function* candidates(): Generator<string> {
+    let layer = [''];
+    for (let len = 1; len <= 3; len++) {
+      layer = layer.flatMap((prefix) => [...ALPHABET].map((c) => prefix + c));
+      yield* layer;
+    }
+    yield 'a'.padEnd(39, 'b');
+    yield 'a'.padEnd(40, 'b');
+    yield* ['app-', 'a--b', 'My-App', 'my_app', 'dev-jin.imajin.ai', 'jin.imajin.ai:443', 'https://x/y', ''];
+  }
+
+  it('every slug the provision pattern accepts is a valid token audience (and vice versa)', () => {
+    let accepted = 0;
+    for (const candidate of candidates()) {
+      const provisionable = PROVISION_SLUG_PATTERN.test(candidate);
+      expect(isAppAudienceSlug(candidate), JSON.stringify(candidate)).toBe(provisionable);
+      if (provisionable) accepted += 1;
+    }
+    expect(accepted).toBeGreaterThan(1000);
+  });
+
+  it("the /jin form's pattern is the provision route's pattern", () => {
+    const routeSource = readFileSync(
+      resolve(__dirname, '../../../../app/api/apps/provision/route.ts'),
+      'utf8',
+    );
+    const match = /const SLUG_PATTERN = (\/.*\/);/.exec(routeSource);
+    expect(match?.[1]).toBe(String(PROVISION_SLUG_PATTERN));
   });
 });

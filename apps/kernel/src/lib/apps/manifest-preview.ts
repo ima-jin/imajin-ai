@@ -2,7 +2,7 @@
  * Proposal-time read of an app's scope declarations (#2663).
  *
  * `POST /api/apps/provision` calls this BEFORE raising the proposal, so the
- * `providesScopes` / `dependsOn` in `imajin.app.json` are in the card's `detail`
+ * `providesScopes` / `dependsOn` / `emittableEvents` in `imajin.app.json` are in the card's `detail`
  * (and in the hash the operator signs) when the operator approves — the ruling
  * is that the operator sees and approves that list on the apps.provision card.
  *
@@ -19,6 +19,7 @@
 import { createLogger } from '@imajin/logger';
 import { fetchAppManifest, tryGetInstallationToken, type AppManifest } from '@/src/lib/github/org-provisioning';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
+import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import type { ManifestDeclarations } from './declarations-approval';
 
 const log = createLogger('kernel:apps:manifest-preview');
@@ -49,5 +50,13 @@ export async function previewManifestDeclarations(slug: string): Promise<Manifes
     slug,
   });
   if ('error' in declarations) return { error: declarations.error };
-  return { ok: { providesScopes: declarations.ok.providesScopes, dependsOn: declarations.ok.dependsOn } };
+  const emittable = validateEmittableEvents(manifest.emittableEvents);
+  if ('error' in emittable) return { error: emittable.error };
+  return {
+    ok: {
+      providesScopes: declarations.ok.providesScopes,
+      dependsOn: declarations.ok.dependsOn,
+      emittableEvents: emittable.ok,
+    },
+  };
 }

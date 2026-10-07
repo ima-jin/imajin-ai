@@ -63,6 +63,8 @@ vi.mock('@/src/db', async () => {
     '0174_profile_etransfer_email.sql',
     // #2656: the drizzle schema now selects `paid_by_did` on every read of the request.
     '0175_pay_payment_request_paid_by_did.sql',
+    // #2176: the drizzle schema now selects `rail` / `external_ref` on every read of pay.transactions.
+    '0178_pay_transactions_rail_external_ref.sql',
   ]) {
     await client.exec(h.readMigration(name));
   }

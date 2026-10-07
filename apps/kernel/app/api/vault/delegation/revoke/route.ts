@@ -6,7 +6,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
+import { isInternalSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -46,11 +46,12 @@ export async function POST(request: NextRequest) {
   }
 
   const { field } = body;
-  if (typeof field !== 'string' || field.trim().length === 0) {
-    return NextResponse.json({ error: 'field is required' }, { status: 400 });
+  const parsedField = parseVaultFieldName(field);
+  if (!parsedField.ok) {
+    return NextResponse.json({ error: parsedField.message }, { status: 400 });
   }
 
-  const trimmedField = field.trim();
+  const trimmedField = parsedField.value.field;
 
   // #2452 — fail-closed, server-side: revoking the node's grant on an
   // internal-secret:* field would strand the kernel from its own secret.

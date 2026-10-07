@@ -27,7 +27,8 @@
  * "not allowed".
  *
  * #2082: before POSTing a decision, this component signs `canonicalize({
- * contentHash, decidedAt, decision})` with the operator's OWN key — the
+ * contentHash, decidedAt, decision[, mode]})` (#2693: the chosen option
+ * — card letter / allow-once / TTL — is covered too) with the operator's OWN key — the
  * same Ed25519 keypair already held client-side in `localStorage.
  * imajin_keypair` for login/registration (see `../auth/login/components/
  * KeyAuthTab.tsx`, the pattern this mirrors: a dynamic `@noble/ed25519`
@@ -39,6 +40,11 @@
  * cookie session), the decision POSTs without `operatorSignature`; the
  * kernel accepts that unless `OPERATOR_COUNTERSIGN_REQUIRED` is on, in
  * which case the resulting 400 surfaces through the existing error flash.
+ *
+ * #2323: `source: 'decision'` (DecisionCard v1, `kind: 'decision:card'`)
+ * renders its a/b/c… options as countersign buttons through the same
+ * `renderPendingActions` hook (see `./decision-card-detail.tsx`); the chosen
+ * option letter rides in the decision POST's `mode`.
  *
  * #2359: the confirm rail is self-only. When `GET /jin/api/operator-
  * approvals` reports an `actAs` context (the acting DID differs from the
@@ -53,6 +59,9 @@ import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
 import { approvalCardAnchorId, APPROVALS_REFRESH_EVENT } from './approval-anchor';
 import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
+import { proposeClaimReissue } from './provision-reissue';
+import { DecisionCardDetail, DecisionCardOptions } from './decision-card-detail';
+import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decisions/view';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 
@@ -70,14 +79,22 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 /**
- * Canonical JSON for exactly `{contentHash, decidedAt, decision}` — sorted
- * alphabetically to match `@imajin/auth`'s `canonicalize` (contentHash <
- * decidedAt < decision), inlined rather than imported so this client
- * bundle never pulls in the server-oriented `@imajin/auth` package (see
- * module docs above).
+ * Canonical JSON for `{contentHash, decidedAt, decision}` plus `mode` when
+ * the decision carries one (#2693) — sorted alphabetically to match
+ * `@imajin/auth`'s `canonicalize` (contentHash < decidedAt < decision <
+ * mode), inlined rather than imported so this client bundle never pulls in
+ * the server-oriented `@imajin/auth` package (see module docs above).
+ * `mode` is left off entirely when absent, so a mode-less decision signs
+ * exactly what it did before #2693.
  */
-function canonicalizeCountersignFields(fields: { contentHash: string; decidedAt: string; decision: string }): string {
-  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}}`;
+export function canonicalizeCountersignFields(fields: {
+  contentHash: string;
+  decidedAt: string;
+  decision: string;
+  mode?: string;
+}): string {
+  const modePart = fields.mode === undefined ? '' : `,"mode":${JSON.stringify(fields.mode)}`;
+  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}${modePart}}`;
 }
 
 interface OperatorSignature {
@@ -87,15 +104,18 @@ interface OperatorSignature {
 }
 
 /**
- * Sign `{contentHash, decidedAt, decision}` with the operator's local
- * keypair, if one is present. Returns `null` (never throws) when there's
- * no local keypair or signing fails for any reason — the caller falls
- * back to submitting without `operatorSignature`.
+ * Sign `{contentHash, decidedAt, decision[, mode]}` with the operator's
+ * local keypair, if one is present. Returns `null` (never throws) when
+ * there's no local keypair or signing fails for any reason — the caller
+ * falls back to submitting without `operatorSignature`. `mode` is the
+ * chosen option (card letter / allow-once / TTL, #2693): picking it IS the
+ * signing event, so it is part of what's signed.
  */
 async function signOperatorDecision(fields: {
   contentHash: string;
   decidedAt: string;
   decision: string;
+  mode?: string;
 }): Promise<OperatorSignature | null> {
   if (typeof window === 'undefined') return null;
   const stored = localStorage.getItem('imajin_keypair');
@@ -142,7 +162,7 @@ interface OperatorApprovalCard {
   /** sha256 hex digest the operator's countersignature covers (#2082) — always present. */
   contentHash: string;
   status: ApprovalStatus;
-  decision: { decidedBy: string; decidedAt: string; reason?: string } | null;
+  decision: { decidedBy: string; decidedAt: string; reason?: string; mode?: string } | null;
   /** Post-exec outcome follow-up (#2221 exec.command exitCode/durationMs/outputHash; #2293 github approvedUntil/ownerAuthorization) — null until decided. */
   outcome: Record<string, unknown> | null;
   appliedAt: string | null;
@@ -199,6 +219,13 @@ interface DecisionLabels {
 interface SourceRenderer {
   /** Static for most sources; a function when the label depends on the approval itself (e.g. vault:revoke's tier, #2247). */
   decisionLabels: DecisionLabels | ((approval: OperatorApprovalCard) => DecisionLabels);
+  /**
+   * Optional (#2693): the `mode` the default two buttons submit with each
+   * decision, so the operator's countersignature covers WHICH choice they
+   * made (exec's `allow-once` / `deny`), not just approve/reject. Omitted
+   * for sources whose decisions carry no mode.
+   */
+  decisionModes?: { approve?: string; reject?: string };
   renderDetail: (approval: OperatorApprovalCard) => ReactNode;
   /**
    * Optional (#2293): when present, REPLACES the default two-button
@@ -351,6 +378,10 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
 
 const GATEWAY_EXEC_RENDERER: SourceRenderer = {
   decisionLabels: { approve: 'Allow once', reject: 'Deny' },
+  // #2693: the kernel accepts exactly these two modes for this kind
+  // (`validateExecCommandDecisionMode`); sending them makes the signed
+  // payload say "allow-once" / "deny" rather than leave it implied.
+  decisionModes: { approve: 'allow-once', reject: 'deny' },
   renderDetail: (approval) => <ExecCommandDetailView approval={approval} />,
 };
 
@@ -479,11 +510,25 @@ const ACCESS_RENDERER: SourceRenderer = {
 // runs the create-repo/mint/register/seal pipeline server-side; the
 // one-time app-signing-key claim-code reveal is handled by `handleDecide`
 // below (same pattern as `access`'s bearer reveal), never by this renderer.
+/** #2707: an `apps:provision` proposal raised with `reissueClaim: true` (see `POST /api/apps/provision`). */
+function isClaimReissue(approval: OperatorApprovalCard): boolean {
+  return approval.detail?.reissueClaim === true;
+}
+
 function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
   const { detail } = approval;
   const slug = detailString(detail, 'slug', '\u2014');
   const displayName = detailString(detail, 'displayName', '\u2014');
   const template = detailString(detail, 'template', 'ima-jin/imajin-app-template');
+  if (isClaimReissue(approval)) {
+    return (
+      <div className="space-y-1 text-sm text-gray-200">
+        <p>Reissue the claim code for <span className="font-medium text-gray-100">{displayName}</span>.</p>
+        <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
+        <p className="text-xs text-gray-500">Issues a fresh one-time claim code and expires any unclaimed one. No repo, key or registry row is re-created.</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-1 text-sm text-gray-200">
       <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
@@ -496,7 +541,7 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
 }
 
 const APPS_RENDERER: SourceRenderer = {
-  decisionLabels: { approve: 'Approve & provision', reject: 'Deny' },
+  decisionLabels: (approval) => ({ approve: isClaimReissue(approval) ? 'Approve & reissue' : 'Approve & provision', reject: 'Deny' }),
   renderDetail: renderAppsProvisionDetail,
 };
 
@@ -593,7 +638,43 @@ const GITHUB_RENDERER: SourceRenderer = {
   renderPendingActions: renderGithubPendingActions,
 };
 
+// `decision` (#2323): DecisionCard v1 (`kind: 'decision:card'`, emitted by
+// `src/lib/decisions/emit.ts`). A multi-option call, so approve/reject is the
+// wrong verb: each a/b/c… option is a countersign button (`renderPendingActions`,
+// the #2293 hook) that goes out as the existing `approve` decision with the
+// option letter as its `mode` — same route, same signature, no new table.
+// "None of these" is the unchanged `reject`. Rows whose `detail` isn't a
+// usable card fall back to the generic summary body and only offer
+// "None of these", since there is no honest option letter to sign.
+function renderDecisionDetail(approval: OperatorApprovalCard): ReactNode {
+  const view = parseDecisionCardView(approval.detail);
+  if (!view) return renderDefaultDetail(approval);
+  return <DecisionCardDetail view={view} chosenLetter={approval.decision?.mode ?? null} />;
+}
+
+function renderDecisionPendingActions(
+  approval: OperatorApprovalCard,
+  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+  busy: boolean,
+): ReactNode {
+  return (
+    <DecisionCardOptions
+      view={parseDecisionCardView(approval.detail)}
+      busy={busy}
+      onChoose={({ decision, mode }) => onDecide(approval, decision, mode)}
+      onNone={() => onDecide(approval, 'reject')}
+    />
+  );
+}
+
+const DECISION_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Choose', reject: 'None of these' },
+  renderDetail: renderDecisionDetail,
+  renderPendingActions: renderDecisionPendingActions,
+};
+
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
+  [DECISION_APPROVAL_SOURCE]: DECISION_RENDERER,
   'skill-workshop': SKILL_WORKSHOP_RENDERER,
   'gateway-exec': GATEWAY_EXEC_RENDERER,
   vault: VAULT_RENDERER,
@@ -752,6 +833,126 @@ function SealSkippedBanner({
   );
 }
 
+// ── claim code NOT delivered (#2707) ────────────────────────────────────────
+// The claim code is never persisted, so an approve that doesn't hand it to the
+// banner above leaves the operator with nothing to paste. Before #2707 every
+// such outcome was invisible: `executionError` was never read, a dropped
+// response threw out of `handleDecide` unhandled, and the flash always said
+// "Proposal approve." in green. This notice makes the miss loud and — when the
+// pipeline may well have succeeded — offers a one-click reissue (the existing
+// `reissueClaim: true` proposal; no devtools).
+
+interface ClaimCodeNotice {
+  proposalId: string;
+  slug: string;
+  displayName: string;
+  /** `execution-failed`: the server said the pipeline did not run/finish. `not-delivered`: approved, but the response never carried a code. */
+  reason: 'execution-failed' | 'not-delivered';
+  message: string;
+}
+
+/** The decision route's response body — `data` is the ONE-TIME reveal payload (#2252/#2411), `executionError` the bridge's failure (#2247). */
+interface DecisionResponseBody {
+  executionError?: string;
+  data?: { bearer?: string; expiresAt?: string; claimCode?: string; sealSkipped?: boolean };
+}
+
+/**
+ * #2707: the notice owed to the operator when an approved `apps:provision` ends
+ * without a claim code in hand. `body` is `null` when the response never arrived.
+ * Returns `null` for every other decision/source, and when a code WAS delivered.
+ */
+function claimCodeNoticeFor(
+  approval: OperatorApprovalCard,
+  decision: DecisionAction,
+  body: DecisionResponseBody | null,
+): ClaimCodeNotice | null {
+  if (decision !== 'approve' || approval.source !== 'apps' || approval.kind !== 'apps:provision') return null;
+  if (body?.data?.claimCode) return null;
+  const base = {
+    proposalId: approval.proposalId,
+    slug: detailString(approval.detail, 'slug', ''),
+    displayName: detailString(approval.detail, 'displayName', approval.summary),
+  };
+  if (body?.executionError) {
+    return { ...base, reason: 'execution-failed', message: `it was approved but did not execute: ${body.executionError}` };
+  }
+  const message = body
+    ? 'the server approved the proposal but returned no claim code.'
+    : 'the response was lost before a claim code reached this page. Provisioning may have completed; the code is never stored, so it cannot be recovered \u2014 reissue one.';
+  return { ...base, reason: 'not-delivered', message };
+}
+
+/** Upstream-gateway failures: the request died in a proxy, so the server-side run may still have completed. */
+const GATEWAY_FAILURE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/** #2707: the lost-code notice for an apps:provision approve answered with a 502/503/504; `null` for any other status/decision/source. */
+function gatewayLostNoticeFor(approval: OperatorApprovalCard, decision: DecisionAction, status: number): ClaimCodeNotice | null {
+  return GATEWAY_FAILURE_STATUSES.has(status) ? claimCodeNoticeFor(approval, decision, null) : null;
+}
+
+interface DecisionReveals {
+  bearer: RevealedBearer | null;
+  claimCode: RevealedClaimCode | null;
+  sealSkipped: SealSkipped | null;
+  claimNotice: ClaimCodeNotice | null;
+}
+
+/**
+ * What an approve response owes the operator, derived purely from the response:
+ * the one-time bearer (#2252) / claim code (#2411, `slug` riding along from
+ * `approval.detail` so the banner can derive the app's own /claim URL, #2427),
+ * the seal-skipped notice (#2415), and — when an apps:provision approve ends
+ * with no code — the #2707 "no claim code" notice.
+ */
+function revealsFromDecision(approval: OperatorApprovalCard, decision: DecisionAction, body: DecisionResponseBody): DecisionReveals {
+  const none: DecisionReveals = { bearer: null, claimCode: null, sealSkipped: null, claimNotice: null };
+  if (decision !== 'approve') return none;
+  const { proposalId } = approval;
+  const displayName = detailString(approval.detail, 'displayName', approval.summary);
+  const { data } = body;
+  return {
+    bearer: data?.bearer
+      ? { proposalId, clientLabel: detailString(approval.detail, 'clientLabel', approval.summary), bearer: data.bearer, expiresAt: data.expiresAt ?? '' }
+      : null,
+    claimCode: data?.claimCode
+      ? { proposalId, displayName, claimCode: data.claimCode, slug: detailString(approval.detail, 'slug', '') }
+      : null,
+    sealSkipped: data?.sealSkipped ? { proposalId, displayName } : null,
+    claimNotice: claimCodeNoticeFor(approval, decision, body),
+  };
+}
+
+function ClaimCodeNoticeBanner({
+  notice,
+  busy,
+  onReissue,
+  onDismiss,
+}: Readonly<{ notice: ClaimCodeNotice; busy: boolean; onReissue: () => void; onDismiss: () => void }>) {
+  return (
+    <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 p-4 space-y-2" data-testid="claim-code-missing" role="alert">
+      <p className="text-sm text-red-200 font-medium">
+        No claim code for &quot;{notice.displayName}&quot; — {notice.message}
+      </p>
+      <div className="flex items-center gap-2">
+        {notice.reason === 'not-delivered' && notice.slug && (
+          <button
+            type="button"
+            onClick={onReissue}
+            disabled={busy}
+            className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60 disabled:opacity-40"
+          >
+            {busy ? '…' : 'Reissue claim code'}
+          </button>
+        )}
+        <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Replaces every decision control on a card while the session is under
  * act-as (#2359). Says WHY the control is gone rather than silently
@@ -832,7 +1033,7 @@ function CardActions({
     <div className="flex items-center gap-2 pt-1">
       <button
         type="button"
-        onClick={() => onDecide(approval, 'reject')}
+        onClick={() => onDecide(approval, 'reject', renderer.decisionModes?.reject)}
         disabled={busy}
         className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
@@ -840,7 +1041,7 @@ function CardActions({
       </button>
       <button
         type="button"
-        onClick={() => onDecide(approval, 'approve')}
+        onClick={() => onDecide(approval, 'approve', renderer.decisionModes?.approve)}
         disabled={busy}
         ref={autoFocusRef}
         className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
@@ -958,6 +1159,8 @@ function OperatorApprovalsPanelInner() {
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
   const [revealedClaimCode, setRevealedClaimCode] = useState<RevealedClaimCode | null>(null);
   const [sealSkipped, setSealSkipped] = useState<SealSkipped | null>(null);
+  const [claimNotice, setClaimNotice] = useState<ClaimCodeNotice | null>(null);
+  const [reissuing, setReissuing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { flash, notify } = useFlashNotice(4000);
@@ -1021,19 +1224,44 @@ function OperatorApprovalsPanelInner() {
       // verifies it (clock-skew bounds + the signature itself) rather than
       // substituting its own.
       const decidedAt = new Date().toISOString();
-      const operatorSignature = await signOperatorDecision({ contentHash: approval.contentHash, decidedAt, decision });
-
-      const res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          decision,
-          ...(mode ? { mode } : {}),
-          ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
-        }),
+      const operatorSignature = await signOperatorDecision({
+        contentHash: approval.contentHash,
+        decidedAt,
+        decision,
+        ...(mode ? { mode } : {}),
       });
+
+      let res: Response;
+      try {
+        res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            decision,
+            ...(mode ? { mode } : {}),
+            ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
+          }),
+        });
+      } catch {
+        // #2707: the request died mid-flight (proxy timeout / dropped connection).
+        // Provisioning runs inside this request, so it may well have completed —
+        // and the one-time claim code with it, lost. Say so, and offer a reissue.
+        const lost = claimCodeNoticeFor(approval, decision, null);
+        if (lost) setClaimNotice(lost);
+        notify('err', 'Network error \u2014 the decision response was lost. Refreshing the card.');
+        await load(true);
+        return;
+      }
       if (!res.ok) {
+        // #2707: a proxy/gateway timeout (502/503/504) on an apps:provision approve means the pipeline
+        // may have finished behind the dead request — same lost-code situation as a dropped connection.
+        const gatewayLost = gatewayLostNoticeFor(approval, decision, res.status);
+        if (gatewayLost) {
+          setClaimNotice(gatewayLost);
+          await load(true);
+          return;
+        }
         const body = await res.json().catch(() => ({})) as { error?: string };
         notify('err', body.error ?? `Decision failed (${res.status})`);
         return;
@@ -1042,42 +1270,45 @@ function OperatorApprovalsPanelInner() {
       // minted bearer plaintext exactly once, in `data.bearer` — surface it
       // as a persistent (not auto-dismissing) reveal box rather than the
       // 4s flash, since the operator needs time to copy it.
-      const responseBody = await res.json().catch(() => ({})) as {
-        data?: { bearer?: string; expiresAt?: string; claimCode?: string; sealSkipped?: boolean };
-      };
-      if (decision === 'approve' && responseBody.data?.bearer) {
-        setRevealedBearer({
-          proposalId,
-          clientLabel: detailString(approval.detail, 'clientLabel', approval.summary),
-          bearer: responseBody.data.bearer,
-          expiresAt: responseBody.data.expiresAt ?? '',
-        });
+      const responseBody = await res.json().catch(() => ({})) as DecisionResponseBody;
+      const reveals = revealsFromDecision(approval, decision, responseBody);
+      if (reveals.bearer) setRevealedBearer(reveals.bearer);
+      if (reveals.claimCode) {
+        setRevealedClaimCode(reveals.claimCode);
+        setClaimNotice(null);
+      } else if (reveals.claimNotice) {
+        setClaimNotice(reveals.claimNotice);
       }
-      // #2411: an approved apps:provision proposal returns the freshly
-      // issued app-signing-key claim code exactly once, in `data.claimCode`.
-      // #2427: `slug` rides along so the banner can derive the app's own
-      // /claim page URL — already present on `approval.detail`, never a new
-      // server field.
-      if (decision === 'approve' && responseBody.data?.claimCode) {
-        setRevealedClaimCode({
-          proposalId,
-          displayName: detailString(approval.detail, 'displayName', approval.summary),
-          claimCode: responseBody.data.claimCode,
-          slug: detailString(approval.detail, 'slug', ''),
-        });
+      if (reveals.sealSkipped) setSealSkipped(reveals.sealSkipped);
+      if (responseBody.executionError) {
+        // #2707: the decision IS recorded, but the action behind it did not run
+        // (e.g. no operator countersignature, or a pipeline step failed). This used
+        // to flash a green "Proposal approve." regardless.
+        notify('err', `Proposal ${decision}, but it did not execute: ${responseBody.executionError}`);
+      } else {
+        notify('ok', `Proposal ${decision}.`);
       }
-      // #2415: apps.provision reached the claim code but skipped sealing CI
-      // secrets — surface it right alongside the claim-code reveal above.
-      if (decision === 'approve' && responseBody.data?.sealSkipped) {
-        setSealSkipped({
-          proposalId,
-          displayName: detailString(approval.detail, 'displayName', approval.summary),
-        });
-      }
-      notify('ok', `Proposal ${decision}.`);
       await load(true);
     } finally {
       setBusyId('');
+    }
+  }, [load, notify]);
+
+  // #2707: one-click recovery from the "no claim code" notice — raises the existing
+  // `reissueClaim: true` proposal; approving it shows the same amber box.
+  const handleReissue = useCallback(async (notice: ClaimCodeNotice) => {
+    setReissuing(true);
+    try {
+      const result = await proposeClaimReissue({ slug: notice.slug, displayName: notice.displayName });
+      if (result.ok) {
+        setClaimNotice(null);
+        notify('ok', 'Reissue proposal raised \u2014 approve it below to get a fresh claim code.');
+        await load(true);
+      } else {
+        notify('err', result.error);
+      }
+    } finally {
+      setReissuing(false);
     }
   }, [load, notify]);
 
@@ -1120,6 +1351,15 @@ function OperatorApprovalsPanelInner() {
 
       {sealSkipped && (
         <SealSkippedBanner skipped={sealSkipped} onDismiss={() => setSealSkipped(null)} />
+      )}
+
+      {claimNotice && (
+        <ClaimCodeNoticeBanner
+          notice={claimNotice}
+          busy={reissuing}
+          onReissue={() => void handleReissue(claimNotice)}
+          onDismiss={() => setClaimNotice(null)}
+        />
       )}
 
       {actAs && <ActAsReadOnlyNotice actAs={actAs} />}

@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, transactions } from '@/src/db';
+import { externalRefColumns } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
@@ -119,7 +120,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     amount: amount.toString(),
     currency: 'CAD',
     status: 'pending',
-    stripeId: result.id,
+    ...externalRefColumns(result.id),
     source: 'fiat',
     metadata: {
       method: 'stripe',

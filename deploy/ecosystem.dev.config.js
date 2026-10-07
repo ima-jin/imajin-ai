@@ -9,9 +9,9 @@
 // so the pm2-managed pid *is* the listener. scripts/assert-pm2-listeners.sh
 // verifies this after every deploy restart.
 //
-// fixready / karaoke / scorecard live in separate repos whose start scripts
-// are not visible from here; they keep `npm start` until each is confirmed and
-// converted (tracked in the allowlist in scripts/__tests__/ecosystem-config.test.mjs).
+// fixready / karaoke / scorecard live in separate repos but are plain Next 14
+// apps (`"start": "next start"`, no custom server), so they exec the next
+// binary directly like every other app (#2573).
 module.exports = {
   "apps": [
     {
@@ -151,8 +151,10 @@ module.exports = {
     {
       "name": "dev-fixready",
       "cwd": "/home/jin/dev/imajin-fixready",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3400",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3400,
         "NODE_ENV": "production"
@@ -164,8 +166,10 @@ module.exports = {
     {
       "name": "dev-karaoke",
       "cwd": "/home/jin/dev/imajin-karaoke",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 3401",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 3401,
         "NODE_ENV": "production"

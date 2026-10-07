@@ -242,6 +242,19 @@ components:
         hasOperatorSignature:
           type: boolean
           description: "Presence of `payload.operatorSignature` (#2082) — lets the lane render the wish-and-grant chain state (#2084)."
+        modeCountersign:
+          type: string
+          enum: [countersigned, not-countersigned, not-applicable, invalid]
+          description: >-
+            Whether the operator's signature covers a decided approval's
+            chosen `mode` (#2693). `not-countersigned` = a decision signed
+            before #2693 whose `mode` the operator did not sign (shown as
+            "letter not countersigned" — not invalid); `invalid` = the
+            signature verifies against neither shape.
+        modeCountersignLabel:
+          type: string
+          nullable: true
+          description: "\"letter not countersigned\" when `modeCountersign` is `not-countersigned`, else null."
     AppProvisionRequest:
       type: object
       description: >-
@@ -421,10 +434,15 @@ paths:
         the open, source-agnostic vocabulary (#2152): the kernel never
         interprets it, only witnesses it and republishes it — together
         with the proposal's own `source` + `kind` — on the
-        `operator.approval.decided` bus event. `mode` is likewise opaque
-        (e.g. 'allow-once'), chosen by whatever source-adapter interprets
-        the decision downstream. `operatorSignature` + `decidedAt` (#2082):
-        the operator's own countersignature, produced client-side; required
+        `operator.approval.decided` bus event. `mode` (#2693) is the
+        operator's chosen option — a decision-card option letter (required
+        on `approve` for `decision:card`), exec `allow-once`/`deny`, or a
+        github TTL `single`/`5m`/`24h` — and is refused with 400 when the
+        approval's kind does not offer it (every other kind offers none).
+        `operatorSignature` + `decidedAt` (#2082): the operator's own
+        countersignature over `{contentHash, decision, decidedAt}` plus
+        `mode` whenever the decision carries one (#2693), produced
+        client-side; required
         (400 otherwise) once the per-node `OPERATOR_COUNTERSIGN_REQUIRED`
         flag is on, verified whenever supplied regardless of the flag.
       security:
@@ -443,7 +461,7 @@ paths:
               required: [decision]
               properties:
                 decision: { type: string, enum: [approve, reject, withdrawn] }
-                mode: { type: string, maxLength: 128, description: "Opaque source-adapter-chosen refinement of decision, e.g. 'allow-once'." }
+                mode: { type: string, minLength: 1, maxLength: 128, description: "The chosen option (#2693): decision-card option letter | exec 'allow-once'/'deny' | github TTL 'single'/'5m'/'24h'. 400 when the approval's kind does not offer it; covered by operatorSignature when supplied." }
                 reason: { type: string }
                 operatorSignature:
                   $ref: "#/components/schemas/OperatorCountersignature"

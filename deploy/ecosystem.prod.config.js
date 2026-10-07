@@ -13,9 +13,9 @@
 // for a clean shutdown before SIGKILL; scripts/check-pm2-restarts.sh alerts on
 // restart-count growth so a crash loop cannot stay silent.
 //
-// fixready / karaoke / scorecard live in separate repos whose start scripts
-// are not visible from here; they keep `npm start` until each is confirmed and
-// converted (tracked in the allowlist in scripts/__tests__/ecosystem-config.test.mjs).
+// fixready / karaoke / scorecard live in separate repos but are plain Next 14
+// apps (`"start": "next start"`, no custom server), so they exec the next
+// binary directly like every other app (#2573).
 module.exports = {
   "apps": [
     {
@@ -276,8 +276,10 @@ module.exports = {
     {
       "name": "prod-fixready",
       "cwd": "/home/jin/prod/imajin-fixready",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7400",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7400,
         "NODE_ENV": "production"
@@ -289,8 +291,10 @@ module.exports = {
     {
       "name": "prod-karaoke",
       "cwd": "/home/jin/prod/imajin-karaoke",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7401",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7401,
         "NODE_ENV": "production"
@@ -302,8 +306,10 @@ module.exports = {
     {
       "name": "prod-scorecard",
       "cwd": "/home/jin/prod/imajin-scorecard",
-      "script": "npm",
-      "args": "start",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7402",
+      "interpreter": "node",
+      "exec_mode": "fork",
       "env": {
         "PORT": 7402,
         "NODE_ENV": "production"

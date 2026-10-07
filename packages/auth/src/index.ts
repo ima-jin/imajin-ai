@@ -128,8 +128,17 @@ export { backfillContactEmail } from "./backfill-contact-email";
 export type { ContactEmailBackfillResult } from "./backfill-contact-email";
 export { SCOPES, validateScopes } from "./scopes";
 export type { Scope } from "./scopes";
-export { validateProvidedScopes, resolveAppScopes, validateDependsOn, tokenAudiences } from "./app-scopes";
-export type { AppDependency } from "./app-scopes";
+export {
+  validateProvidedScopes,
+  resolveAppScopes,
+  validateDependsOn,
+  tokenAudiences,
+  ownNamespaceScopes,
+  approvedScopeCeiling,
+  clampToApprovedCeiling,
+  scopesForAudience,
+} from "./app-scopes";
+export type { AppDependency, ScopeAssignment } from "./app-scopes";
 // Declarative scope vocabulary (#1253) — the single source of truth that SCOPES,
 // the MCP capability ceiling, connector scope-manifest descriptors, and the
 // connector-card UI list are all projections of. Client components should import
@@ -197,6 +206,7 @@ export type {
 export { requireAppAuth } from "./require-app-auth";
 export type { AppAuthContext, AppAuthResult } from "./require-app-auth";
 export { verifyAppToken } from "./app-token";
+export { resolveAppAudience, isAppAudienceSlug, APP_AUD_ENV } from "./app-audience";
 export type { AppTokenVerification } from "./app-token";
 export { requireSessionOrAppToken } from "./require-session-or-app-token";
 export type {
@@ -204,6 +214,7 @@ export type {
   SessionOrTokenAuthResult,
   SessionOrTokenAuthOptions,
 } from "./require-session-or-app-token";
+export { requireHardDIDOrAppToken } from "./require-hard-did-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
 export { resolveActingDid, resolveComposedBy, isUnderActAs } from "./acting-did";

@@ -1,5 +1,6 @@
 /**
- * The scope declarations an operator approves on the `apps.provision` card (#2663).
+ * The scope declarations an operator approves on the `apps.provision` card (#2663), plus the
+ * event types the app may emit (#2638 / #2641).
  *
  * At proposal time the kernel reads `providesScopes` / `dependsOn` from the app's
  * `imajin.app.json` and snapshots them into the proposal's `detail`
@@ -15,6 +16,11 @@ import type { AppDependency } from '@imajin/auth';
 export interface ManifestDeclarations {
   providesScopes: string[];
   dependsOn: AppDependency[];
+  /**
+   * Event types the app asks to be allowed to emit via `POST /api/events` (#2638 / #2641).
+   * Approving the card registers exactly this list as the app's emit allowlist.
+   */
+  emittableEvents: string[];
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -38,9 +44,12 @@ export function parseManifestDeclarations(value: unknown): ManifestDeclarations 
   const v = value as Record<string, unknown>;
   if (!isStringArray(v.providesScopes)) return null;
   if (!Array.isArray(v.dependsOn) || !v.dependsOn.every(isDependency)) return null;
+  // Absent on a proposal staged before #2638: that approved no events, so read it as the empty list.
+  if (v.emittableEvents !== undefined && !isStringArray(v.emittableEvents)) return null;
   return {
     providesScopes: [...v.providesScopes],
     dependsOn: v.dependsOn.map((d) => ({ aud: d.aud, scopes: [...d.scopes] })),
+    emittableEvents: v.emittableEvents === undefined ? [] : [...v.emittableEvents],
   };
 }
 
@@ -51,6 +60,7 @@ function canonical(declarations: ManifestDeclarations): string {
     dependsOn: declarations.dependsOn
       .map((d) => ({ aud: d.aud, scopes: [...new Set(d.scopes)].sort((a, b) => a.localeCompare(b)) }))
       .sort((a, b) => a.aud.localeCompare(b.aud)),
+    emittableEvents: [...new Set(declarations.emittableEvents)].sort((a, b) => a.localeCompare(b)),
   });
 }
 
@@ -60,4 +70,4 @@ export function sameDeclarations(actual: ManifestDeclarations, approved: Manifes
 }
 
 /** The empty list: what a proposal with no readable manifest approves. */
-export const NO_DECLARATIONS: ManifestDeclarations = { providesScopes: [], dependsOn: [] };
+export const NO_DECLARATIONS: ManifestDeclarations = { providesScopes: [], dependsOn: [], emittableEvents: [] };

@@ -1,6 +1,8 @@
 /**
- * Read-only preview of the `providesScopes` / `dependsOn` an `apps.provision`
- * proposal will register (#2663) — rendered on the existing apps.provision card
+ * Read-only preview of the `providesScopes` / `dependsOn` / `emittableEvents` an
+ * `apps.provision` proposal will register (#2663, #2638) — `emittableEvents` is the
+ * list of event types the app will be allowed to emit via `POST /api/events`
+ * (notify and audit only — never money) — rendered on the existing apps.provision card
  * in Operator approvals, so the operator sees the list BEFORE approving it.
  *
  * It adds no endpoint and no authority: the list comes from the proposal's own
@@ -39,8 +41,8 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
     );
   }
 
-  const { providesScopes, dependsOn } = declarations;
-  const isEmpty = providesScopes.length === 0 && dependsOn.length === 0;
+  const { providesScopes, dependsOn, emittableEvents } = declarations;
+  const isEmpty = providesScopes.length === 0 && dependsOn.length === 0 && emittableEvents.length === 0;
 
   return (
     <div
@@ -53,7 +55,7 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
         exactly this list, nothing beyond it.
       </p>
       {isEmpty ? (
-        <p className="text-xs text-gray-500">Declares no scopes of its own and no dependencies.</p>
+        <p className="text-xs text-gray-500">Declares no scopes of its own, no dependencies, and no events it may emit.</p>
       ) : (
         <>
           <Row label="Provides scopes">
@@ -77,6 +79,11 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
               </ul>
             )}
           </div>
+          <Row label="May emit events (notify and audit only)">
+            <span className="font-mono" data-testid="provision-declarations-emits">
+              {emittableEvents.join(', ') || '\u2014'}
+            </span>
+          </Row>
         </>
       )}
     </div>

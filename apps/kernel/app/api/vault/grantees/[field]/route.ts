@@ -4,6 +4,7 @@ import { createLogger } from '@imajin/logger';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { getRotateGranteeGuard } from '@/src/lib/vault/grantees';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -27,7 +28,11 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ fiel
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-  const { field } = params;
+  const parsedField = parseVaultFieldName(params.field);
+  if (!parsedField.ok) {
+    return NextResponse.json({ error: parsedField.message }, { status: 400 });
+  }
+  const field = parsedField.value.field;
 
   try {
     const identity = getNodeSigningIdentity();

@@ -61,6 +61,7 @@ import {
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
 import { assertValidEntryUrl } from './entry-url';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
+import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import { NO_DECLARATIONS, sameDeclarations, type ManifestDeclarations } from './declarations-approval';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
 
@@ -352,12 +353,22 @@ async function registerApp(params: {
   if ('error' in declarations) {
     throw new Error(`apps.provision: invalid imajin.app.json scope declarations — ${declarations.error}`);
   }
+  // #2638/#2641: the event types the app asks to emit via POST /api/events.
+  const emittable = validateEmittableEvents(manifest?.emittableEvents);
+  if ('error' in emittable) {
+    throw new Error(`apps.provision: invalid imajin.app.json emittableEvents — ${emittable.error}`);
+  }
   // The operator approved a specific list on the /jin card; nothing beyond it is
   // granted. A manifest that changed since (or declares anything when none was
   // readable at proposal time) fails closed — re-propose to review the current list.
-  if (!sameDeclarations(declarations.ok, approvedDeclarations ?? NO_DECLARATIONS)) {
+  const declared: ManifestDeclarations = {
+    providesScopes: declarations.ok.providesScopes,
+    dependsOn: declarations.ok.dependsOn,
+    emittableEvents: emittable.ok,
+  };
+  if (!sameDeclarations(declared, approvedDeclarations ?? NO_DECLARATIONS)) {
     throw new Error(
-      'apps.provision: imajin.app.json scope declarations differ from the list the operator approved — re-propose to review the current providesScopes/dependsOn',
+      'apps.provision: imajin.app.json declarations differ from the list the operator approved — re-propose to review the current providesScopes/dependsOn/emittableEvents',
     );
   }
 
@@ -381,9 +392,12 @@ async function registerApp(params: {
     entryUrl: navMetadata.entryUrl,
     placements: navMetadata.placements,
     requiredScope: navMetadata.requiredScope,
-    requestedScopes: declarations.ok.providesScopes,
+    // #2674: the whole approved list — the app's own scopes plus the scopes of the
+    // dependencies the operator approved — is the ceiling PATCH and mint hold it to.
+    requestedScopes: [...new Set([...declarations.ok.providesScopes, ...declarations.ok.dependsOn.flatMap((dep) => dep.scopes)])],
     providesScopes: declarations.ok.providesScopes,
     dependsOn: declarations.ok.dependsOn,
+    emittableEvents: emittable.ok,
   });
   return id;
 }

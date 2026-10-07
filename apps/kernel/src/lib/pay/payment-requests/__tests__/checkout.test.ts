@@ -77,7 +77,7 @@ vi.mock('@/src/db', () => ({
     update: () => ({ set: updateSetResult }),
   },
   paymentRequests: { __table: 'payment_request', id: 'id', status: 'status' },
-  transactions: { __table: 'transactions', id: 'id', service: 'service', type: 'type', metadata: 'metadata', status: 'status', createdAt: 'createdAt', stripeId: 'stripeId' },
+  transactions: { __table: 'transactions', id: 'id', service: 'service', type: 'type', metadata: 'metadata', status: 'status', createdAt: 'createdAt', stripeId: 'stripeId', externalRef: 'externalRef', rail: 'rail' },
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: state.publishMock }));
@@ -235,6 +235,9 @@ describe('createPaymentRequestCheckoutSession', () => {
 
     expect(state.insertCalls).toHaveLength(1);
     const inserted = state.insertCalls[0];
+    // #2176: dual-write — `external_ref` + `rail` are set, and the deprecated `stripe_id` alias agrees.
+    expect(inserted.externalRef).toBe('cs_new');
+    expect(inserted.rail).toBe('stripe');
     expect(inserted.stripeId).toBe('cs_new');
     expect(inserted.status).toBe('pending');
     expect(inserted.fairManifest).toBeUndefined();
@@ -313,7 +316,7 @@ describe('createPaymentRequestCheckoutSession', () => {
 
   it('reuses an existing open Stripe session instead of creating a duplicate', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
-    state.selectTxQueue.push([{ stripeId: 'cs_existing' }]);
+    state.selectTxQueue.push([{ externalRef: 'cs_existing' }]);
     state.stripeSessionsRetrieveMock.mockResolvedValue({
       id: 'cs_existing',
       url: 'https://checkout.stripe.com/cs_existing',
@@ -330,7 +333,7 @@ describe('createPaymentRequestCheckoutSession', () => {
 
   it('creates a fresh session when the existing Stripe session is no longer open', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
-    state.selectTxQueue.push([{ stripeId: 'cs_expired' }]);
+    state.selectTxQueue.push([{ externalRef: 'cs_expired' }]);
     state.stripeSessionsRetrieveMock.mockResolvedValue({ id: 'cs_expired', status: 'expired' });
 
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });

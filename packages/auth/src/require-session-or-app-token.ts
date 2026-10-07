@@ -3,6 +3,7 @@ const log = createLogger('auth');
 
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { verifyAppToken } from './app-token';
+import { resolveAppAudience } from './app-audience';
 
 export interface SessionOrTokenAuth {
   /** DID of the authenticated caller (the token's `sub`, or the session's did). */
@@ -24,10 +25,13 @@ export type SessionOrTokenAuthResult =
 
 export interface SessionOrTokenAuthOptions {
   /**
-   * This app's own host — the expected `aud` on the token path. Required so
-   * a token minted for a different app can never be replayed here.
+   * This app's registry slug (e.g. `'dykil'`) — the default expected `aud` on
+   * the token path (#2706). `IMAJIN_APP_AUD`, when set, overrides it. Never a
+   * host: path-routed apps share one, so a host audience would let apps accept
+   * each other's tokens. Required so a token minted for a different app can
+   * never be replayed here.
    */
-  aud: string;
+  slug: string;
   /**
    * Scopes that must all be present. Only enforced on the `token` path —
    * see {@link SessionOrTokenAuth.scopes}.
@@ -50,7 +54,9 @@ function extractSessionCookie(cookieHeader: string | null): string | null {
  * this package already duplicates this exact pattern between
  * `require-auth.ts` and `session.ts`.
  */
-async function validateLegacySessionCookie(token: string): Promise<string | null> {
+async function validateLegacySessionCookie(
+  token: string
+): Promise<{ did: string; tier: string } | null> {
   const authUrl = getAuthUrl();
   if (!authUrl) return null;
   try {
@@ -60,7 +66,10 @@ async function validateLegacySessionCookie(token: string): Promise<string | null
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.did ?? data.identity?.did ?? null;
+    const did = data.did ?? data.identity?.did ?? null;
+    if (!did) return null;
+    // Same fallback `require-auth.ts` applies: no tier reported means soft.
+    return { did, tier: data.tier || data.identity?.tier || 'soft' };
   } catch (err) {
     log.error({ err: String(err) }, '[AUTH] Legacy session cookie validation failed');
     return null;
@@ -85,21 +94,44 @@ export async function requireSessionOrAppToken(
   request: Request,
   options: SessionOrTokenAuthOptions
 ): Promise<SessionOrTokenAuthResult> {
+  const result = await authenticateSessionOrAppToken(request, options);
+  return 'auth' in result ? { auth: result.auth } : result;
+}
+
+/**
+ * Same authentication as {@link requireSessionOrAppToken}, but additionally
+ * surfaces the identity tier the kernel session reported on the `cookie`
+ * path (`sessionTier`). The token path carries no tier claim by design —
+ * tier is looked up per DID instead, so an upgrade needs no token re-mint.
+ * Internal: consumed by `requireHardDIDOrAppToken`, not exported from the
+ * package root.
+ */
+export async function authenticateSessionOrAppToken(
+  request: Request,
+  options: SessionOrTokenAuthOptions
+): Promise<{ auth: SessionOrTokenAuth; sessionTier?: string } | { error: string; status: number }> {
   const bearer = request.headers.get('authorization');
   if (bearer?.startsWith('Bearer ')) {
-    const verification = await verifyAppToken(bearer.slice(7), { aud: options.aud });
-    if (verification) {
-      const missing = options.requireScopes?.filter((s) => !verification.scopes.includes(s)) ?? [];
-      if (missing.length > 0) {
-        return { error: `Missing required scope(s): ${missing.join(', ')}`, status: 403 };
-      }
-      return { auth: { did: verification.sub, scopes: verification.scopes, via: 'token' } };
+    let aud: string;
+    try {
+      aud = resolveAppAudience(options.slug);
+    } catch (err) {
+      log.error({ err: String(err) }, '[AUTH] App audience misconfigured');
+      return { error: 'App audience is misconfigured', status: 500 };
     }
-    // Not a valid app token for this audience — fall through to the cookie
-    // path rather than failing outright. Authorization: Bearer also carries
-    // other credential types elsewhere in this codebase (e.g. legacy full
-    // identity bearer tokens), so a failed app-token verification is not
-    // proof the caller is unauthenticated.
+    const verification = await verifyAppToken(bearer.slice(7), { aud });
+    if (!verification) {
+      // A Bearer that does not verify for THIS app's audience is a hard 401 —
+      // it never degrades to the cookie path (#2706). Falling through hid a
+      // wrong/host audience behind a working browser session while every
+      // Bearer client got an opaque 401.
+      return { error: 'Invalid or expired app token for this app', status: 401 };
+    }
+    const missing = options.requireScopes?.filter((s) => !verification.scopes.includes(s)) ?? [];
+    if (missing.length > 0) {
+      return { error: `Missing required scope(s): ${missing.join(', ')}`, status: 403 };
+    }
+    return { auth: { did: verification.sub, scopes: verification.scopes, via: 'token' } };
   }
 
   const sessionToken = extractSessionCookie(request.headers.get('cookie'));
@@ -107,10 +139,10 @@ export async function requireSessionOrAppToken(
     return { error: 'Authorization: Bearer <app-token>, or a valid session cookie, is required', status: 401 };
   }
 
-  const did = await validateLegacySessionCookie(sessionToken);
-  if (!did) {
+  const session = await validateLegacySessionCookie(sessionToken);
+  if (!session) {
     return { error: 'Invalid or expired session', status: 401 };
   }
 
-  return { auth: { did, scopes: [], via: 'cookie' } };
+  return { auth: { did: session.did, scopes: [], via: 'cookie' }, sessionTier: session.tier };
 }

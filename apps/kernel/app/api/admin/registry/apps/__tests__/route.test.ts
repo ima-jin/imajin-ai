@@ -44,6 +44,7 @@ vi.mock('@/src/db', () => ({
     appDid: 'registryApps.appDid',
     callbackUrl: 'registryApps.callbackUrl',
     requestedScopes: 'registryApps.requestedScopes',
+    emittableEvents: 'registryApps.emittableEvents',
     status: 'registryApps.status',
     tier: 'registryApps.tier',
     allowedRedirectHosts: 'registryApps.allowedRedirectHosts',
@@ -62,10 +63,12 @@ vi.mock('drizzle-orm', () => ({
   desc: (...args: unknown[]) => ({ desc: args }),
 }));
 
-vi.mock('@imajin/auth', () => ({
+vi.mock('@imajin/auth', async () => ({
   requireAdmin: mocks.requireAdminMock,
   generateKeypair: mocks.generateKeypairMock,
   isValidPublicKey: () => true,
+  // The real helper, not a copy — a duplicated regex here would hide drift.
+  isAppAudienceSlug: (await import('../../../../../../../../packages/auth/src/app-audience')).isAppAudienceSlug,
   emitAttestation: mocks.emitAttestationMock,
 }));
 
@@ -150,6 +153,22 @@ describe('POST /api/admin/registry/apps (#1990)', () => {
     );
   });
 
+  it('rejects a host as a token audience (#2706) — audiences are slugs', async () => {
+    const res = await POST(
+      makePostRequest({
+        name: 'Dykil',
+        callbackUrl: 'https://your-node.imajin.ai/dykil',
+        ownerDid: 'did:imajin:platform',
+        tokenAudiences: ['dykil', 'dev-jin.imajin.ai'],
+      }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('dev-jin.imajin.ai');
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid tier', async () => {
     const res = await POST(
       makePostRequest({ name: 'X', callbackUrl: 'https://x.example.com', ownerDid: 'did:imajin:owner', tier: 'nonsense' }) as never,
@@ -225,5 +244,123 @@ describe('POST /api/admin/registry/apps — #2663 providesScopes + dependsOn', (
     expect(body.error).toContain('media:write');
     expect(mocks.insertMock).not.toHaveBeenCalled();
     expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
+  });
+});
+
+// #2674: scope namespaces are reserved by registered slug, so the admin route takes the slug
+// the app's `providesScopes` must sit in (and persists it).
+describe('POST /api/admin/registry/apps — slug (#2674)', () => {
+  const base = { name: 'Dykil', callbackUrl: 'https://dykil.example.com/cb', ownerDid: 'did:imajin:owner' };
+
+  beforeEach(() => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+  });
+
+  it('validates providesScopes against the supplied slug and persists it', async () => {
+    const res = await POST(makePostRequest({ ...base, slug: 'dykil', providesScopes: ['dykil:read'] }) as never);
+
+    expect(res.status).toBe(201);
+    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: 'dykil', providesScopes: ['dykil:read'] }));
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.slug).toBe('dykil');
+    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ slug: 'dykil' }) }),
+    );
+  });
+
+  it('passes a null slug when none is supplied, so a slug-less app cannot declare scopes', async () => {
+    mocks.validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: dykil:read — without a registered slug' });
+
+    const res = await POST(makePostRequest({ ...base, providesScopes: ['dykil:read'] }) as never);
+
+    expect(res.status).toBe(400);
+    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: null }));
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
+  it('stores a null slug for an app that declares nothing and supplies none', async () => {
+    const res = await POST(makePostRequest(base) as never);
+
+    expect(res.status).toBe(201);
+    expect((mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>).slug).toBeNull();
+  });
+
+  it.each([['Dykil'], ['has space'], ['9lives'], ['x'.repeat(40)], [42]])('rejects a malformed slug (%j) with 400, inserting nothing', async (slug) => {
+    const res = await POST(makePostRequest({ ...base, slug }) as never);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/slug/);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
+  it('answers 409, not 500, and emits no attestation when the slug is already registered', async () => {
+    mocks.insertValuesMock.mockReturnValueOnce({
+      returning: vi.fn().mockRejectedValue(Object.assign(new Error('duplicate key value violates unique constraint "uniq_registry_apps_slug"'), { code: '23505' })),
+    });
+
+    const res = await POST(makePostRequest({ ...base, slug: 'dykil' }) as never);
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toContain('dykil');
+    expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
+  });
+
+  it('still surfaces an unrelated insert failure', async () => {
+    mocks.insertValuesMock.mockReturnValueOnce({ returning: vi.fn().mockRejectedValue(new Error('db down')) });
+
+    await expect(POST(makePostRequest({ ...base, slug: 'dykil' }) as never)).rejects.toThrow('db down');
+  });
+});
+
+describe('POST /api/admin/registry/apps — #2638/#2641 emittableEvents (operator-approved emit allowlist)', () => {
+  beforeEach(() => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+  });
+
+  const base = { name: 'Coffee', callbackUrl: 'https://coffee.example.com/cb', ownerDid: 'did:imajin:owner' };
+
+  it('defaults to an empty list: an app can emit nothing until an operator approves a list', async () => {
+    const res = await POST(makePostRequest(base) as never);
+
+    expect(res.status).toBe(201);
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.emittableEvents).toEqual([]);
+  });
+
+  it('persists the approved list, normalised, and records it in the signed attestation', async () => {
+    const res = await POST(makePostRequest({ ...base, emittableEvents: ['tip.sent', 'tip.granted', 'tip.sent'] }) as never);
+
+    expect(res.status).toBe(201);
+    const insertedRow = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(insertedRow.emittableEvents).toEqual(['tip.granted', 'tip.sent']);
+    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ payload: expect.objectContaining({ emittableEvents: ['tip.granted', 'tip.sent'] }) }),
+    );
+  });
+
+  it.each([
+    ['a wildcard', ['tip.*']],
+    ['an uppercase type', ['Tip.Granted']],
+    ['a non-string entry', [7]],
+    ['a non-array value', 'tip.granted'],
+  ])('rejects %s with 400 and inserts nothing', async (_label, emittableEvents) => {
+    const res = await POST(makePostRequest({ ...base, emittableEvents }) as never);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('emittableEvents');
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    expect(mocks.emitAttestationMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/admin/registry/apps — #2638/#2641 the operator sees each app\'s approved emit list', () => {
+  it('selects emittableEvents next to the approved scopes', async () => {
+    mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
+
+    await GET(makeGetRequest() as never);
+
+    const selection = (mocks.selectMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(selection).toHaveProperty('requestedScopes');
+    expect(selection).toHaveProperty('emittableEvents');
   });
 });

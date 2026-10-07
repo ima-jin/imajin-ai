@@ -79,9 +79,33 @@ interface HandProvisionedField {
   status: 'active' | 'deleted';
 }
 
+/** Shape of one entry from `GET /api/vault/known-fields` (#2700). */
+interface KnownVaultField {
+  name: string;
+  label: string;
+  description: string;
+  namespace: string;
+}
+
 type RevokeTier = 'withdraw' | 'tombstone' | 'destroy';
 
 const POLL_INTERVAL_MS = 5000;
+
+/**
+ * Reads the kernel's known-field registry (#2700). Never rejects: any failure
+ * (unauthorized, network, malformed body) yields an empty list, because the
+ * list is informational and must never take the panel down.
+ */
+async function fetchKnownFields(): Promise<KnownVaultField[]> {
+  try {
+    const res = await fetch('/api/vault/known-fields', { credentials: 'include' });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { fields?: KnownVaultField[] };
+    return Array.isArray(data.fields) ? data.fields : [];
+  } catch {
+    return [];
+  }
+}
 
 /** "Nm ago" / "Nh ago" / "Nd ago" — coarse, matching the UX note's own "last ack Nm ago" phrasing. */
 function timeAgo(iso: string | null): string | null {
@@ -385,6 +409,7 @@ export function VaultKeysPanel() {
   const [loading, setLoading] = useState(true);
   const [keys, setKeys] = useState<VaultKeyCard[]>([]);
   const [handProvisioned, setHandProvisioned] = useState<HandProvisionedField[]>([]);
+  const [knownFields, setKnownFields] = useState<KnownVaultField[]>([]);
   const [showHandProvisioned, setShowHandProvisioned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [mintPurpose, setMintPurpose] = useState('');
@@ -410,6 +435,23 @@ export function VaultKeysPanel() {
     } finally {
       if (!silent) setLoading(false);
     }
+  }, []);
+
+  // The field list comes from the kernel (#2700), not a hardcoded array. It is
+  // static, so it is fetched once on mount rather than on every poll tick; a
+  // failure just leaves the list empty and never hides the panel.
+  useEffect(() => {
+    let cancelled = false;
+    fetchKnownFields()
+      .then((fields) => {
+        if (!cancelled) setKnownFields(fields);
+      })
+      .catch(() => {
+        // fetchKnownFields never rejects; this only guards the state update.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -506,6 +548,22 @@ export function VaultKeysPanel() {
       <div className="mb-3">
         <ClaimPendingServiceStub />
       </div>
+
+      {showHandProvisioned && knownFields.length > 0 && (
+        <div className="mb-3 space-y-2" data-testid="known-fields-list">
+          <p className="text-xs text-gray-500">Fields the kernel reads by name:</p>
+          {knownFields.map((f) => (
+            <div key={f.name} className="text-xs rounded border border-gray-800 px-2 py-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-gray-200">{f.label}</span>
+                <span className="text-gray-600">{f.namespace}</span>
+              </div>
+              <span className="font-mono text-gray-400">{f.name}</span>
+              <p className="text-gray-500">{f.description}</p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {showHandProvisioned && (
         <div className="mb-3 space-y-2" data-testid="hand-provisioned-list">

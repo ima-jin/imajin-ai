@@ -161,7 +161,7 @@ describe('POST /auth/api/attestations/:id/revoke (#2649)', () => {
 
 describe('POST /auth/api/attestations/:id/revoke — scoped app token (#2394)', () => {
   it('accepts a valid session-app-token whose sub is the issuer', async () => {
-    h.verifySessionAppTokenLocal.mockResolvedValue({ sub: ISSUER, aud: 'dykil.example.com', scopes: [] });
+    h.verifySessionAppTokenLocal.mockResolvedValue({ sub: ISSUER, aud: 'dykil.example.com', auds: ['dykil.example.com'], scopes: [] });
     h.resolveActiveAppByAudience.mockResolvedValue({ id: 'app_dykil', appDid: APP_DID, status: 'active' });
 
     const res = await POST(appTokenReq('scoped-app-token'), ctx());
@@ -170,9 +170,26 @@ describe('POST /auth/api/attestations/:id/revoke — scoped app token (#2394)', 
     expect(h.resolveActiveAppByAudience).toHaveBeenCalledWith('dykil.example.com');
   });
 
+  it('returns 401 once a DEPENDENCY audience on a multi-audience token is revoked (#2674)', async () => {
+    h.verifySessionAppTokenLocal.mockResolvedValue({
+      sub: ISSUER,
+      aud: 'dykil.example.com',
+      auds: ['dykil.example.com', 'jin.example.com'],
+      scopes: [],
+    });
+    h.resolveActiveAppByAudience.mockImplementation(async (aud: string) =>
+      aud === 'jin.example.com' ? null : { id: 'app_dykil', appDid: APP_DID, status: 'active' },
+    );
+
+    const res = await POST(appTokenReq('scoped-app-token'), ctx());
+
+    expect(res.status).toBe(401);
+    expect(h.mockUpdateSet).not.toHaveBeenCalled();
+  });
+
   it('lets the delegator revoke an app-issued attestation through an app token minted from their own session', async () => {
     h.mockSelectLimit.mockResolvedValue([stored({ issuerDid: APP_DID, delegatorDid: DELEGATOR })]);
-    h.verifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'dykil.example.com', scopes: [] });
+    h.verifySessionAppTokenLocal.mockResolvedValue({ sub: DELEGATOR, aud: 'dykil.example.com', auds: ['dykil.example.com'], scopes: [] });
     h.resolveActiveAppByAudience.mockResolvedValue({ id: 'app_dykil', appDid: APP_DID, status: 'active' });
 
     const res = await POST(appTokenReq('scoped-app-token'), ctx());
@@ -181,7 +198,7 @@ describe('POST /auth/api/attestations/:id/revoke — scoped app token (#2394)', 
   });
 
   it('returns 401 when the token verifies but its aud is not a live registered app', async () => {
-    h.verifySessionAppTokenLocal.mockResolvedValue({ sub: ISSUER, aud: 'unregistered.example.com', scopes: [] });
+    h.verifySessionAppTokenLocal.mockResolvedValue({ sub: ISSUER, aud: 'unregistered.example.com', auds: ['unregistered.example.com'], scopes: [] });
     h.resolveActiveAppByAudience.mockResolvedValue(null);
 
     const res = await POST(appTokenReq('scoped-app-token'), ctx());

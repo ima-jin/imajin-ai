@@ -43,13 +43,21 @@ vi.mock('@/src/db', () => ({
     id: 'registryApps.id',
     ownerDid: 'registryApps.ownerDid',
     slug: 'registryApps.slug',
+    requestedScopes: 'registryApps.requestedScopes',
+    providesScopes: 'registryApps.providesScopes',
+    dependsOn: 'registryApps.dependsOn',
   },
 }));
 vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => ({ eq: args }) }));
-vi.mock('@imajin/auth', () => ({
-  requireAuth: mocks.requireAuthMock,
-  resolveActingDid: (identity: { id: string }) => identity.id,
-}));
+vi.mock('@imajin/auth', async () => {
+  // The ceiling is a pure function with its own tests (packages/auth/tests/app-scopes.test.ts); use the real one.
+  const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
+  return {
+    approvedScopeCeiling: actual.approvedScopeCeiling,
+    requireAuth: mocks.requireAuthMock,
+    resolveActingDid: (identity: { id: string }) => identity.id,
+  };
+});
 vi.mock('@/src/lib/kernel/app-declarations', () => ({
   validateAppDeclarations: mocks.validateAppDeclarationsMock,
   DEPENDS_ON_OPERATOR_ONLY_ERROR: 'dependsOn is operator-only',
@@ -59,6 +67,19 @@ import { PATCH } from '../route';
 
 const OWNER = 'did:imajin:developer';
 const APP_ID = 'app_dykil';
+
+/** The row as `apps.provision` leaves it: the operator-approved list recorded in requested/provides/dependsOn. */
+function existingRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    id: APP_ID,
+    ownerDid: OWNER,
+    slug: 'dykil',
+    requestedScopes: ['dykil:read', 'dykil:write', 'media:read'],
+    providesScopes: ['dykil:read', 'dykil:write'],
+    dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+    ...overrides,
+  };
+}
 
 function patch(body: Record<string, unknown>): Promise<Response> {
   const request = new Request(`https://kernel.test/api/registry/apps/${APP_ID}`, {
@@ -72,7 +93,7 @@ function patch(body: Record<string, unknown>): Promise<Response> {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAuthMock.mockResolvedValue({ identity: { id: OWNER } });
-  mocks.whereSelectMock.mockResolvedValue([{ id: APP_ID, ownerDid: OWNER, slug: 'dykil' }]);
+  mocks.whereSelectMock.mockResolvedValue([existingRow()]);
   mocks.returningMock.mockResolvedValue([{ id: APP_ID }]);
   mocks.validateAppDeclarationsMock.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[] }) => ({
     ok: { providesScopes: input.providesScopes ?? [], dependsOn: input.dependsOn ?? [], requestedScopes: [] },
@@ -160,6 +181,128 @@ describe('PATCH /api/registry/apps/:appId — providesScopes (#2663)', () => {
     const res = await patch({ providesScopes: ['dykil:read'] });
 
     expect(res.status).toBe(401);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+});
+
+// #2674: `providesScopes` edits made after approval bypassed the /jin card. The approved
+// list (recorded in the row at provision time) is now the ceiling: edits may narrow it,
+// never widen it.
+describe('PATCH /api/registry/apps/:appId — the approved list is the ceiling (#2674)', () => {
+  it('rejects a providesScope the operator never approved, writing nothing', async () => {
+    const res = await patch({ providesScopes: ['dykil:read', 'dykil:admin'] });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('dykil:admin');
+    expect(body.error).toMatch(/approved list/);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows narrowing the approved list', async () => {
+    const res = await patch({ providesScopes: ['dykil:read'] });
+
+    expect(res.status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ providesScopes: ['dykil:read'] }));
+  });
+
+  it('allows re-adding a scope that was approved and later narrowed away', async () => {
+    mocks.whereSelectMock.mockResolvedValue([existingRow({ providesScopes: ['dykil:read'] })]);
+
+    const res = await patch({ providesScopes: ['dykil:read', 'dykil:write'] });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('cannot spend headroom raised in the SAME request: requestedScopes is not trusted from the body', async () => {
+    const res = await patch({
+      requestedScopes: ['dykil:read', 'dykil:write', 'media:read', 'dykil:admin'],
+      providesScopes: ['dykil:admin'],
+    });
+
+    expect(res.status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects widening requestedScopes on a provisioned (slugged) app, writing nothing', async () => {
+    const res = await patch({ requestedScopes: ['dykil:read', 'wallet:write'] });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('wallet:write');
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('allows narrowing requestedScopes on a provisioned app', async () => {
+    const res = await patch({ requestedScopes: ['dykil:read'] });
+
+    expect(res.status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ requestedScopes: ['dykil:read'] }));
+  });
+
+  it('treats the approved dependsOn scopes as part of the ceiling for requestedScopes', async () => {
+    const res = await patch({ requestedScopes: ['dykil:read', 'media:read'] });
+
+    expect(res.status).toBe(200);
+  });
+
+  it('still lets a slug-less self-service app edit its own requestedScopes freely', async () => {
+    mocks.whereSelectMock.mockResolvedValue([existingRow({ slug: null, requestedScopes: ['profile:read'], providesScopes: [], dependsOn: [] })]);
+
+    const res = await patch({ requestedScopes: ['profile:read', 'connections:read'] });
+
+    expect(res.status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ requestedScopes: ['profile:read', 'connections:read'] }));
+  });
+
+  it('gives a slug-less app no providesScopes headroom (validated by slug first)', async () => {
+    mocks.whereSelectMock.mockResolvedValue([existingRow({ slug: null, requestedScopes: [], providesScopes: [], dependsOn: [] })]);
+    mocks.validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: dykil:read — without a registered slug' });
+
+    const res = await patch({ providesScopes: ['dykil:read'] });
+
+    expect(res.status).toBe(400);
+    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith({ providesScopes: ['dykil:read'], slug: null });
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/registry/apps/:appId — emittableEvents is operator-only (#2638/#2641)', () => {
+  it.each([
+    ['a market event list', ['listing.purchased']],
+    ['an empty list', []],
+    ['a malformed value', 'tip.granted'],
+  ])('rejects %s with 400: an owner cannot self-approve what their app may emit, and nothing is written', async (_label, emittableEvents) => {
+    const res = await patch({ emittableEvents });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('emittableEvents can only be set by a node operator');
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects emittableEvents even alongside valid owner-editable fields, writing none of them', async () => {
+    const res = await patch({ name: 'Coffee 2', emittableEvents: ['tip.granted'] });
+
+    expect(res.status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('an ordinary PATCH never writes emittableEvents', async () => {
+    const res = await patch({ name: 'Coffee 2' });
+
+    expect(res.status).toBe(200);
+    const updates = (mocks.setMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
+    expect(updates).not.toHaveProperty('emittableEvents');
+  });
+
+  it('refuses emittableEvents before #2674\'s ceiling check runs (the operator-only 400 wins)', async () => {
+    const res = await patch({ emittableEvents: ['tip.granted'], requestedScopes: ['dykil:read', 'wallet:write'] });
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('emittableEvents can only be set by a node operator');
+    expect(body.error).not.toContain('requestedScopes');
     expect(mocks.updateMock).not.toHaveBeenCalled();
   });
 });

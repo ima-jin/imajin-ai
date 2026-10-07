@@ -24,13 +24,13 @@ import {
   type OperatorCountersignature,
 } from './operator-approvals';
 import { verifyOperatorCountersignature } from './operator-countersign';
+import { validateDecisionMode } from './operator-decision-modes';
 import { pushWebNotificationToOperator } from './web-push';
 import { forEachSequential } from '../async/sequential';
 import {
   EXEC_COMMAND_KIND,
   asExecCommandDetail,
   isExecCommandExpired,
-  validateExecCommandDecisionMode,
   type ExecCommandOutcome,
 } from './exec-command-approvals';
 
@@ -177,10 +177,15 @@ export interface DecideOperatorApprovalParams {
   proposalId: string;
   operatorDid: string;
   decision: ApprovalDecision;
-  /** Opaque, source-adapter-chosen refinement of `decision` (e.g. 'allow-once') — kernel never interprets it (#2152). */
+  /**
+   * The operator's chosen option (#2693): a decision-card option letter,
+   * exec `allow-once`/`deny`, or a github TTL. Validated per kind
+   * (`validateDecisionMode`) before anything is signed or persisted, and
+   * covered by `operatorSignature` whenever present.
+   */
   mode?: string;
   reason?: string;
-  /** The operator's own countersignature over `{contentHash, decision, decidedAt}` (#2082). */
+  /** The operator's own countersignature over `{contentHash, decision, decidedAt}` (+ `mode` when set, #2693) (#2082). */
   operatorSignature?: OperatorCountersignature;
   /**
    * Client-claimed decision timestamp (#2082) — REQUIRED and verified
@@ -219,21 +224,38 @@ function nextStatusFor(decision: ApprovalDecision): OperatorApprovalRow['status'
 }
 
 /**
- * exec.command-only gate (#2221): enforces allow-once/deny-only mode
- * (rejects e.g. 'allow-always' with 400) and refuses a decision once the
- * request's own `detail.expiresAt` has passed (409) — before any state
- * mutation or signature, same fail-closed posture as the status check
- * above. A no-op for every other kind.
+ * #2693: the `mode` a decision carries must be one the approval's kind
+ * actually offers — a card's option letter, exec allow-once/deny, a github
+ * TTL; any other kind carries none. 400 before any state mutation or
+ * signature, so an operator signature can never bind an unknown choice.
+ * (exec.command's allow-once/deny-only rule, #2221, lives in the same
+ * policy and keeps its message.)
  */
-function checkExecCommandGate(
+function checkDecisionMode(
   row: OperatorApprovalRow,
   decision: ApprovalDecision,
   mode: string | undefined,
 ): { ok: true } | { ok: false; error: string; status: number } {
-  if (row.kind !== EXEC_COMMAND_KIND) return { ok: true };
+  const result = validateDecisionMode(
+    { source: row.source, kind: row.kind, detail: (row.detail as Record<string, unknown> | null) ?? null },
+    decision,
+    mode,
+  );
+  return result.ok ? { ok: true } : { ok: false, error: result.error, status: 400 };
+}
 
-  const modeResult = validateExecCommandDecisionMode(decision, mode);
-  if (!modeResult.ok) return { ok: false, error: modeResult.error, status: 400 };
+/**
+ * exec.command-only gate (#2221): refuses a decision once the request's own
+ * `detail.expiresAt` has passed (409) — before any state mutation or
+ * signature, same fail-closed posture as the status check above. The
+ * allow-once/deny-only `mode` rule is part of {@link checkDecisionMode}. A
+ * no-op for every other kind.
+ */
+function checkExecCommandGate(
+  row: OperatorApprovalRow,
+  decision: ApprovalDecision,
+): { ok: true } | { ok: false; error: string; status: number } {
+  if (row.kind !== EXEC_COMMAND_KIND) return { ok: true };
   if (decision === 'withdrawn') return { ok: true };
 
   const execDetail = asExecCommandDetail(row.detail as Record<string, unknown> | null);
@@ -242,6 +264,16 @@ function checkExecCommandGate(
   }
 
   return { ok: true };
+}
+
+/** The pre-signature gates, in order: the kind's `mode` policy (400, #2693), then exec.command expiry (409). */
+function checkDecisionGates(
+  row: OperatorApprovalRow,
+  decision: ApprovalDecision,
+  mode: string | undefined,
+): { ok: true } | { ok: false; error: string; status: number } {
+  const modeGate = checkDecisionMode(row, decision, mode);
+  return modeGate.ok ? checkExecCommandGate(row, decision) : modeGate;
 }
 
 /**
@@ -274,6 +306,7 @@ async function resolveDecidedAt(
   proposalId: string,
   operatorDid: string,
   decision: ApprovalDecision,
+  mode: string | undefined,
   contentHash: string,
   operatorSignature: OperatorCountersignature | undefined,
   claimedDecidedAt: string | undefined,
@@ -290,7 +323,7 @@ async function resolveDecidedAt(
   }
   const verification = await verifyOperatorCountersignature(
     operatorDid,
-    { contentHash, decision, decidedAt: claimedDecidedAt },
+    { contentHash, decision, decidedAt: claimedDecidedAt, ...(mode === undefined ? {} : { mode }) },
     operatorSignature,
   );
   if (!verification.ok) {
@@ -367,9 +400,9 @@ export async function decideOperatorApproval(
     };
   }
 
-  const execGate = checkExecCommandGate(row, decision, mode);
-  if (!execGate.ok) {
-    return { ok: false, error: execGate.error, status: execGate.status };
+  const gate = checkDecisionGates(row, decision, mode);
+  if (!gate.ok) {
+    return { ok: false, error: gate.error, status: gate.status };
   }
 
   // #2294: contentHash is required on the `operator.approval.decided` bus
@@ -393,7 +426,7 @@ export async function decideOperatorApproval(
     return { ok: false, error: 'Operator countersignature is required on this node', status: 400 };
   }
 
-  const decidedAtResult = await resolveDecidedAt(proposalId, operatorDid, decision, contentHash, operatorSignature, claimedDecidedAt);
+  const decidedAtResult = await resolveDecidedAt(proposalId, operatorDid, decision, mode, contentHash, operatorSignature, claimedDecidedAt);
   if (!decidedAtResult.ok) {
     return { ok: false, error: decidedAtResult.error, status: decidedAtResult.status };
   }

@@ -28,6 +28,7 @@
  * deferred to a later revocation tier (see the #2242 PR description).
  */
 import { generateKeypair, emitAttestation } from '@imajin/auth';
+import { MINTED_KEY_NAMESPACE } from './field-grammar';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { eq } from 'drizzle-orm';
@@ -52,7 +53,7 @@ function didFromPublicKey(publicKey: string): string {
 
 /** Vault field name holding a minted key's sealed Ed25519 private key. */
 export function mintedKeyField(did: string): string {
-  return `vault-minted-key:${did}`;
+  return `${MINTED_KEY_NAMESPACE}:${did}`;
 }
 
 export interface MintKeypairParams {

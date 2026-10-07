@@ -4,6 +4,7 @@ import { createLogger } from '@imajin/logger';
 import { loadAndUnseal, sealAndStoreV2 } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -30,11 +31,12 @@ export async function POST(request: NextRequest) {
   }
 
   const { field } = body;
-  if (typeof field !== 'string' || field.trim().length === 0) {
-    return NextResponse.json({ error: 'field is required' }, { status: 400 });
+  const parsedField = parseVaultFieldName(field);
+  if (!parsedField.ok) {
+    return NextResponse.json({ error: parsedField.message }, { status: 400 });
   }
 
-  const trimmedField = field.trim();
+  const trimmedField = parsedField.value.field;
 
   try {
     const plaintext = await loadAndUnseal(trimmedField);

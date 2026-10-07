@@ -21,16 +21,22 @@ type RouteHandler = (request: Request, context: unknown) => Promise<Response>;
 
 const hoisted = vi.hoisted(() => {
   const queue: unknown[][] = [];
+  // Query skeletons (template strings joined with `?`) of every `sql` call, so a suite can assert
+  // which tables/columns a route's raw SQL names (e.g. the #2176 `external_ref` join).
+  const calls: string[] = [];
   // Bare/fragment templates with zero interpolated values (e.g. a
   // conditional `sql`` filter fragment embedded in another query) are only
   // ever composed into another `sql`...${fragment}...`` call in real
   // postgres.js usage — never awaited standalone — so they must not
   // consume from the queue.
-  const sqlFn = (_strings: TemplateStringsArray, ...values: unknown[]) =>
-    values.length === 0 ? ({ __fragment: true } as unknown) : Promise.resolve(queue.shift() ?? []);
+  const sqlFn = (strings: TemplateStringsArray, ...values: unknown[]) => {
+    calls.push(strings.join('?'));
+    return values.length === 0 ? ({ __fragment: true } as unknown) : Promise.resolve(queue.shift() ?? []);
+  };
   const sqlMock = Object.assign(sqlFn, { queue });
   return {
     sqlMock,
+    sqlCalls: calls,
     requireAuthMock: vi.fn(),
     requireAppAuthMock: vi.fn(),
     isEventOrganizerMock: vi.fn(),
@@ -40,6 +46,7 @@ const hoisted = vi.hoisted(() => {
 
 export const {
   sqlMock,
+  sqlCalls,
   requireAuthMock,
   requireAppAuthMock,
   isEventOrganizerMock,
@@ -55,6 +62,7 @@ export function nextSql(rows: unknown[]): void {
 export function resetResolveRouteMocks(): void {
   vi.clearAllMocks();
   sqlMock.queue.length = 0;
+  sqlCalls.length = 0;
   requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:organizer', actingAs: null } });
   isEventOrganizerMock.mockResolvedValue({ authorized: true });
   resolveIdentitiesForDidsMock.mockResolvedValue(new Map());

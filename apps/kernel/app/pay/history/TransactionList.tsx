@@ -13,7 +13,7 @@ export type SerializedTx = {
   currency: string;
   status: string;
   source: string;
-  stripeId: string | null;
+  externalRef: string | null;
   metadata: unknown;
   fairManifest: unknown;
   batchId: string | null;

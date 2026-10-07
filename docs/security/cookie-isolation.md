@@ -121,7 +121,7 @@ session instead of an app DID + attestation:
   — caller must have a valid session cookie. Body: `{ aud, scopes? }`. Mints
   a ~10 minute EdDSA JWT (`createSessionAppToken`,
   `apps/kernel/src/lib/auth/jwt.ts`) with `sub` = the caller's DID, `aud` =
-  the requested app host, and `scope` = the requested scopes clamped to the
+  the requested app audience (its registry slug, e.g. `coffee`), and `scope` = the requested scopes clamped to the
   `SCOPES` vocabulary. Refresh = call again with the (still-valid) session.
 - `POST /auth/api/tokens/app/verify` — stateless verification: EdDSA
   signature, expiry, token type, and (when supplied) exact `aud` match, all
@@ -144,7 +144,7 @@ their own scope id as both `token_audiences` and `allowed_redirect_hosts`.
 ```ts
 import { verifyAppToken } from "@imajin/auth";
 
-const claims = await verifyAppToken(bearerToken, { aud: "coffee.imajin.ai" });
+const claims = await verifyAppToken(bearerToken, { aud: "coffee" });
 // claims: { sub, aud, scopes } | null
 ```
 
@@ -159,9 +159,13 @@ This is a distinct token `typ` (`session-app+jwt`) from the third-party
 accepts **either** credential:
 
 1. `Authorization: Bearer <token>` — verified via `verifyAppToken` against
-   the app's own `aud`. Authoritative for scopes (`requireScopes`).
-2. Falls back to the legacy shared session cookie when there's no bearer, or
-   the bearer doesn't verify as an app token.
+   the app's own `aud` — its **registry slug**, never its host (#2706):
+   path-routed apps share one host, so a host audience would make apps accept
+   each other's tokens, and the registry only holds slugs. The audience is
+   `IMAJIN_APP_AUD` when set, else the `slug` option. Authoritative for scopes
+   (`requireScopes`). A bearer that doesn't verify is a 401 — it never falls
+   back to the cookie.
+2. Falls back to the legacy shared session cookie only when there is no bearer.
 
 This lets an app move call sites to tokens one at a time, without a
 synchronized flag day across every app and the kernel.
@@ -174,7 +178,7 @@ PR, gated by the same `SESSION_COOKIE_SCOPE` flag:
 - Flag unset (default): calls `requireAuth()` exactly as before. Zero
   behavior change.
 - `SESSION_COOKIE_SCOPE=host` (in coffee's own environment): calls
-  `requireSessionOrAppToken(request, { aud: <coffee's own host> })` instead.
+  `requireSessionOrAppToken(request, { slug: 'coffee' })` instead.
 
 No other app was touched. Every other app importing `@imajin/auth` keeps
 calling `requireAuth()` / `getSession()` exactly as it does today — this PR

@@ -212,11 +212,16 @@ Two more declarations ride the same `registry.apps` row that already carries `re
 | `providesScopes` | Scope strings the app defines and enforces itself, e.g. `["dykil:read", "dykil:write"]`. |
 | `dependsOn` | Other registered audiences the app's tokens must also satisfy, with the platform scopes it needs there, e.g. `[{ "aud": "jin.imajin.ai", "scopes": ["media:read", "media:write"] }]`. |
 
+(A third declaration, `emittableEvents` — the event types the app may emit — is covered in
+[Emitting events from an app](#emitting-events-from-an-app-post-apievents-2638-2641) below.)
+
 Both default to `[]`. They have different authority:
 
-- `providesScopes` is the app's own vocabulary. An app owner may set it on `POST /api/registry/apps`
-  and `PATCH /api/registry/apps/:appId`, an operator on `POST /api/admin/registry/apps`, and an
-  `apps.provision` app declares it in its `imajin.app.json`.
+- `providesScopes` is the app's own vocabulary, and it needs a registered `slug` (#2674): the
+  `<slug>:` namespace is reserved for the app that holds that slug. An `apps.provision` app declares
+  it in its `imajin.app.json`, an operator on `POST /api/admin/registry/apps` (which takes an
+  optional `slug` for exactly this), and an owner may *narrow* it via `PATCH /api/registry/apps/:appId`.
+  A self-service app (`POST /api/registry/apps`) has no slug, so it declares none.
 - `dependsOn` hands an app's tokens *another service's* audience (e.g. kernel media), so it is
   **operator-only**: only the admin route and `apps.provision` write it. Self-service register and
   PATCH reject a `dependsOn` field with `400`.
@@ -226,7 +231,8 @@ Both are validated at write time and a bad one is a `400` (`apps.provision` fail
 
 - A `providesScopes` entry must be `namespace:verb` (lowercase), must not already be in the platform
   `SCOPE_VOCABULARY`, and must not sit in a namespace the vocabulary owns (`media:`, `wallet:`, ...).
-  When the app has a `slug` (every `apps.provision` app does), the namespace must be that slug.
+  The namespace must be the app's own `slug` (every `apps.provision` app has one) — an app with no
+  slug can't declare any, so it can't squat another app's namespace (`dykil:read`) (#2674).
 - A `dependsOn` entry's `aud` must be a registered, active app, and its `scopes` must be platform
   vocabulary scopes.
 
@@ -251,7 +257,8 @@ the requested `aud` first, then the `aud` of each `dependsOn` entry that (a) one
 scopes reaches, and (b) is still a registered, active app. So a dykil token minted with `media:read`
 also carries the node's own host and is accepted by `requireMediaAuth`, with no second token and no
 change to the media routes. The response reports every audience in `aud`. Verification re-checks the
-registry for *every* audience on the token, so revoking either end stops the token at both.
+registry for *every* audience on the token, so revoking either end stops the token at both — on
+`POST /auth/api/tokens/app/verify` and on the caller-DID path the attestation routes use (#2674).
 
 **Exactly the approved scopes.** Every scope on a token is honoured at every audience it carries, so
 once a token carries a dependency audience its scopes are clamped to the app's `providesScopes` plus
@@ -259,12 +266,98 @@ the listed scopes of the dependencies actually added — nothing else. An app th
 `media:read` and asks for `media:read media:write` gets a token with `media:read` only. A token with
 no dependency audience is valid only at the app's own host and is not clamped further.
 
+**Scopes are bound to their audience at verify time (#2674).** The token carries one flat scope list,
+but verifying it *for a dependency* honours only the scopes the app's `dependsOn` lists for that
+dependency: with two dependencies A and B, A's scopes are not honoured at B, and the app's own
+`providesScopes` are honoured at neither. The primary audience (the app itself) honours the whole
+token. `POST /auth/api/tokens/app/verify` returns the scopes for the audience it verified. A
+dependency the app no longer lists honours none.
+
+**The approved list is the ceiling (#2674).** `apps.provision` records the whole approved list in the
+row — `providesScopes`, `dependsOn`, and `requestedScopes` (the app's own scopes plus the approved
+dependency scopes). Two things hold the app to it:
+
+- *At mint*, `POST /auth/api/tokens/app` never grants a scope outside `requestedScopes` ∪
+  `providesScopes` ∪ the approved `dependsOn` scopes, so a third-party app with nothing assigned is
+  granted nothing. (Legacy `first_party` rows seeded with `requested_scopes = []` by `0139` predate
+  scope assignment and are left unconstrained; a `first_party` row with an assignment is held to it.)
+- *After approval*, `PATCH /api/registry/apps/:appId` may narrow `providesScopes` (and, on an app with a
+  slug, `requestedScopes`) but never widen it past that list; widening is a `400`. The ceiling is
+  computed from the stored row, not the request body, so one request can't raise it and spend it.
+  Adding a scope means re-proposing `apps.provision`, so the operator sees it on the card.
+
 ```bash
 curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
   -H "Content-Type: application/json" -H "Cookie: <the user's session cookie>" \
   -d '{ "aud": "dykil.imajin.ai", "scopes": ["dykil:read", "dykil:write", "media:read", "media:write"] }'
 # -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...only the approved ones], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
 ```
+
+### Emitting events from an app: `POST /api/events` (#2638, #2641)
+
+A standalone app cannot import `@imajin/bus` (kernel-internal, never published), so the kernel
+exposes the one public way to put a domain event on the bus. It is deliberately narrow — an app-sent
+event can **notify and audit, never move money**:
+
+> an operator-approved allowlist of event types, which can only notify and audit — never move money
+> (no settle, no attestation issuance from app-emitted events). *Ruled by Ryan, 2026-10-07.*
+
+Money stays on one audited path: market settlement goes through the settle route (#2642), not events.
+
+**The operator approves, per app, which event types it may emit.** It is one more declaration on the
+`registry.apps` row, with the same ceiling pattern as the approved scopes:
+
+| Field | Meaning |
+|---|---|
+| `emittableEvents` | Event types the app may emit, e.g. `["tip.granted", "tip.sent"]` (coffee) or `["listing.created", "listing.purchased"]` (market). Lowercase dotted names, no wildcards, at most 50. |
+
+- **Default: `[]`.** An app can emit nothing until an operator approves a list.
+- **Operator-only.** `POST /api/registry/apps` and `PATCH /api/registry/apps/:appId` reject an
+  `emittableEvents` field with `400`; an app never picks its own list.
+- **`apps.provision`:** the app *requests* the list in its `imajin.app.json` (`"emittableEvents": [...]`).
+  The proposal snapshots it into `detail.manifestDeclarations`, the `/jin` approval card shows it
+  (*May emit events — notify and audit only*), and approving registers **exactly that list** — a manifest
+  that has changed since the proposal fails closed at `register`, same as `providesScopes` / `dependsOn`.
+- **Already-registered apps:** the operator sets the full list with
+  `PATCH /api/admin/registry/apps/:appId` and body `{ "emittableEvents": [...] }` (replace, not merge;
+  `[]` withdraws everything). Every change is signed into the audit trail as a
+  `registry.app.emittable-events.updated` attestation carrying the before and after lists.
+- **Visible where the approved scopes are:** `GET /api/admin/registry/apps`,
+  `GET /api/registry/apps` and `GET /api/registry/apps/:appId` return `emittableEvents` next to
+  `requestedScopes` / `providesScopes` / `dependsOn`.
+
+**Emitting.** Authenticate as the app with an app-service token (`POST /auth/api/apps/token/service`
+— proof of possession of the app's registered keypair), then:
+
+```bash
+curl -X POST "${IMAJIN_KERNEL_URL}/api/events" \
+  -H "Authorization: Bearer ${APP_SERVICE_TOKEN}" -H "Content-Type: application/json" \
+  -d '{ "type": "tip.granted", "subject": "did:imajin:<recipient>", "payload": { "amount": 3, "currency": "USD" } }'
+# -> 201 { "ok": true, "type": "tip.granted", "origin": "did:imajin:<app>", "ran": ["audit-log", "notify"] }
+```
+
+| Status | When |
+|---|---|
+| `401` | No bearer, or it is not a valid app-service token. A user-delegated app token or a session token is also `401`: only the app itself, proven by its key, may speak as the app. |
+| `400` | Malformed body: `type` must be a lowercase dotted event type, `subject` a DID, `payload` an object of at most 16 KB. `scope` is not accepted — the kernel fixes it. |
+| `403` | `event_type_not_approved` — `type` is not on this app's approved list (including every type, for an app whose list is empty); or `app_not_registered` — the app has been revoked. |
+
+**What an accepted event can trigger — notify and audit only.** The kernel runs the event's configured
+chain *intersected with* `{notify, audit-log}`, enforced in code (`publishAppEvent`,
+`packages/bus/src/publish-app-event.ts`) no matter what `bus_chain_configs` says:
+
+- `audit-log` always runs first, so the record exists even if a notification then fails.
+- the chain's `notify` reactor runs if it has one (`tip.granted` -> the coffee tip notification).
+- `settle`, `mjn` (MJN emission), `attestation` (attestation issuance) and every other reactor are
+  **never** run for an app-origin event. An app-sent `listing.purchased` notifies the buyer; it does not
+  settle, credit MJN, or write an attestation.
+- event-subscription fan-out does not run for app-origin events.
+
+**Origin on the record.** The recorded event names the emitting app: `issuer` is the app's DID and the
+payload carries `origin: "app"` and `originAppDid`, so the operator's audit trail (`kernel.audit_log`)
+shows which app sent what. These keys, and `preview` / `attestationId`, are owned by the kernel — an
+app-supplied value for them is dropped, so an app cannot spoof another origin or opt out of the audit
+write.
 
 ### What gets sealed, and where
 
@@ -419,9 +512,9 @@ idempotency ledger.
    first-party row for the same app. `POST /api/admin/registry/apps` (admin-scoped) with
    `{"name": "<displayName>", "ownerDid": "did:imajin:platform", "callbackUrl":
    "https://your-node.imajin.ai/<slug>", "tier": "third_party", "publicKey": "<from step 2>",
-   "tokenAudiences": ["<slug>"], "allowedRedirectHosts": ["<slug>"]}`. Set the row's `slug`
-   column directly in the database (the admin route predates #2375's `slug` column) so future
-   `apps.provision` calls treat it as idempotent. If a legacy row for this slug still has
+   "tokenAudiences": ["<slug>"], "allowedRedirectHosts": ["<slug>"], "slug": "<slug>"}`. Passing
+   `slug` (#2674) makes future `apps.provision` calls treat the row as idempotent, and is what lets
+   the app declare `providesScopes` in its own namespace. A taken slug is a `409`. If a legacy row for this slug still has
    `slug` set, clear it first (see "Legacy first-party rows vs. provisioned apps" below) —
    `slug` is globally unique.
 4. **Seal the deploy secret:** fetch the repo's Actions public key

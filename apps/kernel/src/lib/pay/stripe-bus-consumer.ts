@@ -38,6 +38,7 @@ import { eq } from 'drizzle-orm';
 import { registerReactor, publish, type ReactorHandler } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, transactions, feeLedger, connectedAccounts } from '@/src/db';
+import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
 import { confirmWithdrawalFromRailEvent } from '@/src/lib/pay/withdraw-intent';
@@ -217,7 +218,7 @@ async function handlePaymentSucceeded(event: RailEvent) {
   const paymentIntent = event.raw as unknown as StripePaymentIntentLike;
 
   // Idempotency: skip if already completed
-  const existing = await db.select().from(transactions).where(eq(transactions.stripeId, paymentIntent.id)).limit(1);
+  const existing = await db.select().from(transactions).where(whereExternalRef(paymentIntent.id)).limit(1);
   if (existing[0]?.status === 'completed') {
     log.info({ paymentIntentId: paymentIntent.id }, 'Payment already completed, skipping');
     return;
@@ -237,9 +238,9 @@ async function handlePaymentSucceeded(event: RailEvent) {
   await db
     .update(transactions)
     .set({ status: 'completed' })
-    .where(eq(transactions.stripeId, paymentIntent.id));
+    .where(whereExternalRef(paymentIntent.id));
 
-  log.info({ stripeId: paymentIntent.id }, 'Transaction updated');
+  log.info({ externalRef: paymentIntent.id }, 'Transaction updated');
 
   publish('payment.charge', {
     issuer: process.env.PLATFORM_DID || 'system',
@@ -263,7 +264,7 @@ async function handlePaymentFailed(event: RailEvent) {
   await db
     .update(transactions)
     .set({ status: 'failed' })
-    .where(eq(transactions.stripeId, paymentIntent.id));
+    .where(whereExternalRef(paymentIntent.id));
 
   // Notify originating service
   if (paymentIntent.metadata.service === 'coffee') {
@@ -285,7 +286,7 @@ async function handleCheckoutCompleted(event: RailEvent) {
   }
 
   // Idempotency: skip if already completed
-  const existing = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
+  const existing = await db.select().from(transactions).where(whereExternalRef(session.id)).limit(1);
   if (existing[0]?.status === 'completed') {
     log.info({ sessionId: session.id }, 'Checkout already completed, skipping');
     return;
@@ -293,9 +294,9 @@ async function handleCheckoutCompleted(event: RailEvent) {
 
   log.info({ id: session.id, customerEmail: session.customer_email, amountTotal: session.amount_total, metadata: session.metadata }, 'Checkout completed');
 
-  await db.update(transactions).set({ status: 'completed' }).where(eq(transactions.stripeId, session.id));
+  await db.update(transactions).set({ status: 'completed' }).where(whereExternalRef(session.id));
 
-  const [tx] = await db.select().from(transactions).where(eq(transactions.stripeId, session.id)).limit(1);
+  const [tx] = await db.select().from(transactions).where(whereExternalRef(session.id)).limit(1);
   await processFairManifest(session, tx as (TxRow & { fairManifest?: unknown }) | undefined);
 
   if (session.metadata?.service === 'topup') {
@@ -472,7 +473,7 @@ async function handleSubscriptionCreated(event: RailEvent) {
     amount: (amount / 100).toString(),
     currency: (subscription.currency || 'usd').toUpperCase(),
     status: 'completed',
-    stripeId: subscription.id,
+    ...externalRefColumns(subscription.id),
     metadata: subscription.metadata,
   });
 }
@@ -523,7 +524,7 @@ async function handleInvoicePaid(event: RailEvent) {
     amount: (invoice.amount_paid / 100).toString(),
     currency: (invoice.currency || 'usd').toUpperCase(),
     status: 'completed',
-    stripeId: invoice.id,
+    ...externalRefColumns(invoice.id),
     metadata: {
       ...subscriptionMetadata,
       subscription_id: typeof invoice.subscription === 'string'

@@ -146,7 +146,7 @@ once the operator taps Approve, Reject, or Withdraw on `/jin`
   source: string;       // carried through unchanged from the request (#2152)
   kind: string;          // carried through unchanged from the request (#2152)
   decision: 'approve' | 'reject' | 'withdrawn';
-  mode?: string;         // opaque, source-adapter-chosen (e.g. 'allow-once') — kernel never interprets it (#2152)
+  mode?: string;         // the operator's chosen option (#2693): decision-card letter | exec 'allow-once'/'deny' | github TTL 'single'/'5m'/'24h' — validated per kind, covered by operatorSignature
   decidedBy: string;    // the operator DID — always the human, never an agent
   decidedAt: string;    // ISO 8601
   reason?: string;
@@ -177,9 +177,10 @@ the generic consent-request primitive use) — `decidedBy` is guaranteed to
 be the operator because the decide route requires `requireAuth` to resolve
 that *exact* DID directly, never a delegated (`X-Acting-For`/`onBehalfOf`)
 identity. See **Auth invariant** below. The kernel never interprets
-`decision` or `mode` — it only witnesses and republishes them; a source's
-adapter is responsible for mapping `approve`/`reject` (+ optional `mode`)
-onto whatever vocabulary its own underlying store expects.
+`decision` — it only witnesses and republishes it; a source's adapter is
+responsible for mapping `approve`/`reject` onto whatever vocabulary its
+own underlying store expects. `mode` is **not** opaque (#2693) — see
+*Decision `mode`* below.
 
 ### Operator countersignature (#2082)
 
@@ -193,8 +194,12 @@ same Ed25519 keypair already held in the operator's browser
 It covers exactly:
 
 ```ts
-canonicalize({ contentHash, decision, decidedAt })
+canonicalize({ contentHash, decision, decidedAt })           // decision carries no mode
+canonicalize({ contentHash, decision, decidedAt, mode })     // decision carries a mode (#2693)
 ```
+
+`mode` is part of the signed bytes **if and only if** the decision carries
+one, so a mode-less decision signs byte-for-byte what #2082 signed.
 
 where `contentHash` is the effective content hash of the *request* this
 decision answers (see `effectiveContentHash` in `apps/kernel/src/lib/
@@ -216,10 +221,42 @@ supplies `operatorSignature`, regardless of the feature flag below:
    this single check rejects an unknown key, a mismatched key, AND a
    revoked/rotated key uniformly, since a rotated-away key is no longer
    "current" either.
-3. `crypto.verifySync(sig, canonicalize({contentHash, decision, decidedAt}), keyId)`
-   must pass.
+3. `crypto.verifySync(sig, canonicalize({contentHash, decision, decidedAt[, mode]}), keyId)`
+   must pass. There is deliberately **no fallback** to the mode-less shape:
+   a `mode` altered, added or dropped after signing fails here with 400
+   (`Invalid operator signature`).
 Any failure returns 400 **before** the decision is persisted or the
 kernel's own witness signature is produced.
+
+### Decision `mode` — the signed choice (#2693)
+
+Picking an option IS the signing event (#2323), so the operator's
+countersignature covers the chosen `mode`, and the decision route refuses
+(400, before anything is signed or persisted) a `mode` the approval's kind
+does not offer (`apps/kernel/src/lib/notify/operator-decision-modes.ts`):
+
+| Kind | `approve` | `reject` / `withdrawn` |
+|---|---|---|
+| `decision:card` | **required**: one of the card's own option letters (`detail.options[].letter`) | no `mode` |
+| `gateway-exec:command` | absent \| `allow-once` | absent \| `deny` |
+| `github:*` | absent \| `single` \| `5m` \| `24h` | no `mode` |
+| every other kind | no `mode` | no `mode` |
+
+An empty or non-string `mode` is 400 at the route. The `/jin` Inbox sends
+`allow-once`/`deny` for exec explicitly so those are signed rather than
+implied.
+
+**Back-compat (no migration):** a decision signed before #2693 has no
+`mode` in its signed payload and still verifies exactly as it did. On the
+Record lane (`GET /jin/api/events`) such an `operator.approval.decided`
+event that nevertheless carries a `mode` reports
+`modeCountersign: "not-countersigned"` /
+`modeCountersignLabel: "letter not countersigned"` — the letter was
+witnessed by the node, not signed by the operator — and is **not** shown as
+invalid. `"invalid"` is reserved for a signature that verifies against
+neither shape (e.g. a stored `mode` altered after signing); `"countersigned"`
+means the signature covers the letter; `"not-applicable"` means there was no
+`mode` or no operator signature to assess.
 
 ### Feature flag: `OPERATOR_COUNTERSIGN_REQUIRED`
 
@@ -251,7 +288,7 @@ node to require it going forward.
 | `contentHash` (on the request) | n/a — computed by the source's adapter | Kernel, at ingest (`validateApprovalRequestedPayload`) | sha256 over `{proposalId, source, kind, summary, keysTouched, detail}` |
 | `contentHash` (on the decided event, #2294) | n/a — echoed by the kernel from the stored row (`effectiveContentHash`) | The source adapter's own #2084 "check 1" (e.g. `ima-jin/openclaw-imajin-plugin`'s gateway-approvals bridge) | Same sha256 digest as above, `sha256:`-prefixed |
 | Kernel witness `signature` (on the decision row) | Kernel's own node key (`getNodeSigningIdentity`) | Anyone holding the node's public key (legacy v1 trust anchor) | Ed25519 over `canonicalize(payload)` (the whole decided-event payload) |
-| `operatorSignature.sig` | The operator's own key (client-side on `/jin`) | Kernel, at decide time (`verifyOperatorCountersignature`); the plugin, per `#24`, against the operator DID's public key directly | Ed25519 over `canonicalize({contentHash, decision, decidedAt})` |
+| `operatorSignature.sig` | The operator's own key (client-side on `/jin`) | Kernel, at decide time (`verifyOperatorCountersignature`); the plugin, per `#24`, against the operator DID's public key directly | Ed25519 over `canonicalize({contentHash, decision, decidedAt[, mode]})` |
 | `operatorSignature.keyId` | — (identifies the signer) | Kernel: must equal the operator DID's current `identities.publicKey` | n/a |
 
 ### Delivery
@@ -401,8 +438,8 @@ proposal-specific redelivery code required.
 
 ## `gateway-exec:command` (#2221)
 
-The first kind whose decision vocabulary the kernel itself narrows, rather
-than leaving `mode` fully opaque: forwarded OpenClaw host-exec approvals
+The first kind whose decision vocabulary the kernel itself narrowed (since
+#2693 every kind's `mode` is validated — see *Decision `mode`* above): forwarded OpenClaw host-exec approvals
 (`ima-jin/openclaw-imajin-plugin#38`, the `gateway-exec` `ApprovalSource`).
 See `apps/kernel/src/lib/notify/exec-command-approvals.ts` for the full
 contract; summary:
@@ -419,8 +456,8 @@ contract; summary:
 - The kernel enforces `mode` for this kind alone: `approve` only ever
   pairs with `mode` absent or `'allow-once'`, `reject` only with `mode`
   absent or `'deny'` — `'allow-always'` (or any other value) is rejected
-  with 400 before any state mutation. Every other kind still leaves `mode`
-  fully opaque.
+  with 400 before any state mutation. (#2693 extends per-kind validation
+  to every other kind.)
 - A decision on a proposal past its own `detail.expiresAt` is refused with
   409, checked before any state mutation.
 - `POST /notify/api/internal/operator-approvals/outcome` (webhook-secret

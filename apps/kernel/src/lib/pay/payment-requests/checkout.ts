@@ -40,6 +40,7 @@
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, paymentRequests, transactions } from '@/src/db';
+import { externalRefColumns } from '@/src/lib/pay/external-ref';
 import type { PaymentRequest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
@@ -123,17 +124,17 @@ async function findReusableCheckoutSession(
     )
     .orderBy(desc(transactions.createdAt))
     .limit(1);
-  if (!pendingTx?.stripeId) return null;
+  if (!pendingTx?.externalRef) return null;
 
   try {
     const stripe = getStripeClient();
-    const session = await stripe.checkout.sessions.retrieve(pendingTx.stripeId);
+    const session = await stripe.checkout.sessions.retrieve(pendingTx.externalRef);
     if (session.status === 'open' && session.url) {
       return { id: session.id, url: session.url, expiresAt: new Date(session.expires_at * 1000).toISOString() };
     }
   } catch (error) {
     log.warn(
-      { err: String(error), paymentRequestId, sessionId: pendingTx.stripeId },
+      { err: String(error), paymentRequestId, sessionId: pendingTx.externalRef },
       'payment_request checkout: failed to retrieve existing Stripe session — creating a new one',
     );
   }
@@ -267,7 +268,7 @@ export async function createPaymentRequestCheckoutSession(
     amount: (existing.totalAmount / 100).toString(),
     currency: existing.currency,
     status: 'pending',
-    stripeId: session.id,
+    ...externalRefColumns(session.id),
     metadata,
     // fairManifest intentionally omitted — see module doc comment.
   });

@@ -129,6 +129,21 @@ describe('POST /auth/api/tokens/app/verify — multi-audience tokens (#2663 gap 
   const MEDIA_HOST = 'jin.imajin.ai';
   const scopes = ['dykil:read', 'media:read'];
 
+  /** The app row for APP_HOST (the token's primary audience), declaring its dependency. */
+  const APP_ROW = {
+    id: 'app_dykil',
+    appDid: 'did:imajin:app-dykil',
+    ownerDid: 'did:imajin:platform',
+    tier: 'third_party',
+    status: 'active',
+    dependsOn: [{ aud: MEDIA_HOST, scopes: ['media:read'] }],
+  };
+  const KERNEL_ROW = { id: 'app_kernel', appDid: 'did:imajin:kernel', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active', dependsOn: [] };
+
+  beforeEach(() => {
+    mocks.resolveActiveAppByAudienceMock.mockImplementation(async (aud: string) => (aud === APP_HOST ? APP_ROW : KERNEL_ROW));
+  });
+
   it('verifies the same token for the app audience and for the dependency audience', async () => {
     const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes });
 
@@ -138,8 +153,91 @@ describe('POST /auth/api/tokens/app/verify — multi-audience tokens (#2663 gap 
     expect(forApp.status).toBe(200);
     expect(await forApp.json()).toEqual({ sub: USER_DID, aud: APP_HOST, scopes });
     expect(forMedia.status).toBe(200);
-    // `aud` is the audience this verification succeeded for, not just the first claim.
-    expect(await forMedia.json()).toEqual({ sub: USER_DID, aud: MEDIA_HOST, scopes });
+    // `aud` is the audience this verification succeeded for, not just the first claim;
+    // `scopes` are the ones bound to that audience (#2674), not the token-wide list.
+    expect(await forMedia.json()).toEqual({ sub: USER_DID, aud: MEDIA_HOST, scopes: ['media:read'] });
+  });
+
+  describe('per-audience scope binding (#2674)', () => {
+    const EVENTS_HOST = 'events.imajin.ai';
+    const tokenScopes = ['dykil:read', 'media:read', 'events:read'];
+    const twoDeps = {
+      ...APP_ROW,
+      dependsOn: [
+        { aud: MEDIA_HOST, scopes: ['media:read'] },
+        { aud: EVENTS_HOST, scopes: ['events:read'] },
+      ],
+    };
+
+    beforeEach(() => {
+      mocks.resolveActiveAppByAudienceMock.mockImplementation(async (aud: string) => (aud === APP_HOST ? twoDeps : KERNEL_ROW));
+    });
+
+    async function mint(): Promise<string> {
+      return createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST, EVENTS_HOST], scopes: tokenScopes });
+    }
+
+    it("honours dependency A's scopes at A and dependency B's at B, each only at its own audience", async () => {
+      const token = await mint();
+
+      const atMedia = await (await POST(verifyRequest({ token, aud: MEDIA_HOST }) as never)).json();
+      const atEvents = await (await POST(verifyRequest({ token, aud: EVENTS_HOST }) as never)).json();
+
+      expect(atMedia.scopes).toEqual(['media:read']);
+      expect(atEvents.scopes).toEqual(['events:read']);
+    });
+
+    it("rejects with 403 a scope check for dependency A's scope at dependency B", async () => {
+      const token = await mint();
+
+      const res = await POST(verifyRequest({ token, aud: EVENTS_HOST, scope: 'media:read' }) as never);
+
+      expect(res.status).toBe(403);
+      expect((await res.json()).error).toMatch(/media:read/);
+    });
+
+    it('still accepts the scope at the audience it is bound to', async () => {
+      const token = await mint();
+
+      const res = await POST(verifyRequest({ token, aud: MEDIA_HOST, scope: 'media:read' }) as never);
+
+      expect(res.status).toBe(200);
+    });
+
+    it("does not honour the app's own providesScopes at a dependency", async () => {
+      const token = await mint();
+
+      const res = await POST(verifyRequest({ token, aud: MEDIA_HOST, scope: 'dykil:read' }) as never);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('keeps every scope honoured at the primary audience', async () => {
+      const token = await mint();
+
+      const body = await (await POST(verifyRequest({ token, aud: APP_HOST }) as never)).json();
+
+      expect(body.scopes).toEqual(tokenScopes);
+    });
+
+    it('reports the primary audience scopes when no aud is supplied', async () => {
+      const token = await mint();
+
+      const body = await (await POST(verifyRequest({ token }) as never)).json();
+
+      expect(body).toEqual({ sub: USER_DID, aud: APP_HOST, scopes: tokenScopes });
+    });
+
+    it('honours nothing at a dependency the app no longer lists in dependsOn', async () => {
+      const token = await mint();
+      mocks.resolveActiveAppByAudienceMock.mockImplementation(async (aud: string) =>
+        aud === APP_HOST ? { ...twoDeps, dependsOn: [{ aud: MEDIA_HOST, scopes: ['media:read'] }] } : KERNEL_ROW,
+      );
+
+      const body = await (await POST(verifyRequest({ token, aud: EVENTS_HOST }) as never)).json();
+
+      expect(body.scopes).toEqual([]);
+    });
   });
 
   it('still rejects an audience the token does not carry', async () => {

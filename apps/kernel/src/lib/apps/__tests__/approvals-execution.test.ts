@@ -161,11 +161,12 @@ describe('executeAppsProvisionApproval — execution', () => {
     }));
   });
 
-  it('#2663: hands the pipeline the providesScopes/dependsOn list the operator saw on the card', async () => {
+  it('#2663: hands the pipeline the providesScopes/dependsOn/emittableEvents list the operator saw on the card', async () => {
     runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'register', error: 'x' });
     const manifestDeclarations = {
       providesScopes: ['dykil:read', 'dykil:write'],
       dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['tip.granted', 'tip.sent'],
     };
 
     await executeAppsProvisionApproval(card({ detail: { slug: 'dykil', displayName: 'dykil', manifestDeclarations } }));
@@ -180,6 +181,7 @@ describe('executeAppsProvisionApproval — execution', () => {
     ['missing dependsOn', { providesScopes: ['dykil:read'] }],
     ['a non-string scope', { providesScopes: [1], dependsOn: [] }],
     ['a malformed dependency', { providesScopes: [], dependsOn: [{ aud: 'jin.imajin.ai' }] }],
+    ['a non-string emittable event', { providesScopes: [], dependsOn: [], emittableEvents: [1] }],
   ])('#2663: approves nothing when the proposal detail snapshot is %s', async (_label, manifestDeclarations) => {
     runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'register', error: 'x' });
 

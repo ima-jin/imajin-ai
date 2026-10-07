@@ -13,15 +13,10 @@ import { jsonResponse, errorResponse } from '@/lib/utils';
 // requireAuth() cookie path, unchanged. See docs/security/cookie-isolation.md.
 const USE_TOKEN_ADAPTER = process.env.SESSION_COOKIE_SCOPE === 'host';
 
-function thisAppHost(): string {
-  const base = process.env.NEXT_PUBLIC_BASE_URL;
-  if (!base) return 'coffee.imajin.ai';
-  try {
-    return new URL(base).host;
-  } catch {
-    return 'coffee.imajin.ai';
-  }
-}
+// Audience = coffee's registry slug, never its host (#2706): the host is shared
+// by every path-routed app, and the registry's `token_audiences` holds slugs.
+// `IMAJIN_APP_AUD` overrides it (read inside @imajin/auth).
+const APP_SLUG = 'coffee';
 
 /**
  * GET /api/pages/mine - Get current user's coffee page
@@ -30,7 +25,7 @@ export async function GET(request: NextRequest) {
   let did: string;
 
   if (USE_TOKEN_ADAPTER) {
-    const authResult = await requireSessionOrAppToken(request, { aud: thisAppHost() });
+    const authResult = await requireSessionOrAppToken(request, { slug: APP_SLUG });
     if ('error' in authResult) {
       return errorResponse(authResult.error, authResult.status);
     }

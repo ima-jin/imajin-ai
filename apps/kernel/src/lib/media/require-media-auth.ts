@@ -1,22 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAuth, resolveActingDid, verifyAppToken, type Identity, type Scope } from "@imajin/auth";
 import { enforceRoutePolicy, type DelegationRouteKey } from "@imajin/auth/delegation-policy";
-import { nodeUrl } from "@/src/lib/http/node-url";
 
 /**
- * This node's own host — the `aud` a scoped app-token must be minted for
- * before these routes will accept it. Mirrors coffee's `thisAppHost()`
- * reference adoption (#1974) exactly, just resolving THIS app's (kernel's)
- * own origin via the existing `nodeUrl()` single source of truth instead of
- * re-deriving it from `NEXT_PUBLIC_BASE_URL` a second time.
+ * The `aud` a scoped app-token must be minted for before these routes will
+ * accept it: the kernel's own seeded registry audience, `jin`
+ * (migrations/0139_registry_apps_seed_first_party.sql). Registry audiences are
+ * slugs, never the node's host (#2706) — the host is shared by every
+ * path-routed app, so verifying against it would accept any app's token and no
+ * mintable token would ever match it.
  */
-function mediaAppAudience(): string {
-  try {
-    return new URL(nodeUrl()).host;
-  } catch {
-    return "jin.imajin.ai";
-  }
-}
+export const MEDIA_APP_AUDIENCE = "jin";
 
 export interface MediaAuth {
   /** Effective DID: the resource owner / acting identity for this call. */
@@ -45,7 +39,7 @@ async function tryAppTokenAuth(request: NextRequest, requiredScope: Scope): Prom
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
 
-  const verification = await verifyAppToken(authHeader.slice(7), { aud: mediaAppAudience() });
+  const verification = await verifyAppToken(authHeader.slice(7), { aud: MEDIA_APP_AUDIENCE });
   if (!verification) return null;
 
   if (!verification.scopes.includes(requiredScope)) {

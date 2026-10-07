@@ -9,6 +9,9 @@
  *
  * Body: { token: string, aud?: string, scope?: string }
  * Returns: { sub, aud, scopes }
+ *   scopes — those honoured at the verified `aud` (#2674): everything on the
+ *            token at its primary audience, only the listed dependency scopes
+ *            at a dependency audience.
  *
  * This is the transport `verifyAppToken` (@imajin/auth) calls into. See
  * apps/kernel/src/lib/auth/jwt.ts for the session-vs-app-DID token distinction.
@@ -16,6 +19,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@imajin/config';
+import { scopesForAudience } from '@imajin/auth';
 import { verifySessionAppTokenLocal } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
 
@@ -55,12 +59,20 @@ export async function POST(request: NextRequest) {
     return appNotRegisteredResponse(request);
   }
 
-  if (body.scope && !claims.scopes.includes(body.scope)) {
+  // #2674: scopes ride on the token as one flat list, but each dependency's
+  // listed scopes belong to ITS audience only. Verifying for a dependency
+  // honours just the scopes the primary app's `dependsOn` lists for it, so a
+  // token with two dependency audiences can't use A's scopes at B (nor the
+  // app's own `providesScopes` at either). The primary audience is `auds[0]`.
+  const primaryApp = registered[0];
+  const scopes = scopesForAudience(claims.aud, claims.auds[0], claims.scopes, primaryApp?.dependsOn ?? []);
+
+  if (body.scope && !scopes.includes(body.scope)) {
     return NextResponse.json({ error: `Scope '${body.scope}' was not granted` }, { status: 403, headers: cors });
   }
 
   return NextResponse.json(
-    { sub: claims.sub, aud: claims.aud, scopes: claims.scopes },
+    { sub: claims.sub, aud: claims.aud, scopes },
     { headers: cors }
   );
 }

@@ -121,10 +121,10 @@ async function fetchOrderSales(eventId: string, fallbackCurrency: string | null)
       tx.id AS transaction_id,
       tx.amount AS tx_amount,
       tx.status AS tx_status,
-      tx.stripe_id AS tx_stripe_id,
+      tx.external_ref AS tx_external_ref,
       tx.metadata AS tx_metadata
     FROM events.orders o
-    LEFT JOIN pay.transactions tx ON tx.stripe_id = o.stripe_session_id
+    LEFT JOIN pay.transactions tx ON tx.rail = 'stripe' AND tx.external_ref = o.stripe_session_id
     LEFT JOIN events.tickets t ON t.order_id = o.id
     LEFT JOIN events.ticket_types tt ON tt.id = t.ticket_type_id
     LEFT JOIN dykil.survey_responses sr ON sr.ticket_id = t.id
@@ -154,7 +154,7 @@ async function fetchOrderSales(eventId: string, fallbackCurrency: string | null)
       currency: row.currency ?? fallbackCurrency ?? 'USD',
       status: row.order_status ?? 'completed',
       paymentMethod: row.payment_method ?? null,
-      stripeSessionId: row.stripe_session_id ?? row.tx_stripe_id ?? null,
+      stripeSessionId: row.stripe_session_id ?? row.tx_external_ref ?? null,
       createdAt: row.purchased_at
         ? new Date(row.purchased_at).toISOString()
         : new Date(row.created_at).toISOString(),

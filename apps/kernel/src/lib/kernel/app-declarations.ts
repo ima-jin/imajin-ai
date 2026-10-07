@@ -30,7 +30,10 @@ export interface AppDeclarationsInput {
   dependsOn?: unknown;
   /** When present, clamped to the platform vocabulary + the declared `providesScopes`. */
   requestedScopes?: unknown;
-  /** The app's slug, when it has one — `providesScopes` must live in that namespace. */
+  /**
+   * The app's registered slug. `providesScopes` must live in that namespace (#2674), so an
+   * app without a slug can't declare any: namespaces are reserved by slug.
+   */
   slug?: string | null;
 }
 
@@ -53,7 +56,8 @@ export type AppDeclarationsResult = { ok: AppDeclarations } | { error: string };
 export async function validateAppDeclarations(input: AppDeclarationsInput): Promise<AppDeclarationsResult> {
   const provided = validateProvidedScopes(input.providesScopes ?? [], { slug: input.slug });
   if (provided.invalid.length > 0) {
-    return { error: `providesScopes rejected (malformed, already in the platform vocabulary, or in a reserved or foreign namespace): ${provided.invalid.join(', ')}` };
+    const slugHint = input.slug ? '' : ' — an app without a registered slug owns no scope namespace and cannot declare any';
+    return { error: `providesScopes rejected (malformed, already in the platform vocabulary, or in a reserved or foreign namespace): ${provided.invalid.join(', ')}${slugHint}` };
   }
 
   const deps = validateDependsOn(input.dependsOn ?? []);

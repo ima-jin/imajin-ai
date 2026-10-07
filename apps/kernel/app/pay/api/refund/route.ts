@@ -6,7 +6,7 @@
  *
  * Request:
  * {
- *   paymentId: string,   // Stripe payment/session ID (= stripeId in transactions)
+ *   paymentId: string,   // Stripe payment/session ID (= externalRef in transactions)
  *   amount?: number,     // cents — omit for full refund
  *   reason?: string
  * }
@@ -59,9 +59,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       );
     }
 
-    // Find the original transaction by stripeId.
-    // Pay stores checkout session ID (cs_xxx) as stripeId, but events tickets
-    // store the payment intent ID (pi_xxx). Try stripeId first, then use
+    // Find the original transaction by externalRef.
+    // Pay stores checkout session ID (cs_xxx) as externalRef, but events tickets
+    // store the payment intent ID (pi_xxx). Try externalRef first, then use
     // Stripe API to resolve payment intent → checkout session.
     const originalTx = await resolveOriginalTransaction(paymentId, log);
     if (!originalTx) {

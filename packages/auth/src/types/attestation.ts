@@ -144,6 +144,10 @@ export const ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  // #2638/#2641 — an operator changed the list of event types an app may emit
+  // via POST /api/events (PATCH /api/admin/registry/apps/:appId). Same
+  // system-class posture as the three above.
+  'registry.app.emittable-events.updated',
 
   // Withdrawal-intent reconciliation (#2172) — minted by the platform node
   // identity whenever the reconciliation sweep classifies a rail transfer
@@ -298,6 +302,8 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'registry.app.registered',
   'registry.app.rotated',
   'registry.app.revoked',
+  // #2638/#2641 — see ATTESTATION_TYPES above.
+  'registry.app.emittable-events.updated',
   // #2172 — minted mechanically by the platform node identity for every
   // withdrawal reconciliation discrepancy. See ATTESTATION_TYPES above.
   'pay.reconciliation.discrepancy',
