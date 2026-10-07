@@ -31,7 +31,8 @@ function cacheTier(did: string, tier: string): void {
 /**
  * Look up a DID's tier via the kernel's public `GET /auth/api/identity/:did`.
  * Returns null when the tier cannot be determined (callers fail closed).
- * Only successful lookups are cached.
+ * Only non-soft (hard) tiers are cached: a soft result is never cached, so a
+ * buyer who upgrades soft → hard is accepted on their very next request.
  */
 async function lookupTier(did: string): Promise<string | null> {
   const cached = tierCache.get(did);
@@ -47,7 +48,7 @@ async function lookupTier(did: string): Promise<string | null> {
     if (!res.ok) return null;
     const data = await res.json();
     if (typeof data?.tier !== 'string' || !data.tier) return null;
-    cacheTier(did, data.tier);
+    if (data.tier !== 'soft') cacheTier(did, data.tier);
     return data.tier;
   } catch (err) {
     log.error({ err: String(err) }, '[AUTH] Identity tier lookup failed');
@@ -63,7 +64,8 @@ async function lookupTier(did: string): Promise<string | null> {
  * - Cookie callers: tier comes from the kernel session, as in `requireHardDID`.
  * - App-token callers: tokens carry no tier claim (a soft DID that upgrades
  *   must not need every token re-minted), so the tier is looked up from the
- *   kernel's public identity endpoint, briefly cached. If the tier cannot be
+ *   kernel's public identity endpoint (hard tiers briefly cached, soft never
+ *   cached so an upgrade takes effect immediately). If the tier cannot be
  *   determined the call fails closed (503).
  */
 export async function requireHardDIDOrAppToken(

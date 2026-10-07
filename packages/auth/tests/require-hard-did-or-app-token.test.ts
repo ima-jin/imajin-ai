@@ -114,6 +114,19 @@ describe('requireHardDIDOrAppToken — app token path', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it('does not cache soft results: an upgrade takes effect on the next request', async () => {
+    let tier = 'soft';
+    const fetchMock = mockFetch(() => json({ did: DID, tier }));
+
+    const before = await requireHardDIDOrAppToken(bearerRequest(), { aud: APP_HOST });
+    expect(before).toMatchObject({ status: 403 });
+
+    tier = 'preliminary';
+    const after = await requireHardDIDOrAppToken(bearerRequest(), { aud: APP_HOST });
+    expect(after).toEqual({ auth: { did: DID, scopes: ['market:purchase'], via: 'token' } });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('does not cache failed lookups', async () => {
     mockFetch(() => json({ error: 'boom' }, 500));
     await requireHardDIDOrAppToken(bearerRequest(), { aud: APP_HOST });
