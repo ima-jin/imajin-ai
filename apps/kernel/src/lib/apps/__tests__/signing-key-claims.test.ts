@@ -137,6 +137,18 @@ describe('issueSigningKeyClaim', () => {
     expect(rows[0].grantId).toBe(GRANT_ID);
   });
 
+  it('#2707: never logs the plaintext code (hash-only persistence, nothing in any log call)', async () => {
+    const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+
+    expect(logMock.info).toHaveBeenCalled();
+    for (const spy of [logMock.info, logMock.warn, logMock.error]) {
+      expect(JSON.stringify(spy.mock.calls)).not.toContain(code);
+    }
+    // The only persisted column that can relate to the code is its SHA-256 digest.
+    const [row] = [...claimsStore.values()];
+    expect(row.codeHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it('emits apps.signing-key.claim.issued without the plaintext code', async () => {
     const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
 
