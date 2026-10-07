@@ -7,7 +7,7 @@ import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
-import { isInternalSecretField } from '@/src/lib/vault/internal-secret-field';
+import { isInternalSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 ensureVaultHotReloadReactorRegistered();
@@ -70,8 +70,9 @@ export async function POST(request: NextRequest) {
 
   const { field, value, custodyScheme, expiresAt } = body;
 
-  if (typeof field !== 'string' || field.trim().length === 0) {
-    return NextResponse.json({ error: 'field is required' }, { status: 400 });
+  const parsedField = parseVaultFieldName(field);
+  if (!parsedField.ok) {
+    return NextResponse.json({ error: parsedField.message }, { status: 400 });
   }
   if (typeof value !== 'string' || value.length === 0) {
     return NextResponse.json({ error: 'value is required' }, { status: 400 });
@@ -89,7 +90,7 @@ export async function POST(request: NextRequest) {
     expiresAtDate = parsed;
   }
 
-  const trimmedField = field.trim();
+  const trimmedField = parsedField.value.field;
 
   try {
     const refusal = await checkSetGuards(trimmedField);
