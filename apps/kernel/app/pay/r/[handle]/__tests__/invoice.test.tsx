@@ -36,6 +36,7 @@ const ISSUED_VIEW = {
   dueAt: '2026-10-06T00:00:00.000Z',
   paidAt: null,
   settlement: null,
+  paidBy: null,
 };
 
 const PAID_VIEW = {
@@ -146,6 +147,37 @@ describe('printable invoice — receipt mode once paid (#2661)', () => {
     expect(screen.getByTestId('paid-stamp')).toBeDefined();
     expect(text('receipt-settlement-ref')).toContain('manual');
     expect(text('receipt-settlement-ref')).not.toContain('·');
+  });
+
+  it('#2665: an e-Transfer settlement renders the same receipt — paid stamp, date, total paid — naming the rail and the memo', async () => {
+    await renderPage({
+      ...PAID_VIEW,
+      settlement: { method: 'emt', reference: 'INV-3F9A1C07D2' },
+    });
+
+    expect(screen.getByTestId('paid-stamp').textContent).toBe('Paid');
+    expect(text('invoice-status')).toContain('Paid on 2026-10-09');
+    expect(text('receipt-paid-date')).toContain('2026-10-09');
+    expect(text('receipt-settlement-ref')).toContain('e-Transfer · INV-3F9A1C07D2');
+    expect(screen.getByText('Receipt from')).toBeDefined();
+    expect(screen.getByText('Total paid')).toBeDefined();
+    // Settled: no pay actions, e-Transfer or card, on the receipt.
+    expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Pay now' })).toBeNull();
+    expect(screen.queryByTestId('emt-instructions')).toBeNull();
+  });
+
+  it('#2656: the receipt names the paying DID — Artifact when Eric paid as Artifact', async () => {
+    await renderPage({ ...PAID_VIEW, paidBy: { did: 'did:imajin:artifact', displayName: 'Artifact' } });
+
+    expect(text('receipt-paid-by')).toContain('Artifact');
+    expect(text('receipt-paid-by-did')).toContain('did:imajin:artifact');
+  });
+
+  it('#2656: an open invoice names nobody as payer', async () => {
+    await renderPage(ISSUED_VIEW);
+    expect(screen.queryByTestId('receipt-paid-by')).toBeNull();
+    expect(screen.queryByTestId('receipt-paid-by-did')).toBeNull();
   });
 
   it('degrades to a plain "Paid" status when no payment date was recorded', async () => {

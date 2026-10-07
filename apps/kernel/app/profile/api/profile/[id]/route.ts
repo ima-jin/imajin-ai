@@ -9,7 +9,7 @@ import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
 import { publish, broker, isBrokerRelease } from '@imajin/bus';
 import { validateAgentPricingManifest } from '@imajin/fair';
-import { filterProfileFields, FIELD_VISIBILITY_LEVELS, validateTaxRegistrations, validateJsonbSize } from '@/src/lib/profile';
+import { filterProfileFields, FIELD_VISIBILITY_LEVELS, validateTaxRegistrations, validateEtransferEmail, validateJsonbSize } from '@/src/lib/profile';
 import type { JsonbSizeResult, ProfileJsonbField } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
 import { loadAndUnseal } from '@/src/lib/vault';
@@ -317,7 +317,7 @@ function validateProfileUpdateBody(
   existing: typeof profiles.$inferSelect | undefined,
   cors: HeadersInit
 ): NextResponse | null {
-  const { visibility, agentPricing, fieldVisibility, taxRegistrations } = body;
+  const { visibility, agentPricing, fieldVisibility, taxRegistrations, etransferEmail } = body;
   if (visibility !== undefined && !['public', 'incognito'].includes(visibility)) {
     return NextResponse.json({ error: 'visibility must be public or incognito' }, { status: 400, headers: cors });
   }
@@ -341,28 +341,40 @@ function validateProfileUpdateBody(
       return NextResponse.json({ error: 'Invalid tax registrations', details: trResult.errors }, { status: 400, headers: cors });
     }
   }
-  return null;
+  return validateEtransferEmailField(etransferEmail, cors);
 }
 
+/** Validate the optional e-Transfer receiving email (#2665). Returns error response or null (absent, cleared, or valid). */
+function validateEtransferEmailField(etransferEmail: unknown, cors: HeadersInit): NextResponse | null {
+  if (etransferEmail === undefined) return null;
+  const emailResult = validateEtransferEmail(etransferEmail);
+  if (emailResult.valid) return null;
+  return NextResponse.json({ error: emailResult.error, field: 'etransferEmail' }, { status: 400, headers: cors });
+}
+
+/** Business-only profile fields — each is refused with a 403 on a non-business identity. */
+const BUSINESS_ONLY_FIELDS = ['taxRegistrations', 'etransferEmail'] as const;
+
 /**
- * tax_registrations (#2420) is business-scope only. Returns an error
- * response when the body attempts to set it on a non-business identity, or
- * null when the update may proceed (including when taxRegistrations is
- * absent from the body entirely).
+ * tax_registrations (#2420) and the e-Transfer receiving email (#2665) are
+ * business-scope only. Returns an error response when the body attempts to
+ * set either on a non-business identity, or null when the update may proceed
+ * (including when neither is in the body at all).
  */
-async function checkTaxRegistrationsScope(
+async function checkBusinessOnlyFieldsScope(
   body: Record<string, any>,
   profileDid: string,
   cors: HeadersInit
 ): Promise<NextResponse | null> {
-  if (body.taxRegistrations === undefined) return null;
+  const attempted = BUSINESS_ONLY_FIELDS.filter((field) => body[field] !== undefined);
+  if (attempted.length === 0) return null;
   const [identityRow] = await db
     .select({ scope: identities.scope })
     .from(identities)
     .where(eq(identities.id, profileDid))
     .limit(1);
   if (identityRow?.scope !== 'business') {
-    return NextResponse.json({ error: 'taxRegistrations can only be set on a business identity' }, { status: 403, headers: cors });
+    return NextResponse.json({ error: `${attempted[0]} can only be set on a business identity` }, { status: 403, headers: cors });
   }
   return null;
 }
@@ -376,7 +388,7 @@ async function buildProfileUpdates(
   existing: typeof profiles.$inferSelect | undefined,
   profileDid: string
 ): Promise<Record<string, any>> {
-  const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility, taxRegistrations } = body;
+  const { displayName, avatar, avatarAssetId, bio, email, phone, visibility, feature_toggles, agentPricing, fieldVisibility, taxRegistrations, etransferEmail } = body;
   const updates: Record<string, any> = { updatedAt: new Date() };
 
   if (displayName !== undefined) updates.displayName = displayName;
@@ -393,6 +405,10 @@ async function buildProfileUpdates(
   // validateProfileUpdateBody has already confirmed this is valid.
   if (taxRegistrations !== undefined) {
     updates.taxRegistrations = validateTaxRegistrations(taxRegistrations).normalized ?? [];
+  }
+  // Replace semantics; `null` / '' clears it (the business stops accepting e-Transfer) (#2665).
+  if (etransferEmail !== undefined) {
+    updates.etransferEmail = validateEtransferEmail(etransferEmail).normalized;
   }
 
   // Contact info is vault-stored — never write plaintext to DB columns.
@@ -464,6 +480,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const viewerDid = await getViewerDid(request);
     await resolveContactInfo(result, profile, viewerDid);
 
+    // The e-Transfer receiving email (#2665) is owner-only config: a payer sees it
+    // only in the instructions for a request they chose to pay by e-Transfer.
+    if (viewerDid !== profile.did) delete result.etransferEmail;
+
     // Per-field metadata visibility (#1003): non-owners get broker-filtered metadata.
     if (viewerDid !== profile.did) {
       result.metadata = await filterProfileFields(
@@ -518,7 +538,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const profileDid = existing?.did ?? id;
 
-    const scopeError = await checkTaxRegistrationsScope(body, profileDid, cors);
+    const scopeError = await checkBusinessOnlyFieldsScope(body, profileDid, cors);
     if (scopeError) return scopeError;
 
     const updates = await buildProfileUpdates(body, existing, profileDid);
@@ -531,7 +551,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         .where(eq(profiles.did, existing.did))
         .returning();
     } else {
-      const { displayName, avatar, bio, visibility, feature_toggles, agentPricing, taxRegistrations } = body;
+      const { displayName, avatar, bio, visibility, feature_toggles, agentPricing, taxRegistrations, etransferEmail } = body;
       [updated] = await db
         .insert(profiles)
         .values({
@@ -546,6 +566,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
           featureToggles: feature_toggles || {},
           agentPricing: agentPricing || null,
           taxRegistrations: taxRegistrations !== undefined ? (validateTaxRegistrations(taxRegistrations).normalized ?? []) : [],
+          etransferEmail: etransferEmail === undefined ? null : validateEtransferEmail(etransferEmail).normalized,
         })
         .returning();
     }

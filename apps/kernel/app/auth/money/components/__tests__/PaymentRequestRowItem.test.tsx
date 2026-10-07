@@ -239,3 +239,131 @@ describe('PaymentRequestRowItem — Print / Download PDF (#2661)', () => {
     expect(screen.queryByRole('link', { name: 'Print / Download PDF' })).toBeNull();
   });
 });
+
+describe('PaymentRequestRowItem — e-Transfer pending (#2665)', () => {
+  const PENDING = () => row({ status: 'emt_pending', id: 'pr_3f9a1c07d2aabbccddeeff00' });
+
+  it('badges the row "e-Transfer pending" and tells the issuer the amount and memo to look for', () => {
+    render(<PaymentRequestRowItem row={PENDING()} onChanged={vi.fn()} />);
+
+    expect(screen.getByText('e-Transfer pending')).toBeDefined();
+    expect(screen.queryByText('Issued')).toBeNull();
+    expandRow();
+    const note = screen.getByTestId('emt-pending-note').textContent ?? '';
+    expect(note).toContain('19.99');
+    expect(note).toContain('INV-3F9A1C07D2');
+  });
+
+  it('offers Mark paid (e-Transfer) and Void — not the off-platform settle, which is only valid from issued', () => {
+    render(<PaymentRequestRowItem row={PENDING()} onChanged={vi.fn()} />);
+    expandRow();
+
+    expect(screen.getByRole('button', { name: 'Mark paid (e-Transfer)' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Void' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Mark settled (off-platform)' })).toBeNull();
+  });
+
+  it('an issued row has no Mark paid (e-Transfer) — the payer has not chosen it', () => {
+    render(<PaymentRequestRowItem row={row({ status: 'issued' })} onChanged={vi.fn()} />);
+    expandRow();
+    expect(screen.queryByRole('button', { name: 'Mark paid (e-Transfer)' })).toBeNull();
+    expect(screen.queryByTestId('emt-pending-note')).toBeNull();
+  });
+
+  it('asks for confirmation naming the amount and memo, then POSTs method emt to the settle route', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const spy = installFetch({ ok: true, body: { settled: true } });
+    const onChanged = vi.fn();
+    render(<PaymentRequestRowItem row={PENDING()} onChanged={onChanged} />);
+    expandRow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid (e-Transfer)' }));
+
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toContain('19.99');
+    expect(confirm.mock.calls[0][0]).toContain('INV-3F9A1C07D2');
+    expect(spy).toHaveBeenCalledWith('/pay/api/payment-requests/pr_3f9a1c07d2aabbccddeeff00/settle', expect.objectContaining({ method: 'POST' }));
+    expect(JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string)).toEqual({ method: 'emt' });
+    expect(toastMock.success).toHaveBeenCalledWith('Marked as paid (e-Transfer)');
+  });
+
+  it('does nothing when the confirm step is declined', () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const spy = installFetch({ ok: true, body: {} });
+    render(<PaymentRequestRowItem row={PENDING()} onChanged={vi.fn()} />);
+    expandRow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid (e-Transfer)' }));
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the server's refusal — e.g. an unauthorized attempt — as a toast, and does not refresh", async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    installFetch({ ok: false, body: { error: 'only the issuer, or someone acting for the issuer business, may mark this payment_request paid' } });
+    const onChanged = vi.fn();
+    render(<PaymentRequestRowItem row={PENDING()} onChanged={onChanged} />);
+    expandRow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid (e-Transfer)' }));
+
+    await waitFor(() =>
+      expect(toastMock.error).toHaveBeenCalledWith('only the issuer, or someone acting for the issuer business, may mark this payment_request paid'),
+    );
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
+  it('falls back to a generic toast when the response has no error text, or the request throws', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    installFetch({ ok: false, body: {} });
+    const { unmount } = render(<PaymentRequestRowItem row={PENDING()} onChanged={vi.fn()} />);
+    expandRow();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid (e-Transfer)' }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('Failed to mark as paid'));
+    unmount();
+
+    toastMock.error.mockClear();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
+    render(<PaymentRequestRowItem row={PENDING()} onChanged={vi.fn()} />);
+    expandRow();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark paid (e-Transfer)' }));
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('Failed to mark as paid'));
+  });
+
+  it('a settled e-Transfer row shows the rail and the memo as its settlement reference, with no actions left', () => {
+    render(
+      <PaymentRequestRowItem
+        row={row({
+          status: 'paid',
+          settlementRef: { method: 'emt', reference: 'INV-3F9A1C07D2', asserted_by: 'did:imajin:business', settled_at: '2026-10-09T18:45:00.000Z' },
+        })}
+        onChanged={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /invoice/ }));
+
+    expect(screen.getByText('emt · INV-3F9A1C07D2')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Mark paid (e-Transfer)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Void' })).toBeNull();
+  });
+});
+
+describe('PaymentRequestRowItem — who paid (#2656)', () => {
+  it('shows the DID that paid when the payer chose a different DID than the recipient', () => {
+    render(
+      <PaymentRequestRowItem
+        row={row({ status: 'paid', paidByDid: 'did:imajin:artifact', settlementRef: { method: 'stripe', settled_at: '2026-01-02T00:00:00.000Z' } })}
+        onChanged={vi.fn()}
+      />,
+    );
+    expandRow();
+    expect(screen.getByTestId('paid-by-did').textContent).toContain('did:imajin:artifact');
+  });
+
+  it('shows no payer line when none was chosen', () => {
+    render(<PaymentRequestRowItem row={row()} onChanged={vi.fn()} />);
+    expandRow();
+    expect(screen.queryByTestId('paid-by-did')).toBeNull();
+  });
+});

@@ -10,7 +10,7 @@ interface Props {
   issuerDid: string;
 }
 
-type StatusFilter = 'all' | 'issued' | 'paid' | 'settled_manual' | 'void';
+type StatusFilter = 'all' | 'issued' | 'emt_pending' | 'paid' | 'settled_manual' | 'void';
 type KindFilter = 'all' | 'invoice' | 'request';
 
 const SELECT_CLASSES =
@@ -92,6 +92,7 @@ export default function MoneyTab({ issuerDid }: Readonly<Props>) {
           >
             <option value="all">All statuses</option>
             <option value="issued">Issued</option>
+            <option value="emt_pending">e-Transfer pending</option>
             <option value="paid">Paid</option>
             <option value="settled_manual">Settled (manual)</option>
             <option value="void">Void</option>

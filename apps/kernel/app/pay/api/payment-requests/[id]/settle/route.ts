@@ -1,14 +1,22 @@
 /**
- * POST /pay/api/payment-requests/:id/settle {method: 'manual', note} —
- * issuer-only. status -> `settled_manual`. `stripe`/`mjnx` methods are
- * reserved for #2209 (checkout <-> payment_request linkage) — only
- * `manual` is accepted here.
+ * POST /pay/api/payment-requests/:id/settle — issuer-only (or someone acting
+ * for the issuer business, via `resolveActingDid`).
+ *
+ *  - `{method: 'manual', note}` — status -> `settled_manual`.
+ *  - `{method: 'emt'}` (#2665, "Mark paid (e-Transfer)") — `emt_pending` ->
+ *    `paid`, with the same ledger settlement / `.fair` / attestation records
+ *    as a card payment. Idempotent: a replay is a 200 no-op
+ *    (`settled: false`); a request already settled another way is a 409.
+ *
+ * `stripe`/`mjnx` methods are handled via checkout (#2209) — not accepted here.
+ * The issuer check is enforced in the service, never trusted to the client.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { isServiceError, settlePaymentRequestManual } from '@/src/lib/pay/payment-requests/service';
+import { settlePaymentRequestEmt } from '@/src/lib/pay/payment-requests/emt';
 
 const log = createLogger('kernel');
 
@@ -38,9 +46,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
 
-  if (body.method !== 'manual') {
+  if (body.method !== 'manual' && body.method !== 'emt') {
     return NextResponse.json(
-      { error: "method must be 'manual' — 'stripe'/'mjnx' settlement is handled via checkout (#2209)" },
+      { error: "method must be 'manual' or 'emt' — 'stripe'/'mjnx' settlement is handled via checkout (#2209)" },
       { status: 400, headers: cors },
     );
   }
@@ -49,7 +57,10 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   try {
-    const result = await settlePaymentRequestManual({ id, callerDid, note: body.note });
+    const result =
+      body.method === 'emt'
+        ? await settlePaymentRequestEmt({ id, callerDid })
+        : await settlePaymentRequestManual({ id, callerDid, note: body.note });
     if (isServiceError(result)) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
     }

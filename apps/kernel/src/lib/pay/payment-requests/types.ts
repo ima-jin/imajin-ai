@@ -57,13 +57,15 @@ export interface PaymentRequestTaxBreakdown {
   taxes: PaymentRequestTaxLine[];
 }
 
-export type PaymentRequestSettlementMethod = 'manual' | 'stripe' | 'mjnx';
+export type PaymentRequestSettlementMethod = 'manual' | 'stripe' | 'mjnx' | 'emt';
 
 export interface PaymentRequestSettlementRef {
   method: PaymentRequestSettlementMethod;
   note?: string;
-  /** Who asserted the settlement — the caller DID for `manual`. Omitted for `stripe` (#2209): that path is kernel-signed, not a human assertion. */
+  /** Who asserted the settlement — the caller DID for `manual` and `emt` (#2665: the issuer, or whoever acts for the issuer business, confirms the deposit arrived). Omitted for `stripe` (#2209): that path is kernel-signed, not a human assertion. */
   asserted_by?: string;
+  /** `method: 'emt'` only (#2665) — the transfer memo the payer was told to quote (the document number), so the receipt and the issuer's bank record line up. */
+  reference?: string;
   settled_at: string;
   /** `method: 'stripe'` only (#2209) — the Checkout session that paid this request. */
   checkout_session_id?: string;

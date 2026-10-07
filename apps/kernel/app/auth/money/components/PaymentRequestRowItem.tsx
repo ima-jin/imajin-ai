@@ -5,6 +5,7 @@ import { useToast } from '@imajin/ui';
 import { buildPublicUrl } from '@imajin/config';
 import { formatMinorUnits } from '@/src/lib/pay/payment-requests/money-format';
 import { formatDueDate } from '@/src/lib/pay/payment-requests/due-date';
+import { invoiceNumberOf } from '@/src/lib/pay/payment-requests/invoice';
 import CopyButton from './CopyButton';
 import type { PaymentRequestRow, PaymentRequestStatus } from '../lib/types';
 
@@ -15,6 +16,7 @@ interface Props {
 
 const STATUS_BADGES: Record<PaymentRequestStatus, { label: string; classes: string }> = {
   issued: { label: 'Issued', classes: 'bg-amber-900/30 text-amber-400 border-amber-800' },
+  emt_pending: { label: 'e-Transfer pending', classes: 'bg-sky-900/30 text-sky-400 border-sky-800' },
   paid: { label: 'Paid', classes: 'bg-green-900/30 text-green-400 border-green-800' },
   settled_manual: { label: 'Settled (manual)', classes: 'bg-green-900/30 text-green-400 border-green-800' },
   void: { label: 'Void', classes: 'bg-zinc-800 text-zinc-400 border-zinc-700' },
@@ -25,10 +27,16 @@ function recipientLabel(row: PaymentRequestRow): string {
   return row.recipientDid ?? 'Pending claim';
 }
 
-/** Row detail's settlement-reference text: `method`, plus ` — note` when a note was recorded. */
+/** Row detail's settlement-reference text: `method`, plus ` · reference` for an e-Transfer memo (#2665) and ` — note` when a note was recorded. */
 function settlementRefLabel(ref: NonNullable<PaymentRequestRow['settlementRef']>): string {
+  const referenceSuffix = ref.reference ? ` · ${ref.reference}` : '';
   const noteSuffix = ref.note ? ` — ${ref.note}` : '';
-  return `${ref.method}${noteSuffix}`;
+  return `${ref.method}${referenceSuffix}${noteSuffix}`;
+}
+
+/** Statuses the issuer can still act on: `issued`, or `emt_pending` (the payer chose e-Transfer, #2665). */
+function isOpen(status: PaymentRequestStatus): boolean {
+  return status === 'issued' || status === 'emt_pending';
 }
 
 export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props>) {
@@ -40,7 +48,10 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
 
   const badge = STATUS_BADGES[row.status];
   const payUrl = `${buildPublicUrl('pay')}/r/${row.payHandle}`;
-  const canAct = row.status === 'issued';
+  const canAct = isOpen(row.status);
+  const emtPending = row.status === 'emt_pending';
+  // The memo the payer was told to quote — the document number — so the issuer can match the deposit in their bank.
+  const emtMemo = invoiceNumberOf(row.kind, row.id);
   // #2661 — the same opaque-handle invoice/receipt the payer sees; `?print=1` opens the print dialog on load.
   const printUrl = `${payUrl}?print=1`;
 
@@ -69,6 +80,34 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
     }
   }
 
+  /** #2665 — issuer confirms the e-Transfer arrived; the server enforces issuer-only and is idempotent. */
+  async function handleMarkPaidEmt() {
+    const confirmed = globalThis.confirm(
+      `Mark this request paid by e-Transfer? Only confirm once the ${formatMinorUnits(row.totalAmount, row.currency)} deposit (memo ${emtMemo}) has arrived in your account.`,
+    );
+    if (!confirmed) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/pay/api/payment-requests/${row.id}/settle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ method: 'emt' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error ?? 'Failed to mark as paid');
+        return;
+      }
+      toast.success('Marked as paid (e-Transfer)');
+      onChanged();
+    } catch {
+      toast.error('Failed to mark as paid');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function handleVoid() {
     if (!globalThis.confirm('Void this payment request? This cannot be undone.')) return;
     setSubmitting(true);
@@ -87,6 +126,27 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
       setSubmitting(false);
     }
   }
+
+  // #2665: an e-Transfer-pending request is confirmed with Mark paid (e-Transfer); otherwise the off-platform settle.
+  const primaryAction = emtPending ? (
+    <button
+      type="button"
+      onClick={handleMarkPaidEmt}
+      disabled={submitting}
+      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-700 text-black text-xs font-medium rounded-lg transition-colors"
+    >
+      Mark paid (e-Transfer)
+    </button>
+  ) : (
+    <button
+      type="button"
+      onClick={() => setSettling(true)}
+      disabled={submitting}
+      className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
+    >
+      Mark settled (off-platform)
+    </button>
+  );
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
@@ -155,6 +215,13 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
             </div>
           </div>
 
+          {emtPending && (
+            <div className="text-xs text-sky-300 bg-sky-900/20 border border-sky-800 rounded-lg px-3 py-2" data-testid="emt-pending-note">
+              The payer chose to pay by e-Transfer. Look for {formatMinorUnits(row.totalAmount, row.currency)} with the memo{' '}
+              <code className="font-mono">{emtMemo}</code>, then mark it paid.
+            </div>
+          )}
+
           <div className="text-xs text-zinc-600 space-y-1">
             <div className="flex gap-2">
               <span className="w-28 shrink-0">Settlement ref</span>
@@ -162,6 +229,12 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
                 {row.settlementRef ? settlementRefLabel(row.settlementRef) : '—'}
               </span>
             </div>
+            {row.paidByDid && (
+              <div className="flex gap-2" data-testid="paid-by-did">
+                <span className="w-28 shrink-0">Paid by</span>
+                <span className="font-mono break-all">{row.paidByDid}</span>
+              </div>
+            )}
             <div className="flex gap-2">
               <span className="w-28 shrink-0">Attestation</span>
               <span className="font-mono">{row.attestationId ?? '—'}</span>
@@ -207,14 +280,7 @@ export default function PaymentRequestRowItem({ row, onChanged }: Readonly<Props
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSettling(true)}
-                    disabled={submitting}
-                    className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium rounded-lg transition-colors"
-                  >
-                    Mark settled (off-platform)
-                  </button>
+                  {primaryAction}
                   <button
                     type="button"
                     onClick={handleVoid}

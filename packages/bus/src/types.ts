@@ -2047,6 +2047,8 @@ export interface BusEventMap {
     paymentRequestId: string;
     issuerDid: string;
     recipientDid: string | null;
+    /** #2656 — the DID that paid (`paid_by_did ?? recipient_did`); the invoice stays addressed to `recipientDid`. */
+    paidByDid?: string | null;
     totalAmount: number;
     currency: string;
     settlementRef: Record<string, unknown>;
@@ -2055,9 +2057,12 @@ export interface BusEventMap {
   };
   'payment_request.settled': {
     paymentRequestId: string;
-    method: 'manual' | 'stripe' | 'mjnx';
+    // `emt` (#2665): the issuer confirmed an Interac e-Transfer deposit — issuer-asserted like `manual`, but naming the rail.
+    method: 'manual' | 'stripe' | 'mjnx' | 'emt';
     issuerDid: string;
     recipientDid: string | null;
+    /** #2656 — the DID that paid (`paid_by_did ?? recipient_did`); the invoice stays addressed to `recipientDid`. */
+    paidByDid?: string | null;
     totalAmount: number;
     currency: string;
     contentHash: string;
@@ -2090,7 +2095,7 @@ export interface BusEventMap {
     recipientDid: string | null;
     totalAmount: number;
     currency: string;
-    method: 'stripe';
+    method: 'stripe' | 'emt';
     context_id: string;
     context_type: 'payment_request';
   };

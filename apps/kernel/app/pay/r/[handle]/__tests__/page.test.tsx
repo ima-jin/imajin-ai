@@ -207,3 +207,62 @@ describe('GET /pay/r/:handle — route wiring', () => {
     await expect(PayByHandlePage({ params: Promise.resolve({ handle: 'does-not-exist' }) })).rejects.toThrow('NEXT_NOT_FOUND');
   });
 });
+
+describe('GET /pay/r/:handle — e-Transfer option with and without the receiving email (#2665)', () => {
+  const OPEN_VIEW = {
+    ...INVOICE_FIELDS,
+    kind: 'invoice',
+    lineItems: [{ name: 'Consulting', amount: 1999, quantity: 1 }],
+    totalAmount: 1999,
+    subtotalAmount: 1999,
+    taxTotalAmount: 0,
+    taxes: [],
+    currency: 'CAD',
+    issuerDisplayName: 'Acme Co',
+    status: 'issued',
+  };
+
+  async function renderView(view: Record<string, unknown>) {
+    getInvoiceMock.mockResolvedValue(view);
+    render(await PayByHandlePage({ params: Promise.resolve({ handle: 'ph_1' }) }));
+  }
+
+  it('WITHOUT the email set (emt: null): card only — no e-Transfer button, and the original "Pay now" label', async () => {
+    await renderView({ ...OPEN_VIEW, emt: null });
+
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
+    expect(screen.queryByTestId('emt-instructions')).toBeNull();
+  });
+
+  it('a view with no emt field at all (older shape) renders exactly the card-only page', async () => {
+    await renderView(OPEN_VIEW);
+
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
+  });
+
+  it('WITH the email set: shows "Pay by card" and "Pay by e-Transfer" side by side, and never prints the email up front', async () => {
+    await renderView({ ...OPEN_VIEW, emt: { state: 'available', instructions: null } });
+
+    expect(screen.getByRole('button', { name: 'Pay by card' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
+    expect(document.body.textContent).not.toContain('@');
+  });
+
+  it('an emt_pending request is still a live request: the instructions (email, exact amount, memo) are shown, with no "no longer active" note', async () => {
+    await renderView({
+      ...OPEN_VIEW,
+      status: 'emt_pending',
+      emt: { state: 'pending', instructions: { email: 'pay@acme.example', amountMinor: 1999, currency: 'CAD', memo: 'INV-3F9A1C07D2' } },
+    });
+
+    expect(screen.getByTestId('emt-email').textContent).toContain('pay@acme.example');
+    expect(screen.getByTestId('emt-amount').textContent).toContain('19.99');
+    expect(screen.getByTestId('emt-memo').textContent).toContain('INV-3F9A1C07D2');
+    expect(screen.getByRole('button', { name: 'Pay by card' })).toBeDefined();
+    expect(screen.queryByText(/no longer active/)).toBeNull();
+    expect(screen.queryByText(/already been paid/)).toBeNull();
+  });
+});
+

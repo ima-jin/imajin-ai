@@ -8,7 +8,7 @@
  * route/lib split already used for `/api/settle` (`settle-core.ts`) and
  * `/usage/api/billed` (`lib/usage/billed/manual.ts`).
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db, paymentRequests, profiles } from '@/src/db';
 import type { PaymentRequest, PaymentRequestKind } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
@@ -18,7 +18,9 @@ import { isConnected } from '@/src/lib/chat/connection-check';
 import { createPaymentRequestInvite } from '@/src/lib/connections/payment-request-invite';
 import type { TaxRegistration } from '@/src/lib/profile/tax-registrations';
 import { computePaymentRequestContentHash } from './content-hash';
+import { emtOptionOf, type EmtPayOption } from './emt-offer';
 import { invoiceNumberOf, issuerAddressOf, publicSettlementOf, type PublicSettlement } from './invoice';
+import { payingDidOf } from './settlement-payer';
 import {
   FAIR_VERSION_WITH_TAXES,
   buildDefaultPaymentRequestManifest,
@@ -533,6 +535,18 @@ export interface PaymentRequestInvoiceView extends PaymentRequestPublicView {
   paidAt: string | null;
   /** Sanitised settlement reference; `null` until settled. */
   settlement: PublicSettlement | null;
+  /**
+   * #2656 — who paid, once settled: `paid_by_did ?? recipient_did`, with the
+   * profile name when there is one. `null` until settled (and for a request
+   * settled with neither a chosen payer nor a resolved recipient).
+   */
+  paidBy: { did: string; displayName: string } | null;
+  /**
+   * #2665 — the e-Transfer option; `null` (nothing renders) unless the issuer
+   * has set a receiving email AND the request is still open. The receiving
+   * email itself is only ever included once the payer has chosen e-Transfer.
+   */
+  emt: EmtPayOption | null;
 }
 
 type IssuerProfile = typeof profiles.$inferSelect;
@@ -548,7 +562,7 @@ function issuerDisplayNameOf(profile: IssuerProfile | undefined, issuerDid: stri
 }
 
 /** The row behind an opaque `pay_handle`, or `null` when unknown or `void` (both 404 the same). */
-async function findLiveRowByHandle(handle: string): Promise<PaymentRequest | null> {
+export async function findLiveRowByHandle(handle: string): Promise<PaymentRequest | null> {
   const [row] = await db.select().from(paymentRequests).where(eq(paymentRequests.payHandle, handle)).limit(1);
   if (!row || row.status === 'void') return null;
   return row;
@@ -583,6 +597,13 @@ export async function getPaymentRequestByHandle(handle: string): Promise<Payment
   return publicViewOf(row, await findIssuerProfile(row.issuerDid));
 }
 
+/** Who a settled request names as having paid (#2656) — the paying DID and its profile name; `null` when nobody is named. */
+async function paidByViewOf(row: PaymentRequest): Promise<PaymentRequestInvoiceView['paidBy']> {
+  const did = payingDidOf(row);
+  if (!did) return null;
+  return { did, displayName: issuerDisplayNameOf(await findIssuerProfile(did), did) };
+}
+
 /** ISO string for a nullable timestamp column, `null` when unset. */
 function isoOrNull(value: Date | string | null | undefined): string | null {
   return value ? new Date(value).toISOString() : null;
@@ -596,9 +617,10 @@ function isoOrNull(value: Date | string | null | undefined): string | null {
  * keeps returning `getPaymentRequestByHandle`'s narrower view, unchanged.
  *
  * Adds a document number, issue/due dates, the issuer's public business
- * address, and — only once settled — the payment date and a sanitised
- * settlement reference (see `invoice.ts`). Still no issuer/recipient DIDs,
- * recipient PII, settlement note or asserter, fair_manifest or content_hash.
+ * address, and — only once settled — the payment date, a sanitised
+ * settlement reference (see `invoice.ts`) and who paid (#2656: the paying DID,
+ * `paid_by_did ?? recipient_did`). Still no issuer DID, unsettled recipient,
+ * settlement note or asserter, fair_manifest or content_hash.
  */
 export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<PaymentRequestInvoiceView | null> {
   const row = await findLiveRowByHandle(handle);
@@ -607,6 +629,7 @@ export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<
   const profile = await findIssuerProfile(row.issuerDid);
   const settled = row.status === 'paid' || row.status === 'settled_manual';
   const { paidAt, settlement } = settled ? publicSettlementOf(row.settlementRef) : { paidAt: null, settlement: null };
+  const paidBy = settled ? await paidByViewOf(row) : null;
 
   return {
     ...publicViewOf(row, profile),
@@ -616,6 +639,8 @@ export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<
     issuerAddress: issuerAddressOf(profile),
     paidAt,
     settlement,
+    paidBy,
+    emt: emtOptionOf(row, profile?.etransferEmail),
   };
 }
 
@@ -650,23 +675,27 @@ export async function listPaymentRequests(input: ListPaymentRequestsInput): Prom
 }
 
 /**
- * Void a payment_request: issuer-only, and only valid from `issued` — a
- * `settled_manual` or already-`void` request rejects cleanly (409) rather
- * than silently no-op'ing, so a replayed void call is never mistaken for
- * a fresh one.
+ * Void a payment_request: issuer-only, and only valid while it is still open
+ * — `issued`, or `emt_pending` (#2665: a payer choosing e-Transfer must not
+ * be able to lock the issuer out of voiding). A `paid`, `settled_manual` or
+ * already-`void` request rejects cleanly (409) rather than silently
+ * no-op'ing, so a replayed void call is never mistaken for a fresh one.
  */
 export async function voidPaymentRequest(params: { id: string; callerDid: string }): Promise<PaymentRequest | ServiceError> {
   const existing = await getPaymentRequestById(params.id);
   if (!existing) return err('payment_request not found', 404);
   if (existing.issuerDid !== params.callerDid) return err('only the issuer may void this payment_request', 403);
-  if (existing.status !== 'issued') {
-    return err(`cannot void a payment_request in status '${existing.status}' (void is only valid from 'issued')`, 409);
+  if (existing.status !== 'issued' && existing.status !== 'emt_pending') {
+    return err(
+      `cannot void a payment_request in status '${existing.status}' (void is only valid from 'issued' or 'emt_pending')`,
+      409,
+    );
   }
 
   const [row] = await db
     .update(paymentRequests)
     .set({ status: 'void', updatedAt: new Date() })
-    .where(and(eq(paymentRequests.id, params.id), eq(paymentRequests.status, 'issued')))
+    .where(and(eq(paymentRequests.id, params.id), inArray(paymentRequests.status, ['issued', 'emt_pending'])))
     .returning();
   if (!row) {
     // Lost a race against a concurrent void/settle between the read above and this guarded update.

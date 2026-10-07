@@ -16,6 +16,7 @@ const state = vi.hoisted(() => ({
   stripeSessionsRetrieveMock: vi.fn(),
   settlePaymentMock: vi.fn(),
   settledStripeAttestationMock: vi.fn().mockResolvedValue('att_settled_stripe_1'),
+  settledAttestationMock: vi.fn().mockResolvedValue('att_settled_emt_1'),
   publishMock: vi.fn().mockResolvedValue(undefined),
   getNodeDidMock: vi.fn().mockResolvedValue('did:imajin:node'),
   insertCalls: [] as Array<Record<string, unknown>>,
@@ -34,6 +35,7 @@ function resetState() {
   state.stripeSessionsRetrieveMock.mockReset();
   state.settlePaymentMock.mockReset();
   state.settledStripeAttestationMock.mockReset().mockResolvedValue('att_settled_stripe_1');
+  state.settledAttestationMock.mockReset().mockResolvedValue('att_settled_emt_1');
   state.publishMock.mockReset().mockResolvedValue(undefined);
   state.getNodeDidMock.mockReset().mockResolvedValue('did:imajin:node');
 }
@@ -101,9 +103,13 @@ vi.mock('@/src/lib/pay/checkout', () => ({
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: state.settlePaymentMock }));
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   getPaymentRequestById: state.getPaymentRequestByIdMock,
+  // #2656: checkout also resolves the opaque pay-link handle when the id lookup misses.
+  findLiveRowByHandle: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
   emitPaymentRequestSettledStripeAttestation: state.settledStripeAttestationMock,
+  // #2665: the e-Transfer settlement is issuer-signed (`emt-announce.ts`).
+  emitPaymentRequestSettledAttestation: state.settledAttestationMock,
 }));
 
 import {
@@ -169,6 +175,13 @@ describe('createPaymentRequestCheckoutSession', () => {
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
     expect(result).toMatchObject({ status: 409 });
     expect(state.payCheckoutMock).not.toHaveBeenCalled();
+  });
+
+  it('#2665: a request the payer chose to pay by e-Transfer (emt_pending) can still be paid by card', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue({ ...ISSUED_REQUEST, status: 'emt_pending' });
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+    expect(result).toMatchObject({ id: 'cs_new', reused: false });
+    expect(state.payCheckoutMock).toHaveBeenCalled();
   });
 
   it('returns 400 when allow_on_platform is false', async () => {
@@ -719,6 +732,38 @@ describe('retryPaymentRequestStripeSettlement (#2439 — the operator retry path
     expect(settlementFailedPublishes()).toHaveLength(0);
     // A retry never touches the request's status — it is already `paid`.
     expect(state.updateCalls).toHaveLength(0);
+  });
+
+  it('#2665: re-settles an e-Transfer-paid request on the e-Transfer rail (no Stripe fee, issuer-signed attestation, alert names the rail)', async () => {
+    const EMT_REF = { method: 'emt', asserted_by: ISSUER_DID, reference: 'INV-PR1', settled_at: '2026-01-01T00:00:00.000Z' };
+    const feeManifest = {
+      ...ISSUED_REQUEST.fairManifest,
+      fees: [{ role: 'processor', rateBps: 370, fixedCents: 30 }],
+    };
+    state.getPaymentRequestByIdMock.mockResolvedValue({
+      ...ISSUED_REQUEST,
+      status: 'paid',
+      settlementRef: EMT_REF,
+      fairManifest: feeManifest,
+    });
+    state.settlePaymentMock.mockResolvedValue(SETTLED_OK);
+
+    expect(await retryPaymentRequestStripeSettlement('pr_1')).toMatchObject({ settled: true });
+
+    const call = state.settlePaymentMock.mock.calls[0][0];
+    expect(call).toMatchObject({ funded_provider: 'emt', total_amount: 50 });
+    expect(state.settledAttestationMock.mock.calls[0][0]).toMatchObject({ method: 'emt', assertedBy: ISSUER_DID, reference: 'INV-PR1' });
+    expect(state.settledStripeAttestationMock).not.toHaveBeenCalled();
+
+    // …and a failing e-Transfer re-settle alerts with method 'emt'.
+    state.getPaymentRequestByIdMock.mockResolvedValue({
+      ...ISSUED_REQUEST,
+      status: 'paid',
+      settlementRef: EMT_REF,
+      fairManifest: { ...feeManifest, chain: [] },
+    });
+    expect(await retryPaymentRequestStripeSettlement('pr_1')).toMatchObject({ status: 422 });
+    expect(settlementFailedPublishes().at(-1)![1].payload).toMatchObject({ method: 'emt', reason: 'empty_chain' });
   });
 
   it('a retry that still cannot settle re-alerts the operator and answers 422 with the reason', async () => {

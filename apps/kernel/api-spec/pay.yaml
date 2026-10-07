@@ -143,6 +143,7 @@ components:
         payeeAccount: { type: string }
         recipientDid: { type: [string, "null"] }
         recipientStubId: { type: [string, "null"] }
+        paidByDid: { type: [string, "null"], description: "#2656 — the DID the payer chose to pay as (own DID, or an org/business they control as owner/admin). The invoice stays addressed to recipientDid; settlement, the .fair buyer, the attestation and the receipt name this DID. null = no choice, settles as the recipient." }
         payHandle: { type: string, description: "Opaque handle for the unauthenticated GET /api/payment-requests/by-handle/{handle} read (#2210)" }
         lineItems:
           type: array
@@ -1759,6 +1760,14 @@ paths:
               type: object
               properties:
                 customer_email: { type: string, format: email }
+                paidByDid:
+                  type: string
+                  description: |
+                    #2656 — which DID pays: the caller's own DID, or an org/business
+                    DID where they hold owner/admin in `identity_members` (the list
+                    `GET /api/payment-requests/{id}/payer-dids` returns). Validated
+                    server-side — a DID the caller can't act for is a 403 and is
+                    never stored. Omitted = the request settles as its recipient.
       responses:
         "200":
           description: Checkout session created (or reused)
@@ -1777,7 +1786,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Not the issuer or recipient
+          description: Not the issuer or recipient, or `paidByDid` is a DID the caller can't act for (#2656)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1788,6 +1797,56 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: Not in `issued` status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/{id}/payer-dids:
+    get:
+      tags: [pay]
+      operationId: listPaymentRequestPayerDids
+      summary: The DIDs the caller may pay a payment_request as (#2656)
+      description: |
+        Feeds the "Pay as" picker on `/pay/r/{handle}`: the caller's own DID
+        plus every org/business DID where they hold `owner` or `admin` in
+        `identity_members` (plain members are never offered one). The path
+        segment is the opaque pay-link handle, as the pay page already passes
+        it to `/checkout`. `POST /api/payment-requests/{id}/checkout` and
+        `POST /api/payment-requests/by-handle/{handle}/emt` re-check the choice
+        server-side, so this list is a convenience, not the enforcement.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The payment_request's pay-link handle
+          schema: { type: string }
+      responses:
+        "200":
+          description: The caller's payable identities
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  dids:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        did: { type: string }
+                        kind: { type: string, enum: [personal, organization] }
+                        displayName: { type: string }
+                  defaultDid: { type: string, description: "Preselected: the recipient when the caller controls it, else the DID they are acting as, else themselves" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown or void handle
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
