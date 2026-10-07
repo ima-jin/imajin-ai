@@ -73,7 +73,10 @@ vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: v
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => logMock }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
-vi.mock('@imajin/auth', () => ({ emitAttestation: emitAttestationMock }));
+vi.mock('@imajin/auth', () => ({
+  emitAttestation: emitAttestationMock,
+  isAppAudienceSlug: (v: string) => /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(v),
+}));
 vi.mock('nanoid', () => ({ nanoid: () => 'testnanoid1234567' }));
 
 vi.mock('drizzle-orm', () => ({
@@ -196,6 +199,7 @@ vi.mock('../signing-key-claims', () => ({
 }));
 
 import { runAppProvision, getAppProvisionStatus } from '../provision';
+import { isAppAudienceSlug } from '@imajin/auth';
 
 const CLAIM_CODE = 'claim_test_code_0000000000000000';
 const APP_SELF_GRANT_ID = 'vdg_appself_1';
@@ -379,6 +383,10 @@ describe('runAppProvision — happy path', () => {
     expect(registryRow?.tier).toBe('third_party');
     expect(registryRow?.status).toBe('active');
     expect(registryRow?.slug).toBe('dykil');
+    // #2706: the audience apps.provision registers is the slug — never a host — so a Bearer
+    // token minted for it verifies at the app with no post-provision registry edit.
+    expect(registryRow?.tokenAudiences).toEqual(['dykil']);
+    expect(isAppAudienceSlug((registryRow?.tokenAudiences as string[])[0])).toBe(true);
     // #2425: no manifest present (fetchAppManifestMock defaults to null) — falls back to defaults.
     expect(registryRow?.icon).toBeNull();
     expect(registryRow?.entryUrl).toBe('/dykil');

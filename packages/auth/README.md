@@ -18,7 +18,14 @@ import { sign, verify } from '@ima-jin/auth';
 import { requireSessionOrAppToken, requireHardDIDOrAppToken } from '@ima-jin/auth';
 ```
 
-`requireHardDIDOrAppToken(request, { aud })` is `requireSessionOrAppToken`
+`requireSessionOrAppToken(request, { slug })` / `requireHardDIDOrAppToken(request, { slug })`
+verify the Bearer token's `aud` against the app's **registry slug** (e.g.
+`'dykil'`), never its host — path-routed apps share one host, and the registry's
+`token_audiences` holds slugs. Set `IMAJIN_APP_AUD` to override the audience;
+a host-shaped value is rejected. A Bearer that fails verification is a 401 — it
+never falls back to the session cookie (#2706).
+
+`requireHardDIDOrAppToken` is `requireSessionOrAppToken`
 plus a hard-DID gate: soft (email-only) DIDs get a 403. Tier is read from the
 session for cookie callers and looked up from the kernel's public
 `GET /auth/api/identity/:did` for app-token callers — tokens carry no tier

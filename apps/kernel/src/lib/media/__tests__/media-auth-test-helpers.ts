@@ -42,7 +42,7 @@ export function createLoggerMock() {
 
 /** A scoped app-token verification result, as `verifyAppToken` resolves it. */
 export function appToken(scopes: string[], sub = 'did:imajin:app-user') {
-  return { sub, aud: 'jin.test', scopes };
+  return { sub, aud: 'jin', scopes };
 }
 
 /** An app-token minted with `media:write` but not `media:read`, or vice versa. */
