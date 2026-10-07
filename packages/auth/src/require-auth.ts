@@ -156,7 +156,7 @@ async function validateBearerToken(
   }
 }
 
-interface ActingAsResult {
+export interface ActingAsResult {
   valid: boolean;
   role?: string;                     // e.g. 'owner', 'admin', 'agent'
   allowedServices?: string[] | null; // null = full access
@@ -166,8 +166,12 @@ interface ActingAsResult {
  * Validate that a caller is an active owner or admin controller of a group DID.
  * Optionally checks if the controller has access to a specific service.
  * Uses the internal API to avoid recursive auth checks.
+ *
+ * Exported (#2639) so the kernel's app-token mint can run this SAME gate once, at
+ * issuance, instead of growing a second group-authority check. `requireAuth`
+ * still calls it per request via `applyActingAs`.
  */
-async function validateActingAs(
+export async function validateActingAs(
   callerDid: string,
   groupDid: string,
   service?: string

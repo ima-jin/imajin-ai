@@ -9,13 +9,19 @@
  * shared session cookie directly (see docs/security/cookie-isolation.md,
  * "Path A" / "Path B").
  *
- * Body: { aud: string, scopes?: string[] }
+ * Body: { aud: string, scopes?: string[], actAs?: string }
  *   aud    — the target app host this token is scoped to (required)
  *   scopes — requested scopes, clamped to the SCOPES vocabulary plus the scopes
  *            the target app declared in `registry.apps.provides_scopes`
  *            (#2663; default: [])
+ *   actAs  — optional group DID the token acts as (#2639 / #2644). Refused with
+ *            403 (and no token) unless the operator approved act-as for the app
+ *            (`registry.apps.act_as_allowed`) AND the caller is an authorised
+ *            controller of the group — the existing `validateActingAs` gate, run
+ *            ONCE here. Never re-checked per request: the token's 10-minute
+ *            expiry bounds staleness.
  *
- * Returns: { token, expiresIn, scopes, aud }
+ * Returns: { token, expiresIn, scopes, aud, actingAs? }
  *   aud — every audience the token carries: the requested `aud`, plus each
  *         `registry.apps.depends_on` audience the requested scopes reach
  *         (#2663), so one token can satisfy the app and e.g. kernel media.
@@ -32,6 +38,7 @@ import { corsHeaders, getSessionCookieOptions } from '@imajin/config';
 import { resolveAppScopes } from '@imajin/auth';
 import { verifySessionToken, createSessionAppToken } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, resolveTokenGrant, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
+import { resolveMintActAs } from '@/src/lib/kernel/app-act-as';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -57,7 +64,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { aud, scopes } = body as { aud?: string; scopes?: string[] };
+  const { aud, scopes, actAs } = body as { aud?: string; scopes?: string[]; actAs?: unknown };
   if (!aud || typeof aud !== 'string') {
     return NextResponse.json({ error: 'aud is required' }, { status: 400, headers: cors });
   }
@@ -85,12 +92,25 @@ export async function POST(request: NextRequest) {
   // clamped to exactly what the operator approved for the app.
   const { audiences, scopes: grantedScopes } = await resolveTokenGrant(aud, registeredApp, requestedScopes);
 
-  const token = await createSessionAppToken({ sub: session.sub, aud: audiences, scopes: grantedScopes });
+  // #2639 / #2644: act-as is decided once, here. No per-request re-check later.
+  const actAsDecision = await resolveMintActAs(actAs, session.sub, registeredApp);
+  if ('refusal' in actAsDecision) {
+    log.warn({ did: session.sub, aud, actAs: String(actAs), error: actAsDecision.refusal.error }, 'refused app token act-as');
+    return NextResponse.json(actAsDecision.refusal, { status: actAsDecision.status, headers: cors });
+  }
+  const { actingAs } = actAsDecision;
 
-  log.info({ did: session.sub, aud, audiences, scopes: grantedScopes }, 'minted session app token');
+  const token = await createSessionAppToken({
+    sub: session.sub,
+    aud: audiences,
+    scopes: grantedScopes,
+    ...(actingAs ? { actingAs } : {}),
+  });
+
+  log.info({ did: session.sub, aud, audiences, scopes: grantedScopes, actingAs }, 'minted session app token');
 
   return NextResponse.json(
-    { token, expiresIn: 600, scopes: grantedScopes, aud: audiences },
+    { token, expiresIn: 600, scopes: grantedScopes, aud: audiences, ...(actingAs ? { actingAs } : {}) },
     { headers: cors }
   );
 }

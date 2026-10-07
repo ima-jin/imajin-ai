@@ -11,6 +11,13 @@ export interface AppTokenVerification {
   aud: string;
   /** Granted scopes, as requested at mint time (see POST {kernel}/auth/api/tokens/app). */
   scopes: string[];
+  /**
+   * The group DID this token acts as (#2639 / #2644). Present only when the
+   * kernel verified the user's authority over that group ONCE at mint and the
+   * operator had approved act-as for the app. It is never re-checked per
+   * request — the token's own short expiry bounds how stale it can get.
+   */
+  actingAs?: string;
 }
 
 /**
@@ -57,6 +64,7 @@ export async function verifyAppToken(
       sub: data.sub,
       aud: data.aud,
       scopes: Array.isArray(data.scopes) ? data.scopes : [],
+      ...(typeof data.actingAs === 'string' && data.actingAs ? { actingAs: data.actingAs } : {}),
     };
   } catch (err) {
     log.error({ err: String(err) }, '[APP-TOKEN] Verify request failed');

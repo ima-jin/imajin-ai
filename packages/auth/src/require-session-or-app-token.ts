@@ -17,6 +17,15 @@ export interface SessionOrTokenAuth {
   scopes: string[];
   /** Which path authenticated this request. */
   via: 'token' | 'cookie';
+  /**
+   * Group DID the caller is acting as (#2639 / #2644). Set ONLY on the `token`
+   * path, from the verified act-as claim the kernel put on the token at mint
+   * (user's group authority checked once there; operator approved act-as for
+   * the app). Never set on the `cookie` path — that path ignores `x-acting-as`
+   * as it always has. Feed it to `resolveActingDid`-style ownership
+   * (`auth.actingAs ?? auth.did`).
+   */
+  actingAs?: string;
 }
 
 export type SessionOrTokenAuthResult =
@@ -131,7 +140,14 @@ export async function authenticateSessionOrAppToken(
     if (missing.length > 0) {
       return { error: `Missing required scope(s): ${missing.join(', ')}`, status: 403 };
     }
-    return { auth: { did: verification.sub, scopes: verification.scopes, via: 'token' } };
+    return {
+      auth: {
+        did: verification.sub,
+        scopes: verification.scopes,
+        via: 'token',
+        ...(verification.actingAs ? { actingAs: verification.actingAs } : {}),
+      },
+    };
   }
 
   const sessionToken = extractSessionCookie(request.headers.get('cookie'));

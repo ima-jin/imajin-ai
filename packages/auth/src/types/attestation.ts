@@ -148,6 +148,9 @@ export const ATTESTATION_TYPES = [
   // via POST /api/events (PATCH /api/admin/registry/apps/:appId). Same
   // system-class posture as the three above.
   'registry.app.emittable-events.updated',
+  // #2639/#2644 — the ADMIN's per-app act-as approval toggle (system-class,
+  // same audit trail as the three above).
+  'registry.app.act_as.updated',
 
   // Withdrawal-intent reconciliation (#2172) — minted by the platform node
   // identity whenever the reconciliation sweep classifies a rail transfer
@@ -304,6 +307,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   'registry.app.revoked',
   // #2638/#2641 — see ATTESTATION_TYPES above.
   'registry.app.emittable-events.updated',
+  'registry.app.act_as.updated',
   // #2172 — minted mechanically by the platform node identity for every
   // withdrawal reconciliation discrepancy. See ATTESTATION_TYPES above.
   'pay.reconciliation.discrepancy',

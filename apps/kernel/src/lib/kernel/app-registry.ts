@@ -34,6 +34,8 @@ export interface ActiveRegistryApp {
   providesScopes: string[];
   /** Other registered audiences a token for this app must also carry (#2663). */
   dependsOn: AppDependency[];
+  /** Operator approved this app's tokens to carry an act-as (group DID) claim (#2639). */
+  actAsAllowed: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
         requestedScopes: registryApps.requestedScopes,
         providesScopes: registryApps.providesScopes,
         dependsOn: registryApps.dependsOn,
+        actAsAllowed: registryApps.actAsAllowed,
       })
       .from(registryApps)
       .where(arrayContains(registryApps.tokenAudiences, [aud]))
@@ -69,6 +72,7 @@ export async function resolveActiveAppByAudience(aud: string | null | undefined)
       requestedScopes: row.requestedScopes ?? [],
       providesScopes: ownNamespaceScopes(row.providesScopes ?? [], row.slug),
       dependsOn: row.dependsOn ?? [],
+      actAsAllowed: row.actAsAllowed === true,
     };
   } catch (err) {
     log.error({ err: String(err), aud }, 'resolveActiveAppByAudience: lookup failed');
