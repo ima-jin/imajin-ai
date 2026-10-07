@@ -213,11 +213,6 @@ export const DELEGATION_ROUTES = {
     path: "/api/orders/[id]/refund",
     why: "refunds an order",
   },
-  "dykil.survey.delete": {
-    class: "irreversible", action: "delete", app: "dykil", method: "DELETE",
-    path: "/api/surveys/[id]",
-    why: "deletes a survey and responses",
-  },
   "kernel.profile.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",
     path: "/profile/api/profile/[id]",

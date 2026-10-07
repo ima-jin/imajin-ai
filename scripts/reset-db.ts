@@ -69,7 +69,6 @@ async function main() {
     { dir: 'auth', pkg: '@imajin/auth-service' },
     { dir: 'chat', pkg: '@imajin/chat' },
     { dir: 'connections', pkg: '@imajin/connections-service' },
-    { dir: 'dykil', pkg: '@imajin/dykil-service' },
     { dir: 'events', pkg: '@imajin/events' },
     { dir: 'links', pkg: '@imajin/links-service' },
     { dir: 'pay', pkg: '@imajin/pay-service' },

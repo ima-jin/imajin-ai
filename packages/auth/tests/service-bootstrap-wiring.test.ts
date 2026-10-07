@@ -32,7 +32,7 @@ const NOT_VAULT_CLIENTS = new Set(['kernel']);
 
 // The service list is derived from the filesystem rather than hard-imported,
 // so the test stays green whichever of this change and the `apps/links` / `apps/learn` /
-// `apps/coffee` prunes (#1986, PR #2422; #2503; #2500) merges first, and a newly added
+// `apps/coffee` / `apps/dykil` prunes (#1986, PR #2422; #2503; #2500; #2523) merges first, and a newly added
 // service with an instrumentation.ts is covered automatically instead of silently skipped.
 const SERVICES = readdirSync(APPS_DIR, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !NOT_VAULT_CLIENTS.has(entry.name))
@@ -54,11 +54,11 @@ beforeEach(() => {
   vi.stubEnv('NEXT_RUNTIME', 'nodejs');
 });
 
-it('discovers at least the services that remain after the apps/links, apps/learn, apps/coffee and apps/market prunes (#2422, #2503, #2500, #2512)', () => {
+it('discovers at least the services that remain after the apps/links, apps/learn, apps/coffee, apps/market and apps/dykil prunes (#2422, #2503, #2500, #2512, #2523)', () => {
   // Floor guard: an empty or shrunken scan would make every case below vacuously pass.
-  // `links`, `learn`, `coffee` and `market` are deliberately absent — all run from their own
+  // `links`, `learn`, `coffee`, `market` and `dykil` are deliberately absent — all run from their own
   // repos now (they bootstrap their own identity), so they are covered only if present.
-  expect(SERVICES).toEqual(expect.arrayContaining(['events', 'dykil']));
+  expect(SERVICES).toEqual(expect.arrayContaining(['events']));
 });
 
 describe.each(SERVICES)('%s', (service) => {

@@ -62,7 +62,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
 | Core | events | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
-| Imajin | dykil | 3101 | 7101 | jin.imajin.ai/dykil |
+| Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
 | Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
 | Imajin | learn (external, [ima-jin/learn](https://github.com/ima-jin/learn)) | 3103 | 7103 | jin.imajin.ai/learn |
 | Imajin | market (external, [ima-jin/market](https://github.com/ima-jin/market)) | 3104 | 7104 | jin.imajin.ai/market |
@@ -88,6 +88,12 @@ its own repo checkout instead of `deploy/ecosystem.{dev,prod}.config.js`.
 [ima-jin/coffee](https://github.com/ima-jin/coffee). Its ports (3100/7100) and
 Caddy route (`jin.imajin.ai/coffee`) are unchanged; `dev-coffee` serves from
 `~/dev/coffee` and `prod-coffee` from `~/prod/coffee`, each a standalone pm2
+process claimed with its own app identity (see `docs/REGISTRATION.md`).
+
+**dykil host note (#2523):** dykil moved out of this monorepo the same way, into
+[ima-jin/dykil](https://github.com/ima-jin/dykil). Its ports (3101/7101) and
+Caddy route (`jin.imajin.ai/dykil`) are unchanged; `dev-dykil` serves from
+`~/dev/dykil` and `prod-dykil` from `~/prod/dykil`, each a standalone pm2
 process claimed with its own app identity (see `docs/REGISTRATION.md`).
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
@@ -282,7 +288,7 @@ dropped; other running processes keep theirs until restart.
 Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the
 vault at boot authenticates with its own bootstrap identity:
 `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
-(today: events, dykil; plus the kernel's own
+(today: events; plus the kernel's own
 `KERNEL_CRON_VAULT_BOOTSTRAP_*` pair for its cron scheduler, which is granted the
 cron secret instead of the attestation key). The pair stays **required**
 (no `check-env` annotation) — but nobody mints it by hand any more.

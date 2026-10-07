@@ -298,13 +298,13 @@
       "owner": "dykil",
       "schema": "dykil",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy survey table (#2523). Owner stays dykil: not kernel-owned and never dropped. The standalone ima-jin/dykil reads it read-only and the node-witnessed legacy import (#2522) depends on it. events still reads it directly (gap #2542)."
     },
     "dykil.surveys": {
       "owner": "dykil",
       "schema": "dykil",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy survey table (#2523). Owner stays dykil: not kernel-owned and never dropped. The standalone ima-jin/dykil reads it read-only and the node-witnessed legacy import (#2522) depends on it. events still reads it directly (gap #2542)."
     },
     "events.event_invites": {
       "owner": "events",

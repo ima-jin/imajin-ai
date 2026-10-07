@@ -43,7 +43,7 @@ Ruling a: `POST /pay/api/balance/withdraw` and `POST /pay/api/payment-requests/[
 
 ## Inventory
 
-Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events` and `dykil`; `learn`, `coffee` and `market` were reviewed too, until they left this repo in #2503, #2500 and #2512 — their `learn.course.delete`, `learn.module.delete`, `learn.lesson.delete`, `coffee.page.delete`, `coffee.tip`, `market.listing.purchase`, `market.listing.delete` and `market.seller.settings` entries went with them, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
+Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`; `learn`, `coffee`, `market` and `dykil` were reviewed too, until they left this repo in #2503, #2500, #2512 and #2523 — their `learn.course.delete`, `learn.module.delete`, `learn.lesson.delete`, `coffee.page.delete`, `coffee.tip`, `market.listing.purchase`, `market.listing.delete`, `market.seller.settings` and `dykil.survey.delete` entries went with them, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
 
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
@@ -69,7 +69,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `POST /pay/api/escrow` (kernel) | yes | yes | none | **value-moving** | `pay.escrow.create` — locks funds in escrow |
 | `PUT /pay/api/escrow` (kernel) | yes | yes | none | **value-moving** | `pay.escrow.update` — releases or refunds escrowed funds |
 | `POST /pay/api/payment-requests/[id]/settle` (kernel) | yes | yes | none | **value-moving** | `pay.payment-request.settle` — marks a payment request settled |
-| `DELETE /api/surveys/[id]` (dykil) | yes | no | none | **irreversible** | `dykil.survey.delete` — deletes a survey and responses |
 | `POST /api/campaign/[eventId]/cancel` (events) | yes | no | none | **irreversible** | `events.campaign.cancel` — cancels a funding campaign |
 | `POST /api/events/[id]/tickets/[ticketId]/cancel` (events) | yes | no | none | **irreversible** | `events.ticket.cancel` — cancels an issued ticket |
 | `DELETE /calendar/api/entries/[id]` (kernel) | yes | no | none | **irreversible** | `kernel.calendar.entry.delete` — deletes a calendar entry |

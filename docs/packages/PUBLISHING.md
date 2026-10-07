@@ -187,27 +187,27 @@ with dev credentials; the automated smoke test instead exercises the
 installed package's own sign/verify primitives, which is what's actually
 reachable without a secret.
 
-## Why the kernel (and `dykil`) still use `workspace:*`
+## Why the kernel still uses `workspace:*`
 
-`apps/kernel` and `apps/dykil` both still depend on `@imajin/auth`/`config`/
+`apps/kernel` still depends on `@imajin/auth`/`config`/
 `logger`/`ui` via `workspace:*`, unchanged by this pipeline. That's
-intentional, not an oversight:
+intentional, not an oversight. (`apps/dykil` used to be listed here too; it
+left the monorepo in #2523 and consumes the published `@ima-jin/*` packages
+from its own repo.)
 
 - The kernel **is** where these packages' server-side counterparts and the
   routes they call (e.g. `/auth/api/tokens/app`) live — it makes no sense for
   the origin of an SDK to consume its own published copy of itself.
-- `dykil` is the first app slated to actually consume the published SDK from
-  outside the monorepo, but that extraction is
-  [#1985](https://github.com/ima-jin/imajin-ai/issues/1985), which is still
-  open and explicitly blocked on this issue (#1982) plus the registry
-  (#1990) and audit (#1983) work. `apps/dykil` is still inside this repo as
-  of this writing.
+- `dykil` was the first app to consume the published SDK from outside the
+  monorepo ([#1985](https://github.com/ima-jin/imajin-ai/issues/1985)):
+  `ima-jin/dykil` depends on published `@ima-jin/*` versions, and `apps/dykil`
+  was pruned from this repo in #2523.
 - Switching any in-repo consumer to a registry version today would force a
   publish-and-bump round trip for every single change to `auth`/`config`/
   `logger`/`ui` during ordinary development — exactly the workflow the
   monorepo (and `workspace:*`) exists to avoid. There is no non-monorepo
   consumer yet for it to trade that cost against.
 
-Revisit this once `dykil` (or another app) actually moves to its own repo
-under #1985 — that PR is the one that should flip its dependencies from
-`workspace:*` to the published `@ima-jin/*` versions, not this one.
+Any app still inside this repo should flip its dependencies from
+`workspace:*` to the published `@ima-jin/*` versions in the PR that moves it to
+its own repo, not before.

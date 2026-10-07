@@ -89,21 +89,6 @@ module.exports = {
       "kill_timeout": 15000
     },
     {
-      "name": "dev-dykil",
-      "cwd": "/home/jin/dev/imajin-ai/apps/dykil",
-      "script": "node_modules/next/dist/bin/next",
-      "args": "start -p 3101",
-      "interpreter": "node",
-      "exec_mode": "fork",
-      "env": {
-        "PORT": 3101,
-        "NODE_ENV": "production"
-      },
-      "max_restarts": 10,
-      "min_uptime": "20s",
-      "kill_timeout": 15000
-    },
-    {
       "name": "dev-fixready",
       "cwd": "/home/jin/dev/imajin-fixready",
       "script": "node_modules/next/dist/bin/next",

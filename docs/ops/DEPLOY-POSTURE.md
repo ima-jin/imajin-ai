@@ -325,6 +325,28 @@ kernel API). What changes here:
   `apps/*/.env.example`, so it no longer mints a market bootstrap identity: the
   standalone app claims its own (`ima-jin/market` `docs/REGISTRATION.md`).
 
+## 9. dykil is external now (#2523)
+
+`apps/dykil` was removed from this repo entirely, after `links` (§5), `learn` (§6),
+`coffee` (§7) and `market` (§8). It lives and is built, tested, and deployed from
+its own repo, [ima-jin/dykil](https://github.com/ima-jin/dykil), against the
+registered-app contract (scoped app tokens, published `@ima-jin/*` SDK, public
+kernel API). What changes here:
+
+- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-dykil`/`prod-dykil`.
+  The operator's pm2 entries now point at `~/dev/dykil` / `~/prod/dykil`
+  (`ima-jin/dykil` checkouts) instead of `~/{dev,prod}/imajin-ai/apps/dykil`.
+- Caddy and ports are unchanged (`jin.imajin.ai/dykil`, 3101 dev / 7101 prod).
+- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
+  name via `pm2 jlist`, so a standalone process still named `prod-dykil` is bounced
+  by kernel deploys even though this repo no longer builds or migrates it — the same
+  open question as §5's `prod-links` decision; nothing new is needed to answer it.
+- The `dykil` Postgres schema and its tables are untouched. See
+  `migrations/BASELINE.md` ("#2523 — dykil per-table ownership decision").
+- `scripts/provision-service-bootstrap.mjs --all` discovers services from
+  `apps/*/.env.example`, so it no longer mints a dykil bootstrap identity: the
+  standalone app claims its own (`ima-jin/dykil` `docs/REGISTRATION.md`).
+
 ## Decisions for Ryan
 
 DECISION · Migration collision prevention · Should merging a PR that adds a new migration file

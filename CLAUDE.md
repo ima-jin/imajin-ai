@@ -42,7 +42,6 @@ Monorepo: 1 kernel (9 domains) + 6 federated apps, all self-hosted.
 apps/
   kernel/     — Core platform (auth, identity, pay, profile, chat, media, notify, registry, connections)
   events/     — Event creation and ticketing
-  dykil/      — Surveys and polls
   links/      — Curated link collections
 
 packages/     — Shared libraries (@imajin/auth, @imajin/db, @imajin/ui, etc.)
