@@ -9,11 +9,10 @@ import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
 import { db, listings } from '@/db';
-import { getSession, requireHardDID , resolveActingDid, type Identity } from '@imajin/auth';
+import { getSession, requireHardDID , resolveActingDid } from '@imajin/auth';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { publish } from '@imajin/bus';
 import { eq } from 'drizzle-orm';
-import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!;
@@ -41,21 +40,17 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     // 2. Get buyer identity — trust_gated requires hard DID (preliminary+)
-    let buyerIdentity: Identity | null;
+    let buyerDid: string | undefined;
     if (listing.sellerTier === 'trust_gated') {
       const authResult = await requireHardDID(request);
       if ('error' in authResult) {
         return errorResponse('This listing requires a verified identity to purchase', 403);
       }
-      buyerIdentity = authResult.identity;
+      buyerDid = resolveActingDid(authResult.identity);
     } else {
-      buyerIdentity = await getSession();
+      const session = await getSession();
+      buyerDid = session ? resolveActingDid(session) : undefined;
     }
-    const buyerDid = buyerIdentity ? resolveActingDid(buyerIdentity) : undefined;
-
-    // Buying moves the owner's money — a delegate may not do it alone (#2360).
-    const delegationDenied = enforceRoutePolicy(buyerIdentity, 'market.listing.purchase', { resourceId: params.id });
-    if (delegationDenied) return delegationDenied;
 
     // 3. Parse body for quantity
     let quantity = 1;

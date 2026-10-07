@@ -5,7 +5,6 @@ import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq } from "drizzle-orm";
 import { classifyAsset } from "@/src/lib/media/classify";
 import { createLogger } from "@imajin/logger";
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -43,8 +42,6 @@ export async function POST(
 
   // Owner check
   const ownerDid = resolveActingDid(identity);
-  const delegationDenied = enforceRoutePolicy(identity, "media.asset.classify", { resourceId: id });
-  if (delegationDenied) return delegationDenied;
   if (asset.ownerDid !== ownerDid) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }

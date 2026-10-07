@@ -29,7 +29,7 @@ Not governed here (separate authority models, left untouched): group impersonati
 - `apps/kernel/src/lib/media/require-media-auth.ts` — `mediaDelegationGate`, the media-route adapter (keeps the historical `assetId` field in the body).
 - `packages/auth/tests/delegation-policy-coverage.test.ts` — fails if a registered route stops calling the helper, a call names an unregistered key, or two handlers share a key.
 
-To put a route under the policy: add a line to `DELEGATION_ROUTES` and one `enforceRoutePolicy(...)` call right after the route resolves the caller's identity.
+To put a route under the policy: add a line to `DELEGATION_ROUTES` and one `enforceRoutePolicy(...)` call right after the route resolves the caller's identity. `reversible` routes are registered (so the classification is explicit and a later flip is a one-line change) but make no call — there is nothing to enforce; the coverage test makes the call mandatory the moment a route is flipped to `irreversible` / `value-moving`. The one exception is `PATCH /media/api/assets/[id]` (rename), which keeps its adapter call because it replaces the gate that used to refuse agents there.
 
 ## Inventory
 

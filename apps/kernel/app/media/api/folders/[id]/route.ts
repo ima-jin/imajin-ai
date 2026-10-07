@@ -42,8 +42,6 @@ export async function PATCH(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const ownerDid = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.folder.update", { resourceId: id });
-  if (delegationDenied) return delegationDenied;
 
   const [existing] = await db
     .select()

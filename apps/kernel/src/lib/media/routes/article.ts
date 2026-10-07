@@ -10,14 +10,13 @@ import { buildArticleBlock, type ArticleInput } from "../article-core";
 import { composeArticleFile, parseFrontmatter } from "../frontmatter";
 import { updateAssetContent } from "@/src/lib/media/update-asset";
 import { buildAssetViewUrl } from "@/src/lib/media/view-url";
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
 export async function patchArticle(
   request: NextRequest,
   id: string
-): Promise<Response> {
+): Promise<NextResponse> {
   const cors = corsHeaders(request);
 
   // 1. Auth
@@ -29,8 +28,6 @@ export async function patchArticle(
     );
   }
   const requesterDid = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.article", { resourceId: id, headers: cors });
-  if (delegationDenied) return delegationDenied;
 
   // 2. Parse body
   let body: ArticleInput;

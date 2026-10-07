@@ -65,9 +65,6 @@ import { PUT as putFair } from '@/app/media/api/assets/[id]/fair/route';
 import { PATCH as patchAccess } from '@/app/media/api/assets/[id]/access/route';
 import { PATCH as patchGrants } from '@/app/media/api/assets/[id]/grants/route';
 import { POST as historyGrant } from '@/app/media/api/workspace/history-grant/route';
-import { PATCH as patchArticle } from '@/app/media/api/assets/[id]/article/route';
-import { POST as classify } from '@/app/media/api/assets/[id]/classify/route';
-import { PUT as putFolders } from '@/app/media/api/assets/[id]/folders/route';
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -218,22 +215,9 @@ describe('irreversible class — .fair upgrade, access, grants, history-grant', 
 });
 
 // ─── reversible ────────────────────────────────────────────────────────────
-
-const REVERSIBLE: Array<[string, Handler, string]> = [
-  ['PATCH article', patchArticle as Handler, 'PATCH'],
-  ['POST classify', classify as Handler, 'POST'],
-  ['PUT folders', putFolders as Handler, 'PUT'],
-];
-
-describe('reversible class — metadata a delegate may execute', () => {
-  it.each(REVERSIBLE)('%s is not refused for a delegate (it proceeds past the gate)', async (_label, handler, method) => {
-    asDelegate();
-
-    const res = await handler(makeRequest(method), { params });
-
-    // Past the gate the stubbed handlers end in a validation/404 response —
-    // anything but the approval-required refusal.
-    const body = await res.json().catch(() => ({}));
-    expect(body.code).not.toBe('AGENT_APPROVAL_REQUIRED');
-  });
-});
+//
+// Reversible routes (article, classify, folders, content write…) make no call
+// at all — there is nothing to enforce — so the only governed reversible route
+// is rename, whose delegate-executes behaviour is covered in
+// asset-detail-route.test.ts. The helper-level reversible contract is in
+// packages/auth/tests/delegation-policy.test.ts.

@@ -3,7 +3,6 @@ import { db, assets, folders, assetFolders } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, and, inArray } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
-import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -20,8 +19,6 @@ export async function PUT(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const ownerDid = resolveActingDid(authResult.identity);
-  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.folders", { resourceId: id });
-  if (delegationDenied) return delegationDenied;
 
   // Verify asset belongs to the authenticated user
   const [asset] = await db
