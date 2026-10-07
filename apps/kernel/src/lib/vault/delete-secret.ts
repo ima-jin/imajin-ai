@@ -41,28 +41,30 @@ class NothingToDeleteError extends Error {
  * Returns `undefined` — having changed nothing — when the field has no vault entry.
  */
 export async function deleteSecretAndRevokeGrants(field: string): Promise<DeleteSecretResult | undefined> {
-  return db.transaction(async (tx) => {
-    const revoked = await tx
-      .update(vaultDelegationGrants)
-      .set({ status: 'revoked', revokedAt: new Date() })
-      .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
-      .returning({
-        id: vaultDelegationGrants.id,
-        field: vaultDelegationGrants.field,
-        keyId: vaultDelegationGrants.keyId,
-        grantedTo: vaultDelegationGrants.grantedTo,
-      });
-    await eraseInactiveGrantKeyMaterial(revoked, tx);
+  try {
+    return await db.transaction(async (tx) => {
+      const revoked = await tx
+        .update(vaultDelegationGrants)
+        .set({ status: 'revoked', revokedAt: new Date() })
+        .where(and(eq(vaultDelegationGrants.field, field), eq(vaultDelegationGrants.status, 'active')))
+        .returning({
+          id: vaultDelegationGrants.id,
+          field: vaultDelegationGrants.field,
+          keyId: vaultDelegationGrants.keyId,
+          grantedTo: vaultDelegationGrants.grantedTo,
+        });
+      await eraseInactiveGrantKeyMaterial(revoked, tx);
 
-    // Last, so a failure here rolls the revokes back (see file header).
-    const tombstone = await deleteFromVault(field);
-    if (!tombstone) {
-      // Nothing to tombstone: abort so the revokes above are rolled back too.
-      throw new NothingToDeleteError(field);
-    }
-    return { tombstone, revokedGrantees: revoked.map((grant) => grant.grantedTo) };
-  }).catch((err: unknown) => {
+      // Last, so a failure here rolls the revokes back (see file header).
+      const tombstone = await deleteFromVault(field);
+      if (!tombstone) {
+        // Nothing to tombstone: abort so the revokes above are rolled back too.
+        throw new NothingToDeleteError(field);
+      }
+      return { tombstone, revokedGrantees: revoked.map((grant) => grant.grantedTo) };
+    });
+  } catch (err) {
     if (err instanceof NothingToDeleteError) return undefined;
     throw err;
-  });
+  }
 }
