@@ -19,8 +19,13 @@
 /** Env var an operator may set to override the audience (default: the app's slug). */
 export const APP_AUD_ENV = 'IMAJIN_APP_AUD';
 
-/** A registry slug: lowercase alphanumerics with single `-`/`_` separators. No dots, colons or slashes. */
-const SLUG_PATTERN = /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/;
+/**
+ * A registry slug — exactly the pattern `POST /api/apps/provision` accepts
+ * (apps/kernel/app/api/apps/provision/route.ts), so every provisionable slug
+ * (e.g. `app-`, `a--b`) is a valid audience. No dots, colons or slashes, so a
+ * host or URL can never match. A kernel test pins the two patterns together.
+ */
+const SLUG_PATTERN = /^[a-z][a-z0-9-]{0,38}$/;
 
 /** True when `value` is shaped like a registry slug (and therefore not a host or URL). */
 export function isAppAudienceSlug(value: string): boolean {

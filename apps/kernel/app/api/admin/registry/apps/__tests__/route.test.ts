@@ -62,11 +62,12 @@ vi.mock('drizzle-orm', () => ({
   desc: (...args: unknown[]) => ({ desc: args }),
 }));
 
-vi.mock('@imajin/auth', () => ({
+vi.mock('@imajin/auth', async () => ({
   requireAdmin: mocks.requireAdminMock,
   generateKeypair: mocks.generateKeypairMock,
   isValidPublicKey: () => true,
-  isAppAudienceSlug: (v: string) => /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(v),
+  // The real helper, not a copy — a duplicated regex here would hide drift.
+  isAppAudienceSlug: (await import('../../../../../../../../packages/auth/src/app-audience')).isAppAudienceSlug,
   emitAttestation: mocks.emitAttestationMock,
 }));
 

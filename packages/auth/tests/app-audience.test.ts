@@ -25,6 +25,12 @@ describe('resolveAppAudience', () => {
     expect(resolveAppAudience('links')).toBe('links');
   });
 
+  it.each(['app-', 'a--b'])('accepts the provisionable slug %s as the default and as IMAJIN_APP_AUD', (slug) => {
+    expect(resolveAppAudience(slug)).toBe(slug);
+    process.env[APP_AUD_ENV] = slug;
+    expect(resolveAppAudience('dykil')).toBe(slug);
+  });
+
   it('works from IMAJIN_APP_AUD alone', () => {
     process.env[APP_AUD_ENV] = 'coffee';
     expect(resolveAppAudience()).toBe('coffee');
@@ -34,7 +40,7 @@ describe('resolveAppAudience', () => {
     expect(() => resolveAppAudience()).toThrow(/No app audience configured/);
   });
 
-  it.each(['dev-jin.imajin.ai', 'jin.imajin.ai', 'https://jin.imajin.ai/dykil', 'jin.imajin.ai:443', 'Dykil'])(
+  it.each(['dev-jin.imajin.ai', 'jin.imajin.ai', 'https://jin.imajin.ai/dykil', 'jin.imajin.ai:443', 'https://x/y', 'Dykil'])(
     'rejects a host-shaped slug %s',
     (host) => {
       expect(() => resolveAppAudience(host)).toThrow(/never hosts or URLs/);
@@ -48,11 +54,27 @@ describe('resolveAppAudience', () => {
 });
 
 describe('isAppAudienceSlug', () => {
-  it.each(['dykil', 'links', 'jin', 'my-app', 'my_app', 'app2'])('accepts %s', (v) => {
-    expect(isAppAudienceSlug(v)).toBe(true);
-  });
+  it.each(['dykil', 'links', 'jin', 'my-app', 'app2', 'app-', 'a--b', 'a', 'a'.padEnd(39, 'b')])(
+    'accepts the provisionable slug %s',
+    (v) => {
+      expect(isAppAudienceSlug(v)).toBe(true);
+    },
+  );
 
-  it.each(['', 'a.b', 'a/b', '-a', 'a-', 'a--b', 'A', 'a b'])('rejects %j', (v) => {
+  it.each([
+    'dev-jin.imajin.ai',
+    'jin.imajin.ai',
+    'jin.imajin.ai:443',
+    'https://x/y',
+    'a/b',
+    '',
+    '-a',
+    '1app',
+    'my_app',
+    'A',
+    'a b',
+    'a'.padEnd(40, 'b'),
+  ])('rejects %j', (v) => {
     expect(isAppAudienceSlug(v)).toBe(false);
   });
 });
