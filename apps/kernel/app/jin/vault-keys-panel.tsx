@@ -91,6 +91,22 @@ type RevokeTier = 'withdraw' | 'tombstone' | 'destroy';
 
 const POLL_INTERVAL_MS = 5000;
 
+/**
+ * Reads the kernel's known-field registry (#2700). Never rejects: any failure
+ * (unauthorized, network, malformed body) yields an empty list, because the
+ * list is informational and must never take the panel down.
+ */
+async function fetchKnownFields(): Promise<KnownVaultField[]> {
+  try {
+    const res = await fetch('/api/vault/known-fields', { credentials: 'include' });
+    if (!res.ok) return [];
+    const data = (await res.json()) as { fields?: KnownVaultField[] };
+    return Array.isArray(data.fields) ? data.fields : [];
+  } catch {
+    return [];
+  }
+}
+
 /** "Nm ago" / "Nh ago" / "Nd ago" — coarse, matching the UX note's own "last ack Nm ago" phrasing. */
 function timeAgo(iso: string | null): string | null {
   if (!iso) return null;
@@ -426,16 +442,13 @@ export function VaultKeysPanel() {
   // failure just leaves the list empty and never hides the panel.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/vault/known-fields', { credentials: 'include' });
-        if (!res.ok) return;
-        const data = (await res.json()) as { fields?: KnownVaultField[] };
-        if (!cancelled && Array.isArray(data.fields)) setKnownFields(data.fields);
-      } catch {
-        // Non-fatal: the known-fields list is informational only.
-      }
-    })();
+    fetchKnownFields()
+      .then((fields) => {
+        if (!cancelled) setKnownFields(fields);
+      })
+      .catch(() => {
+        // fetchKnownFields never rejects; this only guards the state update.
+      });
     return () => {
       cancelled = true;
     };
