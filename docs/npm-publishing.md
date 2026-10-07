@@ -82,7 +82,7 @@ The skip-if-already-published check is unaffected, so a retry or re-run never do
 
 ### Operator steps (npmjs.org — not doable from this repo)
 
-The npm owner of the `@ima-jin` scope must do this once **per package**. Publishable packages are `ALL_PACKAGES` in `publish-packages.yml`: `cid`, `tokens`, `config`, `ui`, `vault-core`, `db`, `fair`, `auth-client`, `auth`, `logger` (published as `@ima-jin/<name>`).
+The npm owner of the `@ima-jin` scope must do this once **per package**. Publishable packages are `ALL_PACKAGES` in `publish-packages.yml`: `cid`, `tokens`, `config`, `ui`, `vault-core`, `db`, `fair`, `auth-client`, `onboard`, `auth`, `logger` (published as `@ima-jin/<name>`).
 
 1. On npmjs.com open `https://www.npmjs.com/package/@ima-jin/<name>/access` → **Trusted Publisher** → **GitHub Actions**.
 2. Fill in exactly:
