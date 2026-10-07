@@ -88,15 +88,25 @@ export interface OperatorCountersignature {
   /** Hex-encoded Ed25519 public key that produced `sig`. */
   keyId: string;
   alg: 'ed25519';
-  /** Hex-encoded Ed25519 signature over canonicalize({contentHash, decision, decidedAt}). */
+  /** Hex-encoded Ed25519 signature over canonicalize({contentHash, decision, decidedAt[, mode]}) (#2693: `mode` only when the decision carries one). */
   sig: string;
 }
 
-/** The exact fields the operator's countersignature covers, in the order `canonicalize` will sort them. */
+/**
+ * The exact fields the operator's countersignature covers (canonicalized,
+ * so key order is irrelevant on the wire).
+ *
+ * `mode` (#2693) is the chosen option — a decision-card option letter,
+ * exec `allow-once`/`deny`, or a github TTL. It is part of the signed bytes
+ * IFF the decision carried one: a decision with no `mode` signs exactly the
+ * pre-#2693 `{contentHash, decidedAt, decision}` shape, which is also what
+ * keeps decisions signed before #2693 verifiable as they always were.
+ */
 export interface OperatorCountersignFields {
   contentHash: string;
   decision: ApprovalDecision;
   decidedAt: string;
+  mode?: string;
 }
 
 /** The `operator.approval.requested` notification payload (the /jin card). */
@@ -122,7 +132,14 @@ export interface OperatorApprovalDecidedPayload {
   source: string;
   kind: string;
   decision: ApprovalDecision;
-  /** Opaque, source-adapter-chosen refinement of `decision` (e.g. 'allow-once') — kernel never interprets it (#2152). */
+  /**
+   * The chosen option for this decision — a decision-card option letter,
+   * exec `allow-once`/`deny`, or a github TTL (`single`/`5m`/`24h`). #2693:
+   * validated per kind at decide time, and covered by `operatorSignature`
+   * when the decision was signed after #2693 (a decision signed before it
+   * carries a `mode` the operator did NOT sign — see
+   * `assessDecidedModeCountersignature`).
+   */
   mode?: string;
   decidedBy: string;
   decidedAt: string;

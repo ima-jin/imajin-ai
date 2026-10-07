@@ -8,7 +8,10 @@
  * stands behind. This module verifies a *second*, independent signature —
  * produced client-side on /jin with the operator's own key
  * (`apps/kernel/app/jin/operator-approvals-panel.tsx`) — over
- * `canonicalize({contentHash, decision, decidedAt})`.
+ * `canonicalize({contentHash, decision, decidedAt})` — plus the chosen
+ * `mode` (option letter / allow-once / TTL) whenever the decision carries
+ * one (#2693: picking the option IS the signing event, so the operator's
+ * signature must cover WHICH option, not just that they approved).
  *
  * Key resolution deliberately mirrors the existing precedent in
  * `apps/kernel/src/lib/auth/witness-jws.ts` (used by the `attestations/
@@ -27,10 +30,11 @@
  * `witness-jws.ts` today. (#2081 shipped history for the NODE's own key only:
  * `key.rotated`, docs/security/node-key-roles-and-rotation.md.)
  */
-import { canonicalize, crypto as authCrypto } from '@imajin/auth';
+import { crypto as authCrypto } from '@imajin/auth';
 import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 import type { OperatorCountersignFields, OperatorCountersignature } from './operator-approvals';
+import { countersignedMessage } from './operator-countersign-fields';
 
 export type OperatorCountersignVerification = { ok: true } | { ok: false; error: string };
 
@@ -65,9 +69,16 @@ export function parseOperatorSignature(
 
 /**
  * Verify an `operatorSignature` over `{contentHash, decision, decidedAt}`
- * against the operator DID's currently registered key. Fails closed on any
- * rejection path — never throws, so the caller can map straight to a 400
- * without persisting anything.
+ * (+ `mode` when `fields.mode` is set — #2693) against the operator DID's
+ * currently registered key. Fails closed on any rejection path — never
+ * throws, so the caller can map straight to a 400 without persisting
+ * anything.
+ *
+ * Deliberately NO fallback to the pre-#2693 shape here: a new decision that
+ * carries a `mode` must have signed it, so a `mode` altered (or added)
+ * after signing fails with 'Invalid operator signature'. The read-side
+ * back-compat for already-stored decisions lives in
+ * `assessDecidedModeCountersignature`.
  */
 export async function verifyOperatorCountersignature(
   operatorDid: string,
@@ -91,8 +102,7 @@ export async function verifyOperatorCountersignature(
     };
   }
 
-  const canonical = canonicalize(fields);
-  const valid = authCrypto.verifySync(signature.sig, canonical, resolved.publicKey);
+  const valid = authCrypto.verifySync(signature.sig, countersignedMessage(fields), resolved.publicKey);
   if (!valid) {
     return { ok: false, error: 'Invalid operator signature' };
   }

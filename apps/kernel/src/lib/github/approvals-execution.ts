@@ -44,19 +44,20 @@ import * as bus from '@imajin/bus';
 import { db, githubActionProposals, operatorApprovals } from '@/src/db';
 import { getNodeSigningIdentity } from '../vault/sealing';
 import type { OperatorApprovalCard } from '../notify/operator-approvals-service';
+import { GITHUB_SOURCE, GITHUB_TTL_MODES } from '../notify/operator-decision-modes';
 
 const log = createLogger('kernel:github:approvals-execution');
 
-/** The open-vocabulary source this kind is filed under (#2152). */
-export const GITHUB_SOURCE = 'github';
+/** The open-vocabulary source this kind is filed under (#2152) — defined beside the per-kind decision-mode policy it keys (#2693). */
+export { GITHUB_SOURCE };
 
 /** Namespaced kinds — one per write-gate risk tier, NOT per tool (#2293 DECISION FOR RYAN: preserves the existing tier-shared approval-window semantics; the exact tool lives in `detail.tool`). */
 export const GITHUB_APPEND_KIND = 'github:append';
 export const GITHUB_MUTATE_KIND = 'github:mutate';
 const GITHUB_KINDS = new Set([GITHUB_APPEND_KIND, GITHUB_MUTATE_KIND]);
 
-export type GithubTtlMode = 'single' | '5m' | '24h';
-const TTL_MODES = new Set<GithubTtlMode>(['single', '5m', '24h']);
+export type GithubTtlMode = (typeof GITHUB_TTL_MODES)[number];
+const TTL_MODES = new Set<GithubTtlMode>(GITHUB_TTL_MODES);
 
 export interface GithubExecutionResult {
   ok: boolean;
