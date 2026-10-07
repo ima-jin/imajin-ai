@@ -59,6 +59,7 @@ import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
 import { approvalCardAnchorId, APPROVALS_REFRESH_EVENT } from './approval-anchor';
 import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
+import { proposeClaimReissue } from './provision-reissue';
 import { DecisionCardDetail, DecisionCardOptions } from './decision-card-detail';
 import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decisions/view';
 import { useSearchParams } from 'next/navigation';
@@ -509,11 +510,25 @@ const ACCESS_RENDERER: SourceRenderer = {
 // runs the create-repo/mint/register/seal pipeline server-side; the
 // one-time app-signing-key claim-code reveal is handled by `handleDecide`
 // below (same pattern as `access`'s bearer reveal), never by this renderer.
+/** #2707: an `apps:provision` proposal raised with `reissueClaim: true` (see `POST /api/apps/provision`). */
+function isClaimReissue(approval: OperatorApprovalCard): boolean {
+  return approval.detail?.reissueClaim === true;
+}
+
 function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
   const { detail } = approval;
   const slug = detailString(detail, 'slug', '\u2014');
   const displayName = detailString(detail, 'displayName', '\u2014');
   const template = detailString(detail, 'template', 'ima-jin/imajin-app-template');
+  if (isClaimReissue(approval)) {
+    return (
+      <div className="space-y-1 text-sm text-gray-200">
+        <p>Reissue the claim code for <span className="font-medium text-gray-100">{displayName}</span>.</p>
+        <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
+        <p className="text-xs text-gray-500">Issues a fresh one-time claim code and expires any unclaimed one. No repo, key or registry row is re-created.</p>
+      </div>
+    );
+  }
   return (
     <div className="space-y-1 text-sm text-gray-200">
       <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
@@ -526,7 +541,7 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
 }
 
 const APPS_RENDERER: SourceRenderer = {
-  decisionLabels: { approve: 'Approve & provision', reject: 'Deny' },
+  decisionLabels: (approval) => ({ approve: isClaimReissue(approval) ? 'Approve & reissue' : 'Approve & provision', reject: 'Deny' }),
   renderDetail: renderAppsProvisionDetail,
 };
 
@@ -818,6 +833,126 @@ function SealSkippedBanner({
   );
 }
 
+// ── claim code NOT delivered (#2707) ────────────────────────────────────────
+// The claim code is never persisted, so an approve that doesn't hand it to the
+// banner above leaves the operator with nothing to paste. Before #2707 every
+// such outcome was invisible: `executionError` was never read, a dropped
+// response threw out of `handleDecide` unhandled, and the flash always said
+// "Proposal approve." in green. This notice makes the miss loud and — when the
+// pipeline may well have succeeded — offers a one-click reissue (the existing
+// `reissueClaim: true` proposal; no devtools).
+
+interface ClaimCodeNotice {
+  proposalId: string;
+  slug: string;
+  displayName: string;
+  /** `execution-failed`: the server said the pipeline did not run/finish. `not-delivered`: approved, but the response never carried a code. */
+  reason: 'execution-failed' | 'not-delivered';
+  message: string;
+}
+
+/** The decision route's response body — `data` is the ONE-TIME reveal payload (#2252/#2411), `executionError` the bridge's failure (#2247). */
+interface DecisionResponseBody {
+  executionError?: string;
+  data?: { bearer?: string; expiresAt?: string; claimCode?: string; sealSkipped?: boolean };
+}
+
+/**
+ * #2707: the notice owed to the operator when an approved `apps:provision` ends
+ * without a claim code in hand. `body` is `null` when the response never arrived.
+ * Returns `null` for every other decision/source, and when a code WAS delivered.
+ */
+function claimCodeNoticeFor(
+  approval: OperatorApprovalCard,
+  decision: DecisionAction,
+  body: DecisionResponseBody | null,
+): ClaimCodeNotice | null {
+  if (decision !== 'approve' || approval.source !== 'apps' || approval.kind !== 'apps:provision') return null;
+  if (body?.data?.claimCode) return null;
+  const base = {
+    proposalId: approval.proposalId,
+    slug: detailString(approval.detail, 'slug', ''),
+    displayName: detailString(approval.detail, 'displayName', approval.summary),
+  };
+  if (body?.executionError) {
+    return { ...base, reason: 'execution-failed', message: `it was approved but did not execute: ${body.executionError}` };
+  }
+  const message = body
+    ? 'the server approved the proposal but returned no claim code.'
+    : 'the response was lost before a claim code reached this page. Provisioning may have completed; the code is never stored, so it cannot be recovered \u2014 reissue one.';
+  return { ...base, reason: 'not-delivered', message };
+}
+
+/** Upstream-gateway failures: the request died in a proxy, so the server-side run may still have completed. */
+const GATEWAY_FAILURE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/** #2707: the lost-code notice for an apps:provision approve answered with a 502/503/504; `null` for any other status/decision/source. */
+function gatewayLostNoticeFor(approval: OperatorApprovalCard, decision: DecisionAction, status: number): ClaimCodeNotice | null {
+  return GATEWAY_FAILURE_STATUSES.has(status) ? claimCodeNoticeFor(approval, decision, null) : null;
+}
+
+interface DecisionReveals {
+  bearer: RevealedBearer | null;
+  claimCode: RevealedClaimCode | null;
+  sealSkipped: SealSkipped | null;
+  claimNotice: ClaimCodeNotice | null;
+}
+
+/**
+ * What an approve response owes the operator, derived purely from the response:
+ * the one-time bearer (#2252) / claim code (#2411, `slug` riding along from
+ * `approval.detail` so the banner can derive the app's own /claim URL, #2427),
+ * the seal-skipped notice (#2415), and — when an apps:provision approve ends
+ * with no code — the #2707 "no claim code" notice.
+ */
+function revealsFromDecision(approval: OperatorApprovalCard, decision: DecisionAction, body: DecisionResponseBody): DecisionReveals {
+  const none: DecisionReveals = { bearer: null, claimCode: null, sealSkipped: null, claimNotice: null };
+  if (decision !== 'approve') return none;
+  const { proposalId } = approval;
+  const displayName = detailString(approval.detail, 'displayName', approval.summary);
+  const { data } = body;
+  return {
+    bearer: data?.bearer
+      ? { proposalId, clientLabel: detailString(approval.detail, 'clientLabel', approval.summary), bearer: data.bearer, expiresAt: data.expiresAt ?? '' }
+      : null,
+    claimCode: data?.claimCode
+      ? { proposalId, displayName, claimCode: data.claimCode, slug: detailString(approval.detail, 'slug', '') }
+      : null,
+    sealSkipped: data?.sealSkipped ? { proposalId, displayName } : null,
+    claimNotice: claimCodeNoticeFor(approval, decision, body),
+  };
+}
+
+function ClaimCodeNoticeBanner({
+  notice,
+  busy,
+  onReissue,
+  onDismiss,
+}: Readonly<{ notice: ClaimCodeNotice; busy: boolean; onReissue: () => void; onDismiss: () => void }>) {
+  return (
+    <div className="mb-4 rounded-lg border border-red-800 bg-red-950/40 p-4 space-y-2" data-testid="claim-code-missing" role="alert">
+      <p className="text-sm text-red-200 font-medium">
+        No claim code for &quot;{notice.displayName}&quot; — {notice.message}
+      </p>
+      <div className="flex items-center gap-2">
+        {notice.reason === 'not-delivered' && notice.slug && (
+          <button
+            type="button"
+            onClick={onReissue}
+            disabled={busy}
+            className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60 disabled:opacity-40"
+          >
+            {busy ? '…' : 'Reissue claim code'}
+          </button>
+        )}
+        <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Replaces every decision control on a card while the session is under
  * act-as (#2359). Says WHY the control is gone rather than silently
@@ -1024,6 +1159,8 @@ function OperatorApprovalsPanelInner() {
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
   const [revealedClaimCode, setRevealedClaimCode] = useState<RevealedClaimCode | null>(null);
   const [sealSkipped, setSealSkipped] = useState<SealSkipped | null>(null);
+  const [claimNotice, setClaimNotice] = useState<ClaimCodeNotice | null>(null);
+  const [reissuing, setReissuing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { flash, notify } = useFlashNotice(4000);
@@ -1094,17 +1231,37 @@ function OperatorApprovalsPanelInner() {
         ...(mode ? { mode } : {}),
       });
 
-      const res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          decision,
-          ...(mode ? { mode } : {}),
-          ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
-        }),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            decision,
+            ...(mode ? { mode } : {}),
+            ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
+          }),
+        });
+      } catch {
+        // #2707: the request died mid-flight (proxy timeout / dropped connection).
+        // Provisioning runs inside this request, so it may well have completed —
+        // and the one-time claim code with it, lost. Say so, and offer a reissue.
+        const lost = claimCodeNoticeFor(approval, decision, null);
+        if (lost) setClaimNotice(lost);
+        notify('err', 'Network error \u2014 the decision response was lost. Refreshing the card.');
+        await load(true);
+        return;
+      }
       if (!res.ok) {
+        // #2707: a proxy/gateway timeout (502/503/504) on an apps:provision approve means the pipeline
+        // may have finished behind the dead request — same lost-code situation as a dropped connection.
+        const gatewayLost = gatewayLostNoticeFor(approval, decision, res.status);
+        if (gatewayLost) {
+          setClaimNotice(gatewayLost);
+          await load(true);
+          return;
+        }
         const body = await res.json().catch(() => ({})) as { error?: string };
         notify('err', body.error ?? `Decision failed (${res.status})`);
         return;
@@ -1113,42 +1270,45 @@ function OperatorApprovalsPanelInner() {
       // minted bearer plaintext exactly once, in `data.bearer` — surface it
       // as a persistent (not auto-dismissing) reveal box rather than the
       // 4s flash, since the operator needs time to copy it.
-      const responseBody = await res.json().catch(() => ({})) as {
-        data?: { bearer?: string; expiresAt?: string; claimCode?: string; sealSkipped?: boolean };
-      };
-      if (decision === 'approve' && responseBody.data?.bearer) {
-        setRevealedBearer({
-          proposalId,
-          clientLabel: detailString(approval.detail, 'clientLabel', approval.summary),
-          bearer: responseBody.data.bearer,
-          expiresAt: responseBody.data.expiresAt ?? '',
-        });
+      const responseBody = await res.json().catch(() => ({})) as DecisionResponseBody;
+      const reveals = revealsFromDecision(approval, decision, responseBody);
+      if (reveals.bearer) setRevealedBearer(reveals.bearer);
+      if (reveals.claimCode) {
+        setRevealedClaimCode(reveals.claimCode);
+        setClaimNotice(null);
+      } else if (reveals.claimNotice) {
+        setClaimNotice(reveals.claimNotice);
       }
-      // #2411: an approved apps:provision proposal returns the freshly
-      // issued app-signing-key claim code exactly once, in `data.claimCode`.
-      // #2427: `slug` rides along so the banner can derive the app's own
-      // /claim page URL — already present on `approval.detail`, never a new
-      // server field.
-      if (decision === 'approve' && responseBody.data?.claimCode) {
-        setRevealedClaimCode({
-          proposalId,
-          displayName: detailString(approval.detail, 'displayName', approval.summary),
-          claimCode: responseBody.data.claimCode,
-          slug: detailString(approval.detail, 'slug', ''),
-        });
+      if (reveals.sealSkipped) setSealSkipped(reveals.sealSkipped);
+      if (responseBody.executionError) {
+        // #2707: the decision IS recorded, but the action behind it did not run
+        // (e.g. no operator countersignature, or a pipeline step failed). This used
+        // to flash a green "Proposal approve." regardless.
+        notify('err', `Proposal ${decision}, but it did not execute: ${responseBody.executionError}`);
+      } else {
+        notify('ok', `Proposal ${decision}.`);
       }
-      // #2415: apps.provision reached the claim code but skipped sealing CI
-      // secrets — surface it right alongside the claim-code reveal above.
-      if (decision === 'approve' && responseBody.data?.sealSkipped) {
-        setSealSkipped({
-          proposalId,
-          displayName: detailString(approval.detail, 'displayName', approval.summary),
-        });
-      }
-      notify('ok', `Proposal ${decision}.`);
       await load(true);
     } finally {
       setBusyId('');
+    }
+  }, [load, notify]);
+
+  // #2707: one-click recovery from the "no claim code" notice — raises the existing
+  // `reissueClaim: true` proposal; approving it shows the same amber box.
+  const handleReissue = useCallback(async (notice: ClaimCodeNotice) => {
+    setReissuing(true);
+    try {
+      const result = await proposeClaimReissue({ slug: notice.slug, displayName: notice.displayName });
+      if (result.ok) {
+        setClaimNotice(null);
+        notify('ok', 'Reissue proposal raised \u2014 approve it below to get a fresh claim code.');
+        await load(true);
+      } else {
+        notify('err', result.error);
+      }
+    } finally {
+      setReissuing(false);
     }
   }, [load, notify]);
 
@@ -1191,6 +1351,15 @@ function OperatorApprovalsPanelInner() {
 
       {sealSkipped && (
         <SealSkippedBanner skipped={sealSkipped} onDismiss={() => setSealSkipped(null)} />
+      )}
+
+      {claimNotice && (
+        <ClaimCodeNoticeBanner
+          notice={claimNotice}
+          busy={reissuing}
+          onReissue={() => void handleReissue(claimNotice)}
+          onDismiss={() => setClaimNotice(null)}
+        />
       )}
 
       {actAs && <ActAsReadOnlyNotice actAs={actAs} />}

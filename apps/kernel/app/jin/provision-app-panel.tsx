@@ -17,7 +17,8 @@
  * route) — non-operators see nothing, matching the rest of the console.
  */
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
-import { approvalCardAnchorId } from './approval-anchor';
+import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
+import { proposeClaimReissue } from './provision-reissue';
 import {
   DEFAULT_APP_TEMPLATE,
   buildProvisionPayload,
@@ -58,16 +59,22 @@ type TrackedOutcome =
   | { phase: 'awaiting-approval' }
   | { phase: 'declined'; status: string }
   | { phase: 'running' }
+  /** #2707: a claim-code reissue was approved — the code itself shows once, in the approvals card's amber box. */
+  | { phase: 'reissued' }
   | { phase: 'succeeded'; ledger: ProvisionLedger }
   | { phase: 'failed'; ledger: ProvisionLedger };
 
 /** The proposal (or already-provisioned slug) the result block is following. */
 interface TrackedProposal {
   slug: string;
+  /** Needed to raise a claim-code reissue (#2707) — the route requires it. */
+  displayName: string;
   /** Null when the slug was already provisioned — nothing was proposed. */
   proposalId: string | null;
   /** True when the route reused an existing pending proposal (200) instead of raising a new one (201). */
   alreadyPending: boolean;
+  /** True when `proposalId` is a claim-code reissue (#2707), not a provision run. */
+  reissue?: boolean;
 }
 
 interface ProvisionResponse {
@@ -89,7 +96,7 @@ const EMPTY_VALUES: ProvisionFormValues = {
 };
 
 function isTerminal(outcome: TrackedOutcome | null): boolean {
-  return outcome?.phase === 'succeeded' || outcome?.phase === 'failed' || outcome?.phase === 'declined';
+  return outcome?.phase === 'succeeded' || outcome?.phase === 'failed' || outcome?.phase === 'declined' || outcome?.phase === 'reissued';
 }
 
 interface ApprovalCardRow {
@@ -133,11 +140,14 @@ async function fetchLedger(slug: string): Promise<ProvisionLedger | null> {
   }
 }
 
-async function resolveOutcome(slug: string, proposalId: string): Promise<TrackedOutcome> {
+async function resolveOutcome(slug: string, proposalId: string, reissue = false): Promise<TrackedOutcome> {
   const card = await fetchCard(proposalId);
   const cardStatus = card?.status;
   if (cardStatus === 'pending') return { phase: 'awaiting-approval' };
   if (cardStatus && DECLINED_STATUSES.has(cardStatus)) return { phase: 'declined', status: cardStatus };
+  // #2707: a reissue leaves the ledger row untouched (nothing is re-created), so there is no
+  // newer ledger row to wait for — an approved card IS the end of it.
+  if (reissue) return cardStatus ? { phase: 'reissued' } : { phase: 'awaiting-approval' };
 
   // A ledger row last written before the card was decided belongs to an
   // earlier run of this slug (e.g. a prior failure) — not this proposal's result.
@@ -225,6 +235,13 @@ function renderRepoUrl(url: string | null): ReactNode {
 }
 
 function OutcomeDetails({ outcome, slug }: Readonly<{ outcome: TrackedOutcome; slug: string }>) {
+  if (outcome.phase === 'reissued') {
+    return (
+      <p className="text-xs font-medium text-green-300">
+        Reissue approved — the one-time claim code for {slug} is in the amber box in Operator approvals below.
+      </p>
+    );
+  }
   if (outcome.phase === 'succeeded') {
     const { ledger } = outcome;
     return (
@@ -263,12 +280,20 @@ function OutcomeDetails({ outcome, slug }: Readonly<{ outcome: TrackedOutcome; s
   return <p className="text-xs text-gray-400">Waiting for your approval below.</p>;
 }
 
-function ProposalResult({ tracked, outcome }: Readonly<{ tracked: TrackedProposal; outcome: TrackedOutcome }>) {
-  const { slug, proposalId, alreadyPending } = tracked;
+function ProposalResult({
+  tracked,
+  outcome,
+  reissueBusy,
+  onReissue,
+}: Readonly<{ tracked: TrackedProposal; outcome: TrackedOutcome; reissueBusy: boolean; onReissue: () => void }>) {
+  const { slug, proposalId, alreadyPending, reissue } = tracked;
   let headline = 'Already provisioned';
   if (proposalId) {
     headline = alreadyPending ? 'Already pending' : 'Proposal raised';
   }
+  // #2707: only an app that is actually provisioned (or whose reissue just landed) can have a code reissued.
+  const canReissue = outcome.phase === 'succeeded' || outcome.phase === 'reissued';
+  if (reissue) headline = alreadyPending ? 'Reissue already pending' : 'Reissue proposed';
   return (
     <div
       className="mt-3 rounded-lg border border-gray-800 p-3 space-y-2"
@@ -290,6 +315,17 @@ function ProposalResult({ tracked, outcome }: Readonly<{ tracked: TrackedProposa
         </p>
       )}
       <OutcomeDetails outcome={outcome} slug={slug} />
+      {canReissue && (
+        <button
+          type="button"
+          onClick={onReissue}
+          disabled={reissueBusy}
+          data-testid="provision-reissue"
+          className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60 disabled:opacity-40"
+        >
+          {reissueBusy ? 'Proposing…' : 'Reissue claim code'}
+        </button>
+      )}
     </div>
   );
 }
@@ -301,6 +337,7 @@ export function ProvisionAppPanel() {
   const [busy, setBusy] = useState(false);
   const [tracked, setTracked] = useState<TrackedProposal | null>(null);
   const [outcome, setOutcome] = useState<TrackedOutcome | null>(null);
+  const [reissueBusy, setReissueBusy] = useState(false);
 
   const { flash, notify } = useFlashNotice(5000);
 
@@ -326,12 +363,13 @@ export function ProvisionAppPanel() {
   // Follow a raised proposal until it reaches a terminal outcome.
   const trackedSlug = tracked?.slug;
   const trackedProposalId = tracked?.proposalId;
+  const trackedIsReissue = tracked?.reissue === true;
   const done = isTerminal(outcome);
   useEffect(() => {
     if (!trackedSlug || !trackedProposalId || done) return undefined;
     let cancelled = false;
     const tick = async () => {
-      const next = await resolveOutcome(trackedSlug, trackedProposalId);
+      const next = await resolveOutcome(trackedSlug, trackedProposalId, trackedIsReissue);
       if (!cancelled) setOutcome(next);
     };
     void tick();
@@ -340,15 +378,39 @@ export function ProvisionAppPanel() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [trackedSlug, trackedProposalId, done]);
+  }, [trackedSlug, trackedProposalId, trackedIsReissue, done]);
 
   const setField = (field: keyof ProvisionFormValues) => (value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
   };
 
-  const applyResponse = (slug: string, status: number, body: ProvisionResponse) => {
+  // #2707: raise the existing `reissueClaim: true` proposal for the app being shown, then follow it.
+  const reissueClaimCode = async () => {
+    if (!tracked || reissueBusy) return;
+    setReissueBusy(true);
+    try {
+      const result = await proposeClaimReissue({ slug: tracked.slug, displayName: tracked.displayName });
+      if (!result.ok) {
+        notify('err', result.error);
+        return;
+      }
+      setTracked({
+        slug: tracked.slug,
+        displayName: tracked.displayName,
+        proposalId: result.proposalId,
+        alreadyPending: result.alreadyPending,
+        reissue: true,
+      });
+      setOutcome({ phase: 'awaiting-approval' });
+      requestApprovalsRefresh();
+    } finally {
+      setReissueBusy(false);
+    }
+  };
+
+  const applyResponse = (slug: string, displayName: string, status: number, body: ProvisionResponse) => {
     if (body.status === 'succeeded') {
-      setTracked({ slug, proposalId: null, alreadyPending: false });
+      setTracked({ slug, displayName, proposalId: null, alreadyPending: false });
       setOutcome({
         phase: 'succeeded',
         ledger: {
@@ -363,7 +425,7 @@ export function ProvisionAppPanel() {
       return;
     }
     if (body.status === 'pending' && body.proposalId) {
-      setTracked({ slug, proposalId: body.proposalId, alreadyPending: status === 200 });
+      setTracked({ slug, displayName, proposalId: body.proposalId, alreadyPending: status === 200 });
       setOutcome({ phase: 'awaiting-approval' });
       return;
     }
@@ -390,7 +452,7 @@ export function ProvisionAppPanel() {
         notify('err', body.error ?? `Failed to propose apps.provision (${res.status})`);
         return;
       }
-      applyResponse(payload.slug, res.status, body);
+      applyResponse(payload.slug, payload.displayName, res.status, body);
     } catch {
       notify('err', 'Network error — apps.provision was not proposed');
     } finally {
@@ -461,7 +523,9 @@ export function ProvisionAppPanel() {
         </button>
       </form>
 
-      {tracked && outcome && <ProposalResult tracked={tracked} outcome={outcome} />}
+      {tracked && outcome && (
+        <ProposalResult tracked={tracked} outcome={outcome} reissueBusy={reissueBusy} onReissue={() => void reissueClaimCode()} />
+      )}
     </section>
   );
 }
