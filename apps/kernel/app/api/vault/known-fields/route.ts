@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAuth, authErrorResponse } from '@imajin/auth';
+import { requireAdmin } from '@imajin/auth';
 import { KNOWN_VAULT_FIELDS } from '@/src/lib/vault/known-fields';
 
 /**
@@ -7,14 +7,15 @@ import { KNOWN_VAULT_FIELDS } from '@/src/lib/vault/known-fields';
  * reads by a fixed name (`{ fields: [{ name, label, description, namespace }] }`),
  * so the /jin vault panel needs no field names at build time.
  *
- * Names and descriptions only — never values. Whether a field is actually
- * sealed is deliberately not computed here; the panel cross-references the
- * real vault listing client-side, so this stays a static, cheap read.
+ * Auth: `requireAdmin`, matching every other `/api/vault/**` route
+ * (`list`, `set`, `rotate`, `mint/cards`, ...).
+ *
+ * Names and descriptions only — never values. Whether a field is stored or
+ * missing is deliberately not worked out here; this stays a static, cheap read.
  */
-export async function GET(request: Request) {
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return authErrorResponse(authResult);
+export async function GET() {
+  if (!(await requireAdmin())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   return NextResponse.json({ fields: KNOWN_VAULT_FIELDS });
 }

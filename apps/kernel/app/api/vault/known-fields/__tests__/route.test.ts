@@ -1,20 +1,16 @@
 /**
  * Unit tests for GET /api/vault/known-fields (#2700).
  *
- * Authed with requireAuth (any authenticated identity), returns the registry
- * as `{ fields: [{ name, label, description, namespace }] }`.
+ * Gated by requireAdmin like every other /api/vault/** route; returns the
+ * registry as `{ fields: [{ name, label, description, namespace }] }`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireAuth } = vi.hoisted(() => ({
-  mockRequireAuth: vi.fn(),
+const { mockRequireAdmin } = vi.hoisted(() => ({
+  mockRequireAdmin: vi.fn(async () => true),
 }));
 
-vi.mock('@imajin/auth', () => ({
-  requireAuth: mockRequireAuth,
-  authErrorResponse: (authError: { error: string; status: number }) =>
-    new Response(JSON.stringify({ error: authError.error }), { status: authError.status }),
-}));
+vi.mock('@imajin/auth', () => ({ requireAdmin: mockRequireAdmin }));
 
 vi.mock('@/src/lib/vault/known-fields', () => ({
   KNOWN_VAULT_FIELDS: [
@@ -25,35 +21,25 @@ vi.mock('@/src/lib/vault/known-fields', () => ({
 
 import { GET } from '../route.js';
 
-function makeRequest(): Request {
-  return new Request('http://localhost/api/vault/known-fields');
-}
-
 beforeEach(() => {
   vi.clearAllMocks();
-  mockRequireAuth.mockResolvedValue({ identity: { id: 'did:imajin:operator' } });
+  mockRequireAdmin.mockResolvedValue(true);
 });
 
 describe('GET /api/vault/known-fields', () => {
-  it('returns 401 when not authenticated, without leaking the registry', async () => {
-    mockRequireAuth.mockResolvedValue({ error: 'Authentication required', status: 401 });
+  it('returns 401 when not an admin, without leaking any field data', async () => {
+    mockRequireAdmin.mockResolvedValue(false);
 
-    const response = await GET(makeRequest());
+    const response = await GET();
     const body = (await response.json()) as Record<string, unknown>;
 
     expect(response.status).toBe(401);
-    expect(body).toEqual({ error: 'Authentication required' });
+    expect(body).toEqual({ error: 'Unauthorized' });
     expect(body).not.toHaveProperty('fields');
   });
 
-  it('passes the incoming request to requireAuth', async () => {
-    const request = makeRequest();
-    await GET(request);
-    expect(mockRequireAuth).toHaveBeenCalledWith(request);
-  });
-
-  it('returns 200 with the known-fields registry when authenticated', async () => {
-    const response = await GET(makeRequest());
+  it('returns 200 with the known-fields registry when an admin', async () => {
+    const response = await GET();
     const body = (await response.json()) as { fields: unknown[] };
 
     expect(response.status).toBe(200);
@@ -64,7 +50,7 @@ describe('GET /api/vault/known-fields', () => {
   });
 
   it('shapes every field as { name, label, description, namespace } strings', async () => {
-    const response = await GET(makeRequest());
+    const response = await GET();
     const body = (await response.json()) as { fields: Array<Record<string, unknown>> };
 
     expect(Object.keys(body)).toEqual(['fields']);
