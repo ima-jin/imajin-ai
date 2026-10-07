@@ -176,10 +176,10 @@ describe('pay webhook -> connector bus -> pay-stripe reactor (#2177)', () => {
       amount: '25',
       currency: 'CAD',
       status: 'completed',
-      stripeId: 'cs_evt_topup',
       externalRef: 'cs_evt_topup',
       rail: 'stripe',
     });
+    expect(txInsert?.values).not.toHaveProperty('stripeId');
     const balanceInsert = state.insertCalls.find((c) => c.table === 'balances');
     expect(balanceInsert?.values).toMatchObject({ did: 'did:imajin:buyer', unit: 'MJN', amount: '25' });
     expect(settleFromCheckoutMock).not.toHaveBeenCalled();

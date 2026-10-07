@@ -75,7 +75,6 @@ vi.mock('@/src/db', () => ({
     insert: mocks.insertMock,
   },
   transactions: {
-    stripeId: 'col_stripeId',
     externalRef: 'col_externalRef',
     rail: 'col_rail',
     id: 'col_id',
@@ -213,7 +212,7 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     });
   });
 
-  it('dual-writes the reversal row: rail + external_ref carry the refund id and the stripe_id alias agrees (#2176)', async () => {
+  it('writes the reversal row with rail + external_ref carrying the refund id and no stripe_id (#2176, #2650)', async () => {
     nextSelect([BASE_TX]);
     nextSelect([]);
     nextSelect([]);
@@ -227,9 +226,9 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     expect(reversal).toMatchObject({
       rail: 'stripe',
       externalRef: 're_test_stripe',
-      stripeId: 're_test_stripe',
       metadata: expect.objectContaining({ originalTxId: 'tx_original_1', originalStripeId: 'cs_test_session_abc' }),
     });
+    expect(reversal).not.toHaveProperty('stripeId');
   });
 
   it('marks tx as refunded after the final per-ticket refund (the #949 bug fix)', async () => {

@@ -117,7 +117,7 @@ beforeEach(() => {
   process.env.COFFEE_WEBHOOK_SECRET = 'coffee_secret';
 });
 
-/** Assert a recorded `.where(...)` filters on the Stripe rail's `external_ref` — never the deprecated `stripe_id` alias. */
+/** Assert a recorded `.where(...)` filters on the Stripe rail's `external_ref` — never the dropped `stripe_id` column. */
 function expectKeyedOnExternalRef(where: unknown, ref: string): void {
   const rendered = renderWhere(where);
   expect(rendered.sql).toContain('"external_ref"');
@@ -301,10 +301,10 @@ describe('customer.subscription.* (relocated handlers)', () => {
       amount: '5',
       currency: 'CAD',
       status: 'completed',
-      stripeId: 'sub_1',
       externalRef: 'sub_1',
       rail: 'stripe',
     });
+    expect(insert?.values).not.toHaveProperty('stripeId');
   });
 
   it('created: defaults service/recipient and a zero amount when the subscription carries neither', async () => {
@@ -388,7 +388,6 @@ describe('invoice.paid (relocated handler)', () => {
       amount: '15',
       currency: 'CAD',
       status: 'completed',
-      stripeId: 'in_1',
       externalRef: 'in_1',
       rail: 'stripe',
       metadata: expect.objectContaining({ subscription_id: 'sub_9', invoice_number: 'INV-1' }),

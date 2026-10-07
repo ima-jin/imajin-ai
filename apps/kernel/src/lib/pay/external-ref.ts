@@ -1,15 +1,14 @@
 /**
  * `rail` + `external_ref` on `pay.transactions` (#2176, step 4 of the #2173
- * pay-rail boundary).
+ * pay-rail boundary; #2650 is step 5).
  *
  * A transaction row records WHICH rail moved the money (`rail`) and that
- * rail's opaque reference for it (`external_ref`). `stripe_id` survives as a
- * DEPRECATED ALIAS of `external_ref` until step 5 (#2650) drops it:
+ * rail's opaque reference for it (`external_ref`). These two columns are the
+ * ONLY place a rail reference lives on the ledger: the Stripe-named
+ * `stripe_id` column (and its index) was dropped by migration 0181 (#2650).
  *
- *   - readers key on `external_ref` (via {@link whereExternalRef}) — never `stripe_id`;
- *   - writers set both columns (via {@link externalRefColumns}), so the DROP
- *     in #2650 is safe: nothing reads the alias and nothing is left holding a
- *     value only the alias carries.
+ *   - readers key on `external_ref` (via {@link whereExternalRef});
+ *   - writers set `rail` + `external_ref` (via {@link externalRefColumns}).
  *
  * Lookups pair `rail` with `external_ref` because the supporting index is
  * `(rail, external_ref)` (`idx_transactions_rail_external_ref`) — an
@@ -22,14 +21,14 @@ import { transactions } from '@/src/db';
 export const STRIPE_RAIL = 'stripe';
 
 /**
- * The columns a writer spreads into a `pay.transactions` insert so `rail`,
- * `external_ref` and the deprecated `stripe_id` alias always agree.
+ * The columns a writer spreads into a `pay.transactions` insert so a row
+ * always carries both its `rail` and that rail's `external_ref`.
  */
 export function externalRefColumns(
   externalRef: string,
   rail: string = STRIPE_RAIL,
-): { rail: string; externalRef: string; stripeId: string } {
-  return { rail, externalRef, stripeId: externalRef };
+): { rail: string; externalRef: string } {
+  return { rail, externalRef };
 }
 
 /** `WHERE` predicate matching the transaction a rail knows by `externalRef`. */

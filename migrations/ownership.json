@@ -700,7 +700,7 @@
       "owner": "kernel",
       "schema": "pay",
       "firstMigration": "0001_seed.sql",
-      "notes": "#2176 \u2014 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref (stripe_id kept as deprecated alias until #2650)"
+      "notes": "#2176 \u2014 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref; #2650 \u2014 0181_pay_transactions_drop_stripe_id.sql drops the stripe_id alias column (and idx_transactions_stripe_id)"
     },
     "pay.withdrawal_requests": {
       "owner": "kernel",

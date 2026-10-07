@@ -4,7 +4,8 @@
  * `UPDATE` or an index, which is the point of this suite.
  *
  * Also pins the two helpers every reader/writer goes through (`external-ref.ts`):
- *   - `externalRefColumns` — dual-write: `rail`, `external_ref` and the deprecated `stripe_id` alias agree;
+ *   - `externalRefColumns` — writers set `rail` + `external_ref` and nothing Stripe-named (`stripe_id` is dropped by
+ *     0181, covered in transactions-drop-stripe-id.test.ts);
  *   - `whereExternalRef`   — readers key on `external_ref` (with `rail`, matching the index) and never `stripe_id`.
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -177,12 +178,12 @@ describe('migration 0178 — pay.transactions rail + external_ref', () => {
   });
 });
 
-describe('externalRefColumns (the dual-write)', () => {
-  it('writes rail, external_ref and the deprecated stripe_id alias together, defaulting to the stripe rail', () => {
-    expect(externalRefColumns('cs_1')).toEqual({ rail: 'stripe', externalRef: 'cs_1', stripeId: 'cs_1' });
+describe('externalRefColumns (the writer columns)', () => {
+  it('writes rail + external_ref, defaulting to the stripe rail, with no stripe_id', () => {
+    expect(externalRefColumns('cs_1')).toEqual({ rail: 'stripe', externalRef: 'cs_1' });
   });
 
-  it('carries a non-Stripe rail name through with the same ref in both columns', () => {
-    expect(externalRefColumns('emt_ref_9', 'emt')).toEqual({ rail: 'emt', externalRef: 'emt_ref_9', stripeId: 'emt_ref_9' });
+  it('carries a non-Stripe rail name through with its ref', () => {
+    expect(externalRefColumns('emt_ref_9', 'emt')).toEqual({ rail: 'emt', externalRef: 'emt_ref_9' });
   });
 });

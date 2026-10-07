@@ -84,9 +84,9 @@ export async function reserveWithdrawal(params: ReserveWithdrawalParams): Promis
 /**
  * Tx 2 (confirm): intent -> `completed` with its `externalRef`, plus the
  * `pay.transactions` receipt row. `rail` / `external_ref` carry the
- * rail-agnostic reference (#2176) and the deprecated `stripe_id` alias is
- * dual-written with the same (possibly non-Stripe) `externalRef` until #2650
- * drops it; `metadata.rail`/`externalRef` keep the record alongside. `metadata.resolutionMode` (#2190) records
+ * rail-agnostic reference (#2176) — the (possibly non-Stripe) `externalRef`
+ * is the only copy on the row now that `stripe_id` is gone (#2650);
+ * `metadata.rail`/`externalRef` keep the record alongside. `metadata.resolutionMode` (#2190) records
  * how `toDid` (the resolved destination) was decided — `toDid` itself is
  * always the server-resolved value, never the raw client-supplied one, so
  * this is the attestation of what the kernel actually did.
