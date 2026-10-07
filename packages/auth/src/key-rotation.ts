@@ -376,7 +376,7 @@ export function evaluateKeyRotationPreflight(input: KeyRotationPreflightInput): 
 
   const oldKey = oldResult.key;
   const newKey = newResult.key;
-  if (oldKey && newKey && oldKey.publicKey === newKey.publicKey) {
+  if (oldKey && newKey?.publicKey === oldKey.publicKey) {
     errors.push('new key is identical to the old key — nothing to rotate');
   }
 

@@ -73,7 +73,9 @@ function adminRequestInit(env, method, body) {
 }
 
 function rotationUrl(env, query = '') {
-  const base = (env.KERNEL_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, '');
+  let base = env.KERNEL_BASE_URL || DEFAULT_BASE_URL;
+  // Trim trailing slashes without a regex (a `/+$` pattern backtracks super-linearly, S8786).
+  while (base.endsWith('/')) base = base.slice(0, -1);
   return `${base}${ROTATION_PATH}${query}`;
 }
 
