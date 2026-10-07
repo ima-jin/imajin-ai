@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   createKernelDeps,
+  discoverExternalService,
   discoverServices,
   dryRunServices,
+  envLocalLabel,
   formatResult,
   grantKindFor,
   provisionServices,
@@ -332,6 +334,167 @@ describe('provisionServices', () => {
     ]);
     expect(healthy.mintIdentity).not.toHaveBeenCalled();
     expect(readFileSync(envLocal(root, 'market'), 'utf8')).toBe(written);
+  });
+});
+
+// #2712: a standalone app (links) lives in its own repo — targeted by checkout dir.
+describe('standalone app checkout (#2712)', () => {
+  /** A throwaway app checkout OUTSIDE the kernel root, with a links-style .env.example. */
+  function makeCheckout({ name = 'links', prefix = 'LINKS', envLocal = '' } = {}) {
+    const parent = mkdtempSync(join(tmpdir(), 'provision-external-test-'));
+    roots.push(parent);
+    const dir = join(parent, name);
+    mkdirSync(dir);
+    writeFileSync(
+      join(dir, '.env.example'),
+      `PORT=\n# comment\n${prefix}_VAULT_BOOTSTRAP_DID=\n${prefix}_VAULT_BOOTSTRAP_PRIVATE_KEY=\n`,
+    );
+    if (envLocal !== null) writeFileSync(join(dir, '.env.local'), envLocal);
+    return dir;
+  }
+
+  it('discovers the bootstrap pair from the checkout .env.example, named after the directory', () => {
+    const dir = makeCheckout();
+    expect(discoverExternalService(dir)).toEqual({
+      name: 'links',
+      didKey: 'LINKS_VAULT_BOOTSTRAP_DID',
+      privateKeyKey: 'LINKS_VAULT_BOOTSTRAP_PRIVATE_KEY',
+      dir,
+    });
+    expect(discoverExternalService(dir, 'slug').name).toBe('slug');
+  });
+
+  it('rejects a checkout with no .env.example, no pair, or an optional pair', () => {
+    const empty = mkdtempSync(join(tmpdir(), 'provision-external-test-'));
+    roots.push(empty);
+    expect(() => discoverExternalService(empty)).toThrow(/has no \.env\.example/);
+
+    const noPair = makeCheckout();
+    writeFileSync(join(noPair, '.env.example'), 'PORT=\n# LINKS_VAULT_BOOTSTRAP_DID=\n');
+    expect(() => discoverExternalService(noPair)).toThrow(/declares no required <SVC>_VAULT_BOOTSTRAP_DID/);
+
+    const optional = makeCheckout();
+    writeFileSync(join(optional, '.env.example'), '# optional\nLINKS_VAULT_BOOTSTRAP_DID=\n');
+    expect(() => discoverExternalService(optional)).toThrow(/declares no required/);
+  });
+
+  it('mints, registers, writes (0600, atomic) and grants into the checkout .env.local, never into the kernel apps/', async () => {
+    const dir = makeCheckout({ envLocal: 'PORT=3102\n' });
+    writeFileSync(join(dir, '.env.local'), 'PORT=3102\n', { mode: 0o644 });
+    const kernelRoot = makeRoot({ market: 'MARKET' });
+    const deps = makeDeps();
+
+    const results = await provisionServices(kernelRoot, [discoverExternalService(dir)], deps);
+
+    expect(results).toEqual([
+      { service: 'links', did: 'did:imajin:minted1', status: 'minted', grantId: 'vdg_did:imajin:minted1' },
+    ]);
+    expect(deps.registerIdentity).toHaveBeenCalledWith({
+      did: 'did:imajin:minted1',
+      publicKey: 'pub1',
+      name: 'links vault bootstrap',
+    });
+    expect(deps.ensureGrant).toHaveBeenCalledWith('did:imajin:minted1');
+    expect(deps.ensureCronSecretGrant).not.toHaveBeenCalled();
+    expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe(
+      'PORT=3102\nLINKS_VAULT_BOOTSTRAP_DID=did:imajin:minted1\nLINKS_VAULT_BOOTSTRAP_PRIVATE_KEY=SECRET-PRIVATE-KEY-1\n',
+    );
+    expect(statSync(join(dir, '.env.local')).mode & 0o777).toBe(0o600);
+    expect(readdirSync(dir).sort()).toEqual(['.env.example', '.env.local']);
+    expect(readdirSync(join(kernelRoot, 'apps'))).toEqual(['market']);
+    expect(readFileSync(envLocal(kernelRoot, 'market'), 'utf8')).toBe('');
+  });
+
+  it('is idempotent: a re-run keeps the pair and only re-ensures the grant', async () => {
+    const dir = makeCheckout();
+    const kernelRoot = makeRoot({ market: 'MARKET' });
+    await provisionServices(kernelRoot, [discoverExternalService(dir)], makeDeps());
+    const written = readFileSync(join(dir, '.env.local'), 'utf8');
+
+    const deps = makeDeps();
+    const results = await provisionServices(kernelRoot, [discoverExternalService(dir)], deps);
+
+    expect(results[0]).toMatchObject({ service: 'links', status: 'existing', did: 'did:imajin:minted1' });
+    expect(deps.mintIdentity).not.toHaveBeenCalled();
+    expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe(written);
+  });
+
+  it('prints and logs only the grant id, never the private key', async () => {
+    const dir = makeCheckout();
+    const sinks = [
+      vi.spyOn(console, 'log').mockImplementation(() => {}),
+      vi.spyOn(console, 'error').mockImplementation(() => {}),
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true),
+      vi.spyOn(process.stderr, 'write').mockImplementation(() => true),
+    ];
+    const lines = [];
+
+    const results = await provisionServices(makeRoot(), [discoverExternalService(dir)], makeDeps(), (result) =>
+      lines.push(formatResult(result)),
+    );
+
+    const everything = [
+      ...lines,
+      ...results.map((r) => JSON.stringify(r)),
+      ...sinks.flatMap((spy) => spy.mock.calls.map((args) => args.join(' '))),
+    ].join('\n');
+    expect(everything).not.toContain('SECRET-PRIVATE-KEY');
+    expect(lines).toEqual(['links · did:imajin:minted1 · minted · vdg_did:imajin:minted1']);
+  });
+
+  it('fails when .env.local is missing: nothing is minted, written or granted, and no stub is created', async () => {
+    const dir = makeCheckout({ envLocal: null });
+    const deps = makeDeps();
+    const skipped = [];
+
+    const error = await provisionServices(makeRoot(), [discoverExternalService(dir)], deps, () => {}, (s) => skipped.push(s)).catch((err) => err);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toContain(`links: ${join(dir, '.env.local')} does not exist \u2014 create it first`);
+    expect(skipped).toEqual([]);
+    expect(deps.mintIdentity).not.toHaveBeenCalled();
+    expect(deps.ensureGrant).not.toHaveBeenCalled();
+    expect(readdirSync(dir)).toEqual(['.env.example']);
+  });
+
+  it('fails non-zero on a half-written pair, naming the file but never the key', async () => {
+    const content = 'LINKS_VAULT_BOOTSTRAP_PRIVATE_KEY=half-secret-value\n';
+    const dir = makeCheckout({ envLocal: content });
+    const deps = makeDeps();
+
+    const error = await provisionServices(makeRoot(), [discoverExternalService(dir)], deps).catch((err) => err);
+
+    expect(error.message).toContain(`links: ${join(dir, '.env.local')} must define both LINKS_VAULT_BOOTSTRAP_DID and`);
+    expect(error.message).not.toContain('half-secret-value');
+    expect(deps.mintIdentity).not.toHaveBeenCalled();
+    expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe(content);
+  });
+
+  it('a failed grant after the write fails the run, then self-heals without rotating the key', async () => {
+    const dir = makeCheckout();
+    const failing = makeDeps({ ensureGrant: vi.fn(async () => ({ status: 'no_reusable_grant' })) });
+
+    await expect(provisionServices(makeRoot(), [discoverExternalService(dir)], failing)).rejects.toThrow(
+      /links: could not ensure the ATTESTATION_INTERNAL_API_KEY grant/,
+    );
+    const written = readFileSync(join(dir, '.env.local'), 'utf8');
+
+    const healthy = makeDeps();
+    const results = await provisionServices(makeRoot(), [discoverExternalService(dir)], healthy);
+    expect(results[0]).toMatchObject({ status: 'existing' });
+    expect(healthy.mintIdentity).not.toHaveBeenCalled();
+    expect(readFileSync(join(dir, '.env.local'), 'utf8')).toBe(written);
+  });
+
+  it('never treats an external checkout named kernel as the cron scheduler', () => {
+    const dir = makeCheckout({ name: 'kernel', prefix: 'KERNEL_CRON' });
+    expect(grantKindFor(discoverExternalService(dir))).toBe('attestation-internal-api-key');
+  });
+
+  it('labels .env.local repo-relative for kernel apps and absolute for a checkout', () => {
+    const dir = makeCheckout();
+    expect(envLocalLabel({ name: 'market' })).toBe('apps/market/.env.local');
+    expect(envLocalLabel(discoverExternalService(dir))).toBe(join(dir, '.env.local'));
   });
 });
 

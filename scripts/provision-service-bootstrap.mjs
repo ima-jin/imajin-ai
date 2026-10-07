@@ -41,6 +41,18 @@
  *   node scripts/provision-service-bootstrap.mjs market
  *   node scripts/provision-service-bootstrap.mjs --all --env prod
  *   node scripts/provision-service-bootstrap.mjs --all --dry-run
+ *   node scripts/provision-service-bootstrap.mjs --app links --env dev
+ *   node scripts/provision-service-bootstrap.mjs --service-dir ~/dev/links --env dev
+ *
+ * A standalone app that lives in its own repo (links, #1986) is provisioned by
+ * pointing at its checkout (#2712) — no symlink into apps/, no hand-made keys:
+ *   --service-dir <path>  The app's checkout. Its `.env.example` must declare a
+ *                    required `<SVC>_VAULT_BOOTSTRAP_DID` (links:
+ *                    `LINKS_VAULT_BOOTSTRAP_DID`); the pair is written to
+ *                    `<path>/.env.local`, which must already exist, and the
+ *                    attestation-key grant is ensured in the same run.
+ *   --app <slug>     Shorthand for --service-dir <kernel checkout>/../<slug> —
+ *                    the layout the servers use (~/dev/imajin-ai + ~/dev/links).
  *
  * Options:
  *   --env dev|prod   Take VAULT_PATH from deploy/ecosystem.<env>.config.js
@@ -83,33 +95,60 @@ const GRANTED_BY = 'operator:provision-service-bootstrap-script';
 const DRY_RUN_DATABASE_URL = 'postgres://127.0.0.1:1/provision_dry_run';
 
 const USAGE = [
-  'Usage: node scripts/provision-service-bootstrap.mjs (--all | <service>) [--env dev|prod] [--dry-run]',
+  'Usage: node scripts/provision-service-bootstrap.mjs (--all | <service> | --service-dir <path> | --app <slug>) [--env dev|prod] [--dry-run]',
 ].join('\n');
+
+// Flags that take a value, and the `args` field each fills.
+const VALUE_FLAGS = new Map([
+  ['--env', 'env'],
+  ['--service-dir', 'serviceDir'],
+  ['--app', 'app'],
+]);
+
+// An app slug is one path segment: it is joined onto the kernel checkout's parent directory.
+const APP_SLUG = /^[a-z][a-z0-9-]*$/;
 
 /**
  * @param {readonly string[]} argv
- * @returns {{ all: boolean, service: string | null, env: 'dev' | 'prod' | null, dryRun: boolean }}
+ * @returns {{ all: boolean, service: string | null, serviceDir: string | null, app: string | null, env: 'dev' | 'prod' | null, dryRun: boolean }}
  */
 function parseArgs(argv) {
-  const args = { all: false, service: null, env: null, dryRun: false };
+  const args = { all: false, service: null, serviceDir: null, app: null, env: null, dryRun: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--all') {
       args.all = true;
     } else if (arg === '--dry-run') {
       args.dryRun = true;
-    } else if (arg === '--env') {
+    } else if (VALUE_FLAGS.has(arg)) {
       const value = argv[++i];
-      if (value !== 'dev' && value !== 'prod') throw new Error(`--env must be 'dev' or 'prod'\n${USAGE}`);
-      args.env = value;
+      if (value === undefined || value.startsWith('-')) throw new Error(`${arg} needs a value\n${USAGE}`);
+      args[VALUE_FLAGS.get(arg)] = value;
     } else if (arg.startsWith('-') || args.service !== null) {
       throw new Error(`Unexpected argument '${arg}'\n${USAGE}`);
     } else {
       args.service = arg;
     }
   }
-  if (args.all === (args.service !== null)) throw new Error(`Pass exactly one of --all or <service>\n${USAGE}`);
+  if (args.env !== null && args.env !== 'dev' && args.env !== 'prod') throw new Error(`--env must be 'dev' or 'prod'\n${USAGE}`);
+  const targets = [args.all, args.service, args.serviceDir, args.app].filter((target) => target !== false && target !== null);
+  if (targets.length !== 1) {
+    throw new Error(`Pass exactly one of --all, <service>, --service-dir <path> or --app <slug>\n${USAGE}`);
+  }
+  if (args.app !== null && !APP_SLUG.test(args.app)) {
+    throw new Error(`--app takes a slug like 'links', not '${args.app}' — use --service-dir <path> for a path\n${USAGE}`);
+  }
   return args;
+}
+
+/** The external checkout the args point at (#2712), or null when they target the kernel's own apps. */
+function externalCheckout(args) {
+  if (args.serviceDir !== null) {
+    const dir = path.resolve(args.serviceDir);
+    return { dir, name: path.basename(dir) };
+  }
+  if (args.app !== null) return { dir: path.resolve(REPO_ROOT, '..', args.app), name: args.app };
+  return null;
 }
 
 async function loadLib() {
@@ -121,8 +160,10 @@ async function loadLib() {
   return import(pathToFileURL(LIB_BUILD).href);
 }
 
-function selectServices(args, discoverServices) {
-  const discovered = discoverServices(REPO_ROOT);
+function selectServices(args, lib) {
+  const external = externalCheckout(args);
+  if (external) return [lib.discoverExternalService(external.dir, external.name)];
+  const discovered = lib.discoverServices(REPO_ROOT);
   if (args.all) return discovered;
   const match = discovered.find((service) => service.name === args.service);
   if (!match) {
@@ -157,7 +198,7 @@ async function main() {
   if (args.dryRun) process.env.DATABASE_URL = DRY_RUN_DATABASE_URL;
 
   const lib = await loadLib();
-  const services = selectServices(args, lib.discoverServices);
+  const services = selectServices(args, lib);
   if (services.length === 0) throw new Error('No service declares a *_VAULT_BOOTSTRAP_DID in apps/*/.env.example');
 
   if (args.dryRun) {
@@ -180,7 +221,7 @@ async function main() {
         lines.push(line);
         console.log(line);
       },
-      (service) => console.error(`${service.name} · skipped · no apps/${service.name}/.env.local (not configured on this host)`),
+      (service) => console.error(`${service.name} · skipped · no ${lib.envLocalLabel(service)} (not configured on this host)`),
     );
   } finally {
     writeStepSummary(lines);

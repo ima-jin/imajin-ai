@@ -10,6 +10,11 @@
  * Contract:
  *  - Services are discovered from `apps/*\/.env.example`, never hardcoded;
  *    a pair annotated `# optional` there (corpus) is not provisioned.
+ *  - A standalone app that lives in its own repo (links, #1986) is targeted
+ *    explicitly by its checkout directory ({@link discoverExternalService}, #2712):
+ *    same `.env.example` contract, same mint/write/grant flow, but its
+ *    `.env.local` must already exist (the operator named it, so a missing file is
+ *    an error, not a skip) and it is never the kernel's cron identity.
  *  - Both keys present and non-empty in `apps/<svc>/.env.local` → left
  *    untouched (never rotated, never overwritten).
  *  - Exactly one present, or either empty → error, before anything is
@@ -44,10 +49,12 @@ export interface ProvisionResult {
 }
 
 export interface BootstrapService {
-  /** Directory name under `apps/` — what the operator passes as `<service>`. */
+  /** Directory name under `apps/` — what the operator passes as `<service>`; the slug for an external app. */
   name: string;
   didKey: string;
   privateKeyKey: string;
+  /** Absolute checkout directory of a standalone app outside this repo (#2712); absent for `apps/<name>`. */
+  dir?: string;
 }
 
 export interface MintedIdentity {
@@ -78,7 +85,9 @@ export type GrantKind = 'attestation-internal-api-key' | 'cron-secret';
  * kernel's routes and gets no more than that.
  */
 export function grantKindFor(service: BootstrapService): GrantKind {
-  return service.name === 'kernel' ? 'cron-secret' : 'attestation-internal-api-key';
+  // An external checkout that merely happens to be named `kernel` is not the kernel's scheduler.
+  const isKernelScheduler = service.name === 'kernel' && service.dir === undefined;
+  return isKernelScheduler ? 'cron-secret' : 'attestation-internal-api-key';
 }
 
 const GRANT_LABELS: Record<GrantKind, string> = {
@@ -114,6 +123,12 @@ function requiredBootstrapPrefix(exampleContent: string): string | null {
   return null;
 }
 
+function serviceFromExample(name: string, exampleContent: string): BootstrapService | null {
+  const prefix = requiredBootstrapPrefix(exampleContent);
+  if (!prefix) return null;
+  return { name, didKey: `${prefix}${DID_SUFFIX}`, privateKeyKey: `${prefix}${PRIVATE_KEY_SUFFIX}` };
+}
+
 /** Every `apps/<dir>/.env.example` that declares a required `<SVC>_VAULT_BOOTSTRAP_DID`, sorted by directory name. */
 export function discoverServices(repoRoot: string): BootstrapService[] {
   const appsDir = path.join(repoRoot, 'apps');
@@ -122,15 +137,32 @@ export function discoverServices(repoRoot: string): BootstrapService[] {
     if (!entry.isDirectory()) continue;
     const examplePath = path.join(appsDir, entry.name, '.env.example');
     if (!fs.existsSync(examplePath)) continue;
-    const prefix = requiredBootstrapPrefix(fs.readFileSync(examplePath, 'utf8'));
-    if (!prefix) continue;
-    services.push({
-      name: entry.name,
-      didKey: `${prefix}${DID_SUFFIX}`,
-      privateKeyKey: `${prefix}${PRIVATE_KEY_SUFFIX}`,
-    });
+    const service = serviceFromExample(entry.name, fs.readFileSync(examplePath, 'utf8'));
+    if (service) services.push(service);
   }
   return services.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The bootstrap service a standalone app checkout declares (#2712): its
+ * `<dir>/.env.example` must carry a required `<SVC>_VAULT_BOOTSTRAP_DID`, the
+ * same contract the kernel's own apps follow. `name` labels it in output and on
+ * the registered identity (default: the directory's name).
+ */
+export function discoverExternalService(dir: string, name?: string): BootstrapService {
+  const absolute = path.resolve(dir);
+  const label = name ?? path.basename(absolute);
+  const examplePath = path.join(absolute, '.env.example');
+  if (!fs.existsSync(examplePath)) {
+    throw new Error(`${label}: ${absolute} has no .env.example — pass the standalone app's checkout directory`);
+  }
+  const service = serviceFromExample(label, fs.readFileSync(examplePath, 'utf8'));
+  if (!service) {
+    throw new Error(
+      `${label}: ${examplePath} declares no required <SVC>${DID_SUFFIX} (absent, commented out or marked '# optional')`,
+    );
+  }
+  return { ...service, dir: absolute };
 }
 
 // ── .env.local reading / writing ─────────────────────────────────────────────
@@ -155,7 +187,12 @@ export function parseEnvFile(content: string): Map<string, string> {
 }
 
 function envLocalPath(repoRoot: string, service: BootstrapService): string {
-  return path.join(repoRoot, 'apps', service.name, '.env.local');
+  return path.join(service.dir ?? path.join(repoRoot, 'apps', service.name), '.env.local');
+}
+
+/** The `.env.local` as named in messages: repo-relative for a kernel app, absolute for an external checkout. */
+export function envLocalLabel(service: BootstrapService): string {
+  return service.dir === undefined ? `apps/${service.name}/.env.local` : path.join(service.dir, '.env.local');
 }
 
 function readEnvLocal(file: string): string {
@@ -199,7 +236,16 @@ type PairState =
 
 function inspectPair(repoRoot: string, service: BootstrapService): PairState {
   const file = envLocalPath(repoRoot, service);
-  if (!fs.existsSync(file)) return { kind: 'no-env-local' };
+  const label = envLocalLabel(service);
+  if (!fs.existsSync(file)) {
+    if (service.dir === undefined) return { kind: 'no-env-local' };
+    return {
+      kind: 'invalid',
+      error:
+        `${service.name}: ${label} does not exist — create it first (e.g. from the app's .env.<env>.example, ` +
+        `mode 0600) and re-run. Nothing was changed.`,
+    };
+  }
   const env = parseEnvFile(readEnvLocal(file));
   const didState = keyState(env, service.didKey);
   const keyStateOfPrivate = keyState(env, service.privateKeyKey);
@@ -210,7 +256,7 @@ function inspectPair(repoRoot: string, service: BootstrapService): PairState {
     return {
       kind: 'invalid',
       error:
-        `${service.name}: apps/${service.name}/.env.local must define both ${service.didKey} and ` +
+        `${service.name}: ${label} must define both ${service.didKey} and ` +
         `${service.privateKeyKey} (non-empty), or neither — found ${service.didKey} ${didState}, ` +
         `${service.privateKeyKey} ${keyStateOfPrivate}. Nothing was changed; fix the file by hand ` +
         `(a half-written pair is never repaired automatically, to avoid rotating a live identity).`,
@@ -221,7 +267,7 @@ function inspectPair(repoRoot: string, service: BootstrapService): PairState {
   if (!did.startsWith(DID_PREFIX)) {
     return {
       kind: 'invalid',
-      error: `${service.name}: ${service.didKey} in apps/${service.name}/.env.local must start with '${DID_PREFIX}'.`,
+      error: `${service.name}: ${service.didKey} in ${label} must start with '${DID_PREFIX}'.`,
     };
   }
   return { kind: 'existing', did, privateKey: env.get(service.privateKeyKey)!.trim() };
