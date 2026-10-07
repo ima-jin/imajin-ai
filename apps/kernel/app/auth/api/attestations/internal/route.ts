@@ -28,7 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, KEY_ROTATED_ATTESTATION_TYPE } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -101,6 +101,29 @@ function resolveNostrSignature(
   return nostrResult.ok ? { ok: true, nostrSig: nostrResult.nostrSigToStore } : { ok: false, error: nostrResult.error };
 }
 
+/**
+ * Gate on the submitted `type`: it must be a known attestation type (compile-
+ * time list or live registry entry), and not one only the rotation ceremony
+ * may mint. This route signs with the node key under whatever `issuer_did` the
+ * caller names, so a `key.rotated` (#2081) filed here — by anyone holding the
+ * internal API key — would land in the node's key history as a junk row and
+ * break chain verification. It is recorded solely by
+ * `POST /api/admin/keys/rotation`. Returns the rejection, or null if allowed.
+ */
+async function rejectUnsubmittableType(type: string): Promise<NextResponse | null> {
+  const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
+  if (!isKnownType) {
+    return NextResponse.json(
+      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
+      { status: 400 }
+    );
+  }
+  if (type === KEY_ROTATED_ATTESTATION_TYPE) {
+    return NextResponse.json({ error: `Attestation type "${type}" is node-issued only` }, { status: 403 });
+  }
+  return null;
+}
+
 export async function POST(request: NextRequest) {
   const authError = await requireInternalApiKey(request);
   if (authError) return authError;
@@ -132,13 +155,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'type required' }, { status: 400 });
   }
 
-  const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
-  if (!isKnownType) {
-    return NextResponse.json(
-      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
-      { status: 400 }
-    );
-  }
+  const typeRejection = await rejectUnsubmittableType(type);
+  if (typeRejection) return typeRejection;
 
   // Intro-funnel envelope fields (#1885) ride inside `payload` — see resolveEnvelope.
   // The proposer for a `supersedes` reference (#1790) is the issuer of this

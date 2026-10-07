@@ -243,6 +243,17 @@ export const ATTESTATION_TYPES = [
   // the payload contract and MECHANICAL_ATTESTATION_TYPES below for why it is
   // excluded from "pending countersignature" views.
   'agent.turn.evidence',
+
+  // Node signing-key handover (#2081, closes that line of #513) — minted
+  // mechanically by the node identity (signed with the NEW AUTH_PRIVATE_KEY)
+  // when an operator rotates the node key. The payload carries the old and
+  // new kid + public key, the effective instant, and a signature over that
+  // statement by BOTH keys (key-history attestation), so witness/attestation
+  // chains stay verifiable across the boundary. Never bilateral, never
+  // countersigned. Node-issued only: POST /auth/api/attestations rejects it
+  // from any other caller. See packages/auth/src/key-rotation.ts and
+  // docs/security/node-key-roles-and-rotation.md.
+  'key.rotated',
 ] as const;
 
 export type AttestationType = typeof ATTESTATION_TYPES[number];
@@ -330,6 +341,9 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #1978 — agent-signed, unilateral, never bilateral/countersigned (same
   // class as 'agent.turn.usage' above). See ATTESTATION_TYPES above.
   'agent.turn.evidence',
+  // #2081 — minted mechanically by the node identity on every node
+  // signing-key rotation. See ATTESTATION_TYPES above.
+  'key.rotated',
 ] as const;
 
 /**

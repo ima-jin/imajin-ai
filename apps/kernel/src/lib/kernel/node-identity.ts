@@ -56,20 +56,38 @@ async function loadRelayConfigRow(): Promise<RelayConfigRow | null> {
   return cachedRow;
 }
 
+/** Where {@link resolveNodeDid} found the node DID. */
+export type NodeDidSource = 'relay_config' | 'RELAY_DID' | 'none';
+
+/**
+ * Resolves this node's DID and says where it came from.
+ *
+ * `relay_config` is `relay.relay_config.imajin_did` — the node's own
+ * did:imajin identity (see `scripts/bootstrap-node-identity.ts`). `RELAY_DID`
+ * is a last-resort fallback to the DFOS **relay's** identity env var, a
+ * different identity with a different key. Anything that must act on the node
+ * identity specifically (the key rotation ceremony, #2081) has to tell the two
+ * apart rather than treat them as interchangeable.
+ */
+export async function resolveNodeDid(): Promise<{ did: string; source: NodeDidSource }> {
+  const row = await loadRelayConfigRow();
+  if (row?.imajinDid) return { did: row.imajinDid, source: 'relay_config' };
+
+  const fallback = process.env.RELAY_DID;
+  if (fallback) return { did: fallback, source: 'RELAY_DID' };
+
+  log.warn({}, 'no node DID found in relay.relay_config or RELAY_DID env');
+  return { did: '', source: 'none' };
+}
+
 /**
  * Returns this node's did:imajin DID.
  * Reads relay.relay_config.imajin_did from DB (cached for process lifetime).
  * Falls back to RELAY_DID env var, then empty string with a warning.
+ * Use {@link resolveNodeDid} when the source matters.
  */
 export async function getNodeDid(): Promise<string> {
-  const row = await loadRelayConfigRow();
-  if (row?.imajinDid) return row.imajinDid;
-
-  const fallback = process.env.RELAY_DID;
-  if (fallback) return fallback;
-
-  log.warn({}, 'no node DID found in relay.relay_config or RELAY_DID env');
-  return '';
+  return (await resolveNodeDid()).did;
 }
 
 /**

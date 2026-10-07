@@ -48,7 +48,8 @@ vi.mock('@/src/lib/auth/grants', () => ({
 vi.mock('@imajin/auth', () => ({
   canonicalize: (obj: unknown) => JSON.stringify(obj),
   crypto: { signSync: () => 'fake-signature' },
-  ATTESTATION_TYPES: ['identity.created', 'intro_proposed'],
+  ATTESTATION_TYPES: ['identity.created', 'intro_proposed', 'key.rotated'],
+  KEY_ROTATED_ATTESTATION_TYPE: 'key.rotated',
   verifyNostrSig: vi.fn(),
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
   DEFAULT_DISCLOSURE_SCOPE: 'parties',
@@ -86,6 +87,25 @@ beforeEach(() => {
   h.mockReturning.mockResolvedValue([{ id: 'att_internal_123' }]);
   h.mockPublish.mockResolvedValue(undefined);
   h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+});
+
+describe('node-issued-only types (#2081)', () => {
+  it('rejects key.rotated even with a valid internal API key, before signing or inserting', async () => {
+    const res = await POST(
+      makeReq({ issuer_did: 'did:imajin:node', subject_did: 'did:imajin:node', type: 'key.rotated', payload: { junk: true } }),
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Attestation type "key.rotated" is node-issued only' });
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+    expect(h.mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('still rejects an unknown type with 400', async () => {
+    const res = await POST(makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'not.a.type' }));
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('attestation.created payload (internal route)', () => {

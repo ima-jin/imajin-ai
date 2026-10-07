@@ -3,7 +3,7 @@ import { db, attestations, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
 import { eq, and, isNull, ne, desc, notInArray, inArray, sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, KEY_ROTATED_ATTESTATION_TYPE, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
@@ -138,6 +138,27 @@ async function persistAttestation(
   }
 }
 
+/**
+ * Gate on the submitted `type`: it must be a known attestation type (compile-
+ * time list or live registry entry), and not one only the node may mint.
+ * `key.rotated` (#2081) is the node's own key-history record — filed solely
+ * by the node identity via the rotation ceremony, never by a caller.
+ * Returns the rejection response, or null when the type may be submitted.
+ */
+async function rejectUnsubmittableType(type: string, cors: HeadersInit): Promise<NextResponse | null> {
+  const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
+  if (!isKnownType) {
+    return NextResponse.json(
+      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
+      { status: 400, headers: cors }
+    );
+  }
+  if (type === KEY_ROTATED_ATTESTATION_TYPE) {
+    return NextResponse.json({ error: `Attestation type "${type}" is node-issued only` }, { status: 403, headers: cors });
+  }
+  return null;
+}
+
 type IssuerAndDelegationResult =
   | { ok: true; grantId: string | null }
   | { ok: false; status: number; error: string };
@@ -252,13 +273,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'signature required' }, { status: 400, headers: cors });
   }
 
-  const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
-  if (!isKnownType) {
-    return NextResponse.json(
-      { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
-      { status: 400, headers: cors }
-    );
-  }
+  const typeRejection = await rejectUnsubmittableType(type, cors);
+  if (typeRejection) return typeRejection;
 
   // Intro-funnel envelope fields (#1885) ride inside `payload`, which is
   // already part of the signed canonical form below — see resolveEnvelope.

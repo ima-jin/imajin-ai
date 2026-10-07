@@ -16,6 +16,27 @@ export { hexToBytes, stringToBytes, bytesToHex, bytesToMultibase, multibaseToPub
 export type { Attestation, AttestationType, NostrKeyBindingClaim } from "./types/attestation";
 export { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from "./types/attestation";
 export {
+  KEY_ROTATED_ATTESTATION_TYPE,
+  KEY_ROTATED_CONTEXT_TYPE,
+  MIN_GRACE_HOURS,
+  DEFAULT_GRACE_HOURS,
+  computeKeyKid,
+  buildKeyRotationStatement,
+  createKeyRotatedPayload,
+  verifyKeyRotatedPayload,
+  verifyKeyRotationChain,
+  trustedPublicKeysAt,
+  evaluateKeyRotationPreflight,
+} from "./key-rotation";
+export type {
+  KeyRotatedPayload,
+  KeyRotationVerification,
+  KeyHistoryEntry,
+  KeyRotationChainVerification,
+  KeyRotationPreflightInput,
+  KeyRotationPreflightResult,
+} from "./key-rotation";
+export {
   INTRO_FUNNEL_ATTESTATION_TYPES,
   EVIDENCE_GRADED_ATTESTATION_TYPES,
   DISCLOSURE_SCOPES,

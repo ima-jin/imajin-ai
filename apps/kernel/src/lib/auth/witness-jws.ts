@@ -10,8 +10,10 @@
  * 2. Signature — verified against the witness DID's *currently resolved*
  *    public key via `createDbResolver` (`@imajin/auth`), the same
  *    DB-backed DID resolution `settle-core.ts`'s manifest-signature check
- *    already uses. Key-history-aware resolution for rotated witness keys
- *    is #2081's follow-up — out of scope here.
+ *    already uses. #2081 shipped key history for the NODE's own key
+ *    (`key.rotated`, docs/security/node-key-roles-and-rotation.md); history for
+ *    a witness DID's own rotated keys (identity/:did/rotate) is still not
+ *    resolved here.
  * 3. CID binding — the JWS payload must name this exact attestation's id
  *    and CID, so a validly-signed JWS for a *different* countersign can
  *    never be replayed onto this one.

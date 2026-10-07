@@ -85,7 +85,8 @@ vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@imajin/auth', () => ({
   canonicalize: (obj: unknown) => JSON.stringify(obj),
   crypto: { verifySync: () => true },
-  ATTESTATION_TYPES: ['delivery.receipt', 'intro_proposed', 'survey_response'],
+  ATTESTATION_TYPES: ['delivery.receipt', 'intro_proposed', 'survey_response', 'key.rotated'],
+  KEY_ROTATED_ATTESTATION_TYPE: 'key.rotated',
   verifyNostrSig: vi.fn(),
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
   DEFAULT_DISCLOSURE_SCOPE: 'parties',
@@ -156,6 +157,29 @@ beforeEach(() => {
   h.mockReturning.mockResolvedValue([{ id: 'att_test_123' }]);
   h.mockPublish.mockResolvedValue(undefined);
   h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+});
+
+describe('node-issued-only types (#2081)', () => {
+  it('rejects key.rotated from a caller before touching the database', async () => {
+    const res = await POST(makeReq(baseBody({ type: 'key.rotated' })));
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Attestation type "key.rotated" is node-issued only' });
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+    expect(h.mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('still accepts an ordinary known type', async () => {
+    const res = await POST(makeReq(baseBody()));
+
+    expect(res.status).toBe(201);
+  });
+
+  it('still rejects an unknown type with 400', async () => {
+    const res = await POST(makeReq(baseBody({ type: 'not.a.type' })));
+
+    expect(res.status).toBe(400);
+  });
 });
 
 describe('attestation.created payload', () => {

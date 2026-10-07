@@ -16,7 +16,7 @@ function cols(names: string[]): Record<string, string> {
   return Object.fromEntries(names.map((n) => [n, n]));
 }
 
-const { ATTESTATIONS, AGENT_PROVISIONS, AUDIT_LOG, IDENTITIES, stores, verifySyncMock } = vi.hoisted(() => ({
+const { ATTESTATIONS, AGENT_PROVISIONS, AUDIT_LOG, IDENTITIES, stores, verifySyncMock, acrossHistoryMock } = vi.hoisted(() => ({
   ATTESTATIONS: cols(['id', 'issuerDid', 'subjectDid', 'type', 'contextId', 'contextType', 'payload', 'signature', 'prevEventRef', 'delegationGrantId', 'delegatorDid', 'disclosureScope', 'issuedAt', 'revokedAt']),
   AGENT_PROVISIONS: cols(['id', 'servingDid', 'delegatorDid', 'agentDid', 'grantId', 'createdAt']),
   AUDIT_LOG: cols(['id', 'eventType', 'scope', 'issuer', 'subject', 'correlationId', 'payload', 'createdAt']),
@@ -28,6 +28,7 @@ const { ATTESTATIONS, AGENT_PROVISIONS, AUDIT_LOG, IDENTITIES, stores, verifySyn
     identities: [] as Row[],
   },
   verifySyncMock: vi.fn(),
+  acrossHistoryMock: vi.fn(),
 }));
 
 function storeFor(table: unknown): Row[] {
@@ -100,6 +101,9 @@ vi.mock('@imajin/auth', () => ({
 
 vi.mock('@imajin/trust-graph', () => ({ trustRadius: vi.fn() }));
 
+// #2081: key-history fallback for node-issued signatures made before a key rotation.
+vi.mock('@/src/lib/auth/node-key-rotation', () => ({ verifyNodeSignatureAcrossKeyHistory: acrossHistoryMock }));
+
 import { identifyArtifactKind, createDefaultRepository } from '../repository';
 
 function attestationRow(overrides: Row = {}): Row {
@@ -119,6 +123,7 @@ beforeEach(() => {
   stores.auditLog = [];
   stores.identities = [];
   verifySyncMock.mockReturnValue(true);
+  acrossHistoryMock.mockResolvedValue(false);
 });
 
 describe('identifyArtifactKind', () => {
@@ -202,6 +207,44 @@ describe('repository — attestation parent-link rule', () => {
 
     const expected = label.startsWith('unsigned') ? 'unsigned' : label.startsWith('verified') ? 'verified' : 'invalid';
     expect(hop?.signature).toBe(expected);
+  });
+
+  it('accepts a signature the current key rejects when the node key history vouches for it (#2081)', async () => {
+    stores.identities = [{ id: 'did:imajin:actor', publicKey: 'current-pub' }];
+    stores.attestations = [attestationRow()];
+    verifySyncMock.mockReturnValue(false);
+    acrossHistoryMock.mockResolvedValue(true);
+
+    const hop = await createDefaultRepository().fetch({ kind: 'attestation', id: 'att_1' });
+
+    expect(hop?.signature).toBe('verified');
+    expect(acrossHistoryMock).toHaveBeenCalledWith({
+      issuerDid: 'did:imajin:actor',
+      currentPublicKey: 'current-pub',
+      signature: 'sig-hex',
+      message: expect.any(String),
+      issuedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+  });
+
+  it('stays invalid when neither the current key nor the key history verifies the signature', async () => {
+    stores.identities = [{ id: 'did:imajin:actor', publicKey: 'current-pub' }];
+    stores.attestations = [attestationRow()];
+    verifySyncMock.mockReturnValue(false);
+
+    const hop = await createDefaultRepository().fetch({ kind: 'attestation', id: 'att_1' });
+
+    expect(hop?.signature).toBe('invalid');
+  });
+
+  it('does not consult the key history when the current key already verifies', async () => {
+    stores.identities = [{ id: 'did:imajin:actor', publicKey: 'current-pub' }];
+    stores.attestations = [attestationRow()];
+
+    const hop = await createDefaultRepository().fetch({ kind: 'attestation', id: 'att_1' });
+
+    expect(hop?.signature).toBe('verified');
+    expect(acrossHistoryMock).not.toHaveBeenCalled();
   });
 
   it('resolves a grant + capability when delegationGrantId is present', async () => {
