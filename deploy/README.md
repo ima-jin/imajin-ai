@@ -133,10 +133,11 @@ service declared in the ecosystem file **from the file** (a name-based
 `scripts/assert-pm2-listeners.sh <dev|prod>`, which fails the deploy unless each
 port's listener (`ss -ltnp`) is the app's pm2 pid (`pm2 jlist`) or its child.
 
-`fixready`, `karaoke` and `scorecard` come from separate repos and still use
-`npm start`; convert them once their start scripts are confirmed (allowlisted in
-`scripts/__tests__/ecosystem-config.test.mjs`). Standalone app repos (e.g.
-`ima-jin/links`) must follow the same rule in their own pm2 entry.
+`fixready`, `karaoke` and `scorecard` come from separate repos but are plain
+Next apps (`next start`, no custom server), so their entries here use the same
+direct next-binary shape (#2573); the next deploy recreates them through
+`scripts/pm2-reconcile.sh`. Standalone app repos (e.g. `ima-jin/links`) must
+follow the same rule in their own pm2 entry.
 
 ## Changing an app's start command: `pm2-reconcile.sh` (#2547)
 
