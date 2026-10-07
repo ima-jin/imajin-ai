@@ -121,9 +121,9 @@ function parseArgs(argv) {
     } else if (arg === '--dry-run') {
       args.dryRun = true;
     } else if (VALUE_FLAGS.has(arg)) {
-      const value = argv[++i];
-      if (value === undefined || value.startsWith('-')) throw new Error(`${arg} needs a value\n${USAGE}`);
-      args[VALUE_FLAGS.get(arg)] = value;
+      const hasValue = i + 1 < argv.length && !argv[i + 1].startsWith('-');
+      if (!hasValue) throw new Error(`${arg} needs a value\n${USAGE}`);
+      args[VALUE_FLAGS.get(arg)] = argv[++i];
     } else if (arg.startsWith('-') || args.service !== null) {
       throw new Error(`Unexpected argument '${arg}'\n${USAGE}`);
     } else {
