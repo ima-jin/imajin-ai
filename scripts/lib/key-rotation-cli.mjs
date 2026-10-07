@@ -11,7 +11,7 @@
  *
  * Subcommands, one per gate of the ceremony:
  *   preflight  pure check of the old/new key pair; prints the grace-window env
- *   sign       offline: dual-sign the rotation, print the PUBLIC payload as JSON
+ *   sign       offline, AFTER the restart: dual-sign the rotation at --effective-at, print the PUBLIC payload as JSON
  *   submit     POST that payload to the kernel's admin endpoint
  *   verify     GET the kernel's key-history verdict; exit 1 when it fails
  *
@@ -22,7 +22,7 @@
 const USAGE = [
   'Usage: node scripts/key-rotation.mjs <preflight|sign|submit|verify> [options]',
   '  preflight  [--grace-hours N]            needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY',
-  '  sign       [--effective-at ISO-8601]    needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY; payload JSON on stdout',
+  '  sign       --effective-at ISO-8601      the instant the new key began signing; needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY; payload JSON on stdout',
   '  submit     --payload <file>             needs KERNEL_ADMIN_COOKIE; KERNEL_BASE_URL (default http://localhost:3000)',
   '  verify     [--anchor PUBLIC_KEY_HEX]    needs KERNEL_ADMIN_COOKIE; exits 1 if the history check fails',
 ].join('\n');
@@ -104,6 +104,20 @@ function preflight({ keyRotation, env, out }, flags) {
 }
 
 function sign({ keyRotation, env, out }, flags) {
+  // `effectiveAt` is the instant the NEW key began signing, i.e. when the restarted kernel came
+  // up. There is deliberately no default: "now" at signing time is wrong whenever signing and
+  // the swap are not the same moment, and anything the old key signed after `effectiveAt` would
+  // later verify as invalid (#2081).
+  if (flags['effective-at'] === undefined) {
+    out.error(`--effective-at is required: the UTC instant the restarted kernel began signing with the new key\n${USAGE}`);
+    return 2;
+  }
+  const effectiveAt = new Date(flags['effective-at']);
+  if (Number.isNaN(effectiveAt.getTime())) {
+    out.error(`--effective-at must be an ISO-8601 instant\n${USAGE}`);
+    return 2;
+  }
+
   const check = keyRotation.evaluateKeyRotationPreflight({
     oldPrivateKey: env.OLD_AUTH_PRIVATE_KEY,
     newPrivateKey: env.NEW_AUTH_PRIVATE_KEY,
@@ -112,12 +126,6 @@ function sign({ keyRotation, env, out }, flags) {
     for (const error of check.errors) out.error(`ERROR: ${error}`);
     out.error('FAIL: refusing to sign — fix the key pair first (run `preflight`)');
     return 1;
-  }
-
-  const effectiveAt = flags['effective-at'] === undefined ? undefined : new Date(flags['effective-at']);
-  if (effectiveAt && Number.isNaN(effectiveAt.getTime())) {
-    out.error(`--effective-at must be an ISO-8601 instant\n${USAGE}`);
-    return 2;
   }
 
   const payload = keyRotation.createKeyRotatedPayload({
@@ -129,7 +137,7 @@ function sign({ keyRotation, env, out }, flags) {
   // everything human-readable goes to stderr.
   out.log(JSON.stringify(payload, null, 2));
   out.error(`signed ${payload.oldKid} -> ${payload.newKid} effective ${payload.effectiveAt}`);
-  out.error('Next: swap AUTH_PRIVATE_KEY + restart, then `submit` this payload, then destroy the old private key.');
+  out.error('Next: `submit` this payload (after the Phase 2 sweep and the identity-row update), then destroy the old private key.');
   return 0;
 }
 
@@ -179,7 +187,7 @@ async function verify({ env, fetchImpl, out }, flags) {
     return 1;
   }
 
-  out.log(`node DID:    ${sanitizeForLog(report.nodeDid ?? '(none)')}`);
+  out.log(`node DID:    ${sanitizeForLog(report.nodeDid ?? '(none)')} (source: ${sanitizeForLog(report.nodeDidSource ?? 'unknown')})`);
   out.log(`current kid: ${sanitizeForLog(report.currentKid ?? '(none)')}`);
   out.log(`rotations:   ${sanitizeForLog(report.rotations)}`);
   for (const entry of report.history ?? []) {

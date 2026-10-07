@@ -41,6 +41,7 @@ describe('usage', () => {
     [['preflight', 'stray'], /Unexpected argument 'stray'/],
     [['preflight', '--grace-hours'], /--grace-hours needs a value/],
     [['verify', '--effective-at', 'x'], /Unexpected argument '--effective-at'/],
+    [['sign'], /--effective-at is required/],
   ])('rejects %j with exit 2', async (argv, message) => {
     const { deps, stderr } = makeDeps();
     expect(await runKeyRotationCli(argv, deps)).toBe(2);
@@ -138,9 +139,19 @@ describe('sign', () => {
       env: { OLD_AUTH_PRIVATE_KEY: key.privateKey, NEW_AUTH_PRIVATE_KEY: key.privateKey },
     });
 
-    expect(await runKeyRotationCli(['sign'], deps)).toBe(1);
+    expect(await runKeyRotationCli(['sign', '--effective-at', '2026-10-06T12:00:00.000Z'], deps)).toBe(1);
     expect(stdout()).toBe('');
     expect(stderr()).toMatch(/refusing to sign/);
+  });
+
+  it('requires --effective-at (no "now" default) and signs nothing without it', async () => {
+    const { deps, stdout, stderr } = makeDeps({
+      env: { OLD_AUTH_PRIVATE_KEY: newKeypair().privateKey, NEW_AUTH_PRIVATE_KEY: newKeypair().privateKey },
+    });
+
+    expect(await runKeyRotationCli(['sign'], deps)).toBe(2);
+    expect(stdout()).toBe('');
+    expect(stderr()).toMatch(/--effective-at is required: the UTC instant the restarted kernel began signing/);
   });
 
   it('rejects an unparseable --effective-at as bad usage', async () => {
@@ -252,6 +263,7 @@ describe('verify', () => {
     errors: [],
     warnings: [],
     nodeDid: 'did:imajin:node',
+    nodeDidSource: 'relay_config',
     currentKid: 'auth-2',
     rotations: 1,
     history: [
@@ -270,6 +282,7 @@ describe('verify', () => {
       method: 'GET',
       headers: { Cookie: 'c' },
     });
+    expect(stdout()).toContain('node DID:    did:imajin:node (source: relay_config)');
     expect(stdout()).toContain('current kid: auth-2');
     expect(stdout()).toContain('auth-1  (genesis) -> 2026-10-06T12:00:00.000Z');
     expect(stdout()).toContain('auth-2  2026-10-06T12:00:00.000Z -> (current)');
@@ -349,7 +362,7 @@ describe.skipIf(!built)('key-rotation.mjs entrypoint', () => {
   it('runs the full offline sign -> payload round trip as a real process', () => {
     const oldKey = newKeypair();
     const newKey = newKeypair();
-    const result = spawnSync(process.execPath, [entrypoint, 'sign'], {
+    const result = spawnSync(process.execPath, [entrypoint, 'sign', '--effective-at', '2026-10-06T12:00:00Z'], {
       cwd: repoRoot,
       encoding: 'utf8',
       env: { ...process.env, OLD_AUTH_PRIVATE_KEY: oldKey.privateKey, NEW_AUTH_PRIVATE_KEY: newKey.privateKey },

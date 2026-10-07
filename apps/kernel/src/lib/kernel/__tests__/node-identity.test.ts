@@ -49,6 +49,24 @@ describe('node-identity', () => {
     expect(await getNodeDid()).toBe('did:imajin:fallback');
   });
 
+  it('resolveNodeDid() reports which source the DID came from (#2081)', async () => {
+    sqlMock.mockResolvedValueOnce([{ imajin_did: 'did:imajin:jin' }]);
+    const fromRow = await import('../node-identity');
+    expect(await fromRow.resolveNodeDid()).toEqual({ did: 'did:imajin:jin', source: 'relay_config' });
+
+    vi.resetModules();
+    process.env.RELAY_DID = 'did:imajin:relay';
+    sqlMock.mockResolvedValueOnce([]);
+    const fromEnv = await import('../node-identity');
+    expect(await fromEnv.resolveNodeDid()).toEqual({ did: 'did:imajin:relay', source: 'RELAY_DID' });
+
+    vi.resetModules();
+    delete process.env.RELAY_DID;
+    sqlMock.mockResolvedValueOnce([]);
+    const neither = await import('../node-identity');
+    expect(await neither.resolveNodeDid()).toEqual({ did: '', source: 'none' });
+  });
+
   it('caches the relay_config row — only queries the DB once per process', async () => {
     sqlMock.mockResolvedValueOnce([
       { imajin_did: 'did:imajin:jin', node_operator_did: null, node_fee_bps: 50, buyer_credit_bps: 25 },

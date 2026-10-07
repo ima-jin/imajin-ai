@@ -638,3 +638,94 @@ describe('getInternalSecret — stale / live claims (#2446 fix 2)', () => {
     expect(provisionsStore.get(claimKey)?.id).toBe('isp_live');
   });
 });
+
+// #2081 — node key rotation. The vault signing DID is a function of the key, so the
+// swap changes `ownerDid`; the sweep re-seals fields under the new identity but never
+// touches `internal_secret_provisions`. These tests pin the contract the rotation
+// runbook (docs/security/node-key-roles-and-rotation.md, steps 5-7) relies on.
+describe('getInternalSecret — node key rotation (#2081): the new DID reuses the reimported value', () => {
+  const OLD_DID = 'did:imajin:node-old-key';
+  const NEW_DID = 'did:imajin:node-new-key';
+  const oldClaimKey = `${OLD_DID}::${PURPOSE}`;
+  const newClaimKey = `${NEW_DID}::${PURPOSE}`;
+
+  /** The rows a node that has run on the OLD key leaves behind. */
+  function seedOldKeyState() {
+    provisionsStore.set(oldClaimKey, { id: 'isp_old', ownerDid: OLD_DID, purpose: PURPOSE, field: FIELD, grantId: 'vdg_old' });
+    grantsStore.set('vdg_old', {
+      id: 'vdg_old', subject: OLD_DID, grantedTo: OLD_DID, field: FIELD, purpose: PURPOSE, status: 'active', expiresAt: null,
+    });
+  }
+
+  /** What the Phase 2 reimport leaves: the exported value re-sealed under the NEW identity, untagged. */
+  function reimport() {
+    grantsStore.set('vdg_reimported', {
+      id: 'vdg_reimported', subject: NEW_DID, grantedTo: NEW_DID, field: FIELD, purpose: null, status: 'active', expiresAt: null,
+    });
+    loadAndUnsealMock.mockResolvedValue('value-exported-from-the-old-key');
+  }
+
+  function restartOnKey(did: string) {
+    _resetInternalSecretCacheForTests();
+    getNodeSigningIdentityMock.mockReturnValue({ senderDid: did, senderPubkey: 'pub', privateKeyHex: 'priv' });
+  }
+
+  it('reimport lands first: the new DID adopts the reimported field and generates nothing', async () => {
+    seedOldKeyState();
+    restartOnKey(NEW_DID);
+    reimport();
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('value-exported-from-the-old-key');
+
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(grantsStore.get('vdg_reimported')?.purpose).toBe(PURPOSE);
+    expect(provisionsStore.get(newClaimKey)?.grantId).toBe('vdg_reimported');
+    // The old identity's rows are inert: never read, never rewritten.
+    expect(provisionsStore.get(oldClaimKey)?.grantId).toBe('vdg_old');
+    expect(grantsStore.get('vdg_old')?.status).toBe('active');
+  });
+
+  it('boot before the reimport DOES generate (the window), and the restart after the reimport adopts the reimported value instead', async () => {
+    seedOldKeyState();
+
+    // Step 5: the kernel boots on the new key; the old rows belong to the old DID, so nothing resolves.
+    restartOnKey(NEW_DID);
+    const bootValue = await getInternalSecret(PURPOSE);
+    expect(bootValue).toMatch(/^[0-9a-f]{64}$/);
+    expect(emitAttestationMock).toHaveBeenCalledTimes(1);
+    expect(provisionsStore.get(newClaimKey)?.grantId).toBe('vdg_generated');
+
+    // Step 6: Phase 2 supersedes the boot-time value with the exported one.
+    reimport();
+    emitAttestationMock.mockClear();
+    sealAndGrantStaticSecretMock.mockClear();
+
+    // Step 6b: the second restart. The recorded grant is no longer active, so the row is
+    // stranded and the node adopts the readable self-grant — the reimported value wins.
+    restartOnKey(NEW_DID);
+    const afterRestart = await getInternalSecret(PURPOSE);
+
+    expect(afterRestart).toBe('value-exported-from-the-old-key');
+    expect(afterRestart).not.toBe(bootValue);
+    expect(sealAndGrantStaticSecretMock).not.toHaveBeenCalled();
+    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(provisionsStore.get(newClaimKey)?.grantId).toBe('vdg_reimported');
+    expect(errorMock).not.toHaveBeenCalled();
+  });
+
+  it('stays on the reimported value across later restarts (no second adoption, no WARN)', async () => {
+    seedOldKeyState();
+    restartOnKey(NEW_DID);
+    reimport();
+    await getInternalSecret(PURPOSE);
+
+    warnMock.mockClear();
+    fetchGrantSecretMock.mockResolvedValue({ status: 'ok', value: 'value-exported-from-the-old-key' });
+    restartOnKey(NEW_DID);
+
+    await expect(getInternalSecret(PURPOSE)).resolves.toBe('value-exported-from-the-old-key');
+    expect(fetchGrantSecretMock).toHaveBeenCalledWith({ grantId: 'vdg_reimported', granteeDid: NEW_DID });
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+});

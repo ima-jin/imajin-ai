@@ -35,7 +35,7 @@ import {
 } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { db, attestations, identities } from '@/src/db';
-import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { getNodeDid, resolveNodeDid, type NodeDidSource } from '@/src/lib/kernel/node-identity';
 import { emitMechanicalAttestation } from './emit-mechanical-attestation';
 
 const log = createLogger('kernel');
@@ -74,6 +74,19 @@ async function loadStoredRotationPayloads(nodeDid: string): Promise<unknown[]> {
 }
 
 /**
+ * `getNodeDid()` falls back to the `RELAY_DID` env var when
+ * `relay.relay_config.imajin_did` is unset. That is the DFOS relay's identity,
+ * not the node's: node-issued attestations would be filed under it, and the
+ * runbook's `UPDATE auth.identities` would rewrite the relay identity's key.
+ */
+function relayDidFallbackMessage(did: string): string {
+  return (
+    `node DID ${did} was resolved from the RELAY_DID env fallback, not relay.relay_config.imajin_did — ` +
+    'that is the relay identity, not the node identity. Set relay.relay_config.imajin_did (scripts/bootstrap-node-identity.ts) before rotating'
+  );
+}
+
+/**
  * File the dual-signed `key.rotated` attestation for a rotation the operator
  * has already signed with both keys. Fails closed: every rejection is a
  * returned error with the HTTP status the admin route should answer with.
@@ -98,9 +111,12 @@ export async function recordKeyRotation(input: unknown, now: Date = new Date()):
     return { ok: false, status: 400, error: 'effectiveAt is in the future — a rotation records a handover that has happened' };
   }
 
-  const nodeDid = await getNodeDid();
+  const { did: nodeDid, source: nodeDidSource } = await resolveNodeDid();
   if (!nodeDid) {
     return { ok: false, status: 500, error: 'node DID is not configured — cannot file a node-issued attestation' };
+  }
+  if (nodeDidSource !== 'relay_config') {
+    return { ok: false, status: 409, error: relayDidFallbackMessage(nodeDid) };
   }
 
   const stored = await loadStoredRotationPayloads(nodeDid);
@@ -136,6 +152,8 @@ export interface NodeKeyHistoryReport {
   errors: string[];
   warnings: string[];
   nodeDid: string | null;
+  /** Where the node DID came from; anything but `relay_config` fails the check. */
+  nodeDidSource: NodeDidSource;
   /** `kid` of the key currently in AUTH_PRIVATE_KEY, or null when unset/invalid. */
   currentKid: string | null;
   /** Number of live `key.rotated` attestations this node has issued. */
@@ -185,17 +203,20 @@ export async function verifyNodeKeyHistory(options: { anchorPublicKey?: string }
   const currentKid = publicKey ? computeKeyKid(publicKey) : null;
   if (!publicKey) errors.push('AUTH_PRIVATE_KEY is not set or is not a valid Ed25519 private key');
 
-  const nodeDid = (await getNodeDid()) || null;
+  const resolved = await resolveNodeDid();
+  const nodeDid = resolved.did || null;
+  const nodeDidSource = resolved.source;
   if (!nodeDid) {
-    errors.push('node DID is not configured (relay.relay_config.imajin_did / RELAY_DID)');
-    return { ok: false, errors, warnings, nodeDid, currentKid, rotations: 0, history: [] };
+    errors.push('node DID is not configured (relay.relay_config.imajin_did)');
+    return { ok: false, errors, warnings, nodeDid, nodeDidSource, currentKid, rotations: 0, history: [] };
   }
+  if (nodeDidSource !== 'relay_config') errors.push(relayDidFallbackMessage(nodeDid));
 
   const stored = await loadStoredRotationPayloads(nodeDid);
   const chain = verifyKeyRotationChain(stored, { anchorPublicKey: options.anchorPublicKey });
   if (!chain.ok) {
     errors.push(`key history invalid: ${chain.error}`);
-    return { ok: false, errors, warnings, nodeDid, currentKid, rotations: stored.length, history: [] };
+    return { ok: false, errors, warnings, nodeDid, nodeDidSource, currentKid, rotations: stored.length, history: [] };
   }
 
   if (chain.keys.length === 0) {
@@ -212,7 +233,7 @@ export async function verifyNodeKeyHistory(options: { anchorPublicKey?: string }
     else if (identityFinding) warnings.push(identityFinding.message);
   }
 
-  return { ok: errors.length === 0, errors, warnings, nodeDid, currentKid, rotations: stored.length, history: chain.keys };
+  return { ok: errors.length === 0, errors, warnings, nodeDid, nodeDidSource, currentKid, rotations: stored.length, history: chain.keys };
 }
 
 /**

@@ -9,14 +9,17 @@
  *                OLD_AUTH_PRIVATE_KEY=<current> NEW_AUTH_PRIVATE_KEY=<next> \
  *                  node scripts/key-rotation.mjs preflight [--grace-hours 48]
  *
- *   sign       Before the env swap, offline. Signs the rotation statement with
- *              BOTH keys and prints the PUBLIC payload (kids, public keys,
- *              effectiveAt, two signatures) as JSON on stdout — nothing secret.
- *              The old private key can be destroyed as soon as the swap is done.
- *                OLD_AUTH_PRIVATE_KEY=<current> NEW_AUTH_PRIVATE_KEY=<next> \
- *                  node scripts/key-rotation.mjs sign > key-rotated.json
+ *   sign       OFFLINE, AFTER the restart on the new key. Signs the rotation
+ *              statement with BOTH keys and prints the PUBLIC payload (kids,
+ *              public keys, effectiveAt, two signatures) as JSON on stdout —
+ *              nothing secret. --effective-at is REQUIRED: the UTC instant the
+ *              restarted kernel began signing with the new key. Anything the old
+ *              key signed after that instant would later verify as invalid, so
+ *              there is no "now" default. The old private key must still be held.
+ *                OLD_AUTH_PRIVATE_KEY=<previous> NEW_AUTH_PRIVATE_KEY=<current> \
+ *                  node scripts/key-rotation.mjs sign --effective-at 2026-10-06T12:00:00Z > key-rotated.json
  *
- *   submit     After the swap + restart. POSTs the payload to the kernel's
+ *   submit     After the Phase 2 sweep. POSTs the payload to the kernel's
  *              admin endpoint, which re-verifies both signatures and files the
  *              node-issued `key.rotated` attestation.
  *                KERNEL_ADMIN_COOKIE='...' node scripts/key-rotation.mjs submit --payload key-rotated.json

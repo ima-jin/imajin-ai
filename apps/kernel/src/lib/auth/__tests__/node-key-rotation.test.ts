@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   attestationRows: vi.fn(),
   identityRows: vi.fn(),
   getNodeDid: vi.fn(),
+  resolveNodeDid: vi.fn(),
   emitMechanicalAttestation: vi.fn(),
 }));
 
@@ -42,7 +43,7 @@ vi.mock('@/src/db', () => ({
   identities: {},
 }));
 
-vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: h.getNodeDid }));
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: h.getNodeDid, resolveNodeDid: h.resolveNodeDid }));
 vi.mock('../emit-mechanical-attestation', () => ({ emitMechanicalAttestation: h.emitMechanicalAttestation }));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
@@ -56,6 +57,7 @@ const ORIGINAL_KEY = process.env.AUTH_PRIVATE_KEY;
 beforeEach(() => {
   vi.clearAllMocks();
   h.getNodeDid.mockResolvedValue(NODE_DID);
+  h.resolveNodeDid.mockResolvedValue({ did: NODE_DID, source: 'relay_config' });
   h.emitMechanicalAttestation.mockResolvedValue('att_rotated_1');
   h.attestationRows.mockResolvedValue([]);
   h.identityRows.mockResolvedValue([]);
@@ -128,7 +130,7 @@ describe('recordKeyRotation', () => {
 
     expect(result).toEqual({ ok: false, status: 400, error: 'oldKeySignature does not verify against the old public key' });
     expect(h.emitMechanicalAttestation).not.toHaveBeenCalled();
-    expect(h.getNodeDid).not.toHaveBeenCalled();
+    expect(h.resolveNodeDid).not.toHaveBeenCalled();
   });
 
   it('rejects garbage input', async () => {
@@ -173,9 +175,21 @@ describe('recordKeyRotation', () => {
 
   it('fails with 500 when the node has no DID', async () => {
     const { payload } = swapped();
-    h.getNodeDid.mockResolvedValue('');
+    h.resolveNodeDid.mockResolvedValue({ did: '', source: 'none' });
 
     expect(await recordKeyRotation(payload, NOW)).toMatchObject({ ok: false, status: 500 });
+    expect(h.emitMechanicalAttestation).not.toHaveBeenCalled();
+  });
+
+  it('refuses to file under a node DID that came from the RELAY_DID fallback (409)', async () => {
+    const { payload } = swapped();
+    h.resolveNodeDid.mockResolvedValue({ did: 'did:imajin:relay-identity', source: 'RELAY_DID' });
+
+    const result = await recordKeyRotation(payload, NOW);
+
+    expect(result).toMatchObject({ ok: false, status: 409 });
+    expect((result as { error: string }).error).toMatch(/RELAY_DID env fallback.*relay identity, not the node identity/);
+    expect(h.attestationRows).not.toHaveBeenCalled();
     expect(h.emitMechanicalAttestation).not.toHaveBeenCalled();
   });
 
@@ -336,13 +350,31 @@ describe('verifyNodeKeyHistory', () => {
 
   it('fails without querying history when the node has no DID', async () => {
     process.env.AUTH_PRIVATE_KEY = authCrypto.generateKeypair().privateKey;
-    h.getNodeDid.mockResolvedValue('');
+    h.resolveNodeDid.mockResolvedValue({ did: '', source: 'none' });
 
     const report = await verifyNodeKeyHistory();
 
     expect(report.ok).toBe(false);
     expect(report.nodeDid).toBeNull();
+    expect(report.nodeDidSource).toBe('none');
     expect(h.attestationRows).not.toHaveBeenCalled();
+  });
+
+  it('reports where the node DID came from, and fails when it is the RELAY_DID fallback', async () => {
+    const key = authCrypto.generateKeypair();
+    process.env.AUTH_PRIVATE_KEY = key.privateKey;
+    h.identityRows.mockResolvedValue([{ publicKey: key.publicKey }]);
+
+    const healthy = await verifyNodeKeyHistory();
+    expect(healthy.nodeDidSource).toBe('relay_config');
+    expect(healthy.ok).toBe(true);
+
+    h.resolveNodeDid.mockResolvedValue({ did: 'did:imajin:relay-identity', source: 'RELAY_DID' });
+    const fallback = await verifyNodeKeyHistory();
+    expect(fallback.ok).toBe(false);
+    expect(fallback.nodeDid).toBe('did:imajin:relay-identity');
+    expect(fallback.nodeDidSource).toBe('RELAY_DID');
+    expect(fallback.errors.join('\n')).toMatch(/RELAY_DID env fallback/);
   });
 });
 
