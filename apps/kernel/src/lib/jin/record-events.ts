@@ -50,9 +50,18 @@
  * computed uniformly for every row, `false` when the field is absent, so
  * the Record lane can render the wish-and-grant chain state (#2084)
  * without special-casing which kinds can carry it.
+ *
+ * #2323: for a decided `decision:card` approval, `approvalRef.chosenOption`
+ * is the option letter the operator countersigned — read straight off the
+ * `operator.approval.decided` payload's `mode` (the same field the Inbox
+ * posts it in), so the Record lane shows WHAT was chosen without joining
+ * back to the card. Absent for every other kind, for the card's own
+ * `operator.approval.requested`, and for a decided card with no letter
+ * (rejected / withdrawn — "none of these").
  */
 import { and, desc, eq, gte, inArray, or, sql } from 'drizzle-orm';
 import { db, delegationGrants, identityMembers, operatorApprovals, systemEvents } from '@/src/db';
+import { DECISION_APPROVAL_KIND } from '@/src/lib/decisions/view';
 
 const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
@@ -74,6 +83,8 @@ export interface ApprovalRef {
   proposalId: string;
   source: string;
   kind: string;
+  /** Option letter chosen on a decided `decision:card` approval (#2323) — read-only projection of the decided payload's `mode`. */
+  chosenOption?: string;
 }
 
 export interface RecordEventRow {
@@ -154,6 +165,24 @@ type RecordEventQueryRow = {
   approvalKind: string | null;
 };
 
+/** The chosen option letter, only for an `operator.approval.decided` event on a `decision:card` approval (#2323). */
+function chosenOptionOf(row: RecordEventQueryRow, payload: Record<string, unknown> | null): string | undefined {
+  if (row.approvalKind !== DECISION_APPROVAL_KIND || row.action !== 'operator.approval.decided') return undefined;
+  const mode = payload?.mode;
+  return typeof mode === 'string' && mode.length > 0 ? mode : undefined;
+}
+
+function toApprovalRef(row: RecordEventQueryRow, payload: Record<string, unknown> | null): ApprovalRef | null {
+  if (!row.approvalProposalId) return null;
+  const chosenOption = chosenOptionOf(row, payload);
+  return {
+    proposalId: row.approvalProposalId,
+    source: row.approvalSource ?? '',
+    kind: row.approvalKind ?? '',
+    ...(chosenOption ? { chosenOption } : {}),
+  };
+}
+
 function toRecordEventRow(row: RecordEventQueryRow): RecordEventRow {
   const payload = (row.payload ?? null) as Record<string, unknown> | null;
   return {
@@ -167,9 +196,7 @@ function toRecordEventRow(row: RecordEventQueryRow): RecordEventRow {
     status: row.status,
     durationMs: row.durationMs,
     createdAt: row.createdAt.toISOString(),
-    approvalRef: row.approvalProposalId
-      ? { proposalId: row.approvalProposalId, source: row.approvalSource ?? '', kind: row.approvalKind ?? '' }
-      : null,
+    approvalRef: toApprovalRef(row, payload),
     hasOperatorSignature: Boolean(payload?.operatorSignature),
   };
 }

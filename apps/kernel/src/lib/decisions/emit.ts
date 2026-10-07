@@ -33,26 +33,15 @@
 import { createLogger } from '@imajin/logger';
 import { getOperatorDid } from '../notify/operator-approvals';
 import { recordApprovalRequested } from '../notify/operator-approvals-service';
-import {
-  createDecisionCard,
-  type DecisionCard,
-  type DecisionCardInput,
-  type DecisionCardEvidence,
-  type DecisionCardPrEvidence,
-  type DecisionCardCiEvidence,
-  type DecisionCardSonarEvidence,
-  type DecisionCardReviewEvidence,
-  type DecisionCardRunEvidence,
-  type DecisionCardBlockersEvidence,
-  type DecisionCardAuthorityEvidence,
-} from './schema';
+import { createDecisionCard, type DecisionCard, type DecisionCardInput, type DecisionCardEvidence } from './schema';
+import { DECISION_APPROVAL_KIND, DECISION_APPROVAL_SOURCE, formatDecisionCardEvidenceLine } from './view';
+
+// #2323: the constants live in the client-safe `./view` so the /jin Inbox
+// and the Record-lane projection can share them without importing this
+// server-only module; re-exported here so existing importers are unchanged.
+export { DECISION_APPROVAL_KIND, DECISION_APPROVAL_SOURCE };
 
 const log = createLogger('kernel:decisions');
-
-/** Open-vocabulary `source` this emitter raises on operator.approvals (#2152). */
-export const DECISION_APPROVAL_SOURCE = 'decision';
-/** `'<source>:<subkind>'` per #2152's namespaced-kind rule. */
-export const DECISION_APPROVAL_KIND = 'decision:card';
 
 /** Matches the notify boundary's own summary bound (`../notify/operator-approvals.ts`'s `MAX_SUMMARY_LENGTH`) — kept local since that constant isn't exported. */
 const MAX_SUMMARY_LENGTH = 2000;
@@ -65,41 +54,6 @@ function fmtOptions(card: DecisionCard): string {
   return card.options.map((option) => `${option.letter}) ${option.label}`).join(' · ');
 }
 
-function fmtPr(evidence?: DecisionCardPrEvidence): string {
-  if (!evidence) return '?';
-  let mergeable = 'conflict';
-  if (evidence.mergeable === null) mergeable = 'unknown';
-  else if (evidence.mergeable) mergeable = 'mergeable';
-  return `#${evidence.number}(${evidence.draft ? 'draft' : 'ready'},${mergeable})`;
-}
-
-function fmtCi(evidence?: DecisionCardCiEvidence): string {
-  return evidence ? evidence.conclusion : '?';
-}
-
-function fmtSonar(evidence?: DecisionCardSonarEvidence): string {
-  if (!evidence) return '?';
-  return `${evidence.qualityGate}(new:${evidence.newIssues})`;
-}
-
-function fmtReview(evidence?: DecisionCardReviewEvidence): string {
-  return evidence ? evidence.verdict : '?';
-}
-
-function fmtRun(evidence?: DecisionCardRunEvidence): string {
-  return evidence ? evidence.status : '?';
-}
-
-function fmtBlockers(evidence?: DecisionCardBlockersEvidence): string {
-  if (!evidence) return '?';
-  return `${evidence.blockedBy.length}blocked/${evidence.blocks.length}blocks`;
-}
-
-function fmtAuthority(evidence: DecisionCardAuthorityEvidence | undefined): string {
-  if (!evidence) return '?';
-  return evidence.canActWithoutHuman ? 'auto' : 'human';
-}
-
 /**
  * Render the `ev:` line — EVERY evidence key appears, in a fixed order; a
  * key whose evidence is absent from the card renders `?` rather than being
@@ -107,16 +61,7 @@ function fmtAuthority(evidence: DecisionCardAuthorityEvidence | undefined): stri
  * be available (#2315 acceptance).
  */
 export function renderDecisionCardEvidenceLine(evidence: DecisionCardEvidence): string {
-  const parts = [
-    `pr=${fmtPr(evidence.pr)}`,
-    `ci=${fmtCi(evidence.ci)}`,
-    `sonar=${fmtSonar(evidence.sonar)}`,
-    `review=${fmtReview(evidence.review)}`,
-    `run=${fmtRun(evidence.run)}`,
-    `blockers=${fmtBlockers(evidence.blockers)}`,
-    `authority=${fmtAuthority(evidence.authority)}`,
-  ];
-  return `ev: ${parts.join(' ')}`;
+  return formatDecisionCardEvidenceLine(evidence);
 }
 
 /**
