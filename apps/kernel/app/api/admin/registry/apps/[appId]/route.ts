@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (typeof body !== 'object' || body === null || body.emittableEvents === undefined) {
+  if (body?.emittableEvents === undefined) {
     return NextResponse.json({ error: 'emittableEvents is required' }, { status: 400 });
   }
   const emittable = validateEmittableEvents(body.emittableEvents);

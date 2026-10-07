@@ -1,4 +1,5 @@
 import { createLogger } from '@imajin/logger';
+import { forEachSequential } from './concurrency';
 import { getChainConfig } from './config';
 import { getReactor } from './registry';
 import type { BusEvent } from './types';
@@ -101,11 +102,12 @@ export async function publishAppEvent(type: string, event: AppEventInput, appDid
     log.info({ event: type, appDid, skipped }, 'App-origin event: refused non-notify/audit reactors from chain');
   }
 
+  // Sequential on purpose: the audit record must exist before any notification fires.
   const ran: string[] = [];
   if (await runReactor('audit-log', {}, fullEvent)) ran.push('audit-log');
-  for (const reactor of notifyReactors) {
+  await forEachSequential(notifyReactors, async (reactor) => {
     if (await runReactor('notify', reactor.config, fullEvent)) ran.push('notify');
-  }
+  });
 
   return { eventType: type, origin: appDid, ran, skipped };
 }
