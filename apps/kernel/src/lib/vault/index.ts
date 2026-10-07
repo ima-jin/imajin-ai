@@ -282,11 +282,14 @@ export function activeGrantTuple(tuple: GrantTuple): SQL | undefined {
 /**
  * Erase key material for a set of grants that have already been moved out of
  * `active` by the caller. Exported for the revoke route and the expiry sweep.
+ * Pass a transaction as `executor` to make the erase part of a larger atomic
+ * change (delete-secret, #2698); the default is the shared pool.
  */
 export async function eraseInactiveGrantKeyMaterial(
   grants: ErasableGrant[],
+  executor: DbExecutor = db,
 ): Promise<string[]> {
-  return eraseGrantKeyMaterial(grants);
+  return eraseGrantKeyMaterial(grants, executor);
 }
 
 // ── Self-healing active-grant insert (#1756) ────────────────────────────────
