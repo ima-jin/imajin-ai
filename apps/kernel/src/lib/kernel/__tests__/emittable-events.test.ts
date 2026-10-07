@@ -18,7 +18,11 @@ vi.mock('@/src/db', () => ({
 }));
 
 import {
+  EVENTS_API_AUDIENCES,
+  KERNEL_EVENT_NAMESPACES,
   MAX_EMITTABLE_EVENTS,
+  hasEventsApiAudience,
+  isKernelEventType,
   isValidEventType,
   readEmittableEvents,
   validateEmittableEvents,
@@ -136,5 +140,58 @@ describe('resolveEmittableEvents', () => {
     mocks.limitMock.mockResolvedValue([{ status: 'active', emittableEvents: 'tip.granted' }]);
 
     expect(await resolveEmittableEvents('did:imajin:app')).toEqual([]);
+  });
+});
+
+describe('kernel-owned namespaces (#2717)', () => {
+  it.each(['payment_request.paid', 'payment_request.created', 'loop.completed', 'attestation.created', 'identity.verified.hard', 'vault.secret_read', 'settlement.completed', 'order.paid', 'mjn'])(
+    'treats %s as kernel-owned',
+    (type) => {
+      expect(isKernelEventType(type)).toBe(true);
+    },
+  );
+
+  it.each(['tip.granted', 'tip.sent', 'listing.purchased', 'ticket.sold', 'coffee.tip_granted', 'loopback.ping', 'payment_requests.x'])(
+    'leaves %s to apps',
+    (type) => {
+      expect(isKernelEventType(type)).toBe(false);
+    },
+  );
+
+  it('matches on the first dotted segment only, never a prefix of it', () => {
+    expect(isKernelEventType('loops.x')).toBe(false);
+    expect(isKernelEventType('loop.x')).toBe(true);
+  });
+
+  it('every namespace in the denylist is itself a valid event-type segment', () => {
+    for (const ns of KERNEL_EVENT_NAMESPACES) expect(isValidEventType(ns)).toBe(true);
+  });
+
+  it('validateEmittableEvents refuses a list containing a kernel-owned type and names it', () => {
+    const result = validateEmittableEvents(['tip.granted', 'payment_request.paid', 'loop.started']);
+
+    expect(result).toEqual({ error: expect.stringContaining('payment_request.paid, loop.started') });
+  });
+
+  it('validateEmittableEvents still accepts an app-domain list', () => {
+    expect(validateEmittableEvents(['tip.sent', 'tip.granted'])).toEqual({ ok: ['tip.granted', 'tip.sent'] });
+  });
+});
+
+describe('hasEventsApiAudience (#2717)', () => {
+  it.each(EVENTS_API_AUDIENCES)('accepts the %s audience, alone or among others', (aud) => {
+    expect(hasEventsApiAudience(aud)).toBe(true);
+    expect(hasEventsApiAudience(['market', aud])).toBe(true);
+  });
+
+  it.each([
+    ['another app slug', 'market'],
+    ['a host', 'jin.imajin.ai'],
+    ['an array of other audiences', ['market', 'coffee']],
+    ['an empty string', ''],
+    ['a missing aud', undefined],
+    ['a non-string aud', 7],
+  ])('rejects %s', (_label, aud) => {
+    expect(hasEventsApiAudience(aud)).toBe(false);
   });
 });

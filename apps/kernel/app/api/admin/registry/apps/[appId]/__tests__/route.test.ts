@@ -150,6 +150,9 @@ describe('PATCH /api/admin/registry/apps/:appId — refusals', () => {
     ['an uppercase type', ['Tip.Granted']],
     ['a non-string entry', [7]],
     ['a non-array value', 'tip.granted'],
+    ['a kernel-owned payment_request type', ['payment_request.paid']],
+    ['a kernel-owned loop type', ['tip.granted', 'loop.completed']],
+    ['a kernel-owned attestation type', ['attestation.created']],
   ])('returns 400 for %s, writing nothing', async (_label, emittableEvents) => {
     const res = await patch({ emittableEvents });
 
