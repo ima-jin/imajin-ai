@@ -31,6 +31,8 @@ vi.mock('@/src/db', () => ({
     tier: 'registryApps.tier',
     status: 'registryApps.status',
     tokenAudiences: 'registryApps.tokenAudiences',
+    slug: 'registryApps.slug',
+    requestedScopes: 'registryApps.requestedScopes',
     providesScopes: 'registryApps.providesScopes',
     dependsOn: 'registryApps.dependsOn',
   },
@@ -60,6 +62,8 @@ const ACTIVE_ROW = {
   ownerDid: 'did:imajin:platform',
   tier: 'first_party',
   status: 'active',
+  slug: null as string | null,
+  requestedScopes: [] as string[],
   providesScopes: [] as string[],
   dependsOn: [] as Array<{ aud: string; scopes: string[] }>,
 };
@@ -86,7 +90,7 @@ describe('resolveActiveAppByAudience (#1990)', () => {
 
   it("returns the app's declared providesScopes and dependsOn (#2663)", async () => {
     const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }];
-    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, providesScopes: ['dykil:read'], dependsOn }]);
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, slug: 'dykil', providesScopes: ['dykil:read'], dependsOn }]);
 
     const result = await resolveActiveAppByAudience('dykil');
 
@@ -95,12 +99,40 @@ describe('resolveActiveAppByAudience (#1990)', () => {
   });
 
   it('normalises null declarations from a pre-0176 row to empty arrays (#2663)', async () => {
-    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, providesScopes: null, dependsOn: null }]);
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, providesScopes: null, dependsOn: null, requestedScopes: null }]);
 
     const result = await resolveActiveAppByAudience('coffee');
 
     expect(result?.providesScopes).toEqual([]);
     expect(result?.dependsOn).toEqual([]);
+    expect(result?.requestedScopes).toEqual([]);
+  });
+
+  it('returns the slug and requestedScopes the mint ceiling is computed from (#2674)', async () => {
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, slug: 'dykil', requestedScopes: ['dykil:read', 'media:read'] }]);
+
+    const result = await resolveActiveAppByAudience('dykil');
+
+    expect(result?.slug).toBe('dykil');
+    expect(result?.requestedScopes).toEqual(['dykil:read', 'media:read']);
+  });
+
+  describe('providesScopes are honoured only in the row\'s own slug namespace (#2674)', () => {
+    it('drops a slug-less row\'s providesScopes — a legacy squatted dykil:read grants nothing', async () => {
+      mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, slug: null, providesScopes: ['dykil:read', 'dykil:write'] }]);
+
+      const result = await resolveActiveAppByAudience('squatter');
+
+      expect(result?.providesScopes).toEqual([]);
+    });
+
+    it('drops scopes in another app\'s namespace from a slugged row, keeping its own', async () => {
+      mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, slug: 'links', providesScopes: ['links:read', 'dykil:read'] }]);
+
+      const result = await resolveActiveAppByAudience('links');
+
+      expect(result?.providesScopes).toEqual(['links:read']);
+    });
   });
 
   it('returns null when no row matches the audience', async () => {
@@ -167,7 +199,11 @@ describe('appNotRegisteredResponse (#1990)', () => {
 describe('resolveTokenGrant (#2663)', () => {
   const MEDIA = 'jin.imajin.ai';
   const OTHER = 'events.imajin.ai';
+  // The ceiling covers providesScopes + approved dependency scopes, so these fixtures
+  // leave `requestedScopes` empty; the ceiling itself is covered in its own block below.
   const app = {
+    tier: 'third_party',
+    requestedScopes: [] as string[],
     providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [
       { aud: MEDIA, scopes: ['media:read', 'media:write'] },
@@ -187,7 +223,11 @@ describe('resolveTokenGrant (#2663)', () => {
 
   describe('audiences', () => {
     it('returns just the primary audience when the app declares no dependencies', async () => {
-      const grant = await resolveTokenGrant('dykil.imajin.ai', { providesScopes: [], dependsOn: [] }, ['dykil:read']);
+      const grant = await resolveTokenGrant(
+        'dykil.imajin.ai',
+        { tier: 'third_party', requestedScopes: ['dykil:read'], providesScopes: [], dependsOn: [] },
+        ['dykil:read'],
+      );
 
       expect(grant).toEqual({ audiences: ['dykil.imajin.ai'], scopes: ['dykil:read'] });
       expect(mocks.selectMock).not.toHaveBeenCalled();
@@ -231,7 +271,7 @@ describe('resolveTokenGrant (#2663)', () => {
 
       const grant = await resolveTokenGrant(
         MEDIA,
-        { providesScopes: [], dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] },
+        { tier: 'third_party', requestedScopes: [], providesScopes: [], dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] },
         ['media:read'],
       );
 
@@ -241,6 +281,8 @@ describe('resolveTokenGrant (#2663)', () => {
 
   describe('scopes: exactly what the operator approved', () => {
     const readOnlyMedia = {
+      tier: 'third_party',
+      requestedScopes: ['profile:read'],
       providesScopes: ['dykil:read'],
       dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }],
     };
@@ -314,6 +356,68 @@ describe('resolveTokenGrant (#2663)', () => {
       const grant = await resolveTokenGrant('dykil.imajin.ai', readOnlyMedia, ['dykil:read', 'profile:read']);
 
       expect(grant.scopes).toEqual(['dykil:read', 'profile:read']);
+    });
+  });
+
+  describe('requested_scopes is the ceiling at mint (#2674)', () => {
+    const third = (requestedScopes: string[], extra: Partial<typeof app> = {}) => ({
+      tier: 'third_party',
+      requestedScopes,
+      providesScopes: [] as string[],
+      dependsOn: [] as Array<{ aud: string; scopes: string[] }>,
+      ...extra,
+    });
+
+    it('never mints a scope the app was not assigned, even when it is in the platform vocabulary', async () => {
+      const grant = await resolveTokenGrant('coffee', third(['profile:read']), ['profile:read', 'wallet:write', 'media:write']);
+
+      expect(grant.scopes).toEqual(['profile:read']);
+    });
+
+    it('mints nothing for a third-party app with nothing assigned (empty list is not "unconstrained")', async () => {
+      const grant = await resolveTokenGrant('coffee', third([]), ['profile:read', 'media:read']);
+
+      expect(grant).toEqual({ audiences: ['coffee'], scopes: [] });
+    });
+
+    it('counts the approved dependsOn scopes inside the ceiling even when requestedScopes is empty (pre-#2674 provisioned rows)', async () => {
+      registered(MEDIA);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', third([], { dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] }), ['media:read']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai', MEDIA]);
+      expect(grant.scopes).toEqual(['media:read']);
+    });
+
+    it('does not let a dependency be reached with a scope outside both requestedScopes and the approved dependsOn', async () => {
+      registered(MEDIA);
+
+      const grant = await resolveTokenGrant('dykil.imajin.ai', third(['dykil:read'], { dependsOn: [{ aud: MEDIA, scopes: ['media:read'] }] }), ['media:write']);
+
+      expect(grant.audiences).toEqual(['dykil.imajin.ai']);
+      expect(grant.scopes).toEqual([]);
+    });
+
+    it('counts the app\'s own providesScopes inside the ceiling', async () => {
+      const grant = await resolveTokenGrant('dykil.imajin.ai', third([], { providesScopes: ['dykil:read'] }), ['dykil:read', 'dykil:write']);
+
+      expect(grant.scopes).toEqual(['dykil:read']);
+    });
+
+    it('leaves a legacy first_party row with nothing assigned (the 0139 seed) unconstrained', async () => {
+      const legacy = { tier: 'first_party', requestedScopes: [] as string[], providesScopes: [] as string[], dependsOn: [] };
+
+      const grant = await resolveTokenGrant('coffee', legacy, ['profile:read', 'media:write']);
+
+      expect(grant.scopes).toEqual(['profile:read', 'media:write']);
+    });
+
+    it('holds a first_party row that does have an assignment to it', async () => {
+      const assigned = { tier: 'first_party', requestedScopes: ['profile:read'], providesScopes: [] as string[], dependsOn: [] };
+
+      const grant = await resolveTokenGrant('coffee', assigned, ['profile:read', 'media:write']);
+
+      expect(grant.scopes).toEqual(['profile:read']);
     });
   });
 });

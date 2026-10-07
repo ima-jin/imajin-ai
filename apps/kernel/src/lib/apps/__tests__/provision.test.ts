@@ -257,11 +257,30 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
 
     expect(outcome.status).toBe('succeeded');
     expect(validateAppDeclarationsMock).toHaveBeenCalledWith(expect.objectContaining({ slug: 'dykil' }));
+    // #2674: requested_scopes records the WHOLE approved list — the app's own scopes plus the
+    // approved dependency scopes — so it can serve as the ceiling mint and PATCH hold the app to.
     expect([...registryAppsStore.values()][0]).toMatchObject({
       providesScopes: ['dykil:read', 'dykil:write'],
-      requestedScopes: ['dykil:read', 'dykil:write'],
+      requestedScopes: ['dykil:read', 'dykil:write', 'media:read'],
       dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
     });
+  });
+
+  it('records no scope beyond the approved list in requested_scopes (#2674)', async () => {
+    const approved = {
+      providesScopes: ['dykil:read'],
+      dependsOn: [
+        { aud: 'jin.imajin.ai', scopes: ['media:read'] },
+        { aud: 'events.imajin.ai', scopes: ['media:read', 'events:read'] },
+      ],
+    };
+    fetchAppManifestMock.mockResolvedValue(approved);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: approved });
+
+    expect(outcome.status).toBe('succeeded');
+    // de-duplicated: media:read is listed under two dependencies but recorded once
+    expect([...registryAppsStore.values()][0]?.requestedScopes).toEqual(['dykil:read', 'media:read', 'events:read']);
   });
 
   it('treats a reordered but identical list as the same list', async () => {
