@@ -30,6 +30,14 @@ PR that bumps its version.
 - `requireHardDIDOrAppToken` — `requireSessionOrAppToken` plus a hard-DID
   (non-soft tier) check, usable from registered apps authenticating with a
   scoped app token (#2640).
+- Act-as (group DID) on scoped app tokens (#2639, #2644). `verifyAppToken` returns an optional
+  `actingAs`, and `requireSessionOrAppToken` surfaces it as `auth.actingAs` on the `token` path
+  (never on the `cookie` path). The kernel checks the user's group authority once at token mint and
+  only for operator-approved apps, so there is no per-request re-check and token lifetimes are
+  unchanged. Apps own records as `auth.actingAs ?? auth.did`.
+- `validateActingAs` and the `ActingAsResult` type are exported (the existing group-permission gate,
+  unchanged) so the kernel's token mint reuses it instead of adding a second authority check.
+- `registry.app.act_as.updated` attestation type (operator act-as approval toggle).
 
 ## [0.8.2] - Pending first publish
 

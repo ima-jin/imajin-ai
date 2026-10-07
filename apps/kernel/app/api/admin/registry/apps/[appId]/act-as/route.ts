@@ -20,6 +20,8 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
   const authResult = await requireAdminSession();
   if ('error' in authResult) return authResult.error;

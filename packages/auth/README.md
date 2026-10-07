@@ -41,6 +41,22 @@ import { SCOPES } from '@ima-jin/auth/scope-vocabulary';
 import { GRANT_SCOPES } from '@ima-jin/auth/grant-scopes';
 ```
 
+### Acting as a group DID
+
+`requireSessionOrAppToken` returns `auth.actingAs` (the group DID) when the app token was minted
+with `actAs`. The kernel checks the user's authority over the group once, at mint, and only for an
+app the operator approved for act-as; there is no per-request re-check, and the token's expiry bounds
+staleness. Own records as `auth.actingAs ?? auth.did`. The session-cookie fallback never sets it.
+
+```ts
+const result = await requireSessionOrAppToken(request, { aud: 'market.imajin.ai' });
+if ('error' in result) return new Response(result.error, { status: result.status });
+const ownerDid = result.auth.actingAs ?? result.auth.did;
+```
+
+`validateActingAs` (the existing per-service group gate behind `requireAuth`'s `x-acting-as`
+handling) is now exported for the kernel's mint-time check.
+
 ## What's included
 
 - **Sessions** — cookie-based session issuance and validation

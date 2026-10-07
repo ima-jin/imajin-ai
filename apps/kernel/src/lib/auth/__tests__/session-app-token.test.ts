@@ -152,3 +152,30 @@ describe('session-app token with several audiences (#2663)', () => {
     expect(jose.decodeJwt(token).aud).toEqual([APP_HOST, MEDIA_HOST]);
   });
 });
+
+describe('session-app token act-as claim (#2639 / #2644)', () => {
+  const GROUP_DID = 'did:imajin:group-xyz';
+
+  it('round-trips the actingAs claim', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID });
+
+    const claims = await verifySessionAppTokenLocal(token, APP_HOST);
+
+    expect(claims?.actingAs).toBe(GROUP_DID);
+    expect(claims?.sub).toBe(USER_DID);
+  });
+
+  it('writes no acting_as claim when none is given, so ordinary tokens are unchanged', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [] });
+
+    expect(jose.decodeJwt(token)).not.toHaveProperty('acting_as');
+    expect(await verifySessionAppTokenLocal(token, APP_HOST)).not.toHaveProperty('actingAs');
+  });
+
+  it('keeps the same lifetime as an ordinary token (act-as does not lengthen expiry)', async () => {
+    const plain = jose.decodeJwt(await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [] }));
+    const actAs = jose.decodeJwt(await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID }));
+
+    expect(actAs.exp! - actAs.iat!).toBe(plain.exp! - plain.iat!);
+  });
+});

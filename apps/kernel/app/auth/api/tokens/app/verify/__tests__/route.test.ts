@@ -270,3 +270,92 @@ describe('POST /auth/api/tokens/app/verify — multi-audience tokens (#2663 gap 
     expect(body.error).toBe('app_not_registered');
   });
 });
+
+describe('POST /auth/api/tokens/app/verify — act-as claim (#2639 / #2644)', () => {
+  const GROUP_DID = 'did:imajin:group-xyz';
+  const MEDIA_HOST = 'jin.imajin.ai';
+  const registryRow = (actAsAllowed: boolean) => ({
+    id: 'app_x',
+    appDid: 'did:imajin:app-x',
+    ownerDid: 'did:imajin:platform',
+    tier: 'first_party',
+    status: 'active',
+    actAsAllowed,
+  });
+
+  it('returns no actingAs for a token minted without act-as', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [] });
+
+    const res = await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).not.toHaveProperty('actingAs');
+  });
+
+  it('surfaces the verified actingAs claim while the app is still approved for act-as', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(registryRow(true));
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID });
+
+    const res = await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID });
+  });
+
+  it('does NOT re-run any group check per request — the verify route never consults group authority', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(registryRow(true));
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID });
+
+    await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+    await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+
+    // Only registry lookups (the existing revocation re-check) happen; no @imajin/auth mock is even
+    // loaded here, so a validateActingAs call would throw rather than pass silently.
+    expect(mocks.resolveActiveAppByAudienceMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('stops verifying (403 act_as_not_approved) once the app has lost act-as approval — never silently downgrades to the user DID', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID });
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(registryRow(false));
+
+    const res = await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('act_as_not_approved');
+    expect(body).not.toHaveProperty('sub');
+  });
+
+  it('still stops verifying on app revocation (existing registry semantics) for an act-as token', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: APP_HOST, scopes: [], actingAs: GROUP_DID });
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(null);
+
+    const res = await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('app_not_registered');
+  });
+
+  it('does not surface actingAs when the token is verified as a dependency audience', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(registryRow(true));
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes: [], actingAs: GROUP_DID });
+
+    const forApp = await POST(verifyRequest({ token, aud: APP_HOST }) as never);
+    const forMedia = await POST(verifyRequest({ token, aud: MEDIA_HOST }) as never);
+
+    expect((await forApp.json()).actingAs).toBe(GROUP_DID);
+    expect(forMedia.status).toBe(200);
+    expect(await forMedia.json()).not.toHaveProperty('actingAs');
+  });
+
+  it('checks approval against the MINTING app (primary audience), not the dependency', async () => {
+    const token = await createSessionAppToken({ sub: USER_DID, aud: [APP_HOST, MEDIA_HOST], scopes: [], actingAs: GROUP_DID });
+    // Dependency is approved for act-as, the minting app is not.
+    mocks.resolveActiveAppByAudienceMock.mockImplementation(async (aud: string) => registryRow(aud === MEDIA_HOST));
+
+    const res = await POST(verifyRequest({ token, aud: MEDIA_HOST }) as never);
+
+    expect(res.status).toBe(403);
+    expect((await res.json()).error).toBe('act_as_not_approved');
+  });
+});

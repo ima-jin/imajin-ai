@@ -35,6 +35,7 @@ vi.mock('@/src/db', () => ({
     requestedScopes: 'registryApps.requestedScopes',
     providesScopes: 'registryApps.providesScopes',
     dependsOn: 'registryApps.dependsOn',
+    actAsAllowed: 'registryApps.actAsAllowed',
   },
 }));
 
@@ -66,6 +67,7 @@ const ACTIVE_ROW = {
   requestedScopes: [] as string[],
   providesScopes: [] as string[],
   dependsOn: [] as Array<{ aud: string; scopes: string[] }>,
+  actAsAllowed: false,
 };
 
 beforeEach(() => {
@@ -86,6 +88,14 @@ describe('resolveActiveAppByAudience (#1990)', () => {
     const result = await resolveActiveAppByAudience('coffee');
 
     expect(result).toEqual(ACTIVE_ROW);
+  });
+
+  it('reports act-as as NOT approved by default, and approved only when the operator flag is exactly true (#2639)', async () => {
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, actAsAllowed: undefined }]);
+    expect((await resolveActiveAppByAudience('coffee'))?.actAsAllowed).toBe(false);
+
+    mocks.limitMock.mockResolvedValue([{ ...ACTIVE_ROW, actAsAllowed: true }]);
+    expect((await resolveActiveAppByAudience('coffee'))?.actAsAllowed).toBe(true);
   });
 
   it("returns the app's declared providesScopes and dependsOn (#2663)", async () => {

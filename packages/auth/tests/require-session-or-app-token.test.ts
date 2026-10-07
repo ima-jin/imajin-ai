@@ -74,6 +74,55 @@ describe('requireSessionOrAppToken — token path (#1069 Phase 1)', () => {
   });
 });
 
+describe('requireSessionOrAppToken — act-as (#2639 / #2644)', () => {
+  const GROUP_DID = 'did:imajin:group-xyz';
+
+  it('surfaces the verified actingAs claim on the token path', async () => {
+    mocks.verifyAppTokenMock.mockResolvedValue({
+      sub: 'did:imajin:user',
+      aud: APP_HOST,
+      scopes: ['profile:read'],
+      actingAs: GROUP_DID,
+    });
+
+    const result = await requireSessionOrAppToken(bearerRequest('good-token'), { aud: APP_HOST });
+
+    expect(result).toEqual({
+      auth: { did: 'did:imajin:user', scopes: ['profile:read'], via: 'token', actingAs: GROUP_DID },
+    });
+  });
+
+  it('leaves actingAs unset when the token carries no act-as claim', async () => {
+    mocks.verifyAppTokenMock.mockResolvedValue({ sub: 'did:imajin:user', aud: APP_HOST, scopes: [] });
+
+    const result = await requireSessionOrAppToken(bearerRequest('good-token'), { aud: APP_HOST });
+
+    expect('auth' in result && 'actingAs' in result.auth).toBe(false);
+  });
+
+  it('does not let a caller-supplied x-acting-as header grant actingAs on the token path', async () => {
+    mocks.verifyAppTokenMock.mockResolvedValue({ sub: 'did:imajin:user', aud: APP_HOST, scopes: [] });
+    const request = new Request('https://market.imajin.ai/api/me', {
+      headers: { authorization: 'Bearer good-token', 'x-acting-as': GROUP_DID },
+    });
+
+    const result = await requireSessionOrAppToken(request, { aud: APP_HOST });
+
+    expect('auth' in result && 'actingAs' in result.auth).toBe(false);
+  });
+
+  it('leaves the cookie path as-is: x-acting-as is ignored and actingAs is never set', async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify({ did: 'did:imajin:cookie-user' }), { status: 200 })) as unknown as typeof fetch;
+    const request = new Request('https://market.imajin.ai/api/me', {
+      headers: { cookie: `${SESSION_COOKIE_NAME}=cookie-value`, 'x-acting-as': GROUP_DID },
+    });
+
+    const result = await requireSessionOrAppToken(request, { aud: APP_HOST });
+
+    expect(result).toEqual({ auth: { did: 'did:imajin:cookie-user', scopes: [], via: 'cookie' } });
+  });
+});
+
 describe('requireSessionOrAppToken — cookie fallback (#1069 Phase 1)', () => {
   it('falls back to the session cookie when there is no Authorization header', async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify({ did: 'did:imajin:cookie-user' }), { status: 200 })) as unknown as typeof fetch;
