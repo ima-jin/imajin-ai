@@ -860,6 +860,14 @@ function claimCodeNoticeFor(
   return { ...base, reason: 'not-delivered', message };
 }
 
+/** Upstream-gateway failures: the request died in a proxy, so the server-side run may still have completed. */
+const GATEWAY_FAILURE_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
+
+/** #2707: the lost-code notice for an apps:provision approve answered with a 502/503/504; `null` for any other status/decision/source. */
+function gatewayLostNoticeFor(approval: OperatorApprovalCard, decision: DecisionAction, status: number): ClaimCodeNotice | null {
+  return GATEWAY_FAILURE_STATUSES.has(status) ? claimCodeNoticeFor(approval, decision, null) : null;
+}
+
 interface DecisionReveals {
   bearer: RevealedBearer | null;
   claimCode: RevealedClaimCode | null;
@@ -1218,6 +1226,14 @@ function OperatorApprovalsPanelInner() {
         return;
       }
       if (!res.ok) {
+        // #2707: a proxy/gateway timeout (502/503/504) on an apps:provision approve means the pipeline
+        // may have finished behind the dead request — same lost-code situation as a dropped connection.
+        const gatewayLost = gatewayLostNoticeFor(approval, decision, res.status);
+        if (gatewayLost) {
+          setClaimNotice(gatewayLost);
+          await load(true);
+          return;
+        }
         const body = await res.json().catch(() => ({})) as { error?: string };
         notify('err', body.error ?? `Decision failed (${res.status})`);
         return;

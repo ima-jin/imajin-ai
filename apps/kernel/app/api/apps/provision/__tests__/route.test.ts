@@ -219,6 +219,26 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ detail: recorded.detail }));
   });
 
+  // The card must describe exactly what approving it does (#2663): with no succeeded ledger row,
+  // approving runs the FULL pipeline, so `reissueClaim: true` must not produce a "reissue" card.
+  it.each([
+    ['the ledger row is failed', { slug: 'dykil', status: 'failed', appDid: null, repoUrl: null, secretsSet: [] }],
+    ['there is no ledger row', undefined],
+  ])('#2707: reissueClaim:true when %s raises an ordinary provision card (manifest read, provision summary, no reissueClaim)', async (_label, ledgerRow) => {
+    getAppProvisionStatusMock.mockResolvedValue(ledgerRow);
+    const declarations = { providesScopes: ['dykil:read'], dependsOn: [] };
+    previewManifestDeclarationsMock.mockResolvedValue({ ok: declarations });
+
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true }) as never);
+
+    expect(response.status).toBe(201);
+    expect(previewManifestDeclarationsMock).toHaveBeenCalledWith('dykil');
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
+    expect(recorded.summary).toMatch(/^Provision app 'dykil'/);
+    expect(recorded.detail).not.toHaveProperty('reissueClaim');
+    expect(recorded.detail.manifestDeclarations).toEqual(declarations);
+  });
+
   it('#2707: an ordinary proposal carries no reissueClaim key (its detail and hash are unchanged)', async () => {
     await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
 

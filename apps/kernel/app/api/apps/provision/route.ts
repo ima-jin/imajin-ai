@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
   // (#2411), in which case a fresh proposal is raised anyway so the
   // operator's approval mints a new one-time code.
   const existingRun = await getAppProvisionStatus(slug);
+  const isReissue = reissueClaim && existingRun?.status === 'succeeded';
   if (existingRun?.status === 'succeeded' && !reissueClaim) {
     return NextResponse.json(
       {
@@ -154,7 +155,9 @@ export async function POST(request: NextRequest) {
   // `null` = no manifest was readable; provisioning then registers none.
   // #2707: a reissue never re-registers anything (the succeeded branch of `runAppProvision`
   // only re-grants + issues a code), so it carries no declarations and needs no manifest read.
-  const preview = reissueClaim ? { ok: null } : await previewManifestDeclarations(slug);
+  // That only holds when the ledger row IS `succeeded` — for a failed/never-provisioned slug,
+  // approving runs the full pipeline, so the card must be an ordinary provision card (#2663).
+  const preview = isReissue ? { ok: null } : await previewManifestDeclarations(slug);
   if ('error' in preview) {
     return NextResponse.json(
       { error: `imajin.app.json scope declarations rejected: ${preview.error}` },
@@ -166,11 +169,11 @@ export async function POST(request: NextRequest) {
   // #2707: a reissue is flagged on the card itself (and so covered by the content hash the
   // operator signs) so /jin can say "Reissue claim code" instead of "Provision". Only set
   // when true — an ordinary provision proposal's detail/hash is byte-identical to before.
-  const summary = reissueClaim
+  const summary = isReissue
     ? `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`
     : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential.`;
   const detail: Record<string, unknown> = { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok };
-  if (reissueClaim) detail.reissueClaim = true;
+  if (isReissue) detail.reissueClaim = true;
   const contentHash = computeApprovalContentHash({
     proposalId,
     source: APPS_SOURCE,

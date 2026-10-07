@@ -93,10 +93,12 @@ const succeededOutcome = (claimCode: string) => ({
 let lastDecisionBody = '';
 
 /** Routes fetches into the real handlers; the approvals list is served from `cards`. */
-function installRoutedFetch(options: { dropDecision?: boolean } = {}) {
+function installRoutedFetch(options: { dropDecision?: boolean; decisionStatus?: number } = {}) {
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes('/decision')) {
       if (options.dropDecision) throw new TypeError('network error');
+      // A proxy answering for a request that is still (or was) running behind it.
+      if (options.decisionStatus) return new Response('Gateway Time-out', { status: options.decisionStatus });
       const proposalId = decodeURIComponent(url.split('/operator-approvals/')[1].split('/')[0]);
       const res = await decisionPost(
         new Request(`https://test.imajin.ai${url}`, init) as Parameters<typeof decisionPost>[0],
@@ -220,6 +222,19 @@ describe('approve → claim-code banner (#2707)', () => {
     expect(within(notice).getByRole('button', { name: 'Reissue claim code' })).toBeDefined();
   });
 
+  it('shows the persistent notice with Reissue (not the 4s flash) when a proxy answers 504 to an apps:provision approve', async () => {
+    seedPendingProvision();
+    installRoutedFetch({ decisionStatus: 504 });
+    render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+
+    const notice = await screen.findByTestId('claim-code-missing');
+    expect(notice.textContent).toMatch(/response was lost/);
+    expect(within(notice).getByRole('button', { name: 'Reissue claim code' })).toBeDefined();
+    expect(screen.queryByText('Decision failed (504)')).toBeNull();
+    expect(screen.queryByTestId('revealed-claim-code')).toBeNull();
+  });
+
   it('shows the notice when the server approves but returns no claim code', async () => {
     seedPendingProvision();
     mockRunAppProvision.mockResolvedValue({ ...succeededOutcome(''), claimCode: '' });
@@ -235,6 +250,9 @@ describe('approve → claim-code banner (#2707)', () => {
 describe('reissue claim code from /jin (#2707)', () => {
   it('Reissue on the dropped-response notice raises the reissueClaim proposal; approving it shows the same box', async () => {
     seedPendingProvision();
+    // Provisioning finished behind the dropped response, so the ledger row is `succeeded` — which is
+    // what makes the route raise a genuine reissue card rather than an ordinary provision one.
+    mockGetStatus.mockResolvedValue({ slug: 'dykil', status: 'succeeded', appDid: 'did:imajin:dykil-app', repoUrl: 'https://github.com/ima-jin/dykil', secretsSet: [] });
     let dropNext = true;
     const spy = installRoutedFetch();
     const routed = spy.getMockImplementation()!;
