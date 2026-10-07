@@ -15,8 +15,14 @@ npm install @ima-jin/auth
 ```ts
 import { requireAuth, authErrorResponse } from '@ima-jin/auth';
 import { sign, verify } from '@ima-jin/auth';
-import { requireSessionOrAppToken } from '@ima-jin/auth';
+import { requireSessionOrAppToken, requireHardDIDOrAppToken } from '@ima-jin/auth';
 ```
+
+`requireHardDIDOrAppToken(request, { aud })` is `requireSessionOrAppToken`
+plus a hard-DID gate: soft (email-only) DIDs get a 403. Tier is read from the
+session for cookie callers and looked up (briefly cached) from the kernel's
+public `GET /auth/api/identity/:did` for app-token callers — tokens carry no
+tier claim. If the tier can't be determined the call fails closed (503).
 
 Subpath exports are available for consumers that only need specific
 vocabularies without pulling in the rest of the package:
