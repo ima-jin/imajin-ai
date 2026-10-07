@@ -21,7 +21,7 @@ const owner = { id: OWNER };
 const CLASSES: MutationClass[] = ['reversible', 'irreversible', 'value-moving'];
 
 function keyOfClass(cls: MutationClass): DelegationRouteKey {
-  const entry = Object.entries(DELEGATION_ROUTES).find(([, e]) => e.class === cls);
+  const entry = Object.entries(DELEGATION_ROUTES).find(([, e]) => e.class === cls && !('gatedUntil' in e));
   if (!entry) throw new Error(`no registered route of class ${cls}`);
   return entry[0] as DelegationRouteKey;
 }
@@ -103,6 +103,41 @@ describe.each(['irreversible', 'value-moving'] as const)('%s class — a delegat
     const body = await res!.json();
     expect(body.assetId).toBe('res_1');
     expect(body.code).toBe(AGENT_APPROVAL_REQUIRED);
+  });
+});
+
+describe('listed exception — reversible class gated until a condition is met (#2360 ruling b)', () => {
+  it('refuses a delegate even though the class is reversible, and says why', async () => {
+    const res = enforceDelegationPolicy(delegate, {
+      action: 'rename', class: 'reversible', resourceId: 'res_1', gatedUntil: 'composedBy is recorded',
+    });
+
+    expect(res!.status).toBe(403);
+    expect(await res!.json()).toEqual({
+      error: 'Agent delegation does not permit rename yet — the owner must countersign until composedBy is recorded',
+      code: AGENT_APPROVAL_REQUIRED,
+      action: 'rename',
+      class: 'reversible',
+      resourceId: 'res_1',
+      ownerDid: OWNER,
+      delegateDid: AGENT,
+      gatedUntil: 'composedBy is recorded',
+    });
+  });
+
+  it('still lets the owner through', () => {
+    expect(enforceDelegationPolicy(owner, { action: 'rename', class: 'reversible', gatedUntil: 'x' })).toBeNull();
+  });
+
+  it('gates media.asset.rename via the registry while other reversible routes stay open', async () => {
+    expect(DELEGATION_ROUTES['media.asset.rename'].gatedUntil).toBeTruthy();
+    const res = enforceRoutePolicy(delegate, 'media.asset.rename', { resourceId: 'res_1' });
+    expect(res!.status).toBe(403);
+    expect((await res!.json()).action).toBe('rename');
+    expect(enforceRoutePolicy(owner, 'media.asset.rename')).toBeNull();
+
+    expect(enforceRoutePolicy(delegate, 'media.asset.classify')).toBeNull();
+    expect(enforceRoutePolicy(delegate, 'media.folder.update')).toBeNull();
   });
 });
 

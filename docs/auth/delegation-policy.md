@@ -1,12 +1,12 @@
 # Delegation policy for owner-mutation routes (#2360)
 
-One rule, one helper, applied to every owner-mutation route. Ruled blanket (not per-route) on 2026-09-24; the rule text below is a **proposal pending ruling**.
+One rule, one helper, applied to every owner-mutation route. Ruled blanket (not per-route) on 2026-09-24; the 3-class table below is ratified (ruling b), with the listed exception for media rename described under [Listed exceptions](#listed-exceptions).
 
 ## The rule
 
 A *delegate* is a registered agent acting under `X-Acting-For` (`Identity.actingFor`). The *owner* is the DID it acts for. `actingFor` is only ever set after the grants-first delegation check (`resolveAgentDelegationAuthority`), so "an active grant" is already established when a route sees it.
 
-- **reversible** — metadata the owner can undo (rename, folder move, versioned content overwrite, classify, article projection) and *payment initiation* (see below). A delegate **may execute** these.
+- **reversible** — metadata the owner can undo (folder move, versioned content overwrite, classify, article projection) and *payment initiation* (see below). A delegate **may execute** these, except the [listed exceptions](#listed-exceptions).
 - **irreversible** — destroys or discloses something that cannot be taken back (delete, `.fair` upgrade, widening access/grants, history disclosure).
 - **value-moving** — moves money, ownership or attribution (transfer, settle, pay-out, refund, `.fair` split edits, balance moves).
 
@@ -29,7 +29,17 @@ Not governed here (separate authority models, left untouched): group impersonati
 - `apps/kernel/src/lib/media/require-media-auth.ts` — `mediaDelegationGate`, the media-route adapter (keeps the historical `assetId` field in the body).
 - `packages/auth/tests/delegation-policy-coverage.test.ts` — fails if a registered route stops calling the helper, a call names an unregistered key, or two handlers share a key.
 
-To put a route under the policy: add a line to `DELEGATION_ROUTES` and one `enforceRoutePolicy(...)` call right after the route resolves the caller's identity. `reversible` routes are registered (so the classification is explicit and a later flip is a one-line change) but make no call — there is nothing to enforce; the coverage test makes the call mandatory the moment a route is flipped to `irreversible` / `value-moving`. The one exception is `PATCH /media/api/assets/[id]` (rename), which keeps its adapter call because it replaces the gate that used to refuse agents there.
+To put a route under the policy: add a line to `DELEGATION_ROUTES` and one `enforceRoutePolicy(...)` call right after the route resolves the caller's identity. `reversible` routes are registered (so the classification is explicit and a later flip is a one-line change) but make no call — there is nothing to enforce; the coverage test makes the call mandatory the moment a route is flipped to `irreversible` / `value-moving`. The one exception is `PATCH /media/api/assets/[id]` (rename), a [listed exception](#listed-exceptions): its registry entry carries `gatedUntil`, so it keeps its adapter call and a delegate is refused.
+
+## Listed exceptions
+
+A route can be classified `reversible` yet stay gated for delegates. Its registry entry carries `gatedUntil` (the condition that lifts the gate); `enforceRoutePolicy` then refuses a delegate with the same `403 AGENT_APPROVAL_REQUIRED`, the body keeps `class: "reversible"` and adds `gatedUntil`, and the coverage test requires the route to call the helper. The reversible class still applies, unchanged, to every other route in it.
+
+- **`PATCH /media/api/assets/[id]` (rename, `media.asset.rename`)** — ruled (b): classified `reversible` (since #2682 it only updates the `filename` display-name column), but it **stays gated — a delegate gets 403 — until the rename route records `composedBy`** (attribution of who made the change). Lifting it is: record `composedBy` in the route, delete `gatedUntil` from the registry entry, update the tests.
+
+## Accepted interim
+
+Ruling a: `POST /pay/api/balance/withdraw` and `POST /pay/api/payment-requests/[id]/settle` stay owner-only (403 for delegates). This supersedes the earlier #2190 / #2665 delegate paths and is the accepted interim state; no change is planned here.
 
 ## Inventory
 
@@ -91,7 +101,7 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `POST /media/api/assets/[id]/classify` (kernel) | no | no | none | **reversible** | `media.asset.classify` — classification metadata |
 | `PUT /media/api/assets/[id]/content` (kernel) | no | no | none | **reversible** | `media.asset.content-write` — versioned content overwrite |
 | `PUT /media/api/assets/[id]/folders` (kernel) | no | no | none | **reversible** | `media.asset.folders` — folder membership |
-| `PATCH /media/api/assets/[id]` (kernel) | no | no | `AGENT_APPROVAL_REQUIRED` | **reversible** | `media.asset.rename` — filename metadata, version-preserving |
+| `PATCH /media/api/assets/[id]` (kernel) | no | no | `AGENT_APPROVAL_REQUIRED` | **reversible** (listed exception: gated until `composedBy` is recorded) | `media.asset.rename` — filename metadata, version-preserving |
 | `PATCH /media/api/folders/[id]` (kernel) | no | no | none | **reversible** | `media.folder.update` — folder rename/move |
 | `POST /media/api/workspace/rollback` (kernel) | no | no | none | **reversible** | `media.workspace.rollback` — moves a branch pointer, snapshots immutable |
 | `POST /pay/api/topup/emt` (kernel) | no | initiates only | none | **reversible** | `pay.balance.topup-emt` — initiates a pending e-Transfer top-up; money only moves when the owner sends it (proposal artifact) |
@@ -109,9 +119,9 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 
 ## DECISION cards
 
-- `DECISION · rename delegate-executable · PATCH /media/api/assets/[id] was gated for agents (#1543); the proposed rule makes reversible PATCH delegate-executable · options a) follow the rule, b) keep rename gated as an exception · rec: a — the rename is version-preserving and reversible; the exception would make the rule non-blanket`. Implemented as (a). `AssetFilename.tsx` copy ("agents cannot rename") is now stale for that code path; UI is out of scope.
+- `DECISION · rename delegate-executable · PATCH /media/api/assets/[id] was gated for agents (#1543); the proposed rule makes reversible PATCH delegate-executable · options a) follow the rule, b) keep rename gated as an exception · rec: a`. **Ruled (b):** the 3-class table is ratified, but rename stays gated (delegate gets 403) as a listed exception until the rename route records `composedBy`. `AssetFilename.tsx` copy ("agents cannot rename") is accurate for that code path.
 - `DECISION · access/grants PATCH class · changing `access` or asset grants can disclose content that can never be un-disclosed · options a) irreversible (gated) b) reversible metadata · rec: a — disclosure is the irreversible part`. Implemented as (a).
 - `DECISION · .fair PUT class · PUT /media/api/assets/[id]/fair rewrites attribution and splits that drive later settlements · options a) value-moving (gated) b) reversible metadata · rec: a — it is attribution-affecting even though the manifest can be rewritten`. Implemented as (a).
 - `DECISION · payment initiation · hosted-checkout / SetupIntent / pending-EMT routes (topup, payment-request checkout, pledge, tip, market purchase) · options a) reversible: the checkout link is the proposal, payer authorises downstream b) value-moving: delegate may not even start a payment · rec: a — gating (b) would stop an agent from handing the owner a pay link, which is the proposal flow`. Implemented as (a).
-- `DECISION · supersedes #2190 / #2665 delegate paths · POST /pay/api/balance/withdraw (destination pinned to the principal's own connected account, #2190) and POST /pay/api/payment-requests/[id]/settle (#2665) previously executed for an actingFor delegate · options a) value-moving: owner must countersign b) exempt: destination/issuer check is enough · rec: a — the ruling is blanket and "settle"/pay-out are named value-moving`. Implemented as (a); the two tests that encoded the delegate path now assert the refusal.
+- `DECISION · supersedes #2190 / #2665 delegate paths · POST /pay/api/balance/withdraw (destination pinned to the principal's own connected account, #2190) and POST /pay/api/payment-requests/[id]/settle (#2665) previously executed for an actingFor delegate · options a) value-moving: owner must countersign b) exempt: destination/issuer check is enough · rec: a — the ruling is blanket and "settle"/pay-out are named value-moving`. Implemented as (a); the two tests that encoded the delegate path now assert the refusal. Ruled: the 403s are the accepted interim (see above).
 - `DECISION · actingAs and app-tokens · group impersonation (actingAs) and scoped app-tokens are not governed by this rule · options a) leave (separate authority models) b) extend the gate to actingAs · rec: a — a group controller is a human principal, and app-tokens are explicit owner-granted scopes`. Implemented as (a).

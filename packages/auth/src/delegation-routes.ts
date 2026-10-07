@@ -23,6 +23,13 @@ export interface DelegationRouteEntry {
   path: string;
   /** Why it is in this class. */
   why: string;
+  /**
+   * Listed exception to the class rule: while set, a delegate is refused with
+   * the owner-countersign 403 even though `class` would let it execute. The
+   * value says when the exception can be lifted. Removing it is a one-line
+   * change; the coverage test requires a call site for every entry that has it.
+   */
+  gatedUntil?: string;
 }
 
 export const DELEGATION_ROUTES = {
@@ -31,10 +38,15 @@ export const DELEGATION_ROUTES = {
     path: "/media/api/assets/[id]",
     why: "soft-deletes asset + unlinks files",
   },
+  // LISTED EXCEPTION (#2360 ruling b): rename is classified `reversible` (a
+  // display-name-only update since #2682), but it stays gated — a delegate gets
+  // 403 AGENT_APPROVAL_REQUIRED — until the rename route records `composedBy`
+  // (who actually made the change). Drop `gatedUntil` once it does.
   "media.asset.rename": {
     class: "reversible", action: "rename", app: "kernel", method: "PATCH",
     path: "/media/api/assets/[id]",
     why: "filename metadata, version-preserving",
+    gatedUntil: "the rename route records composedBy",
   },
   "media.asset.transfer": {
     class: "value-moving", action: "transfer", app: "kernel", method: "POST",

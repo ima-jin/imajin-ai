@@ -5,9 +5,11 @@
  * the owner's behalf. A *delegate* is a registered agent acting under
  * `X-Acting-For` (`Identity.actingFor`); the owner is the DID it acts for.
  *
- *   reversible     — metadata edits that can be undone by the owner (rename,
- *                    folder move, versioned content overwrite, classify).
- *                    A delegate MAY execute these. `actingFor` is only ever
+ *   reversible     — metadata edits that can be undone by the owner (folder
+ *                    move, versioned content overwrite, classify).
+ *                    A delegate MAY execute these — except listed exceptions
+ *                    (`gatedUntil` in the registry), e.g. media rename, which
+ *                    stays gated until the route records `composedBy`. `actingFor` is only ever
  *                    set after the grants-first delegation check
  *                    (`resolveAgentDelegationAuthority`) succeeded, so "an
  *                    active grant" is already established by the time a
@@ -29,7 +31,7 @@
  * with no I/O so route tests that mock the `@imajin/auth` root keep working.
  */
 
-import { DELEGATION_ROUTES, type DelegationRouteKey, type MutationClass } from "./delegation-routes";
+import { DELEGATION_ROUTES, type DelegationRouteEntry, type DelegationRouteKey, type MutationClass } from "./delegation-routes";
 
 export { DELEGATION_ROUTES } from "./delegation-routes";
 export type { DelegationRouteEntry, DelegationRouteKey, MutationClass } from "./delegation-routes";
@@ -43,6 +45,11 @@ export interface DelegationMutation {
   class: MutationClass;
   /** The resource the mutation targets, echoed back so the owner can act on it. */
   resourceId?: string;
+  /**
+   * Set for a listed exception (see `DelegationRouteEntry.gatedUntil`): a
+   * delegate is refused even when `class` is `reversible`.
+   */
+  gatedUntil?: string;
 }
 
 /** An authenticated session identity (structural subset of `Identity`). */
@@ -67,10 +74,12 @@ export interface DelegationPolicyBody {
   error: string;
   code: typeof AGENT_APPROVAL_REQUIRED;
   action: string;
-  class: Exclude<MutationClass, "reversible">;
+  class: MutationClass;
   resourceId?: string;
   ownerDid: string;
   delegateDid?: string;
+  /** Present only for a listed exception: when the gate can be lifted. */
+  gatedUntil?: string;
 }
 
 export type DelegationDecision =
@@ -108,7 +117,7 @@ function resolveDelegation(source: DelegationSource): ResolvedDelegation | null 
 
 /** Pure policy decision — no response construction. */
 export function evaluateDelegationPolicy(source: DelegationSource, mutation: DelegationMutation): DelegationDecision {
-  if (mutation.class === "reversible") return { allowed: true };
+  if (mutation.class === "reversible" && !mutation.gatedUntil) return { allowed: true };
 
   const delegation = resolveDelegation(source);
   if (!delegation) return { allowed: true };
@@ -117,13 +126,16 @@ export function evaluateDelegationPolicy(source: DelegationSource, mutation: Del
     allowed: false,
     status: 403,
     body: {
-      error: `Agent delegation does not permit ${mutation.class} operations — the owner must countersign`,
+      error: mutation.gatedUntil
+        ? `Agent delegation does not permit ${mutation.action} yet — the owner must countersign until ${mutation.gatedUntil}`
+        : `Agent delegation does not permit ${mutation.class} operations — the owner must countersign`,
       code: AGENT_APPROVAL_REQUIRED,
       action: mutation.action,
       class: mutation.class,
       ...(mutation.resourceId === undefined ? {} : { resourceId: mutation.resourceId }),
       ownerDid: delegation.ownerDid,
       ...(delegation.delegateDid === undefined ? {} : { delegateDid: delegation.delegateDid }),
+      ...(mutation.gatedUntil === undefined ? {} : { gatedUntil: mutation.gatedUntil }),
     },
   };
 }
@@ -159,10 +171,10 @@ export function enforceRoutePolicy(
   key: DelegationRouteKey,
   options?: { resourceId?: string; headers?: HeadersInit; extra?: Record<string, unknown> },
 ): Response | null {
-  const entry = DELEGATION_ROUTES[key];
+  const entry: DelegationRouteEntry = DELEGATION_ROUTES[key];
   return enforceDelegationPolicy(
     source,
-    { action: entry.action, class: entry.class, resourceId: options?.resourceId },
+    { action: entry.action, class: entry.class, resourceId: options?.resourceId, gatedUntil: entry.gatedUntil },
     { headers: options?.headers, extra: options?.extra },
   );
 }

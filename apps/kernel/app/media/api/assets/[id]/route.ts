@@ -158,7 +158,8 @@ export async function PATCH(
   }
   const { auth } = authResult;
 
-  // Rename is reversible metadata — a delegate may execute it (#2360).
+  // Rename is reversible metadata but a listed exception (#2360 ruling b): a
+  // delegate stays gated (403) until this route records `composedBy`.
   const approvalRequired = mediaDelegationGate(auth, "media.asset.rename", id);
   if (approvalRequired) return approvalRequired;
 

@@ -13,7 +13,9 @@ import { DELEGATION_ROUTES } from '../src/delegation-policy';
  * A `reversible` route needs no enforcement (a delegate may execute it), so its
  * call is optional — but if one is present it must still be unique. Flipping a
  * route to `irreversible` / `value-moving` in the registry makes the call
- * mandatory, so a class change can never silently go unenforced.
+ * mandatory, so a class change can never silently go unenforced. A listed
+ * exception (`gatedUntil`, e.g. media rename) is enforced, so its call is
+ * mandatory too.
  */
 
 const REPO_ROOT = resolve(__dirname, '../../..');
@@ -66,7 +68,7 @@ describe('delegation policy coverage (#2360)', () => {
 
   it.each(entries)('%s is enforced by exactly one handler (reversible: at most one)', (key, entry) => {
     const count = callSites.get(key)?.length ?? 0;
-    if (entry.class === 'reversible') {
+    if (entry.class === 'reversible' && !('gatedUntil' in entry)) {
       expect(count).toBeLessThanOrEqual(1);
     } else {
       expect(count).toBe(1);
