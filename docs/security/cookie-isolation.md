@@ -145,8 +145,17 @@ their own scope id as both `token_audiences` and `allowed_redirect_hosts`.
 import { verifyAppToken } from "@imajin/auth";
 
 const claims = await verifyAppToken(bearerToken, { aud: "coffee" });
-// claims: { sub, aud, scopes } | null
+// claims: { sub, aud, scopes, actingAs? } | null
 ```
+
+**Act-as (#2639, #2644):** `POST /auth/api/tokens/app` also accepts an optional `actAs` group
+DID. The kernel runs the existing `validateActingAs` group-authority gate once, at mint, and only for
+an app the operator approved for act-as (`registry.apps.act_as_allowed`, off by default); otherwise
+`403` and no token. The token then carries an `acting_as` claim, `verifyAppToken` returns it as
+`actingAs`, and `requireSessionOrAppToken` surfaces it as `auth.actingAs` on the `token` path. There
+is no per-request group re-check; the 10-minute expiry bounds staleness, and verify stops accepting
+the token if the app loses act-as approval. The `cookie` path is unchanged and never carries
+`actingAs`. See `docs/REGISTRATION.md` ("Acting as a group DID").
 
 This is a distinct token `typ` (`session-app+jwt`) from the third-party
 `app+jwt` / `app-service+jwt` tokens — it carries no `azp` or

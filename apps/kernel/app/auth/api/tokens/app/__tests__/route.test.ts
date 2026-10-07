@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   createSessionAppTokenMock: vi.fn().mockResolvedValue('signed.session-app.jwt'),
   resolveActiveAppByAudienceMock: vi.fn(),
   resolveTokenGrantMock: vi.fn(),
+  validateActingAsMock: vi.fn(),
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -32,6 +33,7 @@ vi.mock('@imajin/config', () => ({
 // Stand-in for the platform vocabulary (profile:read, connections:read, media:*) plus the app's
 // own `providesScopes` — the real clamp is covered by packages/auth/tests/app-scopes.test.ts.
 vi.mock('@imajin/auth', () => ({
+  validateActingAs: mocks.validateActingAsMock,
   resolveAppScopes: (scopes: string[], provides: string[] = []) => {
     const known = new Set(['profile:read', 'connections:read', 'media:read', 'media:write', ...provides]);
     return { valid: scopes.filter((s) => known.has(s)), invalid: scopes.filter((s) => !known.has(s)) };
@@ -76,7 +78,8 @@ beforeEach(() => {
   mocks.createSessionAppTokenMock.mockResolvedValue('signed.session-app.jwt');
   // Default every test to an aud that IS registered — #1990 enforcement
   // tests below override this to exercise the unregistered path.
-  mocks.resolveActiveAppByAudienceMock.mockResolvedValue({ id: 'app_first_party_coffee', appDid: 'did:imajin:app-coffee', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active', providesScopes: [], dependsOn: [] });
+  mocks.resolveActiveAppByAudienceMock.mockResolvedValue({ id: 'app_first_party_coffee', appDid: 'did:imajin:app-coffee', ownerDid: 'did:imajin:platform', tier: 'first_party', status: 'active', providesScopes: [], dependsOn: [], actAsAllowed: false });
+  mocks.validateActingAsMock.mockResolvedValue({ valid: true, role: 'owner', allowedServices: null });
   // Default: no dependency audiences — the token carries only the requested aud and scopes.
   mocks.resolveTokenGrantMock.mockImplementation(async (aud: string, _app: unknown, scopes: string[]) => ({ audiences: [aud], scopes }));
 });
@@ -272,5 +275,93 @@ describe('POST /auth/api/tokens/app — one token for the app and its dependenci
       aud: [DYKIL_HOST, MEDIA_HOST],
       scopes: ['dykil:read', 'media:read'],
     });
+  });
+});
+
+describe('POST /auth/api/tokens/app — act-as, checked once at mint (#2639 / #2644)', () => {
+  const GROUP_DID = 'did:imajin:group-xyz';
+  const approvedApp = {
+    id: 'app_market',
+    appDid: 'did:imajin:app-market',
+    ownerDid: 'did:imajin:platform',
+    tier: 'first_party',
+    status: 'active',
+    providesScopes: [],
+    dependsOn: [],
+    actAsAllowed: true,
+  };
+
+  beforeEach(() => {
+    mocks.verifySessionTokenMock.mockResolvedValue({ sub: USER_DID });
+  });
+
+  it('mints WITHOUT an act-as claim, and never runs the group gate, when actAs is not requested', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(approvedApp);
+
+    const res = await POST(makeRequest({ aud: 'market.imajin.ai' }, 'good-token') as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).not.toHaveProperty('actingAs');
+    expect(mocks.validateActingAsMock).not.toHaveBeenCalled();
+    expect(mocks.createSessionAppTokenMock.mock.calls[0][0]).not.toHaveProperty('actingAs');
+  });
+
+  it('mints a token carrying the verified act-as claim for an approved app and an authorised controller', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(approvedApp);
+
+    const res = await POST(makeRequest({ aud: 'market.imajin.ai', actAs: GROUP_DID }, 'good-token') as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.actingAs).toBe(GROUP_DID);
+    expect(mocks.validateActingAsMock).toHaveBeenCalledTimes(1);
+    expect(mocks.validateActingAsMock).toHaveBeenCalledWith(USER_DID, GROUP_DID);
+    expect(mocks.createSessionAppTokenMock).toHaveBeenCalledWith({
+      sub: USER_DID,
+      aud: ['market.imajin.ai'],
+      scopes: [],
+      actingAs: GROUP_DID,
+    });
+  });
+
+  it('does not lengthen the token lifetime for act-as tokens (expiresIn stays 600)', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(approvedApp);
+
+    const res = await POST(makeRequest({ aud: 'market.imajin.ai', actAs: GROUP_DID }, 'good-token') as never);
+
+    expect((await res.json()).expiresIn).toBe(600);
+  });
+
+  it('refuses with 403 and mints NO token when the caller is not authorised for the group', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(approvedApp);
+    mocks.validateActingAsMock.mockResolvedValue({ valid: false });
+
+    const res = await POST(makeRequest({ aud: 'market.imajin.ai', actAs: GROUP_DID }, 'good-token') as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('act_as_not_authorized');
+    expect(body).not.toHaveProperty('token');
+    expect(mocks.createSessionAppTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses with 403 and mints NO token when the operator has not approved act-as for the app (default)', async () => {
+    const res = await POST(makeRequest({ aud: 'coffee.imajin.ai', actAs: GROUP_DID }, 'good-token') as never);
+    const body = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(body.error).toBe('act_as_not_approved');
+    expect(mocks.validateActingAsMock).not.toHaveBeenCalled();
+    expect(mocks.createSessionAppTokenMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a malformed actAs with 400 and mints no token', async () => {
+    mocks.resolveActiveAppByAudienceMock.mockResolvedValue(approvedApp);
+
+    const res = await POST(makeRequest({ aud: 'market.imajin.ai', actAs: { did: GROUP_DID } }, 'good-token') as never);
+
+    expect(res.status).toBe(400);
+    expect(mocks.createSessionAppTokenMock).not.toHaveBeenCalled();
   });
 });

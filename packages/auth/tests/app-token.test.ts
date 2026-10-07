@@ -91,3 +91,35 @@ describe('verifyAppToken — failure modes (#1069 Phase 1)', () => {
     },
   );
 });
+
+describe('verifyAppToken — act-as claim (#2639 / #2644)', () => {
+  it('surfaces actingAs when the kernel verify response carries it', async () => {
+    global.fetch = vi.fn(async () =>
+      new Response(
+        JSON.stringify({ sub: 'did:imajin:user', aud: 'market', scopes: [], actingAs: 'did:imajin:group' }),
+        { status: 200 }
+      )
+    ) as unknown as typeof fetch;
+
+    const result = await verifyAppToken('some-token', { aud: 'market' });
+
+    expect(result).toEqual({
+      sub: 'did:imajin:user',
+      aud: 'market',
+      scopes: [],
+      actingAs: 'did:imajin:group',
+    });
+  });
+
+  it.each([[''], [null], [42], [{ did: 'x' }]])('omits actingAs for a non-string or empty claim (%j)', async (bad) => {
+    global.fetch = vi.fn(async () =>
+      new Response(JSON.stringify({ sub: 'did:imajin:user', aud: 'market', scopes: [], actingAs: bad }), {
+        status: 200,
+      })
+    ) as unknown as typeof fetch;
+
+    const result = await verifyAppToken('some-token', { aud: 'market' });
+
+    expect(result).toEqual({ sub: 'did:imajin:user', aud: 'market', scopes: [] });
+  });
+});

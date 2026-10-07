@@ -160,6 +160,7 @@ export async function GET(_request: NextRequest) {
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
       emittableEvents: registryApps.emittableEvents,
+      actAsAllowed: registryApps.actAsAllowed,
       status: registryApps.status,
       tier: registryApps.tier,
       allowedRedirectHosts: registryApps.allowedRedirectHosts,

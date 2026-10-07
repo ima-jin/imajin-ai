@@ -8,10 +8,17 @@
  * for another.
  *
  * Body: { token: string, aud?: string, scope?: string }
- * Returns: { sub, aud, scopes }
+ * Returns: { sub, aud, scopes, actingAs? }
  *   scopes — those honoured at the verified `aud` (#2674): everything on the
  *            token at its primary audience, only the listed dependency scopes
  *            at a dependency audience.
+ *
+ * `actingAs` (#2639 / #2644) is the group DID the token was minted to act as. The
+ * group authority was checked once at mint; here we only re-apply what the registry
+ * already re-applies to the app on every verify. Act-as honours that revocation: if
+ * the app lost its operator act-as approval the token stops verifying (403) rather
+ * than silently degrading to the user's own DID. The claim is surfaced only for the
+ * app's own audience, never when verified as a dependency audience (#2663).
  *
  * This is the transport `verifyAppToken` (@imajin/auth) calls into. See
  * apps/kernel/src/lib/auth/jwt.ts for the session-vs-app-DID token distinction.
@@ -22,6 +29,7 @@ import { corsHeaders } from '@imajin/config';
 import { scopesForAudience } from '@imajin/auth';
 import { verifySessionAppTokenLocal } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience, appNotRegisteredResponse } from '@/src/lib/kernel/app-registry';
+import { ACT_AS_NOT_APPROVED_ERROR } from '@/src/lib/kernel/app-act-as';
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -59,6 +67,17 @@ export async function POST(request: NextRequest) {
     return appNotRegisteredResponse(request);
   }
 
+  // #2639: the minting app is the token's primary audience (always first). A token
+  // carrying an act-as claim is only valid while that app is still approved for it.
+  let actingAs = claims.actingAs;
+  if (actingAs) {
+    if (!registered[0]?.actAsAllowed) {
+      return NextResponse.json(ACT_AS_NOT_APPROVED_ERROR, { status: 403, headers: cors });
+    }
+    // Narrowest reading: act-as belongs to the minting app's own audience.
+    if (claims.aud !== claims.auds[0]) actingAs = undefined;
+  }
+
   // #2674: scopes ride on the token as one flat list, but each dependency's
   // listed scopes belong to ITS audience only. Verifying for a dependency
   // honours just the scopes the primary app's `dependsOn` lists for it, so a
@@ -72,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(
-    { sub: claims.sub, aud: claims.aud, scopes },
+    { sub: claims.sub, aud: claims.aud, scopes, ...(actingAs ? { actingAs } : {}) },
     { headers: cors }
   );
 }

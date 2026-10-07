@@ -69,6 +69,19 @@ describe('requireHardDIDOrAppToken — session (cookie) path', () => {
 });
 
 describe('requireHardDIDOrAppToken — app token path', () => {
+  it('carries the verified act-as claim through, with the tier checked on the human DID (#2639)', async () => {
+    const GROUP = 'did:imajin:group-xyz';
+    mocks.verifyAppTokenMock.mockResolvedValue({ sub: DID, aud: APP_SLUG, scopes: [], actingAs: GROUP });
+    const fetchMock = mockFetch(() => json({ did: DID, tier: 'established' }));
+
+    const result = await requireHardDIDOrAppToken(bearerRequest(), { slug: APP_SLUG });
+
+    expect(result).toEqual({ auth: { did: DID, scopes: [], via: 'token', actingAs: GROUP } });
+    expect(fetchMock).toHaveBeenCalledWith(`${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(DID)}`, {
+      cache: 'no-store',
+    });
+  });
+
   it('succeeds for a hard DID, looking the tier up on the public identity endpoint', async () => {
     const fetchMock = mockFetch(() => json({ did: DID, tier: 'established' }));
     const result = await requireHardDIDOrAppToken(bearerRequest(), { slug: APP_SLUG });

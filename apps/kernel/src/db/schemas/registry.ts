@@ -384,6 +384,12 @@ export const registryApps = registrySchema.table('apps', {
    * app-emitted event can only ever run notify + audit-log reactors.
    */
   emittableEvents: jsonb('emittable_events').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /**
+   * Operator approval for this app's scoped tokens to carry an act-as (group DID)
+   * claim (#2639 / #2644, 0180_registry_apps_act_as_allowed.sql). Off by default;
+   * flipped only by the admin route `POST /api/admin/registry/apps/:appId/act-as`.
+   */
+  actAsAllowed: boolean('act_as_allowed').notNull().default(false),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),

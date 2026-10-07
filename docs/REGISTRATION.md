@@ -371,6 +371,48 @@ shows which app sent what. These keys, and `preview` / `attestationId`, are owne
 app-supplied value for them is dropped, so an app cannot spoof another origin or opt out of the audit
 write.
 
+### Acting as a group DID (#2639, #2644)
+
+A person acting as their group in a registered app (market's group-owned listings with the group's
+scope fee, coffee's group-owned pages) needs the token to say so. Ruled: **the kernel checks the
+user's group authority once, at app-token issuance (reusing the existing group-permission check), and
+the operator approves act-as per app; token expiry bounds staleness.** There is no per-request
+re-check.
+
+1. **The operator approves act-as per app.** `POST /api/admin/registry/apps/:appId/act-as` with
+   `{ "allowed": true }` (admin-only, signs a `registry.app.act_as.updated` attestation) sets
+   `registry.apps.act_as_allowed`. It is `false` for every app by default, and, like `dependsOn`, is
+   written only by this operator route: self-service register and PATCH never set it.
+2. **The mint takes an optional `actAs`.** `POST /auth/api/tokens/app` accepts `{ aud, scopes?, actAs? }`
+   where `actAs` is the group DID. At mint the kernel runs the same `validateActingAs` gate
+   `requireAuth` uses for `x-acting-as`, once. It answers `403` and mints **no token** when the app is
+   not operator-approved (`act_as_not_approved`) or the caller is not an owner/admin/maintainer/agent
+   controller of the group (`act_as_not_authorized`). A controller restricted to specific services is
+   refused as well, since an app audience is not one of those services. A malformed `actAs` is `400`.
+3. **The token carries the verified claim.** The response includes `actingAs`, the token has an
+   `acting_as` claim, and `POST /auth/api/tokens/app/verify` returns `actingAs`. Token lifetime is
+   unchanged (10 minutes).
+4. **Revocation follows the registry.** Verify already re-checks the registry for every audience on
+   the token. For an act-as token it also re-reads the minting app's `act_as_allowed`: if the operator
+   has since withdrawn approval, the token stops verifying (`403 act_as_not_approved`) rather than
+   silently falling back to the user's own DID. The claim is honoured for the app's own audience only,
+   not when the token is verified as a `dependsOn` audience.
+5. **Apps read it from `requireSessionOrAppToken`.** The result's `auth.actingAs` is set on the
+   `token` path only; own records as `auth.actingAs ?? auth.did`. The `cookie` path is unchanged: it
+   ignores `x-acting-as` and never sets `actingAs`.
+
+```bash
+# Operator approves act-as for market (admin session):
+curl -X POST "https://<kernel-host>/api/admin/registry/apps/${APP_ID}/act-as" \
+  -H "Content-Type: application/json" -d '{ "allowed": true }'
+
+# A person who controls the group mints a token that acts as it:
+curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
+  -H "Content-Type: application/json" -H "Cookie: <the user's session cookie>" \
+  -d '{ "aud": "market.imajin.ai", "scopes": ["profile:read"], "actAs": "did:imajin:<group>" }'
+# -> { "token": "...", "expiresIn": 600, "scopes": [...], "aud": [...], "actingAs": "did:imajin:<group>" }
+```
+
 ### What gets sealed, and where
 
 One Actions secret is sealed into the app's repo, by name:

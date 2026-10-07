@@ -262,6 +262,12 @@ export interface SessionAppTokenPayload {
    */
   aud: string | string[];
   scopes: string[]; // requested scopes, already clamped to the SCOPES vocabulary by the caller
+  /**
+   * Group DID the token acts as (#2639 / #2644). The caller MUST have already
+   * verified the user's group authority and the app's operator act-as approval
+   * (see /auth/api/tokens/app) — this function only signs the claim.
+   */
+  actingAs?: string;
 }
 
 /**
@@ -271,7 +277,10 @@ export interface SessionAppTokenPayload {
 export async function createSessionAppToken(payload: SessionAppTokenPayload): Promise<string> {
   const { privateKey } = await getKeyPair();
 
-  return new jose.SignJWT({ scope: payload.scopes.join(' ') })
+  return new jose.SignJWT({
+    scope: payload.scopes.join(' '),
+    ...(payload.actingAs ? { acting_as: payload.actingAs } : {}),
+  })
     .setProtectedHeader({ alg: 'EdDSA', typ: 'session-app+jwt' })
     .setSubject(payload.sub)
     .setIssuer(JWT_ISSUER)
@@ -290,6 +299,8 @@ export interface SessionAppTokenClaims {
   /** Every audience the token carries (#2663); always includes `aud`. */
   auds: string[];
   scopes: string[];
+  /** Verified act-as (group DID) claim, when the token carries one (#2639). */
+  actingAs?: string;
 }
 
 /**
@@ -321,6 +332,7 @@ export async function verifySessionAppTokenLocal(
       aud,
       auds,
       scopes: payload.scope ? (payload.scope as string).split(' ').filter(Boolean) : [],
+      ...(typeof payload.acting_as === 'string' && payload.acting_as ? { actingAs: payload.acting_as } : {}),
     };
   } catch (error) {
     log.error({ err: String(error) }, 'Session app token verification failed');
