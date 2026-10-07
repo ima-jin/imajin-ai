@@ -158,6 +158,33 @@ describe('POST /usage/api/incurred — batch envelope validation', () => {
   });
 });
 
+describe('POST /usage/api/incurred — session_id (#2726)', () => {
+  it('persists session_id onto the usage.incurred row', async () => {
+    const res = await POST(makeRequest([goodRow({ session_id: 'sess-123' })]));
+
+    expect(res.status).toBe(202);
+    expect((await res.json()).inserted).toBe(1);
+    expect(mocks.insertValues[0].sessionId).toBe('sess-123');
+  });
+
+  it('writes a null session_id when the row omits it', async () => {
+    const res = await POST(makeRequest([goodRow()]));
+
+    expect((await res.json()).inserted).toBe(1);
+    expect(mocks.insertValues[0].sessionId).toBeNull();
+  });
+
+  it('rejects an invalid session_id without inserting', async () => {
+    const res = await POST(makeRequest([goodRow({ session_id: 42 })]));
+
+    const body = await res.json();
+    expect(body.inserted).toBe(0);
+    expect(body.rejected).toHaveLength(1);
+    expect(body.rejected[0].reason).toContain('session_id');
+    expect(mocks.insertValues).toHaveLength(0);
+  });
+});
+
 describe('POST /usage/api/incurred — source/issuer validation', () => {
   it('rejects a row naming an unknown source', async () => {
     mocks.getEmitter.mockResolvedValue(undefined);

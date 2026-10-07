@@ -162,6 +162,7 @@ async function insertIncurredRow(row: ValidatedIncurredRow, emitterActingFor: st
       quantity: quantity === undefined ? null : quantity.toFixed(6),
       unit: unit ?? null,
       externalId: row.externalId,
+      sessionId: row.sessionId ?? null,
       createdAt: row.ts,
     })
     .onConflictDoNothing({

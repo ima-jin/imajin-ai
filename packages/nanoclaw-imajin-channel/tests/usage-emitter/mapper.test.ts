@@ -27,6 +27,23 @@ describe('mapAssistantLine', () => {
     });
   });
 
+  it('omits session_id when none is available', () => {
+    expect(mapAssistantLine(assistantLine)).not.toHaveProperty('session_id');
+  });
+
+  it('stamps the fallback session id when the line carries none', () => {
+    expect(mapAssistantLine(assistantLine, 'file-session')?.session_id).toBe('file-session');
+  });
+
+  it("prefers the line's own sessionId over the fallback", () => {
+    const row = mapAssistantLine({ ...assistantLine, sessionId: 'line-session' }, 'file-session');
+    expect(row?.session_id).toBe('line-session');
+  });
+
+  it('ignores an empty line sessionId and uses the fallback', () => {
+    expect(mapAssistantLine({ ...assistantLine, sessionId: '' }, 'file-session')?.session_id).toBe('file-session');
+  });
+
   it('ignores non-assistant lines', () => {
     expect(mapAssistantLine({ type: 'user' })).toBeUndefined();
   });
@@ -66,6 +83,12 @@ describe('mapJsonlLines', () => {
     const rows = mapJsonlLines([first, second]);
     expect(rows).toHaveLength(1);
     expect(rows[0].tokens_out).toBe(40);
+  });
+
+  it('stamps the session id on every mapped row', () => {
+    const other = { ...assistantLine, message: { ...assistantLine.message, id: 'msg-def' } };
+    const rows = mapJsonlLines([assistantLine, other], 'file-session');
+    expect(rows.map((r) => r.session_id)).toEqual(['file-session', 'file-session']);
   });
 
   it('skips lines with no billable usage', () => {

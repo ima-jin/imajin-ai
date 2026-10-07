@@ -18,6 +18,9 @@
 /** Hard ceiling on rows per request — batch/periodic reporting, not a streaming firehose. */
 export const MAX_INCURRED_BATCH_SIZE = 500;
 
+/** Upper bound on `session_id` length — generous for UUIDs / run ids, tight enough to keep the column sane. */
+export const MAX_SESSION_ID_LENGTH = 256;
+
 /** One raw row as external emitters send it. */
 export interface RawIncurredRow {
   source?: unknown;
@@ -32,6 +35,7 @@ export interface RawIncurredRow {
   external_id?: unknown;
   ts?: unknown;
   acting_for?: unknown;
+  session_id?: unknown;
 }
 
 /** One validated row, ready to resolve against the emitter registry and insert. */
@@ -50,6 +54,8 @@ export interface ValidatedIncurredRow {
   externalId: string;
   ts: Date;
   actingFor?: string;
+  /** Harness session / run id — joins the row to a Warp run (#2726). */
+  sessionId?: string;
 }
 
 /** Why one row in a batch was rejected, with its index for correlation. */
@@ -72,6 +78,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+function isBoundedSessionId(value: unknown): value is string {
+  return isNonEmptyString(value) && value.length <= MAX_SESSION_ID_LENGTH;
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -117,6 +127,7 @@ interface OptionalFields {
   quantity?: number;
   unit?: string;
   actingFor?: string;
+  sessionId?: string;
 }
 
 /** One (raw key, validated key, validator) triple per optional field — data-driven so adding a field is one row, not another `if`. */
@@ -131,6 +142,8 @@ const OPTIONAL_FIELD_RULES = [
   { rawKey: 'quantity', outKey: 'quantity', check: isFiniteNumber, message: 'quantity must be a number when present' },
   { rawKey: 'unit', outKey: 'unit', check: isNonEmptyString, message: 'unit must be a string when present' },
   { rawKey: 'acting_for', outKey: 'actingFor', check: isNonEmptyString, message: 'acting_for must be a string when present' },
+  // #2726: harness session / run id, so the Spend lane can join rows to runs.
+  { rawKey: 'session_id', outKey: 'sessionId', check: isBoundedSessionId, message: `session_id must be a non-empty string of at most ${MAX_SESSION_ID_LENGTH} characters when present` },
 ] as const satisfies ReadonlyArray<{ rawKey: string; outKey: keyof OptionalFields; check: (v: unknown) => boolean; message: string }>;
 
 /** Validate and normalize the optional fields, or the first rejection reason encountered. */

@@ -70,8 +70,8 @@ async function main(): Promise<void> {
   }
 
   const previousState = loadState(config.stateFilePath);
-  const { rawLines, state: nextState } = tailNewLines(config.projectsDir, previousState);
-  const rows = mapJsonlLines(rawLines);
+  const { files, state: nextState } = tailNewLines(config.projectsDir, previousState);
+  const rows = files.flatMap((file) => mapJsonlLines(file.rawLines, file.sessionId));
 
   if (rows.length === 0) {
     console.log('usage-emitter: no new usage rows to report.');
