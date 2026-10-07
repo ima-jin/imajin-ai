@@ -10,7 +10,7 @@ import { FrontDoorPanel } from '../front-door-panel';
 
 interface Topic { open: boolean; published: boolean; mode: 'deliver' | 'decline' }
 interface Config {
-  tiers: { anonymous: boolean; verified: boolean; attested: boolean };
+  tiers: { anonymous: boolean; soft: boolean; preliminary: boolean; established: boolean };
   topics: Record<string, Topic>;
   dailyCap: number | null;
 }
@@ -22,7 +22,7 @@ const OPTIONS = [
 
 function config(overrides: Partial<Config> = {}): Config {
   return {
-    tiers: { anonymous: false, verified: false, attested: false },
+    tiers: { anonymous: false, soft: false, preliminary: false, established: false },
     topics: {
       collaboration: { open: false, published: false, mode: 'deliver' },
       speaking: { open: false, published: false, mode: 'deliver' },
@@ -105,13 +105,18 @@ describe('tiers', () => {
     expect(screen.getByText('locked')).toBeDefined();
   });
 
-  it('toggles verified and attested', async () => {
+  it('toggles the soft, preliminary and established tiers', async () => {
     installFetch();
     render(<FrontDoorPanel />);
     await screen.findByText('Front door');
-    const verified = screen.getByTestId('front-door-tier-verified').querySelector('input') as HTMLInputElement;
-    fireEvent.click(verified);
-    expect(verified.checked).toBe(true);
+    for (const tier of ['soft', 'preliminary', 'established']) {
+      const input = screen.getByTestId(`front-door-tier-${tier}`).querySelector('input') as HTMLInputElement;
+      expect(input.disabled).toBe(false);
+      fireEvent.click(input);
+      expect(input.checked).toBe(true);
+    }
+    expect(screen.queryByTestId('front-door-tier-verified')).toBeNull();
+    expect(screen.queryByTestId('front-door-tier-attested')).toBeNull();
   });
 });
 
@@ -176,7 +181,7 @@ describe('save', () => {
     render(<FrontDoorPanel />);
     await screen.findByText('Front door');
 
-    fireEvent.click(screen.getByTestId('front-door-tier-verified').querySelector('input') as HTMLInputElement);
+    fireEvent.click(screen.getByTestId('front-door-tier-preliminary').querySelector('input') as HTMLInputElement);
     fireEvent.click(screen.getByLabelText('Open Collaboration'));
     fireEvent.click(screen.getByLabelText('Publish Collaboration on card'));
     fireEvent.change(screen.getByLabelText('Mode for Collaboration'), { target: { value: 'decline' } });
@@ -188,7 +193,7 @@ describe('save', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toBe('/jin/api/front-door');
     expect(JSON.parse(String((calls[0][1] as RequestInit).body))).toEqual({
-      tiers: { anonymous: false, verified: true, attested: false },
+      tiers: { anonymous: false, soft: false, preliminary: true, established: false },
       topics: {
         collaboration: { open: true, published: true, mode: 'decline' },
         speaking: { open: false, published: false, mode: 'deliver' },
@@ -203,18 +208,18 @@ describe('save', () => {
     installFetch({ put: { ok: false, body: { error: 'dailyCap must be null or an integer between 1 and 1000' } } });
     render(<FrontDoorPanel />);
     await screen.findByText('Front door');
-    fireEvent.click(screen.getByTestId('front-door-tier-attested').querySelector('input') as HTMLInputElement);
+    fireEvent.click(screen.getByTestId('front-door-tier-established').querySelector('input') as HTMLInputElement);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await screen.findByText('dailyCap must be null or an integer between 1 and 1000')).toBeDefined();
-    expect((screen.getByTestId('front-door-tier-attested').querySelector('input') as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByTestId('front-door-tier-established').querySelector('input') as HTMLInputElement).checked).toBe(true);
   });
 
   it('falls back to a status message when the error body is not JSON', async () => {
     installFetch({ put: 'badjson' });
     render(<FrontDoorPanel />);
     await screen.findByText('Front door');
-    fireEvent.click(screen.getByTestId('front-door-tier-attested').querySelector('input') as HTMLInputElement);
+    fireEvent.click(screen.getByTestId('front-door-tier-established').querySelector('input') as HTMLInputElement);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText('Save failed (500)')).toBeDefined();
   });
@@ -225,10 +230,10 @@ describe('discard and refresh', () => {
     installFetch();
     render(<FrontDoorPanel />);
     await screen.findByText('Front door');
-    const verified = screen.getByTestId('front-door-tier-verified').querySelector('input') as HTMLInputElement;
-    fireEvent.click(verified);
+    const preliminaryInput = screen.getByTestId('front-door-tier-preliminary').querySelector('input') as HTMLInputElement;
+    fireEvent.click(preliminaryInput);
     fireEvent.click(screen.getByText('discard changes'));
-    expect(verified.checked).toBe(false);
+    expect(preliminaryInput.checked).toBe(false);
     expect(screen.queryByText('discard changes')).toBeNull();
   });
 

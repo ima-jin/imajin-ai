@@ -13,7 +13,8 @@
  *   - `identities.metadata.agentReachGate` — one more key in the same jsonb
  *     blob (tiers, per-topic published/mode, daily cap). Authoring state for
  *     the consumers that read it: the agent card (published topic labels)
- *     and the delivery path (mode + cap).
+ *     and the delivery path (mode + cap — enforcement deferred to the #2587 delivery
+ *     child, Ryan's ruling on #2598) and `reachPrincipal()` (tiers).
  *   - `kernel.consent_grants` — the `agent.reach` / `contact_topics`
  *     `strangers` grant that opens the broker gate. Replace-semantics, the
  *     same shape as `PUT /profile/api/profile/:id/contact-visibility`: every
@@ -44,9 +45,38 @@ export const FRONT_DOOR_PURPOSE = 'agent.reach';
 export const FRONT_DOOR_FIELD = 'contact_topics';
 export const FRONT_DOOR_GRANT_CLASS = 'strangers';
 
-/** Tiers a requester can present, weakest first. `anonymous` is reach_card only. */
-export const FRONT_DOOR_TIERS = ['anonymous', 'verified', 'attested'] as const;
+/**
+ * Tiers a requester can present, weakest first. `anonymous` is reach_card
+ * only and can never be admitted; the other three are the identity tiers in
+ * `auth.identities.tier` that can hold a credential (`soft` / `preliminary` /
+ * `established` — Ryan's ruling on #2598; `verified` / `attested` were retired
+ * user levels). `steward` / `operator` identities rank as `established`.
+ */
+export const FRONT_DOOR_TIERS = ['anonymous', 'soft', 'preliminary', 'established'] as const;
 export type FrontDoorTier = (typeof FRONT_DOOR_TIERS)[number];
+
+/** The tiers the operator can switch on — everything except the locked `anonymous`. */
+export type FrontDoorGateTier = Exclude<FrontDoorTier, 'anonymous'>;
+
+const GATE_TIER_BY_IDENTITY_TIER: Readonly<Record<string, FrontDoorGateTier>> = {
+  soft: 'soft',
+  preliminary: 'preliminary',
+  hard: 'preliminary', // legacy value, see `normalizeTier` in @imajin/auth
+  established: 'established',
+  steward: 'established',
+  operator: 'established',
+};
+
+/**
+ * Map a raw `auth.identities.tier` value onto the gate tier it is judged as,
+ * or `null` for a missing / non-string / unknown value — which the gate
+ * treats as "admitted nowhere" (fail closed, same posture as
+ * `requireEstablishedDid`).
+ */
+export function gateTierForIdentityTier(tier: unknown): FrontDoorGateTier | null {
+  if (typeof tier !== 'string') return null;
+  return Object.hasOwn(GATE_TIER_BY_IDENTITY_TIER, tier) ? GATE_TIER_BY_IDENTITY_TIER[tier] : null;
+}
 
 export const FRONT_DOOR_MODES = ['deliver', 'decline'] as const;
 export type FrontDoorMode = (typeof FRONT_DOOR_MODES)[number];
@@ -91,7 +121,7 @@ export function defaultFrontDoorConfig(): FrontDoorConfig {
   const topics: Record<string, FrontDoorTopicConfig> = {};
   for (const { term } of frontDoorTopicOptions()) topics[term] = closedTopic();
   return {
-    tiers: { anonymous: false, verified: false, attested: false },
+    tiers: { anonymous: false, soft: false, preliminary: false, established: false },
     topics,
     dailyCap: DEFAULT_DAILY_CAP,
   };
@@ -105,7 +135,7 @@ export type ValidationResult = { ok: true; config: FrontDoorConfig } | { ok: fal
 
 function validateTiers(raw: unknown): { ok: true; tiers: FrontDoorConfig['tiers'] } | { ok: false; error: string } {
   if (!isRecord(raw)) return { ok: false, error: 'tiers must be an object' };
-  const tiers: FrontDoorConfig['tiers'] = { anonymous: false, verified: false, attested: false };
+  const tiers: FrontDoorConfig['tiers'] = { anonymous: false, soft: false, preliminary: false, established: false };
   for (const tier of FRONT_DOOR_TIERS) {
     const value = raw[tier];
     if (value === undefined) continue;
@@ -167,7 +197,27 @@ export function validateFrontDoorConfig(body: unknown): ValidationResult {
 
 /** True when at least one non-anonymous tier is admitted — the gate is "on". */
 export function isGateOpen(config: FrontDoorConfig): boolean {
-  return config.tiers.verified || config.tiers.attested;
+  return config.tiers.soft || config.tiers.preliminary || config.tiers.established;
+}
+
+/**
+ * Whether a requester of identity tier `identityTier` is admitted by the
+ * principal's gate, given the principal's raw `identities.metadata`.
+ *
+ * - No `agentReachGate` key (a gate only ever seeded via `seedAgentReachGate`,
+ *   or never authored): no tier restriction — the pre-#2598 behaviour, where
+ *   any requester holding an `agent:reach` grant is admitted.
+ * - An authored gate: the requester's tier must be one the operator enabled.
+ *   An unparsable stored gate, or a missing / unknown requester tier, is
+ *   refused (fail closed). Membership is exact, not "or higher": the operator
+ *   chose which tiers may reach them.
+ */
+export function isTierAdmitted(metadata: unknown, identityTier: unknown): boolean {
+  if (!isRecord(metadata) || !('agentReachGate' in metadata)) return true;
+  const stored = readStoredConfig(metadata);
+  if (!stored) return false;
+  const gateTier = gateTierForIdentityTier(identityTier);
+  return gateTier !== null && stored.tiers[gateTier];
 }
 
 /** The raw gate value `reachPrincipal()` evaluates: open topics, in vocabulary order. */
@@ -209,9 +259,11 @@ export function resolveFrontDoorConfig(metadata: unknown, hasActiveGrant: boolea
     const term = typeof entry === 'string' ? normalizeBrokerTerm('contact_topic', entry) : undefined;
     if (term) config.topics[term] = { open: true, published: false, mode: 'deliver' };
   }
-  // The legacy seed admits any requester holding an `agent:reach` grant (grantedToClass 'strangers').
-  config.tiers.verified = hasActiveGrant;
-  config.tiers.attested = hasActiveGrant;
+  // The legacy seed admits any requester holding an `agent:reach` grant
+  // (grantedToClass 'strangers'), whatever their tier — all three gate tiers.
+  config.tiers.soft = hasActiveGrant;
+  config.tiers.preliminary = hasActiveGrant;
+  config.tiers.established = hasActiveGrant;
   return config;
 }
 

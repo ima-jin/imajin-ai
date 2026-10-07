@@ -49,7 +49,7 @@ function getReq(): Request {
 
 function validBody() {
   const config = defaultFrontDoorConfig();
-  config.tiers.verified = true;
+  config.tiers.preliminary = true;
   config.topics.collaboration = { open: true, published: true, mode: 'deliver' };
   return config;
 }
@@ -140,7 +140,7 @@ describe('PUT /jin/api/front-door (#2598)', () => {
 
   it('returns 400 with the validation error and writes nothing', async () => {
     mockRequireAuth.mockResolvedValueOnce(operator);
-    const bad = { ...validBody(), tiers: { anonymous: true, verified: false, attested: false } };
+    const bad = { ...validBody(), tiers: { anonymous: true, soft: false, preliminary: false, established: false } };
     const res = await PUT(putReq(bad) as Parameters<typeof PUT>[0]);
     expect(res.status).toBe(400);
     expect((await res.json()).error).toMatch(/anonymous tier is reach_card only/);

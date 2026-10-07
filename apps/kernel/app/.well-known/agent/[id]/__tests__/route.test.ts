@@ -107,7 +107,7 @@ describe('GET /.well-known/agent/:id (#2251)', () => {
         metadata: {
           agentReachTopics: ['collaboration', 'speaking'],
           agentReachGate: {
-            tiers: { anonymous: false, verified: true, attested: false },
+            tiers: { anonymous: false, soft: false, preliminary: true, established: false },
             topics: {
               collaboration: topic(true, true),
               speaking: topic(true, false),

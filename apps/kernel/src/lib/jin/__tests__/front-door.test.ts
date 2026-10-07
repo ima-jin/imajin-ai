@@ -53,7 +53,9 @@ import {
   defaultFrontDoorConfig,
   deriveGateTopics,
   frontDoorTopicOptions,
+  gateTierForIdentityTier,
   isGateOpen,
+  isTierAdmitted,
   publishedTopicLabels,
   readFrontDoorConfig,
   resolveFrontDoorConfig,
@@ -71,7 +73,7 @@ function body(overrides: Record<string, unknown> = {}) {
 
 function openConfig(): FrontDoorConfig {
   const config = defaultFrontDoorConfig();
-  config.tiers.verified = true;
+  config.tiers.preliminary = true;
   config.topics.collaboration = { open: true, published: true, mode: 'deliver' };
   config.topics.speaking = { open: true, published: false, mode: 'decline' };
   return config;
@@ -102,13 +104,13 @@ describe('defaults', () => {
 describe('validateFrontDoorConfig', () => {
   it('accepts a complete body and normalizes topic aliases', () => {
     const result = validateFrontDoorConfig(
-      body({ topics: { collab: { open: true, published: true, mode: 'deliver' } }, tiers: { verified: true } }),
+      body({ topics: { collab: { open: true, published: true, mode: 'deliver' } }, tiers: { preliminary: true } }),
     );
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.config.topics.collaboration).toEqual({ open: true, published: true, mode: 'deliver' });
       expect(result.config.topics.speaking.open).toBe(false);
-      expect(result.config.tiers).toEqual({ anonymous: false, verified: true, attested: false });
+      expect(result.config.tiers).toEqual({ anonymous: false, soft: false, preliminary: true, established: false });
     }
   });
 
@@ -126,7 +128,7 @@ describe('validateFrontDoorConfig', () => {
     ['non-object body', 'nope', 'body must be an object'],
     ['array body', [], 'body must be an object'],
     ['missing tiers', body({ tiers: undefined }), 'tiers must be an object'],
-    ['non-boolean tier', body({ tiers: { verified: 'yes' } }), 'tiers.verified must be a boolean'],
+    ['non-boolean tier', body({ tiers: { soft: 'yes' } }), 'tiers.soft must be a boolean'],
     ['unknown tier', body({ tiers: { royal: true } }), 'unknown tier: royal'],
     ['admitted anonymous tier', body({ tiers: { anonymous: true } }), 'the anonymous tier is reach_card only and cannot be admitted'],
     ['missing topics', body({ topics: undefined }), 'topics must be an object'],
@@ -150,9 +152,9 @@ describe('derivations', () => {
     expect(deriveGateTopics(defaultFrontDoorConfig())).toEqual([]);
   });
 
-  it('is open when verified or attested is admitted', () => {
+  it('is open when any of soft, preliminary or established is admitted', () => {
     const config = defaultFrontDoorConfig();
-    config.tiers.attested = true;
+    config.tiers.established = true;
     expect(isGateOpen(config)).toBe(true);
   });
 
@@ -168,6 +170,37 @@ describe('derivations', () => {
   });
 });
 
+describe('tier mapping (#2598)', () => {
+  it.each([
+    ['soft', 'soft'],
+    ['preliminary', 'preliminary'],
+    ['hard', 'preliminary'],
+    ['established', 'established'],
+    ['steward', 'established'],
+    ['operator', 'established'],
+  ])('maps identity tier %s to gate tier %s', (identityTier, gateTier) => {
+    expect(gateTierForIdentityTier(identityTier)).toBe(gateTier);
+  });
+
+  it.each([['anonymous'], ['verified'], ['attested'], ['toString'], ['__proto__'], [''], [undefined], [null], [7]])(
+    'maps %s to no gate tier (fail closed)',
+    (identityTier) => {
+      expect(gateTierForIdentityTier(identityTier)).toBeNull();
+    },
+  );
+
+  it('admits per the stored gate and leaves a never-authored gate unrestricted', () => {
+    const config = defaultFrontDoorConfig();
+    config.tiers.preliminary = true;
+    expect(isTierAdmitted({ agentReachGate: config }, 'preliminary')).toBe(true);
+    expect(isTierAdmitted({ agentReachGate: config }, 'soft')).toBe(false);
+    expect(isTierAdmitted({ agentReachGate: config }, 'steward')).toBe(false);
+    expect(isTierAdmitted({ agentReachGate: { nope: true } }, 'preliminary')).toBe(false);
+    expect(isTierAdmitted({ agentReachTopics: ['speaking'] }, 'soft')).toBe(true);
+    expect(isTierAdmitted(null, 'soft')).toBe(true);
+  });
+});
+
 describe('resolveFrontDoorConfig', () => {
   it('prefers the stored agentReachGate', () => {
     expect(resolveFrontDoorConfig({ agentReachGate: openConfig() }, false)).toEqual(openConfig());
@@ -178,7 +211,7 @@ describe('resolveFrontDoorConfig', () => {
     expect(config.topics.business_development).toEqual({ open: true, published: false, mode: 'deliver' });
     expect(config.topics.collaboration.open).toBe(true);
     expect(config.topics.speaking.open).toBe(false);
-    expect(config.tiers).toEqual({ anonymous: false, verified: true, attested: true });
+    expect(config.tiers).toEqual({ anonymous: false, soft: true, preliminary: true, established: true });
   });
 
   it('is fully closed for an identity with no gate at all', () => {
@@ -197,7 +230,7 @@ describe('readFrontDoorConfig', () => {
     state.grants = [{ id: 'cgrant_old' }];
     const config = await readFrontDoorConfig(DID);
     expect(config?.topics.speaking.open).toBe(true);
-    expect(config?.tiers.verified).toBe(true);
+    expect(config?.tiers.soft).toBe(true);
   });
 });
 

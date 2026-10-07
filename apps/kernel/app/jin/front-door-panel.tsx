@@ -15,6 +15,10 @@
  * Rulings applied (2026-10-05): the anonymous tier is locked to the agent
  * card only; an admitted topic defaults to `deliver`; only the labels the
  * operator opts to publish appear on the card, gate rules stay private.
+ * Tiers are the `auth.identities.tier` values `soft` / `preliminary` /
+ * `established` and are enforced by `reachPrincipal()` from the caller's own
+ * identity tier. The daily cap and deliver/decline mode are authored here
+ * but enforced by the #2587 delivery child, not by this lane.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FrontDoorConfig, FrontDoorMode, FrontDoorTier, FrontDoorTopicConfig } from '@/src/lib/jin/front-door';
@@ -34,8 +38,9 @@ interface FrontDoorResponse {
 
 const TIER_ROWS: ReadonlyArray<{ tier: FrontDoorTier; label: string; hint: string; locked?: boolean }> = [
   { tier: 'anonymous', label: 'Anonymous', hint: 'Agent card only — asking or sending needs a credential.', locked: true },
-  { tier: 'verified', label: 'Verified', hint: 'Holds a credential on this network.' },
-  { tier: 'attested', label: 'Attested', hint: 'Holds a credential and has been vouched for.' },
+  { tier: 'soft', label: 'Soft', hint: 'Email-only identity, unverified.' },
+  { tier: 'preliminary', label: 'Preliminary', hint: 'Keypair-based identity with basic verification.' },
+  { tier: 'established', label: 'Established', hint: 'Fully verified identity (stewards and operators included).' },
 ];
 
 const DEFAULT_LIMITS = { minDailyCap: 1, maxDailyCap: 1000 };
