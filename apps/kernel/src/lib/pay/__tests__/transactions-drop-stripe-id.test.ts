@@ -71,6 +71,21 @@ describe('migration 0181 — pay.transactions drops stripe_id', () => {
     client = new PGlite({ extensions: { pgcrypto } });
     await client.waitReady;
     await client.exec(readMigration('0001_seed.sql'));
+    // The real Drizzle `transactions` schema selects/inserts every column, so the table must carry the
+    // columns later migrations added: unit / source_kind / attestation_id (0133) ...
+    // (with the same prerequisites the pay pglite harness applies first: 0029, 0030).
+    for (const name of ['0029_cad_currency_defaults.sql', '0030_withdrawal_requests.sql', '0133_pay_balance_units.sql']) {
+      await client.exec(readMigration(name));
+    }
+    // ... and 0170's pay.transactions DDL, inlined: the rest of 0170 seeds kernel.bus_chain_configs,
+    // which this suite neither needs nor owns.
+    await client.exec(`
+      ALTER TABLE pay.transactions
+        ADD COLUMN IF NOT EXISTS idempotency_key TEXT,
+        ADD COLUMN IF NOT EXISTS emission_config_id TEXT,
+        ADD COLUMN IF NOT EXISTS emission_config_version INTEGER;
+      CREATE UNIQUE INDEX IF NOT EXISTS uniq_transactions_idempotency_key
+        ON pay.transactions (idempotency_key) WHERE idempotency_key IS NOT NULL;`);
 
     // Pre-#2176 rows (only `stripe_id`), inserted BEFORE 0178 exists.
     await client.exec(INSERT_LEGACY('tx_checkout', 'checkout', 'pending', 'cs_checkout'));
