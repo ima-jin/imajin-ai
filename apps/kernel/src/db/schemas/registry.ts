@@ -390,6 +390,17 @@ export const registryApps = registrySchema.table('apps', {
    * flipped only by the admin route `POST /api/admin/registry/apps/:appId/act-as`.
    */
   actAsAllowed: boolean('act_as_allowed').notNull().default(false),
+  /**
+   * Service scopes the OPERATOR approved for this app (#2711,
+   * 0179_registry_apps_approved_service_scopes.sql). Written only by the
+   * countersigned `apps:service-scopes` approval; widens the session-less
+   * service token to `requestedScopes ∩ (serviceEligible ∪ this)`. Never
+   * settable through app registration/`requestedScopes`.
+   */
+  approvedServiceScopes: jsonb('approved_service_scopes').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** `operator.approvals` proposal id of the last approved-service-scopes change (#2711). */
+  serviceScopesApprovalId: text('service_scopes_approval_id'),
+  serviceScopesApprovedAt: timestamp('service_scopes_approved_at', { withTimezone: true }),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),

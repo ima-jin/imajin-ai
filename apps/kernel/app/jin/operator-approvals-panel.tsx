@@ -65,6 +65,7 @@ import { DecisionCardDetail, DecisionCardOptions } from './decision-card-detail'
 import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decisions/view';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
+import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
 
 interface StoredKeypair {
   privateKey: string;
@@ -271,6 +272,12 @@ const DEFAULT_RENDERER: SourceRenderer = {
 function detailString(detail: Record<string, unknown> | null, key: string, fallback: string): string {
   const value = detail?.[key];
   return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+/** Read a string-array field out of `detail`, dropping anything that isn't a string. */
+function detailStringList(detail: Record<string, unknown> | null, key: string): string[] {
+  const value = detail?.[key];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
 }
 
 /** `skill-workshop` renderer (#2152): skill name, create/update, scan status, description, and a bounded diff-summary block. */
@@ -541,9 +548,42 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
   );
 }
 
+// `apps:service-scopes` (#2711): the operator countersigns "App X requests
+// service scopes [..]" (or a revoke). Approving writes the app's approved
+// service-scope set server-side; nothing secret is returned.
+function renderAppsServiceScopesDetail(approval: OperatorApprovalCard): ReactNode {
+  const { detail } = approval;
+  const appName = detailString(detail, 'appName', '\u2014');
+  const appDid = detailString(detail, 'appDid', '\u2014');
+  const isRevoke = detail?.action === 'revoke';
+  const scopes = detailStringList(detail, 'scopes');
+  const currentlyApproved = detailStringList(detail, 'currentlyApproved');
+  return (
+    <div className="space-y-1 text-sm text-gray-200">
+      <p>
+        App <span className="font-medium text-gray-100">{appName}</span>{' '}
+        {isRevoke ? 'loses service scopes' : 'requests service scopes'}{' '}
+        <span className="font-mono text-gray-100">[{scopes.join(', ')}]</span>
+      </p>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">App DID</span><span className="font-mono">{appDid}</span></div>
+      <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Approved today</span><span className="font-mono">{currentlyApproved.join(', ') || '\u2014'}</span></div>
+    </div>
+  );
+}
+
+function appsDecisionLabels(approval: OperatorApprovalCard): DecisionLabels {
+  if (approval.kind !== APPS_SERVICE_SCOPES_KIND) {
+    return { approve: isClaimReissue(approval) ? 'Approve & reissue' : 'Approve & provision', reject: 'Deny' };
+  }
+  return approval.detail?.action === 'revoke'
+    ? { approve: 'Revoke scopes', reject: 'Keep' }
+    : { approve: 'Approve scopes', reject: 'Deny' };
+}
+
 const APPS_RENDERER: SourceRenderer = {
-  decisionLabels: (approval) => ({ approve: isClaimReissue(approval) ? 'Approve & reissue' : 'Approve & provision', reject: 'Deny' }),
-  renderDetail: renderAppsProvisionDetail,
+  decisionLabels: appsDecisionLabels,
+  renderDetail: (approval) =>
+    approval.kind === APPS_SERVICE_SCOPES_KIND ? renderAppsServiceScopesDetail(approval) : renderAppsProvisionDetail(approval),
 };
 
 // `github` (#2293): folds the retired pre-#2059 GitHub confirm rail

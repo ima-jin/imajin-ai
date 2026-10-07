@@ -113,6 +113,24 @@ function appsApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture
   });
 }
 
+function serviceScopesApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
+  return approval({
+    proposalId: 'opap_appscope_1',
+    source: 'apps',
+    kind: 'apps:service-scopes',
+    summary: "App 'Tripian' requests service scopes [identity:read, identity:write]",
+    keysTouched: [],
+    detail: {
+      appDid: 'did:imajin:CtdP4azTs7d7avoPorZSs9DMJyGkbnw8xRU8cEsooZQU',
+      appName: 'Tripian',
+      action: 'grant',
+      scopes: ['identity:read', 'identity:write'],
+      currentlyApproved: [],
+    },
+    ...overrides,
+  });
+}
+
 function githubApproval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
   return approval({
     proposalId: 'opap_gh_1',
@@ -1085,6 +1103,36 @@ describe('per-source renderer registry — apps', () => {
     expect(screen.getByText('dykil')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+  });
+
+  // #2711: apps:service-scopes shares the `apps` source but renders its own card.
+  it('renders "App X requests service scopes [..]" with Approve scopes / Deny for a service-scopes proposal', async () => {
+    installFetch([{ isOperator: true, approvals: [serviceScopesApproval()] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('Tripian')).toBeDefined();
+    expect(screen.getByText(/requests service scopes/).textContent).toContain('[identity:read, identity:write]');
+    expect(screen.getByRole('button', { name: 'Approve scopes' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve & provision' })).toBeNull();
+  });
+
+  it('renders a revoke proposal as "loses service scopes" with Revoke scopes / Keep', async () => {
+    installFetch([
+      {
+        isOperator: true,
+        approvals: [
+          serviceScopesApproval({
+            detail: { appDid: 'did:imajin:x', appName: 'Tripian', action: 'revoke', scopes: ['identity:write'], currentlyApproved: ['identity:read', 'identity:write'] },
+          }),
+        ],
+      },
+    ]);
+    render(<OperatorApprovalsPanel />);
+
+    expect((await screen.findByText(/loses service scopes/)).textContent).toContain('[identity:write]');
+    expect(screen.getByRole('button', { name: 'Revoke scopes' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Keep' })).toBeDefined();
   });
 
   it('shows the providesScopes / dependsOn list on the card BEFORE approval, read-only, next to the approve button (#2663)', async () => {

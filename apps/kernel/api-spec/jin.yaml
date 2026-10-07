@@ -284,6 +284,26 @@ components:
             existing attestation-type registry (#1885). Refused (per-type,
             never failing the whole call) when the prefix is not exactly
             `slug`.
+    AppServiceScopesRequest:
+      type: object
+      description: >-
+        Body for `POST /api/apps/service-scopes` (#2711). Raises an
+        `apps:service-scopes` proposal on the operator-approvals rail — the
+        app's approved service-scope set only changes once the operator
+        countersigns an 'approve' decision (`executeAppsServiceScopesApproval`).
+      required: [appDid, scopes]
+      properties:
+        appDid: { type: string, example: "did:imajin:CtdP4azTs7d7avoPorZSs9DMJyGkbnw8xRU8cEsooZQU" }
+        scopes:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, example: "identity:write" }
+        action:
+          type: string
+          enum: [grant, revoke]
+          default: grant
+          description: "`grant` adds vocabulary scopes to the approved set; `revoke` removes currently-approved scopes."
     AppProvisionResult:
       type: object
       description: The terminal (or cached) result of an apps.provision run.
@@ -674,6 +694,107 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: No apps.provision run found for this slug
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/apps/service-scopes:
+    post:
+      tags: [apps]
+      operationId: proposeAppServiceScopes
+      summary: Propose operator-approved service scopes for an app (#2711)
+      description: >-
+        The app's owner or the node operator may propose. Stages an
+        `apps:service-scopes` proposal ("App X requests service scopes [..]")
+        on the same operator-approvals table `GET /api/operator-approvals`
+        lists; the operator countersigns on /jin. The approved set is stored
+        on the app and the session-less service token
+        (`POST /auth/api/apps/token/service`) then carries
+        `requestedScopes ∩ (serviceEligible ∪ approved)`. A scope in
+        `requestedScopes` alone never reaches a service token; the global
+        `serviceEligible` list is unchanged. `action: revoke` removes scopes
+        from the approved set (also countersigned) so the next mint drops them.
+        An identical already-pending proposal is reused.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppServiceScopesRequest" }
+      responses:
+        "200":
+          description: Already approved, or an identical pending proposal was reused
+        "201":
+          description: New proposal raised
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [pending] }
+                  proposalId: { type: string }
+        "400":
+          description: Malformed body or a scope outside the vocabulary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is neither the app owner nor the node operator
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown app DID
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Grant for a non-active app, or revoke of scopes that are not approved
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: No node operator configured, or failed to raise the proposal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    get:
+      tags: [apps]
+      operationId: getAppServiceScopes
+      summary: Read an app's currently approved service scopes (#2711)
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: appDid
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: "`{ appDid, approvedServiceScopes, approvalId, approvedAt }` — approvalId/approvedAt identify the last countersigned change."
+        "400":
+          description: Missing appDid query parameter
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Caller is neither the app owner nor the node operator
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown app DID
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

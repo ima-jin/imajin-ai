@@ -61,6 +61,8 @@ import { executeVaultApproval } from '@/src/lib/vault/approvals-execution';
 import { executeAccessApproval } from '@/src/lib/access/approvals-execution';
 import { executeGithubApproval, GITHUB_SOURCE } from '@/src/lib/github/approvals-execution';
 import { executeAppsProvisionApproval } from '@/src/lib/apps/approvals-execution';
+import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
+import { executeAppsServiceScopesApproval } from '@/src/lib/apps/service-scopes';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -85,6 +87,26 @@ const MAX_MODE_LENGTH = 128;
 interface ExecutionOutcome {
   error?: string;
   data?: Record<string, unknown>;
+}
+
+/**
+ * `apps` source: `apps:service-scopes` (#2711) and `apps:provision` (#2375) share the source but run
+ * different, each countersign-gated, executors. Extracted to keep the dispatcher's complexity down.
+ */
+async function runAppsExecution(
+  proposalId: string,
+  card: Parameters<typeof executeVaultApproval>[0],
+): Promise<ExecutionOutcome> {
+  const isServiceScopes = card.kind === APPS_SERVICE_SCOPES_KIND;
+  const execution = isServiceScopes
+    ? await executeAppsServiceScopesApproval(card)
+    : await executeAppsProvisionApproval(card);
+  if (execution.ok) return { data: { ...execution.data } };
+  log.error(
+    { proposalId, kind: card.kind, error: execution.error },
+    isServiceScopes ? 'Service-scopes proposal approved but execution failed' : 'Apps proposal approved but execution failed',
+  );
+  return { error: execution.error };
 }
 
 async function runProposalExecutionIfApplicable(
@@ -119,10 +141,7 @@ async function runProposalExecutionIfApplicable(
     return { error: execution.error };
   }
   if (card.source === 'apps') {
-    const execution = await executeAppsProvisionApproval(card);
-    if (execution.ok) return { data: { ...execution.data } };
-    log.error({ proposalId, kind: card.kind, error: execution.error }, 'Apps proposal approved but execution failed');
-    return { error: execution.error };
+    return runAppsExecution(proposalId, card);
   }
   return {};
 }

@@ -10,7 +10,7 @@
  * short TTL.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { generateKeypair, crypto } from '@imajin/auth';
+import { generateKeypair, crypto, serviceEligibleScopes } from '@imajin/auth';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 
 vi.mock('next/server', () => ({
@@ -39,10 +39,13 @@ vi.mock('@/src/db', () => ({
   registryApps: {
     appDid: 'registryApps.appDid',
   },
+  operatorApprovals: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
+  and: (...args: unknown[]) => ({ and: args }),
+  sql: (...args: unknown[]) => ({ sql: args }),
 }));
 
 vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
@@ -51,6 +54,7 @@ vi.mock('@imajin/logger', () => ({
 }));
 
 import { POST } from '../route';
+import { POST as verifyPOST } from '../../verify/route';
 
 const keypair = generateKeypair();
 const APP_DID = 'did:imajin:agrifortress-webhook';
@@ -72,8 +76,8 @@ function signedBody(overrides: Partial<{ appDid: string; nonce: string; timestam
   return { appDid, nonce, timestamp, signature };
 }
 
-function activeApp(requestedScopes: string[]) {
-  return { appDid: APP_DID, publicKey: keypair.publicKey, status: 'active', requestedScopes };
+function activeApp(requestedScopes: string[], approvedServiceScopes: string[] = []) {
+  return { appDid: APP_DID, publicKey: keypair.publicKey, status: 'active', requestedScopes, approvedServiceScopes };
 }
 
 beforeEach(() => {
@@ -187,5 +191,76 @@ describe('POST /auth/api/apps/token/service — proof of possession', () => {
   it('rejects a request missing required fields', async () => {
     const res = await POST(makeRequest({ appDid: APP_DID }) as never);
     expect(res.status).toBe(400);
+  });
+});
+
+// #2711: operator-approved, per-app service scopes. The approved set is written only by the
+// countersigned `apps:service-scopes` card (see src/lib/apps/__tests__/service-scopes.test.ts);
+// here we pin how the mint consumes it.
+describe('POST /auth/api/apps/token/service — operator-approved service scopes (#2711)', () => {
+  async function mint(app: ReturnType<typeof activeApp>) {
+    nextSelect([app]);
+    const res = await POST(makeRequest(signedBody()) as never);
+    expect(res.status).toBe(200);
+    return res.json();
+  }
+
+  it('before approval the token is empty: identity:* in requestedScopes alone never reaches a service token', async () => {
+    const body = await mint(activeApp(['identity:read', 'identity:write']));
+    expect(body.scopes).toEqual([]);
+    const payload = await verifyAppToken(body.token);
+    expect(payload!.scope).toBe('');
+  });
+
+  it('after approval the token carries exactly the approved scopes the app requested', async () => {
+    const body = await mint(activeApp(['identity:read', 'identity:write'], ['identity:read', 'identity:write']));
+    expect(body.scopes).toEqual(['identity:read', 'identity:write']);
+    const payload = await verifyAppToken(body.token);
+    expect(payload!.sub).toBe(APP_DID);
+    expect(payload!.scope).toBe('identity:read identity:write');
+  });
+
+  it('an approved scope the app never requested is not minted (intersection, not union)', async () => {
+    const body = await mint(activeApp(['identity:read'], ['identity:read', 'identity:write']));
+    expect(body.scopes).toEqual(['identity:read']);
+  });
+
+  it('approval widens only that scope — other requested, unapproved scopes stay fenced out', async () => {
+    const body = await mint(activeApp(['identity:write', 'supply:write', 'supply:read'], ['identity:write']));
+    expect(body.scopes).toEqual(['identity:write', 'supply:read']);
+    expect(body.scopes).not.toContain('supply:write');
+  });
+
+  it('revoking a scope (removing it from the approved set) drops it from the next minted token', async () => {
+    const requested = ['identity:read', 'identity:write'];
+    expect((await mint(activeApp(requested, ['identity:read', 'identity:write']))).scopes).toEqual(['identity:read', 'identity:write']);
+    expect((await mint(activeApp(requested, ['identity:read']))).scopes).toEqual(['identity:read']);
+    expect((await mint(activeApp(requested, []))).scopes).toEqual([]);
+  });
+
+  it('does not widen the global fence: only supply:read and usage:emit are service-eligible', () => {
+    expect([...serviceEligibleScopes()].sort((a, b) => a.localeCompare(b))).toEqual(['supply:read', 'usage:emit']);
+  });
+
+  // POST /registry/api/identity gates on `requireAppAuth(req, { scope: 'identity:write' })`, which
+  // calls this verify endpoint with that scope — so mint → verify is the exact gate Tripian hits.
+  async function identityGate(app: ReturnType<typeof activeApp>) {
+    const { token } = await mint(app);
+    return verifyPOST(
+      new Request('https://kernel.test/auth/api/apps/token/verify', {
+        method: 'POST',
+        body: JSON.stringify({ token, scope: 'identity:write' }),
+      }) as never,
+    );
+  }
+
+  it('Tripian-shaped flow: 403 "identity:write was not granted" before approval, success after', async () => {
+    const before = await identityGate(activeApp(['identity:read', 'identity:write']));
+    expect(before.status).toBe(403);
+    expect((await before.json()).error).toBe("Scope 'identity:write' was not granted");
+
+    const after = await identityGate(activeApp(['identity:read', 'identity:write'], ['identity:read', 'identity:write']));
+    expect(after.status).toBe(200);
+    expect(await after.json()).toMatchObject({ appDid: APP_DID, isServiceToken: true, scopes: ['identity:read', 'identity:write'] });
   });
 });
