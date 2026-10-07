@@ -191,17 +191,15 @@ function KnockForm({
       <fieldset className="space-y-1">
         <legend className="text-xs text-gray-400">Scopes — grant only what this client needs</legend>
         {SCOPE_OPTIONS.map(({ scope, label }) => (
-          <label key={scope} className="flex items-start gap-1.5 text-xs text-gray-500 cursor-pointer">
+          <label key={scope} className="flex flex-wrap items-baseline gap-x-2 gap-y-0 text-xs text-gray-500 cursor-pointer">
             <input
               type="checkbox"
               checked={form.scopes.includes(scope)}
               onChange={(e) => setForm({ ...form, scopes: toggleIn(form.scopes, scope, e.target.checked) })}
-              className="accent-amber-500 mt-0.5"
+              className="accent-amber-500"
             />
-            <span>
-              <span className="font-mono text-gray-300">{scope}</span>
-              <span className="ml-2">{label}</span>
-            </span>
+            <span className="font-mono text-gray-300">{scope}</span>
+            <span>{label}</span>
           </label>
         ))}
       </fieldset>
