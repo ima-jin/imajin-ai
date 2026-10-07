@@ -50,12 +50,32 @@ function keyCard(overrides: Partial<KeyCardFixture> = {}): KeyCardFixture {
   };
 }
 
+interface KnownFieldFixture {
+  name: string;
+  label: string;
+  description: string;
+  namespace: string;
+}
+
 function installFetch(options: {
   cardsResponse?: { keys: KeyCardFixture[]; handProvisioned: Array<{ field: string }> } | null;
   proposalResponse?: { ok: boolean; status?: number; body?: unknown };
+  knownFieldsResponse?: { ok: boolean; status?: number; body?: unknown } | 'network-error';
 }) {
-  const { cardsResponse = { keys: [], handProvisioned: [] }, proposalResponse = { ok: true, body: { proposalId: 'vprop_1' } } } = options;
+  const {
+    cardsResponse = { keys: [], handProvisioned: [] },
+    proposalResponse = { ok: true, body: { proposalId: 'vprop_1' } },
+    knownFieldsResponse = { ok: true, body: { fields: [] } },
+  } = options;
   const spy = vi.fn((url: string) => {
+    if (url.includes('/vault/known-fields')) {
+      if (knownFieldsResponse === 'network-error') return Promise.reject(new Error('network down'));
+      return Promise.resolve({
+        ok: knownFieldsResponse.ok,
+        status: knownFieldsResponse.status ?? (knownFieldsResponse.ok ? 200 : 401),
+        json: async () => knownFieldsResponse.body ?? {},
+      } as unknown as Response);
+    }
     if (url.includes('/vault-proposals')) {
       return Promise.resolve({
         ok: proposalResponse.ok,
@@ -218,6 +238,66 @@ describe('hand-provisioned filter', () => {
   });
 });
 
+describe('known fields (#2700)', () => {
+  const KNOWN: KnownFieldFixture[] = [
+    { name: 'github-org-provisioning', label: 'GitHub org credential', description: 'Org-scoped GitHub credential.', namespace: 'github' },
+    { name: 'internal-secret:demo', label: 'Demo secret', description: 'A demo internal secret.', namespace: 'internal-secret' },
+  ];
+
+  it('fetches the field list from GET /api/vault/known-fields, once, and renders it from the response', async () => {
+    const spy = installFetch({ knownFieldsResponse: { ok: true, body: { fields: KNOWN } } });
+    render(<VaultKeysPanel />);
+    await screen.findByText('Vault');
+    fireEvent.click(screen.getByRole('checkbox', { name: /hand-provisioned/i }));
+
+    expect(await screen.findByTestId('known-fields-list')).toBeDefined();
+    expect(screen.getByText('GitHub org credential')).toBeDefined();
+    expect(screen.getByText('github-org-provisioning')).toBeDefined();
+    expect(screen.getByText('Org-scoped GitHub credential.')).toBeDefined();
+    expect(screen.getByText('internal-secret:demo')).toBeDefined();
+    expect(screen.getByText('internal-secret')).toBeDefined();
+    const knownCalls = spy.mock.calls.filter(([url]) => String(url) === '/api/vault/known-fields');
+    expect(knownCalls).toHaveLength(1);
+  });
+
+  it('renders whatever names the server returns — nothing is hardcoded in the panel', async () => {
+    installFetch({
+      knownFieldsResponse: {
+        ok: true,
+        body: { fields: [{ name: 'server-only-field-xyz', label: 'Server only', description: 'Only the kernel knows.', namespace: 'github' }] },
+      },
+    });
+    render(<VaultKeysPanel />);
+    await screen.findByText('Vault');
+    fireEvent.click(screen.getByRole('checkbox', { name: /hand-provisioned/i }));
+
+    expect(await screen.findByText('server-only-field-xyz')).toBeDefined();
+    expect(screen.queryByText('github-org-provisioning')).toBeNull();
+  });
+
+  it('hides the known-fields list until the filter checkbox is checked', async () => {
+    installFetch({ knownFieldsResponse: { ok: true, body: { fields: KNOWN } } });
+    render(<VaultKeysPanel />);
+    await screen.findByText('Vault');
+
+    expect(screen.queryByTestId('known-fields-list')).toBeNull();
+  });
+
+  it.each([
+    ['an unauthorized response', { ok: false, status: 401, body: { error: 'Unauthorized' } }],
+    ['a response without a fields array', { ok: true, body: {} }],
+    ['a network error', 'network-error' as const],
+  ])('keeps the panel working and shows no known-fields list on %s', async (_label, knownFieldsResponse) => {
+    installFetch({ knownFieldsResponse });
+    render(<VaultKeysPanel />);
+    await screen.findByText('Vault');
+    fireEvent.click(screen.getByRole('checkbox', { name: /hand-provisioned/i }));
+
+    expect(await screen.findByTestId('hand-provisioned-list')).toBeDefined();
+    expect(screen.queryByTestId('known-fields-list')).toBeNull();
+  });
+});
+
 describe('claim pending service stub (#2243)', () => {
   it('always renders a disabled Claim button referencing #2243', async () => {
     installFetch({});
@@ -325,12 +405,15 @@ describe('poll refresh', () => {
   it('registers a poll interval and silently refetches on each tick', async () => {
     const callbacks = installIntervalSpy();
     const spy = installFetch({});
+    const cardsCalls = () => spy.mock.calls.filter(([url]) => String(url).includes('/vault/mint/cards')).length;
     render(<VaultKeysPanel />);
     await screen.findByText('Vault');
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(cardsCalls()).toBe(1);
 
     callbacks[0]();
 
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(cardsCalls()).toBe(2));
+    // The known-fields list is static: it is not re-fetched on poll ticks.
+    expect(spy.mock.calls.filter(([url]) => String(url).includes('/vault/known-fields'))).toHaveLength(1);
   });
 });
