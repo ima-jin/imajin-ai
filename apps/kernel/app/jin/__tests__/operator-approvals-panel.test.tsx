@@ -193,8 +193,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('non-operator visibility (#2059 acceptance (c))', () => {
-  it('renders nothing at all — no header, no empty state — for a non-operator', async () => {
+describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #2723)', () => {
+  it('renders the Inbox for a non-operator principal who has something addressed to them (their own connector proposal)', async () => {
+    installFetch([{ isOperator: false, approvals: [approval({ proposalId: 'opap_eric_1' })] }]);
+    render(<OperatorApprovalsPanel />);
+
+    expect(await screen.findByText('Operator approvals')).toBeTruthy();
+    expect(document.getElementById('approval-opap_eric_1')).not.toBeNull();
+  });
+
+  it('renders nothing at all — no header, no empty state — for a non-operator with an empty Inbox', async () => {
     const spy = installFetch([{ isOperator: false, approvals: [] }]);
     const { container } = render(<OperatorApprovalsPanel />);
 

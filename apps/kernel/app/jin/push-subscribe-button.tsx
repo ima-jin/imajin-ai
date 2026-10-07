@@ -17,7 +17,8 @@ const SW_URL = '/jin/sw.js';
 const SW_SCOPE = '/jin/';
 
 interface PushStatusResponse {
-  isOperator: boolean;
+  /** #2723: any signed-in principal may subscribe — their own Inbox is where connector proposals land. */
+  canSubscribe: boolean;
   publicKey?: string | null;
 }
 
@@ -51,7 +52,7 @@ function labelFor(state: SubscribeState): string {
 }
 
 export function PushSubscribeButton() {
-  const [isOperator, setIsOperator] = useState(false);
+  const [canSubscribe, setCanSubscribe] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [state, setState] = useState<SubscribeState>('checking');
   const [error, setError] = useState<string | null>(null);
@@ -72,8 +73,8 @@ export function PushSubscribeButton() {
         }
         const data = (await res.json()) as PushStatusResponse;
         if (cancelled) return;
-        setIsOperator(data.isOperator);
-        if (!data.isOperator || !data.publicKey) {
+        setCanSubscribe(data.canSubscribe);
+        if (!data.canSubscribe || !data.publicKey) {
           setState('unsupported');
           return;
         }
@@ -142,7 +143,7 @@ export function PushSubscribeButton() {
     }
   }, []);
 
-  if (!isOperator || state === 'checking' || state === 'unsupported') return null;
+  if (!canSubscribe || state === 'checking' || state === 'unsupported') return null;
 
   const onClick = state === 'subscribed' ? unsubscribe : subscribe;
 

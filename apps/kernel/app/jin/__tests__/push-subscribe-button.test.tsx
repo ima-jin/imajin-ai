@@ -67,7 +67,7 @@ function installFetch(handlers: {
     const method = init?.method ?? 'GET';
     if (method === 'POST') return Promise.resolve(handlers.post ? handlers.post() : okJson({ ok: true }));
     if (method === 'DELETE') return Promise.resolve(handlers.del ? handlers.del() : okJson({ ok: true }));
-    return Promise.resolve(handlers.get ? handlers.get() : okJson({ isOperator: false }));
+    return Promise.resolve(handlers.get ? handlers.get() : okJson({ canSubscribe: false }));
   });
   vi.stubGlobal('fetch', spy);
   return spy;
@@ -103,7 +103,7 @@ describe('checking / unsupported states', () => {
 
   it('renders nothing for a non-operator even when push is supported', async () => {
     installPushSupport();
-    installFetch({ get: () => okJson({ isOperator: false }) });
+    installFetch({ get: () => okJson({ canSubscribe: false }) });
 
     const { container } = render(<PushSubscribeButton />);
 
@@ -112,7 +112,7 @@ describe('checking / unsupported states', () => {
 
   it('renders nothing when the operator check succeeds but no VAPID key is provisioned yet', async () => {
     installPushSupport();
-    installFetch({ get: () => okJson({ isOperator: true, publicKey: null }) });
+    installFetch({ get: () => okJson({ canSubscribe: true, publicKey: null }) });
 
     const { container } = render(<PushSubscribeButton />);
 
@@ -123,7 +123,7 @@ describe('checking / unsupported states', () => {
 describe('unsubscribed state', () => {
   it('shows "Enable phone push" when supported, operator, and not yet subscribed', async () => {
     installPushSupport({ existingSubscription: null });
-    installFetch({ get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }) });
+    installFetch({ get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }) });
 
     render(<PushSubscribeButton />);
 
@@ -134,7 +134,7 @@ describe('unsubscribed state', () => {
 describe('subscribed state', () => {
   it('shows "Disable phone push" when a subscription already exists', async () => {
     installPushSupport({ existingSubscription: makeSubscription() });
-    installFetch({ get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }) });
+    installFetch({ get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }) });
 
     render(<PushSubscribeButton />);
 
@@ -143,7 +143,7 @@ describe('subscribed state', () => {
 
   it('subscribes and flips to "Disable phone push" on a successful enable', async () => {
     installPushSupport({ existingSubscription: null });
-    installFetch({ get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }) });
+    installFetch({ get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }) });
 
     render(<PushSubscribeButton />);
     const button = await screen.findByRole('button', { name: 'Enable phone push' });
@@ -155,7 +155,7 @@ describe('subscribed state', () => {
 
   it('unsubscribes and flips back to "Enable phone push" on a successful disable', async () => {
     installPushSupport({ existingSubscription: makeSubscription() });
-    installFetch({ get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }) });
+    installFetch({ get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }) });
 
     render(<PushSubscribeButton />);
     const button = await screen.findByRole('button', { name: 'Disable phone push' });
@@ -174,7 +174,7 @@ describe('busy state', () => {
       resolvePost = resolve;
     });
     installFetch({
-      get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }),
+      get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }),
       post: () => postPromise,
     });
 
@@ -199,7 +199,7 @@ describe('error state', () => {
   it('shows an error and reverts to "Enable phone push" when the subscribe POST fails', async () => {
     installPushSupport({ existingSubscription: null });
     installFetch({
-      get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }),
+      get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }),
       post: () => ({ ok: false, status: 500, json: async () => ({}) }),
     });
 
@@ -219,7 +219,7 @@ describe('error state', () => {
       }),
     });
     installPushSupport({ existingSubscription: existing });
-    installFetch({ get: () => okJson({ isOperator: true, publicKey: PUBLIC_KEY }) });
+    installFetch({ get: () => okJson({ canSubscribe: true, publicKey: PUBLIC_KEY }) });
 
     render(<PushSubscribeButton />);
     const button = await screen.findByRole('button', { name: 'Disable phone push' });

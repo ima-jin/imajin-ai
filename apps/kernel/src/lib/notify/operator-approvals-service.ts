@@ -9,7 +9,7 @@
  * (#1817): the kernel signs the decision using its own signing identity,
  * witnessing the operator's explicit tap.
  */
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, or, sql } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { canonicalize, crypto as authCrypto, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import * as bus from '@imajin/bus';
@@ -26,6 +26,7 @@ import {
 import { verifyOperatorCountersignature } from './operator-countersign';
 import { validateDecisionMode } from './operator-decision-modes';
 import { pushWebNotificationToOperator } from './web-push';
+import { resolveApprovalAddressee } from './approval-addressing';
 import { forEachSequential } from '../async/sequential';
 import {
   EXEC_COMMAND_KIND,
@@ -38,6 +39,7 @@ const log = createLogger('kernel:operator-approvals');
 
 export interface OperatorApprovalCard {
   proposalId: string;
+  /** Whose /jin Inbox the card lives in (#2723) — the connector owner for a connector proposal, else the node operator. */
   operatorDid: string;
   /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
   source: string;
@@ -83,6 +85,11 @@ function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
 
 export interface RecordApprovalRequestedParams {
   proposalId: string;
+  /**
+   * The DEFAULT addressee — the node operator. A connector proposal that
+   * carries an owner DID is re-addressed to that owner instead (#2723, see
+   * `resolveApprovalAddressee`); every node-level kind keeps this DID.
+   */
   operatorDid: string;
   source: string;
   kind: string;
@@ -115,7 +122,9 @@ export interface RecordApprovalRequestedParams {
  * arrives after the operator already decided leaves the decision alone).
  */
 export async function recordApprovalRequested(params: RecordApprovalRequestedParams): Promise<void> {
-  const { proposalId, operatorDid, source, kind, summary, keysTouched, detail, contentHash, notificationId, signerDid } = params;
+  const { proposalId, source, kind, summary, keysTouched, detail, contentHash, notificationId, signerDid } = params;
+  // #2723: `operator_did` is "whose Inbox" — the connector owner for a connector proposal, else the node operator.
+  const operatorDid = resolveApprovalAddressee({ kind, detail }, params.operatorDid);
 
   const [existing] = await db
     .select({ status: operatorApprovals.status })
@@ -144,7 +153,7 @@ export async function recordApprovalRequested(params: RecordApprovalRequestedPar
 
   log.info({ proposalId, operatorDid, source, kind }, 'operator approval requested');
 
-  // #2291: fire-and-forget web-push fan-out to the operator's phone,
+  // #2291: fire-and-forget web-push fan-out to the addressee's phone (#2723: the owner, for a connector proposal — never the node operator),
   // additive alongside the existing WS push `POST /notify/api/send` already
   // does (ws-push.ts) — the row just inserted above remains the sole
   // authority no matter what happens here. Deliberately NOT awaited: a slow
@@ -175,6 +184,7 @@ export type DecideOperatorApprovalResult =
 
 export interface DecideOperatorApprovalParams {
   proposalId: string;
+  /** The REAL session DID deciding (#2723: must be the DID the row is addressed to — the connector owner, or the node operator for node-level kinds). */
   operatorDid: string;
   decision: ApprovalDecision;
   /**
@@ -387,8 +397,11 @@ export async function decideOperatorApproval(
   if (!row) {
     return { ok: false, error: 'Proposal not found', status: 404 };
   }
-  if (row.operatorDid !== operatorDid) {
-    return { ok: false, error: 'Proposal not found', status: 404 };
+  // #2723: owner-only. `operatorDid` here is the REAL session DID; it must be
+  // the DID the row is addressed to. A connector proposal is addressed to its
+  // owner even if a legacy row still carries the node operator's DID.
+  if (resolveApprovalAddressee(row, row.operatorDid) !== operatorDid) {
+    return { ok: false, error: 'This proposal is not addressed to you', status: 403 };
   }
 
   const requiredStatus = requiredStatusFor(decision);
@@ -515,16 +528,29 @@ export async function attachApprovalOutcome(
 }
 
 /**
- * List every proposal ever addressed to `operatorDid`, newest first.
- * Optionally scoped to one `source` (#2152), e.g. the /jin panel's own
- * `?source=` filter — never a security boundary, just a view filter, since
- * every row here already belongs to this operator.
+ * List every proposal ever addressed to `inboxDid`, newest first — the
+ * Inbox read (#2723: scoped to the session DID, so the node operator gets
+ * node-level kinds plus their OWN connector proposals, and nobody's
+ * connector proposal appears in anyone else's list). Optionally scoped to
+ * one `source` (#2152), e.g. the /jin panel's own `?source=` filter —
+ * never a security boundary, just a view filter.
+ *
+ * "Addressed to" is `resolveApprovalAddressee`, not the raw column: a
+ * legacy connector row still stored under the node operator's DID is
+ * excluded from the operator's list and included in its owner's, so
+ * visibility never depends on the backlog re-address having run. The SQL
+ * `OR` only widens the candidate set to those owner-matching rows; the
+ * in-memory filter is the authority.
  */
 export async function listApprovalsForOperator(
-  operatorDid: string,
+  inboxDid: string,
   options: { source?: string } = {},
 ): Promise<OperatorApprovalCard[]> {
-  const conditions = [eq(operatorApprovals.operatorDid, operatorDid)];
+  const candidate = or(
+    eq(operatorApprovals.operatorDid, inboxDid),
+    sql`${operatorApprovals.detail}->>'ownerDid' = ${inboxDid}`,
+  );
+  const conditions = [candidate];
   if (options.source) conditions.push(eq(operatorApprovals.source, options.source));
 
   const rows = await db
@@ -532,5 +558,5 @@ export async function listApprovalsForOperator(
     .from(operatorApprovals)
     .where(and(...conditions))
     .orderBy(desc(operatorApprovals.createdAt));
-  return rows.map(toCard);
+  return rows.filter((row) => resolveApprovalAddressee(row, row.operatorDid) === inboxDid).map(toCard);
 }

@@ -68,8 +68,9 @@ Content-Type: application/json
 - `to` **must** be the node's configured operator DID
   (`relay.relay_config.node_operator_did` — see `getOperatorDid()` in
   `apps/kernel/src/lib/notify/operator-approvals.ts`). Any other recipient is
-  rejected with 400: this notification kind has exactly one legitimate
-  addressee.
+  rejected with 400. For a connector proposal (kind
+  `<connector>:append|mutate|write` with `detail.ownerDid`) the kernel then
+  resolves the real addressee to that owner — see *Whose Inbox* below (#2723).
 - **Legacy shape** (no `source` field): `kind` must be one of the original
   three bare values (`restart` | `config-mutation` | `other`); the kernel
   normalizes it onto `source: "system-agent"`, `kind: "system-agent:<kind>"`.
@@ -361,27 +362,77 @@ Idempotent: calling this again for an already-`applied` proposal succeeds
 as a no-op; calling it for a proposal that isn't currently `approved`
 (unknown, denied, or already withdrawn) is a safe no-op too.
 
+## Whose Inbox: node-level vs. connector approvals (#2723)
+
+`operator.approvals.operator_did` means **"whose /jin Inbox this row lives
+in"** — the column name is a #2059 leftover (renaming it is a schema change
+and waits for the v0.8.18 baseline squash). The rule is one pure function,
+`resolveApprovalAddressee` (`apps/kernel/src/lib/notify/approval-addressing.ts`):
+
+| Approval | Addressed to |
+|---|---|
+| **Connector proposal** — kind `<connector>:append`, `:mutate` or `:write` carrying `detail.ownerDid` (today: `github:append`, `github:mutate`) | the proposal's **owner DID** — the principal whose own agent raised it |
+| **Node-level** — `system-agent:*` (gateway restart/config), `skill-workshop:*`, `gateway-exec:command`, `apps:provision`, `vault:*`, `access:*`, `decision:card`, and any connector-shaped kind with no usable `detail.ownerDid` | the **node operator** (unchanged) |
+
+Consequences, all enforced server-side:
+
+- **Inbox read** (`GET /jin/api/operator-approvals`) is scoped to the session
+  DID: a principal lists only rows addressed to them. The node operator sees
+  node-level kinds plus their *own* connector proposals — never another
+  principal's, not even read-only. A delegated agent (`X-Acting-For`) has no
+  Inbox. `isOperator` in the response still means "is the node operator"; it
+  no longer gates the list, and the panel renders for anyone with a non-empty
+  Inbox.
+- **Decide is owner-only**: confirm/deny/withdraw succeeds only when the real
+  session DID is the row's addressee. The node operator gets **403** on
+  someone else's connector proposal; act-as is refused first (#2359).
+  Addressing is resolved from the row's kind + `detail.ownerDid`, so a legacy
+  row still stored under the operator's DID is already the owner's to see and
+  decide, with or without the backlog re-address below.
+- **Notifications go to the owner**: `recordApprovalRequested` fans the
+  web-push out to the addressee; `POST /notify/api/send` delivers the
+  persisted notification, WS frame and email for a connector proposal to the
+  owner (the webhook's `to` is still the node operator DID — it is validated
+  as before, then resolved to the owner). Push subscriptions
+  (`/jin/api/push-subscriptions`) are per signed-in principal so an owner can
+  receive them. `operator.approval.decided` is issued by / addressed to the
+  deciding owner (plus `signerDid`, #2337); the operator gets nothing.
+- **The countersignature is the owner's own key**: `operatorSignature` is
+  verified against the *deciding session DID's* current registered key, which
+  for a connector proposal is the owner.
+
+### Backlog re-address
+
+Rows raised before #2723 are stored under the operator. `npx tsx
+scripts/readdress-connector-approvals.ts [--dry-run]`
+(`readdressPendingConnectorApprovals`, `src/lib/notify/approval-readdress.ts`)
+moves them: only `status = 'pending'` connector rows whose owner differs from
+the stored addressee, each via one guarded UPDATE (`status = 'pending' AND
+operator_did = <value read>`), every move logged `from → to`. Decided,
+expired and past-`detail.expiresAt` rows are never touched; a second run is a
+no-op. No schema change.
+
 ## Auth invariant
 
 The decide route (`POST /jin/api/operator-approvals/:proposalId/decision`)
-requires the caller's authenticated identity to be the operator DID
-**directly** — `identity.id === operatorDid && !identity.actingFor`
-(`isOperatorIdentity` in `apps/kernel/src/lib/notify/operator-
-approvals.ts`). An agent (e.g. `@jin`) authenticated with its own DID and
-`X-Acting-For: <operatorDid>` has `identity.id !== operatorDid`, so this is
-always false for it, regardless of what it claims to act for — `@jin`
-proposing and `@jin` approving is structurally impossible, not just
-discouraged. A different human identity gets 403 without ever learning
-whether a given `proposalId` exists.
+requires the caller's real authenticated identity — never an acting-for
+overlay — to be **the DID the proposal is addressed to** (see *Whose Inbox*
+above): the owner for a connector proposal, the node operator for a
+node-level kind. A delegated agent (`X-Acting-For: <did>`) has no Inbox
+(`inboxDidFor` → null) and is refused regardless of what it claims to act
+for — `@jin` proposing and `@jin` approving is structurally impossible, not
+just discouraged. Any other identity gets 403 (a proposal id that doesn't
+exist at all is 404; ids are unguessable nanoids).
 
-## Who may countersign (#2359)
+## Who may countersign (#2359, addressee per #2723)
 
 **The confirm rail is self-only.** Every write-approval endpoint on it —
 confirm, deny, withdraw, and any other countersignature of a proposal —
 authorizes against the **real authenticated session identity**
 (`identity.id`), never against `resolveActingDid(identity)`. The rule is
-`session.identity.did === proposal.ownerDid`, where the owner of an
-operator-approval proposal is this node's configured operator DID.
+`session.identity.did === proposal.ownerDid`, where the owner of a
+connector proposal is its `detail.ownerDid` and the owner of a node-level
+proposal is this node's configured operator DID (#2723).
 
 `isOperatorIdentity` above only ever excluded `actingFor`. It did not
 exclude `actingAs` — the group-impersonation overlay the /jin
@@ -409,8 +460,8 @@ even runs.
   failure mode #2359 is about. The operator branch additionally carries
   `actAs: { sessionDid, actingDid } | null`, so the panel renders every
   card with its decision controls replaced by an explanatory line instead
-  of offering a tap the server will refuse. The non-operator response shape
-  is untouched.
+  of offering a tap the server will refuse. (#2723: `actAs` is returned to
+  every principal's Inbox read, not only the operator's.)
 - Every `/jin` lane renders a persistent act-as banner
   (`apps/kernel/app/jin/act-as-banner.tsx`, mounted from the lane layout):
   who you are, who you're acting as, and a one-click drop. It renders

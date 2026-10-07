@@ -5,7 +5,14 @@
  * bus publish.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { AGENT_DID, OPERATOR_DID, PROPOSAL_ID, pendingApprovalCard } from './operator-approvals-test-helpers';
+import {
+  AGENT_DID,
+  CONNECTOR_OWNER_DID,
+  OPERATOR_DID,
+  PROPOSAL_ID,
+  githubProposalDetail,
+  pendingApprovalCard,
+} from './operator-approvals-test-helpers';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +56,7 @@ vi.mock('@/src/db', () => ({
   operatorApprovals: {
     proposalId: 'proposal_id',
     operatorDid: 'operator_did',
+    detail: 'detail',
     source: 'source',
     status: 'status',
     createdAt: 'created_at',
@@ -59,6 +67,8 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (...args: unknown[]) => ({ eq: args }),
   desc: (...args: unknown[]) => ({ desc: args }),
+  or: (...args: unknown[]) => ({ or: args }),
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: [...strings], values }),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -166,6 +176,11 @@ function row(overrides: Record<string, unknown> = {}) {
     updatedAt: new Date('2026-09-08T00:00:00.000Z'),
     ...overrides,
   };
+}
+
+/** A github connector proposal row — by default still stored under the node operator (the pre-#2723 misroute). */
+function connectorRow(overrides: Record<string, unknown> = {}) {
+  return row({ source: 'github', kind: 'github:mutate', detail: githubProposalDetail(CONNECTOR_OWNER_DID), ...overrides });
 }
 
 beforeEach(() => {
@@ -310,6 +325,35 @@ describe('recordApprovalRequested', () => {
   });
 });
 
+describe('recordApprovalRequested addressing (#2723)', () => {
+  it.each([
+    // [label, source, kind, detail, expected addressee]
+    ['a github connector proposal goes to its owner', 'github', 'github:mutate', githubProposalDetail(CONNECTOR_OWNER_DID), CONNECTOR_OWNER_DID],
+    ['another connector write tier goes to its owner', 'google', 'google:write', { ownerDid: CONNECTOR_OWNER_DID }, CONNECTOR_OWNER_DID],
+    ['the operator\u2019s own connector proposal stays theirs', 'github', 'github:append', githubProposalDetail(OPERATOR_DID), OPERATOR_DID],
+    ['a gateway restart stays with the operator', 'system-agent', 'system-agent:restart', null, OPERATOR_DID],
+    ['apps:provision stays with the operator even though it names a proposer', 'apps', 'apps:provision', { ownerDid: CONNECTOR_OWNER_DID }, OPERATOR_DID],
+    ['a connector-shaped kind with no owner DID stays with the operator', 'github', 'github:mutate', { tool: 'x' }, OPERATOR_DID],
+  ])('%s', async (_label, source, kind, detail, expectedAddressee) => {
+    await recordApprovalRequested({
+      proposalId: PROPOSAL_ID,
+      operatorDid: OPERATOR_DID,
+      source,
+      kind,
+      summary: 'a proposal',
+      keysTouched: [],
+      detail,
+      contentHash: null,
+      notificationId: null,
+      signerDid: null,
+    });
+
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: expectedAddressee }));
+    expect(mockPushWebNotificationToOperator).toHaveBeenCalledWith(expectedAddressee, expect.any(Object));
+    expect(mockPushWebNotificationToOperator).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('decideOperatorApproval', () => {
   it('approves a pending proposal, signs a decision, and publishes operator.approval.decided with source + kind carried through', async () => {
     mockSelectLimit
@@ -366,13 +410,28 @@ describe('decideOperatorApproval', () => {
     expect(result.card.status).toBe(toStatus);
   });
 
-  it('rejects deciding a proposal addressed to a different operator DID (404, not a leak)', async () => {
+  it('rejects (403) deciding a proposal addressed to a different DID, before anything is signed (#2723)', async () => {
     mockSelectLimit.mockResolvedValueOnce([row({ operatorDid: 'did:imajin:someone-else' })]);
 
     const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
 
-    expect(result).toEqual({ ok: false, error: 'Proposal not found', status: 404 });
+    expect(result).toEqual({ ok: false, error: 'This proposal is not addressed to you', status: 403 });
     expect(mockSignSync).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    // [label, stored operator_did, deciding DID, expected status]
+    ['the operator on a legacy connector row still stored under the operator', OPERATOR_DID, OPERATOR_DID, 403],
+    ['the operator on a connector row already addressed to its owner', CONNECTOR_OWNER_DID, OPERATOR_DID, 403],
+    ['the owner on a legacy connector row still stored under the operator', OPERATOR_DID, CONNECTOR_OWNER_DID, 200],
+    ['the owner on a connector row addressed to them', CONNECTOR_OWNER_DID, CONNECTOR_OWNER_DID, 200],
+  ])('connector proposals are owner-only: %s (#2723)', async (_label, storedDid, deciderDid, expectedStatus) => {
+    mockSelectLimit.mockResolvedValue([connectorRow({ operatorDid: storedDid })]);
+
+    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: deciderDid, decision: 'approve' });
+
+    expect(result.ok).toBe(expectedStatus === 200);
+    if (!result.ok) expect(result.status).toBe(expectedStatus);
   });
 
   it('returns 404 for an unknown proposal', async () => {
@@ -1165,7 +1224,36 @@ describe('listApprovalsForOperator', () => {
     // and(...) is mocked to collect its args — both the operator and source conditions must be present.
     const { operatorApprovals } = await import('@/src/db');
     expect(whereMock).toHaveBeenCalledWith({
-      and: [{ eq: [operatorApprovals.operatorDid, OPERATOR_DID] }, { eq: [operatorApprovals.source, 'skill-workshop'] }],
+      and: [
+        {
+          or: [
+            { eq: [operatorApprovals.operatorDid, OPERATOR_DID] },
+            { sql: expect.any(Array), values: [operatorApprovals.detail, OPERATOR_DID] },
+          ],
+        },
+        { eq: [operatorApprovals.source, 'skill-workshop'] },
+      ],
     });
+  });
+
+  it.each([
+    // [label, inbox DID, expected visible proposal ids]
+    ['the operator sees node-level rows and their own connector rows only', OPERATOR_DID, ['node', 'operator-own-connector']],
+    ['an owner sees their connector rows — including a legacy one still stored under the operator', CONNECTOR_OWNER_DID, ['owner-addressed', 'owner-legacy']],
+  ])('lists exactly the rows addressed to the session DID: %s (#2723)', async (_label, inboxDid, expectedIds) => {
+    const rows = [
+      row({ proposalId: 'node' }),
+      connectorRow({ proposalId: 'operator-own-connector', detail: githubProposalDetail(OPERATOR_DID) }),
+      connectorRow({ proposalId: 'owner-addressed', operatorDid: CONNECTOR_OWNER_DID }),
+      connectorRow({ proposalId: 'owner-legacy' }),
+    ];
+    const { db } = await import('@/src/db');
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue(rows) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+
+    const result = await listApprovalsForOperator(inboxDid);
+
+    expect(result.map((card) => card.proposalId)).toEqual(expectedIds);
   });
 });

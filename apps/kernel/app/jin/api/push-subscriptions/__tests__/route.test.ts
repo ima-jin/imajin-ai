@@ -2,12 +2,14 @@
  * Tests for GET/POST/DELETE /jin/api/push-subscriptions (#2291).
  *
  * Mirrors the vault-proposals route test conventions: real
- * `isOperatorIdentity` (only `getOperatorDid` is mocked) so the operator
- * gate is exercised for real, not stood in for.
+ * `isOperatorIdentity`/`inboxDidFor` (only `getOperatorDid` is mocked) so the
+ * gates are exercised for real, not stood in for. #2723: any signed-in
+ * principal may subscribe under their own DID; a delegated agent may not.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   OPERATOR_DID,
+  OTHER_HUMAN_DID,
   operatorIdentity,
   otherHumanIdentity,
   agentActingForOperatorIdentity,
@@ -112,23 +114,30 @@ describe('GET /jin/api/push-subscriptions', () => {
     expect(res.status).toBe(401);
   });
 
-  it('reports isOperator: false with no key material for a non-operator (never a 403)', async () => {
+  it('lets any signed-in principal subscribe — their own Inbox is where connector proposals land (#2723)', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: otherHumanIdentity() });
 
     const res = await GET(makeReq('GET') as Parameters<typeof GET>[0]);
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { isOperator: boolean; publicKey?: string };
-    expect(body).toEqual({ isOperator: false });
-    expect(mockGetVapidPublicKey).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ isOperator: false, canSubscribe: true, publicKey: 'pub-key' });
   });
 
-  it('returns the VAPID public key for the operator', async () => {
+  it('reports no subscribe ability and no key material to a delegated agent (never a 403)', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForOperatorIdentity() });
+
     const res = await GET(makeReq('GET') as Parameters<typeof GET>[0]);
 
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { isOperator: boolean; publicKey: string | null };
-    expect(body).toEqual({ isOperator: true, publicKey: 'pub-key' });
+    expect(await res.json()).toEqual({ isOperator: false, canSubscribe: false });
+    expect(mockGetVapidPublicKey).not.toHaveBeenCalled();
+  });
+
+  it('returns the VAPID public key for the operator, flagged isOperator', async () => {
+    const res = await GET(makeReq('GET') as Parameters<typeof GET>[0]);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ isOperator: true, canSubscribe: true, publicKey: 'pub-key' });
   });
 
   it('returns a null publicKey when VAPID keys are not yet provisioned', async () => {
@@ -151,13 +160,13 @@ describe('POST /jin/api/push-subscriptions — auth', () => {
     expect(mockInsertValues).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-operator human with 403', async () => {
+  it('subscribes a non-operator principal under their OWN DID (#2723)', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: otherHumanIdentity() });
 
     const res = await POST(makeReq('POST', SUBSCRIBE_BODY) as Parameters<typeof POST>[0]);
 
-    expect(res.status).toBe(403);
-    expect(mockInsertValues).not.toHaveBeenCalled();
+    expect(res.status).toBe(201);
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: OTHER_HUMAN_DID }));
   });
 
   it('rejects an agent acting for the operator via X-Acting-For with 403', async () => {
@@ -234,8 +243,8 @@ describe('DELETE /jin/api/push-subscriptions', () => {
     expect(res.status).toBe(401);
   });
 
-  it('rejects a non-operator human with 403', async () => {
-    mockRequireAuth.mockResolvedValueOnce({ identity: otherHumanIdentity() });
+  it('rejects a delegated agent with 403', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForOperatorIdentity() });
 
     const res = await DELETE(makeReq('DELETE', { endpoint: SUBSCRIBE_BODY.endpoint }) as Parameters<typeof DELETE>[0]);
 

@@ -27,24 +27,13 @@ import { systemEvents } from '@/src/db/schemas/registry';
 import { operatorApprovals } from '@/src/db/schemas/operator-approvals';
 import { identityMembers, delegationGrants } from '@/src/db/schemas/auth';
 
-const SCHEMA_SQL = `
-CREATE SCHEMA IF NOT EXISTS registry;
-CREATE SCHEMA IF NOT EXISTS operator;
-CREATE SCHEMA IF NOT EXISTS auth;
-
-CREATE TABLE IF NOT EXISTS registry.system_events (
-  id text PRIMARY KEY,
-  service text NOT NULL,
-  action text NOT NULL,
-  did text,
-  correlation_id text,
-  parent_event_id text,
-  payload jsonb,
-  status text DEFAULT 'success',
-  duration_ms integer,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
-
+/**
+ * `operator.approvals` DDL, column-for-column matching
+ * `src/db/schemas/operator-approvals.ts`. Exported so every pglite harness
+ * that needs the table (this one, the connector-Inbox route suite #2723)
+ * shares one definition instead of copy-pasting it.
+ */
+export const OPERATOR_APPROVALS_TABLE_SQL = `
 CREATE TABLE IF NOT EXISTS operator.approvals (
   proposal_id text PRIMARY KEY,
   operator_did text NOT NULL,
@@ -63,7 +52,27 @@ CREATE TABLE IF NOT EXISTS operator.approvals (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+`;
 
+const SCHEMA_SQL = `
+CREATE SCHEMA IF NOT EXISTS registry;
+CREATE SCHEMA IF NOT EXISTS operator;
+CREATE SCHEMA IF NOT EXISTS auth;
+
+CREATE TABLE IF NOT EXISTS registry.system_events (
+  id text PRIMARY KEY,
+  service text NOT NULL,
+  action text NOT NULL,
+  did text,
+  correlation_id text,
+  parent_event_id text,
+  payload jsonb,
+  status text DEFAULT 'success',
+  duration_ms integer,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+${OPERATOR_APPROVALS_TABLE_SQL}
 CREATE TABLE IF NOT EXISTS auth.identity_members (
   identity_did text NOT NULL,
   member_did text NOT NULL,

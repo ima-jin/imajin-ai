@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   OPERATOR_DID,
+  OTHER_HUMAN_DID,
   GROUP_DID,
   operatorIdentity,
   otherHumanIdentity,
@@ -85,18 +86,29 @@ describe('GET /jin/api/operator-approvals (#2059)', () => {
     expect(mockList).toHaveBeenCalledWith(OPERATOR_DID, {});
   });
 
-  it('returns an empty list for a non-operator human — no card, no data (#2059 acceptance (c))', async () => {
-    mockRequireAuth.mockResolvedValueOnce({ identity: otherHumanIdentity() });
+  // #2723: the Inbox is scoped to the SESSION DID — every principal lists the
+  // rows addressed to them, and `isOperator` only reports who the node
+  // operator is.
+  it.each([
+    // [label, identity factory, operator DID configured on the node, expected isOperator, expected inbox DID]
+    ['the node operator', operatorIdentity, OPERATOR_DID, true, OPERATOR_DID],
+    ['a non-operator principal (their own connector proposals)', otherHumanIdentity, OPERATOR_DID, false, OTHER_HUMAN_DID],
+    ['the operator on a node with no operator configured', operatorIdentity, null, false, OPERATOR_DID],
+    ['a principal on a node with no operator configured', otherHumanIdentity, null, false, OTHER_HUMAN_DID],
+  ])('lists the session DID\u2019s own Inbox for %s (#2723)', async (_label, identity, configuredOperator, expectedIsOperator, expectedInboxDid) => {
+    mockGetOperatorDid.mockResolvedValueOnce(configuredOperator);
+    mockRequireAuth.mockResolvedValueOnce({ identity: identity() });
 
     const res = await GET(makeReq() as Parameters<typeof GET>[0]);
     const body = (await res.json()) as { isOperator: boolean; approvals: unknown[] };
 
     expect(res.status).toBe(200);
-    expect(body).toEqual({ isOperator: false, approvals: [] });
-    expect(mockList).not.toHaveBeenCalled();
+    expect(body.isOperator).toBe(expectedIsOperator);
+    expect(body.approvals).toHaveLength(1);
+    expect(mockList).toHaveBeenCalledWith(expectedInboxDid, {});
   });
 
-  it('returns an empty list for an agent acting for the operator (#2059 acceptance (d))', async () => {
+  it('returns an empty Inbox for a delegated agent acting for the operator — it has none (#2059 acceptance (d))', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForOperatorIdentity() });
 
     const res = await GET(makeReq() as Parameters<typeof GET>[0]);
@@ -104,16 +116,6 @@ describe('GET /jin/api/operator-approvals (#2059)', () => {
 
     expect(body).toEqual({ isOperator: false, approvals: [] });
     expect(mockList).not.toHaveBeenCalled();
-  });
-
-  it('returns an empty list when no operator DID is configured at all', async () => {
-    mockGetOperatorDid.mockResolvedValueOnce(null);
-    mockRequireAuth.mockResolvedValueOnce({ identity: operatorIdentity() });
-
-    const res = await GET(makeReq() as Parameters<typeof GET>[0]);
-    const body = (await res.json()) as { isOperator: boolean; approvals: unknown[] };
-
-    expect(body).toEqual({ isOperator: false, approvals: [] });
   });
 
   it('passes ?source= through to listApprovalsForOperator as a filter (#2152)', async () => {

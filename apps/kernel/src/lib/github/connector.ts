@@ -61,7 +61,7 @@ import * as bus from '@imajin/bus';
 import { db, githubActionProposals, operatorApprovals } from '@/src/db';
 import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
-import { computeApprovalContentHash, getOperatorDid } from '@/src/lib/notify/operator-approvals';
+import { computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested, markApplied } from '@/src/lib/notify/operator-approvals-service';
 import { GITHUB_SOURCE, GITHUB_APPEND_KIND, GITHUB_MUTATE_KIND } from './approvals-execution';
 import {
@@ -598,12 +598,14 @@ function pendingReason(
  * `github.action_proposals` ledger row so the two are trivially joinable;
  * `kind` is tier-based (`github:append`/`github:mutate`, not per-tool) so
  * one approval continues to cover every tool at that risk tier, exactly
- * matching `resolveLiveGrant`'s own tuple lookup below. Best-effort: a
- * node with no configured operator DID (`getOperatorDid()` -> null) simply
- * gets no /jin card — the ledger row still exists so the write-gate itself
- * keeps functioning, matching the pre-existing constraint every other kind
- * on this rail already has (vault/access are equally invisible without an
- * operator DID configured).
+ * matching `resolveLiveGrant`'s own tuple lookup below.
+ *
+ * #2723: the card is addressed to the proposal's OWNER (`ownerDid`), not the
+ * node operator — the requester approves in their own /jin Inbox and the
+ * operator never sees it. No operator DID is consulted at all, so a node
+ * without a configured operator still raises the owner's card. Best-effort:
+ * a failure here is logged and never blocks the write gate (the ledger row
+ * already exists).
  */
 async function raiseGithubOperatorApproval(params: {
   proposalId: string;
@@ -617,12 +619,6 @@ async function raiseGithubOperatorApproval(params: {
 }): Promise<void> {
   const { proposalId, ownerDid, agentDid, scope, risk, tool, target, argsSummary } = params;
   try {
-    const operatorDid = await getOperatorDid();
-    if (!operatorDid) {
-      log.warn({ proposalId }, 'no node operator configured — skipping /jin operator-approvals card for this github proposal');
-      return;
-    }
-
     const source = GITHUB_SOURCE;
     const kind = risk === 'append' ? GITHUB_APPEND_KIND : GITHUB_MUTATE_KIND;
     const keysTouched: string[] = [];
@@ -633,7 +629,8 @@ async function raiseGithubOperatorApproval(params: {
 
     await recordApprovalRequested({
       proposalId,
-      operatorDid,
+      // #2723: whose Inbox — the owner's (`recordApprovalRequested` resolves the same addressee from `detail.ownerDid`).
+      operatorDid: ownerDid,
       source,
       kind,
       summary: argsSummary,
