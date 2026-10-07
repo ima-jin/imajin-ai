@@ -23,13 +23,14 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval, mockExecuteAppsServiceScopesApproval } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
   mockExecuteVaultApproval: vi.fn(),
   mockExecuteAccessApproval: vi.fn(),
   mockExecuteGithubApproval: vi.fn(),
+  mockExecuteAppsServiceScopesApproval: vi.fn(),
 }));
 
 // #2359: `act-as-guard.ts` calls the real `isUnderActAs`/`resolveActingDid`,
@@ -47,6 +48,10 @@ vi.mock('@/src/lib/vault/approvals-execution', () => ({
 
 vi.mock('@/src/lib/access/approvals-execution', () => ({
   executeAccessApproval: mockExecuteAccessApproval,
+}));
+
+vi.mock('@/src/lib/apps/service-scopes', () => ({
+  executeAppsServiceScopesApproval: mockExecuteAppsServiceScopesApproval,
 }));
 
 vi.mock('@/src/lib/github/approvals-execution', () => ({
@@ -108,6 +113,7 @@ beforeEach(() => {
   mockExecuteVaultApproval.mockResolvedValue({ ok: true });
   mockExecuteAccessApproval.mockResolvedValue({ ok: true, data: { bearer: 'plaintext-bearer', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z', hardCapAt: '2026-04-15T00:00:00.000Z' } });
   mockExecuteGithubApproval.mockResolvedValue({ ok: true });
+  mockExecuteAppsServiceScopesApproval.mockResolvedValue({ ok: true, data: { appDid: 'did:imajin:app', action: 'grant', approvedServiceScopes: ['identity:write'] } });
 });
 
 describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {
@@ -485,6 +491,44 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
       expect(res.status).toBe(200);
       const body = (await res.json()) as { executionError?: string; data?: unknown };
       expect(body.executionError).toBe('Delegate-grant knock has expired');
+      expect(body.data).toBeUndefined();
+    });
+  });
+
+  // #2711: apps:service-scopes rides the same rail as apps:provision but runs its own executor.
+  describe('apps:service-scopes execution bridge (#2711)', () => {
+    const serviceScopesCard = (status: string) =>
+      pendingApprovalCard({ status, source: 'apps', kind: 'apps:service-scopes' });
+
+    it('calls executeAppsServiceScopesApproval when the proposal is approved and returns its data', async () => {
+      mockDecide.mockResolvedValueOnce({ ok: true, card: serviceScopesCard('approved') });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteAppsServiceScopesApproval).toHaveBeenCalledTimes(1);
+      const body = (await res.json()) as { data?: { approvedServiceScopes: string[] }; executionError?: string };
+      expect(body.data?.approvedServiceScopes).toEqual(['identity:write']);
+      expect(body.executionError).toBeUndefined();
+    });
+
+    it('does not execute for a reject decision', async () => {
+      mockDecide.mockResolvedValueOnce({ ok: true, card: serviceScopesCard('denied') });
+
+      const res = await POST(makeReq({ decision: 'reject' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(mockExecuteAppsServiceScopesApproval).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+    });
+
+    it('surfaces an execution failure (e.g. no countersignature) as executionError', async () => {
+      mockDecide.mockResolvedValueOnce({ ok: true, card: serviceScopesCard('approved') });
+      mockExecuteAppsServiceScopesApproval.mockResolvedValueOnce({ ok: false, error: 'apps:service-scopes requires a countersigned operator decision' });
+
+      const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { executionError?: string; data?: unknown };
+      expect(body.executionError).toBe('apps:service-scopes requires a countersigned operator decision');
       expect(body.data).toBeUndefined();
     });
   });
