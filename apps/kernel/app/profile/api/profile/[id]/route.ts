@@ -14,6 +14,7 @@ import type { JsonbSizeResult, ProfileJsonbField } from '@/src/lib/profile';
 import type { FieldVisibility } from '@/src/db/schemas/profile';
 import { loadAndUnseal } from '@/src/lib/vault';
 import { processEmailUpdate, processPhoneUpdate } from '@/src/lib/profile/vault-contacts';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('kernel');
 
@@ -607,6 +608,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   }
 
   const { identity } = authResult;
+  const delegationDenied = enforceRoutePolicy(identity, 'kernel.profile.delete', { resourceId: id, headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   try {
     // Fetch existing profile

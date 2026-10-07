@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, unlink } from "node:fs/promises";
 import { db, assets, assetReferences } from "@/src/db";
-import { requireMediaAuth, mediaAuthErrorResponse, agentApprovalRequiredResponse } from "@/src/lib/media/require-media-auth";
+import { requireMediaAuth, mediaAuthErrorResponse, mediaDelegationGate } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
 import { getAccessType } from "@/src/lib/media/read-access";
@@ -81,7 +81,7 @@ export async function DELETE(
   }
   const { auth } = authResult;
 
-  const approvalRequired = agentApprovalRequiredResponse(auth, "delete", id);
+  const approvalRequired = mediaDelegationGate(auth, "media.asset.delete", id);
   if (approvalRequired) return approvalRequired;
 
   const requesterDid = auth.did;
@@ -158,7 +158,9 @@ export async function PATCH(
   }
   const { auth } = authResult;
 
-  const approvalRequired = agentApprovalRequiredResponse(auth, "rename", id);
+  // Rename is reversible metadata but a listed exception (#2360 ruling b): a
+  // delegate stays gated (403) until this route records `composedBy`.
+  const approvalRequired = mediaDelegationGate(auth, "media.asset.rename", id);
   if (approvalRequired) return approvalRequired;
 
   const requesterDid = auth.did;

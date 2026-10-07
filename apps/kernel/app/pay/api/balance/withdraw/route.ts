@@ -45,6 +45,7 @@ import { MJN, InsufficientBalanceError } from '@/src/lib/pay/ledger';
 import { executeWithdrawal } from '@/src/lib/pay/withdraw-intent';
 import { defaultRailForUnit } from '@/src/lib/pay/rails/registry';
 import { resolveWithdrawDestination } from '@/src/lib/pay/withdraw-destination';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const MIN_WITHDRAWAL_CENTS = 100; // $1.00 minimum
 
@@ -62,6 +63,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   const did = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.balance.withdraw', { headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const body = await request.json();

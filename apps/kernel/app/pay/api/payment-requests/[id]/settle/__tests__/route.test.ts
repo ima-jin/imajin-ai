@@ -105,11 +105,21 @@ describe("POST /pay/api/payment-requests/:id/settle {method: 'emt'} — Mark pai
     expect(mocks.settlePaymentRequestManual).not.toHaveBeenCalled();
   });
 
-  it("passes the ACTING business DID as the caller when someone acts for the issuer (resolveActingDid)", async () => {
+  it('refuses a delegate acting for the issuer with 403 AGENT_APPROVAL_REQUIRED — settling is value-moving (#2360)', async () => {
     mocks.requireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:delegate', actingFor: ISSUER_DID } });
-    mocks.settlePaymentRequestEmt.mockResolvedValueOnce({ paymentRequest: { id: 'pr_1' }, settled: true });
-    await callSettle({ method: 'emt' });
-    expect(mocks.settlePaymentRequestEmt).toHaveBeenCalledWith({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    const res = await callSettle({ method: 'emt' });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED',
+      action: 'settle',
+      class: 'value-moving',
+      ownerDid: ISSUER_DID,
+      delegateDid: 'did:imajin:delegate',
+    });
+    expect(mocks.settlePaymentRequestEmt).not.toHaveBeenCalled();
+    expect(mocks.settlePaymentRequestManual).not.toHaveBeenCalled();
   });
 
   it('maps an unauthorized attempt (the service refuses a non-issuer) to a 403 — enforced server-side, not by the client', async () => {

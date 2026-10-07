@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db, assets } from "@/src/db";
-import { requireMediaAuth, mediaAuthErrorResponse } from "@/src/lib/media/require-media-auth";
+import { requireMediaAuth, mediaAuthErrorResponse, mediaDelegationGate } from "@/src/lib/media/require-media-auth";
 import { eq } from "drizzle-orm";
 import { isFairManifestV11 } from "@imajin/fair";
 import type { FairManifest, FairManifestV11 } from "@imajin/fair";
@@ -16,7 +16,7 @@ type AccessType = (typeof ACCESS_TYPES)[number];
 export async function patchAccess(
   request: NextRequest,
   id: string
-): Promise<NextResponse> {
+): Promise<Response> {
   const cors = corsHeaders(request);
 
   // 1. Auth — session cookie / legacy Bearer PAT, or (#2535) a scoped
@@ -25,6 +25,8 @@ export async function patchAccess(
   if ("error" in authResult) {
     return mediaAuthErrorResponse(authResult, cors);
   }
+  const delegationDenied = mediaDelegationGate(authResult.auth, "media.asset.access", id, cors);
+  if (delegationDenied) return delegationDenied;
   const requesterDid = authResult.auth.did;
 
   // 2. Parse body

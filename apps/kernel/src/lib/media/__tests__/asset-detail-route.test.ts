@@ -122,6 +122,17 @@ describe('DELETE /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(res.status).toBe(403);
     const body = await res.json();
     expect(body.code).toBe('AGENT_APPROVAL_REQUIRED');
+    // #2360: irreversible class — the delegate may propose, never execute.
+    expect(body).toMatchObject({
+      action: 'delete',
+      class: 'irreversible',
+      assetId: 'asset_test',
+      resourceId: 'asset_test',
+      ownerDid: 'did:imajin:owner',
+      delegateDid: 'did:imajin:agent',
+    });
+    expect(mockDeleteWhere).not.toHaveBeenCalled();
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
   it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {
@@ -183,7 +194,7 @@ describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
     expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
-  it('still blocks actingFor agent delegation on the session path', async () => {
+  it('refuses an actingFor delegate rename — listed exception until composedBy is recorded (#2360)', async () => {
     vi.mocked(requireAuth).mockResolvedValueOnce({
       identity: { id: 'did:imajin:agent', scope: 'actor', actingFor: 'did:imajin:owner' },
     });
@@ -191,8 +202,104 @@ describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
     const res = await PATCH(makeRequest('PATCH', { filename: 'renamed.bin' }), { params });
 
     expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED',
+      action: 'rename',
+      class: 'reversible',
+      gatedUntil: 'the rename route records composedBy',
+      ownerDid: 'did:imajin:owner',
+      delegateDid: 'did:imajin:agent',
+    });
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({ error: 'Not authenticated', status: 401 });
+
+    const res = await DELETE(makeRequest('DELETE'), { params });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+// ─── PATCH ─────────────────────────────────────────────────────────────────
+
+describe('PATCH /media/api/assets/[id] — auth modes (#2393)', () => {
+  it('renames the asset for the resolved session identity on the cookie path', async () => {
+    const res = await PATCH(makeRequest('PATCH', { filename: 'renamed.bin' }), { params });
+
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.code).toBe('AGENT_APPROVAL_REQUIRED');
+    expect(body).toEqual({ ok: true, filename: 'renamed.bin' });
+    expect(mockVerifyAppToken).not.toHaveBeenCalled();
+  });
+
+  it('accepts a scoped app-token carrying media:write and allows the token subject to rename its own asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:owner'));
+
+    const res = await PATCH(
+      makeRequest('PATCH', { filename: 'renamed.bin' }, 'scoped-app-token'),
+      { params },
+    );
+
+    expect(res.status).toBe(200);
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when a properly-scoped app-token subject does not own the asset', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_WRITE_ONLY, 'did:imajin:stranger'));
+
+    const res = await PATCH(
+      makeRequest('PATCH', { filename: 'renamed.bin' }, 'scoped-app-token'),
+      { params },
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects a scoped app-token that lacks media:write with 403, without renaming', async () => {
+    mockVerifyAppToken.mockResolvedValueOnce(appToken(APP_TOKEN_NO_SCOPES, 'did:imajin:owner'));
+
+    const res = await PATCH(
+      makeRequest('PATCH', { filename: 'renamed.bin' }, 'read-only-app-token'),
+      { params },
+    );
+
+    expect(res.status).toBe(403);
+    const body = await res.json();
+    expect(body.error).toContain('media:write');
+    expect(vi.mocked(requireAuth)).not.toHaveBeenCalled();
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('refuses an actingFor delegate rename — listed exception until composedBy is recorded (#2360)', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: { id: 'did:imajin:agent', scope: 'actor', actingFor: 'did:imajin:owner' },
+    });
+
+    const res = await PATCH(makeRequest('PATCH', { filename: 'renamed.bin' }), { params });
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED',
+      action: 'rename',
+      class: 'reversible',
+      gatedUntil: 'the rename route records composedBy',
+      ownerDid: 'did:imajin:owner',
+      delegateDid: 'did:imajin:agent',
+    });
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
+  });
+
+  it('still enforces ownership on a delegate rename — the owner DID is the acting DID', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: { id: 'did:imajin:agent', scope: 'actor', actingFor: 'did:imajin:someone-else' },
+    });
+
+    const res = await PATCH(makeRequest('PATCH', { filename: 'renamed.bin' }), { params });
+
+    expect(res.status).toBe(403);
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
   });
 
   it('returns 401 when neither a scoped app-token nor session auth verifies', async () => {

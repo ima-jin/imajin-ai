@@ -16,6 +16,7 @@ import { db, events, pledges } from '@/src/db';
 import { eq, and, sql } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -42,6 +43,8 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
   }
 
   const did = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, 'events.campaign.cancel', { headers: cors });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const url = new URL(request.url);

@@ -19,6 +19,7 @@ import { eq } from "drizzle-orm";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { signReceipt, loadSigningKey, receiptExpiryForAction } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -87,7 +88,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await params;
+  const { id } = await params;
 
   // Require authentication — caller must be the asset owner
   const authResult = await requireAuth(request);
@@ -95,6 +96,8 @@ export async function POST(
     return NextResponse.json({ error: "Authentication required" }, { status: 401 });
   }
   const requesterDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.settle-confirm", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   // Parse body
   let body: {

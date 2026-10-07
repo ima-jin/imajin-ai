@@ -19,6 +19,7 @@ import type { FairManifest, FairManifestV11 } from "@imajin/fair";
 import { createLogger } from "@imajin/logger";
 import { nanoid } from "nanoid";
 import { createHash } from "node:crypto";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 const log = createLogger("kernel");
 
@@ -105,6 +106,8 @@ export async function POST(
     );
   }
   const buyerDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.asset.settle", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   // 5. Validate manifest.owner is a DID before interpolating into URI
   if (!manifest.owner?.startsWith("did:")) {

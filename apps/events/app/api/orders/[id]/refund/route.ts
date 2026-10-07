@@ -18,6 +18,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('events');
 
@@ -36,6 +37,8 @@ export async function POST(
   const { identity } = authResult;
   const did = resolveActingDid(identity);
   const { id: orderId } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'events.order.refund', { resourceId: orderId });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const [order] = await db.select().from(orders).where(eq(orders.id, orderId)).limit(1);

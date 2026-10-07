@@ -8,6 +8,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq } from 'drizzle-orm';
 import { validateManifest } from '@imajin/fair';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 /**
  * PATCH /api/events/[id]/fair - Update the .fair manifest for an event
@@ -25,6 +26,8 @@ export async function PATCH(
   const { identity } = authResult;
   const did = resolveActingDid(identity);
   const { id } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'events.event.fair-update', { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const [event] = await db

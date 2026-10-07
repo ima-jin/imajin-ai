@@ -3,6 +3,7 @@ import { db, folders } from "@/src/db";
 import { requireAuth, resolveActingDid } from "@imajin/auth";
 import { eq, and } from "drizzle-orm";
 import { createLogger } from "@imajin/logger";
+import { enforceRoutePolicy } from "@imajin/auth/delegation-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -104,6 +105,8 @@ export async function DELETE(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const ownerDid = resolveActingDid(authResult.identity);
+  const delegationDenied = enforceRoutePolicy(authResult.identity, "media.folder.delete", { resourceId: id });
+  if (delegationDenied) return delegationDenied;
 
   const [existing] = await db
     .select()

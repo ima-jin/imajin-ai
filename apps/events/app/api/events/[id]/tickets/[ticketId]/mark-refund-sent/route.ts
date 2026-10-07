@@ -7,6 +7,7 @@ const log = createLogger('events');
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { eq } from 'drizzle-orm';
 import { getClient } from '@imajin/db';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const sqlClient = getClient();
 
@@ -27,6 +28,8 @@ export async function POST(
   const { identity } = authResult;
   const did = resolveActingDid(identity);
   const { id, ticketId } = await params;
+  const delegationDenied = enforceRoutePolicy(identity, 'events.ticket.mark-refund-sent', { resourceId: ticketId });
+  if (delegationDenied) return delegationDenied;
 
   try {
     const [event] = await db.select().from(events).where(eq(events.id, id)).limit(1);

@@ -9,6 +9,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { deleteCorpusSource, CorpusServiceError } from '@/src/lib/kernel/corpus-client';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 const log = createLogger('kernel');
 
@@ -18,6 +19,8 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
   const did = resolveActingDid(auth.identity);
+  const delegationDenied = enforceRoutePolicy(auth.identity, 'kernel.corpus.source.delete');
+  if (delegationDenied) return delegationDenied;
 
   let body: { source?: unknown };
   try {

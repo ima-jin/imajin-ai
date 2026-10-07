@@ -76,6 +76,40 @@ beforeEach(() => {
   state.resolveEffectiveDidMock.mockResolvedValue({ ok: true, effectiveDid: FROM_DID });
 });
 
+describe('POST /api/balance/transfer — delegation policy (#2360, value-moving)', () => {
+  it('refuses an X-Acting-For delegate (composedBy set) before touching the ledger', async () => {
+    state.resolveEffectiveDidMock.mockResolvedValue({
+      ok: true,
+      effectiveDid: FROM_DID,
+      via: 'session',
+      composedBy: 'did:imajin:agent',
+    });
+
+    const res = await POST(makeRequest({ from_did: FROM_DID, to_did: TO_DID, amount: 10 }) as never);
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED',
+      action: 'transfer',
+      class: 'value-moving',
+      ownerDid: FROM_DID,
+      delegateDid: 'did:imajin:agent',
+    });
+    expect(state.insertCalls).toHaveLength(0);
+    expect(state.updateCalls).toHaveLength(0);
+  });
+
+  it('lets a scoped app-token caller through (composedBy is always null on the app path)', async () => {
+    state.resolveEffectiveDidMock.mockResolvedValue({ ok: true, effectiveDid: FROM_DID, via: 'app', composedBy: null });
+    state.balanceRowQueue.push({ did: FROM_DID, unit: 'MJN', amount: '100', currency: 'CAD' }, undefined);
+    state.returningQueue.push([{ did: FROM_DID, unit: 'MJN', amount: '90', currency: 'CAD' }]);
+
+    const res = await POST(makeRequest({ from_did: FROM_DID, to_did: TO_DID, amount: 10 }) as never);
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('POST /api/balance/transfer — unit-aware (#2016)', () => {
   it('rejects an unknown unit with a 400, never a conversion', async () => {
     const res = await POST(makeRequest({ from_did: FROM_DID, to_did: TO_DID, amount: 10, unit: 'BTC' }) as never);
