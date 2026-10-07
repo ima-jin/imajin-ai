@@ -13,6 +13,8 @@ export const OTHER_HUMAN_DID = 'did:imajin:someone-else';
 export const AGENT_DID = 'did:imajin:jin-agent';
 export const GROUP_DID = 'did:imajin:some-group';
 export const PROPOSAL_ID = 'opap_test123';
+/** A non-operator principal whose own agent raises connector (github …) proposals — whose Inbox they land in (#2723). */
+export const CONNECTOR_OWNER_DID = 'did:imajin:eric';
 
 /**
  * A byte-for-byte copy of `canonicalize` from `packages/auth/src/sign.ts`
@@ -70,6 +72,24 @@ export function operatorIdentity(): Identity {
 /** A different, non-operator human — authenticated, but not the operator. */
 export function otherHumanIdentity(): Identity {
   return { id: OTHER_HUMAN_DID, scope: 'actor', subtype: 'human' };
+}
+
+/** The connector owner, authenticated directly — the only identity that may decide their own connector proposals (#2723). */
+export function connectorOwnerIdentity(): Identity {
+  return { id: CONNECTOR_OWNER_DID, scope: 'actor', subtype: 'human' };
+}
+
+/** The `detail` a `github:*` connector proposal carries — `ownerDid` is what addresses it (#2723). */
+export function githubProposalDetail(ownerDid: string) {
+  return {
+    ownerDid,
+    agentDid: null,
+    scope: 'github:write',
+    riskTier: 'mutate',
+    tool: 'github_update_issue',
+    target: 'a/b#1',
+    argsSummary: 'close a/b#1',
+  };
 }
 
 /**

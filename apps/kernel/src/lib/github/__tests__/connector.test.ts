@@ -1781,7 +1781,8 @@ describe('operator.approvals fold-in (#2293)', () => {
     const insertedRow = proposalInsertMock.mock.calls[0][0];
     expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({
       proposalId: insertedRow.id,
-      operatorDid: OPERATOR_DID,
+      // #2723: addressed to the proposal's owner, never the node operator.
+      operatorDid: OWNER,
       source: 'github',
       kind: 'github:mutate',
       summary: insertedRow.argsSummary,
@@ -1797,15 +1798,19 @@ describe('operator.approvals fold-in (#2293)', () => {
     expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({ kind: 'github:append' }));
   });
 
-  it('never raises a card when no node operator is configured (ledger row still exists)', async () => {
+  it.each([
+    ['an operator is configured', OPERATOR_DID],
+    ['no operator is configured', null],
+  ])('addresses the card to the owner and never to the node operator when %s (#2723)', async (_label, configuredOperator) => {
     grant(['github:write']);
-    getOperatorDidMock.mockResolvedValue(null);
+    getOperatorDidMock.mockResolvedValue(configuredOperator);
 
     const result = await updateIssue(OWNER, REPO, 42, { state: 'closed' });
 
     expect(result.status).toBe('pending');
-    expect(proposalInsertMock).toHaveBeenCalledOnce(); // the ledger row was still raised
-    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+    expect(recordApprovalRequestedMock).toHaveBeenCalledOnce();
+    expect(recordApprovalRequestedMock.mock.calls[0][0].operatorDid).toBe(OWNER);
+    expect(getOperatorDidMock).not.toHaveBeenCalled();
   });
 
   it('does not fail the write when raising the /jin card throws (non-fatal)', async () => {

@@ -14,6 +14,7 @@ import {
   validateApprovalRequestedPayload,
 } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
+import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -186,6 +187,18 @@ async function rejectInvalidOperatorApprovalRequest(
 }
 
 /**
+ * Who the notification itself is delivered to (#2723). Every ordinary scope
+ * goes to `to`. An `operator.approval.requested` for a connector proposal
+ * (kind `<connector>:append|mutate|write` carrying `detail.ownerDid`) goes to
+ * that owner — the same addressee `recordApprovalRequested` stores — so the
+ * persisted notification, the WS push and the email all reach the owner and
+ * the node operator (the webhook's `to`) gets nothing.
+ */
+function notificationRecipient(to: string, normalized: OperatorApprovalNormalized | null): string {
+  return normalized ? resolveApprovalAddressee(normalized, to) : to;
+}
+
+/**
  * Build the /notify/api/send response body (#1854): honest about whether
  * the email leg actually delivered, kept out of POST's own control flow so
  * the handler's complexity stays where it was before this fix.
@@ -316,6 +329,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // the guard still normalizes before POST proceeds.
   const operatorApprovalGuard = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
   if (operatorApprovalGuard.response) return operatorApprovalGuard.response;
+  const recipientDid = notificationRecipient(to, operatorApprovalGuard.normalized);
 
   // Resolve template (#1510 — DB row when enabled, else the in-code registry).
   const template = await getTemplate(scope);
@@ -327,7 +341,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   const [pref] = await db
     .select()
     .from(preferences)
-    .where(and(eq(preferences.did, to), eq(preferences.scope, scope)))
+    .where(and(eq(preferences.did, recipientDid), eq(preferences.scope, scope)))
     .limit(1);
 
   const { emailEnabled, inappEnabled } = resolvePreferenceFlags(pref);
@@ -340,7 +354,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   const createdAt = new Date();
   await db.insert(notifications).values({
     id,
-    recipientDid: to,
+    recipientDid,
     scope,
     urgency,
     title,
@@ -357,14 +371,14 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // push itself never fails the request.
   const inAppChannels = await resolveInAppChannels(
     inappEnabled,
-    to,
+    recipientDid,
     buildNotificationFrame({ id, scope, title, body: notifBody, data, createdAt }),
   );
 
   // Send email if enabled and template has email config (#1854: the result
   // is a structured outcome, not a boolean, so the response below can be
   // honest about whether the email leg actually delivered).
-  const { channels: emailChannels, emailResult } = await resolveEmailChannel(emailEnabled, template, to, data, log, id);
+  const { channels: emailChannels, emailResult } = await resolveEmailChannel(emailEnabled, template, recipientDid, data, log, id);
 
   const channelsSent: string[] = [...inAppChannels, ...emailChannels];
 

@@ -35,7 +35,15 @@ export const operatorApprovals = operatorSchema.table(
   {
     /** Proposal id assigned by the raising source — primary key. */
     proposalId: text('proposal_id').primaryKey(),
-    /** The operator DID this proposal was addressed to (relay_config.node_operator_did at request time). */
+    /**
+     * WHOSE /jin INBOX this row lives in (#2723) — despite the legacy name,
+     * not always the node operator. Node-level kinds (gateway restart/config,
+     * apps:provision, vault, access, …) are addressed to the node operator
+     * (relay_config.node_operator_did at request time); a connector proposal
+     * (github:*, …) is addressed to the proposal's owner DID. The rule lives
+     * in `src/lib/notify/approval-addressing.ts`. Renaming this column is a
+     * schema change and waits for the v0.8.18 baseline squash.
+     */
     operatorDid: text('operator_did').notNull(),
     /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
     source: text('source').notNull().default('system-agent'),

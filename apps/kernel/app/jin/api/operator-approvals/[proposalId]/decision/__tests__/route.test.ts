@@ -11,6 +11,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   OPERATOR_DID,
+  OTHER_HUMAN_DID,
   GROUP_DID,
   PROPOSAL_ID,
   operatorIdentity,
@@ -191,13 +192,15 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
     expect(res.status).toBe(200);
   });
 
-  it("rejects a non-operator human with 403 and never calls the service (#2059 acceptance (c))", async () => {
+  it('decides as the REAL session DID and forwards the service 403 when the proposal is not addressed to them (#2723)', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: otherHumanIdentity() });
+    mockDecide.mockResolvedValueOnce({ ok: false, error: 'This proposal is not addressed to you', status: 403 });
 
     const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
 
     expect(res.status).toBe(403);
-    expect(mockDecide).not.toHaveBeenCalled();
+    expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: OTHER_HUMAN_DID }));
+    expect(mockExecuteGithubApproval).not.toHaveBeenCalled();
   });
 
   it("rejects @jin acting for the operator via X-Acting-For with 403 (#2059 acceptance (d), the load-bearing rule)", async () => {
@@ -209,13 +212,15 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
     expect(mockDecide).not.toHaveBeenCalled();
   });
 
-  it('rejects with 403 when no operator DID is configured at all', async () => {
-    mockGetOperatorDid.mockResolvedValueOnce(null);
+  it('never consults the node operator DID — decide is addressee-based, so a connector owner needs no operator configured (#2723)', async () => {
+    mockGetOperatorDid.mockResolvedValue(null);
+    mockRequireAuth.mockResolvedValueOnce({ identity: otherHumanIdentity() });
 
     const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
 
-    expect(res.status).toBe(403);
-    expect(mockDecide).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: OTHER_HUMAN_DID }));
+    expect(mockGetOperatorDid).not.toHaveBeenCalled();
   });
 
   // #2359: the confirm rail is self-only. `isOperatorIdentity` alone only

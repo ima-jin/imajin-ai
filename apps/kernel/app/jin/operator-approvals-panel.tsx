@@ -21,10 +21,11 @@
  * #2059 card exactly: summary + keys-touched, Approve/Deny labels.
  *
  * Renders NOTHING (not even a header) when the signed-in identity is not
- * the node operator — `GET /jin/api/operator-approvals` reports
- * `isOperator: false` with an empty list for anyone else, and this panel
- * takes that at face value rather than trying to distinguish "no data" from
- * "not allowed".
+ * the node operator AND has nothing addressed to them (#2723: the Inbox is
+ * per-principal — `GET /jin/api/operator-approvals` returns exactly the rows
+ * addressed to the session DID, e.g. a connector owner's own GitHub
+ * proposals). This panel takes that at face value rather than trying to
+ * distinguish "no data" from "not allowed".
  *
  * #2082: before POSTing a decision, this component signs `canonicalize({
  * contentHash, decidedAt, decision[, mode]})` (#2693: the chosen option
@@ -1312,10 +1313,12 @@ function OperatorApprovalsPanelInner() {
     }
   }, [load, notify]);
 
-  // Non-operators see nothing — no header, no empty-state, no card. This
-  // also holds during the initial load so nobody briefly sees panel chrome
-  // before the operator check resolves.
-  if (!isOperator) return null;
+  // #2723: the Inbox is per-principal. The node operator always gets the
+  // panel; anyone else only when something is addressed to them (their own
+  // connector proposals) — otherwise no header, no empty-state, no card.
+  // This also holds during the initial load so nobody briefly sees panel
+  // chrome before the first fetch resolves.
+  if (!isOperator && approvals.length === 0) return null;
 
   return (
     <section className="mt-8">

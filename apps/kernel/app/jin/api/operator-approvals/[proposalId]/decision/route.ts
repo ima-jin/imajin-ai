@@ -3,14 +3,18 @@
  * or withdraw an operator approval proposal (#2059, generalized vocabulary
  * #2152).
  *
- * The load-bearing auth rule: this route requires `requireAuth` to resolve
- * the exact HUMAN operator identity — never `resolveActingDid`, never
- * `X-Acting-For` / `onBehalfOf`. `@jin` (the agent) proposing and `@jin`
- * approving must be impossible: an agent authenticated with its own DID and
- * `X-Acting-For: <operatorDid>` has `identity.id !== operatorDid`, so
- * {@link isOperatorIdentity} rejects it regardless of what it claims to act
- * for. A non-operator identity — including a genuinely different human —
- * gets 403 without ever learning whether `proposalId` exists.
+ * The load-bearing auth rule: this route decides as the REAL authenticated
+ * session DID — never `resolveActingDid`, never `X-Acting-For` /
+ * `onBehalfOf` — and that DID must be the one the proposal is ADDRESSED TO
+ * (#2723). `operator.approvals.operator_did` means "whose Inbox": the
+ * connector owner for a connector proposal (github …), the node operator for
+ * every node-level kind. So the owner decides their own connector
+ * proposal, the node operator decides node-level kinds, and the operator
+ * gets 403 on someone else's connector proposal — the service enforces it
+ * (see `resolveApprovalAddressee`). `@jin` (the agent) proposing and `@jin`
+ * approving must stay impossible: an agent authenticated with its own DID
+ * and `X-Acting-For: <ownerDid>` is refused by {@link inboxDidFor} (it has
+ * no Inbox) regardless of what it claims to act for.
  *
  * #2359 closed the other half of that rule: act-as of ANY shape is refused
  * here before the operator comparison even runs ({@link actAsRefusal}, 403
@@ -49,7 +53,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
-import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
+import { inboxDidFor } from '@/src/lib/notify/approval-addressing';
 import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
 import { decideOperatorApproval } from '@/src/lib/notify/operator-approvals-service';
 import { parseOperatorSignature } from '@/src/lib/notify/operator-countersign';
@@ -167,11 +171,11 @@ export async function POST(
   const borrowedIdentityRefusal = actAsRefusal(authResult.identity, cors);
   if (borrowedIdentityRefusal) return borrowedIdentityRefusal;
 
-  const operatorDid = await getOperatorDid();
-  if (!operatorDid || !isOperatorIdentity(authResult.identity, operatorDid)) {
-    // 403, not 404: authenticated but forbidden. Never reveal whether
-    // proposalId exists to a caller who isn't the operator.
-    return NextResponse.json({ error: 'Only the node operator may decide this proposal' }, { status: 403, headers: cors });
+  // A delegated agent has no Inbox and may not decide. Whether the session
+  // DID is the one this proposal is addressed to is the service's call (403).
+  const deciderDid = inboxDidFor(authResult.identity);
+  if (!deciderDid) {
+    return NextResponse.json({ error: 'Only the identity a proposal is addressed to may decide it' }, { status: 403, headers: cors });
   }
 
   let body: Record<string, unknown>;
@@ -215,7 +219,7 @@ export async function POST(
   try {
     const result = await decideOperatorApproval({
       proposalId,
-      operatorDid,
+      operatorDid: deciderDid,
       decision: decision as 'approve' | 'reject' | 'withdrawn',
       mode,
       reason,
@@ -230,7 +234,7 @@ export async function POST(
 
     return NextResponse.json(buildDecisionResponseBody(result.card, outcome), { headers: cors });
   } catch (err) {
-    log.error({ err: String(err), proposalId, operatorDid }, 'decideOperatorApproval failed');
+    log.error({ err: String(err), proposalId, deciderDid }, 'decideOperatorApproval failed');
     return NextResponse.json({ error: 'Failed to record decision' }, { status: 500, headers: cors });
   }
 }

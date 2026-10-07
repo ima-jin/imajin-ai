@@ -547,3 +547,28 @@ describe('operator.approval.requested boundary (#2059, generalized #2152)', () =
     expect(mockInsertValues).not.toHaveBeenCalled();
   });
 });
+
+// ─── connector proposals notify the OWNER, not the operator (#2723) ──────────────────────
+
+const OWNER_DID = 'did:imajin:eric';
+
+describe('operator.approval.requested delivery addressee (#2723)', () => {
+  it.each([
+    // [label, source, kind, detail, who the notification must reach]
+    ['a github connector proposal reaches its owner', 'github', 'github:mutate', { ownerDid: OWNER_DID, tool: 'github_update_issue' }, OWNER_DID],
+    ['another connector write tier reaches its owner', 'google', 'google:write', { ownerDid: OWNER_DID }, OWNER_DID],
+    ['a connector-shaped kind with no owner DID stays with the operator', 'github', 'github:mutate', { tool: 'x' }, RECIPIENT],
+    ['a node-level kind stays with the operator', 'system-agent', 'system-agent:restart', null, RECIPIENT],
+  ])('%s — persisted notification and WS push', async (_label, source, kind, detail, expectedRecipient) => {
+    mockValidateApprovalRequestedPayload.mockReturnValueOnce({ ok: true, source, kind, detail, contentHash: 'a'.repeat(64) });
+
+    const res = await POST(makeReq(operatorApprovalBody({ source, kind, detail, contentHash: 'a'.repeat(64) })));
+
+    expect(res.status).toBe(200);
+    expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({ recipientDid: expectedRecipient }));
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush.mock.calls[0][0]).toBe(expectedRecipient);
+    // The approval row itself is resolved by recordApprovalRequested from the operator DID the webhook was addressed to.
+    expect(mockRecordApprovalRequested).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: RECIPIENT, kind, detail }));
+  });
+});
