@@ -517,6 +517,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/api/cron/vault-grant-expiry/route.ts` — D2
 - `apps/kernel/app/api/vault/delegation/grant/route.ts` — D2
 - `apps/kernel/app/api/vault/delegation/revoke/route.ts` — D2
+- `apps/kernel/app/api/vault/delete/route.ts` — D2
 - `apps/kernel/app/api/vault/grantees/[field]/route.ts` — D2
 - `apps/kernel/app/api/vault/grants/pending/route.ts` — D2
 - `apps/kernel/app/api/vault/grants/renewable/route.ts` — D2
