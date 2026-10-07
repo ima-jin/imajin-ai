@@ -14,6 +14,12 @@ Tracking changes since the last `packages-v*` publish. Add an entry here
 alongside any user-visible change to this package, at or before the release
 PR that bumps its version.
 
+### Added
+
+- `requireHardDIDOrAppToken` — `requireSessionOrAppToken` plus a hard-DID
+  (non-soft tier) check, usable from registered apps authenticating with a
+  scoped app token (#2640).
+
 ## [0.8.2] - Pending first publish
 
 First version slated for publication to GitHub Packages as `@ima-jin/auth`

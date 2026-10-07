@@ -204,6 +204,7 @@ export type {
   SessionOrTokenAuthResult,
   SessionOrTokenAuthOptions,
 } from "./require-session-or-app-token";
+export { requireHardDIDOrAppToken } from "./require-hard-did-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
 export { resolveActingDid, resolveComposedBy, isUnderActAs } from "./acting-did";

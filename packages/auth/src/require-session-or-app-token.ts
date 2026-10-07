@@ -50,7 +50,9 @@ function extractSessionCookie(cookieHeader: string | null): string | null {
  * this package already duplicates this exact pattern between
  * `require-auth.ts` and `session.ts`.
  */
-async function validateLegacySessionCookie(token: string): Promise<string | null> {
+async function validateLegacySessionCookie(
+  token: string
+): Promise<{ did: string; tier: string } | null> {
   const authUrl = getAuthUrl();
   if (!authUrl) return null;
   try {
@@ -60,7 +62,10 @@ async function validateLegacySessionCookie(token: string): Promise<string | null
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.did ?? data.identity?.did ?? null;
+    const did = data.did ?? data.identity?.did ?? null;
+    if (!did) return null;
+    // Same fallback `require-auth.ts` applies: no tier reported means soft.
+    return { did, tier: data.tier || data.identity?.tier || 'soft' };
   } catch (err) {
     log.error({ err: String(err) }, '[AUTH] Legacy session cookie validation failed');
     return null;
@@ -85,6 +90,22 @@ export async function requireSessionOrAppToken(
   request: Request,
   options: SessionOrTokenAuthOptions
 ): Promise<SessionOrTokenAuthResult> {
+  const result = await authenticateSessionOrAppToken(request, options);
+  return 'auth' in result ? { auth: result.auth } : result;
+}
+
+/**
+ * Same authentication as {@link requireSessionOrAppToken}, but additionally
+ * surfaces the identity tier the kernel session reported on the `cookie`
+ * path (`sessionTier`). The token path carries no tier claim by design —
+ * tier is looked up per DID instead, so an upgrade needs no token re-mint.
+ * Internal: consumed by `requireHardDIDOrAppToken`, not exported from the
+ * package root.
+ */
+export async function authenticateSessionOrAppToken(
+  request: Request,
+  options: SessionOrTokenAuthOptions
+): Promise<{ auth: SessionOrTokenAuth; sessionTier?: string } | { error: string; status: number }> {
   const bearer = request.headers.get('authorization');
   if (bearer?.startsWith('Bearer ')) {
     const verification = await verifyAppToken(bearer.slice(7), { aud: options.aud });
@@ -107,10 +128,10 @@ export async function requireSessionOrAppToken(
     return { error: 'Authorization: Bearer <app-token>, or a valid session cookie, is required', status: 401 };
   }
 
-  const did = await validateLegacySessionCookie(sessionToken);
-  if (!did) {
+  const session = await validateLegacySessionCookie(sessionToken);
+  if (!session) {
     return { error: 'Invalid or expired session', status: 401 };
   }
 
-  return { auth: { did, scopes: [], via: 'cookie' } };
+  return { auth: { did: session.did, scopes: [], via: 'cookie' }, sessionTier: session.tier };
 }
