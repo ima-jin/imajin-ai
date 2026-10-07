@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
-import { crypto as authCrypto } from '@imajin/auth';
+import { crypto as authCrypto, canonicalize } from '@imajin/auth';
 import { installIntervalSpy } from './panel-test-support';
 import { requestApprovalsRefresh } from '../approval-anchor';
 
@@ -20,7 +20,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock.current,
 }));
 
-import { OperatorApprovalsPanel } from '../operator-approvals-panel';
+import { OperatorApprovalsPanel, canonicalizeCountersignFields } from '../operator-approvals-panel';
 
 interface ApprovalFixture {
   proposalId: string;
@@ -549,6 +549,75 @@ describe('operator countersignature (#2082)', () => {
   });
 });
 
+// #2693: the operator's signature covers the chosen option (github TTL,
+// exec allow-once, or a decision-card letter), not just "approve".
+describe('operator countersignature binds the chosen mode (#2693)', () => {
+  const CONTENT_HASH = 'c'.repeat(64);
+
+  afterEach(() => localStorage.removeItem('imajin_keypair'));
+
+  async function clickAndCaptureDecision(fixture: ApprovalFixture, buttonName: string, publicKeyPair: { privateKey: string; publicKey: string }) {
+    localStorage.setItem('imajin_keypair', JSON.stringify(publicKeyPair));
+    const withHash = Object.assign({}, fixture, { contentHash: CONTENT_HASH });
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [withHash] }, { isOperator: true, approvals: [{ ...withHash, status: 'approved' as const }] }],
+      { ok: true, body: { approval: { ...withHash, status: 'approved' } } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: buttonName });
+    fireEvent.click(screen.getByRole('button', { name: buttonName }));
+    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('/decision'))).toBe(true));
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    return JSON.parse((decisionCall?.[1] as { body: string }).body) as {
+      decision: string;
+      mode?: string;
+      decidedAt: string;
+      operatorSignature: { keyId: string; sig: string };
+    };
+  }
+
+  it('signs the github TTL: the signature verifies over {contentHash, decidedAt, decision, mode} and over nothing less', async () => {
+    const pair = authCrypto.generateKeypair();
+    const sent = await clickAndCaptureDecision(githubApproval(), '5m', pair);
+
+    expect(sent.decision).toBe('approve');
+    expect(sent.mode).toBe('5m');
+    const fields = { contentHash: CONTENT_HASH, decidedAt: sent.decidedAt, decision: 'approve', mode: '5m' };
+    expect(authCrypto.verifySync(sent.operatorSignature.sig, canonicalize(fields), pair.publicKey)).toBe(true);
+    // The pre-#2693 shape (no mode) must NOT verify — the choice is inside the signed bytes.
+    const withoutMode = { contentHash: fields.contentHash, decidedAt: fields.decidedAt, decision: fields.decision };
+    expect(authCrypto.verifySync(sent.operatorSignature.sig, canonicalize(withoutMode), pair.publicKey)).toBe(false);
+    // ...and a different TTL must not verify either.
+    expect(authCrypto.verifySync(sent.operatorSignature.sig, canonicalize({ ...fields, mode: '24h' }), pair.publicKey)).toBe(false);
+  });
+
+  it('signs exec allow-once', async () => {
+    const pair = authCrypto.generateKeypair();
+    const sent = await clickAndCaptureDecision(gatewayExecApproval(), 'Allow once', pair);
+
+    expect(sent.mode).toBe('allow-once');
+    const fields = { contentHash: CONTENT_HASH, decidedAt: sent.decidedAt, decision: 'approve', mode: 'allow-once' };
+    expect(authCrypto.verifySync(sent.operatorSignature.sig, canonicalize(fields), pair.publicKey)).toBe(true);
+  });
+
+  it('a decision with no mode still signs exactly the three original fields', async () => {
+    const pair = authCrypto.generateKeypair();
+    const sent = await clickAndCaptureDecision(approval(), 'Approve', pair);
+
+    expect(sent.mode).toBeUndefined();
+    const fields = { contentHash: CONTENT_HASH, decidedAt: sent.decidedAt, decision: 'approve' };
+    expect(authCrypto.verifySync(sent.operatorSignature.sig, canonicalize(fields), pair.publicKey)).toBe(true);
+  });
+
+  it('the inlined client canonicalizer is byte-identical to the server canonicalize, with and without a mode', () => {
+    const base = { contentHash: CONTENT_HASH, decidedAt: '2026-10-07T12:00:00.000Z', decision: 'approve' };
+    expect(canonicalizeCountersignFields(base)).toBe(canonicalize(base));
+    for (const mode of ['a', 'single', '5m', '24h', 'allow-once', 'deny', 'q"uote']) {
+      expect(canonicalizeCountersignFields({ ...base, mode })).toBe(canonicalize({ ...base, mode }));
+    }
+  });
+});
+
 // Per-source renderer registry (#2152): a source with no registry entry
 // (including 'system-agent') falls back to the default renderer above;
 // 'skill-workshop' gets its own detail rendering and Apply/Reject labels.
@@ -626,7 +695,7 @@ describe('per-source renderer registry — gateway-exec', () => {
     expect(screen.queryByRole('button', { name: /allow.always/i })).toBeNull();
   });
 
-  it('posts decision=approve when Allow once is clicked (labels are cosmetic only)', async () => {
+  it('posts decision=approve with mode allow-once when Allow once is clicked (#2693: the choice is explicit so it can be signed)', async () => {
     const spy = installFetch(
       [{ isOperator: true, approvals: [gatewayExecApproval()] }, { isOperator: true, approvals: [gatewayExecApproval({ status: 'approved' })] }],
       { ok: true, body: { approval: gatewayExecApproval({ status: 'approved' }) } },
@@ -638,7 +707,22 @@ describe('per-source renderer registry — gateway-exec', () => {
 
     await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
-    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve' }) });
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve', mode: 'allow-once' }) });
+  });
+
+  it('posts decision=reject with mode deny when Deny is clicked (#2693)', async () => {
+    const spy = installFetch(
+      [{ isOperator: true, approvals: [gatewayExecApproval()] }, { isOperator: true, approvals: [gatewayExecApproval({ status: 'denied' })] }],
+      { ok: true, body: { approval: gatewayExecApproval({ status: 'denied' }) } },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Deny' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
+
+    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('/decision'))).toBe(true));
+    const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'reject', mode: 'deny' }) });
   });
 
   it('shows an expired indicator and no decision controls once detail.expiresAt has passed (#2221)', async () => {

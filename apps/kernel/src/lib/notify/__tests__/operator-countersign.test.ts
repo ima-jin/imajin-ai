@@ -54,6 +54,57 @@ describe('parseOperatorSignature', () => {
   });
 });
 
+// #2693: the operator's signature covers the chosen option. One round trip
+// per kind's mode vocabulary (card letter / exec / github TTL), plus every
+// way of getting the signature and the submitted mode out of step.
+describe('verifyOperatorCountersignature — binds the chosen mode (#2693)', () => {
+  async function verifyWith(
+    signedFields: Parameters<typeof signFields>[1],
+    submittedFields: Parameters<typeof verifyOperatorCountersignature>[1],
+  ) {
+    const { privateKey, publicKey } = authCrypto.generateKeypair();
+    mockLimit.mockResolvedValueOnce([{ id: OPERATOR_DID, publicKey, type: 'actor', tier: 'established' }]);
+    const sig = signFields(privateKey, signedFields);
+    return verifyOperatorCountersignature(OPERATOR_DID, submittedFields, { keyId: publicKey, alg: 'ed25519', sig });
+  }
+
+  it.each([
+    { kind: 'decision:card', mode: 'b' },
+    { kind: 'exec allow-once', mode: 'allow-once' },
+    { kind: 'exec deny', mode: 'deny' },
+    { kind: 'github single', mode: 'single' },
+    { kind: 'github 5m', mode: '5m' },
+    { kind: 'github 24h', mode: '24h' },
+  ])('round trip: accepts a signature over the $kind mode', async ({ mode }) => {
+    const fields = { ...FIELDS, mode };
+    expect(await verifyWith(fields, fields)).toEqual({ ok: true });
+  });
+
+  it('rejects a mode altered after signing (card letter b signed, a submitted)', async () => {
+    const result = await verifyWith({ ...FIELDS, mode: 'b' }, { ...FIELDS, mode: 'a' });
+    expect(result).toEqual({ ok: false, error: 'Invalid operator signature' });
+  });
+
+  it('rejects a github TTL altered after signing (5m signed, 24h submitted — a longer approval window)', async () => {
+    const result = await verifyWith({ ...FIELDS, mode: '5m' }, { ...FIELDS, mode: '24h' });
+    expect(result).toEqual({ ok: false, error: 'Invalid operator signature' });
+  });
+
+  it('rejects exec allow-once swapped in after a mode-less signature (mode ADDED after signing)', async () => {
+    const result = await verifyWith(FIELDS, { ...FIELDS, mode: 'allow-once' });
+    expect(result).toEqual({ ok: false, error: 'Invalid operator signature' });
+  });
+
+  it('rejects a mode DROPPED after signing (signed with a letter, submitted without one)', async () => {
+    const result = await verifyWith({ ...FIELDS, mode: 'a' }, FIELDS);
+    expect(result).toEqual({ ok: false, error: 'Invalid operator signature' });
+  });
+
+  it('still verifies a mode-less decision exactly as before #2693 (signature over the original three fields)', async () => {
+    expect(await verifyWith(FIELDS, FIELDS)).toEqual({ ok: true });
+  });
+});
+
 describe('verifyOperatorCountersignature', () => {
   it('accepts a valid signature from the operator DID\'s current registered key (happy path)', async () => {
     const { privateKey, publicKey } = authCrypto.generateKeypair();

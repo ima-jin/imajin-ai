@@ -218,6 +218,13 @@ interface DecisionLabels {
 interface SourceRenderer {
   /** Static for most sources; a function when the label depends on the approval itself (e.g. vault:revoke's tier, #2247). */
   decisionLabels: DecisionLabels | ((approval: OperatorApprovalCard) => DecisionLabels);
+  /**
+   * Optional (#2693): the `mode` the default two buttons submit with each
+   * decision, so the operator's countersignature covers WHICH choice they
+   * made (exec's `allow-once` / `deny`), not just approve/reject. Omitted
+   * for sources whose decisions carry no mode.
+   */
+  decisionModes?: { approve?: string; reject?: string };
   renderDetail: (approval: OperatorApprovalCard) => ReactNode;
   /**
    * Optional (#2293): when present, REPLACES the default two-button
@@ -370,6 +377,10 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
 
 const GATEWAY_EXEC_RENDERER: SourceRenderer = {
   decisionLabels: { approve: 'Allow once', reject: 'Deny' },
+  // #2693: the kernel accepts exactly these two modes for this kind
+  // (`validateExecCommandDecisionMode`); sending them makes the signed
+  // payload say "allow-once" / "deny" rather than leave it implied.
+  decisionModes: { approve: 'allow-once', reject: 'deny' },
   renderDetail: (approval) => <ExecCommandDetailView approval={approval} />,
 };
 
@@ -887,7 +898,7 @@ function CardActions({
     <div className="flex items-center gap-2 pt-1">
       <button
         type="button"
-        onClick={() => onDecide(approval, 'reject')}
+        onClick={() => onDecide(approval, 'reject', renderer.decisionModes?.reject)}
         disabled={busy}
         className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
@@ -895,7 +906,7 @@ function CardActions({
       </button>
       <button
         type="button"
-        onClick={() => onDecide(approval, 'approve')}
+        onClick={() => onDecide(approval, 'approve', renderer.decisionModes?.approve)}
         disabled={busy}
         ref={autoFocusRef}
         className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"

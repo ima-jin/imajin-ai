@@ -338,10 +338,10 @@ describe('decideOperatorApproval', () => {
     );
   });
 
-  it('includes an opaque mode when the caller supplies one, without interpreting it (#2152)', async () => {
+  it('includes the chosen mode on the decided payload when the caller supplies one the kind offers (#2152, #2693)', async () => {
     mockSelectLimit
-      .mockResolvedValueOnce([row({ status: 'pending' })])
-      .mockResolvedValueOnce([row({ status: 'approved' })]);
+      .mockResolvedValueOnce([execCommandRow({ status: 'pending' })])
+      .mockResolvedValueOnce([execCommandRow({ status: 'approved' })]);
 
     await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve', mode: 'allow-once' });
 
@@ -585,19 +585,201 @@ describe('decideOperatorApproval', () => {
       expect(result.status).toBe(409);
     });
 
-    it('leaves non-exec.command kinds unaffected by the mode gate (an arbitrary mode is still just opaque, #2152)', async () => {
+    it('accepts mode deny on a reject of a live exec.command approval', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([execCommandRow({ status: 'pending' })])
+        .mockResolvedValueOnce([execCommandRow({ status: 'denied' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'reject',
+        mode: 'deny',
+      });
+
+      expect(result.ok).toBe(true);
+    });
+  });
+
+  // #2693: which `mode` each kind accepts, refused (400) before anything is
+  // signed or persisted, and that a supplied mode is what the operator's
+  // countersignature is verified over.
+  describe('decision mode policy + countersigned mode (#2693)', () => {
+    const CARD_DETAIL = {
+      subject: { kind: 'pr', ref: 'ima-jin/imajin-ai#1', url: 'https://example.test/pr/1' },
+      question: 'Merge?',
+      options: [
+        { letter: 'a', label: 'Merge', consequence: 'ships' },
+        { letter: 'b', label: 'Hold', consequence: 'waits' },
+      ],
+      rec: { letter: 'a', why: 'green' },
+    };
+    const cardRow = (overrides: Record<string, unknown> = {}) =>
+      row({ source: 'decision', kind: 'decision:card', detail: CARD_DETAIL, ...overrides });
+    const githubRow = (overrides: Record<string, unknown> = {}) =>
+      row({ source: 'github', kind: 'github:mutate', detail: { tool: 'create_issue' }, ...overrides });
+    const OPERATOR_SIG = { keyId: 'a'.repeat(64), alg: 'ed25519' as const, sig: 'b'.repeat(128) };
+
+    async function expectRefusedBeforeAnySideEffect(
+      params: { decision: 'approve' | 'reject' | 'withdrawn'; mode?: string },
+      pending: ReturnType<typeof row>,
+    ) {
+      mockSelectLimit.mockResolvedValueOnce([pending]);
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, ...params });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.status).toBe(400);
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
+      expect(mockVerifyOperatorCountersignature).not.toHaveBeenCalled();
+      return result.error;
+    }
+
+    it('decision:card — accepts an option letter on the card and records it as mode', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([cardRow({ status: 'pending' })])
+        .mockResolvedValueOnce([cardRow({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve', mode: 'b' });
+
+      expect(result.ok).toBe(true);
+      expect(mockPublish).toHaveBeenCalledWith(
+        'operator.approval.decided',
+        expect.objectContaining({ payload: expect.objectContaining({ decision: 'approve', mode: 'b' }) }),
+      );
+    });
+
+    it('decision:card — refuses (400) a letter that is not on the card', async () => {
+      const error = await expectRefusedBeforeAnySideEffect({ decision: 'approve', mode: 'z' }, cardRow({ status: 'pending' }));
+      expect(error).toMatch(/option letters \(a, b\)/);
+    });
+
+    it('decision:card — refuses (400) an approve that names no option', async () => {
+      await expectRefusedBeforeAnySideEffect({ decision: 'approve' }, cardRow({ status: 'pending' }));
+    });
+
+    it('decision:card — refuses (400) every approve when the card offers no usable letters', async () => {
+      await expectRefusedBeforeAnySideEffect(
+        { decision: 'approve', mode: 'a' },
+        cardRow({ status: 'pending', detail: { question: 'Merge?', options: 'nope' } }),
+      );
+    });
+
+    it('decision:card — refuses (400) a mode on a reject ("none of these" names no option)', async () => {
+      await expectRefusedBeforeAnySideEffect({ decision: 'reject', mode: 'a' }, cardRow({ status: 'pending' }));
+    });
+
+    it('decision:card — accepts a reject with no mode', async () => {
+      mockSelectLimit
+        .mockResolvedValueOnce([cardRow({ status: 'pending' })])
+        .mockResolvedValueOnce([cardRow({ status: 'denied' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'reject' });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it.each(['single', '5m', '24h'])('github — accepts TTL mode %s on approve', async (ttl) => {
+      mockSelectLimit
+        .mockResolvedValueOnce([githubRow({ status: 'pending' })])
+        .mockResolvedValueOnce([githubRow({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve', mode: ttl });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('github — refuses (400) an unknown TTL on approve, even though the ledger sync would have caught it later', async () => {
+      const error = await expectRefusedBeforeAnySideEffect({ decision: 'approve', mode: 'forever' }, githubRow({ status: 'pending' }));
+      expect(error).toMatch(/'single', '5m', '24h'/);
+    });
+
+    it('github — refuses (400) a mode on a reject', async () => {
+      await expectRefusedBeforeAnySideEffect({ decision: 'reject', mode: '5m' }, githubRow({ status: 'pending' }));
+    });
+
+    it('exec.command — allow-always is still refused (400) through the shared policy', async () => {
+      const error = await expectRefusedBeforeAnySideEffect({ decision: 'approve', mode: 'allow-always' }, execCommandRow({ status: 'pending' }));
+      expect(error).toMatch(/allow-always/);
+    });
+
+    it('a kind that defines no mode refuses (400) any supplied mode', async () => {
+      const error = await expectRefusedBeforeAnySideEffect({ decision: 'approve', mode: 'allow-always' }, row({ status: 'pending' }));
+      expect(error).toMatch(/not accepted for system-agent:restart/);
+    });
+
+    it('a kind that defines no mode still approves with no mode', async () => {
       mockSelectLimit
         .mockResolvedValueOnce([row({ status: 'pending' })])
         .mockResolvedValueOnce([row({ status: 'approved' })]);
+
+      const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+
+      expect(result.ok).toBe(true);
+    });
+
+    it('verifies the operator signature over the chosen mode (mode is in the verified fields)', async () => {
+      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
+      mockSelectLimit
+        .mockResolvedValueOnce([cardRow({ status: 'pending' })])
+        .mockResolvedValueOnce([cardRow({ status: 'approved' })]);
+      const decidedAt = new Date().toISOString();
 
       const result = await decideOperatorApproval({
         proposalId: PROPOSAL_ID,
         operatorDid: OPERATOR_DID,
         decision: 'approve',
-        mode: 'allow-always',
+        mode: 'a',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt,
       });
 
       expect(result.ok).toBe(true);
+      expect(mockVerifyOperatorCountersignature).toHaveBeenCalledWith(
+        OPERATOR_DID,
+        { contentHash: expect.stringMatching(/^[0-9a-f]{64}$/), decision: 'approve', decidedAt, mode: 'a' },
+        OPERATOR_SIG,
+      );
+    });
+
+    it('verifies a mode-less decision over the original three fields only (no mode key at all)', async () => {
+      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: true });
+      mockSelectLimit
+        .mockResolvedValueOnce([row({ status: 'pending' })])
+        .mockResolvedValueOnce([row({ status: 'approved' })]);
+      const decidedAt = new Date().toISOString();
+
+      await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt,
+      });
+
+      const fields = mockVerifyOperatorCountersignature.mock.calls[0][1] as Record<string, unknown>;
+      expect(Object.keys(fields).sort()).toEqual(['contentHash', 'decidedAt', 'decision']);
+    });
+
+    it('rejects (400) and persists nothing when the signature does not cover the submitted mode (tamper)', async () => {
+      mockVerifyOperatorCountersignature.mockResolvedValueOnce({ ok: false, error: 'Invalid operator signature' });
+      mockSelectLimit.mockResolvedValueOnce([cardRow({ status: 'pending' })]);
+
+      const result = await decideOperatorApproval({
+        proposalId: PROPOSAL_ID,
+        operatorDid: OPERATOR_DID,
+        decision: 'approve',
+        mode: 'b',
+        operatorSignature: OPERATOR_SIG,
+        decidedAt: new Date().toISOString(),
+      });
+
+      expect(result).toEqual({ ok: false, error: 'Invalid operator signature', status: 400 });
+      expect(mockSignSync).not.toHaveBeenCalled();
+      expect(mockUpdateWhere).not.toHaveBeenCalled();
+      expect(mockPublish).not.toHaveBeenCalled();
     });
   });
 
