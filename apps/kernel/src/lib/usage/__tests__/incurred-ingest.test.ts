@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateIncurredBatch, deriveProviderModel, deriveQuantityUnit, MAX_INCURRED_BATCH_SIZE } from '../incurred-ingest';
+import { validateIncurredBatch, deriveProviderModel, deriveQuantityUnit, MAX_INCURRED_BATCH_SIZE, MAX_SESSION_ID_LENGTH } from '../incurred-ingest';
 
 function row(overrides: Record<string, unknown> = {}) {
   return {
@@ -79,6 +79,37 @@ describe('validateIncurredBatch — per-row validation', () => {
     const result = validateIncurredBatch([row({ acting_for: 'did:imajin:someone' })]);
     if (!('accepted' in result)) throw new Error('expected accepted batch');
     expect(result.accepted[0].actingFor).toBe('did:imajin:someone');
+  });
+
+  it('carries an optional session_id through', () => {
+    const result = validateIncurredBatch([row({ session_id: 'sess-123' })]);
+    if (!('accepted' in result)) throw new Error('expected accepted batch');
+    expect(result.accepted[0].sessionId).toBe('sess-123');
+  });
+
+  it('leaves sessionId undefined when session_id is absent', () => {
+    const result = validateIncurredBatch([row()]);
+    if (!('accepted' in result)) throw new Error('expected accepted batch');
+    expect(result.accepted[0].sessionId).toBeUndefined();
+  });
+
+  it('accepts a session_id at exactly the length ceiling', () => {
+    const result = validateIncurredBatch([row({ session_id: 's'.repeat(MAX_SESSION_ID_LENGTH) })]);
+    if (!('accepted' in result)) throw new Error('expected accepted batch');
+    expect(result.rejected).toEqual([]);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['non-string', 42],
+    ['over-long', 's'.repeat(MAX_SESSION_ID_LENGTH + 1)],
+  ])('rejects an invalid (%s) session_id', (_label, session_id) => {
+    const result = validateIncurredBatch([row({ session_id })]);
+    if (!('accepted' in result)) throw new Error('expected accepted batch');
+    expect(result.accepted).toEqual([]);
+    expect(result.rejected).toEqual([
+      { index: 0, reason: `session_id must be a non-empty string of at most ${MAX_SESSION_ID_LENGTH} characters when present` },
+    ]);
   });
 
   it('rejects a non-object row', () => {

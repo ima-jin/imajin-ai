@@ -12,7 +12,7 @@
  * `container-runner.ts`'s `buildMounts`) instead of `~/.claude/projects`.
  */
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 export interface TailState {
   offsets: Record<string, number>;
@@ -99,20 +99,37 @@ function readNewLines(filePath: string, previousOffset: number): ReadResult {
   return { offset: previousOffset + consumedBytes, parsed };
 }
 
-export interface TailResult {
+/** New lines from one JSONL file, with the session id its filename encodes (`<session-id>.jsonl`). */
+export interface TailedFile {
+  filePath: string;
+  sessionId: string;
   rawLines: unknown[];
+}
+
+export interface TailResult {
+  /** All new lines across files, flattened. */
+  rawLines: unknown[];
+  /** The same lines grouped per file, so callers can stamp the session id. */
+  files: TailedFile[];
   state: TailState;
+}
+
+/** Session id encoded in a session JSONL's filename. */
+export function sessionIdFromPath(filePath: string): string {
+  return basename(filePath, '.jsonl');
 }
 
 export function tailNewLines(projectsDir: string, previousState: TailState): TailResult {
   const nextOffsets: Record<string, number> = { ...previousState.offsets };
   const rawLines: unknown[] = [];
+  const files: TailedFile[] = [];
 
   for (const filePath of findJsonlFiles(projectsDir)) {
     const { offset, parsed } = readNewLines(filePath, nextOffsets[filePath] ?? 0);
     nextOffsets[filePath] = offset;
     rawLines.push(...parsed);
+    if (parsed.length > 0) files.push({ filePath, sessionId: sessionIdFromPath(filePath), rawLines: parsed });
   }
 
-  return { rawLines, state: { offsets: nextOffsets } };
+  return { rawLines, files, state: { offsets: nextOffsets } };
 }

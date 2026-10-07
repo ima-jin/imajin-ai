@@ -27,6 +27,8 @@ export interface MappedUsageRow {
   tokens_out: number;
   external_id: string;
   ts: string;
+  /** Harness session id — lets the kernel join this row to a run (#2726). Absent only when no id can be derived. */
+  session_id?: string;
 }
 
 /** The pieces of one JSONL line this mapper cares about, once extracted and validated. */
@@ -36,6 +38,7 @@ interface AssistantTurn {
   timestamp: string;
   tokensIn: number;
   tokensOut: number;
+  sessionId?: string;
 }
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
@@ -55,7 +58,7 @@ function asFiniteNumber(value: unknown, fallback: number): number {
  * `undefined` when the line carries nothing billable — a non-assistant line,
  * one with no `usage` block, or Claude Code's own synthetic/local turns.
  */
-function extractAssistantTurn(rawLine: unknown): AssistantTurn | undefined {
+function extractAssistantTurn(rawLine: unknown, fallbackSessionId?: string): AssistantTurn | undefined {
   const line = asObject(rawLine);
   if (line?.type !== 'assistant') return undefined;
 
@@ -78,6 +81,9 @@ function extractAssistantTurn(rawLine: unknown): AssistantTurn | undefined {
     timestamp,
     tokensIn: asFiniteNumber(usage.input_tokens, 0) + asFiniteNumber(usage.cache_read_input_tokens, 0),
     tokensOut: asFiniteNumber(usage.output_tokens, 0),
+    // The line's own sessionId (Claude SDK stamps it, subagent lines carry the
+    // parent's) wins; the JSONL file's name is the fallback.
+    sessionId: asPositiveString(line.sessionId) ?? fallbackSessionId,
   };
 }
 
@@ -91,11 +97,13 @@ function toUsageRow(turn: AssistantTurn): MappedUsageRow {
     tokens_out: turn.tokensOut,
     external_id: turn.externalId,
     ts: turn.timestamp,
+    ...(turn.sessionId ? { session_id: turn.sessionId } : {}),
   };
 }
 
-export function mapAssistantLine(rawLine: unknown): MappedUsageRow | undefined {
-  const turn = extractAssistantTurn(rawLine);
+/** `fallbackSessionId` is stamped on the row when the line carries no `sessionId` of its own. */
+export function mapAssistantLine(rawLine: unknown, fallbackSessionId?: string): MappedUsageRow | undefined {
+  const turn = extractAssistantTurn(rawLine, fallbackSessionId);
   return turn && toUsageRow(turn);
 }
 
@@ -104,10 +112,10 @@ export function mapAssistantLine(rawLine: unknown): MappedUsageRow | undefined {
  * `external_id` (a call spanning several streamed lines repeats the id;
  * later lines carry the more complete token counts as the stream finishes).
  */
-export function mapJsonlLines(rawLines: readonly unknown[]): MappedUsageRow[] {
+export function mapJsonlLines(rawLines: readonly unknown[], fallbackSessionId?: string): MappedUsageRow[] {
   const dedupedByExternalId = new Map<string, MappedUsageRow>();
   rawLines.forEach((rawLine) => {
-    const row = mapAssistantLine(rawLine);
+    const row = mapAssistantLine(rawLine, fallbackSessionId);
     if (row) dedupedByExternalId.set(row.external_id, row);
   });
   return Array.from(dedupedByExternalId.values());
