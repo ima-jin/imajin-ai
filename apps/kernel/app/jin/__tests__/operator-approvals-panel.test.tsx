@@ -10,6 +10,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { crypto as authCrypto } from '@imajin/auth';
 import { installIntervalSpy } from './panel-test-support';
+import { requestApprovalsRefresh } from '../approval-anchor';
 
 // `useSearchParams` (#2291's proposalId deep link) needs a Next router
 // context that does not exist outside the app runtime — stub it per-test,
@@ -479,6 +480,29 @@ describe('manual refresh', () => {
 
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
     expect(await screen.findByText('Restart the gateway to load the updated plugin.')).toBeDefined();
+  });
+});
+
+// #2367: the static-bearer knock form dispatches this right after staging a
+// card, so the hand-off `#<anchor>` link has a target without a poll wait.
+describe('refresh event (#2367)', () => {
+  it('refetches the list when a sibling form requests an approvals refresh, and stops listening on unmount', async () => {
+    const spy = installFetch([
+      { isOperator: true, approvals: [] },
+      { isOperator: true, approvals: [approval()] },
+    ]);
+    const { unmount } = render(<OperatorApprovalsPanel />);
+    await screen.findByText('No operator approvals yet.');
+    expect(spy).toHaveBeenCalledTimes(1);
+
+    requestApprovalsRefresh();
+
+    await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Restart the gateway to load the updated plugin.')).toBeDefined();
+
+    unmount();
+    requestApprovalsRefresh();
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 
