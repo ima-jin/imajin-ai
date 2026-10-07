@@ -376,6 +376,14 @@ export const registryApps = registrySchema.table('apps', {
    * both the app and e.g. the kernel media routes.
    */
   dependsOn: jsonb('depends_on').$type<Array<{ aud: string; scopes: string[] }>>().notNull().default(sql`'[]'::jsonb`),
+  /**
+   * Operator-approved allowlist of event types this app may emit onto the bus via
+   * `POST /api/events` (#2638 / #2641, 0177_registry_apps_emittable_events.sql).
+   * Default `[]`: an app emits nothing until an operator approves a list. Written
+   * only by an operator path, never by self-service registration. An accepted
+   * app-emitted event can only ever run notify + audit-log reactors.
+   */
+  emittableEvents: jsonb('emittable_events').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
 }, (table) => ({
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),

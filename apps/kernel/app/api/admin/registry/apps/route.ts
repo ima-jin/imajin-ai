@@ -18,6 +18,7 @@ import { db, registryApps } from '@/src/db';
 import { requireAdmin, generateKeypair, isValidPublicKey, emitAttestation } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
+import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import { REGISTRY_APP_TIERS, type RegistryAppTier } from '@/src/db/schemas/registry';
 import { createLogger } from '@imajin/logger';
 
@@ -63,6 +64,8 @@ type RegisterBody = {
   dependsOn?: Array<{ aud: string; scopes: string[] }>;
   /** Registered slug (#2674) — reserves the `<slug>:*` scope namespace; required to declare `providesScopes`. */
   slug?: string;
+  /** Operator-approved list of event types the app may emit via POST /api/events (#2638/#2641). Default: none. */
+  emittableEvents?: string[];
   publicKey?: string;
   tier?: string;
   allowedRedirectHosts?: string[];
@@ -156,6 +159,7 @@ export async function GET(_request: NextRequest) {
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
+      emittableEvents: registryApps.emittableEvents,
       status: registryApps.status,
       tier: registryApps.tier,
       allowedRedirectHosts: registryApps.allowedRedirectHosts,
@@ -213,6 +217,13 @@ export async function POST(request: NextRequest) {
   }
   const { requestedScopes: scopes, providesScopes, dependsOn } = declarations.ok;
 
+  // #2638/#2641: the operator approves which event types this app may emit — default none.
+  const emittable = validateEmittableEvents(body.emittableEvents);
+  if ('error' in emittable) {
+    return NextResponse.json({ error: emittable.error }, { status: 400 });
+  }
+  const emittableEvents = emittable.ok;
+
   const hostsResult = resolveAllowedRedirectHosts(body.allowedRedirectHosts, callbackUrl);
   if ('error' in hostsResult) {
     return NextResponse.json({ error: hostsResult.error }, { status: 400 });
@@ -236,6 +247,7 @@ export async function POST(request: NextRequest) {
     requestedScopes: scopes,
     providesScopes,
     dependsOn,
+    emittableEvents,
     tier,
     slug,
     allowedRedirectHosts,
@@ -257,7 +269,7 @@ export async function POST(request: NextRequest) {
     type: 'registry.app.registered',
     context_id: id,
     context_type: 'registry_app',
-    payload: { appId: id, name: app.name, tier, ownerDid, slug, scopes, providesScopes, dependsOn, allowedRedirectHosts, tokenAudiences },
+    payload: { appId: id, name: app.name, tier, ownerDid, slug, scopes, providesScopes, dependsOn, emittableEvents, allowedRedirectHosts, tokenAudiences },
   }).catch((err: unknown) => log.error({ err: String(err), appId: id }, 'registry.app.registered attestation failed'));
 
   const response: Record<string, unknown> = { ...app };

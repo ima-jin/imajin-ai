@@ -84,8 +84,28 @@ describe('ProvisionDeclarationsPreview', () => {
     render(<ProvisionDeclarationsPreview detail={{ manifestDeclarations: { providesScopes: [], dependsOn: [] } }} />);
 
     expect(screen.getByTestId('provision-declarations-preview').getAttribute('data-state')).toBe('empty');
-    expect(screen.getByText('Declares no scopes of its own and no dependencies.')).toBeDefined();
+    expect(screen.getByText('Declares no scopes of its own, no dependencies, and no events it may emit.')).toBeDefined();
     expect(screen.queryByTestId('provision-declarations-provides')).toBeNull();
+  });
+
+  it('#2638: shows the event types the app will be allowed to emit, and says they only notify and audit', () => {
+    render(
+      <ProvisionDeclarationsPreview
+        detail={{ manifestDeclarations: { providesScopes: [], dependsOn: [], emittableEvents: ['tip.granted', 'tip.sent'] } }}
+      />,
+    );
+
+    expect(screen.getByTestId('provision-declarations-preview').getAttribute('data-state')).toBe('declared');
+    expect(screen.getByTestId('provision-declarations-emits').textContent).toBe('tip.granted, tip.sent');
+    expect(screen.getByTestId('provision-declarations-preview').textContent).toMatch(/notify and audit only/);
+  });
+
+  it('#2638: shows a dash for emits when the app declares none, and reads a pre-#2638 snapshot as none', () => {
+    render(
+      <ProvisionDeclarationsPreview detail={{ manifestDeclarations: { providesScopes: ['dykil:read'], dependsOn: [] } }} />,
+    );
+
+    expect(screen.getByTestId('provision-declarations-emits').textContent).toBe('\u2014');
   });
 
   it.each([

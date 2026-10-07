@@ -36,7 +36,7 @@ describe('previewManifestDeclarations (#2663)', () => {
 
     const result = await previewManifestDeclarations('dykil');
 
-    expect(result).toEqual({ ok: { providesScopes: ['dykil:read'], dependsOn } });
+    expect(result).toEqual({ ok: { providesScopes: ['dykil:read'], dependsOn, emittableEvents: [] } });
     expect(mocks.fetchAppManifestMock).toHaveBeenCalledWith('dykil', 'installation-token');
     expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith({ providesScopes: ['dykil:read'], dependsOn, slug: 'dykil' });
   });
@@ -47,13 +47,34 @@ describe('previewManifestDeclarations (#2663)', () => {
       ok: { providesScopes: ['dykil:read'], dependsOn: [], requestedScopes: [] },
     });
 
-    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: { providesScopes: ['dykil:read'], dependsOn: [] } });
+    expect(await previewManifestDeclarations('dykil')).toEqual({
+      ok: { providesScopes: ['dykil:read'], dependsOn: [], emittableEvents: [] },
+    });
   });
 
   it('returns the empty list for a readable manifest that declares nothing', async () => {
     mocks.fetchAppManifestMock.mockResolvedValue({ name: 'Dykil' });
 
-    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: { providesScopes: [], dependsOn: [] } });
+    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: { providesScopes: [], dependsOn: [], emittableEvents: [] } });
+  });
+
+  it('#2638: puts the emittableEvents the manifest asks for on the card, normalised', async () => {
+    mocks.fetchAppManifestMock.mockResolvedValue({ emittableEvents: ['tip.sent', 'tip.granted', 'tip.sent'] });
+
+    expect(await previewManifestDeclarations('coffee')).toEqual({
+      ok: { providesScopes: [], dependsOn: [], emittableEvents: ['tip.granted', 'tip.sent'] },
+    });
+  });
+
+  it.each([
+    ['a wildcard', ['tip.*']],
+    ['an uppercase type', ['Tip.Granted']],
+    ['a non-string entry', [7]],
+    ['a non-array value', 'tip.granted'],
+  ])('#2638: rejects a manifest whose emittableEvents has %s, so the card never shows an unapprovable list', async (_label, emittableEvents) => {
+    mocks.fetchAppManifestMock.mockResolvedValue({ emittableEvents });
+
+    expect(await previewManifestDeclarations('coffee')).toEqual({ error: expect.stringContaining('emittableEvents') });
   });
 
   it('returns null — "nothing was read" — when there is no manifest', async () => {

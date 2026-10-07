@@ -9,24 +9,41 @@ const MEDIA_READ = { aud: 'jin.imajin.ai', scopes: ['media:read'] };
 
 describe('parseManifestDeclarations', () => {
   it('reads a well-formed snapshot', () => {
-    expect(parseManifestDeclarations({ providesScopes: ['dykil:read'], dependsOn: [MEDIA_READ] })).toEqual({
+    expect(
+      parseManifestDeclarations({ providesScopes: ['dykil:read'], dependsOn: [MEDIA_READ], emittableEvents: ['tip.granted'] }),
+    ).toEqual({
       providesScopes: ['dykil:read'],
       dependsOn: [MEDIA_READ],
+      emittableEvents: ['tip.granted'],
+    });
+  });
+
+  it('reads a pre-#2638 snapshot (no emittableEvents) as approving no events', () => {
+    expect(parseManifestDeclarations({ providesScopes: ['dykil:read'], dependsOn: [] })).toEqual({
+      providesScopes: ['dykil:read'],
+      dependsOn: [],
+      emittableEvents: [],
     });
   });
 
   it('reads the empty snapshot', () => {
-    expect(parseManifestDeclarations({ providesScopes: [], dependsOn: [] })).toEqual(NO_DECLARATIONS);
+    expect(parseManifestDeclarations({ providesScopes: [], dependsOn: [], emittableEvents: [] })).toEqual(NO_DECLARATIONS);
   });
 
   it('returns a copy, not the untrusted input', () => {
-    const input = { providesScopes: ['dykil:read'], dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }] };
+    const input = {
+      providesScopes: ['dykil:read'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['tip.sent'],
+    };
     const parsed = parseManifestDeclarations(input)!;
     parsed.providesScopes.push('dykil:write');
     parsed.dependsOn[0].scopes.push('media:write');
+    parsed.emittableEvents.push('tip.granted');
 
     expect(input.providesScopes).toEqual(['dykil:read']);
     expect(input.dependsOn[0].scopes).toEqual(['media:read']);
+    expect(input.emittableEvents).toEqual(['tip.sent']);
   });
 
   it.each([
@@ -42,13 +59,15 @@ describe('parseManifestDeclarations', () => {
     ['a dependency without scopes', { providesScopes: [], dependsOn: [{ aud: 'jin.imajin.ai' }] }],
     ['a dependency without aud', { providesScopes: [], dependsOn: [{ scopes: ['media:read'] }] }],
     ['a null dependency', { providesScopes: [], dependsOn: [null] }],
+    ['non-array emittableEvents', { providesScopes: [], dependsOn: [], emittableEvents: 'tip.granted' }],
+    ['a non-string emittable event', { providesScopes: [], dependsOn: [], emittableEvents: ['tip.granted', 7] }],
   ])('returns null for %s', (_label, value) => {
     expect(parseManifestDeclarations(value)).toBeNull();
   });
 });
 
 describe('sameDeclarations', () => {
-  const base = { providesScopes: ['dykil:read', 'dykil:write'], dependsOn: [MEDIA_READ] };
+  const base = { providesScopes: ['dykil:read', 'dykil:write'], dependsOn: [MEDIA_READ], emittableEvents: ['tip.granted'] };
 
   it('is true for identical lists', () => {
     expect(sameDeclarations(base, structuredClone(base))).toBe(true);
@@ -59,12 +78,13 @@ describe('sameDeclarations', () => {
       sameDeclarations(base, {
         providesScopes: ['dykil:write', 'dykil:read', 'dykil:read'],
         dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read', 'media:read'] }],
+        emittableEvents: ['tip.granted', 'tip.granted'],
       }),
     ).toBe(true);
     expect(
       sameDeclarations(
-        { providesScopes: [], dependsOn: [MEDIA_READ, { aud: 'a.example.com', scopes: ['events:read'] }] },
-        { providesScopes: [], dependsOn: [{ aud: 'a.example.com', scopes: ['events:read'] }, MEDIA_READ] },
+        { providesScopes: [], dependsOn: [MEDIA_READ, { aud: 'a.example.com', scopes: ['events:read'] }], emittableEvents: ['b.x', 'a.x'] },
+        { providesScopes: [], dependsOn: [{ aud: 'a.example.com', scopes: ['events:read'] }, MEDIA_READ], emittableEvents: ['a.x', 'b.x'] },
       ),
     ).toBe(true);
   });
@@ -77,12 +97,15 @@ describe('sameDeclarations', () => {
     ['a different audience', { ...base, dependsOn: [{ aud: 'other.example.com', scopes: ['media:read'] }] }],
     ['an extra dependency', { ...base, dependsOn: [...base.dependsOn, { aud: 'a.example.com', scopes: ['events:read'] }] }],
     ['no dependencies', { ...base, dependsOn: [] }],
+    ['an extra emittable event', { ...base, emittableEvents: ['tip.granted', 'listing.purchased'] }],
+    ['a missing emittable event', { ...base, emittableEvents: [] }],
+    ['a different emittable event', { ...base, emittableEvents: ['tip.sent'] }],
   ])('is false when the actual list has %s', (_label, actual) => {
     expect(sameDeclarations(actual, base)).toBe(false);
   });
 
   it('compares against the empty list', () => {
-    expect(sameDeclarations(NO_DECLARATIONS, { providesScopes: [], dependsOn: [] })).toBe(true);
+    expect(sameDeclarations(NO_DECLARATIONS, { providesScopes: [], dependsOn: [], emittableEvents: [] })).toBe(true);
     expect(sameDeclarations(base, NO_DECLARATIONS)).toBe(false);
   });
 });

@@ -255,3 +255,30 @@ describe('POST /api/registry/apps — dependsOn is operator-only (#2663)', () =>
     expect(res.status).toBe(401);
   });
 });
+
+describe('POST /api/registry/apps — emittableEvents is operator-only (#2638/#2641)', () => {
+  it.each([
+    ['a market event list', ['listing.purchased']],
+    ['an empty list', []],
+    ['a malformed value', 'tip.granted'],
+  ])('rejects %s with 400, before anything is validated or inserted', async (_label, emittableEvents) => {
+    const res = await POST(
+      makeRequest({ name: 'Coffee', callbackUrl: 'https://coffee.example.com/callback', emittableEvents }) as never,
+    );
+    const body = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(body.error).toContain('emittableEvents can only be set by a node operator');
+    expect(mockValidateAppDeclarations).not.toHaveBeenCalled();
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('never writes emittableEvents on a normal registration: the row keeps its empty default', async () => {
+    const res = await POST(
+      makeRequest({ name: 'Coffee', callbackUrl: 'https://coffee.example.com/callback' }) as never,
+    );
+
+    expect(res.status).toBe(201);
+    expect((mockDbInsertValues.mock.calls[0] as unknown as [Record<string, unknown>])[0]).not.toHaveProperty('emittableEvents');
+  });
+});

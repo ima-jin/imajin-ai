@@ -5,6 +5,7 @@ import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
+import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
 import { withLogger } from '@imajin/logger';
 
 /** `[origin]` of an absolute URL, or `null` when it isn't one. */
@@ -54,6 +55,10 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   // `apps.provision` where the operator approves the list on the /jin card.
   if (body.dependsOn !== undefined) {
     return NextResponse.json({ error: DEPENDS_ON_OPERATOR_ONLY_ERROR }, { status: 400 });
+  }
+  // #2638/#2641: the emit allowlist is an operator approval — an app never picks its own.
+  if (body.emittableEvents !== undefined) {
+    return NextResponse.json({ error: EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR }, { status: 400 });
   }
 
   const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, providesScopes, publicKey: suppliedPublicKey } = body as {
@@ -166,6 +171,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
+      emittableEvents: registryApps.emittableEvents,
       status: registryApps.status,
       createdAt: registryApps.createdAt,
     })
