@@ -17,19 +17,14 @@ const NEXT_BIN = 'node_modules/next/dist/bin/next';
 // Wrapper launchers that put a non-listening process between pm2 and the server.
 const WRAPPER_SCRIPTS = new Set(['npm', 'npx', 'pnpm', 'yarn', 'sh', 'bash']);
 
-// Services from separate repos (/home/jin/<env>/imajin-<name>) whose start
-// script isn't visible from this repo, so they can't be converted blind. Every
-// other entry must exec directly. Shrink this list as each one is confirmed.
-const EXTERNAL_WRAPPED = new Set([
-  'dev-fixready',
-  'dev-karaoke',
-  'prod-fixready',
-  'prod-karaoke',
-  'prod-scorecard',
-]);
+// Services from separate repos (/home/jin/<env>/imajin-<name>) that may still
+// be wrapped. Empty since #2573: fixready, karaoke and scorecard now exec the
+// next binary directly. Add a name here only with a tracked reason.
+const EXTERNAL_WRAPPED = new Set([]);
 
-// In-repo Next apps (`next start`) that must run via the next binary.
-const NEXT_APPS = ['events', 'coffee', 'dykil', 'learn', 'market'];
+// Next apps (`next start`, in-repo or from a separate repo) that must run via the
+// next binary.
+const NEXT_APPS = ['events', 'coffee', 'dykil', 'learn', 'market', 'fixready', 'karaoke', 'scorecard'];
 
 function loadApps(env) {
   const apps = require(`${DEPLOY_DIR}ecosystem.${env}.config.js`).apps;
