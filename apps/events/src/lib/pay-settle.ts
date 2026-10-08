@@ -16,12 +16,17 @@
  * where an in-process settle executor is registered (the kernel process), and
  * events publishes from its own process. No shared `PAY_SERVICE_API_KEY`.
  *
+ * Correlation. `/pay/api/settle` is keyed by the kernel `transactionId` the app-authenticated
+ * checkout returned; the pay webhook that notifies events (`checkout.completed`) must carry it
+ * as `transactionId`. Events deliberately does NOT read the pay ledger tables to find it (a
+ * cross-schema contract violation, see `ci-guard-cross-schema-reads`) — without it settlement is
+ * skipped and logged loudly (see `settleOrderViaPay`).
+ *
  * Chain amounts. The kernel settles an app payment for the recorded gross
  * amount, so the chain must sum to the payment total. The chain is therefore
  * resolved with NO processor-fee deduction (a zero-rate `processor` fee entry);
  * the old reactor's net-of-fee chain would be refused (400) by the kernel.
  */
-import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import { computeFeeCents, resolveSettlementChain, type FairSettlementEntry } from '@imajin/fair';
 import type { Logger } from '@imajin/logger';
@@ -180,33 +185,6 @@ export type SettleOutcome =
   | { status: 'skipped'; reason: string }
   | { status: 'failed'; error: string; httpStatus?: number };
 
-interface RecordedPayment {
-  id: string;
-  manifest: PayeeManifest;
-}
-
-/**
- * The kernel's own record of the app-authenticated checkout events made for
- * this Stripe session: its `transactionId` and the payee manifest it recorded.
- * The pay webhook that notifies events carries the Stripe session id but not
- * the kernel `transactionId`, so it is read back from `pay.transactions` by
- * rail + external reference (the same join the sales route already uses).
- */
-async function loadRecordedPayment(sessionId: string): Promise<RecordedPayment | null> {
-  const sql = getClient();
-  const rows = await sql`
-    SELECT id, payee_manifest
-    FROM pay.transactions
-    WHERE rail = 'stripe' AND external_ref = ${sessionId} AND app_did IS NOT NULL
-    ORDER BY created_at DESC
-    LIMIT 1
-  `;
-  const row = rows[0] as { id: string; payee_manifest: unknown } | undefined;
-  const chain = (row?.payee_manifest as { chain?: unknown } | null | undefined)?.chain;
-  if (!row || !Array.isArray(chain) || chain.length === 0) return null;
-  return { id: row.id, manifest: { chain: chain as PayeeChainEntry[] } };
-}
-
 interface SettleCallParams {
   transactionId: string;
   manifest: PayeeManifest;
@@ -259,8 +237,19 @@ async function callPaySettle(params: SettleCallParams, retryOnUnauthorized: bool
 }
 
 export interface SettleOrderParams {
-  /** Stripe checkout session id the pay webhook reported. */
+  /**
+   * The kernel `transactionId` the app-authenticated checkout returned, as carried on the pay
+   * webhook. Absent when the webhook does not send it — settlement is then skipped.
+   */
+  transactionId?: string;
+  /** Stripe checkout session id the pay webhook reported (log correlation only). */
   sessionId: string;
+  /** The event's `.fair` manifest — the chain is re-resolved exactly as it was declared at checkout. */
+  fairManifest: unknown;
+  /** The ticket owner DID — the buyer the checkout resolved for `BUYER_PLACEHOLDER`. */
+  buyerDid: string;
+  /** Gross payment total in cents. */
+  amountCents: number;
   metadata: Record<string, unknown>;
   log: Logger;
 }
@@ -271,34 +260,35 @@ export interface SettleOrderParams {
  * (the order and tickets already exist; settlement failure is non-fatal).
  */
 export async function settleOrderViaPay(params: SettleOrderParams): Promise<SettleOutcome> {
-  const { sessionId, log } = params;
+  const { transactionId, sessionId, log } = params;
 
-  let recorded: RecordedPayment | null;
-  try {
-    recorded = await loadRecordedPayment(sessionId);
-  } catch (err) {
-    log.error({ err: String(err), sessionId }, '[settle] Could not read the recorded payment');
-    return { status: 'failed', error: 'recorded payment lookup failed' };
-  }
-  if (!recorded) {
-    log.warn({ sessionId }, '[settle] No app-bound payment recorded for this session — nothing to settle');
-    return { status: 'skipped', reason: 'no app-bound payment recorded for session' };
+  if (!transactionId) {
+    // Money was taken but cannot be settled by events — make that impossible to miss in the logs.
+    log.error({ sessionId }, '[settle] Pay webhook carried no transactionId — order NOT settled');
+    return { status: 'skipped', reason: 'pay webhook carried no transactionId' };
   }
 
-  const result = await callPaySettle(
-    { transactionId: recorded.id, manifest: recorded.manifest, metadata: params.metadata },
-    true,
-  );
+  const manifest = buildPayeeManifest({
+    fairManifest: params.fairManifest,
+    amountCents: params.amountCents,
+    buyerDid: params.buyerDid,
+  });
+  if (!manifest) {
+    log.warn({ sessionId, transactionId }, '[settle] Event has no .fair chain — nothing to settle');
+    return { status: 'skipped', reason: 'event has no .fair chain' };
+  }
+
+  const result = await callPaySettle({ transactionId, manifest, metadata: params.metadata }, true);
   if (!result.ok) {
-    log.error({ sessionId, transactionId: recorded.id, status: result.httpStatus, error: result.error }, '[settle] pay /api/settle failed');
+    log.error({ sessionId, transactionId, status: result.httpStatus, error: result.error }, '[settle] pay /api/settle failed');
     return { status: 'failed', error: result.error, httpStatus: result.httpStatus };
   }
 
   log.info(
-    { sessionId, transactionId: recorded.id, batchId: result.batchId, alreadySettled: result.alreadySettled },
+    { sessionId, transactionId, batchId: result.batchId, alreadySettled: result.alreadySettled },
     '[settle] Settlement complete',
   );
-  return { status: 'settled', alreadySettled: result.alreadySettled, batchId: result.batchId, manifest: recorded.manifest };
+  return { status: 'settled', alreadySettled: result.alreadySettled, batchId: result.batchId, manifest };
 }
 
 // ---------------------------------------------------------------------------
@@ -319,6 +309,8 @@ export interface SettlementReceiptParams {
 }
 
 export interface SettleCompletedOrderParams extends Omit<SettlementReceiptParams, 'manifest'> {
+  /** The kernel `transactionId` carried on the pay webhook (see `SettleOrderParams.transactionId`). */
+  transactionId?: string;
   /** Stripe checkout session id the pay webhook reported. */
   sessionId: string;
   log: Logger;
@@ -330,8 +322,16 @@ export interface SettleCompletedOrderParams extends Omit<SettlementReceiptParams
  * `alreadySettled` replay) announce the settlement receipt. Never throws.
  */
 export async function settleCompletedOrder(params: SettleCompletedOrderParams): Promise<SettleOutcome> {
-  const { sessionId, log, ...receipt } = params;
-  const outcome = await settleOrderViaPay({ sessionId, metadata: receipt.metadata, log });
+  const { transactionId, sessionId, log, ...receipt } = params;
+  const outcome = await settleOrderViaPay({
+    transactionId,
+    sessionId,
+    fairManifest: receipt.fairManifest,
+    buyerDid: receipt.buyerDid,
+    amountCents: receipt.amountCents,
+    metadata: receipt.metadata,
+    log,
+  });
   if (outcome.status === 'settled') {
     await publishSettlementReceipt({ ...receipt, manifest: outcome.manifest }, log);
   }

@@ -225,6 +225,8 @@ interface WebhookSettlementParams {
   createdTickets: Array<{ id: string }>;
   firstTypeId: string;
   sessionId: string;
+  /** Kernel `transactionId` of the app-authenticated checkout, when the pay webhook carries it. */
+  transactionId?: string;
 }
 
 /**
@@ -235,12 +237,13 @@ interface WebhookSettlementParams {
  * Non-fatal — settlement failures are logged, not thrown.
  */
 async function triggerWebhookSettlement(params: WebhookSettlementParams): Promise<void> {
-  const { ownerDid, event, orderId, amountTotal, currency, createdTickets, firstTypeId, sessionId } = params;
+  const { ownerDid, event, orderId, amountTotal, currency, createdTickets, firstTypeId, sessionId, transactionId } = params;
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
 
   try {
     await settleCompletedOrder({
       sessionId,
+      transactionId,
       orderId,
       eventId: event.id,
       buyerDid: ownerDid,
@@ -302,6 +305,8 @@ interface PaymentWebhookPayload {
   type: 'checkout.completed' | 'payment.failed';
   sessionId: string;
   paymentId?: string;
+  /** Kernel `transactionId` of the app-authenticated checkout — the key `/pay/api/settle` needs (#2739). */
+  transactionId?: string;
   customerEmail: string;
   customerName?: string | null;
   amountTotal: number;
@@ -348,7 +353,7 @@ export const POST = withLogger('events', async (request, { log }) => {
 });
 
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
-  const { metadata, customerName, amountTotal, currency, sessionId, paymentId } = payload;
+  const { metadata, customerName, amountTotal, currency, sessionId, paymentId, transactionId } = payload;
   const customerEmail = payload.customerEmail || null;
 
   // Parse cart: multi-type (cart JSON) or legacy single-type
@@ -426,6 +431,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     createdTickets,
     firstTypeId: firstType.id,
     sessionId,
+    transactionId,
   });
 
   // Build onboard token for magic-link auth in confirmation email

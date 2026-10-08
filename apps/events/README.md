@@ -125,6 +125,9 @@ Operator prerequisites before ticket checkout works:
    `IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID` and the one-time `IMAJIN_APP_CLAIM_CODE`.
 2. Approve `pay:settle` for events through the operator-countersigned `apps:service-scopes` card.
 3. Deploy the kernel contract (#2695) first.
+4. The pay service's `checkout.completed` webhook to events must carry the checkout's kernel
+   `transactionId` (the key `/pay/api/settle` needs). Until it does, events logs
+   `Pay webhook carried no transactionId — order NOT settled` and skips settlement.
 
 Without these, checkout for an event with a `.fair` chain fails closed (503) rather than taking a
 payment that cannot pay the organizer.

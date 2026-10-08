@@ -12,24 +12,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Logger } from '@imajin/logger';
 
 const mocks = vi.hoisted(() => {
-  const rowQueue: unknown[][] = [];
-  const sqlCalls: Array<{ text: string; values: unknown[] }> = [];
-  const sqlFn = (strings: TemplateStringsArray, ...values: unknown[]) => {
-    sqlCalls.push({ text: strings.join('?'), values });
-    const next = rowQueue.shift();
-    return next instanceof Error ? Promise.reject(next) : Promise.resolve(next ?? []);
-  };
+  // Module-level fixtures below resolve NODE_PLACEHOLDER at import time, so the node DID must be set first.
+  process.env.NODE_DID = 'did:imajin:node';
   return {
-    rowQueue,
-    sqlCalls,
-    sqlFn,
     publishMock: vi.fn(),
     getPayAppTokenMock: vi.fn(),
     invalidatePayAppTokenMock: vi.fn(),
   };
 });
 
-vi.mock('@imajin/db', () => ({ getClient: () => mocks.sqlFn }));
 vi.mock('@imajin/bus', () => ({ publish: mocks.publishMock }));
 vi.mock('../lib/pay-app-token', () => ({
   getPayAppToken: mocks.getPayAppTokenMock,
@@ -86,8 +77,6 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.rowQueue.length = 0;
-  mocks.sqlCalls.length = 0;
   mocks.getPayAppTokenMock.mockResolvedValue(APP_TOKEN);
   mocks.invalidatePayAppTokenMock.mockResolvedValue(undefined);
   mocks.publishMock.mockResolvedValue(undefined);
@@ -269,10 +258,15 @@ describe('requestPayCheckoutSession with app auth', () => {
 
 const MANIFEST: PayeeManifest = buildPayeeManifest({ fairManifest: FAIR, amountCents: 10_000, buyerDid: BUYER })!;
 const SETTLE_META = { orderId: 'ord_1', ticketIds: ['tkt_1'], stripeSessionId: 'cs_1', eventId: 'evt_1' };
-
-function recordPayment(manifest: unknown = MANIFEST) {
-  mocks.rowQueue.push([{ id: 'tx_1', payee_manifest: manifest }]);
-}
+const SETTLE_PARAMS = {
+  transactionId: 'tx_1',
+  sessionId: 'cs_1',
+  fairManifest: FAIR,
+  buyerDid: BUYER,
+  amountCents: 10_000,
+  metadata: SETTLE_META,
+  log,
+};
 
 function lastSettleRequest(fetchMock: ReturnType<typeof vi.fn>) {
   const [url, init] = fetchMock.mock.calls.at(-1) as unknown as [string, RequestInit];
@@ -280,43 +274,36 @@ function lastSettleRequest(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 describe('settleOrderViaPay', () => {
-  it('settles with events’ app token: transaction_id from checkout + the recorded fair_manifest', async () => {
-    recordPayment();
+  it('settles with events’ app token: transaction_id from checkout + the re-resolved fair_manifest', async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({ settled: true, batchId: 'batch_1', transactions: ['t1'], total_amount: 100, recipients: 4, source: 'external' }),
     );
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toEqual({ status: 'settled', alreadySettled: false, batchId: 'batch_1', manifest: MANIFEST });
     const { url, headers, body } = lastSettleRequest(fetchMock);
     expect(url).toBe(`${PAY_URL}/api/settle`);
-    expect(headers.Authorization).toBe('Bearer events-app-token');
+    expect(headers.Authorization).toBe(`Bearer ${APP_TOKEN}`);
     expect(body).toEqual({ transaction_id: 'tx_1', fair_manifest: MANIFEST, metadata: SETTLE_META });
     // The settle path never sends the shared key.
     expect(JSON.stringify(headers)).not.toMatch(/service-key|PAY_SERVICE_API_KEY/);
-    // The payment is looked up by Stripe session id on the stripe rail, and only app-bound rows count.
-    expect(mocks.sqlCalls[0]!.text).toContain("rail = 'stripe' AND external_ref = ?");
-    expect(mocks.sqlCalls[0]!.text).toContain('app_did IS NOT NULL');
-    expect(mocks.sqlCalls[0]!.values).toEqual(['cs_1']);
   });
 
   it('treats alreadySettled: true as success (idempotent replay)', async () => {
-    recordPayment();
     globalThis.fetch = vi.fn(async () => jsonResponse({ settled: true, batchId: 'batch_1', alreadySettled: true })) as unknown as typeof fetch;
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toMatchObject({ status: 'settled', alreadySettled: true, batchId: 'batch_1' });
     expect(logError).not.toHaveBeenCalled();
   });
 
   it('403 when pay:settle is not granted → failed outcome, logged, no throw', async () => {
-    recordPayment();
     globalThis.fetch = vi.fn(async () => jsonResponse({ error: SCOPE_REFUSAL }, 403)) as unknown as typeof fetch;
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toEqual({ status: 'failed', httpStatus: 403, error: SCOPE_REFUSAL });
     expect(logError).toHaveBeenCalledWith(expect.objectContaining({ status: 403, transactionId: 'tx_1' }), expect.any(String));
@@ -325,7 +312,6 @@ describe('settleOrderViaPay', () => {
   });
 
   it('refreshes the token once on a 401 and retries', async () => {
-    recordPayment();
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: 'Unauthorized - invalid or expired app-service token' }, 401))
@@ -333,7 +319,7 @@ describe('settleOrderViaPay', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     mocks.getPayAppTokenMock.mockResolvedValueOnce('stale-token').mockResolvedValueOnce('fresh-token');
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toMatchObject({ status: 'settled', batchId: 'batch_2' });
     expect(mocks.invalidatePayAppTokenMock).toHaveBeenCalledTimes(1);
@@ -342,105 +328,89 @@ describe('settleOrderViaPay', () => {
   });
 
   it('gives up after one 401 retry', async () => {
-    recordPayment();
     const fetchMock = vi.fn(async () => jsonResponse({ error: 'Unauthorized' }, 401));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toMatchObject({ status: 'failed', httpStatus: 401 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('survives a failed token invalidation on the 401 path', async () => {
-    recordPayment();
     mocks.invalidatePayAppTokenMock.mockRejectedValue(new Error('provider gone'));
     globalThis.fetch = vi
       .fn()
       .mockResolvedValueOnce(jsonResponse({ error: 'Unauthorized' }, 401))
       .mockResolvedValueOnce(jsonResponse({ settled: true })) as unknown as typeof fetch;
 
-    expect(await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log })).toMatchObject({ status: 'settled' });
+    expect(await settleOrderViaPay(SETTLE_PARAMS)).toMatchObject({ status: 'settled' });
   });
 
-  it('reports other kernel refusals (409 not yet paid, 404, 5xx) as failed with the kernel’s reason', async () => {
-    recordPayment();
+  it('reports other kernel refusals (409 not yet paid, 5xx) as failed with the kernel’s reason', async () => {
     globalThis.fetch = vi.fn(async () => jsonResponse({ error: "Payment is not paid yet (status 'pending')" }, 409)) as unknown as typeof fetch;
-    expect(await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log })).toEqual({
+    expect(await settleOrderViaPay(SETTLE_PARAMS)).toEqual({
       status: 'failed',
       httpStatus: 409,
       error: "Payment is not paid yet (status 'pending')",
     });
 
-    recordPayment();
     globalThis.fetch = vi.fn(async () => new Response('bad gateway', { status: 502 })) as unknown as typeof fetch;
-    expect(await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log })).toEqual({
+    expect(await settleOrderViaPay(SETTLE_PARAMS)).toEqual({
       status: 'failed',
       httpStatus: 502,
       error: 'status 502',
     });
   });
 
-  it('skips (no settle call) when no app-bound payment is recorded for the session', async () => {
+  it('skips loudly (no settle call) when the pay webhook carried no transactionId', async () => {
     const fetchMock = vi.fn();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_legacy', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay({ ...SETTLE_PARAMS, transactionId: undefined });
 
-    expect(outcome).toEqual({ status: 'skipped', reason: 'no app-bound payment recorded for session' });
+    expect(outcome).toEqual({ status: 'skipped', reason: 'pay webhook carried no transactionId' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(logError).toHaveBeenCalledWith({ sessionId: 'cs_1' }, expect.stringContaining('NOT settled'));
+  });
+
+  it('skips (no settle call) when the event has no .fair chain', async () => {
+    const fetchMock = vi.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const outcome = await settleOrderViaPay({ ...SETTLE_PARAMS, fairManifest: null });
+
+    expect(outcome).toEqual({ status: 'skipped', reason: 'event has no .fair chain' });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(logWarn).toHaveBeenCalled();
   });
 
-  it.each([
-    ['a null payee manifest', null],
-    ['a manifest without a chain', {}],
-    ['an empty chain', { chain: [] }],
-  ])('skips when the recorded payment has %s', async (_label, manifest) => {
-    recordPayment(manifest);
-    globalThis.fetch = vi.fn() as unknown as typeof fetch;
-
-    expect(await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log })).toMatchObject({ status: 'skipped' });
-  });
-
-  it('fails (without throwing) when the recorded-payment lookup errors', async () => {
-    mocks.rowQueue.push(new Error('column "app_did" does not exist') as unknown as unknown[]);
-
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
-
-    expect(outcome).toEqual({ status: 'failed', error: 'recorded payment lookup failed' });
-    expect(logError).toHaveBeenCalled();
-  });
-
   it('fails when events cannot obtain its app token', async () => {
-    recordPayment();
     mocks.getPayAppTokenMock.mockRejectedValue(new Error('no keystore'));
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toMatchObject({ status: 'failed', error: expect.stringContaining('app-service token unavailable') });
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
   it('fails when the pay service is unreachable', async () => {
-    recordPayment();
     globalThis.fetch = vi.fn(async () => {
       throw new Error('ECONNREFUSED');
     }) as unknown as typeof fetch;
 
-    expect(await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log })).toMatchObject({
+    expect(await settleOrderViaPay(SETTLE_PARAMS)).toMatchObject({
       status: 'failed',
       error: expect.stringContaining('pay service unreachable'),
     });
   });
 
   it('fails when PAY_SERVICE_URL is not configured', async () => {
-    recordPayment();
     delete process.env.PAY_SERVICE_URL;
     globalThis.fetch = vi.fn() as unknown as typeof fetch;
 
-    expect(await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log })).toEqual({
+    expect(await settleOrderViaPay(SETTLE_PARAMS)).toEqual({
       status: 'failed',
       error: 'PAY_SERVICE_URL is not set',
       httpStatus: undefined,
@@ -451,6 +421,7 @@ describe('settleOrderViaPay', () => {
 // ─── receipt + orchestration ────────────────────────────────────────────────
 
 const ORDER = {
+  transactionId: 'tx_1',
   sessionId: 'cs_1',
   orderId: 'ord_1',
   eventId: 'evt_1',
@@ -465,7 +436,6 @@ const ORDER = {
 
 describe('settleCompletedOrder', () => {
   it('settles, then publishes settlement.completed with the settled chain and estimated fees', async () => {
-    recordPayment();
     globalThis.fetch = vi.fn(async () => jsonResponse({ settled: true, batchId: 'batch_1' })) as unknown as typeof fetch;
 
     const outcome = await settleCompletedOrder(ORDER);
@@ -490,7 +460,6 @@ describe('settleCompletedOrder', () => {
   });
 
   it('also announces the receipt on an alreadySettled replay', async () => {
-    recordPayment();
     globalThis.fetch = vi.fn(async () => jsonResponse({ settled: true, alreadySettled: true })) as unknown as typeof fetch;
 
     expect(await settleCompletedOrder(ORDER)).toMatchObject({ status: 'settled', alreadySettled: true });
@@ -498,11 +467,10 @@ describe('settleCompletedOrder', () => {
   });
 
   it('publishes nothing when settlement failed or was skipped', async () => {
-    recordPayment();
     globalThis.fetch = vi.fn(async () => jsonResponse({ error: 'Forbidden' }, 403)) as unknown as typeof fetch;
     expect(await settleCompletedOrder(ORDER)).toMatchObject({ status: 'failed' });
 
-    expect(await settleCompletedOrder(ORDER)).toMatchObject({ status: 'skipped' });
+    expect(await settleCompletedOrder({ ...ORDER, transactionId: undefined })).toMatchObject({ status: 'skipped' });
     expect(mocks.publishMock).not.toHaveBeenCalled();
   });
 });
@@ -589,9 +557,8 @@ describe('end to end: checkout with the app token, then settle', () => {
     const pay = fakePayService({ [APP_TOKEN]: [SETTLE_SCOPE] });
     const { checkout } = await checkoutAndPay(pay, APP_TOKEN);
     expect(checkout).toMatchObject({ checkout: { id: 'cs_tx_1' } });
-    const recorded = pay.payments.get('tx_1')!;
-    mocks.rowQueue.push([{ id: 'tx_1', payee_manifest: recorded.payeeManifest }]);
-    mocks.rowQueue.push([{ id: 'tx_1', payee_manifest: recorded.payeeManifest }]);
+    // The chain events re-resolves at settle time is exactly what it declared at checkout.
+    expect(pay.payments.get('tx_1')!.payeeManifest).toEqual(MANIFEST);
 
     const first = await settleCompletedOrder({ ...ORDER, sessionId: 'cs_tx_1' });
     const replay = await settleCompletedOrder({ ...ORDER, sessionId: 'cs_tx_1' });
@@ -614,11 +581,24 @@ describe('end to end: checkout with the app token, then settle', () => {
     const scopes: Record<string, string[]> = { [APP_TOKEN]: [SETTLE_SCOPE] };
     const pay = fakePayService(scopes);
     await checkoutAndPay(pay, APP_TOKEN);
-    mocks.rowQueue.push([{ id: 'tx_1', payee_manifest: pay.payments.get('tx_1')!.payeeManifest }]);
     scopes[APP_TOKEN] = [];
 
-    const outcome = await settleOrderViaPay({ sessionId: 'cs_tx_1', metadata: SETTLE_META, log });
+    const outcome = await settleOrderViaPay(SETTLE_PARAMS);
 
     expect(outcome).toEqual({ status: 'failed', httpStatus: 403, error: SCOPE_REFUSAL });
+  });
+
+  it('403 at settle when the re-resolved chain no longer matches what was declared at checkout', async () => {
+    const pay = fakePayService({ [APP_TOKEN]: [SETTLE_SCOPE] });
+    await checkoutAndPay(pay, APP_TOKEN);
+
+    // e.g. a different buyer DID than the one the chain was resolved for at checkout
+    const outcome = await settleOrderViaPay({ ...SETTLE_PARAMS, buyerDid: 'did:imajin:someone-else' });
+
+    expect(outcome).toEqual({
+      status: 'failed',
+      httpStatus: 403,
+      error: 'fair_manifest does not match the recorded payee manifest',
+    });
   });
 });

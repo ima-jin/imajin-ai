@@ -69,6 +69,7 @@ const PAYLOAD = {
   type: 'checkout.completed',
   sessionId: 'cs_1',
   paymentId: 'pi_1',
+  transactionId: 'tx_1',
   customerEmail: 'buyer@example.test',
   customerName: 'Buyer',
   amountTotal: 5000,
@@ -105,6 +106,7 @@ describe('POST /api/webhook/payment — settle via events’ app token (#2739)',
     expect(mocks.settleCompletedOrder).toHaveBeenCalledTimes(1);
     expect(mocks.settleCompletedOrder).toHaveBeenCalledWith({
       sessionId: 'cs_1',
+      transactionId: 'tx_1',
       orderId: 'ord_1',
       eventId: 'evt_1',
       buyerDid: 'did:imajin:buyer',
@@ -138,6 +140,15 @@ describe('POST /api/webhook/payment — settle via events’ app token (#2739)',
     await callRoute();
 
     expect(mocks.settleCompletedOrder).toHaveBeenCalledWith(expect.objectContaining({ fairManifest: null }));
+  });
+
+  it('passes no transactionId through when the pay webhook does not carry one (settle then skips loudly)', async () => {
+    const { transactionId: _omitted, ...withoutTransactionId } = PAYLOAD;
+
+    const res = await callRoute(withoutTransactionId);
+
+    expect(res.status).toBe(200);
+    expect(mocks.settleCompletedOrder).toHaveBeenCalledWith(expect.objectContaining({ sessionId: 'cs_1', transactionId: undefined }));
   });
 
   it('keeps the order and acknowledges the webhook when settlement throws (non-fatal)', async () => {
