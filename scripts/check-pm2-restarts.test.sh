@@ -11,6 +11,7 @@
 #   - restarts older than the window age out;
 #   - a counter that goes backwards (pm2 reset) does not alert;
 #   - apps outside the ecosystem file are ignored;
+#   - a pm2 jlist payload over 256 KiB is still read and classified (#2732);
 #   - a bad scope / missing ecosystem exits 2.
 #
 # Usage: scripts/check-pm2-restarts.test.sh
@@ -48,7 +49,12 @@ if [[ "$1" = "jlist" ]]; then
     const lines = require("fs").readFileSync(process.env.FAKE_RESTARTS_FILE, "utf8").trim().split("\n");
     const out = lines.filter(Boolean).map((l) => {
       const [name, n] = l.split("=");
-      return { name, pm2_env: { restart_time: Number(n) } };
+      const pm2_env = { restart_time: Number(n) };
+      // Real pm2 jlist carries the full env of every process. FAKE_JLIST_PAD_KB
+      // bloats each entry so the payload outgrows MAX_ARG_STRLEN (#2732).
+      const pad = Number(process.env.FAKE_JLIST_PAD_KB || 0);
+      if (pad > 0) pm2_env.env = { PADDING: "x".repeat(pad * 1024) };
+      return { name, pm2_env };
     });
     console.log(JSON.stringify(out));
   '
@@ -120,6 +126,27 @@ run_case "baseline with one-shot job" 0 "$T0" "t-events=0 t-oneshot=0"
 run_case "one-shot job exiting normally does not alert" 0 $((T0 + 60)) "t-events=0 t-oneshot=0" "no app exceeded"
 run_case "crash loop is still named next to a healthy one-shot job" 1 $((T0 + 120)) \
   "t-events=50 t-oneshot=0" "t-events restarted 50 times"
+
+# #2732: a jlist payload over 256 KiB (single entries over the 128 KiB
+# MAX_ARG_STRLEN exec limit) must still be read and classified. It used to be
+# passed to node as an env var, so exec failed with E2BIG (exit 2).
+PAD_KB=200
+export FAKE_JLIST_PAD_KB="$PAD_KB"
+rm -f "$RESTART_ALERT_STATE"
+printf 't-events=0\nt-auth=0\nt-foreign=0\n' > "$FAKE_RESTARTS_FILE"
+JLIST_BYTES="$(pm2 jlist | wc -c)"
+if [[ "$JLIST_BYTES" -gt $((256 * 1024)) ]]; then
+  echo "✅ oversized fixture is $JLIST_BYTES bytes (> 256 KiB)"
+else
+  echo "❌ oversized fixture is only $JLIST_BYTES bytes, expected > 262144"
+  FAILURES=$((FAILURES + 1))
+fi
+run_case "oversized jlist: baseline passes" 0 "$T0" "t-events=0 t-auth=0 t-foreign=0" "no app exceeded"
+run_case "oversized jlist: crash loop is still classified and named" 1 $((T0 + 60)) \
+  "t-events=50 t-auth=0 t-foreign=9999" "t-events restarted 50 times"
+run_case "oversized jlist: foreign app ignored, healthy app passes" 0 $((T0 + 700)) \
+  "t-events=50 t-auth=1 t-foreign=0" "no app exceeded"
+unset FAKE_JLIST_PAD_KB
 
 status=0
 bash "$CHECK_SCRIPT" bogus >/dev/null 2>&1 || status=$?
