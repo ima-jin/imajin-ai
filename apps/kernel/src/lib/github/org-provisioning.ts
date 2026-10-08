@@ -1,7 +1,7 @@
 /**
  * GitHub org-scoped provisioning (#2375, #2416) — the credential + REST
- * calls `apps.provision` uses to create an extracted app's repo and seal
- * its deploy secrets. Deliberately separate from `./connector.ts`: that
+ * calls `apps.provision` uses to create an extracted app's repo.
+ * Deliberately separate from `./connector.ts`: that
  * module is a PER-DID OAuth/PAT connector for issue/PR automation on
  * behalf of a human, gated by `channel_links` + the confirm rail. This
  * module has no per-DID concept at all — it is the KERNEL's own org-wide
@@ -24,18 +24,13 @@
  * in memory (see that function's docblock) — every GitHub action this
  * module takes lands in the org audit log as `imajin-provisioner[bot]`.
  *
- * ## Actions secrets
- * GitHub's Actions-secrets API requires the plaintext to be encrypted
- * client-side with libsodium's anonymous sealed-box construction
- * (`crypto_box_seal`) against the target repo's own Actions public key
- * before `PUT .../actions/secrets/{name}` — this is GitHub's own
- * documented mechanism, not an imajin-specific choice. `libsodium-wrappers`
- * is used here (rather than hand-rolling the X25519/HSalsa20/XSalsa20-
- * Poly1305 sealed-box construction from lower-level primitives) because a
- * subtle byte-order bug in a hand-rolled implementation would silently
- * produce a token GitHub cannot decrypt, or worse — this is exactly the
- * kind of crypto correctness question this codebase's own vault module
- * refuses to reinvent.
+ * ## No Actions secrets (#2437)
+ * This module never writes GitHub Actions secrets. It used to seal the
+ * app's raw signing key as `IMAJIN_APP_PRIVATE_KEY` (libsodium sealed box +
+ * `PUT .../actions/secrets/{name}`); no workflow ever read it and apps now
+ * refuse to boot with it set, so that helper — and the `PUT` method on
+ * {@link callGitHubApi} — were removed. App keys reach an app only via the
+ * vault claim path.
  *
  * ## Nav manifest read (#2425)
  * {@link fetchAppManifest} is a best-effort read of `imajin.app.json` from
@@ -48,23 +43,10 @@
  * No secret value (the App private key, a minted installation token, or a
  * minted app-auth private key) is ever logged.
  */
-import { createRequire } from 'node:module';
 import { createPrivateKey } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { loadAndUnseal } from '@/src/lib/vault';
-import type sodiumWrappersType from 'libsodium-wrappers';
-
-// `libsodium-wrappers`'s published ESM build (dist/modules-esm/libsodium-wrappers.mjs)
-// imports a sibling `./libsodium.mjs` that is not actually included in the npm
-// package's `files` allowlist, so resolving it via a normal ESM `import` throws
-// "Cannot find module ... libsodium.mjs" under Node's/Vite's strict ESM resolver.
-// The CJS build (dist/modules/libsodium-wrappers.js, the `require` export
-// condition) has no such issue — it resolves the `libsodium` dependency through
-// ordinary node_modules resolution — so it is loaded explicitly via `require`
-// rather than a static `import`.
-const require = createRequire(import.meta.url);
-const sodium: typeof sodiumWrappersType = require('libsodium-wrappers');
 
 const log = createLogger('kernel:github:org-provisioning');
 
@@ -106,7 +88,7 @@ export class OrgCredentialMissingError extends Error {
       message ??
       `${GITHUB_ORG_CREDENTIAL_FIELD} is not sealed — an operator must seal an org-scoped ` +
       `GitHub App installation credential via POST /api/vault/set before apps.provision can ` +
-      `create repos or seal deploy secrets (see docs/REGISTRATION.md)`,
+      `create repos (see docs/REGISTRATION.md)`,
     );
     this.name = 'OrgCredentialMissingError';
   }
@@ -297,8 +279,8 @@ export function __resetInstallationTokenCacheForTests(): void {
  * Best-effort variant of {@link getInstallationToken} — `null` (never
  * throws) when the org credential has never been sealed, so callers that
  * need to branch on "is it sealed at all" (#2415: the repo existence check
- * / authenticated retry, and `sealDeploySecrets`'s degrade-instead-of-fail
- * path) don't need exception-driven control flow. Returns a real,
+ * / authenticated retry, and the manifest read) don't need exception-driven
+ * control flow. Returns a real,
  * ready-to-use installation access token (not the raw sealed credential)
  * so callers can hand it straight to {@link callGitHubApi}. Any OTHER
  * error — a malformed blob ({@link OrgCredentialMalformedError}), or a
@@ -315,7 +297,7 @@ export async function tryGetInstallationToken(): Promise<string | null> {
 }
 
 interface GitHubApiOptions {
-  method: 'GET' | 'POST' | 'PUT';
+  method: 'GET' | 'POST';
   path: string;
   /** Omit for an unauthenticated call — e.g. #2415's repo existence check, which must not require the org credential. */
   token?: string;
@@ -459,11 +441,6 @@ export async function ensureRepoFromTemplate(
   return resolveAmbiguousRepoStatus(slug, template, anonymous.status, token);
 }
 
-interface ActionsPublicKeyResponse {
-  key_id: string;
-  key: string;
-}
-
 /** Nav metadata (#2425) an app can publish about itself via `imajin.app.json` at its repo root. */
 export interface AppManifest {
   name?: string;
@@ -533,7 +510,7 @@ interface GitHubContentsResponse {
  * doesn't exist (a template that hasn't adopted the manifest convention
  * yet), or its contents don't parse/validate. A missing/invalid manifest is
  * NOT a provisioning failure — same degrade-don't-fail posture as
- * `tryGetInstallationToken`/`sealDeploySecrets`'s caller in `provision.ts`.
+ * `tryGetInstallationToken`'s callers in `provision.ts`.
  */
 export async function fetchAppManifest(slug: string, token: string | null): Promise<AppManifest | null> {
   if (token === null) return null;
@@ -556,41 +533,4 @@ export async function fetchAppManifest(slug: string, token: string | null): Prom
     log.warn({ err: String(err), slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
     return null;
   }
-}
-
-/**
- * Encrypt `plaintext` with libsodium's anonymous sealed box against
- * `repo`'s Actions public key, and PUT it as the named Actions secret.
- * `plaintext` is never logged; only the secret NAME is returned to the
- * caller for the `secretsSet` audit trail.
- */
-export async function sealActionsSecret(repo: string, name: string, plaintext: string): Promise<void> {
-  const token = await getInstallationToken();
-
-  const keyResponse = await callGitHubApi<ActionsPublicKeyResponse>({
-    method: 'GET',
-    path: `/repos/${repo}/actions/secrets/public-key`,
-    token,
-  });
-  if (keyResponse.status !== 200 || !keyResponse.data) {
-    throw new Error(`apps.provision: failed to fetch Actions public key for '${repo}' (GitHub status ${keyResponse.status})`);
-  }
-
-  await sodium.ready;
-  const publicKeyBytes = sodium.from_base64(keyResponse.data.key, sodium.base64_variants.ORIGINAL);
-  const messageBytes = sodium.from_string(plaintext);
-  const sealed = sodium.crypto_box_seal(messageBytes, publicKeyBytes);
-  const encryptedValue = sodium.to_base64(sealed, sodium.base64_variants.ORIGINAL);
-
-  const put = await callGitHubApi({
-    method: 'PUT',
-    path: `/repos/${repo}/actions/secrets/${name}`,
-    token,
-    body: { encrypted_value: encryptedValue, key_id: keyResponse.data.key_id },
-  });
-  if (put.status !== 201 && put.status !== 204) {
-    throw new Error(`apps.provision: failed to seal Actions secret '${name}' into '${repo}' (GitHub status ${put.status})`);
-  }
-
-  log.info({ repo, name }, 'apps.provision: sealed Actions secret');
 }

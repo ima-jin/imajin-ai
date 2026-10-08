@@ -3,7 +3,7 @@
  * fixed name, served by `GET /api/vault/known-fields` so the /jin vault panel
  * learns them from the kernel instead of carrying a hardcoded list.
  *
- * Server-only (imports org-provisioning.ts, which pulls in libsodium and
+ * Server-only (imports org-provisioning.ts, which pulls in
  * node:crypto) — never import this from a client component. Clients get this
  * data over the API.
  *

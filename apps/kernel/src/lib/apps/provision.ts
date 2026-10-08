@@ -3,8 +3,8 @@
  * call that creates an extracted app's GitHub repo, registers it in the
  * existing `registry.apps` table (#1990) as a `tier: 'third_party'` row
  * (never upserting any pre-existing legacy `first_party` row for the same
- * app — see `registerApp`'s docblock), and seals its app-auth private key
- * into the repo's Actions secrets.
+ * app — see `registerApp`'s docblock), and vault-seals its app-auth private
+ * key, handing the app a one-time claim code to fetch it at first boot.
  *
  * ## Idempotency + fail-closed (`kernel.app_provisions`)
  * One durable row per `slug`. A `status: 'succeeded'` row means "re-run
@@ -16,27 +16,27 @@
  * its own completion state first (repo: GET-before-create; mint: reuse the
  * ledger's own `appDid` once minting first succeeds, an existing
  * `vault_minted_keys` row for it; register: insert-if-not-already-registered
- * by that same appDid, never an upsert; seal: skip once `sealedAt` is set),
- * so a retry only re-attempts whatever didn't already succeed.
+ * by that same appDid, never an upsert), so a retry only re-attempts
+ * whatever didn't already succeed.
  *
  * ## No half-registered app is ever servable
  * The `registry.apps` row (the thing that makes an app "servable" —
  * `resolveActiveAppByAudience`/`isAppDidActive`) is written only AFTER a
  * real Ed25519 keypair already exists and is durably vault-sealed (steps
- * 1-2 succeed first) — never with a placeholder key. Only the external
- * GitHub Actions-secret push (network-fallible) can still fail after that
- * point, and a retry re-attempts only that step.
+ * 1-2 succeed first) — never with a placeholder key.
  *
- * ## Credential custody
- * The minted app private key is generated in-process, immediately sealed
- * into the vault (self-granted to the node — see `ensureMintedKeypair`),
- * and the ONLY other place its plaintext ever exists is the one in-memory
- * round trip to encrypt-and-PUT it as a GitHub Actions secret. It is never
- * logged, never part of any bus event/attestation payload, and never part
- * of this module's return value — see `AppProvisionSuccess.secretsSet`,
- * which carries secret NAMES only. The GitHub credential used to reach
- * that repo is a GitHub App installation token (#2416) — see
- * `org-provisioning.ts`'s docblock — never a PAT.
+ * ## Credential custody (#2437)
+ * The minted app private key is generated in-process and immediately sealed
+ * into the vault (self-granted to the node — see `ensureMintedKeypair`). It
+ * never leaves the vault/keystore path: this module never unseals it, and it
+ * is NEVER copied into an env file or a GitHub Actions secret (sealing it as
+ * `IMAJIN_APP_PRIVATE_KEY` was removed in #2437; apps refuse to boot when that
+ * env var is set, #2411). The app fetches its key at boot via the one-time
+ * claim code (`signing-key-claims.ts`). `AppProvisionSuccess.secretsSet` is
+ * kept for API/ledger compatibility and is always an empty list for new
+ * runs. The GitHub credential used to reach the repo is a GitHub App
+ * installation token (#2416) — see `org-provisioning.ts`'s docblock —
+ * never a PAT.
  */
 import { and, eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -47,13 +47,11 @@ import { db, appProvisions, registryApps, vaultDelegationGrants, type AppProvisi
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { mintKeypair, emitMintedEvents, mintedKeyField } from '@/src/lib/vault/mint';
 import { getMintedKeyByDid } from '@/src/lib/vault/key-cards';
-import { loadAndUnsealByGrantee, grantExistingMintedKey, emitGrantEvents } from '@/src/lib/vault';
+import { grantExistingMintedKey, emitGrantEvents } from '@/src/lib/vault';
 import {
   ensureRepoFromTemplate,
-  sealActionsSecret,
   tryGetInstallationToken,
   fetchAppManifest,
-  PROVISIONING_ORG,
   DEFAULT_APP_TEMPLATE,
   type EnsureRepoResult,
   type AppManifest,
@@ -69,17 +67,6 @@ const log = createLogger('kernel:apps:provision');
 
 /** Purpose prefix recorded on the minted key's `vault_minted_keys` row. */
 const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
-
-/**
- * Actions secret name apps.provision seals — a name only, the value is
- * never logged/returned.
- *
- * Follow-up: #2411 / #2436 — the app fetches its signing key from the vault
- * at boot (`loadAppSigningKey()`), so sealing the raw key into Actions
- * secrets is a pre-#2411 shape kept only for template-CI test runs; a
- * human call on whether to keep or drop it is still open (see #2416).
- */
-export const IMAJIN_APP_PRIVATE_KEY_SECRET = 'IMAJIN_APP_PRIVATE_KEY';
 
 export interface AppProvisionParams {
   slug: string;
@@ -100,7 +87,12 @@ export interface AppProvisionSuccess {
   status: 'succeeded';
   repoUrl: string;
   appDid: string;
-  /** Actions secret NAMES only — never values. */
+  /**
+   * Actions secret NAMES only — never values. Always `[]` for a run made
+   * after #2437 (nothing is sealed into Actions secrets any more); kept so
+   * API consumers and `kernel.app_provisions` rows stay valid. A cached
+   * pre-#2437 row replays whatever it recorded then.
+   */
   secretsSet: string[];
   attestationTypeResults: AttestationTypeSeedOutcome[];
   /**
@@ -114,14 +106,6 @@ export interface AppProvisionSuccess {
    * one-time `data` reveal (same posture as #2252's bearer plaintext).
    */
   claimCode: string;
-  /**
-   * True when the seal step (#2415) was skipped because the org-scoped
-   * GitHub credential was never sealed — `secretsSet` is `[]` in that case.
-   * Derived from `sealedAt IS NULL` on an otherwise-`succeeded` ledger row
-   * (reusing that existing column rather than adding a new one), since
-   * every succeeded row reached that status via a real seal before #2415.
-   */
-  sealSkipped: boolean;
 }
 
 export interface AppProvisionFailure {
@@ -175,25 +159,19 @@ async function markFailed(nodeDid: string, slug: string, step: string, error: un
  * is what keeps it structurally distinct from any pre-existing legacy
  * first-party row's `app_did` (registry.apps.app_did is globally unique).
  *
- * Either way, the plaintext private key is fetched back out via
- * `loadAndUnsealByGrantee` (self-granted node -> node, `oneTime: false`)
- * so the caller has it in hand for the one-shot GitHub Actions-secret seal
- * — never returned from this function's own return value in any other
- * form, and never logged.
+ * Only the DID and PUBLIC key are returned (#2437): the plaintext private
+ * key stays sealed in the vault and is never unsealed by this module — the
+ * app gets it only through its own claim-code grant (`ensureAppSigningKeyGrant`).
  */
 async function ensureMintedKeypair(
   slug: string,
   nodeDid: string,
   existingAppDid: string | null | undefined,
-): Promise<{ did: string; publicKey: string; privateKey: string }> {
+): Promise<{ did: string; publicKey: string }> {
   if (existingAppDid) {
     const existing = await getMintedKeyByDid(existingAppDid);
     if (existing?.status === 'active') {
-      const privateKey = await loadAndUnsealByGrantee(existing.field, nodeDid);
-      if (privateKey === undefined) {
-        throw new Error(`apps.provision: minted key for '${existingAppDid}' exists but its sealed private key could not be unsealed`);
-      }
-      return { did: existingAppDid, publicKey: existing.publicKey, privateKey };
+      return { did: existingAppDid, publicKey: existing.publicKey };
     }
   }
 
@@ -202,26 +180,20 @@ async function ensureMintedKeypair(
     purpose,
     requesterDid: nodeDid,
     mintedBy: nodeDid,
-    // Not one-time: the kernel is both principal-adjacent and grantee here
-    // (self-granted), and may need to re-fetch the plaintext across retries
-    // of the external Actions-secret seal step (see this module's docblock).
+    // Not one-time: the node's self-granted (node -> node) copy stays
+    // active alongside the app's own claim-code grant (see below).
     oneTime: false,
   });
   emitMintedEvents({ minted, purpose, requesterDid: nodeDid, mintedBy: nodeDid });
 
-  const privateKey = await loadAndUnsealByGrantee(minted.field, nodeDid);
-  if (privateKey === undefined) {
-    throw new Error(`apps.provision: freshly minted key for '${minted.did}' could not be re-unsealed`);
-  }
-  return { did: minted.did, publicKey: minted.publicKey, privateKey };
+  return { did: minted.did, publicKey: minted.publicKey };
 }
 
 /**
- * Step 4.5 (grant, #2411): issue the app's OWN DID a delegation grant for
+ * Step 4 (grant, #2411): issue the app's OWN DID a delegation grant for
  * its just-minted key's field, on top of the pre-existing self-granted
- * (node -> node) copy `ensureMintedKeypair` already holds for the
- * GitHub-Actions-secret seal. This is the SAME primitive #2247's vault key
- * cards use to add a second consumer to an already-minted key without
+ * (node -> node) copy `ensureMintedKeypair` mints. This is the SAME primitive
+ * #2247's vault key cards use to add a second consumer to an already-minted key without
  * re-sealing (`grantExistingMintedKey`) — here the second consumer is the
  * app's own identity, purpose `app-signing-key`, `oneTime: false` (the app
  * may re-fetch across restarts for as long as its claim code, or a
@@ -413,75 +385,6 @@ function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppI
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
-interface SealDeploySecretsResult {
-  secretsSet: string[];
-  /** True when the org credential was never sealed — the step was skipped, not attempted and failed. */
-  skipped: boolean;
-}
-
-function emitSealSkippedEvent(nodeDid: string, slug: string): void {
-  publish('apps.provision.seal.skipped', {
-    issuer: nodeDid,
-    subject: nodeDid,
-    scope: 'apps',
-    payload: { slug, reason: 'org-credential-unsealed', context_id: slug, context_type: 'apps.provision' },
-  }).catch((err: unknown) => log.error({ err: String(err), slug }, 'Bus publish error for apps.provision.seal.skipped'));
-}
-
-/**
- * Step 4 (seal): seal the app's private key into the repo's Actions
- * secrets. #2415: when the org credential was never sealed, this DEGRADES
- * rather than fails — there is no template-CI to seal secrets into for a
- * dev-path app (it fetches its signing key from the vault at boot instead,
- * #2411), so an unsealed credential must not block the rest of the chain
- * (grant + claim code). #2416: no longer reseals the org credential itself
- * as `GITHUB_PACKAGES_TOKEN` — a GitHub App installation token expires
- * within the hour, so reusing it as a long-lived Actions secret no longer
- * makes sense, and the template CI reads `@ima-jin/*` from public npmjs,
- * so no packages-read secret is needed at all.
- */
-async function sealDeploySecrets(slug: string, privateKey: string): Promise<SealDeploySecretsResult> {
-  const repo = `${PROVISIONING_ORG}/${slug}`;
-  // A cheap availability check before the real work below — `sealActionsSecret`
-  // mints/re-uses its OWN cached installation token internally, so this never
-  // costs a second GitHub round trip when the credential is actually sealed.
-  const installationToken = await tryGetInstallationToken();
-  if (installationToken === null) {
-    return { secretsSet: [], skipped: true };
-  }
-
-  await sealActionsSecret(repo, IMAJIN_APP_PRIVATE_KEY_SECRET, privateKey);
-
-  return { secretsSet: [IMAJIN_APP_PRIVATE_KEY_SECRET], skipped: false };
-}
-
-/**
- * Step 4 runner: resumes from an already-sealed retry, otherwise attempts
- * sealing and persists whichever outcome results — sealed (`sealedAt` set)
- * or skipped (#2415: `secretsSet: []`, `sealedAt` left null, `seal.skipped`
- * bus event). Extracted out of `runAppProvision` purely to keep that
- * function's own cognitive complexity down.
- */
-async function runSealStep(
-  slug: string,
-  nodeDid: string,
-  privateKey: string,
-  existingRun: Pick<AppProvisionRow, 'sealedAt' | 'secretsSet'> | undefined,
-): Promise<SealDeploySecretsResult> {
-  if (existingRun?.sealedAt) {
-    return { secretsSet: existingRun.secretsSet, skipped: false };
-  }
-
-  const sealResult = await sealDeploySecrets(slug, privateKey);
-  if (sealResult.skipped) {
-    await upsertProvisionRow(slug, { secretsSet: sealResult.secretsSet });
-    emitSealSkippedEvent(nodeDid, slug);
-  } else {
-    await upsertProvisionRow(slug, { sealedAt: new Date(), secretsSet: sealResult.secretsSet });
-  }
-  return sealResult;
-}
-
 function emitProvisionedEvent(nodeDid: string, slug: string, appDid: string, repoUrl: string, secretsSet: readonly string[]): void {
   publish('apps.provisioned', {
     issuer: nodeDid,
@@ -541,7 +444,6 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       secretsSet: existingRun.secretsSet,
       attestationTypeResults,
       claimCode,
-      sealSkipped: !existingRun.sealedAt,
     };
   }
 
@@ -560,9 +462,9 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // `appDid` is not known ahead of a fresh mint (it's derived from the
   // freshly generated public key — see `ensureMintedKeypair`'s docblock),
   // so it is persisted to the ledger the moment minting succeeds, letting a
-  // later retry (if register/seal fails) resolve the SAME minted key
+  // later retry (if register fails) resolve the SAME minted key
   // instead of minting a second one for this slug.
-  let keypair: { did: string; publicKey: string; privateKey: string };
+  let keypair: { did: string; publicKey: string };
   try {
     keypair = await ensureMintedKeypair(slug, nodeDid, existingRun?.appDid);
     await upsertProvisionRow(slug, { appDid: keypair.did });
@@ -593,26 +495,12 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
     return markFailed(nodeDid, slug, 'register', err);
   }
 
-  // ── Step 4: seal (external, network-fallible — the only step a retry ever repeats) ──
-  // #2415: an unsealed org credential degrades this step (secretsSet: [],
-  // sealedAt left null) rather than failing it — a retry with `sealedAt`
-  // still null naturally re-attempts sealing, which is exactly right if the
-  // operator has since sealed the credential.
-  let secretsSet: string[];
-  let sealSkipped: boolean;
-  try {
-    const sealResult = await runSealStep(slug, nodeDid, keypair.privateKey, existingRun);
-    secretsSet = sealResult.secretsSet;
-    sealSkipped = sealResult.skipped;
-  } catch (err) {
-    return markFailed(nodeDid, slug, 'seal', err);
-  }
-
-  // ── Step 5: app-signing-key grant + claim code (#2411, kernel-internal) ──
+  // ── Step 4: app-signing-key grant + claim code (#2411, kernel-internal) ──
   // The app's own DID has no pre-existing identity to authenticate a
-  // normal vault fetch with, so this is a SECOND destination for the same
-  // freshly minted key: an active delegation grant to appDid itself, plus
-  // a one-time claim code the app exchanges for it at first boot (see
+  // normal vault fetch with, so the vault grant is the app's ONLY route to
+  // its key (#2437: it is never pushed to GitHub Actions secrets or an env
+  // file): an active delegation grant to appDid itself, plus a one-time
+  // claim code the app exchanges for it at first boot (see
   // `signing-key-claims.ts`). Runs unconditionally — unlike attestation
   // types, this isn't optional for a third-party app to be bootable off
   // the vault path.
@@ -625,7 +513,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
     return markFailed(nodeDid, slug, 'app-signing-key-grant', err);
   }
 
-  // ── Step 6: attestation types (optional, additive) ───────────────────
+  // ── Step 5: attestation types (optional, additive) ───────────────────
   let attestationTypeResults: AttestationTypeSeedOutcome[] = [];
   if (attestationTypes.length > 0) {
     try {
@@ -642,9 +530,12 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
     attestationTypes: mergeAttestationTypes([], attestationTypeResults),
   });
 
+  // Nothing is sealed into Actions secrets any more (#2437): report whatever the
+  // ledger row already recorded (a pre-#2437 row keeps its history), else [].
+  const secretsSet = existingRun?.secretsSet ?? [];
   emitProvisionedEvent(nodeDid, slug, appDid, repo.repoUrl, secretsSet);
 
-  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode, sealSkipped };
+  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode };
 }
 
 /** Current ledger status for a slug, for `GET /api/apps/provision?slug=`. Undefined when never provisioned. */

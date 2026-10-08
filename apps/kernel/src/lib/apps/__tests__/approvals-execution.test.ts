@@ -83,42 +83,9 @@ describe('executeAppsProvisionApproval — execution', () => {
       status: 'succeeded',
       repoUrl: 'https://github.com/ima-jin/dykil',
       appDid: 'did:imajin:app-dykil',
-      secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
-      attestationTypeResults: [],
-      claimCode: 'claim_test_code',
-      sealSkipped: false,
-    });
-
-    const result = await executeAppsProvisionApproval(card());
-
-    expect(result).toEqual({
-      ok: true,
-      data: {
-        repoUrl: 'https://github.com/ima-jin/dykil',
-        appDid: 'did:imajin:app-dykil',
-        secretsSet: ['IMAJIN_APP_PRIVATE_KEY'],
-        claimCode: 'claim_test_code',
-        sealSkipped: false,
-      },
-    });
-    expect(runAppProvisionMock).toHaveBeenCalledWith({
-      slug: 'dykil',
-      displayName: 'dykil',
-      template: undefined,
-      attestationTypes: [],
-      approvedDeclarations: null,
-    });
-  });
-
-  it('#2415: surfaces sealSkipped: true when the seal step was skipped', async () => {
-    runAppProvisionMock.mockResolvedValue({
-      status: 'succeeded',
-      repoUrl: 'https://github.com/ima-jin/dykil',
-      appDid: 'did:imajin:app-dykil',
       secretsSet: [],
       attestationTypeResults: [],
       claimCode: 'claim_test_code',
-      sealSkipped: true,
     });
 
     const result = await executeAppsProvisionApproval(card());
@@ -130,17 +97,40 @@ describe('executeAppsProvisionApproval — execution', () => {
         appDid: 'did:imajin:app-dykil',
         secretsSet: [],
         claimCode: 'claim_test_code',
-        sealSkipped: true,
       },
+    });
+    expect(runAppProvisionMock).toHaveBeenCalledWith({
+      slug: 'dykil',
+      displayName: 'dykil',
+      template: undefined,
+      attestationTypes: [],
+      approvedDeclarations: null,
     });
   });
 
-  it('reports a failed pipeline outcome with the step named', async () => {
-    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'seal', error: 'GitHub 403' });
+  it('#2437: the one-time reveal never carries a seal flag — only repo/DID/secretsSet/claimCode', async () => {
+    runAppProvisionMock.mockResolvedValue({
+      status: 'succeeded',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      appDid: 'did:imajin:app-dykil',
+      secretsSet: [],
+      attestationTypeResults: [],
+      claimCode: 'claim_test_code',
+    });
 
     const result = await executeAppsProvisionApproval(card());
 
-    expect(result).toEqual({ ok: false, error: "apps.provision failed at step 'seal': GitHub 403" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('unreachable');
+    expect(Object.keys(result.data).sort()).toEqual(['appDid', 'claimCode', 'repoUrl', 'secretsSet']);
+  });
+
+  it('reports a failed pipeline outcome with the step named', async () => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'app-signing-key-grant', error: 'could not grant' });
+
+    const result = await executeAppsProvisionApproval(card());
+
+    expect(result).toEqual({ ok: false, error: "apps.provision failed at step 'app-signing-key-grant': could not grant" });
   });
 
   it('passes through attestationTypes from the proposal detail', async () => {

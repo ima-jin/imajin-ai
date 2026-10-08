@@ -2,21 +2,15 @@
  * Direct behavioral tests for `org-provisioning.ts` (#2375, #2416 GitHub
  * App installation credential, #2415 unauthenticated-existence-check-first
  * idempotency) — GitHub App credential parsing, installation-token
- * minting/caching, idempotent repo-from-template creation, and
- * Actions-secret sealing. `sealActionsSecret` is exercised against the REAL
- * `libsodium-wrappers` `crypto_box_seal`/`crypto_box_seal_open` pair (not
- * mocked) so the encryption round-trip is genuinely verified, not just
- * "some function was called". The App JWT minting is exercised against
- * REAL RSA keypairs and verified with `jose.jwtVerify`, so the claims
- * contract is genuinely checked too.
+ * minting/caching, and idempotent repo-from-template creation. The App JWT
+ * minting is exercised against REAL RSA keypairs and verified with
+ * `jose.jwtVerify`, so the claims contract is genuinely checked. (#2437: the
+ * Actions-secret sealing helper this module used to export is gone; a guard
+ * test below keeps it that way.)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createRequire } from 'node:module';
 import { generateKeyPairSync } from 'node:crypto';
 import * as jose from 'jose';
-
-const require = createRequire(import.meta.url);
-const sodium = require('libsodium-wrappers');
 
 const { loadAndUnsealMock } = vi.hoisted(() => ({
   loadAndUnsealMock: vi.fn(),
@@ -30,12 +24,12 @@ vi.mock('@/src/lib/vault', () => ({
   loadAndUnseal: loadAndUnsealMock,
 }));
 
+import * as orgProvisioning from '../org-provisioning';
 import {
   loadOrgCredential,
   getInstallationToken,
   tryGetInstallationToken,
   ensureRepoFromTemplate,
-  sealActionsSecret,
   fetchAppManifest,
   OrgCredentialMissingError,
   OrgCredentialMalformedError,
@@ -489,84 +483,28 @@ describe('ensureRepoFromTemplate', () => {
   });
 });
 
-describe('sealActionsSecret', () => {
-  it('propagates OrgCredentialMissingError before ever calling fetch', async () => {
-    loadAndUnsealMock.mockResolvedValueOnce(undefined);
-    await expect(sealActionsSecret('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', 'secret')).rejects.toBeInstanceOf(OrgCredentialMissingError);
-    expect(fetchMock).not.toHaveBeenCalled();
+describe('no GitHub Actions secrets (#2437)', () => {
+  it('exports no Actions-secret writer — the app key can only reach an app via the vault claim path', () => {
+    expect(Object.keys(orgProvisioning).filter((name) => /secret/i.test(name))).toEqual([]);
+    expect(orgProvisioning).not.toHaveProperty('sealActionsSecret');
   });
 
-  it('fails closed when fetching the Actions public key fails, never attempting to encrypt/PUT', async () => {
+  it('a full create-repo flow only ever issues GET and POST requests, never touching /actions/secrets', async () => {
     fetchMock
+      .mockResolvedValueOnce(jsonResponse(404, null))
       .mockResolvedValueOnce(installationTokenResponse())
+      .mockResolvedValueOnce(jsonResponse(201, { html_url: 'https://github.com/ima-jin/dykil', full_name: 'ima-jin/dykil' }))
       .mockResolvedValueOnce(jsonResponse(404, { message: 'Not Found' }));
 
-    await expect(sealActionsSecret('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', 'secret-plaintext')).rejects.toThrow(
-      "apps.provision: failed to fetch Actions public key for 'ima-jin/dykil' (GitHub status 404)",
-    );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
+    await ensureRepoFromTemplate('dykil');
+    await fetchAppManifest('dykil', INSTALLATION_TOKEN);
 
-  it('fails closed when the PUT to store the encrypted secret fails', async () => {
-    await sodium.ready;
-    const keypair = sodium.crypto_box_keypair();
-    const publicKeyBase64 = sodium.to_base64(keypair.publicKey, sodium.base64_variants.ORIGINAL);
-
-    fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
-      .mockResolvedValueOnce(jsonResponse(200, { key_id: 'key123', key: publicKeyBase64 }))
-      .mockResolvedValueOnce(jsonResponse(403, { message: 'Forbidden' }));
-
-    await expect(sealActionsSecret('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', 'secret-plaintext')).rejects.toThrow(
-      "apps.provision: failed to seal Actions secret 'IMAJIN_APP_PRIVATE_KEY' into 'ima-jin/dykil' (GitHub status 403)",
-    );
-  });
-
-  it('encrypts the plaintext with a REAL libsodium sealed box the repo can decrypt, and never logs/leaks it', async () => {
-    await sodium.ready;
-    const keypair = sodium.crypto_box_keypair();
-    const publicKeyBase64 = sodium.to_base64(keypair.publicKey, sodium.base64_variants.ORIGINAL);
-    const plaintext = 'ed25519-private-key-do-not-leak';
-
-    fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
-      .mockResolvedValueOnce(jsonResponse(200, { key_id: 'key123', key: publicKeyBase64 }))
-      .mockResolvedValueOnce(jsonResponse(201, null));
-
-    await sealActionsSecret('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', plaintext);
-
-    expect(fetchMock).toHaveBeenCalledTimes(3);
-    const [publicKeyUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
-    expect(publicKeyUrl).toBe('https://api.github.com/repos/ima-jin/dykil/actions/secrets/public-key');
-
-    const [putUrl, putInit] = fetchMock.mock.calls[2] as [string, RequestInit];
-    expect(putUrl).toBe('https://api.github.com/repos/ima-jin/dykil/actions/secrets/IMAJIN_APP_PRIVATE_KEY');
-    expect(putInit.method).toBe('PUT');
-
-    const body = JSON.parse(putInit.body as string) as { encrypted_value: string; key_id: string };
-    expect(body.key_id).toBe('key123');
-    // The request body must never contain the plaintext directly.
-    expect(putInit.body as string).not.toContain(plaintext);
-
-    // Decrypt with the REAL private key to prove the sealed box actually
-    // opens to the original plaintext — a genuine round-trip, not just a
-    // "some ciphertext was sent" assertion.
-    const sealedBytes = sodium.from_base64(body.encrypted_value, sodium.base64_variants.ORIGINAL);
-    const opened = sodium.crypto_box_seal_open(sealedBytes, keypair.publicKey, keypair.privateKey);
-    expect(sodium.to_string(opened)).toBe(plaintext);
-  });
-
-  it('also succeeds against a 204 No Content PUT response (GitHub\'s actual real-world response for this endpoint)', async () => {
-    await sodium.ready;
-    const keypair = sodium.crypto_box_keypair();
-    const publicKeyBase64 = sodium.to_base64(keypair.publicKey, sodium.base64_variants.ORIGINAL);
-
-    fetchMock
-      .mockResolvedValueOnce(installationTokenResponse())
-      .mockResolvedValueOnce(jsonResponse(200, { key_id: 'key123', key: publicKeyBase64 }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-
-    await expect(sealActionsSecret('ima-jin/dykil', 'IMAJIN_APP_PRIVATE_KEY', 'token-plaintext')).resolves.toBeUndefined();
+    const calls = fetchMock.mock.calls as Array<[string, RequestInit]>;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [url, init] of calls) {
+      expect(['GET', 'POST']).toContain(init.method);
+      expect(url).not.toContain('/actions/secrets');
+    }
   });
 });
 
