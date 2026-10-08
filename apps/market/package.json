@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@imajin/auth": "workspace:*",
+    "@imajin/auth-client": "workspace:*",
     "@imajin/bus": "workspace:*",
     "@imajin/emit": "workspace:*",
     "@imajin/logger": "workspace:*",

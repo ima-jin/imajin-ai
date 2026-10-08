@@ -547,8 +547,69 @@ export async function notifyCheckoutServices(session: StripeCheckoutSessionLike)
     await notifyEventsService('checkout.completed', session);
   }
 
-  if (session.metadata?.service === 'market' && session.metadata?.sellerDid) {
-    publishMarketNotifications(session);
+  if (session.metadata?.service === 'market') {
+    if (session.metadata.sellerDid) {
+      publishMarketNotifications(session);
+    }
+    // #2740: market settles its own purchases (registered-app contract), so it must be told
+    // the session is paid. Awaited, but never throws — see notifyMarketService.
+    await notifyMarketService(session);
+  }
+}
+
+/**
+ * Tell the market service a listing purchase was paid (#2740), so it can settle it through
+ * its own app-service token on `POST /pay/api/settle`. Same server-to-server scheme as
+ * `notifyEventsService`: `Authorization: Bearer ${MARKET_WEBHOOK_SECRET}` (market verifies
+ * it against its own `WEBHOOK_SECRET`). The payload names the Stripe `sessionId` — market
+ * recorded the kernel payment it belongs to when the buyer started checkout — and carries
+ * the amount and currency market's webhook reads from `metadata`.
+ *
+ * Never throws: the payment is already collected, so a market outage (or a 5xx from it) is
+ * logged and must not fail the Stripe webhook ack.
+ */
+export async function notifyMarketService(session: StripeCheckoutSessionLike): Promise<void> {
+  const marketServiceUrl = process.env.MARKET_SERVICE_URL;
+  const webhookSecret = process.env.MARKET_WEBHOOK_SECRET;
+  if (!marketServiceUrl || !webhookSecret) {
+    log.error(
+      { sessionId: session.id },
+      'MARKET_SERVICE_URL or MARKET_WEBHOOK_SECRET not set — market purchase will not settle',
+    );
+    return;
+  }
+
+  try {
+    const response = await fetch(`${marketServiceUrl}/api/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${webhookSecret}`,
+      },
+      body: JSON.stringify({
+        type: 'payment.succeeded',
+        sessionId: session.id,
+        paymentId:
+          typeof session.payment_intent === 'string'
+            ? session.payment_intent
+            : session.payment_intent?.id,
+        metadata: {
+          ...session.metadata,
+          amount: session.amount_total,
+          currency: session.currency?.toUpperCase(),
+        },
+      }),
+    });
+
+    if (response.ok) {
+      log.info({ sessionId: session.id }, 'Market service notified successfully');
+    } else {
+      const error = await response.text();
+      log.error({ sessionId: session.id, status: response.status, error }, 'Market service webhook failed');
+    }
+  } catch (error) {
+    log.error({ sessionId: session.id, err: String(error) }, 'Failed to notify market service');
+    // Don't throw — the payment is still valid; the Stripe webhook ack must not fail over it.
   }
 }
 
