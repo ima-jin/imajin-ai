@@ -27,12 +27,13 @@ import type { InterimRunCost, InterimSpend } from '@/src/lib/jin/spend-interim-j
 
 const POLL_INTERVAL_MS = 30_000;
 
+// `bar` strings are literal (not built) so Tailwind's content scan emits them; they colour a native <progress>.
 const STATUS_STYLES: Record<CapStatus, { chip: string; bar: string; label: string }> = {
-  ok: { chip: 'bg-green-900/50 text-green-300', bar: 'bg-green-500', label: 'ok' },
-  near: { chip: 'bg-yellow-900/60 text-yellow-300', bar: 'bg-yellow-500', label: 'near cap' },
-  over: { chip: 'bg-red-900/50 text-red-400', bar: 'bg-red-500', label: 'at cap' },
-  uncapped: { chip: 'bg-gray-800 text-gray-500', bar: 'bg-gray-600', label: 'no cap' },
-  unknown: { chip: 'bg-gray-800 text-gray-400', bar: 'bg-gray-600', label: 'unmeasured' },
+  ok: { chip: 'bg-green-900/50 text-green-300', bar: '[&::-webkit-progress-value]:bg-green-500 [&::-moz-progress-bar]:bg-green-500', label: 'ok' },
+  near: { chip: 'bg-yellow-900/60 text-yellow-300', bar: '[&::-webkit-progress-value]:bg-yellow-500 [&::-moz-progress-bar]:bg-yellow-500', label: 'near cap' },
+  over: { chip: 'bg-red-900/50 text-red-400', bar: '[&::-webkit-progress-value]:bg-red-500 [&::-moz-progress-bar]:bg-red-500', label: 'at cap' },
+  uncapped: { chip: 'bg-gray-800 text-gray-500', bar: '[&::-webkit-progress-value]:bg-gray-600 [&::-moz-progress-bar]:bg-gray-600', label: 'no cap' },
+  unknown: { chip: 'bg-gray-800 text-gray-400', bar: '[&::-webkit-progress-value]:bg-gray-600 [&::-moz-progress-bar]:bg-gray-600', label: 'unmeasured' },
 };
 
 // ── Formatting ────────────────────────────────────────────────────────────────
@@ -59,16 +60,12 @@ function CapBar({ provider }: Readonly<{ provider: ProviderSpend }>) {
   const pct = Math.min(100, Math.round((provider.ratio ?? 0) * 100));
   return (
     <div className="mt-1.5">
-      <div
-        className="h-1.5 w-full rounded bg-gray-800 overflow-hidden"
-        role="progressbar"
+      <progress
+        className={`block h-1.5 w-full appearance-none overflow-hidden rounded bg-gray-800 [&::-webkit-progress-bar]:bg-gray-800 ${style.bar}`}
         aria-label={`${provider.name} spend against cap`}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={pct}
-      >
-        <div className={`h-full ${style.bar}`} style={{ width: `${pct}%` }} />
-      </div>
+        max={100}
+        value={pct}
+      />
       <p className="mt-1 text-[11px] text-gray-500 break-words">
         {provider.periodSpentUsd === null ? 'spend unmeasured' : formatUsd(provider.periodSpentUsd)} of{' '}
         {formatUsd(provider.cap.amountUsd)} {provider.cap.period} cap

@@ -136,15 +136,16 @@ export async function buildSpendLane(
   now: Date = new Date(),
 ): Promise<SpendLane> {
   const dates = trendDates(now);
+  const today = dates.at(-1) ?? dates[0];
   const from = new Date(`${dates[0]}T00:00:00.000Z`);
-  const to = new Date(Date.parse(`${dates[dates.length - 1]}T00:00:00.000Z`) + DAY_MS);
+  const to = new Date(Date.parse(`${today}T00:00:00.000Z`) + DAY_MS);
 
   const [rows, registrations] = await Promise.all([
     deps.dailySpend(principalDid, from, to),
     deps.listRegistrations(principalDid),
   ]);
 
-  const totals = totalsByProvider(rows, dates[dates.length - 1]);
+  const totals = totalsByProvider(rows, today);
   const names = new Map(deps.capProviders().map((p) => [p.id, p.name]));
   const caps = new Map<string, { connectorId: string; cap: SpendCap }>();
   for (const reg of registrations) {
@@ -173,12 +174,13 @@ export async function buildSpendLane(
   );
 
   const trend = trendOf(rows, dates);
+  const sortedProviders = [...providers].sort(compareProviders);
   return {
     generatedAt: now.toISOString(),
     currency: 'USD',
-    providers: providers.sort(compareProviders),
+    providers: sortedProviders,
     trend,
-    todayUsd: trend[trend.length - 1].totalUsd,
+    todayUsd: trend.at(-1)?.totalUsd ?? 0,
     weekUsd: trend.reduce((sum, d) => sum + d.totalUsd, 0),
   };
 }

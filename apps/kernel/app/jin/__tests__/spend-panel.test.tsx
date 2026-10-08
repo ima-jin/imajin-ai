@@ -158,8 +158,8 @@ describe('SpendPanel provider block', () => {
     expect(within(rows[3]).getByText('no cap')).toBeDefined();
     expect(within(rows[3]).queryByRole('progressbar')).toBeNull();
     // bar fill is clamped at 100% even when spend exceeds the cap
-    expect(within(rows[0]).getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
-    expect(within(rows[1]).getByRole('progressbar').getAttribute('aria-valuenow')).toBe('90');
+    expect(within(rows[0]).getByRole('progressbar').getAttribute('value')).toBe('100');
+    expect(within(rows[1]).getByRole('progressbar').getAttribute('value')).toBe('90');
   });
 
   it('shows an empty state with no providers and a flat trend', async () => {
@@ -197,7 +197,7 @@ describe('SpendPanel provider block', () => {
     await screen.findByText('Spend');
     const before = spy.mock.calls.length;
     intervals[0]();
-    await waitFor(() => expect(spy.mock.calls.length).toBe(before + 1));
+    await waitFor(() => expect(spy.mock.calls).toHaveLength(before + 1));
     expect(spy.mock.calls.at(-1)?.[0]).toBe('/jin/api/spend');
     unmount();
     expect(clear).toHaveBeenCalledWith(7);
