@@ -251,7 +251,7 @@ describe('POST /pay/api/settle — an app settles a payment it created (#2642)',
     expect([a.status, b.status]).toEqual([200, 200]);
     const bodies = [await a.json(), await b.json()];
     expect(bodies[0].batchId).toBe(bodies[1].batchId);
-    expect(bodies.filter((x) => x.alreadySettled).length).toBe(1);
+    expect(bodies.filter((x) => x.alreadySettled)).toHaveLength(1);
     expect(await harness.readBalance(harness.connA, PLATFORM, 'MJN')).toBeCloseTo(0.15);
     expect(await totalRows()).toBe(1 + 2);
   });
