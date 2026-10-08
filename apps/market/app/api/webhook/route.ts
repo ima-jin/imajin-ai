@@ -12,6 +12,8 @@ import { db, listings } from '@/db';
 import * as bus from '@imajin/bus';
 import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
+import { settleListingPurchase, type FairManifest } from '@/lib/settle';
+import { readPendingCheckout } from '@/lib/pending-checkout';
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
 
@@ -19,11 +21,14 @@ interface WebhookBody {
   type?: string;
   status?: string;
   secret?: string;
+  /** Stripe Checkout session id of the payment (#2740) — keys the checkout recorded at purchase time. */
+  sessionId?: string;
   metadata?: {
     listingId?: string;
     buyerDid?: string;
     amount?: number;
     currency?: string;
+    sessionId?: string;
   };
 }
 
@@ -78,6 +83,39 @@ function publishListingPurchased(body: WebhookBody, listing: typeof listings.$in
   }).catch((err: unknown) => log.error({ err: String(err) }, 'Bus publish error'));
 }
 
+/**
+ * Settle the purchase through market's own app-service token (#2740). The kernel pays out
+ * only a payment market's checkout created, so the checkout recorded at purchase time
+ * (looked up by Stripe session id) is required; without it there is nothing to settle.
+ */
+async function settlePurchase(body: WebhookBody, listing: typeof listings.$inferSelect, listingId: string): Promise<void> {
+  const fairManifest = (listing.fairManifest as FairManifest | null) || null;
+  if (!fairManifest?.chain?.length) {
+    log.warn({ listingId }, '[settle] No .fair manifest chain for listing — skipping settlement');
+    return;
+  }
+
+  const sessionId = body.sessionId || body.metadata?.sessionId;
+  if (!sessionId) {
+    log.error({ listingId }, '[settle] Purchase webhook carried no Stripe session id — cannot find the checkout to settle');
+    return;
+  }
+
+  const pending = readPendingCheckout(listing.metadata, sessionId);
+  if (!pending) {
+    log.error({ listingId, sessionId }, '[settle] No recorded checkout for this session — nothing to settle (already settled, or never bound to market)');
+    return;
+  }
+
+  await settleListingPurchase({
+    listingId,
+    sessionId,
+    pending,
+    currency: body.metadata?.currency || listing.currency || 'CAD',
+    fairManifest,
+  });
+}
+
 async function processSuccessfulPayment(body: WebhookBody): Promise<void> {
   const listingId = body.metadata?.listingId;
   if (!listingId) return;
@@ -91,6 +129,7 @@ async function processSuccessfulPayment(body: WebhookBody): Promise<void> {
 
   await applyListingPurchase(listingId, listing);
   publishListingPurchased(body, listing, listingId);
+  await settlePurchase(body, listing, listingId);
 }
 
 export async function POST(request: NextRequest) {
