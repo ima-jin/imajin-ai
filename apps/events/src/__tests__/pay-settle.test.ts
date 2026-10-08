@@ -53,6 +53,10 @@ const ORGANIZER = 'did:imajin:organizer';
 const PROTOCOL = 'did:imajin:protocol';
 const NODE = 'did:imajin:node';
 const BUYER = 'did:imajin:buyer';
+const APP_TOKEN = 'events-app-token';
+const SETTLE_SCOPE = 'pay:settle';
+const BUYER_CREDIT = 'buyer_credit';
+const SCOPE_REFUSAL = "Forbidden - scope 'pay:settle' was not granted";
 
 const FAIR = {
   fees: [{ role: 'processor', name: 'Processing', rateBps: 290, fixedCents: 30 }],
@@ -60,7 +64,7 @@ const FAIR = {
     { did: ORGANIZER, role: 'seller', share: 0.9 },
     { did: PROTOCOL, role: 'protocol', share: 0.04 },
     { did: 'NODE_PLACEHOLDER', role: 'node', share: 0.0475 },
-    { did: 'BUYER_PLACEHOLDER', role: 'buyer_credit', share: 0.0125 },
+    { did: 'BUYER_PLACEHOLDER', role: BUYER_CREDIT, share: 0.0125 },
   ],
 };
 const FAIR_NO_BUYER = { chain: [{ did: ORGANIZER, role: 'seller', share: 0.96 }, { did: PROTOCOL, role: 'protocol', share: 0.04 }] };
@@ -84,7 +88,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.rowQueue.length = 0;
   mocks.sqlCalls.length = 0;
-  mocks.getPayAppTokenMock.mockResolvedValue('events-app-token');
+  mocks.getPayAppTokenMock.mockResolvedValue(APP_TOKEN);
   mocks.invalidatePayAppTokenMock.mockResolvedValue(undefined);
   mocks.publishMock.mockResolvedValue(undefined);
   process.env.PAY_SERVICE_URL = PAY_URL;
@@ -108,7 +112,7 @@ describe('buildPayeeManifest', () => {
         { did: ORGANIZER, role: 'seller', amount: 90 },
         { did: PROTOCOL, role: 'protocol', amount: 4 },
         { did: NODE, role: 'node', amount: 4.75 },
-        { did: BUYER, role: 'buyer_credit', amount: 1.25 },
+        { did: BUYER, role: BUYER_CREDIT, amount: 1.25 },
       ],
     });
     // The manifest's own 2.9% + 30¢ processor fee is NOT netted: the kernel settles the gross payment.
@@ -164,7 +168,7 @@ describe('prepareAppCheckout', () => {
 
     expect(result).toEqual({
       appAuth: {
-        bearer: 'events-app-token',
+        bearer: APP_TOKEN,
         payeeManifest: buildPayeeManifest({ fairManifest: FAIR, amountCents: 10_000, buyerDid: BUYER }),
       },
     });
@@ -175,14 +179,14 @@ describe('prepareAppCheckout', () => {
     const result = await prepareAppCheckout({ fairManifest: FAIR, amountCents: 10_000, email: 'a@b.test', resolveSoftDid, log });
 
     expect(resolveSoftDid).toHaveBeenCalledWith('a@b.test');
-    expect(result).toMatchObject({ appAuth: { payeeManifest: { chain: expect.arrayContaining([{ did: 'did:imajin:soft-buyer', role: 'buyer_credit', amount: 1.25 }]) } } });
+    expect(result).toMatchObject({ appAuth: { payeeManifest: { chain: expect.arrayContaining([{ did: 'did:imajin:soft-buyer', role: BUYER_CREDIT, amount: 1.25 }]) } } });
   });
 
   it('does not need a buyer at all when the chain has no buyer entry', async () => {
     const result = await prepareAppCheckout({ fairManifest: FAIR_NO_BUYER, amountCents: 5_000, resolveSoftDid, log });
 
     expect(resolveSoftDid).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ appAuth: { bearer: 'events-app-token' } });
+    expect(result).toMatchObject({ appAuth: { bearer: APP_TOKEN } });
   });
 
   it('is not app-bound (and warns) for an event with no .fair chain', async () => {
@@ -237,7 +241,7 @@ describe('requestPayCheckoutSession with app auth', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
     const payeeManifest = buildPayeeManifest({ fairManifest: FAIR, amountCents: 10_000, buyerDid: BUYER })!;
 
-    const result = await requestPayCheckoutSession({ ...base, appAuth: { bearer: 'events-app-token', payeeManifest } });
+    const result = await requestPayCheckoutSession({ ...base, appAuth: { bearer: APP_TOKEN, payeeManifest } });
 
     expect(result).toMatchObject({ checkout: { id: 'cs_1' } });
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -310,14 +314,14 @@ describe('settleOrderViaPay', () => {
 
   it('403 when pay:settle is not granted → failed outcome, logged, no throw', async () => {
     recordPayment();
-    globalThis.fetch = vi.fn(async () => jsonResponse({ error: "Forbidden - scope 'pay:settle' was not granted" }, 403)) as unknown as typeof fetch;
+    globalThis.fetch = vi.fn(async () => jsonResponse({ error: SCOPE_REFUSAL }, 403)) as unknown as typeof fetch;
 
     const outcome = await settleOrderViaPay({ sessionId: 'cs_1', metadata: SETTLE_META, log });
 
-    expect(outcome).toEqual({ status: 'failed', httpStatus: 403, error: "Forbidden - scope 'pay:settle' was not granted" });
+    expect(outcome).toEqual({ status: 'failed', httpStatus: 403, error: SCOPE_REFUSAL });
     expect(logError).toHaveBeenCalledWith(expect.objectContaining({ status: 403, transactionId: 'tx_1' }), expect.any(String));
     // Neither the token nor any secret reaches the logs.
-    expect(JSON.stringify(logError.mock.calls)).not.toContain('events-app-token');
+    expect(JSON.stringify(logError.mock.calls)).not.toContain(APP_TOKEN);
   });
 
   it('refreshes the token once on a 401 and retries', async () => {
@@ -537,7 +541,7 @@ function fakePayService(tokenScopes: Record<string, string[]>) {
     const token = headers.Authorization?.replace('Bearer ', '');
     const body = JSON.parse(init.body as string);
     if (!token || !(token in tokenScopes)) return jsonResponse({ error: 'Unauthorized - invalid or expired app-service token' }, 401);
-    if (!tokenScopes[token]!.includes('pay:settle')) return jsonResponse({ error: "Forbidden - scope 'pay:settle' was not granted" }, 403);
+    if (!tokenScopes[token]!.includes(SETTLE_SCOPE)) return jsonResponse({ error: SCOPE_REFUSAL }, 403);
 
     if (url.endsWith('/api/checkout')) {
       const transactionId = `tx_${nextTx++}`;
@@ -582,8 +586,8 @@ describe('end to end: checkout with the app token, then settle', () => {
   }
 
   it('a paid ticket settles via /pay/api/settle; replaying the webhook is idempotent', async () => {
-    const pay = fakePayService({ 'events-app-token': ['pay:settle'] });
-    const { checkout } = await checkoutAndPay(pay, 'events-app-token');
+    const pay = fakePayService({ [APP_TOKEN]: [SETTLE_SCOPE] });
+    const { checkout } = await checkoutAndPay(pay, APP_TOKEN);
     expect(checkout).toMatchObject({ checkout: { id: 'cs_tx_1' } });
     const recorded = pay.payments.get('tx_1')!;
     mocks.rowQueue.push([{ id: 'tx_1', payee_manifest: recorded.payeeManifest }]);
@@ -602,19 +606,19 @@ describe('end to end: checkout with the app token, then settle', () => {
 
     const { checkout } = await checkoutAndPay(pay, 'no-scope-token');
 
-    expect(checkout).toEqual({ error: "Forbidden - scope 'pay:settle' was not granted", status: 500 });
+    expect(checkout).toEqual({ error: SCOPE_REFUSAL, status: 500 });
     expect(pay.payments.size).toBe(0);
   });
 
   it('403 at settle when the token has lost pay:settle since checkout', async () => {
-    const scopes: Record<string, string[]> = { 'events-app-token': ['pay:settle'] };
+    const scopes: Record<string, string[]> = { [APP_TOKEN]: [SETTLE_SCOPE] };
     const pay = fakePayService(scopes);
-    await checkoutAndPay(pay, 'events-app-token');
+    await checkoutAndPay(pay, APP_TOKEN);
     mocks.rowQueue.push([{ id: 'tx_1', payee_manifest: pay.payments.get('tx_1')!.payeeManifest }]);
-    scopes['events-app-token'] = [];
+    scopes[APP_TOKEN] = [];
 
     const outcome = await settleOrderViaPay({ sessionId: 'cs_tx_1', metadata: SETTLE_META, log });
 
-    expect(outcome).toEqual({ status: 'failed', httpStatus: 403, error: "Forbidden - scope 'pay:settle' was not granted" });
+    expect(outcome).toEqual({ status: 'failed', httpStatus: 403, error: SCOPE_REFUSAL });
   });
 });

@@ -74,7 +74,7 @@ export async function requestAppServiceToken(options: RequestAppServiceTokenOpti
       body: JSON.stringify({ appDid: options.appDid, nonce, timestamp, signature }),
     });
   } catch (err) {
-    throw new Error(`requestAppServiceToken: could not reach the kernel (${err instanceof Error ? err.message : String(err)})`);
+    throw new Error(`requestAppServiceToken: could not reach the kernel (${String(err)})`);
   }
 
   const body = (await res.json().catch(() => null)) as ServiceTokenResponseBody | null;
