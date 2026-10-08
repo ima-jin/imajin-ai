@@ -78,7 +78,8 @@ function paidBody(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function post(body: unknown, headers: Record<string, string> = { 'x-webhook-secret': 'whsec_test' }) {
+/** Default caller: the kernel's server-to-server scheme (Bearer secret). */
+function post(body: unknown, headers: Record<string, string> = { Authorization: 'Bearer whsec_test' }) {
   return POST(
     new Request('https://market.test/api/webhook', {
       method: 'POST',
@@ -96,16 +97,57 @@ describe('POST /api/webhook', () => {
     mocks.settleListingPurchaseMock.mockResolvedValue(undefined);
   });
 
-  it('rejects a request without the webhook secret', async () => {
-    const res = await post(paidBody(), {});
-    expect(res.status).toBe(401);
-    expect(mocks.settleListingPurchaseMock).not.toHaveBeenCalled();
-  });
+  describe('caller authentication', () => {
+    const expectRejected = async (res: Response) => {
+      expect(res.status).toBe(401);
+      expect(await res.json()).toEqual({ error: 'Unauthorized' });
+      expect(mocks.selectMock).not.toHaveBeenCalled();
+      expect(mocks.settleListingPurchaseMock).not.toHaveBeenCalled();
+      expect(mocks.publishMock).not.toHaveBeenCalled();
+    };
 
-  it('accepts the secret in the body as well as the header', async () => {
-    const res = await post(paidBody({ secret: 'whsec_test' }), {});
-    expect(res.status).toBe(200);
-    expect(mocks.settleListingPurchaseMock).toHaveBeenCalledTimes(1);
+    it('rejects an unauthenticated call', async () => {
+      await expectRejected(await post(paidBody(), {}));
+    });
+
+    it('rejects a wrong Bearer secret', async () => {
+      await expectRejected(await post(paidBody(), { Authorization: 'Bearer not-the-secret' }));
+    });
+
+    it('rejects a Bearer secret of a different length, and a non-Bearer scheme', async () => {
+      await expectRejected(await post(paidBody(), { Authorization: 'Bearer whsec_test_but_longer' }));
+      await expectRejected(await post(paidBody(), { Authorization: 'Basic whsec_test' }));
+      await expectRejected(await post(paidBody(), { Authorization: 'whsec_test' }));
+    });
+
+    it('rejects a wrong legacy header and a non-string body secret', async () => {
+      await expectRejected(await post(paidBody(), { 'x-webhook-secret': 'nope' }));
+      await expectRejected(await post(paidBody({ secret: 12345 }), {}));
+    });
+
+    it('fails closed when no WEBHOOK_SECRET is configured, even for a call that presents no secret', async () => {
+      const original = process.env.WEBHOOK_SECRET;
+      delete process.env.WEBHOOK_SECRET;
+      try {
+        await expectRejected(await post(paidBody(), {}));
+        await expectRejected(await post(paidBody(), { Authorization: 'Bearer undefined' }));
+        await expectRejected(await post(paidBody({ secret: undefined }), { 'x-webhook-secret': '' }));
+      } finally {
+        process.env.WEBHOOK_SECRET = original;
+      }
+    });
+
+    it("accepts the kernel's Bearer secret", async () => {
+      const res = await post(paidBody());
+      expect(res.status).toBe(200);
+      expect(mocks.settleListingPurchaseMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('still accepts the legacy header and body secrets', async () => {
+      expect((await post(paidBody(), { 'x-webhook-secret': 'whsec_test' })).status).toBe(200);
+      expect((await post(paidBody({ secret: 'whsec_test' }), {})).status).toBe(200);
+      expect(mocks.settleListingPurchaseMock).toHaveBeenCalledTimes(2);
+    });
   });
 
   it('settles a paid purchase with the checkout recorded for its Stripe session', async () => {

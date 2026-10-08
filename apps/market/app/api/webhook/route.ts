@@ -5,6 +5,7 @@
  * Updates listing status/quantity accordingly.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import { NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 const log = createLogger('market');
@@ -14,8 +15,6 @@ import { jsonResponse, errorResponse } from '@/lib/utils';
 import { eq } from 'drizzle-orm';
 import { settleListingPurchase, type FairManifest } from '@/lib/settle';
 import { readPendingCheckout } from '@/lib/pending-checkout';
-
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
 
 interface WebhookBody {
   type?: string;
@@ -32,8 +31,31 @@ interface WebhookBody {
   };
 }
 
-function isWebhookAuthorized(headerSecret: string | null, bodySecret: unknown): boolean {
-  return headerSecret === WEBHOOK_SECRET || bodySecret === WEBHOOK_SECRET;
+/** Constant-time string comparison (a length mismatch is simply not equal). */
+function secretsMatch(candidate: unknown, secret: string): boolean {
+  if (typeof candidate !== 'string') return false;
+  const a = Buffer.from(candidate);
+  const b = Buffer.from(secret);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/**
+ * Verify the caller (#2740). The kernel authenticates server-to-server with
+ * `Authorization: Bearer <WEBHOOK_SECRET>` (the same scheme as its events/coffee notifications);
+ * the legacy `x-webhook-secret` header and body `secret` are still honoured. Fails closed:
+ * with no secret configured, nothing is authorized.
+ */
+function isWebhookAuthorized(request: NextRequest, bodySecret: unknown): boolean {
+  const secret = process.env.WEBHOOK_SECRET;
+  if (!secret) return false;
+
+  const authorization = request.headers.get('authorization');
+  const bearer = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined;
+  return (
+    secretsMatch(bearer, secret) ||
+    secretsMatch(request.headers.get('x-webhook-secret'), secret) ||
+    secretsMatch(bodySecret, secret)
+  );
 }
 
 function isPaymentSuccess(body: WebhookBody): boolean {
@@ -136,9 +158,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Verify webhook secret from header or body
-    const headerSecret = request.headers.get('x-webhook-secret');
-    if (!isWebhookAuthorized(headerSecret, body?.secret)) {
+    // Verify the caller (Bearer secret, or the legacy header / body secret)
+    if (!isWebhookAuthorized(request, body?.secret)) {
       return errorResponse('Unauthorized', 401);
     }
 
