@@ -87,7 +87,9 @@ export default defineConfig({
       { find: '@imajin/auth/delegation-policy', replacement: resolve(__dirname, 'packages/auth/src/delegation-policy.ts') },
       { find: '@imajin/auth/resolve-db', replacement: resolve(__dirname, 'packages/auth/src/resolve-db.ts') },
       { find: '@imajin/auth', replacement: resolve(__dirname, 'packages/auth/src/index.ts') },
-      { find: '@imajin/auth-client', replacement: resolve(__dirname, 'packages/auth-client/src/index.ts') },
+      // Anchored: the bare '@imajin/auth' entry above is a prefix match, so it must not swallow
+      // '@imajin/auth-client' (it would resolve to 'packages/auth/src/index.ts-client').
+      { find: /^@imajin\/auth-client$/, replacement: resolve(__dirname, 'packages/auth-client/src/index.ts') },
       { find: '@imajin/chat', replacement: resolve(__dirname, 'packages/chat/src/index.ts') },
       { find: '@imajin/cid', replacement: resolve(__dirname, 'packages/cid/src/index.ts') },
       { find: '@imajin/config', replacement: resolve(__dirname, 'packages/config/src/index.ts') },

@@ -16,6 +16,7 @@ const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import { createOrderWithTickets } from '@/src/lib/checkout-common';
+import { settleCompletedOrder } from '@/src/lib/pay-settle';
 import { eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import * as bus from '@imajin/bus';
 import {
@@ -227,7 +228,10 @@ interface WebhookSettlementParams {
 }
 
 /**
- * Trigger the .fair settlement + notification signal for a completed order.
+ * Settle a completed order (#2739): events calls the pay service's
+ * `/api/settle` itself with its own app-service token — the bus `settle`
+ * reactor only runs in the kernel process, so publishing `order.completed`
+ * from here no longer settles anything.
  * Non-fatal — settlement failures are logged, not thrown.
  */
 async function triggerWebhookSettlement(params: WebhookSettlementParams): Promise<void> {
@@ -235,25 +239,23 @@ async function triggerWebhookSettlement(params: WebhookSettlementParams): Promis
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
 
   try {
-    await bus.publish('order.completed', {
-      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
-      payload: {
+    await settleCompletedOrder({
+      sessionId,
+      orderId,
+      eventId: event.id,
+      buyerDid: ownerDid,
+      creatorDid: event.creatorDid,
+      amountCents: amountTotal,
+      currency,
+      fairManifest: eventMetadata.fair || null,
+      metadata: {
         orderId,
+        ticketIds: createdTickets.map(t => t.id),
+        ticketTypeId: firstTypeId,
+        stripeSessionId: sessionId,
         eventId: event.id,
-        eventDid: event.did,
-        buyerDid: ownerDid,
-        amount: amountTotal,
-        currency,
-        fairManifest: eventMetadata.fair || null,
-        metadata: {
-          ticketIds: createdTickets.map(t => t.id),
-          ticketTypeId: firstTypeId,
-          stripeSessionId: sessionId,
-          eventId: event.id,
-        },
-        funded: true,
-        funded_provider: 'stripe',
-      }
+      },
+      log,
     });
   } catch (settleError) {
     log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');

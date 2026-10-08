@@ -16,8 +16,10 @@ import {
   resolveCheckoutIdentity,
   resolveInviteAccessForEvent,
   loadPublishedEvent,
+  createSoftDidFromEmail,
   CheckoutValidationError,
 } from '@/src/lib/checkout-common';
+import { prepareAppCheckout } from '@/src/lib/pay-settle';
 import {
   normalizeCheckoutCart,
   validateCheckoutCartLimits,
@@ -96,6 +98,20 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     const fairManifest = eventMeta.fair || null;
     const stripeItems = buildStripeCheckoutItems(cart, typesById, event.title);
 
+    // #2739: authenticate this checkout as the events app and declare the payee manifest, so the
+    // payment is bound to events and events can settle it itself on `order.completed`.
+    const appCheckout = await prepareAppCheckout({
+      fairManifest,
+      amountCents: stripeItems.reduce((sum, item) => sum + item.amount * item.quantity, 0),
+      buyerDid,
+      email: customerEmail,
+      resolveSoftDid: createSoftDidFromEmail,
+      log,
+    });
+    if ('error' in appCheckout) {
+      return NextResponse.json({ error: appCheckout.error }, { status: appCheckout.status });
+    }
+
     const payResult = await requestPayCheckoutSession({
       payServiceUrl: PAY_SERVICE_URL,
       items: stripeItems,
@@ -105,6 +121,7 @@ export const POST = withLogger('events', async (request, { log, correlationId })
       cancelUrl: eventUrl(EVENTS_URL, event.id),
       fairManifest,
       sellerDid: event.creatorDid,
+      appAuth: appCheckout.appAuth,
       metadata: {
         service: 'events',
         eventId: event.id,

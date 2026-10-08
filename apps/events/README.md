@@ -97,6 +97,11 @@ NEXT_PUBLIC_EVENTS_URL="http://localhost:3007"
 # Webhook (from pay service)
 WEBHOOK_SECRET="your-shared-secret"
 
+# Registered-app identity (settlement, #2739)
+IMAJIN_KERNEL_URL="http://localhost:3000"
+IMAJIN_APP_DID="did:imajin:..."        # required once the bootstrap keystore exists
+IMAJIN_APP_CLAIM_CODE="..."            # one-time, first boot only
+
 # Email (any SMTP - SendGrid, Proton, etc.)
 SMTP_HOST="smtp.sendgrid.net"
 SMTP_PORT="587"
@@ -104,6 +109,25 @@ SMTP_USER="apikey"
 SMTP_PASSWORD="SG.xxx"
 SMTP_FROM="Your Name <you@example.com>"
 ```
+
+### Settlement (registered-app contract)
+
+Events settles a paid ticket order itself. At checkout it authenticates to the pay service with
+its **own app-service token** (minted from its signing key via `@imajin/auth-client`) and declares
+the payee manifest (the resolved `.fair` chain). When the pay webhook reports the payment, events
+calls `POST /pay/api/settle` with the same token, the checkout's `transaction_id` and the
+`fair_manifest`. `alreadySettled: true` is treated as success. The shared `PAY_SERVICE_API_KEY`
+is not used for settlement (refunds and campaign charge-pledges still use it, #2735).
+
+Operator prerequisites before ticket checkout works:
+
+1. Register events as an app and provision its signing key (`apps.provision`); give events
+   `IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID` and the one-time `IMAJIN_APP_CLAIM_CODE`.
+2. Approve `pay:settle` for events through the operator-countersigned `apps:service-scopes` card.
+3. Deploy the kernel contract (#2695) first.
+
+Without these, checkout for an event with a `.fair` chain fails closed (503) rather than taking a
+payment that cannot pay the organizer.
 
 ---
 
