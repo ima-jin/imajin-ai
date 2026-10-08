@@ -174,7 +174,7 @@ export const tickets = eventsSchema.table('tickets', {
   currency: text('currency'),
   paymentId: text('payment_id'),                            // Reference to pay service
   
-  // Status: available, held, sold, used, cancelled
+  // Status: available, held, valid, sold, used, cancelled (valid = bought/given; sold = legacy, still counts as held)
   status: text('status').notNull().default('available'),
   
   // Hold info
