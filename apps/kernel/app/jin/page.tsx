@@ -6,6 +6,7 @@ import { VaultKeysPanel } from './vault-keys-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
 import { ProvisionAppPanel } from './provision-app-panel';
 import { GrantsPanel } from './grants-panel';
+import { SpendPanel } from './spend-panel';
 import { FrontDoorPanel } from './front-door-panel';
 import { PushSubscribeButton } from './push-subscribe-button';
 
@@ -75,6 +76,12 @@ export default function JinPage() {
             otherwise. Rendered below OperatorApprovalsPanel so a freshly
             raised revoke/decision surfaces above this read-only lane. */}
         <GrantsPanel />
+
+        {/* Spend lane (#2725) — provider cost vs caps, 7-day trend, and
+            (labelled interim, until the #2290 loop registry) Warp run cost +
+            cost per closed issue. Read-only; operator-gated, renders nothing
+            otherwise. Mobile-first single column. */}
+        <SpendPanel />
 
         {/* Live per-turn agent usage feed (#1864) — a second panel on this
             kernel ops page, alongside the confirm-rail proposals above. */}
