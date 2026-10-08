@@ -554,7 +554,7 @@ paths:
   /api/webhook:
     post:
       operationId: handleWebhook
-      summary: Receive payment events from the pay service. Authenticated via x-webhook-secret header or body.secret. Decrements quantity and marks listings sold when payment succeeds.
+      summary: Receive payment events from the pay service. Authenticated only via `Authorization: Bearer <WEBHOOK_SECRET>` (the legacy header and body secret are rejected with 401). Decrements quantity and marks listings sold when payment succeeds.
       tags: [market]
       requestBody:
         required: true
@@ -569,9 +569,6 @@ paths:
                 status:
                   type: string
                   description: "Payment status, e.g. paid, succeeded"
-                secret:
-                  type: string
-                  description: "Webhook secret (alternative to x-webhook-secret header)"
                 metadata:
                   type: object
                   properties:

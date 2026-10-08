@@ -120,8 +120,9 @@ describe('POST /api/webhook', () => {
       await expectRejected(await post(paidBody(), { Authorization: 'whsec_test' }));
     });
 
-    it('rejects a wrong legacy header and a non-string body secret', async () => {
-      await expectRejected(await post(paidBody(), { 'x-webhook-secret': 'nope' }));
+    it('rejects the legacy x-webhook-secret header and the body secret, even with the correct value (#2743)', async () => {
+      await expectRejected(await post(paidBody(), { 'x-webhook-secret': 'whsec_test' }));
+      await expectRejected(await post(paidBody({ secret: 'whsec_test' }), {}));
       await expectRejected(await post(paidBody({ secret: 12345 }), {}));
     });
 
@@ -131,7 +132,7 @@ describe('POST /api/webhook', () => {
       try {
         await expectRejected(await post(paidBody(), {}));
         await expectRejected(await post(paidBody(), { Authorization: 'Bearer undefined' }));
-        await expectRejected(await post(paidBody({ secret: undefined }), { 'x-webhook-secret': '' }));
+        await expectRejected(await post(paidBody(), { Authorization: 'Bearer whsec_test' }));
       } finally {
         process.env.WEBHOOK_SECRET = original;
       }
@@ -141,12 +142,6 @@ describe('POST /api/webhook', () => {
       const res = await post(paidBody());
       expect(res.status).toBe(200);
       expect(mocks.settleListingPurchaseMock).toHaveBeenCalledTimes(1);
-    });
-
-    it('still accepts the legacy header and body secrets', async () => {
-      expect((await post(paidBody(), { 'x-webhook-secret': 'whsec_test' })).status).toBe(200);
-      expect((await post(paidBody({ secret: 'whsec_test' }), {})).status).toBe(200);
-      expect(mocks.settleListingPurchaseMock).toHaveBeenCalledTimes(2);
     });
   });
 

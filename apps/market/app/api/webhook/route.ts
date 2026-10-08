@@ -19,7 +19,6 @@ import { readPendingCheckout } from '@/lib/pending-checkout';
 interface WebhookBody {
   type?: string;
   status?: string;
-  secret?: string;
   /** Stripe Checkout session id of the payment (#2740) — keys the checkout recorded at purchase time. */
   sessionId?: string;
   metadata?: {
@@ -42,20 +41,16 @@ function secretsMatch(candidate: unknown, secret: string): boolean {
 /**
  * Verify the caller (#2740). The kernel authenticates server-to-server with
  * `Authorization: Bearer <WEBHOOK_SECRET>` (the same scheme as its events/coffee notifications);
- * the legacy `x-webhook-secret` header and body `secret` are still honoured. Fails closed:
- * with no secret configured, nothing is authorized.
+ * that is the only accepted scheme (#2743). Fails closed: with no secret configured,
+ * nothing is authorized.
  */
-function isWebhookAuthorized(request: NextRequest, bodySecret: unknown): boolean {
+function isWebhookAuthorized(request: NextRequest): boolean {
   const secret = process.env.WEBHOOK_SECRET;
   if (!secret) return false;
 
   const authorization = request.headers.get('authorization');
   const bearer = authorization?.startsWith('Bearer ') ? authorization.slice('Bearer '.length) : undefined;
-  return (
-    secretsMatch(bearer, secret) ||
-    secretsMatch(request.headers.get('x-webhook-secret'), secret) ||
-    secretsMatch(bodySecret, secret)
-  );
+  return secretsMatch(bearer, secret);
 }
 
 function isPaymentSuccess(body: WebhookBody): boolean {
@@ -158,8 +153,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Verify the caller (Bearer secret, or the legacy header / body secret)
-    if (!isWebhookAuthorized(request, body?.secret)) {
+    // Verify the caller (Bearer secret only)
+    if (!isWebhookAuthorized(request)) {
       return errorResponse('Unauthorized', 401);
     }
 
