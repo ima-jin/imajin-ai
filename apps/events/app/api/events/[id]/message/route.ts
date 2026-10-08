@@ -4,6 +4,7 @@ import { requireAuth , resolveActingDid } from '@imajin/auth';
 
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
+import { holdingTicketStatuses } from '@/src/lib/ticket-holding';
 import { getClient } from '@imajin/db';
 import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 
@@ -41,7 +42,7 @@ async function queryRecipients(eventId: string, filter?: MessageFilter) {
             SELECT DISTINCT owner_did
             FROM events.tickets
             WHERE event_id = ${eventId}
-              AND status IN ('valid', 'used')
+              AND status = ANY(${holdingTicketStatuses()})
               AND owner_did IS NOT NULL
               AND ticket_type_id = ANY(${filter.ticketTypeIds})
           `;
@@ -53,7 +54,7 @@ async function queryRecipients(eventId: string, filter?: MessageFilter) {
           SELECT DISTINCT owner_did
           FROM events.tickets
           WHERE event_id = ${eventId}
-            AND status IN ('valid', 'used')
+            AND status = ANY(${holdingTicketStatuses()})
             AND owner_did IS NOT NULL
             AND registration_status = 'complete'
         `;
@@ -64,7 +65,7 @@ async function queryRecipients(eventId: string, filter?: MessageFilter) {
           SELECT DISTINCT owner_did
           FROM events.tickets
           WHERE event_id = ${eventId}
-            AND status IN ('valid', 'used')
+            AND status = ANY(${holdingTicketStatuses()})
             AND owner_did IS NOT NULL
             AND (registration_status IS NULL OR registration_status != 'complete')
         `;
@@ -80,7 +81,7 @@ async function queryRecipients(eventId: string, filter?: MessageFilter) {
     SELECT DISTINCT owner_did
     FROM events.tickets
     WHERE event_id = ${eventId}
-      AND status IN ('valid', 'used')
+      AND status = ANY(${holdingTicketStatuses()})
       AND owner_did IS NOT NULL
   `;
   return rows.map((r: any) => r.owner_did as string);

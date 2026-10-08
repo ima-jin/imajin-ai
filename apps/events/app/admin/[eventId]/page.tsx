@@ -9,6 +9,7 @@ import { notFound } from 'next/navigation';
 import { getSession , resolveActingDid } from '@imajin/auth';
 import { getClient } from '@imajin/db';
 import { AdminTabs } from './admin-tabs';
+import { holdingTicketStatuses } from '@/src/lib/ticket-holding';
 
 const sql = getClient();
 
@@ -103,7 +104,7 @@ export default async function AdminPage(props: Readonly<Props>) {
     SELECT COUNT(DISTINCT owner_did) AS count
     FROM events.tickets
     WHERE event_id = ${eventId}
-      AND status IN ('valid', 'used')
+      AND status = ANY(${holdingTicketStatuses()})
       AND owner_did IS NOT NULL
   `;
   const confirmedAttendeeCount = Number(confirmedAttendeeRows[0]?.count ?? 0);

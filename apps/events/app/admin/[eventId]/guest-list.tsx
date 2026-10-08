@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useToast } from '@imajin/ui';
 import { apiFetch } from '@imajin/config';
 import { TicketScanner } from './ticket-scanner';
+import { HOLDING_TICKET_STATUSES } from '../../../src/lib/ticket-holding';
 
 interface Profile {
   name: string | null;
@@ -335,7 +336,7 @@ export function GuestList({ eventId, isOwner, summary, autoExpand }: Readonly<Gu
   // Filter logic
   // Default view shows valid + used (real tickets with verified payment).
   // Non-default statuses are revealed by clicking their pills.
-  const DEFAULT_STATUSES = new Set(['valid', 'used']);
+  const DEFAULT_STATUSES = new Set<string>(HOLDING_TICKET_STATUSES);
   const NON_DEFAULT_STATUSES = ['held', 'available', 'cancelled', 'refunded', 'refund_pending'];
 
   const toggleFilter = (key: FilterKey, value: string) => {
