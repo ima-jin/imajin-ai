@@ -13,6 +13,9 @@ const mocks = vi.hoisted(() => ({
   limitMock: vi.fn(),
 }));
 
+// No `@/` alias in vitest: resolve the shared constant to the real module (not a stub).
+vi.mock('@/src/lib/ticket-holding', async () => await import('../lib/ticket-holding'));
+
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));

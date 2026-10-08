@@ -4,13 +4,11 @@ import { requireAppAuth } from '@imajin/auth';
 import { corsHeaders } from '@imajin/config';
 import { db, tickets, events } from '@/src/db';
 import { and, eq, inArray } from 'drizzle-orm';
+import { holdingTicketStatuses } from '@/src/lib/ticket-holding';
 
 const log = createLogger('events');
 
 export const dynamic = 'force-dynamic';
-
-/** Ticket statuses that count as "holds a ticket" (matches /api/attending/[did]). */
-const HOLDING_STATUSES = ['sold', 'used'];
 
 /**
  * GET /api/events/:id/access?did=<did> — composable ticket-holder gate (#2395).
@@ -70,7 +68,7 @@ export async function GET(
         and(
           eq(tickets.eventId, eventId),
           eq(tickets.ownerDid, did),
-          inArray(tickets.status, HOLDING_STATUSES)
+          inArray(tickets.status, holdingTicketStatuses())
         )
       )
       .limit(1);
