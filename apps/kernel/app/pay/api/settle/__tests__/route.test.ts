@@ -84,7 +84,7 @@ function makeRequest(body: SettleBody): SettleBody {
   return body;
 }
 
-async function POST(body: SettleBody): Promise<{ status: number; json: () => Promise<any> }> {
+async function POST(body: SettleBody): Promise<{ status: number; json: () => Promise<{ error?: string; [key: string]: unknown }> }> {
   const result = await settlePayment({
     from_did: body.from_did,
     total_amount: body.total_amount,

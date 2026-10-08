@@ -12,9 +12,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 
-const { mockLoadVaultAtBoot, mockProvideVaultInternalApiKey } = vi.hoisted(() => ({
+const { mockLoadVaultAtBoot, mockProvideVaultInternalApiKey, mockEnsureSettleExecutor } = vi.hoisted(() => ({
   mockLoadVaultAtBoot: vi.fn().mockResolvedValue(undefined),
   mockProvideVaultInternalApiKey: vi.fn().mockResolvedValue(undefined),
+  mockEnsureSettleExecutor: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault/vault-repository', () => ({
@@ -22,6 +23,9 @@ vi.mock('@/src/lib/vault/vault-repository', () => ({
 }));
 vi.mock('@/src/lib/auth/provide-vault-internal-api-key', () => ({
   provideVaultInternalApiKey: mockProvideVaultInternalApiKey,
+}));
+vi.mock('@/src/lib/pay/settle-executor', () => ({
+  ensureSettleExecutorRegistered: mockEnsureSettleExecutor,
 }));
 
 import { register } from '../instrumentation';
@@ -40,9 +44,18 @@ afterEach(() => {
   setRuntime(originalRuntime);
   mockLoadVaultAtBoot.mockClear();
   mockProvideVaultInternalApiKey.mockClear();
+  mockEnsureSettleExecutor.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
+  it('registers the in-process settle executor with the bus at boot (#2642)', async () => {
+    setRuntime('nodejs');
+
+    await register();
+
+    expect(mockEnsureSettleExecutor).toHaveBeenCalledTimes(1);
+  });
+
   it('resolves and loads the vault at boot in the nodejs runtime', async () => {
     setRuntime('nodejs');
 

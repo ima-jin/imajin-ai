@@ -35,6 +35,11 @@ components:
       type: http
       scheme: bearer
       description: "PAY_SERVICE_API_KEY — internal service-to-service calls only"
+    appServiceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying an operator-approved per-app scope (pay:settle)"
     railWebhookSignature:
       type: apiKey
       in: header
@@ -652,8 +657,16 @@ paths:
       description: |
         Returns a URL to redirect the customer to Stripe Checkout. Supports `.fair` manifests for
         multi-party revenue splits via `fairManifest`. Rate-limited to 10 req/min per IP.
+
+        A registered app may authenticate with its app-service token (#2642): the checkout
+        row is then bound to the app's DID and records the declared `payeeManifest` (falling
+        back to `fairManifest`), and the returned `transactionId` is what the app later passes
+        to `POST /api/settle`. Requires the operator-approved `pay:settle` scope (403 otherwise).
+        Checkout without an app-service token is unchanged and is never settleable via the app path.
       security:
         - bearerAuth: []
+        - appServiceToken: []
+        - {}
       requestBody:
         required: true
         content:
@@ -685,6 +698,7 @@ paths:
                   type: object
                   additionalProperties: { type: string }
                 fairManifest: { type: object, description: ".fair multi-party split manifest" }
+                payeeManifest: { type: object, description: "App-authenticated checkout only (#2642): the payee manifest recorded on the payment and verified at settle time. Defaults to fairManifest." }
                 connectedAccountId: { type: string, description: "Rail connected account for platform fees (Stripe: Connect account id)" }
                 sellerDid: { type: string }
       responses:
@@ -714,47 +728,49 @@ paths:
     post:
       tags: [pay]
       operationId: fairSettle
-      summary: Execute a .fair multi-party settlement
+      summary: Settle a payment a registered app created at checkout (#2642)
       description: |
-        Validates `from_did` has sufficient balance in the settlement's `unit`
-        (#2016 — defaults to `MJN`, no more mixed credit-then-cash burn), then
-        atomically:
-        - Debits `from_did` in that single unit
-        - Credits each recipient in the fair_manifest chain in that same unit
-        - Logs all transactions
-        - Emits attestations (customer + transaction.settled)
+        The registered-app settlement contract. Authenticated with the calling
+        app's OWN app-service token (`typ: app-service+jwt`, minted by
+        `POST /auth/api/apps/token/service`) carrying the operator-approved
+        `pay:settle` scope (granted per app through the operator-countersigned
+        `apps:service-scopes` card, #2711). The kernel re-checks the approval
+        against `registry.apps` on every call, so a revoked scope or app stops
+        settling immediately.
 
-        `unit` must be present in `accepted_units` (default MJN-only) or the
-        settlement is rejected with a 400 before any balance is touched —
-        never silently converted. Externally-funded settlements (`funded:
-        true`) are hard-pinned to `unit: MJN`: there is no receipt for an
-        externally-funded MJNx mint.
+        There is no shared key: `Authorization: Bearer <PAY_SERVICE_API_KEY>` is
+        refused with 401. Internal settlers (the bus `settle` reactor, query-cost
+        settlement) call `settlePayment()` in-process instead.
 
-        Set `funded: true` for externally-funded payments (e.g. via a payment rail) to skip the balance
-        check and debit step.
+        The payment is the `transactionId` returned by an app-authenticated
+        `POST /api/checkout` (an app-service token on that request records the
+        app DID and the declared payee manifest on `pay.transactions`). The kernel
+        settles it only when:
+        - the payment is bound to the calling app's DID (another app's payment,
+          or a payment with no app binding, is a 403);
+        - the rail has confirmed it (`status = completed`; otherwise 409);
+        - the posted `fair_manifest.chain` (and `taxCredits`) equals the payee
+          manifest recorded at checkout — same DIDs, roles and amounts (otherwise 403).
 
-        Authenticated via PAY_SERVICE_API_KEY Bearer token (internal service-to-service).
+        Payer, amount, currency, service, type and rail come from the kernel's
+        own payment record, never from the caller; settlement is always
+        externally funded (no app token can debit a user balance).
+
+        A second settle of an already-settled payment is idempotent: it returns
+        the prior result with `alreadySettled: true` and pays nothing twice.
       security:
-        - apiKeyAuth: []
+        - appServiceToken: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [from_did, total_amount, service, type, fair_manifest]
+              required: [transaction_id, fair_manifest]
               properties:
-                from_did: { type: string }
-                total_amount: { type: number }
-                service: { type: string }
-                type: { type: string }
-                unit: { type: string, enum: [MJN, MJNx], default: MJN }
-                accepted_units:
-                  type: array
-                  items: { type: string, enum: [MJN, MJNx] }
-                  default: [MJN]
-                funded: { type: boolean, description: "true = externally funded (via a payment rail) — skip balance check, unit must be MJN" }
-                funded_provider: { $ref: "#/components/schemas/PaymentProvider" }
+                transaction_id: { type: string, description: "The transactionId returned by the app-authenticated checkout" }
+                total_amount: { type: number, description: "Optional; must equal the recorded payment amount (dollars) when present" }
+                from_did: { type: string, description: "Optional; must equal the recorded payer when present" }
                 fair_manifest:
                   type: object
                   required: [chain]
@@ -768,25 +784,57 @@ paths:
                           did: { type: string }
                           amount: { type: number }
                           role: { type: string }
+                    taxCredits:
+                      type: array
+                      items:
+                        type: object
+                        required: [did, amount, jurisdiction, kind, remitTo, registrationNumber]
+                        properties:
+                          did: { type: string }
+                          amount: { type: number }
+                          jurisdiction: { type: string }
+                          kind: { type: string }
+                          rateBps: { type: number }
+                          remitTo: { type: string }
+                          registrationNumber: { type: string }
                 metadata: { type: object }
       responses:
         "200":
-          description: Settlement complete
+          description: Settlement complete (or the prior result of an already-settled payment)
           content:
             application/json:
               schema:
                 type: object
                 properties:
+                  settled: { type: boolean }
                   batchId: { type: string }
-                  transactionIds: { type: array, items: { type: string } }
+                  transactions: { type: array, items: { type: string } }
+                  total_amount: { type: number }
                   recipients: { type: integer }
+                  source: { type: string }
+                  alreadySettled: { type: boolean, description: "true when this call replayed an earlier settlement" }
         "400":
-          description: Insufficient balance or invalid manifest
+          description: Invalid request or invalid manifest (chain does not sum to the payment total)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Unauthorized (invalid API key)
+          description: Unauthorized (missing/invalid/expired app-service token — including the retired shared API key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Forbidden (no operator-approved pay:settle, payment not created by this app / no app binding, or manifest does not match the recorded payee manifest)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: Unknown payment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Payment not yet confirmed by the rail
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
