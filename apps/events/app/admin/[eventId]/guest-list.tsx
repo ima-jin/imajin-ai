@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import { useToast } from '@imajin/ui';
 import { apiFetch } from '@imajin/config';
 import { TicketScanner } from './ticket-scanner';
-import { HOLDING_TICKET_STATUSES } from '@/src/lib/ticket-holding';
+import { HOLDING_TICKET_STATUSES } from '../../../src/lib/ticket-holding';
 
 interface Profile {
   name: string | null;
