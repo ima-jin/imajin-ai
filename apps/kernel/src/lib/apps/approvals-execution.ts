@@ -7,7 +7,7 @@
  * countersign rail every other high-stakes mechanical action rides —
  * `POST /api/apps/provision` only ever stages a `pending` proposal; this
  * module is what turns the operator's countersigned 'approve' decision
- * into the actual repo/mint/register/seal pipeline.
+ * into the actual repo/mint/register/claim-code pipeline.
  *
  * Reuses `resolveVaultAuthorization` unchanged (per its own docs'
  * precedent for `access`, a second, non-vault consumer): apps:provision
@@ -38,8 +38,6 @@ export interface AppsExecutionData {
    * single response.
    */
   claimCode: string;
-  /** #2415: true when the deploy-secrets seal step was skipped (org credential unsealed) — surfaced on the /jin card as "CI secrets not sealed". */
-  sealSkipped: boolean;
 }
 
 export type AppsExecutionResult =
@@ -103,7 +101,6 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
         appDid: outcome.appDid,
         secretsSet: outcome.secretsSet,
         claimCode: outcome.claimCode,
-        sealSkipped: outcome.sealSkipped,
       },
     };
   } catch (err) {

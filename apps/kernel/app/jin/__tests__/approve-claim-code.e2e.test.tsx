@@ -86,7 +86,6 @@ const succeededOutcome = (claimCode: string) => ({
   secretsSet: [],
   attestationTypeResults: [],
   claimCode,
-  sealSkipped: false,
 });
 
 /** Last decision response body, kept so the secret-handling test can inspect exactly what crossed the wire. */

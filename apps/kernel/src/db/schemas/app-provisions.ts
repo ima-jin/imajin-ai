@@ -21,8 +21,9 @@ export const appProvisions = kernelAppProvisionsSchema.table('app_provisions', {
   /** true when this run created the repo; false when an existing repo was found and reused. */
   repoCreated: boolean('repo_created'),
   registeredAt: timestamp('registered_at', { withTimezone: true }),
+  /** Legacy (pre-#2437): when the app key was sealed into Actions secrets. No longer written. */
   sealedAt: timestamp('sealed_at', { withTimezone: true }),
-  /** Actions secret NAMES only — never values. */
+  /** Actions secret NAMES only — never values. Empty for every run after #2437; pre-#2437 rows may list a name. */
   secretsSet: jsonb('secrets_set').$type<string[]>().notNull().default([]),
   /** Namespaced attestation types seeded at provision time, e.g. ['dykil/survey-response']. */
   attestationTypes: jsonb('attestation_types').$type<string[]>().notNull().default([]),

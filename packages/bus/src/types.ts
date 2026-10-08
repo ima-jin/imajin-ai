@@ -2181,8 +2181,9 @@ export interface BusEventMap {
   /**
    * `apps.provision` (#2375, gate 1+2 of epic #2370) succeeded end to end:
    * the app's GitHub repo exists, its `registry.apps` row is registered
-   * with a real (vault-minted) keypair, and its deploy secrets are sealed.
-   * `secretsSet` is Actions secret NAMES only — never values.
+   * with a real (vault-minted) keypair, and its claim code is issued.
+   * `secretsSet` is Actions secret NAMES only — never values; always `[]` for
+   * runs after #2437 (the app key is never sealed into Actions secrets).
    */
   'apps.provisioned': {
     slug: string;
@@ -2200,24 +2201,6 @@ export interface BusEventMap {
     slug: string;
     failedStep: string;
     error: string;
-    context_id: string;
-    context_type: 'apps.provision';
-  };
-  /**
-   * `apps.provision` (#2415) skipped the deploy-secrets seal step rather
-   * than failing the whole pipeline: the org-scoped GitHub credential
-   * (`github-org-provisioning`) has never been sealed, so there is no
-   * token to encrypt `IMAJIN_APP_PRIVATE_KEY` against the repo's Actions
-   * public key. The chain still proceeds to the app-signing-key grant +
-   * claim code — a dev-path app fetches its signing key from the vault at
-   * boot (#2411) and never needed the Actions secrets in the first place.
-   * `reason` is a closed vocabulary of one today, kept as a string so a
-   * future degrade condition can reuse this same event without a payload
-   * shape change.
-   */
-  'apps.provision.seal.skipped': {
-    slug: string;
-    reason: 'org-credential-unsealed';
     context_id: string;
     context_type: 'apps.provision';
   };

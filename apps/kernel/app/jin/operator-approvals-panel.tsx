@@ -829,6 +829,10 @@ function RevealedClaimCodeBanner({
       <p className="text-xs text-amber-300">
         Paste at <span className="font-mono select-all">{claimUrl}</span>
       </p>
+      <p className="text-xs text-amber-300/80" data-testid="claim-code-key-custody-note">
+        The app&apos;s signing key is never pushed to GitHub Actions secrets or an env file — it stays in the vault, and
+        the app fetches it at boot with this claim code.
+      </p>
       <div className="flex items-center gap-2">
         <button type="button" onClick={copy} className="px-2.5 py-1 rounded text-xs font-medium bg-amber-800/60 text-amber-100 hover:bg-amber-700/60">
           {copied ? 'Copied!' : 'Copy'}
@@ -840,36 +844,6 @@ function RevealedClaimCodeBanner({
           I&apos;ve saved it — dismiss
         </button>
       </div>
-    </div>
-  );
-}
-
-// ── seal-skipped notice (#2415) ──────────────────────────────────────────────
-// The decision route surfaces `data.sealSkipped` when apps.provision's seal
-// step was skipped (org credential unsealed) rather than failed — shown as a
-// dismissable notice right where the operator's attention already is, same
-// pattern as the claim-code/bearer reveals above (though this carries no
-// secret, so it's informational rather than a one-time reveal).
-
-interface SealSkipped {
-  proposalId: string;
-  displayName: string;
-}
-
-function SealSkippedBanner({
-  skipped,
-  onDismiss,
-}: Readonly<{ skipped: SealSkipped; onDismiss: () => void }>) {
-  return (
-    <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/40 p-4 space-y-2" data-testid="seal-skipped-notice">
-      <p className="text-sm text-amber-200 font-medium">
-        CI secrets not sealed for &quot;{skipped.displayName}&quot; — the org GitHub credential is not sealed, so
-        `IMAJIN_APP_PRIVATE_KEY` was not pushed to Actions secrets. The app can still fetch its
-        signing key from the vault at boot; re-run provisioning once an operator seals the credential to also seal CI.
-      </p>
-      <button type="button" onClick={onDismiss} className="px-2.5 py-1 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600">
-        Dismiss
-      </button>
     </div>
   );
 }
@@ -895,7 +869,7 @@ interface ClaimCodeNotice {
 /** The decision route's response body — `data` is the ONE-TIME reveal payload (#2252/#2411), `executionError` the bridge's failure (#2247). */
 interface DecisionResponseBody {
   executionError?: string;
-  data?: { bearer?: string; expiresAt?: string; claimCode?: string; sealSkipped?: boolean };
+  data?: { bearer?: string; expiresAt?: string; claimCode?: string };
 }
 
 /**
@@ -935,7 +909,6 @@ function gatewayLostNoticeFor(approval: OperatorApprovalCard, decision: Decision
 interface DecisionReveals {
   bearer: RevealedBearer | null;
   claimCode: RevealedClaimCode | null;
-  sealSkipped: SealSkipped | null;
   claimNotice: ClaimCodeNotice | null;
 }
 
@@ -943,11 +916,11 @@ interface DecisionReveals {
  * What an approve response owes the operator, derived purely from the response:
  * the one-time bearer (#2252) / claim code (#2411, `slug` riding along from
  * `approval.detail` so the banner can derive the app's own /claim URL, #2427),
- * the seal-skipped notice (#2415), and — when an apps:provision approve ends
- * with no code — the #2707 "no claim code" notice.
+ * and — when an apps:provision approve ends with no code — the #2707 "no claim
+ * code" notice.
  */
 function revealsFromDecision(approval: OperatorApprovalCard, decision: DecisionAction, body: DecisionResponseBody): DecisionReveals {
-  const none: DecisionReveals = { bearer: null, claimCode: null, sealSkipped: null, claimNotice: null };
+  const none: DecisionReveals = { bearer: null, claimCode: null, claimNotice: null };
   if (decision !== 'approve') return none;
   const { proposalId } = approval;
   const displayName = detailString(approval.detail, 'displayName', approval.summary);
@@ -959,7 +932,6 @@ function revealsFromDecision(approval: OperatorApprovalCard, decision: DecisionA
     claimCode: data?.claimCode
       ? { proposalId, displayName, claimCode: data.claimCode, slug: detailString(approval.detail, 'slug', '') }
       : null,
-    sealSkipped: data?.sealSkipped ? { proposalId, displayName } : null,
     claimNotice: claimCodeNoticeFor(approval, decision, body),
   };
 }
@@ -1199,7 +1171,6 @@ function OperatorApprovalsPanelInner() {
   const [busyId, setBusyId] = useState('');
   const [revealedBearer, setRevealedBearer] = useState<RevealedBearer | null>(null);
   const [revealedClaimCode, setRevealedClaimCode] = useState<RevealedClaimCode | null>(null);
-  const [sealSkipped, setSealSkipped] = useState<SealSkipped | null>(null);
   const [claimNotice, setClaimNotice] = useState<ClaimCodeNotice | null>(null);
   const [reissuing, setReissuing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1320,7 +1291,6 @@ function OperatorApprovalsPanelInner() {
       } else if (reveals.claimNotice) {
         setClaimNotice(reveals.claimNotice);
       }
-      if (reveals.sealSkipped) setSealSkipped(reveals.sealSkipped);
       if (responseBody.executionError) {
         // #2707: the decision IS recorded, but the action behind it did not run
         // (e.g. no operator countersignature, or a pipeline step failed). This used
@@ -1390,10 +1360,6 @@ function OperatorApprovalsPanelInner() {
 
       {revealedClaimCode && (
         <RevealedClaimCodeBanner revealed={revealedClaimCode} onDismiss={() => setRevealedClaimCode(null)} />
-      )}
-
-      {sealSkipped && (
-        <SealSkippedBanner skipped={sealSkipped} onDismiss={() => setSealSkipped(null)} />
       )}
 
       {claimNotice && (

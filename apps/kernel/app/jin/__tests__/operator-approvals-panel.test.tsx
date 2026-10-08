@@ -1197,6 +1197,31 @@ describe('per-source renderer registry — apps', () => {
     expect(within(revealBox).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
   });
 
+  it('#2437: tells the operator the app key is never pushed to Actions secrets (vault/claim only), with no seal-skipped exception notice', async () => {
+    installFetch(
+      [{ isOperator: true, approvals: [appsApproval()] }, { isOperator: true, approvals: [appsApproval({ status: 'approved' })] }],
+      {
+        ok: true,
+        body: {
+          approval: appsApproval({ status: 'approved' }),
+          data: { claimCode: 'claim_plaintext_xyz', repoUrl: 'https://github.com/ima-jin/dykil', appDid: 'did:imajin:dykil-app', secretsSet: [] },
+        },
+      },
+    );
+    render(<OperatorApprovalsPanel />);
+    await screen.findByRole('button', { name: 'Approve & provision' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve & provision' }));
+
+    const revealBox = await screen.findByTestId('revealed-claim-code');
+    const note = within(revealBox).getByTestId('claim-code-key-custody-note');
+    expect(note.textContent).toMatch(/never pushed to GitHub Actions secrets/);
+    expect(note.textContent).toMatch(/vault/);
+    expect(note.textContent).toMatch(/claim code/);
+    expect(screen.queryByTestId('seal-skipped-notice')).toBeNull();
+    expect(document.body.textContent).not.toMatch(/was not pushed to Actions secrets|CI secrets not sealed/);
+  });
+
   it('copies the claim-page URL (not the code) when Copy link is clicked, independently of Copy', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });

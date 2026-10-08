@@ -317,7 +317,7 @@ components:
         secretsSet:
           type: array
           items: { type: string }
-          description: "Actions secret NAMES only (e.g. IMAJIN_APP_PRIVATE_KEY) — never values."
+          description: "Actions secret NAMES only — never values. Always empty for runs after #2437: the app's signing key is never pushed to GitHub Actions secrets (vault/claim path only). Older ledger rows may still list a name."
         attestationTypes:
           type: array
           items: { type: string }
