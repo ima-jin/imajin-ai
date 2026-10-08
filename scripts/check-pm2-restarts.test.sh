@@ -94,13 +94,14 @@ run_case() {
 }
 
 T0=1000000
+NO_ALERT_MSG="no app exceeded"
 run_case "first run (no history) passes" 0 "$T0" "t-events=48000 t-auth=2"
 run_case "small trickle under threshold passes" 0 $((T0 + 60)) "t-events=48003 t-auth=3"
 run_case "crash loop (~1 restart/s) fails and names the app (#2547)" 1 $((T0 + 120)) \
   "t-events=48100 t-auth=3" "t-events restarted 100 times" "threshold 5 per 600s"
 run_case "alert persists while the burst is inside the window; unrelated app not blamed" 1 $((T0 + 180)) \
   "t-events=48100 t-auth=3" "t-events restarted 100 times"
-run_case "stable count passes once the burst ages out" 0 $((T0 + 800)) "t-events=48100 t-auth=3" "no app exceeded"
+run_case "stable count passes once the burst ages out" 0 $((T0 + 800)) "t-events=48100 t-auth=3" "$NO_ALERT_MSG"
 
 # Window expiry: a clean state, a burst, then silence until the burst ages out.
 rm -f "$RESTART_ALERT_STATE"
@@ -123,7 +124,7 @@ run_case "foreign app crash loop is ignored" 0 $((T0 + 60)) "t-events=0 t-foreig
 # (#2550 cron-style entries), while a real crash loop beside it still does.
 rm -f "$RESTART_ALERT_STATE"
 run_case "baseline with one-shot job" 0 "$T0" "t-events=0 t-oneshot=0"
-run_case "one-shot job exiting normally does not alert" 0 $((T0 + 60)) "t-events=0 t-oneshot=0" "no app exceeded"
+run_case "one-shot job exiting normally does not alert" 0 $((T0 + 60)) "t-events=0 t-oneshot=0" "$NO_ALERT_MSG"
 run_case "crash loop is still named next to a healthy one-shot job" 1 $((T0 + 120)) \
   "t-events=50 t-oneshot=0" "t-events restarted 50 times"
 
@@ -141,11 +142,11 @@ else
   echo "❌ oversized fixture is only $JLIST_BYTES bytes, expected > 262144"
   FAILURES=$((FAILURES + 1))
 fi
-run_case "oversized jlist: baseline passes" 0 "$T0" "t-events=0 t-auth=0 t-foreign=0" "no app exceeded"
+run_case "oversized jlist: baseline passes" 0 "$T0" "t-events=0 t-auth=0 t-foreign=0" "$NO_ALERT_MSG"
 run_case "oversized jlist: crash loop is still classified and named" 1 $((T0 + 60)) \
   "t-events=50 t-auth=0 t-foreign=9999" "t-events restarted 50 times"
 run_case "oversized jlist: foreign app ignored, healthy app passes" 0 $((T0 + 700)) \
-  "t-events=50 t-auth=1 t-foreign=0" "no app exceeded"
+  "t-events=50 t-auth=1 t-foreign=0" "$NO_ALERT_MSG"
 unset FAKE_JLIST_PAD_KB
 
 status=0
