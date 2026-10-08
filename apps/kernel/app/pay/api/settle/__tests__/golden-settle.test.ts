@@ -1,12 +1,12 @@
 /**
- * Golden characterization tests for POST /pay/api/settle (#1073, updated #2016).
+ * Golden characterization tests for the canonical settlement core (#1073, updated #2016, #2642).
  *
- * These capture the CURRENT behaviour of the canonical settlement route
+ * These capture the CURRENT behaviour of `settlePayment()`
  * across a fixture set (simple manifest, multi-party split, MJNx opt-in,
  * unit-not-accepted rejection, funded/Stripe settlement, unsigned manifest,
  * invalid signature).
  *
- * They exercise the route as a black box (`POST(request)`), so they keep
+ * They exercise it as a black box, so they keep
  * passing across future refactors as long as `settlePayment()`'s observable
  * behaviour (response body, `balances`/`transactions` writes, emitted
  * attestations) is unchanged for MJN-only flows (#2016's explicit
@@ -92,19 +92,45 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsOptions: () => new Response(null, { status: 204 }),
 }));
 
-import { POST } from '../route';
+import { settlePayment, type SettlePaymentParams } from '@/src/lib/pay/settle-core';
 
-type NextRequestLike = Parameters<typeof POST>[0];
+/**
+ * #2642: `POST /pay/api/settle` no longer takes the shared key / arbitrary
+ * (from_did, amount, unit, funded) bodies — that surface is the registered-app
+ * contract (see `app-settle-route.test.ts`). These characterization tests pin
+ * the settlement CORE every settler shares, so they drive `settlePayment()`
+ * directly with the same snake_case request shape they always used.
+ */
+type SettleBody = {
+  from_did: string;
+  total_amount: number;
+  service: string;
+  type: string;
+  fair_manifest: SettlePaymentParams['fair_manifest'];
+  funded?: boolean;
+  funded_provider?: string;
+  unit?: string;
+  accepted_units?: string[];
+};
 
-const ENDPOINT = 'http://localhost:3000/pay/api/settle';
-const API_KEY = 'test-api-key';
+function makeRequest(body: SettleBody): SettleBody {
+  return body;
+}
 
-function makeRequest(body: unknown): NextRequestLike {
-  return new Request(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify(body),
-  }) as unknown as NextRequestLike;
+async function POST(body: SettleBody): Promise<{ status: number; json: () => Promise<any> }> {
+  const result = await settlePayment({
+    from_did: body.from_did,
+    total_amount: body.total_amount,
+    service: body.service,
+    type: body.type,
+    fair_manifest: body.fair_manifest,
+    funded: body.funded,
+    funded_provider: body.funded_provider,
+    unit: body.unit,
+    acceptedUnits: body.accepted_units,
+  });
+  if ('error' in result) return { status: result.status, json: async () => ({ error: result.error }) };
+  return { status: 200, json: async () => result };
 }
 
 /** Let fire-and-forget attestation work (not awaited by POST) flush. */
@@ -115,12 +141,11 @@ async function flushMicrotasks() {
 beforeEach(() => {
   vi.clearAllMocks();
   resetState();
-  process.env.PAY_SERVICE_API_KEY = API_KEY;
   process.env.PLATFORM_DID = 'did:imajin:platform';
   verifyManifestMock.mockResolvedValue({ valid: true });
 });
 
-describe('POST /pay/api/settle — golden characterization (#1073, MJN-only flows per #2016)', () => {
+describe('settlePayment() — golden characterization (#1073, MJN-only flows per #2016)', () => {
   it('simple manifest: single recipient paid from MJN balance, unsigned manifest allowed', async () => {
     state.senderBalanceRow = { did: 'did:imajin:buyer', unit: 'MJN', amount: '100', currency: 'CAD' };
 

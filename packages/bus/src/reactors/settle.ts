@@ -5,8 +5,47 @@ import { computeFeeCents, resolveSettlementChain, type FairSettlementEntry } fro
 
 const log = createLogger('bus:settle');
 
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL;
-const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY;
+// #2642: settlement runs IN-PROCESS. The kernel (the only place `settlePayment()`
+// and the pay ledger live) injects it at boot via `registerSettleExecutor()` —
+// this package must not import `apps/kernel`. The reactor no longer makes an
+// HTTP call to `/pay/api/settle` and no longer reads `PAY_SERVICE_URL` /
+// `PAY_SERVICE_API_KEY`: the shared key is not accepted on that route any more.
+
+/** The settlement request, in the kernel `settlePayment()` parameter vocabulary. */
+export interface SettleExecutorParams {
+  from_did: string;
+  total_amount: number;
+  service: string;
+  type: string;
+  fair_manifest: { chain: Array<{ did: string; amount: number; role: string }> };
+  funded?: boolean;
+  funded_provider?: string;
+  currency?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type SettleExecutorResult =
+  | { error: string; status: number }
+  | { settled: true; batchId: string; transactions: string[]; total_amount: number; recipients: number; source: string };
+
+export type SettleExecutor = (params: SettleExecutorParams) => Promise<SettleExecutorResult>;
+
+// Held on `globalThis` (not a module-level `let`) because Next can bundle this
+// package into more than one chunk of the same server process (instrumentation
+// vs. route bundles); a per-module variable would register into one copy and be
+// invisible to the copy the publisher's reactor actually runs in.
+const EXECUTOR_KEY = Symbol.for('@imajin/bus:settle-executor');
+type ExecutorHolder = { [EXECUTOR_KEY]?: SettleExecutor | null };
+
+/** Register the in-process settlement executor (kernel boot). Pass `null` to clear it (tests). */
+export function registerSettleExecutor(executor: SettleExecutor | null): void {
+  (globalThis as ExecutorHolder)[EXECUTOR_KEY] = executor;
+}
+
+/** The registered in-process settlement executor, or `undefined` outside the kernel process. */
+export function getSettleExecutor(): SettleExecutor | undefined {
+  return (globalThis as ExecutorHolder)[EXECUTOR_KEY] ?? undefined;
+}
 
 interface FairFee {
   role: string;
@@ -38,15 +77,6 @@ interface SettlementParams {
 }
 
 type ResolvedChain = Array<{ did: string; amount: number; role: string }>;
-
-interface SettleServiceResult {
-  settled: boolean;
-  batchId: string;
-  transactions: string[];
-  total_amount: number;
-  recipients: number;
-  source: string;
-}
 
 function extractSettlementParams(event: Parameters<ReactorHandler>[0]): SettlementParams {
   const payload = event.payload || {};
@@ -97,9 +127,9 @@ function buildSettleRequestBody(
   params: SettlementParams,
   resolvedChain: ResolvedChain | undefined,
   expectedTotal: number | undefined
-): Record<string, unknown> {
+): Partial<SettleExecutorParams> {
   const { buyerDid, amountCents, currency, funded, funded_provider, metadata, service, type } = params;
-  const body: Record<string, unknown> = {
+  const body: Partial<SettleExecutorParams> = {
     from_did: buyerDid,
     total_amount: expectedTotal ?? (amountCents as number) / 100,
     service,
@@ -115,30 +145,31 @@ function buildSettleRequestBody(
   return body;
 }
 
-async function callSettleService(
-  body: Record<string, unknown>,
+/** The request is only runnable when every field the settlement core needs is present (what the HTTP route's 400 used to enforce). */
+function isCompleteSettleRequest(body: Partial<SettleExecutorParams>): body is SettleExecutorParams {
+  return Boolean(body.from_did && body.total_amount && body.service && body.type && body.fair_manifest);
+}
+
+async function runSettlement(
+  executor: SettleExecutor,
+  body: Partial<SettleExecutorParams>,
   eventType: string,
   buyerDid: string | undefined,
   amountCents: number
-): Promise<SettleServiceResult | undefined> {
-  try {
-    const response = await fetch(`${PAY_SERVICE_URL}/api/settle`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${PAY_SERVICE_API_KEY}`,
-      },
-      body: JSON.stringify(body),
-    });
+): Promise<Extract<SettleExecutorResult, { settled: true }> | undefined> {
+  if (!isCompleteSettleRequest(body)) {
+    log.warn({ event: eventType }, 'Settlement skipped: from_did, total_amount, service, type or fair_manifest missing');
+    return undefined;
+  }
 
-    if (!response.ok) {
-      const text = await response.text();
-      log.error({ status: response.status, text }, 'Settlement request failed');
+  try {
+    const result = await executor(body);
+    if ('error' in result) {
+      log.error({ status: result.status, error: result.error }, 'Settlement request failed');
       return undefined;
     }
 
-    const result = await response.json() as SettleServiceResult;
-    log.info({ event: eventType, buyerDid, amount: amountCents, batchId: result?.batchId }, 'Settlement complete');
+    log.info({ event: eventType, buyerDid, amount: amountCents, batchId: result.batchId }, 'Settlement complete');
     return result;
   } catch (err) {
     log.error({ err: String(err) }, 'Settlement request error');
@@ -198,8 +229,11 @@ async function emitSettlementCompletedEvent(
 }
 
 export const settleReactor: ReactorHandler = async (event, _config) => {
-  if (!PAY_SERVICE_URL || !PAY_SERVICE_API_KEY) {
-    log.warn({}, 'Settlement skipped: PAY_SERVICE_URL or PAY_SERVICE_API_KEY not set');
+  const executor = getSettleExecutor();
+  if (!executor) {
+    // Settlement only exists inside the kernel process. A publisher running in
+    // another process (an app that imports @imajin/bus) has nothing to settle with.
+    log.error({ event: event.type }, 'Settlement skipped: no in-process settle executor registered (settle runs in the kernel process only)');
     return;
   }
 
@@ -213,10 +247,10 @@ export const settleReactor: ReactorHandler = async (event, _config) => {
 
   const { resolvedChain, expectedTotal } = resolveFairChain(params.fairManifest, params.buyerDid, amountCents, event.type);
   const body = buildSettleRequestBody(params, resolvedChain, expectedTotal);
-  const result = await callSettleService(body, event.type, params.buyerDid, amountCents);
+  const result = await runSettlement(executor, body, event.type, params.buyerDid, amountCents);
 
   // Emit settlement.completed so downstream services can snapshot the receipt
-  if (result?.settled) {
+  if (result) {
     await emitSettlementCompletedEvent(event, params, amountCents, resolvedChain, expectedTotal);
   }
 };

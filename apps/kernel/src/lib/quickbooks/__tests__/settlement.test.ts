@@ -16,6 +16,8 @@ vi.mock('@/src/db', () => ({
 }));
 vi.mock('../connector', () => ({ readInvoices: readInvoicesMock }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
+// settle-executor registers the kernel's in-process settle with the bus (#2642); no-op here.
+vi.mock('@/src/lib/pay/settle-executor', () => ({ ensureSettleExecutorRegistered: vi.fn() }));
 
 import { buildSaleFairManifest, attachFairManifestToLot, settlePaidInvoices } from '../settlement';
 

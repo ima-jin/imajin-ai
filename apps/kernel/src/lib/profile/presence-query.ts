@@ -1,4 +1,5 @@
 import { db } from '@/src/db';
+import { settlePayment } from '@/src/lib/pay/settle-core';
 import type { Logger } from '@imajin/logger';
 
 type LoggerLike = Pick<Logger, 'error'>;
@@ -143,37 +144,36 @@ export async function settleQueryCost(params: {
   } = params;
   if (cost <= 0 || isSelf) return false;
 
-  const payUrl = process.env.PAY_SERVICE_URL;
-  const payKey = process.env.PAY_SERVICE_API_KEY;
   const platformDid = process.env.PLATFORM_DID;
-  if (!payUrl || !payKey || !platformDid) return false;
+  if (!platformDid) return false;
 
   const platformFee = Number.parseFloat(process.env.PLATFORM_FEE_PERCENT ?? '0.2'); // 20% default
   const platformAmount = +(cost * platformFee).toFixed(6);
   const targetAmount = +(cost - platformAmount).toFixed(6);
 
   try {
-    const settleRes = await fetch(`${payUrl}/api/settle`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${payKey}` },
-      body: JSON.stringify({
-        from_did: requesterDid,
-        total_amount: cost,
-        service: 'inference',
-        type: 'query',
-        fair_manifest: {
-          chain: [
-            { did: resolvedTargetDid, amount: targetAmount, role: 'presence-owner' },
-            { did: platformDid, amount: platformAmount, role: 'infrastructure' },
-          ],
-        },
-        metadata: { queryId, model: modelId, promptTokens, completionTokens },
-      }),
+    // #2642: settled in-process (the kernel owns the pay ledger) — the shared
+    // PAY_SERVICE_API_KEY bearer is no longer accepted on /pay/api/settle.
+    const result = await settlePayment({
+      from_did: requesterDid,
+      total_amount: cost,
+      service: 'inference',
+      type: 'query',
+      fair_manifest: {
+        chain: [
+          { did: resolvedTargetDid, amount: targetAmount, role: 'presence-owner' },
+          { did: platformDid, amount: platformAmount, role: 'infrastructure' },
+        ],
+      },
+      metadata: { queryId, model: modelId, promptTokens, completionTokens },
     });
-    if (!settleRes.ok && log && logFailureMessage) {
-      log.error({ err: await settleRes.text().catch(() => '') }, logFailureMessage);
+    if ('error' in result) {
+      if (log && logFailureMessage) {
+        log.error({ err: result.error }, logFailureMessage);
+      }
+      return false;
     }
-    return settleRes.ok;
+    return true;
   } catch (err) {
     if (log && logErrorMessage) {
       log.error({ err: String(err) }, logErrorMessage);

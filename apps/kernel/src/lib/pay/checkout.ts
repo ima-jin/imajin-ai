@@ -5,6 +5,7 @@ import { db, connectedAccounts } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
 import { processorFeeCents, validateTaxes } from '@imajin/fair';
+import { authenticateSettleApp, carriesAppServiceToken } from './app-settle';
 
 /** Rail this hosted checkout runs on — keys the `processorFee*` fee-schedule lookup (#2177). */
 const CHECKOUT_RAIL = 'stripe';
@@ -27,6 +28,14 @@ export interface CheckoutBody {
   metadata?: Record<string, string>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   fairManifest?: Record<string, any>;
+  /**
+   * #2642: the payee manifest an app-authenticated checkout declares — recorded on
+   * `pay.transactions.payee_manifest` and what `POST /pay/api/settle` later verifies
+   * the posted chain against. Falls back to `fairManifest` when omitted. Ignored for
+   * checkout without an app-service token.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payeeManifest?: Record<string, any>;
   connectedAccountId?: string;
   sellerDid?: string;
 }
@@ -153,15 +162,35 @@ export function validateCheckoutBody(body: CheckoutBody): CheckoutValidation {
   return validateCheckoutTaxes(body);
 }
 
+export type CheckoutIdentityResult =
+  | {
+      ok: true;
+      identity: Identity | null;
+      /** #2642: the registered app whose app-service token authenticated this checkout — `undefined` for user/anonymous checkout. */
+      appDid?: string;
+    }
+  | { ok: false; error: string; status: number };
+
 /**
- * Resolve the checkout caller's identity, if any: app auth (via `x-app-did`)
- * takes precedence, falling back to a user session. Checkout is allowed to
- * proceed unauthenticated (identity stays null) except when app auth is
- * attempted and fails, which is a hard error.
+ * Resolve the checkout caller's identity, if any. Order:
+ *   1. an app-service token (#2642) — the registered-app contract. The app acts
+ *      as itself (no user identity); the verified app DID is returned so the
+ *      checkout row can be bound to it. A service token that fails
+ *      verification / lacks the operator-approved `pay:settle` scope is a hard error.
+ *   2. app auth via `x-app-did` (user-delegated);
+ *   3. a user session.
+ * Checkout is allowed to proceed unauthenticated (identity stays null, no app
+ * binding) exactly as before, except when app auth is attempted and fails.
  */
-export async function resolveCheckoutIdentity(
-  request: NextRequest,
-): Promise<{ ok: true; identity: Identity | null } | { ok: false; error: string; status: number }> {
+export async function resolveCheckoutIdentity(request: NextRequest): Promise<CheckoutIdentityResult> {
+  if (carriesAppServiceToken(request)) {
+    const app = await authenticateSettleApp(request);
+    if ('error' in app) {
+      return { ok: false, error: app.error, status: app.status };
+    }
+    return { ok: true, identity: null, appDid: app.appDid };
+  }
+
   if (request.headers.get('x-app-did')) {
     const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
     if ('error' in appResult) {

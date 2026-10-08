@@ -15,7 +15,7 @@
  * separate — see `docs/guide/canonical-patterns.md` "Known divergences".
  */
 import { db, transactions, identities, identityChains } from '@/src/db';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { verifyManifest } from '@imajin/fair';
@@ -534,10 +534,27 @@ export interface SettlePaymentParams {
   unit?: string;
   /** Units this settlement target (service/type) accepts. Defaults to MJN-only (#2016 decision 2) — pass e.g. ['MJN','MJNx'] to opt a line item into MJNx. */
   acceptedUnits?: readonly string[];
+  /**
+   * #2642: the app-bound `pay.transactions` checkout row this settlement pays
+   * out. When set, the settled marker (`settled_at` + `settle_batch_id`) is
+   * claimed INSIDE the settlement's own database transaction, guarded on
+   * `app_did = appDid AND settled_at IS NULL` — so the claim and the ledger
+   * writes commit or roll back together, and two concurrent settles of one
+   * payment can never both pay out (the loser gets `alreadySettled`).
+   */
+  appBinding?: { transactionId: string; appDid: string };
+}
+
+/** Thrown inside the settlement transaction when the settled-marker claim matched no row, to roll everything back. */
+class PaymentAlreadySettledError extends Error {
+  constructor() {
+    super('Payment already settled');
+    this.name = 'PaymentAlreadySettledError';
+  }
 }
 
 export type SettlePaymentResult =
-  | { error: string; status: number }
+  | { error: string; status: number; alreadySettled?: true }
   | {
       settled: true;
       batchId: string;
@@ -546,6 +563,31 @@ export type SettlePaymentResult =
       recipients: number;
       source: string;
     };
+
+/**
+ * #2642: claim the settled marker on the app-bound checkout row from inside the
+ * settlement transaction. The guarded UPDATE both takes the row lock (a
+ * concurrent settler blocks here until this transaction ends) and matches zero
+ * rows once `settled_at` is set — which aborts the whole settlement.
+ */
+async function claimSettledMarker(
+  tx: TxExecutor,
+  binding: { transactionId: string; appDid: string },
+  batchId: string,
+): Promise<void> {
+  const claimed = await tx
+    .update(transactions)
+    .set({ settledAt: new Date(), settleBatchId: batchId })
+    .where(
+      and(
+        eq(transactions.id, binding.transactionId),
+        eq(transactions.appDid, binding.appDid),
+        isNull(transactions.settledAt),
+      ),
+    )
+    .returning({ id: transactions.id });
+  if (claimed.length === 0) throw new PaymentAlreadySettledError();
+}
 
 /**
  * Execute a `.fair` multi-party settlement: validates chain shape/sum, the
@@ -621,24 +663,36 @@ export async function settlePayment(params: SettlePaymentParams): Promise<Settle
   const sourceKind = funded ? 'receipt' : 'transfer';
 
   // Atomic settlement
-  await db.transaction(async (tx) => {
-    // Debit from_did's single-unit balance (skip for externally funded)
-    if (!funded) {
-      await debitUnit(tx, from_did, unit, burnAmount);
-    }
+  try {
+    await db.transaction(async (tx) => {
+      // #2642: app-bound payment — claim the settled marker first (see claimSettledMarker).
+      if (params.appBinding) {
+        await claimSettledMarker(tx, params.appBinding, batchId);
+      }
 
-    const creditCtx: CreditLoopContext = {
-      from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified,
-    };
-    // Credit each recipient in the SAME unit as the settlement (#2016 — no
-    // more forced "earnings go to cash" laundering into a different bucket),
-    // then each #2419 trust-liability tax credit — kept as two separate
-    // loops/functions (`creditChainRecipients`/`creditTaxRows`) so neither
-    // one's cognitive complexity creeps back up as new cases are added.
-    const chainTxIds = await creditChainRecipients(tx, creditCtx);
-    const taxTxIds = await creditTaxRows(tx, creditCtx);
-    txIds = [...chainTxIds, ...taxTxIds];
-  });
+      // Debit from_did's single-unit balance (skip for externally funded)
+      if (!funded) {
+        await debitUnit(tx, from_did, unit, burnAmount);
+      }
+
+      const creditCtx: CreditLoopContext = {
+        from_did, service, type, fair_manifest, funded, funded_provider, metadata, unit, sourceKind, source, settleCurrency, batchId, signatureVerified,
+      };
+      // Credit each recipient in the SAME unit as the settlement (#2016 — no
+      // more forced "earnings go to cash" laundering into a different bucket),
+      // then each #2419 trust-liability tax credit — kept as two separate
+      // loops/functions (`creditChainRecipients`/`creditTaxRows`) so neither
+      // one's cognitive complexity creeps back up as new cases are added.
+      const chainTxIds = await creditChainRecipients(tx, creditCtx);
+      const taxTxIds = await creditTaxRows(tx, creditCtx);
+      txIds = [...chainTxIds, ...taxTxIds];
+    });
+  } catch (err) {
+    if (err instanceof PaymentAlreadySettledError) {
+      return { error: err.message, status: 409, alreadySettled: true };
+    }
+    throw err;
+  }
 
   // Fire attestations asynchronously — don't block settlement response
   emitAttestations({ from_did, fair_manifest, batchId, txIds, total_amount, source, payerChainVerified, payeeChainVerified }).catch((err) => {

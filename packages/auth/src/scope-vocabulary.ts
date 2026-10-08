@@ -303,6 +303,13 @@ export const SCOPE_VOCABULARY = [
 
   { scope: 'wallet:read', connector: null, label: 'View your wallet balance and transaction history' },
   { scope: 'wallet:write', connector: null, label: 'Create payments and transfers on your behalf' },
+  // #2642: gates POST /pay/api/settle's registered-app path — an app settles a payment
+  // it created (and bound to its own DID at checkout) with its own app-service token.
+  // Deliberately NOT serviceEligible: it moves money, so no app gets it from its own
+  // `requestedScopes`. The operator approves it per app through the countersigned
+  // `apps:service-scopes` card (#2711), and the kernel re-checks that approval live on
+  // every settle. Same `<domain>:<verb>` grammar as the scopes around it.
+  { scope: 'pay:settle', connector: null, label: 'Settle payments this app created on its own behalf' },
 
   { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
     label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },
