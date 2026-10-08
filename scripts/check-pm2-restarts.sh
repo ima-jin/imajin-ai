@@ -58,18 +58,26 @@ for n in "$THRESHOLD" "$WINDOW"; do
 done
 mkdir -p "$(dirname "$STATE")" || exit 2
 
-JLIST="$(pm2 jlist 2>/dev/null)" || {
-  echo "check-pm2-restarts: 'pm2 jlist' failed" >&2
+# `pm2 jlist` carries every process's full env and can outgrow the kernel's
+# per-string exec limit (MAX_ARG_STRLEN, 128 KiB), so it is handed to node
+# through a 0600 temp file — never through argv or the environment (#2732).
+JLIST_FILE="$(mktemp "${TMPDIR:-/tmp}/check-pm2-restarts-jlist.XXXXXX")" || {
+  echo "check-pm2-restarts: could not create temp file" >&2
   exit 2
 }
+trap 'rm -f "$JLIST_FILE"' EXIT
+if ! pm2 jlist 2>/dev/null > "$JLIST_FILE"; then
+  echo "check-pm2-restarts: 'pm2 jlist' failed" >&2
+  exit 2
+fi
 
 # The node program prints one "<name> <delta> <window-seconds>" line per
 # offending app, and rewrites the state file. Exit 3 = could not load inputs.
 OFFENDERS="$(
-  PM2_JLIST="$JLIST" node -e '
+  node -e '
     const fs = require("fs");
     const path = require("path");
-    const [ecosystem, statePath, windowS, threshold, nowOverride] = process.argv.slice(1);
+    const [ecosystem, jlistFile, statePath, windowS, threshold, nowOverride] = process.argv.slice(1);
     const win = Number(windowS), max = Number(threshold);
     const now = nowOverride ? Number(nowOverride) : Math.floor(Date.now() / 1000);
 
@@ -79,7 +87,7 @@ OFFENDERS="$(
       names = new Set((Array.isArray(mod) ? mod : mod.apps || []).map((a) => a.name));
     } catch { process.exit(3); }
     let procs;
-    try { procs = JSON.parse(process.env.PM2_JLIST || "[]"); } catch { process.exit(3); }
+    try { procs = JSON.parse(fs.readFileSync(jlistFile, "utf8").trim() || "[]"); } catch { process.exit(3); }
 
     let state = {};
     try { state = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch { /* first run / corrupt */ }
@@ -100,7 +108,7 @@ OFFENDERS="$(
       if (delta > max) console.log(p.name + " " + delta + " " + (now - samples[0][0]));
     }
     fs.writeFileSync(statePath, JSON.stringify(next));
-  ' "$ECOSYSTEM" "$STATE" "$WINDOW" "$THRESHOLD" "${RESTART_ALERT_NOW:-}"
+  ' "$ECOSYSTEM" "$JLIST_FILE" "$STATE" "$WINDOW" "$THRESHOLD" "${RESTART_ALERT_NOW:-}"
 )"
 status=$?
 if [[ "$status" -ne 0 ]]; then
