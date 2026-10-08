@@ -112,6 +112,8 @@ describe('migration 0181 — pay.transactions drops stripe_id', () => {
     );
 
     await client.exec(readMigration(DROP));
+    // #2642: the drizzle schema also selects the app-binding columns 0182 added.
+    await client.exec(readMigration('0182_pay_transactions_app_settle_binding.sql'));
     beforeDrop = await rows();
     db = drizzle(client, { schema: { transactions } });
   });

@@ -1,5 +1,6 @@
 /**
- * Tests for POST /pay/api/settle's #1886 intro-attribution money-rule guard.
+ * Tests for the settlement core's #1886 intro-attribution money-rule guard
+ * (moved off the HTTP route by #2642 — the route is now app-contract only).
  *
  * These deliberately do NOT exercise the full settlement transaction path
  * (balances/transactions/db.transaction) — that is pre-existing, unrelated
@@ -58,20 +59,46 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsOptions: () => new Response(null, { status: 204 }),
 }));
 
-import { POST } from '../route';
+import { settlePayment, type SettlePaymentParams } from '@/src/lib/pay/settle-core';
 
-const ENDPOINT = 'http://localhost:3000/pay/api/settle';
-const API_KEY = 'test-api-key';
+/**
+ * #2642: `POST /pay/api/settle` no longer takes the shared key / arbitrary
+ * (from_did, amount, unit, funded) bodies — that surface is the registered-app
+ * contract (see `app-settle-route.test.ts`). These characterization tests pin
+ * the settlement CORE every settler shares, so they drive `settlePayment()`
+ * directly with the same snake_case request shape they always used.
+ */
+type SettleBody = {
+  from_did: string;
+  total_amount: number;
+  service: string;
+  type: string;
+  fair_manifest: SettlePaymentParams['fair_manifest'];
+  funded?: boolean;
+  funded_provider?: string;
+  unit?: string;
+  accepted_units?: string[];
+};
 
-function makeRequest(body: unknown): NextRequestLike {
-  return new Request(ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
-    body: JSON.stringify(body),
-  }) as unknown as NextRequestLike;
+function makeRequest(body: SettleBody): SettleBody {
+  return body;
 }
 
-type NextRequestLike = Parameters<typeof POST>[0];
+async function POST(body: SettleBody): Promise<{ status: number; json: () => Promise<{ error?: string; [key: string]: unknown }> }> {
+  const result = await settlePayment({
+    from_did: body.from_did,
+    total_amount: body.total_amount,
+    service: body.service,
+    type: body.type,
+    fair_manifest: body.fair_manifest,
+    funded: body.funded,
+    funded_provider: body.funded_provider,
+    unit: body.unit,
+    acceptedUnits: body.accepted_units,
+  });
+  if ('error' in result) return { status: result.status, json: async () => ({ error: result.error }) };
+  return { status: 200, json: async () => result };
+}
 
 const BASE_BODY = {
   from_did: 'did:imajin:buyer',
@@ -85,12 +112,11 @@ const BASE_BODY = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.PAY_SERVICE_API_KEY = API_KEY;
   verifyIntroAttributionManifestForSettlementMock.mockResolvedValue({ ok: true });
   dbTransactionMock.mockResolvedValue(undefined);
 });
 
-describe('POST /pay/api/settle — intro-attribution guard (#1886)', () => {
+describe('settlePayment() — intro-attribution guard (#1886)', () => {
   it('calls the guard with the submitted fair_manifest for every settlement', async () => {
     await POST(makeRequest(BASE_BODY));
 

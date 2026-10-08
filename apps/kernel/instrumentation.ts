@@ -35,5 +35,10 @@ export async function register() {
     // step 4) — packages/auth has no process.env fallback any more.
     const { provideVaultInternalApiKey } = await import('@/src/lib/auth/provide-vault-internal-api-key');
     await provideVaultInternalApiKey();
+
+    // #2642: the bus `settle` reactor settles in-process through the kernel's
+    // settlePayment() — no HTTP hop, no shared PAY_SERVICE_API_KEY.
+    const { ensureSettleExecutorRegistered } = await import('@/src/lib/pay/settle-executor');
+    ensureSettleExecutorRegistered();
   }
 }

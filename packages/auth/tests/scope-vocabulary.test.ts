@@ -481,4 +481,10 @@ describe('serviceEligible fence', () => {
     expect(serviceEligibleScopes()).toContain('usage:emit');
     expect(serviceEligibleScopes()).not.toContain('usage:emitters-manage');
   });
+
+  it('adds pay:settle (#2642) to the vocabulary but keeps it service-INeligible (operator-approved per app only)', () => {
+    expect(scopeEntry('pay:settle')).toBeDefined();
+    expect(isServiceEligibleScope(scopeEntry('pay:settle')!)).toBe(false);
+    expect(serviceEligibleScopes()).not.toContain('pay:settle');
+  });
 });

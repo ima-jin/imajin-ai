@@ -68,7 +68,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if (!identityResult.ok) {
       return NextResponse.json({ error: identityResult.error }, { status: identityResult.status, headers: cors });
     }
-    const { identity } = identityResult;
+    const { identity, appDid } = identityResult;
 
     const pay = getPaymentService();
 
@@ -124,6 +124,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       ...externalRefColumns(result.id),
       metadata: body.metadata,
       fairManifest: body.fairManifest || null,
+      // #2642: an app-service-token checkout binds the payment to the calling app and
+      // records the payee manifest it declared; checkout without one leaves all of
+      // this NULL, and such rows are never settleable via the app path.
+      ...(appDid && { appDid, payeeManifest: body.payeeManifest ?? body.fairManifest ?? null }),
     });
 
     return NextResponse.json({

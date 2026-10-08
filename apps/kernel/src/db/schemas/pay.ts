@@ -47,9 +47,20 @@ export const transactions = paySchema.table('transactions', {
   fairManifest: jsonb('fair_manifest'),                  // .fair attribution chain
   batchId: text('batch_id'),                             // for batched settlements
   credentialIssued: boolean('credential_issued').default(false),
+  // #2642: app binding for app-authenticated checkout (migration 0182). `appDid` is the
+  // registered app whose app-service token created the checkout — NULL for user/anonymous
+  // checkout and every legacy row, which are never settleable via the app path.
+  // `payeeManifest` is the manifest the app declared at checkout; settle verifies the
+  // posted chain against it. `settledAt`/`settleBatchId` are the settled marker (set
+  // atomically with the settlement, so a second settle is an idempotent replay).
+  appDid: text('app_did'),
+  payeeManifest: jsonb('payee_manifest'),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
+  settleBatchId: text('settle_batch_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   fromDidIdx: index('idx_transactions_from_did').on(table.fromDid),
+  appDidIdx: index('idx_transactions_app_did').on(table.appDid).where(sql`${table.appDid} IS NOT NULL`),
   toDidIdx: index('idx_transactions_to_did').on(table.toDid),
   serviceIdx: index('idx_transactions_service').on(table.service),
   statusIdx: index('idx_transactions_status').on(table.status),

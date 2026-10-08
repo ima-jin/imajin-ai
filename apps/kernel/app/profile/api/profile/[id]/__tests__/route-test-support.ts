@@ -29,6 +29,7 @@ const hoistedMocks = vi.hoisted(() => ({
   mockStreamText: vi.fn(),
   mockCalculateCost: vi.fn(),
   mockRecordPresenceQueryUsage: vi.fn().mockResolvedValue(undefined),
+  mockSettlePayment: vi.fn(),
 }));
 const {
   mockRequireAuth,
@@ -40,6 +41,7 @@ const {
   mockStreamText,
   mockCalculateCost,
   mockRecordPresenceQueryUsage,
+  mockSettlePayment,
 } = hoistedMocks;
 export {
   mockRequireAuth,
@@ -51,6 +53,7 @@ export {
   mockStreamText,
   mockCalculateCost,
   mockRecordPresenceQueryUsage,
+  mockSettlePayment,
 };
 
 vi.mock('@/src/db', () => ({
@@ -62,6 +65,9 @@ vi.mock('@/src/db', () => ({
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
+
+// #2642: query settlement runs in-process through settlePayment() — no HTTP hop to /pay/api/settle.
+vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: mockSettlePayment }));
 
 // Both `generateText` (/query) and `streamText` (/stream) live here so one
 // factory covers both routes; each test file only exercises the one it needs.
@@ -144,17 +150,15 @@ export function resetPresenceRouteMocks(): void {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
 }
 
-/** Stubs the env vars the settle branch (`cost > 0 && !isSelf`) needs to actually attempt a pay call. */
+/** Stubs the env the settle branch (`cost > 0 && !isSelf`) needs to actually attempt a settlement, and makes the in-process `settlePayment()` succeed. */
 export function stubSettlementEnv(): void {
-  vi.stubEnv('PAY_SERVICE_URL', 'https://pay.test');
-  vi.stubEnv('PAY_SERVICE_API_KEY', 'pay-key');
   vi.stubEnv('PLATFORM_DID', 'did:imajin:platform');
+  mockSettlePayment.mockResolvedValue({ settled: true, batchId: 'batch_1', transactions: [], total_amount: 0.05, recipients: 2, source: 'fiat' });
 }
 
-/** fetch sequence for a non-self query that settles successfully: trust check, absent presence doc, then a successful settle call. */
+/** fetch sequence for a non-self query: trust check, then an absent presence doc (settlement itself no longer goes over fetch, #2642). */
 export function makeSettledFetchMock() {
   return vi.fn()
     .mockResolvedValueOnce({ ok: true, json: async () => ({ connected: true, distance: 1 }) }) // trust
-    .mockResolvedValueOnce({ ok: false, json: async () => ({}) }) // presence doc
-    .mockResolvedValueOnce({ ok: true, json: async () => ({}) }); // settle
+    .mockResolvedValueOnce({ ok: false, json: async () => ({}) }); // presence doc
 }

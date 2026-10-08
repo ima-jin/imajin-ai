@@ -38,6 +38,8 @@ export { publishAppEvent, APP_EVENT_REACTORS, APP_EVENT_SCOPE } from './publish-
 export type { AppEventInput, AppEventResult } from './publish-app-event';
 export { broker } from './broker';
 export { registerReactor, getReactor } from './registry';
+export { registerSettleExecutor, getSettleExecutor } from './reactors/settle';
+export type { SettleExecutor, SettleExecutorParams, SettleExecutorResult } from './reactors/settle';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
 export { getChainConfig, getScopedChainConfig, getBrokerChainConfig } from './config';
 export { getLotChain, recentLotsBySupplier } from './supply-lots';

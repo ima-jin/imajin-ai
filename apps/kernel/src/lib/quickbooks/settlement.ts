@@ -12,6 +12,7 @@ import { eq } from 'drizzle-orm';
 import { db, supplyLots } from '@/src/db';
 import { readInvoices } from './connector';
 import { forEachSequential } from '../async/sequential';
+import { ensureSettleExecutorRegistered } from '../pay/settle-executor';
 
 export type SupplyFairManifest = ReturnType<typeof buildFairManifest>;
 
@@ -98,6 +99,8 @@ export async function settlePaidInvoices(ownerDid: string, appDid?: string): Pro
       return;
     }
 
+    // #2642: order.completed's chain runs the bus `settle` reactor, which settles in-process.
+    ensureSettleExecutorRegistered();
     await publish('order.completed', {
       issuer: ownerDid,
       subject: ownerDid,
