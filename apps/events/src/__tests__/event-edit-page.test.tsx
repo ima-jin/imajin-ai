@@ -114,11 +114,7 @@ describe('EditEventPage — creator identity resolution (#1998)', () => {
     expect(mocks.resolveIdentitiesForDidsMock).toHaveBeenCalledWith(['did:imajin:creator']);
     const formElement = findElementByType(element, mocks.formMock);
     expect(formElement).not.toBeNull();
-    expect(formElement!.props).toMatchObject({
-      creatorEmail: 'creator@example.com',
-      creatorHandle: 'creator-handle',
-      creatorName: 'Creator Name',
-    });
+    expect(formElement!.props).toMatchObject({ creatorEmail: 'creator@example.com' });
   });
 
   it('falls back to null creator fields when the DID does not resolve', async () => {
@@ -130,11 +126,7 @@ describe('EditEventPage — creator identity resolution (#1998)', () => {
     const element = await EditEventPage(ROUTE_PARAMS as any);
 
     const formElement = findElementByType(element, mocks.formMock);
-    expect(formElement!.props).toMatchObject({
-      creatorEmail: null,
-      creatorHandle: null,
-      creatorName: null,
-    });
+    expect(formElement!.props).toMatchObject({ creatorEmail: null });
   });
 
   it('does not fail the page when resolveIdentitiesForDids rejects', async () => {
@@ -146,7 +138,7 @@ describe('EditEventPage — creator identity resolution (#1998)', () => {
     const element = await EditEventPage(ROUTE_PARAMS as any);
 
     const formElement = findElementByType(element, mocks.formMock);
-    expect(formElement!.props).toMatchObject({ creatorEmail: null, creatorHandle: null, creatorName: null });
+    expect(formElement!.props).toMatchObject({ creatorEmail: null });
   });
 
   it('redirects to login when there is no session', async () => {

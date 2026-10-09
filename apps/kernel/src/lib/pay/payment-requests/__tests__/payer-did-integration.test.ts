@@ -39,8 +39,8 @@ const h = vi.hoisted(() => {
     settledStripeAttestationMock: vi.fn(),
     settledAttestationMock: vi.fn(),
     publishMock: vi.fn(),
-    payCheckoutMock: vi.fn(),
-    stripeRetrieveMock: vi.fn(),
+    createByoSessionMock: vi.fn(),
+    retrieveByoSessionMock: vi.fn(),
     idCounter: { n: 0 },
   };
 });
@@ -97,23 +97,18 @@ vi.mock('@imajin/bus', () => ({ publish: h.publishMock }));
 vi.mock('@imajin/config', () => ({ buildPublicUrlAbsolute: (name: string) => `https://kernel.test/${name}` }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_${++h.idCounter.n}` }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: vi.fn().mockResolvedValue('did:imajin:node') }));
-vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: h.payCheckoutMock }) }));
-vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
-  getStripeClient: () => ({ checkout: { sessions: { retrieve: h.stripeRetrieveMock } } }),
-}));
 vi.mock('@/src/lib/pay/checkout', () => ({
-  resolveConnectedAccountFee: vi.fn().mockResolvedValue({ ok: true, connectedAccountId: 'acct_1', applicationFeeAmount: 0 }),
   taxLineItems: () => [],
 }));
-// #2754: card rail selection + the issuer-key Stripe calls — this suite exercises the Connect fallback.
+// #2754/#2757: card rail selection + the issuer-key Stripe calls — the issuer's connector is the only card rail.
 vi.mock('../card-rail', () => ({
-  resolveCardRail: vi.fn().mockResolvedValue({ kind: 'connect' }),
-  resolveConnectCheckout: vi.fn().mockResolvedValue({ ok: true, connectedAccountId: 'acct_1', applicationFeeAmount: 0 }),
+  resolveCardRail: vi.fn().mockResolvedValue({ kind: 'connector', ownerDid: 'did:imajin:issuer' }),
+  SELLER_NO_CARD_RAIL: 'SELLER_NO_CARD_RAIL',
 }));
 vi.mock('@/src/lib/stripe/byo-checkout', () => ({
   ByoCheckoutError: class ByoCheckoutError extends Error {},
-  createByoCheckoutSession: vi.fn(),
-  retrieveByoCheckoutSession: vi.fn(),
+  createByoCheckoutSession: h.createByoSessionMock,
+  retrieveByoCheckoutSession: h.retrieveByoSessionMock,
 }));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: h.settlePaymentMock }));
 vi.mock('@/src/lib/chat/connection-check', () => ({ isConnected: vi.fn() }));
@@ -236,12 +231,12 @@ beforeEach(async () => {
   h.settledStripeAttestationMock.mockReset().mockResolvedValue('att_stripe_1');
   h.settledAttestationMock.mockReset().mockResolvedValue('att_emt_1');
   h.publishMock.mockReset().mockResolvedValue(undefined);
-  h.payCheckoutMock.mockReset().mockResolvedValue({
+  h.createByoSessionMock.mockReset().mockResolvedValue({
     id: 'cs_new',
     url: 'https://checkout.stripe.com/cs_new',
     expiresAt: new Date('2026-01-01T01:00:00Z'),
   });
-  h.stripeRetrieveMock.mockReset();
+  h.retrieveByoSessionMock.mockReset();
   await seedProfiles();
   await seedMemberships();
   await seedRequest();
@@ -399,7 +394,7 @@ describe('card: checkout stores a validated paid_by_did, and the webhook settles
     });
     expect(result).toMatchObject({ status: 403 });
     expect(await paidByDidColumn()).toBeNull();
-    expect(h.payCheckoutMock).not.toHaveBeenCalled();
+    expect(h.createByoSessionMock).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -424,7 +419,7 @@ describe('card: checkout stores a validated paid_by_did, and the webhook settles
 
   it('the last choice before payment wins, and a settled request can no longer be re-pointed', async () => {
     await createPaymentRequestCheckoutSession({ id: REQUEST_ID, callerDid: ERIC, paidByDid: ARTIFACT, payerPersonDid: ERIC });
-    h.stripeRetrieveMock.mockResolvedValue({ status: 'open', url: 'https://checkout.stripe.com/cs_new', id: 'cs_new', expires_at: 1_800_000_000 });
+    h.retrieveByoSessionMock.mockResolvedValue({ status: 'open', url: 'https://checkout.stripe.com/cs_new', id: 'cs_new', expiresAt: new Date(1_800_000_000 * 1000) });
     const second = await createPaymentRequestCheckoutSession({ id: REQUEST_ID, callerDid: ERIC, paidByDid: ERIC, payerPersonDid: ERIC });
     expect(second).toMatchObject({ reused: true });
     expect(await paidByDidColumn()).toBe(ERIC);

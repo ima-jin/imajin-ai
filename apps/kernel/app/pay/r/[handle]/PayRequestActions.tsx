@@ -34,7 +34,7 @@ const ERROR_CLASSES = 'text-xs text-red-400 bg-red-900/20 border border-red-800 
  * and who to ask — a card failure is never reduced to a generic "try again".
  */
 const CHECKOUT_ERROR_BY_CODE: Readonly<Record<string, (issuer: string) => string>> = {
-  SELLER_NOT_CONNECTED: (issuer) => `${issuer} hasn't set up card payments yet. Contact ${issuer} to pay another way.`,
+  SELLER_NO_CARD_RAIL: (issuer) => `${issuer} hasn't set up card payments yet. Contact ${issuer} to pay another way.`,
   CARD_RAIL_KEY_MISSING: (issuer) => `${issuer}'s Stripe connection isn't active, so card payment can't start. Contact ${issuer}.`,
   CARD_RAIL_KEY_REJECTED: (issuer) =>
     `Stripe rejected ${issuer}'s connection (the key was revoked or is missing a permission), so card payment can't start. Contact ${issuer}.`,

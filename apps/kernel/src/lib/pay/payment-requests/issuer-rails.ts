@@ -9,7 +9,7 @@ import { db, profiles } from '@/src/db';
 import { resolveCardRail } from './card-rail';
 
 export interface IssuerPayRails {
-  /** A working card rail: the issuer's own Stripe connector (or Connect, temporarily). */
+  /** A working card rail: the issuer's own Stripe connector (#2757: the only card rail). */
   card: boolean;
   /** The issuer has set an e-Transfer receiving email. */
   emt: boolean;

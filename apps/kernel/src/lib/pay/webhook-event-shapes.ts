@@ -29,6 +29,13 @@ export interface StripeCheckoutSessionLike {
   customer_details?: { email?: string | null; name?: string | null } | null;
   metadata?: StripeMetadataLike | null;
   payment_intent?: string | { id: string } | null;
+  /**
+   * Kernel-internal, never a Stripe field: the `pay.transactions` id when the caller already knows it
+   * (#2757 — the BYO settlement, whose row is on the `stripe-byo` rail and so is not found by the
+   * platform-rail session lookup). A real Stripe session carries no such property, so a client cannot
+   * inject one through checkout metadata.
+   */
+  transactionId?: string;
 }
 
 export interface StripePaymentIntentLike {
@@ -56,18 +63,4 @@ export interface StripeInvoiceLike {
   number?: string | null;
   subscription?: string | { id: string } | null;
   subscription_details?: { metadata?: StripeMetadataLike | null } | null;
-}
-
-export interface StripeAccountLike {
-  id: string;
-  charges_enabled?: boolean | null;
-  payouts_enabled?: boolean | null;
-  details_submitted?: boolean | null;
-  requirements?: { currently_due?: string[] | null; eventually_due?: string[] | null } | null;
-}
-
-export interface StripePayoutLike {
-  id: string;
-  amount: number;
-  currency: string;
 }

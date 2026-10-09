@@ -90,7 +90,7 @@ vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefi
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: vi.fn().mockResolvedValue('did:imajin:node') }));
 vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: vi.fn() }) }));
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({ getStripeClient: () => ({}) }));
-vi.mock('@/src/lib/pay/checkout', () => ({ resolveConnectedAccountFee: vi.fn(), taxLineItems: () => [] }));
+vi.mock('@/src/lib/pay/checkout', () => ({ taxLineItems: () => [] }));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: h.settlePaymentMock }));
 // #2754: which card rail the issuer has is card-rail.test.ts's concern; here it is a switch.
 vi.mock('../card-rail', () => ({ resolveCardRail: h.resolveCardRailMock, resolveConnectCheckout: vi.fn() }));
@@ -252,11 +252,8 @@ describe('the pay page view: e-Transfer with and without the email set', () => {
 });
 
 describe('the pay page view: the card rail is resolved server-side (#2754)', () => {
-  it.each([
-    ['their own Stripe connector', { kind: 'connector', ownerDid: ISSUER_DID }],
-    ['Connect (the temporary fallback)', { kind: 'connect' }],
-  ])('card is offered when the issuer has %s', async (_label, rail) => {
-    h.resolveCardRailMock.mockResolvedValue(rail);
+  it('card is offered when the issuer has their own Stripe connector', async () => {
+    h.resolveCardRailMock.mockResolvedValue({ kind: 'connector', ownerDid: ISSUER_DID });
 
     expect((await getPaymentRequestInvoiceByHandle(HANDLE))?.card).toBe(true);
     expect(h.resolveCardRailMock).toHaveBeenCalledWith(ISSUER_DID);

@@ -127,6 +127,12 @@ export function buildStripeCheckoutItems(
 // Pay service checkout session
 // ---------------------------------------------------------------------------
 
+/** The pay service's stable `code` when the seller has no card rail (#2757). */
+export const SELLER_NO_CARD_RAIL = 'SELLER_NO_CARD_RAIL';
+
+/** What the buyer is told when the organizer has not set up card payments. */
+export const NO_CARD_RAIL_MESSAGE = "Card payment isn't set up for this event yet. Try e-Transfer if it's offered, or contact the organizer.";
+
 export interface RequestPayCheckoutSessionParams {
   payServiceUrl: string;
   items: StripeCheckoutItem[];
@@ -158,7 +164,7 @@ export interface PayCheckoutSession {
  */
 export async function requestPayCheckoutSession(
   params: RequestPayCheckoutSessionParams,
-): Promise<{ checkout: PayCheckoutSession } | { error: string; status: number }> {
+): Promise<{ checkout: PayCheckoutSession } | { error: string; status: number; code?: string }> {
   const { payServiceUrl, log, appAuth, ...body } = params;
 
   const payResponse = await fetch(`${payServiceUrl}/api/checkout`, {
@@ -171,7 +177,11 @@ export async function requestPayCheckoutSession(
   });
 
   if (!payResponse.ok) {
-    const error = await payResponse.json();
+    const error = await payResponse.json().catch(() => ({}));
+    // #2757: the organizer has no card rail (no connected Stripe key). Not a server fault — say so plainly.
+    if (error.code === SELLER_NO_CARD_RAIL) {
+      return { error: NO_CARD_RAIL_MESSAGE, status: 400, code: SELLER_NO_CARD_RAIL };
+    }
     log.error({ err: String(error) }, 'Pay service error');
     return { error: error.error || 'Payment service error', status: 500 };
   }

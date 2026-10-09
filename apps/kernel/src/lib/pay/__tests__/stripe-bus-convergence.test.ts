@@ -51,7 +51,6 @@ vi.mock('@/src/db', async () => {
   const feeLedger = { __table: 'feeLedger' };
   const balances = { __table: 'balances' };
   const balanceRollups = { __table: 'balanceRollups' };
-  const connectedAccounts = { __table: 'connectedAccounts' };
 
   function limitResultFor(table: unknown) {
     if (tableTag(table) === 'transactions') {
@@ -77,7 +76,7 @@ vi.mock('@/src/db', async () => {
     transaction: async (callback: (tx: unknown) => Promise<unknown>) => callback({ select, update, insert }),
   };
 
-  return { db, transactions, feeLedger, balances, balanceRollups, connectedAccounts };
+  return { db, transactions, feeLedger, balances, balanceRollups };
 });
 
 // The raw client the bus reads `kernel.bus_chain_configs` (and the #1884
@@ -258,13 +257,13 @@ describe('pay webhook -> connector bus -> pay-stripe reactor (#2177)', () => {
     expect(state.updateCalls).toHaveLength(0);
   });
 
-  it('dispatches by the endpoint that verified the delivery: platform vs connect handler sets are disjoint', () => {
+  it('handles only platform-account deliveries — Stripe Connect is removed, so the connect source has no handlers (#2757)', () => {
     expect(hasStripeBusHandler('platform', 'checkout.session.completed')).toBe(true);
     expect(hasStripeBusHandler('platform', 'transfer.created')).toBe(true);
     expect(hasStripeBusHandler('platform', 'account.updated')).toBe(false);
     expect(hasStripeBusHandler('platform', 'payout.paid')).toBe(false);
-    expect(hasStripeBusHandler('connect', 'account.updated')).toBe(true);
-    expect(hasStripeBusHandler('connect', 'payout.failed')).toBe(true);
+    expect(hasStripeBusHandler('connect', 'account.updated')).toBe(false);
+    expect(hasStripeBusHandler('connect', 'payout.failed')).toBe(false);
     expect(hasStripeBusHandler('connect', 'checkout.session.completed')).toBe(false);
     // Prototype keys are not handlers.
     expect(hasStripeBusHandler('platform', 'constructor')).toBe(false);

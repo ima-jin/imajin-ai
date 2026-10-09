@@ -22,11 +22,8 @@ beforeEach(() => {
 });
 
 describe('getIssuerPayRails', () => {
-  it.each([
-    ['connector', { kind: 'connector', ownerDid: 'did:x' }],
-    ['connect', { kind: 'connect' }],
-  ])('card is true on the %s rail', async (_label, rail) => {
-    h.resolveCardRailMock.mockResolvedValue(rail);
+  it('card is true on the connector rail', async () => {
+    h.resolveCardRailMock.mockResolvedValue({ kind: 'connector', ownerDid: 'did:x' });
 
     expect((await getIssuerPayRails('did:x')).card).toBe(true);
   });

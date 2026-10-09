@@ -1,7 +1,7 @@
 /**
- * Coverage for EventPage's `checkSellerConnected()` (#2137).
+ * Coverage for EventPage's `checkSellerCardRail()` (#2137).
  *
- * `checkSellerConnected` is an unexported helper invoked unconditionally by
+ * `checkSellerCardRail` is an unexported helper invoked unconditionally by
  * the default-exported `EventPage` RSC, so it can only be exercised by
  * running the real page function end-to-end with its dependencies mocked —
  * same approach as `event-edit-page.test.tsx` for the sibling edit page.
@@ -167,40 +167,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function connectCheckUrl(): string | undefined {
+function cardRailCheckUrl(): string | undefined {
   const call = mocks.fetchMock.mock.calls.find(
-    ([url]) => typeof url === 'string' && url.includes('/api/connect/check'),
+    ([url]) => typeof url === 'string' && url.includes('/api/card-rail/check'),
   );
   return call?.[0] as string | undefined;
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe('EventPage -> checkSellerConnected (#2137: kernel-prefixed :3000/pay fallback)', () => {
-  it('uses the corrected http://localhost:3000/pay fallback (not the stale :3004 one) and reports connected when charges are enabled', async () => {
+describe('EventPage -> checkSellerCardRail (#2137: kernel-prefixed :3000/pay fallback)', () => {
+  it('uses the corrected http://localhost:3000/pay fallback (not the stale :3004 one) and reports card enabled when the seller has a card rail', async () => {
     mocks.fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/api/connect/check')) {
-        return { ok: true, json: async () => ({ chargesEnabled: true }) };
+      if (url.includes('/api/card-rail/check')) {
+        return { ok: true, json: async () => ({ cardEnabled: true }) };
       }
       return { ok: false };
     });
 
     const element = await EventPage(ROUTE_PROPS as any);
 
-    expect(connectCheckUrl()).toBe(
-      `http://localhost:3000/pay/api/connect/check?did=${encodeURIComponent(EVENT.creatorDid)}`,
+    expect(cardRailCheckUrl()).toBe(
+      `http://localhost:3000/pay/api/card-rail/check?did=${encodeURIComponent(EVENT.creatorDid)}`,
     );
-    expect(connectCheckUrl()).not.toContain('localhost:3004');
+    expect(cardRailCheckUrl()).not.toContain('localhost:3004');
 
     const panel = findByComponentName(element, 'EventTicketsPanel');
     expect(panel).not.toBeNull();
     expect(panel!.props.sellerConnected).toBe(true);
   });
 
-  it('reports not-connected when the pay service explicitly reports charges disabled', async () => {
+  it('reports no card rail when the pay service explicitly says card is not enabled', async () => {
     mocks.fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/api/connect/check')) {
-        return { ok: true, json: async () => ({ chargesEnabled: false }) };
+      if (url.includes('/api/card-rail/check')) {
+        return { ok: true, json: async () => ({ cardEnabled: false }) };
       }
       return { ok: false };
     });
@@ -213,7 +213,7 @@ describe('EventPage -> checkSellerConnected (#2137: kernel-prefixed :3000/pay fa
 
   it('defaults to connected (fail open) when the pay service check throws', async () => {
     mocks.fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/api/connect/check')) {
+      if (url.includes('/api/card-rail/check')) {
         throw new Error('ECONNREFUSED');
       }
       return { ok: false };
@@ -227,7 +227,7 @@ describe('EventPage -> checkSellerConnected (#2137: kernel-prefixed :3000/pay fa
 
   it('defaults to connected (fail open) when the pay service responds non-OK', async () => {
     mocks.fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/api/connect/check')) {
+      if (url.includes('/api/card-rail/check')) {
         return { ok: false, status: 500 };
       }
       return { ok: false };
@@ -242,16 +242,16 @@ describe('EventPage -> checkSellerConnected (#2137: kernel-prefixed :3000/pay fa
   it('honors an explicit PAY_SERVICE_URL override instead of the fallback', async () => {
     process.env.PAY_SERVICE_URL = 'https://kernel.example.com/pay';
     mocks.fetchMock.mockImplementation(async (url: string) => {
-      if (url.includes('/api/connect/check')) {
-        return { ok: true, json: async () => ({ chargesEnabled: true }) };
+      if (url.includes('/api/card-rail/check')) {
+        return { ok: true, json: async () => ({ cardEnabled: true }) };
       }
       return { ok: false };
     });
 
     await EventPage(ROUTE_PROPS as any);
 
-    expect(connectCheckUrl()).toBe(
-      `https://kernel.example.com/pay/api/connect/check?did=${encodeURIComponent(EVENT.creatorDid)}`,
+    expect(cardRailCheckUrl()).toBe(
+      `https://kernel.example.com/pay/api/card-rail/check?did=${encodeURIComponent(EVENT.creatorDid)}`,
     );
   });
 });

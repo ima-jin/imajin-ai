@@ -195,6 +195,29 @@ describe('POST /pay/api/settle — authentication (#2642)', () => {
   });
 });
 
+describe('POST /pay/api/settle — a payment made on the seller\'s OWN Stripe account (#2757)', () => {
+  it('refuses to settle it on-platform: the money never touched the platform, so no balance may be credited', async () => {
+    await insertPayment({ id: 'tx_byo', rail: 'stripe-byo', toDid: SELLER, externalRef: 'cs_byo' });
+
+    const res = await POST(request({ transaction_id: 'tx_byo', fair_manifest: { chain: CHAIN } }));
+
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/own Stripe account/);
+    expect((await paymentRow('tx_byo')).settledAt).toBeNull();
+    // Nothing was credited and no ledger row was written.
+    expect(await totalRows()).toBe(1);
+    expect((await harness.client.query('SELECT 1 FROM pay.balances')).rows).toHaveLength(0);
+  });
+
+  it('still settles an ordinary platform-rail payment of the same shape', async () => {
+    await insertPayment({ id: 'tx_platform', rail: 'stripe' });
+
+    const res = await POST(request({ transaction_id: 'tx_platform', fair_manifest: { chain: CHAIN } }));
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('POST /pay/api/settle — an app settles a payment it created (#2642)', () => {
   it('settles with its own app-service token, no shared key anywhere in the path', async () => {
     delete process.env.PAY_SERVICE_API_KEY;

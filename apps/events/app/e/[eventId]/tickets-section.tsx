@@ -714,7 +714,7 @@ function PurchaseUI({ eventId, eventTitle, tickets, userOrders = [], inviteToken
                     }
                     return (
                       <p className="text-sm text-gray-500 dark:text-gray-400 italic">
-                        Payments not yet available
+                        Card payment isn’t set up for this event yet
                       </p>
                     );
                   }

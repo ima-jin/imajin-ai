@@ -11,12 +11,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const state = vi.hoisted(() => ({
   getPaymentRequestByIdMock: vi.fn(),
-  resolveConnectedAccountFeeMock: vi.fn(),
   resolveCardRailMock: vi.fn(),
   createByoSessionMock: vi.fn(),
   retrieveByoSessionMock: vi.fn(),
-  payCheckoutMock: vi.fn(),
-  stripeSessionsRetrieveMock: vi.fn(),
   settlePaymentMock: vi.fn(),
   settledStripeAttestationMock: vi.fn().mockResolvedValue('att_settled_stripe_1'),
   settledAttestationMock: vi.fn().mockResolvedValue('att_settled_emt_1'),
@@ -33,12 +30,9 @@ function resetState() {
     if (Array.isArray(value)) value.length = 0;
   }
   state.getPaymentRequestByIdMock.mockReset();
-  state.resolveConnectedAccountFeeMock.mockReset();
   state.resolveCardRailMock.mockReset();
   state.createByoSessionMock.mockReset();
   state.retrieveByoSessionMock.mockReset();
-  state.payCheckoutMock.mockReset();
-  state.stripeSessionsRetrieveMock.mockReset();
   state.settlePaymentMock.mockReset();
   state.settledStripeAttestationMock.mockReset().mockResolvedValue('att_settled_stripe_1');
   state.settledAttestationMock.mockReset().mockResolvedValue('att_settled_emt_1');
@@ -90,12 +84,7 @@ vi.mock('@imajin/bus', () => ({ publish: state.publishMock }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: state.getNodeDidMock }));
 vi.mock('@imajin/config', () => ({ buildPublicUrlAbsolute: (name: string) => `https://kernel.test/${name}` }));
-vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: state.payCheckoutMock }) }));
-vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
-  getStripeClient: () => ({ checkout: { sessions: { retrieve: state.stripeSessionsRetrieveMock } } }),
-}));
 vi.mock('@/src/lib/pay/checkout', () => ({
-  resolveConnectedAccountFee: state.resolveConnectedAccountFeeMock,
   // #2419: real (pure) implementation — [] for every manifest in this
   // suite's fixtures, since none carry `taxes[]`.
   taxLineItems: (fairManifest: { taxes?: Array<{ jurisdiction: string; kind: string; amount: number }> }) =>
@@ -109,7 +98,7 @@ vi.mock('@/src/lib/pay/checkout', () => ({
 // #2754: rail selection and the issuer-key Stripe calls are their own suites' business.
 vi.mock('../card-rail', () => ({
   resolveCardRail: state.resolveCardRailMock,
-  resolveConnectCheckout: (body: unknown) => state.resolveConnectedAccountFeeMock(body),
+  SELLER_NO_CARD_RAIL: 'SELLER_NO_CARD_RAIL',
 }));
 vi.mock('@/src/lib/stripe/byo-checkout', () => {
   class ByoCheckoutError extends Error {
@@ -173,14 +162,9 @@ const ISSUED_REQUEST = {
 
 beforeEach(() => {
   resetState();
-  // The pre-#2754 suite below exercises the Connect fallback; the connector rail has its own describe.
-  state.resolveCardRailMock.mockResolvedValue({ kind: 'connect' });
-  state.resolveConnectedAccountFeeMock.mockResolvedValue({
-    ok: true,
-    connectedAccountId: 'acct_123',
-    applicationFeeAmount: 200,
-  });
-  state.payCheckoutMock.mockResolvedValue({
+  // #2757: the issuer's connector is the only card rail.
+  state.resolveCardRailMock.mockResolvedValue({ kind: 'connector', ownerDid: ISSUER_DID });
+  state.createByoSessionMock.mockResolvedValue({
     id: 'cs_new',
     url: 'https://checkout.stripe.com/cs_new',
     expiresAt: new Date('2026-01-01T01:00:00Z'),
@@ -204,33 +188,21 @@ describe('createPaymentRequestCheckoutSession', () => {
     state.getPaymentRequestByIdMock.mockResolvedValue({ ...ISSUED_REQUEST, status: 'paid' });
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
     expect(result).toMatchObject({ status: 409 });
-    expect(state.payCheckoutMock).not.toHaveBeenCalled();
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
   });
 
   it('#2665: a request the payer chose to pay by e-Transfer (emt_pending) can still be paid by card', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue({ ...ISSUED_REQUEST, status: 'emt_pending' });
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
     expect(result).toMatchObject({ id: 'cs_new', reused: false });
-    expect(state.payCheckoutMock).toHaveBeenCalled();
+    expect(state.createByoSessionMock).toHaveBeenCalled();
   });
 
   it('returns 400 when allow_on_platform is false', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue({ ...ISSUED_REQUEST, allowOnPlatform: false });
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
     expect(result).toMatchObject({ status: 400 });
-    expect(state.payCheckoutMock).not.toHaveBeenCalled();
-  });
-
-  it('propagates a fee-resolution error (e.g. seller not connected)', async () => {
-    state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
-    state.resolveConnectedAccountFeeMock.mockResolvedValue({
-      ok: false,
-      error: "Seller hasn't completed payment setup",
-      status: 400,
-    });
-    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
-    expect(result).toMatchObject({ status: 400 });
-    expect(state.payCheckoutMock).not.toHaveBeenCalled();
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
   });
 
   it('the recipient may also create a checkout session', async () => {
@@ -239,7 +211,7 @@ describe('createPaymentRequestCheckoutSession', () => {
     expect(result).toMatchObject({ id: 'cs_new', reused: false });
   });
 
-  it('creates a new session composing sellerDid/connectedAccountId/fairManifest/metadata, and records a pending tx without a fairManifest column', async () => {
+  it('creates a new session on the issuer\'s own account, and records a pending tx without a fairManifest column', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
     const result = await createPaymentRequestCheckoutSession({
       id: 'pr_1',
@@ -249,25 +221,23 @@ describe('createPaymentRequestCheckoutSession', () => {
 
     expect(result).toMatchObject({ id: 'cs_new', url: 'https://checkout.stripe.com/cs_new', reused: false });
 
-    expect(state.resolveConnectedAccountFeeMock).toHaveBeenCalledWith(
-      expect.objectContaining({ sellerDid: ISSUER_DID, fairManifest: ISSUED_REQUEST.fairManifest }),
-    );
-
-    expect(state.payCheckoutMock).toHaveBeenCalledWith(
+    // The charge is created with the issuer's key: no destination account, no application fee.
+    expect(state.createByoSessionMock).toHaveBeenCalledWith(
+      ISSUER_DID,
       expect.objectContaining({
         currency: 'CAD',
         customerEmail: 'buyer@example.com',
-        connectedAccountId: 'acct_123',
-        applicationFeeAmount: 200,
         metadata: expect.objectContaining({ payment_request_id: 'pr_1' }),
       }),
     );
+    expect(state.createByoSessionMock.mock.calls[0][1]).not.toHaveProperty('connectedAccountId');
+    expect(state.createByoSessionMock.mock.calls[0][1]).not.toHaveProperty('applicationFeeAmount');
 
     expect(state.insertCalls).toHaveLength(1);
     const inserted = state.insertCalls[0];
     // #2176/#2650: `external_ref` + `rail` are set; the dropped `stripe_id` column is never written.
     expect(inserted.externalRef).toBe('cs_new');
-    expect(inserted.rail).toBe('stripe');
+    expect(inserted.rail).toBe('stripe-byo');
     expect(inserted).not.toHaveProperty('stripeId');
     expect(inserted.status).toBe('pending');
     expect(inserted.fairManifest).toBeUndefined();
@@ -304,7 +274,7 @@ describe('createPaymentRequestCheckoutSession', () => {
       state.getPaymentRequestByIdMock.mockResolvedValue(TAXED_REQUEST);
       await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
 
-      const checkoutArgs = state.payCheckoutMock.mock.calls[0][0];
+      const checkoutArgs = state.createByoSessionMock.mock.calls[0][1];
       expect(checkoutArgs.items).toEqual([
         { name: 'Consulting', amount: 5000, quantity: 2 },
         { name: 'GST/HST (CA-ON)', description: 'Sales tax collected in trust', amount: 1300, quantity: 1 },
@@ -312,16 +282,6 @@ describe('createPaymentRequestCheckoutSession', () => {
       // Stripe's grand total == the row's total_amount (subtotal + tax), exactly.
       const stripeTotal = checkoutArgs.items.reduce((sum: number, i: { amount: number; quantity: number }) => sum + i.amount * i.quantity, 0);
       expect(stripeTotal).toBe(TAXED_REQUEST.totalAmount);
-    });
-
-    it('computes the fee on the merchandise-only (pre-tax) items, never on the tax line', async () => {
-      state.getPaymentRequestByIdMock.mockResolvedValue(TAXED_REQUEST);
-      await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
-
-      const feeArgs = state.resolveConnectedAccountFeeMock.mock.calls[0][0];
-      expect(feeArgs.items).toEqual([{ name: 'Consulting', amount: 5000, quantity: 2 }]);
-      expect(feeArgs.items.some((i: { name: string }) => i.name.startsWith('GST/HST'))).toBe(false);
-      expect(feeArgs.fairManifest.taxes).toHaveLength(1);
     });
 
     it('records the pending tx at the grand total (subtotal + tax)', async () => {
@@ -334,42 +294,42 @@ describe('createPaymentRequestCheckoutSession', () => {
       state.getPaymentRequestByIdMock.mockResolvedValue({ ...TAXED_REQUEST, subtotalAmount: 9_999 });
       const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
       expect(result).toMatchObject({ status: 409 });
-      expect(state.payCheckoutMock).not.toHaveBeenCalled();
+      expect(state.createByoSessionMock).not.toHaveBeenCalled();
     });
 
     it('a request without tax sends exactly its line items and nothing else', async () => {
       state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
       await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
-      expect(state.payCheckoutMock.mock.calls[0][0].items).toEqual([{ name: 'Consulting', amount: 5000, quantity: 1 }]);
+      expect(state.createByoSessionMock.mock.calls[0][1].items).toEqual([{ name: 'Consulting', amount: 5000, quantity: 1 }]);
     });
   });
 
   it('reuses an existing open Stripe session instead of creating a duplicate', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
     state.selectTxQueue.push([{ externalRef: 'cs_existing' }]);
-    state.stripeSessionsRetrieveMock.mockResolvedValue({
+    state.retrieveByoSessionMock.mockResolvedValue({
       id: 'cs_existing',
       url: 'https://checkout.stripe.com/cs_existing',
       status: 'open',
-      expires_at: Math.floor(new Date('2026-01-01T02:00:00Z').getTime() / 1000),
+      expiresAt: new Date('2026-01-01T02:00:00Z'),
     });
 
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
 
     expect(result).toMatchObject({ id: 'cs_existing', url: 'https://checkout.stripe.com/cs_existing', reused: true });
-    expect(state.payCheckoutMock).not.toHaveBeenCalled();
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
     expect(state.insertCalls).toHaveLength(0);
   });
 
   it('creates a fresh session when the existing Stripe session is no longer open', async () => {
     state.getPaymentRequestByIdMock.mockResolvedValue(ISSUED_REQUEST);
     state.selectTxQueue.push([{ externalRef: 'cs_expired' }]);
-    state.stripeSessionsRetrieveMock.mockResolvedValue({ id: 'cs_expired', status: 'expired' });
+    state.retrieveByoSessionMock.mockResolvedValue({ id: 'cs_expired', url: null, status: 'expired', expiresAt: null });
 
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
 
     expect(result).toMatchObject({ id: 'cs_new', reused: false });
-    expect(state.payCheckoutMock).toHaveBeenCalledOnce();
+    expect(state.createByoSessionMock).toHaveBeenCalledOnce();
   });
 });
 
@@ -378,7 +338,7 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
   const HANDLED_REQUEST = { ...ISSUED_REQUEST, payHandle: 'ph_abc' };
   const BYO_SESSION = { id: 'cs_byo', url: 'https://checkout.stripe.com/cs_byo', expiresAt: new Date('2026-01-02T00:00:00Z') };
 
-  it('charges on the issuer\'s own account when they have a connector: no Connect fee lookup, no platform session', async () => {
+  it('charges on the issuer\'s own account when they have a connector', async () => {
     state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
     state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
     state.createByoSessionMock.mockResolvedValue(BYO_SESSION);
@@ -387,8 +347,6 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
 
     expect(result).toMatchObject({ id: 'cs_byo', url: BYO_SESSION.url, reused: false });
     expect(state.resolveCardRailMock).toHaveBeenCalledWith(ISSUER_DID);
-    expect(state.payCheckoutMock).not.toHaveBeenCalled();
-    expect(state.resolveConnectedAccountFeeMock).not.toHaveBeenCalled();
 
     const [ownerDid, input] = state.createByoSessionMock.mock.calls[0];
     expect(ownerDid).toBe(ISSUER_DID);
@@ -420,7 +378,7 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
     expect(state.insertCalls[0]).toMatchObject({ rail: 'stripe-byo', externalRef: 'cs_byo', status: 'pending', toDid: ISSUER_DID });
   });
 
-  it('sends tax as its own line item on the issuer\'s account, exactly as the Connect path does', async () => {
+  it('sends tax as its own line item on the issuer\'s account', async () => {
     state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
     state.getPaymentRequestByIdMock.mockResolvedValue({
       ...HANDLED_REQUEST,
@@ -441,15 +399,14 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
     ]);
   });
 
-  it('refuses with a 400 SELLER_NOT_CONNECTED code — and creates nothing anywhere — when the issuer has no card rail', async () => {
+  it('refuses with a 400 SELLER_NO_CARD_RAIL code — and creates nothing anywhere — when the issuer has no card rail', async () => {
     state.resolveCardRailMock.mockResolvedValue({ kind: 'none' });
     state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
 
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
 
-    expect(result).toMatchObject({ status: 400, code: 'SELLER_NOT_CONNECTED' });
+    expect(result).toMatchObject({ status: 400, code: 'SELLER_NO_CARD_RAIL' });
     expect(state.createByoSessionMock).not.toHaveBeenCalled();
-    expect(state.payCheckoutMock).not.toHaveBeenCalled();
     expect(state.insertCalls).toHaveLength(0);
   });
 
@@ -477,7 +434,7 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
     await expect(createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID })).rejects.toThrow('db exploded');
   });
 
-  it('reuses a still-open session read back with the ISSUER\'s key, not the platform client', async () => {
+  it('reuses a still-open session read back with the ISSUER\'s key', async () => {
     state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
     state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
     state.selectTxQueue.push([{ externalRef: 'cs_old' }]);
@@ -492,7 +449,6 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
 
     expect(result).toMatchObject({ id: 'cs_old', reused: true });
     expect(state.retrieveByoSessionMock).toHaveBeenCalledWith(ISSUER_DID, 'cs_old');
-    expect(state.stripeSessionsRetrieveMock).not.toHaveBeenCalled();
     expect(state.createByoSessionMock).not.toHaveBeenCalled();
   });
 
@@ -508,24 +464,17 @@ describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () =>
     expect(result).toMatchObject({ id: 'cs_byo', reused: false });
   });
 
-  it('falls back to Connect only when there is no connector: the Connect path is untouched', async () => {
-    state.resolveCardRailMock.mockResolvedValue({ kind: 'connect' });
+  it('never reuses a pending row from the legacy platform rail: the reuse lookup is scoped to the BYO rail', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
     state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    // The lookup finds nothing on the BYO rail (a pre-#2757 platform session is on another account).
+    state.selectTxQueue.push([]);
+    state.createByoSessionMock.mockResolvedValue(BYO_SESSION);
 
     const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
 
-    expect(result).toMatchObject({ id: 'cs_new', reused: false });
-    expect(state.createByoSessionMock).not.toHaveBeenCalled();
-    expect(state.payCheckoutMock).toHaveBeenCalledWith(
-      expect.objectContaining({ connectedAccountId: 'acct_123', applicationFeeAmount: 200 }),
-    );
-    expect(state.insertCalls[0]).toMatchObject({ rail: 'stripe' });
-    // Connect sessions keep the original three metadata keys — the BYO-only keys never leak onto them.
-    expect(state.payCheckoutMock.mock.calls[0][0].metadata).toEqual({
-      payment_request_id: 'pr_1',
-      service: 'payment_request',
-      type: 'payment_request_checkout',
-    });
+    expect(result).toMatchObject({ id: 'cs_byo', reused: false });
+    expect(state.retrieveByoSessionMock).not.toHaveBeenCalled();
   });
 });
 

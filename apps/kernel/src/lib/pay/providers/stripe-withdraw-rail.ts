@@ -9,9 +9,15 @@
  * singleton from `./stripe-client` (#2174 — the same adapter client
  * `webhook-handlers.ts` reads balance-transaction fees from) rather than
  * constructing its own client.
+ *
+ * #2757: RETIRED for new withdrawals. `execute()` used to `transfers.create`
+ * to a seller's Stripe Connect account; Connect is gone and withdrawals run
+ * on the EMT request path (`app/pay/api/balance/withdraw/request`). What
+ * remains is the read-only side — `list()` and `confirmFromEvent()` — so a
+ * withdrawal intent that was already in flight when Connect was removed still
+ * reconciles against Stripe's transfer feed instead of being orphaned.
  */
 import type Stripe from 'stripe';
-import { fromDecimalString } from '@imajin/money';
 import { getStripeClient } from './stripe-client';
 import type {
   WithdrawRail,
@@ -33,35 +39,12 @@ function isTransferCreatedEvent(payload: unknown): payload is Stripe.Event & { d
 export class StripeWithdrawRail implements WithdrawRail {
   readonly name = STRIPE_RAIL_NAME;
 
-  async execute(intent: WithdrawalIntent): Promise<WithdrawRailExecuteResult> {
-    if (!intent.destination) {
-      throw new Error(`StripeWithdrawRail.execute: intent ${intent.id} has no destination account`);
-    }
-
-    const stripe = getStripeClient();
-    const currency = intent.currency ?? 'CAD';
-    // Exact decimal string -> integer minor units via `@imajin/money`
-    // (`fromDecimalString` -> `parseDecimalToFraction` + `bigintToSafeNumber`
-    // internally) — never `parseFloat`/`Math.round` on a value that moves
-    // real money.
-    const amountMinorUnits = fromDecimalString(intent.amount, currency).amount;
-    const transfer = await stripe.transfers.create(
-      {
-        amount: amountMinorUnits,
-        currency: currency.toLowerCase(),
-        destination: intent.destination,
-        metadata: {
-          intent_id: intent.id,
-          did: intent.did,
-        },
-      },
-      // Native idempotency (#2172 seam notes: absent from the withdraw
-      // route today) — a retry against the same intent can never create a
-      // second Stripe transfer.
-      { idempotencyKey: intent.idempotencyKey },
+  execute(intent: WithdrawalIntent): Promise<WithdrawRailExecuteResult> {
+    // A caller that reserved funds then reaches here releases the reservation
+    // (`executeWithdrawal` releases on a rail throw), so nothing is stranded.
+    return Promise.reject(
+      new Error(`StripeWithdrawRail.execute: intent ${intent.id} refused — Stripe withdrawals are retired (#2757); use the EMT withdrawal request`),
     );
-
-    return { externalRef: transfer.id };
   }
 
   async list({ since }: ListTransfersParams): Promise<RailTransfer[]> {

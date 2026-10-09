@@ -1867,7 +1867,7 @@ export interface BusEventMap {
    * `onBehalfOf` that identity.
    *
    * #2177 (#1073 settlement seam): the pay webhook ingress
-   * (`apps/kernel/app/pay/api/webhook`, `.../connect/webhook`) now republishes
+   * (`apps/kernel/app/pay/api/webhook`) now republishes
    * the PLATFORM account's verified deliveries onto these same `stripe.*`
    * types — `ownerDid` is the platform DID and `source`/`relayId` are set — and
    * the kernel's `pay-stripe` reactor consumes them (every `stripe.*` default
@@ -1890,6 +1890,13 @@ export interface BusEventMap {
      * request iff it is owned by `ownerDid`; absent for every other PaymentIntent.
      */
     paymentRequestId?: string;
+    /**
+     * BYO connector only (#2757): the pending `pay.transactions` row a hosted
+     * checkout (events, market, coffee) on the owner's own Stripe account names in
+     * its PaymentIntent metadata (`pay_transaction_id`). Completes that row iff
+     * `ownerDid` is its seller; absent for every other PaymentIntent.
+     */
+    payTransactionId?: string;
     context_id: string;
     context_type: 'stripe';
     source?: StripeRelaySource;

@@ -131,7 +131,7 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
   }
 
   const tickets = await getTicketTypes(eventId);
-  const { creatorEmail, creatorHandle, creatorName } = await resolveCreatorInfo(event.creatorDid);
+  const { creatorEmail } = await resolveCreatorInfo(event.creatorDid);
   const organizerDids = await gatherOrganizerDids(event);
 
   return (
@@ -157,9 +157,6 @@ export default async function EditEventPage({ params }: Readonly<Props>) {
           existingTickets={tickets}
           creatorEmail={creatorEmail}
           organizerDids={organizerDids}
-          viewerDid={did}
-          creatorHandle={creatorHandle}
-          creatorName={creatorName}
         />
       </div>
     </div>

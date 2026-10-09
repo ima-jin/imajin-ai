@@ -105,7 +105,6 @@ export {
   // Pay routes
   payPath,
   payHistoryPath,
-  payPayoutsPath,
   payTopupPath,
   payTopupSuccessPath,
   // Media routes

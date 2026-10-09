@@ -134,7 +134,10 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     });
 
     if ('error' in payResult) {
-      return NextResponse.json({ error: payResult.error }, { status: payResult.status });
+      return NextResponse.json(
+        { error: payResult.error, ...(payResult.code && { code: payResult.code }) },
+        { status: payResult.status },
+      );
     }
     const { checkout } = payResult;
 

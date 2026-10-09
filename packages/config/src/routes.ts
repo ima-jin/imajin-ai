@@ -80,7 +80,6 @@ export const connectionsPodPath = (id: string) => `/connections/pods/${id}`;
 // ─── Pay routes (pay.imajin.ai) ────────────────────────────────────────────
 export const payPath = () => `/pay`;
 export const payHistoryPath = () => `/pay/history`;
-export const payPayoutsPath = () => `/pay/payouts`;
 export const payTopupPath = () => `/pay/topup`;
 export const payTopupSuccessPath = () => `/pay/topup/success`;
 

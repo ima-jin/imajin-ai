@@ -673,7 +673,9 @@ export async function notifyEventsService(
   const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET!;
 
   try {
-    const transactionId = type === 'checkout.completed' ? await findTransactionIdForSession(session.id) : undefined;
+    const transactionId = type === 'checkout.completed'
+      ? (session.transactionId ?? await findTransactionIdForSession(session.id))
+      : undefined;
     const response = await fetch(`${eventsServiceUrl}/api/webhook/payment`, {
       method: 'POST',
       headers: {

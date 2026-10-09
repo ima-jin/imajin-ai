@@ -39,9 +39,11 @@ describe('StripeProvider.charge recipient resolution', () => {
     expect(result).toMatchObject({ id: 'pi_1', status: 'succeeded', clientSecret: 'cs' });
   });
 
-  it('routes to a connected account', async () => {
-    await provider().charge({ amount: 500, currency: 'USD', to: { stripeAccountId: 'acct_1' } } as ChargeRequest);
-    expect(state.createMock.mock.calls[0][0]).toMatchObject({ transfer_data: { destination: 'acct_1' } });
+  it('never routes funds to a connected account (Stripe Connect is removed, #2757)', async () => {
+    await provider().charge({ amount: 500, currency: 'USD', to: { stripeAccountId: 'acct_1' } } as unknown as ChargeRequest);
+    const params = state.createMock.mock.calls[0][0];
+    expect(params).not.toHaveProperty('transfer_data');
+    expect(params).not.toHaveProperty('application_fee_amount');
   });
 
   it('charges with no recipient routing for an empty recipient', async () => {

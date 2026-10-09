@@ -8,15 +8,11 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => ({ 'Access-Control-Allow-Origin': '*' }),
 }));
 
-import {
-  annotateConnectProvider,
-  annotateConnectStatus,
-  normalizeChargeRecipient,
-  railAliasOptions,
-  railAliasRoute,
-} from '../rail-alias';
+import { normalizeChargeRecipient, railAliasOptions, railAliasRoute, type RailAnnotator } from '../rail-alias';
 
-const request = new Request('https://kernel.test/pay/api/connect/stripe/status') as unknown as NextRequest;
+const annotateProvider: RailAnnotator = (provider, body) => ({ ...body, provider });
+
+const request = new Request('https://kernel.test/pay/api/webhook/stripe') as unknown as NextRequest;
 const ctx = (provider: string) => ({ params: Promise.resolve({ provider }) });
 
 describe('railAliasRoute', () => {
@@ -48,7 +44,7 @@ describe('railAliasRoute', () => {
         status: 200,
         headers: { 'content-type': 'application/json', 'x-keep': 'yes', 'content-length': '7' },
       });
-    const res = await railAliasRoute({ stripe: handler }, annotateConnectProvider)(request, ctx('stripe'));
+    const res = await railAliasRoute({ stripe: handler }, annotateProvider)(request, ctx('stripe'));
     expect(res.status).toBe(200);
     expect(res.headers.get('x-keep')).toBe('yes');
     expect(await res.json()).toEqual({ a: 1, provider: 'stripe' });
@@ -56,26 +52,26 @@ describe('railAliasRoute', () => {
 
   it('does not annotate error responses', async () => {
     const handler = async () => new Response(JSON.stringify({ error: 'nope' }), { status: 401 });
-    const res = await railAliasRoute({ stripe: handler }, annotateConnectProvider)(request, ctx('stripe'));
+    const res = await railAliasRoute({ stripe: handler }, annotateProvider)(request, ctx('stripe'));
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: 'nope' });
   });
 
   it('returns a non-JSON success body untouched', async () => {
     const handler = async () => new Response('plain text', { status: 200 });
-    const res = await railAliasRoute({ stripe: handler }, annotateConnectProvider)(request, ctx('stripe'));
+    const res = await railAliasRoute({ stripe: handler }, annotateProvider)(request, ctx('stripe'));
     expect(await res.text()).toBe('plain text');
   });
 
   it('returns a non-object JSON success body untouched', async () => {
     const handler = async () => new Response(JSON.stringify([1, 2]), { status: 200 });
-    const res = await railAliasRoute({ stripe: handler }, annotateConnectProvider)(request, ctx('stripe'));
+    const res = await railAliasRoute({ stripe: handler }, annotateProvider)(request, ctx('stripe'));
     expect(await res.json()).toEqual([1, 2]);
   });
 
   it('returns a JSON null success body untouched', async () => {
     const handler = async () => new Response('null', { status: 200 });
-    const res = await railAliasRoute({ stripe: handler }, annotateConnectProvider)(request, ctx('stripe'));
+    const res = await railAliasRoute({ stripe: handler }, annotateProvider)(request, ctx('stripe'));
     expect(await res.json()).toBeNull();
   });
 });
@@ -85,28 +81,6 @@ describe('railAliasOptions', () => {
     const res = await railAliasOptions(request);
     expect(res.status).toBe(204);
     expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*');
-  });
-});
-
-describe('annotators', () => {
-  it('annotateConnectProvider adds provider', () => {
-    expect(annotateConnectProvider('stripe', { accountId: 'acct_1' })).toEqual({ accountId: 'acct_1', provider: 'stripe' });
-  });
-
-  it('annotateConnectStatus adds provider and the rail-neutral accountId, keeping the legacy field', () => {
-    expect(annotateConnectStatus('stripe', { stripeAccountId: 'acct_1', chargesEnabled: true })).toEqual({
-      stripeAccountId: 'acct_1',
-      chargesEnabled: true,
-      provider: 'stripe',
-      accountId: 'acct_1',
-    });
-  });
-
-  it('annotateConnectStatus omits accountId when the body has no account id', () => {
-    expect(annotateConnectStatus('stripe', { chargesEnabled: false })).toEqual({
-      chargesEnabled: false,
-      provider: 'stripe',
-    });
   });
 });
 

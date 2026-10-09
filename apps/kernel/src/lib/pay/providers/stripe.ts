@@ -96,10 +96,6 @@ export class StripeProvider implements PaymentProvider {
       params.customer = recipientInfo.customerId;
     }
 
-    if (recipientInfo.accountId) {
-      params.transfer_data = { destination: recipientInfo.accountId };
-    }
-
     const paymentIntent = await this.stripe.paymentIntents.create(params, {
       idempotencyKey: request.idempotencyKey,
     });
@@ -147,15 +143,6 @@ export class StripeProvider implements PaymentProvider {
       // expires_at is not supported for subscription mode
       ...(!isSubscription && { expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 }),
       ...(isSubscription && { subscription_data: { metadata: request.metadata } }),
-      // Route funds to connected account if provided
-      ...(request.connectedAccountId && !isSubscription && {
-        payment_intent_data: {
-          ...(request.applicationFeeAmount != null && {
-            application_fee_amount: request.applicationFeeAmount,
-          }),
-          transfer_data: { destination: request.connectedAccountId },
-        },
-      }),
     });
 
     return {
@@ -276,7 +263,7 @@ export class StripeProvider implements PaymentProvider {
   // Helpers
   // ===========================================================================
   
-  private resolveRecipient(recipient: Recipient): { customerId?: string; accountId?: string } {
+  private resolveRecipient(recipient: Recipient): { customerId?: string } {
     // see: DID resolution via @imajin/auth is not yet implemented
     if ('did' in recipient) {
       // For now, throw - will implement DID resolution later
@@ -285,10 +272,6 @@ export class StripeProvider implements PaymentProvider {
     
     if ('stripeCustomerId' in recipient) {
       return { customerId: recipient.stripeCustomerId };
-    }
-    
-    if ('stripeAccountId' in recipient) {
-      return { accountId: recipient.stripeAccountId };
     }
     
     return {};

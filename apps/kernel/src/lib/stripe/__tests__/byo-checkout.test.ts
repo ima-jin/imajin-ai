@@ -10,6 +10,7 @@ import {
   ByoCheckoutError,
   assertCheckoutSessionWriteAllowed,
   createByoCheckoutSession,
+  retrieveByoCheckoutCustomer,
   retrieveByoCheckoutSession,
 } from '../byo-checkout';
 
@@ -229,6 +230,35 @@ describe('retrieveByoCheckoutSession', () => {
 
     loadSealedCredentialsMock.mockResolvedValue(undefined);
     await expect(retrieveByoCheckoutSession(OWNER, 'cs_gone')).rejects.toMatchObject({ code: 'no_key' });
+  });
+});
+
+describe('retrieveByoCheckoutCustomer (#2757)', () => {
+  it('reads who paid from the session on the seller\'s own account, with their key', async () => {
+    fetchMock().mockResolvedValue(
+      stripeResponse(200, { id: 'cs_1', customer_email: 'given@example.com', customer_details: { email: 'paid@example.com', name: 'Pat Buyer' } }),
+    );
+
+    expect(await retrieveByoCheckoutCustomer(OWNER, 'cs_1')).toEqual({ email: 'paid@example.com', name: 'Pat Buyer' });
+    const [url, init] = fetchMock().mock.calls[0];
+    expect(url).toBe('https://api.stripe.com/v1/checkout/sessions/cs_1');
+    expect(init.headers.Authorization).toBe(`Bearer ${KEY}`);
+  });
+
+  it('falls back to the session\'s customer_email, and reports nulls for what Stripe did not send', async () => {
+    fetchMock().mockResolvedValueOnce(stripeResponse(200, { id: 'cs_1', customer_email: 'given@example.com' }));
+    expect(await retrieveByoCheckoutCustomer(OWNER, 'cs_1')).toEqual({ email: 'given@example.com', name: null });
+
+    fetchMock().mockResolvedValueOnce(stripeResponse(200, { id: 'cs_1', customer_details: { email: '', name: '' } }));
+    expect(await retrieveByoCheckoutCustomer(OWNER, 'cs_1')).toEqual({ email: null, name: null });
+  });
+
+  it('fails with the classified error when Stripe refuses, and with no_key when nothing is sealed', async () => {
+    fetchMock().mockResolvedValue(stripeResponse(403, { error: { type: 'permission_error', message: 'nope' } }));
+    await expect(retrieveByoCheckoutCustomer(OWNER, 'cs_1')).rejects.toMatchObject({ code: 'key_rejected' });
+
+    loadSealedCredentialsMock.mockResolvedValue(undefined);
+    await expect(retrieveByoCheckoutCustomer(OWNER, 'cs_1')).rejects.toMatchObject({ code: 'no_key' });
   });
 });
 

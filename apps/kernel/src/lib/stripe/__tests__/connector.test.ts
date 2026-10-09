@@ -511,6 +511,48 @@ describe('handleVerifiedWebhookEvent', () => {
     expect(publishMock.mock.calls[0][1].payload).not.toHaveProperty('paymentRequestId');
   });
 
+  it('#2757: lifts the pay_transaction_id of a hosted checkout onto the bus payload — and nothing else from its metadata', async () => {
+    resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_1' });
+    loadMock.mockResolvedValue(SIGNING_SECRET);
+    grant(['stripe:events']);
+    const payload = {
+      id: 'evt_pi_4',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_ticket',
+          amount: 2500,
+          currency: 'cad',
+          metadata: { pay_transaction_id: 'tx_9', service: 'events', cart: '[{"private":true}]' },
+        },
+      },
+    };
+    const { rawBody, header } = signedDelivery(payload, SIGNING_SECRET);
+
+    await handleVerifiedWebhookEvent('stripewh_1', rawBody, header);
+
+    const [, published] = publishMock.mock.calls[0];
+    expect(published.payload).toMatchObject({ paymentIntentId: 'pi_ticket', amount: 2500, currency: 'CAD', payTransactionId: 'tx_9' });
+    expect(published.payload).not.toHaveProperty('paymentRequestId');
+    expect(JSON.stringify(published.payload)).not.toContain('private');
+  });
+
+  it('#2757: a PaymentIntent with no pay_transaction_id publishes no payTransactionId key at all', async () => {
+    resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_1' });
+    loadMock.mockResolvedValue(SIGNING_SECRET);
+    grant(['stripe:events']);
+    const payload = {
+      id: 'evt_pi_5',
+      type: 'payment_intent.succeeded',
+      data: { object: { id: 'pi_plain', amount: 100, currency: 'usd', metadata: { pay_transaction_id: '' } } },
+    };
+    const { rawBody, header } = signedDelivery(payload, SIGNING_SECRET);
+
+    await handleVerifiedWebhookEvent('stripewh_1', rawBody, header);
+
+    expect(publishMock.mock.calls[0][1].payload).not.toHaveProperty('payTransactionId');
+  });
+
   it('publishes stripe.invoice.paid attributed to the owning principal DID', async () => {
     resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_1' });
     loadMock.mockResolvedValue(SIGNING_SECRET);
