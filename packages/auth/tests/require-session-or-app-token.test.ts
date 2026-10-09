@@ -218,3 +218,116 @@ describe('requireSessionOrAppToken — audience resolution (#2706)', () => {
     expect('auth' in result).toBe(true);
   });
 });
+
+describe('requireSessionOrAppToken — agent delegation actingFor (#2748)', () => {
+  const OWNER = 'did:imajin:owner';
+  const DELEGATE = 'did:imajin:agent';
+  const INTERNAL_KEY = 'test-internal-key';
+
+  function delegatingRequest(headers: Record<string, string>): Request {
+    return new Request('https://learn.imajin.ai/api/courses/c1', { method: 'DELETE', headers });
+  }
+
+  function verifyDelegationFetch(allowed: boolean) {
+    return vi.fn(async (url: string) => {
+      if (String(url).endsWith('/api/internal/verify-delegation')) {
+        return new Response(JSON.stringify({ allowed }), { status: 200 });
+      }
+      return new Response(JSON.stringify({ did: DELEGATE }), { status: 200 });
+    });
+  }
+
+  beforeEach(() => {
+    process.env.AUTH_INTERNAL_API_KEY = INTERNAL_KEY;
+    mocks.verifyAppTokenMock.mockResolvedValue({ sub: DELEGATE, slug: APP_SLUG, scopes: [] });
+  });
+
+  it('surfaces the verified owner DID as actingFor on the token path', async () => {
+    const fetchMock = verifyDelegationFetch(true);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(
+      delegatingRequest({ authorization: 'Bearer good-token', 'x-acting-for': OWNER }),
+      { slug: APP_SLUG }
+    );
+
+    expect(result).toEqual({ auth: { did: DELEGATE, scopes: [], via: 'token', actingFor: OWNER } });
+    expect(JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string)).toEqual({
+      agentDid: DELEGATE,
+      principalDid: OWNER,
+    });
+  });
+
+  it('surfaces the verified owner DID as actingFor on the cookie path', async () => {
+    global.fetch = verifyDelegationFetch(true) as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(
+      delegatingRequest({ cookie: `${SESSION_COOKIE_NAME}=cookie-value`, 'x-acting-for': OWNER }),
+      { slug: APP_SLUG }
+    );
+
+    expect(result).toEqual({ auth: { did: DELEGATE, scopes: [], via: 'cookie', actingFor: OWNER } });
+  });
+
+  it('never trusts the raw header: an unverified delegation is a 403, not an actingFor', async () => {
+    global.fetch = verifyDelegationFetch(false) as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(
+      delegatingRequest({ authorization: 'Bearer good-token', 'x-acting-for': OWNER }),
+      { slug: APP_SLUG }
+    );
+
+    expect(result).toEqual({ error: 'Not authorized to act for this identity', status: 403 });
+  });
+
+  it('rejects the cookie path too when the delegation does not verify', async () => {
+    global.fetch = verifyDelegationFetch(false) as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(
+      delegatingRequest({ cookie: `${SESSION_COOKIE_NAME}=cookie-value`, 'x-acting-for': OWNER }),
+      { slug: APP_SLUG }
+    );
+
+    expect(result).toEqual({ error: 'Not authorized to act for this identity', status: 403 });
+  });
+
+  it('fails closed when the delegation check cannot be completed', async () => {
+    delete process.env.AUTH_INTERNAL_API_KEY; // legacy path needs the vault key, which is unset here
+    global.fetch = vi.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    }) as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(
+      delegatingRequest({ authorization: 'Bearer good-token', 'x-acting-for': OWNER }),
+      { slug: APP_SLUG }
+    );
+
+    expect(result).toEqual({ error: 'Not authorized to act for this identity', status: 403 });
+  });
+
+  it('leaves actingFor unset and makes no delegation call when there is no x-acting-for header', async () => {
+    const fetchMock = verifyDelegationFetch(true);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(delegatingRequest({ authorization: 'Bearer good-token' }), {
+      slug: APP_SLUG,
+    });
+
+    expect('auth' in result && 'actingFor' in result.auth).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('does not verify a delegation for a bearer that failed token verification', async () => {
+    mocks.verifyAppTokenMock.mockResolvedValue(null);
+    const fetchMock = verifyDelegationFetch(true);
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await requireSessionOrAppToken(
+      delegatingRequest({ authorization: 'Bearer bad-token', 'x-acting-for': OWNER }),
+      { slug: APP_SLUG }
+    );
+
+    expect(result).toEqual({ error: 'Invalid or expired app token for this app', status: 401 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});

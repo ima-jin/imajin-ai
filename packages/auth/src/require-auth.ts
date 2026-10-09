@@ -340,13 +340,17 @@ export async function requireAuth(
  * `apps/kernel/src/lib/auth/agent-authority.ts`), so both call sites move to
  * grants-first resolution together.
  *
+ * Exported (#2748) so `requireSessionOrAppToken` runs this SAME check for
+ * standalone apps instead of growing a second delegation verifier; not part
+ * of the package root's public surface.
+ *
  * Falls back to the legacy membership-only check (`validateActingAs`
  * against role='agent') when the dual-read endpoint itself is unreachable
  * or `AUTH_INTERNAL_API_KEY` is unset in this service's environment — a
  * missing/misconfigured key must never turn into an authorization
  * regression for services that haven't been given that secret.
  */
-async function resolveAgentDelegationAuthority(
+export async function resolveAgentDelegationAuthority(
   agentDid: string,
   principalDid: string,
   service?: string

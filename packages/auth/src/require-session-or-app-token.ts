@@ -4,6 +4,7 @@ const log = createLogger('auth');
 import { SESSION_COOKIE_NAME } from '@imajin/config';
 import { verifyAppToken } from './app-token';
 import { resolveAppAudience } from './app-audience';
+import { resolveAgentDelegationAuthority } from './require-auth';
 
 export interface SessionOrTokenAuth {
   /** DID of the authenticated caller (the token's `sub`, or the session's did). */
@@ -26,6 +27,16 @@ export interface SessionOrTokenAuth {
    * (`auth.actingAs ?? auth.did`).
    */
   actingAs?: string;
+  /**
+   * Owner DID the caller is acting for under agent delegation (#2748) — the
+   * app-side counterpart of `Identity.actingFor`. Set ONLY when the request
+   * carried `X-Acting-For` AND the delegation verified (grants-first, same as
+   * `requireAuth`): `did` is the delegate, `actingFor` the owner. The raw
+   * header is never surfaced; an unverifiable delegation is a 403 instead.
+   * Applies to both the `token` and `cookie` paths. Feed it to
+   * `enforceRoutePolicy` (`{ id: auth.did, actingFor: auth.actingFor }`).
+   */
+  actingFor?: string;
 }
 
 export type SessionOrTokenAuthResult =
@@ -49,6 +60,25 @@ export interface SessionOrTokenAuthOptions {
 }
 
 const getAuthUrl = () => process.env.AUTH_SERVICE_URL!;
+
+const ACTING_FOR_REJECTED = 'Not authorized to act for this identity';
+
+/**
+ * Agent delegation (`X-Acting-For`, #2748), verified exactly as `requireAuth`
+ * does it. Returns `{}` when the request carries no header, `{ actingFor }`
+ * only after the delegation verified for the authenticated delegate, and an
+ * error (403) otherwise — never the unverified header value.
+ */
+async function verifyActingFor(
+  request: Request,
+  delegateDid: string
+): Promise<{ actingFor?: string } | { error: string; status: number }> {
+  const claimed = request.headers.get('x-acting-for');
+  if (!claimed) return {};
+  const authorized = await resolveAgentDelegationAuthority(delegateDid, claimed);
+  if (!authorized) return { error: ACTING_FOR_REJECTED, status: 403 };
+  return { actingFor: claimed };
+}
 
 function extractSessionCookie(cookieHeader: string | null): string | null {
   if (!cookieHeader) return null;
@@ -107,6 +137,60 @@ export async function requireSessionOrAppToken(
   return 'auth' in result ? { auth: result.auth } : result;
 }
 
+type AuthenticateResult =
+  | { auth: SessionOrTokenAuth; sessionTier?: string }
+  | { error: string; status: number };
+
+async function authenticateAppToken(
+  request: Request,
+  bearerToken: string,
+  options: SessionOrTokenAuthOptions
+): Promise<AuthenticateResult> {
+  let aud: string;
+  try {
+    aud = resolveAppAudience(options.slug);
+  } catch (err) {
+    log.error({ err: String(err) }, '[AUTH] App audience misconfigured');
+    return { error: 'App audience is misconfigured', status: 500 };
+  }
+  const verification = await verifyAppToken(bearerToken, { aud });
+  if (!verification) {
+    // A Bearer that does not verify for THIS app's audience is a hard 401 —
+    // it never degrades to the cookie path (#2706). Falling through hid a
+    // wrong/host audience behind a working browser session while every
+    // Bearer client got an opaque 401.
+    return { error: 'Invalid or expired app token for this app', status: 401 };
+  }
+  const missing = options.requireScopes?.filter((s) => !verification.scopes.includes(s)) ?? [];
+  if (missing.length > 0) {
+    return { error: `Missing required scope(s): ${missing.join(', ')}`, status: 403 };
+  }
+  const delegation = await verifyActingFor(request, verification.sub);
+  if ('error' in delegation) return delegation;
+  const auth: SessionOrTokenAuth = { did: verification.sub, scopes: verification.scopes, via: 'token' };
+  if (verification.actingAs) auth.actingAs = verification.actingAs;
+  if (delegation.actingFor) auth.actingFor = delegation.actingFor;
+  return { auth };
+}
+
+async function authenticateCookie(request: Request): Promise<AuthenticateResult> {
+  const sessionToken = extractSessionCookie(request.headers.get('cookie'));
+  if (!sessionToken) {
+    return { error: 'Authorization: Bearer <app-token>, or a valid session cookie, is required', status: 401 };
+  }
+
+  const session = await validateLegacySessionCookie(sessionToken);
+  if (!session) {
+    return { error: 'Invalid or expired session', status: 401 };
+  }
+
+  const delegation = await verifyActingFor(request, session.did);
+  if ('error' in delegation) return delegation;
+  const auth: SessionOrTokenAuth = { did: session.did, scopes: [], via: 'cookie' };
+  if (delegation.actingFor) auth.actingFor = delegation.actingFor;
+  return { auth, sessionTier: session.tier };
+}
+
 /**
  * Same authentication as {@link requireSessionOrAppToken}, but additionally
  * surfaces the identity tier the kernel session reported on the `cookie`
@@ -118,47 +202,10 @@ export async function requireSessionOrAppToken(
 export async function authenticateSessionOrAppToken(
   request: Request,
   options: SessionOrTokenAuthOptions
-): Promise<{ auth: SessionOrTokenAuth; sessionTier?: string } | { error: string; status: number }> {
+): Promise<AuthenticateResult> {
   const bearer = request.headers.get('authorization');
   if (bearer?.startsWith('Bearer ')) {
-    let aud: string;
-    try {
-      aud = resolveAppAudience(options.slug);
-    } catch (err) {
-      log.error({ err: String(err) }, '[AUTH] App audience misconfigured');
-      return { error: 'App audience is misconfigured', status: 500 };
-    }
-    const verification = await verifyAppToken(bearer.slice(7), { aud });
-    if (!verification) {
-      // A Bearer that does not verify for THIS app's audience is a hard 401 —
-      // it never degrades to the cookie path (#2706). Falling through hid a
-      // wrong/host audience behind a working browser session while every
-      // Bearer client got an opaque 401.
-      return { error: 'Invalid or expired app token for this app', status: 401 };
-    }
-    const missing = options.requireScopes?.filter((s) => !verification.scopes.includes(s)) ?? [];
-    if (missing.length > 0) {
-      return { error: `Missing required scope(s): ${missing.join(', ')}`, status: 403 };
-    }
-    return {
-      auth: {
-        did: verification.sub,
-        scopes: verification.scopes,
-        via: 'token',
-        ...(verification.actingAs ? { actingAs: verification.actingAs } : {}),
-      },
-    };
+    return authenticateAppToken(request, bearer.slice(7), options);
   }
-
-  const sessionToken = extractSessionCookie(request.headers.get('cookie'));
-  if (!sessionToken) {
-    return { error: 'Authorization: Bearer <app-token>, or a valid session cookie, is required', status: 401 };
-  }
-
-  const session = await validateLegacySessionCookie(sessionToken);
-  if (!session) {
-    return { error: 'Invalid or expired session', status: 401 };
-  }
-
-  return { auth: { did: session.did, scopes: [], via: 'cookie' }, sessionTier: session.tier };
+  return authenticateCookie(request);
 }

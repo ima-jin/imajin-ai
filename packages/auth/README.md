@@ -57,6 +57,25 @@ const ownerDid = result.auth.actingAs ?? result.auth.did;
 `validateActingAs` (the existing per-service group gate behind `requireAuth`'s `x-acting-as`
 handling) is now exported for the kernel's mint-time check.
 
+### Agent delegation (`actingFor`)
+
+`requireSessionOrAppToken` / `requireHardDIDOrAppToken` surface `auth.actingFor` (the owner DID) when
+the request carries `X-Acting-For` **and** the delegation verifies — the same grants-first check
+`requireAuth` runs (`/auth/api/internal/verify-delegation`, legacy membership fallback). `auth.did` is
+the delegate. A delegation that does not verify is a 403, and the raw header is never surfaced. Feed it
+to the delegation policy so a delegate is denied on irreversible routes:
+
+```ts
+import { enforceRoutePolicy } from '@ima-jin/auth/delegation-policy';
+
+const { auth } = result;
+const denied = enforceRoutePolicy({ id: auth.did, actingFor: auth.actingFor }, 'learn.course.delete');
+if (denied) return denied;
+```
+
+The app's environment needs `AUTH_SERVICE_URL` and `AUTH_INTERNAL_API_KEY`; without them the check
+fails closed (403) rather than trusting the header.
+
 ## What's included
 
 - **Sessions** — cookie-based session issuance and validation
