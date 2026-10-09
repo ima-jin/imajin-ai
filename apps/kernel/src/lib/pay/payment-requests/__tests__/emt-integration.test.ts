@@ -37,6 +37,7 @@ const h = vi.hoisted(() => {
     readMigration: (name: string) => readFileSync(join(migrationsDir, name), 'utf-8'),
     client: null as null | { exec: (sql: string) => Promise<unknown>; query: <T>(sql: string, params?: unknown[]) => Promise<{ rows: T[] }>; close: () => Promise<void> },
     settlePaymentMock: vi.fn(),
+    resolveCardRailMock: vi.fn(),
     settledStripeAttestationMock: vi.fn(),
     settledAttestationMock: vi.fn(),
     publishMock: vi.fn(),
@@ -91,6 +92,13 @@ vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: vi.f
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({ getStripeClient: () => ({}) }));
 vi.mock('@/src/lib/pay/checkout', () => ({ resolveConnectedAccountFee: vi.fn(), taxLineItems: () => [] }));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: h.settlePaymentMock }));
+// #2754: which card rail the issuer has is card-rail.test.ts's concern; here it is a switch.
+vi.mock('../card-rail', () => ({ resolveCardRail: h.resolveCardRailMock, resolveConnectCheckout: vi.fn() }));
+vi.mock('@/src/lib/stripe/byo-checkout', () => ({
+  ByoCheckoutError: class ByoCheckoutError extends Error {},
+  createByoCheckoutSession: vi.fn(),
+  retrieveByoCheckoutSession: vi.fn(),
+}));
 vi.mock('@/src/lib/chat/connection-check', () => ({ isConnected: vi.fn() }));
 vi.mock('@/src/lib/connections/payment-request-invite', () => ({ createPaymentRequestInvite: vi.fn() }));
 vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
@@ -99,7 +107,8 @@ vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
   emitPaymentRequestSettledStripeAttestation: h.settledStripeAttestationMock,
 }));
 
-import { requestEmtPayInstructions, settlePaymentRequestEmt } from '../emt';
+import { requestEmtPayInstructions, revertEmtPending, settlePaymentRequestEmt } from '../emt';
+import { settlePaymentRequestManual } from '../service';
 import { settlePaymentRequestFromStripeCheckout } from '../checkout';
 import { getPaymentRequestById, getPaymentRequestInvoiceByHandle, voidPaymentRequest } from '../service';
 
@@ -170,6 +179,7 @@ beforeEach(async () => {
   h.settledStripeAttestationMock.mockReset().mockResolvedValue('att_stripe_1');
   h.settledAttestationMock.mockReset().mockResolvedValue('att_emt_1');
   h.publishMock.mockReset().mockResolvedValue(undefined);
+  h.resolveCardRailMock.mockReset().mockResolvedValue({ kind: 'none' });
   await setIssuerEmail(EMT_EMAIL);
   await seedRequest();
 });
@@ -241,6 +251,57 @@ describe('the pay page view: e-Transfer with and without the email set', () => {
   });
 });
 
+describe('the pay page view: the card rail is resolved server-side (#2754)', () => {
+  it.each([
+    ['their own Stripe connector', { kind: 'connector', ownerDid: ISSUER_DID }],
+    ['Connect (the temporary fallback)', { kind: 'connect' }],
+  ])('card is offered when the issuer has %s', async (_label, rail) => {
+    h.resolveCardRailMock.mockResolvedValue(rail);
+
+    expect((await getPaymentRequestInvoiceByHandle(HANDLE))?.card).toBe(true);
+    expect(h.resolveCardRailMock).toHaveBeenCalledWith(ISSUER_DID);
+  });
+
+  it('card is NOT offered when the issuer has no card rail — even though e-Transfer still is', async () => {
+    const view = await getPaymentRequestInvoiceByHandle(HANDLE);
+
+    expect(view?.card).toBe(false);
+    expect(view?.emt).toEqual({ state: 'available', instructions: null });
+  });
+
+  it('neither rail: card false AND emt null (the page then says it cannot be paid online)', async () => {
+    await setIssuerEmail(null);
+
+    const view = await getPaymentRequestInvoiceByHandle(HANDLE);
+
+    expect(view?.card).toBe(false);
+    expect(view?.emt).toBeNull();
+  });
+
+  it('card is NOT offered when the request disallows on-platform payment, and the rail is not even looked up', async () => {
+    h.resolveCardRailMock.mockResolvedValue({ kind: 'connector', ownerDid: ISSUER_DID });
+    await seedRequest({ allowOnPlatform: false });
+
+    expect((await getPaymentRequestInvoiceByHandle(HANDLE))?.card).toBe(false);
+    expect(h.resolveCardRailMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['paid', 'settled_manual'])('card is NOT offered once the request is %s, and the rail is not even looked up', async (status) => {
+    h.resolveCardRailMock.mockResolvedValue({ kind: 'connector', ownerDid: ISSUER_DID });
+    await seedRequest({ status });
+
+    expect((await getPaymentRequestInvoiceByHandle(HANDLE))?.card).toBe(false);
+    expect(h.resolveCardRailMock).not.toHaveBeenCalled();
+  });
+
+  it('card is still offered while the payer has chosen e-Transfer (emt_pending) — card remains a way out', async () => {
+    h.resolveCardRailMock.mockResolvedValue({ kind: 'connector', ownerDid: ISSUER_DID });
+    await seedRequest({ status: 'emt_pending' });
+
+    expect((await getPaymentRequestInvoiceByHandle(HANDLE))?.card).toBe(true);
+  });
+});
+
 describe('requestEmtPayInstructions — the payer chooses e-Transfer', () => {
   it('moves issued -> emt_pending and returns the email, exact amount and a request-unique memo', async () => {
     const result = await requestEmtPayInstructions(HANDLE);
@@ -290,6 +351,102 @@ describe('requestEmtPayInstructions — the payer chooses e-Transfer', () => {
     await seedRequest({ allowOnPlatform: false });
     expect(await requestEmtPayInstructions(HANDLE)).toMatchObject({ status: 400 });
     expect(await rowStatus()).toBe('issued');
+  });
+});
+
+describe('revertEmtPending — "Pay another way" (#2758)', () => {
+  it('moves emt_pending -> issued, so a refresh no longer shows the instructions', async () => {
+    await requestEmtPayInstructions(HANDLE);
+    expect(await rowStatus()).toBe('emt_pending');
+
+    const result = await revertEmtPending(HANDLE);
+
+    expect(result).toMatchObject({ reverted: true, paymentRequest: { status: 'issued' } });
+    expect(await rowStatus()).toBe('issued');
+    // What the pay page renders on the next load: the e-Transfer button again, not the instructions.
+    expect((await getPaymentRequestInvoiceByHandle(HANDLE))?.emt).toEqual({ state: 'available', instructions: null });
+  });
+
+  it('choosing e-Transfer again returns the SAME memo and amount', async () => {
+    const first = await requestEmtPayInstructions(HANDLE);
+    await revertEmtPending(HANDLE);
+    const second = await requestEmtPayInstructions(HANDLE);
+
+    expect(second).toMatchObject({ alreadyPending: false });
+    expect('instructions' in first && 'instructions' in second && second.instructions).toEqual(
+      'instructions' in first ? first.instructions : null,
+    );
+    expect(await rowStatus()).toBe('emt_pending');
+  });
+
+  it('is idempotent: reverting an already-issued request is a clean no-op', async () => {
+    const result = await revertEmtPending(HANDLE);
+
+    expect(result).toMatchObject({ reverted: false, paymentRequest: { status: 'issued' } });
+    expect(await rowStatus()).toBe('issued');
+  });
+
+  it('two concurrent reverts both succeed; exactly one performs the transition', async () => {
+    await requestEmtPayInstructions(HANDLE);
+
+    const results = await Promise.all([revertEmtPending(HANDLE), revertEmtPending(HANDLE)]);
+
+    expect(results.every((r) => 'reverted' in r)).toBe(true);
+    expect(results.filter((r) => 'reverted' in r && r.reverted)).toHaveLength(1);
+    expect(await rowStatus()).toBe('issued');
+  });
+
+  it.each(['paid', 'settled_manual'])('409s — and changes nothing — once a payment has been confirmed (%s)', async (status) => {
+    await seedRequest({ status });
+
+    expect(await revertEmtPending(HANDLE)).toMatchObject({ status: 409 });
+    expect(await rowStatus()).toBe(status);
+  });
+
+  it('can never undo the issuer\'s confirmation: after Mark paid (e-Transfer) the revert is refused and the request stays paid', async () => {
+    await requestEmtPayInstructions(HANDLE);
+    await settlePaymentRequestEmt({ id: REQUEST_ID, callerDid: ISSUER_DID });
+
+    expect(await revertEmtPending(HANDLE)).toMatchObject({ status: 409 });
+
+    const row = await getPaymentRequestById(REQUEST_ID);
+    expect(row?.status).toBe('paid');
+    expect(row?.settlementRef).toMatchObject({ method: 'emt' });
+    expect(h.settlePaymentMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses to revert a row that already carries a settlement ref, even if its status somehow reads emt_pending', async () => {
+    await requestEmtPayInstructions(HANDLE);
+    await h.client!.query(`UPDATE pay.payment_request SET settlement_ref = '{"method":"emt"}'::jsonb WHERE id = $1`, [REQUEST_ID]);
+
+    expect(await revertEmtPending(HANDLE)).toMatchObject({ status: 409 });
+    expect(await rowStatus()).toBe('emt_pending');
+  });
+
+  it('404s an unknown or void handle', async () => {
+    expect(await revertEmtPending('ph_unknown')).toMatchObject({ status: 404 });
+
+    await seedRequest({ status: 'void' });
+    expect(await revertEmtPending(HANDLE)).toMatchObject({ status: 404 });
+  });
+
+  it('the issuer\'s confirm path is unchanged: a reverted request can still be marked paid manually if the transfer arrives anyway', async () => {
+    await requestEmtPayInstructions(HANDLE);
+    await revertEmtPending(HANDLE);
+
+    // Mark paid (e-Transfer) is only valid from emt_pending...
+    expect(await settlePaymentRequestEmt({ id: REQUEST_ID, callerDid: ISSUER_DID })).toMatchObject({ status: 409 });
+    // ...and the existing manual settle (valid from issued) takes it from here.
+    const manual = await settlePaymentRequestManual({ id: REQUEST_ID, callerDid: ISSUER_DID, note: 'e-Transfer arrived' });
+    expect(manual).toMatchObject({ status: 'settled_manual' });
+  });
+
+  it('a payer who reverts can still pay by card: the request is open for a Stripe settlement', async () => {
+    await requestEmtPayInstructions(HANDLE);
+    await revertEmtPending(HANDLE);
+
+    expect(await settlePaymentRequestFromStripeCheckout(stripeInput)).toMatchObject({ settled: true });
+    expect(await rowStatus()).toBe('paid');
   });
 });
 

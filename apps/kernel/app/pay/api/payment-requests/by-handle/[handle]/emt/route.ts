@@ -18,6 +18,11 @@
  *
  * 404 unknown/void handle · 409 already settled · 400 e-Transfer not on offer
  * for this request (the issuer has no receiving email set, or it isn't CAD).
+ *
+ * DELETE (#2758) is the way back — "Pay another way": the guarded
+ * `emt_pending -> issued` revert (`revertEmtPending`). Same capability and rate
+ * limit as the choice itself. 404 unknown/void handle · 409 once a payment has
+ * been confirmed · already `issued` is a no-op success (`reverted: false`).
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit, getClientIP } from '@imajin/config';
@@ -25,7 +30,7 @@ import { requireAuth } from '@imajin/auth';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { createLogger } from '@imajin/logger';
 import { isServiceError } from '@/src/lib/pay/payment-requests/service';
-import { requestEmtPayInstructions, type EmtPayerChoice } from '@/src/lib/pay/payment-requests/emt';
+import { requestEmtPayInstructions, revertEmtPending, type EmtPayerChoice } from '@/src/lib/pay/payment-requests/emt';
 import { payerPersonDidOf } from '@/src/lib/pay/payment-requests/payer-dids';
 import { toEmtInstructionsView } from '@/src/lib/pay/payment-requests/emt-offer';
 
@@ -65,17 +70,41 @@ async function readPayerChoice(request: NextRequest, cors: Record<string, string
   return { choice: { paidByDid, personDid: payerPersonDidOf(authResult.identity) } };
 }
 
+/** The shared IP rate limit; a 429 response when exceeded, else `null`. */
+function rateLimited(request: NextRequest, cors: Record<string, string>): NextResponse | null {
+  const rl = rateLimit(getClientIP(request), RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
+  if (!rl.limited) return null;
+  return NextResponse.json(
+    { error: 'Too many requests', retryAfter: rl.retryAfter },
+    { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } },
+  );
+}
+
+export async function DELETE(request: NextRequest, { params }: { params: Promise<{ handle: string }> }) {
+  const cors = corsHeaders(request);
+  const { handle } = await params;
+
+  const limited = rateLimited(request, cors);
+  if (limited) return limited;
+
+  try {
+    const result = await revertEmtPending(handle);
+    if (isServiceError(result)) {
+      return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
+    }
+    return NextResponse.json({ success: true, reverted: result.reverted, status: result.paymentRequest.status }, { headers: cors });
+  } catch (error) {
+    log.error({ err: String(error), handle }, 'payment_request e-Transfer revert error');
+    return NextResponse.json({ error: 'Failed to leave e-Transfer payment' }, { status: 500, headers: cors });
+  }
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ handle: string }> }) {
   const cors = corsHeaders(request);
   const { handle } = await params;
 
-  const rl = rateLimit(getClientIP(request), RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
-  if (rl.limited) {
-    return NextResponse.json(
-      { error: 'Too many requests', retryAfter: rl.retryAfter },
-      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } },
-    );
-  }
+  const limited = rateLimited(request, cors);
+  if (limited) return limited;
 
   const payer = await readPayerChoice(request, cors);
   if ('response' in payer) return payer.response;

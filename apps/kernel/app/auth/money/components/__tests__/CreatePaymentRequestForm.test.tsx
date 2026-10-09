@@ -22,15 +22,22 @@ const ISSUER_DID = 'did:imajin:business';
 
 const PROFILE_URL_PREFIX = '/profile/api/profile/';
 const CREATE_URL = '/pay/api/payment-requests';
+const RAILS_URL_PREFIX = '/pay/api/payment-requests/rails';
 
 /**
  * Stubs `fetch` for both calls the form makes: the profile read that loads
  * the issuer's tax registrations (#2421 — `GET /profile/api/profile/:did`,
  * always OK) and the create POST (answered with `response`).
  */
-function installFetch(response: { ok: boolean; body: unknown }, profileBody: unknown = {}) {
+function installFetch(
+  response: { ok: boolean; body: unknown },
+  profileBody: unknown = {},
+  rails: { card: boolean; emt: boolean } = { card: true, emt: true },
+) {
   const spy = vi.fn(async (url: string, _init?: RequestInit) => {
     const isProfile = url.startsWith(PROFILE_URL_PREFIX);
+    // #2754: the issue-time warning reads which rails the issuer has; default = both, so it stays out of the way.
+    if (url.startsWith(RAILS_URL_PREFIX)) return { ok: true, json: async () => rails };
     return { ok: isProfile ? true : response.ok, json: async () => (isProfile ? profileBody : response.body) };
   });
   vi.stubGlobal('fetch', spy);
@@ -336,5 +343,33 @@ describe('CreatePaymentRequestForm — Charge tax (#2421)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Send' }));
 
     expect(await screen.findByText(/does not match the recomputed GST\/HST amount/)).toBeDefined();
+  });
+});
+
+describe('CreatePaymentRequestForm — no-rail warning (#2754)', () => {
+  it('warns on the new payment request form when the issuer has neither a card rail nor an e-Transfer email', async () => {
+    installFetch({ ok: true, body: {} }, {}, { card: false, emt: false });
+    render(<CreatePaymentRequestForm issuerDid={ISSUER_DID} onCreated={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(await screen.findByTestId('no-pay-rails-warning')).toBeDefined();
+  });
+
+  it('does not warn when the issuer can be paid somehow', async () => {
+    const spy = installFetch({ ok: true, body: {} }, {}, { card: false, emt: true });
+    render(<CreatePaymentRequestForm issuerDid={ISSUER_DID} onCreated={vi.fn()} onCancel={vi.fn()} />);
+
+    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).startsWith(RAILS_URL_PREFIX))).toBe(true));
+    await Promise.resolve();
+
+    expect(screen.queryByTestId('no-pay-rails-warning')).toBeNull();
+  });
+
+  it('is a warning, not a gate: the form still sends', async () => {
+    const spy = installFetch({ ok: true, body: { id: 'pr_1' } }, {}, { card: false, emt: false });
+    render(<CreatePaymentRequestForm issuerDid={ISSUER_DID} onCreated={vi.fn()} onCancel={vi.fn()} />);
+    await screen.findByTestId('no-pay-rails-warning');
+
+    expect((screen.getByRole('button', { name: 'Send' }) as HTMLButtonElement).disabled).toBe(false);
+    expect(createCall(spy)).toBeUndefined();
   });
 });

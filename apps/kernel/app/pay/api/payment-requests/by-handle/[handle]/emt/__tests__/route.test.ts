@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
   requestEmtPayInstructions: vi.fn(),
+  revertEmtPending: vi.fn(),
   rateLimit: vi.fn(),
   requireAuth: vi.fn(),
 }));
@@ -24,9 +25,12 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   isServiceError: (value: unknown) => typeof value === 'object' && value !== null && 'error' in value && 'status' in value,
 }));
-vi.mock('@/src/lib/pay/payment-requests/emt', () => ({ requestEmtPayInstructions: mocks.requestEmtPayInstructions }));
+vi.mock('@/src/lib/pay/payment-requests/emt', () => ({
+  requestEmtPayInstructions: mocks.requestEmtPayInstructions,
+  revertEmtPending: mocks.revertEmtPending,
+}));
 
-import { POST, OPTIONS } from '../route';
+import { POST, DELETE, OPTIONS } from '../route';
 
 function callEmt(handle = 'ph_1') {
   return POST(
@@ -143,5 +147,63 @@ describe('POST /pay/api/payment-requests/by-handle/:handle/emt (#2665)', () => {
 
   it('answers CORS preflight', () => {
     expect(OPTIONS(new NextRequest('https://kernel.test/x', { method: 'OPTIONS' })).status).toBe(204);
+  });
+});
+
+describe('DELETE /pay/api/payment-requests/by-handle/:handle/emt — "Pay another way" (#2758)', () => {
+  function callLeave(handle = 'ph_1') {
+    return DELETE(
+      new NextRequest(`https://kernel.test/pay/api/payment-requests/by-handle/${handle}/emt`, { method: 'DELETE' }),
+      { params: Promise.resolve({ handle }) },
+    );
+  }
+
+  it('needs no auth — the pay link is the capability — and reports the reverted status', async () => {
+    mocks.revertEmtPending.mockResolvedValueOnce({ paymentRequest: { status: 'issued' }, reverted: true });
+
+    const res = await callLeave();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ success: true, reverted: true, status: 'issued' });
+    expect(mocks.revertEmtPending).toHaveBeenCalledWith('ph_1');
+    expect(mocks.requireAuth).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent: a request already back at issued is a 200 with reverted: false', async () => {
+    mocks.revertEmtPending.mockResolvedValueOnce({ paymentRequest: { status: 'issued' }, reverted: false });
+
+    const res = await callLeave();
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ reverted: false, status: 'issued' });
+  });
+
+  it.each([
+    [404, 'payment_request not found'],
+    [409, "cannot leave e-Transfer on a payment_request in status 'paid' — a payment has already been confirmed"],
+  ])('passes a %i service error straight through (a confirmed deposit is a 409)', async (status, error) => {
+    mocks.revertEmtPending.mockResolvedValueOnce({ error, status });
+
+    const res = await callLeave();
+
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ error });
+  });
+
+  it('shares the choice\'s per-IP rate limit — a 429 with Retry-After, and the service is never reached', async () => {
+    mocks.rateLimit.mockReturnValueOnce({ limited: true, retryAfter: 17 });
+
+    const res = await callLeave();
+
+    expect(res.status).toBe(429);
+    expect(res.headers.get('Retry-After')).toBe('17');
+    expect(mocks.revertEmtPending).not.toHaveBeenCalled();
+    expect(mocks.rateLimit).toHaveBeenCalledWith('203.0.113.7', 10, 60_000);
+  });
+
+  it('answers 500 when the service throws', async () => {
+    mocks.revertEmtPending.mockRejectedValueOnce(new Error('db down'));
+
+    expect((await callLeave()).status).toBe(500);
   });
 });

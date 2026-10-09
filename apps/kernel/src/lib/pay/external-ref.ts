@@ -21,6 +21,15 @@ import { transactions } from '@/src/db';
 export const STRIPE_RAIL = 'stripe';
 
 /**
+ * Rail name stored in `pay.transactions.rail` for a charge that ran on an
+ * issuer's OWN Stripe account through the BYO restricted-key connector (#2754).
+ * Distinct from `'stripe'` (the platform account) on purpose: the platform's
+ * `rail = 'stripe'` rows are the ones its webhook handlers and reconciliation
+ * act on, and a BYO charge must never be mistaken for one.
+ */
+export const STRIPE_BYO_RAIL = 'stripe-byo';
+
+/**
  * The columns a writer spreads into a `pay.transactions` insert so a row
  * always carries both its `rail` and that rail's `external_ref`.
  */

@@ -65,6 +65,22 @@ const FULL_SECRET_KEY = 'sk_test_51ABCfullsecret';
 const BASE_URL = 'https://kernel.imajin.test';
 const SIGNING_SECRET = 'whsec_new_secret';
 
+type FetchMock = ReturnType<typeof vi.fn>;
+const fetchMock = () => fetch as unknown as FetchMock;
+
+/** What a key that MAY write Checkout Sessions gets for the incomplete probe session: rejected on missing params. */
+const PROBE_PERMITTED = {
+  ok: false,
+  status: 400,
+  json: async () => ({ error: { type: 'invalid_request_error', message: 'Missing required param: line_items.' } }),
+};
+/** What a key WITHOUT Checkout Sessions = Write gets: rejected on permission. */
+const PROBE_FORBIDDEN = {
+  ok: false,
+  status: 403,
+  json: async () => ({ error: { type: 'permission_error', message: 'This API call cannot be made with a restricted API key.' } }),
+};
+
 function grant(scopes: string[]) {
   whereMock.mockResolvedValue([{ scopes }]);
 }
@@ -134,7 +150,7 @@ describe('connectAndProvisionWebhook', () => {
 
     expect(result).toEqual({ routingId: expect.stringContaining('stripewh_'), endpointId: 'we_new' });
 
-    const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [url, init] = fetchMock().mock.calls[1]; // calls[0] is the Checkout Sessions permission probe (#2754)
     expect(url).toBe('https://api.stripe.com/v1/webhook_endpoints');
     expect(init.method).toBe('POST');
     expect(init.headers.Authorization).toBe(`Bearer ${RESTRICTED_KEY}`);
@@ -157,7 +173,7 @@ describe('connectAndProvisionWebhook', () => {
 
     const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, `${BASE_URL}///`);
 
-    const [, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [, init] = fetchMock().mock.calls[1];
     const body = init.body as string;
     expect(body).toContain(`url=${encodeURIComponent(`${BASE_URL}/stripe/api/webhook/${result.routingId}`)}`);
   });
@@ -206,17 +222,18 @@ describe('connectAndProvisionWebhook', () => {
       .mockResolvedValueOnce(undefined); // modelId (unused field, still probed)
 
     (fetch as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(PROBE_PERMITTED) // Checkout Sessions permission probe, BEFORE anything is deprovisioned
       .mockResolvedValueOnce({ ok: true }) // DELETE old endpoint
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) }); // POST new
 
     await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL);
 
-    const [deleteUrl, deleteInit] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [deleteUrl, deleteInit] = fetchMock().mock.calls[1];
     expect(deleteUrl).toBe('https://api.stripe.com/v1/webhook_endpoints/we_old');
     expect(deleteInit.method).toBe('DELETE');
     expect(deleteInit.headers.Authorization).toBe(`Bearer ${OLD_KEY}`);
 
-    const [, postInit] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[1];
+    const [, postInit] = fetchMock().mock.calls[2];
     expect(postInit.headers.Authorization).toBe(`Bearer ${RESTRICTED_KEY}`);
   });
 
@@ -225,12 +242,60 @@ describe('connectAndProvisionWebhook', () => {
     loadMock.mockResolvedValueOnce('rk_test_oldkey').mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
 
     (fetch as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(PROBE_PERMITTED)
       .mockResolvedValueOnce({ ok: false, status: 404, statusText: 'Not Found', text: async () => 'No such webhook endpoint' })
       .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
 
     const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL);
     expect(result.endpointId).toBe('we_new');
     expect(sealV2Mock).toHaveBeenCalledWith(vaultField(OWNER), RESTRICTED_KEY);
+  });
+
+  // ── #2754: the key must be able to take an invoice payment ──────────────────
+
+  it('probes Checkout Sessions with the restricted key FIRST — an incomplete session (mode only), never a real one', async () => {
+    fetchMock()
+      .mockResolvedValueOnce(PROBE_PERMITTED)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
+
+    await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL);
+
+    const [url, init] = fetchMock().mock.calls[0];
+    expect(url).toBe('https://api.stripe.com/v1/checkout/sessions');
+    expect(init.method).toBe('POST');
+    expect(init.headers.Authorization).toBe(`Bearer ${RESTRICTED_KEY}`);
+    // No line_items / urls: Stripe cannot create a session from this, so nothing is ever left on the owner's account.
+    expect(init.body).toBe('mode=payment');
+  });
+
+  it.each([
+    ['a 403', PROBE_FORBIDDEN],
+    [
+      'a permission_error body',
+      { ok: false, status: 400, json: async () => ({ error: { type: 'permission_error', message: 'nope' } }) },
+    ],
+  ])('fails AT CONNECT on %s, before the old endpoint is deprovisioned or anything is provisioned or sealed', async (_label, probe) => {
+    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_old', endpointId: 'we_old' });
+    fetchMock().mockResolvedValueOnce(probe);
+
+    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL))
+      .rejects.toThrow(/stripe_key_missing_permission.*Checkout Sessions = Write/);
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(loadMock).not.toHaveBeenCalled(); // the old key was never even read for a deprovision
+    expect(sealV2Mock).not.toHaveBeenCalled();
+    expect(sealV1Mock).not.toHaveBeenCalled();
+    expect(upsertWebhookIndexMock).not.toHaveBeenCalled();
+  });
+
+  it('does not fail the connect on an inconclusive probe (Stripe unreachable) — webhook provisioning reports its own error', async () => {
+    fetchMock()
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
+
+    const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL);
+
+    expect(result.endpointId).toBe('we_new');
   });
 });
 
@@ -402,6 +467,48 @@ describe('handleVerifiedWebhookEvent', () => {
         context_type: 'stripe',
       },
     });
+  });
+
+  it('#2754: lifts ONLY the payment_request id off the PaymentIntent metadata onto the bus payload', async () => {
+    resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_1' });
+    loadMock.mockResolvedValue(SIGNING_SECRET);
+    grant(['stripe:events']);
+    const payload = {
+      id: 'evt_pi_2',
+      type: 'payment_intent.succeeded',
+      data: {
+        object: {
+          id: 'pi_inv',
+          amount: 5650,
+          currency: 'cad',
+          metadata: { payment_request_id: 'pr_42', payHandle: 'ph_x', customer_note: 'private' },
+        },
+      },
+    };
+    const { rawBody, header } = signedDelivery(payload, SIGNING_SECRET);
+
+    await handleVerifiedWebhookEvent('stripewh_1', rawBody, header);
+
+    const [, published] = publishMock.mock.calls[0];
+    expect(published.payload).toMatchObject({ paymentIntentId: 'pi_inv', amount: 5650, currency: 'CAD', paymentRequestId: 'pr_42' });
+    expect(JSON.stringify(published.payload)).not.toContain('private');
+    expect(JSON.stringify(published.payload)).not.toContain('ph_x');
+  });
+
+  it('#2754: a PaymentIntent with no payment_request metadata publishes no paymentRequestId key at all', async () => {
+    resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_1' });
+    loadMock.mockResolvedValue(SIGNING_SECRET);
+    grant(['stripe:events']);
+    const payload = {
+      id: 'evt_pi_3',
+      type: 'payment_intent.succeeded',
+      data: { object: { id: 'pi_plain', amount: 100, currency: 'usd', metadata: {} } },
+    };
+    const { rawBody, header } = signedDelivery(payload, SIGNING_SECRET);
+
+    await handleVerifiedWebhookEvent('stripewh_1', rawBody, header);
+
+    expect(publishMock.mock.calls[0][1].payload).not.toHaveProperty('paymentRequestId');
   });
 
   it('publishes stripe.invoice.paid attributed to the owning principal DID', async () => {

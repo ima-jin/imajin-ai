@@ -16,12 +16,16 @@
  *     with no processor fee, a settlement attestation naming the rail, and the
  *     `payment_request.settled` event whose notify reactor tells the payer.
  *
+ * #2758: choosing e-Transfer is not a one-way door. `revertEmtPending` is the
+ * payer's guarded `emt_pending -> issued` ("Pay another way"), allowed only while
+ * no deposit has been confirmed; the issuer's confirm path is unchanged.
+ *
  * Choosing e-Transfer never blocks paying by card instead, and two
  * settlements on one request are impossible: both rails settle through a
  * compare-and-swap out of the open statuses, so exactly one wins; the other
  * becomes a no-op (card) or a 409 (e-Transfer).
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db, paymentRequests, profiles } from '@/src/db';
 import type { PaymentRequest } from '@/src/db';
 import { createLogger } from '@imajin/logger';
@@ -125,6 +129,64 @@ export async function requestEmtPayInstructions(
 
   log.info({ paymentRequestId: row.id }, 'payment_request e-Transfer instructions issued — emt_pending');
   return { instructions, alreadyPending: false };
+}
+
+// ---------------------------------------------------------------------------
+// Payer side: leave e-Transfer (#2758)
+// ---------------------------------------------------------------------------
+
+export interface RevertEmtResult {
+  paymentRequest: PaymentRequest;
+  /** `false` when the request was already back at `issued` (a double-click or a second tab — a clean no-op). */
+  reverted: boolean;
+}
+
+/**
+ * The payer picked e-Transfer and changed their mind: `emt_pending -> issued`
+ * ("Pay another way"). Unauthenticated like the choice itself — the opaque
+ * `pay_handle` is the capability.
+ *
+ * Allowed ONLY while no deposit has been confirmed. Confirming is the issuer's
+ * `emt_pending -> paid` (`settlePaymentRequestEmt`), so "no deposit confirmed"
+ * is exactly "still `emt_pending` with no settlement ref" — and the revert is a
+ * compare-and-swap on that, so it can never undo a confirmation: if the issuer
+ * confirmed first this loses and answers 409. The issuer's side is untouched:
+ * a reverted request is `issued` again, and if the transfer arrives anyway the
+ * issuer settles it with the existing manual settle (valid from `issued`) —
+ * or the payer chooses e-Transfer again, which returns the same memo (derived
+ * from the request id) and re-opens `Mark paid (e-Transfer)`.
+ *
+ *  - 404 unknown/void handle; 409 once paid/settled (a deposit was confirmed);
+ *  - already `issued` -> no-op success.
+ */
+export async function revertEmtPending(handle: string): Promise<RevertEmtResult | ServiceError> {
+  const row = await findLiveRowByHandle(handle);
+  if (!row) return err('payment_request not found', 404);
+  if (row.status === 'issued') return { paymentRequest: row, reverted: false };
+  if (row.status !== 'emt_pending') {
+    return err(`cannot leave e-Transfer on a payment_request in status '${row.status}' — a payment has already been confirmed`, 409);
+  }
+
+  const [issuedRow] = await db
+    .update(paymentRequests)
+    .set({ status: 'issued', updatedAt: new Date() })
+    .where(
+      and(
+        eq(paymentRequests.id, row.id),
+        eq(paymentRequests.status, 'emt_pending'),
+        isNull(paymentRequests.settlementRef),
+      ),
+    )
+    .returning();
+  if (!issuedRow) {
+    // Lost the guarded transition: the issuer confirmed the deposit first (409), or a concurrent revert won (fine).
+    const current = await getPaymentRequestById(row.id);
+    if (current?.status === 'issued') return { paymentRequest: current, reverted: false };
+    return err('payment_request status changed concurrently — a payment may have just been confirmed; refresh', 409);
+  }
+
+  log.info({ paymentRequestId: row.id }, 'payment_request e-Transfer choice withdrawn — back to issued');
+  return { paymentRequest: issuedRow, reverted: true };
 }
 
 // ---------------------------------------------------------------------------

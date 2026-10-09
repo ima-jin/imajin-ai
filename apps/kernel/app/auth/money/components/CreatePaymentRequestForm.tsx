@@ -6,6 +6,7 @@ import LineItemsEditor from './LineItemsEditor';
 import RecipientPicker, { type RecipientMode } from './RecipientPicker';
 import CreatedRequestSummary from './CreatedRequestSummary';
 import TaxSection from './TaxSection';
+import PayRailsWarning from './PayRailsWarning';
 import { buildCreatePaymentRequestBody, previewSubtotal, type CreateFormState } from '../lib/build-create-request';
 import { buildTaxPreview, draftsFromRegistrations, type TaxPreviewResult } from '../lib/tax-form';
 import type {
@@ -156,6 +157,8 @@ export default function CreatePaymentRequestForm({ issuerDid, onCreated, onCance
       </div>
 
       {error && <div className="text-xs text-red-400 bg-red-900/20 border border-red-800 rounded-lg px-3 py-2">{error}</div>}
+
+      <PayRailsWarning issuerDid={issuerDid} />
 
       <div className="grid grid-cols-2 gap-3">
         <div>

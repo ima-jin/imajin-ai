@@ -25,6 +25,9 @@ import { connectAndProvisionWebhook, keySealed } from '@/src/lib/stripe/connecto
 
 const log = createLogger('kernel');
 
+/** `connectAndProvisionWebhook` failures that are the pasted key's fault, not ours or Stripe's. */
+const CALLER_MISTAKES = ['stripe_key_not_restricted', 'stripe_key_missing_permission'];
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const cors = corsHeaders(request);
 
@@ -73,10 +76,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     log.error({ err: message, ownerDid }, 'Stripe connect failed');
-    // stripe_key_not_restricted is a caller mistake (400); anything else
+    // stripe_key_not_restricted and stripe_key_missing_permission (#2754: no
+    // Checkout Sessions = Write) are caller mistakes (400); anything else
     // (provisioning failure against Stripe's API) is a 502-shaped failure
     // reported as 500 to match this codebase's other connector routes.
-    const status = message.startsWith('stripe_key_not_restricted') ? 400 : 500;
+    const status = CALLER_MISTAKES.some((prefix) => message.startsWith(prefix)) ? 400 : 500;
     return NextResponse.json({ error: 'Failed to connect Stripe', detail: message }, { status, headers: cors });
   }
 

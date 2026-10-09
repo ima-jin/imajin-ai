@@ -37,6 +37,8 @@ const ISSUED_VIEW = {
   paidAt: null,
   settlement: null,
   paidBy: null,
+  card: true,
+  emt: null,
 };
 
 const PAID_VIEW = {

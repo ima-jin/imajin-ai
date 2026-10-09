@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import PayRequestActions from '../PayRequestActions';
+import PayRequestActions, { checkoutErrorMessage } from '../PayRequestActions';
 
 vi.mock('next/navigation', () => ({
   usePathname: () => '/pay/r/ph_1',
@@ -21,36 +21,93 @@ afterEach(() => {
 
 describe('PayRequestActions — status gating', () => {
   it('renders nothing once paid', () => {
-    const { container } = render(<PayRequestActions handle="ph_1" status="paid" />);
+    const { container } = render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="paid" />);
     expect(container.innerHTML).toBe('');
   });
 
   it('renders nothing once settled_manual', () => {
-    const { container } = render(<PayRequestActions handle="ph_1" status="settled_manual" />);
+    const { container } = render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="settled_manual" />);
     expect(container.innerHTML).toBe('');
   });
 });
 
-describe('PayRequestActions — allow_on_platform rendering', () => {
-  it('shows the Pay button when allow_on_platform is true', () => {
-    render(<PayRequestActions handle="ph_1" status="issued" allowOnPlatform />);
+describe('PayRequestActions — only the rails that work (#2754)', () => {
+  const EMT_AVAILABLE = { state: 'available', instructions: null } as const;
+
+  it('card only: shows "Pay now" and no e-Transfer', () => {
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={null} />);
     expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
+    expect(screen.queryByTestId('no-online-payment')).toBeNull();
   });
 
-  it('shows the Pay button when allow_on_platform is absent (today\'s by-handle response)', () => {
-    render(<PayRequestActions handle="ph_1" status="issued" />);
-    expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined();
+  it('e-Transfer only: NO card button at all — just e-Transfer', () => {
+    render(<PayRequestActions issuerName="Acme" card={false} handle="ph_1" status="issued" emt={EMT_AVAILABLE} />);
+    expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Pay now|Pay by card/ })).toBeNull();
+    expect(screen.queryByTestId('no-online-payment')).toBeNull();
   });
 
-  it('hides the Pay button and explains why when allow_on_platform is false', () => {
-    render(<PayRequestActions handle="ph_1" status="issued" allowOnPlatform={false} />);
-    expect(screen.queryByRole('button', { name: 'Pay now' })).toBeNull();
-    expect(screen.getByText(/isn't available for this request/)).toBeDefined();
+  it('e-Transfer only: the instructions do not suggest a card option that does not exist', () => {
+    render(
+      <PayRequestActions
+        issuerName="Acme"
+        card={false}
+        handle="ph_1"
+        status="emt_pending"
+        emt={{ state: 'pending', instructions: { email: 'pay@acme.example', amountMinor: 100, currency: 'CAD', memo: 'INV-1' } }}
+      />,
+    );
+    expect(screen.getByTestId('emt-instructions').textContent).not.toMatch(/pay by card/i);
+    expect(screen.queryByTestId('emt-pay-another-way')).toBeNull();
   });
 
-  it('always offers the sign-in path regardless of allow_on_platform', () => {
-    render(<PayRequestActions handle="ph_1" status="issued" allowOnPlatform={false} />);
+  it.each(['issued', 'emt_pending'])('neither rail (%s): says so plainly, names the issuer, and renders no button and no sign-in nudge', (status) => {
+    render(<PayRequestActions issuerName="Imajin Inc" card={false} handle="ph_1" status={status} emt={null} />);
+
+    expect(screen.getByTestId('no-online-payment').textContent).toBe("This invoice can't be paid online yet. Contact Imajin Inc.");
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryByText(/Sign in to pay/)).toBeNull();
+  });
+
+  it('card + e-Transfer: both are offered', () => {
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={EMT_AVAILABLE} />);
+    expect(screen.getByRole('button', { name: 'Pay by card' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
+  });
+
+  it('keeps the sign-in path whenever a rail is offered', () => {
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
     expect(screen.getByText('Already connected? Sign in to pay from your account')).toBeDefined();
+  });
+});
+
+describe('checkoutErrorMessage (#2754) — a card failure is never a generic "try again"', () => {
+  it.each([
+    ['SELLER_NOT_CONNECTED', 400, /Acme hasn't set up card payments yet\. Contact Acme/],
+    ['CARD_RAIL_KEY_MISSING', 502, /Acme's Stripe connection isn't active/],
+    ['CARD_RAIL_KEY_REJECTED', 502, /Stripe rejected Acme's connection.*Contact Acme/],
+    ['CARD_RAIL_REQUEST_REJECTED', 502, /amount or currency may not be supported.*Contact Acme/],
+    ['CARD_RAIL_UNAVAILABLE', 502, /Stripe isn't responding.*haven't been charged/],
+  ])('%s maps to its own message', (code, status, expected) => {
+    expect(checkoutErrorMessage(status, code, 'Acme')).toMatch(expected);
+  });
+
+  it.each([
+    [401, /Sign in to pay by card/],
+    [403, /can't pay this request as the selected identity/],
+    [404, /isn't available for this request yet/],
+    [409, /can no longer be paid by card/],
+  ])('status %i without a code has a specific message', (status, expected) => {
+    expect(checkoutErrorMessage(status, undefined, 'Acme')).toMatch(expected);
+  });
+
+  it('an unrecognised failure still names the status and the issuer, and never says "try again"', () => {
+    const message = checkoutErrorMessage(500, 'SOMETHING_NEW', 'Acme');
+    expect(message).toContain('error 500');
+    expect(message).toMatch(/contact Acme/i);
+    expect(message).not.toMatch(/try again/i);
+    expect(message).not.toContain('Unable to start checkout');
   });
 });
 
@@ -63,7 +120,7 @@ describe('PayRequestActions — checkout (#2215 may not be merged yet)', () => {
       writable: true,
     });
 
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
 
     await waitFor(() => expect(globalThis.location.href).toBe('https://checkout.stripe.com/session_123'));
@@ -71,20 +128,51 @@ describe('PayRequestActions — checkout (#2215 may not be merged yet)', () => {
 
   it('degrades gracefully with a friendly message when the checkout route 404s (not merged yet)', async () => {
     installFetch({ ok: false, status: 404, body: { error: 'Not found' } });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
 
     expect(await screen.findByText("Online payment isn't available for this request yet.")).toBeDefined();
   });
 
-  it('shows a generic error on other failures without crashing', async () => {
+  it('shows a specific message on an unexpected failure, without crashing', async () => {
     installFetch({ ok: false, status: 500, body: { error: 'boom' } });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
 
-    expect(await screen.findByText('Unable to start checkout. Please try again.')).toBeDefined();
+    expect(await screen.findByText(/problem on our side \(error 500\).*contact Acme/)).toBeDefined();
+    expect(screen.queryByText(/Unable to start checkout/)).toBeNull();
+  });
+
+  it('turns the server\'s SELLER_NOT_CONNECTED 400 into the issuer-specific message', async () => {
+    installFetch({ ok: false, status: 400, body: { error: "This issuer hasn't set up card payments", code: 'SELLER_NOT_CONNECTED' } });
+    render(<PayRequestActions issuerName="Imajin Inc" card handle="ph_1" status="issued" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+
+    expect(await screen.findByText("Imajin Inc hasn't set up card payments yet. Contact Imajin Inc to pay another way.")).toBeDefined();
+  });
+
+  it('turns a CARD_RAIL_KEY_REJECTED 502 into a message about the issuer\'s Stripe connection', async () => {
+    installFetch({ ok: false, status: 502, body: { error: 'x', code: 'CARD_RAIL_KEY_REJECTED' } });
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+
+    expect(await screen.findByText(/Stripe rejected Acme's connection/)).toBeDefined();
+  });
+
+  it('says it could not reach the server (and that nothing was charged) when the request throws', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/payer-dids')) return { ok: false, status: 401, json: async () => ({}) };
+      throw new Error('offline');
+    }));
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
+
+    expect(await screen.findByText(/Couldn't reach the server.*haven't been charged/)).toBeDefined();
   });
 });
 
@@ -92,18 +180,18 @@ const EMT_INSTRUCTIONS = { email: 'pay@acme.example', amountMinor: 11_300, curre
 
 describe('PayRequestActions — e-Transfer (#2665)', () => {
   it('shows no e-Transfer option, and keeps the "Pay now" label, when no option is passed (no receiving email set)', () => {
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
     expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined();
 
     cleanup();
-    render(<PayRequestActions handle="ph_1" status="issued" emt={null} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={null} />);
     expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
     expect(screen.queryByTestId('emt-instructions')).toBeNull();
   });
 
   it('offers both "Pay by card" and "Pay by e-Transfer" when the option is available — without printing the email yet', () => {
-    render(<PayRequestActions handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
 
     expect(screen.getByRole('button', { name: 'Pay by card' })).toBeDefined();
     expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
@@ -117,7 +205,7 @@ describe('PayRequestActions — e-Transfer (#2665)', () => {
       ok: true,
       body: { success: true, instructions: { email: 'pay@acme.example', amount: 113, amountMinor: 11_300, currency: 'CAD', memo: 'INV-3F9A1C07D2' } },
     });
-    render(<PayRequestActions handle="ph/1" status="issued" emt={{ state: 'available', instructions: null }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph/1" status="issued" emt={{ state: 'available', instructions: null }} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Pay by e-Transfer' }));
 
@@ -132,7 +220,7 @@ describe('PayRequestActions — e-Transfer (#2665)', () => {
   });
 
   it('an emt_pending request shows the instructions straight away to someone returning to the link, and still offers card', () => {
-    render(<PayRequestActions handle="ph_1" status="emt_pending" emt={{ state: 'pending', instructions: EMT_INSTRUCTIONS }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={{ state: 'pending', instructions: EMT_INSTRUCTIONS }} />);
 
     expect(screen.getByTestId('emt-instructions')).toBeDefined();
     expect(screen.getByTestId('emt-memo').textContent).toContain('INV-3F9A1C07D2');
@@ -144,38 +232,117 @@ describe('PayRequestActions — e-Transfer (#2665)', () => {
     installFetch({ ok: true, body: { url: 'https://checkout.stripe.com/session_9' } });
     Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
 
-    render(<PayRequestActions handle="ph_1" status="emt_pending" emt={{ state: 'pending', instructions: EMT_INSTRUCTIONS }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={{ state: 'pending', instructions: EMT_INSTRUCTIONS }} />);
     fireEvent.click(screen.getByRole('button', { name: 'Pay by card' }));
 
     await waitFor(() => expect(globalThis.location.href).toBe('https://checkout.stripe.com/session_9'));
   });
 
   it.each([
-    ['a non-OK response', { ok: false, status: 400, body: { error: 'nope' } }],
-    ['a malformed body', { ok: true, body: { success: true } }],
-  ])('shows an inline error — and the button stays — on %s', async (_label, response) => {
+    ['a 404', { ok: false, status: 404, body: { error: 'nope' } }, /e-Transfer isn't available for this request\. Contact Acme/],
+    ['a 409', { ok: false, status: 409, body: { error: 'nope' } }, /can no longer be paid.*contact Acme/],
+    ['a 400', { ok: false, status: 400, body: { error: 'nope' } }, /problem on our side \(error 400\)/],
+    ['a malformed body', { ok: true, body: { success: true } }, /problem on our side \(error 502\)/],
+  ])('shows a specific inline error — and the button stays — on %s', async (_label, response, expected) => {
     installFetch(response);
-    render(<PayRequestActions handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Pay by e-Transfer' }));
 
-    expect(await screen.findByText('Unable to start the e-Transfer payment. Please try again.')).toBeDefined();
+    expect(await screen.findByText(expected)).toBeDefined();
     expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
     expect(screen.queryByTestId('emt-instructions')).toBeNull();
   });
 
   it('shows an inline error when the request throws', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('offline'); }));
-    render(<PayRequestActions handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Pay by e-Transfer' }));
 
-    expect(await screen.findByText('Unable to start the e-Transfer payment. Please try again.')).toBeDefined();
+    expect(await screen.findByText(/Couldn't reach the server/)).toBeDefined();
   });
 
   it.each(['paid', 'settled_manual', 'void'])('renders nothing for a %s request even if an option were passed', (status) => {
-    const { container } = render(<PayRequestActions handle="ph_1" status={status} emt={{ state: 'available', instructions: null }} />);
+    const { container } = render(<PayRequestActions issuerName="Acme" card handle="ph_1" status={status} emt={{ state: 'available', instructions: null }} />);
     expect(container.innerHTML).toBe('');
+  });
+});
+
+describe('PayRequestActions — "Pay another way" (#2758)', () => {
+  const PENDING = { state: 'pending', instructions: EMT_INSTRUCTIONS } as const;
+  const EMT_URL = '/pay/api/payment-requests/by-handle/ph_1/emt';
+
+  it('offers the control under the instructions while another way (card) exists', () => {
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={PENDING} />);
+    expect(screen.getByRole('button', { name: 'Pay another way' })).toBeDefined();
+  });
+
+  it('DELETEs the e-Transfer choice, then leaves the instructions and offers the e-Transfer button again', async () => {
+    const spy = installFetch({ ok: true, body: { success: true, reverted: true, status: 'issued' } });
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={PENDING} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay another way' }));
+
+    await waitFor(() => expect(screen.queryByTestId('emt-instructions')).toBeNull());
+    expect(spy).toHaveBeenCalledWith(EMT_URL, { method: 'DELETE' });
+    expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Pay by card' })).toBeDefined();
+  });
+
+  it('after leaving, choosing e-Transfer again shows the same memo', async () => {
+    const routed = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/payer-dids')) return { ok: false, status: 401, json: async () => ({}) };
+      if (init?.method === 'DELETE') return { ok: true, status: 200, json: async () => ({ success: true }) };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, instructions: { email: 'pay@acme.example', amountMinor: 11_300, currency: 'CAD', memo: 'INV-3F9A1C07D2' } }),
+      };
+    });
+    vi.stubGlobal('fetch', routed);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={PENDING} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay another way' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pay by e-Transfer' }));
+
+    expect((await screen.findByTestId('emt-memo')).textContent).toContain('INV-3F9A1C07D2');
+  });
+
+  it('a 409 (the issuer already confirmed a deposit) keeps the instructions and says why', async () => {
+    installFetch({ ok: false, status: 409, body: { error: 'confirmed' } });
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={PENDING} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay another way' }));
+
+    expect(await screen.findByText(/Acme has already confirmed a payment.*can't switch/)).toBeDefined();
+    expect(screen.getByTestId('emt-instructions')).toBeDefined();
+  });
+
+  it.each([
+    [404, /can't be found any more/],
+    [500, /problem on our side \(error 500\).*details are still valid/],
+  ])('a %i keeps the instructions and gives a specific message', async (status, expected) => {
+    installFetch({ ok: false, status, body: {} });
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={PENDING} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay another way' }));
+
+    expect(await screen.findByText(expected)).toBeDefined();
+    expect(screen.getByTestId('emt-instructions')).toBeDefined();
+  });
+
+  it('a dropped connection keeps the instructions and says nothing changed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/payer-dids')) return { ok: false, status: 401, json: async () => ({}) };
+      throw new Error('offline');
+    }));
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="emt_pending" emt={PENDING} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pay another way' }));
+
+    expect(await screen.findByText(/Couldn't reach the server/)).toBeDefined();
+    expect(screen.getByTestId('emt-instructions')).toBeDefined();
   });
 });
 
@@ -212,7 +379,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
     const spy = installRoutedFetch({ payerDids: { ok: false, status: 401 }, checkout: { url: 'https://checkout.stripe.com/s1' } });
     Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
 
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
     await waitFor(() => expect(spy).toHaveBeenCalledWith(PAYER_DIDS_URL));
     expect(screen.queryByTestId('pay-as')).toBeNull();
     expect(screen.queryByTestId('pay-as-single')).toBeNull();
@@ -224,7 +391,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
 
   it('a signed-in payer sees "Pay as" with their own DID and their businesses, defaulting to the server-chosen one', async () => {
     installRoutedFetch({ payerDids: { ok: true, body: PICKER_BODY } });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     const select = (await screen.findByLabelText('Pay as')) as HTMLSelectElement;
     expect(Array.from(select.options).map((o) => o.textContent)).toEqual(['Eric (you)', 'Artifact']);
@@ -234,7 +401,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
   it('picking Artifact posts paidByDid to checkout', async () => {
     const spy = installRoutedFetch({ payerDids: { ok: true, body: PICKER_BODY }, checkout: { url: 'https://checkout.stripe.com/s2' } });
     Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     fireEvent.change(await screen.findByLabelText('Pay as'), { target: { value: 'did:imajin:artifact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
@@ -246,7 +413,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
   it('paying as the default personal DID still sends it explicitly', async () => {
     const spy = installRoutedFetch({ payerDids: { ok: true, body: PICKER_BODY }, checkout: { url: 'https://checkout.stripe.com/s3' } });
     Object.defineProperty(globalThis, 'location', { value: { ...globalThis.location, href: 'https://pay.test/r/ph_1' }, writable: true });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     await screen.findByLabelText('Pay as');
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
@@ -260,7 +427,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
       payerDids: { ok: true, body: PICKER_BODY },
       emt: { success: true, instructions: { email: 'pay@acme.example', amountMinor: 11_300, currency: 'CAD', memo: 'INV-1' } },
     });
-    render(<PayRequestActions handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" emt={{ state: 'available', instructions: null }} />);
 
     fireEvent.change(await screen.findByLabelText('Pay as'), { target: { value: 'did:imajin:artifact' } });
     fireEvent.click(screen.getByRole('button', { name: 'Pay by e-Transfer' }));
@@ -273,7 +440,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
     installRoutedFetch({
       payerDids: { ok: true, body: { dids: [PICKER_BODY.dids[0]], defaultDid: 'did:imajin:eric' } },
     });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     expect((await screen.findByTestId('pay-as-single')).textContent).toContain('Eric');
     expect(screen.queryByLabelText('Pay as')).toBeNull();
@@ -288,7 +455,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
           : { ok: false, status: 403, json: async () => ({ error: 'nope' }) },
       ),
     );
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     await screen.findByLabelText('Pay as');
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
@@ -298,7 +465,7 @@ describe('PayRequestActions — "Pay as" picker (#2656)', () => {
 
   it('an unexpected 200 body (not a picker feed) leaves the page exactly as it was', async () => {
     installRoutedFetch({ payerDids: { ok: true, body: { url: 'https://example.test' } } });
-    render(<PayRequestActions handle="ph_1" status="issued" />);
+    render(<PayRequestActions issuerName="Acme" card handle="ph_1" status="issued" />);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined());
     expect(screen.queryByTestId('pay-as')).toBeNull();
