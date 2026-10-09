@@ -92,17 +92,20 @@ export async function fixPlaceholderCallbackUrls({ sql, origin, apply = false, l
   }
 
   if (fixes.length > 0) {
-    await sql.begin(async (tx) => {
-      for (const fix of fixes) {
-        await tx`
-          UPDATE registry.apps
-          SET callback_url = ${fix.callbackUrl.to},
-              redirect_uris = ${tx.array(fix.redirectUris.to, 'text')},
-              updated_at = now()
-          WHERE id = ${fix.id}
-        `;
-      }
-    });
+    // The updates pipeline on the transaction's single connection; any failure rolls all of them back.
+    await sql.begin((tx) =>
+      Promise.all(
+        fixes.map(
+          (fix) => tx`
+            UPDATE registry.apps
+            SET callback_url = ${fix.callbackUrl.to},
+                redirect_uris = ${tx.array(fix.redirectUris.to, 'text')},
+                updated_at = now()
+            WHERE id = ${fix.id}
+          `,
+        ),
+      ),
+    );
   }
   log(`\nAPPLIED — updated ${fixes.length} row(s).`);
   return fixes;
