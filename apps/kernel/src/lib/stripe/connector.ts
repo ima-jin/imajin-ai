@@ -73,12 +73,7 @@ import { ensurePayStripeReactorRegistered } from '@/src/lib/pay/stripe-bus-consu
 import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import { verifyStripeWebhookSignature } from './webhook-verify';
 import { assertCheckoutSessionWriteAllowed } from './byo-checkout';
-import {
-  stripe,
-  STRIPE_CONNECTOR_DID,
-  STRIPE_EVENTS_SCOPE,
-  type StripeCredentials,
-} from './connector-core';
+import { stripe, STRIPE_EVENTS_SCOPE } from './connector-core';
 import {
   upsertWebhookIndex,
   resolveWebhookOwner,
@@ -90,8 +85,7 @@ const log = createLogger('kernel');
 
 // Identity + token-paste factory live in `connector-core.ts` (a leaf module, so the pay
 // rail selection can read them without importing this file's bus/pay dependencies — #2754).
-export { STRIPE_CONNECTOR_DID, STRIPE_EVENTS_SCOPE };
-export type { StripeCredentials };
+export { STRIPE_CONNECTOR_DID, STRIPE_EVENTS_SCOPE, type StripeCredentials } from './connector-core';
 
 /** Stripe events this connector subscribes to and forwards onto the bus. */
 export const STRIPE_WEBHOOK_EVENTS = [

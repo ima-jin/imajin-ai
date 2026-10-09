@@ -37,9 +37,14 @@ export default function PayRailsWarning({ issuerDid }: Readonly<{ issuerDid: str
 
   useEffect(() => {
     let cancelled = false;
-    loadPayRails(issuerDid).then((loaded) => {
-      if (!cancelled) setRails(loaded);
-    });
+    loadPayRails(issuerDid)
+      .then((loaded) => {
+        if (!cancelled) setRails(loaded);
+      })
+      .catch(() => {
+        // `loadPayRails` already answers `null` for every failure; this only keeps the promise handled.
+        if (!cancelled) setRails(null);
+      });
     return () => {
       cancelled = true;
     };
