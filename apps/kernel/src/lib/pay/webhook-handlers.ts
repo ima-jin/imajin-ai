@@ -593,6 +593,8 @@ export async function notifyMarketService(session: StripeCheckoutSessionLike): P
           typeof session.payment_intent === 'string'
             ? session.payment_intent
             : session.payment_intent?.id,
+        // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
+        ...(session.rail && { rail: session.rail }),
         metadata: {
           ...session.metadata,
           amount: session.amount_total,

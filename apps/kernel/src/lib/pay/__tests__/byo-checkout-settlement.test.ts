@@ -92,6 +92,8 @@ describe('settleCheckoutFromByoStripe', () => {
         payment_intent: 'pi_1',
         // So events' webhook (#2739) can settle by the kernel transaction id without a platform-rail lookup.
         transactionId: 'tx_1',
+        // #2773: market (and any app) is told the kernel settled this on the seller's own account.
+        rail: 'stripe-byo',
       },
     });
     // The buyer is read back with the SELLER's key, from the seller's own session.
