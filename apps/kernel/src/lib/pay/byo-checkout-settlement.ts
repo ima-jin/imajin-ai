@@ -132,6 +132,8 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
       payment_intent: input.paymentIntentId,
       // The row is on the `stripe-byo` rail, so the platform-rail session lookup would not find it (#2739).
       transactionId: row.id,
+      // #2773: tells market (and any app) the kernel settled this on the seller's own account — do not call /pay/api/settle.
+      rail: STRIPE_BYO_RAIL,
     },
   };
 }

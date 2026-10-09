@@ -169,6 +169,16 @@ describe('market purchase notification', () => {
       expect(JSON.parse((marketCalls()[0]![1] as RequestInit).body as string).paymentId).toBe('pi_expanded');
     });
 
+    it('forwards the rail of a payment the kernel already settled on the seller\'s own Stripe account (#2773)', async () => {
+      await notifyMarketService(marketSession({ rail: 'stripe-byo' }));
+      expect(JSON.parse((marketCalls()[0]![1] as RequestInit).body as string).rail).toBe('stripe-byo');
+    });
+
+    it('sends no rail for a platform-collected payment (#2773)', async () => {
+      await notifyMarketService(marketSession());
+      expect(JSON.parse((marketCalls()[0]![1] as RequestInit).body as string)).not.toHaveProperty('rail');
+    });
+
     it('omits the payment id and currency when the session has none', async () => {
       await notifyMarketService(marketSession({ payment_intent: null, currency: null }));
 
