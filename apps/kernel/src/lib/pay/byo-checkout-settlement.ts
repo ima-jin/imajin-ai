@@ -130,6 +130,8 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
       customer_details: { email: customer.email, name: customer.name },
       metadata,
       payment_intent: input.paymentIntentId,
+      // The row is on the `stripe-byo` rail, so the platform-rail session lookup would not find it (#2739).
+      transactionId: row.id,
     },
   };
 }

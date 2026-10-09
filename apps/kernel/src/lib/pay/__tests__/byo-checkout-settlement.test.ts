@@ -90,6 +90,8 @@ describe('settleCheckoutFromByoStripe', () => {
         // Only string metadata is carried; the numeric platform_fee_cents bookkeeping stays on the row.
         metadata: { service: 'events', eventId: 'ev_1', customer_email: 'given@example.com' },
         payment_intent: 'pi_1',
+        // So events' webhook (#2739) can settle by the kernel transaction id without a platform-rail lookup.
+        transactionId: 'tx_1',
       },
     });
     // The buyer is read back with the SELLER's key, from the seller's own session.

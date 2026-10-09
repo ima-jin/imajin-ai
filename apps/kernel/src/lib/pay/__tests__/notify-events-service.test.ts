@@ -141,6 +141,13 @@ describe('events checkout notification carries the kernel transactionId', () => 
       expect(postedBody()).not.toHaveProperty('transactionId');
     });
 
+    it('#2757: uses the transactionId a BYO settlement already knows, without any platform-rail lookup', async () => {
+      await notifyEventsService('checkout.completed', eventsSession({ transactionId: 'tx_byo_1' }));
+
+      expect(mocks.select).not.toHaveBeenCalled();
+      expect(postedBody()).toMatchObject({ sessionId: 'cs_test_events_1', transactionId: 'tx_byo_1' });
+    });
+
     it('does not look up a transaction for payment.failed', async () => {
       await notifyEventsService('payment.failed', eventsSession());
 
