@@ -15,13 +15,14 @@ import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-li
 import { crypto as authCrypto } from '@imajin/auth';
 import { OPERATOR_DID, operatorIdentity, pendingApprovalCard } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested, mockRunAppProvision, mockGetStatus, logSpies } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested, mockRunAppProvision, mockGetStatus, mockListSucceeded, logSpies } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
   mockRecordRequested: vi.fn(),
   mockRunAppProvision: vi.fn(),
   mockGetStatus: vi.fn(),
+  mockListSucceeded: vi.fn(),
   logSpies: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
@@ -52,10 +53,11 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
 }));
 vi.mock('@/src/lib/apps/provision', () => ({ runAppProvision: mockRunAppProvision, getAppProvisionStatus: mockGetStatus }));
 vi.mock('@/src/lib/apps/provision-proposals', () => ({ findPendingAppsProvisionProposal: vi.fn(async () => undefined) }));
+vi.mock('@/src/lib/apps/provision-list', () => ({ listSucceededAppProvisions: mockListSucceeded }));
 vi.mock('@/src/lib/apps/manifest-preview', () => ({ previewManifestDeclarations: vi.fn(async () => ({ ok: null })) }));
 
 import { POST as decisionPost } from '../api/operator-approvals/[proposalId]/decision/route';
-import { POST as provisionPost } from '../../api/apps/provision/route';
+import { POST as provisionPost, GET as provisionGet } from '../../api/apps/provision/route';
 import { OperatorApprovalsPanel } from '../operator-approvals-panel';
 import { ProvisionAppPanel } from '../provision-app-panel';
 
@@ -109,6 +111,9 @@ function installRoutedFetch(options: { dropDecision?: boolean; decisionStatus?: 
     if (url === '/api/apps/provision' && init?.method === 'POST') {
       return (await provisionPost(new Request(`https://test.imajin.ai${url}`, init) as Parameters<typeof provisionPost>[0])) as Response;
     }
+    if (url === '/api/apps/provision?status=succeeded') {
+      return (await provisionGet(new Request(`https://test.imajin.ai${url}`, init) as Parameters<typeof provisionGet>[0])) as Response;
+    }
     if (url.startsWith('/api/apps/provision?slug=')) {
       return new Response(JSON.stringify({ error: 'none' }), { status: 404 });
     }
@@ -127,6 +132,7 @@ beforeEach(() => {
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockRequireAuth.mockResolvedValue({ identity: operatorIdentity() });
   mockGetStatus.mockResolvedValue(undefined);
+  mockListSucceeded.mockResolvedValue([]);
   mockRecordRequested.mockImplementation(async (params: Record<string, unknown>) => {
     cards.push(
       pendingApprovalCard({
@@ -316,6 +322,49 @@ describe('reissue claim code from /jin (#2707)', () => {
     expect(within(box).getByText(REISSUED_CODE)).toBeDefined();
     expect(within(box).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
     expect(within(box).getByRole('button', { name: 'Copy' })).toBeDefined();
+  });
+
+  it('after a reload the Provision app panel lists the approved provision; Reissue → approve shows the new code once (#2745)', async () => {
+    const listed = { slug: 'dykil', appDid: 'did:imajin:dykil-app', repoUrl: 'https://github.com/ima-jin/dykil', claimed: false, updatedAt: new Date() };
+    mockListSucceeded.mockResolvedValue([listed]);
+    mockGetStatus.mockResolvedValue({ slug: 'dykil', status: 'succeeded', appDid: listed.appDid, repoUrl: listed.repoUrl, secretsSet: [] });
+    mockRunAppProvision.mockResolvedValue(succeededOutcome(REISSUED_CODE));
+    const spy = installRoutedFetch();
+    render(
+      <>
+        <ProvisionAppPanel />
+        <OperatorApprovalsPanel />
+      </>,
+    );
+
+    // Nothing was proposed in this page state — the server list alone brings the control back.
+    fireEvent.click(await screen.findByTestId('provisioned-app-reissue'));
+
+    const approve = await screen.findByRole('button', { name: 'Approve & reissue' });
+    const reissuePost = spy.mock.calls.filter(([url, init]) => url === '/api/apps/provision' && init?.method === 'POST').at(-1)!;
+    expect(JSON.parse((reissuePost[1] as RequestInit).body as string)).toMatchObject({ slug: 'dykil', reissueClaim: true });
+
+    fireEvent.click(approve);
+    const box = await screen.findByTestId('revealed-claim-code');
+    expect(within(box).getByText(REISSUED_CODE)).toBeDefined();
+    expect(within(box).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
+  });
+
+  it('refuses a reissue for a slug with no succeeded run: 409, no card raised (#2745)', async () => {
+    mockGetStatus.mockResolvedValue(undefined);
+    const spy = installRoutedFetch();
+    render(<ProvisionAppPanel />);
+    await screen.findByTestId('provision-app-panel');
+
+    const res = (await spy('/api/apps/provision', {
+      method: 'POST',
+      body: JSON.stringify({ slug: 'learn', displayName: 'Learn', reissueClaim: true }),
+    })) as Response;
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'nothing to reissue for learn' });
+    expect(mockRecordRequested).not.toHaveBeenCalled();
+    expect(mockRunAppProvision).not.toHaveBeenCalled();
   });
 
   it('does not offer Reissue until the app is actually provisioned', async () => {

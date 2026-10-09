@@ -12,6 +12,7 @@ import { ProvisionAppPanel } from '../provision-app-panel';
 import { installIntervalSpy } from './panel-test-support';
 
 const APPROVALS_POLL_URL = '/jin/api/operator-approvals?source=apps';
+const PROVISIONED_APPS_URL = '/api/apps/provision?status=succeeded';
 
 interface Reply {
   ok?: boolean;
@@ -30,6 +31,8 @@ interface FetchOptions {
   }>;
   post?: Reply;
   ledger?: Reply;
+  /** `GET /api/apps/provision?status=succeeded` (#2745) — the server-backed list of provisioned apps. */
+  provisions?: Reply;
 }
 
 function reply({ ok = true, status = 200, body = {} }: Reply): Response {
@@ -44,6 +47,7 @@ function installFetch(initial: FetchOptions = {}) {
     approvals: [],
     post: { status: 201, body: { status: 'pending', proposalId: 'appprov_1' } },
     ledger: { ok: false, status: 404, body: { error: 'none' } },
+    provisions: { body: { isOperator: true, provisions: [] } },
     ...initial,
   };
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
@@ -52,6 +56,9 @@ function installFetch(initial: FetchOptions = {}) {
     }
     if (url.startsWith('/api/apps/provision?slug=')) {
       return reply(state.ledger ?? {});
+    }
+    if (url === PROVISIONED_APPS_URL) {
+      return reply(state.provisions ?? {});
     }
     if (url === '/jin/api/operator-approvals' || url === APPROVALS_POLL_URL) {
       return reply({ ok: state.approvalsOk, body: { isOperator: state.isOperator, approvals: state.approvals } });
@@ -473,5 +480,131 @@ describe('ProvisionAppPanel result tracking', () => {
     await screen.findByTestId('provision-result');
     unmount();
     expect(vi.mocked(globalThis.clearInterval)).toHaveBeenCalled();
+  });
+});
+
+describe('ProvisionAppPanel provisioned apps list (#2745)', () => {
+  const unclaimed = { slug: 'learn', appDid: 'did:imajin:app-learn', repoUrl: 'https://github.com/ima-jin/learn', claimed: false };
+  const claimed = { slug: 'dykil', appDid: 'did:imajin:app-dykil', repoUrl: 'https://github.com/ima-jin/dykil', claimed: true };
+
+  it('lists an approved provision with Reissue claim code after a reload — no tracked proposal needed', async () => {
+    // A fresh mount stands in for the reload: nothing was proposed in this page state.
+    const { spy } = installFetch({ provisions: { body: { isOperator: true, provisions: [unclaimed] } } });
+    await renderVisible();
+
+    const row = await screen.findByTestId('provisioned-app');
+    expect(row.getAttribute('data-slug')).toBe('learn');
+    expect(row.textContent).toContain('unclaimed');
+    expect(screen.getByRole('button', { name: 'Reissue claim code' })).toBeDefined();
+    expect(screen.queryByTestId('provision-result')).toBeNull();
+    expect(spy).toHaveBeenCalledWith(PROVISIONED_APPS_URL, { credentials: 'include' });
+  });
+
+  it('offers no Reissue for an app whose claim code was already redeemed', async () => {
+    installFetch({ provisions: { body: { isOperator: true, provisions: [claimed, unclaimed] } } });
+    await renderVisible();
+
+    const rows = await screen.findAllByTestId('provisioned-app');
+    expect(rows.map((row) => row.getAttribute('data-slug'))).toEqual(['dykil', 'learn']);
+    expect(rows[0].textContent).toContain('claimed');
+    expect(rows[0].textContent).not.toContain('Reissue');
+    expect(screen.getAllByTestId('provisioned-app-reissue')).toHaveLength(1);
+  });
+
+  it('Reissue raises the reissueClaim proposal for that slug and follows it to approval', async () => {
+    const callbacks = installIntervalSpy();
+    const { spy, state } = installFetch({
+      provisions: { body: { isOperator: true, provisions: [unclaimed] } },
+      post: { status: 201, body: { status: 'pending', proposalId: 'appprov_reissue' } },
+      approvals: [{ proposalId: 'appprov_reissue', status: 'pending' }],
+    });
+    await renderVisible();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('provisioned-app-reissue'));
+    });
+
+    const calls = postCalls(spy);
+    expect(calls).toHaveLength(1);
+    expect(JSON.parse((calls[0][1] as RequestInit).body as string)).toEqual({ slug: 'learn', displayName: 'learn', reissueClaim: true });
+    expect((await screen.findByTestId('provision-proposal-id')).textContent).toBe('appprov_reissue');
+    expect(screen.getByText('Reissue proposed')).toBeDefined();
+
+    // Approving the reissue card ends the tracking; the code itself shows in the approvals card.
+    state.approvals = [{ proposalId: 'appprov_reissue', status: 'approved' }];
+    await tick(callbacks);
+    await waitFor(() => expect(screen.getByTestId('provision-result').getAttribute('data-phase')).toBe('reissued'));
+    expect(screen.getByText(/one-time claim code for learn is in the amber box/)).toBeDefined();
+  });
+
+  it('shows the server refusal and keeps the list when the reissue is rejected', async () => {
+    installFetch({
+      provisions: { body: { isOperator: true, provisions: [unclaimed] } },
+      post: { ok: false, status: 409, body: { error: 'nothing to reissue for learn' } },
+    });
+    await renderVisible();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('provisioned-app-reissue'));
+    });
+
+    expect(await screen.findByText('nothing to reissue for learn')).toBeDefined();
+    expect(screen.queryByTestId('provision-result')).toBeNull();
+    expect(screen.getByTestId('provisioned-app')).toBeDefined();
+  });
+
+  it('refreshes the list once a followed provision succeeds', async () => {
+    const callbacks = installIntervalSpy();
+    const { state } = installFetch({ approvals: [{ proposalId: 'appprov_1', status: 'pending' }] });
+    await renderVisible();
+    await proposeCoffee();
+    expect(screen.queryByTestId('provisioned-apps')).toBeNull();
+
+    state.approvals = [{ proposalId: 'appprov_1', status: 'applied' }];
+    state.ledger = {
+      status: 200,
+      body: { slug: 'coffee', status: 'succeeded', appDid: 'did:imajin:coffee', repoUrl: 'https://github.com/ima-jin/coffee', failedStep: null, errorMessage: null },
+    };
+    state.provisions = {
+      body: { isOperator: true, provisions: [{ slug: 'coffee', appDid: 'did:imajin:coffee', repoUrl: 'https://github.com/ima-jin/coffee', claimed: false }] },
+    };
+    await tick(callbacks);
+
+    const row = await screen.findByTestId('provisioned-app');
+    expect(row.getAttribute('data-slug')).toBe('coffee');
+  });
+
+  it.each([
+    ['the list read is refused', { ok: false, status: 500, body: {} }],
+    ['the list has no provisions key', { body: { isOperator: true } }],
+  ])('renders no list and keeps the form usable when %s', async (_label, provisions) => {
+    installFetch({ provisions });
+    await renderVisible();
+    await act(async () => {});
+
+    expect(screen.queryByTestId('provisioned-apps')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Propose provision' })).toBeDefined();
+  });
+
+  it('renders no list when the list read throws', async () => {
+    const { spy } = installFetch();
+    const base = spy.getMockImplementation()!;
+    spy.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === PROVISIONED_APPS_URL) throw new Error('offline');
+      return base(url, init);
+    });
+    await renderVisible();
+    await act(async () => {});
+
+    expect(screen.queryByTestId('provisioned-apps')).toBeNull();
+  });
+
+  it('does not read the list for a non-operator', async () => {
+    const { spy } = installFetch({ isOperator: false });
+    render(<ProvisionAppPanel />);
+    await waitFor(() => expect(spy).toHaveBeenCalled());
+    await act(async () => {});
+
+    expect(spy.mock.calls.some(([url]) => url === PROVISIONED_APPS_URL)).toBe(false);
   });
 });
