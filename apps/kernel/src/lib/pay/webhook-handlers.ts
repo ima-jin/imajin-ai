@@ -10,7 +10,7 @@
 
 import { db, feeLedger, balanceRollups, transactions } from '@/src/db';
 import { sql } from 'drizzle-orm';
-import { externalRefColumns } from '@/src/lib/pay/external-ref';
+import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -639,6 +639,32 @@ function publishMarketNotifications(session: StripeCheckoutSessionLike): void {
   }
 }
 
+/**
+ * The kernel `pay.transactions` id the checkout session belongs to (#2739). Events settles through
+ * `POST /pay/api/settle`, which is keyed by this id, not by the Stripe session id the webhook is
+ * otherwise named by.
+ *
+ * Fails soft: no row (or a lookup error) yields `undefined` and a log line, never a throw — the
+ * payment is already collected and the webhook notification must still go out.
+ */
+export async function findTransactionIdForSession(sessionId: string): Promise<string | undefined> {
+  try {
+    const [row] = await db
+      .select({ id: transactions.id })
+      .from(transactions)
+      .where(whereExternalRef(sessionId))
+      .limit(1);
+    if (row?.id) return row.id;
+    log.error({ sessionId }, 'No pay.transactions row for checkout session — events webhook will carry no transactionId');
+  } catch (error) {
+    log.error(
+      { sessionId, err: String(error) },
+      'pay.transactions lookup failed — events webhook will carry no transactionId',
+    );
+  }
+  return undefined;
+}
+
 export async function notifyEventsService(
   type: 'checkout.completed' | 'payment.failed',
   session: StripeCheckoutSessionLike,
@@ -647,6 +673,7 @@ export async function notifyEventsService(
   const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET!;
 
   try {
+    const transactionId = type === 'checkout.completed' ? await findTransactionIdForSession(session.id) : undefined;
     const response = await fetch(`${eventsServiceUrl}/api/webhook/payment`, {
       method: 'POST',
       headers: {
@@ -656,6 +683,7 @@ export async function notifyEventsService(
       body: JSON.stringify({
         type,
         sessionId: session.id,
+        ...(transactionId && { transactionId }),
         paymentId:
           typeof session.payment_intent === 'string'
             ? session.payment_intent

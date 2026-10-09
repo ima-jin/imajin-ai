@@ -6,6 +6,7 @@
 import { NextResponse } from 'next/server';
 import type { Logger } from '@imajin/logger';
 import type { CartItem } from '@/src/lib/checkout-common';
+import type { AppCheckoutAuth } from './pay-settle';
 
 const MAX_QUANTITY = 20;
 
@@ -136,6 +137,12 @@ export interface RequestPayCheckoutSessionParams {
   fairManifest: unknown;
   sellerDid: string;
   metadata: Record<string, unknown>;
+  /**
+   * Events' own app-service token + the payee manifest it declares (#2739). When present the
+   * checkout is authenticated as the events app, so the pay service binds the payment to it and
+   * events can later settle it via `/api/settle`. Absent for an event with no `.fair` chain.
+   */
+  appAuth?: AppCheckoutAuth | null;
   log: Logger;
 }
 
@@ -152,12 +159,15 @@ export interface PayCheckoutSession {
 export async function requestPayCheckoutSession(
   params: RequestPayCheckoutSessionParams,
 ): Promise<{ checkout: PayCheckoutSession } | { error: string; status: number }> {
-  const { payServiceUrl, log, ...body } = params;
+  const { payServiceUrl, log, appAuth, ...body } = params;
 
   const payResponse = await fetch(`${payServiceUrl}/api/checkout`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(appAuth && { Authorization: `Bearer ${appAuth.bearer}` }),
+    },
+    body: JSON.stringify(appAuth ? { ...body, payeeManifest: appAuth.payeeManifest } : body),
   });
 
   if (!payResponse.ok) {

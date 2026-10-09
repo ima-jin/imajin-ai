@@ -16,6 +16,7 @@ const log = createLogger('events');
 import { eq, and, sql } from 'drizzle-orm';
 import { backfillContactEmail } from '@/src/lib/contact-email';
 import { createOrderWithTickets } from '@/src/lib/checkout-common';
+import { settleCompletedOrder } from '@/src/lib/pay-settle';
 import { eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import * as bus from '@imajin/bus';
 import {
@@ -224,36 +225,40 @@ interface WebhookSettlementParams {
   createdTickets: Array<{ id: string }>;
   firstTypeId: string;
   sessionId: string;
+  /** Kernel `transactionId` of the app-authenticated checkout, when the pay webhook carries it. */
+  transactionId?: string;
 }
 
 /**
- * Trigger the .fair settlement + notification signal for a completed order.
+ * Settle a completed order (#2739): events calls the pay service's
+ * `/api/settle` itself with its own app-service token — the bus `settle`
+ * reactor only runs in the kernel process, so publishing `order.completed`
+ * from here no longer settles anything.
  * Non-fatal — settlement failures are logged, not thrown.
  */
 async function triggerWebhookSettlement(params: WebhookSettlementParams): Promise<void> {
-  const { ownerDid, event, orderId, amountTotal, currency, createdTickets, firstTypeId, sessionId } = params;
+  const { ownerDid, event, orderId, amountTotal, currency, createdTickets, firstTypeId, sessionId, transactionId } = params;
   const eventMetadata = (event.metadata || {}) as Record<string, any>;
 
   try {
-    await bus.publish('order.completed', {
-      issuer: ownerDid, subject: event.creatorDid, scope: 'events',
-      payload: {
+    await settleCompletedOrder({
+      sessionId,
+      transactionId,
+      orderId,
+      eventId: event.id,
+      buyerDid: ownerDid,
+      creatorDid: event.creatorDid,
+      amountCents: amountTotal,
+      currency,
+      fairManifest: eventMetadata.fair || null,
+      metadata: {
         orderId,
+        ticketIds: createdTickets.map(t => t.id),
+        ticketTypeId: firstTypeId,
+        stripeSessionId: sessionId,
         eventId: event.id,
-        eventDid: event.did,
-        buyerDid: ownerDid,
-        amount: amountTotal,
-        currency,
-        fairManifest: eventMetadata.fair || null,
-        metadata: {
-          ticketIds: createdTickets.map(t => t.id),
-          ticketTypeId: firstTypeId,
-          stripeSessionId: sessionId,
-          eventId: event.id,
-        },
-        funded: true,
-        funded_provider: 'stripe',
-      }
+      },
+      log,
     });
   } catch (settleError) {
     log.error({ err: String(settleError) }, '[settle] Unexpected settlement error (non-fatal)');
@@ -300,6 +305,8 @@ interface PaymentWebhookPayload {
   type: 'checkout.completed' | 'payment.failed';
   sessionId: string;
   paymentId?: string;
+  /** Kernel `transactionId` of the app-authenticated checkout — the key `/pay/api/settle` needs (#2739). */
+  transactionId?: string;
   customerEmail: string;
   customerName?: string | null;
   amountTotal: number;
@@ -346,7 +353,7 @@ export const POST = withLogger('events', async (request, { log }) => {
 });
 
 async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
-  const { metadata, customerName, amountTotal, currency, sessionId, paymentId } = payload;
+  const { metadata, customerName, amountTotal, currency, sessionId, paymentId, transactionId } = payload;
   const customerEmail = payload.customerEmail || null;
 
   // Parse cart: multi-type (cart JSON) or legacy single-type
@@ -424,6 +431,7 @@ async function handleCheckoutCompleted(payload: PaymentWebhookPayload) {
     createdTickets,
     firstTypeId: firstType.id,
     sessionId,
+    transactionId,
   });
 
   // Build onboard token for magic-link auth in confirmation email
