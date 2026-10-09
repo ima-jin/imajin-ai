@@ -11,7 +11,7 @@ const SCRIPT = fileURLToPath(new URL('../ci-guard-cross-schema-reads.mjs', impor
 
 const OWNERSHIP_MAP = {
   tables: {
-    'learn.courses': { owner: 'learn', schema: 'learn', firstMigration: '0001_seed.sql', notes: '' },
+    'market.listings': { owner: 'market', schema: 'market', firstMigration: '0001_seed.sql', notes: '' },
     'auth.identities': { owner: 'kernel', schema: 'auth', firstMigration: '0001_seed.sql', notes: '' },
     'profile.profiles': { owner: 'kernel', schema: 'profile', firstMigration: '0001_seed.sql', notes: '' },
     'connections.pod_members': { owner: 'kernel', schema: 'connections', firstMigration: '0001_seed.sql', notes: '' },
@@ -25,7 +25,7 @@ function makeTempRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'cross-schema-guard-'));
   mkdirSync(join(dir, 'migrations'), { recursive: true });
   mkdirSync(join(dir, 'apps', 'kernel', 'app'), { recursive: true });
-  mkdirSync(join(dir, 'apps', 'learn', 'app', 'api'), { recursive: true });
+  mkdirSync(join(dir, 'apps', 'market', 'app', 'api'), { recursive: true });
   writeFileSync(join(dir, 'migrations', 'ownership.json'), JSON.stringify(OWNERSHIP_MAP, null, 2), 'utf8');
   return dir;
 }
@@ -83,13 +83,13 @@ function expectFail(dir, ...expectedSubstrings) {
 const SINGLE_FILE_CASES = [
   {
     name: 'passes when an app only queries its own schema',
-    file: 'apps/learn/app/api/route.ts',
-    content: "const rows = await sql`SELECT * FROM learn.courses WHERE id = ${id}`;",
+    file: 'apps/market/app/api/route.ts',
+    content: "const rows = await sql`SELECT * FROM market.listings WHERE id = ${id}`;",
     expectedFailSubstrings: null,
   },
   {
     name: "fails when an app reads another owner's schema via raw SQL",
-    file: 'apps/learn/app/api/route.ts',
+    file: 'apps/market/app/api/route.ts',
     content: "const rows = await sql`SELECT did FROM profile.profiles WHERE did = ANY(${dids})`;",
     expectedFailSubstrings: ['profile.profiles'],
   },
@@ -101,32 +101,32 @@ const SINGLE_FILE_CASES = [
   },
   {
     name: 'does not flag plain property access that happens to look like schema.table',
-    file: 'apps/learn/app/api/route.ts',
+    file: 'apps/market/app/api/route.ts',
     content: "if ('error' in authResult) { return errorResponse(authResult.error, authResult.status); }",
     expectedFailSubstrings: null,
   },
   {
     name: 'ignores a schema reference inside a comment',
-    file: 'apps/learn/app/api/route.ts',
+    file: 'apps/market/app/api/route.ts',
     content: '// this used to read FROM profile.profiles directly\nconst x = 1;',
     expectedFailSubstrings: null,
   },
   {
     name: 'excludes test files from scanning',
-    file: 'apps/learn/app/api/__tests__/route.test.ts',
+    file: 'apps/market/app/api/__tests__/route.test.ts',
     content: "const rows = await sql`SELECT * FROM profile.profiles WHERE did = ${did}`;",
     expectedFailSubstrings: null,
   },
   {
     name: 'flags a Drizzle pgSchema() declaration for a schema the app does not own',
-    file: 'apps/learn/src/db/foreign-schema.ts',
+    file: 'apps/market/src/db/foreign-schema.ts',
     content: "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const authSchema = pgSchema('auth');",
     expectedFailSubstrings: ['pgSchema("auth")'],
   },
   {
     name: "does not flag a Drizzle pgSchema() declaration for the app's own schema",
-    file: 'apps/learn/src/db/schema.ts',
-    content: "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const learnSchema = pgSchema('learn');",
+    file: 'apps/market/src/db/schema.ts',
+    content: "import { pgSchema } from 'drizzle-orm/pg-core';\nexport const marketSchema = pgSchema('market');",
     expectedFailSubstrings: null,
   },
 ];
@@ -149,12 +149,12 @@ describe('ci-guard-cross-schema-reads', () => {
     const dir = makeTempRepo();
     writeSource(
       dir,
-      'apps/learn/app/api/insert-route.ts',
+      'apps/market/app/api/insert-route.ts',
       "await sql`INSERT INTO auth.identities (id) VALUES (${id})`;",
     );
     writeSource(
       dir,
-      'apps/learn/app/api/update-route.ts',
+      'apps/market/app/api/update-route.ts',
       "await sql`UPDATE connections.pod_members SET role = 'x' WHERE did = ${did}`;",
     );
 
@@ -165,10 +165,10 @@ describe('ci-guard-cross-schema-reads', () => {
     const dir = makeTempRepo();
     writeSource(
       dir,
-      'apps/learn/app/api/route.ts',
+      'apps/market/app/api/route.ts',
       "const rows = await sql`SELECT did FROM profile.profiles WHERE did = ANY(${dids})`;",
     );
-    writeAllowlist(dir, [{ file: 'apps/learn/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
+    writeAllowlist(dir, [{ file: 'apps/market/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
 
     expectPass(dir);
   });
@@ -177,11 +177,11 @@ describe('ci-guard-cross-schema-reads', () => {
     const dir = makeTempRepo();
     writeSource(
       dir,
-      'apps/learn/app/api/route.ts',
+      'apps/market/app/api/route.ts',
       "const a = await sql`SELECT did FROM profile.profiles WHERE did = ${did}`;\n" +
         "const b = await sql`SELECT id FROM auth.identities WHERE id = ${did}`;",
     );
-    writeAllowlist(dir, [{ file: 'apps/learn/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
+    writeAllowlist(dir, [{ file: 'apps/market/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
 
     expectFail(dir, 'auth.identities');
   });
@@ -190,10 +190,10 @@ describe('ci-guard-cross-schema-reads', () => {
     const dir = makeTempRepo();
     writeSource(
       dir,
-      'apps/learn/app/api/route.ts',
+      'apps/market/app/api/route.ts',
       "const rows = await sql`SELECT did FROM profile.profiles WHERE did = ANY(${dids})`;",
     );
-    writeAllowlist(dir, [{ file: 'apps/learn/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
+    writeAllowlist(dir, [{ file: 'apps/market/app/api/route.ts', schema: 'profile', table: 'profiles' }]);
 
     const result = runGuard(dir, ['--list']);
     expect(result.status).toBe(0);

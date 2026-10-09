@@ -2,7 +2,7 @@
 
 The kernel — the Next.js application implementing the six primitives (Attestation, Communication, Attribution, Settlement, Discovery, Revocation) and the rails that serve them (auth, pay, registry, connections, chat, media, bus). This is not a third-party app; it's what a node operator runs.
 
-Coffee, dykil, learn, events, and market currently run inside this same monorepo as separate services pending extraction behind the registered-app contract ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981)) — see the [root README](../../README.md) for the kernel/app boundary. `links` was the first app to leave: `apps/links` was pruned on 2026-09-28 and it now lives at [ima-jin/links](https://github.com/ima-jin/links).
+Coffee, dykil, events, and market currently run inside this same monorepo as separate services pending extraction behind the registered-app contract ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981)) — see the [root README](../../README.md) for the kernel/app boundary. `links` was the first app to leave: `apps/links` was pruned on 2026-09-28 and it now lives at [ima-jin/links](https://github.com/ima-jin/links). `learn` was pruned in [#2503](https://github.com/ima-jin/imajin-ai/issues/2503) and now lives at [ima-jin/learn](https://github.com/ima-jin/learn).
 
 ## Run it
 

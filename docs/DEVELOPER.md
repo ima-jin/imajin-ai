@@ -40,7 +40,7 @@ Run with `--help` for all options. Use `--force` to regenerate `.env.local` file
 - Runs `pnpm install`
 - Creates the `imajin_dev` database (skip if it already exists)
 - Generates an Ed25519 keypair (`AUTH_PRIVATE_KEY`) and all internal API keys
-- Writes `.env.local` for kernel and every in-repo vertical (events, coffee, dykil, learn, market) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`. `links` (#1986 phase 2) now lives in its own repo, [ima-jin/links](https://github.com/ima-jin/links), and is set up separately.
+- Writes `.env.local` for kernel and every in-repo vertical (events, coffee, dykil, market) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`. `links` (#1986 phase 2) and `learn` (#2503) now live in their own repos, [ima-jin/links](https://github.com/ima-jin/links) and [ima-jin/learn](https://github.com/ima-jin/learn), and are set up separately.
 - Runs all migrations via `./scripts/migrate.sh`
 
 ### Minimum Services for Local Dev
@@ -132,7 +132,6 @@ Service-to-service (server-side) URLs use `AUTH_SERVICE_URL=http://localhost:300
 # Run a single service in dev mode
 pnpm --filter @imajin/kernel dev       # localhost:3000
 pnpm --filter @imajin/events dev       # localhost:3006
-pnpm --filter @imajin/learn-service dev # localhost:3103
 
 # Build a service
 pnpm --filter @imajin/kernel build
@@ -199,7 +198,7 @@ Each service owns a Postgres schema within the shared database. They don't share
 | `registry` | kernel | nodes, heartbeats |
 | `events` | events | events, tickets |
 | `coffee` | coffee | pages, tips |
-| `learn` | learn | courses, modules, lessons, enrollments, lesson_progress |
+| `learn` | learn | courses, modules, lessons, enrollments, lesson_progress (app now in [ima-jin/learn](https://github.com/ima-jin/learn), #2503; schema stays here) |
 
 ### Migration Discipline
 

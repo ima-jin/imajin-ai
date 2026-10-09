@@ -243,21 +243,6 @@ export const DELEGATION_ROUTES = {
     path: "/api/surveys/[id]",
     why: "deletes a survey and responses",
   },
-  "learn.course.delete": {
-    class: "irreversible", action: "delete", app: "learn", method: "DELETE",
-    path: "/api/courses/[slug]",
-    why: "deletes a course",
-  },
-  "learn.module.delete": {
-    class: "irreversible", action: "delete", app: "learn", method: "DELETE",
-    path: "/api/courses/[slug]/modules/[moduleId]",
-    why: "deletes a module",
-  },
-  "learn.lesson.delete": {
-    class: "irreversible", action: "delete", app: "learn", method: "DELETE",
-    path: "/api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]",
-    why: "deletes a lesson",
-  },
   "kernel.profile.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",
     path: "/profile/api/profile/[id]",

@@ -45,7 +45,6 @@ apps/
   coffee/     — Tip jar / support pages
   dykil/      — Surveys and polls
   links/      — Curated link collections
-  learn/      — Courses and lessons
   market/     — Marketplace (alpha)
 
 packages/     — Shared libraries (@imajin/auth, @imajin/db, @imajin/ui, etc.)

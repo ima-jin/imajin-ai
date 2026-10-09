@@ -119,21 +119,6 @@ module.exports = {
       "kill_timeout": 15000
     },
     {
-      "name": "dev-learn",
-      "cwd": "/home/jin/dev/imajin-ai/apps/learn",
-      "script": "node_modules/next/dist/bin/next",
-      "args": "start -p 3103",
-      "interpreter": "node",
-      "exec_mode": "fork",
-      "env": {
-        "PORT": 3103,
-        "NODE_ENV": "production"
-      },
-      "max_restarts": 10,
-      "min_uptime": "20s",
-      "kill_timeout": 15000
-    },
-    {
       "name": "dev-market",
       "cwd": "/home/jin/dev/imajin-ai/apps/market",
       "script": "node_modules/next/dist/bin/next",

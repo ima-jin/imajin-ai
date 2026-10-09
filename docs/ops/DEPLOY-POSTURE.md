@@ -143,9 +143,9 @@ longer exists.
 **Env vars referenced by deploy workflows but not documented — checked, not found live today.** The
 issue's original example (`PROFILE_INTERNAL_API_KEY`, `REGISTRY_SERVICE_URL` needing `/registry`) is
 now documented in every consuming app's `.env.example` (`apps/kernel/.env.example:140`,
-`apps/events/.env.example:81-82`, `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
+`apps/events/.env.example:81-82`, formerly `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
 the `/registry` suffix in `apps/coffee/.env.example:20`, `apps/events/.env.example:28`,
-`apps/kernel/.env.example:211`, `apps/learn/.env.example:21`, `apps/market/.env.example:21`) — this
+`apps/kernel/.env.example:211`, formerly `apps/learn/.env.example:21`, `apps/market/.env.example:21`) — this
 specific instance from the "why now" section has since been fixed. It's evidence the underlying
 gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
 that it's currently unresolved.
@@ -245,6 +245,29 @@ does change here:
   `migrations/ownership.json`) already scoped `links.*` tables to the `links`
   owner; no migration files moved (see `migrations/BASELINE.md`'s "Per-app
   migration directories" section — still deferred, unrelated to this prune).
+
+## 6. learn is external now (#2503)
+
+`apps/learn` was removed from this repo entirely, pruned as soon as its
+standalone **dev** cutover held (Ryan's 2026-10-09 ruling: prune each app's
+kernel copy once its dev cutover holds, don't wait for prod; the app has a prod
+gap until its prod cutover is accepted). It lives and is built, tested, and
+deployed from its own repo, [ima-jin/learn](https://github.com/ima-jin/learn),
+against the registered-app contract. What changes here:
+
+- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-learn`/`prod-learn`.
+  The operator's pm2 entries point at `ima-jin/learn` checkouts instead of
+  `~/{dev,prod}/imajin-ai/apps/learn`.
+- Caddy and ports are unchanged (`jin.imajin.ai/learn`, 3103 dev / 7103 prod).
+- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
+  name via `pm2 jlist`, so a standalone process still named `prod-learn` is bounced
+  by kernel deploys even though this repo no longer builds or migrates it — the same
+  open question as §5's `prod-links` decision; nothing new is needed to answer it.
+- The `learn` Postgres schema and its tables are untouched; learn-owned migrations
+  stay in `migrations/` with owner `learn`.
+- `scripts/provision-service-bootstrap.mjs --all` discovers services from
+  `apps/*/.env.example`, so it no longer mints a learn bootstrap identity: the
+  standalone app claims its own.
 
 ## Decisions for Ryan
 
