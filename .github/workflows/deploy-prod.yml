@@ -131,11 +131,11 @@ jobs:
           fi
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
-          # Everything else (prod-events, prod-dykil, prod-market, …).
-          # learn (#2503) and coffee (#2500) run from their own repos now; their pm2
-          # entries are no longer in the ecosystem file, so if the operator keeps the
-          # prod-learn / prod-coffee names pm2 still lists, the name-based restart below
-          # bounces them (harmless; this repo no longer builds or migrates them).
+          # Everything else (prod-events, prod-dykil, …).
+          # learn (#2503), coffee (#2500) and market (#2512) run from their own repos now;
+          # their pm2 entries are no longer in the ecosystem file, so if the operator keeps
+          # the prod-learn / prod-coffee / prod-market names pm2 still lists, the name-based
+          # restart below bounces them (harmless; this repo no longer builds or migrates them).
           # links (#1986 phase 2) runs from its own repo/pm2 process now, so it is no
           # longer among these.
           #

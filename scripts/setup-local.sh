@@ -179,9 +179,9 @@ step "Writing .env.local files"
 # Apps with .env.example files (broker-agent handled separately below)
 # links (#1986 phase 2) now runs from its own repo (ima-jin/links) against
 # this same dev DB — it is no longer part of this monorepo's local setup.
-# learn (#2503) and coffee (#2500) likewise run from their own repos
-# (ima-jin/learn, ima-jin/coffee).
-APPS=(kernel events dykil market)
+# learn (#2503), coffee (#2500) and market (#2512) likewise run from their own repos
+# (ima-jin/learn, ima-jin/coffee, ima-jin/market).
+APPS=(kernel events dykil)
 
 for app in "${APPS[@]}"; do
   app_dir="$REPO_ROOT/apps/$app"
@@ -273,7 +273,7 @@ for app in "${APPS[@]}"; do
     esac
 
     case "$app" in
-      events|market)
+      events)
         set_env "$local_env" "PAY_SERVICE_API_KEY" "\"${PAY_API_KEY}\""
         ;;
       *) ;; # no-op for other apps
@@ -342,7 +342,6 @@ echo
 echo "  3. $(cyan "Start verticals as needed")"
 echo "     pnpm --filter @imajin/events dev     $(dim "→ http://localhost:3006")"
 echo "     pnpm --filter @imajin/dykil  dev     $(dim "→ http://localhost:3101")"
-echo "     pnpm --filter @imajin/market dev     $(dim "→ http://localhost:3104")"
 echo
 echo "  $(dim "Optional: fill in Stripe, SendGrid, Anthropic, etc. in apps/kernel/.env.local")"
 echo

@@ -366,6 +366,25 @@ coffee checkout at all. The `coffee` Postgres schema stays in place (the
 standalone app owns that data); nothing here drops it. See
 `docs/ops/DEPLOY-POSTURE.md` for the full note.
 
+## market is no longer in these ecosystem files (#2512)
+
+`market` was removed from both `ecosystem.dev.config.js` and
+`ecosystem.prod.config.js` when `apps/market` was pruned from this monorepo
+(the app's own repo, [ima-jin/market](https://github.com/ima-jin/market), now
+owns it end to end — #1989 step 5). The `dev-market` / `prod-market` pm2 entries
+now point at `ima-jin/market` checkouts, not at
+`~/dev/imajin-ai/apps/market` / `~/prod/imajin-ai/apps/market`. Its ports
+(3104 dev / 7104 prod) and Caddy route (`jin.imajin.ai/market`) are unchanged.
+This repo's deploy workflows no longer build, migrate, or provision it — that is
+`ima-jin/market`'s own deploy. A node operator deploying only the kernel needs no
+market checkout at all. The kernel still reads `MARKET_SERVICE_URL` and
+`MARKET_WEBHOOK_SECRET` to forward pay webhooks to the standalone market
+(`notifyMarketService`); leave those env vars in place. The `market` Postgres
+schema stays in place (the standalone app owns that data); nothing here drops it.
+Until the standalone app's prod cutover is accepted, prod has no in-repo market
+process (a deliberate prod gap per the 2026-10-09 ruling). See
+`docs/ops/DEPLOY-POSTURE.md` for the full note.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host

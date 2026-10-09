@@ -213,21 +213,6 @@ export const DELEGATION_ROUTES = {
     path: "/api/orders/[id]/refund",
     why: "refunds an order",
   },
-  "market.listing.purchase": {
-    class: "reversible", action: "purchase", app: "market", method: "POST",
-    path: "/api/listings/[id]/purchase",
-    why: "starts a hosted checkout session via pay; the buyer still authorises it (proposal artifact)",
-  },
-  "market.listing.delete": {
-    class: "irreversible", action: "delete", app: "market", method: "DELETE",
-    path: "/api/listings/[id]",
-    why: "deletes a listing",
-  },
-  "market.seller.settings": {
-    class: "reversible", action: "settings", app: "market", method: "PATCH",
-    path: "/api/seller/settings",
-    why: "market-items visibility toggle",
-  },
   "dykil.survey.delete": {
     class: "irreversible", action: "delete", app: "dykil", method: "DELETE",
     path: "/api/surveys/[id]",

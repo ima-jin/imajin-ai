@@ -1,7 +1,7 @@
 /**
  * Shared test fixtures/assertions for the #2000 registry migration.
  *
- * apps/market and apps/events each build a
+ * apps/events (and formerly apps/market) each build a
  * `.fair` manifest (via `buildFairManifest`, exported alongside this file)
  * using node config sourced from `getNodeSelf()` (`@imajin/config`). Their
  * route-level tests all need to assert the same thing — that

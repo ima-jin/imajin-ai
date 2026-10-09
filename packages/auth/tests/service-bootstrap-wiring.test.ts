@@ -54,11 +54,11 @@ beforeEach(() => {
   vi.stubEnv('NEXT_RUNTIME', 'nodejs');
 });
 
-it('discovers at least the services that remain after the apps/links, apps/learn and apps/coffee prunes (#2422, #2503, #2500)', () => {
+it('discovers at least the services that remain after the apps/links, apps/learn, apps/coffee and apps/market prunes (#2422, #2503, #2500, #2512)', () => {
   // Floor guard: an empty or shrunken scan would make every case below vacuously pass.
-  // `links`, `learn` and `coffee` are deliberately absent — all run from their own repos
-  // now (they bootstrap their own identity), so they are covered only if present.
-  expect(SERVICES).toEqual(expect.arrayContaining(['events', 'dykil', 'market']));
+  // `links`, `learn`, `coffee` and `market` are deliberately absent — all run from their own
+  // repos now (they bootstrap their own identity), so they are covered only if present.
+  expect(SERVICES).toEqual(expect.arrayContaining(['events', 'dykil']));
 });
 
 describe.each(SERVICES)('%s', (service) => {

@@ -207,6 +207,13 @@ entries in `ownership-gaps.json` are kept identical by
   tables (`coffee.pages`, `coffee.tips`) are still created by the kernel's root
   migrations, the coffee-owned migrations stay in this directory, and ownership
   stays `coffee`; see `BASELINE.md` ("#2500 — coffee per-table ownership decision").
+- `apps/market` no longer exists in this monorepo either (#2512): its owning
+  code now lives in [ima-jin/market](https://github.com/ima-jin/market). Its three
+  tables (`market.disputes`, `market.listings`, `market.seller_settings`) are still
+  created by the kernel's root migrations, the market-owned migrations stay in this
+  directory, and ownership stays `market`; see `BASELINE.md` ("#2512 — market
+  per-table ownership decision"). The only new migration is the kernel-owned
+  `0187_retire_legacy_market_registry_row.sql` (a guarded `UPDATE` of `registry.apps`).
 - No foreign key crosses an owner boundary (checked across every
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.

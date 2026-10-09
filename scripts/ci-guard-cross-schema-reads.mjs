@@ -8,7 +8,8 @@
  * schema in this repo, and `scripts/check-migration-ownership.mjs` enforces
  * that boundary at the *migration* (DDL) level. Nothing enforced it at the
  * *runtime* (application code) level — the actual gaps that map's "Gaps"
- * section documents: `apps/market` and (heaviest) `apps/events` (and formerly `apps/learn`, pruned in #2503)
+ * section documents: `apps/events` (the heaviest; formerly also `apps/learn` and
+ * `apps/market`, pruned in #2503 / #2512)
  * reading and writing kernel-owned tables directly via raw SQL instead of
  * going through the kernel's HTTP API. This guard is what turns a new
  * instance of that pattern into a CI failure.

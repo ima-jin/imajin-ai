@@ -105,7 +105,7 @@ describe.skipIf(!packagesBuilt)('provision-service-bootstrap.mjs --dry-run (buil
   });
 
   it('a single-service dry run prints no identity or key material', () => {
-    const result = runEntrypoint(['market', '--dry-run']);
+    const result = runEntrypoint(['events', '--dry-run']);
     expect(result.status).toBe(0);
     expect(result.stdout).not.toMatch(/PRIVATE_KEY|did:imajin:/);
   });

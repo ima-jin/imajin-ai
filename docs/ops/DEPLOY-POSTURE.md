@@ -52,7 +52,7 @@ required by `.env.example` is missing (`docs/ENVIRONMENTS.md:126-137`, invoked f
 **Build stamp in the running system — partially checked.** Every app's `GET /api/health` returns
 `version` (from `NEXT_PUBLIC_VERSION`, tag-derived) and `build` (`NEXT_PUBLIC_BUILD_HASH`, short git
 SHA) — e.g. `apps/kernel/app/api/health/route.ts:90-96`,
-`apps/market/app/api/health/route.ts:4-10`. Both are stamped at build time by
+formerly `apps/market/app/api/health/route.ts:4-10`. Both are stamped at build time by
 `scripts/build.sh:104-124` from `git describe`/`git rev-parse` on the checked-out ref. A human asking
 "what SHA is this service running" gets a real answer from a `GET`, not an `ssh` — issue item 1 is
 already true for build identity. **Migration head — now checked (#2384).** Every app's own
@@ -145,7 +145,7 @@ issue's original example (`PROFILE_INTERNAL_API_KEY`, `REGISTRY_SERVICE_URL` nee
 now documented in every consuming app's `.env.example` (`apps/kernel/.env.example:140`,
 `apps/events/.env.example:81-82`, formerly `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
 the `/registry` suffix in `apps/events/.env.example:28`,
-`apps/kernel/.env.example:211`, formerly `apps/learn/.env.example:21`, `apps/market/.env.example:21`) — this
+`apps/kernel/.env.example:211`, formerly `apps/learn/.env.example:21` and `apps/market/.env.example:21`) — this
 specific instance from the "why now" section has since been fixed. It's evidence the underlying
 gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
 that it's currently unresolved.
@@ -295,6 +295,35 @@ changes here:
 - `scripts/provision-service-bootstrap.mjs --all` discovers services from
   `apps/*/.env.example`, so it no longer mints a coffee bootstrap identity: the
   standalone app claims its own (`ima-jin/coffee` `docs/REGISTRATION.md`).
+
+## 8. market is external now (#2512)
+
+`apps/market` was removed from this repo entirely, after `links` (§5), `learn`
+(§6) and `coffee` (§7). It lives and is built, tested, and deployed from its own
+repo, [ima-jin/market](https://github.com/ima-jin/market), against the
+registered-app contract (scoped app tokens, published `@ima-jin/*` SDK, public
+kernel API). What changes here:
+
+- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-market`/`prod-market`.
+  The operator's pm2 entries now point at `ima-jin/market` checkouts instead of
+  `~/{dev,prod}/imajin-ai/apps/market`.
+- Caddy and ports are unchanged (`jin.imajin.ai/market`, 3104 dev / 7104 prod).
+- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
+  name via `pm2 jlist`, so a standalone process still named `prod-market` is bounced
+  by kernel deploys even though this repo no longer builds or migrates it — the same
+  open question as §5's `prod-links` decision; nothing new is needed to answer it.
+- Per the 2026-10-09 ruling (each app's kernel copy is pruned once its standalone
+  DEV cutover holds), prod has no in-repo market process from this change on, until
+  market's prod cutover is accepted. That prod gap is deliberate.
+- The `market` Postgres schema and its tables are untouched. See
+  `migrations/BASELINE.md` ("#2512 — market per-table ownership decision").
+- The kernel pay webhook still notifies market over HTTP (`notifyMarketService` in
+  `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading `MARKET_SERVICE_URL` and
+  `MARKET_WEBHOOK_SECRET`); that is the public contract the standalone app consumes
+  (it settles its own purchases) and is unchanged. Leave both env vars in place.
+- `scripts/provision-service-bootstrap.mjs --all` discovers services from
+  `apps/*/.env.example`, so it no longer mints a market bootstrap identity: the
+  standalone app claims its own (`ima-jin/market` `docs/REGISTRATION.md`).
 
 ## Decisions for Ryan
 
