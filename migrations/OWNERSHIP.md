@@ -214,6 +214,11 @@ entries in `ownership-gaps.json` are kept identical by
   directory, and ownership stays `market`; see `BASELINE.md` ("#2512 — market
   per-table ownership decision"). The only new migration is the kernel-owned
   `0187_retire_legacy_market_registry_row.sql` (a guarded `UPDATE` of `registry.apps`).
+- `apps/dykil` no longer exists in this monorepo either (#2523), but its two
+  tables are still created by the kernel's root migrations and are still read by
+  `events` (#2542). Ownership stays `dykil`; see `BASELINE.md` ("#2523 — dykil
+  per-table ownership decision"). The only new migration is the kernel-owned
+  `0188_retire_legacy_dykil_registry_row.sql` (a guarded `UPDATE` of `registry.apps`).
 - No foreign key crosses an owner boundary (checked across every
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.

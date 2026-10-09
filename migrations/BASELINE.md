@@ -108,6 +108,37 @@ When `apps/market` was pruned from this monorepo (#1989 step 5; the standalone
   first-party row and give market's mint the first-party exemption (no scope
   ceiling) in place of its `market:*` scopes.
 
+## #2523 — dykil per-table ownership decision (no SQL dropped or moved)
+
+When `apps/dykil` was pruned from this monorepo (#1985 step 5; the standalone
+`ima-jin/dykil` already serves prod and dev from its own checkouts), every `dykil.*`
+table was checked against `migrations/ownership.json`. **No migration was edited and
+nothing is dropped.**
+
+- **`dykil.surveys`, `dykil.survey_responses`** (`0001_seed.sql`, owner `dykil`) are
+  the app's real tables and are **not kernel-owned**, so they are not handed to the
+  kernel. They stay recorded as originating in the shared `0001_seed.sql` (Option B,
+  the same standing policy as `links`). Ownership stays `dykil` in `ownership.json`
+  (the per-app ownership of #1991); only the `notes` field changed, to record that
+  they are legacy tables the standalone app reads **read-only** (roles
+  `dykil_readonly_dev` / `dykil_readonly_prod`) and that the node-witnessed legacy
+  import (#2522) depends on. The `dykil` schema must keep being created here until a
+  baseline squash gives dykil a standalone migration file. The rebuilt dykil owns no
+  tables of its own (surveys are signed documents, responses are attestations).
+- **Data keeps being needed in the kernel repo.** `events` still reads
+  `dykil.surveys` / `dykil.survey_responses` directly (guest list, sales, registration,
+  refund, resend-email, register routes). Those are the grandfathered cross-schema
+  reads tracked as #2542 in `OWNERSHIP.md` / `cross-schema-allowlist.json`; they are
+  why the tables cannot be dropped, and they are unchanged by this PR.
+- **`0025` / `0026`** (shared `dykil` + `events` DML) stay as they are, grandfathered.
+- **One data-only kernel migration, `0188_retire_legacy_dykil_registry_row.sql`.** It
+  is an `UPDATE` on kernel-owned `registry.apps` (no `DROP`): it revokes the seeded
+  `app_first_party_dykil` row and clears its audience/slug/placements, but only when
+  another active row already answers the `dykil` audience (the provisioned one). This
+  removes the ambiguity where `resolveActiveAppByAudience` (`LIMIT 1`, no `ORDER BY`)
+  could pick the legacy first-party row and give dykil's mint the first-party
+  exemption (no scope ceiling) in place of its `dykil:*` scopes.
+
 ## Why a squash at all
 
 `migrations/` is 132 files deep, and `0001_seed.sql` alone creates all 155

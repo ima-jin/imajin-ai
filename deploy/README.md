@@ -385,6 +385,23 @@ Until the standalone app's prod cutover is accepted, prod has no in-repo market
 process (a deliberate prod gap per the 2026-10-09 ruling). See
 `docs/ops/DEPLOY-POSTURE.md` for the full note.
 
+## dykil is no longer in these ecosystem files (#2523)
+
+`dykil` was removed from both `ecosystem.dev.config.js` and
+`ecosystem.prod.config.js` when `apps/dykil` was pruned from this monorepo
+(the app's own repo, [ima-jin/dykil](https://github.com/ima-jin/dykil), now
+owns it end to end — #1985 step 5). The `dev-dykil` / `prod-dykil` pm2 entries
+now point at `ima-jin/dykil` checkouts (`~/dev/dykil` and `~/prod/dykil`), not
+at `~/dev/imajin-ai/apps/dykil` / `~/prod/imajin-ai/apps/dykil`; each is claimed
+as its own app identity (dev `did:imajin:0c03781444e6630c`, prod
+`did:imajin:cd9af3460069cb34`). Its ports (3101 dev / 7101 prod) and Caddy route
+(`jin.imajin.ai/dykil`) are unchanged. This repo's deploy workflows no longer
+build, migrate, or provision it — that is `ima-jin/dykil`'s own deploy
+(`scripts/deploy.sh <dev|prod>`). A node operator deploying only the kernel
+needs no dykil checkout at all. The `dykil` Postgres schema stays in place
+(the standalone app reads it read-only and the legacy import depends on it);
+nothing here drops it. See `docs/ops/DEPLOY-POSTURE.md` for the full note.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host
