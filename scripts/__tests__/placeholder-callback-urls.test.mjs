@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
+  TEXT_OID,
   fixPlaceholderCallbackUrls,
   parseNodeOrigin,
   planRowFix,
@@ -7,6 +11,11 @@ import {
 } from '../lib/placeholder-callback-urls.mjs';
 
 const ORIGIN = 'https://jin.imajin.ai';
+
+// The CLI loads postgres.js from the kernel app; do the same so the test
+// exercises the real `sql.array` (lazy: no connection is opened until a query runs).
+const kernelRequire = createRequire(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'apps', 'kernel', 'index.js'));
+const postgres = kernelRequire('postgres');
 
 describe('rewritePlaceholderUrl', () => {
   it('swaps the placeholder origin and keeps the path, query and hash', () => {
@@ -98,6 +107,40 @@ const PLACEHOLDER_ROWS = [
   { id: 'app_b', slug: null, tier: 'first_party', callback_url: 'https://your-node.imajin.ai/dykil', redirect_uris: ['https://your-node.imajin.ai/dykil'] },
   { id: 'app_c', slug: 'coffee', tier: 'third_party', callback_url: 'https://dev-jin.imajin.ai/coffee', redirect_uris: [] },
 ];
+
+describe('redirect_uris binding (#2759)', () => {
+  it('postgres.js only honours a numeric OID as the sql.array element type', () => {
+    const real = postgres('postgres://u:p@127.0.0.1:1/db', { max: 1 });
+    // A type NAME is passed through verbatim as the bind type, which postgres.js
+    // cannot serialise as an array — the server then sees a bare string (22P02).
+    expect(real.array(['https://x.example/cb'], 'text').type).toBe('text');
+    expect(real.array(['https://x.example/cb'], TEXT_OID).type).toBe(25);
+    expect(Number.isInteger(TEXT_OID)).toBe(true);
+  });
+
+  it('binds redirect_uris as a real text[] parameter with an explicit ::text[] cast', async () => {
+    const real = postgres('postgres://u:p@127.0.0.1:1/db', { max: 1 });
+    const bound = [];
+    const sql = (strings, ...values) => {
+      if (strings.join('?').includes('UPDATE')) bound.push({ text: strings.join('?'), values });
+      return Promise.resolve(PLACEHOLDER_ROWS);
+    };
+    sql.begin = (fn) => fn(sql);
+    sql.array = (...args) => real.array(...args);
+
+    await fixPlaceholderCallbackUrls({ sql, origin: ORIGIN, apply: true, log: vi.fn() });
+
+    expect(bound).toHaveLength(2);
+    for (const { text, values } of bound) {
+      expect(text).toMatch(/redirect_uris = \?::text\[\]/);
+      const param = values[1];
+      expect(Array.isArray(param.value)).toBe(true);
+      expect(param.type).toBe(TEXT_OID);
+    }
+    expect(bound[1].values[1].value).toEqual(['https://jin.imajin.ai/dykil']);
+    expect(bound[0].values[1].value).toEqual([]);
+  });
+});
 
 describe('fixPlaceholderCallbackUrls', () => {
   it('is a dry run by default: prints the rows and writes nothing', async () => {
