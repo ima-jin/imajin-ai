@@ -134,10 +134,8 @@ export const POST = withLogger('events', async (request, { log, correlationId })
     });
 
     if ('error' in payResult) {
-      return NextResponse.json(
-        { error: payResult.error, ...(payResult.code && { code: payResult.code }) },
-        { status: payResult.status },
-      );
+      // `code` is undefined (and so omitted from the JSON) unless the pay service named one (#2757).
+      return NextResponse.json({ error: payResult.error, code: payResult.code }, { status: payResult.status });
     }
     const { checkout } = payResult;
 
