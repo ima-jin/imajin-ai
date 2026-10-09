@@ -539,7 +539,7 @@ export async function handleTopupCheckout(session: StripeCheckoutSessionLike): P
 // ---------------------------------------------------------------------------
 
 /**
- * Notify downstream services (events, market) after a non-topup checkout
+ * Notify downstream services (events, market, learn) after a non-topup checkout
  * completes.
  */
 export async function notifyCheckoutServices(session: StripeCheckoutSessionLike): Promise<void> {
@@ -555,32 +555,69 @@ export async function notifyCheckoutServices(session: StripeCheckoutSessionLike)
     // the session is paid. Awaited, but never throws — see notifyMarketService.
     await notifyMarketService(session);
   }
+
+  if (isLearnCheckout(session)) {
+    // ima-jin/learn#13: learn creates the enrollment from this notification. Awaited, but never
+    // throws — see notifyLearnService.
+    await notifyLearnService(session);
+  }
 }
 
 /**
- * Tell the market service a listing purchase was paid (#2740), so it can settle it through
- * its own app-service token on `POST /pay/api/settle`. Same server-to-server scheme as
- * `notifyEventsService`: `Authorization: Bearer ${MARKET_WEBHOOK_SECRET}` (market verifies
- * it against its own `WEBHOOK_SECRET`). The payload names the Stripe `sessionId` — market
- * recorded the kernel payment it belongs to when the buyer started checkout — and carries
- * the amount and currency market's webhook reads from `metadata`.
- *
- * Never throws: the payment is already collected, so a market outage (or a 5xx from it) is
- * logged and must not fail the Stripe webhook ack.
+ * A course-enrollment checkout started by the learn app. Learn tags its checkout `service: 'learn'`
+ * like every other app; `source: 'learn'` is what it sent before it adopted that tag, so a checkout
+ * started by that build and paid after this deploys is still recognised.
  */
-export async function notifyMarketService(session: StripeCheckoutSessionLike): Promise<void> {
-  const marketServiceUrl = process.env.MARKET_SERVICE_URL;
-  const webhookSecret = process.env.MARKET_WEBHOOK_SECRET;
-  if (!marketServiceUrl || !webhookSecret) {
+function isLearnCheckout(session: StripeCheckoutSessionLike): boolean {
+  return session.metadata?.service === 'learn' || session.metadata?.source === 'learn';
+}
+
+/** A downstream app the kernel tells, server-to-server, that its checkout was paid. */
+interface PaidCheckoutTarget {
+  /** Capitalised name used in log lines. */
+  label: string;
+  urlVar: string;
+  secretVar: string;
+  /** What does not happen when the notification cannot be sent. */
+  consequence: string;
+}
+
+const MARKET_TARGET: PaidCheckoutTarget = {
+  label: 'Market',
+  urlVar: 'MARKET_SERVICE_URL',
+  secretVar: 'MARKET_WEBHOOK_SECRET',
+  consequence: 'market purchase will not settle',
+};
+
+const LEARN_TARGET: PaidCheckoutTarget = {
+  label: 'Learn',
+  urlVar: 'LEARN_SERVICE_URL',
+  secretVar: 'LEARN_WEBHOOK_SECRET',
+  consequence: 'learn enrollment will not be created',
+};
+
+/**
+ * POST a `payment.succeeded` for a paid checkout session to `${urlVar}/api/webhook` with
+ * `Authorization: Bearer ${secretVar}`. The payload names the Stripe `sessionId` and carries the
+ * amount and currency in `metadata`; `rail` rides top-level and only when the kernel already
+ * settled the payment on the seller's own Stripe account (#2773).
+ *
+ * Never throws: the payment is already collected, so an outage (or a 5xx) at the app is logged
+ * and must not fail the Stripe webhook ack.
+ */
+async function deliverPaidCheckout(target: PaidCheckoutTarget, session: StripeCheckoutSessionLike): Promise<void> {
+  const serviceUrl = process.env[target.urlVar];
+  const webhookSecret = process.env[target.secretVar];
+  if (!serviceUrl || !webhookSecret) {
     log.error(
       { sessionId: session.id },
-      'MARKET_SERVICE_URL or MARKET_WEBHOOK_SECRET not set — market purchase will not settle',
+      `${target.urlVar} or ${target.secretVar} not set — ${target.consequence}`,
     );
     return;
   }
 
   try {
-    const response = await fetch(`${marketServiceUrl}/api/webhook`, {
+    const response = await fetch(`${serviceUrl}/api/webhook`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -595,6 +632,8 @@ export async function notifyMarketService(session: StripeCheckoutSessionLike): P
             : session.payment_intent?.id,
         // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
         ...(session.rail && { rail: session.rail }),
+        // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
+        ...(session.sellerDid && { sellerDid: session.sellerDid }),
         metadata: {
           ...session.metadata,
           amount: session.amount_total,
@@ -604,15 +643,50 @@ export async function notifyMarketService(session: StripeCheckoutSessionLike): P
     });
 
     if (response.ok) {
-      log.info({ sessionId: session.id }, 'Market service notified successfully');
+      log.info({ sessionId: session.id }, `${target.label} service notified successfully`);
     } else {
       const error = await response.text();
-      log.error({ sessionId: session.id, status: response.status, error }, 'Market service webhook failed');
+      log.error(
+        { sessionId: session.id, status: response.status, error },
+        `${target.label} service webhook failed`,
+      );
     }
   } catch (error) {
-    log.error({ sessionId: session.id, err: String(error) }, 'Failed to notify market service');
+    log.error(
+      { sessionId: session.id, err: String(error) },
+      `Failed to notify ${target.label.toLowerCase()} service`,
+    );
     // Don't throw — the payment is still valid; the Stripe webhook ack must not fail over it.
   }
+}
+
+/**
+ * Tell the market service a listing purchase was paid (#2740), so it can settle it through
+ * its own app-service token on `POST /pay/api/settle`. Same server-to-server scheme as
+ * `notifyEventsService`: `Authorization: Bearer ${MARKET_WEBHOOK_SECRET}` (market verifies
+ * it against its own `WEBHOOK_SECRET`). The payload names the Stripe `sessionId` — market
+ * recorded the kernel payment it belongs to when the buyer started checkout — and carries
+ * the amount and currency market's webhook reads from `metadata`.
+ *
+ * Never throws: the payment is already collected, so a market outage (or a 5xx from it) is
+ * logged and must not fail the Stripe webhook ack.
+ */
+export async function notifyMarketService(session: StripeCheckoutSessionLike): Promise<void> {
+  await deliverPaidCheckout(MARKET_TARGET, session);
+}
+
+/**
+ * Tell the learn app a course-enrollment checkout was paid (ima-jin/learn#13), so it can create
+ * the enrollment. Learn verifies `Authorization: Bearer ${LEARN_WEBHOOK_SECRET}` against its own
+ * `WEBHOOK_SECRET` and keys the enrollment off `metadata.courseId` / `metadata.studentDid`. The
+ * payload is the market one: `sessionId`, `paymentId`, a top-level `rail` for a BYO-settled
+ * payment, and the amount and currency in `metadata`.
+ *
+ * Never throws: the payment is already collected, so a learn outage (or a 5xx from it) is logged
+ * and must not fail the Stripe webhook ack. Redelivery is safe — learn's enrollment is idempotent.
+ */
+export async function notifyLearnService(session: StripeCheckoutSessionLike): Promise<void> {
+  await deliverPaidCheckout(LEARN_TARGET, session);
 }
 
 function publishMarketNotifications(session: StripeCheckoutSessionLike): void {

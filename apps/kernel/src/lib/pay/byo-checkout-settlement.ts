@@ -134,6 +134,8 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
       transactionId: row.id,
       // #2773: tells market (and any app) the kernel settled this on the seller's own account — do not call /pay/api/settle.
       rail: STRIPE_BYO_RAIL,
+      // The row's `to_did` was checked against the event's owner above; metadata.sellerDid is not.
+      sellerDid: input.ownerDid,
     },
   };
 }
