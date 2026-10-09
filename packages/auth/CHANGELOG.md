@@ -25,6 +25,12 @@ PR that bumps its version.
 
 ### Added
 
+- `SessionOrTokenAuth.actingFor` (#2748): `requireSessionOrAppToken` and `requireHardDIDOrAppToken`
+  surface the verified owner DID from `X-Acting-For` (token and cookie paths), using the same
+  grants-first delegation check as `requireAuth`. An unverifiable delegation is a 403
+  (`Not authorized to act for this identity`); the raw header is never trusted. Lets a standalone
+  app's `enforceRoutePolicy` deny a delegate the way the kernel does.
+
 - `resolveAppAudience`, `isAppAudienceSlug`, `APP_AUD_ENV` (#2706).
 
 - `requireHardDIDOrAppToken` — `requireSessionOrAppToken` plus a hard-DID
