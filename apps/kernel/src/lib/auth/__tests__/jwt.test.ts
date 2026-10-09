@@ -15,7 +15,7 @@
  * make the attribution difference explicit rather than assumed.
  */
 import { describe, it, expect } from 'vitest';
-import { createAppServiceToken, createAppToken, verifyAppToken } from '../jwt';
+import { createAppServiceToken, createAppToken, verifyAppToken, verifyAppServiceToken, APP_TOKEN_DEFAULT_AUDIENCE } from '../jwt';
 
 const APP_DID = 'did:imajin:agrifortress-webhook';
 const HUMAN_DID = 'did:imajin:borrowed-human';
@@ -75,5 +75,37 @@ describe('app-service token attribution (#1800)', () => {
     const tampered = `${token.slice(0, -4)}abcd`;
 
     await expect(verifyAppToken(tampered)).resolves.toBeNull();
+  });
+});
+
+describe('verifyAppServiceToken (#2747)', () => {
+  it('resolves an app-service token to the app DID and its scopes', async () => {
+    const token = await createAppServiceToken({ azp: APP_DID, scope: 'media:write supply:read' });
+
+    expect(await verifyAppServiceToken(token)).toEqual({ appDid: APP_DID, scopes: ['media:write', 'supply:read'] });
+  });
+
+  it('resolves a token with no scopes to an empty scope list', async () => {
+    const token = await createAppServiceToken({ azp: APP_DID, scope: '' });
+
+    expect(await verifyAppServiceToken(token)).toEqual({ appDid: APP_DID, scopes: [] });
+  });
+
+  it('refuses a user-delegated app+jwt, so a user identity is never assumed', async () => {
+    const token = await createAppToken({ sub: HUMAN_DID, azp: APP_DID, scope: 'media:write', attestationId: 'att_1' });
+
+    expect(await verifyAppServiceToken(token)).toBeNull();
+  });
+
+  it('refuses a token minted for an audience other than the kernel default', async () => {
+    expect(APP_TOKEN_DEFAULT_AUDIENCE).toBe('imajin:apps');
+    const token = await createAppServiceToken({ azp: APP_DID, scope: 'media:write', aud: 'other-app' });
+
+    expect(await verifyAppServiceToken(token)).toBeNull();
+  });
+
+  it('refuses anything that is not a JWT (e.g. a legacy opaque Bearer token)', async () => {
+    expect(await verifyAppServiceToken('tok_legacy_opaque')).toBeNull();
+    expect(await verifyAppServiceToken('a.b.c')).toBeNull();
   });
 });

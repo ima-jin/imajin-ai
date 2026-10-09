@@ -8,6 +8,7 @@ import { db, tokens } from '@/src/db';
 import { eq, and, isNull, gt } from 'drizzle-orm';
 import { verifySessionToken, verifySessionAppTokenLocal, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { resolveActiveAppByAudience } from '@/src/lib/kernel/app-registry';
+import { resolveAppServiceCaller } from '@/src/lib/auth/app-service-caller';
 
 /** The legacy full-identity Bearer token path (`auth.tokens`). */
 async function resolveLegacyBearerDid(token: string): Promise<string | null> {
@@ -48,7 +49,16 @@ async function resolveSessionAppTokenDid(token: string): Promise<string | null> 
   return registered.every(Boolean) ? claims.sub : null;
 }
 
-/** Resolve calling identity from session cookie or Bearer token (legacy identity token or a scoped app token, #2394). */
+/**
+ * #2747: an app's own service token (`app-service+jwt`) authenticates as the
+ * app itself — the caller DID is the app DID, never a user's. The app must
+ * still be active in the registry on every call.
+ */
+async function resolveAppServiceDid(token: string): Promise<string | null> {
+  return (await resolveAppServiceCaller(token))?.appDid ?? null;
+}
+
+/** Resolve calling identity from session cookie or Bearer token (legacy identity token, a scoped app token #2394, or an app's own service token #2747). */
 export async function resolveCallerDid(request: NextRequest): Promise<string | null> {
   const cookieConfig = getSessionCookieOptions();
   const sessionToken = request.cookies.get(cookieConfig.name)?.value;
@@ -60,7 +70,11 @@ export async function resolveCallerDid(request: NextRequest): Promise<string | n
   const auth = request.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) {
     const token = auth.slice(7);
-    return (await resolveLegacyBearerDid(token)) ?? (await resolveSessionAppTokenDid(token));
+    return (
+      (await resolveLegacyBearerDid(token)) ??
+      (await resolveSessionAppTokenDid(token)) ??
+      (await resolveAppServiceDid(token))
+    );
   }
 
   return null;
