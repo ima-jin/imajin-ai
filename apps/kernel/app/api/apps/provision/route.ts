@@ -20,20 +20,30 @@
  *   - An already-`pending` proposal for the same slug is reused rather
  *     than raising a duplicate card.
  *
+ * Reissue guard (#2745): `reissueClaim: true` for a slug with no `succeeded`
+ * run is refused with 409 `nothing to reissue for <slug>` — it must never fall
+ * through to a full fresh provision (which would mint + vault-seal a key).
+ *
  * GET /api/apps/provision?slug= — poll the current ledger row so the
  * proposing agent can retrieve the eventual result without needing the
  * operator's decision response.
+ *
+ * GET /api/apps/provision?status=succeeded — operator-only list of succeeded
+ * provisions, each flagged `claimed`, so /jin can keep offering "Reissue claim
+ * code" for unclaimed apps after a reload (#2745). A non-operator gets
+ * `{ isOperator: false, provisions: [] }`.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
-import { getOperatorDid, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
+import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { findPendingAppsProvisionProposal } from '@/src/lib/apps/provision-proposals';
 import { APPS_SOURCE, APPS_PROVISION_KIND } from '@/src/lib/apps/approvals-execution';
 import { getAppProvisionStatus } from '@/src/lib/apps/provision';
+import { listSucceededAppProvisions } from '@/src/lib/apps/provision-list';
 import { previewManifestDeclarations } from '@/src/lib/apps/manifest-preview';
 
 const log = createLogger('kernel:apps-provision-route');
@@ -122,7 +132,12 @@ export async function POST(request: NextRequest) {
   // (#2411), in which case a fresh proposal is raised anyway so the
   // operator's approval mints a new one-time code.
   const existingRun = await getAppProvisionStatus(slug);
-  const isReissue = reissueClaim && existingRun?.status === 'succeeded';
+  // #2745: a reissue only makes sense for an app that was actually provisioned. Refuse before
+  // anything else (no pending-proposal reuse, no manifest read, no proposal row) so it can never
+  // turn into a fresh provision.
+  if (reissueClaim && existingRun?.status !== 'succeeded') {
+    return NextResponse.json({ error: `nothing to reissue for ${slug}` }, { status: 409, headers: cors });
+  }
   if (existingRun?.status === 'succeeded' && !reissueClaim) {
     return NextResponse.json(
       {
@@ -155,9 +170,8 @@ export async function POST(request: NextRequest) {
   // `null` = no manifest was readable; provisioning then registers none.
   // #2707: a reissue never re-registers anything (the succeeded branch of `runAppProvision`
   // only re-grants + issues a code), so it carries no declarations and needs no manifest read.
-  // That only holds when the ledger row IS `succeeded` — for a failed/never-provisioned slug,
-  // approving runs the full pipeline, so the card must be an ordinary provision card (#2663).
-  const preview = isReissue ? { ok: null } : await previewManifestDeclarations(slug);
+  // A reissue is only ever raised for a `succeeded` ledger row (#2745 guard above).
+  const preview = reissueClaim ? { ok: null } : await previewManifestDeclarations(slug);
   if ('error' in preview) {
     return NextResponse.json(
       { error: `imajin.app.json scope declarations rejected: ${preview.error}` },
@@ -169,11 +183,11 @@ export async function POST(request: NextRequest) {
   // #2707: a reissue is flagged on the card itself (and so covered by the content hash the
   // operator signs) so /jin can say "Reissue claim code" instead of "Provision". Only set
   // when true — an ordinary provision proposal's detail/hash is byte-identical to before.
-  const summary = isReissue
+  const summary = reissueClaim
     ? `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`
     : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential.`;
   const detail: Record<string, unknown> = { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok };
-  if (isReissue) detail.reissueClaim = true;
+  if (reissueClaim) detail.reissueClaim = true;
   const contentHash = computeApprovalContentHash({
     proposalId,
     source: APPS_SOURCE,
@@ -203,6 +217,27 @@ export async function POST(request: NextRequest) {
   }
 }
 
+async function listSucceededForOperator(identity: Parameters<typeof isOperatorIdentity>[0], cors: Record<string, string>) {
+  const operatorDid = await getOperatorDid();
+  if (!operatorDid || !isOperatorIdentity(identity, operatorDid)) {
+    return NextResponse.json({ isOperator: false, provisions: [] }, { headers: cors });
+  }
+  const rows = await listSucceededAppProvisions();
+  return NextResponse.json(
+    {
+      isOperator: true,
+      provisions: rows.map((row) => ({
+        slug: row.slug,
+        appDid: row.appDid,
+        repoUrl: row.repoUrl,
+        claimed: row.claimed,
+        updatedAt: row.updatedAt,
+      })),
+    },
+    { headers: { ...cors, 'Cache-Control': 'no-store' } },
+  );
+}
+
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -213,6 +248,9 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get('slug');
+  if (!slug && searchParams.get('status') === 'succeeded') {
+    return listSucceededForOperator(authResult.identity, cors);
+  }
   if (!slug) {
     return NextResponse.json({ error: 'slug query parameter is required' }, { status: 400, headers: cors });
   }
