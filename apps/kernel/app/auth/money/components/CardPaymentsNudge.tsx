@@ -36,15 +36,14 @@ export default function CardPaymentsNudge({ issuerDid }: Readonly<{ issuerDid: s
   if (!noCardRail) return null;
 
   return (
-    <p
-      role="status"
+    <output
       data-testid="card-payments-nudge"
-      className="text-sm text-amber-300 bg-amber-900/20 border border-amber-700 rounded-lg px-3 py-2"
+      className="block text-sm text-amber-300 bg-amber-900/20 border border-amber-700 rounded-lg px-3 py-2"
     >
       Card payments now use your own Stripe key.{' '}
       <Link href="/auth/connectors/stripe" className="underline hover:text-amber-200">
         Connect it under Connectors.
       </Link>
-    </p>
+    </output>
   );
 }
