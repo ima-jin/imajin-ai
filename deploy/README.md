@@ -334,6 +334,23 @@ repo's deploy workflows no longer build, migrate, or restart it — that is now
 `ima-jin/links`'s own CI/CD's job. See `docs/ops/DEPLOY-POSTURE.md` for the
 full note.
 
+## learn is no longer in these ecosystem files (#2503)
+
+`learn` was removed from both `ecosystem.dev.config.js` and
+`ecosystem.prod.config.js` when `apps/learn` was pruned from this monorepo
+(the app's own repo, [ima-jin/learn](https://github.com/ima-jin/learn), now
+owns it end to end — #1987 step 5). The `dev-learn` / `prod-learn` pm2 entries
+now point at `ima-jin/learn` checkouts, not at
+`~/dev/imajin-ai/apps/learn` / `~/prod/imajin-ai/apps/learn`. Its ports
+(3103 dev / 7103 prod) and Caddy route (`jin.imajin.ai/learn`) are unchanged.
+This repo's deploy workflows no longer build, migrate, or provision it — that
+is `ima-jin/learn`'s own deploy. A node operator deploying only the kernel
+needs no learn checkout at all. The `learn` Postgres schema stays in place
+(the standalone app owns that data); nothing here drops it. Until the standalone
+app's prod cutover is accepted, prod has no in-repo learn process (a deliberate
+prod gap per the 2026-10-09 ruling). See `docs/ops/DEPLOY-POSTURE.md` for the
+full note.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host

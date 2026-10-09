@@ -50,9 +50,10 @@ Extraction into separate repos is in progress, not finished ([#1981](https://git
 | [corpus](./apps/corpus) | Per-DID corpus indexing and BM25 search service — an internal daemon (port 8003 in production), not a subdomain web app | [README](./apps/corpus/README.md) |
 | [dykil](./apps/dykil) | Surveys & polls | [README](./apps/dykil/README.md) |
 | [events](./apps/events) | Create events. Sell tickets. Own your audience | [README](./apps/events/README.md) |
-| [learn](./apps/learn) | Courses, lessons, learning progress | [README](./apps/learn/README.md) |
 | [market](./apps/market) | Marketplace: listings, trust-gated commerce | [README](./apps/market/README.md) |
 <!-- apps:end -->
+
+**learn** ([#2503](https://github.com/ima-jin/imajin-ai/issues/2503)) has left this monorepo: it lives in its own repo, [ima-jin/learn](https://github.com/ima-jin/learn), registered through the app contract and still served at `jin.imajin.ai/learn` via the same Caddy route.
 
 `apps/kernel` is the kernel service itself, not an app — see its [README](./apps/kernel/README.md). Whether `broker-agent` and `corpus` are kernel rails or apps is undecided ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981), [#1726](https://github.com/ima-jin/imajin-ai/issues/1726)).
 
@@ -143,7 +144,7 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 | Codebase | 450,950 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' \| xargs cat \| wc -l` |
 | Commits | 4,579 | `git rev-list --count HEAD` |
 | First commit | 2026-02-11 | `git log --reverse --format=%ad --date=short` |
-| Services | the kernel + 7 apps built on Imajin, 29 shared packages | `ls apps`, `ls packages` |
+| Services | the kernel + 6 apps built on Imajin, 29 shared packages | `ls apps`, `ls packages` |
 
 _As of commit `5d278d72` (2026-10-05). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
 <!-- stats:end -->

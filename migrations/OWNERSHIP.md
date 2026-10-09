@@ -196,6 +196,12 @@ entries in `ownership-gaps.json` are kept identical by
 - `apps/links` no longer exists in this monorepo, but its three tables are
   still created by the kernel's root migrations (#2524 — `links` is the
   first mover).
+- `apps/learn` no longer exists in this monorepo either (#2503): the code that
+  owns the `learn` schema now lives in [ima-jin/learn](https://github.com/ima-jin/learn).
+  The learn-owned migrations stay in this directory and keep owner `learn`; the
+  schema and its five tables are untouched. The only new migration is the
+  kernel-owned `0184_retire_legacy_learn_registry_row.sql` (a guarded `UPDATE` of
+  `registry.apps`).
 - No foreign key crosses an owner boundary (checked across every
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.

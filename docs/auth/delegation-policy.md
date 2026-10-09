@@ -43,7 +43,7 @@ Ruling a: `POST /pay/api/balance/withdraw` and `POST /pay/api/payment-requests/[
 
 ## Inventory
 
-Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`, `market`, `learn`, `coffee`, `dykil`). "Prior gate" is what existed before this change.
+Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`, `market`, `coffee`, `dykil`; `learn` was reviewed too, until it left this repo in #2503 — its `learn.course.delete`, `learn.module.delete` and `learn.lesson.delete` entries went with it, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
 
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
@@ -81,9 +81,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `DELETE /auth/corpus/api/source` (kernel) | yes | no | none | **irreversible** | `kernel.corpus.source.delete` — removes a corpus source |
 | `DELETE /profile/api/profile/[id]` (kernel) | yes | no | none | **irreversible** | `kernel.profile.delete` — deletes a profile |
 | `DELETE /api/registry/apps/[appId]` (kernel) | yes | no | none | **irreversible** | `kernel.registry-app.delete` — deletes a registered app |
-| `DELETE /api/courses/[slug]` (learn) | yes | no | none | **irreversible** | `learn.course.delete` — deletes a course |
-| `DELETE /api/courses/[slug]/modules/[moduleId]/lessons/[lessonId]` (learn) | yes | no | none | **irreversible** | `learn.lesson.delete` — deletes a lesson |
-| `DELETE /api/courses/[slug]/modules/[moduleId]` (learn) | yes | no | none | **irreversible** | `learn.module.delete` — deletes a module |
 | `DELETE /api/listings/[id]` (market) | yes | no | none | **irreversible** | `market.listing.delete` — deletes a listing |
 | `PATCH /media/api/assets/[id]/access` (kernel) | yes | no | none | **irreversible** | `media.asset.access` — changing access can disclose content permanently |
 | `DELETE /media/api/assets/[id]` (kernel) | yes | no | `AGENT_APPROVAL_REQUIRED` | **irreversible** | `media.asset.delete` — soft-deletes asset + unlinks files |
@@ -115,7 +112,7 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 - **Machine-to-machine, no owner delegate**: webhooks (`quickbooks`, `google`, `events/webhook/payment`), `infer/*`, `usage/*` emitters, `registry/api/bump/*`, admin routes (own `requireAdmin`).
 - **Authority-shrinking**: `POST /api/auth/revoke`, `DELETE /api/broker/consent/[id]`, grant `ack` — a delegate withdrawing access cannot hurt the owner and the owner can re-grant.
 - **Config pointers**, re-settable: `PUT/DELETE /warp/api/environment`, `/local/api/settings`, notification preferences, profile contact-visibility.
-- **Considered, left for a follow-up ruling**: `PATCH /events/[id]` / `PUT` (event metadata incl. status), `events/.../tiers`, `.../invites`, `.../message` (outbound email), `DELETE` group/member routes under `connections/api/groups` (session-cookie auth, no actingFor path today), `checkout/free`, `checkout/etransfer`, `learn/.../enroll`.
+- **Considered, left for a follow-up ruling**: `PATCH /events/[id]` / `PUT` (event metadata incl. status), `events/.../tiers`, `.../invites`, `.../message` (outbound email), `DELETE` group/member routes under `connections/api/groups` (session-cookie auth, no actingFor path today), `checkout/free`, `checkout/etransfer`, and learn's enroll route (now in ima-jin/learn, #2503).
 
 ## DECISION cards
 

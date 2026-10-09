@@ -42,6 +42,20 @@ decide what, if anything, needed to move. Nothing did:
   this repo leaves no dangling cross-schema read — unlike the gaps already
   tracked in `OWNERSHIP.md`'s "Gaps" section for other owners.
 
+## #2503 — learn per-table ownership decision (no SQL dropped or moved)
+
+When `apps/learn` was pruned from this monorepo (#1987 step 5; the standalone
+`ima-jin/learn` already runs on dev), the five `learn.*` tables (`courses`,
+`modules`, `lessons`, `enrollments`, `lesson_progress`, created in the shared
+`0001_seed.sql`) were checked against `migrations/ownership.json`. **No migration
+was edited and nothing is dropped.** They stay owned by `learn` (the owning code now
+lives in `ima-jin/learn`) and keep being created here until a baseline squash gives
+learn a standalone migration file. The only new migration is the data-only,
+kernel-owned `0184_retire_legacy_learn_registry_row.sql`: an `UPDATE` on
+`registry.apps` that revokes the seeded `app_first_party_learn` row and clears its
+audience/slug/placements, but only when another active row already answers the
+`learn` audience.
+
 ## Why a squash at all
 
 `migrations/` is 132 files deep, and `0001_seed.sql` alone creates all 155

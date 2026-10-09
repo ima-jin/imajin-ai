@@ -514,31 +514,31 @@
       "owner": "learn",
       "schema": "learn",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy learn table (#2503). Owner stays learn: the owning code now lives in ima-jin/learn; this table is never dropped and the standalone app owns its data."
     },
     "learn.enrollments": {
       "owner": "learn",
       "schema": "learn",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy learn table (#2503). Owner stays learn: the owning code now lives in ima-jin/learn; this table is never dropped and the standalone app owns its data."
     },
     "learn.lesson_progress": {
       "owner": "learn",
       "schema": "learn",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy learn table (#2503). Owner stays learn: the owning code now lives in ima-jin/learn; this table is never dropped and the standalone app owns its data."
     },
     "learn.lessons": {
       "owner": "learn",
       "schema": "learn",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy learn table (#2503). Owner stays learn: the owning code now lives in ima-jin/learn; this table is never dropped and the standalone app owns its data."
     },
     "learn.modules": {
       "owner": "learn",
       "schema": "learn",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy learn table (#2503). Owner stays learn: the owning code now lives in ima-jin/learn; this table is never dropped and the standalone app owns its data."
     },
     "links.clicks": {
       "owner": "links",
