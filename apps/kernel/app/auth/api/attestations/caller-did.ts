@@ -49,33 +49,61 @@ async function resolveSessionAppTokenDid(token: string): Promise<string | null> 
   return registered.every(Boolean) ? claims.sub : null;
 }
 
+/** Scope an app's own `app-service+jwt` must carry to create an attestation (#2764). */
+export const ATTESTATIONS_WRITE_SCOPE = 'attestations:write';
+
+/** A resolved caller: the DID, plus the token's scopes when (and only when) it is an app-service token. */
+export interface CallerIdentity {
+  did: string;
+  /** `null` for user sessions, legacy Bearer tokens and session-app tokens — only an app-service token carries a scope set to gate on. */
+  serviceScopes: readonly string[] | null;
+}
+
 /**
  * #2747: an app's own service token (`app-service+jwt`) authenticates as the
  * app itself — the caller DID is the app DID, never a user's. The app must
  * still be active in the registry on every call.
  */
-async function resolveAppServiceDid(token: string): Promise<string | null> {
-  return (await resolveAppServiceCaller(token))?.appDid ?? null;
+async function resolveAppServiceIdentity(token: string): Promise<CallerIdentity | null> {
+  const caller = await resolveAppServiceCaller(token);
+  return caller ? { did: caller.appDid, serviceScopes: caller.scopes } : null;
 }
 
-/** Resolve calling identity from session cookie or Bearer token (legacy identity token, a scoped app token #2394, or an app's own service token #2747). */
-export async function resolveCallerDid(request: NextRequest): Promise<string | null> {
+/** A caller that is not an app-service token: nothing to scope-gate. */
+function unscoped(did: string | null): CallerIdentity | null {
+  return did ? { did, serviceScopes: null } : null;
+}
+
+/** Resolve the Bearer credential: legacy identity token, a scoped app token #2394, or an app's own service token #2747. */
+async function resolveBearerIdentity(token: string): Promise<CallerIdentity | null> {
+  return (
+    unscoped(await resolveLegacyBearerDid(token)) ??
+    unscoped(await resolveSessionAppTokenDid(token)) ??
+    (await resolveAppServiceIdentity(token))
+  );
+}
+
+/**
+ * Resolve calling identity from session cookie or Bearer token, keeping the
+ * scopes of an app-service token (#2764) so a write route can gate on them.
+ */
+export async function resolveCallerIdentity(request: NextRequest): Promise<CallerIdentity | null> {
   const cookieConfig = getSessionCookieOptions();
   const sessionToken = request.cookies.get(cookieConfig.name)?.value;
   if (sessionToken) {
     const session = await verifySessionToken(sessionToken);
-    if (session?.sub) return session.sub;
+    if (session?.sub) return { did: session.sub, serviceScopes: null };
   }
 
   const auth = request.headers.get('authorization');
   if (auth?.startsWith('Bearer ')) {
-    const token = auth.slice(7);
-    return (
-      (await resolveLegacyBearerDid(token)) ??
-      (await resolveSessionAppTokenDid(token)) ??
-      (await resolveAppServiceDid(token))
-    );
+    return resolveBearerIdentity(auth.slice(7));
   }
 
   return null;
+}
+
+/** Resolve calling identity from session cookie or Bearer token (legacy identity token, a scoped app token #2394, or an app's own service token #2747). */
+export async function resolveCallerDid(request: NextRequest): Promise<string | null> {
+  return (await resolveCallerIdentity(request))?.did ?? null;
 }

@@ -97,7 +97,17 @@ Bearer. Here the app *is* the caller — there is no user to attribute to — so
   must be `app-service+jwt` (a user-delegated `app+jwt` is refused), and the
   app must still be `active` in the registry on every call.
 
-`session-app+jwt` keeps working on both routes exactly as before.
+- Attestation create (`POST /auth/api/attestations`) needs the
+  `attestations:write` scope on the token (#2764); a verified service token
+  without it is a terminal 403 and nothing is written. Like `media:write`,
+  `attestations:write` is not service-eligible: it only reaches the token when
+  the operator approves it for the app through the countersigned
+  `apps:service-scopes` card (#2711). Reads and lists are unchanged. An app
+  that writes both media and attestations (e.g. dykil's `import-legacy
+  --commit`) needs `media:write` **and** `attestations:write` approved.
+
+User sessions and `session-app+jwt` keep working on both routes exactly as
+before — `attestations:write` is checked only on an app's own service token.
 
 ## Calling it as a client
 
