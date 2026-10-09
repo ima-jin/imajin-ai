@@ -204,6 +204,32 @@ export async function retrieveByoCheckoutSession(
   };
 }
 
+export interface ByoCheckoutCustomer {
+  email: string | null;
+  name: string | null;
+}
+
+/**
+ * Who paid, as Stripe's hosted page collected it (#2757): a buyer who gave no
+ * email up front types one into Checkout, and fulfilment (tickets) needs it.
+ * Read back from the owner's own account with their key.
+ */
+export async function retrieveByoCheckoutCustomer(ownerDid: string, sessionId: string): Promise<ByoCheckoutCustomer> {
+  const key = await loadKey(ownerDid);
+  const res = await stripeRequest(key, 'GET', `/checkout/sessions/${encodeURIComponent(sessionId)}`);
+  if (!res.ok) throw failureOf(res, 'checkout_retrieve');
+
+  const { customer_email: customerEmail, customer_details: details } = res.body as {
+    customer_email?: unknown;
+    customer_details?: { email?: unknown; name?: unknown } | null;
+  };
+  const email = details?.email ?? customerEmail;
+  return {
+    email: typeof email === 'string' && email.length > 0 ? email : null,
+    name: typeof details?.name === 'string' && details.name.length > 0 ? details.name : null,
+  };
+}
+
 /**
  * Connect-time permission check (#2754): does this restricted key carry
  * **Checkout Sessions = Write**?

@@ -14,6 +14,9 @@ vi.mock('@imajin/config', () => ({
   buildPublicUrl: (service: string) => `https://${service}.example`,
 }));
 
+// The card-payments nudge (#2757) makes its own rails read; it has its own suite, and these call-count assertions are about the list.
+vi.mock('../CardPaymentsNudge', () => ({ default: () => null }));
+
 const ISSUER_DID = 'did:imajin:business';
 
 function paymentRequest(overrides: Record<string, unknown> = {}) {

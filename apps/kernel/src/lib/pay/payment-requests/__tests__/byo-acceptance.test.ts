@@ -91,7 +91,6 @@ vi.mock('@/src/db', async () => {
     paymentRequests: pay.paymentRequests,
     transactions: pay.transactions,
     profiles: profile.profiles,
-    connectedAccounts: pay.connectedAccounts,
   };
 });
 
@@ -102,7 +101,7 @@ vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefi
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: vi.fn().mockResolvedValue('did:imajin:node') }));
 vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: vi.fn() }) }));
 vi.mock('@/src/lib/pay/providers/stripe-client', () => ({ getStripeClient: () => ({}) }));
-vi.mock('@/src/lib/pay/checkout', () => ({ resolveConnectedAccountFee: vi.fn(), taxLineItems: () => [] }));
+vi.mock('@/src/lib/pay/checkout', () => ({ taxLineItems: () => [] }));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: h.settlePaymentMock }));
 vi.mock('@/src/lib/chat/connection-check', () => ({ isConnected: vi.fn() }));
 vi.mock('@/src/lib/connections/payment-request-invite', () => ({ createPaymentRequestInvite: vi.fn() }));
@@ -347,7 +346,7 @@ describe('#2754 acceptance — an issuer with no card rail', () => {
     expect(await getPaymentRequestInvoiceByHandle(HANDLE)).toMatchObject({ card: false, emt: null });
 
     const result = await createPaymentRequestCheckoutSession({ id: HANDLE, callerDid: PAYER_DID });
-    expect(result).toMatchObject({ status: 400, code: 'SELLER_NOT_CONNECTED' });
+    expect(result).toMatchObject({ status: 400, code: 'SELLER_NO_CARD_RAIL' });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

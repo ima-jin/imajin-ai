@@ -32,8 +32,7 @@ import {
   creditUnit,
   InsufficientBalanceError,
 } from './ledger';
-import type { WithdrawRail, WithdrawalIntent } from './rails/types';
-import type { WithdrawDestinationResolutionMode } from './withdraw-destination';
+import type { WithdrawRail, WithdrawalIntent, WithdrawDestinationResolutionMode } from './rails/types';
 import { emitReconciliationDiscrepancy } from './reconciliation';
 
 const log = createLogger('kernel');

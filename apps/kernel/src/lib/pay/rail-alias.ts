@@ -1,12 +1,12 @@
 /**
  * Rail-generic route aliases (#2177 item 3, parent #2173).
  *
- * `api-spec/pay.yaml` documents rail-generic operations — `/api/connect/{provider}/…`
- * and `/api/webhook/{provider}` — alongside the original Stripe-named
- * operations. The original routes are untouched (no client breakage); the
- * rail-generic routes are thin aliases that dispatch on the `{provider}` path
- * segment to the SAME handler the Stripe-named route runs. Adding a rail is
- * one entry in the handler map a route passes to {@link railAliasRoute}.
+ * `api-spec/pay.yaml` documents rail-generic operations — `/api/webhook/{provider}`
+ * — alongside the original Stripe-named operations. The original routes are
+ * untouched (no client breakage); the rail-generic routes are thin aliases that
+ * dispatch on the `{provider}` path segment to the SAME handler the Stripe-named
+ * route runs. Adding a rail is one entry in the handler map a route passes to
+ * {@link railAliasRoute}.
  *
  * This module never imports a rail SDK (the `ci-guard-stripe-import-scope`
  * guard keeps that under `providers/`).
@@ -78,19 +78,6 @@ export function railAliasRoute(handlers: RailHandlers, annotate?: RailAnnotator)
 export function railAliasOptions(request: NextRequest): Response {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
 }
-
-/** `connect/{provider}/onboard|status` — tag the body with its rail. */
-export const annotateConnectProvider: RailAnnotator = (provider, body) => ({ ...body, provider });
-
-/** `connect/{provider}/status` — tag the body with its rail and expose the rail-neutral `accountId`. */
-export const annotateConnectStatus: RailAnnotator = (provider, body) => {
-  const legacyAccountId = typeof body.stripeAccountId === 'string' ? body.stripeAccountId : undefined;
-  return {
-    ...body,
-    provider,
-    ...(legacyAccountId === undefined ? {} : { accountId: legacyAccountId }),
-  };
-};
 
 // ── POST /api/charge — rail-generic recipient ────────────────────────────────
 

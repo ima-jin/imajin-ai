@@ -353,20 +353,20 @@ async function checkInviteValid(eventId: string, inviteToken: string | undefined
   return notExpired && hasUsesLeft;
 }
 
-async function checkSellerConnected(creatorDid: string): Promise<boolean> {
+async function checkSellerCardRail(creatorDid: string): Promise<boolean> {
   try {
     // Pay is a kernel service reached through the kernel's port with the
     // /pay path prefix (#2046) — the previous localhost:3004 fallback
     // predated the kernel consolidation and pointed at nothing real (#2137).
     const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL || 'http://localhost:3000/pay';
     const checkRes = await fetch(
-      `${PAY_SERVICE_URL}/api/connect/check?did=${encodeURIComponent(creatorDid)}`,
+      `${PAY_SERVICE_URL}/api/card-rail/check?did=${encodeURIComponent(creatorDid)}`,
       { cache: 'no-store' }
     );
     // Default true so free events / unknown states don't block payment.
     if (!checkRes.ok) return true;
     const checkData = await checkRes.json();
-    return checkData.chargesEnabled ?? false;
+    return checkData.cardEnabled ?? false;
   } catch {
     // If check fails, default to connected so we don't accidentally block payment.
     return true;
@@ -733,7 +733,7 @@ export default async function EventPage({ params, searchParams }: Readonly<Props
   const organizers: OrganizerProfile[] = [ownerProfile, ...cohosts];
 
   const etransferEnabled = !!(event as any).emtEmail;
-  const sellerConnected = await checkSellerConnected(event.creatorDid);
+  const sellerConnected = await checkSellerCardRail(event.creatorDid);
 
   const metadata = (event.metadata || {}) as EventMetadata;
   const { themeEmoji, gradient } = resolveEventTheme(metadata);

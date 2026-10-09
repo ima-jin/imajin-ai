@@ -1,29 +1,34 @@
 /**
- * #2754: the pay-stripe reactor's one narrow exception to "an owner's own
- * (BYO) stripe.* event never touches the platform". Platform-relayed events
- * (those with a relayId) are covered by stripe-bus-convergence.test.ts.
+ * #2754 / #2757: the pay-stripe reactor's two narrow exceptions to "an owner's
+ * own (BYO) stripe.* event never touches the platform": a payment_request the
+ * event names (#2754), and a hosted-checkout transaction it names (#2757).
+ * Platform-relayed events (those with a relayId) are covered by
+ * stripe-bus-convergence.test.ts.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
   settleByoMock: vi.fn(),
+  settleCheckoutMock: vi.fn(),
+  notifyServicesMock: vi.fn(),
   getRelayEntryMock: vi.fn(),
   errorMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/pay/payment-requests/byo-settlement', () => ({ settlePaymentRequestFromByoStripe: h.settleByoMock }));
+vi.mock('@/src/lib/pay/byo-checkout-settlement', () => ({ settleCheckoutFromByoStripe: h.settleCheckoutMock }));
 vi.mock('@/src/lib/pay/stripe-relay-store', () => ({ getRelayEntry: h.getRelayEntryMock }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: h.errorMock }) }));
 vi.mock('@imajin/bus', () => ({ registerReactor: vi.fn(), publish: vi.fn().mockResolvedValue(undefined) }));
 // The platform handlers' heavy dependencies are irrelevant to the BYO branch.
-vi.mock('@/src/db', () => ({ db: {}, transactions: {}, feeLedger: {}, connectedAccounts: {} }));
+vi.mock('@/src/db', () => ({ db: {}, transactions: {}, feeLedger: {} }));
 vi.mock('@/src/lib/pay/external-ref', () => ({ externalRefColumns: vi.fn(), whereExternalRef: vi.fn() }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: vi.fn() }));
 vi.mock('@/src/lib/pay/providers/stripe-webhook', () => ({ toRailEvent: vi.fn() }));
 vi.mock('@/src/lib/pay/withdraw-intent', () => ({ confirmWithdrawalFromRailEvent: vi.fn() }));
 vi.mock('@/src/lib/pay/rails/registry', () => ({ getWithdrawRailByName: vi.fn() }));
 vi.mock('@/src/lib/pay/providers/stripe-withdraw-rail', () => ({ STRIPE_RAIL_NAME: 'stripe' }));
-vi.mock('@/src/lib/pay/webhook-handlers', () => ({}));
+vi.mock('@/src/lib/pay/webhook-handlers', () => ({ notifyCheckoutServices: h.notifyServicesMock }));
 vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({ settlePaymentRequestFromStripeCheckout: vi.fn() }));
 
 import { payStripeReactor } from '../stripe-bus-consumer';
@@ -46,6 +51,8 @@ function byoEvent(overrides: Record<string, unknown> = {}, payload: Record<strin
 
 beforeEach(() => {
   h.settleByoMock.mockReset().mockResolvedValue({ settled: true });
+  h.settleCheckoutMock.mockReset().mockResolvedValue({ settled: false, reason: 'not_found' });
+  h.notifyServicesMock.mockReset().mockResolvedValue(undefined);
   h.getRelayEntryMock.mockReset();
   h.errorMock.mockReset();
 });
@@ -114,5 +121,97 @@ describe('pay-stripe reactor — BYO payment_intent.succeeded (#2754)', () => {
 
     expect(h.settleByoMock).not.toHaveBeenCalled();
     expect(h.getRelayEntryMock).toHaveBeenCalledWith('relay_1');
+  });
+});
+
+describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => {
+  const CHECKOUT_PAYLOAD = {
+    ownerDid: OWNER,
+    eventId: 'evt_1',
+    paymentIntentId: 'pi_1',
+    payTransactionId: 'tx_1',
+    amount: 2500,
+    currency: 'CAD',
+    context_id: 'evt_1',
+    context_type: 'stripe',
+  };
+  const SESSION = {
+    id: 'cs_1',
+    amount_total: 2500,
+    currency: 'cad',
+    customer_email: 'buyer@example.com',
+    metadata: { service: 'events', eventId: 'ev_1' },
+    payment_intent: 'pi_1',
+  };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('settles the checkout the owner\'s own event names, then tells the originating service it was paid', async () => {
+    h.settleCheckoutMock.mockResolvedValue({ settled: true, session: SESSION });
+
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+
+    expect(h.settleCheckoutMock).toHaveBeenCalledWith({
+      ownerDid: OWNER,
+      transactionId: 'tx_1',
+      paymentIntentId: 'pi_1',
+      amount: 2500,
+      currency: 'CAD',
+    });
+    expect(h.notifyServicesMock).toHaveBeenCalledWith(SESSION);
+    // It is not a payment_request: that settlement is never attempted.
+    expect(h.settleByoMock).not.toHaveBeenCalled();
+  });
+
+  it('notifies nobody when the settlement refused or was a replay', async () => {
+    h.settleCheckoutMock.mockResolvedValue({ settled: false, reason: 'not_pending' });
+
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+
+    expect(h.notifyServicesMock).not.toHaveBeenCalled();
+  });
+
+  it('tells the coffee service for a coffee checkout, with the PaymentIntent shape it reads', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.COFFEE_SERVICE_URL = 'https://coffee.test';
+    process.env.COFFEE_WEBHOOK_SECRET = 'coffee-secret';
+    h.settleCheckoutMock.mockResolvedValue({
+      settled: true,
+      session: { ...SESSION, metadata: { service: 'coffee', tipId: 'tip_1', pageId: 'pg_1', pageHandle: 'h', to_did: 'did:imajin:page' } },
+    });
+
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(url).toBe('https://coffee.test/api/webhook/payment');
+    expect(JSON.parse(init.body)).toMatchObject({ type: 'payment.succeeded', tipId: 'tip_1', paymentId: 'pi_1', amount: 2500, status: 'completed' });
+  });
+
+  it.each([
+    ['stripe.invoice.paid', {}],
+    ['stripe.payment_intent.succeeded', { issuer: 'did:imajin:attacker' }],
+  ])('refuses %s with a mismatched envelope or type', async (type, override) => {
+    await payStripeReactor(byoEvent({ type, ...override }, CHECKOUT_PAYLOAD), {});
+
+    expect(h.settleCheckoutMock).not.toHaveBeenCalled();
+  });
+
+  it('ignores a PaymentIntent that names no transaction', async () => {
+    const withoutTx: Record<string, unknown> = { ...CHECKOUT_PAYLOAD };
+    delete withoutTx.payTransactionId;
+
+    await payStripeReactor(byoEvent({}, withoutTx), {});
+
+    expect(h.settleCheckoutMock).not.toHaveBeenCalled();
+  });
+
+  it('never throws — a settlement or notification failure is logged, because the connector has already answered Stripe', async () => {
+    h.settleCheckoutMock.mockRejectedValue(new Error('db down'));
+
+    await expect(payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {})).resolves.toBeUndefined();
+    expect(h.errorMock).toHaveBeenCalledWith(expect.objectContaining({ payTransactionId: 'tx_1', ownerDid: OWNER }), expect.any(String));
   });
 });

@@ -32,6 +32,7 @@ import { decodeProtectedHeader } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { db, registryApps, transactions } from '@/src/db';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
+import { STRIPE_BYO_RAIL } from './external-ref';
 import { verifyAgainstPayeeManifest } from './payee-manifest';
 import { settlePayment, type SettlePaymentResult } from './settle-core';
 
@@ -182,6 +183,11 @@ function verifyPaymentForSettle(
 ): Failure | { total: number; fromDid: string } {
   if (row.status !== 'completed') {
     return { error: `Payment is not paid yet (status '${row.status}')`, status: 409 };
+  }
+  // #2757: a charge on the seller's OWN Stripe account never touched the platform, so there is nothing to
+  // distribute. Settling it would credit platform balances with money the platform does not hold.
+  if (row.rail === STRIPE_BYO_RAIL) {
+    return { error: "Payment was made on the seller's own Stripe account — there is nothing to settle on-platform", status: 409 };
   }
 
   const total = Number.parseFloat(row.amount);

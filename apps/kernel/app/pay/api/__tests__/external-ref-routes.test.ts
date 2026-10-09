@@ -51,7 +51,6 @@ vi.mock('@imajin/auth', () => ({
 vi.mock('@/src/lib/pay/checkout', () => ({
   validateCheckoutBody: () => ({ ok: true }),
   resolveCheckoutIdentity: async () => ({ ok: true, identity: { id: 'did:imajin:buyer' } }),
-  resolveConnectedAccountFee: async () => ({ ok: true, connectedAccountId: undefined, applicationFeeAmount: undefined }),
   taxLineItems: () => [],
 }));
 

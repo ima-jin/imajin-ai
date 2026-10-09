@@ -9,10 +9,10 @@
  * own, or an org/business they control as owner/admin). It is validated
  * server-side: a DID the caller can't act for is a 403 and never stored.
  *
- * #2754: the card is charged on the issuer's own Stripe account when they have a
- * connector, else on Connect (temporary), else this is a 400 `SELLER_NOT_CONNECTED`; a
- * failure creating the session on the issuer's account is a 502 with a `CARD_RAIL_*`
- * `code`. Error bodies carry `{ error, code? }`.
+ * #2754/#2757: the card is charged on the issuer's own Stripe account when they have a
+ * connector, else this is a 400 `SELLER_NO_CARD_RAIL`; a failure creating the session on
+ * the issuer's account is a 502 with a `CARD_RAIL_*` `code`. Error bodies carry
+ * `{ error, code? }`.
  *
  * See `apps/kernel/src/lib/pay/payment-requests/checkout.ts` for the
  * session-building logic this route delegates to.

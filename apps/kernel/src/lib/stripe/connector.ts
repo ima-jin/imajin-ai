@@ -47,19 +47,21 @@
  * Verified events are republished onto the bus (`stripe.payment_intent.
  * succeeded`, `stripe.invoice.paid`, `stripe.payout.paid`), tagged with the
  * owning principal DID, gated behind the owner's own `stripe:events` grant.
- * The pay webhook ingress (`app/pay/api/webhook`, `.../connect/webhook`)
- * now republishes the PLATFORM account's deliveries onto these same `stripe.*`
- * types, and the kernel's `pay-stripe` reactor
- * (`lib/pay/stripe-bus-consumer.ts`, which settles payment_request checkouts
- * through the canonical `settlePayment()` core) consumes them. An owner's BYO
- * event published here never touches the platform ledger — with exactly one
- * narrow exception (#2754): a `stripe.payment_intent.succeeded` whose
- * `paymentRequestId` names a payment_request OWNED BY THAT SAME owner DID
- * settles that request (status -> paid, a BYO-rail transaction row, no
- * platform-balance movement; see `pay/payment-requests/byo-settlement.ts`).
- * Every other BYO event is still ignored by the reactor. This module only
- * needs the reactor REGISTERED before it publishes: the `stripe.*` default
- * chains name `pay-stripe`, and `publish()` throws on an unregistered reactor.
+ * The pay webhook ingress (`app/pay/api/webhook`) now republishes the
+ * PLATFORM account's deliveries onto these same `stripe.*` types, and the
+ * kernel's `pay-stripe` reactor (`lib/pay/stripe-bus-consumer.ts`, which
+ * settles payment_request checkouts through the canonical `settlePayment()`
+ * core) consumes them. An owner's BYO event published here never touches the
+ * platform ledger — with exactly two narrow exceptions, both settling an
+ * object OWNED BY THAT SAME owner DID with no platform-balance movement:
+ * a `stripe.payment_intent.succeeded` whose `paymentRequestId` names a
+ * payment_request (#2754, status -> paid; `pay/payment-requests/byo-settlement.ts`),
+ * or whose `payTransactionId` names a pending hosted-checkout transaction
+ * (#2757, status -> completed + the originating service is told;
+ * `pay/byo-checkout-settlement.ts`). Every other BYO event is still ignored
+ * by the reactor. This module only needs the reactor REGISTERED before it
+ * publishes: the `stripe.*` default chains name `pay-stripe`, and `publish()`
+ * throws on an unregistered reactor.
  *
  * ## Non-goals
  * No Stripe Connect, no Account Links, no destination charges, anywhere in
@@ -310,17 +312,30 @@ function num(value: unknown): number {
   return typeof value === 'number' ? value : Number(value ?? 0) || 0;
 }
 
+/** A non-empty string metadata value, or `undefined`. */
+function metadataString(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
+  const value = metadata?.[key];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
 /**
- * #2754: the payment_request an invoice checkout names on its PaymentIntent
- * (`metadata.payment_request_id`, written by `byo-checkout.ts`). It is the
- * ONLY metadata field lifted onto the durable, subscriber-visible bus payload —
- * the pay reactor settles that request iff the request is owned by `ownerDid`.
- * `{}` for every PaymentIntent that is not an invoice checkout.
+ * The two references a checkout written by `byo-checkout.ts` puts on its
+ * PaymentIntent metadata, and the ONLY metadata fields lifted onto the durable,
+ * subscriber-visible bus payload: `payment_request_id` (#2754, an invoice) and
+ * `pay_transaction_id` (#2757, a generic hosted checkout — events, market). The
+ * pay reactor settles the named object iff it is owned by `ownerDid`. `{}` for
+ * every PaymentIntent that is neither.
  */
-function paymentRequestIdField(object: Record<string, unknown>): { paymentRequestId?: string } {
+function checkoutReferenceFields(
+  object: Record<string, unknown>,
+): { paymentRequestId?: string; payTransactionId?: string } {
   const metadata = object.metadata as Record<string, unknown> | null | undefined;
-  const id = metadata?.payment_request_id ?? metadata?.paymentRequestId;
-  return typeof id === 'string' && id.length > 0 ? { paymentRequestId: id } : {};
+  const paymentRequestId = metadataString(metadata, 'payment_request_id') ?? metadataString(metadata, 'paymentRequestId');
+  const payTransactionId = metadataString(metadata, 'pay_transaction_id');
+  return {
+    ...(paymentRequestId && { paymentRequestId }),
+    ...(payTransactionId && { payTransactionId }),
+  };
 }
 
 /**
@@ -356,7 +371,7 @@ async function publishStripeEvent(ownerDid: string, event: StripeEventLike): Pro
             paymentIntentId: str(object.id),
             amount: num(object.amount),
             currency: str(object.currency).toUpperCase(),
-            ...paymentRequestIdField(object),
+            ...checkoutReferenceFields(object),
             context_id: event.id,
             context_type: 'stripe',
           },

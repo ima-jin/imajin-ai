@@ -57,17 +57,3 @@ export interface StripeInvoiceLike {
   subscription?: string | { id: string } | null;
   subscription_details?: { metadata?: StripeMetadataLike | null } | null;
 }
-
-export interface StripeAccountLike {
-  id: string;
-  charges_enabled?: boolean | null;
-  payouts_enabled?: boolean | null;
-  details_submitted?: boolean | null;
-  requirements?: { currently_due?: string[] | null; eventually_due?: string[] | null } | null;
-}
-
-export interface StripePayoutLike {
-  id: string;
-  amount: number;
-  currency: string;
-}

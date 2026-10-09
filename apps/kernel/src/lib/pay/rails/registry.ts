@@ -32,7 +32,10 @@ function getStripeRail(): StripeWithdrawRail {
  * change to the withdraw route, `withdraw-intent.ts`, or the reconciler.
  */
 const REGISTRY: Record<string, RailRegistryEntry> = {
-  [STRIPE_RAIL_NAME]: { getRail: getStripeRail, enabledUnits: ['MJN'] },
+  // #2757: enabled for NO unit — new withdrawals never use it (Connect is removed; withdrawals run on
+  // the EMT request path). It stays registered so the reconciliation sweep and `transfer.created` fast
+  // path can still settle an intent that was in flight when Connect went away.
+  [STRIPE_RAIL_NAME]: { getRail: getStripeRail, enabledUnits: [] },
 };
 
 /** Look up a rail by its registered name, regardless of unit. */

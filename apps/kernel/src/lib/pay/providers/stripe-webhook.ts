@@ -3,9 +3,9 @@
  *
  * The ONE place that verifies a Stripe webhook delivery's signature and
  * turns its raw SDK event into a rail-neutral `RailEvent` (see
- * `../rails/types.ts`). Both pay webhook routes
- * (`app/pay/api/webhook/route.ts` and `app/pay/api/connect/webhook/route.ts`)
- * and `webhook-handlers.ts` talk to this module only — neither imports the
+ * `../rails/types.ts`). The pay webhook route
+ * (`app/pay/api/webhook/route.ts`) and `webhook-handlers.ts` talk to this
+ * module only — neither imports the
  * `stripe` package directly, nor accepts a `Stripe.*` type in a function
  * signature. See `scripts/ci-guard-stripe-import-scope.mjs` for the CI
  * guard that enforces the import half of that invariant.
@@ -50,9 +50,6 @@ const NORMALIZABLE_EVENT_TYPES = new Set([
   'customer.subscription.updated',
   'customer.subscription.deleted',
   'invoice.paid',
-  'account.updated',
-  'payout.paid',
-  'payout.failed',
 ]);
 
 // ---------------------------------------------------------------------------

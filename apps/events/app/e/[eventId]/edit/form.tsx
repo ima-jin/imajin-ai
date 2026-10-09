@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ImageUpload } from '@/app/components/ImageUpload';
-import { MarkdownEditor, PayoutSetupBanner } from '@imajin/ui';
+import { MarkdownEditor } from '@imajin/ui';
 import { FairEditor } from '@imajin/fair/react';
 import { apiFetch, buildPublicUrl, eventPath } from '@imajin/config';
 import type { FairManifest } from '@imajin/fair';
@@ -15,9 +15,6 @@ interface Props {
   existingTickets: TicketType[];
   creatorEmail?: string | null;
   organizerDids?: string[];
-  viewerDid?: string;
-  creatorHandle?: string | null;
-  creatorName?: string | null;
 }
 
 interface TicketTier {
@@ -173,7 +170,7 @@ async function syncTicketTiers(eventId: string, tiers: TicketTier[]): Promise<vo
   }
 }
 
-export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids, viewerDid, creatorHandle, creatorName }: Readonly<Props>) {
+export default function EventEditForm({ event, existingTickets, creatorEmail, organizerDids }: Readonly<Props>) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -378,20 +375,10 @@ export default function EventEditForm({ event, existingTickets, creatorEmail, or
     }
   }
 
-  const PAY_URL = buildPublicUrl('pay');
   const linkedSurveyIds = new Set(linkedSurveys.map((linkedSurvey) => linkedSurvey.id));
 
   return (
     <div className="space-y-6">
-      <PayoutSetupBanner
-        did={event.creatorDid}
-        payUrl={PAY_URL}
-        message="Connect Stripe to receive ticket revenue"
-        viewerDid={viewerDid}
-        ownerHandle={creatorHandle}
-        ownerName={creatorName}
-        ownerRole="Event creator"
-      />
       {/* Tab Navigation */}
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
         <button

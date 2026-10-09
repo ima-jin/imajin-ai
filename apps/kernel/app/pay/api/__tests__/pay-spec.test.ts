@@ -23,13 +23,17 @@ function operations(): Array<{ path: string; method: string; op: Json }> {
   );
 }
 
-/** Every operationId on `origin/main` before #2177 — clients keyed on these must keep working. */
+/**
+ * Every operationId on `origin/main` before #2177 — clients keyed on these must keep working.
+ *
+ * #2757 intentionally removed `withdraw` (the Connect transfer withdrawal) and the four `stripeConnect*` operations
+ * (Stripe Connect is gone); they are no longer pinned here.
+ */
 const PRE_EXISTING: Record<string, { path: string; method: string }> = {
   healthCheck: { path: '/api/health', method: 'get' },
   getBalance: { path: '/api/balance/{did}', method: 'get' },
   giftCredits: { path: '/api/balance/gift', method: 'post' },
   eventTopup: { path: '/api/balance/event-topup', method: 'post' },
-  withdraw: { path: '/api/balance/withdraw', method: 'post' },
   transferBalance: { path: '/api/balance/transfer', method: 'post' },
   topupBalance: { path: '/api/balance/topup', method: 'post' },
   createCharge: { path: '/api/charge', method: 'post' },
@@ -37,10 +41,6 @@ const PRE_EXISTING: Record<string, { path: string; method: string }> = {
   fairSettle: { path: '/api/settle', method: 'post' },
   createEscrow: { path: '/api/escrow', method: 'post' },
   releaseEscrow: { path: '/api/escrow', method: 'put' },
-  stripeConnectOnboard: { path: '/api/connect/onboard', method: 'post' },
-  stripeConnectStatus: { path: '/api/connect/status', method: 'get' },
-  stripeConnectDashboard: { path: '/api/connect/dashboard', method: 'get' },
-  stripeConnectWebhook: { path: '/api/connect/webhook', method: 'post' },
   listTransactions: { path: '/api/transactions/{did}', method: 'get' },
   transactionSummary: { path: '/api/transactions/{did}/summary', method: 'get' },
   stripeWebhook: { path: '/api/webhook', method: 'post' },
@@ -59,10 +59,6 @@ const PRE_EXISTING: Record<string, { path: string; method: string }> = {
 
 /** Stripe-named operationId → its rail-generic alias. */
 const ALIASES: Record<string, string> = {
-  stripeConnectOnboard: 'railConnectOnboard',
-  stripeConnectStatus: 'railConnectStatus',
-  stripeConnectDashboard: 'railConnectDashboard',
-  stripeConnectWebhook: 'railConnectWebhook',
   stripeWebhook: 'railWebhook',
 };
 
@@ -145,7 +141,7 @@ describe('rail-generic operations are additive aliases (#2177 item 3)', () => {
     }
   });
 
-  it('documents a rail-generic operation for every Stripe-named connect/webhook operation', () => {
+  it('documents a rail-generic operation for every Stripe-named webhook operation', () => {
     for (const [legacyId, genericId] of Object.entries(ALIASES)) {
       const legacy = byId.get(legacyId)!;
       const generic = byId.get(genericId);
@@ -153,7 +149,7 @@ describe('rail-generic operations are additive aliases (#2177 item 3)', () => {
       expect(legacy.op['x-rail-generic-alias']).toBe(genericId);
       expect(generic!.method).toBe(legacy.method);
       // …at the legacy path with the rail segment generalised to {provider}.
-      const expectedPath = legacy.path.replace(/^\/api\/connect\/(\w+)$/, '/api/connect/{provider}/$1').replace(/^\/api\/webhook$/, '/api/webhook/{provider}');
+      const expectedPath = legacy.path.replace(/^\/api\/webhook$/, '/api/webhook/{provider}');
       expect(generic!.path).toBe(expectedPath);
     }
   });
@@ -168,7 +164,7 @@ describe('rail-generic operations are additive aliases (#2177 item 3)', () => {
 
   it('makes Stripe one value of the provider enums', () => {
     expect(spec.components.schemas.PaymentProvider.enum).toEqual(expect.arrayContaining(['stripe', 'solana']));
-    expect(spec.components.schemas.ConnectProvider.enum).toContain('stripe');
+    expect(spec.components.schemas.WebhookProvider.enum).toContain('stripe');
     expect((resolveRef(spec.components.parameters.provider.schema.$ref) as Json).enum).toContain('stripe');
   });
 
@@ -185,10 +181,24 @@ describe('rail-generic operations are additive aliases (#2177 item 3)', () => {
   it('backs every rail-generic path with a route file exporting its method', () => {
     for (const genericId of Object.values(ALIASES)) {
       const { path, method } = byId.get(genericId)!;
-      // /api/connect/{provider}/onboard → app/pay/api/connect/[provider]/onboard/route.ts
+      // /api/webhook/{provider} → app/pay/api/webhook/[provider]/route.ts
       const routeFile = join(KERNEL_ROOT, 'app', 'pay', ...path.replace('{provider}', '[provider]').split('/').filter(Boolean), 'route.ts');
       expect(existsSync(routeFile), `${routeFile} is missing`).toBe(true);
       expect(readFileSync(routeFile, 'utf8')).toContain(`export const ${method.toUpperCase()} =`);
     }
+  });
+});
+
+describe('Stripe Connect is gone from the spec (#2757)', () => {
+  it('documents no /api/connect/* path and no balance-withdraw-to-connected-account operation', () => {
+    const paths = Object.keys(spec.paths as Json);
+    expect(paths.filter((p) => p.startsWith('/api/connect'))).toEqual([]);
+    expect(paths).not.toContain('/api/balance/withdraw');
+  });
+
+  it('replaces connect/check with the public card-rail check, backed by a real route', () => {
+    const op = (spec.paths as Json)['/api/card-rail/check']?.get as Json | undefined;
+    expect(op?.operationId).toBe('cardRailCheck');
+    expect(existsSync(join(KERNEL_ROOT, 'app', 'pay', 'api', 'card-rail', 'check', 'route.ts'))).toBe(true);
   });
 });

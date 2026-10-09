@@ -5,7 +5,6 @@ import { db, transactions } from '@/src/db';
 import { eq, or, desc } from 'drizzle-orm';
 import Link from 'next/link';
 import { BalanceCard } from './components/BalanceCard';
-import { PayoutSetupBanner } from './components/PayoutSetupBanner';
 import { MJN, MJNX, amountOf, getBalances } from '@/src/lib/pay/ledger';
 
 const SERVICE_ICONS: Record<string, string> = {
@@ -56,9 +55,6 @@ export default async function Home() {
         </p>
       </div>
 
-      {/* Payout Setup Banner */}
-      <PayoutSetupBanner did={did} />
-
       {/* Balance */}
       <BalanceCard
         balances={wallet}
@@ -67,7 +63,7 @@ export default async function Home() {
       />
 
       {/* Quick Navigation */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         <Link
           href="/pay/topup"
           className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
@@ -78,18 +74,6 @@ export default async function Home() {
           </div>
           <div className="text-xs text-zinc-500 mt-1">
             Top up your balance
-          </div>
-        </Link>
-        <Link
-          href="/pay/payouts"
-          className="bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl p-4 text-center transition-colors group"
-        >
-          <div className="text-2xl mb-2">💰</div>
-          <div className="text-sm font-medium text-white group-hover:text-orange-400 transition-colors">
-            Payouts
-          </div>
-          <div className="text-xs text-zinc-500 mt-1">
-            Bank account & withdrawals
           </div>
         </Link>
         <Link

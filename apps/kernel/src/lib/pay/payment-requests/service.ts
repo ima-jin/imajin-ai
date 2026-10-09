@@ -552,7 +552,7 @@ export interface PaymentRequestInvoiceView extends PaymentRequestPublicView {
   /**
    * #2754 — whether a card payment can actually start for this request RIGHT NOW:
    * still open, the issuer allows on-platform payment, and they have a working card
-   * rail (their own Stripe connector, or Connect while it lasts — see `card-rail.ts`).
+   * rail (their own Stripe connector — see `card-rail.ts`).
    * Resolved server-side at render time, so the page never offers a card button that
    * can only fail. `false` once the request is no longer open.
    */

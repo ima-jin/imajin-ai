@@ -11,12 +11,8 @@ import { STRIPE_RAIL_NAME } from '../../providers/stripe-withdraw-rail';
 import { MJN, MJNX } from '../../ledger';
 
 describe('rail registry (#2172 design amendment point 4: config-driven, not a switch statement)', () => {
-  it('resolves the stripe rail for MJN', () => {
-    const rail = getWithdrawRail(STRIPE_RAIL_NAME, MJN);
-    expect(rail?.name).toBe(STRIPE_RAIL_NAME);
-  });
-
-  it('does not enable stripe for MJNx (MJNx is never withdrawable)', () => {
+  it('enables the retired stripe rail for no unit (#2757) — new withdrawals never resolve it', () => {
+    expect(getWithdrawRail(STRIPE_RAIL_NAME, MJN)).toBeNull();
     expect(getWithdrawRail(STRIPE_RAIL_NAME, MJNX)).toBeNull();
   });
 
@@ -24,13 +20,13 @@ describe('rail registry (#2172 design amendment point 4: config-driven, not a sw
     expect(getWithdrawRail('does-not-exist', MJN)).toBeNull();
   });
 
-  it('getWithdrawRailByName ignores unit enablement', () => {
+  it('getWithdrawRailByName ignores unit enablement, so in-flight intents still reconcile', () => {
     expect(getWithdrawRailByName(STRIPE_RAIL_NAME)?.name).toBe(STRIPE_RAIL_NAME);
     expect(getWithdrawRailByName('does-not-exist')).toBeNull();
   });
 
-  it('defaultRailForUnit resolves the only rail enabled for MJN, and none for MJNx', () => {
-    expect(defaultRailForUnit(MJN)?.name).toBe(STRIPE_RAIL_NAME);
+  it('defaultRailForUnit resolves no withdraw rail for any unit while Stripe is retired (#2757)', () => {
+    expect(defaultRailForUnit(MJN)).toBeNull();
     expect(defaultRailForUnit(MJNX)).toBeNull();
   });
 

@@ -1,14 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { requireAppAuth, requireAuth } from '@imajin/auth';
 import type { Identity } from '@imajin/auth';
-import { db, connectedAccounts } from '@/src/db';
-import { eq } from 'drizzle-orm';
-import { DEFAULT_PLATFORM_FEE_BPS } from '@/src/lib/pay';
-import { processorFeeCents, validateTaxes } from '@imajin/fair';
+import { validateTaxes } from '@imajin/fair';
 import { authenticateSettleApp, carriesAppServiceToken } from './app-settle';
-
-/** Rail this hosted checkout runs on — keys the `processorFee*` fee-schedule lookup (#2177). */
-const CHECKOUT_RAIL = 'stripe';
 
 export interface CheckoutItem {
   name: string;
@@ -36,7 +30,7 @@ export interface CheckoutBody {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payeeManifest?: Record<string, any>;
-  connectedAccountId?: string;
+  /** The seller whose own Stripe account (the BYO connector) is charged. Absent = a platform-own charge. */
   sellerDid?: string;
 }
 
@@ -94,18 +88,17 @@ function validateFairVersionForTaxes(fairManifest: CheckoutBody['fairManifest'])
 }
 
 /**
- * #2435: every `taxes[].collectorDid` must be the connected-account seller.
- * Stripe settles this checkout as a destination charge, so the tax money
- * lands in the seller's connected account — recording a trust-liability
- * credit against any other DID would book money that DID never received
- * (the same rule `settle-core.ts`'s `validateFundedTaxCollectors` applies to
- * funded settlements).
+ * #2435: every `taxes[].collectorDid` must be the seller. The charge runs on
+ * the seller's own Stripe account (#2757), so the tax money lands there —
+ * naming any other DID as the collector would claim money that DID never
+ * received (the same rule `settle-core.ts`'s `validateFundedTaxCollectors`
+ * applies to funded settlements).
  */
 function validateTaxCollectors(body: CheckoutBody): CheckoutValidation {
   const taxes = body.fairManifest?.taxes as CheckoutFairTax[];
   const sellerDid = body.sellerDid || body.metadata?.sellerDid;
   if (!sellerDid) {
-    return { ok: false, error: 'fairManifest.taxes[] requires sellerDid — tax is collected in trust into the seller\'s connected account', status: 400 };
+    return { ok: false, error: 'fairManifest.taxes[] requires sellerDid — tax is collected in trust into the seller\'s own Stripe account', status: 400 };
   }
   const unbacked = taxes.find((tax) => tax.collectorDid !== sellerDid);
   if (unbacked) {
@@ -203,13 +196,6 @@ export async function resolveCheckoutIdentity(request: NextRequest): Promise<Che
   return { ok: true, identity: 'error' in authResult ? null : authResult.identity };
 }
 
-export interface ConnectedAccountFeeResult {
-  ok: true;
-  connectedAccountId: string | undefined;
-  applicationFeeAmount: number | undefined;
-}
-export type ConnectedAccountFeeError = { ok: false; error: string; status: number; code?: string };
-
 interface CheckoutFairTax {
   jurisdiction: string;
   kind: string;
@@ -218,19 +204,15 @@ interface CheckoutFairTax {
   collectorDid?: string;
 }
 
-/** Sum of a manifest's `taxes[].amount` (cents). Zero for a manifest without `taxes[]` — fully backward compatible. */
-function taxTotalCents(fairManifest: CheckoutBody['fairManifest']): number {
-  const taxes = fairManifest?.taxes as CheckoutFairTax[] | undefined;
-  return (taxes ?? []).reduce((sum, t) => sum + t.amount, 0);
-}
-
 /**
  * Build one manual Stripe line item per `.fair` `taxes[]` row (#2419) —
  * NEVER via Stripe Tax, since each row's `amount` is already computed from
  * the manifest's own `rateBps`/`basisAmount`. Returns `[]` for a manifest
  * without `taxes[]`. A zero-amount row (a 0% rate, or a basis too small to
  * round up to a cent) stays in the manifest but is not sent to Stripe as a
- * zero-priced line item (#2421).
+ * zero-priced line item (#2421). Callers must never fold a tax line item into
+ * `body.items` itself — `body.items` is the pre-tax merchandise subtotal that
+ * `taxes[].basisAmount` is pinned to.
  */
 export function taxLineItems(fairManifest: CheckoutBody['fairManifest']): CheckoutItem[] {
   const taxes = fairManifest?.taxes as CheckoutFairTax[] | undefined;
@@ -241,43 +223,6 @@ export function taxLineItems(fairManifest: CheckoutBody['fairManifest']): Checko
     amount: tax.amount,
     quantity: 1,
   }));
-}
-
-/**
- * Compute the platform share of a manifest-driven fee, falling back to the
- * account's flat bps rate. `merchandiseAmount` is `body.items`' own total
- * (cents) — the pre-tax subtotal/`basisAmount` (#2419 rule 2: platform
- * fee never sees tax). Callers must never fold a tax line item into
- * `body.items` itself; tax is appended separately via `taxLineItems()`.
- */
-function computePlatformShareCents(
-  merchandiseAmount: number,
-  fairManifest: CheckoutBody['fairManifest'],
-  accountPlatformFeeBps: number | null,
-): number {
-  const sellerEntry = fairManifest?.chain?.find((e: { role: string }) => e.role === 'seller');
-  if (sellerEntry) {
-    const feeShare = 1 - sellerEntry.share;
-    return Math.round(merchandiseAmount * feeShare);
-  }
-  return Math.round(merchandiseAmount * (accountPlatformFeeBps || DEFAULT_PLATFORM_FEE_BPS) / 10000);
-}
-
-/**
- * Compute Stripe processing fees from the manifest's processor entry, or
- * the platform default rate. `grossAmount` (cents) MUST include tax
- * (#2419 rule 3, Ryan-approved 2026-09-28): Stripe's real processing fee
- * applies to the full charged total, and the seller absorbs the fee on
- * the tax portion — consistent with sellers already absorbing this fee on
- * their own share. For a manifest without `taxes[]`, `grossAmount` equals
- * the merchandise total, so this is byte-identical to pre-#2419 behavior.
- */
-function computeProcessingFeeCents(grossAmount: number, fairManifest: CheckoutBody['fairManifest']): number {
-  const feeEntry = fairManifest?.fees?.find((f: { role: string }) => f.role === 'processor');
-  if (feeEntry) {
-    return Math.round(grossAmount * feeEntry.rateBps / 10000) + (feeEntry.fixedCents || 0);
-  }
-  return processorFeeCents(CHECKOUT_RAIL, grossAmount);
 }
 
 /**
@@ -302,51 +247,4 @@ function validateTaxesBasis(
     }
   }
   return { ok: true };
-}
-
-/**
- * Resolve the connected Stripe account (if a seller DID was supplied) and
- * compute the application fee: platform share (from the .fair manifest or
- * the account's fallback rate) plus processing fees (from the manifest or
- * Stripe defaults). Returns the original `connectedAccountId` unchanged and
- * no fee when there's no seller DID.
- */
-export async function resolveConnectedAccountFee(body: CheckoutBody): Promise<ConnectedAccountFeeResult | ConnectedAccountFeeError> {
-  const sellerDid = body.sellerDid || body.metadata?.sellerDid;
-  if (!sellerDid) {
-    return { ok: true, connectedAccountId: body.connectedAccountId, applicationFeeAmount: undefined };
-  }
-
-  const [account] = await db
-    .select()
-    .from(connectedAccounts)
-    .where(eq(connectedAccounts.did, sellerDid))
-    .limit(1);
-
-  if (!account) {
-    return { ok: false, error: "Seller hasn't completed payment setup", status: 400, code: 'SELLER_NOT_CONNECTED' };
-  }
-  if (!account.chargesEnabled) {
-    return { ok: false, error: "Seller hasn't completed payment setup", status: 400 };
-  }
-
-  // `body.items` is the merchandise-only subtotal/`basisAmount` (#2419) —
-  // tax line items are appended separately via `taxLineItems()` at the
-  // point the Stripe session is built, never folded into `body.items`.
-  const merchandiseAmount = body.items.reduce((sum, item) => sum + (item.amount * item.quantity), 0);
-
-  const basisCheck = validateTaxesBasis(body.fairManifest, merchandiseAmount);
-  if (!basisCheck.ok) {
-    return { ok: false, error: basisCheck.error, status: 400 };
-  }
-
-  const grossAmount = merchandiseAmount + taxTotalCents(body.fairManifest);
-  const platformShareCents = computePlatformShareCents(merchandiseAmount, body.fairManifest, account.platformFeeBps);
-  const processingFeeCents = computeProcessingFeeCents(grossAmount, body.fairManifest);
-
-  return {
-    ok: true,
-    connectedAccountId: account.stripeAccountId,
-    applicationFeeAmount: platformShareCents + processingFeeCents,
-  };
 }

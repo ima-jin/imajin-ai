@@ -164,10 +164,9 @@ describe('toRailEvent', () => {
     expect(railEvent?.amount).toBe(999);
   });
 
-  it('normalizes account.updated with null amount/currency', () => {
-    const raw = { id: 'acct_1', charges_enabled: true };
-    const railEvent = toRailEvent({ type: 'account.updated', data: { object: raw } });
-    expect(railEvent).toMatchObject({ externalRef: 'acct_1', amount: null, currency: null });
+  it('does not normalize Connect account/payout events (Stripe Connect is removed, #2757)', () => {
+    expect(toRailEvent({ type: 'account.updated', data: { object: { id: 'acct_1', charges_enabled: true } } })).toBeNull();
+    expect(toRailEvent({ type: 'payout.paid', data: { object: { id: 'po_1', amount: 300, currency: 'usd' } } })).toBeNull();
   });
 
   it('returns null for an event type this adapter deliberately does not normalize (transfer.created)', () => {

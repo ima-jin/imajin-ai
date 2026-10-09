@@ -10,14 +10,16 @@
  * `scripts/ci-guard-stripe-import-scope.mjs`).
  */
 import type { Unit } from '../ledger';
-import type { WithdrawDestinationResolutionMode } from '../withdraw-destination';
+
+/** How a withdrawal's `destination` was resolved (#2190): the caller's default, or one it selected and the kernel verified. */
+export type WithdrawDestinationResolutionMode = 'default' | 'selected';
 
 /**
  * The intent record an adapter's `execute()` is asked to fulfil.
  *
  * `destination` is a deliberately rail-agnostic, NOT-persisted runtime hint
  * (e.g. a Stripe connected account id) supplied by the caller at request
- * time — see `apps/kernel/app/pay/api/balance/withdraw/route.ts`. It is
+ * time (no caller sets one today — Stripe withdrawals are retired, #2757). It is
  * never written to `pay.withdrawal_intents`, which stays free of any
  * rail-specific column per the design amendment.
  *

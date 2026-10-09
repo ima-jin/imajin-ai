@@ -1,14 +1,13 @@
 /**
  * Stripe Checkout <-> `pay.payment_request` linkage (#2206/#2209).
  *
- * `createPaymentRequestCheckoutSession` composes the EXISTING checkout code
- * path (`resolveConnectedAccountFee` from `lib/pay/checkout.ts`,
- * `pay.checkout()` from `lib/pay/pay.ts` — the same primitives
- * `POST /pay/api/checkout` uses) with the payment_request's own
- * `line_items` / `currency` / `fair_manifest` / `issuer_did`, and records a
- * pending `pay.transactions` row carrying `metadata.payment_request_id` so:
- *   - the Stripe webhook (`app/pay/api/webhook/route.ts`) can look the
- *     request back up by `session.metadata.payment_request_id`, and
+ * `createPaymentRequestCheckoutSession` creates the hosted Checkout Session on
+ * the issuer's own Stripe account (the #1785 BYO connector — the only card rail,
+ * see `card-rail.ts`) from the payment_request's own `line_items` / `currency` /
+ * `fair_manifest` / `issuer_did`, and records a pending `pay.transactions` row
+ * carrying `metadata.payment_request_id` so:
+ *   - the owner's `stripe.payment_intent.succeeded` event can look the
+ *     request back up by its `payment_request_id` (`byo-settlement.ts`), and
  *   - a second checkout call for the same still-open request reuses the
  *     existing Stripe session instead of minting a duplicate one.
  *
@@ -40,7 +39,7 @@
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, paymentRequests, transactions } from '@/src/db';
-import { externalRefColumns, STRIPE_BYO_RAIL, STRIPE_RAIL } from '@/src/lib/pay/external-ref';
+import { externalRefColumns, STRIPE_BYO_RAIL } from '@/src/lib/pay/external-ref';
 import type { PaymentRequest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
@@ -48,12 +47,9 @@ import { buildPublicUrlAbsolute } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { resolveSettlementChain, type FairSettlementEntry, type FairSettlementTax } from '@imajin/fair';
-import { getPaymentService } from '../pay';
-import { getStripeClient } from '../providers/stripe-client';
 import { taxLineItems, type CheckoutBody, type CheckoutItem } from '../checkout';
 import { createByoCheckoutSession, retrieveByoCheckoutSession, ByoCheckoutError } from '@/src/lib/stripe/byo-checkout';
-import { resolveCardRail, resolveConnectCheckout, type CardRail } from './card-rail';
-import type { CheckoutRequest, FiatCurrency } from '../types';
+import { resolveCardRail, SELLER_NO_CARD_RAIL, type CardRail } from './card-rail';
 import { settlePayment } from '../settle-core';
 import { getPayInRail } from '../rails/registry';
 import { EMT_RAIL_NAME } from '../rails/emt-pay-in-rail';
@@ -114,32 +110,21 @@ export interface CreatedPaymentRequestCheckoutSession {
 /** The card rail a rail-bound checkout runs on — what `pay.transactions.rail` records for its pending row. */
 type ActiveCardRail = Exclude<CardRail, { kind: 'none' }>;
 
-function transactionRailOf(rail: ActiveCardRail): string {
-  return rail.kind === 'connector' ? STRIPE_BYO_RAIL : STRIPE_RAIL;
-}
-
-/** Read an existing session back on the account it was created on: the issuer's own (connector) or the platform's (Connect, #2757). */
+/** Read an existing session back on the account it was created on: the issuer's own. */
 async function retrieveOpenSession(
   rail: ActiveCardRail,
   sessionId: string,
 ): Promise<{ id: string; url: string; expiresAt: string } | null> {
-  if (rail.kind === 'connector') {
-    const session = await retrieveByoCheckoutSession(rail.ownerDid, sessionId);
-    if (session.status !== 'open' || !session.url || !session.expiresAt) return null;
-    return { id: session.id, url: session.url, expiresAt: session.expiresAt.toISOString() };
-  }
-  // #2757: delete with Connect.
-  const session = await getStripeClient().checkout.sessions.retrieve(sessionId);
-  if (session.status === 'open' && session.url) {
-    return { id: session.id, url: session.url, expiresAt: new Date(session.expires_at * 1000).toISOString() };
-  }
-  return null;
+  const session = await retrieveByoCheckoutSession(rail.ownerDid, sessionId);
+  if (session.status !== 'open' || !session.url || !session.expiresAt) return null;
+  return { id: session.id, url: session.url, expiresAt: session.expiresAt.toISOString() };
 }
 
 /**
- * Look up a still-open Stripe Checkout session already created for this payment_request ON THE RAIL
- * it would be charged on now, if any. A pending row from the other rail is never reused: its session
- * lives on a different Stripe account (and, for the connector, needs a different key to read).
+ * Look up a still-open Stripe Checkout session already created for this payment_request on the
+ * issuer's own account, if any. Only a pending BYO-rail row is reusable: a legacy platform-account
+ * session (created before Connect was removed, #2757) lives on a different Stripe account and the
+ * issuer's key cannot read it.
  */
 async function findReusableCheckoutSession(
   paymentRequestId: string,
@@ -151,7 +136,7 @@ async function findReusableCheckoutSession(
     .where(
       and(
         eq(transactions.status, 'pending'),
-        eq(transactions.rail, transactionRailOf(rail)),
+        eq(transactions.rail, STRIPE_BYO_RAIL),
         sql`${transactions.metadata}->>'payment_request_id' = ${paymentRequestId}`,
       ),
     )
@@ -194,7 +179,7 @@ export async function recordPaidByDid(id: string, paidByDid: string): Promise<Pa
   return row ?? null;
 }
 
-/** What the pay page says when the issuer has no card rail (also the legacy Connect `SELLER_NOT_CONNECTED` message). */
+/** What the pay page says when the issuer has no card rail (`SELLER_NO_CARD_RAIL`). */
 const NO_CARD_RAIL_ERROR = "This issuer hasn't set up card payments";
 
 /** Stable reasons a card checkout could not start on the issuer's connector, one per payer-facing message (#2754). */
@@ -216,32 +201,26 @@ function byoFailureOf(error: unknown, paymentRequestId: string): ServiceError {
 }
 
 /**
- * The session/PaymentIntent metadata. `payment_request_id` is what BOTH
- * settlement paths key on; the connector rail also names `payHandle` /
- * `paymentRequestId` (#2754) so the issuer can find the charge in their own
- * Stripe dashboard.
+ * The session/PaymentIntent metadata. `payment_request_id` is what settlement
+ * keys on; `payHandle` / `paymentRequestId` (#2754) let the issuer find the
+ * charge in their own Stripe dashboard.
  */
-function checkoutMetadataOf(existing: PaymentRequest, rail: ActiveCardRail): Record<string, string> {
+function checkoutMetadataOf(existing: PaymentRequest): Record<string, string> {
   const metadata: Record<string, string> = {
     payment_request_id: existing.id,
+    paymentRequestId: existing.id,
     service: 'payment_request',
     type: 'payment_request_checkout',
   };
-  if (rail.kind === 'connector') {
-    metadata.paymentRequestId = existing.id;
-    if (existing.payHandle) metadata.payHandle = existing.payHandle;
-  }
+  if (existing.payHandle) metadata.payHandle = existing.payHandle;
   return metadata;
 }
 
 interface StartCardSessionInput {
   existing: PaymentRequest;
   rail: ActiveCardRail;
-  /** Merchandise-only (pre-tax) items — the Connect fee basis. */
-  merchandiseItems: CheckoutItem[];
   /** Everything the payer is charged for: merchandise + one line per tax row. */
   items: CheckoutItem[];
-  fairManifest: CheckoutBody['fairManifest'];
   metadata: Record<string, string>;
   customerEmail?: string;
 }
@@ -265,48 +244,20 @@ async function startCardSession(input: StartCardSessionInput): Promise<StartedCa
   const successUrl = returnUrl;
   const cancelUrl = returnUrl;
 
-  if (rail.kind === 'connector') {
-    // The charge runs on the issuer's own account: no destination, no application
-    // fee. The platform fee on BYO invoices is 0 for now (#2754 ruling) — recorded at settlement.
-    try {
-      return await createByoCheckoutSession(rail.ownerDid, {
-        items,
-        currency: existing.currency,
-        successUrl,
-        cancelUrl,
-        metadata,
-        ...(input.customerEmail && { customerEmail: input.customerEmail }),
-      });
-    } catch (error) {
-      return byoFailureOf(error, existing.id);
-    }
+  // The charge runs on the issuer's own account: no destination, no application
+  // fee. The platform fee on BYO invoices is 0 for now (#2754 ruling) — recorded at settlement.
+  try {
+    return await createByoCheckoutSession(rail.ownerDid, {
+      items,
+      currency: existing.currency,
+      successUrl,
+      cancelUrl,
+      metadata,
+      ...(input.customerEmail && { customerEmail: input.customerEmail }),
+    });
+  } catch (error) {
+    return byoFailureOf(error, existing.id);
   }
-
-  // #2757: delete the rest of this function with Connect.
-  // `successUrl`/`cancelUrl` are part of the shared `CheckoutBody` shape but
-  // are never read by the fee computation — the real ones are used below.
-  const feeResult = await resolveConnectCheckout({
-    items: input.merchandiseItems,
-    currency: existing.currency,
-    successUrl: '',
-    cancelUrl: '',
-    fairManifest: input.fairManifest,
-    sellerDid: existing.issuerDid,
-  });
-  if (!feeResult.ok) return err(feeResult.error, feeResult.status, feeResult.code);
-
-  const checkoutRequest: CheckoutRequest = {
-    items,
-    currency: existing.currency as FiatCurrency,
-    ...(input.customerEmail && { customerEmail: input.customerEmail }),
-    successUrl,
-    cancelUrl,
-    metadata,
-    connectedAccountId: feeResult.connectedAccountId,
-    applicationFeeAmount: feeResult.applicationFeeAmount,
-  };
-  const session = await getPaymentService().checkout(checkoutRequest);
-  return { id: session.id, url: session.url, expiresAt: session.expiresAt };
 }
 
 /**
@@ -347,19 +298,19 @@ export async function createPaymentRequestCheckoutSession(
     existing = updated;
   }
 
-  // #2754: ONE rail decision for everything below — the issuer's own Stripe
-  // connector first, Connect only as a temporary fallback, otherwise no card.
+  // #2754/#2757: ONE rail decision for everything below — the issuer's own Stripe
+  // connector, or no card at all.
   const rail = await resolveCardRail(existing.issuerDid);
-  if (rail.kind === 'none') return err(NO_CARD_RAIL_ERROR, 400, 'SELLER_NOT_CONNECTED');
+  if (rail.kind === 'none') return err(NO_CARD_RAIL_ERROR, 400, SELLER_NO_CARD_RAIL);
 
   const reused = await findReusableCheckoutSession(existing.id, rail);
   if (reused) return { ...reused, reused: true };
 
   // #2419/#2421: tax is appended as its own manual Stripe line item (never
   // Stripe Tax), derived from the manifest's `taxes[]` — `existing.lineItems`
-  // (-> `merchandiseItems`) stays the merchandise-only, PRE-TAX subtotal that
-  // the Connect fee below is computed on (the #2426 settle-core tax silo; not
-  // re-derived here). `[]` for a manifest without `taxes[]`.
+  // (-> `merchandiseItems`) stays the merchandise-only, PRE-TAX subtotal the
+  // `.fair` `taxes[].basisAmount` is pinned to (the #2426 settle-core tax silo;
+  // not re-derived here). `[]` for a manifest without `taxes[]`.
   const merchandiseItems = toCheckoutItems(existing.lineItems);
   if (merchandiseTotal(merchandiseItems) !== existing.subtotalAmount) {
     // The row's stored subtotal is what `.fair` `taxes[].basisAmount` and the
@@ -372,18 +323,14 @@ export async function createPaymentRequestCheckoutSession(
   }
   const fairManifest = existing.fairManifest as unknown as CheckoutBody['fairManifest'];
 
-  const metadata = checkoutMetadataOf(existing, rail);
-  const started = await startCardSession(
-    {
-      existing,
-      rail,
-      merchandiseItems,
-      items: [...merchandiseItems, ...taxLineItems(fairManifest)],
-      fairManifest,
-      metadata,
-      customerEmail: input.customerEmail,
-    },
-  );
+  const metadata = checkoutMetadataOf(existing);
+  const started = await startCardSession({
+    existing,
+    rail,
+    items: [...merchandiseItems, ...taxLineItems(fairManifest)],
+    metadata,
+    customerEmail: input.customerEmail,
+  });
   if ('error' in started) return started;
 
   await db.insert(transactions).values({
@@ -395,7 +342,7 @@ export async function createPaymentRequestCheckoutSession(
     amount: (existing.totalAmount / 100).toString(),
     currency: existing.currency,
     status: 'pending',
-    ...externalRefColumns(started.id, transactionRailOf(rail)),
+    ...externalRefColumns(started.id, STRIPE_BYO_RAIL),
     metadata,
     // fairManifest intentionally omitted — see module doc comment.
   });

@@ -1,14 +1,14 @@
 /**
  * Pay Stripe bus consumer (#2177, item 4 of the #2173 seam cleanup).
  *
- * The legacy pay webhook routes (`app/pay/api/webhook/route.ts` and
- * `app/pay/api/connect/webhook/route.ts`) used to verify a Stripe delivery AND
- * run every business handler inline. They are now thin ingress: verify the
+ * The legacy pay webhook route (`app/pay/api/webhook/route.ts`) used to
+ * verify a Stripe delivery AND run every business handler inline. It is now
+ * thin ingress: verify the
  * signature, then republish the verified delivery onto the #1785 connector bus
  * as a `stripe.*` event (see `stripe-relay.ts`). This module is the consumer
  * side of that seam — the `pay-stripe` reactor, configured as the awaited
  * chain for every `stripe.*` type in `packages/bus/src/config.ts` — and it is
- * where all of the handlers that previously lived in those routes now live,
+ * where all of the handlers that previously lived in that route now live,
  * byte-for-byte in behavior (the golden webhook suites still pin them).
  *
  * ## Settlement seam (#1073)
@@ -25,7 +25,9 @@
  * `pay.transactions` or balances. One narrow exception (#2754):
  * {@link handleByoPaymentIntentSucceeded} settles a payment_request that the
  * owner's OWN `stripe.payment_intent.succeeded` names, iff that same owner
- * issued it. Everything else a BYO event says is ignored.
+ * issued it; and (#2757) {@link handleByoCheckoutPaymentIntent} settles a
+ * hosted checkout (events, market, coffee) the same way. Everything else a BYO
+ * event says is ignored.
  *
  * ## Failure contract
  * `publish()` swallows reactor errors, so a failing handler is recorded on the
@@ -37,10 +39,9 @@
  * every SDK touch stays behind `providers/stripe-webhook.ts`.
  */
 
-import { eq } from 'drizzle-orm';
 import { registerReactor, publish, type BusEvent, type ReactorHandler } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { db, transactions, feeLedger, connectedAccounts } from '@/src/db';
+import { db, transactions, feeLedger } from '@/src/db';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
@@ -60,10 +61,8 @@ import {
   verifyWebhookManifestSignature,
 } from '@/src/lib/pay/webhook-handlers';
 import type {
-  StripeAccountLike,
   StripeCheckoutSessionLike,
   StripePaymentIntentLike,
-  StripePayoutLike,
   StripeSubscriptionLike,
   StripeInvoiceLike,
 } from '@/src/lib/pay/webhook-event-shapes';
@@ -112,16 +111,12 @@ const PLATFORM_HANDLERS: Readonly<Record<string, StripeEventHandler>> = {
   'transfer.created': handleTransferCreated,
 };
 
-/** Connect-account webhook (`POST /pay/api/connect/webhook`, `STRIPE_CONNECT_WEBHOOK_SECRET`). */
-const CONNECT_HANDLERS: Readonly<Record<string, StripeEventHandler>> = {
-  'account.updated': onRailEvent(handleAccountUpdated),
-  'payout.paid': onRailEvent((event, stripeEvent) => handlePayoutEvent('Connect payout.paid', event, stripeEvent)),
-  'payout.failed': onRailEvent((event, stripeEvent) => handlePayoutEvent('Connect payout.failed', event, stripeEvent)),
-};
-
 const HANDLERS_BY_SOURCE: Readonly<Record<StripeRelaySource, Readonly<Record<string, StripeEventHandler>>>> = {
   platform: PLATFORM_HANDLERS,
-  connect: CONNECT_HANDLERS,
+  // #2757: Stripe Connect is removed — there is no Connect-account webhook ingress any more, so no event is
+  // ever relayed with this source. The key stays only because `StripeRelaySource` (packages/bus) still names it
+  // for historical `stripe.payout.paid` payloads.
+  connect: {},
 };
 
 /** True when `eventType` has a pay handler for deliveries verified by `source`'s endpoint. */
@@ -138,6 +133,7 @@ export const payStripeReactor: ReactorHandler = async (event) => {
   const relayId = event.payload?.relayId;
   if (typeof relayId !== 'string') {
     await handleByoPaymentIntentSucceeded(event);
+    await handleByoCheckoutPaymentIntent(event);
     return;
   }
 
@@ -191,6 +187,45 @@ async function handleByoPaymentIntentSucceeded(event: BusEvent): Promise<void> {
   }
 }
 
+/**
+ * #2757: an owner's own (BYO connector) `stripe.payment_intent.succeeded` for a
+ * hosted checkout (`POST /pay/api/checkout` — events, market, coffee) created on
+ * their account. It names the pending `pay.transactions` row by `payTransactionId`.
+ * `settleCheckoutFromByoStripe` enforces ownership/amount/pending-ness and
+ * completes the row; this then tells the originating service it was paid, exactly
+ * as the platform path does. Never throws: the connector has already answered Stripe.
+ */
+async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
+  if (event.type !== 'stripe.payment_intent.succeeded') return;
+  const { ownerDid, payTransactionId, paymentIntentId, amount, currency } = event.payload ?? {};
+  if (
+    typeof ownerDid !== 'string' || typeof payTransactionId !== 'string' || typeof paymentIntentId !== 'string' ||
+    typeof amount !== 'number' || typeof currency !== 'string' || event.issuer !== ownerDid
+  ) {
+    return;
+  }
+
+  try {
+    const { settleCheckoutFromByoStripe } = await import('@/src/lib/pay/byo-checkout-settlement');
+    const outcome = await settleCheckoutFromByoStripe({ ownerDid, transactionId: payTransactionId, paymentIntentId, amount, currency });
+    if (!outcome.settled) return;
+
+    const { session } = outcome;
+    await notifyCheckoutServices(session);
+    if (session.metadata?.service === 'coffee') {
+      await notifyCoffeeService('payment.succeeded', {
+        id: paymentIntentId,
+        amount,
+        currency: currency.toLowerCase(),
+        metadata: session.metadata,
+        receipt_email: session.customer_email ?? null,
+      });
+    }
+  } catch (error) {
+    log.error({ err: String(error), payTransactionId, ownerDid }, 'BYO Stripe checkout settlement error');
+  }
+}
+
 let reactorRegistered = false;
 
 /**
@@ -204,45 +239,6 @@ export function ensurePayStripeReactorRegistered(): void {
   if (reactorRegistered) return;
   registerReactor(PAY_STRIPE_REACTOR, payStripeReactor);
   reactorRegistered = true;
-}
-
-// =============================================================================
-// Connect handlers (relocated from app/pay/api/connect/webhook/route.ts)
-// =============================================================================
-
-async function handleAccountUpdated(event: RailEvent): Promise<void> {
-  const account = event.raw as unknown as StripeAccountLike;
-
-  const rows = await db
-    .select()
-    .from(connectedAccounts)
-    .where(eq(connectedAccounts.stripeAccountId, account.id))
-    .limit(1);
-
-  if (rows.length === 0) return;
-
-  const chargesEnabled = account.charges_enabled ?? false;
-  const payoutsEnabled = account.payouts_enabled ?? false;
-  const detailsSubmitted = account.details_submitted ?? false;
-
-  await db
-    .update(connectedAccounts)
-    .set({
-      chargesEnabled,
-      payoutsEnabled,
-      detailsSubmitted,
-      onboardingComplete: chargesEnabled && payoutsEnabled && detailsSubmitted,
-      currentlyDue: account.requirements?.currently_due ?? [],
-      eventuallyDue: account.requirements?.eventually_due ?? [],
-      updatedAt: new Date(),
-    })
-    .where(eq(connectedAccounts.stripeAccountId, account.id));
-}
-
-function handlePayoutEvent(label: string, event: RailEvent, stripeEvent: unknown): void {
-  const payout = event.raw as unknown as StripePayoutLike;
-  const connectAccountId = (stripeEvent as { account?: string } | undefined)?.account;
-  log.info({ account: connectAccountId, payoutId: payout.id, amount: payout.amount, currency: payout.currency }, label);
 }
 
 // =============================================================================

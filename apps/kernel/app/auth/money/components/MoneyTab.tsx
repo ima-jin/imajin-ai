@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useToast } from '@imajin/ui';
+import CardPaymentsNudge from './CardPaymentsNudge';
 import CreatePaymentRequestForm from './CreatePaymentRequestForm';
 import PaymentRequestList from './PaymentRequestList';
 import type { PaymentRequestRow } from '../lib/types';
@@ -74,6 +75,8 @@ export default function MoneyTab({ issuerDid }: Readonly<Props>) {
           </button>
         )}
       </div>
+
+      <CardPaymentsNudge issuerDid={issuerDid} />
 
       {creating && (
         <CreatePaymentRequestForm issuerDid={issuerDid} onCreated={handleCreated} onCancel={() => setCreating(false)} />

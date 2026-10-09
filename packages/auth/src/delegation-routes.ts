@@ -108,11 +108,6 @@ export const DELEGATION_ROUTES = {
     path: "/media/api/workspace/rollback",
     why: "moves a branch pointer, snapshots immutable",
   },
-  "pay.balance.withdraw": {
-    class: "value-moving", action: "withdraw", app: "kernel", method: "POST",
-    path: "/pay/api/balance/withdraw",
-    why: "pays out balance",
-  },
   "pay.balance.withdraw-request": {
     class: "value-moving", action: "withdraw-request", app: "kernel", method: "POST",
     path: "/pay/api/balance/withdraw/request",

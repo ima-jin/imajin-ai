@@ -61,39 +61,20 @@ components:
       in: path
       required: true
       description: "Payment rail (provider) key — `stripe` is one value of the enum (#2177)"
-      schema: { $ref: "#/components/schemas/ConnectProvider" }
+      schema: { $ref: "#/components/schemas/WebhookProvider" }
   schemas:
     PaymentProvider:
       type: string
       enum: [stripe, solana]
       description: |
         Payment rail that processed a charge or holds an escrow. Stripe is ONE value
-        of this enum — a new rail is a new value here (and in `ConnectProvider` when
-        it supports connected-account onboarding), never a new Stripe-style field or
-        operation (#2177, parent #2173).
-    ConnectProvider:
+        of this enum — a new rail is a new value here (and in `WebhookProvider` when
+        it has a webhook), never a new Stripe-style field or operation (#2177,
+        parent #2173).
+    WebhookProvider:
       type: string
       enum: [stripe]
-      description: "Rails with connected-account onboarding and webhooks — the `{provider}` path segment of the rail-generic operations (#2177)."
-    ConnectOnboardResult:
-      type: object
-      properties:
-        provider: { $ref: "#/components/schemas/ConnectProvider" }
-        accountId: { type: string, description: "Rail-side connected account id" }
-        onboardingUrl: { type: string, format: uri }
-        isNew: { type: boolean }
-    ConnectedAccountStatus:
-      type: object
-      properties:
-        id: { type: string }
-        did: { type: string }
-        provider: { $ref: "#/components/schemas/ConnectProvider" }
-        accountId: { type: string, description: "Rail-side connected account id (rail-neutral)" }
-        stripeAccountId: { type: string, description: "Legacy field, present only when `provider` is `stripe` — same value as `accountId`" }
-        chargesEnabled: { type: boolean }
-        payoutsEnabled: { type: boolean }
-        detailsSubmitted: { type: boolean }
-        onboardingComplete: { type: boolean }
+      description: "Rails with a webhook — the `{provider}` path segment of the rail-generic operations (#2177)."
     Balance:
       type: object
       description: |
@@ -402,82 +383,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /api/balance/withdraw:
-    post:
-      tags: [pay]
-      operationId: withdraw
-      summary: Withdraw cash balance to an external payout destination
-      description: |
-        Only MJN (receipt-backed, withdrawable) can be withdrawn — MJNx cannot be
-        withdrawn. Minimum withdrawal is $1.00 (100 cents). Rail-agnostic (#2172),
-        reserve -> external -> confirm instead of one transaction. The guarded
-        conditional UPDATE debit (#2166) is committed together with a durable
-        withdrawal-intent row BEFORE the external rail is ever called — insufficient
-        balance returns 402 and no external transfer is ever attempted. If the rail
-        call itself fails, the reservation is released before this endpoint returns
-        a 500. A rail transfer that succeeds but whose confirmation never commits
-        (crash, network partition) is caught by the reconciliation sweep
-        (`GET /api/cron/withdrawal-reconcile`, not part of this per-app spec) and
-        surfaced via `GET /api/admin/reconciliation`, never silently lost.
-
-        `account_id` is optional (#2190) and is only ever a *selection hint* —
-        the destination is always resolved server-side from the caller's own
-        connected rail account. Omitted -> the caller's connected account is
-        used. Supplied -> it must match the caller's own connected account, else
-        403 (fail-closed; never falls back to the supplied value).
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [amount]
-              properties:
-                amount: { type: integer, description: "Amount in cents (minimum 100)" }
-                currency: { type: string, default: usd }
-                account_id:
-                  type: string
-                  description: >-
-                    Optional rail connected account ID. Must belong to the caller;
-                    omit to use the caller's default connected account.
-      responses:
-        "200":
-          description: Withdrawal initiated
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  transactionId: { type: string }
-                  transferId: { type: string }
-                  amount: { type: number }
-                  currency: { type: string }
-        "400":
-          description: >-
-            Invalid amount (below minimum or not a positive number), a non-string
-            account_id, or no connected rail account exists for the caller
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "402":
-          description: Insufficient MJN balance (#2166) — the guarded debit never reaches the rail
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "403":
-          description: account_id does not belong to the caller's own connected account (#2190) — fail-closed
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
   /api/balance/transfer:
     post:
       tags: [pay]
@@ -699,8 +604,11 @@ paths:
                   additionalProperties: { type: string }
                 fairManifest: { type: object, description: ".fair multi-party split manifest" }
                 payeeManifest: { type: object, description: "App-authenticated checkout only (#2642): the payee manifest recorded on the payment and verified at settle time. Defaults to fairManifest." }
-                connectedAccountId: { type: string, description: "Rail connected account for platform fees (Stripe: Connect account id)" }
-                sellerDid: { type: string }
+                sellerDid:
+                  type: string
+                  description: |
+                    #2757: the seller whose OWN Stripe account (the BYO connector, #1785) is charged.
+                    A seller with no working card rail is a 400 `SELLER_NO_CARD_RAIL`. Absent = a platform-own charge.
       responses:
         "200":
           description: Checkout session created
@@ -714,12 +622,26 @@ paths:
                   expiresAt: { type: string, format: date-time }
                   transactionId: { type: string }
         "400":
-          description: Invalid request
+          description: >-
+            Invalid request, or (#2757) the seller has no card rail — `code` `SELLER_NO_CARD_RAIL` — or
+            `mode: subscription` with a seller (`code` `SUBSCRIPTION_NOT_SUPPORTED`)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      code: { type: string, description: "Stable machine-readable reason, e.g. SELLER_NO_CARD_RAIL" }
+        "429":
+          description: Too many requests
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "429":
-          description: Too many requests
+        "502":
+          description: >-
+            Stripe refused or could not be reached on the seller's own account — `code` is one of
+            `CARD_RAIL_KEY_MISSING`, `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -931,107 +853,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
-  /api/connect/onboard:
-    post:
-      tags: [pay]
-      operationId: stripeConnectOnboard
-      x-rail-generic-alias: railConnectOnboard
-      summary: Start Stripe Connect Express onboarding for the authenticated DID
-      description: |
-        Stripe-named alias of `railConnectOnboard` (`POST /api/connect/{provider}/onboard`
-        with `provider: stripe`) — unchanged, kept for existing clients (#2177).
-
-        Creates a Stripe Express account for the authenticated DID (if not exists) and returns
-        an onboarding URL. Only human (hard) DIDs — not agents. If already has an account,
-        generates a new Account Link for re-onboarding.
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [return_url, refresh_url]
-              properties:
-                return_url: { type: string, format: uri }
-                refresh_url: { type: string, format: uri }
-      responses:
-        "200":
-          description: Onboarding link created
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  accountId: { type: string }
-                  onboardingUrl: { type: string, format: uri }
-                  isNew: { type: boolean }
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "403":
-          description: Agents cannot onboard
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
-  /api/connect/status:
+  /api/card-rail/check:
     get:
       tags: [pay]
-      operationId: stripeConnectStatus
-      x-rail-generic-alias: railConnectStatus
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
-      summary: Check Stripe Connect account status for a DID
+      operationId: cardRailCheck
+      summary: Can this seller take a card payment right now? (#2757)
       description: |
-        Stripe-named alias of `railConnectStatus` (`GET /api/connect/{provider}/status`
-        with `provider: stripe`) — unchanged, kept for existing clients (#2177).
-
-        Returns the connected account status from DB (kept fresh by webhook).
-      parameters:
-        - name: did
-          in: query
-          required: true
-          schema: { type: string }
-          description: "DID to check"
-      responses:
-        "200":
-          description: Account status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id: { type: string }
-                  did: { type: string }
-                  stripeAccountId: { type: string }
-                  chargesEnabled: { type: boolean }
-                  payoutsEnabled: { type: boolean }
-                  detailsSubmitted: { type: boolean }
-                  onboardingComplete: { type: boolean }
-        "404":
-          description: No connected account for this DID
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
-  /api/connect/dashboard:
-    get:
-      tags: [pay]
-      operationId: stripeConnectDashboard
-      x-rail-generic-alias: railConnectDashboard
-      summary: Generate a Stripe Express Dashboard login link
-      description: |
-        Stripe-named alias of `railConnectDashboard` (`GET /api/connect/{provider}/dashboard`
-        with `provider: stripe`) — unchanged, kept for existing clients (#2177).
-
-        Generates a one-time login link for the Stripe Express dashboard for the connected account. Auth required.
-      security:
-        - cookieAuth: []
+        Public, rate-limited. Tells buyer-facing pages (an event's ticket panel)
+        whether the seller at `did` has a working card rail — their own Stripe
+        connector (#1785): a sealed restricted key AND the `stripe:events` grant —
+        so they show a card button only when it would work. Replaces the removed
+        `/api/connect/check`. One boolean; never the key, the grant or the account.
       parameters:
         - name: did
           in: query
@@ -1039,188 +871,20 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: Dashboard URL
+          description: Card availability
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  url: { type: string, format: uri }
-        "401":
-          description: Unauthorized
+                  cardEnabled: { type: boolean }
+        "400":
+          description: did query parameter is required
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "404":
-          description: No connected account
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
-  /api/connect/webhook:
-    post:
-      tags: [pay]
-      operationId: stripeConnectWebhook
-      x-rail-generic-alias: railConnectWebhook
-      summary: Stripe Connect webhook — connected account events
-      description: |
-        Stripe-named alias of `railConnectWebhook` (`POST /api/connect/{provider}/webhook`
-        with `provider: stripe`) — unchanged, kept for existing clients (#2177).
-
-        Handles Stripe Connect webhook events:
-        - `account.updated` — refresh onboarding status in DB
-        - `payout.paid` — log successful payout
-        - `payout.failed` — log failed payout
-      security:
-        - stripeWebhook: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object }
-      responses:
-        "200":
-          description: Event received
-
-  /api/connect/{provider}/onboard:
-    post:
-      tags: [pay]
-      operationId: railConnectOnboard
-      summary: Start connected-account onboarding on a payment rail for the authenticated DID
-      description: |
-        Rail-generic form of `stripeConnectOnboard` (#2177): `{provider}` selects the rail
-        (`stripe` today). Runs the same handler as `POST /api/connect/onboard` — creates the
-        rail's connected account for the authenticated DID (if not exists) and returns an
-        onboarding URL. Only human (hard) DIDs — not agents. An unknown `{provider}` is 404.
-      security:
-        - cookieAuth: []
-      parameters:
-        - $ref: "#/components/parameters/provider"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [return_url, refresh_url]
-              properties:
-                return_url: { type: string, format: uri }
-                refresh_url: { type: string, format: uri }
-      responses:
-        "200":
-          description: Onboarding link created
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ConnectOnboardResult" }
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "403":
-          description: Agents cannot onboard
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "404":
-          description: Unknown provider
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
-  /api/connect/{provider}/status:
-    get:
-      tags: [pay]
-      operationId: railConnectStatus
-      security:
-        - cookieAuth: []
-        - bearerAuth: []
-      summary: Check connected-account status on a payment rail for a DID
-      description: |
-        Rail-generic form of `stripeConnectStatus` (#2177): `{provider}` selects the rail
-        (`stripe` today). Runs the same handler as `GET /api/connect/status`; the response
-        adds the rail-neutral `provider` and `accountId` (the legacy `stripeAccountId` is
-        still returned for `stripe`). An unknown `{provider}` is 404.
-      parameters:
-        - $ref: "#/components/parameters/provider"
-        - name: did
-          in: query
-          required: true
-          schema: { type: string }
-          description: "DID to check"
-      responses:
-        "200":
-          description: Account status
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/ConnectedAccountStatus" }
-        "404":
-          description: Unknown provider, or no connected account for this DID
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
-  /api/connect/{provider}/dashboard:
-    get:
-      tags: [pay]
-      operationId: railConnectDashboard
-      summary: Generate a login link to the rail's connected-account dashboard
-      description: |
-        Rail-generic form of `stripeConnectDashboard` (#2177): `{provider}` selects the rail
-        (`stripe` today). Runs the same handler as `GET /api/connect/dashboard`. Auth required.
-        An unknown `{provider}` is 404.
-      security:
-        - cookieAuth: []
-      parameters:
-        - $ref: "#/components/parameters/provider"
-        - name: did
-          in: query
-          required: true
-          schema: { type: string }
-      responses:
-        "200":
-          description: Dashboard URL
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  url: { type: string, format: uri }
-        "401":
-          description: Unauthorized
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-        "404":
-          description: Unknown provider, or no connected account
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
-
-  /api/connect/{provider}/webhook:
-    post:
-      tags: [pay]
-      operationId: railConnectWebhook
-      summary: Rail connected-account webhook — connected account events
-      description: |
-        Rail-generic form of `stripeConnectWebhook` (#2177): `{provider}` selects the rail
-        (`stripe` today) and its signature verifier. Runs the same handler as
-        `POST /api/connect/webhook` — for `stripe`: `account.updated` (refresh onboarding
-        status), `payout.paid`, `payout.failed`. An unknown `{provider}` is 404.
-      security:
-        - railWebhookSignature: []
-      parameters:
-        - $ref: "#/components/parameters/provider"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { type: object }
-      responses:
-        "200":
-          description: Event received
-        "404":
-          description: Unknown provider
+        "429":
+          description: Too many requests
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1797,15 +1461,15 @@ paths:
         connector (#1785, a sealed restricted key AND the `stripe:events` grant)
         the session is created ON THE ISSUER'S OWN STRIPE ACCOUNT with that key
         (needs **Checkout Sessions = Write**, checked when the key is connected);
-        Stripe Connect is only a temporary fallback for issuers who have not
-        migrated; with neither the call is a 400 `SELLER_NOT_CONNECTED`. There is
-        no platform fee on connector charges for now. Such a payment settles from
+        without a connector the call is a 400 `SELLER_NO_CARD_RAIL` (#2757 —
+        Stripe Connect is removed, there is no platform-account fallback). There
+        is no platform fee on connector charges for now. Such a payment settles from
         the issuer's own `payment_intent.succeeded` (the PaymentIntent carries
         `metadata.payment_request_id`), not the platform webhook: `paid`, a
         `stripe-byo` transaction row, no platform balance movement.
 
         Error bodies are `{ error, code? }`; `code` is stable and drives the pay
-        page's message: `SELLER_NOT_CONNECTED` (400), and for a failure creating
+        page's message: `SELLER_NO_CARD_RAIL` (400), and for a failure creating
         the session on the issuer's account (502) `CARD_RAIL_KEY_MISSING`,
         `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`.
       security:
@@ -1845,14 +1509,14 @@ paths:
                   expiresAt: { type: string, format: date-time }
                   reused: { type: boolean, description: "true when an existing open Stripe session was reused" }
         "400":
-          description: "Invalid request, allow_on_platform is false, or the issuer has no card rail (`code` SELLER_NOT_CONNECTED, #2754)"
+          description: "Invalid request, allow_on_platform is false, or the issuer has no card rail (`code` SELLER_NO_CARD_RAIL, #2754)"
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   error: { type: string }
-                  code: { type: string, description: "Stable machine-readable reason, e.g. SELLER_NOT_CONNECTED" }
+                  code: { type: string, description: "Stable machine-readable reason, e.g. SELLER_NO_CARD_RAIL" }
         "403":
           description: Not the issuer or recipient, or `paidByDid` is a DID the caller can't act for (#2656)
           content:
@@ -1937,7 +1601,7 @@ paths:
       summary: Which ways the issuer can be paid right now — drives the issue-time warning (#2754)
       description: |
         `{ card, emt }` for the authenticated issuer: `card` = a working card rail
-        (their own Stripe connector, or Connect while it lasts), `emt` = an
+        (their own Stripe connector), `emt` = an
         e-Transfer receiving email is set. Issuer-only — `issuer_did` must be the
         authenticated principal. Two booleans only; never the key, the account or
         the email.

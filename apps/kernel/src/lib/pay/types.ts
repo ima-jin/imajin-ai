@@ -38,7 +38,6 @@ export interface DIDRecipient {
 
 /** Direct Stripe recipient */
 export interface StripeRecipient {
-  stripeAccountId?: string;
   stripeCustomerId?: string;
 }
 
@@ -56,7 +55,7 @@ export function isDIDRecipient(r: Recipient): r is DIDRecipient {
 }
 
 export function isStripeRecipient(r: Recipient): r is StripeRecipient {
-  return 'stripeAccountId' in r || 'stripeCustomerId' in r;
+  return 'stripeCustomerId' in r;
 }
 
 export function isSolanaRecipient(r: Recipient): r is SolanaRecipient {
@@ -172,12 +171,6 @@ export interface CheckoutRequest {
   cancelUrl: string;
   /** Arbitrary metadata */
   metadata?: Record<string, string>;
-  /** Stripe Connect account ID to route funds to */
-  connectedAccountId?: string;
-  /** DID of the seller, pay resolves to connected account */
-  sellerDid?: string;
-  /** Platform fee in cents */
-  applicationFeeAmount?: number;
 }
 
 /** Result of checkout creation */

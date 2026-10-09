@@ -1,6 +1,6 @@
 /**
- * Type-leak guard (#2175): the pay webhook route, the connect webhook
- * route, and `webhook-handlers.ts` must never import the `stripe` SDK
+ * Type-leak guard (#2175): the pay webhook route and
+ * `webhook-handlers.ts` must never import the `stripe` SDK
  * directly — every Stripe SDK access lives behind
  * `lib/pay/providers/stripe-webhook.ts` (and `providers/stripe-client.ts`).
  *
@@ -38,10 +38,6 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
 describe('type-leak guard: pay webhook ingress never imports the stripe SDK directly (#2175)', () => {
   it('the pay webhook route source has no stripe import', () => {
     expect(readSource('../route.ts')).not.toMatch(STRIPE_IMPORT_RE);
-  });
-
-  it('the connect webhook route source has no stripe import', () => {
-    expect(readSource('../../connect/webhook/route.ts')).not.toMatch(STRIPE_IMPORT_RE);
   });
 
   it('the #2177 bus relay and consumer sources have no stripe import', () => {

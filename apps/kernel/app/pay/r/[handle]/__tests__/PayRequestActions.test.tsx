@@ -84,7 +84,7 @@ describe('PayRequestActions — only the rails that work (#2754)', () => {
 
 describe('checkoutErrorMessage (#2754) — a card failure is never a generic "try again"', () => {
   it.each([
-    ['SELLER_NOT_CONNECTED', 400, /Acme hasn't set up card payments yet\. Contact Acme/],
+    ['SELLER_NO_CARD_RAIL', 400, /Acme hasn't set up card payments yet\. Contact Acme/],
     ['CARD_RAIL_KEY_MISSING', 502, /Acme's Stripe connection isn't active/],
     ['CARD_RAIL_KEY_REJECTED', 502, /Stripe rejected Acme's connection.*Contact Acme/],
     ['CARD_RAIL_REQUEST_REJECTED', 502, /amount or currency may not be supported.*Contact Acme/],
@@ -145,8 +145,8 @@ describe('PayRequestActions — checkout (#2215 may not be merged yet)', () => {
     expect(screen.queryByText(/Unable to start checkout/)).toBeNull();
   });
 
-  it('turns the server\'s SELLER_NOT_CONNECTED 400 into the issuer-specific message', async () => {
-    installFetch({ ok: false, status: 400, body: { error: "This issuer hasn't set up card payments", code: 'SELLER_NOT_CONNECTED' } });
+  it('turns the server\'s SELLER_NO_CARD_RAIL 400 into the issuer-specific message', async () => {
+    installFetch({ ok: false, status: 400, body: { error: "This issuer hasn't set up card payments", code: 'SELLER_NO_CARD_RAIL' } });
     render(<PayRequestActions issuerName="Imajin Inc" card handle="ph_1" status="issued" />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Pay now' }));
