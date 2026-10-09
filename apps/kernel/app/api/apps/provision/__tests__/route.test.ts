@@ -13,6 +13,8 @@ const {
   findPendingAppsProvisionProposalMock,
   getAppProvisionStatusMock,
   previewManifestDeclarationsMock,
+  isOperatorIdentityMock,
+  listSucceededAppProvisionsMock,
 } = vi.hoisted(() => ({
   requireAuthMock: vi.fn(),
   resolveActingDidMock: vi.fn(),
@@ -22,6 +24,8 @@ const {
   findPendingAppsProvisionProposalMock: vi.fn(),
   getAppProvisionStatusMock: vi.fn(),
   previewManifestDeclarationsMock: vi.fn(),
+  isOperatorIdentityMock: vi.fn(),
+  listSucceededAppProvisionsMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -44,6 +48,7 @@ vi.mock('@/src/lib/kernel/id', () => ({
 
 vi.mock('@/src/lib/notify/operator-approvals', () => ({
   getOperatorDid: getOperatorDidMock,
+  isOperatorIdentity: isOperatorIdentityMock,
   computeApprovalContentHash: computeApprovalContentHashMock,
 }));
 
@@ -62,6 +67,10 @@ vi.mock('@/src/lib/apps/approvals-execution', () => ({
 
 vi.mock('@/src/lib/apps/provision', () => ({
   getAppProvisionStatus: getAppProvisionStatusMock,
+}));
+
+vi.mock('@/src/lib/apps/provision-list', () => ({
+  listSucceededAppProvisions: listSucceededAppProvisionsMock,
 }));
 
 vi.mock('@/src/lib/apps/manifest-preview', () => ({
@@ -86,6 +95,8 @@ beforeEach(() => {
   requireAuthMock.mockResolvedValue({ identity: { id: ACTING_DID } });
   resolveActingDidMock.mockReturnValue(ACTING_DID);
   getOperatorDidMock.mockResolvedValue(OPERATOR_DID);
+  isOperatorIdentityMock.mockReturnValue(true);
+  listSucceededAppProvisionsMock.mockResolvedValue([]);
   computeApprovalContentHashMock.mockReturnValue('a'.repeat(64));
   getAppProvisionStatusMock.mockResolvedValue(undefined);
   findPendingAppsProvisionProposalMock.mockResolvedValue(undefined);
@@ -219,24 +230,24 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ detail: recorded.detail }));
   });
 
-  // The card must describe exactly what approving it does (#2663): with no succeeded ledger row,
-  // approving runs the FULL pipeline, so `reissueClaim: true` must not produce a "reissue" card.
+  // #2745: with no succeeded ledger row, approving would run the FULL pipeline (mint + vault-seal a
+  // key, create a repo) — a reissue must never fall through to that.
   it.each([
     ['the ledger row is failed', { slug: 'dykil', status: 'failed', appDid: null, repoUrl: null, secretsSet: [] }],
+    ['the ledger row is pending', { slug: 'dykil', status: 'pending', appDid: null, repoUrl: null, secretsSet: [] }],
     ['there is no ledger row', undefined],
-  ])('#2707: reissueClaim:true when %s raises an ordinary provision card (manifest read, provision summary, no reissueClaim)', async (_label, ledgerRow) => {
+  ])('#2745: reissueClaim:true when %s is refused with 409 and no provision side effects', async (_label, ledgerRow) => {
     getAppProvisionStatusMock.mockResolvedValue(ledgerRow);
-    const declarations = { providesScopes: ['dykil:read'], dependsOn: [] };
-    previewManifestDeclarationsMock.mockResolvedValue({ ok: declarations });
+    findPendingAppsProvisionProposalMock.mockResolvedValue({ proposalId: 'appprov_existing' });
 
     const response = await POST(postRequest({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true }) as never);
+    const body = await response.json();
 
-    expect(response.status).toBe(201);
-    expect(previewManifestDeclarationsMock).toHaveBeenCalledWith('dykil');
-    const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
-    expect(recorded.summary).toMatch(/^Provision app 'dykil'/);
-    expect(recorded.detail).not.toHaveProperty('reissueClaim');
-    expect(recorded.detail.manifestDeclarations).toEqual(declarations);
+    expect(response.status).toBe(409);
+    expect(body).toEqual({ error: 'nothing to reissue for dykil' });
+    expect(findPendingAppsProvisionProposalMock).not.toHaveBeenCalled();
+    expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
 
   it('#2707: an ordinary proposal carries no reissueClaim key (its detail and hash are unchanged)', async () => {
@@ -372,5 +383,68 @@ describe('GET /api/apps/provision', () => {
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ slug: 'dykil', status: 'failed', failedStep: 'seal', errorMessage: 'GitHub 403' });
+  });
+});
+
+describe('GET /api/apps/provision?status=succeeded (#2745)', () => {
+  const rows = [
+    { slug: 'learn', appDid: 'did:imajin:app-learn', repoUrl: 'https://github.com/ima-jin/learn', claimed: false, updatedAt: new Date('2026-10-09T10:00:00.000Z') },
+    { slug: 'dykil', appDid: 'did:imajin:app-dykil', repoUrl: null, claimed: true, updatedAt: new Date('2026-10-01T10:00:00.000Z') },
+  ];
+
+  it('returns the auth error verbatim when not authenticated', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'Not authenticated', status: 401 });
+
+    const response = await GET(getRequest('?status=succeeded') as never);
+
+    expect(response.status).toBe(401);
+    expect(listSucceededAppProvisionsMock).not.toHaveBeenCalled();
+  });
+
+  it('lists succeeded provisions with their claimed state for the operator', async () => {
+    listSucceededAppProvisionsMock.mockResolvedValue(rows);
+
+    const response = await GET(getRequest('?status=succeeded') as never);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(isOperatorIdentityMock).toHaveBeenCalledWith({ id: ACTING_DID }, OPERATOR_DID);
+    expect(body.isOperator).toBe(true);
+    expect(body.provisions).toEqual([
+      { slug: 'learn', appDid: 'did:imajin:app-learn', repoUrl: 'https://github.com/ima-jin/learn', claimed: false, updatedAt: '2026-10-09T10:00:00.000Z' },
+      { slug: 'dykil', appDid: 'did:imajin:app-dykil', repoUrl: null, claimed: true, updatedAt: '2026-10-01T10:00:00.000Z' },
+    ]);
+  });
+
+  it('returns an empty, non-operator answer without reading the ledger when the caller is not the operator', async () => {
+    isOperatorIdentityMock.mockReturnValue(false);
+
+    const response = await GET(getRequest('?status=succeeded') as never);
+
+    expect(await response.json()).toEqual({ isOperator: false, provisions: [] });
+    expect(listSucceededAppProvisionsMock).not.toHaveBeenCalled();
+  });
+
+  it('treats a node with no configured operator as non-operator', async () => {
+    getOperatorDidMock.mockResolvedValue(null);
+
+    const response = await GET(getRequest('?status=succeeded') as never);
+
+    expect(await response.json()).toEqual({ isOperator: false, provisions: [] });
+    expect(listSucceededAppProvisionsMock).not.toHaveBeenCalled();
+  });
+
+  it('still requires a slug for any other status filter', async () => {
+    const response = await GET(getRequest('?status=failed') as never);
+    expect(response.status).toBe(400);
+  });
+
+  it('a slug query keeps returning that slug\'s ledger row, not the list', async () => {
+    getAppProvisionStatusMock.mockResolvedValue({ slug: 'dykil', status: 'succeeded', secretsSet: [], attestationTypes: [] });
+
+    const response = await GET(getRequest('?slug=dykil&status=succeeded') as never);
+
+    expect((await response.json()).slug).toBe('dykil');
+    expect(listSucceededAppProvisionsMock).not.toHaveBeenCalled();
   });
 });

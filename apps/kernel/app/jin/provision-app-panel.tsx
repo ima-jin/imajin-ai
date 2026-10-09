@@ -19,6 +19,8 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
 import { approvalCardAnchorId, requestApprovalsRefresh } from './approval-anchor';
 import { proposeClaimReissue } from './provision-reissue';
+import { fetchProvisionedApps, type ProvisionedApp } from './provisioned-apps';
+import { ProvisionedAppsList } from './provisioned-apps-list';
 import {
   DEFAULT_APP_TEMPLATE,
   buildProvisionPayload,
@@ -338,6 +340,8 @@ export function ProvisionAppPanel() {
   const [tracked, setTracked] = useState<TrackedProposal | null>(null);
   const [outcome, setOutcome] = useState<TrackedOutcome | null>(null);
   const [reissueBusy, setReissueBusy] = useState(false);
+  // #2745: succeeded provisions read from the server, so they outlive the tracked proposal and a reload.
+  const [provisionedApps, setProvisionedApps] = useState<ProvisionedApp[]>([]);
 
   const { flash, notify } = useFlashNotice(5000);
 
@@ -380,23 +384,40 @@ export function ProvisionAppPanel() {
     };
   }, [trackedSlug, trackedProposalId, trackedIsReissue, done]);
 
+  // #2745: (re)load the server's list of provisioned apps when the panel appears and whenever the
+  // followed proposal reaches a terminal outcome (a fresh provision lands, a reissue is approved).
+  const listRefreshKey = done ? `${trackedSlug}:${outcome?.phase}` : 'idle';
+  useEffect(() => {
+    if (!visible) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      const apps = await fetchProvisionedApps();
+      if (!cancelled) setProvisionedApps(apps);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [visible, listRefreshKey]);
+
   const setField = (field: keyof ProvisionFormValues) => (value: string) => {
     setValues((current) => ({ ...current, [field]: value }));
   };
 
   // #2707: raise the existing `reissueClaim: true` proposal for the app being shown, then follow it.
-  const reissueClaimCode = async () => {
-    if (!tracked || reissueBusy) return;
+  // #2745: the target is either the tracked proposal or a row of the server-backed list.
+  const reissueClaimCode = async (target: { slug: string; displayName: string }) => {
+    if (reissueBusy) return;
     setReissueBusy(true);
     try {
-      const result = await proposeClaimReissue({ slug: tracked.slug, displayName: tracked.displayName });
+      const result = await proposeClaimReissue(target);
       if (!result.ok) {
         notify('err', result.error);
         return;
       }
       setTracked({
-        slug: tracked.slug,
-        displayName: tracked.displayName,
+        slug: target.slug,
+        displayName: target.displayName,
         proposalId: result.proposalId,
         alreadyPending: result.alreadyPending,
         reissue: true,
@@ -524,8 +545,20 @@ export function ProvisionAppPanel() {
       </form>
 
       {tracked && outcome && (
-        <ProposalResult tracked={tracked} outcome={outcome} reissueBusy={reissueBusy} onReissue={() => void reissueClaimCode()} />
+        <ProposalResult
+          tracked={tracked}
+          outcome={outcome}
+          reissueBusy={reissueBusy}
+          onReissue={() => void reissueClaimCode(tracked)}
+        />
       )}
+
+      <ProvisionedAppsList
+        apps={provisionedApps}
+        reissueBusy={reissueBusy}
+        // The ledger carries no display name; the reissue card is labelled by slug.
+        onReissue={(app) => void reissueClaimCode({ slug: app.slug, displayName: app.slug })}
+      />
     </section>
   );
 }
