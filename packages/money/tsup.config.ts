@@ -6,7 +6,7 @@ export default defineConfig({
   // src/index.ts, like packages/bus still does) is required here, not just
   // stylistic: this package uses bigint literals (`0n`, `10n`, ...), a
   // syntax TypeScript only allows when the *consumer's own* tsconfig
-  // targets ES2020+. Several apps in this monorepo (e.g. apps/coffee)
+  // targets ES2020+. Several apps in this monorepo
   // still target ES2017. Pointing "types" at raw .ts source would pull
   // this file directly into their compilation and fail with TS2737
   // ("BigInt literals are not available..."); shipping a compiled

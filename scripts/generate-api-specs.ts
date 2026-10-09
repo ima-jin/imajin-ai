@@ -2,12 +2,13 @@
 /**
  * generate-api-specs.ts
  *
- * Walks route.ts files across all 10 imajin services, detects HTTP method
+ * Walks route.ts files across all 9 imajin services, detects HTTP method
  * exports, maps file paths to URL paths, and emits one openapi.yaml per
  * service under apps/<service>/api-spec/openapi.yaml.
  *
- * links (#1986 phase 2) now runs from its own repo (ima-jin/links) and is
- * intentionally absent from this list — apps/links no longer exists here.
+ * links (#1986 phase 2) and coffee (#2500) now run from their own repos
+ * (ima-jin/links, ima-jin/coffee) and are intentionally absent from this list —
+ * apps/links and apps/coffee no longer exist here.
  *
  * Usage:
  *   pnpm generate:api-specs
@@ -104,15 +105,6 @@ const SERVICES: ServiceConfig[] = [
     devUrl: 'https://dev-media.imajin.ai',
     port: 7009,
     routeRoots: ['app/api'], // primary implementation
-  },
-  {
-    name: 'coffee',
-    title: 'imajin coffee',
-    description: 'Tip pages and one-time or recurring support payments via Stripe Checkout and Solana.',
-    prodUrl: 'https://coffee.imajin.ai',
-    devUrl: 'https://dev-coffee.imajin.ai',
-    port: 7100,
-    routeRoots: ['app/api'],
   },
   {
     name: 'dykil',

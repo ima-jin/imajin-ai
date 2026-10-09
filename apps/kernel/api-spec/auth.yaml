@@ -1069,7 +1069,7 @@ paths:
 
         A Phase 1 primitive: shipping it does not change any existing app's default auth
         behavior. Nothing calls it unless an app explicitly opts in via
-        `requireSessionOrAppToken` (`@imajin/auth`), e.g. apps/coffee behind
+        `requireSessionOrAppToken` (`@imajin/auth`), e.g. the standalone coffee app behind
         `SESSION_COOKIE_SCOPE=host`.
       security:
         - cookieAuth: []

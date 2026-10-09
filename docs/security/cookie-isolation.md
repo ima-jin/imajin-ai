@@ -46,7 +46,7 @@ processes), `docs/ENVIRONMENTS.md`, and `docs/developer-guide.md`.
 |---|---|---|---|
 | `jin.imajin.ai` (`auth`, `pay`, `profile`, `connections`, `registry`, `chat`, `media`, `notify` — via subdomains per ENVIRONMENTS.md, or paths per developer-guide.md) | `prod-jin` (7000) | Kernel-authenticated | One Next.js process (RFC-19). This is the trusted core the session cookie exists to authenticate. |
 | `jin.imajin.ai/events` (or `events.imajin.ai`) | `prod-events` (7006) | **Ambiguous — see below** | `ENVIRONMENTS.md` lists it under the "Core" port tier; RFC-19 explicitly lists `events` under "What's NOT in the kernel" (userspace). Treat as userspace (lower trust) until confirmed otherwise. |
-| `jin.imajin.ai/coffee` | `prod-coffee` (7100) | Userspace app | Tipping/support pages. Chosen as the Phase 1 reference app (low risk, small surface). |
+| `jin.imajin.ai/coffee` | `prod-coffee` (7100) | Userspace app | Tipping/support pages. Chosen as the Phase 1 reference app (low risk, small surface). Now a standalone app from [ima-jin/coffee](https://github.com/ima-jin/coffee) (#2500). |
 | `jin.imajin.ai/dykil` | `prod-dykil` (7101) | Userspace app | Community spending surveys. |
 | `jin.imajin.ai/links` | `prod-links` (7102) | Userspace app | Link-in-bio pages. |
 | `jin.imajin.ai/learn` | `prod-learn` (7103) | Userspace app | Courses/enrollment. |
@@ -181,7 +181,8 @@ synchronized flag day across every app and the kernel.
 
 ### Reference adoption: `coffee`
 
-`apps/coffee/app/api/pages/mine/route.ts` is the one app converted in this
+coffee's `app/api/pages/mine/route.ts` (the app was pruned from this repo in
+#2500; coffee now lives in ima-jin/coffee) was the one app converted in this
 PR, gated by the same `SESSION_COOKIE_SCOPE` flag:
 
 - Flag unset (default): calls `requireAuth()` exactly as before. Zero

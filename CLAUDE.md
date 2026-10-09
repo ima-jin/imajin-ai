@@ -10,7 +10,7 @@ Read these before doing anything:
 
 ## Key gotchas
 
-- **Kernel has no basePath.** Userspace apps have basePaths matching their name (`/events`, `/coffee`, etc.). Kernel serves at `/`.
+- **Kernel has no basePath.** Userspace apps have basePaths matching their name (`/events`, `/market`, etc.). Kernel serves at `/`.
 - **Env loading:** Scripts don't auto-load `.env` files. Kernel uses `--env-file=.env.local`. Next.js apps use built-in `.env` loading. Export `DATABASE_URL` in your shell for scripts.
 - **`NEXT_PUBLIC_` vars are build-time.** They get inlined by Next.js at build, not runtime.
 - **All migration DDL must be idempotent.** Use `IF NOT EXISTS` everywhere.
@@ -42,7 +42,6 @@ Monorepo: 1 kernel (9 domains) + 6 federated apps, all self-hosted.
 apps/
   kernel/     — Core platform (auth, identity, pay, profile, chat, media, notify, registry, connections)
   events/     — Event creation and ticketing
-  coffee/     — Tip jar / support pages
   dykil/      — Surveys and polls
   links/      — Curated link collections
   market/     — Marketplace (alpha)

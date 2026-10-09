@@ -179,8 +179,9 @@ step "Writing .env.local files"
 # Apps with .env.example files (broker-agent handled separately below)
 # links (#1986 phase 2) now runs from its own repo (ima-jin/links) against
 # this same dev DB — it is no longer part of this monorepo's local setup.
-# learn (#2503) likewise runs from its own repo (ima-jin/learn).
-APPS=(kernel events coffee dykil market)
+# learn (#2503) and coffee (#2500) likewise run from their own repos
+# (ima-jin/learn, ima-jin/coffee).
+APPS=(kernel events dykil market)
 
 for app in "${APPS[@]}"; do
   app_dir="$REPO_ROOT/apps/$app"
@@ -265,7 +266,7 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "AUTH_INTERNAL_API_KEY"        "\"${AUTH_INTERNAL_KEY}\""
 
     case "$app" in
-      events|coffee)
+      events)
         set_env "$local_env" "NOTIFY_WEBHOOK_SECRET" "\"${NOTIFY_SECRET}\""
         ;;
       *) ;; # no-op for other apps
@@ -340,7 +341,6 @@ echo "     $(dim "Save your key file — it is the only copy.")"
 echo
 echo "  3. $(cyan "Start verticals as needed")"
 echo "     pnpm --filter @imajin/events dev     $(dim "→ http://localhost:3006")"
-echo "     pnpm --filter @imajin/coffee dev     $(dim "→ http://localhost:3100")"
 echo "     pnpm --filter @imajin/dykil  dev     $(dim "→ http://localhost:3101")"
 echo "     pnpm --filter @imajin/market dev     $(dim "→ http://localhost:3104")"
 echo

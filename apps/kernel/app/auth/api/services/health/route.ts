@@ -3,7 +3,7 @@
  *
  * Server-side health probe for a hub-embedded service, used by
  * `<ServiceEmbed>` before it mounts the iframe. Every userspace app already
- * exposes `GET /api/health` (see e.g. apps/coffee/app/api/health/route.ts);
+ * exposes `GET /api/health` (see e.g. apps/market/app/api/health/route.ts);
  * proxying the check through the kernel avoids relying on those apps setting
  * CORS headers for the kernel's origin just so a browser-side fetch can read
  * the response status.
