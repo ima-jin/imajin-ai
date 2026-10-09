@@ -512,6 +512,13 @@ describe('dryRunServices (#2483)', () => {
   });
 });
 
+// The first mintIdentity() dynamically imports the real @imajin/auth keypair
+// primitives. On a cold module cache (fresh CI runner / merge-group run) that
+// import alone can take ~5s, which trips vitest's default 5000ms test timeout
+// (#2755). Give this one test a generous explicit timeout rather than raising
+// the timeout for the whole file.
+const COLD_IMPORT_TIMEOUT_MS = 30_000;
+
 describe('createKernelDeps (real @imajin/auth keypair primitives)', () => {
   it('mints a did:imajin identity whose DID is derived from the public key, and re-derives it from the private key', async () => {
     const deps = createKernelDeps('operator:test');
@@ -523,5 +530,5 @@ describe('createKernelDeps (real @imajin/auth keypair primitives)', () => {
     expect(await deps.identityFromPrivateKey(minted.privateKey)).toEqual({ did: minted.did, publicKey: minted.publicKey });
     expect(await deps.identityFromPrivateKey('not-a-key')).toBeNull();
     expect((await deps.mintIdentity()).did).not.toBe(minted.did);
-  });
+  }, COLD_IMPORT_TIMEOUT_MS);
 });
