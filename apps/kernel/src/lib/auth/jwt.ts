@@ -151,6 +151,9 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
 
 const APP_TOKEN_EXPIRY_SECONDS = 600; // 10 minutes
 
+/** Audience stamped on app+jwt / app-service+jwt tokens that name none (#1141). */
+export const APP_TOKEN_DEFAULT_AUDIENCE = 'imajin:apps';
+
 export interface AppTokenPayload {
   sub: string;           // user DID (resource owner); empty string for service tokens
   azp: string;           // authorized party = app DID
@@ -177,7 +180,7 @@ export async function createAppToken(payload: AppTokenPayload): Promise<string> 
     .setIssuer(JWT_ISSUER)
     .setIssuedAt()
     .setExpirationTime(`${APP_TOKEN_EXPIRY_SECONDS}s`)
-    .setAudience(payload.aud ?? 'imajin:apps')
+    .setAudience(payload.aud ?? APP_TOKEN_DEFAULT_AUDIENCE)
     .sign(privateKey);
 }
 
@@ -201,7 +204,7 @@ export async function createAppServiceToken(payload: {
     .setIssuer(JWT_ISSUER)
     .setIssuedAt()
     .setExpirationTime(`${APP_TOKEN_EXPIRY_SECONDS}s`)
-    .setAudience(payload.aud ?? 'imajin:apps')
+    .setAudience(payload.aud ?? APP_TOKEN_DEFAULT_AUDIENCE)
     .sign(privateKey);
 }
 
@@ -233,6 +236,33 @@ export async function verifyAppToken(token: string): Promise<AppTokenPayload | n
     log.error({ err: String(error) }, 'App token verification failed');
     return null;
   }
+}
+
+export interface AppServiceCaller {
+  /** The app DID — the token's `sub` and `azp`. Never a user. */
+  appDid: string;
+  /** Scopes the kernel minted onto the token (see POST /auth/api/apps/token/service). */
+  scopes: string[];
+}
+
+/**
+ * Verify an app's OWN service token (`typ: app-service+jwt`, #2747) for routes
+ * that let an app act as itself. Unlike {@link verifyAppToken} this accepts ONLY
+ * the service type — a user-delegated `app+jwt` is refused — and additionally
+ * requires the kernel's default app-token audience and `sub === azp`, so the
+ * caller identity is always the app DID and can never be a user's.
+ * Does NOT check the registry; callers that need revocation to bite before the
+ * token's TTL do that themselves (see `resolveAppServiceCaller`).
+ */
+export async function verifyAppServiceToken(token: string): Promise<AppServiceCaller | null> {
+  // Cheap shape check: legacy Bearer PATs are opaque, not JWTs — skip them
+  // without a signature attempt (and its error log).
+  if (token.split('.').length !== 3) return null;
+  const claims = await verifyAppToken(token);
+  if (!claims?.isServiceToken) return null;
+  if (claims.aud !== APP_TOKEN_DEFAULT_AUDIENCE) return null;
+  if (!claims.sub || claims.sub !== claims.azp) return null;
+  return { appDid: claims.azp, scopes: claims.scope.split(' ').filter(Boolean) };
 }
 
 // ============================================================================

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireAuth, resolveActingDid, verifyAppToken, type Identity, type Scope } from "@imajin/auth";
 import { enforceRoutePolicy, type DelegationRouteKey } from "@imajin/auth/delegation-policy";
+import { resolveAppServiceCaller } from "@/src/lib/auth/app-service-caller";
 
 /**
  * The `aud` a scoped app-token must be minted for before these routes will
@@ -39,13 +40,26 @@ async function tryAppTokenAuth(request: NextRequest, requiredScope: Scope): Prom
   const authHeader = request.headers.get("authorization");
   if (!authHeader?.startsWith("Bearer ")) return null;
 
-  const verification = await verifyAppToken(authHeader.slice(7), { aud: MEDIA_APP_AUDIENCE });
-  if (!verification) return null;
+  const token = authHeader.slice(7);
+  const verification = await verifyAppToken(token, { aud: MEDIA_APP_AUDIENCE });
+  if (verification) {
+    return scopedAuth(verification.sub, verification.scopes, requiredScope);
+  }
 
-  if (!verification.scopes.includes(requiredScope)) {
+  // #2747: not a session-app token — it may be the app's OWN service token.
+  const serviceCaller = await resolveAppServiceCaller(token);
+  if (serviceCaller) {
+    return scopedAuth(serviceCaller.appDid, serviceCaller.scopes, requiredScope);
+  }
+  return null;
+}
+
+/** Terminal outcome for a verified token: its `did` as owner, or a 403 when `scopes` lacks `requiredScope`. */
+function scopedAuth(did: string, scopes: readonly string[], requiredScope: Scope): MediaAuthResult {
+  if (!scopes.includes(requiredScope)) {
     return { error: `Missing required scope: ${requiredScope}`, status: 403 };
   }
-  return { auth: { did: verification.sub, identity: null } };
+  return { auth: { did, identity: null } };
 }
 
 /**
@@ -60,6 +74,12 @@ async function tryAppTokenAuth(request: NextRequest, requiredScope: Scope): Prom
  * mirroring `requireSessionOrAppToken`'s own `requireScopes`: the shared
  * session cookie predates scoped grants, so there is nothing to enforce on
  * that path (see `MediaAuth.identity`'s doc comment).
+ *
+ * An app's own `app-service+jwt` (#2747, `POST /auth/api/apps/token/service`)
+ * is accepted too, with the same `requiredScope` rule: the caller DID is the
+ * app DID (a service token never carries a user), so an asset it uploads is
+ * owned by the app. It is tried after the session-app token, which keeps
+ * behaving exactly as before.
  *
  * The token path is tried first, same order `requireSessionOrAppToken`
  * itself uses. A bearer that doesn't verify as a scoped app-token AT ALL is

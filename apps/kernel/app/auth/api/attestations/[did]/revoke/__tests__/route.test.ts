@@ -44,6 +44,7 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('@/src/lib/auth/jwt', () => ({
   verifySessionToken: h.verifySessionToken,
   verifySessionAppTokenLocal: h.verifySessionAppTokenLocal,
+  verifyAppServiceToken: vi.fn().mockResolvedValue(null),
   getSessionCookieOptions: () => ({ name: 'session' }),
 }));
 

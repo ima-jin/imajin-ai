@@ -80,6 +80,25 @@ service tokens with `403 App token has no delegating user`
 human (or a human's registered agent) to attribute to; reads that describe
 system state, like a lot's stage history, do not.
 
+## Media and attestations: the app acts as itself (#2747)
+
+`requireMediaAuth` (`/media/api/*`) and `resolveCallerDid`
+(`/auth/api/attestations`) also accept an app's own `app-service+jwt` as a
+Bearer. Here the app *is* the caller — there is no user to attribute to — so:
+
+- The caller DID is the app DID (`sub` = `azp`). A service token never
+  carries a user's identity.
+- Media writes need the `media:write` scope on the token (`media:read` for
+  authenticated reads); a verified token without it is a terminal 403.
+  `media:write` is not service-eligible, so it only reaches the token when the
+  operator approves it for the app (`apps:service-scopes`, #2711).
+- Assets the app uploads are owned by (and `uploadedBy`) the app DID.
+- The token's audience must be the kernel default (`imajin:apps`), its type
+  must be `app-service+jwt` (a user-delegated `app+jwt` is refused), and the
+  app must still be `active` in the registry on every call.
+
+`session-app+jwt` keeps working on both routes exactly as before.
+
 ## Calling it as a client
 
 ```ts

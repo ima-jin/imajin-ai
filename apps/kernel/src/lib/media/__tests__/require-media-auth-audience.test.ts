@@ -13,6 +13,7 @@ import { createAuthMock, createLoggerMock, appToken } from './media-auth-test-he
 const mockVerifyAppToken = vi.hoisted(() => vi.fn());
 vi.mock('@imajin/auth', () => createAuthMock(mockVerifyAppToken));
 vi.mock('@imajin/logger', () => createLoggerMock());
+vi.mock('@/src/lib/auth/app-service-caller', () => ({ resolveAppServiceCaller: vi.fn().mockResolvedValue(null) }));
 
 import { requireMediaAuth, MEDIA_APP_AUDIENCE } from '../require-media-auth';
 import { requireAuth } from '@imajin/auth';
