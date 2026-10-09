@@ -58,12 +58,39 @@ import {
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
 import { assertValidEntryUrl } from './entry-url';
+import { configuredNodeUrl } from '@/src/lib/http/node-url';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import { NO_DECLARATIONS, sameDeclarations, type ManifestDeclarations } from './declarations-approval';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
 
 const log = createLogger('kernel:apps:provision');
+
+/**
+ * The literal host `apps.provision` used to register as every app's callback
+ * (#2746). Never a real deployment — a provisioned row carrying it sends the
+ * sign-in redirect to a host nobody owns.
+ */
+export const PLACEHOLDER_CALLBACK_HOST = 'your-node.imajin.ai';
+
+/**
+ * The node origin to register provisioned apps under (#2746), from the same
+ * source the kernel uses for its other public URLs (`node-url.ts`). Throws —
+ * so the caller fails closed BEFORE any repo is created or key minted — when
+ * the node has no configured public URL, or it is the placeholder host.
+ */
+function resolveCallbackOrigin(): string {
+  const origin = configuredNodeUrl();
+  if (!origin) {
+    throw new Error(
+      'apps.provision: this node has no public URL configured (set APP_URL or NEXT_PUBLIC_BASE_URL) — refusing to register a callbackUrl',
+    );
+  }
+  if (new URL(origin).hostname === PLACEHOLDER_CALLBACK_HOST) {
+    throw new Error(`apps.provision: the configured node public URL is the placeholder host '${PLACEHOLDER_CALLBACK_HOST}'`);
+  }
+  return origin;
+}
 
 /** Purpose prefix recorded on the minted key's `vault_minted_keys` row. */
 const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
@@ -299,8 +326,10 @@ async function registerApp(params: {
   publicKey: string;
   manifest: AppManifest | null;
   approvedDeclarations: ManifestDeclarations | null;
+  /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
+  callbackOrigin: string;
 }): Promise<string> {
-  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations } = params;
+  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
 
   const [existing] = await db
     .select({ id: registryApps.id })
@@ -352,9 +381,10 @@ async function registerApp(params: {
     description: `${displayName} (provisioned via apps.provision #2375)`,
     appDid,
     publicKey,
-    // Placeholder host — an operator can register the app's real deployed
-    // host later via the admin surface once it's actually deployed (#2060).
-    callbackUrl: `https://your-node.imajin.ai/${slug}`,
+    // #2746: the sign-in redirect target (`/oauth/authorize` falls back to it
+    // while `redirect_uris` is empty; `/auth/authorize` redirects to it). It is
+    // the node's own public origin, never a placeholder.
+    callbackUrl: `${callbackOrigin}/${slug}`,
     tier: 'third_party',
     status: 'active',
     slug,
@@ -447,6 +477,15 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
     };
   }
 
+  // #2746: resolve the callback origin up front so a node with no public URL
+  // fails closed before the repo is created or any key is minted.
+  let callbackOrigin: string;
+  try {
+    callbackOrigin = resolveCallbackOrigin();
+  } catch (err) {
+    return markFailed(nodeDid, slug, 'config', err);
+  }
+
   await upsertProvisionRow(slug, { status: 'pending' });
 
   // ── Step 1: repo ──────────────────────────────────────────────────────
@@ -488,6 +527,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       publicKey: keypair.publicKey,
       manifest,
       approvedDeclarations: params.approvedDeclarations ?? null,
+      callbackOrigin,
     });
     await upsertProvisionRow(slug, { registeredAt: new Date() });
     emitRegisteredAttestation(nodeDid, appDid, registryAppId, displayName, slug);
