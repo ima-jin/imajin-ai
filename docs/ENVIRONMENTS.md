@@ -65,7 +65,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Imajin | dykil | 3101 | 7101 | jin.imajin.ai/dykil |
 | Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
 | Imajin | learn (external, [ima-jin/learn](https://github.com/ima-jin/learn)) | 3103 | 7103 | jin.imajin.ai/learn |
-| Imajin | market | 3104 | 7104 | jin.imajin.ai/market |
+| Imajin | market (external, [ima-jin/market](https://github.com/ima-jin/market)) | 3104 | 7104 | jin.imajin.ai/market |
 | Client | fixready | 3400 | 7400 | fixready.imajin.ai |
 | Client | karaoke | 3401 | 7401 | karaoke.imajin.ai |
 | Infra | corpus | 8013 | 8003 | internal only — no subdomain (#1726) |
@@ -282,7 +282,7 @@ dropped; other running processes keep theirs until restart.
 Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the
 vault at boot authenticates with its own bootstrap identity:
 `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
-(today: events, dykil, market; plus the kernel's own
+(today: events, dykil; plus the kernel's own
 `KERNEL_CRON_VAULT_BOOTSTRAP_*` pair for its cron scheduler, which is granted the
 cron secret instead of the attestation key). The pair stays **required**
 (no `check-env` annotation) — but nobody mints it by hand any more.
@@ -321,7 +321,7 @@ cron secret instead of the attestation key). The pair stays **required**
 Local dev: `scripts/setup-local.sh` runs the same script with `--all` after
 migrations. To provision (or re-check) by hand:
 `node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all`
-(or pass a single `<service>`, e.g. `market`).
+(or pass a single `<service>`, e.g. `events`).
 
 #### Standalone apps in their own repo (#2712)
 

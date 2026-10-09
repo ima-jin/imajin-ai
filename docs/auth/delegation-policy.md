@@ -43,7 +43,7 @@ Ruling a: `POST /pay/api/balance/withdraw` and `POST /pay/api/payment-requests/[
 
 ## Inventory
 
-Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`, `market`, `dykil`; `learn` and `coffee` were reviewed too, until they left this repo in #2503 and #2500 — their `learn.course.delete`, `learn.module.delete`, `learn.lesson.delete`, `coffee.page.delete` and `coffee.tip` entries went with them, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
+Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events` and `dykil`; `learn`, `coffee` and `market` were reviewed too, until they left this repo in #2503, #2500 and #2512 — their `learn.course.delete`, `learn.module.delete`, `learn.lesson.delete`, `coffee.page.delete`, `coffee.tip`, `market.listing.purchase`, `market.listing.delete` and `market.seller.settings` entries went with them, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
 
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
@@ -80,7 +80,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `DELETE /auth/corpus/api/source` (kernel) | yes | no | none | **irreversible** | `kernel.corpus.source.delete` — removes a corpus source |
 | `DELETE /profile/api/profile/[id]` (kernel) | yes | no | none | **irreversible** | `kernel.profile.delete` — deletes a profile |
 | `DELETE /api/registry/apps/[appId]` (kernel) | yes | no | none | **irreversible** | `kernel.registry-app.delete` — deletes a registered app |
-| `DELETE /api/listings/[id]` (market) | yes | no | none | **irreversible** | `market.listing.delete` — deletes a listing |
 | `PATCH /media/api/assets/[id]/access` (kernel) | yes | no | none | **irreversible** | `media.asset.access` — changing access can disclose content permanently |
 | `DELETE /media/api/assets/[id]` (kernel) | yes | no | `AGENT_APPROVAL_REQUIRED` | **irreversible** | `media.asset.delete` — soft-deletes asset + unlinks files |
 | `PATCH /media/api/assets/[id]/grants` (kernel) | yes | no | none | **irreversible** | `media.asset.grants` — adding grantees discloses content to new DIDs |
@@ -90,8 +89,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `POST /pay/api/payment-requests/[id]/void` (kernel) | yes | no | none | **irreversible** | `pay.payment-request.void` — voids a payment request |
 | `POST /api/campaign/pledge` (events) | no | initiates only | none | **reversible** | `events.campaign.pledge` — creates a Stripe SetupIntent; the owner still authorises the card (proposal artifact) |
 | `POST /api/campaign/pledge/confirm` (events) | no | initiates only | none | **reversible** | `events.campaign.pledge-confirm` — verifies a SetupIntent the owner already authorised in Stripe.js |
-| `POST /api/listings/[id]/purchase` (market) | no | initiates only | none | **reversible** | `market.listing.purchase` — starts a hosted checkout session via pay; the buyer still authorises it (proposal artifact) |
-| `PATCH /api/seller/settings` (market) | no | no | none | **reversible** | `market.seller.settings` — market-items visibility toggle |
 | `PATCH /media/api/assets/[id]/article` (kernel) | no | no | none | **reversible** | `media.asset.article` — article projection metadata |
 | `POST /media/api/assets/[id]/classify` (kernel) | no | no | none | **reversible** | `media.asset.classify` — classification metadata |
 | `PUT /media/api/assets/[id]/content` (kernel) | no | no | none | **reversible** | `media.asset.content-write` — versioned content overwrite |

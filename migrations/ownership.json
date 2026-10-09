@@ -562,19 +562,19 @@
       "owner": "market",
       "schema": "market",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy market table (#2512). Owner stays market: the owning code now lives in ima-jin/market; this table is never dropped and the standalone app owns its data."
     },
     "market.listings": {
       "owner": "market",
       "schema": "market",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy market table (#2512). Owner stays market: the owning code now lives in ima-jin/market; this table is never dropped and the standalone app owns its data."
     },
     "market.seller_settings": {
       "owner": "market",
       "schema": "market",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy market table (#2512). Owner stays market: the owning code now lives in ima-jin/market; this table is never dropped and the standalone app owns its data."
     },
     "media.access_log": {
       "owner": "kernel",

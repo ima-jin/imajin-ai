@@ -82,7 +82,7 @@ describe('discoverServices', () => {
   it('discovers the real repo services declared in apps/*/.env.example', () => {
     const realRoot = join(import.meta.dirname, '..', '..');
     const names = discoverServices(realRoot).map((s) => s.name);
-    expect(names).toEqual(expect.arrayContaining(['market', 'events', 'dykil']));
+    expect(names).toEqual(expect.arrayContaining(['events', 'dykil']));
     // corpus annotates its pair `# optional` (hand-provisioned) — not ours to mint.
     expect(names).not.toContain('corpus');
   });
@@ -101,7 +101,7 @@ describe('discoverServices', () => {
 describe('cron-secret grant (#2550)', () => {
   it('grants the cron secret to the kernel identity and the attestation key to every other service', () => {
     expect(grantKindFor({ name: 'kernel' })).toBe('cron-secret');
-    for (const name of ['market', 'events', 'dykil']) {
+    for (const name of ['events', 'dykil']) {
       expect(grantKindFor({ name })).toBe('attestation-internal-api-key');
     }
   });

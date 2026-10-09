@@ -44,7 +44,6 @@ apps/
   events/     — Event creation and ticketing
   dykil/      — Surveys and polls
   links/      — Curated link collections
-  market/     — Marketplace (alpha)
 
 packages/     — Shared libraries (@imajin/auth, @imajin/db, @imajin/ui, etc.)
 ```

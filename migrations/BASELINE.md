@@ -81,6 +81,33 @@ dropped.**
   (`LIMIT 1`, no `ORDER BY`) could pick the legacy first-party row and give coffee's
   mint the first-party exemption (no scope ceiling) in place of its `coffee:*` scopes.
 
+## #2512 — market per-table ownership decision (no SQL dropped or moved)
+
+When `apps/market` was pruned from this monorepo (#1989 step 5; the standalone
+`ima-jin/market` runs claimed on dev), every `market.*` table was checked against
+`migrations/ownership.json`. **No migration was edited and nothing is dropped.**
+
+- **`market.disputes`, `market.listings`, `market.seller_settings`** (`0001_seed.sql`,
+  owner `market`) are the app's real tables. They are **not relocated** and **not
+  kernel-owned**: they stay recorded as originating in the shared `0001_seed.sql`
+  (the same standing policy as `links`, `learn` and `coffee`). Ownership stays
+  `market` in `ownership.json`; only the `notes` field changed, to record that the
+  owning code now lives in `ima-jin/market`. The `market` schema must keep being
+  created here until a baseline squash gives market a standalone migration file. The
+  standalone app owns that data.
+- **Gap check**: no kernel code reads `market.listings` / `market.disputes` /
+  `market.seller_settings` directly (`grep -rnE "market\.(listings|disputes|seller_settings)"
+  apps packages scripts` finds nothing), so removing `apps/market` leaves no dangling
+  cross-schema read.
+- **One data-only kernel migration, `0187_retire_legacy_market_registry_row.sql`.** It
+  is an `UPDATE` on kernel-owned `registry.apps` (no `DROP`): it revokes the seeded
+  `app_first_party_market` row (0139, untouched) and clears its
+  audience/slug/placements, but only when another active row already answers the
+  `market` audience (the provisioned one). This removes the ambiguity where
+  `resolveActiveAppByAudience` (`LIMIT 1`, no `ORDER BY`) could pick the legacy
+  first-party row and give market's mint the first-party exemption (no scope
+  ceiling) in place of its `market:*` scopes.
+
 ## Why a squash at all
 
 `migrations/` is 132 files deep, and `0001_seed.sql` alone creates all 155

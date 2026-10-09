@@ -40,7 +40,7 @@ Run with `--help` for all options. Use `--force` to regenerate `.env.local` file
 - Runs `pnpm install`
 - Creates the `imajin_dev` database (skip if it already exists)
 - Generates an Ed25519 keypair (`AUTH_PRIVATE_KEY`) and all internal API keys
-- Writes `.env.local` for kernel and every in-repo vertical (events, dykil, market) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`. `links` (#1986 phase 2), `learn` (#2503) and `coffee` (#2500) now live in their own repos, [ima-jin/links](https://github.com/ima-jin/links), [ima-jin/learn](https://github.com/ima-jin/learn) and [ima-jin/coffee](https://github.com/ima-jin/coffee), and are set up separately.
+- Writes `.env.local` for kernel and every in-repo vertical (events, dykil) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`. `links` (#1986 phase 2), `learn` (#2503), `coffee` (#2500) and `market` (#2512) now live in their own repos, [ima-jin/links](https://github.com/ima-jin/links), [ima-jin/learn](https://github.com/ima-jin/learn), [ima-jin/coffee](https://github.com/ima-jin/coffee) and [ima-jin/market](https://github.com/ima-jin/market), and are set up separately.
 - Runs all migrations via `./scripts/migrate.sh`
 
 ### Minimum Services for Local Dev
@@ -51,7 +51,7 @@ You don't need to run all apps. Start with what you need:
 |---------|------|-----|
 | **kernel** | 3000 | Required — auth, identity, profile, registry, and all core platform services |
 
-Add userspace apps (events, market, etc.) as needed. Each app's `.env.example` has all the defaults.
+Add userspace apps (events, etc.) as needed. Each app's `.env.example` has all the defaults.
 
 ### Fresh Start (Reset Everything)
 
