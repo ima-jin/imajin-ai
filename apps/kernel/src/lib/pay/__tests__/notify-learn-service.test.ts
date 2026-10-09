@@ -166,6 +166,25 @@ describe('learn enrollment notification', () => {
       expect(sentBody()).not.toHaveProperty('rail');
     });
 
+    it('forwards the kernel-attested seller DID top-level, apart from caller-supplied metadata', async () => {
+      await notifyLearnService(
+        learnSession({
+          rail: 'stripe-byo',
+          sellerDid: 'did:imajin:creator',
+          metadata: { service: 'learn', courseId: 'crs_1', sellerDid: 'did:imajin:forged' },
+        }),
+      );
+
+      const body = sentBody() as { sellerDid: string; metadata: { sellerDid: string } };
+      expect(body.sellerDid).toBe('did:imajin:creator');
+      expect(body.metadata.sellerDid).toBe('did:imajin:forged');
+    });
+
+    it('sends no top-level seller DID when the session carries none', async () => {
+      await notifyLearnService(learnSession());
+      expect(sentBody()).not.toHaveProperty('sellerDid');
+    });
+
     it('reads the payment intent id from an expanded payment_intent object', async () => {
       await notifyLearnService(learnSession({ payment_intent: { id: 'pi_expanded' } }));
       expect(sentBody().paymentId).toBe('pi_expanded');

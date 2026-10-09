@@ -42,6 +42,13 @@ export interface StripeCheckoutSessionLike {
    * the originating app to settle on-platform. Absent = a platform-collected payment.
    */
   rail?: string;
+  /**
+   * Kernel-internal, never a Stripe field: the DID whose own Stripe account collected the payment,
+   * set by the BYO settlement from the checkout's verified owner (the row's `to_did`). Unlike
+   * `metadata.sellerDid`, which is whatever the caller of `POST /pay/api/checkout` put there, this
+   * is attested by the kernel, so an app can check it against the owner of what was bought.
+   */
+  sellerDid?: string;
 }
 
 export interface StripePaymentIntentLike {

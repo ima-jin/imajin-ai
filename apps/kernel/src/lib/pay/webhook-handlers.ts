@@ -632,6 +632,8 @@ async function deliverPaidCheckout(target: PaidCheckoutTarget, session: StripeCh
             : session.payment_intent?.id,
         // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
         ...(session.rail && { rail: session.rail }),
+        // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
+        ...(session.sellerDid && { sellerDid: session.sellerDid }),
         metadata: {
           ...session.metadata,
           amount: session.amount_total,

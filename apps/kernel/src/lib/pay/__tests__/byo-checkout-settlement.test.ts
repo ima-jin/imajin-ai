@@ -94,6 +94,8 @@ describe('settleCheckoutFromByoStripe', () => {
         transactionId: 'tx_1',
         // #2773: market (and any app) is told the kernel settled this on the seller's own account.
         rail: 'stripe-byo',
+        // The kernel-attested seller: the owner whose own Stripe account collected it.
+        sellerDid: OWNER,
       },
     });
     // The buyer is read back with the SELLER's key, from the seller's own session.
