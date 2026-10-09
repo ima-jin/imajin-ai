@@ -77,15 +77,15 @@ import { POST as createAttestation, GET as listAttestations } from '../route';
 import { resolveCallerDid } from '../caller-did';
 import { requireMediaAuth } from '@/src/lib/media/require-media-auth';
 
-/** The registry row dykil's app registration leaves behind, with `media:write` operator-approved (#2711). */
+/** The registry row dykil's app registration leaves behind, with `media:write` + `attestations:write` operator-approved (#2711, #2764). */
 function dykilRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'app_dykil',
     appDid: APP_DID,
     publicKey: appKeys.publicKey,
     status: 'active',
-    requestedScopes: ['media:write'],
-    approvedServiceScopes: ['media:write'],
+    requestedScopes: ['media:write', 'attestations:write'],
+    approvedServiceScopes: ['media:write', 'attestations:write'],
     ...overrides,
   };
 }
@@ -131,8 +131,8 @@ beforeEach(() => {
 });
 
 describe('minting an app-service token (the dykil side)', () => {
-  it('carries media:write only because the operator approved it for the app', async () => {
-    expect((await mintLikeDykil()).scopes).toEqual(['media:write']);
+  it('carries media:write and attestations:write only because the operator approved them for the app', async () => {
+    expect((await mintLikeDykil()).scopes).toEqual(['media:write', 'attestations:write']);
     expect((await mintLikeDykil(dykilRow({ approvedServiceScopes: [] }))).scopes).toEqual([]);
   });
 });
@@ -148,7 +148,7 @@ describe('media write with the app’s own token (#2747)', () => {
   });
 
   it('is a 403 when the minted token has no media:write', async () => {
-    const { token } = await mintLikeDykil(dykilRow({ approvedServiceScopes: [] }));
+    const { token } = await mintLikeDykil(dykilRow({ approvedServiceScopes: ['attestations:write'] }));
     h.queue.push([{ status: 'active' }]);
 
     expect(await requireMediaAuth(bearerRequest(token), 'media:write')).toEqual({
@@ -182,6 +182,19 @@ describe('attestations with the app’s own token (#2747)', () => {
 
     expect(res.status).toBe(201);
     expect(h.insertValues).toHaveBeenCalledWith(expect.objectContaining({ issuerDid: APP_DID, subjectDid: SUBJECT }));
+  });
+
+  it('is a 403 and writes nothing when the minted token has no attestations:write (#2764)', async () => {
+    const { token } = await mintLikeDykil(dykilRow({ approvedServiceScopes: ['media:write'] }));
+    // legacy token miss, then the live registry check; no further DB read may happen
+    h.queue.push([], [{ status: 'active' }]);
+
+    const res = await createAttestation(bearerRequest(token, { body: signedAttestationBody() }));
+
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: 'Missing required scope: attestations:write' });
+    expect(h.insertValues).not.toHaveBeenCalled();
+    expect(h.returning).not.toHaveBeenCalled();
   });
 
   it('is 401 without a usable credential', async () => {

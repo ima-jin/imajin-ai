@@ -11,7 +11,7 @@ import { publish } from '@imajin/bus';
 import { randomUUID } from 'node:crypto';
 import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference, resolveAttestationHistory, resolveIssuerCredentials, SupersessionError } from './attestation-helpers';
 import type { EnvelopeFields } from './attestation-helpers';
-import { resolveCallerDid } from './caller-did';
+import { resolveCallerDid, resolveCallerIdentity, ATTESTATIONS_WRITE_SCOPE } from './caller-did';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
@@ -139,6 +139,25 @@ async function persistAttestation(
 }
 
 /**
+ * Authenticate the caller of POST — 401 without a usable credential — and
+ * (#2764) require an app's own service token to carry `attestations:write`:
+ * a verified token without it is a terminal 403, before anything is read or
+ * written. User sessions, legacy Bearer tokens and session-app tokens have no
+ * service scope set and are not scope-gated. Returns the rejection response,
+ * or null when the caller may write.
+ */
+async function rejectUnauthorizedWrite(request: NextRequest, cors: HeadersInit): Promise<NextResponse | null> {
+  const caller = await resolveCallerIdentity(request);
+  if (!caller) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
+  }
+  if (caller.serviceScopes && !caller.serviceScopes.includes(ATTESTATIONS_WRITE_SCOPE)) {
+    return NextResponse.json({ error: `Missing required scope: ${ATTESTATIONS_WRITE_SCOPE}` }, { status: 403, headers: cors });
+  }
+  return null;
+}
+
+/**
  * Gate on the submitted `type`: it must be a known attestation type (compile-
  * time list or live registry entry), and not one only the node may mint.
  * `key.rotated` (#2081) is the node's own key-history record — filed solely
@@ -246,10 +265,8 @@ function resolveNostrSignature(
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const callerDid = await resolveCallerDid(request);
-  if (!callerDid) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
-  }
+  const authRejection = await rejectUnauthorizedWrite(request, cors);
+  if (authRejection) return authRejection;
 
   let body: Record<string, unknown>;
   try {

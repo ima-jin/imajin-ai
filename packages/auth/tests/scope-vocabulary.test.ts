@@ -487,4 +487,10 @@ describe('serviceEligible fence', () => {
     expect(isServiceEligibleScope(scopeEntry('pay:settle')!)).toBe(false);
     expect(serviceEligibleScopes()).not.toContain('pay:settle');
   });
+
+  it('keeps attestations:write (#2764) in the vocabulary but service-INeligible (operator-approved per app only)', () => {
+    expect(scopeEntry('attestations:write')).toBeDefined();
+    expect(isServiceEligibleScope(scopeEntry('attestations:write')!)).toBe(false);
+    expect(serviceEligibleScopes()).not.toContain('attestations:write');
+  });
 });

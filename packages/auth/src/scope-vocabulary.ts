@@ -342,6 +342,11 @@ export const SCOPE_VOCABULARY = [
     label: 'Send messages on your behalf', manifestLabel: 'Send messages in your conversations on your behalf' },
 
   { scope: 'attestations:read', connector: null, label: 'View your attestations and reputation' },
+  // #2764: also gates POST /auth/api/attestations for an app's own `app-service+jwt`
+  // (#2747) — an app issues attestations as its app DID only with this scope.
+  // Deliberately NOT serviceEligible: no app gets it from its own `requestedScopes`;
+  // the operator approves it per app through the countersigned `apps:service-scopes`
+  // card (#2711). The delegated paths (user session, session-app+jwt) are not gated by it.
   { scope: 'attestations:write', connector: null, label: 'Issue attestations on your behalf' },
   { scope: 'availability:read', connector: null, label: 'View your availability and coordination intents' },
   { scope: 'availability:write', connector: null, label: 'Set and cancel availability intents on your behalf' },
