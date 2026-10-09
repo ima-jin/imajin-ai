@@ -63,6 +63,27 @@ export function nodeUrl(): string {
 }
 
 /**
+ * This node's public origin ONLY when the operator actually configured one —
+ * `APP_URL`, `NEXT_PUBLIC_BASE_URL`, or a `NEXT_PUBLIC_SERVICE_PREFIX` that
+ * carries a real host (the single-domain shape) — else null.
+ *
+ * {@link nodeUrl} never returns null: it falls back to the `imajin.ai` apex,
+ * which is right for a discovery document but wrong to persist. Callers that
+ * write the origin into durable state (e.g. `apps.provision`'s registered
+ * `callback_url`, #2746) use this and fail closed on null instead of recording
+ * a guessed host.
+ */
+export function configuredNodeUrl(): string | null {
+  const explicit = toOrigin(process.env.APP_URL) ?? toOrigin(process.env.NEXT_PUBLIC_BASE_URL);
+  if (explicit) return explicit;
+
+  const prefix = process.env.NEXT_PUBLIC_SERVICE_PREFIX;
+  if (!prefix) return null;
+  const prefixHost = stripTrailingSlashes(prefix.replace(/^https?:\/\//, ""));
+  return prefixHost.includes(".") ? originFromServicePrefix() : null;
+}
+
+/**
  * URL of this node's agent card — the onboarding discovery pointer every
  * 401/403 an unrecognized caller receives points back to (#1899). Centralised
  * here so the agent card itself and every error-response helper agree on

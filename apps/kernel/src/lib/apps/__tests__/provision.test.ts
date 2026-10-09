@@ -231,6 +231,10 @@ function legacyDykilRow(): Record<string, unknown> {
 beforeEach(() => {
   vi.clearAllMocks();
   resetStores();
+  // #2746: provisioning registers `<node public origin>/<slug>` and fails closed without one.
+  vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
+  vi.stubEnv('NEXT_PUBLIC_BASE_URL', '');
+  vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', '');
   getNodeSigningIdentityMock.mockReturnValue({ senderDid: NODE_DID, privateKeyHex: 'x', senderPubkey: 'y' });
   ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: true });
   getMintedKeyByDidMock.mockResolvedValue(undefined);
@@ -385,6 +389,79 @@ describe('runAppProvision — #2663 scope declarations: exactly what the operato
     expect(outcome.failedStep).toBe('register');
     expect(outcome.error).toContain('providesScopes rejected: media:write');
     expect(registryAppsStore.size).toBe(0);
+  });
+});
+
+describe('runAppProvision — #2746 callbackUrl derives from the node public URL', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('registers https://<node public host>/<slug> and never the placeholder host', async () => {
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    const rows = [...registryAppsStore.values()];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.callbackUrl).toBe('https://jin.imajin.ai/dykil');
+    for (const row of rows) {
+      expect(JSON.stringify(row)).not.toContain('your-node.imajin.ai');
+    }
+  });
+
+  it('normalises a configured URL with a path or trailing slash down to its origin', async () => {
+    vi.stubEnv('APP_URL', 'https://dev-jin.imajin.ai/some/path/');
+
+    await runAppProvision({ slug: 'coffee', displayName: 'coffee' });
+
+    expect([...registryAppsStore.values()][0]?.callbackUrl).toBe('https://dev-jin.imajin.ai/coffee');
+  });
+
+  it('falls back to NEXT_PUBLIC_BASE_URL when APP_URL is unset', async () => {
+    vi.stubEnv('APP_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_BASE_URL', 'https://base.example.test');
+
+    await runAppProvision({ slug: 'links', displayName: 'links' });
+
+    expect([...registryAppsStore.values()][0]?.callbackUrl).toBe('https://base.example.test/links');
+  });
+
+  it('uses a single-domain NEXT_PUBLIC_SERVICE_PREFIX that carries a real host', async () => {
+    vi.stubEnv('APP_URL', '');
+    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://jin.imajin.ai/');
+
+    await runAppProvision({ slug: 'learn', displayName: 'learn' });
+
+    expect([...registryAppsStore.values()][0]?.callbackUrl).toBe('https://jin.imajin.ai/learn');
+  });
+
+  it.each([
+    ['no public URL is configured', { APP_URL: '', NEXT_PUBLIC_BASE_URL: '', NEXT_PUBLIC_SERVICE_PREFIX: '' }, 'no public URL configured'],
+    ['only a bare-scheme service prefix is configured', { APP_URL: '', NEXT_PUBLIC_BASE_URL: '', NEXT_PUBLIC_SERVICE_PREFIX: 'https://' }, 'no public URL configured'],
+    ['the configured URL is the placeholder host', { APP_URL: 'https://your-node.imajin.ai', NEXT_PUBLIC_BASE_URL: '', NEXT_PUBLIC_SERVICE_PREFIX: '' }, 'placeholder host'],
+  ])('fails closed before any repo or key mint when %s', async (_label, env, message) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status !== 'failed') throw new Error('unreachable');
+    expect(outcome.failedStep).toBe('config');
+    expect(outcome.error).toContain(message);
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+    expect(registryAppsStore.size).toBe(0);
+    expect(appProvisionsStore.get('dykil')?.status).toBe('failed');
+  });
+
+  it('does not require a configured URL to replay an already-succeeded provision', async () => {
+    await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    vi.stubEnv('APP_URL', '');
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(registryAppsStore.size).toBe(1);
   });
 });
 

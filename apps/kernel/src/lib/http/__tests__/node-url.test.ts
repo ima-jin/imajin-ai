@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { nodeUrl } from '../node-url';
+import { configuredNodeUrl, nodeUrl } from '../node-url';
 
 /**
  * #1614 — the node URL was built as `${NEXT_PUBLIC_SERVICE_PREFIX}${NEXT_PUBLIC_DOMAIN}`,
@@ -100,5 +100,30 @@ describe('nodeUrl — invariants', () => {
   it('preserves an http:// scheme from the prefix', () => {
     vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'http://my-node.local/');
     expect(nodeUrl()).toBe('http://my-node.local');
+  });
+});
+
+describe('configuredNodeUrl — only an origin the operator actually configured (#2746)', () => {
+  it('is null when nothing is configured, even though nodeUrl() falls back to the apex', () => {
+    expect(configuredNodeUrl()).toBeNull();
+    expect(nodeUrl()).toBe('https://imajin.ai');
+  });
+
+  it('is null for a bare-scheme service prefix (no host to trust)', () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://');
+    vi.stubEnv('NEXT_PUBLIC_DOMAIN', 'mynode.example');
+    expect(configuredNodeUrl()).toBeNull();
+  });
+
+  it('returns APP_URL, then NEXT_PUBLIC_BASE_URL, normalised to an origin', () => {
+    vi.stubEnv('NEXT_PUBLIC_BASE_URL', 'https://base.example/x');
+    expect(configuredNodeUrl()).toBe('https://base.example');
+    vi.stubEnv('APP_URL', 'https://jin.imajin.ai/');
+    expect(configuredNodeUrl()).toBe('https://jin.imajin.ai');
+  });
+
+  it('returns the origin of a single-domain service prefix', () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://dev-jin.imajin.ai/');
+    expect(configuredNodeUrl()).toBe('https://dev-jin.imajin.ai');
   });
 });
