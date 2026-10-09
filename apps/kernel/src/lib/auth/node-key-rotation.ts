@@ -58,7 +58,7 @@ function currentPublicKey(): string | null {
 }
 
 /** Payloads of every live `key.rotated` this node has issued, oldest first. */
-async function loadStoredRotationPayloads(nodeDid: string): Promise<unknown[]> {
+export async function loadStoredRotationPayloads(nodeDid: string): Promise<unknown[]> {
   const rows = await db
     .select({ payload: attestations.payload })
     .from(attestations)
