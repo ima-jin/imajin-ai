@@ -51,7 +51,7 @@ required by `.env.example` is missing (`docs/ENVIRONMENTS.md:126-137`, invoked f
 
 **Build stamp in the running system — partially checked.** Every app's `GET /api/health` returns
 `version` (from `NEXT_PUBLIC_VERSION`, tag-derived) and `build` (`NEXT_PUBLIC_BUILD_HASH`, short git
-SHA) — e.g. `apps/coffee/app/api/health/route.ts:4-10`, `apps/kernel/app/api/health/route.ts:90-96`,
+SHA) — e.g. `apps/kernel/app/api/health/route.ts:90-96`,
 `apps/market/app/api/health/route.ts:4-10`. Both are stamped at build time by
 `scripts/build.sh:104-124` from `git describe`/`git rev-parse` on the checked-out ref. A human asking
 "what SHA is this service running" gets a real answer from a `GET`, not an `ssh` — issue item 1 is
@@ -144,7 +144,7 @@ longer exists.
 issue's original example (`PROFILE_INTERNAL_API_KEY`, `REGISTRY_SERVICE_URL` needing `/registry`) is
 now documented in every consuming app's `.env.example` (`apps/kernel/.env.example:140`,
 `apps/events/.env.example:81-82`, formerly `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
-the `/registry` suffix in `apps/coffee/.env.example:20`, `apps/events/.env.example:28`,
+the `/registry` suffix in `apps/events/.env.example:28`,
 `apps/kernel/.env.example:211`, formerly `apps/learn/.env.example:21`, `apps/market/.env.example:21`) — this
 specific instance from the "why now" section has since been fixed. It's evidence the underlying
 gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
@@ -268,6 +268,33 @@ against the registered-app contract. What changes here:
 - `scripts/provision-service-bootstrap.mjs --all` discovers services from
   `apps/*/.env.example`, so it no longer mints a learn bootstrap identity: the
   standalone app claims its own.
+
+## 7. coffee is external now (#2500)
+
+`apps/coffee` was removed from this repo entirely, after `links` (§5). It lives
+and is built, tested, and deployed from its own repo,
+[ima-jin/coffee](https://github.com/ima-jin/coffee), against the registered-app
+contract (scoped app tokens, published `@ima-jin/*` SDK, public kernel API). What
+changes here:
+
+- `deploy/ecosystem.{dev,prod}.config.js` no longer list `dev-coffee`/`prod-coffee`.
+  The operator's pm2 entries now point at `~/dev/coffee` / `~/prod/coffee`
+  (`ima-jin/coffee` checkouts) instead of `~/{dev,prod}/imajin-ai/apps/coffee`.
+- Caddy and ports are unchanged (`jin.imajin.ai/coffee`, 3100 dev / 7100 prod).
+- `deploy-prod.yml` / `deploy-dev.yml` restart every `prod-*` / `dev-*` process by
+  name via `pm2 jlist`, so a standalone process still named `prod-coffee` is bounced
+  by kernel deploys even though this repo no longer builds or migrates it — the same
+  open question as §5's `prod-links` decision; nothing new is needed to answer it.
+- Per the 2026-10-09 ruling (each app's kernel copy is pruned once its standalone
+  DEV cutover holds), prod has no in-repo coffee process from this change on, until
+  coffee's prod cutover is accepted. That prod gap is deliberate.
+- The `coffee` Postgres schema and its tables are untouched. See
+  `migrations/BASELINE.md` ("#2500 — coffee per-table ownership decision").
+- The kernel pay webhook still notifies coffee over HTTP (`COFFEE_SERVICE_URL`);
+  that is the public contract the standalone app consumes and is unchanged.
+- `scripts/provision-service-bootstrap.mjs --all` discovers services from
+  `apps/*/.env.example`, so it no longer mints a coffee bootstrap identity: the
+  standalone app claims its own (`ima-jin/coffee` `docs/REGISTRATION.md`).
 
 ## Decisions for Ryan
 

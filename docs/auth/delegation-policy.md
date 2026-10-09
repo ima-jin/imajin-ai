@@ -43,7 +43,7 @@ Ruling a: `POST /pay/api/balance/withdraw` and `POST /pay/api/payment-requests/[
 
 ## Inventory
 
-Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`, `market`, `coffee`, `dykil`; `learn` was reviewed too, until it left this repo in #2503 — its `learn.course.delete`, `learn.module.delete` and `learn.lesson.delete` entries went with it, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
+Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`, `market`, `dykil`; `learn` and `coffee` were reviewed too, until they left this repo in #2503 and #2500 — their `learn.course.delete`, `learn.module.delete`, `learn.lesson.delete`, `coffee.page.delete` and `coffee.tip` entries went with them, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
 
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
@@ -69,7 +69,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `POST /pay/api/escrow` (kernel) | yes | yes | none | **value-moving** | `pay.escrow.create` — locks funds in escrow |
 | `PUT /pay/api/escrow` (kernel) | yes | yes | none | **value-moving** | `pay.escrow.update` — releases or refunds escrowed funds |
 | `POST /pay/api/payment-requests/[id]/settle` (kernel) | yes | yes | none | **value-moving** | `pay.payment-request.settle` — marks a payment request settled |
-| `DELETE /api/pages/[handle]` (coffee) | yes | no | none | **irreversible** | `coffee.page.delete` — deletes a page |
 | `DELETE /api/surveys/[id]` (dykil) | yes | no | none | **irreversible** | `dykil.survey.delete` — deletes a survey and responses |
 | `POST /api/campaign/[eventId]/cancel` (events) | yes | no | none | **irreversible** | `events.campaign.cancel` — cancels a funding campaign |
 | `POST /api/events/[id]/tickets/[ticketId]/cancel` (events) | yes | no | none | **irreversible** | `events.ticket.cancel` — cancels an issued ticket |
@@ -89,7 +88,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `DELETE /media/api/folders/[id]` (kernel) | yes | no | none | **irreversible** | `media.folder.delete` — deletes a folder |
 | `POST /media/api/workspace/history-grant` (kernel) | yes | no | none | **irreversible** | `media.workspace.history-grant` — discloses workspace history, no revoke path yet |
 | `POST /pay/api/payment-requests/[id]/void` (kernel) | yes | no | none | **irreversible** | `pay.payment-request.void` — voids a payment request |
-| `POST /api/tip` (coffee) | no | initiates only | none | **reversible** | `coffee.tip` — starts a hosted Stripe/Solana checkout; the payer still authorises it (proposal artifact) |
 | `POST /api/campaign/pledge` (events) | no | initiates only | none | **reversible** | `events.campaign.pledge` — creates a Stripe SetupIntent; the owner still authorises the card (proposal artifact) |
 | `POST /api/campaign/pledge/confirm` (events) | no | initiates only | none | **reversible** | `events.campaign.pledge-confirm` — verifies a SetupIntent the owner already authorised in Stripe.js |
 | `POST /api/listings/[id]/purchase` (market) | no | initiates only | none | **reversible** | `market.listing.purchase` — starts a hosted checkout session via pay; the buyer still authorises it (proposal artifact) |

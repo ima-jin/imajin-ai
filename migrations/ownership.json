@@ -226,13 +226,13 @@
       "owner": "coffee",
       "schema": "coffee",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy tip-jar table (#2500). Owner stays coffee: not kernel-owned and never dropped. The owning code now lives in ima-jin/coffee, which owns the data."
     },
     "coffee.tips": {
       "owner": "coffee",
       "schema": "coffee",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Legacy tip-jar table (#2500). Owner stays coffee: not kernel-owned and never dropped. The owning code now lives in ima-jin/coffee, which owns the data."
     },
     "connections.connections": {
       "owner": "kernel",

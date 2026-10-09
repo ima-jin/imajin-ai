@@ -68,7 +68,6 @@ async function main() {
   const apps = [
     { dir: 'auth', pkg: '@imajin/auth-service' },
     { dir: 'chat', pkg: '@imajin/chat' },
-    { dir: 'coffee', pkg: '@imajin/coffee-service' },
     { dir: 'connections', pkg: '@imajin/connections-service' },
     { dir: 'dykil', pkg: '@imajin/dykil-service' },
     { dir: 'events', pkg: '@imajin/events' },

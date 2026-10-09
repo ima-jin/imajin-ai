@@ -46,7 +46,6 @@ Extraction into separate repos is in progress, not finished ([#1981](https://git
 | App | What it does | Docs |
 |---|---|---|
 | [broker-agent](./apps/broker-agent) | Telegram broker agent — conversational surface for broker-mediated social coordination | [README](./apps/broker-agent/README.md) |
-| [coffee](./apps/coffee) | Tip jar / support page | [README](./apps/coffee/README.md) |
 | [corpus](./apps/corpus) | Per-DID corpus indexing and BM25 search service — an internal daemon (port 8003 in production), not a subdomain web app | [README](./apps/corpus/README.md) |
 | [dykil](./apps/dykil) | Surveys & polls | [README](./apps/dykil/README.md) |
 | [events](./apps/events) | Create events. Sell tickets. Own your audience | [README](./apps/events/README.md) |
@@ -54,6 +53,8 @@ Extraction into separate repos is in progress, not finished ([#1981](https://git
 <!-- apps:end -->
 
 **learn** ([#2503](https://github.com/ima-jin/imajin-ai/issues/2503)) has left this monorepo: it lives in its own repo, [ima-jin/learn](https://github.com/ima-jin/learn), registered through the app contract and still served at `jin.imajin.ai/learn` via the same Caddy route.
+
+**coffee** ([#1984](https://github.com/ima-jin/imajin-ai/issues/1984), [#2500](https://github.com/ima-jin/imajin-ai/issues/2500)) has left this monorepo: it lives in its own repo, [ima-jin/coffee](https://github.com/ima-jin/coffee), registered through the app contract and still served at `jin.imajin.ai/coffee` via the same Caddy route.
 
 `apps/kernel` is the kernel service itself, not an app — see its [README](./apps/kernel/README.md). Whether `broker-agent` and `corpus` are kernel rails or apps is undecided ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981), [#1726](https://github.com/ima-jin/imajin-ai/issues/1726)).
 

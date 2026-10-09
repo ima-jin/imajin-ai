@@ -351,6 +351,21 @@ app's prod cutover is accepted, prod has no in-repo learn process (a deliberate
 prod gap per the 2026-10-09 ruling). See `docs/ops/DEPLOY-POSTURE.md` for the
 full note.
 
+## coffee is no longer in these ecosystem files (#2500)
+
+`coffee` was removed from both `ecosystem.dev.config.js` and
+`ecosystem.prod.config.js` when `apps/coffee` was pruned from this monorepo
+(the app's own repo, [ima-jin/coffee](https://github.com/ima-jin/coffee), now
+owns it end to end — #1984 step 5). The `dev-coffee` / `prod-coffee` pm2 entries
+now point at `ima-jin/coffee` checkouts (`~/dev/coffee` and `~/prod/coffee`), not
+at `~/dev/imajin-ai/apps/coffee` / `~/prod/imajin-ai/apps/coffee`. Its ports
+(3100 dev / 7100 prod) and Caddy route (`jin.imajin.ai/coffee`) are unchanged.
+This repo's deploy workflows no longer build, migrate, or provision it — that is
+`ima-jin/coffee`'s own deploy. A node operator deploying only the kernel needs no
+coffee checkout at all. The `coffee` Postgres schema stays in place (the
+standalone app owns that data); nothing here drops it. See
+`docs/ops/DEPLOY-POSTURE.md` for the full note.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host

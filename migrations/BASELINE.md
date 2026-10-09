@@ -56,6 +56,31 @@ kernel-owned `0184_retire_legacy_learn_registry_row.sql`: an `UPDATE` on
 audience/slug/placements, but only when another active row already answers the
 `learn` audience.
 
+## #2500 — coffee per-table ownership decision (no SQL dropped or moved)
+
+When `apps/coffee` was pruned from this monorepo (#1984 step 5; the standalone
+`ima-jin/coffee` runs claimed on dev from its own checkout), every `coffee.*` table was
+checked against `migrations/ownership.json`. **No migration was edited and nothing is
+dropped.**
+
+- **`coffee.pages`, `coffee.tips`** (`0001_seed.sql`, owner `coffee`) are the app's real
+  tables. They are **not relocated** and **not kernel-owned**: they stay recorded as
+  originating in the shared `0001_seed.sql` (Option B, the same standing policy as
+  `links`). Ownership stays `coffee` in `ownership.json` (the per-app ownership of
+  #1991); only the `notes` field changed, to record that the owning code now lives in
+  `ima-jin/coffee`. The `coffee` schema must keep being created here until a baseline
+  squash gives coffee a standalone migration file. The standalone app owns that data.
+- **Gap check**: no kernel code reads `coffee.pages` / `coffee.tips` directly
+  (`grep -rn "coffee\.\(pages\|tips\)" apps/` finds nothing), so removing `apps/coffee`
+  leaves no dangling cross-schema read.
+- **One data-only kernel migration, `0185_retire_legacy_coffee_registry_row.sql`.** It is
+  an `UPDATE` on kernel-owned `registry.apps` (no `DROP`): it revokes the seeded
+  `app_first_party_coffee` row (0139, untouched) and clears its audience/slug/placements,
+  but only when another active row already answers the `coffee` audience (the
+  provisioned one). This removes the ambiguity where `resolveActiveAppByAudience`
+  (`LIMIT 1`, no `ORDER BY`) could pick the legacy first-party row and give coffee's
+  mint the first-party exemption (no scope ceiling) in place of its `coffee:*` scopes.
+
 ## Why a squash at all
 
 `migrations/` is 132 files deep, and `0001_seed.sql` alone creates all 155

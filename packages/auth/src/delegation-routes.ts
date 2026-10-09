@@ -228,16 +228,6 @@ export const DELEGATION_ROUTES = {
     path: "/api/seller/settings",
     why: "market-items visibility toggle",
   },
-  "coffee.tip": {
-    class: "reversible", action: "tip", app: "coffee", method: "POST",
-    path: "/api/tip",
-    why: "starts a hosted Stripe/Solana checkout; the payer still authorises it (proposal artifact)",
-  },
-  "coffee.page.delete": {
-    class: "irreversible", action: "delete", app: "coffee", method: "DELETE",
-    path: "/api/pages/[handle]",
-    why: "deletes a page",
-  },
   "dykil.survey.delete": {
     class: "irreversible", action: "delete", app: "dykil", method: "DELETE",
     path: "/api/surveys/[id]",

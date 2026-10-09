@@ -171,7 +171,7 @@ Look for a real `require` condition (or a `default` condition that points at a g
 
 > You're importing a component that needs useState. It only works in a Client Component but none of its parents are marked with "use client".
 
-This bit both `packages/fair` (its `FairAccordion`/`FairEditor` React components were re-exported from the same `index.ts` as pure attribution/crypto logic — broke `apps/coffee` and `apps/learn`) and `packages/ui` (`themeInitScript`/`buildServiceMetadata`/etc. were re-exported alongside every client component — every app's root `app/layout.tsx` would have broken).
+This bit both `packages/fair` (its `FairAccordion`/`FairEditor` React components were re-exported from the same `index.ts` as pure attribution/crypto logic — broke the coffee and `apps/learn` apps) and `packages/ui` (`themeInitScript`/`buildServiceMetadata`/etc. were re-exported alongside every client component — every app's root `app/layout.tsx` would have broken).
 
 **Fix:** split the client-only exports into their own entry (`src/react.ts` for `fair`, published as `@imajin/fair/react`; `src/server.ts` for `ui`'s plain utilities, published as `@imajin/ui/server`), add it to `tsup.config.ts`'s `entry` array, and add a matching subpath to `package.json` `exports`. Update in-repo consumers to import from the correct subpath. **The only way this surfaces is a real `pnpm build` across the whole workspace** — `pnpm typecheck` and `vitest` won't catch it, since neither runs Next's RSC compiler. Always run a full `pnpm build` before opening a PR that switches a React-adjacent package to `dist`-based exports.
 

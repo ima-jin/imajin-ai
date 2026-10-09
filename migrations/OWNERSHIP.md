@@ -202,6 +202,11 @@ entries in `ownership-gaps.json` are kept identical by
   schema and its five tables are untouched. The only new migration is the
   kernel-owned `0184_retire_legacy_learn_registry_row.sql` (a guarded `UPDATE` of
   `registry.apps`).
+- `apps/coffee` no longer exists in this monorepo either (#2500): its owning
+  code now lives in [ima-jin/coffee](https://github.com/ima-jin/coffee). Its two
+  tables (`coffee.pages`, `coffee.tips`) are still created by the kernel's root
+  migrations, the coffee-owned migrations stay in this directory, and ownership
+  stays `coffee`; see `BASELINE.md` ("#2500 — coffee per-table ownership decision").
 - No foreign key crosses an owner boundary (checked across every
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.
