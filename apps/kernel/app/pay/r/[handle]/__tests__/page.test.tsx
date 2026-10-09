@@ -12,6 +12,8 @@ const INVOICE_FIELDS = {
   issuerAddress: null,
   paidAt: null,
   settlement: null,
+  // #2754: resolved server-side — a working card rail (the older cases below all have one).
+  card: true,
 };
 
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
@@ -266,3 +268,53 @@ describe('GET /pay/r/:handle — e-Transfer option with and without the receivin
   });
 });
 
+
+describe('GET /pay/r/:handle — only the rails that work (#2754)', () => {
+  const VIEW = {
+    ...INVOICE_FIELDS,
+    kind: 'invoice',
+    lineItems: [{ name: 'Consulting', amount: 1999, quantity: 1 }],
+    totalAmount: 1999,
+    subtotalAmount: 1999,
+    taxTotalAmount: 0,
+    taxes: [],
+    currency: 'CAD',
+    issuerDisplayName: 'Imajin Inc',
+    status: 'issued',
+  };
+  const EMT = { state: 'available', instructions: null };
+
+  async function renderView(view: Record<string, unknown>) {
+    getInvoiceMock.mockResolvedValue(view);
+    render(await PayByHandlePage({ params: Promise.resolve({ handle: 'ph_1' }) }));
+  }
+
+  it('neither a card rail nor an e-Transfer email: says so plainly, with no Pay button anywhere', async () => {
+    await renderView({ ...VIEW, card: false, emt: null });
+
+    expect(screen.getByTestId('no-online-payment').textContent).toBe("This invoice can't be paid online yet. Contact Imajin Inc.");
+    expect(screen.queryByRole('button', { name: /Pay/ })).toBeNull();
+  });
+
+  it('only e-Transfer: the card button is hidden, e-Transfer is the only way offered', async () => {
+    await renderView({ ...VIEW, card: false, emt: EMT });
+
+    expect(screen.getByRole('button', { name: 'Pay by e-Transfer' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: /Pay now|Pay by card/ })).toBeNull();
+    expect(screen.queryByTestId('no-online-payment')).toBeNull();
+  });
+
+  it('only a card rail: card is offered, e-Transfer is not', async () => {
+    await renderView({ ...VIEW, card: true, emt: null });
+
+    expect(screen.getByRole('button', { name: 'Pay now' })).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Pay by e-Transfer' })).toBeNull();
+  });
+
+  it('a paid invoice shows no pay actions and no "can\'t be paid online" message', async () => {
+    await renderView({ ...VIEW, status: 'paid', card: false, emt: null });
+
+    expect(screen.queryByTestId('no-online-payment')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Pay/ })).toBeNull();
+  });
+});

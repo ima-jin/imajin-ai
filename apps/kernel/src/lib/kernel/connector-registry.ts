@@ -660,7 +660,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'stripe',
     name: 'Stripe',
-    description: 'Bring your own Stripe restricted key so reactors can act on your payment events — no Stripe Connect, no shared platform account.',
+    description: 'Bring your own Stripe restricted key so reactors can act on your payment events and your invoices can be paid by card straight into your own Stripe account — no Stripe Connect, no shared platform account.',
     icon: '💳',
     ingestionPattern: 'token-paste',
     channel: 'stripe',
@@ -678,8 +678,11 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       label: 'Restricted Key',
       placeholder: 'Stripe Restricted Key (rk_...)',
       hint: 'Key is sealed server-side and never returned. Create a RESTRICTED key (not your full secret key) in the ' +
-        'Stripe Dashboard → Developers → API keys → Create restricted key, and grant only: Payments = Write, ' +
-        'Webhooks = Write. Leave every other resource — especially Account — at None. Connecting self-provisions a ' +
+        'Stripe Dashboard → Developers → API keys → Create restricted key, and grant only: Checkout Sessions = Write ' +
+        '(card payment on your invoices), Payments = Write, Webhooks = Write. A key without Checkout Sessions = Write ' +
+        'is refused when you paste it. Leave every other resource — especially Account — at None. Also approve the ' +
+        '"Publish your Stripe payment events" scope below: that is how a paid invoice flips to Paid without manual ' +
+        'marking. Connecting self-provisions a ' +
         'webhook endpoint on your own Stripe account; disconnecting removes it. Rotating your key in the Stripe ' +
         'Dashboard? Just paste the new key here again — reconnecting replaces the webhook endpoint automatically.',
     },

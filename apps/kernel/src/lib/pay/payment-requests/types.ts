@@ -71,4 +71,10 @@ export interface PaymentRequestSettlementRef {
   checkout_session_id?: string;
   /** `method: 'stripe'` only (#2209) — the underlying PaymentIntent, when Stripe reports one. */
   payment_intent_id?: string | null;
+  /**
+   * `method: 'stripe'` only (#2754) — the charge ran on the ISSUER'S OWN Stripe account
+   * (BYO connector), so no platform ledger settlement exists or may ever be run for it
+   * (`retryPaymentRequestStripeSettlement` refuses).
+   */
+  byo?: true;
 }

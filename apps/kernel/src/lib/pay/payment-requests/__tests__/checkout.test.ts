@@ -12,6 +12,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const state = vi.hoisted(() => ({
   getPaymentRequestByIdMock: vi.fn(),
   resolveConnectedAccountFeeMock: vi.fn(),
+  resolveCardRailMock: vi.fn(),
+  createByoSessionMock: vi.fn(),
+  retrieveByoSessionMock: vi.fn(),
   payCheckoutMock: vi.fn(),
   stripeSessionsRetrieveMock: vi.fn(),
   settlePaymentMock: vi.fn(),
@@ -31,6 +34,9 @@ function resetState() {
   }
   state.getPaymentRequestByIdMock.mockReset();
   state.resolveConnectedAccountFeeMock.mockReset();
+  state.resolveCardRailMock.mockReset();
+  state.createByoSessionMock.mockReset();
+  state.retrieveByoSessionMock.mockReset();
   state.payCheckoutMock.mockReset();
   state.stripeSessionsRetrieveMock.mockReset();
   state.settlePaymentMock.mockReset();
@@ -100,6 +106,27 @@ vi.mock('@/src/lib/pay/checkout', () => ({
       quantity: 1,
     })),
 }));
+// #2754: rail selection and the issuer-key Stripe calls are their own suites' business.
+vi.mock('../card-rail', () => ({
+  resolveCardRail: state.resolveCardRailMock,
+  resolveConnectCheckout: (body: unknown) => state.resolveConnectedAccountFeeMock(body),
+}));
+vi.mock('@/src/lib/stripe/byo-checkout', () => {
+  class ByoCheckoutError extends Error {
+    readonly code: string;
+    readonly stripeStatus: number | undefined;
+    constructor(code: string, message: string, stripeStatus?: number) {
+      super(message);
+      this.code = code;
+      this.stripeStatus = stripeStatus;
+    }
+  }
+  return {
+    ByoCheckoutError,
+    createByoCheckoutSession: state.createByoSessionMock,
+    retrieveByoCheckoutSession: state.retrieveByoSessionMock,
+  };
+});
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: state.settlePaymentMock }));
 vi.mock('@/src/lib/pay/payment-requests/service', () => ({
   getPaymentRequestById: state.getPaymentRequestByIdMock,
@@ -112,6 +139,7 @@ vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
   emitPaymentRequestSettledAttestation: state.settledAttestationMock,
 }));
 
+import { ByoCheckoutError } from '@/src/lib/stripe/byo-checkout';
 import {
   createPaymentRequestCheckoutSession,
   retryPaymentRequestStripeSettlement,
@@ -145,6 +173,8 @@ const ISSUED_REQUEST = {
 
 beforeEach(() => {
   resetState();
+  // The pre-#2754 suite below exercises the Connect fallback; the connector rail has its own describe.
+  state.resolveCardRailMock.mockResolvedValue({ kind: 'connect' });
   state.resolveConnectedAccountFeeMock.mockResolvedValue({
     ok: true,
     connectedAccountId: 'acct_123',
@@ -340,6 +370,162 @@ describe('createPaymentRequestCheckoutSession', () => {
 
     expect(result).toMatchObject({ id: 'cs_new', reused: false });
     expect(state.payCheckoutMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe('createPaymentRequestCheckoutSession — rail selection (#2754)', () => {
+  const CONNECTOR_RAIL = { kind: 'connector', ownerDid: ISSUER_DID };
+  const HANDLED_REQUEST = { ...ISSUED_REQUEST, payHandle: 'ph_abc' };
+  const BYO_SESSION = { id: 'cs_byo', url: 'https://checkout.stripe.com/cs_byo', expiresAt: new Date('2026-01-02T00:00:00Z') };
+
+  it('charges on the issuer\'s own account when they have a connector: no Connect fee lookup, no platform session', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    state.createByoSessionMock.mockResolvedValue(BYO_SESSION);
+
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: RECIPIENT_DID, customerEmail: 'b@example.com' });
+
+    expect(result).toMatchObject({ id: 'cs_byo', url: BYO_SESSION.url, reused: false });
+    expect(state.resolveCardRailMock).toHaveBeenCalledWith(ISSUER_DID);
+    expect(state.payCheckoutMock).not.toHaveBeenCalled();
+    expect(state.resolveConnectedAccountFeeMock).not.toHaveBeenCalled();
+
+    const [ownerDid, input] = state.createByoSessionMock.mock.calls[0];
+    expect(ownerDid).toBe(ISSUER_DID);
+    expect(input).toMatchObject({
+      currency: 'CAD',
+      customerEmail: 'b@example.com',
+      items: [{ name: 'Consulting', amount: 5000, quantity: 1 }],
+      metadata: {
+        payment_request_id: 'pr_1',
+        paymentRequestId: 'pr_1',
+        payHandle: 'ph_abc',
+        service: 'payment_request',
+        type: 'payment_request_checkout',
+      },
+    });
+    // The payer returns to the pay page itself, which becomes the receipt.
+    expect(input.successUrl).toBe('https://kernel.test/pay/r/ph_abc');
+    expect(input.cancelUrl).toBe('https://kernel.test/pay/r/ph_abc');
+  });
+
+  it('records the pending transaction on the BYO rail with the session as its external_ref', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    state.createByoSessionMock.mockResolvedValue(BYO_SESSION);
+
+    await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(state.insertCalls).toHaveLength(1);
+    expect(state.insertCalls[0]).toMatchObject({ rail: 'stripe-byo', externalRef: 'cs_byo', status: 'pending', toDid: ISSUER_DID });
+  });
+
+  it('sends tax as its own line item on the issuer\'s account, exactly as the Connect path does', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue({
+      ...HANDLED_REQUEST,
+      subtotalAmount: 5000,
+      totalAmount: 5650,
+      fairManifest: {
+        ...ISSUED_REQUEST.fairManifest,
+        taxes: [{ jurisdiction: 'CA-ON', kind: 'HST', rateBps: 1300, basisAmount: 5000, amount: 650, collectorDid: ISSUER_DID }],
+      },
+    });
+    state.createByoSessionMock.mockResolvedValue(BYO_SESSION);
+
+    await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(state.createByoSessionMock.mock.calls[0][1].items).toEqual([
+      { name: 'Consulting', amount: 5000, quantity: 1 },
+      { name: 'HST (CA-ON)', description: 'Sales tax collected in trust', amount: 650, quantity: 1 },
+    ]);
+  });
+
+  it('refuses with a 400 SELLER_NOT_CONNECTED code — and creates nothing anywhere — when the issuer has no card rail', async () => {
+    state.resolveCardRailMock.mockResolvedValue({ kind: 'none' });
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(result).toMatchObject({ status: 400, code: 'SELLER_NOT_CONNECTED' });
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
+    expect(state.payCheckoutMock).not.toHaveBeenCalled();
+    expect(state.insertCalls).toHaveLength(0);
+  });
+
+  it.each([
+    ['no_key', 'CARD_RAIL_KEY_MISSING'],
+    ['key_rejected', 'CARD_RAIL_KEY_REJECTED'],
+    ['unavailable', 'CARD_RAIL_UNAVAILABLE'],
+    ['request_rejected', 'CARD_RAIL_REQUEST_REJECTED'],
+  ])('a Stripe %s failure on the issuer\'s account is a 502 carrying %s, and records no transaction', async (code, expected) => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    state.createByoSessionMock.mockRejectedValue(new ByoCheckoutError(code as 'no_key', `stripe: ${code}`, 403));
+
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(result).toMatchObject({ status: 502, code: expected });
+    expect(state.insertCalls).toHaveLength(0);
+  });
+
+  it('does not swallow an unexpected (non-Stripe) error', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    state.createByoSessionMock.mockRejectedValue(new Error('db exploded'));
+
+    await expect(createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID })).rejects.toThrow('db exploded');
+  });
+
+  it('reuses a still-open session read back with the ISSUER\'s key, not the platform client', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    state.selectTxQueue.push([{ externalRef: 'cs_old' }]);
+    state.retrieveByoSessionMock.mockResolvedValue({
+      id: 'cs_old',
+      url: 'https://checkout.stripe.com/cs_old',
+      status: 'open',
+      expiresAt: new Date('2026-01-02T00:00:00Z'),
+    });
+
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(result).toMatchObject({ id: 'cs_old', reused: true });
+    expect(state.retrieveByoSessionMock).toHaveBeenCalledWith(ISSUER_DID, 'cs_old');
+    expect(state.stripeSessionsRetrieveMock).not.toHaveBeenCalled();
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('falls through to a fresh session when reading the old one back fails', async () => {
+    state.resolveCardRailMock.mockResolvedValue(CONNECTOR_RAIL);
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+    state.selectTxQueue.push([{ externalRef: 'cs_old' }]);
+    state.retrieveByoSessionMock.mockRejectedValue(new ByoCheckoutError('unavailable', 'stripe down', 503));
+    state.createByoSessionMock.mockResolvedValue(BYO_SESSION);
+
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(result).toMatchObject({ id: 'cs_byo', reused: false });
+  });
+
+  it('falls back to Connect only when there is no connector: the Connect path is untouched', async () => {
+    state.resolveCardRailMock.mockResolvedValue({ kind: 'connect' });
+    state.getPaymentRequestByIdMock.mockResolvedValue(HANDLED_REQUEST);
+
+    const result = await createPaymentRequestCheckoutSession({ id: 'pr_1', callerDid: ISSUER_DID });
+
+    expect(result).toMatchObject({ id: 'cs_new', reused: false });
+    expect(state.createByoSessionMock).not.toHaveBeenCalled();
+    expect(state.payCheckoutMock).toHaveBeenCalledWith(
+      expect.objectContaining({ connectedAccountId: 'acct_123', applicationFeeAmount: 200 }),
+    );
+    expect(state.insertCalls[0]).toMatchObject({ rail: 'stripe' });
+    // Connect sessions keep the original three metadata keys — the BYO-only keys never leak onto them.
+    expect(state.payCheckoutMock.mock.calls[0][0].metadata).toEqual({
+      payment_request_id: 'pr_1',
+      service: 'payment_request',
+      type: 'payment_request_checkout',
+    });
   });
 });
 
@@ -702,6 +888,19 @@ describe('retryPaymentRequestStripeSettlement (#2439 — the operator retry path
   ])('409s when the request is %s — only a Stripe-paid request can be re-settled', async (_label, request) => {
     state.getPaymentRequestByIdMock.mockResolvedValue(request);
     expect(await retryPaymentRequestStripeSettlement('pr_1')).toMatchObject({ status: 409 });
+    expect(state.settlePaymentMock).not.toHaveBeenCalled();
+  });
+
+  it('#2754: 409s a request paid on the issuer\'s own Stripe account — it has no platform ledger settlement to retry', async () => {
+    state.getPaymentRequestByIdMock.mockResolvedValue({
+      ...ISSUED_REQUEST,
+      status: 'paid',
+      settlementRef: { method: 'stripe', byo: true, payment_intent_id: 'pi_byo' },
+    });
+
+    const result = await retryPaymentRequestStripeSettlement('pr_1');
+
+    expect(result).toMatchObject({ status: 409 });
     expect(state.settlePaymentMock).not.toHaveBeenCalled();
   });
 

@@ -9,6 +9,11 @@
  * own, or an org/business they control as owner/admin). It is validated
  * server-side: a DID the caller can't act for is a 403 and never stored.
  *
+ * #2754: the card is charged on the issuer's own Stripe account when they have a
+ * connector, else on Connect (temporary), else this is a 400 `SELLER_NOT_CONNECTED`; a
+ * failure creating the session on the issuer's account is a 502 with a `CARD_RAIL_*`
+ * `code`. Error bodies carry `{ error, code? }`.
+ *
  * See `apps/kernel/src/lib/pay/payment-requests/checkout.ts` for the
  * session-building logic this route delegates to.
  */
@@ -63,7 +68,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ...(body.paidByDid ? { paidByDid: body.paidByDid, payerPersonDid: payerPersonDidOf(authResult.identity) } : {}),
     });
     if (isServiceError(result)) {
-      return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
+      // `code` (#2754) is the stable reason the pay page turns into a specific message.
+      return NextResponse.json(
+        { error: result.error, ...(result.code ? { code: result.code } : {}) },
+        { status: result.status, headers: cors },
+      );
     }
     return NextResponse.json(result, { headers: cors });
   } catch (error) {

@@ -18,11 +18,14 @@
  * path books the processor fee and `.fair` chain distribution as before.
  *
  * ## Which events this consumes
- * Only events the webhook ingress relayed (they carry a `relayId` that
- * resolves in `stripe-relay-store.ts`). The connector's BYO-account events
- * (`connector.ts`, same `stripe.*` types) carry no `relayId`, so this reactor
- * ignores them — an owner's own Stripe events must never mutate the
- * platform's `pay.transactions`.
+ * Events the webhook ingress relayed (they carry a `relayId` that resolves in
+ * `stripe-relay-store.ts`). The connector's BYO-account events (`connector.ts`,
+ * same `stripe.*` types) carry no `relayId`, so they never reach the handlers
+ * below — an owner's own Stripe events must never mutate the platform's
+ * `pay.transactions` or balances. One narrow exception (#2754):
+ * {@link handleByoPaymentIntentSucceeded} settles a payment_request that the
+ * owner's OWN `stripe.payment_intent.succeeded` names, iff that same owner
+ * issued it. Everything else a BYO event says is ignored.
  *
  * ## Failure contract
  * `publish()` swallows reactor errors, so a failing handler is recorded on the
@@ -35,7 +38,7 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { registerReactor, publish, type ReactorHandler } from '@imajin/bus';
+import { registerReactor, publish, type BusEvent, type ReactorHandler } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, transactions, feeLedger, connectedAccounts } from '@/src/db';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
@@ -133,7 +136,10 @@ export function hasStripeBusHandler(source: StripeRelaySource, eventType: string
  */
 export const payStripeReactor: ReactorHandler = async (event) => {
   const relayId = event.payload?.relayId;
-  if (typeof relayId !== 'string') return;
+  if (typeof relayId !== 'string') {
+    await handleByoPaymentIntentSucceeded(event);
+    return;
+  }
 
   const entry = getRelayEntry(relayId);
   if (!entry) return;
@@ -155,6 +161,35 @@ export const payStripeReactor: ReactorHandler = async (event) => {
     log.error({ err: String(error), eventType, source: entry.source }, 'Webhook handler error');
   }
 };
+
+/**
+ * #2754: an owner's own (BYO connector) `stripe.payment_intent.succeeded` for
+ * an invoice checkout created on their account. Not a relayed delivery — it has
+ * no `relayId` — so it is handled here, separately from the platform handlers,
+ * and only when it names a payment_request. `settlePaymentRequestFromByoStripe`
+ * enforces ownership/amount; this just refuses anything that is not unmistakably
+ * the connector's own envelope (`issuer` must be the owner DID in the payload).
+ * Never throws: the connector has already answered Stripe.
+ */
+async function handleByoPaymentIntentSucceeded(event: BusEvent): Promise<void> {
+  if (event.type !== 'stripe.payment_intent.succeeded') return;
+  const { ownerDid, paymentRequestId, paymentIntentId, amount, currency } = event.payload ?? {};
+  if (
+    typeof ownerDid !== 'string' || typeof paymentRequestId !== 'string' || typeof paymentIntentId !== 'string' ||
+    typeof amount !== 'number' || typeof currency !== 'string' || event.issuer !== ownerDid
+  ) {
+    return;
+  }
+
+  try {
+    // Loaded on demand: this settlement path reaches into node identity + the payment_request service, none of
+    // which the platform webhook ingress (whose import graph is deliberately light) needs until a BYO event arrives.
+    const { settlePaymentRequestFromByoStripe } = await import('@/src/lib/pay/payment-requests/byo-settlement');
+    await settlePaymentRequestFromByoStripe({ ownerDid, paymentRequestId, paymentIntentId, amount, currency });
+  } catch (error) {
+    log.error({ err: String(error), paymentRequestId, ownerDid }, 'BYO Stripe settlement error');
+  }
+}
 
 let reactorRegistered = false;
 

@@ -51,11 +51,15 @@
  * now republishes the PLATFORM account's deliveries onto these same `stripe.*`
  * types, and the kernel's `pay-stripe` reactor
  * (`lib/pay/stripe-bus-consumer.ts`, which settles payment_request checkouts
- * through the canonical `settlePayment()` core) consumes them. It handles only
- * events the pay ingress relayed — never an owner's BYO event published here,
- * which must not touch the platform ledger. This module only needs the
- * reactor REGISTERED before it publishes: the `stripe.*` default chains name
- * `pay-stripe`, and `publish()` throws on an unregistered reactor.
+ * through the canonical `settlePayment()` core) consumes them. An owner's BYO
+ * event published here never touches the platform ledger — with exactly one
+ * narrow exception (#2754): a `stripe.payment_intent.succeeded` whose
+ * `paymentRequestId` names a payment_request OWNED BY THAT SAME owner DID
+ * settles that request (status -> paid, a BYO-rail transaction row, no
+ * platform-balance movement; see `pay/payment-requests/byo-settlement.ts`).
+ * Every other BYO event is still ignored by the reactor. This module only
+ * needs the reactor REGISTERED before it publishes: the `stripe.*` default
+ * chains name `pay-stripe`, and `publish()` throws on an unregistered reactor.
  *
  * ## Non-goals
  * No Stripe Connect, no Account Links, no destination charges, anywhere in
@@ -67,11 +71,9 @@ import { sealAndStore, loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
 import { generateId } from '@/src/lib/kernel/id';
 import { ensurePayStripeReactorRegistered } from '@/src/lib/pay/stripe-bus-consumer';
 import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
-import {
-  createConnectorTokenPaste,
-  type TokenPasteCredentials,
-} from '@/src/lib/kernel/connector-token-paste';
 import { verifyStripeWebhookSignature } from './webhook-verify';
+import { assertCheckoutSessionWriteAllowed } from './byo-checkout';
+import { stripe, STRIPE_EVENTS_SCOPE } from './connector-core';
 import {
   upsertWebhookIndex,
   resolveWebhookOwner,
@@ -81,11 +83,9 @@ import {
 
 const log = createLogger('kernel');
 
-/** Connector app DID — the selectable "Stripe" connector identity. */
-export const STRIPE_CONNECTOR_DID = 'did:imajin:stripe-connector';
-
-/** Scope gating whether verified events get republished onto the owner's bus. */
-export const STRIPE_EVENTS_SCOPE = 'stripe:events';
+// Identity + token-paste factory live in `connector-core.ts` (a leaf module, so the pay
+// rail selection can read them without importing this file's bus/pay dependencies — #2754).
+export { STRIPE_CONNECTOR_DID, STRIPE_EVENTS_SCOPE, type StripeCredentials } from './connector-core';
 
 /** Stripe events this connector subscribes to and forwards onto the bus. */
 export const STRIPE_WEBHOOK_EVENTS = [
@@ -96,19 +96,11 @@ export const STRIPE_WEBHOOK_EVENTS = [
 
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
-const stripe = createConnectorTokenPaste({
-  id: 'stripe',
-  displayName: 'Stripe',
-  connectorDid: STRIPE_CONNECTOR_DID,
-  channel: 'stripe',
-});
-
 /** Per-DID vault field for the restricted key. Encodes ownerDid for per-DID isolation. */
 export const vaultField = stripe.vaultField;
 export const resolveActiveGrant = stripe.resolveActiveGrant;
 export const keySealed = stripe.keySealed;
 export const keyPending = stripe.keyPending;
-export type StripeCredentials = TokenPasteCredentials;
 
 /** Node-sealed (v1) per-DID field for the webhook endpoint's signing secret. */
 function webhookSecretField(ownerDid: string): string {
@@ -209,6 +201,10 @@ async function bestEffortDeprovisionExisting(ownerDid: string): Promise<void> {
  * Throws:
  *   - `stripe_key_not_restricted` — the pasted key is not a restricted key
  *     (e.g. a full secret key was pasted instead).
+ *   - `stripe_key_missing_permission` (#2754) — the key cannot create
+ *     Checkout Sessions, so it could never take an invoice payment. Checked
+ *     FIRST: it must fail before the prior endpoint is deprovisioned or
+ *     anything is created or sealed.
  *   - `stripe_webhook_provision_failed` — Stripe rejected the endpoint
  *     creation (bad key, insufficient permissions, etc).
  */
@@ -224,6 +220,8 @@ export async function connectAndProvisionWebhook(
       'Create one in the Stripe Dashboard under Developers → API keys → Create restricted key.',
     );
   }
+
+  await assertCheckoutSessionWriteAllowed(trimmedKey);
 
   await bestEffortDeprovisionExisting(ownerDid);
 
@@ -313,6 +311,19 @@ function num(value: unknown): number {
 }
 
 /**
+ * #2754: the payment_request an invoice checkout names on its PaymentIntent
+ * (`metadata.payment_request_id`, written by `byo-checkout.ts`). It is the
+ * ONLY metadata field lifted onto the durable, subscriber-visible bus payload —
+ * the pay reactor settles that request iff the request is owned by `ownerDid`.
+ * `{}` for every PaymentIntent that is not an invoice checkout.
+ */
+function paymentRequestIdField(object: Record<string, unknown>): { paymentRequestId?: string } {
+  const metadata = object.metadata as Record<string, unknown> | null | undefined;
+  const id = metadata?.payment_request_id ?? metadata?.paymentRequestId;
+  return typeof id === 'string' && id.length > 0 ? { paymentRequestId: id } : {};
+}
+
+/**
  * Republish one verified Stripe event onto the bus, gated by the owner's own
  * `stripe:events` grant — the owner must have opted in before their events
  * reach any reactor chain. Returns whether a bus event was actually
@@ -345,6 +356,7 @@ async function publishStripeEvent(ownerDid: string, event: StripeEventLike): Pro
             paymentIntentId: str(object.id),
             amount: num(object.amount),
             currency: str(object.currency).toUpperCase(),
+            ...paymentRequestIdField(object),
             context_id: event.id,
             context_type: 'stripe',
           },

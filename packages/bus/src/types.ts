@@ -1884,6 +1884,12 @@ export interface BusEventMap {
     paymentIntentId: string;
     amount: number;
     currency: string;
+    /**
+     * BYO connector only (#2754): the payment_request an invoice checkout on the
+     * owner's own Stripe account names in its PaymentIntent metadata. Settles that
+     * request iff it is owned by `ownerDid`; absent for every other PaymentIntent.
+     */
+    paymentRequestId?: string;
     context_id: string;
     context_type: 'stripe';
     source?: StripeRelaySource;

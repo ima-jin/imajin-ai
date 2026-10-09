@@ -206,7 +206,13 @@ export default async function PayByHandlePage({ params }: Readonly<{ params: Pro
         <StatusNote status={view.status} />
 
         <div data-print="hide">
-          <PayRequestActions handle={handle} status={view.status} emt={view.emt ?? null} />
+          <PayRequestActions
+            handle={handle}
+            status={view.status}
+            issuerName={view.issuerDisplayName}
+            card={view.card}
+            emt={view.emt ?? null}
+          />
         </div>
       </div>
     </div>

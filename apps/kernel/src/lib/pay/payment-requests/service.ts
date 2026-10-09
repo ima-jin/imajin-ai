@@ -19,6 +19,7 @@ import { createPaymentRequestInvite } from '@/src/lib/connections/payment-reques
 import type { TaxRegistration } from '@/src/lib/profile/tax-registrations';
 import { computePaymentRequestContentHash } from './content-hash';
 import { emtOptionOf, type EmtPayOption } from './emt-offer';
+import { resolveCardRail } from './card-rail';
 import { invoiceNumberOf, issuerAddressOf, publicSettlementOf, type PublicSettlement } from './invoice';
 import { payingDidOf } from './settlement-payer';
 import {
@@ -42,7 +43,8 @@ import type {
   PaymentRequestTaxLine,
 } from './types';
 
-export type ServiceError = { error: string; status: number };
+/** `code` (#2754) is a stable machine-readable reason the pay page maps to a specific message; absent for plain validation errors. */
+export type ServiceError = { error: string; status: number; code?: string };
 
 function err(error: string, status: number): ServiceError {
   return { error, status };
@@ -547,6 +549,14 @@ export interface PaymentRequestInvoiceView extends PaymentRequestPublicView {
    * email itself is only ever included once the payer has chosen e-Transfer.
    */
   emt: EmtPayOption | null;
+  /**
+   * #2754 — whether a card payment can actually start for this request RIGHT NOW:
+   * still open, the issuer allows on-platform payment, and they have a working card
+   * rail (their own Stripe connector, or Connect while it lasts — see `card-rail.ts`).
+   * Resolved server-side at render time, so the page never offers a card button that
+   * can only fail. `false` once the request is no longer open.
+   */
+  card: boolean;
 }
 
 type IssuerProfile = typeof profiles.$inferSelect;
@@ -641,7 +651,15 @@ export async function getPaymentRequestInvoiceByHandle(handle: string): Promise<
     settlement,
     paidBy,
     emt: emtOptionOf(row, profile?.etransferEmail),
+    card: await cardAvailableFor(row),
   };
+}
+
+/** Whether a card payment can start for `row` now (#2754) — open, on-platform, and a working card rail. */
+async function cardAvailableFor(row: PaymentRequest): Promise<boolean> {
+  if (row.status !== 'issued' && row.status !== 'emt_pending') return false;
+  if (!row.allowOnPlatform) return false;
+  return (await resolveCardRail(row.issuerDid)).kind !== 'none';
 }
 
 export interface ListPaymentRequestsInput {

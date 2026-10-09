@@ -105,6 +105,16 @@ vi.mock('@/src/lib/pay/checkout', () => ({
   resolveConnectedAccountFee: vi.fn().mockResolvedValue({ ok: true, connectedAccountId: 'acct_1', applicationFeeAmount: 0 }),
   taxLineItems: () => [],
 }));
+// #2754: card rail selection + the issuer-key Stripe calls — this suite exercises the Connect fallback.
+vi.mock('../card-rail', () => ({
+  resolveCardRail: vi.fn().mockResolvedValue({ kind: 'connect' }),
+  resolveConnectCheckout: vi.fn().mockResolvedValue({ ok: true, connectedAccountId: 'acct_1', applicationFeeAmount: 0 }),
+}));
+vi.mock('@/src/lib/stripe/byo-checkout', () => ({
+  ByoCheckoutError: class ByoCheckoutError extends Error {},
+  createByoCheckoutSession: vi.fn(),
+  retrieveByoCheckoutSession: vi.fn(),
+}));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: h.settlePaymentMock }));
 vi.mock('@/src/lib/chat/connection-check', () => ({ isConnected: vi.fn() }));
 vi.mock('@/src/lib/connections/payment-request-invite', () => ({ createPaymentRequestInvite: vi.fn() }));

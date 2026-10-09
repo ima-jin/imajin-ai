@@ -1792,6 +1792,22 @@ paths:
         is guaranteed present), mints exactly ONE kernel-signed
         `payment_request.settled` attestation, and publishes
         `payment_request.settled`. Idempotent on webhook replay.
+
+        #2754 — which account is charged: when the issuer has an active Stripe
+        connector (#1785, a sealed restricted key AND the `stripe:events` grant)
+        the session is created ON THE ISSUER'S OWN STRIPE ACCOUNT with that key
+        (needs **Checkout Sessions = Write**, checked when the key is connected);
+        Stripe Connect is only a temporary fallback for issuers who have not
+        migrated; with neither the call is a 400 `SELLER_NOT_CONNECTED`. There is
+        no platform fee on connector charges for now. Such a payment settles from
+        the issuer's own `payment_intent.succeeded` (the PaymentIntent carries
+        `metadata.payment_request_id`), not the platform webhook: `paid`, a
+        `stripe-byo` transaction row, no platform balance movement.
+
+        Error bodies are `{ error, code? }`; `code` is stable and drives the pay
+        page's message: `SELLER_NOT_CONNECTED` (400), and for a failure creating
+        the session on the issuer's account (502) `CARD_RAIL_KEY_MISSING`,
+        `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`.
       security:
         - cookieAuth: []
         - bearerAuth: []
@@ -1829,10 +1845,14 @@ paths:
                   expiresAt: { type: string, format: date-time }
                   reused: { type: boolean, description: "true when an existing open Stripe session was reused" }
         "400":
-          description: Invalid request, allow_on_platform is false, or the seller hasn't completed Stripe Connect setup
+          description: "Invalid request, allow_on_platform is false, or the issuer has no card rail (`code` SELLER_NOT_CONNECTED, #2754)"
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Error" }
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code: { type: string, description: "Stable machine-readable reason, e.g. SELLER_NOT_CONNECTED" }
         "403":
           description: Not the issuer or recipient, or `paidByDid` is a DID the caller can't act for (#2656)
           content:
@@ -1848,6 +1868,17 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "502":
+          description: The Checkout Session could not be created on the issuer's own Stripe account (#2754)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  code:
+                    type: string
+                    enum: [CARD_RAIL_KEY_MISSING, CARD_RAIL_KEY_REJECTED, CARD_RAIL_UNAVAILABLE, CARD_RAIL_REQUEST_REJECTED]
 
   /api/payment-requests/{id}/payer-dids:
     get:
@@ -1895,6 +1926,98 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "404":
           description: Unknown or void handle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/rails:
+    get:
+      tags: [pay]
+      operationId: getPaymentRequestRails
+      summary: Which ways the issuer can be paid right now — drives the issue-time warning (#2754)
+      description: |
+        `{ card, emt }` for the authenticated issuer: `card` = a working card rail
+        (their own Stripe connector, or Connect while it lasts), `emt` = an
+        e-Transfer receiving email is set. Issuer-only — `issuer_did` must be the
+        authenticated principal. Two booleans only; never the key, the account or
+        the email.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: issuer_did
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The issuer's rails
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  card: { type: boolean }
+                  emt: { type: boolean }
+        "400":
+          description: Missing issuer_did
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: issuer_did is not the authenticated principal
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/payment-requests/by-handle/{handle}/emt:
+    delete:
+      tags: [pay]
+      operationId: leavePaymentRequestEmt
+      summary: '"Pay another way" — withdraw the e-Transfer choice, `emt_pending` -> `issued` (#2758)'
+      description: |
+        The payer chose e-Transfer (`POST` on this path, which moves the request
+        `issued -> emt_pending`) and changed their mind. Guarded compare-and-swap:
+        allowed only while no deposit has been confirmed — once the issuer has
+        marked it paid this is a 409 and the request stays paid. Idempotent: a
+        request already back at `issued` is a 200 with `reverted: false`. No auth
+        (the opaque pay-link handle is the capability); shares the choice's per-IP
+        rate limit. Choosing e-Transfer again returns the same memo. The issuer's
+        confirm path is unchanged (an issuer can still settle a reverted request
+        manually if the transfer arrives anyway).
+      parameters:
+        - name: handle
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: The request is `issued` again (or already was)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  reverted: { type: boolean }
+                  status: { type: string }
+        "404":
+          description: Unknown or void handle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: A payment has already been confirmed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limited
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
