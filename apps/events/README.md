@@ -124,9 +124,9 @@ Operator prerequisites before ticket checkout works:
 1. Register events as an app and provision its signing key (`apps.provision`); give events
    `IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID` and the one-time `IMAJIN_APP_CLAIM_CODE`.
 2. Approve `pay:settle` for events through the operator-countersigned `apps:service-scopes` card.
-3. Deploy the kernel contract (#2695) first.
-4. The pay service's `checkout.completed` webhook to events must carry the checkout's kernel
-   `transactionId` (the key `/pay/api/settle` needs). Until it does, events logs
+3. Deploy the kernel contract (#2695) and the kernel build that adds `transactionId` to the pay
+   `checkout.completed` webhook (it looks the `pay.transactions` row up by the Stripe session and
+   sends its id — the key `/pay/api/settle` needs). If a webhook arrives without it, events logs
    `Pay webhook carried no transactionId — order NOT settled` and skips settlement.
 
 Without these, checkout for an event with a `.fair` chain fails closed (503) rather than taking a

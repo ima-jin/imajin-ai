@@ -17,10 +17,11 @@
  * events publishes from its own process. No shared `PAY_SERVICE_API_KEY`.
  *
  * Correlation. `/pay/api/settle` is keyed by the kernel `transactionId` the app-authenticated
- * checkout returned; the pay webhook that notifies events (`checkout.completed`) must carry it
- * as `transactionId`. Events deliberately does NOT read the pay ledger tables to find it (a
- * cross-schema contract violation, see `ci-guard-cross-schema-reads`) — without it settlement is
- * skipped and logged loudly (see `settleOrderViaPay`).
+ * checkout returned; the kernel's pay webhook that notifies events (`checkout.completed`) carries
+ * it as `transactionId` (looked up by the Stripe session, `notifyEventsService`). Events
+ * deliberately does NOT read the pay ledger tables to find it (a cross-schema contract violation,
+ * see `ci-guard-cross-schema-reads`). If a webhook arrives without it (kernel lookup found no row)
+ * there is nothing to settle against: it is logged loudly and skipped (see `settleOrderViaPay`).
  *
  * Chain amounts. The kernel settles an app payment for the recorded gross
  * amount, so the chain must sum to the payment total. The chain is therefore
@@ -239,7 +240,8 @@ async function callPaySettle(params: SettleCallParams, retryOnUnauthorized: bool
 export interface SettleOrderParams {
   /**
    * The kernel `transactionId` the app-authenticated checkout returned, as carried on the pay
-   * webhook. Absent when the webhook does not send it — settlement is then skipped.
+   * webhook. Absent only if the kernel found no transaction row for the session — settlement is
+   * then skipped (logged loudly).
    */
   transactionId?: string;
   /** Stripe checkout session id the pay webhook reported (log correlation only). */
