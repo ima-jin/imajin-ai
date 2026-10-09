@@ -12,6 +12,14 @@
 
 export const PLACEHOLDER_HOST = 'your-node.imajin.ai';
 
+/**
+ * pg_type OID of `text`. postgres.js's `sql.array(value, type)` takes the
+ * element type as a numeric OID; a type NAME like 'text' is not resolved, so the
+ * value skips array serialisation and the server rejects it with 22P02
+ * "malformed array literal" (#2759).
+ */
+export const TEXT_OID = 25;
+
 const PLACEHOLDER_ORIGIN = /^https?:\/\/your-node\.imajin\.ai(?::\d+)?(?=[/?#]|$)/;
 
 /** Rewrite a URL's placeholder origin to `origin`; null when it does not use the placeholder host. */
@@ -99,7 +107,7 @@ export async function fixPlaceholderCallbackUrls({ sql, origin, apply = false, l
           (fix) => tx`
             UPDATE registry.apps
             SET callback_url = ${fix.callbackUrl.to},
-                redirect_uris = ${tx.array(fix.redirectUris.to, 'text')},
+                redirect_uris = ${tx.array(fix.redirectUris.to, TEXT_OID)}::text[],
                 updated_at = now()
             WHERE id = ${fix.id}
           `,
