@@ -38,7 +38,7 @@ They are listed honestly in §7 rather than papered over.
 | **S2. `CorpusAccessClaim`** | `apps/kernel/src/lib/kernel/corpus-access-claim.ts` (60 s TTL) | Corpus answers 401 to every claim until it trusts the new key. | Corpus, from its pinned key set (`apps/corpus/src/lib/kernel-trust.ts`). The kernel serves old + new in `GET /auth/.well-known/kernel-signing-key` while `AUTH_PREVIOUS_PUBLIC_KEY*` is set (#2244). Corpus reconciles its pin **only at boot**, and only adds the new key if the served set still shares a kid with the pin, so corpus must be restarted inside the grace window. |
 | **S3. Node-issued ("mechanical") attestations** | `emit-mechanical-attestation.ts` (`session.created`, `session.device.new`, `usage.*`, `registry.app.*`, `relay.peer`, `vault.*`, `access.*`, `apps.signing-key.claimed`, ...), `emit-recovery-attestation.ts`, `pay/payment-requests/attestations.ts`, `knock.ts` (`agent.external_identity`), `app/auth/api/attestations/internal/route.ts`, admin registry mutations, and `key.rotated` itself | Stored signatures stop verifying against `identities.public_key` as soon as that row carries the new key (runbook step 8). | Anyone who resolves the node DID's key (the node DID is `relay.relay_config.imajin_did`; see §2.5). The in-repo chain verifier (`lib/retrace/repository.ts`) now falls back to the `key.rotated` history (`verifyNodeSignatureAcrossKeyHistory`). Every other verifier must use `trustedPublicKeysAt` from `@imajin/auth/key-rotation` over a verified chain. |
 | **S4. Node-as-witness signatures for an identity** | `identity/[did]/sign/route.ts`, `chat/api/d/[did]/messages/route.ts` (`signMessagePayload`), `oauth/authorize` + `api/auth/authorize` + `api/auth/revoke` (`app.authorized` / `app.revoked`), `lib/auth/document-signatures.ts` | Old witness signatures stop verifying against the current node key. | **GAP.** `document-signatures.ts` verifies against the key currently in env only, so previously issued node-signed document signature tokens fail after rotation. Others resolve the node key as in S3. |
-| **S5. Kernel witness / publisher signatures (vault-derived node DID)** | `getNodeSigningIdentity()` users: `notify/operator-approvals-service.ts` (witness record on `operator.approval.decided`), `consent-requests`, `inference/consent`, `usage/billed/receipt`, `loops/cycle`, `warp/loop-emit`, `github`/`access`/`vault` `approvals-execution` | Same key, but signed under the vault-derived DID `did:imajin:<first 16 hex of pubkey>`, so the **DID itself changes**. Old witness records no longer verify against the current identity; the loops publisher DID changes. | In-process verifiers use the current key only (`loops/verify-publisher-signature.ts` at ingest). **GAP** for stored witness records until a verifier consumes the `key.rotated` history. The operator countersign (#2082) is signed by the *operator's* key and is unaffected. |
+| **S5. Kernel witness / publisher signatures (vault-derived node DID)** | `getNodeSigningIdentity()` users: `notify/operator-approvals-service.ts` (witness record on `operator.approval.decided`), `consent-requests`, `inference/consent`, `usage/billed/receipt`, `loops/cycle`, `warp/loop-emit`, `github`/`access`/`vault` `approvals-execution` | Same key, but signed under the vault-derived DID `did:imajin:<first 16 hex of pubkey>`, so the **DID itself changes**. Old witness records no longer verify against the current identity; the loops publisher DID changes. | The stored `operator.approval.decided` witness record is now verified against the `key.rotated` history by `lib/auth/verify-witness-record.ts` (#2684). Other in-process verifiers use the current key only (`loops/verify-publisher-signature.ts` at ingest) and remain a **GAP** until they adopt it. The operator countersign (#2082) is signed by the *operator's* key and is unaffected. |
 | **S6. FAIR manifests and settle receipts** | `lib/kernel/sign-fair-manifest.ts`, `lib/media/create-asset.ts`, `manifest-helpers.ts`, `content-signer.ts`; receipts: `lib/media/settle.ts`, `settle/confirm/route.ts`, `packages/fair/src/receipt.ts` | Receipts minted before the swap fail verification (streaming 24 h, other actions 30 d); buyers re-settle. `.fair.json` manifests on disk keep a signature by the old key. | **GAP.** Current key only. No re-sign sweep exists for manifests. |
 | **S7. DFOS content chain (federation)** | `lib/auth/dfos.ts` (`createAttestationEntry`), `packages/dfos/src/content-publish.ts` (uses `AUTH_PRIVATE_KEY` when `DFOS_PRIVATE_KEY_HEX` is unset) | New entries signed by the new key are rejected by relays/peers until the node's DFOS identity chain registers that key (a chain `update`, `updateIdentityChain` in `packages/dfos/src/bridge.ts`). This is the "re-announce" step. | Peers and the relay, via the DFOS chain, which keeps key history natively. `key.rotated` is not needed for this role. If the node has no DFOS identity chain, `createAttestationEntry` already skips with a warning and there is nothing to re-announce. |
 
@@ -378,9 +378,9 @@ and for any external verifier that pinned it.
    The usual argument for a slower log cadence is that old signatures must stay
    verifiable for ever. `key.rotated` supplies the *record* that makes that possible
    (one attestation plus `trustedPublicKeysAt`), but the *verifiers* are not all there
-   yet: only Retrace (S3) consumes the history today, and stored witness records under
-   the vault-derived DID (S5), node-as-witness signatures (S4) and FAIR receipts (S6)
-   remain gaps (§7). Until those verifiers adopt it, a rotation leaves those records
+   yet: only Retrace (S3) and the S5 witness-record verifier (`verify-witness-record.ts`,
+   #2684) consume the history today, and node-as-witness signatures (S4), FAIR receipts
+   (S6) and the loops publisher check remain gaps (§7). Until those verifiers adopt it, a rotation leaves those records
    unverifiable. That is a fixed, one-time piece of verifier work per consumer, the same
    whatever the cadence; it is a reason to finish §7, not a reason to run the log key
    on a different schedule from the identity key.
@@ -427,7 +427,9 @@ closed by it, but each now has a concrete place to attach.
 - **Verifiers that resolve only the current key** (S4/S5/S6): `lib/auth/document-signatures.ts`,
   FAIR manifest and receipt verification, `loops/verify-publisher-signature.ts`.
   `verifyNodeSignatureAcrossKeyHistory` (kernel) and `trustedPublicKeysAt`
-  (`@imajin/auth/key-rotation`) are the building blocks; only Retrace consumes them today.
+  (`@imajin/auth/key-rotation`) are the building blocks; Retrace and the S5 witness-record
+  verifier (`verifyWitnessRecord` / `verifyOperatorApprovalWitnessRecord`, #2684) consume
+  them today. The S5 verifier is a library function: nothing calls it from a route or job yet.
 - **Corpus TOFU** adds a new key because it shares a kid with the pin. It could instead
   require a verified `key.rotated` from old to new, which would also remove the
   "restart inside the grace window" constraint.
@@ -474,6 +476,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/api/auth/revoke/route.ts` — S4
 - `apps/kernel/src/lib/auth/document-signatures.ts` — S4
 - `apps/kernel/src/lib/notify/operator-approvals-service.ts` — S5
+- `apps/kernel/src/lib/auth/verify-witness-record.ts` — S5 (verifier; consumes the `key.rotated` history)
 - `apps/kernel/src/lib/notify/operator-countersign.ts` — S5 (mention only; the countersign is the operator's key)
 - `apps/kernel/src/lib/consent-requests/consent-requests.ts` — S5
 - `apps/kernel/src/db/schemas/consent-requests.ts` — S5 (mention only)
