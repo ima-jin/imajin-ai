@@ -145,7 +145,7 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 | Codebase | 450,950 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' \| xargs cat \| wc -l` |
 | Commits | 4,579 | `git rev-list --count HEAD` |
 | First commit | 2026-02-11 | `git log --reverse --format=%ad --date=short` |
-| Services | the kernel + 6 apps built on Imajin, 29 shared packages | `ls apps`, `ls packages` |
+| Services | the kernel + 5 apps built on Imajin, 29 shared packages | `ls apps`, `ls packages` |
 
 _As of commit `5d278d72` (2026-10-05). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
 <!-- stats:end -->
