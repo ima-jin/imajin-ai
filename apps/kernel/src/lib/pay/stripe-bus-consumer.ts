@@ -219,7 +219,7 @@ async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
         currency: currency.toLowerCase(),
         metadata: session.metadata,
         receipt_email: session.customer_email ?? null,
-      });
+      }, session.rail);
     }
   } catch (error) {
     log.error({ err: String(error), payTransactionId, ownerDid }, 'BYO Stripe checkout settlement error');
@@ -441,11 +441,15 @@ async function recordProcessingFee(tx: TxRow, amountCents: number, currency: str
   }).catch((err) => log.error({ err: String(err) }, 'fee.record publish error'));
 }
 /**
- * Notify coffee service about payment completion or failure
+ * Notify coffee service about payment completion or failure.
+ *
+ * `rail` (#2773) is set only for a tip the kernel already settled on the seller's own Stripe account
+ * (`stripe-byo`): coffee must not call `/pay/api/settle` for it (the kernel refuses with 409).
  */
 async function notifyCoffeeService(
   type: 'payment.succeeded' | 'payment.failed',
-  paymentIntent: StripePaymentIntentLike
+  paymentIntent: StripePaymentIntentLike,
+  rail?: string,
 ) {
   const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
   const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
@@ -471,6 +475,7 @@ async function notifyCoffeeService(
         message: paymentIntent.metadata.message || null,
         stripeSessionId: paymentIntent.id,
         status: type === 'payment.succeeded' ? 'completed' : 'failed',
+        ...(rail && { rail }),
       }),
     });
 

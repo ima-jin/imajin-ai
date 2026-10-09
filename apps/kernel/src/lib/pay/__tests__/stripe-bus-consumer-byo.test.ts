@@ -190,6 +190,38 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     expect(JSON.parse(init.body)).toMatchObject({ type: 'payment.succeeded', tipId: 'tip_1', paymentId: 'pi_1', amount: 2500, status: 'completed' });
   });
 
+  it('tells coffee the tip was settled on the seller\'s own Stripe account (rail), so it does not call /pay/api/settle (#2773)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.COFFEE_SERVICE_URL = 'https://coffee.test';
+    process.env.COFFEE_WEBHOOK_SECRET = 'coffee-secret';
+    h.settleCheckoutMock.mockResolvedValue({
+      settled: true,
+      session: { ...SESSION, rail: 'stripe-byo', metadata: { service: 'coffee', tipId: 'tip_1', pageId: 'pg_1', pageHandle: 'h', to_did: 'did:imajin:page' } },
+    });
+
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(JSON.parse(init.body)).toMatchObject({ type: 'payment.succeeded', tipId: 'tip_1', rail: 'stripe-byo' });
+  });
+
+  it('sends coffee no rail when the session carries none (#2773)', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
+    vi.stubGlobal('fetch', fetchMock);
+    process.env.COFFEE_SERVICE_URL = 'https://coffee.test';
+    process.env.COFFEE_WEBHOOK_SECRET = 'coffee-secret';
+    h.settleCheckoutMock.mockResolvedValue({
+      settled: true,
+      session: { ...SESSION, metadata: { service: 'coffee', tipId: 'tip_1' } },
+    });
+
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
+    expect(JSON.parse(init.body)).not.toHaveProperty('rail');
+  });
+
   it.each([
     ['stripe.invoice.paid', {}],
     ['stripe.payment_intent.succeeded', { issuer: 'did:imajin:attacker' }],
