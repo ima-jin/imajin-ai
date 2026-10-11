@@ -762,6 +762,10 @@ export async function notifyEventsService(
         type,
         sessionId: session.id,
         ...(transactionId && { transactionId }),
+        // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
+        ...(session.rail && { rail: session.rail }),
+        // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
+        ...(session.sellerDid && { sellerDid: session.sellerDid }),
         paymentId:
           typeof session.payment_intent === 'string'
             ? session.payment_intent
