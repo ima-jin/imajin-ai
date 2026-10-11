@@ -148,6 +148,40 @@ describe('events checkout notification carries the kernel transactionId', () => 
       expect(postedBody()).toMatchObject({ sessionId: 'cs_test_events_1', transactionId: 'tx_byo_1' });
     });
 
+    it('#2776: forwards the BYO rail marker and the kernel-attested sellerDid top-level', async () => {
+      await notifyEventsService(
+        'checkout.completed',
+        eventsSession({ transactionId: 'tx_byo_1', rail: 'stripe-byo', sellerDid: 'did:imajin:seller' }),
+      );
+
+      expect(postedBody()).toMatchObject({
+        type: 'checkout.completed',
+        sessionId: 'cs_test_events_1',
+        transactionId: 'tx_byo_1',
+        rail: 'stripe-byo',
+        sellerDid: 'did:imajin:seller',
+      });
+    });
+
+    it('#2776: omits rail and sellerDid for a platform-rail checkout', async () => {
+      await notifyEventsService('checkout.completed', eventsSession());
+
+      const body = postedBody();
+      expect(body).not.toHaveProperty('rail');
+      expect(body).not.toHaveProperty('sellerDid');
+    });
+
+    it('#2776: never lets metadata.sellerDid stand in for the attested sellerDid', async () => {
+      await notifyEventsService(
+        'checkout.completed',
+        eventsSession({ metadata: { eventId: 'evt_1', service: 'events', sellerDid: 'did:imajin:spoofed' } }),
+      );
+
+      const body = postedBody();
+      expect(body).not.toHaveProperty('sellerDid');
+      expect(body.metadata.sellerDid).toBe('did:imajin:spoofed');
+    });
+
     it('does not look up a transaction for payment.failed', async () => {
       await notifyEventsService('payment.failed', eventsSession());
 
