@@ -1,12 +1,28 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { createFileKernelWebhookPinStore, verifyKernelWebhook } from '../src/kernel-webhook';
 import { withKernelPinLock } from '../src/kernel-webhook-lock';
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
+
+function failNextAcquisition(code: number | 'missing') {
+  vi.mocked(spawn).mockImplementationOnce(() => {
+    const child = Object.assign(new EventEmitter(), { stderr: new PassThrough() });
+    queueMicrotask(() => {
+      if (code === 'missing') child.emit('error', Object.assign(new Error('Missing flock'), { code: 'ENOENT' }));
+      else child.emit('exit', code);
+    });
+    return child as ReturnType<typeof spawn>;
+  });
+}
 
 const namespace = 'https://kernel.example/auth';
 const digest = createHash('sha256').update(namespace).digest('hex');
@@ -149,25 +165,24 @@ describe('kernel public pin OS advisory locks', () => {
 
   it('fails typed STORE when flock is missing; never falls back to unsafe lockfiles', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kernel-lock-unavailable-'));
-    vi.stubEnv('PATH', '');
-    try {
-      const request = new Request('https://app.example/webhook', {
-        method: 'POST', body: '{}',
-        headers: {
-          'x-kernel-audience': 'did:imajin:test',
-          'x-kernel-timestamp': String(Math.floor(Date.now() / 1000)),
-          'x-kernel-nonce': '8fd641eb-18bd-4bd2-bf1b-32c23858b38a',
-          'x-kernel-kid': 'auth-0123456789abcdef',
-          'x-kernel-signature': '0'.repeat(128),
-        },
-      });
-      await expect(verifyKernelWebhook(request, {
-        audience: 'did:imajin:test', authServiceUrl: namespace,
-        pinStore: createFileKernelWebhookPinStore(directory),
-      })).rejects.toMatchObject({ code: 'STORE' });
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    failNextAcquisition('missing');
+    const request = new Request('https://app.example/webhook', {
+      method: 'POST', body: '{}',
+      headers: {
+        'x-kernel-audience': 'did:imajin:test',
+        'x-kernel-timestamp': String(Math.floor(Date.now() / 1000)),
+        'x-kernel-nonce': '8fd641eb-18bd-4bd2-bf1b-32c23858b38a',
+        'x-kernel-kid': 'auth-0123456789abcdef',
+        'x-kernel-signature': '0'.repeat(128),
+      },
+    });
+    await expect(verifyKernelWebhook(request, {
+      audience: 'did:imajin:test', authServiceUrl: namespace,
+      pinStore: createFileKernelWebhookPinStore(directory),
+    })).rejects.toMatchObject({ code: 'STORE' });
+    expect(spawn).toHaveBeenLastCalledWith('/usr/bin/flock', ['--exclusive', '--timeout', '10', '3'], {
+      stdio: ['ignore', 'ignore', 'pipe', expect.any(Number)],
+    });
   });
 
   it('fails closed when the parent cannot create the lock path', async () => {
@@ -177,19 +192,14 @@ describe('kernel public pin OS advisory locks', () => {
   });
   it('fails closed on unexpected acquisition helper exit without invoking the operation', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kernel-lock-helper-exit-'));
-    await writeFile(join(directory, 'flock'), '#!/bin/sh\nexit 2\n', { mode: 0o700 });
     const lockPath = join(directory, 'test.lock');
     await writeFile(lockPath, 'legacy-owner');
-    vi.stubEnv('PATH', directory);
+    failNextAcquisition(2);
     const operation = vi.fn(async () => true);
-    try {
-      await expect(withKernelPinLock(lockPath, operation))
-        .rejects.toThrow('Kernel pin OS lock unavailable or timed out');
-      expect(operation).not.toHaveBeenCalled();
-      expect(await readFile(lockPath, 'utf8')).toBe('legacy-owner');
-    } finally {
-      vi.unstubAllEnvs();
-    }
+    await expect(withKernelPinLock(lockPath, operation))
+      .rejects.toThrow('Kernel pin OS lock unavailable or timed out');
+    expect(operation).not.toHaveBeenCalled();
+    expect(await readFile(lockPath, 'utf8')).toBe('legacy-owner');
     await expect(withKernelPinLock(lockPath, operation)).resolves.toBe(true);
   });
 });

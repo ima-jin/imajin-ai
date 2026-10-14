@@ -10,7 +10,7 @@ import { hostname } from 'node:os';
 // Empty/malformed legacy files need no destructive stale-lock recovery.
 
 function acquire(file: FileHandle): Promise<void> {
-  const child = spawn('flock', ['--exclusive', '--timeout', '10', '3'], {
+  const child = spawn('/usr/bin/flock', ['--exclusive', '--timeout', '10', '3'], {
     stdio: ['ignore', 'ignore', 'pipe', file.fd],
   });
   child.stderr?.resume();
@@ -23,7 +23,7 @@ function acquire(file: FileHandle): Promise<void> {
   });
 }
 
-/** Requires util-linux flock on the server; unavailable runtimes fail closed. */
+/** Requires Linux util-linux /usr/bin/flock; missing binaries fail closed, never search PATH. */
 export async function withKernelPinLock<T>(path: string, operation: () => Promise<T>): Promise<T> {
   const file = await open(path, 'a+', 0o600);
   try {
