@@ -31,8 +31,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaymentService } from '@/src/lib/pay/pay';
-import { requireAuth, requireAppAuth, resolveEffectiveDid } from '@imajin/auth';
+import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
+import { escrowSeller, updateSellerEscrow } from '@/src/lib/pay/providers/seller-stripe-payments';
+import { findSellerEscrow, markSellerEscrow, persistSellerEscrow } from '@/src/lib/pay/providers/seller-transactions';
+import { getCryptoOnlyProvider } from '@/src/lib/pay/providers/crypto-only';
+import { isCryptoCurrency } from '@/src/lib/pay/types';
+import { requireAuth, requireAppAuth, resolveActingDid, resolveEffectiveDid } from '@imajin/auth';
 import type { EscrowRequest, Currency } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
@@ -52,6 +56,22 @@ interface EscrowBody {
 }
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+async function authenticateEscrowUpdate(request: NextRequest) {
+  if (request.headers.get('x-app-did')) {
+    const result = await requireAppAuth(request, { scope: 'wallet:write' });
+    if ('error' in result) {
+      return { denied: NextResponse.json({ error: result.error }, { status: result.status }) };
+    }
+    return { actingDid: result.appAuth.userDid };
+  }
+  const result = await requireAuth(request);
+  if ('error' in result) {
+    return { denied: NextResponse.json({ error: result.error }, { status: result.status }) };
+  }
+  const denied = enforceRoutePolicy(result.identity, 'pay.escrow.update');
+  if (denied) return { denied };
+  return { actingDid: resolveActingDid(result.identity) };
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -92,8 +112,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
     
-    const pay = getPaymentService();
-    
     const escrowRequest: EscrowRequest = {
       amount: body.amount,
       currency: body.currency || 'CAD',
@@ -109,7 +127,19 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       metadata: body.metadata,
     };
     
-    const result = await pay.escrow(escrowRequest);
+    let result;
+    let publishableKey: string | undefined;
+    let clientSecret: string | undefined;
+    if (isCryptoCurrency(escrowRequest.currency)) {
+      result = await getCryptoOnlyProvider().escrow(escrowRequest);
+    } else {
+      const keys = await resolveDidStripeKeys(body.to);
+      if (!keys.publishableKey) throw new SellerNoCardRailError();
+      publishableKey = keys.publishableKey;
+      result = await escrowSeller(keys.secretKey, escrowRequest);
+      clientSecret = result.clientSecret;
+      await persistSellerEscrow(result, escrowRequest);
+    }
     
     return NextResponse.json({
       id: result.id,
@@ -121,9 +151,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       to: result.to,
       createdAt: result.createdAt.toISOString(),
       expiresAt: result.expiresAt?.toISOString(),
+      clientSecret,
+      publishableKey,
     }, { headers: cors });
   } catch (error) {
-    log.error({ err: String(error) }, 'Escrow error');
+    if (error instanceof SellerNoCardRailError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 422, headers: cors });
+    }
+    log.error({}, 'Escrow error');
     return NextResponse.json(
       { error: 'Escrow operation failed' },
       { status: 500, headers: cors }
@@ -147,35 +182,25 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
       );
     }
     
-    // App auth path
-    if (request.headers.get('x-app-did')) {
-      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
-      if ('error' in appResult) {
-        return NextResponse.json(
-          { error: appResult.error },
-          { status: appResult.status }
-        );
-      }
-    } else {
-      const authResult = await requireAuth(request);
-      if ('error' in authResult) {
-        return NextResponse.json(
-          { error: authResult.error },
-          { status: authResult.status }
-        );
-      }
-      const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.escrow.update');
-      if (delegationDenied) return delegationDenied;
-    }
+    const auth = await authenticateEscrowUpdate(request);
+    if (auth.denied) return auth.denied;
+    const actingDid = auth.actingDid;
 
-    const pay = getPaymentService();
-    
-    let result;
-    if (action === 'refund') {
-      result = await pay.refundEscrow(escrowId, provider);
-    } else {
-      result = await pay.releaseEscrow(escrowId, provider);
+    if (provider !== 'stripe') {
+      return NextResponse.json({ error: 'Escrow release/refund not supported by this provider' }, { status: 400 });
     }
+    const transaction = await findSellerEscrow(escrowId);
+    if (!transaction || transaction.rail !== 'stripe-byo' || !transaction.toDid) {
+      log.error({}, 'Legacy or unowned escrow cannot be released/refunded; platform fallback is disabled');
+      return NextResponse.json({ error: 'Escrow has no seller-owned card rail', code: 'LEGACY_ESCROW_UNSUPPORTED' }, { status: 422 });
+    }
+    const metadata = transaction.metadata as Record<string, unknown> | null;
+    if (![transaction.fromDid, transaction.toDid, metadata?.arbiter_did].includes(actingDid)) {
+      return NextResponse.json({ error: 'Forbidden - identity is not an escrow party' }, { status: 403 });
+    }
+    const keys = await resolveDidStripeKeys(transaction.toDid);
+    const result = await updateSellerEscrow(keys.secretKey, escrowId, action === 'refund' ? 'refund' : 'release');
+    await markSellerEscrow(transaction.id, result.status === 'refunded' ? 'refunded' : 'released');
     
     return NextResponse.json({
       id: result.id,
@@ -183,12 +208,15 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
       status: result.status,
       amount: result.amount,
       currency: result.currency,
-      from: result.from,
-      to: result.to,
+      from: transaction.fromDid,
+      to: transaction.toDid,
       createdAt: result.createdAt.toISOString(),
     });
   } catch (error) {
-    log.error({ err: String(error) }, 'Escrow release error');
+    if (error instanceof SellerNoCardRailError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 422 });
+    }
+    log.error({}, 'Escrow release error');
     return NextResponse.json(
       { error: 'Escrow operation failed' },
       { status: 500 }

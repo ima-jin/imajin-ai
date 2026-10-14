@@ -30,7 +30,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaymentService } from '@/src/lib/pay/pay';
+import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
+import { chargeSeller } from '@/src/lib/pay/providers/seller-stripe-payments';
+import { persistSellerCharge } from '@/src/lib/pay/providers/seller-transactions';
+import { getCryptoOnlyProvider } from '@/src/lib/pay/providers/crypto-only';
+import { isCryptoCurrency } from '@/src/lib/pay/types';
 import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
@@ -42,12 +46,27 @@ interface ChargeBody {
   amount: number;
   currency: Currency;
   to: Recipient;
+  sellerDid?: string;
   description?: string;
   metadata?: Record<string, string>;
   idempotencyKey?: string;
 }
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+async function authenticateCharge(request: NextRequest, cors: Record<string, string>) {
+  if (request.headers.get('x-app-did')) {
+    const result = await requireAppAuth(request, { scope: 'wallet:write' });
+    if ('error' in result) {
+      return { denied: NextResponse.json({ error: result.error }, { status: result.status, headers: cors }) };
+    }
+    return { fromDid: result.appAuth.userDid };
+  }
+  const result = await requireAuth(request);
+  if ('error' in result) return {};
+  const denied = enforceRoutePolicy(result.identity, 'pay.charge', { headers: cors });
+  if (denied) return { denied };
+  return { fromDid: resolveActingDid(result.identity) };
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -86,29 +105,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Optional: capture fromDid if authenticated
-    let fromDid: string | undefined;
-
-    // App auth path
-    if (request.headers.get('x-app-did')) {
-      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
-      if ('error' in appResult) {
-        return NextResponse.json(
-          { error: appResult.error },
-          { status: appResult.status, headers: cors }
-        );
-      }
-      fromDid = appResult.appAuth.userDid;
-    } else {
-      const authResult = await requireAuth(request);
-      if (!('error' in authResult)) {
-        fromDid = resolveActingDid(authResult.identity);
-        const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.charge', { headers: cors });
-        if (delegationDenied) return delegationDenied;
-      }
-    }
-    
-    const pay = getPaymentService();
+    // Anonymous charges remain supported; app requests must authenticate.
+    const auth = await authenticateCharge(request, cors);
+    if (auth.denied) return auth.denied;
+    const fromDid = auth.fromDid;
     
     const chargeRequest: ChargeRequest = {
       amount: body.amount,
@@ -120,7 +120,24 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       idempotencyKey: body.idempotencyKey,
     };
     
-    const result = await pay.charge(chargeRequest);
+    let result;
+    let publishableKey: string | undefined;
+    if (isCryptoCurrency(body.currency)) {
+      result = await getCryptoOnlyProvider().charge(chargeRequest);
+    } else {
+      const sellerDid = recipient.to.did ?? body.sellerDid;
+      if (typeof sellerDid !== 'string' || !sellerDid.startsWith('did:')) {
+        return NextResponse.json(
+          { error: 'to.did or sellerDid is required for card charges' },
+          { status: 400, headers: cors }
+        );
+      }
+      const keys = await resolveDidStripeKeys(sellerDid);
+      if (!keys.publishableKey) throw new SellerNoCardRailError();
+      publishableKey = keys.publishableKey;
+      result = await chargeSeller(keys.secretKey, sellerDid, chargeRequest);
+      await persistSellerCharge(result, sellerDid, fromDid);
+    }
     
     return NextResponse.json({
       id: result.id,
@@ -130,12 +147,16 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       currency: result.currency,
       fee: result.fee,
       clientSecret: result.clientSecret,
+      publishableKey,
       signature: result.signature,
       createdAt: result.createdAt.toISOString(),
       metadata: result.metadata,
     }, { headers: cors });
   } catch (error) {
-    log.error({ err: String(error) }, 'Charge error');
+    if (error instanceof SellerNoCardRailError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 422, headers: cors });
+    }
+    log.error({}, 'Charge error');
     return NextResponse.json(
       { error: 'Charge failed' },
       { status: 500, headers: cors }
