@@ -752,6 +752,9 @@ paths:
         The recipient names a rail customer with the rail-generic `to.customerId` (+ optional
         `to.provider`); the original `to.stripeCustomerId` keeps working as an alias (#2177).
         Auth is optional — if provided, the charged DID is linked to the transaction.
+        Card charges require `to.did` (or `sellerDid` for a customer-only recipient).
+        Credentials come only from that seller's sealed Stripe connector; missing secret
+        or publishable key returns `SELLER_NO_CARD_RAIL`, never a node account fallback.
       security:
         - bearerAuth: []
       requestBody:
@@ -780,6 +783,7 @@ paths:
                   type: object
                   additionalProperties: { type: string }
                 idempotencyKey: { type: string }
+                sellerDid: { type: string, description: "Seller DID for card charges when to.did is absent" }
       responses:
         "200":
           description: Charge created
@@ -794,6 +798,7 @@ paths:
                   amount: { type: number }
                   currency: { type: string }
                   clientSecret: { type: string, description: "Rail client confirmation secret for the frontend (Stripe: PaymentIntent client secret)" }
+                  publishableKey: { type: string, description: "Client key from the same seller connector as the PaymentIntent" }
                   signature: { type: string, description: "Solana — if pre-signed" }
         "400":
           description: Invalid request
@@ -814,7 +819,9 @@ paths:
         row is then bound to the app's DID and records the declared `payeeManifest` (falling
         back to `fairManifest`), and the returned `transactionId` is what the app later passes
         to `POST /api/settle`. Requires the operator-approved `pay:settle` scope (403 otherwise).
-        Checkout without an app-service token is unchanged and is never settleable via the app path.
+        Checkout requires a seller DID (also accepted as `metadata.sellerDid`).
+        Seller-owned charges settle through the seller's webhook, not `/api/settle`;
+        no platform balance moves. No app token means no app binding.
       security:
         - bearerAuth: []
         - appServiceToken: []
@@ -842,7 +849,7 @@ paths:
                 currency:
                   type: string
                   enum: [USD, CAD, EUR, GBP]
-                mode: { type: string, enum: [payment, subscription], default: payment }
+                mode: { type: string, enum: [payment], default: payment }
                 customerEmail: { type: string, format: email }
                 successUrl: { type: string, format: uri }
                 cancelUrl: { type: string, format: uri }
@@ -855,7 +862,8 @@ paths:
                   type: string
                   description: |
                     #2757: the seller whose OWN Stripe account (the BYO connector, #1785) is charged.
-                    A seller with no working card rail is a 400 `SELLER_NO_CARD_RAIL`. Absent = a platform-own charge.
+                    A seller with no working card rail is a 400 `SELLER_NO_CARD_RAIL`.
+                    Absent (including metadata.sellerDid) is rejected; no platform-own fallback.
       responses:
         "200":
           description: Checkout session created
@@ -888,7 +896,7 @@ paths:
         "502":
           description: >-
             Stripe refused or could not be reached on the seller's own account — `code` is one of
-            `CARD_RAIL_KEY_MISSING`, `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`
+            `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1016,6 +1024,8 @@ paths:
       description: |
         Holds funds from `from` until conditions are met (time-based auto-release or
         multi-signature release). Requires Bearer auth.
+        Card holds use the recipient `to` DID's sealed Stripe connector. The returned
+        clientSecret and publishableKey belong to that account. No node credential fallback.
       security:
         - bearerAuth: []
       requestBody:
@@ -1057,6 +1067,8 @@ paths:
                   currency: { type: string }
                   from: { type: string }
                   to: { type: string }
+                  clientSecret: { type: string }
+                  publishableKey: { type: string }
                   createdAt: { type: string, format: date-time }
         "400":
           description: Invalid request
@@ -1072,6 +1084,9 @@ paths:
       tags: [pay]
       operationId: releaseEscrow
       summary: Release or refund an escrow
+      description: |
+        Card updates use the persisted escrow recipient's sealed connector, not caller metadata.
+        Only a recorded escrow party may update it. Legacy platform escrows fail clearly.
       security:
         - bearerAuth: []
       requestBody:
@@ -1080,10 +1095,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [action, escrowId]
+              required: [action, escrowId, provider]
               properties:
                 action: { type: string, enum: [release, refund] }
                 escrowId: { type: string }
+                provider: { type: string, enum: [stripe] }
       responses:
         "200":
           description: Escrow settled
@@ -1297,6 +1313,10 @@ paths:
         The kernel resolves the original transaction and refuses another app's payment
         or an unbound payment before refund or ledger side effects. Scope approval is
         checked live. No shared service key or user session substitutes for the app.
+        Only `stripe-byo` payments are supported: the persisted `toDid` selects the
+        account that took the charge. Legacy platform refunds fail with
+        `LEGACY_PLATFORM_PAYMENT` and a log line. BYO refunds do not move node balances.
+        Caller-controlled PaymentIntent metadata is never authority.
       security:
         - appServiceToken: []
       requestBody:
@@ -1308,7 +1328,7 @@ paths:
               required: [paymentId]
               properties:
                 paymentId: { type: string, description: "Stripe payment/session id resolved to the original kernel transaction" }
-                amount: { type: number, description: "Partial refund amount in cents (omit for full refund)" }
+                amount: { type: integer, minimum: 1, description: "Partial refund amount in cents (omit to refund the remaining amount)" }
                 reason: { type: string }
       responses:
         "200":
@@ -1345,6 +1365,8 @@ paths:
         The kernel rejects app mismatches and legacy unbound pledges, then derives the amount,
         currency, customer and payment method from its recorded transaction and the confirmed
         Stripe SetupIntent. Caller-supplied card and amount fields are not authority.
+        The persisted pledge seller DID supplies the sealed Stripe key; no node account
+        fallback. Setup/customer/card ownership is verified on that same seller account.
         A pending transaction is atomically claimed as charging before the rail call. Completed
         results can be replayed; an interrupted or ambiguous charging outcome fails closed and
         requires reconciliation, not an automatic second charge after rail idempotency expires.
