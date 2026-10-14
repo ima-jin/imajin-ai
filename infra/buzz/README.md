@@ -10,25 +10,15 @@ workspace (#1414 / #1409).
 
 ## Quick start (demo)
 
-### Step 1 — Copy and fill in secrets
+### Step 1 — Provision sealed credentials
 
-```bash
-cd infra/buzz
-cp .env.example .env
-```
+Credentials must be born and sealed in the vault and delivered by a provisioning
+tool, never generated, printed, pasted or copied into an env file. This demo
+does not yet ship a vault-to-Compose provisioning adapter; do not substitute
+shell-generated credentials. Provisioning that adapter is required before a new
+stack can be booted under the secret rule.
 
-Generate the stable secrets (run once — never rotate `BUZZ_RELAY_PRIVATE_KEY`):
-
-```bash
-echo "BUZZ_RELAY_PRIVATE_KEY=$(openssl rand -hex 32)"
-echo "BUZZ_GIT_HOOK_HMAC_SECRET=$(openssl rand -hex 32)"
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
-echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
-echo "BUZZ_S3_ACCESS_KEY=$(openssl rand -hex 16)"
-echo "BUZZ_S3_SECRET_KEY=$(openssl rand -hex 16)"
-```
-
-Paste each value into `.env`. Then set `RELAY_OWNER_PUBKEY` — Ryan's 64-char
+Set the non-secret `RELAY_OWNER_PUBKEY` — Ryan's 64-char
 hex pubkey (convert from `npub1…` using
 `npx @cmdcode/nip19 decode npub1yourkey`).
 

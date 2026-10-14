@@ -270,8 +270,8 @@ against the registered-app contract. What changes here:
   standalone app claims its own.
 - The kernel pay webhook notifies learn over HTTP when a paid course enrollment is paid
   (`notifyLearnService` in `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading
-  `LEARN_SERVICE_URL` and `LEARN_WEBHOOK_SECRET`; ima-jin/learn#13). `LEARN_WEBHOOK_SECRET`
-  must equal learn's `WEBHOOK_SECRET`. A missing var or a learn outage is logged and never
+  `LEARN_SERVICE_URL`; ima-jin/learn#13). Callbacks carry a detached kernel signature,
+  verified with the published key through `verifyKernelWebhook` (#2798). A learn outage is logged and never
   fails the Stripe ack.
 
 ## 7. coffee is external now (#2500)
@@ -323,9 +323,9 @@ kernel API). What changes here:
 - The `market` Postgres schema and its tables are untouched. See
   `migrations/BASELINE.md` ("#2512 — market per-table ownership decision").
 - The kernel pay webhook still notifies market over HTTP (`notifyMarketService` in
-  `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading `MARKET_SERVICE_URL` and
-  `MARKET_WEBHOOK_SECRET`); that is the public contract the standalone app consumes
-  (it settles its own purchases) and is unchanged. Leave both env vars in place.
+  `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading `MARKET_SERVICE_URL`);
+  the standalone app verifies the detached kernel signature with `verifyKernelWebhook`
+  (#2798) and settles its own purchases. Keep the non-secret service URL configured.
 - `scripts/provision-service-bootstrap.mjs --all` discovers services from
   `apps/*/.env.example`, so it no longer mints a market bootstrap identity: the
   standalone app claims its own (`ima-jin/market` `docs/REGISTRATION.md`).

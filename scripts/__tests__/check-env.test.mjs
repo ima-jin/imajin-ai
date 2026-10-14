@@ -9,6 +9,20 @@ import { fileURLToPath } from 'node:url';
 // node then resolves against the cwd into "C:\D:\..." and cannot load.
 const SCRIPT = fileURLToPath(new URL('../check-env.ts', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+describe('signed kernel callback configuration (#2798)', () => {
+  it.each([
+    'apps/kernel/.env.example',
+    'packages/config/src/services.ts',
+    'scripts/check-env.ts',
+    'scripts/setup-local.sh',
+    'docs/ENVIRONMENTS.md',
+    'docs/ops/DEPLOY-POSTURE.md',
+    'deploy/README.md',
+  ])('does not require a shared app webhook secret in %s', (file) => {
+    expect(readFileSync(join(REPO_ROOT, file), 'utf8'))
+      .not.toMatch(/(COFFEE|LEARN|MARKET|EVENTS|NOTIFY)_WEBHOOK_SECRET/);
+  });
+});
 describe('retired Stripe Connect configuration (#2791)', () => {
   it.each([
     'apps/kernel/.env.example',

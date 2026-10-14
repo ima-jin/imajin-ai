@@ -86,6 +86,7 @@ export default defineConfig({
       { find: '@imajin/auth/grant-scopes', replacement: resolve(__dirname, 'packages/auth/src/grant-scopes.ts') },
       { find: '@imajin/auth/delegation-policy', replacement: resolve(__dirname, 'packages/auth/src/delegation-policy.ts') },
       { find: '@imajin/auth/resolve-db', replacement: resolve(__dirname, 'packages/auth/src/resolve-db.ts') },
+      { find: '@imajin/auth/kernel-webhook', replacement: resolve(__dirname, 'packages/auth/src/kernel-webhook.ts') },
       { find: '@imajin/auth', replacement: resolve(__dirname, 'packages/auth/src/index.ts') },
       // Anchored: the bare '@imajin/auth' entry above is a prefix match, so it must not swallow
       // '@imajin/auth-client' (it would resolve to 'packages/auth/src/index.ts-client').

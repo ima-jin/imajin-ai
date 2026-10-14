@@ -292,6 +292,17 @@ paths:
         publish both the current and a just-rotated-out key during a grace
         window (a `validUntil`-bounded entry) — consumers should trust every
         key in `keys`, not just the one named by `current`.
+
+        Kernel-to-app HTTP callbacks use this same key set. The
+        @ima-jin/auth verifyKernelWebhook helper pins the first set, adds
+        rotation keys only when the fetched set overlaps the pin by kid AND
+        public key, and accepts only currently published non-expired keys.
+        Detached Ed25519 headers: x-kernel-kid, x-kernel-timestamp (Unix seconds),
+        x-kernel-nonce, x-kernel-signature (hex). The signature binds timestamp,
+        nonce, uppercase method, pathname plus query, and SHA-256 of raw body.
+        Default timestamp window is ±300 seconds; nonces are consumed atomically.
+        SDK failures are typed KernelWebhookError values; see
+        docs/security/kernel-webhooks.md for codes and persistent replay stores.
       security: []
       responses:
         "200":
