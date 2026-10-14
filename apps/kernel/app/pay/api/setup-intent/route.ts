@@ -130,7 +130,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       currency: currency.toUpperCase(),
       status: 'pending',
       ...externalRefColumns(setupIntent.id),
-      metadata: { eventId: metadata.eventId, stripeCustomerId: customerId },
+      metadata: { eventId: metadata.eventId, stripeCustomerId: customerId, setupIntentId: setupIntent.id },
     });
 
     return NextResponse.json({

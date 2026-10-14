@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { db, transactions } from '@/src/db';
 import { whereExternalRef } from './external-ref';
 import { getStripeClient } from './providers/stripe-client';
@@ -16,6 +16,7 @@ export interface BoundPledge {
   currency: string;
   customerId: string;
   alreadyCharged: boolean;
+  metadata: Record<string, unknown>;
 }
 
 /** Preflight the entire batch before any charge: caller fields never establish ownership. */
@@ -32,7 +33,10 @@ export async function loadAppPledges(
       return { error: 'Each pledge requires a unique setupIntentId and a pledgeId', status: 400 };
     }
     seen.add(ref.setupIntentId);
-    const [row] = await db.select().from(transactions).where(whereExternalRef(ref.setupIntentId)).limit(1);
+    const [row] = await db.select().from(transactions).where(or(
+      whereExternalRef(ref.setupIntentId),
+      and(eq(transactions.type, 'pledge'), sql`${transactions.metadata}->>'setupIntentId' = ${ref.setupIntentId}`),
+    )).limit(1);
     const metadata = row?.metadata as Record<string, unknown> | null;
     if (!row || row.appDid !== appDid || row.type !== 'pledge' || metadata?.eventId !== eventId) {
       return { error: 'Forbidden - pledge was not created by this app for this campaign', status: 403 };
@@ -52,6 +56,7 @@ export async function loadAppPledges(
       currency: row.currency.toLowerCase(),
       customerId: metadata.stripeCustomerId,
       alreadyCharged: row.status === 'completed',
+      metadata,
     });
   }
   return result;
@@ -67,6 +72,12 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
   if (setup.status !== 'succeeded' || customer !== pledge.customerId || !paymentMethod) {
     throw new Error('Pledge setup is not confirmed for the recorded customer');
   }
+  // Claim once before the rail call. An interrupted charge is never retried
+  // after Stripe's idempotency retention expires: it needs reconciliation.
+  const claimed = await db.update(transactions).set({ status: 'charging' }).where(and(
+    eq(transactions.id, pledge.transactionId), eq(transactions.status, 'pending'),
+  )).returning({ id: transactions.id });
+  if (claimed.length === 0) throw new Error('Pledge charge already claimed; reconcile before retrying');
   const payment = await stripe.paymentIntents.create({
     amount: pledge.amount,
     currency: pledge.currency,
@@ -80,6 +91,8 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
     await db.update(transactions).set({
       status: 'completed',
       sourceKind: 'receipt',
+      externalRef: payment.id,
+      metadata: { ...pledge.metadata, setupIntentId: pledge.setupIntentId },
     }).where(eq(transactions.id, pledge.transactionId));
   }
   return payment.status;
