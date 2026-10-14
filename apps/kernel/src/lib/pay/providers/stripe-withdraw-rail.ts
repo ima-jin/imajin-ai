@@ -1,14 +1,10 @@
 /**
  * Stripe implementation of `WithdrawRail` (#2172).
  *
- * The only file outside the pre-existing, allowlisted call sites
- * (`scripts/stripe-import-allowlist.json`) that imports the `stripe`
- * package for the withdraw/reconciliation path — everything else in
- * `lib/pay/rails/` and the withdraw/reconciliation code talks to the
- * `WithdrawRail` interface only. Reuses the shared lazy `getStripeClient()`
- * singleton from `./stripe-client` (#2174 — the same adapter client
- * `webhook-handlers.ts` reads balance-transaction fees from) rather than
- * constructing its own client.
+ * Stripe SDK types and construction stay in `providers/`; the rail registry
+ * and withdraw/reconciliation code talk to the `WithdrawRail` interface only.
+ * Resolves the node DID's sealed connector
+ * lazily per reconciliation call, with no platform-key fallback.
  *
  * #2757: RETIRED for new withdrawals. `execute()` used to `transfers.create`
  * to a seller's Stripe Connect account; Connect is gone and withdrawals run
@@ -18,7 +14,7 @@
  * reconciles against Stripe's transfer feed instead of being orphaned.
  */
 import type Stripe from 'stripe';
-import { getStripeClient } from './stripe-client';
+import { getNodeStripeClient } from './node-stripe';
 import type {
   WithdrawRail,
   WithdrawalIntent,
@@ -39,16 +35,15 @@ function isTransferCreatedEvent(payload: unknown): payload is Stripe.Event & { d
 export class StripeWithdrawRail implements WithdrawRail {
   readonly name = STRIPE_RAIL_NAME;
 
-  execute(intent: WithdrawalIntent): Promise<WithdrawRailExecuteResult> {
+  async execute(intent: WithdrawalIntent): Promise<WithdrawRailExecuteResult> {
     // A caller that reserved funds then reaches here releases the reservation
     // (`executeWithdrawal` releases on a rail throw), so nothing is stranded.
-    return Promise.reject(
-      new Error(`StripeWithdrawRail.execute: intent ${intent.id} refused — Stripe withdrawals are retired (#2757); use the EMT withdrawal request`),
-    );
+    await getNodeStripeClient();
+    throw new Error(`StripeWithdrawRail.execute: intent ${intent.id} refused — Stripe withdrawals are retired (#2757); use the EMT withdrawal request`);
   }
 
   async list({ since }: ListTransfersParams): Promise<RailTransfer[]> {
-    const stripe = getStripeClient();
+    const { stripe } = await getNodeStripeClient();
     const transfers = await stripe.transfers.list({
       created: { gte: Math.floor(since.getTime() / 1000) },
       limit: 100,

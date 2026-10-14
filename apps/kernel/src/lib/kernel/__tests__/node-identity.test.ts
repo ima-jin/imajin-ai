@@ -29,6 +29,33 @@ describe('node-identity', () => {
     expect(await getNodeDid()).toBe('did:imajin:jin');
   });
 
+  it('getNodeDidFromConfig() returns only the configured node DID', async () => {
+    process.env.RELAY_DID = 'did:imajin:relay';
+    sqlMock.mockResolvedValueOnce([{ imajin_did: 'did:imajin:node' }]);
+    const { getNodeDidFromConfig } = await import('../node-identity');
+    expect(await getNodeDidFromConfig()).toBe('did:imajin:node');
+  });
+
+  it('getNodeDidFromConfig() never substitutes RELAY_DID when the node is absent', async () => {
+    process.env.RELAY_DID = 'did:imajin:relay';
+    sqlMock.mockResolvedValueOnce([]);
+    const { getNodeDidFromConfig } = await import('../node-identity');
+    const originalEnv = process.env;
+    const reads: string[] = [];
+    process.env = new Proxy(originalEnv, {
+      get(target, property) {
+        if (property === 'RELAY_DID') reads.push(property);
+        return Reflect.get(target, property);
+      },
+    });
+    try {
+      expect(await getNodeDidFromConfig()).toBe('');
+      expect(reads).toEqual([]);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
   it('getNodeDid() falls back to RELAY_DID when the row is missing', async () => {
     process.env.RELAY_DID = 'did:imajin:fallback';
     sqlMock.mockResolvedValueOnce([]);

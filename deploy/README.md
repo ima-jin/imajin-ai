@@ -39,6 +39,63 @@ Standalone app deployments require their own caller migration, tracked in
 See [scoped pay configuration](../docs/ENVIRONMENTS.md#scoped-pay-callers-2735)
 and [events operator prerequisites](../apps/events/README.md#settlement-registered-app-contract).
 
+## Node-owned Stripe card rail (#2790, #2793)
+
+Topup sells receipt-backed **MJN** (not emitted MJNx) on the **node DID's** Stripe
+account. Historical Stripe withdrawal reconciliation reads that same account;
+new Stripe withdrawals remain retired (#2757), so use the EMT withdrawal request.
+Neither path uses a Stripe credential from an env file, and an unconfigured
+connector does not prevent startup. Topup returns HTTP 503 with
+`NODE_CARD_RAIL_NOT_CONFIGURED` / “Card rail not configured for this node”;
+the Stripe withdraw adapter reports the same error.
+
+Operator provisioning (repeat independently for dev and prod):
+
+1. Confirm the node's public DID via `GET /registry/api/node/self`; it must be
+   the node identity bootstrapped in `relay.relay_config.imajin_did`, **not**
+   the human operator DID, buyer DID, or DFOS relay identity.
+2. In that node account's Stripe Dashboard, create a restricted key with
+   **Checkout Sessions = Write**, **Payment Intents = Read**, and
+   **Webhook Endpoints = Write**. Historical transfer reconciliation also
+   needs **Transfers = Read**. Do not use a full-access secret key.
+3. Use the existing authenticated Stripe BYO connector flow
+   (`POST /stripe/api/token`, the connector card's masked token input), with
+   connector ownership resolving to that exact **node DID**. The route resolves
+   ownership from authenticated context, not a caller-supplied owner field.
+   Do not paste the key while acting as your personal identity: that configures
+   your own card rail, not the node's.
+   The flow seals `stripe-api-key:<nodeDid>` under delegation-grant custody and
+   provisions a per-owner webhook on the node's Stripe account. Its generated
+   signing secret is sealed separately in `stripe-webhook-secret:<nodeDid>`;
+   never copy it to an env file. The shared resolver also reads the optional
+   sealed `stripe-publishable-key:<nodeDid>` field; hosted topup needs no
+   publishable key.
+4. Approve the vault delegation grant (including any pending Tier 1 approval)
+   and the node owner's Stripe connector **`stripe:events`** scope. Both a
+   readable sealed key and this active scope are mandatory: topup crediting
+   consumes the node's verified `payment_intent.succeeded` event. A bare vault
+   field with no active grant or webhook is not a configured card rail.
+5. Check connector status as the node (`GET /stripe/api/token` returns
+   `keySealed: true`, never plaintext). Verify the webhook is enabled and
+   reaches this node's public `/stripe/api/webhook/<routingId>`, then perform
+   a test-mode topup: the pending transaction must complete and credit MJN once.
+   Disconnecting/revoking the node connector must make the next attempt fail
+   with the configuration error; clients do not cache unsealed keys.
+
+If the node has no authenticated connector-owner context yet, leave the card
+rail disabled until the operator provisions that context; do not substitute a
+human-owned key or bypass grants. The generic external-secret import contract
+tracked by [#2260](https://github.com/ima-jin/imajin-ai/issues/2260) is not a
+replacement for the Stripe BYO flow's webhook provisioning and scope approval.
+The admin vault Set/Rotate controls can manage an existing field, but a standalone
+import/set alone does not finish connector setup.
+
+Never place a key value in source, docs, tickets, logs, env files, shell history,
+command-line arguments, or a diagnostic response. Enter it only through the
+authenticated masked connector input over TLS; do not capture request bodies.
+No dev/prod key is sealed by this change. Final removal of legacy Stripe env
+declarations and the old platform webhook is tracked separately by #2794.
+
 ## Keeping them in sync
 
 These are the canonical copies. When a pm2 app is added/removed/re-ported:

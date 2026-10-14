@@ -8,15 +8,25 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const state = vi.hoisted(() => ({
   transferCreateMock: vi.fn(),
   transferListMock: vi.fn(),
+  resolveKeys: vi.fn(),
+  nodeDid: vi.fn(),
+  construct: vi.fn(),
+}));
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDidFromConfig: state.nodeDid }));
+vi.mock('../../rails/stripe-keys', () => ({
+  resolveDidStripeKeys: state.resolveKeys,
+  SellerNoCardRailError: class extends Error {},
 }));
 
 vi.mock('stripe', () => ({
   default: class {
+    constructor(key: string) { state.construct(key); }
     transfers = { create: state.transferCreateMock, list: state.transferListMock };
   },
 }));
 
 import { StripeWithdrawRail } from '../stripe-withdraw-rail';
+import { SellerNoCardRailError } from '../../rails/stripe-keys';
 import type { WithdrawalIntent } from '../../rails/types';
 
 const intent: WithdrawalIntent = {
@@ -32,7 +42,8 @@ const intent: WithdrawalIntent = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.STRIPE_SECRET_KEY = 'sk_test';
+  state.nodeDid.mockResolvedValue('did:imajin:node');
+  state.resolveKeys.mockResolvedValue({ secretKey: 'sk_test_fake', publishableKey: undefined });
 });
 
 describe('StripeWithdrawRail.execute (retired, #2757)', () => {
@@ -40,6 +51,16 @@ describe('StripeWithdrawRail.execute (retired, #2757)', () => {
     const rail = new StripeWithdrawRail();
     await expect(rail.execute(intent)).rejects.toThrow(/retired/);
     expect(state.transferCreateMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['list', 'execute'] as const)('reports an unconfigured node for %s', async (method) => {
+    state.resolveKeys.mockRejectedValue(new SellerNoCardRailError());
+    const rail = new StripeWithdrawRail();
+    await expect(method === 'list' ? rail.list({ since: new Date() }) : rail.execute(intent))
+      .rejects.toMatchObject({ code: 'NODE_CARD_RAIL_NOT_CONFIGURED', message: 'Card rail not configured for this node' });
+    expect(state.construct).not.toHaveBeenCalled();
+    expect(state.transferCreateMock).not.toHaveBeenCalled();
+    expect(state.transferListMock).not.toHaveBeenCalled();
   });
 });
 
@@ -62,6 +83,8 @@ describe('StripeWithdrawRail.list', () => {
     expect(state.transferListMock).toHaveBeenCalledWith(
       expect.objectContaining({ created: { gte: 1700000000 } }),
     );
+    expect(state.resolveKeys).toHaveBeenCalledWith('did:imajin:node');
+    expect(state.construct).toHaveBeenCalledWith('sk_test_fake');
   });
 });
 

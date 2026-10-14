@@ -10,6 +10,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const h = vi.hoisted(() => ({
   settleByoMock: vi.fn(),
   settleCheckoutMock: vi.fn(),
+  settleNodeTopupMock: vi.fn(),
   notifyServicesMock: vi.fn(),
   getRelayEntryMock: vi.fn(),
   errorMock: vi.fn(),
@@ -17,6 +18,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/src/lib/pay/payment-requests/byo-settlement', () => ({ settlePaymentRequestFromByoStripe: h.settleByoMock }));
 vi.mock('@/src/lib/pay/byo-checkout-settlement', () => ({ settleCheckoutFromByoStripe: h.settleCheckoutMock }));
+vi.mock('@/src/lib/pay/node-topup-settlement', () => ({ settleNodeTopupFromStripe: h.settleNodeTopupMock }));
 vi.mock('@/src/lib/pay/stripe-relay-store', () => ({ getRelayEntry: h.getRelayEntryMock }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: h.errorMock }) }));
 vi.mock('@imajin/bus', () => ({ registerReactor: vi.fn(), publish: vi.fn().mockResolvedValue(undefined) }));
@@ -52,6 +54,7 @@ function byoEvent(overrides: Record<string, unknown> = {}, payload: Record<strin
 beforeEach(() => {
   h.settleByoMock.mockReset().mockResolvedValue({ settled: true });
   h.settleCheckoutMock.mockReset().mockResolvedValue({ settled: false, reason: 'not_found' });
+  h.settleNodeTopupMock.mockReset().mockResolvedValue(false);
   h.notifyServicesMock.mockReset().mockResolvedValue(undefined);
   h.getRelayEntryMock.mockReset();
   h.errorMock.mockReset();
@@ -163,6 +166,16 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     expect(h.notifyServicesMock).toHaveBeenCalledWith(SESSION);
     // It is not a payment_request: that settlement is never attempted.
     expect(h.settleByoMock).not.toHaveBeenCalled();
+  });
+
+  it('routes a node-owned topup receipt without running seller settlement or notifications', async () => {
+    h.settleNodeTopupMock.mockResolvedValue(true);
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+    expect(h.settleNodeTopupMock).toHaveBeenCalledWith({
+      ownerDid: OWNER, transactionId: 'tx_1', paymentIntentId: 'pi_1', amount: 2500, currency: 'CAD',
+    });
+    expect(h.settleCheckoutMock).not.toHaveBeenCalled();
+    expect(h.notifyServicesMock).not.toHaveBeenCalled();
   });
 
   it('notifies nobody when the settlement refused or was a replay', async () => {

@@ -90,6 +90,11 @@ export async function getNodeDid(): Promise<string> {
   return (await resolveNodeDid()).did;
 }
 
+/** The transacting node identity only: never substitute the DFOS relay's env identity. */
+export async function getNodeDidFromConfig(): Promise<string> {
+  return (await loadRelayConfigRow())?.imajinDid ?? '';
+}
+
 /**
  * Returns the minimal public node metadata for GET /registry/api/node/self.
  * Returns null when the node's own DID cannot be resolved (relay_config
