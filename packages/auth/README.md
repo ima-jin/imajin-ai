@@ -80,7 +80,8 @@ fails closed (403) rather than trusting the header.
 
 ### Verifying kernel webhooks (Node.js)
 
-`verifyKernelWebhook<T>(request, options)` authenticates the **raw request bytes**
+The server-only `@ima-jin/auth/kernel-webhook` entry exports
+`verifyKernelWebhook<T>(request, options)`, which authenticates the **raw request bytes**
 before parsing JSON, returns the parsed body, and throws a `KernelWebhookError`
 with a stable `code` on any failure. It consumes the request body; do not call
 `request.json()` first. `T` is a TypeScript convenience, not runtime schema
@@ -129,7 +130,7 @@ Pins contain **public keys only**, defaulting to
 `createFileKernelWebhookPinStore(directory)` selects another persistent path.
 The file store uses an exclusive per-kernel advisory lock and atomic replacement,
 so concurrent first-boot requests cannot silently overwrite each other's pins.
-The default file adapter requires Linux util-linux `flock` on PATH and a local
+The default file adapter requires Linux util-linux `/usr/bin/flock` and a local
 filesystem supporting advisory locks. A bounded `flock` subprocess locks an
 inherited descriptor and exits; the parent descriptor retains ownership for the
 whole operation. Closing it or crashing the parent releases the lock automatically.

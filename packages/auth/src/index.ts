@@ -217,13 +217,9 @@ export type {
 export { requireHardDIDOrAppToken } from "./require-hard-did-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
-export {
-  canonicalKernelWebhookPayload,
-  verifyKernelWebhook,
-  KernelWebhookError,
-  createFileKernelWebhookPinStore,
-  createMemoryKernelWebhookNonceStore,
-} from "./kernel-webhook";
+// Webhook runtime uses Node filesystem/advisory-lock APIs. Import it from
+// "@imajin/auth/kernel-webhook" so unrelated browser consumers of this root
+// (including money's pure cryptographic helpers) do not load child_process.
 export type {
   KernelWebhookErrorCode,
   KernelWebhookKey,

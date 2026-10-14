@@ -54,7 +54,7 @@ export async function resolveKernelWebhookAudience(
   if (recipient.appDid) conditions.push(eq(registryApps.appDid, recipient.appDid));
   if (recipient.appSlug) conditions.push(eq(registryApps.slug, recipient.appSlug));
   const [app] = await db.select().from(registryApps).where(and(...conditions)).limit(1);
-  if (!app || app.status !== 'active') throw new Error('Kernel webhook recipient is not registered and active');
+  if (app?.status !== 'active') throw new Error('Kernel webhook recipient is not registered and active');
   validateKernelWebhookAudience(app.appDid);
 
   const registered = [

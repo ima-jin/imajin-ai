@@ -121,7 +121,7 @@ See [the wire protocol and persistent-store requirements](../../docs/security/ke
 Before scaling workers/hosts, configure a shared atomic durable adapter through
 `configureEventsWebhookNonceStore` in each worker's server boot. The default
 in-memory store is atomic within one process and is not restart-safe. The default
-file pin adapter also requires util-linux `flock` in the deployed runtime.
+file pin adapter also requires util-linux `/usr/bin/flock` in the deployed runtime.
 
 Events settles a paid ticket order itself. At checkout it authenticates to the pay service with
 its **own app-service token** (minted from its signing key via `@imajin/auth-client`) and declares

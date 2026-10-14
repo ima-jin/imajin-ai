@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SCOPES } from '@imajin/auth';
+import { SCOPES } from '@imajin/auth/scope-vocabulary';
 
 interface App {
   id: string;

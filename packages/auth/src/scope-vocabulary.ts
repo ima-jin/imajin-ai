@@ -634,6 +634,11 @@ export const SCOPE_VOCABULARY = [
 /** Every scope string in the vocabulary, as a literal union. */
 export type Scope = (typeof SCOPE_VOCABULARY)[number]['scope'];
 
+/** Browser-safe scope labels; the server root re-exports this same projection. */
+export const SCOPES: Readonly<Record<Scope, string>> = Object.fromEntries(
+  SCOPE_VOCABULARY.map((entry) => [entry.scope, entry.label]),
+) as Record<Scope, string>;
+
 /** Widened view for runtime iteration and narrowing. */
 const ENTRIES: readonly ScopeVocabularyEntry[] = SCOPE_VOCABULARY;
 

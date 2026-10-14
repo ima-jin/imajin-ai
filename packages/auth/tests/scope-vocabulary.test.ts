@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { deriveReleaseTier, FAIR_RELEASE_TIERS } from '@imajin/fair';
 import {
   SCOPE_VOCABULARY,
+  SCOPES as BROWSER_SCOPES,
   CONNECTOR_DIDS,
   CONNECTOR_CHANNELS,
   isConnectorScope,
@@ -30,6 +31,12 @@ const connectorEntries = SCOPE_VOCABULARY.filter(isConnectorScope);
 // ── Structural invariants ─────────────────────────────────────────────────────
 
 describe('SCOPE_VOCABULARY structure', () => {
+  it('exports the same scope labels through the browser-safe vocabulary entry', () => {
+    expect(BROWSER_SCOPES).toBe(SCOPES);
+    expect(Object.entries(BROWSER_SCOPES)).toEqual(
+      SCOPE_VOCABULARY.map((entry) => [entry.scope, entry.label]),
+    );
+  });
   it('has no duplicate scope strings', () => {
     const seen = new Set<string>();
     const duplicates: string[] = [];

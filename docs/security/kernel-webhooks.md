@@ -1,6 +1,6 @@
 # Signed kernel callbacks (#2798)
 
-Apps verify kernel callbacks with `verifyKernelWebhook` from `@ima-jin/auth`
+Apps verify kernel callbacks with `verifyKernelWebhook` from `@ima-jin/auth/kernel-webhook`
 (the published name of the workspace's `@imajin/auth`). This is the server-side
 SDK apps already use for `loadFromVault` and shared cryptographic contracts.
 `auth-client` owns federated login/session and app-keystore bootstrapping; webhook
@@ -60,8 +60,9 @@ Protect the pin location from untrusted writes and persist it
 across deploys. An injected `pinStore` must implement `load`, `save` and
 `withLock(namespace, callback)`; load/reconcile/save is serialized across workers.
 
-The default file adapter requires Linux `flock` from util-linux on the server's
-PATH and a local filesystem supporting advisory locks. Acquisition is bounded.
+The default file adapter requires Linux util-linux `/usr/bin/flock` and a local
+filesystem supporting advisory locks. The executable is fixed, never looked up
+through PATH or caller configuration. Acquisition is bounded.
 The parent opens a persistent inode; a short-lived `flock` subprocess locks its
 inherited descriptor and exits. The parent descriptor retains the kernel-held
 lock until close or process death, so no long-lived helper can silently lose the

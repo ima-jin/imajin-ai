@@ -299,7 +299,7 @@ curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
 
 Kernel payment, enrollment, listing-purchase, subscription and settlement HTTP
 callbacks carry detached Ed25519 signatures. Verify with `verifyKernelWebhook`
-from `@ima-jin/auth` before parsing or processing, passing your own app DID as the
+from `@ima-jin/auth/kernel-webhook` before parsing or processing, passing your own app DID as the
 required `audience` option and your configured kernel auth URL. Never derive that
 expected DID from the callback header. The signed `x-kernel-audience` prevents
 cross-app replay at shared callback paths. The helper pins the published key set, follows overlapping rotation

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { SCOPES } from '@imajin/auth';
+import { SCOPES } from '@imajin/auth/scope-vocabulary';
 
 interface RegisteredApp {
   id: string;
