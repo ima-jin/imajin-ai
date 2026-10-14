@@ -117,4 +117,9 @@ describe('previewManifestDeclarations (#2663)', () => {
 
     expect(await previewManifestDeclarations('dykil')).toEqual({ error: 'providesScopes rejected: media:write' });
   });
+  it('#2799 never logs provider errors that could include manifest material', async () => {
+    mocks.fetchAppManifestMock.mockRejectedValueOnce(new Error('obviously-fake-provider-placeholder'));
+    expect(await previewManifestDeclarations('coffee')).toEqual({ ok: null });
+    expect(JSON.stringify(mocks.warnMock.mock.calls)).not.toContain('obviously-fake-provider-placeholder');
+  });
 });

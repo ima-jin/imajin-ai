@@ -155,4 +155,25 @@ describe('app-scoped existing-vault lifecycle', () => {
     state.attest.mockRejectedValue(new Error('obviously-fake-provider-placeholder'));
     await expect(ensureAppDeclaredSecrets(APP)).rejects.toThrow('App secret audit unavailable');
   });
+  it('repairs missing signed issuance facts without re-minting, then skips already-recorded facts', async () => {
+    state.grants = [grantRow()];
+    await ensureAppDeclaredSecrets(APP, AUTH);
+    expect(state.attest).toHaveBeenCalledTimes(2);
+    expect(state.generate).not.toHaveBeenCalled();
+    state.facts = state.attest.mock.calls.map(([fact]) => ({ payload: fact.payload }));
+    state.attest.mockClear();
+    await ensureAppDeclaredSecrets(APP, AUTH);
+    expect(state.attest).not.toHaveBeenCalled();
+    state.facts = [];
+    state.attest.mockResolvedValue(null);
+    await expect(ensureAppDeclaredSecrets(APP)).rejects.toThrow('audit unavailable');
+  });
+  it('adopts the active-grant uniqueness winner during concurrent issuance', async () => {
+    state.grant.mockImplementationOnce(async () => {
+      state.grants = [grantRow()];
+      throw Object.assign(new Error('duplicate grant'), { code: '23505' });
+    });
+    await ensureAppDeclaredSecrets(APP);
+    expect(state.attest.mock.calls[0][0].payload.grantId).toBe('grant_test');
+  });
 });

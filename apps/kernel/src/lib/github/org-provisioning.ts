@@ -531,8 +531,8 @@ export async function fetchAppManifest(slug: string, token: string | null, org =
       return null;
     }
     return parsed;
-  } catch (err) {
-    log.warn({ err: String(err), slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
+  } catch {
+    log.warn({ slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
     return null;
   }
 }

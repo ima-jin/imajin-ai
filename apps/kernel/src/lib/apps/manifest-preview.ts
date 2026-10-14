@@ -38,9 +38,9 @@ async function readManifest(slug: string, template?: string): Promise<AppManifes
     // A fresh repo doesn't exist until approval. Show the source manifest now;
     // registerApp still re-checks the copied manifest against the signed list.
     return await fetchAppManifest(repo, token, org);
-  } catch (err) {
+  } catch {
     // A malformed credential or a GitHub failure must not block raising the proposal.
-    log.warn({ err: String(err), slug }, 'apps.provision: manifest preview unavailable (non-fatal)');
+    log.warn({ slug }, 'apps.provision: manifest preview unavailable (non-fatal)');
     return null;
   }
 }
