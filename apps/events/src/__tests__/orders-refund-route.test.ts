@@ -79,6 +79,17 @@ vi.mock('@imajin/bus', () => ({
   publish: mocks.publishMock,
 }));
 
+vi.mock('@/src/lib/pay-app-token', async () => ({
+  postPayAsApp: (await import('../lib/pay-app-token')).postPayAsApp,
+}));
+vi.mock('@imajin/auth-client', () => ({
+  loadAppSigningKey: vi.fn().mockResolvedValue({ appDid: 'did:imajin:events', privateKey: 'key' }),
+  createAppServiceTokenProvider: vi.fn(() => ({
+    getToken: vi.fn().mockResolvedValue('events-app-token'),
+    invalidate: vi.fn(),
+  })),
+}));
+
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { POST } from '../../app/api/orders/[id]/refund/route';
@@ -148,7 +159,7 @@ describe('POST /api/orders/[id]/refund (#949)', () => {
     mocks.whereMock.mockReset();
     mocks.updateWhereMock.mockResolvedValue(undefined);
     process.env.PAY_SERVICE_URL = 'http://kernel-test';
-    process.env.PAY_SERVICE_API_KEY = 'service-key';
+    process.env.IMAJIN_KERNEL_URL = 'http://kernel-test';
 
     mocks.requireAuthMock.mockResolvedValue({
       identity: { id: 'did:imajin:organizer', actingAs: null },
@@ -237,6 +248,7 @@ describe('POST /api/orders/[id]/refund (#949)', () => {
     expect(mocks.fetchMock).toHaveBeenCalledOnce();
     const [url, init] = mocks.fetchMock.mock.calls[0];
     expect(url).toContain('/api/refund');
+    expect(init.headers.Authorization).toBe('Bearer events-app-token');
     const reqBody = JSON.parse(init.body);
     expect(reqBody.paymentId).toBe('pi_test_intent');
 

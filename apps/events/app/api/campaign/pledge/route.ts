@@ -24,8 +24,7 @@ import { eq, and } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { randomBytes } from 'node:crypto';
-
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
+import { postPayAsApp } from '@/src/lib/pay-app-token';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -112,18 +111,11 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
     }
 
     // Call pay service to create SetupIntent
-    const payRes = await fetch(`${PAY_SERVICE_URL}/api/setup-intent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: request.headers.get('cookie') || '',
-      },
-      body: JSON.stringify({
-        amount,
-        currency: 'CAD',
-        metadata: { eventId, backerDid: did },
-      }),
-    });
+    const payRes = await postPayAsApp('/api/setup-intent', {
+      amount,
+      currency: 'CAD',
+      metadata: { eventId, backerDid: did },
+    }, request.headers.get('cookie') || '');
 
     if (!payRes.ok) {
       const err = await payRes.json().catch(() => ({}));

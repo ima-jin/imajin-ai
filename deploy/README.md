@@ -17,6 +17,24 @@ and never recording the change (#1325).
 server's absolute paths (`/home/jin/dev/...`, `/home/jin/prod/...`) and are kept
 as-is because they *are* the deployed values.
 
+## Pay caller rollout (#2735)
+
+Deploy the kernel's scoped refund/pledge contract before the migrated app callers.
+Using the existing provisioned app identity, approve `pay:refund` and
+`pay:charge-pledges` through the operator-countersigned `apps:service-scopes` card
+(retain `pay:settle`). No new required env vars or shared pay secret are needed.
+Remove the retired pay-key entry from host/CI secrets and kernel/app `.env.local`;
+the key-free examples are also check-env's manifests. Reload through the normal
+deploy pipeline so stale process env is not relied upon.
+
+Legacy pledges with no app-bound setup transaction fail closed: backers must complete
+a fresh setup; do not assign ownership from old customer/card ids. Standalone app
+deployments require their own caller migration, tracked in
+[events#28](https://github.com/ima-jin/events/issues/28);
+[market#13](https://github.com/ima-jin/market/issues/13) tracks a test-only reference.
+See [scoped pay configuration](../docs/ENVIRONMENTS.md#scoped-pay-callers-2735)
+and [events operator prerequisites](../apps/events/README.md#settlement-registered-app-contract).
+
 ## Keeping them in sync
 
 These are the canonical copies. When a pm2 app is added/removed/re-ported:
