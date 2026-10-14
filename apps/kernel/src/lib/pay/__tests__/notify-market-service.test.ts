@@ -7,6 +7,7 @@
  * the Stripe session. A market outage must never fail the Stripe webhook ack.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 
 const mocks = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),
@@ -59,6 +60,7 @@ const marketCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).sta
 describe('market purchase notification', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     vi.stubGlobal('fetch', fetchMock);
     vi.stubEnv('MARKET_SERVICE_URL', MARKET_URL);
     vi.stubEnv('MARKET_WEBHOOK_SECRET', SECRET);
@@ -81,7 +83,8 @@ describe('market purchase notification', () => {
       const [url, init] = marketCalls()[0] as [string, RequestInit];
       expect(url).toBe(`${MARKET_URL}/api/webhook`);
       expect(init.method).toBe('POST');
-      expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` });
+      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}`,
+        'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/) });
 
       expect(JSON.parse(init.body as string)).toEqual({
         type: 'payment.succeeded',
@@ -187,7 +190,7 @@ describe('market purchase notification', () => {
       expect(body.metadata.currency).toBeUndefined();
     });
 
-    it.each(['MARKET_SERVICE_URL', 'MARKET_WEBHOOK_SECRET'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
+    it.each(['MARKET_SERVICE_URL'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
       vi.stubEnv(missing, '');
 
       await expect(notifyMarketService(marketSession())).resolves.toBeUndefined();
@@ -197,6 +200,14 @@ describe('market purchase notification', () => {
         { sessionId: 'cs_test_market_1' },
         expect.stringContaining('market purchase will not settle'),
       );
+    });
+
+    it('delivers with a kernel signature when no legacy secret is configured', async () => {
+      vi.stubEnv('MARKET_WEBHOOK_SECRET', '');
+      await notifyMarketService(marketSession());
+      const headers = marketCalls()[0][1].headers;
+      expect(headers).not.toHaveProperty('Authorization');
+      expect(headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
     });
   });
 });
