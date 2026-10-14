@@ -113,6 +113,7 @@ vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
 // The connector's sealed key / grants, and its routing + signing-secret custody.
 vi.mock('@/src/lib/stripe/connector-core', () => ({
   stripePublishableKeyField: (did: string) => `stripe-publishable-key:${did}`,
+  stripeWebhookSecretField: (did: string) => `stripe-webhook-secret:${did}`,
   stripeConnectorDid: 'did:imajin:stripe-connector',
   stripeEventsScope: 'stripe:events',
   stripe: {
@@ -122,6 +123,7 @@ vi.mock('@/src/lib/stripe/connector-core', () => ({
   },
 }));
 vi.mock('@/src/lib/vault', () => ({
+  vaultFieldStatus: vi.fn().mockResolvedValue('ready'),
   sealAndStore: vi.fn(),
   loadAndUnseal: h.loadAndUnsealMock,
   deleteFromVault: vi.fn(),
@@ -141,8 +143,8 @@ const OWNER_DID = 'did:imajin:imajin-inc';
 const PAYER_DID = 'did:imajin:customer';
 const HANDLE = 'ph_d5b8';
 const REQUEST_ID = 'pr_0123456789abcdef01234567';
-const RESTRICTED_KEY = 'rk_live_imajininc';
-const SIGNING_SECRET = 'whsec_imajininc';
+const RESTRICTED_KEY = 'rk_test_fake_imajininc';
+const SIGNING_SECRET = 'whsec_fake_imajininc';
 const ROUTING_ID = 'stripewh_1';
 
 const MANIFEST = {
@@ -177,7 +179,7 @@ function signedPaymentIntentSucceeded(
   fields: { paymentIntentId?: string; amount?: number; currency?: string; metadata?: Record<string, string> },
 ) {
   const payload = {
-    id: `evt_${fields.paymentIntentId ?? 'pi_paid'}`,
+    id: `evt_${testCaseId}_${fields.paymentIntentId ?? 'pi_paid'}`,
     type: 'payment_intent.succeeded',
     data: {
       object: {
@@ -218,8 +220,10 @@ afterAll(async () => {
 });
 
 let fetchSpy: ReturnType<typeof vi.fn>;
+let testCaseId = 0;
 
 beforeEach(async () => {
+  testCaseId++;
   h.idCounter.n = 0;
   h.settlePaymentMock.mockReset();
   h.publishMock.mockReset().mockResolvedValue(undefined);
