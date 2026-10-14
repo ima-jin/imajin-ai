@@ -21,10 +21,13 @@
  * Stripe returns is sealed separately (see below) so inbound deliveries can
  * be verified with no session in play.
  *
- * ## Two sealed fields, two different reasons
+ * ## Sealed fields and custody roles
  *   - `stripe-api-key:{ownerDid}` (v2, delegation-grant, via the token-paste
  *     factory) — the owner's authority-bearing restricted key. Revoking the
  *     grant crypto-erases it immediately (#1720 semantics).
+ *   - `stripe-publishable-key:{ownerDid}` (v1, node-sealed) — the matching
+ *     account/mode's client credential. It carries no spending authority and
+ *     is returned only where a client needs to confirm that account's intent.
  *   - `stripe-webhook-secret:{ownerDid}` (v1, node-sealed, this module) — the
  *     per-endpoint signing secret Stripe mints. This is NOT the owner
  *     spending their own credential; it is the node's own material for
