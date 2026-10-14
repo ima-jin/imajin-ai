@@ -8,7 +8,7 @@ const globalState = globalThis as { [LEGACY_NOTIFY_WARNING]?: boolean };
 
 /**
  * Temporary notify-only rollout bridge (#2798, 2026-10-14). Remove after
- * userspace callers migrate to approved app-service tokens; unset the variable
+ * all per-app verify children of #2241 are closed; unset the variable
  * to disable immediately. Never use for registry/contact/internal approvals.
  */
 export function acceptsLegacyNotifyCredential(request: Pick<NextRequest, 'headers'>): boolean {

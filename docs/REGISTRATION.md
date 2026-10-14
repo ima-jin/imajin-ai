@@ -295,6 +295,28 @@ curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
 # -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...only the approved ones], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
 ```
 
+### Signed payment callbacks and notify service tokens (#2798)
+
+Kernel payment, enrollment, listing-purchase, subscription and settlement HTTP
+callbacks carry detached Ed25519 signatures. Verify with `verifyKernelWebhook`
+from `@ima-jin/auth` before parsing or processing, using your configured kernel
+auth URL. The helper pins the published key set, follows overlapping rotation
+without app env/key-file edits, rejects timestamps outside ±300 seconds and
+consumes nonces atomically. Production replicas use a shared DB-backed nonce
+adapter and persistent pins; the default nonce store is process-local.
+See [the signature protocol and typed failures](security/kernel-webhooks.md).
+
+For direct notifications, approve `notify:send`, `notify:broadcast` and/or
+`notify:interest` through the existing countersigned `apps:service-scopes` tool
+flow. The token must carry the endpoint's scope and the app must still have that
+scope in its active registry approval. Configure `@ima-jin/notify` at boot with
+an `appTokenProvider` that returns a fresh/cached service token minted through
+`/auth/api/apps/token/service` using the app's vault/keystore identity. User-session
+and delegated app tokens do not authorize these routes; token scopes are not
+self-granted. No new shared credential is required. See `packages/notify/README.md`
+for the callback configuration contract. The temporary rollout bridge is documented
+only in the dated removal note, not an integration path for new apps.
+
 ### Emitting events from an app: `POST /api/events` (#2638, #2641)
 
 A standalone app cannot import `@imajin/bus` (kernel-internal, never published), so the kernel

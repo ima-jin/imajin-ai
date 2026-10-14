@@ -35,8 +35,9 @@ still use the shared notify header. Until those app-side migrations land, only
 `x-webhook-secret` on send/broadcast/interest when **no Authorization header** is
 present. Comparison is timing-safe and a deprecation warning is emitted once per
 process. Invalid Bearer tokens never downgrade to this lane. Unset the variable
-to disable legacy auth immediately, and remove this bridge after the tracked
-userspace migration. It does not apply to registry/contact/internal approvals.
+to disable legacy auth immediately. Removal trigger: all per-app verify children
+of #2241 closed; exact lines and tests to delete are in the dated removal note in
+`docs/security/kernel-webhooks.md`. It does not apply to registry/contact/internal approvals.
 
 Kernel/internal callers retain the vault-sourced internal Bearer contract
 (`provideInternalApiKey` / `getVaultInternalApiKey`, populated at boot). Internal

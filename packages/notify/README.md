@@ -1,4 +1,4 @@
-# @imajin/notify
+# @ima-jin/notify
 
 Best-effort notification client. `send`, `broadcast`, and `interest` retain their
 existing parameters and `Promise<void>` return values.
@@ -8,7 +8,7 @@ existing parameters and `Promise<void>` return values.
 Configure a vault-backed app-service token provider at boot:
 
 ```ts
-import { configureNotify, notify } from '@imajin/notify';
+import { configureNotify, notify } from '@ima-jin/notify';
 
 configureNotify({
   serviceUrl: 'https://jin.imajin.ai/notify',
@@ -43,7 +43,7 @@ and user-delegated app tokens are rejected.
 ## Internal services
 
 By default, the client reads the already vault-resolved internal key through
-`@imajin/auth`'s `getVaultInternalApiKey()`. Existing kernel/services that call
+`@ima-jin/auth`'s `getVaultInternalApiKey()`. Existing kernel/services that call
 `provideInternalApiKey` or `bootstrapInternalApiKey` at boot need no call-site
 changes. `configureNotify({ internalSecretProvider: () => vaultKey })` can instead
 provide an internal credential explicitly; `vaultKey` must come from the vault.

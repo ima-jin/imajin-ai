@@ -38,7 +38,10 @@ Unsigned, stale, future, replayed, tampered or wrong-method/path callbacks fail 
 
 Discovery is `/auth/.well-known/kernel-signing-key`. Bootstrap over a trusted TLS
 connection to the configured kernel. The default durable pin holds public keys
-only, not a secret. Protect the pin location from untrusted writes and persist it
+only, not a secret, under `data/kernel-webhook-pins` relative to the app's working
+directory. HTTPS discovery is required except loopback HTTP; `allowInsecureHttp`
+is an explicit opt-in for a trusted private development network, never public use.
+Protect the pin location from untrusted writes and persist it
 across deploys. An injected `pinStore` must implement `load`, `save` and
 `withLock(namespace, callback)`; load/reconcile/save is serialized across workers.
 
@@ -102,11 +105,23 @@ read `COFFEE_WEBHOOK_SECRET`, `LEARN_WEBHOOK_SECRET`, `MARKET_WEBHOOK_SECRET` or
 `EVENTS_WEBHOOK_SECRET`. It may attach a legacy bearer only while that app's
 variable remains set on the host, and warns once per variable per process.
 Delivery always requires and carries the detached signature even on that path.
-There is no `NOTIFY_WEBHOOK_SECRET` compatibility branch.
+`apps/kernel/src/lib/notify/legacy-auth.ts` also accepts `NOTIFY_WEBHOOK_SECRET`
+only while set, on send/broadcast/interest only, with no Authorization header.
+It uses timing-safe comparison and a process-wide once warning. A supplied
+invalid Bearer never falls back to the legacy lane. Contact, registry and internal
+approval callbacks remain vault-only; external internal-approval adapters must
+migrate to that existing vault credential before deployment.
 
 Removal trigger: **all per-app verify children of #2241 are closed**. Delete the
-legacy module, its import and optional header spread in the shared callback
-signer, and the legacy-specific tests. Exact line references are recorded in the
-PR callback inventory after integration; symbol references remain stable:
-`legacyKernelWebhookHeaders` and its sole callsite. Remove this note with that
-change. Until then do not provision, copy or rotate a legacy webhook bearer.
+legacy module `auth/kernel-webhook-legacy.ts:12-33`, the import at
+`auth/kernel-webhook.ts:5` and optional header spread at `auth/kernel-webhook.ts:43`,
+and the legacy-specific cases in `auth/__tests__/kernel-webhook.test.ts:125-142`.
+Also delete `notify/legacy-auth.ts:1-27`, its import at `notify/service-auth.ts:6`
+and its conditional call at `notify/service-auth.ts:21`; remove
+`notify/__tests__/legacy-auth.test.ts` and the legacy-only cases in
+`app/notify/api/__tests__/registered-app-auth.test.ts:126-142`. Auth/notify paths
+above are under `apps/kernel/src/lib/`. These exact ranges name the integrated
+bridge; stable symbols are `legacyWebhookHeaders` and `acceptsLegacyNotifyCredential`.
+Remove this note with that change. Until then do not provision, copy or rotate
+a legacy webhook bearer. The bus settlement reactor never accepts a legacy
+`config.secret`, including an old DB-backed reactor configuration.
