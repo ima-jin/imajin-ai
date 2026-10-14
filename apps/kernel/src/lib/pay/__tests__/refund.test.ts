@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const h = vi.hoisted(() => ({
-  where: vi.fn(), keys: vi.fn(), session: vi.fn(), refund: vi.fn(), client: vi.fn(),
+  where: vi.fn(), limit: vi.fn(), orderBy: vi.fn(), keys: vi.fn(), session: vi.fn(), refund: vi.fn(), client: vi.fn(),
 }));
 vi.mock('@/src/db', async () => ({
   db: { select: () => ({ from: () => ({ where: h.where }) }) },
@@ -20,9 +20,12 @@ import { renderWhere } from './mock-drizzle-table';
 
 const log = { error: vi.fn() };
 const row = { id: 'tx_1', appDid: 'did:imajin:app', rail: 'stripe-byo', toDid: 'did:imajin:seller',
-  externalRef: 'cs_test', metadata: {} };
+  externalRef: 'cs_test', status: 'completed', settledAt: null, metadata: {} };
 function next(rows: unknown[]) {
-  const result = Object.assign(Promise.resolve(rows), { limit: vi.fn().mockResolvedValue(rows) });
+  const result = Object.assign(Promise.resolve(rows), {
+    limit: (count: number) => { h.limit(count); return Promise.resolve(rows.slice(0, count)); },
+    orderBy: (...args: unknown[]) => { h.orderBy(...args); return result; },
+  });
   h.where.mockReturnValueOnce(result);
 }
 beforeEach(() => {
@@ -35,6 +38,41 @@ beforeEach(() => {
 });
 
 describe('seller refund resolution', () => {
+  it('resolves the app-owned verified settlement PI with no key reads or Stripe requests', async () => {
+    const settled = { ...row, settledAt: new Date(), metadata: { settledPaymentIntentId: 'pi_test' } };
+    next([]); next([settled]);
+    expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toEqual(settled);
+    const predicate = renderWhere(h.where.mock.calls[1][0]);
+    expect(predicate.params).toEqual([row.appDid, 'stripe-byo', 'completed', 'partially_refunded', 'pi_test']);
+    expect(predicate.sql).toContain('"settled_at" is not null');
+    expect(predicate.sql).toContain("->>'settledPaymentIntentId'");
+    expect(h.limit.mock.calls).toEqual([[1], [1]]);
+    expect(h.keys).not.toHaveBeenCalled();
+    expect(h.session).not.toHaveBeenCalled();
+  });
+
+  it('bounds SQL-selected legacy candidates and orders newest first with a stable id tie-breaker', async () => {
+    next([]); next([]); next([row]);
+    await resolveOriginalTransaction('pi_test', log, row.appDid);
+    const predicate = renderWhere(h.where.mock.calls[2][0]);
+    expect(predicate.params).toEqual([row.appDid, 'stripe-byo', 'completed', 'partially_refunded', 'cs_']);
+    expect(predicate.sql).toContain('left(');
+    expect(h.limit.mock.calls).toEqual([[1], [1], [25]]);
+    expect(h.orderBy).toHaveBeenCalledTimes(1);
+    expect(renderWhere(h.orderBy.mock.calls[0][0]).sql).toContain('"created_at" desc');
+    expect(renderWhere(h.orderBy.mock.calls[0][1]).sql).toContain('"id" asc');
+  });
+
+  it('skips a disconnected seller and continues to a later matching seller without logging credential errors', async () => {
+    const unavailable = { ...row, id: 'tx_disconnected', toDid: 'did:imajin:disconnected', externalRef: 'cs_disconnected' };
+    next([]); next([]); next([unavailable, row]);
+    h.keys.mockRejectedValueOnce(new Error('rk_test_fake_sensitive_error')).mockResolvedValueOnce({ secretKey: 'test-only-seller-key' });
+    expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toEqual(row);
+    expect(h.keys.mock.calls).toEqual([[unavailable.toDid], [row.toDid]]);
+    expect(h.session).toHaveBeenCalledTimes(1);
+    expect(log.error).toHaveBeenCalledWith({ transactionId: unavailable.id }, '[refund] Seller session lookup unavailable');
+    expect(JSON.stringify(log.error.mock.calls)).not.toContain('fake_sensitive_error');
+  });
   it('matches both rail namespaces directly without reading any keys', async () => {
     next([row]);
     expect(await resolveOriginalTransaction('cs_test', log, row.appDid)).toEqual(row);
@@ -42,21 +80,21 @@ describe('seller refund resolution', () => {
     expect(predicate.params).toEqual(['stripe', 'cs_test', 'stripe-byo', 'cs_test']);
     expect(h.keys).not.toHaveBeenCalled();
   });
-  it.each(['paymentIntentId', 'stripePaymentIntentId'])('ignores spoofed %s metadata when resolving another intent', async (field) => {
-    next([]); next([{ ...row, metadata: { [field]: 'pi_unrelated' } }]);
+  it.each(['paymentIntentId', 'stripePaymentIntentId', 'settledPaymentIntentId'])('ignores spoofed %s metadata when resolving another intent', async (field) => {
+    next([]); next([]); next([{ ...row, metadata: { [field]: 'pi_unrelated' } }]);
     expect(await resolveOriginalTransaction('pi_unrelated', log, row.appDid)).toBeUndefined();
     expect(h.session).toHaveBeenCalledWith('test-only-seller-key', row.externalRef);
-    expect(renderWhere(h.where.mock.calls[1][0]).params).toEqual([row.appDid]);
+    expect(renderWhere(h.where.mock.calls[2][0]).params).toEqual([row.appDid, 'stripe-byo', 'completed', 'partially_refunded', 'cs_']);
   });
   it('checks seller-owned session candidates filtered by authenticated app', async () => {
-    next([]); next([row]);
+    next([]); next([]); next([row]);
     expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toEqual(row);
-    expect(renderWhere(h.where.mock.calls[1][0]).params).toEqual([row.appDid]);
+    expect(renderWhere(h.where.mock.calls[2][0]).params).toEqual([row.appDid, 'stripe-byo', 'completed', 'partially_refunded', 'cs_']);
     expect(h.keys).toHaveBeenCalledWith(row.toDid);
     expect(h.session).toHaveBeenCalledWith('test-only-seller-key', 'cs_test');
   });
   it('never queries a platform-account candidate', async () => {
-    next([]); next([{ ...row, rail: 'stripe' }]);
+    next([]); next([]); next([{ ...row, rail: 'stripe' }]);
     expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toBeUndefined();
     expect(h.keys).not.toHaveBeenCalled();
     expect(h.session).not.toHaveBeenCalled();
@@ -67,18 +105,18 @@ describe('seller refund resolution', () => {
     expect(h.session).not.toHaveBeenCalled();
   });
   it('does not return a non-matching seller session', async () => {
-    next([]); next([row]);
+    next([]); next([]); next([row]);
     h.session.mockResolvedValue('pi_other');
     expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toBeUndefined();
   });
-  it('propagates missing seller key rather than looking on the platform account', async () => {
-    next([]); next([row]);
+  it('skips a missing seller key rather than looking on the platform account', async () => {
+    next([]); next([]); next([row]);
     h.keys.mockRejectedValue(new SellerNoCardRailError());
-    await expect(resolveOriginalTransaction('pi_test', log, row.appDid)).rejects.toBeInstanceOf(SellerNoCardRailError);
+    expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toBeUndefined();
     expect(h.session).not.toHaveBeenCalled();
   });
   it('logs only safe transaction context if a seller lookup fails', async () => {
-    next([]); next([row]);
+    next([]); next([]); next([row]);
     h.session.mockRejectedValue(new Error('test-only-sensitive-upstream-detail'));
     expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toBeUndefined();
     expect(log.error).toHaveBeenCalledWith({ transactionId: 'tx_1' }, expect.any(String));

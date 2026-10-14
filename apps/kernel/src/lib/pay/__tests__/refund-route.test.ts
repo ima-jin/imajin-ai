@@ -92,6 +92,9 @@ vi.mock('@/src/db', () => ({
     type: 'col_type',
     metadata: 'col_metadata',
     status: 'col_status',
+    appDid: 'col_appDid',
+    settledAt: 'col_settledAt',
+    createdAt: 'col_createdAt',
   },
   balances: { did: 'col_did', unit: 'col_unit', amount: 'col_amount' },
 }));
@@ -132,6 +135,7 @@ function makeRequest(body: Record<string, unknown>): Request {
 function nextSelect(rows: unknown[]): void {
   const p = Promise.resolve(rows) as any;
   p.limit = vi.fn().mockResolvedValue(rows);
+  p.orderBy = vi.fn(() => p);
   mocks.whereMock.mockImplementationOnce(() => p);
 }
 
@@ -185,14 +189,14 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     expect(mocks.refundMock).toHaveBeenCalledWith({ payment_intent: 'pi_test_original', amount: 27500 });
   });
   it('returns the caller intent reference after resolving a recorded seller session', async () => {
-    nextSelect([]); nextSelect([BASE_TX]); nextSelect([]);
+    nextSelect([]); nextSelect([]); nextSelect([BASE_TX]); nextSelect([]);
     const res = await POST(makeRequest({ paymentId: 'pi_test_original', amount: 27500 }) as never);
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ paymentId: 'pi_test_original' });
     expect(mocks.sessionMock).toHaveBeenCalledTimes(2);
   });
   it('explains and logs unsupported legacy intent resolution without platform API calls', async () => {
-    nextSelect([]); nextSelect([{ ...BASE_TX, rail: 'stripe', metadata: { paymentIntentId: 'pi_legacy' } }]);
+    nextSelect([]); nextSelect([]); nextSelect([{ ...BASE_TX, rail: 'stripe', metadata: { paymentIntentId: 'pi_legacy' } }]);
     const res = await POST(makeRequest({ paymentId: 'pi_legacy' }) as never);
     expect(res.status).toBe(404);
     expect(await res.json()).toMatchObject({ code: 'REFUND_PAYMENT_UNRESOLVED', error: expect.stringContaining('legacy platform') });

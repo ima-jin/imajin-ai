@@ -1,5 +1,5 @@
 import { db, transactions } from '@/src/db';
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { forEachSequential } from '@/src/lib/async/sequential';
@@ -11,6 +11,7 @@ import { MJN, creditUnit, debitUnit } from './ledger';
 
 type LoggerLike = Pick<Logger, 'error'>;
 type TransactionRow = typeof transactions.$inferSelect;
+const LEGACY_SELLER_SESSION_LOOKUP_LIMIT = 25;
 function isSellerSession(row: TransactionRow): row is TransactionRow & { toDid: string; externalRef: string } {
   return row.rail === STRIPE_BYO_RAIL && Boolean(row.toDid) && Boolean(row.externalRef?.startsWith('cs_'));
 }
@@ -32,10 +33,28 @@ export async function resolveOriginalTransaction(
   if (directMatch) return directMatch;
 
   if (!paymentId.startsWith('pi_')) return undefined;
-  const candidates = await db.select().from(transactions).where(eq(transactions.appDid, appDid));
+  // This metadata field is authoritative ONLY after verified settlement stamps
+  // settledAt. Checkout metadata itself is caller-controlled, including this key.
+  const [settledMatch] = await db.select().from(transactions).where(and(
+    eq(transactions.appDid, appDid),
+    eq(transactions.rail, STRIPE_BYO_RAIL),
+    inArray(transactions.status, ['completed', 'partially_refunded']),
+    isNotNull(transactions.settledAt),
+    sql`${transactions.metadata}->>'settledPaymentIntentId' = ${paymentId}`,
+  )).limit(1);
+  if (settledMatch) return settledMatch;
+
+  // Older rows have no verified PI binding. Never scan an app's whole history
+  // or issue a Stripe request for pending, refunded, or non-seller payments.
+  const candidates = await db.select().from(transactions).where(and(
+    eq(transactions.appDid, appDid),
+    eq(transactions.rail, STRIPE_BYO_RAIL),
+    inArray(transactions.status, ['completed', 'partially_refunded']),
+    sql`left(${transactions.externalRef}, 3) = ${'cs_'}`,
+  )).orderBy(desc(transactions.createdAt), asc(transactions.id)).limit(LEGACY_SELLER_SESSION_LOOKUP_LIMIT);
   for (const row of candidates.filter(isSellerSession)) {
-    const { secretKey } = await resolveDidStripeKeys(row.toDid);
     try {
+      const { secretKey } = await resolveDidStripeKeys(row.toDid);
       if (await sellerSessionPaymentIntent(secretKey, row.externalRef) === paymentId) return row;
     } catch {
       log.error({ transactionId: row.id }, '[refund] Seller session lookup unavailable');
