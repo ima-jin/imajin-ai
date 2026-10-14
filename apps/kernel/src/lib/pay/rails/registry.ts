@@ -10,9 +10,10 @@ import type { Unit } from '../ledger';
 import type { PayInRail, WithdrawRail } from './types';
 import { StripeWithdrawRail, STRIPE_RAIL_NAME } from '../providers/stripe-withdraw-rail';
 import { EmtPayInRail, EMT_RAIL_NAME } from './emt-pay-in-rail';
+export { resolveDidStripeKeys, SellerNoCardRailError } from './stripe-keys';
 
 export interface RailRegistryEntry {
-  /** Lazily constructed — mirrors `getStripeClient()`'s own lazy init, so importing the registry never requires `STRIPE_SECRET_KEY` to be set (e.g. in tests that never call `execute`/`list`). */
+  /** Lazily constructed: importing the registry never requires a sealed Stripe connector. */
   getRail: () => WithdrawRail;
   enabledUnits: readonly Unit[];
 }

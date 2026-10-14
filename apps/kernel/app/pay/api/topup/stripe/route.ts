@@ -10,7 +10,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaymentService } from '@/src/lib/pay/pay';
+import { getNodeStripeClient, NodeCardRailNotConfiguredError } from '@/src/lib/pay/providers/node-stripe';
 import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, transactions } from '@/src/db';
 import { externalRefColumns } from '@/src/lib/pay/external-ref';
@@ -83,34 +83,47 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     chargeAmountCents = 50;
   }
 
-  const pay = getPaymentService();
+  let client: Awaited<ReturnType<typeof getNodeStripeClient>>;
+  try {
+    client = await getNodeStripeClient();
+  } catch (error) {
+    if (error instanceof NodeCardRailNotConfiguredError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 503, headers: cors });
+    }
+    throw error;
+  }
 
   const baseUrl = buildPublicUrlAbsolute('pay');
-
-  const result = await pay.checkout({
-    items: [
-      {
-        name: 'MJN Top-Up',
-        description: `$${amount.toFixed(2)} CAD → MJN balance`,
-        amount: chargeAmountCents,
-        quantity: 1,
+  const txId = generateId('tx');
+  const metadata = {
+    service: 'topup',
+    type: 'topup',
+    buyerDid: did,
+    nodeDid: client.nodeDid,
+    pay_transaction_id: txId,
+    topupAmount: amount.toString(),
+    chargeAmountCents: chargeAmountCents.toString(),
+    absorbFees: absorbFees === false ? 'false' : 'true',
+    handle,
+  };
+  const result = await client.stripe.checkout.sessions.create({
+    mode: 'payment',
+    payment_method_types: ['card', 'link'],
+    line_items: [{
+      price_data: {
+        currency: 'cad',
+        product_data: { name: 'MJN Top-Up', description: `$${amount.toFixed(2)} CAD → MJN balance` },
+        unit_amount: chargeAmountCents,
       },
-    ],
-    currency: 'CAD',
-    successUrl: `${baseUrl}/topup/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancelUrl: `${baseUrl}/topup`,
-    metadata: {
-      service: 'topup',
-      type: 'topup',
-      buyerDid: did,
-      topupAmount: amount.toString(),
-      absorbFees: absorbFees === false ? 'false' : 'true',
-      handle,
-    },
+      quantity: 1,
+    }],
+    success_url: `${baseUrl}/topup/success?session_id={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${baseUrl}/topup`,
+    metadata,
+    payment_intent_data: { metadata },
   });
 
   // Create pending transaction record
-  const txId = generateId('tx');
   await db.insert(transactions).values({
     id: txId,
     service: 'topup',
@@ -122,13 +135,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     status: 'pending',
     ...externalRefColumns(result.id),
     source: 'fiat',
-    metadata: {
-      method: 'stripe',
-      topupAmount: amount.toString(),
-      chargeAmountCents: chargeAmountCents.toString(),
-      absorbFees: absorbFees === false ? 'false' : 'true',
-      handle,
-    },
+    metadata: { ...metadata, method: 'stripe' },
   });
 
   log.info(
