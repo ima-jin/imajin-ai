@@ -11,6 +11,7 @@ import {
   KernelWebhookError,
   verifyKernelWebhook,
   type KernelWebhookKey,
+  type KernelWebhookNonceStore,
   type KernelWebhookPinStore,
   type VerifyKernelWebhookOptions,
 } from '../src/kernel-webhook';
@@ -252,6 +253,16 @@ describe('kernel webhook TOFU and rotation', () => {
 });
 
 describe('kernel webhook fail-closed infrastructure', () => {
+  it.each([
+    { maxAgeSeconds: 0 }, { maxAgeSeconds: 1.5 }, { futureToleranceSeconds: -1 },
+    { futureToleranceSeconds: 0.5 }, { fetchTimeoutMs: 0 }, { fetchTimeoutMs: 1.5 },
+    { clock: () => Number.NaN },
+  ])('rejects invalid verifier configuration %j', async (overrides) => {
+    const { options, fetch } = context();
+    await expect(verifyKernelWebhook(signedRequest(), { ...options, ...overrides }))
+      .rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it.each(['', 'not-a-url', 'ftp://kernel.example/auth', 'https://user:pass@kernel.example/auth',
     'https://kernel.example/auth?query=true', 'https://kernel.example/auth#fragment',
     'http://kernel.example/auth'])('rejects invalid or insecure auth URL %s', async (authServiceUrl) => {
@@ -283,7 +294,13 @@ describe('kernel webhook fail-closed infrastructure', () => {
     expect(fetch).not.toHaveBeenCalled();
   });
   it.each([
-    {}, { keys: [] }, { keys: [first.entry] },
+    null, [], {}, { keys: [] }, { keys: [first.entry] },
+    { keys: [null], current: first.entry.kid },
+    { keys: [{ ...first.entry, kid: 1 }], current: first.entry.kid },
+    { keys: [{ ...first.entry, publicKey: 'not-a-key' }], current: first.entry.kid },
+    { keys: [{ ...first.entry, publicKey: 1 }], current: first.entry.kid },
+    { keys: [{ ...first.entry, validUntil: first.entry.validFrom }], current: first.entry.kid },
+    { keys: [first.entry], current: second.entry.kid },
     { keys: [first.entry, first.entry], current: first.entry.kid },
     { keys: [{ ...first.entry, algorithm: 'RSA' }], current: first.entry.kid },
     { keys: [{ ...first.entry, validUntil: 'never' }], current: first.entry.kid },
@@ -338,6 +355,16 @@ describe('kernel webhook fail-closed infrastructure', () => {
     expect(store.consume('b', 3000)).toBe(true);
   });
 
+  it('fails closed if a broken nonce adapter returns a truthy non-boolean', async () => {
+    const { options } = context();
+    options.nonceStore = { consume: async () => 'yes' } as unknown as KernelWebhookNonceStore;
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'STORE' });
+  });
+
+  it.each([0, -1, 1.5])('rejects invalid in-memory nonce capacity %s', (maxEntries) => {
+    expect(() => createMemoryKernelWebhookNonceStore({ maxEntries })).toThrow(TypeError);
+  });
+
   it('rechecks timestamp after slow discovery', async () => {
     const { options, fetch } = context();
     let now = NOW;
@@ -347,5 +374,27 @@ describe('kernel webhook fail-closed infrastructure', () => {
       return fetch();
     }) as typeof globalThis.fetch;
     await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'STALE' });
+  });
+
+  it('rejects a publication whose only key expires during fetch', async () => {
+    const { options, publish, fetch } = context();
+    publish([{ ...first.entry, validUntil: new Date(NOW + 1000).toISOString() }]);
+    let now = NOW;
+    options.clock = () => now;
+    options.fetch = (async () => {
+      now += 1000;
+      return fetch();
+    }) as typeof globalThis.fetch;
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'TRUST' });
+  });
+
+  it('rechecks key expiry after publication validation and before nonce consumption', async () => {
+    const { options, publish } = context();
+    publish([{ ...first.entry, validUntil: new Date(NOW + 1000).toISOString() }]);
+    options.clock = vi.fn().mockReturnValueOnce(NOW).mockReturnValueOnce(NOW).mockReturnValue(NOW + 1000);
+    const consume = vi.fn().mockReturnValue(true);
+    options.nonceStore = { consume };
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'UNKNOWN_KEY' });
+    expect(consume).not.toHaveBeenCalled();
   });
 });
