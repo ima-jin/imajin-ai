@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { verifyByoSetupIntent } from '@/src/lib/stripe/byo-setup-intent';
+import { forEachSequential } from '@/src/lib/async/sequential';
 import { sellerPledgeRefundClient } from './providers/seller-pledge-refund';
 import { resolveDidStripeKeys } from './rails/stripe-keys';
 import { SetupIntentError, setupIntentBody, setupIntentMetadata, type VerifySetupIntentInput } from './setup-intent';
@@ -87,7 +88,9 @@ export async function loadAppPledges(appDid: string, eventId: string, refs: Pled
     references.push(parsed.data);
   }
   const result: BoundPledge[] = [];
-  for (const ref of references) result.push(await bindPledge(appDid, eventId, ref));
+  await forEachSequential(references, async (ref) => {
+    result.push(await bindPledge(appDid, eventId, ref));
+  });
   return result;
 }
 
