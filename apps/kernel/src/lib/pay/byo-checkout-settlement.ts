@@ -115,7 +115,7 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
     .update(transactions)
     .set({
       status: 'completed', settledAt: new Date(),
-      metadata: { ...(row.metadata as Record<string, unknown> ?? {}), settledPaymentIntentId: input.paymentIntentId },
+      metadata: { ...(row.metadata as Record<string, unknown> | null), settledPaymentIntentId: input.paymentIntentId },
       ...(row.type === 'charge' && { externalRef: input.paymentIntentId }),
     })
     .where(and(eq(transactions.id, row.id), eq(transactions.rail, STRIPE_BYO_RAIL), eq(transactions.status, 'pending'),
