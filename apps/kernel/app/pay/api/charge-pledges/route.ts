@@ -2,7 +2,7 @@
  * POST /api/charge-pledges
  *
  * Charge all confirmed pledges for a campaign event.
- * Service-to-service endpoint — requires PAY_SERVICE_API_KEY.
+ * Requires the originating app's operator-approved pay:charge-pledges token.
  * Called by the events service when a campaign reaches its goal.
  *
  * Request:
@@ -10,10 +10,7 @@
  *   eventId: string,
  *   pledges: Array<{
  *     pledgeId: string,
- *     amount: number,
- *     currency: string,
- *     stripeCustomerId: string,
- *     stripePaymentMethodId: string
+ *     setupIntentId: string
  *   }>
  * }
  *
@@ -30,16 +27,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
+import { authenticatePayApp } from '@/src/lib/pay/app-settle';
+import { loadAppPledges, chargeBoundPledge, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
 
-interface PledgeCharge {
-  pledgeId: string;
-  amount: number;
-  currency: string;
-  stripeCustomerId: string;
-  stripePaymentMethodId: string;
-}
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -56,20 +47,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 
-  // Service-to-service auth via API key
-  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
-  const expectedKey = process.env.PAY_SERVICE_API_KEY;
-
-  if (!expectedKey || apiKey !== expectedKey) {
+  const auth = await authenticatePayApp(request, 'pay:charge-pledges');
+  if ('error' in auth) {
     return NextResponse.json(
-      { error: 'Unauthorized - invalid API key' },
-      { status: 401, headers: cors }
+      { error: auth.error },
+      { status: auth.status, headers: cors }
     );
   }
 
   try {
     const body = await request.json();
-    const { eventId, pledges }: { eventId: string; pledges: PledgeCharge[] } = body;
+    const { eventId, pledges }: { eventId: string; pledges: PledgeReference[] } = body;
 
     if (!eventId || typeof eventId !== 'string') {
       return NextResponse.json(
@@ -85,7 +73,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    const stripe = getStripeClient();
+    const bound = await loadAppPledges(auth.appDid, eventId, pledges);
+    if ('error' in bound) {
+      return NextResponse.json({ error: bound.error }, { status: bound.status, headers: cors });
+    }
     const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string }> = [];
     let charged = 0;
     let failed = 0;
@@ -93,39 +84,17 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // Sequential on purpose: each pledge is an off-session Stripe charge — one
     // card charge at a time (Stripe rate limits, no burst of simultaneous
     // charges), with `results` reported in pledge order.
-    await forEachSequential(pledges, async (pledge) => {
+    await forEachSequential(bound, async (pledge) => {
       try {
-        if (!pledge.stripeCustomerId || !pledge.stripePaymentMethodId) {
-          results.push({
-            pledgeId: pledge.pledgeId,
-            status: 'failed',
-            error: 'Missing Stripe customer or payment method',
-          });
-          failed++;
-          return;
-        }
+        const status = await chargeBoundPledge(pledge, eventId);
 
-        const paymentIntent = await stripe.paymentIntents.create({
-          amount: pledge.amount,
-          currency: pledge.currency.toLowerCase(),
-          customer: pledge.stripeCustomerId,
-          payment_method: pledge.stripePaymentMethodId,
-          off_session: true,
-          confirm: true,
-          metadata: {
-            eventId,
-            pledgeId: pledge.pledgeId,
-            type: 'campaign_pledge_charge',
-          },
-        });
-
-        if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'processing') {
+        if (status === 'succeeded' || status === 'processing') {
           results.push({
             pledgeId: pledge.pledgeId,
             status: 'charged',
           });
           charged++;
-        } else if (paymentIntent.status === 'requires_action') {
+        } else if (status === 'requires_action') {
           // 3D Secure or similar — mark as failed for off_session
           results.push({
             pledgeId: pledge.pledgeId,
@@ -137,12 +106,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           results.push({
             pledgeId: pledge.pledgeId,
             status: 'failed',
-            error: `Payment status: ${paymentIntent.status}`,
+            error: `Payment status: ${status}`,
           });
           failed++;
         }
-      } catch (err: any) {
-        const errorMessage = err.message || 'Payment failed';
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : 'Payment failed';
         log.error({ err: errorMessage, pledgeId: pledge.pledgeId }, 'Pledge charge failed');
         results.push({
           pledgeId: pledge.pledgeId,

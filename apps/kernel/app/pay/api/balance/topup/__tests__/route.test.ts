@@ -11,7 +11,10 @@ const state = vi.hoisted(() => ({
 
 vi.mock('@imajin/logger', async () => {
   const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');
-  return { withLogger: withLoggerPassthrough() };
+  return {
+    withLogger: withLoggerPassthrough(),
+    createLogger: () => ({ error: vi.fn(), warn: vi.fn() }),
+  };
 });
 
 vi.mock('@/src/db', async () => {
@@ -30,13 +33,14 @@ import { POST } from '../route';
 const API_KEY = 'test-pay-api-key';
 
 function makeRequest(body: Record<string, unknown>): Request {
-  return jsonPostRequest('https://kernel.test/api/balance/topup', body, { Authorization: `Bearer ${API_KEY}` });
+  return jsonPostRequest('https://kernel.test/api/balance/topup', body, { Cookie: 'imajin_session=session-test' });
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   resetMockDbCallState(state);
   process.env.PAY_SERVICE_API_KEY = API_KEY;
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ did: 'did:imajin:x' }))));
 });
 
 describe('POST /api/balance/topup — always MJN (#2016)', () => {
@@ -51,8 +55,23 @@ describe('POST /api/balance/topup — always MJN (#2016)', () => {
     expect(res.status).toBe(401);
   });
 
+  it.each([API_KEY, 'app-service-token', 'delegated-app-token', 'user-bearer'])('rejects bearer-only %s', async (token) => {
+    const res = await POST(jsonPostRequest('https://kernel.test/api/balance/topup',
+      { did: 'did:imajin:x', amount: 10, service: 'events', type: 'topup' },
+      { Authorization: `Bearer ${token}` }) as never);
+    expect(res.status).toBe(401);
+    expect(state.insertCalls).toHaveLength(0);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects another identity even with a user session', async () => {
+    const res = await POST(makeRequest({ did: 'did:imajin:other', amount: 25, service: 'events', type: 'topup' }) as never);
+    expect(res.status).toBe(403);
+    expect(state.insertCalls).toHaveLength(0);
+  });
+
   it('rejects a non-positive amount', async () => {
-    const res = await POST(makeRequest({ did: 'x', amount: -1, service: 'coffee', type: 'topup' }) as never);
+    const res = await POST(makeRequest({ did: 'did:imajin:x', amount: -1, service: 'coffee', type: 'topup' }) as never);
     expect(res.status).toBe(400);
   });
 
