@@ -1501,7 +1501,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
           {/* ── Step 1: the credential ── */}
           <div>
             {additionalMissing && (
-              <p role="status" className="text-amber-400 text-sm mb-3">{additionalField?.missingLabel}. Seal both keys below to enable card payments.</p>
+              <output className="block text-amber-400 text-sm mb-3">{additionalField?.missingLabel}. Seal both keys below to enable card payments.</output>
             )}
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
