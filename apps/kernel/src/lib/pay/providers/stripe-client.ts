@@ -1,56 +1,24 @@
 /**
- * Stripe SDK client factory (#2174).
- *
- * The ONE place `STRIPE_SECRET_KEY` is read and the ONE place `new
- * Stripe(...)` is constructed for the platform's own Stripe account.
- * Before this module existed, three separate call sites each built their
- * own client from the raw env var:
- *   - `lib/pay/stripe.ts`'s `getStripe()` singleton (deleted by this change)
- *   - `providers/stripe.ts`'s `StripeProvider` constructor
- *   - `refund.ts`'s ad-hoc `(await import('stripe')).default` + `new Stripe(...)`
- *
- * Every call site that needs live Stripe API access now imports
- * `getStripeClient()` from here instead. `refund.ts` specifically goes
- * through `findCheckoutSessionByPaymentIntent` below rather than importing
- * `getStripeClient()` directly, so it never needs to import a raw `stripe`
- * SDK type — this module's public surface exposes only domain-shaped types
- * to callers outside the `providers/` adapter layer.
- *
- * See `scripts/ci-guard-stripe-import-scope.mjs` for the companion guard
- * that keeps the raw `stripe` SDK *import* scoped to `providers/`, and
- * `__tests__/stripe-client.test.ts`'s grep guard for the single-read-site
- * invariant on `STRIPE_SECRET_KEY` specifically.
+ * Retired platform-account adapter. Kept only so legacy callers fail closed;
+ * live card operations must resolve the transacting DID's sealed connector.
+ * No ambient key, global client or credential cache is permitted here.
  */
-import Stripe from 'stripe';
-
-let _stripe: Stripe | null = null;
+import type Stripe from 'stripe';
 
 /**
- * Lazily construct (and cache) the single Stripe SDK client for this
- * process. Throws a clear, actionable error when `STRIPE_SECRET_KEY` is
- * absent instead of letting the Stripe SDK reject with its own generic
- * "Neither apiKey nor config.authenticator provided" message.
+ * @deprecated Use the seller/node DID-bound adapters instead. Platform
+ * payments (including old platform refunds) cannot acquire a client.
  */
 export function getStripeClient(): Stripe {
-  if (!_stripe) {
-    const secretKey = process.env.STRIPE_SECRET_KEY;
-    if (!secretKey) {
-      throw new Error('STRIPE_SECRET_KEY not configured');
-    }
-    _stripe = new Stripe(secretKey, {
-      apiVersion: '2024-11-20.acacia' as Stripe.LatestApiVersion,
-    });
-  }
-  return _stripe;
+  throw new Error('Legacy platform card payments are unavailable; use a DID-bound sealed connector');
 }
 
 /**
- * Whether Stripe is configured for this process, without throwing — lets
- * callers (e.g. `pay.ts`'s provider registration) gate optional
- * Stripe-backed features without constructing a client just to probe it.
+ * @deprecated There is no process-wide card account. For node availability,
+ * use isNodeCardRailConfigured; sellers must resolve their own card rail.
  */
 export function isStripeConfigured(): boolean {
-  return Boolean(process.env.STRIPE_SECRET_KEY);
+  return false;
 }
 
 /**
@@ -74,12 +42,4 @@ export async function findCheckoutSessionByPaymentIntent(
   const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 1 });
   const session = sessions.data[0];
   return session ? { id: session.id } : null;
-}
-
-/**
- * Test-only: reset the cached singleton so tests can exercise lazy-init and
- * missing-key paths independently of each other and of call order.
- */
-export function __resetStripeClientForTests(): void {
-  _stripe = null;
 }

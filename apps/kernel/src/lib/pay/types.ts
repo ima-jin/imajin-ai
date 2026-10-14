@@ -293,12 +293,8 @@ export interface RefundResult {
 /**
  * Stripe provider configuration.
  *
- * #2174: the Stripe SDK client itself is always sourced from the shared
- * adapter singleton (`providers/stripe-client.ts`'s `getStripeClient()`),
- * which is the only place `STRIPE_SECRET_KEY` is read — so this config no
- * longer carries a `secretKey`/`apiVersion`/etc. for constructing a second,
- * independent client. It only carries provider-level options that aren't
- * part of the raw Stripe client itself.
+ * Legacy configuration shape retained for compatibility only. The platform
+ * provider fails closed; live card operations use DID-bound sealed connectors.
  */
 export interface StripeProviderConfig {
   /** Webhook signing secret */

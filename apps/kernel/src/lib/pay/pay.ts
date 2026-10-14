@@ -1,12 +1,12 @@
 /**
  * Payment Service Instance
  * 
- * Configured from environment variables.
+ * Legacy service for the independently configured Solana provider.
+ * Card operations must use the transacting DID's sealed connector instead.
  */
 
 import { PaymentService } from '@/src/lib/pay';
 import type { PaymentServiceConfig } from '@/src/lib/pay';
-import { isStripeConfigured } from '@/src/lib/pay/providers/stripe-client';
 
 let paymentService: PaymentService | null = null;
 
@@ -19,16 +19,6 @@ export function getPaymentService(): PaymentService {
     providers: {},
   };
   
-  // Configure Stripe if a key is present. #2174: `isStripeConfigured()` is
-  // the only place `STRIPE_SECRET_KEY` is read — `StripeProviderConfig` no
-  // longer carries the raw key, since `StripeProvider` sources its client
-  // from the shared adapter singleton instead.
-  if (isStripeConfigured()) {
-    config.providers.stripe = {
-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
-    };
-  }
-  
   // Configure Solana if RPC URL is present
   if (process.env.SOLANA_RPC_URL) {
     config.providers.solana = {
@@ -36,9 +26,9 @@ export function getPaymentService(): PaymentService {
     };
   }
   
-  if (!config.providers.stripe && !config.providers.solana) {
+  if (!config.providers.solana) {
     throw new Error(
-      'No payment providers configured. Set STRIPE_SECRET_KEY and/or SOLANA_RPC_URL.'
+      'No legacy payment provider configured. Cards require a DID-bound sealed connector; Solana requires SOLANA_RPC_URL.'
     );
   }
   
@@ -46,7 +36,7 @@ export function getPaymentService(): PaymentService {
   return paymentService;
 }
 
-/** Helper to get Stripe publishable key for frontend */
+/** @deprecated Resolve the transacting DID's sealed publishable key instead. */
 export function getStripePublishableKey(): string | undefined {
-  return process.env.STRIPE_PUBLISHABLE_KEY;
+  return undefined;
 }
