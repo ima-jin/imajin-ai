@@ -2,8 +2,9 @@
 
 Apps verify kernel callbacks with `verifyKernelWebhook` from `@ima-jin/auth`
 (the published name of the workspace's `@imajin/auth`). This is the server-side
-SDK apps already use for `loadFromVault`; `auth-client` is the browser session SDK
-and is not the home for server-side TOFU files or replay protection.
+SDK apps already use for `loadFromVault` and shared cryptographic contracts.
+`auth-client` owns federated login/session and app-keystore bootstrapping; webhook
+verification belongs alongside the shared auth cryptography rather than session handlers.
 
 ## Wire contract
 
