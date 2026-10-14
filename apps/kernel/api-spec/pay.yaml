@@ -449,11 +449,13 @@ paths:
     post:
       tags: [pay]
       operationId: topupBalance
-      summary: Credit the authenticated user's own cash balance
+      summary: Start a receipt-backed Stripe topup for the authenticated user
       description: |
-        Represents real money received (e.g. from a rail webhook). Always credits `cash_amount`.
-        Requires the user's session Cookie (session-only auth); `did` must equal the authenticated user's effective DID.
-        An app-service token alone is not user authority.
+        Legacy alias of `POST /api/topup/stripe`, not a direct balance-credit endpoint.
+        Requires the user's session Cookie (session-only auth). Optional `did`, when present,
+        must equal the session's effective DID. Returns a Stripe checkout URL/session id and
+        records a pending transaction; only the confirmed receipt may credit MJN.
+        Caller amounts never mint cash. An app-service token alone is not user authority.
       security:
         - cookieAuth: []
       requestBody:
@@ -462,24 +464,21 @@ paths:
           application/json:
             schema:
               type: object
-              required: [did, amount, service, type]
+              required: [amount]
               properties:
-                did: { type: string }
-                amount: { type: number, description: "Amount in dollars" }
-                service: { type: string, description: "Originating service (e.g. coffee, events)" }
-                type: { type: string, description: "Transaction type label" }
-                metadata: { type: object }
+                did: { type: string, description: "Optional; must equal the session's effective DID" }
+                amount: { type: number, minimum: 20, description: "CAD dollars; minimum $20" }
+                absorbFees: { type: boolean, description: "false grosses up the checkout so the user absorbs processor fees" }
       responses:
         "200":
-          description: Balance topped up
+          description: Stripe checkout created; balance is not yet credited
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  transactionId: { type: string }
-                  did: { type: string }
-                  amount: { type: number }
+                  url: { type: string, format: uri }
+                  sessionId: { type: string }
         "400":
           description: Invalid request
           content:
@@ -492,6 +491,87 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+
+  /api/topup/stripe:
+    post:
+      tags: [pay]
+      operationId: createStripeTopup
+      summary: Start a Stripe checkout for the session user's MJN topup
+      description: |
+        Requires a user session Cookie, never app-service authority. Creates a pending transaction
+        and returns a checkout URL; only the confirmed receipt may credit withdrawable MJN.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, minimum: 20, description: "CAD dollars" }
+                absorbFees: { type: boolean }
+      responses:
+        "200":
+          description: Checkout created; no balance credited yet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                  sessionId: { type: string }
+        "400":
+          description: Invalid amount or JSON
+        "401":
+          description: Missing user session Cookie
+        "429":
+          description: Too many requests
+
+  /api/topup/emt:
+    post:
+      tags: [pay]
+      operationId: createEmtTopup
+      summary: Record a pending EMT topup for the session user
+      description: |
+        Requires a user session Cookie. Returns payment instructions and a pending transaction;
+        no balance is credited until the incoming payment is matched by an administrator.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, minimum: 20, description: "CAD dollars" }
+      responses:
+        "200":
+          description: Pending topup recorded; no balance credited yet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  transactionId: { type: string }
+                  instructions:
+                    type: object
+                    properties:
+                      email: { type: string }
+                      amount: { type: number }
+                      memo: { type: string }
+        "400":
+          description: Invalid amount or JSON
+        "401":
+          description: Missing user session Cookie
+        "429":
+          description: Too many requests
 
   /api/charge:
     post:
@@ -1141,6 +1221,9 @@ paths:
         The kernel rejects app mismatches and legacy unbound pledges, then derives the amount,
         currency, customer and payment method from its recorded transaction and the confirmed
         Stripe SetupIntent. Caller-supplied card and amount fields are not authority.
+        A pending transaction is atomically claimed as charging before the rail call. Completed
+        results can be replayed; an interrupted or ambiguous charging outcome fails closed and
+        requires reconciliation, not an automatic second charge after rail idempotency expires.
       security:
         - appServiceToken: []
       requestBody:

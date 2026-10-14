@@ -28,8 +28,12 @@ the key-free examples are also check-env's manifests. Reload through the normal
 deploy pipeline so stale process env is not relied upon.
 
 Legacy pledges with no app-bound setup transaction fail closed: backers must complete
-a fresh setup; do not assign ownership from old customer/card ids. Standalone app
-deployments require their own caller migration, tracked in
+a fresh setup; do not assign ownership from old customer/card ids. Operators must
+reconcile interrupted/ambiguous pledge charges before attempting another
+charge, rather than relying indefinitely on Stripe's idempotency retention. Topup routes
+are session-Cookie-only: the legacy balance alias starts the existing Stripe checkout and
+records a pending transaction, never directly credits caller-supplied cash.
+Standalone app deployments require their own caller migration, tracked in
 [events#28](https://github.com/ima-jin/events/issues/28);
 [market#13](https://github.com/ima-jin/market/issues/13) tracks a test-only reference.
 See [scoped pay configuration](../docs/ENVIRONMENTS.md#scoped-pay-callers-2735)

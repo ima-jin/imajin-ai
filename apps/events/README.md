@@ -139,6 +139,9 @@ charges send each pledge's `setupIntentId`, not caller-supplied card or amount a
 The kernel derives charge details from its recorded transaction and the confirmed Stripe
 SetupIntent. Legacy pledges without that binding fail closed and must complete a fresh setup;
 do not backfill app ownership from an app-supplied card/customer id.
+The kernel claims each pending pledge before charging. Interrupted/ambiguous charging
+outcomes require reconciliation and must not be retried as new charges after Stripe's
+idempotency retention window.
 
 Deploy the kernel #2735 contract before these callers. Each app-authenticated pay POST retries
 a 401 once after invalidating the cached token; 403 (scope/ownership refusal) is never retried.

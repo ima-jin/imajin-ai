@@ -151,8 +151,11 @@ app-bound pledge setups and charge only those setups), alongside `pay:settle` wh
 through the countersigned `apps:service-scopes` card. Deploy the kernel contract before
 migrated callers. Pledge setup additionally forwards the user's session Cookie; charge requests
 name the recorded `setupIntentId`. Legacy unbound pledges require a new user-confirmed setup.
-Emission is kernel-internal and invoked in-process; balance topup requires a user session and
-can target only that user's own DID.
+Emission is kernel-internal and invoked in-process. Topup routes require the user's session
+Cookie; `/pay/api/balance/topup` aliases the existing Stripe checkout and can target only
+that user's own DID. It returns a checkout URL/session id and pending transaction, never a
+direct credit from caller amounts. Stripe confirms the receipt before MJN is credited;
+EMT topups remain pending until the incoming payment is matched.
 
 ### check-env annotations (#2246)
 
