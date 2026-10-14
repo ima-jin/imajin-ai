@@ -132,9 +132,18 @@ export function createMemoryKernelWebhookNonceStore(options: {
   };
 }
 
-const defaultNonceStore = createMemoryKernelWebhookNonceStore();
-// Resolve cwd at use, not package import (applications may change cwd during startup).
-let defaultPinStore: KernelWebhookPinStore | undefined;
+const DEFAULT_STORES = Symbol.for('@imajin/auth/kernel-webhook/default-stores/v1');
+interface DefaultStores {
+  nonceStore: KernelWebhookNonceStore;
+  pinStore?: KernelWebhookPinStore;
+}
+// Next.js can bundle root/subpath imports into separate module copies. Replay
+// evidence must be process-wide, not reset by a second copy or hot reload.
+// This registry contains nonce expiries and public pin-store handles, never secrets.
+const processRegistry = globalThis as typeof globalThis & { [DEFAULT_STORES]?: DefaultStores };
+const defaultStores = processRegistry[DEFAULT_STORES] ??= {
+  nonceStore: createMemoryKernelWebhookNonceStore(),
+};
 
 function fail(code: KernelWebhookErrorCode, message: string): never {
   throw new KernelWebhookError(code, message);
@@ -249,7 +258,8 @@ export async function verifyKernelWebhook<T = unknown>(
     if (now - signedAt >= maxAge * 1_000) fail('STALE', 'Kernel webhook timestamp expired');
     if (signedAt - now > future * 1_000) fail('FUTURE', 'Kernel webhook timestamp is in the future');
     const rawBody = new Uint8Array(await request.arrayBuffer());
-    const store = options.pinStore ?? (defaultPinStore ??= createFileKernelWebhookPinStore());
+    // Resolve cwd at first use, not package import, while sharing the lazy store.
+    const store = options.pinStore ?? (defaultStores.pinStore ??= createFileKernelWebhookPinStore());
     const published = await store.withLock(namespace, async () => {
       const stored = await store.load(namespace);
       const pinned = stored === null ? [] : parseKeys(stored, 'TRUST');
@@ -280,7 +290,7 @@ export async function verifyKernelWebhook<T = unknown>(
     const verifiedAt = (options.clock ?? Date.now)();
     if (verifiedAt - signedAt >= maxAge * 1_000) fail('STALE', 'Kernel webhook expired during verification');
     if (!active(key, verifiedAt)) fail('UNKNOWN_KEY', 'Kernel webhook key expired during verification');
-    const consumed = await (options.nonceStore ?? defaultNonceStore).consume(
+    const consumed = await (options.nonceStore ?? defaultStores.nonceStore).consume(
       `${namespace}\n${nonce.toLowerCase()}`, signedAt + maxAge * 1_000,
     );
     if (consumed !== true) {

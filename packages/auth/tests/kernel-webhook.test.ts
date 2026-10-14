@@ -150,6 +150,22 @@ describe('kernel webhook canonical protocol', () => {
       .rejects.toMatchObject({ code: 'REPLAY' });
   });
 
+  it('shares default replay evidence across separately loaded module copies', async () => {
+    const { options } = context();
+    options.nonceStore = undefined;
+    options.clock = Date.now;
+    const request = signedRequest({ timestamp: Math.floor(Date.now() / 1000) });
+    await verifyKernelWebhook(request.clone(), options);
+    vi.resetModules();
+    const fresh = await import('../src/kernel-webhook');
+    expect(fresh.verifyKernelWebhook).not.toBe(verifyKernelWebhook);
+    await expect(fresh.verifyKernelWebhook(request.clone(), options)).rejects.toMatchObject({ code: 'REPLAY' });
+    // The same process-wide store still isolates independent kernels.
+    await expect(fresh.verifyKernelWebhook(request.clone(), {
+      ...options, authServiceUrl: 'https://another-kernel.example/auth',
+    })).resolves.toEqual({ event: 'test', unicode: '雪' });
+  });
+
   it('returns typed invalid-JSON errors only after authentication', async () => {
     const { options } = context();
     await expect(verifyKernelWebhook(signedRequest({ body: 'not json' }), options))

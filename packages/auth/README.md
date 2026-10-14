@@ -137,7 +137,9 @@ in the future. `maxAgeSeconds`, `futureToleranceSeconds`, `fetchTimeoutMs`,
 `fetch`, and `clock` (milliseconds since epoch) can be injected for tests.
 Replay protection is an atomic in-memory store with at most 100,000 live
 nonces; it prunes expired entries and fails closed at capacity rather than
-evicting live replay evidence. It is **single-process and resets on restart**.
+evicting live replay evidence. Default nonce and lazy public-pin stores are
+shared process-wide across duplicate server bundles and hot reloads via a
+global symbol registry. Replay evidence is **single-process and resets on restart**.
 Multi-worker/serverless deployments must supply a shared durable `nonceStore`
 whose `consume(key, expiresAtMs)` atomically inserts an unseen key with expiry,
 returning `false` for a duplicate. Never implement this as separate GET/SET
