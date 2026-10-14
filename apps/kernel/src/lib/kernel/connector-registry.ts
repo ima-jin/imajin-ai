@@ -59,6 +59,16 @@ export interface CredentialUiCopy {
   placeholder: string;
   /** Help text under the input — say where the credential comes from. */
   hint: string;
+  /** An additional write-only value submitted through the same credential seal route. */
+  additionalField?: {
+    key: string;
+    sealedFlag: string;
+    label: string;
+    placeholder: string;
+    hint: string;
+    missingLabel: string;
+    validation: 'stripe-key-pair';
+  };
 }
 
 /**
@@ -679,12 +689,22 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
       placeholder: 'Stripe Restricted Key (rk_...)',
       hint: 'Key is sealed server-side and never returned. Create a RESTRICTED key (not your full secret key) in the ' +
         'Stripe Dashboard → Developers → API keys → Create restricted key, and grant only: Checkout Sessions = Write ' +
-        '(card payment on your invoices), Payments = Write, Webhooks = Write. A key without Checkout Sessions = Write ' +
-        'is refused when you paste it. Leave every other resource — especially Account — at None. Also approve the ' +
+        '(card payment on your invoices), Payments = Write, Customers = Write, Setup Intents = Write, ' +
+        'Payment Methods = Read, Refunds = Write, and Webhooks = Write. A key without Checkout Sessions = Write ' +
+        'is refused when you paste it. Leave unused resources — especially Account — at None. Also approve the ' +
         '"Publish your Stripe payment events" scope below: that is how a paid invoice flips to Paid without manual ' +
         'marking. Connecting self-provisions a ' +
         'webhook endpoint on your own Stripe account; disconnecting removes it. Rotating your key in the Stripe ' +
         'Dashboard? Just paste the new key here again — reconnecting replaces the webhook endpoint automatically.',
+      additionalField: {
+        key: 'publishableKey',
+        sealedFlag: 'publishableKeySealed',
+        label: 'Publishable Key',
+        placeholder: 'Stripe Publishable Key (pk_live_… or pk_test_…)',
+        hint: 'Paste the publishable key from the same Stripe account and mode as your restricted key. Both keys are sealed together; neither is read from node environment variables.',
+        missingLabel: 'Publishable key missing',
+        validation: 'stripe-key-pair',
+      },
     },
     settings: null,
     modelsRoute: null,

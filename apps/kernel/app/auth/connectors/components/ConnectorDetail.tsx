@@ -34,6 +34,7 @@ import {
   type CredentialSealedFlags,
 } from '@/src/lib/kernel/connector-card-kind';
 import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-outcome';
+import { validateStripeCredentialPair } from '@/src/lib/stripe/credential-pair';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -82,6 +83,7 @@ interface GitHubStatus extends OAuthConnectorStatus {
  * before it was ever read generically. `credentialSealed()` normalises them.
  */
 interface CredentialPasteStatus extends CredentialSealedFlags {
+  [field: string]: unknown;
   manifestAssetId: string | null;
   activeScopes: string[];
   validScopes: string[];
@@ -1338,6 +1340,28 @@ function disconnectConfirmMessage(entry: ConnectorEntry, credentialLabel: string
   return `Disconnect ${entry.name}? This revokes access to the sealed ${credentialLabel} immediately.`;
 }
 
+function CredentialPasswordInput({ id, label, value, onChange, placeholder }: Readonly<{
+  id?: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}>) {
+  return (
+    <input
+      id={id}
+      type="password"
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      required
+      autoComplete="off"
+      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
+    />
+  );
+}
+
 /**
  * Card for connectors whose credential is pasted in-app rather than collected
  * through an OAuth redirect: `ingestionPattern` of `'token-paste'` (Discord,
@@ -1360,11 +1384,13 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
 
   // Credential paste state
   const [credentialInput, setCredentialInput] = useState('');
+  const [additionalInput, setAdditionalInput] = useState('');
   const [sealing, setSealing] = useState(false);
   const [sealError, setSealError] = useState<string | null>(null);
   const [showCredentialInput, setShowCredentialInput] = useState(false);
 
   const ui = credentialCopy(entry);
+  const additionalField = ui.additionalField;
 
   const fetchStatus = useCallback(async () => {
     setStatusLoading(true);
@@ -1407,27 +1433,37 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
 
   const activeSet = new Set(status?.activeScopes ?? []);
   const sealed = status !== null && credentialSealed(status);
+  const additionalMissing = !!additionalField && status?.[additionalField.sealedFlag] !== true;
   // Connected = a sealed credential plus at least one active scope. The old
   // Discord card hardcoded `discord:post`, which reported "Not configured" for a
   // deliberate read-only grant; any active scope means the connector can act.
-  const ready = sealed && activeSet.size > 0;
+  const ready = sealed && !additionalMissing && activeSet.size > 0;
   const sealActionLabel = sealed ? 'Replace' : 'Seal';
+  const credentialLabel = additionalField ? `${entry.name} keys` : ui.label;
+  const sealButtonLabel = sealing ? 'Sealing…' : `${sealActionLabel} ${credentialLabel}`;
 
   async function handleSealCredential(e: React.FormEvent) {
     e.preventDefault();
     setSealing(true);
     setSealError(null);
     try {
+      if (additionalField?.validation === 'stripe-key-pair') {
+        validateStripeCredentialPair(credentialInput.trim(), additionalInput.trim());
+      }
       const r = await fetch(entry.tokenRoute!, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [credentialBodyKey(entry)]: credentialInput.trim() }),
+        body: JSON.stringify({
+          [credentialBodyKey(entry)]: credentialInput.trim(),
+          ...(additionalField && { [additionalField.key]: additionalInput.trim() }),
+        }),
       });
       if (!r.ok) {
         const data = await r.json().catch(() => ({})) as { error?: string };
         throw new Error(data.error ?? `${r.status} ${r.statusText}`);
       }
       setCredentialInput('');
+      setAdditionalInput('');
       setShowCredentialInput(false);
       void refreshStatus();
     } catch (err: unknown) {
@@ -1464,6 +1500,9 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
 
           {/* ── Step 1: the credential ── */}
           <div>
+            {additionalMissing && (
+              <p role="status" className="text-amber-400 text-sm mb-3">{additionalField?.missingLabel}. Seal both keys below to enable card payments.</p>
+            )}
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                 <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
@@ -1473,7 +1512,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
                 </span>
                 {' '}{ui.label}
               </h3>
-              {sealed && !showCredentialInput && (
+              {sealed && !showCredentialInput && !additionalMissing && (
                 <button type="button"
                   onClick={() => setShowCredentialInput(true)}
                   className="text-xs text-gray-600 hover:text-gray-400 transition"
@@ -1483,26 +1522,38 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
               )}
             </div>
 
-            {!sealed || showCredentialInput ? (
+            {!sealed || showCredentialInput || additionalMissing ? (
               <form onSubmit={(e) => { void handleSealCredential(e); }} className="space-y-2">
-                <input
-                  type="password"
+                <CredentialPasswordInput
+                  label={ui.label}
                   value={credentialInput}
-                  onChange={(e) => setCredentialInput(e.target.value)}
+                  onChange={setCredentialInput}
                   placeholder={ui.placeholder}
-                  required
-                  autoComplete="off"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50 font-mono"
                 />
                 <p className="text-xs text-gray-700">{ui.hint}</p>
+                {additionalField && (
+                  <div className="space-y-2">
+                    <label htmlFor={`${entry.id}-additional-credential`} className="block text-xs text-gray-400">
+                      {additionalField.label}
+                    </label>
+                    <CredentialPasswordInput
+                      id={`${entry.id}-additional-credential`}
+                      label={additionalField.label}
+                      value={additionalInput}
+                      onChange={setAdditionalInput}
+                      placeholder={additionalField.placeholder}
+                    />
+                    <p className="text-xs text-gray-700">{additionalField.hint}</p>
+                  </div>
+                )}
                 {sealError && <p className="text-red-400 text-xs">{sealError}</p>}
                 <div className="flex gap-2 pt-1">
                   <button
                     type="submit"
-                    disabled={sealing || !credentialInput.trim()}
+                    disabled={sealing || !credentialInput.trim() || !!(additionalField && !additionalInput.trim())}
                     className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-black text-sm font-medium rounded-lg transition"
                   >
-                    {sealing ? 'Sealing…' : `${sealActionLabel} ${ui.label}`}
+                    {sealButtonLabel}
                   </button>
                   {showCredentialInput && (
                     <button type="button" onClick={() => { setShowCredentialInput(false); setSealError(null); }}
@@ -1513,7 +1564,10 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
                 </div>
               </form>
             ) : (
-              <StatusDot ok={true} label={`${ui.label} sealed`} />
+              <div className="space-y-2">
+                <StatusDot ok={true} label={`${ui.label} sealed`} />
+                {additionalField && <StatusDot ok={true} label={`${additionalField.label} sealed`} />}
+              </div>
             )}
           </div>
 
