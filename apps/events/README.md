@@ -136,6 +136,23 @@ payment that cannot pay the organizer.
 
 ## Endpoints
 
+### Campaign payment setup
+
+Campaigns require the separate operator-approved `pay:setup-intent` scope on events'
+app-service token and an active seller `stripe:events` BYO connector. Customers and
+SetupIntents require write/read permissions; PaymentMethods require read permission.
+The browser must use that seller account's publishable key.
+
+Creation binds the app, seller, authenticated buyer, pledge, event, amount and currency.
+Confirmation reads Stripe through `/pay/api/setup-intent/verify`; missing routes, revoked
+approval and upstream failures return 503 without any confirmation. Legacy platform
+pledges require a fresh setup (409); no client-trust or platform-key fallback exists.
+
+This production copy is patched alongside `ima-jin/events#27`: `prod-events` still points
+at `apps/events` in the production ecosystem. The existing platform charge-pledges route
+(#2735) cannot collect these BYO saved cards; migrate campaign collection before enabling
+automatic charging. A confirmed pledge means a verified saved method, not collected funds.
+
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/` | Event listing |

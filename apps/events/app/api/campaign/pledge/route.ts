@@ -1,4 +1,4 @@
-﻿/**
+/**
  * POST /api/campaign/pledge
  *
  * Create a pledge for a campaign event.
@@ -18,40 +18,36 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
-import { db, events, pledges } from '@/src/db';
-import { eq, and } from 'drizzle-orm';
-import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
+import { db, pledges } from '@/src/db';
+import { eq, and, isNull } from 'drizzle-orm';
+import { corsHeaders } from '@imajin/config';
+import { authenticateDid, findEvent, jsonError, createPreflight, rateLimitResponse } from '../../../../src/lib/campaign-route';
 import { withLogger } from '@imajin/logger';
 import { randomBytes } from 'node:crypto';
+import { createPledgePayment, SETUP_INTENT_CONTRACT } from '../../../../src/lib/pledge-payment';
 
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
+export const OPTIONS = createPreflight();
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+function recordedSetupIntent(id: string | null) {
+  return id ? eq(pledges.stripeSetupIntentId, id) : isNull(pledges.stripeSetupIntentId);
+}
+function campaignAvailability(event: NonNullable<Awaited<ReturnType<typeof findEvent>>>, cors: HeadersInit) {
+  if (event.eventType !== 'campaign') return jsonError('Not a campaign event', 400, cors);
+  if (event.status !== 'published') return jsonError('Campaign is not available for pledging', 400, cors);
+  if (event.deadline && new Date(event.deadline) < new Date()) {
+    return jsonError('Campaign deadline has passed', 400, cors);
+  }
+  return null;
 }
 
 export const POST = withLogger('events', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
-  const ip = getClientIP(request);
-  const rl = rateLimit(ip, 10, 60_000);
-  if (rl.limited) {
-    return NextResponse.json(
-      { error: 'Too many requests', retryAfter: rl.retryAfter },
-      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
-    );
-  }
+  const limited = rateLimitResponse(request, 10, cors);
+  if (limited) return limited;
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json(
-      { error: authResult.error },
-      { status: authResult.status, headers: cors }
-    );
-  }
-
-  const did = resolveActingDid(authResult.identity);
+  const did = await authenticateDid(request, cors);
+  if (did instanceof NextResponse) return did;
 
   try {
     const body = await request.json();
@@ -61,41 +57,17 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
       return NextResponse.json({ error: 'eventId is required' }, { status: 400, headers: cors });
     }
 
-    if (typeof amount !== 'number' || amount < 100 || !Number.isInteger(amount)) {
+    if (typeof amount !== 'number' || amount < 100 || !Number.isSafeInteger(amount)) {
       return NextResponse.json(
         { error: 'amount must be an integer >= 100 (minimum $1.00)' },
         { status: 400, headers: cors }
       );
     }
 
-    // Fetch and validate event
-    const [event] = await db
-      .select()
-      .from(events)
-      .where(eq(events.id, eventId))
-      .limit(1);
-
-    if (!event) {
-      return NextResponse.json({ error: 'Event not found' }, { status: 404, headers: cors });
-    }
-
-    if (event.eventType !== 'campaign') {
-      return NextResponse.json({ error: 'Not a campaign event' }, { status: 400, headers: cors });
-    }
-
-    if (event.status !== 'published') {
-      return NextResponse.json(
-        { error: 'Campaign is not available for pledging' },
-        { status: 400, headers: cors }
-      );
-    }
-
-    if (event.deadline && new Date(event.deadline) < new Date()) {
-      return NextResponse.json(
-        { error: 'Campaign deadline has passed' },
-        { status: 400, headers: cors }
-      );
-    }
+    const event = await findEvent(eventId);
+    if (!event) return jsonError('Event not found', 404, cors);
+    const unavailable = campaignAvailability(event, cors);
+    if (unavailable) return unavailable;
 
     // Check for existing pledge from this backer
     const [existingPledge] = await db
@@ -111,45 +83,50 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
       );
     }
 
-    // Call pay service to create SetupIntent
-    const payRes = await fetch(`${PAY_SERVICE_URL}/api/setup-intent`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Cookie: request.headers.get('cookie') || '',
-      },
-      body: JSON.stringify({
-        amount,
-        currency: 'CAD',
-        metadata: { eventId, backerDid: did },
-      }),
+    // Bind server-derived pledge, buyer and seller values into Stripe metadata.
+    const pledgeId = existingPledge?.id || `plg_${randomBytes(12).toString('hex')}`;
+    const payment = await createPledgePayment({
+      pledgeId, eventId, buyerDid: did, sellerDid: event.creatorDid, amount, currency: 'CAD',
     });
-
-    if (!payRes.ok) {
-      const err = await payRes.json().catch(() => ({}));
-      log.error({ err: err.error || payRes.statusText }, 'Pay service SetupIntent failed');
+    if ('error' in payment) {
+      log.error({ code: payment.code }, 'Pay service SetupIntent failed');
       return NextResponse.json(
-        { error: err.error || 'Failed to create payment setup' },
-        { status: 500, headers: cors }
+        { error: payment.error, code: payment.code },
+        { status: payment.status, headers: cors }
       );
     }
 
-    const { clientSecret, setupIntentId, customerId } = await payRes.json();
+    const { clientSecret, setupIntentId, customerId } = payment;
+    const bindingMetadata = { sellerDid: event.creatorDid, setupIntentContract: SETUP_INTENT_CONTRACT };
 
     // Create or update pledge record
-    const pledgeId = existingPledge?.id || `plg_${randomBytes(12).toString('hex')}`;
 
     if (existingPledge) {
-      await db
+      const [updated] = await db
         .update(pledges)
         .set({
           amount,
+          currency: 'CAD',
           stripeSetupIntentId: setupIntentId,
           stripeCustomerId: customerId,
+          stripePaymentMethodId: null,
           status: 'pending',
-          metadata: { ...(existingPledge.metadata as Record<string, any>), updatedAt: new Date().toISOString() },
+          metadata: { ...bindingMetadata, updatedAt: new Date().toISOString() },
         })
-        .where(eq(pledges.id, existingPledge.id));
+        .where(and(
+          eq(pledges.id, existingPledge.id),
+          eq(pledges.backerDid, did),
+          eq(pledges.status, existingPledge.status),
+          eq(pledges.amount, existingPledge.amount),
+          eq(pledges.currency, existingPledge.currency),
+          recordedSetupIntent(existingPledge.stripeSetupIntentId),
+          eq(pledges.metadata, existingPledge.metadata),
+        ))
+        .returning({ id: pledges.id });
+      if (!updated) return NextResponse.json(
+        { error: 'Pledge changed; please retry', code: 'pledge_changed' },
+        { status: 409, headers: cors },
+      );
     } else {
       await db.insert(pledges).values({
         id: pledgeId,
@@ -160,7 +137,7 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
         stripeSetupIntentId: setupIntentId,
         stripeCustomerId: customerId,
         status: 'pending',
-        metadata: {},
+        metadata: bindingMetadata,
       });
     }
 
