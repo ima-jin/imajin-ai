@@ -493,4 +493,11 @@ describe('serviceEligible fence', () => {
     expect(isServiceEligibleScope(scopeEntry('attestations:write')!)).toBe(false);
     expect(serviceEligibleScopes()).not.toContain('attestations:write');
   });
+
+  it('requires operator approval for the registered-app pledge card scope', () => {
+    expect(scopeEntry('pay:setup-intent')).toMatchObject({ connector: null });
+    expect(validateScopes(['pay:setup-intent']).invalid).toEqual([]);
+    expect(isServiceEligibleScope(scopeEntry('pay:setup-intent')!)).toBe(false);
+    expect(serviceEligibleScopes()).not.toContain('pay:setup-intent');
+  });
 });

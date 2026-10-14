@@ -30,8 +30,8 @@ import type { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { decodeProtectedHeader } from 'jose';
 import { createLogger } from '@imajin/logger';
-import { db, registryApps, transactions } from '@/src/db';
-import { verifyAppToken } from '@/src/lib/auth/jwt';
+import { db, transactions } from '@/src/db';
+import { authenticatePayApp } from './app-service-auth';
 import { STRIPE_BYO_RAIL } from './external-ref';
 import { verifyAgainstPayeeManifest } from './payee-manifest';
 import { settlePayment, type SettlePaymentResult } from './settle-core';
@@ -97,37 +97,7 @@ export function carriesAppServiceToken(request: Pick<NextRequest, 'headers'>): b
  * key, which is not a JWT); 403 = a real credential that may not settle.
  */
 export async function authenticateSettleApp(request: NextRequest): Promise<{ appDid: string } | Failure> {
-  const header = request.headers.get('authorization');
-  if (!header?.startsWith('Bearer ')) {
-    return { error: 'Unauthorized - app-service token required', status: 401 };
-  }
-
-  const claims = await verifyAppToken(header.slice('Bearer '.length));
-  if (!claims) {
-    return { error: 'Unauthorized - invalid or expired app-service token', status: 401 };
-  }
-  // A user-delegated app token carries a user; settling is the app acting as itself.
-  if (!claims.isServiceToken || !claims.azp) {
-    return { error: 'Forbidden - an app-service token is required', status: 403 };
-  }
-  const scopes = claims.scope.split(' ').filter(Boolean);
-  if (!scopes.includes(PAY_SETTLE_SCOPE)) {
-    return { error: `Forbidden - scope '${PAY_SETTLE_SCOPE}' was not granted`, status: 403 };
-  }
-
-  const [app] = await db
-    .select({ status: registryApps.status, approved: registryApps.approvedServiceScopes })
-    .from(registryApps)
-    .where(eq(registryApps.appDid, claims.azp))
-    .limit(1);
-  if (app?.status !== 'active') {
-    return { error: 'Forbidden - app is not an active registered app', status: 403 };
-  }
-  if (!Array.isArray(app.approved) || !app.approved.includes(PAY_SETTLE_SCOPE)) {
-    return { error: `Forbidden - '${PAY_SETTLE_SCOPE}' is not operator-approved for this app`, status: 403 };
-  }
-
-  return { appDid: claims.azp };
+  return authenticatePayApp(request, PAY_SETTLE_SCOPE);
 }
 
 // ---------------------------------------------------------------------------

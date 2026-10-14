@@ -310,6 +310,9 @@ export const SCOPE_VOCABULARY = [
   // `apps:service-scopes` card (#2711), and the kernel re-checks that approval live on
   // every settle. Same `<domain>:<verb>` grammar as the scopes around it.
   { scope: 'pay:settle', connector: null, label: 'Settle payments this app created on its own behalf' },
+  // Operator-approved only: a registered app may save/verify a pledge card on
+  // the seller's sealed BYO account. Never self-granted via requestedScopes.
+  { scope: 'pay:setup-intent', connector: null, label: 'Create and verify pledge payment methods bound to this app' },
 
   { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
     label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },
