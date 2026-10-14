@@ -19,6 +19,7 @@ import { createOrderWithTickets } from '@/src/lib/checkout-common';
 import { settleCompletedOrder } from '@/src/lib/pay-settle';
 import { eventRegisterUrl, eventMyTicketsUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import * as bus from '@imajin/bus';
+import { kernelWebhookFailure, verifyEventsKernelWebhook } from '../../../../src/lib/kernel-webhook';
 import {
   parseCartFromMetadata,
   createOnboardToken,
@@ -27,9 +28,6 @@ import {
   type CartEntry,
 } from '@/src/lib/webhook-payment-helpers';
 
-// Shared secret between pay service and events service.
-// In production, use proper service-to-service auth.
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET!;
 const AUTH_URL = process.env.AUTH_SERVICE_URL || process.env.AUTH_URL || 'http://localhost:3003';
 
 /**
@@ -325,14 +323,14 @@ interface PaymentWebhookPayload {
 }
 
 export const POST = withLogger('events', async (request, { log }) => {
+  let payload: PaymentWebhookPayload;
   try {
-    const authHeader = request.headers.get('authorization');
-    if (authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const payload: PaymentWebhookPayload = await request.json();
-
+    payload = await verifyEventsKernelWebhook<PaymentWebhookPayload>(request);
+  } catch (error) {
+    log.warn({}, 'Payment webhook authentication failed');
+    return kernelWebhookFailure(error);
+  }
+  try {
     log.info({ type: payload.type, sessionId: payload.sessionId }, 'Payment webhook received');
 
     if (payload.type === 'checkout.completed') {

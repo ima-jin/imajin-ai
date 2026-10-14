@@ -4,10 +4,10 @@
  * app token (`settleCompletedOrder`) instead of publishing `order.completed`
  * for the kernel-only bus `settle` reactor.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { discoveryResponse, EVENTS_APP_DID, signedWebhook, TEST_AUTH_URL } from './signed-webhook-support';
 
 const mocks = vi.hoisted(() => {
-  process.env.WEBHOOK_SECRET = 'test-webhook-secret';
   const selectQueue: unknown[][] = [];
   return {
     selectQueue,
@@ -15,8 +15,21 @@ const mocks = vi.hoisted(() => {
     createOrderWithTickets: vi.fn(),
     busPublish: vi.fn(),
     publishConfirmationEmails: vi.fn(),
+    select: vi.fn(),
+    execute: vi.fn(),
+    update: vi.fn(),
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
+});
+vi.mock('@imajin/auth/kernel-webhook', async (importOriginal) => {
+  const sdk = await importOriginal<typeof import('@imajin/auth/kernel-webhook')>();
+  // Exercise actual verification; isolate only public pin persistence from the filesystem.
+  const pinStore = {
+    load: async () => null, save: async () => undefined,
+    withLock: async <T>(_namespace: string, operation: () => Promise<T>): Promise<T> => operation(),
+  };
+  return { ...sdk, verifyKernelWebhook: (req: Request, opts: Parameters<typeof sdk.verifyKernelWebhook>[1]) =>
+    sdk.verifyKernelWebhook(req, { ...opts, pinStore }) };
 });
 
 vi.mock('@imajin/logger', () => ({
@@ -38,9 +51,9 @@ vi.mock('@/src/db', () => {
   };
   return {
     db: {
-      select: () => ({ from: () => ({ where }) }),
-      execute: vi.fn().mockResolvedValue({ rowCount: 1 }),
-      update: () => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) }),
+      select: mocks.select.mockImplementation(() => ({ from: () => ({ where }) })),
+      execute: mocks.execute.mockResolvedValue({ rowCount: 1 }),
+      update: mocks.update.mockImplementation(() => ({ set: () => ({ where: vi.fn().mockResolvedValue(undefined) }) })),
     },
     events: {},
     ticketTypes: {},
@@ -77,15 +90,14 @@ const PAYLOAD = {
   metadata: { eventId: 'evt_1', eventDid: 'did:imajin:evt_1', buyerDid: 'did:imajin:buyer' },
 };
 
-function request(body: unknown, secret = 'test-webhook-secret') {
-  return { headers: new Headers({ authorization: `Bearer ${secret}` }), json: async () => body };
-}
-
-const callRoute = (body: unknown = PAYLOAD, secret?: string) =>
-  (POST as unknown as (req: unknown) => Promise<Response>)(request(body, secret));
+const callRequest = (request: Request) => (POST as unknown as (req: Request) => Promise<Response>)(request);
+const callRoute = (body: unknown = PAYLOAD) => callRequest(signedWebhook('/api/webhook/payment', body));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('IMAJIN_APP_DID', EVENTS_APP_DID);
+  vi.stubEnv('AUTH_SERVICE_URL', TEST_AUTH_URL);
+  vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => discoveryResponse()));
   // select order inside handleCheckoutCompleted: duplicate-order check, event, ticket types, owner's soft-DID tickets.
   mocks.selectQueue.length = 0;
   mocks.selectQueue.push([], [EVENT], [TICKET_TYPE], []);
@@ -96,6 +108,10 @@ beforeEach(() => {
   mocks.settleCompletedOrder.mockResolvedValue({ status: 'settled', alreadySettled: false, manifest: { chain: [] } });
   mocks.busPublish.mockResolvedValue(undefined);
   mocks.publishConfirmationEmails.mockResolvedValue(undefined);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('POST /api/webhook/payment — settle via events’ app token (#2739)', () => {
@@ -163,10 +179,34 @@ describe('POST /api/webhook/payment — settle via events’ app token (#2739)',
     expect(mocks.publishConfirmationEmails).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects a webhook without the shared secret before doing anything', async () => {
-    const res = await callRoute(PAYLOAD, 'wrong-secret');
-
+  it.each(['legacy', 'audience', 'signature', 'tamper'])('rejects %s before any database or business effects', async (kind) => {
+    let request = signedWebhook('/api/webhook/payment', PAYLOAD,
+      kind === 'audience' ? 'did:imajin:another-test-app' : EVENTS_APP_DID);
+    if (kind === 'legacy') request = new Request(request.url, {
+      method: 'POST', body: JSON.stringify(PAYLOAD), headers: { authorization: 'Bearer fake-legacy-test-only' },
+    });
+    if (kind === 'signature') request.headers.set('x-kernel-signature', '00'.repeat(64));
+    if (kind === 'tamper') request = new Request(request.url, {
+      method: 'POST', headers: request.headers, body: JSON.stringify({ ...PAYLOAD, amountTotal: 1 }),
+    });
+    const res = await callRequest(request);
     expect(res.status).toBe(401);
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.execute).not.toHaveBeenCalled();
+    expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.createOrderWithTickets).not.toHaveBeenCalled();
     expect(mocks.settleCompletedOrder).not.toHaveBeenCalled();
+    if (kind === 'audience' || kind === 'legacy') expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects replay before repeating any database effects', async () => {
+    const request = signedWebhook('/api/webhook/payment', PAYLOAD);
+    expect((await callRequest(request.clone())).status).toBe(200);
+    vi.clearAllMocks();
+    const response = await callRequest(request.clone());
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ code: 'REPLAY' });
+    expect(mocks.select).not.toHaveBeenCalled();
+    expect(mocks.createOrderWithTickets).not.toHaveBeenCalled();
   });
 });

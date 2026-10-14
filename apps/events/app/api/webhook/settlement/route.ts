@@ -9,9 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { db, orders } from '@/src/db';
 import { eq } from 'drizzle-orm';
+import { kernelWebhookFailure, verifyEventsKernelWebhook } from '../../../../src/lib/kernel-webhook';
 
 const log = createLogger('events');
-const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
 
 interface SettlementPayload {
   orderId: string;
@@ -30,13 +30,14 @@ interface BusWebhookEnvelope<TPayload> {
 }
 
 export async function POST(request: NextRequest) {
+  let body: SettlementPayload | BusWebhookEnvelope<SettlementPayload>;
   try {
-    const secret = request.headers.get('x-webhook-secret');
-    if (!WEBHOOK_SECRET || secret !== WEBHOOK_SECRET) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = (await request.json()) as SettlementPayload | BusWebhookEnvelope<SettlementPayload>;
+    body = await verifyEventsKernelWebhook<SettlementPayload | BusWebhookEnvelope<SettlementPayload>>(request);
+  } catch (error) {
+    log.warn({}, 'Settlement webhook authentication failed');
+    return kernelWebhookFailure(error);
+  }
+  try {
     const payload = ((body as BusWebhookEnvelope<SettlementPayload>).payload ?? body) as SettlementPayload;
 
     if (!payload.orderId || typeof payload.orderId !== 'string') {

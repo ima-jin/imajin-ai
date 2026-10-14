@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
+import { requireAuth, resolveActingDid, getVaultInternalApiKey } from '@imajin/auth';
 
 const log = createLogger('events');
 import { isEventOrganizer } from '@/src/lib/organizer';
@@ -13,7 +13,6 @@ export const dynamic = 'force-dynamic';
 const sql = getClient();
 
 const NOTIFY_URL = process.env.NOTIFY_SERVICE_URL || process.env.NOTIFY_URL || 'http://localhost:3008';
-const NOTIFY_WEBHOOK_SECRET = process.env.NOTIFY_WEBHOOK_SECRET;
 
 interface MessageFilter {
   type: 'everyone' | 'ticket_type' | 'registration_complete' | 'registration_incomplete';
@@ -87,6 +86,25 @@ async function queryRecipients(eventId: string, filter?: MessageFilter) {
   return rows.map((r: any) => r.owner_did as string);
 }
 
+async function resolveOrganizerEmail(identityDid: string, internalApiKey: string): Promise<string | undefined> {
+  const authUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+  try {
+    const response = await fetch(
+      `${authUrl}/api/identity/${encodeURIComponent(identityDid)}/contact`,
+      { headers: { Authorization: `Bearer ${internalApiKey}` }, cache: 'no-store', redirect: 'error' },
+    );
+    if (!response.ok) {
+      log.warn({ status: response.status }, '[message] Organizer contact lookup rejected');
+      return undefined;
+    }
+    const contact = await response.json();
+    return typeof contact.email === 'string' ? contact.email : undefined;
+  } catch (err) {
+    log.warn({ err: String(err) }, '[message] Failed to resolve organizer email for reply-to');
+    return undefined;
+  }
+}
+
 /**
  * GET /api/events/[id]/message?filterType=...&ticketTypeId=...
  *
@@ -158,8 +176,9 @@ export async function POST(
     return NextResponse.json({ error: 'Missing required fields: subject, markdown' }, { status: 400 });
   }
 
-  if (!NOTIFY_WEBHOOK_SECRET) {
-    log.error({}, '[message] NOTIFY_WEBHOOK_SECRET not configured');
+  const internalApiKey = getVaultInternalApiKey();
+  if (!internalApiKey) {
+    log.error({}, '[message] Vault internal API key unavailable');
     return NextResponse.json({ error: 'Broadcast service not configured' }, { status: 500 });
   }
 
@@ -184,20 +203,7 @@ export async function POST(
   const fullSubject = `${event.title}: ${subject}`;
 
   // Resolve organizer email for reply-to
-  const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-  let organizerEmail: string | undefined;
-  try {
-    const contactRes = await fetch(
-      `${AUTH_SERVICE_URL}/api/identity/${encodeURIComponent(identity.id)}/contact`,
-      { headers: { 'x-webhook-secret': NOTIFY_WEBHOOK_SECRET }, cache: 'no-store' },
-    );
-    if (contactRes.ok) {
-      const contactData = await contactRes.json();
-      organizerEmail = contactData.email;
-    }
-  } catch (err) {
-    log.warn({ err: String(err) }, '[message] Failed to resolve organizer email for reply-to');
-  }
+  const organizerEmail = await resolveOrganizerEmail(identity.id, internalApiKey);
 
   // Forward to notify broadcast with event-contextualized HTML
   const EVENTS_URL = buildPublicUrlAbsolute('events');
@@ -208,8 +214,9 @@ export async function POST(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-webhook-secret': NOTIFY_WEBHOOK_SECRET,
+        Authorization: `Bearer ${internalApiKey}`,
       },
+      redirect: 'error',
       body: JSON.stringify({
         scope: 'events',
         dids,
