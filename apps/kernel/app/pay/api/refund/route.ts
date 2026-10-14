@@ -2,7 +2,7 @@
  * POST /api/refund
  *
  * Issue a refund for a Stripe payment.
- * Service-to-service only — requires PAY_SERVICE_API_KEY.
+ * Requires the originating app's operator-approved pay:refund service token.
  *
  * Request:
  * {
@@ -25,6 +25,7 @@ import { getPaymentService } from '@/src/lib/pay/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
+import { authenticatePayApp } from '@/src/lib/pay/app-settle';
 import {
   applyRefundLedgerUpdates,
   checkRefundEligibility,
@@ -37,14 +38,11 @@ export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 export const POST = withLogger('kernel', async (request: NextRequest, { log, correlationId }) => {
   const cors = corsHeaders(request);
 
-  // Service-to-service auth via API key
-  const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
-  const expectedKey = process.env.PAY_SERVICE_API_KEY;
-
-  if (!expectedKey || apiKey !== expectedKey) {
+  const auth = await authenticatePayApp(request, 'pay:refund');
+  if ('error' in auth) {
     return NextResponse.json(
-      { error: 'Unauthorized - invalid API key' },
-      { status: 401, headers: cors }
+      { error: auth.error },
+      { status: auth.status, headers: cors }
     );
   }
 
@@ -68,6 +66,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       return NextResponse.json(
         { error: 'Transaction not found for paymentId' },
         { status: 404, headers: cors }
+      );
+    }
+
+    if (originalTx.appDid !== auth.appDid) {
+      return NextResponse.json(
+        { error: 'Forbidden - payment was not created by this app' },
+        { status: 403, headers: cors }
       );
     }
 

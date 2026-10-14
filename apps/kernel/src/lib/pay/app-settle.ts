@@ -97,6 +97,14 @@ export function carriesAppServiceToken(request: Pick<NextRequest, 'headers'>): b
  * key, which is not a JWT); 403 = a real credential that may not settle.
  */
 export async function authenticateSettleApp(request: NextRequest): Promise<{ appDid: string } | Failure> {
+  return authenticatePayApp(request, PAY_SETTLE_SCOPE);
+}
+
+/** Same registered-app contract for each operator-approved pay operation. */
+export async function authenticatePayApp(
+  request: NextRequest,
+  scope: 'pay:settle' | 'pay:refund' | 'pay:charge-pledges',
+): Promise<{ appDid: string } | Failure> {
   const header = request.headers.get('authorization');
   if (!header?.startsWith('Bearer ')) {
     return { error: 'Unauthorized - app-service token required', status: 401 };
@@ -111,8 +119,8 @@ export async function authenticateSettleApp(request: NextRequest): Promise<{ app
     return { error: 'Forbidden - an app-service token is required', status: 403 };
   }
   const scopes = claims.scope.split(' ').filter(Boolean);
-  if (!scopes.includes(PAY_SETTLE_SCOPE)) {
-    return { error: `Forbidden - scope '${PAY_SETTLE_SCOPE}' was not granted`, status: 403 };
+  if (!scopes.includes(scope)) {
+    return { error: `Forbidden - scope '${scope}' was not granted`, status: 403 };
   }
 
   const [app] = await db
@@ -123,8 +131,8 @@ export async function authenticateSettleApp(request: NextRequest): Promise<{ app
   if (app?.status !== 'active') {
     return { error: 'Forbidden - app is not an active registered app', status: 403 };
   }
-  if (!Array.isArray(app.approved) || !app.approved.includes(PAY_SETTLE_SCOPE)) {
-    return { error: `Forbidden - '${PAY_SETTLE_SCOPE}' is not operator-approved for this app`, status: 403 };
+  if (!Array.isArray(app.approved) || !app.approved.includes(scope)) {
+    return { error: `Forbidden - '${scope}' is not operator-approved for this app`, status: 403 };
   }
 
   return { appDid: claims.azp };

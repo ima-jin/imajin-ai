@@ -1,7 +1,7 @@
 /**
  * POST /api/balance/topup
  *
- * Credit a DID's cash balance (service-to-service, requires API key or internal auth).
+ * Credit the session user's cash balance. No service credential is accepted.
  * Topups are real money, so they always go to cash_amount.
  *
  * Request:
@@ -20,6 +20,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { MJN, creditUnit } from '@/src/lib/pay/ledger';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -27,14 +28,11 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   const cors = corsHeaders(request);
 
   try {
-    // Service-to-service auth via API key
-    const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
-    const expectedKey = process.env.PAY_SERVICE_API_KEY;
-
-    if (!expectedKey || apiKey !== expectedKey) {
+    const auth = await requireAuth(request, { sessionOnly: true, service: 'pay' });
+    if ('error' in auth) {
       return NextResponse.json(
-        { error: 'Unauthorized - invalid API key' },
-        { status: 401, headers: cors }
+        { error: auth.error },
+        { status: auth.status, headers: cors }
       );
     }
 
@@ -48,7 +46,14 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    if (amount <= 0) {
+    if (did !== resolveActingDid(auth.identity)) {
+      return NextResponse.json(
+        { error: 'Forbidden - topup is limited to the session identity' },
+        { status: 403, headers: cors }
+      );
+    }
+
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
         { error: 'Amount must be positive' },
         { status: 400, headers: cors }
