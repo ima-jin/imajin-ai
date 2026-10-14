@@ -36,6 +36,11 @@
       "import": "./dist/resolve-db.js",
       "default": "./dist/resolve-db.js"
     },
+    "./kernel-webhook": {
+      "types": "./dist/kernel-webhook.d.ts",
+      "import": "./dist/kernel-webhook.js",
+      "default": "./dist/kernel-webhook.js"
+    },
     "./key-rotation": {
       "types": "./dist/key-rotation.d.ts",
       "import": "./dist/key-rotation.js",

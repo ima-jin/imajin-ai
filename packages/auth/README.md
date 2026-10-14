@@ -78,6 +78,92 @@ fails closed (403) rather than trusting the header.
 
 ## What's included
 
+### Verifying kernel webhooks (Node.js)
+
+`verifyKernelWebhook<T>(request, options)` authenticates the **raw request bytes**
+before parsing JSON, returns the parsed body, and throws a `KernelWebhookError`
+with a stable `code` on any failure. It consumes the request body; do not call
+`request.json()` first. `T` is a TypeScript convenience, not runtime schema
+validation: validate the returned event's application-specific shape.
+
+```ts
+import { verifyKernelWebhook, KernelWebhookError } from '@ima-jin/auth/kernel-webhook';
+
+export async function POST(request: Request) {
+  try {
+    const event = await verifyKernelWebhook(request, {
+      authServiceUrl: 'https://kernel.example/auth',
+    });
+    // Validate event shape, then apply the event idempotently.
+    return Response.json({ accepted: true });
+  } catch (error) {
+    if (error instanceof KernelWebhookError) {
+      return Response.json({ error: 'Invalid kernel webhook' }, { status: 401 });
+    }
+    throw error;
+  }
+}
+```
+
+`authServiceUrl` defaults to `AUTH_SERVICE_URL` and **already includes `/auth`**.
+The SDK fetches `${authServiceUrl}/.well-known/kernel-signing-key` on each
+verification (5-second timeout, no redirects or cached/stale fallback).
+Remote discovery requires HTTPS. Loopback HTTP is allowed for development;
+`allowInsecureHttp: true` explicitly permits remote HTTP on a separately
+secured internal network, never a public network. First successful discovery
+is trust-on-first-use (TOFU), so the first connection must be trustworthy.
+
+Pins contain **public keys only**, defaulting to
+`<cwd>/data/kernel-webhook-pins`. Put this directory on persistent storage.
+`createFileKernelWebhookPinStore(directory)` selects another persistent path.
+The file store uses an exclusive per-kernel lock and atomic replacement, so
+concurrent first-boot requests cannot silently overwrite each other's pins.
+A crashed process can leave a `.lock` file: verification fails closed until
+an operator confirms no process holds it and removes that stale lock.
+Do not delete pin files automatically or on network errors. An intentional
+rotation with no overlap requires an operator to inspect and explicitly reset
+that kernel's pin out of band.
+
+A fetched key set can replace a pin only when an active fetched entry matches
+**both the kid and public key** of an existing pin. Kids are independently
+recomputed from public keys. Only currently published, non-expired keys can
+verify deliveries, so withdrawn or expired grace keys do not remain trusted.
+The kernel must publish old and new keys together during a rotation grace
+window, and every consumer must observe that overlap before the old key is
+withdrawn. Discovery or persistence failures reject the delivery.
+
+Defaults reject timestamps older than 300 seconds or more than 300 seconds
+in the future. `maxAgeSeconds`, `futureToleranceSeconds`, `fetchTimeoutMs`,
+`fetch`, and `clock` (milliseconds since epoch) can be injected for tests.
+Replay protection is an atomic in-memory store with at most 100,000 live
+nonces; it prunes expired entries and fails closed at capacity rather than
+evicting live replay evidence. It is **single-process and resets on restart**.
+Multi-worker/serverless deployments must supply a shared durable `nonceStore`
+whose `consume(key, expiresAtMs)` atomically inserts an unseen key with expiry,
+returning `false` for a duplicate. Never implement this as separate GET/SET
+operations. Both nonce keys and public pins are namespaced by the normalized
+kernel auth URL. Application event handling should additionally be idempotent.
+
+Custom durable `pinStore` adapters implement `load(namespace)` (returns stored
+key entries or `null` on first use), `save(namespace, keys)`, and
+`withLock(namespace, operation)`. The lock **must serialize the entire callback
+across every worker using that store**, including bootstrap, discovery and
+load/save. Store errors must throw, never pretend a failed read means no pin.
+Public entries contain `kid`, `publicKey` (64 lowercase hex characters),
+`algorithm: 'Ed25519'`, `validFrom` (ISO timestamp), and optional `validUntil`.
+
+The exported `canonicalKernelWebhookPayload` helper is shared with senders.
+It produces `imajin-webhook-v1`, integer Unix timestamp seconds, UUID nonce,
+uppercase HTTP method, URL pathname plus query, and lowercase SHA-256 hex of
+the exact raw body, joined with newlines (no trailing newline). The wire
+headers are `x-kernel-kid`, `x-kernel-timestamp`, `x-kernel-nonce`, and
+`x-kernel-signature` (128-character Ed25519 hex). Verification uses Node's
+Ed25519 implementation, never string comparison of signatures.
+Unsigned deliveries and legacy shared-secret headers are not accepted.
+
+Error codes are `INVALID_REQUEST`, `STALE`, `FUTURE`, `SIGNATURE_INVALID`,
+`UNKNOWN_KEY`, `TRUST`, `DISCOVERY`, `STORE`, `REPLAY`, and `INVALID_BODY`.
+
 - **Sessions** — cookie-based session issuance and validation
 - **App tokens** — scoped tokens for registered third-party apps
 - **Signing** — Ed25519 sign/verify helpers for DID-based identities
