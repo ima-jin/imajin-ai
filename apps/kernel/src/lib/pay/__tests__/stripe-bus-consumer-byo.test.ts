@@ -6,6 +6,7 @@
  * stripe-bus-convergence.test.ts.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 
 const h = vi.hoisted(() => ({
   settleByoMock: vi.fn(),
@@ -52,6 +53,7 @@ function byoEvent(overrides: Record<string, unknown> = {}, payload: Record<strin
 }
 
 beforeEach(() => {
+  vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
   h.settleByoMock.mockReset().mockResolvedValue({ settled: true });
   h.settleCheckoutMock.mockReset().mockResolvedValue({ settled: false, reason: 'not_found' });
   h.settleNodeTopupMock.mockReset().mockResolvedValue(false);
@@ -59,6 +61,8 @@ beforeEach(() => {
   h.getRelayEntryMock.mockReset();
   h.errorMock.mockReset();
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe('pay-stripe reactor — BYO payment_intent.succeeded (#2754)', () => {
   it('settles the payment_request the owner\'s own event names, handing over exactly the event\'s facts', async () => {

@@ -7,6 +7,7 @@
  * lookup error, omits the field and logs — the notification must still go out.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 
 const mocks = vi.hoisted(() => {
   const limit = vi.fn();
@@ -60,6 +61,7 @@ const postedBody = () => JSON.parse((fetchMock.mock.calls[0]![1] as RequestInit)
 describe('events checkout notification carries the kernel transactionId', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     mocks.select.mockReturnValue({ from: () => ({ where: mocks.where }) });
     mocks.limit.mockResolvedValue([{ id: 'tx_abc123' }]);
     vi.stubGlobal('fetch', fetchMock);
@@ -105,13 +107,20 @@ describe('events checkout notification carries the kernel transactionId', () => 
   });
 
   describe('notifyEventsService', () => {
+    it('delivers without legacy bearer configuration', async () => {
+      vi.stubEnv('EVENTS_WEBHOOK_SECRET', '');
+      await notifyEventsService('checkout.completed', eventsSession());
+      expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+      expect(fetchMock.mock.calls[0][1].headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
+    });
     it('includes transactionId in the checkout.completed payload alongside the session id', async () => {
       await notifyEventsService('checkout.completed', eventsSession());
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`${EVENTS_URL}/api/webhook/payment`);
-      expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: 'Bearer events-secret' });
+      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json', Authorization: 'Bearer events-secret',
+        'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/) });
       expect(postedBody()).toMatchObject({
         type: 'checkout.completed',
         sessionId: 'cs_test_events_1',

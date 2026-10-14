@@ -68,6 +68,7 @@ import type {
 } from '@/src/lib/pay/webhook-event-shapes';
 import { settlePaymentRequestFromStripeCheckout } from '@/src/lib/pay/payment-requests/checkout';
 import { getRelayEntry, type StripeRelaySource } from '@/src/lib/pay/stripe-relay-store';
+import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
 
 const log = createLogger('kernel');
 
@@ -461,33 +462,29 @@ async function notifyCoffeeService(
   paymentIntent: StripePaymentIntentLike,
   rail?: string,
 ) {
-  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
-  const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
+  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL;
+  if (!coffeeServiceUrl) {
+    log.warn({}, 'Coffee service URL not configured');
+    return;
+  }
 
   try {
-    const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${webhookSecret}`,
-      },
-      body: JSON.stringify({
-        type,
-        tipId: paymentIntent.metadata.tipId,
-        pageId: paymentIntent.metadata.pageId,
-        pageHandle: paymentIntent.metadata.pageHandle,
-        amount: paymentIntent.amount,
-        paymentId: paymentIntent.id,
-        to_did: paymentIntent.metadata.to_did,
-        fromDid: paymentIntent.metadata.fromDid,
-        fromName: paymentIntent.metadata.fromName,
-        fromEmail: paymentIntent.receipt_email || null,
-        message: paymentIntent.metadata.message || null,
-        stripeSessionId: paymentIntent.id,
-        status: type === 'payment.succeeded' ? 'completed' : 'failed',
-        ...(rail && { rail }),
-      }),
-    });
+    const response = await postKernelWebhook(kernelWebhookUrl(coffeeServiceUrl, '/api/webhook/payment'), {
+      type,
+      tipId: paymentIntent.metadata.tipId,
+      pageId: paymentIntent.metadata.pageId,
+      pageHandle: paymentIntent.metadata.pageHandle,
+      amount: paymentIntent.amount,
+      paymentId: paymentIntent.id,
+      to_did: paymentIntent.metadata.to_did,
+      fromDid: paymentIntent.metadata.fromDid,
+      fromName: paymentIntent.metadata.fromName,
+      fromEmail: paymentIntent.receipt_email || null,
+      message: paymentIntent.metadata.message || null,
+      stripeSessionId: paymentIntent.id,
+      status: type === 'payment.succeeded' ? 'completed' : 'failed',
+      ...(rail && { rail }),
+    }, 'coffee');
 
     if (response.ok) {
       log.info({}, 'Coffee service notified successfully');
@@ -597,11 +594,10 @@ async function notifyCoffeeServiceSubscription(
   invoice?: StripeInvoiceLike,
   metadata?: Record<string, string>
 ) {
-  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL!;
-  const webhookSecret = process.env.COFFEE_WEBHOOK_SECRET!;
+  const coffeeServiceUrl = process.env.COFFEE_SERVICE_URL;
 
-  if (!coffeeServiceUrl || !webhookSecret) {
-    log.warn({}, 'Coffee service URL or webhook secret not configured');
+  if (!coffeeServiceUrl) {
+    log.warn({}, 'Coffee service URL not configured');
     return;
   }
 
@@ -613,21 +609,14 @@ async function notifyCoffeeServiceSubscription(
   }
 
   try {
-    const response = await fetch(`${coffeeServiceUrl}/api/webhook/payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${webhookSecret}`,
-      },
-      body: JSON.stringify({
-        type,
-        subscriptionId: subscription?.id || invoiceSubscriptionId,
-        invoiceId: invoice?.id,
-        amount: invoice?.amount_paid,
-        status: type === 'subscription.canceled' ? 'canceled' : 'active',
-        metadata: metadata || subscription?.metadata,
-      }),
-    });
+    const response = await postKernelWebhook(kernelWebhookUrl(coffeeServiceUrl, '/api/webhook/payment'), {
+      type,
+      subscriptionId: subscription?.id || invoiceSubscriptionId,
+      invoiceId: invoice?.id,
+      amount: invoice?.amount_paid,
+      status: type === 'subscription.canceled' ? 'canceled' : 'active',
+      metadata: metadata || subscription?.metadata,
+    }, 'coffee');
 
     if (response.ok) {
       log.info({ type }, 'Coffee service notified of subscription event');

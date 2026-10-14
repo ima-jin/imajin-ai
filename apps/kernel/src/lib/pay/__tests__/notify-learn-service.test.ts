@@ -7,6 +7,7 @@
  * seller's own Stripe account (#2773). A learn outage must never fail the Stripe webhook ack.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
 
 const mocks = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),
@@ -61,6 +62,7 @@ function sentBody(): Record<string, unknown> {
 describe('learn enrollment notification', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     vi.stubGlobal('fetch', fetchMock);
     vi.stubEnv('LEARN_SERVICE_URL', LEARN_URL);
     vi.stubEnv('LEARN_WEBHOOK_SECRET', SECRET);
@@ -82,7 +84,8 @@ describe('learn enrollment notification', () => {
       const [url, init] = learnCalls()[0] as [string, RequestInit];
       expect(url).toBe(`${LEARN_URL}/api/webhook`);
       expect(init.method).toBe('POST');
-      expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` });
+      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}`,
+        'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/) });
 
       expect(sentBody()).toEqual({
         type: 'payment.succeeded',
@@ -133,6 +136,14 @@ describe('learn enrollment notification', () => {
         { sessionId: 'cs_test_learn_1', status: 503, error: 'upstream exploded' },
         'Learn service webhook failed',
       );
+    });
+
+    it('delivers with a kernel signature when no legacy secret is configured', async () => {
+      vi.stubEnv('LEARN_WEBHOOK_SECRET', '');
+      await notifyLearnService(learnSession());
+      const headers = learnCalls()[0][1].headers;
+      expect(headers).not.toHaveProperty('Authorization');
+      expect(headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
     });
 
     it('a learn 401 (secret mismatch) is logged and does not fail the ack either', async () => {
@@ -198,7 +209,7 @@ describe('learn enrollment notification', () => {
       expect(body.metadata.currency).toBeUndefined();
     });
 
-    it.each(['LEARN_SERVICE_URL', 'LEARN_WEBHOOK_SECRET'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
+    it.each(['LEARN_SERVICE_URL'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
       vi.stubEnv(missing, '');
 
       await expect(notifyLearnService(learnSession())).resolves.toBeUndefined();
@@ -206,7 +217,7 @@ describe('learn enrollment notification', () => {
       expect(fetchMock).not.toHaveBeenCalled();
       expect(mocks.log.error).toHaveBeenCalledWith(
         { sessionId: 'cs_test_learn_1' },
-        'LEARN_SERVICE_URL or LEARN_WEBHOOK_SECRET not set — learn enrollment will not be created',
+        'LEARN_SERVICE_URL not set — learn enrollment will not be created',
       );
     });
   });
