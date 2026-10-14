@@ -1,11 +1,13 @@
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink, writeFile, type FileHandle } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { computeKeyKid } from './key-rotation';
+import { cachedKernelDiscovery, KernelDiscoveryCacheError } from './kernel-webhook-cache';
+import { withKernelPinLock } from './kernel-webhook-lock';
 
 export type KernelWebhookErrorCode =
   | 'INVALID_REQUEST' | 'STALE' | 'FUTURE' | 'SIGNATURE_INVALID'
-  | 'UNKNOWN_KEY' | 'TRUST' | 'DISCOVERY' | 'STORE' | 'REPLAY' | 'INVALID_BODY';
+  | 'UNKNOWN_KEY' | 'TRUST' | 'DISCOVERY' | 'STORE' | 'REPLAY' | 'INVALID_BODY' | 'AUDIENCE_MISMATCH';
 
 export class KernelWebhookError extends Error {
   constructor(public readonly code: KernelWebhookErrorCode, message: string, options?: ErrorOptions) {
@@ -35,6 +37,8 @@ export interface KernelWebhookNonceStore {
 }
 
 export interface VerifyKernelWebhookOptions {
+  /** Verifier's OWN app DID, supplied by trusted local configuration. */
+  audience: string;
   /** Kernel auth base URL, including /auth. Defaults to AUTH_SERVICE_URL. */
   authServiceUrl?: string;
   /** Unsafe for public networks. Defaults false; loopback HTTP is always allowed for development. */
@@ -47,11 +51,14 @@ export interface VerifyKernelWebhookOptions {
   maxAgeSeconds?: number;
   futureToleranceSeconds?: number;
   fetchTimeoutMs?: number;
+  /** Trusted discovery TTL: default/max 60 seconds; zero disables caching. */
+  discoveryCacheTtlMs?: number;
 }
 
 const digest = (value: string | Uint8Array): string => createHash('sha256').update(value).digest('hex');
 
 export function canonicalKernelWebhookPayload(input: {
+  audience: string;
   timestamp: string | number;
   nonce: string;
   method: string;
@@ -59,20 +66,10 @@ export function canonicalKernelWebhookPayload(input: {
   rawBody: string | Uint8Array;
 }): string {
   const url = new URL(input.url);
-  return `imajin-webhook-v1\n${input.timestamp}\n${input.nonce}\n${input.method.toUpperCase()}\n${url.pathname}${url.search}\n${digest(input.rawBody)}`;
+  return `imajin-webhook-v1\n${input.audience}\n${input.timestamp}\n${input.nonce}\n${input.method.toUpperCase()}\n${url.pathname}${url.search}\n${digest(input.rawBody)}`;
 }
 
-async function acquirePinLock(lockPath: string, deadline: number): Promise<FileHandle> {
-  try {
-    return await open(lockPath, 'wx', 0o600);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw error;
-    await new Promise((done) => setTimeout(done, 25));
-    return acquirePinLock(lockPath, deadline);
-  }
-}
-
-/** Durable public keys only. Use a persistent volume; a stale lock fails closed, never re-pins. */
+/** Durable public pins. Requires a persistent volume and Linux util-linux flock. */
 export function createFileKernelWebhookPinStore(
   directory = join(process.cwd(), 'data', 'kernel-webhook-pins'),
 ): KernelWebhookPinStore {
@@ -101,13 +98,7 @@ export function createFileKernelWebhookPinStore(
     async withLock(namespace, operation) {
       await mkdir(root, { recursive: true });
       const lockPath = `${filename(namespace)}.lock`;
-      const lock = await acquirePinLock(lockPath, Date.now() + 10_000);
-      try {
-        return await operation();
-      } finally {
-        await lock.close();
-        await unlink(lockPath);
-      }
+      return withKernelPinLock(lockPath, operation);
     },
   };
 }
@@ -214,7 +205,40 @@ async function discover(url: string, options: VerifyKernelWebhookOptions): Promi
   }
 }
 
+async function trustedDiscovery(store: KernelWebhookPinStore, namespace: string, options: VerifyKernelWebhookOptions) {
+  return store.withLock(namespace, async () => {
+    const stored = await store.load(namespace);
+    const pinned = stored === null ? [] : parseKeys(stored, 'TRUST');
+    const keys = await discover(namespace, options);
+    const currentTime = (options.clock ?? Date.now)();
+    const live = keys.filter((key) => active(key, currentTime));
+    if (live.length === 0) fail('TRUST', 'Kernel has no active signing keys');
+    if (pinned.length && !live.some((key) => pinned.some(
+      (pin) => pin.kid === key.kid && pin.publicKey === key.publicKey,
+    ))) fail('TRUST', 'Kernel key set does not overlap pinned public keys');
+    await store.save(namespace, live);
+    return live;
+  });
+}
+
+function validAudience(value: unknown): value is string {
+  return typeof value === 'string' && /^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$/.test(value) && value.length <= 512;
+}
+function requestAudience(request: Request, expected: string): string {
+  const audience = request.headers.get('x-kernel-audience');
+  if (!validAudience(audience)) fail('INVALID_REQUEST', 'Missing or malformed kernel webhook audience');
+  if (audience !== expected) fail('AUDIENCE_MISMATCH', 'Kernel webhook recipient does not match this app');
+  return audience;
+}
+function discoveryTtl(options: VerifyKernelWebhookOptions): number {
+  const ttl = options.discoveryCacheTtlMs ?? 60_000;
+  if (!Number.isSafeInteger(ttl) || ttl < 0 || ttl > 60_000) fail('INVALID_REQUEST', 'Invalid discovery cache TTL');
+  return ttl;
+}
+
 function configuration(options: VerifyKernelWebhookOptions) {
+  if (!validAudience(options?.audience)) fail('INVALID_REQUEST', 'Missing or malformed verifier audience');
+  discoveryTtl(options);
   const now = (options.clock ?? Date.now)();
   const maxAge = options.maxAgeSeconds ?? 300;
   const future = options.futureToleranceSeconds ?? 300;
@@ -244,10 +268,11 @@ function configuration(options: VerifyKernelWebhookOptions) {
 /** Authenticate raw bytes before parsing JSON. Consumes the request body once; never trusts legacy shared-secret headers. */
 export async function verifyKernelWebhook<T = unknown>(
   request: Request,
-  options: VerifyKernelWebhookOptions = {},
+  options: VerifyKernelWebhookOptions,
 ): Promise<T> {
   try {
     const { now, maxAge, future, namespace } = configuration(options);
+    const audience = requestAudience(request, options.audience);
     const timestamp = request.headers.get('x-kernel-timestamp') ?? '';
     const nonce = request.headers.get('x-kernel-nonce') ?? '';
     const kid = request.headers.get('x-kernel-kid') ?? '';
@@ -263,20 +288,18 @@ export async function verifyKernelWebhook<T = unknown>(
     const rawBody = new Uint8Array(await request.arrayBuffer());
     // Resolve cwd at first use, not package import, while sharing the lazy store.
     const store = options.pinStore ?? (defaultStores.pinStore ??= createFileKernelWebhookPinStore());
-    const published = await store.withLock(namespace, async () => {
-      const stored = await store.load(namespace);
-      const pinned = stored === null ? [] : parseKeys(stored, 'TRUST');
-      const keys = await discover(namespace, options);
-      const currentTime = (options.clock ?? Date.now)();
-      const live = keys.filter((key) => active(key, currentTime));
-      if (live.length === 0) fail('TRUST', 'Kernel has no active signing keys');
-      if (pinned.length && !live.some((key) => pinned.some(
-        (pin) => pin.kid === key.kid && pin.publicKey === key.publicKey,
-      ))) fail('TRUST', 'Kernel key set does not overlap pinned public keys');
-      await store.save(namespace, live);
-      return live;
+    const published = await cachedKernelDiscovery({
+      store, namespace, ttl: discoveryTtl(options),
+      now: options.clock ?? Date.now,
+      refresh: () => trustedDiscovery(store, namespace, options),
+      hasKey: (keys) => keys.some((entry) => entry.kid === kid && active(entry, (options.clock ?? Date.now)())),
+    }).catch((error: unknown) => {
+      if (error instanceof KernelDiscoveryCacheError) {
+        throw new KernelWebhookError('DISCOVERY', 'Kernel discovery cache unavailable', { cause: error });
+      }
+      throw error;
     });
-    const key = published.find((entry) => entry.kid === kid);
+    const key = published.find((entry) => entry.kid === kid && active(entry, (options.clock ?? Date.now)()));
     if (!key) fail('UNKNOWN_KEY', 'Webhook key is not currently published and active');
     // SPKI prefix for a raw 32-byte Ed25519 public key (RFC 8410).
     const publicKey = createPublicKey({
@@ -284,7 +307,7 @@ export async function verifyKernelWebhook<T = unknown>(
       format: 'der', type: 'spki',
     });
     const payload = canonicalKernelWebhookPayload({
-      timestamp, nonce, method: request.method, url: request.url, rawBody,
+      audience, timestamp, nonce, method: request.method, url: request.url, rawBody,
     });
     if (!verify(null, Buffer.from(payload), publicKey, Buffer.from(signature, 'hex'))) {
       fail('SIGNATURE_INVALID', 'Kernel webhook signature does not verify');
@@ -294,7 +317,7 @@ export async function verifyKernelWebhook<T = unknown>(
     if (verifiedAt - signedAt > maxAge * 1_000) fail('STALE', 'Kernel webhook expired during verification');
     if (!active(key, verifiedAt)) fail('UNKNOWN_KEY', 'Kernel webhook key expired during verification');
     const consumed = await (options.nonceStore ?? defaultStores.nonceStore).consume(
-      `${namespace}\n${nonce.toLowerCase()}`, signedAt + maxAge * 1_000 + 1,
+      `${namespace}\n${audience}\n${nonce.toLowerCase()}`, signedAt + maxAge * 1_000 + 1,
     );
     if (consumed !== true) {
       if (consumed === false) fail('REPLAY', 'Kernel webhook nonce already consumed');

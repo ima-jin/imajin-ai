@@ -17,6 +17,7 @@ import {
 } from '../src/kernel-webhook';
 
 const NOW = Date.now();
+const AUDIENCE = 'did:imajin:test-app';
 const AUTH = 'https://kernel.example/auth';
 const TARGET = 'https://app.example/api/webhook?a=1&b=%2F';
 
@@ -33,6 +34,7 @@ const first = keypair();
 const second = keypair();
 
 function signedRequest(input: {
+  audience?: string;
   pair?: ReturnType<typeof keypair>;
   body?: string;
   timestamp?: number;
@@ -46,10 +48,12 @@ function signedRequest(input: {
   const method = input.method ?? 'POST';
   const url = input.url ?? TARGET;
   const body = input.body ?? '{ "event": "test", "unicode": "雪" }';
-  const payload = canonicalKernelWebhookPayload({ timestamp, nonce, method, url, rawBody: body });
+  const audience = input.audience ?? AUDIENCE;
+  const payload = canonicalKernelWebhookPayload({ audience, timestamp, nonce, method, url, rawBody: body });
   return new Request(url, {
     method, body,
     headers: {
+      'x-kernel-audience': audience,
       'x-kernel-kid': pair.entry.kid,
       'x-kernel-timestamp': timestamp,
       'x-kernel-nonce': nonce,
@@ -78,6 +82,7 @@ function context() {
   let keys: KernelWebhookKey[] = [first.entry];
   const fetch = vi.fn(async () => new Response(JSON.stringify({ current: keys[0].kid, keys })));
   const options: VerifyKernelWebhookOptions = {
+    audience: AUDIENCE, discoveryCacheTtlMs: 0,
     authServiceUrl: AUTH, fetch: fetch as typeof globalThis.fetch,
     clock: () => NOW, pinStore: memoryPins(),
     nonceStore: createMemoryKernelWebhookNonceStore({ clock: () => NOW }),
@@ -88,8 +93,8 @@ function context() {
 describe('kernel webhook canonical protocol', () => {
   it('hashes exact UTF-8 body bytes, includes query and path, and uppercases method', () => {
     expect(canonicalKernelWebhookPayload({
-      timestamp: 123, nonce: 'test-nonce', method: 'post', url: TARGET, rawBody: '{}',
-    })).toBe('imajin-webhook-v1\n123\ntest-nonce\nPOST\n/api/webhook?a=1&b=%2F\n44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a');
+      audience: AUDIENCE, timestamp: 123, nonce: 'test-nonce', method: 'post', url: TARGET, rawBody: '{}',
+    })).toBe('imajin-webhook-v1\ndid:imajin:test-app\n123\ntest-nonce\nPOST\n/api/webhook?a=1&b=%2F\n44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a');
   });
 
   it('verifies before parsing and discovers the /auth-relative public endpoint', async () => {
@@ -269,7 +274,7 @@ describe('kernel webhook TOFU and rotation', () => {
     const directory = await mkdtemp(join(tmpdir(), 'webhook-pins-'));
     options.pinStore = createFileKernelWebhookPinStore(directory);
     await verifyKernelWebhook(signedRequest(), options);
-    const files = await readdir(directory);
+    const files = (await readdir(directory)).filter((name) => name.endsWith('.json'));
     expect(files).toHaveLength(1);
     expect(JSON.parse(await readFile(join(directory, files[0]), 'utf8'))).toEqual([first.entry]);
     options.pinStore = createFileKernelWebhookPinStore(directory);
@@ -312,6 +317,163 @@ describe('kernel webhook TOFU and rotation', () => {
   });
 });
 
+describe('kernel webhook audience and default discovery cache', () => {
+  function cachedContext() {
+    const ctx = context();
+    delete ctx.options.discoveryCacheTtlMs;
+    let now = NOW;
+    ctx.options.clock = () => now;
+    return { ...ctx, advance: (ms: number) => { now += ms; } };
+  }
+
+  it.each([null, '', 'app', 'did:imajin:', 'did:imajin:app space'])(
+    'rejects missing/malformed inbound audience %j before stores or network', async (audience) => {
+      const { options, fetch } = cachedContext();
+      const consume = vi.fn();
+      options.nonceStore = { consume };
+      const request = signedRequest();
+      if (audience === null) request.headers.delete('x-kernel-audience');
+      else request.headers.set('x-kernel-audience', audience);
+      await expect(verifyKernelWebhook(request, options)).rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(consume).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, '', 'not-a-did'])('requires trusted own audience %j', async (audience) => {
+    const { options, fetch } = cachedContext();
+    await expect(verifyKernelWebhook(signedRequest(), { ...options, audience } as VerifyKernelWebhookOptions))
+      .rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('rejects cross-app replay even with independent nonce stores and matching route paths', async () => {
+    const a = cachedContext();
+    const b = cachedContext();
+    b.options.audience = 'did:imajin:other-app';
+    const request = signedRequest({ audience: b.options.audience });
+    await verifyKernelWebhook(request.clone(), b.options);
+    await expect(verifyKernelWebhook(request.clone(), a.options)).rejects.toMatchObject({ code: 'AUDIENCE_MISMATCH' });
+    expect(a.fetch).not.toHaveBeenCalled();
+    request.headers.set('x-kernel-audience', AUDIENCE);
+    await expect(verifyKernelWebhook(request, a.options)).rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
+  });
+
+  it('namespaces a shared/default nonce store by kernel, audience and normalized nonce', async () => {
+    const { options } = cachedContext();
+    options.nonceStore = undefined;
+    const nonce = randomUUID();
+    await verifyKernelWebhook(signedRequest({ nonce }), options);
+    const audience = 'did:imajin:other-app';
+    await verifyKernelWebhook(signedRequest({ nonce, audience }), { ...options, audience });
+    await expect(verifyKernelWebhook(signedRequest({ nonce, audience }), { ...options, audience }))
+      .rejects.toMatchObject({ code: 'REPLAY' });
+  });
+
+  it('single-flights concurrent cold requests and caches repeated valid and forged requests', async () => {
+    const { options, fetch } = cachedContext();
+    await Promise.all(Array.from({ length: 12 }, () => verifyKernelWebhook(signedRequest(), options)));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const request = signedRequest();
+    request.headers.set('x-kernel-signature', '0'.repeat(128));
+    await expect(verifyKernelWebhook(request, options)).rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
+    await verifyKernelWebhook(signedRequest(), options);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it('fails closed between a short configured TTL and the minimum refresh interval', async () => {
+    const { options, fetch, advance } = cachedContext();
+    options.discoveryCacheTtlMs = 1_000;
+    await verifyKernelWebhook(signedRequest(), options);
+    advance(1_000);
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'DISCOVERY' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    advance(4_000);
+    await verifyKernelWebhook(signedRequest(), options);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares trusted cache across duplicate modules but not independent pin stores', async () => {
+    const { options, fetch } = cachedContext();
+    await verifyKernelWebhook(signedRequest(), options);
+    vi.resetModules();
+    const copy = await import('../src/kernel-webhook');
+    await copy.verifyKernelWebhook(signedRequest(), options);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const pinStore = { ...memoryPins(), load: async () => [{ ...second.entry }] };
+    await expect(copy.verifyKernelWebhook(signedRequest(), { ...options, pinStore }))
+      .rejects.toMatchObject({ code: 'TRUST' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('rate-limits unknown-kid pressure, refreshes rotation on overlap and rejects withdrawn keys after TTL', async () => {
+    const { options, fetch, publish, advance } = cachedContext();
+    await verifyKernelWebhook(signedRequest(), options);
+    await Promise.all(Array.from({ length: 20 }, async () => {
+      const request = signedRequest({ pair: second });
+      request.headers.set('x-kernel-kid', `auth-${randomUUID().replaceAll('-', '').slice(0, 16)}`);
+      await expect(verifyKernelWebhook(request, options)).rejects.toMatchObject({ code: 'UNKNOWN_KEY' });
+    }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    advance(5_000);
+    publish([second.entry, first.entry]);
+    await Promise.all(Array.from({ length: 10 }, () => verifyKernelWebhook(signedRequest({ pair: second }), options)));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    publish([second.entry]);
+    advance(60_000);
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'UNKNOWN_KEY' });
+    await verifyKernelWebhook(signedRequest({ pair: second }), options);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it('checks cached key expiry on every request without allowing an expired overlap to re-pin', async () => {
+    const { options, publish, advance, fetch } = cachedContext();
+    publish([{ ...first.entry, validUntil: new Date(NOW + 1_000).toISOString() }]);
+    await verifyKernelWebhook(signedRequest(), options);
+    advance(1_000);
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'UNKNOWN_KEY' });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    publish([second.entry, { ...first.entry, validUntil: new Date(NOW + 1_000).toISOString() }]);
+    advance(4_000);
+    await expect(verifyKernelWebhook(signedRequest({ pair: second }), options)).rejects.toMatchObject({ code: 'TRUST' });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('never falls back to expired cache and throttles failed refreshes including initial discovery', async () => {
+    const { options, fetch, advance } = cachedContext();
+    await verifyKernelWebhook(signedRequest(), options);
+    advance(60_000);
+    const offline = vi.fn(async () => { throw new Error('offline'); });
+    options.fetch = offline as typeof globalThis.fetch;
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'DISCOVERY' });
+    await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'DISCOVERY' });
+    expect(offline).toHaveBeenCalledTimes(1);
+    advance(5_000);
+    options.fetch = fetch as typeof globalThis.fetch;
+    await verifyKernelWebhook(signedRequest(), options);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const cold = { ...options, pinStore: memoryPins(), fetch: offline as typeof globalThis.fetch };
+    await expect(verifyKernelWebhook(signedRequest(), cold)).rejects.toMatchObject({ code: 'DISCOVERY' });
+    await expect(verifyKernelWebhook(signedRequest({ pair: second }), cold)).rejects.toMatchObject({ code: 'DISCOVERY' });
+    expect(offline).toHaveBeenCalledTimes(2);
+  });
+
+  it('bounds namespace state without evicting live rate-limit evidence', async () => {
+    const { options, fetch } = cachedContext();
+    await Promise.all(Array.from({ length: 64 }, (_, i) => verifyKernelWebhook(signedRequest(), {
+      ...options, authServiceUrl: `https://kernel-${i}.example/auth`,
+    })));
+    await expect(verifyKernelWebhook(signedRequest(), { ...options, authServiceUrl: 'https://overflow.example/auth' }))
+      .rejects.toMatchObject({ code: 'DISCOVERY' });
+    expect(fetch).toHaveBeenCalledTimes(64);
+  });
+
+  it.each([-1, 0.1, 60_001, Number.NaN])('rejects invalid cache TTL %s', async (discoveryCacheTtlMs) => {
+    const { options, fetch } = cachedContext();
+    await expect(verifyKernelWebhook(signedRequest(), { ...options, discoveryCacheTtlMs }))
+      .rejects.toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
 describe('kernel webhook fail-closed infrastructure', () => {
   it.each([
     { maxAgeSeconds: 0 }, { maxAgeSeconds: 1.5 }, { futureToleranceSeconds: -1 },
@@ -451,7 +613,7 @@ describe('kernel webhook fail-closed infrastructure', () => {
   it('rechecks key expiry after publication validation and before nonce consumption', async () => {
     const { options, publish } = context();
     publish([{ ...first.entry, validUntil: new Date(NOW + 1000).toISOString() }]);
-    options.clock = vi.fn().mockReturnValueOnce(NOW).mockReturnValueOnce(NOW).mockReturnValue(NOW + 1000);
+    options.clock = vi.fn().mockReturnValueOnce(NOW).mockReturnValueOnce(NOW).mockReturnValueOnce(NOW).mockReturnValue(NOW + 1000);
     const consume = vi.fn().mockReturnValue(true);
     options.nonceStore = { consume };
     await expect(verifyKernelWebhook(signedRequest(), options)).rejects.toMatchObject({ code: 'UNKNOWN_KEY' });
