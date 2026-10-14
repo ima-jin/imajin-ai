@@ -51,6 +51,7 @@ vi.mock('@/src/lib/pay/webhook-handlers', () => ({ notifyCheckoutServices: h.not
 import { POST } from '../../../../app/pay/api/charge/route';
 import { payStripeReactor } from '../stripe-bus-consumer';
 import { persistSellerCharge } from '../providers/seller-transactions';
+import { checkRefundEligibility, resolveOriginalTransaction } from '../refund';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 let harness: PgliteLedgerHarness;
@@ -85,6 +86,14 @@ beforeEach(async () => {
 });
 
 describe('direct seller charge through the real BYO bus handler and PostgreSQL', () => {
+  it('resolves the verified app-owned receipt and permits a refund after the webhook completes it', async () => {
+    expect((await POST(request({}, true))).status).toBe(200);
+    const [pending] = await h.db.select().from(transactions);
+    await receipt(pending.id);
+    const original = await resolveOriginalTransaction(INTENT.id, { error: h.log }, 'did:test:verified-app');
+    expect(original).toMatchObject({ id: pending.id, appDid: 'did:test:verified-app', status: 'completed', settledAt: expect.any(Date) });
+    expect(await checkRefundEligibility(original!, 123)).toMatchObject({ ok: true, requestedRefundDollars: 1.23 });
+  });
   it('persists before Stripe and completes the row on its verified receipt without checkout or ledger effects', async () => {
     h.create.mockImplementation(async (params, options) => {
       const [row] = await h.db.select().from(transactions);

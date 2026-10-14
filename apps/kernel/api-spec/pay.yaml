@@ -755,6 +755,11 @@ paths:
         Card charges require `to.did` (or `sellerDid` for a customer-only recipient).
         Credentials come only from that seller's sealed Stripe connector; missing secret
         or publishable key returns `SELLER_NO_CARD_RAIL`, never a node account fallback.
+        Rate-limited to 10 requests/minute per IP before any writes, including anonymous calls.
+        A pending kernel row is inserted before creating the PaymentIntent; its protected
+        payTransactionId metadata lets the verified seller webhook complete it. A supplied
+        idempotencyKey permanently claims one seller/payer/app-scoped attempt; repeats return
+        409 without creating another PaymentIntent, including beyond Stripe retention.
       security:
         - bearerAuth: []
       requestBody:
@@ -805,6 +810,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: SELLER_CHARGE_ALREADY_ATTEMPTED — reconcile the existing attempt, never retry with a new key
+        "429":
+          description: Too many requests from this IP
 
   /api/checkout:
     post:
@@ -817,8 +826,8 @@ paths:
 
         A registered app may authenticate with its app-service token (#2642): the checkout
         row is then bound to the app's DID and records the declared `payeeManifest` (falling
-        back to `fairManifest`), and the returned `transactionId` is what the app later passes
-        to `POST /api/settle`. Requires the operator-approved `pay:settle` scope (403 otherwise).
+        back to `fairManifest`). The returned `transactionId` identifies the pending payment
+        completed by the seller webhook. Requires the operator-approved `pay:settle` scope (403 otherwise).
         Checkout requires a seller DID (also accepted as `metadata.sellerDid`).
         Seller-owned charges settle through the seller's webhook, not `/api/settle`;
         no platform balance moves. No app token means no app binding.
@@ -1321,6 +1330,10 @@ paths:
         account that took the charge. Legacy platform refunds fail with
         `LEGACY_PLATFORM_PAYMENT` and a log line. BYO refunds do not move node balances.
         Caller-controlled PaymentIntent metadata is never authority.
+        Verified BYO settlement records settledPaymentIntentId with first-class settledAt;
+        PI-only refunds match that provenance in SQL without Stripe session lookups.
+        Older seller sessions use a filtered, ordered fallback capped at 25 candidates.
+        A disconnected seller is skipped and cannot abort another seller's refund.
       security:
         - appServiceToken: []
       requestBody:
