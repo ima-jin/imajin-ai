@@ -60,7 +60,7 @@ async function stripeRequest(key: string, path: string, form?: URLSearchParams):
   return body;
 }
 
-function stripeId(value: unknown, prefix: string): value is string {
+function isStripeResourceId(value: unknown, prefix: string): value is string {
   return typeof value === 'string' && new RegExp(`^${prefix}_[A-Za-z0-9]+$`).test(value);
 }
 
@@ -93,7 +93,7 @@ function assertIntent(intent: Record<string, unknown>, appDid: string, input: Ve
     throw new SetupIntentError(409, 'setup_intent_not_succeeded', 'SetupIntent has not succeeded');
   }
   const paymentMethodId = resourceId(intent.payment_method);
-  if (!stripeId(paymentMethodId, 'pm')) throw unavailable();
+  if (!isStripeResourceId(paymentMethodId, 'pm')) throw unavailable();
   return paymentMethodId;
 }
 
@@ -109,7 +109,7 @@ export async function createByoSetupIntent(appDid: string, input: SetupIntentBin
     'metadata[buyerDid]': input.buyerDid,
     'metadata[did]': input.buyerDid,
   }));
-  if (!stripeId(customer.id, 'cus')) throw unavailable();
+  if (!isStripeResourceId(customer.id, 'cus')) throw unavailable();
   assertCustomer(customer, customer.id, input.buyerDid);
   const form = new URLSearchParams({
     customer: customer.id,
@@ -120,7 +120,7 @@ export async function createByoSetupIntent(appDid: string, input: SetupIntentBin
     form.set(`metadata[${name}]`, value);
   }
   const intent = await stripeRequest(key, '/setup_intents', form);
-  if (!stripeId(intent.id, 'seti') || typeof intent.client_secret !== 'string' || !intent.client_secret.startsWith(`${intent.id}_secret_`)) {
+  if (!isStripeResourceId(intent.id, 'seti') || typeof intent.client_secret !== 'string' || !intent.client_secret.startsWith(`${intent.id}_secret_`)) {
     throw unavailable();
   }
   if (resourceId(intent.customer) !== customer.id) throw unavailable();
