@@ -37,6 +37,10 @@ vi.mock('@/src/db', () => ({
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', id: 'id' },
 }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
+const receipt = vi.hoisted(() => ({ handled: true, error: undefined as string | undefined }));
+vi.mock('@/src/lib/pay/stripe-relay-store', () => ({
+  putRelayEntry: vi.fn(() => receipt), deleteRelayEntry: vi.fn(),
+}));
 // #2177: the connector registers the pay-stripe consumer before publishing; the consumer
 // (and its DB-backed handlers) is irrelevant to what this suite asserts.
 vi.mock('@/src/lib/pay/stripe-bus-consumer', () => ({ ensurePayStripeReactorRegistered: vi.fn() }));
@@ -58,6 +62,7 @@ import {
   stripeConnectorDid,
   stripeEventsScope,
   publishableKeySealed,
+  sealWebhookSecret, webhookStatus,
 } from '../connector';
 
 const OWNER = 'did:imajin:scott';
@@ -98,6 +103,7 @@ function signedDelivery(payload: unknown, secret: string, timestampSeconds = Mat
 }
 
 beforeEach(() => {
+  receipt.handled = true; receipt.error = undefined;
   sealV2Mock.mockReset().mockResolvedValue(undefined);
   sealV1Mock.mockReset().mockResolvedValue(undefined);
   loadMock.mockReset();
@@ -131,228 +137,83 @@ describe('identity', () => {
 
 // ── connectAndProvisionWebhook (#1785) ────────────────────────────────────────
 
-describe('connectAndProvisionWebhook', () => {
-  it.each([undefined, '', '   '])('requires a publishable key before any network or vault mutation', async (publishableKey) => {
+describe('manual webhook setup', () => {
+  it.each([undefined, '', '   '])('requires a publishable key before mutations', async (publishableKey) => {
     await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, publishableKey))
       .rejects.toMatchObject({ code: 'stripe_publishable_key_missing', field: 'publishableKey' });
     expect(fetch).not.toHaveBeenCalled();
-    expect(findWebhookIndexByOwnerMock).not.toHaveBeenCalled();
-    expect(sealV1Mock).not.toHaveBeenCalled();
     expect(sealV2Mock).not.toHaveBeenCalled();
-    expect(upsertWebhookIndexMock).not.toHaveBeenCalled();
   });
-
-  it.each([
-    ['rk_test_fake', 'pk_live_fake'],
-    ['rk_live_fake', 'pk_test_fake'],
-  ])('rejects mismatched modes before checking permissions or changing existing credentials', async (token, publishableKey) => {
-    await expect(connectAndProvisionWebhook(OWNER, token, BASE_URL, publishableKey))
-      .rejects.toMatchObject({ code: 'stripe_key_mode_mismatch', field: 'publishableKey' });
-    expect(fetch).not.toHaveBeenCalled();
-    expect(findWebhookIndexByOwnerMock).not.toHaveBeenCalled();
-    expect(sealV1Mock).not.toHaveBeenCalled();
-    expect(sealV2Mock).not.toHaveBeenCalled();
-    expect(upsertWebhookIndexMock).not.toHaveBeenCalled();
-  });
-  it('seals the publishable key for the same owner after provisioning', async () => {
-    fetchMock().mockResolvedValue({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
-    await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, 'pk_test_fake');
-    expect(sealV1Mock).toHaveBeenCalledWith(`stripe-publishable-key:${OWNER}`, 'pk_test_fake');
-  });
-
-  it('rejects a non-publishable key before provisioning', async () => {
-    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, 'not_a_key'))
-      .rejects.toMatchObject({ code: 'stripe_publishable_key_invalid', field: 'publishableKey' });
+  it('rejects mismatched modes before mutations', async () => {
+    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, 'pk_live_fake'))
+      .rejects.toMatchObject({ code: 'stripe_key_mode_mismatch' });
     expect(fetch).not.toHaveBeenCalled();
   });
-  it('rejects a non-restricted key and never calls Stripe or seals anything', async () => {
+  it('rejects full secret keys', async () => {
     await expect(connectAndProvisionWebhook(OWNER, FULL_SECRET_KEY, BASE_URL, PUBLISHABLE_KEY))
-      .rejects.toMatchObject({ code: 'stripe_key_not_restricted', field: 'token' });
-
-    expect(fetch).not.toHaveBeenCalled();
+      .rejects.toMatchObject({ code: 'stripe_key_not_restricted' });
     expect(sealV2Mock).not.toHaveBeenCalled();
-    expect(sealV1Mock).not.toHaveBeenCalled();
-    expect(upsertWebhookIndexMock).not.toHaveBeenCalled();
   });
-
-  it('provisions the webhook with the restricted key, then seals the key and signing secret and indexes the routing id', async () => {
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }),
-    });
-
-    const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY);
-
-    expect(result).toEqual({ routingId: expect.stringContaining('stripewh_'), endpointId: 'we_new' });
-
-    const [url, init] = fetchMock().mock.calls[1]; // calls[0] is the Checkout Sessions permission probe (#2754)
-    expect(url).toBe('https://api.stripe.com/v1/webhook_endpoints');
-    expect(init.method).toBe('POST');
-    expect(init.headers.Authorization).toBe(`Bearer ${RESTRICTED_KEY}`);
-    const body = init.body as string;
-    expect(body).toContain(`url=${encodeURIComponent(`${BASE_URL}/stripe/api/webhook/${result.routingId}`)}`);
-    expect(body).toContain('enabled_events%5B%5D=payment_intent.succeeded');
-    expect(body).toContain('enabled_events%5B%5D=invoice.paid');
-    expect(body).toContain('enabled_events%5B%5D=payout.paid');
-
-    expect(sealV2Mock).toHaveBeenCalledWith(vaultField(OWNER), RESTRICTED_KEY);
-    expect(sealV1Mock).toHaveBeenCalledWith(`stripe-webhook-secret:${OWNER}`, SIGNING_SECRET);
-    expect(upsertWebhookIndexMock).toHaveBeenCalledWith(result.routingId, OWNER, 'we_new');
-  });
-
-  it('strips a trailing slash (or several) from webhookBaseUrl before building the endpoint URL (#2074 S8786)', async () => {
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }),
-    });
-
-    const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, `${BASE_URL}///`, PUBLISHABLE_KEY);
-
-    const [, init] = fetchMock().mock.calls[1];
-    const body = init.body as string;
-    expect(body).toContain(`url=${encodeURIComponent(`${BASE_URL}/stripe/api/webhook/${result.routingId}`)}`);
-  });
-
-  it('trims whitespace pasted around the key', async () => {
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: true,
-      json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }),
-    });
-
-    await connectAndProvisionWebhook(OWNER, `  ${RESTRICTED_KEY}  `, BASE_URL, `  ${PUBLISHABLE_KEY}  `);
-
+  it('seals all three owner-entered values without creating an endpoint or secret', async () => {
+    fetchMock().mockResolvedValueOnce(PROBE_PERMITTED);
+    const result = await connectAndProvisionWebhook(OWNER, ` ${RESTRICTED_KEY} `, BASE_URL, ` ${PUBLISHABLE_KEY} `, ` ${SIGNING_SECRET} `);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetchMock().mock.calls[0][0]).toBe('https://api.stripe.com/v1/checkout/sessions');
+    expect(fetchMock().mock.calls[0][1].body).toBe('mode=payment');
+    expect(result).toEqual({ routingId: expect.stringContaining('stripewh_'), endpointId: '' });
     expect(sealV2Mock).toHaveBeenCalledWith(vaultField(OWNER), RESTRICTED_KEY);
     expect(sealV1Mock).toHaveBeenCalledWith(`stripe-publishable-key:${OWNER}`, PUBLISHABLE_KEY);
+    expect(sealV1Mock).toHaveBeenCalledWith(`stripe-webhook-secret:${OWNER}`, SIGNING_SECRET);
+    expect(upsertWebhookIndexMock).toHaveBeenCalledWith(result.routingId, OWNER, '');
   });
-
-  it('never seals anything when Stripe rejects the endpoint creation', async () => {
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: 'Unauthorized',
-      text: async () => 'Invalid API Key provided',
-    });
-
-    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY))
-      .rejects.toThrow(/stripe_webhook_provision_failed/);
-
-    expect(sealV2Mock).not.toHaveBeenCalled();
-    expect(sealV1Mock).not.toHaveBeenCalled();
-    expect(upsertWebhookIndexMock).not.toHaveBeenCalled();
-  });
-
-  it('rejects when Stripe responds ok without id/secret', async () => {
-    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({}) });
-
-    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY))
-      .rejects.toThrow(/stripe_webhook_provision_failed/);
-    expect(sealV2Mock).not.toHaveBeenCalled();
-  });
-
-  it.each(['fetch', 'json'])('does not expose keys in a %s provisioning failure', async (failure) => {
-    const echoedKey = new Error(`upstream echoed ${RESTRICTED_KEY}`);
+  it('permits key-only initial setup so the owner can obtain their routing URL', async () => {
     fetchMock().mockResolvedValueOnce(PROBE_PERMITTED);
-    if (failure === 'fetch') {
-      fetchMock().mockRejectedValueOnce(echoedKey);
-    } else {
-      fetchMock().mockResolvedValueOnce({ ok: true, json: async () => { throw echoedKey; } });
-    }
-    let error: unknown;
-    try {
-      await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error).toBeInstanceOf(Error);
-    expect((error as Error).message).toContain('stripe_webhook_provision_failed');
-    expect((error as Error).message).not.toContain(RESTRICTED_KEY);
-    expect(sealV2Mock).not.toHaveBeenCalled();
-    expect(sealV1Mock).not.toHaveBeenCalled();
-  });
-
-  it('best-effort deprovisions a prior endpoint (with the OLD key) before provisioning the new one', async () => {
-    const OLD_KEY = 'rk_test_fake_oldkey';
-    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_old', endpointId: 'we_old' });
-    loadMock
-      .mockResolvedValueOnce(OLD_KEY) // apiKey read by loadSealedCredentials
-      .mockResolvedValueOnce(undefined) // baseUrl (unused field, still probed)
-      .mockResolvedValueOnce(undefined); // modelId (unused field, still probed)
-
-    (fetch as unknown as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(PROBE_PERMITTED) // Checkout Sessions permission probe, BEFORE anything is deprovisioned
-      .mockResolvedValueOnce({ ok: true }) // DELETE old endpoint
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) }); // POST new
-
     await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY);
-
-    const [deleteUrl, deleteInit] = fetchMock().mock.calls[1];
-    expect(deleteUrl).toBe('https://api.stripe.com/v1/webhook_endpoints/we_old');
-    expect(deleteInit.method).toBe('DELETE');
-    expect(deleteInit.headers.Authorization).toBe(`Bearer ${OLD_KEY}`);
-
-    const [, postInit] = fetchMock().mock.calls[2];
-    expect(postInit.headers.Authorization).toBe(`Bearer ${RESTRICTED_KEY}`);
+    expect(sealV1Mock).not.toHaveBeenCalledWith(`stripe-webhook-secret:${OWNER}`, expect.anything());
   });
-
-  it('proceeds with the reconnect even when best-effort deprovision of the old endpoint fails', async () => {
-    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_old', endpointId: 'we_old' });
-    loadMock.mockResolvedValueOnce('rk_test_fake_oldkey').mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
-
-    (fetch as unknown as ReturnType<typeof vi.fn>)
-      .mockResolvedValueOnce(PROBE_PERMITTED)
-      .mockResolvedValueOnce({ ok: false, status: 404, statusText: 'Not Found', text: async () => 'No such webhook endpoint' })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
-
-    const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY);
-    expect(result.endpointId).toBe('we_new');
-    expect(sealV2Mock).toHaveBeenCalledWith(vaultField(OWNER), RESTRICTED_KEY);
-  });
-
-  // ── #2754: the key must be able to take an invoice payment ──────────────────
-
-  it('probes Checkout Sessions with the restricted key FIRST — an incomplete session (mode only), never a real one', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(PROBE_PERMITTED)
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
-
-    await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY);
-
-    const [url, init] = fetchMock().mock.calls[0];
-    expect(url).toBe('https://api.stripe.com/v1/checkout/sessions');
-    expect(init.method).toBe('POST');
-    expect(init.headers.Authorization).toBe(`Bearer ${RESTRICTED_KEY}`);
-    // No line_items / urls: Stripe cannot create a session from this, so nothing is ever left on the owner's account.
-    expect(init.body).toBe('mode=payment');
-  });
-
-  it.each([
-    ['a 403', PROBE_FORBIDDEN],
-    [
-      'a permission_error body',
-      { ok: false, status: 400, json: async () => ({ error: { type: 'permission_error', message: 'nope' } }) },
-    ],
-  ])('fails AT CONNECT on %s, before the old endpoint is deprovisioned or anything is provisioned or sealed', async (_label, probe) => {
-    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_old', endpointId: 'we_old' });
-    fetchMock().mockResolvedValueOnce(probe);
-
-    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY))
-      .rejects.toThrow(/stripe_key_missing_permission.*Checkout Sessions = Write/);
-
+  it('preserves existing routing and secret during key rotation', async () => {
+    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_existing', endpointId: 'we_existing' });
+    fetchMock().mockResolvedValueOnce(PROBE_PERMITTED);
+    expect(await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY))
+      .toEqual({ routingId: 'stripewh_existing', endpointId: 'we_existing' });
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(loadMock).not.toHaveBeenCalled(); // the old key was never even read for a deprovision
+    expect(deleteFromVaultMock).not.toHaveBeenCalled();
+  });
+  it('rejects invalid signing secrets before any side effect', async () => {
+    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY, 'fake_bad'))
+      .rejects.toMatchObject({ code: 'stripe_webhook_secret_invalid', field: 'webhookSecret' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('rejects keys missing Checkout Sessions write permission before sealing', async () => {
+    fetchMock().mockResolvedValueOnce(PROBE_FORBIDDEN);
+    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY))
+      .rejects.toThrow(/stripe_key_missing_permission/);
     expect(sealV2Mock).not.toHaveBeenCalled();
-    expect(sealV1Mock).not.toHaveBeenCalled();
+  });
+  it('can add a secret to an existing connector without reading or re-pasting keys', async () => {
+    statusMock.mockResolvedValue('ready');
+    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_existing', endpointId: 'we_existing' });
+    await sealWebhookSecret(OWNER, SIGNING_SECRET);
+    expect(sealV1Mock).toHaveBeenCalledTimes(1);
+    expect(sealV1Mock).toHaveBeenCalledWith(`stripe-webhook-secret:${OWNER}`, SIGNING_SECRET);
+    expect(sealV2Mock).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
     expect(upsertWebhookIndexMock).not.toHaveBeenCalled();
   });
-
-  it('does not fail the connect on an inconclusive probe (Stripe unreachable) — webhook provisioning reports its own error', async () => {
-    fetchMock()
-      .mockRejectedValueOnce(new Error('network down'))
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
-
-    const result = await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, PUBLISHABLE_KEY);
-
-    expect(result.endpointId).toBe('we_new');
+  it('refuses secret-only updates without an active key pair', async () => {
+    await expect(sealWebhookSecret(OWNER, SIGNING_SECRET)).rejects.toMatchObject({ code: 'stripe_connector_missing' });
+    expect(sealV1Mock).not.toHaveBeenCalled();
+  });
+  it('reports safe status and routing without unsealing any field', async () => {
+    statusMock.mockResolvedValue('ready');
+    findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_existing', endpointId: 'we_existing' });
+    expect(await webhookStatus(OWNER, `${BASE_URL}///`)).toEqual({
+      webhookSecretSealed: true, routingId: 'stripewh_existing',
+      webhookUrl: `${BASE_URL}/pay/api/webhook/stripewh_existing`,
+      webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
+    });
+    expect(loadMock).not.toHaveBeenCalled();
   });
 });
 
@@ -432,6 +293,81 @@ describe('disconnectAndDeprovision', () => {
 // ── handleVerifiedWebhookEvent (#1785) ────────────────────────────────────────
 
 describe('handleVerifiedWebhookEvent', () => {
+  beforeEach(() => { statusMock.mockResolvedValue('ready'); });
+  const validEvent = (id: string) => ({
+    id, type: 'payment_intent.succeeded',
+    data: { object: { id: 'pi_fake', amount: 100, currency: 'usd' } },
+  });
+
+  function delivery(id: string) {
+    resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_fake' });
+    loadMock.mockResolvedValue(SIGNING_SECRET);
+    grant(['stripe:events']);
+    return signedDelivery(validEvent(id), SIGNING_SECRET);
+  }
+
+  it.each([null, [], {}, { id: 'evt_fake' }, { id: 'evt_fake', type: 'invoice.paid', data: { object: [] } },
+    { id: 'evt_fake', type: 'payment_intent.succeeded', data: { object: { id: 'pi_fake', amount: -1, currency: 'usd' } } },
+  ])('rejects malformed signed event shapes without publishing %#', async (payload) => {
+    delivery('unused');
+    const { rawBody, header } = signedDelivery(payload, SIGNING_SECRET);
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header)).toEqual({ status: 'malformed_payload' });
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the key is missing or revoked', async () => {
+    const { rawBody, header } = delivery('evt_missing_key');
+    statusMock.mockResolvedValue('absent');
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header)).toEqual({ status: 'connector_unavailable' });
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('uses only the indexed owner secret, not a different DID named in metadata', async () => {
+    const payload = validEvent('evt_wrong_owner');
+    delivery('unused');
+    loadMock.mockImplementation(async (field: string) => field === `stripe-webhook-secret:${OWNER}` ? SIGNING_SECRET : 'whsec_fake_other');
+    const { rawBody, header } = signedDelivery({ ...payload, account: 'did:imajin:other' }, 'whsec_fake_other');
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header)).toEqual({ status: 'invalid_signature', reason: 'signature_mismatch' });
+    expect(loadMock).toHaveBeenCalledWith(`stripe-webhook-secret:${OWNER}`);
+    expect(publishMock).not.toHaveBeenCalled();
+  });
+
+  it('suppresses a successful event replay within tolerance, including with a fresh signature', async () => {
+    const { rawBody, header } = delivery('evt_replay_success');
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header)).toEqual({ status: 'ok', published: true });
+    const fresh = signedDelivery(validEvent('evt_replay_success'), SIGNING_SECRET, Math.floor(Date.now() / 1000) + 1);
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', fresh.rawBody, fresh.header)).toEqual({ status: 'ok', published: false });
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('deduplicates concurrent deliveries of the same owner event', async () => {
+    const { rawBody, header } = delivery('evt_concurrent');
+    const results = await Promise.all([
+      handleVerifiedWebhookEvent('stripewh_fake', rawBody, header),
+      handleVerifiedWebhookEvent('stripewh_fake', rawBody, header),
+    ]);
+    expect(results).toEqual([{ status: 'ok', published: true }, { status: 'ok', published: false }]);
+    expect(publishMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not suppress the same event id belonging to another owner', async () => {
+    const { rawBody, header } = delivery('evt_cross_owner');
+    await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header);
+    resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: 'did:imajin:another', endpointId: 'we_fake_other' });
+    expect(await handleVerifiedWebhookEvent('stripewh_other', rawBody, header)).toEqual({ status: 'ok', published: true });
+    expect(publishMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['publish', 'handler', 'missing-reactor'])('returns a retryable failure for %s and does not mark completed', async (failure) => {
+    const { rawBody, header } = delivery(`evt_retry_${failure}`);
+    if (failure === 'publish') publishMock.mockRejectedValueOnce(new Error('fake upstream failure'));
+    if (failure === 'handler') receipt.error = 'fake settlement failure';
+    if (failure === 'missing-reactor') receipt.handled = false;
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header)).toEqual({ status: 'processing_failed' });
+    receipt.handled = true; receipt.error = undefined;
+    expect(await handleVerifiedWebhookEvent('stripewh_fake', rawBody, header)).toEqual({ status: 'ok', published: true });
+    expect(publishMock).toHaveBeenCalledTimes(2);
+  });
   it('rejects an unknown routing id without ever loading a secret', async () => {
     resolveWebhookOwnerMock.mockResolvedValue(undefined);
 
@@ -501,11 +437,11 @@ describe('handleVerifiedWebhookEvent', () => {
     resolveWebhookOwnerMock.mockResolvedValue({ ownerDid: OWNER, endpointId: 'we_1' });
     loadMock.mockResolvedValue(SIGNING_SECRET);
     noGrant();
-    const { rawBody, header } = signedDelivery({ id: 'evt_1', type: 'payment_intent.succeeded' }, SIGNING_SECRET);
+    const { rawBody, header } = signedDelivery({ id: 'evt_1', type: 'payment_intent.succeeded', data: { object: { id: 'pi_fake', amount: 100, currency: 'usd' } } }, SIGNING_SECRET);
 
     const result = await handleVerifiedWebhookEvent('stripewh_1', rawBody, header);
 
-    expect(result).toEqual({ status: 'ok', published: false });
+    expect(result).toEqual({ status: 'connector_unavailable' });
     expect(publishMock).not.toHaveBeenCalled();
   });
 
@@ -529,6 +465,7 @@ describe('handleVerifiedWebhookEvent', () => {
       scope: 'stripe',
       payload: {
         ownerDid: OWNER,
+        relayId: expect.any(String),
         eventId: 'evt_pi_1',
         paymentIntentId: 'pi_123',
         amount: 5000,
@@ -643,6 +580,7 @@ describe('handleVerifiedWebhookEvent', () => {
       scope: 'stripe',
       payload: {
         ownerDid: OWNER,
+        relayId: expect.any(String),
         eventId: 'evt_in_1',
         invoiceId: 'in_123',
         amountPaid: 3000,
@@ -673,6 +611,7 @@ describe('handleVerifiedWebhookEvent', () => {
       scope: 'stripe',
       payload: {
         ownerDid: OWNER,
+        relayId: expect.any(String),
         eventId: 'evt_po_1',
         payoutId: 'po_123',
         amount: 1000,

@@ -10,16 +10,20 @@ const entry = getConnector('stripe')!;
 function mount(status: Record<string, unknown> = {}, sealFailure?: string) {
   let paired = status.publishableKeySealed === true;
   let primary = status.keySealed !== false;
+  let webhook = status.webhookSecretSealed === true;
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === entry.tokenRoute && init?.method === 'POST') {
       if (sealFailure) return new Response(JSON.stringify({ error: sealFailure, code: 'stripe_key_mode_mismatch', field: 'publishableKey' }), { status: 400 });
       paired = true;
       primary = true;
+      if (String(init.body).includes('webhookSecret')) webhook = true;
       return new Response(JSON.stringify({ sealed: true }), { status: 201 });
     }
     return new Response(JSON.stringify({
       manifestAssetId: null, activeScopes: ['stripe:events'],
       validScopes: ['stripe:events'], ...status, keySealed: primary, publishableKeySealed: paired,
+      webhookSecretSealed: webhook, webhookUrl: 'https://kernel.test/pay/api/webhook/stripewh_fake',
+      webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
     }));
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -40,6 +44,29 @@ function posts(mock: ReturnType<typeof mount>) {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('Stripe paired-key connector card', () => {
+  it('lets an existing owner add a signing secret in the same card without re-entering keys', async () => {
+    const mock = mount({ publishableKeySealed: true });
+    const input = await screen.findByLabelText('Webhook signing secret') as HTMLInputElement;
+    expect(input.type).toBe('password');
+    expect(screen.queryByLabelText('Restricted Key')).toBeNull();
+    expect(screen.queryByText('● Connected')).toBeNull();
+    expect(await screen.findByText('https://kernel.test/pay/api/webhook/stripewh_fake')).toBeDefined();
+    fill('Webhook signing secret', ' whsec_fake_entered ');
+    fireEvent.submit(input.closest('form')!);
+    await screen.findByText('Webhook signing secret sealed');
+    await screen.findByText('● Connected');
+    expect(JSON.parse(String(posts(mock)[0][1]?.body))).toEqual({ webhookSecret: 'whsec_fake_entered' });
+    expect((screen.getByLabelText('Webhook signing secret') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('whsec_fake_entered')).toBeNull();
+  });
+  it('rejects an invalid signing secret locally without sending it', async () => {
+    const mock = mount({ publishableKeySealed: true });
+    const input = await screen.findByLabelText('Webhook signing secret');
+    fill('Webhook signing secret', 'fake_invalid');
+    fireEvent.submit(input.closest('form')!);
+    expect(await screen.findByText(/Provide the webhook signing secret starting with whsec_/)).toBeDefined();
+    expect(posts(mock)).toHaveLength(0);
+  });
   it('shows existing restricted-key-only sellers what is missing and does not claim connected', async () => {
     mount({ publishableKeySealed: false });
     expect(await screen.findByText(/Publishable key missing/)).toBeDefined();
@@ -97,10 +124,10 @@ describe('Stripe paired-key connector card', () => {
     expect(posts(mock)).toHaveLength(0);
   });
   it('shows both sealed statuses without exposing stored values', async () => {
-    mount({ publishableKeySealed: true });
+    mount({ publishableKeySealed: true, webhookSecretSealed: true });
     expect(await screen.findByText('Publishable Key sealed')).toBeDefined();
     expect(screen.getByText('Restricted Key sealed')).toBeDefined();
-    expect(screen.getByText('● Connected')).toBeDefined();
+    expect(await screen.findByText('● Connected')).toBeDefined();
     expect(screen.queryByLabelText('Publishable Key')).toBeNull();
   });
   it('surfaces the safe backend validation error and retains the form for correction', async () => {

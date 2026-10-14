@@ -38,6 +38,21 @@ beforeEach(() => {
 });
 
 describe('POST /stripe/api/webhook/[routingId] (#1785)', () => {
+  it.each([
+    ['connector_unavailable', 503],
+    ['processing_failed', 500],
+  ])('keeps %s retryable with HTTP %s', async (status, expected) => {
+    mockHandleVerifiedWebhookEvent.mockResolvedValue({ status });
+    const response = await POST(makeRequest('{}'), withRoutingId('stripewh_fake'));
+    expect(response.status).toBe(expected);
+  });
+
+  it('does not expose vault or bus exceptions when requesting a retry', async () => {
+    mockHandleVerifiedWebhookEvent.mockRejectedValue(new Error('whsec_fake_private'));
+    const response = await POST(makeRequest('{}'), withRoutingId('stripewh_fake'));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Webhook processing failed' });
+  });
   it('passes the routing id, raw body, and stripe-signature header straight through', async () => {
     mockHandleVerifiedWebhookEvent.mockResolvedValue({ status: 'ok', published: true });
 
