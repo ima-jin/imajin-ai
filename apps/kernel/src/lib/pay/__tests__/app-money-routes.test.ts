@@ -76,6 +76,7 @@ async function payment(appDid: string | null = APP, type = 'checkout') {
     amount: '10', currency: 'CAD', rail: 'stripe',
     externalRef: type === 'pledge' ? 'seti_1' : 'cs_payment',
     status: type === 'pledge' ? 'pending' : 'completed',
+    idempotencyKey: type === 'pledge' ? 'pledge-setup:seti_1' : null,
     metadata: { eventId: 'evt', stripeCustomerId: 'cus_recorded' },
   });
 }
@@ -152,6 +153,16 @@ describe.each([
 });
 
 describe('pledge recorded authority', () => {
+  it('cannot turn an app checkout into pledge authority by spoofing type and metadata', async () => {
+    await payment(APP, 'pledge');
+    await db.update(transactions).set({
+      idempotencyKey: null, externalRef: 'cs_forged',
+      metadata: { eventId: 'evt', stripeCustomerId: 'cus_recorded', setupIntentId: 'seti_1' },
+    });
+    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(403);
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.retrieve).not.toHaveBeenCalled();
+  });
   it('keeps a processing payment non-completed and replays without a second rail call', async () => {
     await payment(APP, 'pledge');
     h.create.mockResolvedValue({ id: 'pi_processing', status: 'processing' });
@@ -236,7 +247,8 @@ describe('pledge recorded authority', () => {
       'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
     expect(response.status).toBe(200);
     const [row] = await db.select().from(transactions);
-    expect(row).toMatchObject({ appDid: APP, fromDid: 'did:imajin:backer', type: 'pledge', amount: '10.00000000', externalRef: 'seti_new' });
+    expect(row).toMatchObject({ appDid: APP, fromDid: 'did:imajin:backer', type: 'pledge',
+      amount: '10.00000000', externalRef: 'seti_new', idempotencyKey: 'pledge-setup:seti_new' });
     expect(h.setup).toHaveBeenCalledWith(expect.objectContaining({
       metadata: expect.objectContaining({ app_did: APP, did: 'did:imajin:backer' }),
     }));

@@ -1,6 +1,5 @@
-import { and, eq, or, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, transactions } from '@/src/db';
-import { whereExternalRef } from './external-ref';
 import { getStripeClient } from './providers/stripe-client';
 
 type Failure = { error: string; status: number };
@@ -33,10 +32,10 @@ export async function loadAppPledges(
       return { error: 'Each pledge requires a unique setupIntentId and a pledgeId', status: 400 };
     }
     seen.add(ref.setupIntentId);
-    const [row] = await db.select().from(transactions).where(or(
-      whereExternalRef(ref.setupIntentId),
-      and(eq(transactions.type, 'pledge'), sql`${transactions.metadata}->>'setupIntentId' = ${ref.setupIntentId}`),
-    )).limit(1);
+    // Only setup-intent writes this first-class marker. Generic checkout's
+    // caller-controlled type/metadata cannot impersonate an authorized setup.
+    const [row] = await db.select().from(transactions)
+      .where(eq(transactions.idempotencyKey, `pledge-setup:${ref.setupIntentId}`)).limit(1);
     const metadata = row?.metadata as Record<string, unknown> | null;
     if (row?.appDid !== appDid || row.type !== 'pledge' || metadata?.eventId !== eventId) {
       return { error: 'Forbidden - pledge was not created by this app for this campaign', status: 403 };

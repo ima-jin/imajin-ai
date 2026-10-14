@@ -122,6 +122,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     await db.insert(transactions).values({
       id: generateId('tx'),
       appDid: app.appDid,
+      idempotencyKey: `pledge-setup:${setupIntent.id}`,
       service: 'events',
       type: 'pledge',
       fromDid: did,
