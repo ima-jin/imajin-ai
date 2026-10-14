@@ -6,6 +6,9 @@ import { fetchAppDeclaredSecret, listAppDeclaredSecrets } from '@/src/lib/apps/s
 import { corsHeaders } from '@/src/lib/kernel/cors';
 
 export const dynamic = 'force-dynamic';
+async function fetchOneSecret(appDid: string, name: string, values: Record<string, string>): Promise<void> {
+  values[name] = (await fetchAppDeclaredSecret(appDid, name)).value;
+}
 
 /** Sealed-only transport, authenticated with the bound keystore key, not the app signing key. */
 export async function POST(request: NextRequest) {
@@ -37,9 +40,12 @@ export async function POST(request: NextRequest) {
 
     const values: Record<string, string> = Object.create(null);
     const missing: string[] = [];
-    for (const name of keys) {
-      values[name] = (await fetchAppDeclaredSecret(appDid, name)).value;
-    }
+    // Validate the whole batch above before any fetch/lifecycle event; then
+    // preserve ordering and stop on the first failure, just like the SDK.
+    await (keys as string[]).reduce<Promise<void>>(
+      (chain, name) => chain.then(() => fetchOneSecret(appDid, name, values)),
+      Promise.resolve(),
+    );
     // Ephemeral sender key and field key; nothing new is persisted in the vault.
     const sender = deriveXKeypairFromEd25519(randomBytes(32).toString('hex'), 'app-self-secrets-sender-v1');
     const fieldKey = randomBytes(32);

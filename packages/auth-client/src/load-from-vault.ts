@@ -27,13 +27,46 @@ function secureKernelUrl(kernelUrl: string): URL {
     const url = new URL(kernelUrl);
     const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
     if (url.username || url.password || url.search || url.hash
-      || (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))) throw new Error();
+      || (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback))) throw new Error('loadFromVault: invalid transport URL');
     return url;
   } catch {
     throw new Error('loadFromVault: HTTPS kernel URL required (except loopback)');
   }
 }
 
+interface LoadOneContext {
+  appDid: string;
+  url: URL;
+  bootstrapPrivateKey: string;
+  recipient: { publicKey: string; privateKey: string };
+  fetchOptions?: RequestInit;
+}
+
+/** One isolated fetch; the sequential caller decides whether later keys run. */
+async function loadOne(context: LoadOneContext, spec: AppVaultKeySpec, result: AppVaultCredentials): Promise<void> {
+  const { appDid, url, bootstrapPrivateKey, recipient, fetchOptions } = context;
+  const payload: AppSecretFetchPayload = {
+    domain: 'app-self-secrets-v1', appDid, keys: [spec.key], recipientXPub: recipient.publicKey,
+    nonce: randomUUID(), timestamp: Date.now(),
+  };
+  const signature = signBootstrapPayload(canonicalizeAppSecretFetchPayload(payload), bootstrapPrivateKey);
+  try {
+    const headers = new Headers(fetchOptions?.headers);
+    headers.set('Content-Type', 'application/json');
+    const response = await fetch(new URL('/api/apps/secrets/fetch', url), {
+      ...fetchOptions, method: 'POST', headers, redirect: 'error', cache: 'no-store',
+      body: JSON.stringify({ ...payload, signature }),
+    });
+    if (!response.ok) throw new Error('loadFromVault: app secret fetch refused');
+    const opened = openAppSecretEnvelope(await response.json(), recipient.privateKey, payload);
+    if (opened.missing.length > 0) throw new Error('loadFromVault: app secret unavailable');
+    result.values[spec.key] = opened.values[spec.key];
+  } catch {
+    // Never interpolate provider errors, response text, keys, or values.
+    if (spec.onMissing === 'fail') throw new Error('loadFromVault: required app secret unavailable');
+    result.degraded.push(spec.key);
+  }
+}
 /** App-declared secrets only. Call loadAppSigningKey first to establish the local bootstrap keystore. */
 export async function loadFromVault(options: LoadFromVaultOptions): Promise<AppVaultCredentials> {
   const appDid = options.appDid ?? process.env.IMAJIN_APP_DID;
@@ -49,30 +82,14 @@ export async function loadFromVault(options: LoadFromVaultOptions): Promise<AppV
   if (!keystore || !/^[0-9a-f]{64}$/i.test(keystore.privateKey)
     || !/^[0-9a-f]{64}$/i.test(keystore.publicKey)) throw new Error('loadFromVault: bootstrap keystore required');
   const recipient = deriveXKeypairFromEd25519(keystore.privateKey, APP_SECRET_X_DOMAIN);
-  const values: Record<string, string> = Object.create(null);
-  const degraded: string[] = [];
-  for (const spec of options.keys) {
-    const payload: AppSecretFetchPayload = {
-      domain: 'app-self-secrets-v1', appDid, keys: [spec.key], recipientXPub: recipient.publicKey,
-      nonce: randomUUID(), timestamp: Date.now(),
-    };
-    const signature = signBootstrapPayload(canonicalizeAppSecretFetchPayload(payload), keystore.privateKey);
-    try {
-      const headers = new Headers(options.fetchOptions?.headers);
-      headers.set('Content-Type', 'application/json');
-      const response = await fetch(new URL('/api/apps/secrets/fetch', url), {
-        ...options.fetchOptions, method: 'POST', headers, redirect: 'error', cache: 'no-store',
-        body: JSON.stringify({ ...payload, signature }),
-      });
-      if (!response.ok) throw new Error();
-      const opened = openAppSecretEnvelope(await response.json(), recipient.privateKey, payload);
-      if (opened.missing.length > 0) throw new Error();
-      values[spec.key] = opened.values[spec.key];
-    } catch {
-      // Never interpolate provider errors, response text, keys, or values.
-      if (spec.onMissing === 'fail') throw new Error('loadFromVault: required app secret unavailable');
-      degraded.push(spec.key);
-    }
-  }
-  return { values, degraded };
+  const result: AppVaultCredentials = { values: Object.create(null), degraded: [] };
+  const context: LoadOneContext = {
+    appDid, url, bootstrapPrivateKey: keystore.privateKey, recipient, fetchOptions: options.fetchOptions,
+  };
+  // Preserve declared order and stop fetching immediately on a required failure.
+  await options.keys.reduce<Promise<void>>(
+    (chain, spec) => chain.then(() => loadOne(context, spec, result)),
+    Promise.resolve(),
+  );
+  return result;
 }

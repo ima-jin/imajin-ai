@@ -58,6 +58,15 @@ describe('app-declared secret SDK', () => {
     ] })).toEqual({ values: { SESSION_SECRET: 'FAKE_TEST_SECRET' }, degraded: ['OPTIONAL'] });
   });
 
+  it('stops immediately on required failure and never fetches later keys', async () => {
+    const fetchMock = vi.fn(async () => Response.json({ error: 'FAKE_TEST_SECRET' }, { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(loadFromVault({ ...options, keys: [
+      ...options.keys, { key: 'LATER_SECRET', onMissing: 'degrade' },
+    ] })).rejects.toThrow('loadFromVault: required app secret unavailable');
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
   it.each(['network', 'response', 'tamper'])('redacts %s failures', async (mode) => {
     vi.stubGlobal('fetch', vi.fn(async (_url, init) => {
       if (mode === 'network') throw new Error('FAKE_TEST_SECRET');

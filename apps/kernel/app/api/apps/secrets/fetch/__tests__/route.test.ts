@@ -49,6 +49,22 @@ describe('sealed app-secret route', () => {
     expect((await POST(request(signed({}, registered.privateKey)))).status).toBe(403);
     expect(fetchSecret).not.toHaveBeenCalled();
   });
+  it('validates all requested declarations before recording any fetch', async () => {
+    const response = await POST(request(signed({ keys: ['SESSION_SECRET', 'FOREIGN_SECRET'] })));
+    expect(response.status).toBe(403);
+    expect(fetchSecret).not.toHaveBeenCalled();
+  });
+  it('stops a validated batch on the first fetch failure without fetching later names', async () => {
+    const keys = ['SESSION_SECRET', 'SECOND_SECRET', 'LATER_SECRET'];
+    listSecrets.mockResolvedValue(keys.map((name) => ({ name, status: 'active' })));
+    fetchSecret.mockResolvedValueOnce({ value: 'FAKE_TEST_SECRET' }).mockRejectedValueOnce(new Error('FAKE_TEST_SECRET'));
+    const response = await POST(request(signed({ keys })));
+    expect(response.status).toBe(403);
+    expect(fetchSecret).toHaveBeenCalledTimes(2);
+    expect(fetchSecret).toHaveBeenNthCalledWith(1, 'did:imajin:app-test', 'SESSION_SECRET');
+    expect(fetchSecret).toHaveBeenNthCalledWith(2, 'did:imajin:app-test', 'SECOND_SECRET');
+    expect(await response.text()).toBe('{"error":"App secret access refused"}');
+  });
   it('allows a production TLS ingress to use an internal HTTP Next URL', async () => {
     expect((await POST(request(signed(), 'http://kernel-internal:3000/api/apps/secrets/fetch'))).status).toBe(200);
   });
