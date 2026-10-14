@@ -12,27 +12,29 @@ vi.mock('drizzle-orm', () => ({
   and: (...clauses: unknown[]) => clauses,
   asc: (column: string) => column,
 }));
+function testQuery(projection: Record<string, unknown> | undefined, conditions: Array<{ column: string; value: unknown }>) {
+  const clauses = Array.isArray(conditions) ? conditions : [conditions];
+  const rows = state.grants.filter((row) => clauses.every((condition) => row[condition.column] === condition.value));
+  return {
+    then: (resolve: (data: unknown[]) => void) => resolve(rows),
+    limit: () => Promise.resolve([state.app]),
+    orderBy: () => Promise.resolve(projection?.payload ? state.facts : []),
+  };
+}
+function testSelect(projection?: Record<string, unknown>) {
+  return { from: () => testWhere(projection) };
+}
+function testWhere(projection?: Record<string, unknown>) {
+  return { where: (conditions: Array<{ column: string; value: unknown }>) => testQuery(projection, conditions) };
+}
 vi.mock('@/src/db', () => {
   const columns = new Proxy({}, { get: (_target, key) => key });
   return {
     registryApps: columns, vaultDelegationGrants: columns, attestations: columns,
-    db: {
-      select: (projection?: Record<string, unknown>) => ({
-        from: () => ({
-          where: (conditions: Array<{ column: string; value: unknown }>) => {
-            const data = () => state.grants.filter((row) => conditions.every((condition) => row[condition.column] === condition.value));
-            return {
-              then: (resolve: (data: unknown[]) => void) => resolve(data()),
-              limit: () => Promise.resolve([state.app]),
-              orderBy: () => Promise.resolve(projection?.payload ? state.facts : []),
-            };
-          },
-        }),
-      }),
-    },
+    db: { select: testSelect },
   };
 });
-vi.mock('@imajin/auth', () => ({ emitAttestation: state.attest }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ emitMechanicalAttestation: state.attest }));
 vi.mock('@/src/lib/vault/sealing', () => ({
   getNodeSigningIdentity: () => ({ senderDid: 'did:imajin:node' }), isVaultTier1: () => state.tier1,
 }));
@@ -59,7 +61,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   state.app = { status: 'active', secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }] };
   state.grants = []; state.facts = []; state.tier1 = false;
-  state.attest.mockResolvedValue({});
+  state.attest.mockResolvedValue('att_test');
   state.generate.mockImplementation(async (_purpose, generate: () => string) => generate());
   state.grant.mockResolvedValue({ status: 'ok', grantId: 'grant_test' });
   state.fetch.mockResolvedValue({ status: 'ok', value: 'obviously-fake-session-placeholder' });

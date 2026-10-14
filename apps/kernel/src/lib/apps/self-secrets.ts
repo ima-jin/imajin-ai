@@ -5,7 +5,7 @@
  */
 import { randomBytes } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
-import { emitAttestation } from '@imajin/auth';
+import { emitMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { db, registryApps, vaultDelegationGrants, attestations } from '@/src/db';
 import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { getOrGenerateInternalSecret, internalSecretField } from '@/src/lib/vault/internal-secret';
@@ -23,6 +23,20 @@ export interface AppSecretTimelineEntry {
   operatorDid?: string;
   via?: string;
   grantId?: string;
+}
+async function ensureAppGrant(appDid: string, name: string): Promise<string> {
+  try {
+    const grant = await grantInternalSecretTo(appSecretPurpose(appDid, name), appDid, getNodeSigningIdentity().senderDid);
+    if (grant.status !== 'ok') throw new Error('App secret grant unavailable');
+    return grant.grantId;
+  } catch (error) {
+    // Two issuers may reach the external grant after sharing the generation
+    // winner. The DB unique constraint chooses one; a loser adopts that grant.
+    if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== '23505') throw error;
+    const winner = (await grantsForSecret(appDid, name)).find((grant) => grant.status === 'active');
+    if (!winner) throw new Error('App secret grant unavailable');
+    return winner.id;
+  }
 }
 export interface AppDeclaredSecretStatus extends AppSecretDeclaration {
   status: 'missing' | 'active' | 'revoked';
@@ -64,14 +78,14 @@ async function recordPhase(
   appDid: string, name: string, phase: Phase, grantId?: string, authorizedBy?: VaultAuthorization,
 ): Promise<void> {
   try {
-    await emitAttestation({
-      issuer_did: getNodeSigningIdentity().senderDid,
-      subject_did: appDid,
+    const attestationId = await emitMechanicalAttestation({
+      subjectDid: appDid,
       type: 'apps.secret.lifecycle',
-      context_id: appSecretPurpose(appDid, name),
-      context_type: 'app-self-secret',
+      contextId: appSecretPurpose(appDid, name),
+      contextType: 'app-self-secret',
       payload: { appDid, name, phase, ...(grantId ? { grantId } : {}), ...(authorizedBy ? { authorizedBy } : {}) },
     });
+    if (!attestationId) throw new Error('App secret audit unavailable');
   } catch {
     throw new Error('App secret audit unavailable');
   }
@@ -81,6 +95,22 @@ function requireSupportedCustody(): void {
   if (isVaultTier1()) throw new Error('App self-secrets require Tier 0 vault custody');
 }
 
+async function recordIssuance(appDid: string, name: string, grantId: string, authorizedBy?: VaultAuthorization): Promise<void> {
+  const facts = await db.select({ payload: attestations.payload }).from(attestations).where(and(
+    eq(attestations.issuerDid, getNodeSigningIdentity().senderDid),
+    eq(attestations.subjectDid, appDid),
+    eq(attestations.type, 'apps.secret.lifecycle'),
+    eq(attestations.contextId, appSecretPurpose(appDid, name)),
+  )).orderBy(asc(attestations.issuedAt));
+  for (const phase of ['minted', 'granted'] as const) {
+    const recorded = facts.some((fact) => {
+      const payload = fact.payload as Record<string, unknown> | null;
+      return payload?.grantId === grantId && payload.phase === phase;
+    });
+    if (!recorded) await recordPhase(appDid, name, phase, grantId, authorizedBy);
+  }
+}
+
 /** Issue only missing recipes; revoked grants are durable withdrawal tombstones. */
 export async function ensureAppDeclaredSecrets(appDid: string, authorizedBy?: VaultAuthorization): Promise<void> {
   const declarations = await declarationsForApp(appDid);
@@ -88,13 +118,16 @@ export async function ensureAppDeclaredSecrets(appDid: string, authorizedBy?: Va
   requireSupportedCustody();
   for (const secret of declarations) {
     const grants = await grantsForSecret(appDid, secret.name);
-    if (grants.some((grant) => grant.status === 'active' || grant.status === 'revoked')) continue;
+    const active = grants.find((grant) => grant.status === 'active');
+    if (active) {
+      await recordIssuance(appDid, secret.name, active.id, authorizedBy);
+      continue;
+    }
+    if (grants.some((grant) => grant.status === 'revoked')) continue;
     const purpose = appSecretPurpose(appDid, secret.name);
     await getOrGenerateInternalSecret(purpose, () => randomBytes(APP_SECRET_KINDS[secret.kind]).toString('hex'));
-    const grant = await grantInternalSecretTo(purpose, appDid, getNodeSigningIdentity().senderDid);
-    if (grant.status !== 'ok') throw new Error('App secret grant unavailable');
-    await recordPhase(appDid, secret.name, 'minted', grant.grantId, authorizedBy);
-    await recordPhase(appDid, secret.name, 'granted', grant.grantId, authorizedBy);
+    const grantId = await ensureAppGrant(appDid, secret.name);
+    await recordIssuance(appDid, secret.name, grantId, authorizedBy);
   }
 }
 
