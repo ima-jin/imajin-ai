@@ -1,97 +1,31 @@
 /**
- * POST /api/balance/topup
- *
- * Credit a DID's cash balance (service-to-service, requires API key or internal auth).
- * Topups are real money, so they always go to cash_amount.
- *
- * Request:
- * {
- *   did: string,
- *   amount: number,
- *   service: string,
- *   type: string,
- *   metadata?: Record<string, any>
- * }
+ * Legacy topup alias. A user session initiates the existing Stripe checkout;
+ * only its confirmed receipt may credit MJN. Caller amounts never mint cash.
  */
-
 import { NextRequest, NextResponse } from 'next/server';
-import { db, transactions } from '@/src/db';
-import { generateId } from '@/src/lib/kernel/id';
+import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { withLogger } from '@imajin/logger';
-import { MJN, creditUnit } from '@/src/lib/pay/ledger';
+import { POST as startTopup } from '../../topup/stripe/route';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
-export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
+export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-
+  const auth = await requireAuth(request, { sessionOnly: true, service: 'pay' });
+  if ('error' in auth) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
+  }
+  let body: { did?: unknown };
   try {
-    // Service-to-service auth via API key
-    const apiKey = request.headers.get('authorization')?.replaceAll('Bearer ', '');
-    const expectedKey = process.env.PAY_SERVICE_API_KEY;
-
-    if (!expectedKey || apiKey !== expectedKey) {
-      return NextResponse.json(
-        { error: 'Unauthorized - invalid API key' },
-        { status: 401, headers: cors }
-      );
-    }
-
-    const body = await request.json();
-    const { did, amount, service, type, metadata = {}, currency = 'CAD' } = body;
-
-    if (!did || !amount || !service || !type) {
-      return NextResponse.json(
-        { error: 'Missing required fields: did, amount, service, type' },
-        { status: 400, headers: cors }
-      );
-    }
-
-    if (amount <= 0) {
-      return NextResponse.json(
-        { error: 'Amount must be positive' },
-        { status: 400, headers: cors }
-      );
-    }
-
-    const txId = generateId('tx');
-
-    // Atomic operation: insert transaction + credit MJN balance (real money)
-    await db.transaction(async (tx) => {
-      // Insert transaction
-      await tx.insert(transactions).values({
-        id: txId,
-        service,
-        type,
-        fromDid: null, // topup has no from_did
-        toDid: did,
-        amount: amount.toString(),
-        currency,
-        unit: MJN,
-        sourceKind: 'receipt',
-        status: 'completed',
-        source: 'fiat',
-        metadata,
-      });
-
-      await creditUnit(tx, did, MJN, amount, { currency });
-    });
-
+    body = await request.clone().json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
+  }
+  if (body?.did !== undefined && body.did !== resolveActingDid(auth.identity)) {
     return NextResponse.json(
-      {
-        success: true,
-        transactionId: txId,
-        did,
-        amount,
-      },
-      { headers: cors }
-    );
-  } catch (error) {
-    log.error({ err: String(error) }, 'Topup error');
-    return NextResponse.json(
-      { error: 'Top-up failed' },
-      { status: 500, headers: cors }
+      { error: 'Forbidden - topup is limited to the session identity' },
+      { status: 403, headers: cors },
     );
   }
-});
+  return startTopup(request);
+}

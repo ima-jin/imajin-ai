@@ -10,11 +10,10 @@ import { getClient } from '@imajin/db';
 import { publish } from '@imajin/bus';
 import { eventUrl, buildPublicUrlAbsolute } from '@imajin/config';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
+import { postPayAsApp } from '@/src/lib/pay-app-token';
 
 const sqlClient = getClient();
 
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
-const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
 
 interface RefundableTicket {
   id: string;
@@ -46,16 +45,9 @@ async function processPaymentRefund(ticket: RefundableTicket, pricePaid: number)
   const isStripe = ticket.payment_method === 'stripe';
   if (!isStripe || !ticket.payment_id || pricePaid <= 0) return null;
 
-  const payResponse = await fetch(`${PAY_SERVICE_URL}/api/refund`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${PAY_SERVICE_API_KEY}`,
-    },
-    body: JSON.stringify({
-      paymentId: ticket.payment_id,
-      amount: pricePaid,
-    }),
+  const payResponse = await postPayAsApp('/api/refund', {
+    paymentId: ticket.payment_id,
+    amount: pricePaid,
   });
 
   if (!payResponse.ok) {

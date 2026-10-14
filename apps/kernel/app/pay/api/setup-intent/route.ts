@@ -25,6 +25,10 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { getStripeClient } from '@/src/lib/pay/providers/stripe-client';
+import { authenticatePayApp } from '@/src/lib/pay/app-settle';
+import { db, transactions } from '@/src/db';
+import { generateId } from '@/src/lib/kernel/id';
+import { externalRefColumns } from '@/src/lib/pay/external-ref';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -40,8 +44,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
   }
 
-  // Require auth
-  const authResult = await requireAuth(request);
+  // The app owns the pledge; the session proves the backer authorized setup.
+  const app = await authenticatePayApp(request, 'pay:charge-pledges');
+  if ('error' in app) {
+    return NextResponse.json({ error: app.error }, { status: app.status, headers: cors });
+  }
+  const authResult = await requireAuth(request, { sessionOnly: true, service: 'pay' });
   if ('error' in authResult) {
     return NextResponse.json(
       { error: authResult.error },
@@ -55,7 +63,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     const body = await request.json();
     const { amount, currency, metadata = {} } = body;
 
-    if (typeof amount !== 'number' || amount <= 0) {
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
       return NextResponse.json(
         { error: 'amount must be a positive number' },
         { status: 400, headers: cors }
@@ -67,6 +75,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         { error: 'currency is required' },
         { status: 400, headers: cors }
       );
+    }
+
+    if (typeof metadata.eventId !== 'string' || !metadata.eventId) {
+      return NextResponse.json({ error: 'metadata.eventId is required' }, { status: 400, headers: cors });
     }
 
     const stripe = getStripeClient();
@@ -102,8 +114,24 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         amount: String(amount),
         currency: currency.toUpperCase(),
         did,
+        app_did: app.appDid,
       },
       usage: 'off_session',
+    });
+
+    await db.insert(transactions).values({
+      id: generateId('tx'),
+      appDid: app.appDid,
+      idempotencyKey: `pledge-setup:${setupIntent.id}`,
+      service: 'events',
+      type: 'pledge',
+      fromDid: did,
+      toDid: app.appDid,
+      amount: String(amount / 100),
+      currency: currency.toUpperCase(),
+      status: 'pending',
+      ...externalRefColumns(setupIntent.id),
+      metadata: { eventId: metadata.eventId, stripeCustomerId: customerId, setupIntentId: setupIntent.id },
     });
 
     return NextResponse.json({

@@ -193,7 +193,7 @@ function detectSecurity(source: string, method: HttpMethod): string[] {
   if (/stripe-signature|constructEvent|stripeWebhook/.test(source)) {
     schemes.push('stripeWebhook');
   }
-  if (/PAY_SERVICE_API_KEY|apiKeyAuth/.test(source)) {
+  if (/apiKeyAuth/.test(source)) {
     schemes.push('apiKeyAuth');
   }
   const sourceLower = source.toLowerCase();
@@ -251,7 +251,7 @@ function buildSecuritySchemesYaml(service: ServiceConfig, allSchemes: Set<string
       '    apiKeyAuth:',
       '      type: http',
       '      scheme: bearer',
-      '      description: "PAY_SERVICE_API_KEY — internal service-to-service only"',
+      '      description: "Route-specific bearer API credential"',
     );
   }
   if (allSchemes.has('stripeWebhook')) {

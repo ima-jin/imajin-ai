@@ -40,5 +40,9 @@ export async function register() {
     // settlePayment() — no HTTP hop, no shared PAY_SERVICE_API_KEY.
     const { ensureSettleExecutorRegistered } = await import('@/src/lib/pay/settle-executor');
     ensureSettleExecutorRegistered();
+
+    // #2735: protocol emissions are also in-process, never app/user HTTP authority.
+    const { ensureEmissionExecutorRegistered } = await import('@/src/lib/pay/emission-executor');
+    ensureEmissionExecutorRegistered();
   }
 }

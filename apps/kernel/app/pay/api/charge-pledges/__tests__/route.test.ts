@@ -11,6 +11,18 @@ import { jsonPostRequest } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 const h = vi.hoisted(() => ({
   create: vi.fn(),
 }));
+vi.mock('@/src/lib/pay/app-settle', () => ({
+  authenticatePayApp: async (request: Request) => request.headers.get('authorization')
+    ? { appDid: 'did:imajin:events' }
+    : { error: 'App-service token required', status: 401 },
+}));
+vi.mock('@/src/lib/pay/app-pledges', () => ({
+  loadAppPledges: async (_app: string, _event: string, pledges: unknown[]) => pledges,
+  chargeBoundPledge: async (pledge: { pledgeId: string; stripePaymentMethodId: string }) => {
+    if (!pledge.stripePaymentMethodId) throw new Error('Missing Stripe customer or payment method');
+    return (await h.create({ metadata: { pledgeId: pledge.pledgeId } })).status;
+  },
+}));
 
 vi.mock('@imajin/logger', async () => {
   const { withLoggerPassthrough } = await import('@/src/lib/pay/__tests__/mock-drizzle-table');

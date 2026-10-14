@@ -19,11 +19,10 @@ import { isEventOrganizer } from '@/src/lib/organizer';
 import { eq, and, inArray, sql } from 'drizzle-orm';
 import { publish } from '@imajin/bus';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
+import { postPayAsApp } from '@/src/lib/pay-app-token';
 
 const log = createLogger('events');
 
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
-const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
 
 export async function POST(
   request: NextRequest,
@@ -75,16 +74,9 @@ export async function POST(
 
     if (isStripe) {
       // Issue full Stripe refund via pay service — no `amount` means full refund
-      const payResponse = await fetch(`${PAY_SERVICE_URL}/api/refund`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${PAY_SERVICE_API_KEY}`,
-        },
-        body: JSON.stringify({
-          paymentId: order.paymentId,
-          reason: 'order refund',
-        }),
+      const payResponse = await postPayAsApp('/api/refund', {
+        paymentId: order.paymentId,
+        reason: 'order refund',
       });
 
       if (!payResponse.ok) {
