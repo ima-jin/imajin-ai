@@ -7,7 +7,7 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
-export async function POST(request: NextRequest) {
+export function POST(request: NextRequest) {
   return NextResponse.json(
     { error: 'Emission is kernel-internal only' },
     { status: 403, headers: corsHeaders(request) },

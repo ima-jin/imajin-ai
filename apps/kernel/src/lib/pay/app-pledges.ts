@@ -15,7 +15,7 @@ export interface BoundPledge {
   amount: number;
   currency: string;
   customerId: string;
-  alreadyCharged: boolean;
+  priorStatus: string;
   metadata: Record<string, unknown>;
 }
 
@@ -38,14 +38,14 @@ export async function loadAppPledges(
       and(eq(transactions.type, 'pledge'), sql`${transactions.metadata}->>'setupIntentId' = ${ref.setupIntentId}`),
     )).limit(1);
     const metadata = row?.metadata as Record<string, unknown> | null;
-    if (!row || row.appDid !== appDid || row.type !== 'pledge' || metadata?.eventId !== eventId) {
+    if (row?.appDid !== appDid || row.type !== 'pledge' || metadata?.eventId !== eventId) {
       return { error: 'Forbidden - pledge was not created by this app for this campaign', status: 403 };
     }
     const amount = Math.round(Number(row.amount) * 100);
     if (!Number.isSafeInteger(amount) || amount <= 0 || typeof metadata.stripeCustomerId !== 'string') {
       return { error: 'Pledge has no valid recorded payment details', status: 409 };
     }
-    if (row.status !== 'pending' && row.status !== 'completed') {
+    if (!['pending', 'completed', 'processing'].includes(row.status)) {
       return { error: 'Pledge is not chargeable', status: 409 };
     }
     result.push({
@@ -55,7 +55,7 @@ export async function loadAppPledges(
       amount,
       currency: row.currency.toLowerCase(),
       customerId: metadata.stripeCustomerId,
-      alreadyCharged: row.status === 'completed',
+      priorStatus: row.status,
       metadata,
     });
   }
@@ -64,7 +64,8 @@ export async function loadAppPledges(
 
 /** Only Stripe's confirmed setup may supply the saved card; not the HTTP caller. */
 export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): Promise<string> {
-  if (pledge.alreadyCharged) return 'succeeded';
+  if (pledge.priorStatus === 'completed') return 'succeeded';
+  if (pledge.priorStatus === 'processing') return 'processing';
   const stripe = getStripeClient();
   const setup = await stripe.setupIntents.retrieve(pledge.setupIntentId);
   const customer = typeof setup.customer === 'string' ? setup.customer : setup.customer?.id;
@@ -89,8 +90,8 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
   }, { idempotencyKey: `pledge-charge:${pledge.transactionId}` });
   if (payment.status === 'succeeded' || payment.status === 'processing') {
     await db.update(transactions).set({
-      status: 'completed',
-      sourceKind: 'receipt',
+      status: payment.status === 'succeeded' ? 'completed' : 'processing',
+      ...(payment.status === 'succeeded' && { sourceKind: 'receipt' }),
       externalRef: payment.id,
       metadata: { ...pledge.metadata, setupIntentId: pledge.setupIntentId },
     }).where(eq(transactions.id, pledge.transactionId));

@@ -66,7 +66,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    if (!Array.isArray(pledges) || pledges.length === 0) {
+    if (!Array.isArray(pledges)) {
+      return NextResponse.json({ error: 'pledges must be an array' }, { status: 400, headers: cors });
+    }
+    if (pledges.length === 0) {
       return NextResponse.json(
         { charged: 0, failed: 0, total: 0, results: [] },
         { headers: cors }

@@ -152,6 +152,52 @@ describe.each([
 });
 
 describe('pledge recorded authority', () => {
+  it('keeps a processing payment non-completed and replays without a second rail call', async () => {
+    await payment(APP, 'pledge');
+    h.create.mockResolvedValue({ id: 'pi_processing', status: 'processing' });
+    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(200);
+    const [row] = await db.select().from(transactions);
+    expect(row).toMatchObject({ status: 'processing', externalRef: 'pi_processing' });
+    expect(row.sourceKind).not.toBe('receipt');
+    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(200);
+    expect(h.create).toHaveBeenCalledTimes(1);
+  });
+  it('fails closed after an ambiguous rail error, even if the caller retries much later', async () => {
+    await payment(APP, 'pledge');
+    h.create.mockRejectedValue(new Error('lost rail response'));
+    const first = await chargeRoute(request('charge-pledges', chargeBody()));
+    expect((await first.json()).failed).toBe(1);
+    const [row] = await db.select().from(transactions);
+    expect(row.status).toBe('charging');
+    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(409);
+    expect(h.create).toHaveBeenCalledTimes(1);
+  });
+  it('a completed pledge retains its receipt for an owning-app refund', async () => {
+    await payment(APP, 'pledge');
+    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(200);
+    const [row] = await db.select().from(transactions);
+    expect(row).toMatchObject({ status: 'completed', externalRef: 'pi_1', appDid: APP });
+    expect((await refundRoute(request('refund', { paymentId: 'pi_1' }))).status).toBe(200);
+  });
+  it.each([
+    { amount: '0' },
+    { metadata: { eventId: 'evt' } },
+    { status: 'refunded' },
+  ])('refuses invalid recorded pledge state %j', async (values) => {
+    await payment(APP, 'pledge');
+    await db.update(transactions).set(values);
+    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(409);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+  it.each([
+    { pledges: [{ pledgeId: 'p1' }] },
+    { pledges: [null] },
+    { pledges: [{ pledgeId: 'p1', setupIntentId: 'seti_1' }, { pledgeId: 'p2', setupIntentId: 'seti_1' }] },
+  ])('rejects missing or duplicated setup references', async ({ pledges }) => {
+    await payment(APP, 'pledge');
+    expect((await chargeRoute(request('charge-pledges', { eventId: 'evt', pledges }))).status).toBe(400);
+    expect(h.create).not.toHaveBeenCalled();
+  });
   it('ignores caller amount and card fields, then replays without charging twice', async () => {
     await payment(APP, 'pledge');
     const body = { eventId: 'evt', pledges: [{ pledgeId: 'p1', setupIntentId: 'seti_1',
