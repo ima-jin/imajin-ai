@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { readFileSync } from 'node:fs';
 const m = vi.hoisted(() => ({
-  keys: vi.fn(), charge: vi.fn(), escrow: vi.fn(), update: vi.fn(), persistCharge: vi.fn(), persistEscrow: vi.fn(),
+  keys: vi.fn(), charge: vi.fn(), escrow: vi.fn(), update: vi.fn(), prepareCharge: vi.fn(), persistCharge: vi.fn(), rate: vi.fn(), persistEscrow: vi.fn(),
   find: vi.fn(), mark: vi.fn(), cryptoCharge: vi.fn(), cryptoEscrow: vi.fn(),
   auth: vi.fn(), appAuth: vi.fn(), effective: vi.fn(), policy: vi.fn(), log: vi.fn(),
 }));
@@ -11,6 +11,7 @@ vi.mock('@imajin/auth', () => ({
   requireAuth: m.auth, requireAppAuth: m.appAuth, resolveEffectiveDid: m.effective,
   resolveActingDid: (identity: { did: string }) => identity.did,
 }));
+vi.mock('@imajin/config', () => ({ rateLimit: m.rate, getClientIP: () => '127.0.0.1' }));
 vi.mock('@imajin/auth/delegation-policy', () => ({ enforceRoutePolicy: m.policy }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: vi.fn() }));
 vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
@@ -19,7 +20,8 @@ vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
 }));
 vi.mock('@/src/lib/pay/providers/seller-stripe-payments', () => ({ chargeSeller: m.charge, escrowSeller: m.escrow, updateSellerEscrow: m.update }));
 vi.mock('@/src/lib/pay/providers/seller-transactions', () => ({
-  persistSellerCharge: m.persistCharge, persistSellerEscrow: m.persistEscrow, findSellerEscrow: m.find, markSellerEscrow: m.mark,
+  SellerChargeAlreadyAttemptedError: class extends Error {},
+  prepareSellerCharge: m.prepareCharge, persistSellerCharge: m.persistCharge, persistSellerEscrow: m.persistEscrow, findSellerEscrow: m.find, markSellerEscrow: m.mark,
 }));
 vi.mock('@/src/lib/pay/providers/crypto-only', () => ({ getCryptoOnlyProvider: () => ({ charge: m.cryptoCharge, escrow: m.cryptoEscrow }) }));
 vi.mock('@/src/lib/pay/pay', () => { throw new Error('Platform service must not be imported'); });
@@ -35,8 +37,9 @@ const chargeBody = { amount: 123, currency: 'CAD', to: { did: 'did:test:seller' 
 const escrowBody = { amount: 123, currency: 'CAD', from: 'did:test:buyer', to: 'did:test:seller' };
 beforeEach(() => {
   vi.resetAllMocks();
+  m.prepareCharge.mockResolvedValue('tx_fake'); m.rate.mockReturnValue({ limited: false });
   m.auth.mockResolvedValue({ identity: { did: 'did:test:buyer' } });
-  m.appAuth.mockResolvedValue({ appAuth: { userDid: 'did:test:buyer' } });
+  m.appAuth.mockResolvedValue({ appAuth: { userDid: 'did:test:buyer', appDid: 'did:test:verified-app' } });
   m.effective.mockResolvedValue({ ok: true, effectiveDid: 'did:test:buyer' });
   m.keys.mockResolvedValue({ secretKey: 'sk_test_obvious_seller_fake', publishableKey: 'pk_test_obvious_seller_fake' });
   m.charge.mockResolvedValue(result); m.escrow.mockResolvedValue(result); m.update.mockResolvedValue({ ...result, status: 'released' });
@@ -55,6 +58,33 @@ describe('seller routes', () => {
       expect(source).not.toMatch(/process\.env\.STRIPE_(SECRET|PUBLISHABLE)_KEY/);
       expect(source).not.toMatch(/\b(getPaymentService|getStripeClient)\s*\(/);
     }
+  });
+  it('inserts a pending charge before creating the PaymentIntent and binds its response by transaction id', async () => {
+    expect((await charge(req(chargeBody))).status).toBe(200);
+    expect(m.prepareCharge.mock.invocationCallOrder[0]).toBeLessThan(m.charge.mock.invocationCallOrder[0]);
+    expect(m.charge).toHaveBeenCalledWith('sk_test_obvious_seller_fake', 'did:test:seller',
+      expect.objectContaining({ amount: 123 }), 'tx_fake');
+    expect(m.persistCharge).toHaveBeenCalledWith('tx_fake', result);
+  });
+  it('binds direct app charges to the verified app rather than caller metadata', async () => {
+    const response = await charge(req({ ...chargeBody, metadata: { appDid: 'did:test:spoof' } }, true));
+    expect(response.status).toBe(200);
+    expect(m.prepareCharge).toHaveBeenCalledWith(expect.objectContaining({
+      from: 'did:test:buyer', metadata: { appDid: 'did:test:verified-app' },
+    }), 'did:test:seller', 'did:test:verified-app');
+  });
+  it('does not create an orphan PaymentIntent when the pending transaction insert fails', async () => {
+    m.prepareCharge.mockRejectedValue(new Error('fake-insert-failure'));
+    expect((await charge(req(chargeBody))).status).toBe(500);
+    expect(m.charge).not.toHaveBeenCalled(); expect(m.persistCharge).not.toHaveBeenCalled();
+  });
+  it('rate limits charge before authentication, card lookup or anonymous writes', async () => {
+    m.rate.mockReturnValue({ limited: true, retryAfter: 30 });
+    const response = await charge(req(chargeBody));
+    expect(response.status).toBe(429); expect(response.headers.get('Retry-After')).toBe('30');
+    expect(m.rate).toHaveBeenCalledWith('127.0.0.1', 10, 60_000);
+    expect(m.auth).not.toHaveBeenCalled(); expect(m.keys).not.toHaveBeenCalled();
+    expect(m.prepareCharge).not.toHaveBeenCalled(); expect(m.charge).not.toHaveBeenCalled();
   });
   it.each([charge, escrow, update])('does not disclose or log SDK error key material', async (handler) => {
     const error = new Error('obvious-fake-sensitive-error');
@@ -89,7 +119,7 @@ describe('seller routes', () => {
   it('requires seller for customer-only charge and supports explicit sellerDid', async () => {
     expect((await charge(req({ ...chargeBody, to: { customerId: 'cus_fake' } }))).status).toBe(400);
     expect((await charge(req({ ...chargeBody, sellerDid: 'did:test:seller', to: { customerId: 'cus_fake' } }))).status).toBe(200);
-    expect(m.charge).toHaveBeenCalledWith('sk_test_obvious_seller_fake', 'did:test:seller', expect.objectContaining({ to: { stripeCustomerId: 'cus_fake' } }));
+    expect(m.charge).toHaveBeenCalledWith('sk_test_obvious_seller_fake', 'did:test:seller', expect.objectContaining({ to: { stripeCustomerId: 'cus_fake' } }), 'tx_fake');
   });
   it('to.did wins over a caller sellerDid', async () => {
     await charge(req({ ...chargeBody, sellerDid: 'did:test:spoof' }));

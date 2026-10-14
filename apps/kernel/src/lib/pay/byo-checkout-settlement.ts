@@ -24,7 +24,7 @@
  * refused by the app-settle path (`app-settle.ts`), which would otherwise credit
  * platform balances with money the platform does not hold.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull, or } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, transactions } from '@/src/db';
 import { retrieveByoCheckoutCustomer, type ByoCheckoutCustomer } from '@/src/lib/stripe/byo-checkout';
@@ -46,7 +46,8 @@ export interface SettleByoCheckoutInput {
 
 export type ByoCheckoutSettlementOutcome =
   | { settled: true; session: StripeCheckoutSessionLike }
-  | { settled: false; reason: 'not_found' | 'not_seller' | 'amount_mismatch' | 'not_pending' | 'lost_race' };
+  | { settled: true; directCharge: true }
+  | { settled: false; reason: 'not_found' | 'not_seller' | 'amount_mismatch' | 'payment_mismatch' | 'not_pending' | 'lost_race' };
 
 type TxRow = typeof transactions.$inferSelect;
 
@@ -69,6 +70,7 @@ function refusalOf(
   if (row.toDid !== input.ownerDid) return 'not_seller';
   if (amountMinorOf(row) !== input.amount || row.currency.toUpperCase() !== input.currency) return 'amount_mismatch';
   if (row.status !== 'pending') return 'not_pending';
+  if (row.type === 'charge' && row.externalRef && row.externalRef !== input.paymentIntentId) return 'payment_mismatch';
   return null;
 }
 
@@ -77,9 +79,9 @@ async function customerOf(input: SettleByoCheckoutInput, sessionId: string, fall
   try {
     const customer = await retrieveByoCheckoutCustomer(input.ownerDid, sessionId);
     return { email: customer.email ?? fallbackEmail ?? null, name: customer.name };
-  } catch (error) {
+  } catch {
     log.warn(
-      { err: String(error), ownerDid: input.ownerDid, sessionId },
+      { ownerDid: input.ownerDid, sessionId },
       'BYO checkout settlement: could not read the buyer back from the seller\'s Stripe — using the email given at checkout',
     );
     return { email: fallbackEmail ?? null, name: null };
@@ -111,10 +113,17 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
 
   const [completed] = await db
     .update(transactions)
-    .set({ status: 'completed' })
-    .where(and(eq(transactions.id, row.id), eq(transactions.rail, STRIPE_BYO_RAIL), eq(transactions.status, 'pending')))
+    .set({
+      status: 'completed', settledAt: new Date(),
+      metadata: { ...(row.metadata as Record<string, unknown> ?? {}), settledPaymentIntentId: input.paymentIntentId },
+      ...(row.type === 'charge' && { externalRef: input.paymentIntentId }),
+    })
+    .where(and(eq(transactions.id, row.id), eq(transactions.rail, STRIPE_BYO_RAIL), eq(transactions.status, 'pending'),
+      ...(row.type === 'charge'
+        ? [or(isNull(transactions.externalRef), eq(transactions.externalRef, input.paymentIntentId))] : [])))
     .returning({ id: transactions.id });
   if (!completed) return { settled: false, reason: 'lost_race' };
+  if (row.type === 'charge') return { settled: true, directCharge: true };
 
   const metadata = stringMetadataOf(row);
   const sessionId = row.externalRef ?? input.paymentIntentId;

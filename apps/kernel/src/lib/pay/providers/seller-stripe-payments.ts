@@ -20,9 +20,11 @@ function paymentStatus(status: Stripe.PaymentIntent.Status): PaymentStatus {
 }
 
 export async function chargeSeller(
-  secretKey: string, sellerDid: string, request: ChargeRequest,
+  secretKey: string, sellerDid: string, request: ChargeRequest, transactionId: string,
 ): Promise<ChargeResult> {
   const customerId = 'stripeCustomerId' in request.to ? request.to.stripeCustomerId : undefined;
+  const metadata = Object.fromEntries(Object.entries(request.metadata ?? {})
+    .filter(([key]) => key !== 'settledPaymentIntentId'));
   const intent = await createSellerStripeClient(secretKey).paymentIntents.create({
     amount: request.amount,
     currency: request.currency.toLowerCase(),
@@ -30,13 +32,15 @@ export async function chargeSeller(
     description: request.description,
     automatic_payment_methods: { enabled: true },
     metadata: {
-      ...request.metadata,
+      ...metadata,
+      payTransactionId: transactionId,
+      pay_transaction_id: transactionId,
       from_did: request.from || '',
       to_did: sellerDid,
       seller_did: sellerDid,
       rail: 'stripe-byo',
     },
-  }, { idempotencyKey: request.idempotencyKey });
+  }, { idempotencyKey: `seller-charge:${transactionId}` });
   return {
     id: intent.id, provider: 'stripe', status: paymentStatus(intent.status),
     amount: intent.amount, currency: request.currency,

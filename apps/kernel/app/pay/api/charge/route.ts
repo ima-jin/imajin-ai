@@ -32,7 +32,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 import { chargeSeller } from '@/src/lib/pay/providers/seller-stripe-payments';
-import { persistSellerCharge } from '@/src/lib/pay/providers/seller-transactions';
+import { prepareSellerCharge, persistSellerCharge, SellerChargeAlreadyAttemptedError } from '@/src/lib/pay/providers/seller-transactions';
+import { rateLimit, getClientIP } from '@imajin/config';
 import { getCryptoOnlyProvider } from '@/src/lib/pay/providers/crypto-only';
 import { isCryptoCurrency } from '@/src/lib/pay/types';
 import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
@@ -59,7 +60,7 @@ async function authenticateCharge(request: NextRequest, cors: Record<string, str
     if ('error' in result) {
       return { denied: NextResponse.json({ error: result.error }, { status: result.status, headers: cors }) };
     }
-    return { fromDid: result.appAuth.userDid };
+    return { fromDid: result.appAuth.userDid, appDid: result.appAuth.appDid };
   }
   const result = await requireAuth(request);
   if ('error' in result) return {};
@@ -68,8 +69,35 @@ async function authenticateCharge(request: NextRequest, cors: Record<string, str
   return { fromDid: resolveActingDid(result.identity) };
 }
 
+function isSellerDid(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith('did:');
+}
+
+async function startSellerCharge(sellerDid: string, request: ChargeRequest, appDid?: string) {
+  const keys = await resolveDidStripeKeys(sellerDid);
+  if (!keys.publishableKey) throw new SellerNoCardRailError();
+  const boundRequest = {
+    ...request,
+    metadata: {
+      ...Object.fromEntries(Object.entries(request.metadata ?? {}).filter(([key]) => key !== 'appDid')),
+      ...(appDid && { appDid }),
+    },
+  };
+  const transactionId = await prepareSellerCharge(boundRequest, sellerDid, appDid);
+  const result = await chargeSeller(keys.secretKey, sellerDid, boundRequest, transactionId);
+  await persistSellerCharge(transactionId, result);
+  return { result, publishableKey: keys.publishableKey };
+}
+
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
+  const rl = rateLimit(getClientIP(request), 10, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } },
+    );
+  }
   try {
     const body: ChargeBody = await request.json();
     
@@ -126,17 +154,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       result = await getCryptoOnlyProvider().charge(chargeRequest);
     } else {
       const sellerDid = recipient.to.did ?? body.sellerDid;
-      if (typeof sellerDid !== 'string' || !sellerDid.startsWith('did:')) {
+      if (!isSellerDid(sellerDid)) {
         return NextResponse.json(
           { error: 'to.did or sellerDid is required for card charges' },
           { status: 400, headers: cors }
         );
       }
-      const keys = await resolveDidStripeKeys(sellerDid);
-      if (!keys.publishableKey) throw new SellerNoCardRailError();
-      publishableKey = keys.publishableKey;
-      result = await chargeSeller(keys.secretKey, sellerDid, chargeRequest);
-      await persistSellerCharge(result, sellerDid, fromDid);
+      ({ result, publishableKey } = await startSellerCharge(sellerDid, chargeRequest, auth.appDid));
     }
     
     return NextResponse.json({
@@ -153,6 +177,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       metadata: result.metadata,
     }, { headers: cors });
   } catch (error) {
+    if (error instanceof SellerChargeAlreadyAttemptedError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409, headers: cors });
+    }
     if (error instanceof SellerNoCardRailError) {
       return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
     }

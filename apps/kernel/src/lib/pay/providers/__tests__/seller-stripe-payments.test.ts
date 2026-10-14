@@ -22,16 +22,16 @@ describe('explicit sealed-key adapter', () => {
     expect(mocks.constructor).toHaveBeenCalledTimes(1);
     vi.unstubAllEnvs();
   });
-  it('charges DID recipient, preserves customer and idempotency, and stamps metadata last', async () => {
+  it('charges DID recipient, preserves customer and binds transaction idempotency, and stamps metadata last', async () => {
     const result = await chargeSeller('sk_test_fake', 'did:test:seller', {
       amount: 123, currency: 'CAD', to: { did: 'did:test:seller', stripeCustomerId: 'cus_test_fake' },
       from: 'did:test:buyer', idempotencyKey: 'fake-dedupe',
-      metadata: { seller_did: 'spoof', from_did: 'spoof', to_did: 'spoof', rail: 'stripe', note: 'keep' },
-    });
+      metadata: { seller_did: 'spoof', from_did: 'spoof', to_did: 'spoof', rail: 'stripe', note: 'keep', payTransactionId: 'spoof', pay_transaction_id: 'spoof', settledPaymentIntentId: 'pi_spoof' },
+    }, 'tx_fake');
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
       customer: 'cus_test_fake', currency: 'cad', amount: 123,
-      metadata: { seller_did: 'did:test:seller', to_did: 'did:test:seller', from_did: 'did:test:buyer', rail: 'stripe-byo', note: 'keep' },
-    }), { idempotencyKey: 'fake-dedupe' });
+      metadata: { seller_did: 'did:test:seller', to_did: 'did:test:seller', from_did: 'did:test:buyer', rail: 'stripe-byo', note: 'keep', payTransactionId: 'tx_fake', pay_transaction_id: 'tx_fake' },
+    }), { idempotencyKey: 'seller-charge:tx_fake' });
     expect(result.clientSecret).toBe('fake-client-secret');
   });
   it.each([
@@ -40,7 +40,7 @@ describe('explicit sealed-key adapter', () => {
     ['canceled', 'canceled'], ['requires_capture', 'failed'],
   ])('maps %s to %s', async (status, expected) => {
     mocks.create.mockResolvedValue({ ...intent, status, client_secret: null });
-    const result = await chargeSeller('sk_test_fake', 'did:test:seller', { amount: 123, currency: 'CAD', to: { did: 'did:test:seller' } });
+    const result = await chargeSeller('sk_test_fake', 'did:test:seller', { amount: 123, currency: 'CAD', to: { did: 'did:test:seller' } }, 'tx_fake');
     expect(result.status).toBe(expected);
     expect(result.clientSecret).toBeUndefined();
   });
