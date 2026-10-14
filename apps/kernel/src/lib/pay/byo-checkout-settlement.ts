@@ -51,6 +51,11 @@ export type ByoCheckoutSettlementOutcome =
 
 type TxRow = typeof transactions.$inferSelect;
 
+/** Hosted checkout type labels are caller-defined; a protected cs_ reference remains a session. */
+function isDirectCharge(row: TxRow): boolean {
+  return row.type === 'charge' && !row.externalRef?.startsWith('cs_');
+}
+
 /** Row amounts are stored as decimal dollars; Stripe reports minor units. */
 function amountMinorOf(row: TxRow): number {
   return Math.round(Number.parseFloat(row.amount) * 100);
@@ -70,7 +75,7 @@ function refusalOf(
   if (row.toDid !== input.ownerDid) return 'not_seller';
   if (amountMinorOf(row) !== input.amount || row.currency.toUpperCase() !== input.currency) return 'amount_mismatch';
   if (row.status !== 'pending') return 'not_pending';
-  if (row.type === 'charge' && row.externalRef && row.externalRef !== input.paymentIntentId) return 'payment_mismatch';
+  if (isDirectCharge(row) && row.externalRef && row.externalRef !== input.paymentIntentId) return 'payment_mismatch';
   return null;
 }
 
@@ -116,14 +121,14 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
     .set({
       status: 'completed', settledAt: new Date(),
       metadata: { ...(row.metadata as Record<string, unknown> | null), settledPaymentIntentId: input.paymentIntentId },
-      ...(row.type === 'charge' && { externalRef: input.paymentIntentId }),
+      ...(isDirectCharge(row) && { externalRef: input.paymentIntentId }),
     })
     .where(and(eq(transactions.id, row.id), eq(transactions.rail, STRIPE_BYO_RAIL), eq(transactions.status, 'pending'),
-      ...(row.type === 'charge'
+      ...(isDirectCharge(row)
         ? [or(isNull(transactions.externalRef), eq(transactions.externalRef, input.paymentIntentId))] : [])))
     .returning({ id: transactions.id });
   if (!completed) return { settled: false, reason: 'lost_race' };
-  if (row.type === 'charge') return { settled: true, directCharge: true };
+  if (isDirectCharge(row)) return { settled: true, directCharge: true };
 
   const metadata = stringMetadataOf(row);
   const sessionId = row.externalRef ?? input.paymentIntentId;

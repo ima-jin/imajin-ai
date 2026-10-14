@@ -86,6 +86,25 @@ beforeEach(async () => {
 });
 
 describe('direct seller charge through the real BYO bus handler and PostgreSQL', () => {
+  it('preserves hosted checkout settlement and PI refund lookup when its caller uses type=charge', async () => {
+    await h.db.insert(transactions).values({
+      id: 'tx_hosted', service: 'events', type: 'charge', appDid: 'did:test:verified-app',
+      fromDid: 'did:test:buyer', toDid: SELLER, amount: '1.23', currency: 'CAD',
+      rail: 'stripe-byo', status: 'pending', externalRef: 'cs_hosted',
+    });
+    h.customer.mockResolvedValue({ email: null, name: null });
+    await receipt('tx_hosted');
+    const [completed] = await h.db.select().from(transactions);
+    expect(completed).toMatchObject({
+      status: 'completed', externalRef: 'cs_hosted', settledAt: expect.any(Date),
+      metadata: { settledPaymentIntentId: INTENT.id },
+    });
+    expect(h.customer).toHaveBeenCalledWith(SELLER, 'cs_hosted');
+    expect(h.notify).toHaveBeenCalledTimes(1);
+    const original = await resolveOriginalTransaction(INTENT.id, { error: h.log }, 'did:test:verified-app');
+    expect(original?.id).toBe('tx_hosted');
+    expect(h.log).not.toHaveBeenCalled();
+  });
   it('resolves the verified app-owned receipt and permits a refund after the webhook completes it', async () => {
     expect((await POST(request({}, true))).status).toBe(200);
     const [pending] = await h.db.select().from(transactions);
