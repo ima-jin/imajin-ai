@@ -190,10 +190,16 @@ describe('rail-generic operations are additive aliases (#2177 item 3)', () => {
 });
 
 describe('Stripe Connect is gone from the spec (#2757)', () => {
+  it.each(['dashboard', 'onboard', 'webhook'])('keeps the retired Connect %s route deleted (#2791)', (route) => {
+    expect(existsSync(join(KERNEL_ROOT, 'app', 'pay', 'api', 'connect', route))).toBe(false);
+  });
   it('documents no /api/connect/* path and no balance-withdraw-to-connected-account operation', () => {
     const paths = Object.keys(spec.paths as Json);
     expect(paths.filter((p) => p.startsWith('/api/connect'))).toEqual([]);
     expect(paths).not.toContain('/api/balance/withdraw');
+  });
+  it('keeps retired Stripe Connect operationIds out of the spec (#2791)', () => {
+    expect(operations().filter(({ op }) => String(op.operationId).startsWith('stripeConnect'))).toEqual([]);
   });
 
   it('replaces connect/check with the public card-rail check, backed by a real route', () => {

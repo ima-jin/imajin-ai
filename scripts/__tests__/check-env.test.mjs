@@ -9,6 +9,17 @@ import { fileURLToPath } from 'node:url';
 // node then resolves against the cwd into "C:\D:\..." and cannot load.
 const SCRIPT = fileURLToPath(new URL('../check-env.ts', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
+describe('retired Stripe Connect configuration (#2791)', () => {
+  it.each([
+    'apps/kernel/.env.example',
+    'packages/config/src/services.ts',
+    'scripts/check-env.ts',
+    'docs/ENVIRONMENTS.md',
+    'deploy/README.md',
+  ])('keeps the Connect webhook secret out of %s', (file) => {
+    expect(readFileSync(join(REPO_ROOT, file), 'utf8')).not.toContain('STRIPE_CONNECT_WEBHOOK_SECRET');
+  });
+});
 
 // Real service name from packages/config/src/services.ts — check-env.ts
 // imports that manifest directly (not from CHECK_ENV_ROOT), so every
