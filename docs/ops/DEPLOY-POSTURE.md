@@ -385,6 +385,34 @@ its old shared-header contract. Keep using the patched monorepo copy until the
 standalone migration is deployed and verified. Production monorepo use while
 #2516 is blocked is separate from this dev-cutover gate.
 
+## 10. events deploy ownership released, cutover pending (#2784)
+
+Unlike the completed source prunes above, `apps/events` stays in this tree
+until #2529's standalone dev cutover holds. Kernel deploys no longer declare
+`dev-events` / `prod-events`, build the retained events copy, or run events-only
+migrations. Build selection is the positive set of in-repo apps in the
+environment's ecosystem; both deployment migration calls use the existing
+`--owner kernel` mode. Historical shared migrations remain unchanged under
+#1991; they are not a new baseline or schema migration. The `events` schema
+and data stay owned by [ima-jin/events](https://github.com/ima-jin/events).
+
+**After merge, existing pm2 definitions stay as they are.** The workflows'
+legacy name-based restarts can still bounce events but cannot reconcile it
+back to the monorepo, because neither ecosystem declares it. No live cutover
+is performed here. Only the operator, after dev soak sign-off in #2529 and
+during Ryan's prod window in #2516, replaces the entries from the standalone
+app's configuration:
+
+- `dev-events`: `~/dev/events`, port **3006**.
+- `prod-events`: `~/prod/events`, port **7006**.
+- Caddy's **`/events` prefix** and upstream ports remain unchanged.
+- Reconcile/recreate, verify live cwd/exec/args and listeners plus prefixed
+  health/app behavior, then **`pm2 save`** and verify the persisted definitions.
+  A name-only restart is not a cwd/exec-path cutover; avoid exposing pm2 envs.
+
+See `deploy/README.md` for operator sequencing. This is ownership release,
+not source pruning, claim provisioning or permission to advance the prod window.
+
 ## Decisions for Ryan
 
 DECISION · Migration collision prevention · Should merging a PR that adds a new migration file

@@ -310,49 +310,49 @@
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.events": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.orders": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.pledges": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0032_campaign_events.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.ticket_queue": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.ticket_transfers": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.ticket_types": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "events.tickets": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data, not the kernel. Retain historical migrations and apps/events until the #2529 dev cutover holds; no table or data is dropped."
     },
     "github.action_proposals": {
       "owner": "kernel",
@@ -436,7 +436,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0136_google_workspace_state.sql",
-      "notes": "Renumbered from 0133 (#2144 hotfix) — 0133 collided with the independently merged 0133_pay_balance_units.sql."
+      "notes": "Renumbered from 0133 (#2144 hotfix) \u2014 0133 collided with the independently merged 0133_pay_balance_units.sql."
     },
     "kernel.identity_aliases": {
       "owner": "kernel",
@@ -460,7 +460,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0145_payment_request_bus_chains.sql",
-      "notes": "Renumbered from 0144 (#2216 post-merge) — 0144 collided with the independently merged 0144_pay_payment_request_recipient_claim.sql (#2214)."
+      "notes": "Renumbered from 0144 (#2216 post-merge) \u2014 0144 collided with the independently merged 0144_pay_payment_request_recipient_claim.sql (#2214)."
     },
     "kernel.quickbooks_realm_index": {
       "owner": "kernel",
@@ -664,7 +664,7 @@
       "owner": "kernel",
       "schema": "notify",
       "firstMigration": "0158_notify_templates.sql",
-      "notes": "#1510 — data-driven notify templates; rows seeded disabled, see migration header"
+      "notes": "#1510 \u2014 data-driven notify templates; rows seeded disabled, see migration header"
     },
     "operator.approvals": {
       "owner": "kernel",

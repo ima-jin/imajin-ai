@@ -60,7 +60,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
 | Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
-| Core | events | 3006 | 7006 | jin.imajin.ai/events |
+| App | events (deploy external, [ima-jin/events](https://github.com/ima-jin/events); cutover pending #2784) | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
 | Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
 | Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
@@ -95,6 +95,20 @@ process claimed with its own app identity (see `docs/REGISTRATION.md`).
 Caddy route (`jin.imajin.ai/dykil`) are unchanged; `dev-dykil` serves from
 `~/dev/dykil` and `prod-dykil` from `~/prod/dykil`, each a standalone pm2
 process claimed with its own app identity (see `docs/REGISTRATION.md`).
+
+**events ownership release (#2784):** events is no longer declared in the
+kernel's dev/prod ecosystem files; kernel deploys no longer build its retained
+source or run events-only migrations. Existing `dev-events` / `prod-events`
+pm2 processes keep their stored definitions until the operator re-points them.
+The precedent's name-based restart may still bounce them, but cannot change
+their cwd back to the monorepo. `apps/events` is retained pending prune-on-dev.
+
+Only after #2529 dev soak sign-off / in Ryan's #2516 prod window, reconcile
+the live entries from the standalone config to `~/dev/events` / `~/prod/events`,
+preserving **3006 / 7006** and Caddy's **`/events` prefix**. Verify live
+cwd/exec/args, listeners and prefixed health/app behavior, run **`pm2 save`
+after re-pointing**, and verify the persisted entries match. This PR does
+not execute cutover or change any server state. See `deploy/README.md`.
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when

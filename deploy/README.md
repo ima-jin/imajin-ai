@@ -489,6 +489,39 @@ needs no dykil checkout at all. The `dykil` Postgres schema stays in place
 (the standalone app reads it read-only and the legacy import depends on it);
 nothing here drops it. See `docs/ops/DEPLOY-POSTURE.md` for the full note.
 
+## events deploy ownership is released; cutover is operator-only (#2784)
+
+The kernel ecosystem files no longer declare `dev-events` or `prod-events`.
+The deploy workflows build only ecosystem-declared in-repo apps and use
+`migrate.mjs --owner kernel` (including the call inside `build.sh`); events-only
+migrations belong to [ima-jin/events](https://github.com/ima-jin/events).
+Historical shared migrations remain unchanged under the existing #1991 rules;
+this is not a fresh-database baseline split. The `events` schema and all data
+stay app-owned and untouched. `apps/events` remains until the #2529 dev cutover
+holds (prune-on-dev); no source, schema, env-check contract or Caddy config is
+removed or weakened here.
+
+**Merge is not cutover.** Removing a declaration does not delete or re-point a
+running pm2 entry. Kernel deploys may still restart `dev-events` / `prod-events`
+by name, as with learn/coffee/market/dykil; that reuses the stored definition,
+not a monorepo ecosystem entry. Existing definitions remain until the operator
+changes them. Do not perform the following as part of this PR:
+
+1. In #2529, after dev soak sign-off, use the standalone app's pm2 configuration
+   to replace `dev-events` with cwd `~/dev/events`, preserving port **3006**.
+   In #2516, only during Ryan's approved prod window, do the equivalent for
+   `prod-events`, cwd `~/prod/events`, port **7006**.
+2. Recreate/reconcile the entry from the standalone configuration, rather than
+   just `pm2 restart` (which can keep the old cwd/exec path). Verify the live
+   entry's cwd, executable, arguments and listener belong to that checkout.
+   Keep Caddy's **`/events` prefix** and upstream ports unchanged; verify the
+   prefixed health route and app behavior before accepting each cutover.
+3. Run **`pm2 save` after re-pointing**, then verify the persisted definition
+   also names the standalone checkout and correct port, not `imajin-ai/apps/events`.
+   Do not dump full pm2 environments or persisted secrets into logs.
+
+No server access or live/persisted pm2 edits are performed by this change.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host

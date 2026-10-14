@@ -223,6 +223,24 @@ entries in `ownership-gaps.json` are kept identical by
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.
 
+### events deploy ownership handoff (#2784)
+
+The `events` schema and every `events.*` table in `ownership.json` remain
+owned by `events`, whose deploy/migration authority is now
+[ima-jin/events](https://github.com/ima-jin/events), not the kernel.
+All historical SQL and data remain in place; no migration is added, moved,
+rewritten or dropped. `apps/events` source remains until the #2529 dev cutover
+holds, and the open runtime gaps above are not erased by this ownership release.
+
+Kernel deploys now use `migrate.mjs --owner kernel` in both the workflow and
+`build.sh`, rather than the unfiltered runner. This excludes events-only
+migrations using the existing #1991 owner classification. Historical shared
+files (including the original seed and `0025`/`0026`) remain included by that
+existing mode; the per-owner ordering/fresh-database caveats below still apply.
+This change is for the existing dev/prod databases, not a baseline split.
+Standalone migration/cutover is operator-sequenced in #2529 / #2516; see
+`deploy/README.md`. Nothing in this PR runs migrations or changes live state.
+
 ### Fixed since the #1983 audit (kept so the history is not re-litigated)
 
 - `relay.relay_config` reads in `coffee`/`learn`/`market`/`events` —

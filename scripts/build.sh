@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build and deploy services
-# Usage: ./scripts/build.sh [--prod|--dev] [app1 app2 ...]
+# Usage: ./scripts/build.sh [--prod|--dev] [--migration-owner=<owner>] [app1 app2 ...]
 # Example: ./scripts/build.sh --dev registry www learn
 #          ./scripts/build.sh --prod www auth profile
 #
@@ -15,10 +15,12 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Parse environment flag
 ENV="auto"
 APPS=()
+MIGRATION_FLAGS=()
 for arg in "$@"; do
   case "$arg" in
     --prod) ENV="prod" ;;
     --dev)  ENV="dev" ;;
+    --migration-owner=*) MIGRATION_FLAGS=("--owner" "${arg#*=}") ;;
     *)      APPS+=("$arg") ;;
   esac
 done
@@ -98,7 +100,7 @@ fi
 echo "" >> "$REPORT"
 
 echo "=== Running migrations ===" | tee -a "$REPORT"
-if node scripts/migrate.mjs >> "$REPORT" 2>&1; then
+if node scripts/migrate.mjs "${MIGRATION_FLAGS[@]}" >> "$REPORT" 2>&1; then
   echo "✅ Migrations complete" | tee -a "$REPORT"
 else
   echo "❌ Migrations FAILED" | tee -a "$REPORT"

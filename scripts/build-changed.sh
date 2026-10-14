@@ -1,6 +1,6 @@
 #!/bin/bash
 # build-changed.sh — detect changed apps and pass them to build.sh
-# Usage: ./scripts/build-changed.sh [--prod|--dev] [--dry-run]
+# Usage: ./scripts/build-changed.sh [--deploy-env <dev|prod>] [--dry-run]
 #
 # Detects which apps changed since the last successful build (via .last-build-sha),
 # walks the pnpm dependency graph to catch transitive changes (e.g. packages/db
@@ -31,7 +31,35 @@ is_app_stale() {
 }
 
 DRY_RUN=false
-[[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
+DEPLOY_ENV=""
+BUILD_FLAGS=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=true ;;
+    --deploy-env)
+      DEPLOY_ENV="${2:-}"
+      [[ "$DEPLOY_ENV" == "dev" || "$DEPLOY_ENV" == "prod" ]] || {
+        echo "Expected --deploy-env dev or prod" >&2
+        exit 1
+      }
+      shift
+      ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+  shift
+done
+
+# Deployment authority comes from the ecosystem, not the presence of an app's
+# source directory. Retained extraction source must not remain a deploy target.
+OWNED_APPS=""
+if [[ -n "$DEPLOY_ENV" ]]; then
+  OWNED_APPS=$(node scripts/lib/deploy-apps.mjs "$DEPLOY_ENV")
+  BUILD_FLAGS=("--$DEPLOY_ENV" "--migration-owner=kernel")
+fi
+
+is_build_target() {
+  [[ -z "$DEPLOY_ENV" || $'\n'"$OWNED_APPS"$'\n' == *$'\n'"$1"$'\n'* ]]
+}
 
 LAST_SHA_FILE=".last-build-sha"
 CURRENT_SHA=$(git rev-parse HEAD)
@@ -44,7 +72,7 @@ if [[ -f "$LAST_SHA_FILE" ]]; then
     # This catches manual git-pull scenarios where source is newer than .next.
     STALE_APPS=""
     for _app in $(ls apps/*/package.json 2>/dev/null | cut -d/ -f2); do
-      if is_app_stale "$_app"; then
+      if is_build_target "$_app" && is_app_stale "$_app"; then
         STALE_APPS+="$_app "
       fi
     done
@@ -76,15 +104,25 @@ if [[ -f "$LAST_SHA_FILE" ]]; then
     | sort -u || true)
 
   # UNION the two so a changed app is never dropped.
-  CHANGED_APPS=$(printf '%s\n%s\n' "$GRAPH_APPS" "$PATH_APPS" | grep -v '^$' | sort -u || true)
+  CHANGED_APPS=$(printf '%s\n%s\n%s\n' "${CHANGED_APPS:-}" "$GRAPH_APPS" "$PATH_APPS" | grep -v '^$' | sort -u || true)
 else
   echo "No previous build SHA — all apps need building"
   CHANGED_APPS=$(ls apps/*/package.json 2>/dev/null | cut -d/ -f2)
 fi
 
+TARGET_APPS=""
+for _app in $CHANGED_APPS; do
+  if is_build_target "$_app"; then
+    TARGET_APPS+="${_app}"$'\n'
+  fi
+done
+CHANGED_APPS="${TARGET_APPS%$'\n'}"
+
 if [[ -z "$CHANGED_APPS" ]]; then
   echo "✓ No apps changed"
-  echo "$CURRENT_SHA" > "$LAST_SHA_FILE"
+  if ! $DRY_RUN; then
+    echo "$CURRENT_SHA" > "$LAST_SHA_FILE"
+  fi
   exit 0
 fi
 
@@ -95,10 +133,11 @@ echo ""
 echo "$COUNT app(s) to build: $APP_LIST"
 
 if $DRY_RUN; then
-  echo "(dry run — would run: ./scripts/build.sh $APP_LIST)"
+  echo "(dry run — would run: ./scripts/build.sh ${BUILD_FLAGS[*]} $APP_LIST)"
   echo ""
   echo "Per-app .next freshness:"
   for _app in $(ls apps/*/package.json 2>/dev/null | cut -d/ -f2); do
+    is_build_target "$_app" || continue
     if is_app_stale "$_app"; then
       echo "  $_app: STALE"
     else
@@ -109,7 +148,7 @@ if $DRY_RUN; then
 fi
 
 # Build via build.sh
-./scripts/build.sh $APP_LIST
+./scripts/build.sh "${BUILD_FLAGS[@]}" $APP_LIST
 
 # Only stamp SHA if build.sh succeeded
 echo "$CURRENT_SHA" > "$LAST_SHA_FILE"

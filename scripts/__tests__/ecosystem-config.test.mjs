@@ -24,7 +24,7 @@ const EXTERNAL_WRAPPED = new Set([]);
 
 // Next apps (`next start`, in-repo or from a separate repo) that must run via the
 // next binary.
-const NEXT_APPS = ['events', 'fixready', 'karaoke', 'scorecard'];
+const NEXT_APPS = ['fixready', 'karaoke', 'scorecard'];
 
 function loadApps(env) {
   const apps = require(`${DEPLOY_DIR}ecosystem.${env}.config.js`).apps;
@@ -39,6 +39,10 @@ function portOf(app) {
 for (const env of ['dev', 'prod']) {
   describe(`deploy/ecosystem.${env}.config.js (#2447)`, () => {
     const apps = loadApps(env);
+    it('does not declare events after its deploy ownership release (#2784)', () => {
+      expect(apps.some((app) => app.name === `${env}-events`)).toBe(false);
+      expect(apps.some((app) => app.cwd?.endsWith('/apps/events'))).toBe(false);
+    });
 
     it('has unique app names and ports', () => {
       const names = apps.map((a) => a.name);
