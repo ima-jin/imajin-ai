@@ -69,13 +69,14 @@
  */
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { sealAndStore, loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
+import { sealAndStore, loadAndUnseal, deleteFromVault, vaultFieldStatus } from '@/src/lib/vault';
 import { generateId } from '@/src/lib/kernel/id';
 import { ensurePayStripeReactorRegistered } from '@/src/lib/pay/stripe-bus-consumer';
 import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import { verifyStripeWebhookSignature } from './webhook-verify';
 import { assertCheckoutSessionWriteAllowed } from './byo-checkout';
 import { stripe, STRIPE_EVENTS_SCOPE, stripePublishableKeyField } from './connector-core';
+import { validateStripeCredentialPair } from './credential-pair';
 import {
   upsertWebhookIndex,
   resolveWebhookOwner,
@@ -103,16 +104,16 @@ export const vaultField = stripe.vaultField;
 export const resolveActiveGrant = stripe.resolveActiveGrant;
 export const keySealed = stripe.keySealed;
 export const keyPending = stripe.keyPending;
+/** Check the owner's existing field without unsealing or exposing either key. */
+export async function publishableKeySealed(ownerDid: string): Promise<boolean> {
+  return await vaultFieldStatus(stripePublishableKeyField(ownerDid)) === 'ready';
+}
 
 /** Node-sealed (v1) per-DID field for the webhook endpoint's signing secret. */
 function webhookSecretField(ownerDid: string): string {
   return `stripe-webhook-secret:${ownerDid}`;
 }
 
-/** Stripe restricted keys start `rk_`; a full secret key (`sk_...`) is refused. */
-function isRestrictedKey(key: string): boolean {
-  return key.startsWith('rk_');
-}
 
 // ── Stripe API calls ─────────────────────────────────────────────────────────
 
@@ -132,20 +133,30 @@ async function createStripeWebhookEndpoint(
     body.append('enabled_events[]', eventType);
   }
 
-  const res = await fetch(`${STRIPE_API_BASE}/webhook_endpoints`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${restrictedKey}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: body.toString(),
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${STRIPE_API_BASE}/webhook_endpoints`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${restrictedKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body.toString(),
+    });
+  } catch {
+    throw new Error('stripe_webhook_provision_failed: Stripe is unavailable');
+  }
   if (!res.ok) {
     throw new Error(`stripe_webhook_provision_failed: HTTP ${res.status}`);
   }
 
-  const data = (await res.json()) as StripeWebhookEndpointCreateResponse;
-  if (!data.id || !data.secret) {
+  let data: StripeWebhookEndpointCreateResponse;
+  try {
+    data = (await res.json()) as StripeWebhookEndpointCreateResponse;
+  } catch {
+    throw new Error('stripe_webhook_provision_failed: invalid Stripe response');
+  }
+  if (!data?.id || !data.secret) {
     throw new Error('stripe_webhook_provision_failed: Stripe response is missing id/secret');
   }
   return { endpointId: data.id, signingSecret: data.secret };
@@ -180,16 +191,17 @@ async function bestEffortDeprovisionExisting(ownerDid: string): Promise<void> {
     if (credentials?.apiKey) {
       await deleteStripeWebhookEndpoint(credentials.apiKey, existing.endpointId);
     }
-  } catch (err) {
+  } catch {
     log.warn(
-      { err: String(err), ownerDid },
+      { ownerDid },
       'Stripe connector: best-effort deprovision of the prior webhook endpoint failed — continuing reconnect',
     );
   }
 }
 
 /**
- * Connect: validate the pasted key is a restricted key, self-provision a
+ * Connect: require restricted and publishable keys with matching Stripe mode,
+ * validate the pair before any side effect, then self-provision a
  * webhook endpoint on the owner's OWN Stripe account using that key, and
  * only then seal the key and the endpoint's signing secret.
  *
@@ -199,14 +211,17 @@ async function bestEffortDeprovisionExisting(ownerDid: string): Promise<void> {
  * module checks for).
  *
  * Throws:
- *   - `stripe_key_not_restricted` — the pasted key is not a restricted key
- *     (e.g. a full secret key was pasted instead).
+ *   - `StripeCredentialError` — a missing/invalid key or mismatched modes,
+ *     with a safe message and the input field that needs correction.
  *   - `stripe_key_missing_permission` (#2754) — the key cannot create
  *     Checkout Sessions, so it could never take an invoice payment. Checked
  *     FIRST: it must fail before the prior endpoint is deprovisioned or
  *     anything is created or sealed.
  *   - `stripe_webhook_provision_failed` — Stripe rejected the endpoint
  *     creation (bad key, insufficient permissions, etc).
+ *
+ * The optional publishableKey parameter preserves source compatibility only;
+ * an omitted or empty key is rejected at runtime.
  */
 export async function connectAndProvisionWebhook(
   ownerDid: string,
@@ -214,16 +229,9 @@ export async function connectAndProvisionWebhook(
   webhookBaseUrl: string,
   publishableKey?: string,
 ): Promise<{ routingId: string; endpointId: string }> {
-  if (publishableKey !== undefined && !/^pk_(test|live)_\w+$/.test(publishableKey)) {
-    throw new Error('stripe_publishable_key_invalid: provide a Stripe publishable key');
-  }
+  validateStripeCredentialPair(restrictedKey, publishableKey);
   const trimmedKey = restrictedKey.trim();
-  if (!isRestrictedKey(trimmedKey)) {
-    throw new Error(
-      'stripe_key_not_restricted: paste a Stripe RESTRICTED key (starts with "rk_"), not a full secret key. ' +
-      'Create one in the Stripe Dashboard under Developers → API keys → Create restricted key.',
-    );
-  }
+  const trimmedPublishableKey = (publishableKey ?? '').trim();
 
   await assertCheckoutSessionWriteAllowed(trimmedKey);
 
@@ -235,7 +243,7 @@ export async function connectAndProvisionWebhook(
   const { endpointId, signingSecret } = await createStripeWebhookEndpoint(trimmedKey, url);
 
   await stripe.sealApiKey(ownerDid, trimmedKey);
-  if (publishableKey) await sealAndStore(stripePublishableKeyField(ownerDid), publishableKey);
+  await sealAndStore(stripePublishableKeyField(ownerDid), trimmedPublishableKey);
   await sealAndStore(webhookSecretField(ownerDid), signingSecret);
   await upsertWebhookIndex(routingId, ownerDid, endpointId);
 
@@ -268,9 +276,9 @@ export async function disconnectAndDeprovision(
         await deleteStripeWebhookEndpoint(credentials.apiKey, existing.endpointId);
         deprovisioned = true;
       }
-    } catch (err) {
+    } catch {
       log.warn(
-        { err: String(err), ownerDid },
+        { ownerDid },
         'Stripe connector: webhook deprovision failed — continuing disconnect',
       );
     }
