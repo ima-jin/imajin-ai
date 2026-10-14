@@ -1,63 +1,71 @@
 import { db, transactions } from '@/src/db';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, or, sql } from 'drizzle-orm';
 import { externalRefColumns, whereExternalRef } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import type { Logger } from '@imajin/logger';
-import { findCheckoutSessionByPaymentIntent } from './providers/stripe-client';
+import { sellerPledgeRefundClient, sellerSessionPaymentIntent } from './providers/seller-pledge-refund';
+import { resolveDidStripeKeys } from './rails/stripe-keys';
+import { STRIPE_BYO_RAIL } from './external-ref';
 import { MJN, creditUnit, debitUnit } from './ledger';
 
 type LoggerLike = Pick<Logger, 'error'>;
 type TransactionRow = typeof transactions.$inferSelect;
-
-/**
- * Resolve a Stripe checkout session ID (cs_xxx) to its transaction row via
- * the pay adapter (#2174 — `findCheckoutSessionByPaymentIntent`, not a raw
- * `import('stripe')`), for callers (e.g. events tickets) that only know the
- * payment intent ID (pi_xxx). Non-fatal: logs and returns undefined on any
- * failure so the caller can fall back to a 404.
- */
-async function resolveTransactionViaPaymentIntent(
-  paymentId: string,
-  log: LoggerLike,
-): Promise<TransactionRow | undefined> {
-  try {
-    const session = await findCheckoutSessionByPaymentIntent(paymentId);
-    if (!session) return undefined;
-
-    const [result] = await db
-      .select()
-      .from(transactions)
-      .where(whereExternalRef(session.id))
-      .limit(1);
-    return result;
-  } catch (e) {
-    log.error({ err: String(e) }, '[refund] Failed to resolve payment intent to session');
-    return undefined;
-  }
+function isSellerSession(row: TransactionRow): row is TransactionRow & { toDid: string; externalRef: string } {
+  return row.rail === STRIPE_BYO_RAIL && Boolean(row.toDid) && Boolean(row.externalRef?.startsWith('cs_'));
 }
 
 /**
- * Find the original transaction for a refund request. Pay stores the
- * checkout session ID (cs_xxx) as `externalRef`, but events tickets store the
- * payment intent ID (pi_xxx) — try `externalRef` first, then fall back to
- * resolving the payment intent to its session via the Stripe API.
+ * Resolve persisted references first. Intent-only callers may inspect ONLY
+ * the authenticated app's recorded seller-account sessions, never platform Stripe.
  */
 export async function resolveOriginalTransaction(
   paymentId: string,
   log: LoggerLike,
+  appDid: string,
 ): Promise<TransactionRow | undefined> {
   const [directMatch] = await db
     .select()
     .from(transactions)
-    .where(whereExternalRef(paymentId))
+    .where(or(whereExternalRef(paymentId), whereExternalRef(paymentId, STRIPE_BYO_RAIL)))
     .limit(1);
   if (directMatch) return directMatch;
 
   if (paymentId.startsWith('pi_')) {
-    return resolveTransactionViaPaymentIntent(paymentId, log);
+    const candidates = await db.select().from(transactions).where(eq(transactions.appDid, appDid));
+    for (const row of candidates) {
+      const metadata = row.metadata as Record<string, unknown> | null;
+      if (metadata?.paymentIntentId === paymentId || metadata?.stripePaymentIntentId === paymentId) return row;
+    }
+    for (const row of candidates) {
+      if (!isSellerSession(row)) continue;
+      const { secretKey } = await resolveDidStripeKeys(row.toDid);
+      try {
+        if (await sellerSessionPaymentIntent(secretKey, row.externalRef) === paymentId) return row;
+      } catch {
+        log.error({ transactionId: row.id }, '[refund] Seller session lookup unavailable');
+      }
+    }
   }
   return undefined;
+}
+
+/** Only the account that took the original payment may refund it. */
+export async function refundSellerPayment(originalTx: TransactionRow, amount: number) {
+  if (originalTx.rail !== STRIPE_BYO_RAIL || !originalTx.toDid) throw new Error('LEGACY_PLATFORM_PAYMENT');
+  const { secretKey } = await resolveDidStripeKeys(originalTx.toDid);
+  const metadata = originalTx.metadata as Record<string, unknown> | null;
+  const recorded = metadata?.paymentIntentId ?? metadata?.stripePaymentIntentId;
+  const paymentIntentId = originalTx.externalRef?.startsWith('pi_')
+    ? originalTx.externalRef
+    : typeof recorded === 'string' && recorded.startsWith('pi_')
+      ? recorded
+      : originalTx.externalRef?.startsWith('cs_')
+        ? await sellerSessionPaymentIntent(secretKey, originalTx.externalRef)
+        : undefined;
+  if (!paymentIntentId) throw new Error('Original seller payment intent is unavailable');
+  const refund = await sellerPledgeRefundClient(secretKey).refunds.create({ payment_intent: paymentIntentId, amount });
+  return { id: refund.id, paymentId: originalTx.externalRef!, amount: refund.amount, status: refund.status };
 }
 
 export type RefundEligibility =
@@ -78,8 +86,13 @@ export async function checkRefundEligibility(
     return { ok: false, error: 'Transaction already fully refunded', status: 400 };
   }
 
+  if (amount !== undefined && (!Number.isSafeInteger(amount) || amount <= 0)) {
+    return { ok: false, error: 'amount must be a positive integer in cents', status: 400 };
+  }
+  if (!['completed', 'partially_refunded'].includes(originalTx.status)) {
+    return { ok: false, error: 'Only completed payments can be refunded', status: 409 };
+  }
   const txAmountDollars = Number.parseFloat(originalTx.amount);
-  const requestedRefundDollars = amount ? amount / 100 : txAmountDollars;
 
   // For partially-refunded txs, sum all existing refund entries and verify
   // the new request doesn't exceed the remaining balance.
@@ -93,6 +106,7 @@ export async function checkRefundEligibility(
       ),
     );
   const totalRefundedDollars = existingRefundTxs.reduce((sum, r) => sum + Number.parseFloat(r.amount), 0);
+  const requestedRefundDollars = amount === undefined ? txAmountDollars - totalRefundedDollars : amount / 100;
 
   if (totalRefundedDollars + requestedRefundDollars > txAmountDollars + 0.005) {
     return { ok: false, error: 'Refund would exceed original transaction amount', status: 400 };
@@ -151,6 +165,7 @@ export async function applyRefundLedgerUpdates(params: {
   const reversalId = generateId('tx');
   await db.insert(transactions).values({
     id: reversalId,
+    appDid: originalTx.appDid,
     service: originalTx.service,
     type: 'refund',
     fromDid: originalTx.toDid,
@@ -161,7 +176,7 @@ export async function applyRefundLedgerUpdates(params: {
     sourceKind: 'receipt',
     status: 'completed',
     source: 'fiat',
-    ...externalRefColumns(refundStripeId),
+    ...externalRefColumns(refundStripeId, originalTx.rail ?? undefined),
     metadata: {
       originalTxId: originalTx.id,
       originalStripeId: paymentId,
@@ -169,7 +184,9 @@ export async function applyRefundLedgerUpdates(params: {
     },
   });
 
-  await adjustBalancesForRefund(originalTx.toDid, originalTx.fromDid, refundedDollars, originalTx.currency);
+  if (originalTx.rail !== STRIPE_BYO_RAIL) {
+    await adjustBalancesForRefund(originalTx.toDid, originalTx.fromDid, refundedDollars, originalTx.currency);
+  }
 
   return { reversalId, isFullRefund };
 }
@@ -190,6 +207,7 @@ export async function reverseSettlementEntries(params: {
   reason?: string;
 }): Promise<void> {
   const { originalTx, requestedRefundDollars, txAmountDollars, isFullRefund, reason } = params;
+  if (originalTx.rail === STRIPE_BYO_RAIL) return;
   const checkoutStripeId = originalTx.externalRef;
   if (!checkoutStripeId) return;
 

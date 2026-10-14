@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
   refund: vi.fn(),
   setup: vi.fn(),
   ledger: vi.fn(),
+  keys: vi.fn(),
+  customer: vi.fn(),
+  method: vi.fn(),
 }));
 vi.mock('@/src/db', async () => {
   const pay = await import('@/src/db/schemas/pay');
@@ -35,13 +38,20 @@ vi.mock('@imajin/config', async (original) => ({
 }));
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ refund: h.refund }) }));
-vi.mock('@/src/lib/pay/providers/stripe-client', () => ({
-  getStripeClient: () => ({
+vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
+  resolveDidStripeKeys: h.keys,
+  SellerNoCardRailError: class extends Error { code = 'SELLER_NO_CARD_RAIL'; },
+}));
+vi.mock('@/src/lib/pay/providers/seller-pledge-refund', () => ({
+  sellerPledgeRefundClient: () => ({
     paymentIntents: { create: h.create },
+    refunds: { create: h.refund },
     setupIntents: { retrieve: h.retrieve, create: h.setup },
-    customers: { list: async () => ({ data: [{ id: 'cus_recorded' }] }) },
+    customers: { retrieve: h.customer },
+    paymentMethods: { retrieve: h.method },
   }),
-  findCheckoutSessionByPaymentIntent: async () => ({ id: 'cs_payment' }),
+  findOrCreatePledgeCustomer: async () => ({ id: 'cus_recorded' }),
+  sellerSessionPaymentIntent: async () => 'pi_payment',
 }));
 vi.mock('@/src/lib/pay/refund', async (original) => ({
   ...await original<object>(),
@@ -55,6 +65,7 @@ import { POST as setupRoute } from '../../../../app/pay/api/setup-intent/route';
 import { db, transactions, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { SESSION_COOKIE_NAME } from '@imajin/config';
+import { SellerNoCardRailError } from '../rails/stripe-keys';
 
 let harness: PgliteLedgerHarness;
 const APP = 'did:imajin:app-a';
@@ -72,8 +83,8 @@ function chargeBody() {
 }
 async function payment(appDid: string | null = APP, type = 'checkout') {
   await db.insert(transactions).values({
-    id: 'tx_payment', service: 'events', type, appDid, toDid: APP,
-    amount: '10', currency: 'CAD', rail: 'stripe',
+    id: 'tx_payment', service: 'events', type, appDid, toDid: 'did:imajin:seller', fromDid: 'did:imajin:backer',
+    amount: '10', currency: 'CAD', rail: 'stripe-byo',
     externalRef: type === 'pledge' ? 'seti_1' : 'cs_payment',
     status: type === 'pledge' ? 'pending' : 'completed',
     idempotencyKey: type === 'pledge' ? 'pledge-setup:seti_1' : null,
@@ -105,8 +116,12 @@ beforeEach(async () => {
   h.tokens.set('no-scope', { azp: APP, scope: '', isServiceToken: true });
   h.tokens.set('delegated', { azp: APP, scope: SCOPES.join(' '), isServiceToken: false });
   h.refund.mockResolvedValue({ id: 're_1', paymentId: 'cs_payment', amount: 1000, status: 'succeeded' });
+  h.keys.mockResolvedValue({ secretKey: 'test-only-seller-key', publishableKey: 'test-only-publishable-key' });
+  h.customer.mockResolvedValue({ metadata: { did: 'did:imajin:backer' } });
+  h.method.mockResolvedValue({ customer: 'cus_recorded' });
   h.ledger.mockResolvedValue({ reversalId: 'tx_refund', isFullRefund: true });
-  h.retrieve.mockResolvedValue({ status: 'succeeded', customer: 'cus_recorded', payment_method: 'pm_recorded' });
+  h.retrieve.mockResolvedValue({ status: 'succeeded', customer: 'cus_recorded', payment_method: 'pm_recorded',
+    metadata: { app_did: APP, sellerDid: 'did:imajin:seller', did: 'did:imajin:backer', eventId: 'evt', amount: '1000', currency: 'CAD' } });
   h.create.mockResolvedValue({ id: 'pi_1', status: 'succeeded' });
   h.setup.mockResolvedValue({ id: 'seti_new', client_secret: 'test-only' });
   vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ did: 'did:imajin:backer' }))));
@@ -153,6 +168,83 @@ describe.each([
 });
 
 describe('pledge recorded authority', () => {
+  it.each([
+    { deleted: true },
+    { metadata: { did: OTHER } },
+    { metadata: { did: 'did:imajin:backer', buyerDid: OTHER } },
+  ])('refuses a deleted or incorrectly bound customer %j', async (customer) => {
+    await payment(APP, 'pledge');
+    h.customer.mockResolvedValue(customer);
+    const response = await chargeRoute(request('charge-pledges', chargeBody()));
+    expect((await response.json()).failed).toBe(1);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+  it('refuses a saved payment method attached to a different customer', async () => {
+    await payment(APP, 'pledge');
+    h.method.mockResolvedValue({ customer: 'cus_other' });
+    const response = await chargeRoute(request('charge-pledges', chargeBody()));
+    expect((await response.json()).failed).toBe(1);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+  it('rejects missing seller identity before reading any key', async () => {
+    const response = await setupRoute(request('setup-intent',
+      { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } },
+      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
+    expect(response.status).toBe(400);
+    expect(h.keys).not.toHaveBeenCalled();
+  });
+  it('uses persisted seller rather than a caller-supplied seller to charge', async () => {
+    await payment(APP, 'pledge');
+    await chargeRoute(request('charge-pledges', { ...chargeBody(), sellerDid: OTHER }));
+    expect(h.keys).toHaveBeenCalledWith('did:imajin:seller');
+  });
+  it('rejects missing seller keys without falling back to environment credentials', async () => {
+    await payment(APP, 'pledge');
+    vi.stubEnv('STRIPE_SECRET_KEY', 'test-only-platform-key');
+    h.keys.mockRejectedValue(new SellerNoCardRailError());
+    const response = await chargeRoute(request('charge-pledges', chargeBody()));
+    expect((await response.json()).results[0]).toMatchObject({ status: 'failed', code: 'SELLER_NO_CARD_RAIL' });
+    expect(h.create).not.toHaveBeenCalled();
+    expect((await db.select().from(transactions))[0].status).toBe('pending');
+    vi.unstubAllEnvs();
+  });
+  it('refuses legacy platform pledges before looking up cards', async () => {
+    await payment(APP, 'pledge');
+    await db.update(transactions).set({ rail: 'stripe' });
+    const response = await chargeRoute(request('charge-pledges', chargeBody()));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toContain('Legacy platform');
+    expect(h.retrieve).not.toHaveBeenCalled();
+  });
+  it.each(['app_did', 'sellerDid', 'did', 'eventId', 'amount', 'currency'])('verifies setup %s binding before a charge', async (field) => {
+    await payment(APP, 'pledge');
+    const setup = await h.retrieve();
+    setup.metadata[field] = 'mismatched';
+    const response = await chargeRoute(request('charge-pledges', chargeBody()));
+    expect((await response.json()).failed).toBe(1);
+    expect(h.create).not.toHaveBeenCalled();
+  });
+  it('refuses setup without seller publishable key even when platform key exists', async () => {
+    vi.stubEnv('STRIPE_PUBLISHABLE_KEY', 'test-only-platform-publishable');
+    h.keys.mockResolvedValue({ secretKey: 'test-only-seller-key', publishableKey: undefined });
+    const response = await setupRoute(request('setup-intent',
+      { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt', sellerDid: 'did:imajin:seller' } },
+      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
+    expect(h.setup).not.toHaveBeenCalled();
+    expect(await db.select().from(transactions)).toEqual([]);
+    vi.unstubAllEnvs();
+  });
+  it('returns missing card rail for setup rather than invoking the SDK', async () => {
+    h.keys.mockRejectedValue(new SellerNoCardRailError());
+    const response = await setupRoute(request('setup-intent',
+      { amount: 1000, currency: 'CAD', sellerDid: 'did:imajin:seller', metadata: { eventId: 'evt' } },
+      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
+    expect(h.setup).not.toHaveBeenCalled();
+  });
   it('cannot turn an app checkout into pledge authority by spoofing type and metadata', async () => {
     await payment(APP, 'pledge');
     await db.update(transactions).set({
@@ -241,18 +333,23 @@ describe('pledge recorded authority', () => {
     expect((await response.json()).failed).toBe(1);
     expect(h.create).not.toHaveBeenCalled();
   });
-  it('refuses the superseded platform setup contract even with a backer cookie', async () => {
+  it('records the verified app and backer on pledge setup', async () => {
     const response = await setupRoute(request('setup-intent',
-      { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt', app_did: OTHER, did: 'spoof' } },
+      { amount: 1000, currency: 'CAD', sellerDid: 'did:imajin:seller', metadata: { eventId: 'evt', app_did: OTHER, did: 'spoof' } },
       'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(403);
-    expect(await response.json()).toMatchObject({ code: 'SETUP_APP_UNAUTHORIZED' });
-    expect(await db.select().from(transactions)).toEqual([]);
-    expect(h.setup).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    const [row] = await db.select().from(transactions);
+    expect(row).toMatchObject({ appDid: APP, fromDid: 'did:imajin:backer', type: 'pledge',
+      amount: '10.00000000', externalRef: 'seti_new', idempotencyKey: 'pledge-setup:seti_new' });
+    expect(row).toMatchObject({ rail: 'stripe-byo', toDid: 'did:imajin:seller' });
+    expect(h.keys).toHaveBeenCalledWith('did:imajin:seller');
+    expect(await response.json()).toMatchObject({ publishableKey: 'test-only-publishable-key' });
+    expect(h.setup).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ app_did: APP, did: 'did:imajin:backer' }),
+    }));
   });
-  it('does not reuse pay:charge-pledges authority for BYO setup creation', async () => {
-    expect((await setupRoute(request('setup-intent', { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } }))).status).toBe(403);
+  it('requires a backer session in addition to the app token', async () => {
+    expect((await setupRoute(request('setup-intent', { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } }))).status).toBe(401);
     expect(h.setup).not.toHaveBeenCalled();
-    expect(await db.select().from(transactions)).toEqual([]);
   });
 });

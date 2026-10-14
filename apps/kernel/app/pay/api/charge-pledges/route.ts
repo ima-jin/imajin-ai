@@ -30,6 +30,7 @@ import { withLogger } from '@imajin/logger';
 import { authenticatePayApp } from '@/src/lib/pay/app-settle';
 import { loadAppPledges, chargeBoundPledge, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
@@ -80,7 +81,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if ('error' in bound) {
       return NextResponse.json({ error: bound.error }, { status: bound.status, headers: cors });
     }
-    const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string }> = [];
+    const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string; code?: string }> = [];
     let charged = 0;
     let failed = 0;
 
@@ -114,12 +115,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           failed++;
         }
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Payment failed';
-        log.error({ err: errorMessage, pledgeId: pledge.pledgeId }, 'Pledge charge failed');
+        const errorMessage = err instanceof SellerNoCardRailError ? err.message : 'Seller pledge charge failed';
+        log.error({ pledgeId: pledge.pledgeId }, 'Pledge charge failed');
         results.push({
           pledgeId: pledge.pledgeId,
           status: 'failed',
           error: errorMessage,
+          ...(err instanceof SellerNoCardRailError && { code: err.code }),
         });
         failed++;
       }
@@ -131,8 +133,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       total: pledges.length,
       results,
     }, { headers: cors });
-  } catch (error) {
-    log.error({ err: String(error) }, 'Charge pledges error');
+  } catch {
+    log.error({}, 'Charge pledges error');
     return NextResponse.json(
       { error: 'Failed to charge pledges' },
       { status: 500, headers: cors }

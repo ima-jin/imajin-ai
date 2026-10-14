@@ -11,6 +11,9 @@ import { jsonPostRequest } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 const h = vi.hoisted(() => ({
   create: vi.fn(),
 }));
+vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
+  SellerNoCardRailError: class extends Error { code = 'SELLER_NO_CARD_RAIL'; },
+}));
 vi.mock('@/src/lib/pay/app-settle', () => ({
   authenticatePayApp: async (request: Request) => request.headers.get('authorization')
     ? { appDid: 'did:imajin:events' }
@@ -107,7 +110,7 @@ describe('POST /pay/api/charge-pledges', () => {
     expect(body).toMatchObject({ charged: 2, failed: 1, total: 3 });
     expect(body.results).toEqual([
       { pledgeId: 'p1', status: 'charged' },
-      { pledgeId: 'p2', status: 'failed', error: 'card_declined' },
+      { pledgeId: 'p2', status: 'failed', error: 'Seller pledge charge failed' },
       { pledgeId: 'p3', status: 'charged' },
     ]);
   });
@@ -123,7 +126,7 @@ describe('POST /pay/api/charge-pledges', () => {
 
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(body.results).toEqual([
-      { pledgeId: 'p1', status: 'failed', error: 'Missing Stripe customer or payment method' },
+      { pledgeId: 'p1', status: 'failed', error: 'Seller pledge charge failed' },
       { pledgeId: 'p2', status: 'charged' },
     ]);
     expect(body).toMatchObject({ charged: 1, failed: 1 });

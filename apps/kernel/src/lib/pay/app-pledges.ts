@@ -1,6 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { db, transactions } from '@/src/db';
-import { getStripeClient } from './providers/stripe-client';
+import { sellerPledgeRefundClient } from './providers/seller-pledge-refund';
+import { resolveDidStripeKeys } from './rails/stripe-keys';
+import { STRIPE_BYO_RAIL } from './external-ref';
 
 type Failure = { error: string; status: number };
 export interface PledgeReference {
@@ -16,6 +18,9 @@ export interface BoundPledge {
   customerId: string;
   priorStatus: string;
   metadata: Record<string, unknown>;
+  sellerDid: string;
+  appDid: string;
+  buyerDid: string | null;
 }
 
 /** Preflight the entire batch before any charge: caller fields never establish ownership. */
@@ -41,6 +46,9 @@ export async function loadAppPledges(
       return { error: 'Forbidden - pledge was not created by this app for this campaign', status: 403 };
     }
     const amount = Math.round(Number(row.amount) * 100);
+    if (row.rail !== STRIPE_BYO_RAIL || !row.toDid) {
+      return { error: 'Legacy platform pledges cannot be charged; recreate setup on the seller account', status: 409 };
+    }
     if (!Number.isSafeInteger(amount) || amount <= 0 || typeof metadata.stripeCustomerId !== 'string') {
       return { error: 'Pledge has no valid recorded payment details', status: 409 };
     }
@@ -56,6 +64,9 @@ export async function loadAppPledges(
       customerId: metadata.stripeCustomerId,
       priorStatus: row.status,
       metadata,
+      sellerDid: row.toDid,
+      appDid,
+      buyerDid: row.fromDid,
     });
   }
   return result;
@@ -65,12 +76,26 @@ export async function loadAppPledges(
 export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): Promise<string> {
   if (pledge.priorStatus === 'completed') return 'succeeded';
   if (pledge.priorStatus === 'processing') return 'processing';
-  const stripe = getStripeClient();
+  const { secretKey } = await resolveDidStripeKeys(pledge.sellerDid);
+  const stripe = sellerPledgeRefundClient(secretKey);
   const setup = await stripe.setupIntents.retrieve(pledge.setupIntentId);
   const customer = typeof setup.customer === 'string' ? setup.customer : setup.customer?.id;
   const paymentMethod = typeof setup.payment_method === 'string' ? setup.payment_method : setup.payment_method?.id;
-  if (setup.status !== 'succeeded' || customer !== pledge.customerId || !paymentMethod) {
+  if (setup.status !== 'succeeded' || customer !== pledge.customerId || !paymentMethod ||
+      setup.metadata?.app_did !== pledge.appDid || setup.metadata?.sellerDid !== pledge.sellerDid ||
+      setup.metadata?.did !== pledge.buyerDid || setup.metadata?.eventId !== eventId ||
+      setup.metadata?.amount !== String(pledge.amount) || setup.metadata?.currency !== pledge.currency.toUpperCase()) {
     throw new Error('Pledge setup is not confirmed for the recorded customer');
+  }
+  const [recordedCustomer, method] = await Promise.all([
+    stripe.customers.retrieve(pledge.customerId),
+    stripe.paymentMethods.retrieve(paymentMethod),
+  ]);
+  const methodCustomer = typeof method.customer === 'string' ? method.customer : method.customer?.id;
+  if (recordedCustomer.deleted || recordedCustomer.metadata.did !== pledge.buyerDid ||
+      (recordedCustomer.metadata.buyerDid !== undefined && recordedCustomer.metadata.buyerDid !== pledge.buyerDid) ||
+      methodCustomer !== pledge.customerId) {
+    throw new Error('Pledge saved card does not match the recorded buyer');
   }
   // Claim once before the rail call. An interrupted charge is never retried
   // after Stripe's idempotency retention expires: it needs reconciliation.
@@ -85,14 +110,14 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
     payment_method: paymentMethod,
     off_session: true,
     confirm: true,
-    metadata: { eventId, pledgeId: pledge.pledgeId, type: 'campaign_pledge_charge' },
+    metadata: { eventId, pledgeId: pledge.pledgeId, type: 'campaign_pledge_charge', sellerDid: pledge.sellerDid, appDid: pledge.appDid },
   }, { idempotencyKey: `pledge-charge:${pledge.transactionId}` });
   if (payment.status === 'succeeded' || payment.status === 'processing') {
     await db.update(transactions).set({
       status: payment.status === 'succeeded' ? 'completed' : 'processing',
       ...(payment.status === 'succeeded' && { sourceKind: 'receipt' }),
       externalRef: payment.id,
-      metadata: { ...pledge.metadata, setupIntentId: pledge.setupIntentId },
+      metadata: { ...pledge.metadata, setupIntentId: pledge.setupIntentId, paymentIntentId: payment.id },
     }).where(eq(transactions.id, pledge.transactionId));
   }
   return payment.status;

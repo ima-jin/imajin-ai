@@ -21,7 +21,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaymentService } from '@/src/lib/pay/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { withLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -31,7 +30,10 @@ import {
   checkRefundEligibility,
   resolveOriginalTransaction,
   reverseSettlementEntries,
+  refundSellerPayment,
 } from '@/src/lib/pay/refund';
+import { STRIPE_BYO_RAIL } from '@/src/lib/pay/external-ref';
+import { SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 
@@ -61,7 +63,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     // Pay stores checkout session ID (cs_xxx) as externalRef, but events tickets
     // store the payment intent ID (pi_xxx). Try externalRef first, then use
     // Stripe API to resolve payment intent → checkout session.
-    const originalTx = await resolveOriginalTransaction(paymentId, log);
+    const originalTx = await resolveOriginalTransaction(paymentId, log, auth.appDid);
     if (!originalTx) {
       return NextResponse.json(
         { error: 'Transaction not found for paymentId' },
@@ -76,6 +78,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       );
     }
 
+    if (originalTx.rail !== STRIPE_BYO_RAIL || !originalTx.toDid) {
+      log.error({ transactionId: originalTx.id }, 'Legacy platform refund requires manual reconciliation');
+      return NextResponse.json({ error: 'Legacy platform payments require manual refund reconciliation', code: 'LEGACY_PLATFORM_PAYMENT' }, { status: 409, headers: cors });
+    }
     const eligibility = await checkRefundEligibility(originalTx, amount);
     if (!eligibility.ok) {
       return NextResponse.json({ error: eligibility.error }, { status: eligibility.status, headers: cors });
@@ -83,8 +89,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     const { txAmountDollars, requestedRefundDollars, totalRefundedDollars } = eligibility;
 
     // Issue refund via Stripe
-    const pay = getPaymentService();
-    const refundResult = await pay.refund({ paymentId, amount, reason });
+    const refundResult = await refundSellerPayment(originalTx, Math.round(requestedRefundDollars * 100));
 
     const { reversalId, isFullRefund } = await applyRefundLedgerUpdates({
       originalTx,
@@ -99,7 +104,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     await reverseSettlementEntries({ originalTx, requestedRefundDollars, txAmountDollars, isFullRefund, reason });
 
     publish('payment.refund', {
-      issuer: process.env.PLATFORM_DID || 'system',
+      issuer: originalTx.toDid,
       subject: originalTx.fromDid || 'unknown',
       scope: 'pay',
       payload: { paymentId, amount: requestedRefundDollars, reversalId, service: originalTx.service },
@@ -114,7 +119,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       transactionId: reversalId,
     }, { headers: cors });
   } catch (error) {
-    log.error({ err: String(error) }, 'Refund error');
+    if (error instanceof SellerNoCardRailError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 503, headers: cors });
+    }
+    log.error({}, 'Seller refund failed');
     return NextResponse.json(
       { error: 'Refund failed' },
       { status: 500, headers: cors }
