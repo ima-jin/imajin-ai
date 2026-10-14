@@ -50,11 +50,8 @@ class NonceReplayGuard {
     }
     if (this.seen.has(nonce)) return true;
 
-    while (this.seen.size >= MAX_TRACKED_NONCES) {
-      const oldestNonce = this.seen.keys().next().value;
-      if (oldestNonce === undefined) break;
-      this.seen.delete(oldestNonce);
-    }
+    // Never evict an unexpired nonce: eviction would make a captured request replayable.
+    if (this.seen.size >= MAX_TRACKED_NONCES) return true;
     this.seen.set(nonce, expiresAt);
     return false;
   }
@@ -76,6 +73,12 @@ export function canonicalizeBootstrapFetchPayload(payload: { appDid: string; non
   return canonicalize({ appDid: payload.appDid, nonce: payload.nonce, timestamp: payload.timestamp });
 }
 
+export interface AppSecretFetchChallenge {
+  domain: 'app-self-secrets-v1';
+  keys: string[];
+  recipientXPub: string;
+}
+
 export type BootstrapFetchAuthOutcome =
   | { status: 'ok'; binding: BootstrapBinding }
   | { status: 'no_binding' | 'invalid_signature' | 'stale_timestamp' | 'replayed_nonce' };
@@ -95,7 +98,7 @@ export async function verifyBootstrapFetchAuth(params: {
   timestamp: number;
   nonce: string;
   signature: string;
-}): Promise<BootstrapFetchAuthOutcome> {
+} & Partial<AppSecretFetchChallenge>): Promise<BootstrapFetchAuthOutcome> {
   const { appDid, timestamp, nonce, signature } = params;
 
   const binding = await resolveActiveBootstrapBinding(appDid);
@@ -103,17 +106,22 @@ export async function verifyBootstrapFetchAuth(params: {
     return { status: 'no_binding' };
   }
 
-  const canonical = canonicalizeBootstrapFetchPayload({ appDid, nonce, timestamp });
+  const extended = params.domain !== undefined || params.keys !== undefined || params.recipientXPub !== undefined;
+  if (extended && (params.domain !== 'app-self-secrets-v1' || !Array.isArray(params.keys)
+    || typeof params.recipientXPub !== 'string')) return { status: 'invalid_signature' };
+  const canonical = extended
+    ? canonicalize({ domain: params.domain, appDid, keys: params.keys, recipientXPub: params.recipientXPub, nonce, timestamp })
+    : canonicalizeBootstrapFetchPayload({ appDid, nonce, timestamp });
   if (!authCrypto.verifySync(signature, canonical, binding.boundPublicKey)) {
     return { status: 'invalid_signature' };
   }
 
   const now = Date.now();
-  if (Math.abs(now - timestamp) > MAX_CLOCK_SKEW_MS) {
+  if (!Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > MAX_CLOCK_SKEW_MS) {
     return { status: 'stale_timestamp' };
   }
 
-  if (replayGuard.isReplay(nonce, now + MAX_CLOCK_SKEW_MS, now)) {
+  if (replayGuard.isReplay(nonce, timestamp + MAX_CLOCK_SKEW_MS + 1, now)) {
     return { status: 'replayed_nonce' };
   }
 

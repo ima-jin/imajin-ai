@@ -443,6 +443,8 @@ export async function ensureRepoFromTemplate(
 
 /** Nav metadata (#2425) an app can publish about itself via `imajin.app.json` at its repo root. */
 export interface AppManifest {
+  /** Recipes only; validated before approval and issuance. */
+  secrets?: Array<{ name: string; kind: 'random-32B' | 'random-64B' }>;
   name?: string;
   icon?: string;
   entryUrl?: string;
@@ -512,12 +514,12 @@ interface GitHubContentsResponse {
  * NOT a provisioning failure — same degrade-don't-fail posture as
  * `tryGetInstallationToken`'s callers in `provision.ts`.
  */
-export async function fetchAppManifest(slug: string, token: string | null): Promise<AppManifest | null> {
+export async function fetchAppManifest(slug: string, token: string | null, org = PROVISIONING_ORG): Promise<AppManifest | null> {
   if (token === null) return null;
   try {
     const res = await callGitHubApi<GitHubContentsResponse>({
       method: 'GET',
-      path: `/repos/${PROVISIONING_ORG}/${slug}/contents/imajin.app.json`,
+      path: `/repos/${org}/${slug}/contents/imajin.app.json`,
       token,
     });
     if (res.status !== 200 || res.data?.encoding !== 'base64') return null;
@@ -529,8 +531,8 @@ export async function fetchAppManifest(slug: string, token: string | null): Prom
       return null;
     }
     return parsed;
-  } catch (err) {
-    log.warn({ err: String(err), slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
+  } catch {
+    log.warn({ slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
     return null;
   }
 }

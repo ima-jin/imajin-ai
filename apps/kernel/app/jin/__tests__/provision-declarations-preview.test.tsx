@@ -13,6 +13,15 @@ afterEach(cleanup);
 const DEPENDENCY_ID = 'provision-declarations-dependency';
 
 describe('ProvisionDeclarationsPreview', () => {
+  it('shows secret names and generation recipes before approval, with no reveal', () => {
+    render(<ProvisionDeclarationsPreview detail={{ manifestDeclarations: {
+      providesScopes: [], dependsOn: [], secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }],
+    } }} />);
+    expect(screen.getByTestId('provision-declarations-secrets').textContent).toBe('SESSION_SECRET (random-32B)');
+    expect(screen.getByTestId('provision-declarations-preview').getAttribute('data-state')).toBe('declared');
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0);
+  });
   it('lists the scopes the app provides and each dependency audience with its scopes', () => {
     render(
       <ProvisionDeclarationsPreview

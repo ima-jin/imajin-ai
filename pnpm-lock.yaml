@@ -568,6 +568,9 @@ importers:
 
   packages/auth-client:
     dependencies:
+      '@imajin/vault-core':
+        specifier: workspace:*
+        version: link:../vault-core
       '@noble/ed25519':
         specifier: ^2.3.0
         version: 2.3.0

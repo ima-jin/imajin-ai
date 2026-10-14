@@ -343,6 +343,52 @@ afterEach(async () => {
 });
 
 describe('rotate an internal-secret:* field (#2446)', () => {
+  it('#2799 app-scoped rotate replaces and erases old grants; next boot fetches only the new generation', async () => {
+    const appDid = 'did:imajin:app-secret-test';
+    const purpose = `app-self:${appDid}:SESSION_SECRET`;
+    const field = `internal-secret:${purpose}`;
+    const first = await boot();
+    const original = await first.internal.getInternalSecret(purpose);
+    const granted = await first.vault.grantInternalSecretTo(purpose, appDid, 'test-operator');
+    expect(granted.status).toBe('ok');
+    const before = activeGrantsFor(field).map((grant) => String(grant.id));
+    const { rotateInternalSecret } = await import('../internal-secret-rotate');
+    await rotateInternalSecret(field, randomBytes(32).toString('hex'));
+    for (const id of before) {
+      expect(stores.grants.get(id)?.status).toBe('superseded');
+      expect(String(stores.grants.get(id)?.wrappedKey)).toHaveLength(0);
+      expect((await first.vault.fetchGrantSecret({ grantId: id, granteeDid: appDid })).status).not.toBe('ok');
+    }
+    const restarted = await boot();
+    const active = activeGrantsFor(field).find((grant) => grant.grantedTo === appDid)!;
+    const fetched = await restarted.vault.fetchGrantSecret({ grantId: String(active.id), granteeDid: appDid });
+    expect(fetched.status).toBe('ok');
+    if (fetched.status !== 'ok') throw new Error('fetch refused');
+    expect(fetched.value).not.toBe(original);
+    expect((await restarted.vault.fetchGrantSecret({ grantId: String(active.id), granteeDid: 'did:imajin:other-app' })).status).toBe('not_grantee');
+    const response = await rotateViaRoute(field, 'obviously-fake-placeholder');
+    expect(response.status).toBe(409);
+  });
+
+  it('#2799 app withdrawal erases all consumer grants and clears the generation claim atomically', async () => {
+    const appDid = 'did:imajin:app-secret-test';
+    const purpose = `app-self:${appDid}:SESSION_SECRET`;
+    const field = `internal-secret:${purpose}`;
+    const first = await boot();
+    await first.internal.getInternalSecret(purpose);
+    await first.vault.grantInternalSecretTo(purpose, appDid, 'test-operator');
+    const ids = activeGrantsFor(field).map((grant) => String(grant.id));
+    const { revokeInternalSecret } = await import('../internal-secret-revoke');
+    await revokeInternalSecret(purpose, { revokeExternal: true });
+    expect(activeGrantsFor(field)).toHaveLength(0);
+    expect(stores.provisions.size).toBe(0);
+    for (const id of ids) {
+      const row = stores.grants.get(id)!;
+      expect(row.status).toBe('revoked');
+      expect(String(row.wrappedKey)).toHaveLength(0);
+      expect((await first.vault.fetchGrantSecret({ grantId: id, granteeDid: appDid })).status).not.toBe('ok');
+    }
+  });
   it('the active grant keeps its purpose after rotate', async () => {
     const { internal } = await boot();
     await internal.getInternalSecret(PURPOSE);

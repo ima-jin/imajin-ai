@@ -92,6 +92,11 @@ describe('verifyBootstrapFetchAuth', () => {
     expect(outcome).toEqual({ status: 'stale_timestamp' });
   });
 
+  it('refuses a signed non-integer timestamp', async () => {
+    const req = signedRequest(keypair.privateKey, { timestamp: Date.now() + 0.5 });
+    expect(await verifyBootstrapFetchAuth(req)).toEqual({ status: 'stale_timestamp' });
+  });
+
   it('refuses a timestamp far in the future', async () => {
     const req = signedRequest(keypair.privateKey, { timestamp: Date.now() + 10 * 60_000 });
 
@@ -116,5 +121,18 @@ describe('verifyBootstrapFetchAuth', () => {
 
     expect((await verifyBootstrapFetchAuth(first)).status).toBe('ok');
     expect((await verifyBootstrapFetchAuth(second)).status).toBe('ok');
+  });
+
+  it('retains future-dated nonces until their full signature validity window ends', async () => {
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const req = signedRequest(keypair.privateKey, { timestamp: now + 59_000 });
+      expect((await verifyBootstrapFetchAuth(req)).status).toBe('ok');
+      vi.mocked(Date.now).mockReturnValue(now + 61_000);
+      expect((await verifyBootstrapFetchAuth(req)).status).toBe('replayed_nonce');
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

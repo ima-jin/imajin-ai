@@ -16,6 +16,7 @@
  */
 import type { ReactNode } from 'react';
 import { parseManifestDeclarations } from '@/src/lib/apps/declarations-approval';
+import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 
 function Row({ label, children }: Readonly<{ label: string; children: ReactNode }>) {
   return (
@@ -28,6 +29,8 @@ function Row({ label, children }: Readonly<{ label: string; children: ReactNode 
 
 export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Record<string, unknown> | null }>) {
   const declarations = parseManifestDeclarations(detail?.manifestDeclarations);
+  const raw = detail?.manifestDeclarations as Record<string, unknown> | null | undefined;
+  const secretDeclarations = validateSecrets(raw?.secrets);
 
   if (!declarations) {
     return (
@@ -42,7 +45,8 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
   }
 
   const { providesScopes, dependsOn, emittableEvents } = declarations;
-  const isEmpty = providesScopes.length === 0 && dependsOn.length === 0 && emittableEvents.length === 0;
+  const secrets = 'ok' in secretDeclarations ? secretDeclarations.ok : [];
+  const isEmpty = providesScopes.length === 0 && dependsOn.length === 0 && emittableEvents.length === 0 && secrets.length === 0;
 
   return (
     <div
@@ -54,6 +58,11 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
         App scopes and dependencies, read from <span className="font-mono">imajin.app.json</span> — approving registers
         exactly this list, nothing beyond it.
       </p>
+      <Row label="Self secrets (names and recipes only)">
+        <span className="font-mono" data-testid="provision-declarations-secrets">
+          {'error' in secretDeclarations ? 'Invalid secret declarations — execution will be refused' : secrets.map((secret) => `${secret.name} (${secret.kind})`).join(', ') || '\u2014'}
+        </span>
+      </Row>
       {isEmpty ? (
         <p className="text-xs text-gray-500">Declares no scopes of its own, no dependencies, and no events it may emit.</p>
       ) : (

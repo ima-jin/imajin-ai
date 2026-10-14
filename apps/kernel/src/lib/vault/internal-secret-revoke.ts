@@ -56,7 +56,7 @@ export interface RevokeInternalSecretResult {
  * revoke it changes nothing and reports `false`/`false`. No plaintext is
  * logged at any point.
  */
-export async function revokeInternalSecret(purpose: string): Promise<RevokeInternalSecretResult> {
+export async function revokeInternalSecret(purpose: string, options: { revokeExternal?: boolean } = {}): Promise<RevokeInternalSecretResult> {
   const field = internalSecretField(purpose);
   if (isVaultTier1()) {
     throw new Error(
@@ -68,6 +68,12 @@ export async function revokeInternalSecret(purpose: string): Promise<RevokeInter
   const ownerDid = getNodeSigningIdentity().senderDid;
 
   const outcome = await db.transaction(async (tx) => {
+    // App withdrawal must erase every consumer's wrap in the same transaction.
+    if (options.revokeExternal) {
+      const grants = await listActiveGrantsForField(field, tx);
+      await Promise.all(grants.filter((grant) => grant.grantedTo !== ownerDid)
+        .map((grant) => revokeStaticSecretGrant(field, grant.grantedTo, tx)));
+    }
     const selfGrantRevoked = await revokeStaticSecretGrant(field, ownerDid, tx);
     const cleared = await tx
       .delete(internalSecretProvisions)

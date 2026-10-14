@@ -8,6 +8,8 @@ const NODE_DID = 'did:imajin:node';
 const APP_DID = 'did:imajin:app-under-test';
 const GRANT_ID = 'vdg_app_self_1';
 const SLUG = 'dykil';
+const { ensureAppDeclaredSecretsMock } = vi.hoisted(() => ({ ensureAppDeclaredSecretsMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../self-secrets', () => ({ ensureAppDeclaredSecrets: ensureAppDeclaredSecretsMock }));
 
 const { claimsRef, claimsStore, publishMock, logMock, idCounterRef } = vi.hoisted(() => {
   return {
@@ -181,6 +183,15 @@ describe('issueSigningKeyClaim', () => {
 });
 
 describe('claimSigningKey', () => {
+  it('#2799 issues before spending a code; an issuance failure remains retryable', async () => {
+    const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
+    ensureAppDeclaredSecretsMock.mockRejectedValueOnce(new Error('App secret audit unavailable'));
+    await expect(claimSigningKey({ code, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1 })).rejects.toThrow('unavailable');
+    expect([...claimsStore.values()][0].status).toBe('pending');
+    expect([...claimsStore.values()][0].bootstrapPublicKey).toBeUndefined();
+    expect((await claimSigningKey({ code, bootstrapPublicKey: BOOTSTRAP_PUBLIC_KEY_1 })).status).toBe('ok');
+    expect(ensureAppDeclaredSecretsMock).toHaveBeenCalledWith(APP_DID);
+  });
   it('redeems a fresh, valid code exactly once and binds the bootstrap public key', async () => {
     const code = await issueSigningKeyClaim({ nodeDid: NODE_DID, slug: SLUG, appDid: APP_DID, grantId: GRANT_ID });
 

@@ -1670,6 +1670,12 @@ export async function _applyDelegationGrant(
 export type GrantFetchOutcome =
   | { status: 'ok'; value: string; grant: VaultDelegationGrant }
   | { status: 'not_found' | 'not_grantee' | 'inactive' | 'expired' | 'consumed' };
+/** Metadata-only lookup: never unwraps, decrypts, or consumes a grant. */
+export async function getGrantById(grantId: string): Promise<VaultDelegationGrant | undefined> {
+  const rows = await db.select().from(vaultDelegationGrants)
+    .where(eq(vaultDelegationGrants.id, grantId)).limit(1);
+  return rows[0];
+}
 
 /**
  * Resolve, validate, and (on success) decrypt the sealed value behind one
@@ -1693,6 +1699,7 @@ export type GrantFetchOutcome =
  * invalid owner signature); the caller should route those through
  * `toVaultErrorResponse`.
  */
+
 export async function fetchGrantSecret(params: {
   grantId: string;
   granteeDid: string;

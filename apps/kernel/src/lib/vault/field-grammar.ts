@@ -98,6 +98,12 @@ export function isInternalSecretField(field: string): boolean {
   return vaultFieldNamespace(field) === INTERNAL_SECRET_NAMESPACE;
 }
 
+/** App self-secrets have no plaintext operator/legacy HTTP surface (#2799). */
+export function isAppSelfSecretField(field: string): boolean {
+  const parsed = parseVaultFieldName(field);
+  return parsed.ok && parsed.value.namespace === INTERNAL_SECRET_NAMESPACE && parsed.value.name.startsWith('app-self:');
+}
+
 /** True when `field` is a `vault-minted-key:*` field (#2242). */
 export function isMintedKeyField(field: string): boolean {
   return vaultFieldNamespace(field) === MINTED_KEY_NAMESPACE;

@@ -515,6 +515,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/shared-internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/vault-path.ts` — D2 (mention only)
 - `apps/kernel/src/lib/apps/provision.ts` — D2
+- `apps/kernel/src/lib/apps/self-secrets.ts` — D2/S3 (app-scoped custody and node-signed lifecycle facts)
 - `apps/kernel/app/api/apps/claim/route.ts` — D2
 - `apps/kernel/app/api/apps/signing-key/fetch/route.ts` — D2
 - `apps/kernel/app/api/cron/vault-grant-expiry/route.ts` — D2

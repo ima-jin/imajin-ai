@@ -105,6 +105,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       template: undefined,
       attestationTypes: [],
       approvedDeclarations: null,
+      authorizedBy: AUTHORIZED_BY,
     });
   });
 

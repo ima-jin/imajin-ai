@@ -23,7 +23,7 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval, mockExecuteAppsServiceScopesApproval } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval, mockExecuteAppsServiceScopesApproval, mockExecuteAppSecretsApproval } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
@@ -31,6 +31,7 @@ const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApprova
   mockExecuteAccessApproval: vi.fn(),
   mockExecuteGithubApproval: vi.fn(),
   mockExecuteAppsServiceScopesApproval: vi.fn(),
+  mockExecuteAppSecretsApproval: vi.fn(),
 }));
 
 // #2359: `act-as-guard.ts` calls the real `isUnderActAs`/`resolveActingDid`,
@@ -40,6 +41,30 @@ const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApprova
 vi.mock('@imajin/auth', async () => {
   const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
   return { ...actual, requireAuth: mockRequireAuth };
+});
+
+describe('app-secret explicit dispatch', () => {
+  it.each(['sync', 'rotate', 'revoke'])('dispatches apps:secrets-%s only after approval', async (action) => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'approved', source: 'apps', kind: `apps:secrets-${action}` }) });
+    const response = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(mockExecuteAppSecretsApproval).toHaveBeenCalledTimes(1);
+    expect(mockExecuteVaultApproval).not.toHaveBeenCalled();
+    expect(mockExecuteAppsServiceScopesApproval).not.toHaveBeenCalled();
+    const body = await response.json();
+    expect(body.data.names).toEqual(['SESSION_SECRET']);
+    expect(body.data.value).toBeUndefined();
+  });
+  it('never dispatches a rejected secret proposal', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'denied', source: 'apps', kind: 'apps:secrets-rotate' }) });
+    await POST(makeReq({ decision: 'reject' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(mockExecuteAppSecretsApproval).not.toHaveBeenCalled();
+  });
+  it('refuses unknown app kinds rather than falling through to provisioning', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'approved', source: 'apps', kind: 'apps:unknown' }) });
+    const body = await (await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID))).json();
+    expect(body.executionError).toContain('Unrecognized apps proposal kind');
+    expect(mockExecuteAppSecretsApproval).not.toHaveBeenCalled();
+  });
 });
 
 vi.mock('@/src/lib/vault/approvals-execution', () => ({
@@ -52,6 +77,9 @@ vi.mock('@/src/lib/access/approvals-execution', () => ({
 
 vi.mock('@/src/lib/apps/service-scopes', () => ({
   executeAppsServiceScopesApproval: mockExecuteAppsServiceScopesApproval,
+}));
+vi.mock('@/src/lib/apps/secrets-operator', () => ({
+  executeAppSecretsApproval: mockExecuteAppSecretsApproval,
 }));
 
 vi.mock('@/src/lib/github/approvals-execution', () => ({
@@ -114,6 +142,7 @@ beforeEach(() => {
   mockExecuteAccessApproval.mockResolvedValue({ ok: true, data: { bearer: 'plaintext-bearer', bearerId: 'dgb_1', expiresAt: '2026-04-01T00:00:00.000Z', hardCapAt: '2026-04-15T00:00:00.000Z' } });
   mockExecuteGithubApproval.mockResolvedValue({ ok: true });
   mockExecuteAppsServiceScopesApproval.mockResolvedValue({ ok: true, data: { appDid: 'did:imajin:app', action: 'grant', approvedServiceScopes: ['identity:write'] } });
+  mockExecuteAppSecretsApproval.mockResolvedValue({ ok: true, data: { appDid: 'did:imajin:fake-app', action: 'sync', names: ['SESSION_SECRET'] } });
 });
 
 describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {

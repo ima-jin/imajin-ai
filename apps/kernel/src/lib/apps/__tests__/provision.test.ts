@@ -72,6 +72,8 @@ const {
 // #2663: the registry/auth-backed validator is covered by app-declarations.test.ts;
 // here it passes manifest declarations through unless a test overrides it.
 const { validateAppDeclarationsMock } = vi.hoisted(() => ({ validateAppDeclarationsMock: vi.fn() }));
+const { ensureAppDeclaredSecretsMock } = vi.hoisted(() => ({ ensureAppDeclaredSecretsMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../self-secrets', () => ({ ensureAppDeclaredSecrets: ensureAppDeclaredSecretsMock }));
 vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: validateAppDeclarationsMock }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => logMock }));
@@ -258,6 +260,28 @@ beforeEach(() => {
 });
 
 describe('runAppProvision — #2663 scope declarations: exactly what the operator approved', () => {
+  it('#2799 registers approved recipes and issues through the vault before returning a claim', async () => {
+    const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' as const }];
+    const approved = { providesScopes: [], dependsOn: [], emittableEvents: [], secrets };
+    fetchAppManifestMock.mockResolvedValue({ secrets });
+    const outcome = await runAppProvision({ slug: 'coffee', displayName: 'Coffee', approvedDeclarations: approved });
+    expect(outcome.status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0].secrets).toEqual(secrets);
+    expect(ensureAppDeclaredSecretsMock).toHaveBeenCalledWith(MINTED_DID, undefined);
+    expect(ensureAppDeclaredSecretsMock.mock.invocationCallOrder[0]).toBeLessThan(issueSigningKeyClaimMock.mock.invocationCallOrder[0]);
+    expect(JSON.stringify(outcome)).not.toContain('SESSION_SECRET');
+  });
+
+  it('#2799 refuses recipe drift before registry write or issuance', async () => {
+    fetchAppManifestMock.mockResolvedValue({ secrets: [{ name: 'SESSION_SECRET', kind: 'random-64B' }] });
+    const outcome = await runAppProvision({
+      slug: 'coffee', displayName: 'Coffee',
+      approvedDeclarations: { providesScopes: [], dependsOn: [], emittableEvents: [], secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }] },
+    });
+    expect(outcome.status).toBe('failed');
+    expect(registryAppsStore.size).toBe(0);
+    expect(ensureAppDeclaredSecretsMock).not.toHaveBeenCalled();
+  });
   const declared = {
     providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
