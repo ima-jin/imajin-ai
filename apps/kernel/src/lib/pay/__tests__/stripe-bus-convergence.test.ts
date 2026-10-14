@@ -184,6 +184,15 @@ describe('pay webhook -> connector bus -> pay-stripe reactor (#2177)', () => {
     expect(settleFromCheckoutMock).not.toHaveBeenCalled();
   });
 
+  it('does not settle new node-owned topups through the legacy platform endpoint', async () => {
+    state.constructEventMock.mockReturnValue(checkoutEvent('evt_node_topup', {
+      metadata: { service: 'topup', nodeDid: 'did:imajin:node', buyerDid: 'did:imajin:buyer', topupAmount: '25' },
+    }));
+    expect((await POST(makeRequest())).status).toBe(200);
+    expect(state.insertCalls).toHaveLength(0);
+    expect(state.updateCalls).toHaveLength(0);
+  });
+
   it('routes a payment_request-linked checkout into the settlePayment() seam through the bus', async () => {
     state.constructEventMock.mockReturnValue(
       checkoutEvent('evt_pr', {

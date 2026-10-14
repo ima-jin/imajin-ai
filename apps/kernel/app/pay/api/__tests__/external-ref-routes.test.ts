@@ -30,6 +30,12 @@ vi.mock('@/src/db', () => ({
   transactions: {},
 }));
 vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: mocks.payCheckout }) }));
+vi.mock('@/src/lib/pay/providers/node-stripe', () => ({
+  getNodeStripeClient: async () => ({
+    nodeDid: 'did:imajin:node',
+    stripe: { checkout: { sessions: { create: mocks.payCheckout } } },
+  }),
+}));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: () => new Response(null, { status: 204 }) }));
 vi.mock('@imajin/config', () => ({

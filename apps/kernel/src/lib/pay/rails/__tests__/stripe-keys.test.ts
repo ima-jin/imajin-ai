@@ -19,6 +19,24 @@ beforeEach(() => {
   mocks.unseal.mockResolvedValue('pk_test_fake');
 });
 describe('resolveDidStripeKeys', () => {
+  it('never reads node Stripe env credentials, including on a missing sealed key', async () => {
+    const env = new Proxy(process.env, {
+      get(target, property) {
+        if (property === 'STRIPE_SECRET_KEY' || property === 'STRIPE_PUBLISHABLE_KEY') {
+          throw new Error('Node Stripe credential read');
+        }
+        return Reflect.get(target, property);
+      },
+    });
+    vi.stubGlobal('process', { ...process, env });
+    try {
+      expect(await resolveDidStripeKeys(DID)).toEqual({ secretKey: 'rk_test_fake', publishableKey: 'pk_test_fake' });
+      mocks.credentials.mockResolvedValue(undefined);
+      await expect(resolveDidStripeKeys(DID)).rejects.toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
   it('reads both credentials from the same DID connector', async () => {
     expect(await resolveDidStripeKeys(DID)).toEqual({ secretKey: 'rk_test_fake', publishableKey: 'pk_test_fake' });
     expect(mocks.rail).toHaveBeenCalledWith(DID);

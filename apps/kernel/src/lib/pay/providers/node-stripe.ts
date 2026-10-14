@@ -1,5 +1,4 @@
 import Stripe from 'stripe';
-import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { resolveDidStripeKeys, SellerNoCardRailError } from '../rails/stripe-keys';
 
 export class NodeCardRailNotConfiguredError extends Error {
@@ -13,7 +12,8 @@ export class NodeCardRailNotConfiguredError extends Error {
 
 /** No startup lookup or cached key: revoking the node's connector takes effect on the next call. */
 export async function getNodeStripeClient(): Promise<{ nodeDid: string; stripe: Stripe }> {
-  const nodeDid = await getNodeDid();
+  const { getNodeDidFromConfig } = await import('@/src/lib/kernel/node-identity');
+  const nodeDid = await getNodeDidFromConfig();
   if (!nodeDid) throw new NodeCardRailNotConfiguredError();
   try {
     const { secretKey } = await resolveDidStripeKeys(nodeDid);

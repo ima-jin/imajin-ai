@@ -206,6 +206,10 @@ async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
   }
 
   try {
+    // #2793: a node-owned connector receipt is allowed to fund its own topup,
+    // unlike seller BYO payments, which must never mint a platform balance.
+    const { settleNodeTopupFromStripe } = await import('@/src/lib/pay/node-topup-settlement');
+    if (await settleNodeTopupFromStripe({ ownerDid, transactionId: payTransactionId, paymentIntentId, amount, currency })) return;
     const { settleCheckoutFromByoStripe } = await import('@/src/lib/pay/byo-checkout-settlement');
     const outcome = await settleCheckoutFromByoStripe({ ownerDid, transactionId: payTransactionId, paymentIntentId, amount, currency });
     if (!outcome.settled) return;
@@ -305,6 +309,9 @@ async function handlePaymentFailed(event: RailEvent) {
 
 async function handleCheckoutCompleted(event: RailEvent) {
   const session = event.raw as unknown as StripeCheckoutSessionLike;
+  // Node-owned topups settle only from the node connector's PaymentIntent.
+  // During rollout the old platform endpoint may see the same account's event.
+  if (session.metadata?.service === 'topup' && session.metadata.nodeDid) return;
 
   // #2209: a payment_request-linked checkout is a structurally different
   // flow (settle exclusively via settlePayment(), never the generic
