@@ -5,7 +5,6 @@
  */
 import { randomBytes } from 'node:crypto';
 import { and, asc, eq } from 'drizzle-orm';
-import { emitMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { db, registryApps, vaultDelegationGrants, attestations } from '@/src/db';
 import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { getOrGenerateInternalSecret, internalSecretField } from '@/src/lib/vault/internal-secret';
@@ -78,6 +77,7 @@ async function recordPhase(
   appDid: string, name: string, phase: Phase, grantId?: string, authorizedBy?: VaultAuthorization,
 ): Promise<void> {
   try {
+    const { emitMechanicalAttestation } = await import('@/src/lib/auth/emit-mechanical-attestation');
     const attestationId = await emitMechanicalAttestation({
       subjectDid: appDid,
       type: 'apps.secret.lifecycle',
