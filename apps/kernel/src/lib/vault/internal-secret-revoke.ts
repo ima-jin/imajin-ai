@@ -71,9 +71,8 @@ export async function revokeInternalSecret(purpose: string, options: { revokeExt
     // App withdrawal must erase every consumer's wrap in the same transaction.
     if (options.revokeExternal) {
       const grants = await listActiveGrantsForField(field, tx);
-      for (const grant of grants) {
-        if (grant.grantedTo !== ownerDid) await revokeStaticSecretGrant(field, grant.grantedTo, tx);
-      }
+      await Promise.all(grants.filter((grant) => grant.grantedTo !== ownerDid)
+        .map((grant) => revokeStaticSecretGrant(field, grant.grantedTo, tx)));
     }
     const selfGrantRevoked = await revokeStaticSecretGrant(field, ownerDid, tx);
     const cleared = await tx

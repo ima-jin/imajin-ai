@@ -73,7 +73,7 @@ describe('app-scoped existing-vault lifecycle', () => {
     expect(result).toBeUndefined();
     expect(state.generate).toHaveBeenCalledWith(appSecretPurpose(APP, 'SESSION_SECRET'), expect.any(Function));
     const generated = await state.generate.mock.results[0].value;
-    expect(generated.length).toBe(64);
+    expect(generated).toHaveLength(64);
     expect(JSON.stringify(state.attest.mock.calls).includes(generated)).toBe(false);
     expect(state.grant).toHaveBeenCalledWith(appSecretPurpose(APP, 'SESSION_SECRET'), APP, 'did:imajin:node');
     expect(state.attest.mock.calls.map(([fact]) => fact.payload.phase)).toEqual(['minted', 'granted']);
@@ -120,7 +120,7 @@ describe('app-scoped existing-vault lifecycle', () => {
     state.grants = [grantRow()];
     await rotateAppDeclaredSecret(APP, 'SESSION_SECRET', AUTH);
     expect(state.rotate.mock.calls[0][0]).toBe(grantRow().field);
-    expect(state.rotate.mock.calls[0][1].length).toBe(64);
+    expect(state.rotate.mock.calls[0][1]).toHaveLength(64);
     expect(state.attest.mock.calls.map(([fact]) => fact.payload.phase)).toEqual(['minted', 'granted', 'rotated']);
     expect(state.attest.mock.calls[2][0].payload.authorizedBy).toEqual(AUTH);
     expect(JSON.stringify(state.attest.mock.calls).includes(state.rotate.mock.calls[0][1])).toBe(false);

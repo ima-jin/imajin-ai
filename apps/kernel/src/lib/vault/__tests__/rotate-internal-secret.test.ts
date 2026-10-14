@@ -356,7 +356,7 @@ describe('rotate an internal-secret:* field (#2446)', () => {
     await rotateInternalSecret(field, randomBytes(32).toString('hex'));
     for (const id of before) {
       expect(stores.grants.get(id)?.status).toBe('superseded');
-      expect(String(stores.grants.get(id)?.wrappedKey).length).toBe(0);
+      expect(String(stores.grants.get(id)?.wrappedKey)).toHaveLength(0);
       expect((await first.vault.fetchGrantSecret({ grantId: id, granteeDid: appDid })).status).not.toBe('ok');
     }
     const restarted = await boot();
@@ -364,7 +364,7 @@ describe('rotate an internal-secret:* field (#2446)', () => {
     const fetched = await restarted.vault.fetchGrantSecret({ grantId: String(active.id), granteeDid: appDid });
     expect(fetched.status).toBe('ok');
     if (fetched.status !== 'ok') throw new Error('fetch refused');
-    expect(fetched.value === original).toBe(false);
+    expect(fetched.value).not.toBe(original);
     expect((await restarted.vault.fetchGrantSecret({ grantId: String(active.id), granteeDid: 'did:imajin:other-app' })).status).toBe('not_grantee');
     const response = await rotateViaRoute(field, 'obviously-fake-placeholder');
     expect(response.status).toBe(409);
@@ -385,7 +385,7 @@ describe('rotate an internal-secret:* field (#2446)', () => {
     for (const id of ids) {
       const row = stores.grants.get(id)!;
       expect(row.status).toBe('revoked');
-      expect(String(row.wrappedKey).length).toBe(0);
+      expect(String(row.wrappedKey)).toHaveLength(0);
       expect((await first.vault.fetchGrantSecret({ grantId: id, granteeDid: appDid })).status).not.toBe('ok');
     }
   });

@@ -23,6 +23,11 @@ export interface AppSecretTimelineEntry {
   via?: string;
   grantId?: string;
 }
+
+function secretStatus(grants: Array<{ status: string }>): AppDeclaredSecretStatus['status'] {
+  if (grants.some((grant) => grant.status === 'active')) return 'active';
+  return grants.some((grant) => grant.status === 'revoked') ? 'revoked' : 'missing';
+}
 async function ensureAppGrant(appDid: string, name: string): Promise<string> {
   try {
     const grant = await grantInternalSecretTo(appSecretPurpose(appDid, name), appDid, getNodeSigningIdentity().senderDid);
@@ -62,7 +67,7 @@ async function requireDeclaration(appDid: string, name: string): Promise<AppSecr
 }
 
 /** Scope every lookup to this kernel AND this app AND this declared purpose. */
-async function grantsForSecret(appDid: string, name: string) {
+function grantsForSecret(appDid: string, name: string) {
   const purpose = appSecretPurpose(appDid, name);
   return db.select().from(vaultDelegationGrants).where(and(
     eq(vaultDelegationGrants.subject, getNodeSigningIdentity().senderDid),
@@ -102,13 +107,14 @@ async function recordIssuance(appDid: string, name: string, grantId: string, aut
     eq(attestations.type, 'apps.secret.lifecycle'),
     eq(attestations.contextId, appSecretPurpose(appDid, name)),
   )).orderBy(asc(attestations.issuedAt));
-  for (const phase of ['minted', 'granted'] as const) {
+  // Keep mint before grant in the signed timeline, and stop if audit fails.
+  await (['minted', 'granted'] as const).reduce<Promise<void>>((chain, phase) => chain.then(async () => {
     const recorded = facts.some((fact) => {
       const payload = fact.payload as Record<string, unknown> | null;
       return payload?.grantId === grantId && payload.phase === phase;
     });
     if (!recorded) await recordPhase(appDid, name, phase, grantId, authorizedBy);
-  }
+  }), Promise.resolve());
 }
 
 /** Issue only missing recipes; revoked grants are durable withdrawal tombstones. */
@@ -116,19 +122,24 @@ export async function ensureAppDeclaredSecrets(appDid: string, authorizedBy?: Va
   const declarations = await declarationsForApp(appDid);
   if (declarations.length === 0) return;
   requireSupportedCustody();
-  for (const secret of declarations) {
-    const grants = await grantsForSecret(appDid, secret.name);
-    const active = grants.find((grant) => grant.status === 'active');
-    if (active) {
-      await recordIssuance(appDid, secret.name, active.id, authorizedBy);
-      continue;
-    }
-    if (grants.some((grant) => grant.status === 'revoked')) continue;
-    const purpose = appSecretPurpose(appDid, secret.name);
-    await getOrGenerateInternalSecret(purpose, () => randomBytes(APP_SECRET_KINDS[secret.kind]).toString('hex'));
-    const grantId = await ensureAppGrant(appDid, secret.name);
-    await recordIssuance(appDid, secret.name, grantId, authorizedBy);
+  await declarations.reduce<Promise<void>>(
+    (chain, secret) => chain.then(() => issueOneAppSecret(appDid, secret, authorizedBy)),
+    Promise.resolve(),
+  );
+}
+
+async function issueOneAppSecret(appDid: string, secret: AppSecretDeclaration, authorizedBy?: VaultAuthorization): Promise<void> {
+  const grants = await grantsForSecret(appDid, secret.name);
+  const active = grants.find((grant) => grant.status === 'active');
+  if (active) {
+    await recordIssuance(appDid, secret.name, active.id, authorizedBy);
+    return;
   }
+  if (grants.some((grant) => grant.status === 'revoked')) return;
+  const purpose = appSecretPurpose(appDid, secret.name);
+  await getOrGenerateInternalSecret(purpose, () => randomBytes(APP_SECRET_KINDS[secret.kind]).toString('hex'));
+  const grantId = await ensureAppGrant(appDid, secret.name);
+  await recordIssuance(appDid, secret.name, grantId, authorizedBy);
 }
 
 /** Called only after keystore proof-of-possession; never used as an HTTP response. */
@@ -177,8 +188,7 @@ export async function listAppDeclaredSecrets(appDid: string): Promise<AppDeclare
         eq(attestations.contextId, appSecretPurpose(appDid, secret.name)),
       )).orderBy(asc(attestations.issuedAt));
     const timeline = facts.flatMap((fact) => timelineEntry(fact.payload as Record<string, unknown> | null, fact.issuedAt));
-    const status = grants.some((grant) => grant.status === 'active') ? 'active'
-      : grants.some((grant) => grant.status === 'revoked') ? 'revoked' : 'missing';
+    const status = secretStatus(grants);
     return { ...secret, status, timeline };
   }));
 }

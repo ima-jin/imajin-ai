@@ -89,9 +89,9 @@ export function AppSecretsPanel() {
         Names, recipes and signed lifecycle only — no reveal. Sync reads the app manifest; all changes require your signature.
         Rotation takes effect on the app&apos;s next boot. Rotating SESSION_SECRET signs users out when the app restarts.
       </p>
-      {notice && <p className="text-xs text-amber-300" role="status">{notice}{proposalId && (
+      {notice && <output className="block text-xs text-amber-300">{notice}{proposalId && (
         <> <a className="underline" href={`#${approvalCardAnchorId(proposalId)}`}>Review proposal</a></>
-      )}</p>}
+      )}</output>}
       {apps.length === 0 && <p className="text-xs text-gray-500">No registered or provisioned apps yet.</p>}
       {apps.map((app) => (
         <article key={app.appDid ?? app.slug} className="rounded-lg border border-gray-800 p-3 space-y-2">
