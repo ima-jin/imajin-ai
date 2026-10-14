@@ -19,7 +19,7 @@ don't have to be lock-stepped with this contract's generalization.
 ## Notify authentication migration (#2798)
 
 Notification payload compatibility above is unchanged, but transport authentication
-is deliberately breaking: there is no legacy shared notify secret acceptance.
+uses registered app tokens. A temporary notify-only rollout bridge is documented below.
 `/notify/api/send`, `/notify/api/broadcast`, and `/notify/api/interest` accept a
 registered **app-service** token with `notify:send`, `notify:broadcast`, or
 `notify:interest`, respectively. The app must be active and the endpoint scope
@@ -28,6 +28,15 @@ Approvals use the existing countersigned `apps:service-scopes` flow, and are
 re-read on every call; user/session tokens do not authorize these endpoints.
 These scopes are not globally service-eligible: requested scopes alone never
 grant access.
+
+**Temporary dual accept (2026-10-14, #2798):** existing userspace event callers
+still use the shared notify header. Until those app-side migrations land, only
+`src/lib/notify/legacy-auth.ts` reads `NOTIFY_WEBHOOK_SECRET`; setting it enables
+`x-webhook-secret` on send/broadcast/interest when **no Authorization header** is
+present. Comparison is timing-safe and a deprecation warning is emitted once per
+process. Invalid Bearer tokens never downgrade to this lane. Unset the variable
+to disable legacy auth immediately, and remove this bridge after the tracked
+userspace migration. It does not apply to registry/contact/internal approvals.
 
 Kernel/internal callers retain the vault-sourced internal Bearer contract
 (`provideInternalApiKey` / `getVaultInternalApiKey`, populated at boot). Internal

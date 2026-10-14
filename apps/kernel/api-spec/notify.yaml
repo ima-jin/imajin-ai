@@ -27,7 +27,12 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: "Registered app-service JWT with endpoint scope and current operator approval, or vault-sourced internal Bearer key. User/session tokens and legacy webhook secrets are not accepted by send/broadcast/interest."
+      description: "Registered app-service JWT with endpoint scope and current operator approval, or vault-sourced internal Bearer key. User/session tokens are not accepted. A temporary notify-only legacy-header rollout bridge is opt-in; see legacyNotifyAuth."
+    legacyNotifyAuth:
+      type: apiKey
+      in: header
+      name: x-webhook-secret
+      description: "Deprecated rollout only (2026-10-14, #2798): accepted on send/broadcast/interest only when the legacy notify secret is explicitly set and no Authorization header is supplied. Warns once; unset the variable to disable. Never used for registry/contact/internal approval routes."
   schemas:
     Notification:
       type: object
@@ -270,6 +275,7 @@ paths:
       description: Requires notify:send in an app-service token and the active app's approvedServiceScopes, or the vault internal Bearer key. Registration and approval are checked on every request.
       security:
         - bearerAuth: []
+        - legacyNotifyAuth: []
       requestBody:
         required: true
         content:
@@ -309,6 +315,7 @@ paths:
       description: Requires notify:broadcast in an app-service token and the active app's approvedServiceScopes, or the vault internal Bearer key. Registry calls use the kernel's own vault credential, never the caller token.
       security:
         - bearerAuth: []
+        - legacyNotifyAuth: []
       requestBody:
         required: true
         content:
@@ -355,6 +362,7 @@ paths:
       description: Requires notify:interest in an app-service token and the active app's approvedServiceScopes, or the vault internal Bearer key. The registry catalog maps attestationType to an interest scope; auto-subscribe preferences govern defaults.
       security:
         - bearerAuth: []
+        - legacyNotifyAuth: []
       requestBody:
         required: true
         content:

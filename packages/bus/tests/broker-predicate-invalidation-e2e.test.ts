@@ -95,6 +95,7 @@ vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
 // The attestation emitter persists into the same table the cache reads from.
 vi.mock('@imajin/auth', () => ({
+  getVaultInternalApiKey: () => undefined,
   emitAttestation: vi.fn(async (params: {
     subject_did: string;
     type: string;

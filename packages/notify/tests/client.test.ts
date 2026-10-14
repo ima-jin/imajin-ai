@@ -11,6 +11,15 @@ beforeEach(() => {
   vi.stubGlobal('fetch', mocks.fetch);
 });
 afterEach(() => vi.unstubAllGlobals());
+it('shares boot configuration across separately loaded server bundles', async () => {
+  configureNotify({ serviceUrl: 'https://configured.test/notify', appTokenProvider: async () => 'fake-configured-token' });
+  vi.resetModules();
+  const reloaded = await import('../src');
+  await reloaded.send({ to: 'did:imajin:fake-recipient', scope: 'test.notification' });
+  expect(mocks.fetch).toHaveBeenCalledWith('https://configured.test/notify/api/send', expect.objectContaining({
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer fake-configured-token' },
+  }));
+});
 
 const calls = [
   ['send', () => send({ to: 'did:imajin:fake-recipient', scope: 'test.notification' })],

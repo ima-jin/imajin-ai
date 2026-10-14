@@ -11,6 +11,7 @@ vi.mock('../src/publish', () => ({
 // Mock @imajin/auth so the release reactor's emitAttestation() bridge (#1508)
 // doesn't make real network calls during tests.
 vi.mock('@imajin/auth', () => ({
+  getVaultInternalApiKey: () => undefined,
   emitAttestation: vi.fn().mockResolvedValue(undefined),
 }));
 

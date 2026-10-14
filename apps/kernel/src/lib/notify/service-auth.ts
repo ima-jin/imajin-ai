@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { authenticatePayApp as authenticateRegisteredApp } from '../pay/app-service-auth';
 import { requireInternalApiKey, ATTESTATION_INTERNAL_API_KEY_PURPOSE } from '../auth/require-internal-api-key';
 import { getInternalSecret } from '../vault/internal-secret';
+import { acceptsLegacyNotifyCredential } from './legacy-auth';
 
 export type NotifyServiceScope = 'notify:send' | 'notify:broadcast' | 'notify:interest';
 
@@ -17,6 +18,7 @@ export async function requireNotifyAuth(
   headers: Record<string, string>,
 ): Promise<NextResponse | null> {
   if (!request.headers.get('authorization')?.startsWith('Bearer ')) {
+    if (acceptsLegacyNotifyCredential(request)) return null;
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers });
   }
   if (!await requireInternalApiKey(request)) return null;

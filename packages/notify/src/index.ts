@@ -10,14 +10,17 @@ export interface NotifyConfiguration {
   internalSecretProvider?: () => string | undefined | Promise<string | undefined>;
 }
 
-let configuration: NotifyConfiguration = {};
+// Instrumentation and route handlers can be separately bundled by Next.js.
+const NOTIFY_CONFIGURATION = Symbol.for('@imajin/notify/configuration');
+const globalState = globalThis as { [NOTIFY_CONFIGURATION]?: NotifyConfiguration };
 
 /** Configure at boot. Existing send/broadcast/interest call signatures remain unchanged. */
 export function configureNotify(options: NotifyConfiguration): void {
-  configuration = { ...options };
+  globalState[NOTIFY_CONFIGURATION] = { ...options };
 }
 
 async function transport(): Promise<{ url: string; headers: Record<string, string> } | null> {
+  const configuration = globalState[NOTIFY_CONFIGURATION] ?? {};
   const url = configuration.serviceUrl ?? process.env.NOTIFY_SERVICE_URL;
   const token = configuration.appTokenProvider
     ? await configuration.appTokenProvider()

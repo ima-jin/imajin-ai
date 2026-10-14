@@ -89,6 +89,13 @@ beforeEach(() => {
 });
 
 describe('mintableServiceScopes', () => {
+  it('mints notify endpoint scopes only when requested AND operator-approved', () => {
+    const notifyScopes = ['notify:send', 'notify:broadcast', 'notify:interest'];
+    expect(mintableServiceScopes(notifyScopes, [])).toEqual([]);
+    expect(mintableServiceScopes([], notifyScopes)).toEqual([]);
+    expect(mintableServiceScopes(notifyScopes, notifyScopes)).toEqual(notifyScopes);
+    expect(mintableServiceScopes(notifyScopes, ['notify:send'])).toEqual(['notify:send']);
+  });
   it('is empty for requestedScopes alone (fail-closed) and never returns an unrequested approved scope', () => {
     expect(mintableServiceScopes(['identity:write'], [])).toEqual([]);
     expect(mintableServiceScopes([], ['identity:write'])).toEqual([]);
