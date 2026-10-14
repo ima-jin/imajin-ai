@@ -1,6 +1,6 @@
 # Signed kernel callbacks (#2798)
 
-Apps verify kernel callbacks with `verifyKernelWebhook` from `@ima-jin/auth/kernel-webhook`
+Apps adopting signed verification use `verifyKernelWebhook` from `@ima-jin/auth/kernel-webhook`
 (the published name of the workspace's `@imajin/auth`). This is the server-side
 SDK apps already use for `loadFromVault` and shared cryptographic contracts.
 `auth-client` owns federated login/session and app-keystore bootstrapping; webhook
@@ -121,6 +121,17 @@ and continue processing.
 
 ## Operator rollout (tool steps only)
 
+**Standalone rollout status (2026-10-14):** coffee#13, learn#15 and market#15
+are still open; standalone coffee, learn and market remain **Bearer-only**.
+Kernel signatures are additive until those migrations merge and deploy.
+Keep the existing kernel `COFFEE_WEBHOOK_SECRET`, `LEARN_WEBHOOK_SECRET` and
+`MARKET_WEBHOOK_SECRET` set, matching each app's existing `WEBHOOK_SECRET`;
+keep their service URLs configured too. `kernel-webhook-legacy.ts` attaches
+the required Bearer only while the corresponding var is set. Removing a var
+before that app's migration ships causes payment callbacks to return 401.
+Do not generate, copy or rotate credentials for this rollout; retain the
+existing configuration until its removal gate is met.
+
 1. Release the SDK through the reviewed Release workflow and its automated package
    publishing job; do not publish from a shell or hand-bump a feature version.
 2. Deploy the kernel through its deploy workflow. Callback URLs are non-secret
@@ -129,12 +140,21 @@ and continue processing.
    receivers while #2516 remains blocked; standalone events#38 does not cover
    that copy. Events resolves its own app DID through its existing registered
    identity and uses its boot-loaded vault key for organizer contact/reply-to.
+   **Standalone `ima-jin/events` is not migrated by this PR:** it still uses
+   `x-webhook-secret` for settlement and contact. **events#38 must merge and
+   deploy before the #2529 standalone-events dev cutover.** Keep that cutover
+   blocked until the standalone signed-receiver/vault-Bearer migration is deployed
+   and verified; the patched monorepo copy is already compatible.
 3. Per-app #2241 children deploy verification with durable pins/replay storage and
    exercise a signed payment callback, replay, stale, tampered and unsigned inputs.
 4. Apps call notify using their own claimed app identity and scoped service token.
    Kernel-internal calls use the vault-resolved internal key; no env bearer is needed.
-5. After the per-app verification children close, remove the temporary legacy
-   bearer bridge through the reviewed removal change described below.
+5. Only after the matching child **merges and deploys**, and signed callbacks
+   are verified on that app, may its legacy var be removed: coffee#13 for
+   `COFFEE_WEBHOOK_SECRET`, learn#15 for `LEARN_WEBHOOK_SECRET`, market#15 for
+   `MARKET_WEBHOOK_SECRET`. Do not treat kernel deployment or issue closure
+   alone as proof that a standalone receiver has migrated. Remove the bridge
+   itself only after the full removal gate below is met.
 
 ## Dated removal note — 2026-10-14
 
@@ -150,7 +170,15 @@ invalid Bearer never falls back to the legacy lane. Contact, registry and intern
 approval callbacks remain vault-only; external internal-approval adapters must
 migrate to that existing vault credential before deployment.
 
-Removal trigger: **all per-app verify children of #2241 are closed**. Delete the
+Removal trigger: **all per-app verify children of #2241 are closed and their
+migrations have merged and deployed**, explicitly including
+[coffee#13](https://github.com/ima-jin/coffee/issues/13),
+[learn#15](https://github.com/ima-jin/learn/issues/15),
+[market#15](https://github.com/ima-jin/market/issues/15) and
+[events#38](https://github.com/ima-jin/events/issues/38). Verify signed callback
+acceptance on each deployed standalone app before removing its legacy configuration.
+Until then retain the existing per-app Bearers; a kernel signature alone does
+not satisfy an unmigrated receiver. Delete the
 legacy module `auth/kernel-webhook-legacy.ts:12-33`, the import at
 `auth/kernel-webhook.ts:5` and optional `legacyWebhookHeaders(app)` spread at
 `auth/kernel-webhook.ts:47`, and the legacy-specific cases in

@@ -308,6 +308,15 @@ consumes nonces atomically. Production replicas use a shared DB-backed nonce
 adapter and persistent pins; the default nonce store is process-local.
 See [the signature protocol and typed failures](security/kernel-webhooks.md).
 
+This is the integration contract, not a claim that every standalone app has
+already adopted it. Standalone coffee/learn/market remain Bearer-only until
+coffee#13/learn#15/market#15 respectively merge and deploy; retain the existing
+kernel callback Bearers and service URLs until each migration ships.
+Standalone events still uses `x-webhook-secret` for settlement/contact:
+events#38 must merge and deploy before #2529's standalone-events dev cutover.
+The monorepo `apps/events` copy in this PR already verifies signatures and uses
+the vault internal Bearer. See the rollout/removal gate in the linked protocol doc.
+
 For direct notifications, approve `notify:send`, `notify:broadcast` and/or
 `notify:interest` through the existing countersigned `apps:service-scopes` tool
 flow. The token must carry the endpoint's scope and the app must still have that

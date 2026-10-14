@@ -94,7 +94,7 @@ PAY_SERVICE_URL="http://localhost:3004"
 AUTH_SERVICE_URL="http://localhost:3003"
 NEXT_PUBLIC_EVENTS_URL="http://localhost:3007"
 
-# Kernel callbacks are signed for this app's registered DID; no shared webhook key.
+# Monorepo copy: signed callbacks for this app DID; standalone waits for events#38.
 
 # Registered-app identity (settlement, #2739)
 IMAJIN_KERNEL_URL="http://localhost:3000"
@@ -110,6 +110,13 @@ SMTP_FROM="Your Name <you@example.com>"
 ```
 
 ### Settlement (registered-app contract)
+
+This section describes the patched **monorepo `apps/events` copy**, not
+standalone `ima-jin/events`. Standalone settlement and contact still use
+`x-webhook-secret` until [events#38](https://github.com/ima-jin/events/issues/38)
+merges and deploys. That migration must ship **before #2529's standalone-events
+dev cutover**; the signed/vault-Bearer behavior below is already implemented
+only in the monorepo copy changed by this PR.
 The live monorepo payment and settlement receivers use `verifyKernelWebhook`
 with events' own registered app DID as the required audience. They reject
 unsigned, cross-app, replayed, stale or tampered callbacks before order/ticket

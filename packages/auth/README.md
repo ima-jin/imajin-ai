@@ -80,6 +80,14 @@ fails closed (403) rather than trusting the header.
 
 ### Verifying kernel webhooks (Node.js)
 
+The helper below is the signed-verification contract for adopting receivers,
+not the current behavior of every standalone app. Coffee/learn/market remain
+Bearer-only until coffee#13/learn#15/market#15 merge and deploy; keep their
+existing kernel callback Bearers until then. Standalone events' settlement/contact
+still use `x-webhook-secret`; events#38 must merge and deploy before #2529's dev
+cutover. The monorepo `apps/events` copy is already signed + vault-Bearer.
+See `docs/security/kernel-webhooks.md` for the per-app rollout and removal gate.
+
 The server-only `@ima-jin/auth/kernel-webhook` entry exports
 `verifyKernelWebhook<T>(request, options)`, which authenticates the **raw request bytes**
 before parsing JSON, returns the parsed body, and throws a `KernelWebhookError`
@@ -182,7 +190,8 @@ the exact raw body, joined with newlines (no trailing newline). The wire
 headers are `x-kernel-audience`, `x-kernel-kid`, `x-kernel-timestamp`, `x-kernel-nonce`, and
 `x-kernel-signature` (128-character Ed25519 hex). Verification uses Node's
 Ed25519 implementation, never string comparison of signatures.
-Unsigned deliveries and legacy shared-secret headers are not accepted.
+The helper does not accept unsigned deliveries or legacy shared-secret headers;
+that does not describe the unmigrated standalone receivers noted above.
 
 Error codes are `INVALID_REQUEST`, `STALE`, `FUTURE`, `SIGNATURE_INVALID`,
 `UNKNOWN_KEY`, `TRUST`, `DISCOVERY`, `STORE`, `REPLAY`, `INVALID_BODY`, and

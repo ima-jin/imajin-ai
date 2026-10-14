@@ -456,10 +456,17 @@ now point at `ima-jin/market` checkouts, not at
 (3104 dev / 7104 prod) and Caddy route (`jin.imajin.ai/market`) are unchanged.
 This repo's deploy workflows no longer build, migrate, or provision it — that is
 `ima-jin/market`'s own deploy. A node operator deploying only the kernel needs no
-market checkout at all. The kernel still reads `MARKET_SERVICE_URL` to
-forward signed pay webhooks to the standalone market (`notifyMarketService`);
-keep that non-secret URL configured. See `docs/security/kernel-webhooks.md`
-for SDK verification and rollout. The `market` Postgres
+market checkout at all. The kernel reads `MARKET_SERVICE_URL` **and**
+`MARKET_WEBHOOK_SECRET` to forward pay webhooks to standalone market
+(`notifyMarketService`); **leave both env vars in place** until
+[market#15](https://github.com/ima-jin/market/issues/15) merges and deploys.
+Until that migration ships, standalone market verifies only the legacy Bearer,
+which `apps/kernel/src/lib/auth/kernel-webhook-legacy.ts` attaches only while
+`MARKET_WEBHOOK_SECRET` is set. The detached kernel signature is additive;
+it does not replace market's current Bearer check. The kernel value must continue
+to match market's existing `WEBHOOK_SECRET`. Remove the legacy var only after
+market#15 ships and signed verification is confirmed on that deployment.
+See `docs/security/kernel-webhooks.md` for the rollout gates. The `market` Postgres
 schema stays in place (the standalone app owns that data); nothing here drops it.
 Until the standalone app's prod cutover is accepted, prod has no in-repo market
 process (a deliberate prod gap per the 2026-10-09 ruling). See

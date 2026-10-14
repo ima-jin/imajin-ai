@@ -270,9 +270,15 @@ against the registered-app contract. What changes here:
   standalone app claims its own.
 - The kernel pay webhook notifies learn over HTTP when a paid course enrollment is paid
   (`notifyLearnService` in `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading
-  `LEARN_SERVICE_URL`; ima-jin/learn#13). Callbacks carry a detached kernel signature,
-  verified with the published key through `verifyKernelWebhook` (#2798). A learn outage is logged and never
-  fails the Stripe ack.
+  `LEARN_SERVICE_URL` and `LEARN_WEBHOOK_SECRET`; ima-jin/learn#13).
+  `LEARN_WEBHOOK_SECRET` must equal learn's existing `WEBHOOK_SECRET`.
+  **Leave both env vars in place** until
+  [learn#15](https://github.com/ima-jin/learn/issues/15) merges and deploys.
+  The kernel now also sends a detached signature, but standalone learn does not
+  verify it yet: it remains Bearer-only until learn#15 ships.
+  `kernel-webhook-legacy.ts` sends that Bearer only while the kernel var is set,
+  so unsetting it early makes paid enrollment callbacks return 401.
+  A learn outage is logged and never fails the Stripe ack.
 
 ## 7. coffee is external now (#2500)
 
@@ -295,8 +301,14 @@ changes here:
   coffee's prod cutover is accepted. That prod gap is deliberate.
 - The `coffee` Postgres schema and its tables are untouched. See
   `migrations/BASELINE.md` ("#2500 — coffee per-table ownership decision").
-- The kernel pay webhook still notifies coffee over HTTP (`COFFEE_SERVICE_URL`);
-  that is the public contract the standalone app consumes and is unchanged.
+- The kernel pay webhook still notifies coffee over HTTP (`COFFEE_SERVICE_URL`).
+  Standalone coffee remains Bearer-only until
+  [coffee#13](https://github.com/ima-jin/coffee/issues/13) merges and deploys.
+  **Keep `COFFEE_SERVICE_URL` and `COFFEE_WEBHOOK_SECRET` set** until coffee#13
+  ships; the secret must continue to match coffee's existing `WEBHOOK_SECRET`.
+  The detached kernel signature is additive. `kernel-webhook-legacy.ts` only
+  attaches the Bearer while the kernel var is set, so removing it before
+  coffee's migration deploys breaks payment callbacks with 401.
 - `scripts/provision-service-bootstrap.mjs --all` discovers services from
   `apps/*/.env.example`, so it no longer mints a coffee bootstrap identity: the
   standalone app claims its own (`ima-jin/coffee` `docs/REGISTRATION.md`).
@@ -323,9 +335,14 @@ kernel API). What changes here:
 - The `market` Postgres schema and its tables are untouched. See
   `migrations/BASELINE.md` ("#2512 — market per-table ownership decision").
 - The kernel pay webhook still notifies market over HTTP (`notifyMarketService` in
-  `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading `MARKET_SERVICE_URL`);
-  the standalone app verifies the detached kernel signature with `verifyKernelWebhook`
-  (#2798) and settles its own purchases. Keep the non-secret service URL configured.
+  `apps/kernel/src/lib/pay/webhook-handlers.ts`, reading `MARKET_SERVICE_URL`
+  and `MARKET_WEBHOOK_SECRET`). **Leave both env vars in place** until
+  [market#15](https://github.com/ima-jin/market/issues/15) merges and deploys;
+  the secret must continue to match market's existing `WEBHOOK_SECRET`.
+  The standalone app will verify via `verifyKernelWebhook` once market#15
+  lands and is deployed; until then it is Bearer-only. The kernel's detached
+  signature is additive, and `kernel-webhook-legacy.ts` sends the required
+  Bearer only while the kernel var is set. Market settles its own purchases.
 - `scripts/provision-service-bootstrap.mjs --all` discovers services from
   `apps/*/.env.example`, so it no longer mints a market bootstrap identity: the
   standalone app claims its own (`ima-jin/market` `docs/REGISTRATION.md`).
@@ -351,6 +368,22 @@ kernel API). What changes here:
 - `scripts/provision-service-bootstrap.mjs --all` discovers services from
   `apps/*/.env.example`, so it no longer mints a dykil bootstrap identity: the
   standalone app claims its own (`ima-jin/dykil` `docs/REGISTRATION.md`).
+
+## 10. Standalone events dev cutover is gated (#2529)
+
+The monorepo `apps/events` copy patched by #2798 already verifies audience-bound
+kernel signatures for payment and settlement callbacks and uses the vault internal
+Bearer for organizer contact/reply-to. That does **not** describe standalone
+[`ima-jin/events`](https://github.com/ima-jin/events): its settlement and contact
+calls still use `x-webhook-secret` until
+[events#38](https://github.com/ima-jin/events/issues/38) ships.
+
+**events#38 must merge and deploy before the #2529 standalone-events dev cutover.**
+Do not point dev traffic at the unmigrated standalone receiver: the signed-only
+bus settlement callback and vault-only contact endpoint are incompatible with
+its old shared-header contract. Keep using the patched monorepo copy until the
+standalone migration is deployed and verified. Production monorepo use while
+#2516 is blocked is separate from this dev-cutover gate.
 
 ## Decisions for Ryan
 
