@@ -34,7 +34,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   // Auth
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { sessionOnly: true, service: 'pay' });
   if ('error' in authResult) {
     return NextResponse.json(
       { error: authResult.error },

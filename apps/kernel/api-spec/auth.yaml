@@ -173,6 +173,22 @@ components:
           enum: [soft, preliminary, established]
         role: { type: string }
         chainVerified: { type: boolean }
+    IdentitySearchResult:
+      type: object
+      required: [did, handle, name, scope, subtype, avatarUrl, avatarAssetId]
+      additionalProperties: false
+      properties:
+        did: { type: string, example: "did:imajin:abc123" }
+        handle: { type: [string, "null"] }
+        name: { type: [string, "null"] }
+        scope: { type: string }
+        subtype: { type: [string, "null"] }
+        avatarUrl:
+          type: [string, "null"]
+          description: Identity avatar URL, falling back to the profile avatar, or null.
+        avatarAssetId:
+          type: [string, "null"]
+          description: Identity avatar asset ID, falling back to the profile avatar asset ID, or null.
     Error:
       type: object
       required: [error]
@@ -818,6 +834,59 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/search:
+    get:
+      tags: [auth]
+      operationId: searchIdentities
+      summary: Search public identities by handle, display name, or DID
+      description: |
+        Public endpoint served at `/auth/api/search`. Case-insensitive substring
+        search across handle, display name, and DID; soft-tier identities are
+        excluded. Handle-prefix matches sort first, then results sort by name.
+        No authentication is required.
+      security: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, minLength: 2 }
+          description: |
+            Search text, trimmed before matching. At least 2 characters after
+            trimming are needed to search. Missing, empty, whitespace-only, or
+            shorter queries return 200 with `{ results: [] }`, not an error.
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 5, minimum: 1, maximum: 20 }
+          description: |
+            Maximum results. Parsed with base-10 parseInt and clamped to 1–20;
+            omitted defaults to 5. Non-numeric input is not explicitly rejected
+            with a 400; failures during search return the 500 response below.
+      responses:
+        "200":
+          description: Matching non-soft identities, or an empty results array
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                additionalProperties: false
+                properties:
+                  results:
+                    type: array
+                    maxItems: 20
+                    items: { $ref: "#/components/schemas/IdentitySearchResult" }
+        "500":
+          description: Failed to search identities
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                additionalProperties: false
+                properties:
+                  error: { type: string, const: "Failed to search identities" }
 
   /api/lookup/{id}:
     get:

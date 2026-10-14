@@ -167,10 +167,9 @@ GROUP_KEY_SECRET=$(gen_secret)
 MEDIA_INTERNAL_KEY=$(gen_secret)
 TRUST_INTERNAL_KEY=$(gen_secret)
 NOTIFY_SECRET=$(gen_secret)
-PAY_API_KEY=$(gen_secret)
 
 ok "Ed25519 AUTH_PRIVATE_KEY"
-ok "Shared internal API keys (AUTH, NOTIFY, PAY) — ATTESTATION_INTERNAL_API_KEY is vault-sourced, not generated here"
+ok "Shared internal API keys (AUTH, NOTIFY) — ATTESTATION_INTERNAL_API_KEY is vault-sourced, not generated here"
 ok "Kernel-only secrets (GROUP_KEY, MEDIA, TRUST)"
 
 # ── Copy and patch .env.local files ──────────────────────────────────────────
@@ -215,7 +214,6 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "TRUST_INTERNAL_API_KEY"        "\"${TRUST_INTERNAL_KEY}\""
     set_env "$local_env" "AUTH_INTERNAL_API_KEY"         "\"${AUTH_INTERNAL_KEY}\""
     set_env "$local_env" "NOTIFY_WEBHOOK_SECRET"         "\"${NOTIFY_SECRET}\""
-    set_env "$local_env" "PAY_SERVICE_API_KEY"           "\"${PAY_API_KEY}\""
 
     # ── Kernel: local dev public URLs ──────────────────────────────────────
     # APP_URL is the node's public origin, used server-side to anchor
@@ -272,12 +270,6 @@ for app in "${APPS[@]}"; do
       *) ;; # no-op for other apps
     esac
 
-    case "$app" in
-      events)
-        set_env "$local_env" "PAY_SERVICE_API_KEY" "\"${PAY_API_KEY}\""
-        ;;
-      *) ;; # no-op for other apps
-    esac
 
     ok "${app}/.env.local"
   fi

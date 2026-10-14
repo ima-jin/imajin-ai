@@ -11,6 +11,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 import {
   SPEC_MAX_CHARS,
   listApiSpecServices,
@@ -29,6 +30,68 @@ function pinCwdToKernel() {
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('auth.yaml identity search contract (#2780)', () => {
+  const auth = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/auth.yaml'), 'utf-8'));
+  const search = auth.paths['/api/search']?.get;
+
+  it('documents public GET with the real query threshold and clamped limit', () => {
+    expect(search.security).toEqual([]);
+    expect(search.parameters).toEqual([
+      expect.objectContaining({
+        name: 'q',
+        in: 'query',
+        required: false,
+        schema: { type: 'string', minLength: 2 },
+      }),
+      expect.objectContaining({
+        name: 'limit',
+        in: 'query',
+        required: false,
+        schema: { type: 'integer', default: 5, minimum: 1, maximum: 20 },
+      }),
+    ]);
+    expect(search.description).toContain('soft-tier identities');
+    expect(search.parameters[0].description).toContain('return 200 with `{ results: [] }`');
+  });
+
+  it('returns a results envelope referencing the exact search fields and nullability', () => {
+    expect(search.responses['200'].content['application/json'].schema).toEqual({
+      type: 'object',
+      required: ['results'],
+      additionalProperties: false,
+      properties: {
+        results: {
+          type: 'array',
+          maxItems: 20,
+          items: { $ref: '#/components/schemas/IdentitySearchResult' },
+        },
+      },
+    });
+    const result = auth.components.schemas.IdentitySearchResult;
+    const fields = ['did', 'handle', 'name', 'scope', 'subtype', 'avatarUrl', 'avatarAssetId'];
+    expect(result.required).toEqual(fields);
+    expect(Object.keys(result.properties)).toEqual(fields);
+    expect(result.additionalProperties).toBe(false);
+    for (const field of fields) {
+      expect(result.properties[field].type, field).toEqual(
+        ['did', 'scope'].includes(field) ? 'string' : ['string', 'null'],
+      );
+    }
+  });
+
+  it('documents only the emitted success and search failure responses', () => {
+    expect(Object.keys(search.responses)).toEqual(['200', '500']);
+    expect(search.responses['500'].content['application/json'].schema).toEqual({
+      type: 'object',
+      required: ['error'],
+      additionalProperties: false,
+      properties: {
+        error: { type: 'string', const: 'Failed to search identities' },
+      },
+    });
+  });
 });
 
 describe('specDirectory / specEndpoint', () => {
@@ -176,7 +239,7 @@ describe('auth.yaml documents the kernel signing-key well-known route (#2244)', 
   });
 });
 
-describe('auth.yaml documents the app-token, verify-delegation, and onboard poll/claim routes (#1993 #1995 #1996)', () => {
+describe('auth.yaml documents live auth routes (#1993 #1995 #1996 #2780)', () => {
   const DOCUMENTED_ROUTES: ReadonlyArray<{ path: string; routeFile: string }> = [
     { path: '/api/apps/token', routeFile: 'app/auth/api/apps/token/route.ts' },
     { path: '/api/apps/token/service', routeFile: 'app/auth/api/apps/token/service/route.ts' },
@@ -186,6 +249,7 @@ describe('auth.yaml documents the app-token, verify-delegation, and onboard poll
     { path: '/api/internal/verify-delegation', routeFile: 'app/auth/api/internal/verify-delegation/route.ts' },
     { path: '/api/onboard/poll', routeFile: 'app/auth/api/onboard/poll/route.ts' },
     { path: '/api/onboard/claim', routeFile: 'app/auth/api/onboard/claim/route.ts' },
+    { path: '/api/search', routeFile: 'app/auth/api/search/route.ts' },
   ];
 
   it.each(DOCUMENTED_ROUTES)('$path has both a live route file and a documented spec path', ({ path, routeFile }) => {

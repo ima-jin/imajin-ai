@@ -91,6 +91,11 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsOptions: () => new Response(null, { status: 204 }),
 }));
 vi.mock('@imajin/bus', () => ({ publish: mocks.publishMock }));
+vi.mock('@/src/lib/pay/app-settle', () => ({
+  authenticatePayApp: async (request: Request) => request.headers.get('authorization')
+    ? { appDid: 'did:imajin:events' }
+    : { error: 'App-service token required', status: 401 },
+}));
 
 // ─── Subject ────────────────────────────────────────────────────────────────
 
@@ -119,6 +124,7 @@ function nextSelect(rows: unknown[]): void {
 }
 
 const BASE_TX = {
+  appDid: 'did:imajin:events',
   id: 'tx_original_1',
   service: 'events',
   type: 'ticket',

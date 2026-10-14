@@ -31,15 +31,11 @@ components:
       type: http
       scheme: bearer
       description: "Bearer token (internal service-to-service or user API token)"
-    apiKeyAuth:
-      type: http
-      scheme: bearer
-      description: "PAY_SERVICE_API_KEY — internal service-to-service calls only"
     appServiceToken:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying the operation's operator-approved per-app scope (pay:settle or pay:setup-intent)"
+      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying the route's operator-approved per-app scope (pay:settle, pay:refund, pay:charge-pledges or pay:setup-intent); active app and live approval checked on every call"
     railWebhookSignature:
       type: apiKey
       in: header
@@ -621,46 +617,129 @@ paths:
     post:
       tags: [pay]
       operationId: topupBalance
-      summary: Credit cash balance — internal service-to-service only
+      summary: Start a receipt-backed Stripe topup for the authenticated user
       description: |
-        Represents real money received (e.g. from a rail webhook). Always credits `cash_amount`.
-        Authenticated via PAY_SERVICE_API_KEY Bearer token.
+        Legacy alias of `POST /api/topup/stripe`, not a direct balance-credit endpoint.
+        Requires the user's session Cookie (session-only auth). Optional `did`, when present,
+        must equal the session's effective DID. Returns a Stripe checkout URL/session id and
+        records a pending transaction; only the confirmed receipt may credit MJN.
+        Caller amounts never mint cash. An app-service token alone is not user authority.
       security:
-        - apiKeyAuth: []
+        - cookieAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [did, amount, service, type]
+              required: [amount]
               properties:
-                did: { type: string }
-                amount: { type: number, description: "Amount in dollars" }
-                service: { type: string, description: "Originating service (e.g. coffee, events)" }
-                type: { type: string, description: "Transaction type label" }
-                metadata: { type: object }
+                did: { type: string, description: "Optional; must equal the session's effective DID" }
+                amount: { type: number, minimum: 20, description: "CAD dollars; minimum $20" }
+                absorbFees: { type: boolean, description: "false grosses up the checkout so the user absorbs processor fees" }
       responses:
         "200":
-          description: Balance topped up
+          description: Stripe checkout created; balance is not yet credited
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  transactionId: { type: string }
-                  did: { type: string }
-                  amount: { type: number }
+                  url: { type: string, format: uri }
+                  sessionId: { type: string }
         "400":
           description: Invalid request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Unauthorized (invalid API key)
+          description: Unauthorized (missing user session)
+        "403":
+          description: Cannot top up another DID
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Too many requests
+
+  /api/topup/stripe:
+    post:
+      tags: [pay]
+      operationId: createStripeTopup
+      summary: Start a Stripe checkout for the session user's MJN topup
+      description: |
+        Requires a user session Cookie, never app-service authority. Creates a pending transaction
+        and returns a checkout URL; only the confirmed receipt may credit withdrawable MJN.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, minimum: 20, description: "CAD dollars" }
+                absorbFees: { type: boolean }
+      responses:
+        "200":
+          description: Checkout created; no balance credited yet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+                  sessionId: { type: string }
+        "400":
+          description: Invalid amount or JSON
+        "401":
+          description: Missing user session Cookie
+        "429":
+          description: Too many requests
+
+  /api/topup/emt:
+    post:
+      tags: [pay]
+      operationId: createEmtTopup
+      summary: Record a pending EMT topup for the session user
+      description: |
+        Requires a user session Cookie. Returns payment instructions and a pending transaction;
+        no balance is credited until the incoming payment is matched by an administrator.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: number, minimum: 20, description: "CAD dollars" }
+      responses:
+        "200":
+          description: Pending topup recorded; no balance credited yet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  transactionId: { type: string }
+                  instructions:
+                    type: object
+                    properties:
+                      email: { type: string }
+                      amount: { type: number }
+                      memo: { type: string }
+        "400":
+          description: Invalid amount or JSON
+        "401":
+          description: Missing user session Cookie
+        "429":
+          description: Too many requests
 
   /api/charge:
     post:
@@ -828,8 +907,8 @@ paths:
         against `registry.apps` on every call, so a revoked scope or app stops
         settling immediately.
 
-        There is no shared key: `Authorization: Bearer <PAY_SERVICE_API_KEY>` is
-        refused with 401. Internal settlers (the bus `settle` reactor, query-cost
+        There is no shared pay key; legacy bearer credentials are refused with 401.
+        Internal settlers (the bus `settle` reactor, query-cost
         settlement) call `settlePayment()` in-process instead.
 
         The payment is the `transactionId` returned by an app-authenticated
@@ -1213,20 +1292,23 @@ paths:
       tags: [pay]
       operationId: refund
       summary: Issue a refund for a transaction
-      description: Refund a charge or payment. Requires auth (cookieAuth or bearerAuth). May require internal service key for some refund types.
+      description: |
+        Requires the app's own service token with operator-approved `pay:refund`.
+        The kernel resolves the original transaction and refuses another app's payment
+        or an unbound payment before refund or ledger side effects. Scope approval is
+        checked live. No shared service key or user session substitutes for the app.
       security:
-        - cookieAuth: []
-        - bearerAuth: []
+        - appServiceToken: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [transactionId]
+              required: [paymentId]
               properties:
-                transactionId: { type: string }
-                amount: { type: number, description: "Partial refund amount (omit for full refund)" }
+                paymentId: { type: string, description: "Stripe payment/session id resolved to the original kernel transaction" }
+                amount: { type: number, description: "Partial refund amount in cents (omit for full refund)" }
                 reason: { type: string }
       responses:
         "200":
@@ -1236,7 +1318,8 @@ paths:
               schema:
                 type: object
                 properties:
-                  refundId: { type: string }
+                  id: { type: string }
+                  transactionId: { type: string }
                   status: { type: string }
         "400":
           description: Invalid refund request
@@ -1245,6 +1328,69 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Unauthorized
+        "403":
+          description: Missing approved pay:refund scope, another app's payment or no app binding
+        "404":
+          description: Unknown payment
+
+
+  /api/charge-pledges:
+    post:
+      tags: [pay]
+      operationId: chargePledges
+      summary: Charge confirmed pledge setups belonging to the calling app
+      description: |
+        Requires the app's own service bearer with operator-approved `pay:charge-pledges`.
+        Each `setupIntentId` must resolve to a transaction created by this app during setup.
+        The kernel rejects app mismatches and legacy unbound pledges, then derives the amount,
+        currency, customer and payment method from its recorded transaction and the confirmed
+        Stripe SetupIntent. Caller-supplied card and amount fields are not authority.
+        A pending transaction is atomically claimed as charging before the rail call. Completed
+        results can be replayed; an interrupted or ambiguous charging outcome fails closed and
+        requires reconciliation, not an automatic second charge after rail idempotency expires.
+
+        This existing charge path reads platform-account setups with a kernel-recorded
+        pledge-setup provenance marker. Seller-BYO setups created by the new
+        pay:setup-intent contract are deliberately not accepted: they live on another
+        Stripe account and require a separate seller-account charging migration.
+        No platform charge or fallback is attempted for those new setups.
+      security:
+        - appServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [eventId, pledges]
+              properties:
+                eventId: { type: string }
+                pledges:
+                  type: array
+                  items:
+                    type: object
+                    required: [pledgeId, setupIntentId]
+                    properties:
+                      pledgeId: { type: string }
+                      setupIntentId: { type: string }
+      responses:
+        "200":
+          description: Charge results for bound pledges
+        "401":
+          description: Missing or invalid app-service token
+        "403":
+          description: Missing approved scope, another app's setup or no app binding
+
+  /api/emission:
+    post:
+      tags: [pay]
+      operationId: closedEmissionIngress
+      summary: Closed HTTP ingress — emission is kernel-internal
+      description: "Emission runs through the kernel's in-process executor; no HTTP bearer credential grants mint authority."
+      security: []
+      responses:
+        "403":
+          description: HTTP emission ingress is closed
 
   /api/admin/reconciliation:
     get:

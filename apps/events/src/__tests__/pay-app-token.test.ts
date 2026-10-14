@@ -17,7 +17,7 @@ vi.mock('@imajin/auth-client', () => ({
   createAppServiceTokenProvider: mocks.createAppServiceTokenProvider,
 }));
 
-import { getPayAppToken, invalidatePayAppToken, resetPayAppTokenForTests } from '../lib/pay-app-token';
+import { getPayAppToken, invalidatePayAppToken, postPayAsApp, resetPayAppTokenForTests } from '../lib/pay-app-token';
 
 const KERNEL_URL = 'https://kernel.test';
 const originalEnv = { ...process.env };
@@ -26,12 +26,64 @@ beforeEach(() => {
   vi.clearAllMocks();
   resetPayAppTokenForTests();
   process.env.IMAJIN_KERNEL_URL = KERNEL_URL;
+  process.env.PAY_SERVICE_URL = `${KERNEL_URL}/pay`;
   mocks.loadAppSigningKey.mockResolvedValue({ appDid: 'did:imajin:events', privateKey: 'hex-key', publicKey: null });
   mocks.getToken.mockResolvedValue('app-token');
   mocks.createAppServiceTokenProvider.mockReturnValue({ getToken: mocks.getToken, invalidate: mocks.invalidate });
 });
 
+describe('postPayAsApp', () => {
+  it('sends the app token and preserves the user Cookie and setup metadata', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}'));
+    vi.stubGlobal('fetch', fetchMock);
+    const body = { amount: 100, currency: 'CAD', metadata: { eventId: 'evt_1', backerDid: 'did:imajin:backer' } };
+    await postPayAsApp('/api/setup-intent', body, 'imajin_session=user');
+    expect(fetchMock).toHaveBeenCalledWith(`${KERNEL_URL}/pay/api/setup-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer app-token', Cookie: 'imajin_session=user' },
+      body: JSON.stringify(body),
+    });
+  });
+
+  it('invalidates on 401 and retries exactly once with a fresh token and unchanged body', async () => {
+    mocks.getToken.mockResolvedValueOnce('expired').mockResolvedValueOnce('fresh');
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }))
+      .mockResolvedValueOnce(new Response('{}', { status: 401 }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await postPayAsApp('/api/refund', { paymentId: 'pi_1' })).status).toBe(401);
+    expect(mocks.invalidate).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([, init]) => init.headers.Authorization)).toEqual(['Bearer expired', 'Bearer fresh']);
+    expect(fetchMock.mock.calls[0][1].body).toBe(fetchMock.mock.calls[1][1].body);
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Cookie');
+  });
+
+  it.each([200, 400, 403, 500])('does not retry status %s', async (status) => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await postPayAsApp('/api/charge-pledges', {})).status).toBe(status);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(mocks.invalidate).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the token cannot be obtained', async () => {
+    mocks.getToken.mockRejectedValueOnce(new Error('not provisioned'));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(postPayAsApp('/api/refund', {})).rejects.toThrow('not provisioned');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed without a pay URL', async () => {
+    delete process.env.PAY_SERVICE_URL;
+    await expect(postPayAsApp('/api/refund', {})).rejects.toThrow('PAY_SERVICE_URL is not set');
+    expect(mocks.getToken).not.toHaveBeenCalled();
+  });
+});
+
 afterEach(() => {
+  vi.unstubAllGlobals();
   process.env = { ...originalEnv };
   resetPayAppTokenForTests();
 });

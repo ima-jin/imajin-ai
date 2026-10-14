@@ -482,10 +482,10 @@ describe('serviceEligible fence', () => {
     expect(serviceEligibleScopes()).not.toContain('usage:emitters-manage');
   });
 
-  it('adds pay:settle (#2642) to the vocabulary but keeps it service-INeligible (operator-approved per app only)', () => {
-    expect(scopeEntry('pay:settle')).toBeDefined();
-    expect(isServiceEligibleScope(scopeEntry('pay:settle')!)).toBe(false);
-    expect(serviceEligibleScopes()).not.toContain('pay:settle');
+  it.each(['pay:settle', 'pay:refund', 'pay:charge-pledges'])('keeps %s operator-approved per app only', (scope) => {
+    expect(scopeEntry(scope)).toBeDefined();
+    expect(isServiceEligibleScope(scopeEntry(scope)!)).toBe(false);
+    expect(serviceEligibleScopes()).not.toContain(scope);
   });
 
   it('keeps attestations:write (#2764) in the vocabulary but service-INeligible (operator-approved per app only)', () => {

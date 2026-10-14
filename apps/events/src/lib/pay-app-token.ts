@@ -1,10 +1,9 @@
 /**
  * Events' own app-service token for the pay service (#2739).
  *
- * Events is a registered app. It authenticates its pay `/api/checkout` and
- * `/api/settle` calls as ITSELF with an app-service token minted from the
- * kernel by proving possession of its own signing key — never with the shared
- * `PAY_SERVICE_API_KEY`.
+ * Events is a registered app. It authenticates checkout, settlement, refunds
+ * and campaign pledge calls as ITSELF with an app-service token minted from
+ * the kernel by proving possession of its own signing key — never a shared key.
  *
  * The signing key is read through the standard `loadAppSigningKey` claim-code
  * path (`IMAJIN_APP_CLAIM_CODE` on first boot, the local bootstrap keystore on
@@ -14,7 +13,8 @@
  *
  * Operator prerequisites (see apps/events/README.md):
  *   - events registered as an app, signing key provisioned (`apps.provision`);
- *   - `pay:settle` approved for events via the `apps:service-scopes` card.
+ *   - `pay:settle`, `pay:refund` and `pay:charge-pledges` approved for events
+ *     via the `apps:service-scopes` card.
  */
 import { createAppServiceTokenProvider, loadAppSigningKey, type AppServiceTokenProvider } from '@imajin/auth-client';
 
@@ -59,6 +59,25 @@ export async function getPayAppToken(): Promise<string> {
 /** Drop the cached token — call after the pay service answered 401 so the next call mints a fresh one. */
 export async function invalidatePayAppToken(): Promise<void> {
   (await getProvider()).invalidate();
+}
+/** POST as events; retry only a 401, once, with a freshly minted token (#2741). */
+export async function postPayAsApp(path: string, body: unknown, cookie?: string): Promise<Response> {
+  const payServiceUrl = process.env.PAY_SERVICE_URL;
+  if (!payServiceUrl) throw new Error('PAY_SERVICE_URL is not set');
+  const serializedBody = JSON.stringify(body);
+  const send = async () => fetch(`${payServiceUrl}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${await getPayAppToken()}`,
+      ...(cookie !== undefined && { Cookie: cookie }),
+    },
+    body: serializedBody,
+  });
+  const response = await send();
+  if (response.status !== 401) return response;
+  await invalidatePayAppToken().catch(() => undefined);
+  return send();
 }
 
 /** Forget the cached provider (tests only). */

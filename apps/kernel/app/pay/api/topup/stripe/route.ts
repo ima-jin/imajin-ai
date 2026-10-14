@@ -38,7 +38,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   // Auth
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { sessionOnly: true, service: 'pay' });
   if ('error' in authResult) {
     return NextResponse.json(
       { error: authResult.error },
@@ -58,7 +58,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
   const { amount, absorbFees } = body;
 
-  if (!amount || typeof amount !== 'number' || amount < MIN_TOPUP) {
+  if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < MIN_TOPUP) {
     return NextResponse.json(
       { error: `Minimum top-up is $${MIN_TOPUP}` },
       { status: 400, headers: cors }

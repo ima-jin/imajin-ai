@@ -40,6 +40,8 @@ export { broker } from './broker';
 export { registerReactor, getReactor } from './registry';
 export { registerSettleExecutor, getSettleExecutor } from './reactors/settle';
 export type { SettleExecutor, SettleExecutorParams, SettleExecutorResult } from './reactors/settle';
+export { registerEmissionExecutor, getEmissionExecutor } from './reactors/mjn';
+export type { EmissionExecutor, EmissionExecutorParams, EmissionExecutorResult } from './reactors/mjn';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';
 export { getChainConfig, getScopedChainConfig, getBrokerChainConfig } from './config';
 export { getLotChain, recentLotsBySupplier } from './supply-lots';

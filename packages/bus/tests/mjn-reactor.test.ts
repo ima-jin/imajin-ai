@@ -1,6 +1,6 @@
 /**
  * The `mjn` reactor (#2016, #2017):
- *  - posts `unit: 'MJNx'` (never `currency: 'MJN'`) to the pay service;
+ *  - executes `unit: 'MJNx'` in-process with no HTTP or shared key;
  *  - takes recipients/amounts from the live `kernel.bus_chain_configs` row, so
  *    editing the row changes the very next emission (no code, no cache);
  *  - stamps every emission with the attestation id and the (config row id,
@@ -9,7 +9,7 @@
  *    `idempotency_key`, transient failures are retried, and a lost emission
  *    makes the reactor throw instead of failing silently.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { BusEvent } from '../src/types';
 
 interface FakeRow {
@@ -74,14 +74,15 @@ function mjnRow(overrides: Partial<FakeRow> & { emit?: unknown[]; config?: Recor
   };
 }
 
+const executorMock = vi.fn();
 const fetchMock = vi.fn();
 
 function okResponse() {
-  return { ok: true, status: 200, text: async () => '' };
+  return { id: 'tx_1', amount: '10', to_did: 'did:imajin:subject', status: 'completed' };
 }
 
 function failResponse(status: number) {
-  return { ok: false, status, text: async () => `status ${status}` };
+  return { error: `status ${status}`, status };
 }
 
 interface PostedBody {
@@ -94,7 +95,7 @@ interface PostedBody {
 }
 
 function postedBodies(): PostedBody[] {
-  return fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body as string) as PostedBody);
+  return executorMock.mock.calls.map(([body]) => body as PostedBody);
 }
 
 async function runReactor(event: BusEvent, config: Record<string, unknown> = { attestationType: 'identity.created' }) {
@@ -102,27 +103,32 @@ async function runReactor(event: BusEvent, config: Record<string, unknown> = { a
   return mjnReactor(event, config);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
   vi.resetModules();
   vi.stubGlobal('fetch', fetchMock);
-  fetchMock.mockReset();
-  fetchMock.mockResolvedValue(okResponse());
+  executorMock.mockReset();
+  executorMock.mockResolvedValue(okResponse());
   db.rows = [mjnRow()];
-  // mjn.ts reads PAY_SERVICE_URL/PAY_SERVICE_API_KEY at module load time, so
-  // the env vars must be set BEFORE the dynamic import below resolves.
-  process.env.PAY_SERVICE_URL = 'https://pay.kernel.test';
-  process.env.PAY_SERVICE_API_KEY = 'test-key';
+  vi.stubEnv('PAY_SERVICE_URL', '');
+  vi.stubEnv('PAY_SERVICE_API_KEY', '');
+  const { registerEmissionExecutor } = await import('../src/reactors/mjn');
+  registerEmissionExecutor(executorMock);
+});
+
+afterEach(async () => {
+  const { registerEmissionExecutor } = await import('../src/reactors/mjn');
+  registerEmissionExecutor(null);
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('mjnReactor — unit MJNx, amounts from the config row', () => {
-  it('posts unit: MJNx with the amount/recipient/reason from the bus_chain_configs row', async () => {
+  it('executes unit: MJNx without HTTP or shared credentials with the amount/recipient/reason from the bus_chain_configs row', async () => {
     await runReactor(makeEvent());
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://pay.kernel.test/api/emission');
-    expect(init.headers.Authorization).toBe('Bearer test-key');
+    expect(executorMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
     const body = postedBodies()[0];
     expect(body).toMatchObject({ to_did: 'did:imajin:subject', amount: 10, unit: 'MJNx', reason: 'Welcome' });
     expect(body.currency).toBeUndefined();
@@ -134,7 +140,7 @@ describe('mjnReactor — unit MJNx, amounts from the config row', () => {
 
     // Operator edits the row: new amount, new recipient, version bumped by the DB trigger.
     db.rows = [mjnRow({ version: 2, emit: [{ to: 'issuer', amount: 25, reason: 'Retuned' }] })];
-    fetchMock.mockClear();
+    executorMock.mockClear();
     await runReactor(makeEvent({ payload: { attestationId: 'att_2' } }));
 
     expect(postedBodies()[0]).toMatchObject({
@@ -188,7 +194,7 @@ describe('mjnReactor — unit MJNx, amounts from the config row', () => {
   ])('emits nothing when %s', async (_name, rows) => {
     db.rows = rows();
     await runReactor(makeEvent());
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(executorMock).not.toHaveBeenCalled();
   });
 
   it('skips a rule with no resolvable target and a rule that resolves to zero', async () => {
@@ -214,16 +220,18 @@ describe('mjnReactor — unit MJNx, amounts from the config row', () => {
     expect(postedBodies()[0].to_did).toBe('did:imajin:scope');
   });
 
-  it('does nothing (and does not throw) when the pay service env vars are unset', async () => {
-    delete process.env.PAY_SERVICE_URL;
-    await expect(runReactor(makeEvent())).resolves.toBeUndefined();
+  it('fails visibly when no in-process executor is registered', async () => {
+    const { registerEmissionExecutor } = await import('../src/reactors/mjn');
+    registerEmissionExecutor(null);
+    await expect(runReactor(makeEvent())).rejects.toThrow(/no in-process emission executor/);
+    expect(executorMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('throws on a malformed schedule instead of silently emitting nothing', async () => {
     db.rows = [mjnRow({ emit: [{ to: 'subject', amount: 1, percent: 1, reason: 'Both set' }] })];
     await expect(runReactor(makeEvent())).rejects.toThrow(/exactly one of amount \| percent/);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(executorMock).not.toHaveBeenCalled();
   });
 });
 
@@ -246,7 +254,7 @@ describe('mjnReactor — provenance (attestation id + config version)', () => {
 
   it('refuses an untraceable emission: no attestation id → throws, nothing is credited', async () => {
     await expect(runReactor(makeEvent({ payload: {} }))).rejects.toThrow(/no attestation id/);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(executorMock).not.toHaveBeenCalled();
   });
 });
 
@@ -269,57 +277,57 @@ describe('mjnReactor — idempotent retry; a lost emission is visible', () => {
   });
 
   it('retries a 5xx with the SAME idempotency key and succeeds without throwing', async () => {
-    fetchMock.mockResolvedValueOnce(failResponse(503)).mockResolvedValueOnce(okResponse());
+    executorMock.mockResolvedValueOnce(failResponse(503)).mockResolvedValueOnce(okResponse());
 
     await expect(runReactor(makeEvent())).resolves.toBeUndefined();
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(executorMock).toHaveBeenCalledTimes(2);
     const [first, second] = postedBodies();
     expect(first.metadata.idempotency_key).toBe('emission:att_1:0:subject');
     expect(second).toEqual(first);
   });
 
-  it('retries a network error and a 429', async () => {
-    fetchMock
+  it('retries a thrown error and a 429', async () => {
+    executorMock
       .mockRejectedValueOnce(new Error('ECONNRESET'))
       .mockResolvedValueOnce(failResponse(429))
       .mockResolvedValueOnce(okResponse());
 
     await expect(runReactor(makeEvent())).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(executorMock).toHaveBeenCalledTimes(3);
   });
 
   it('throws once retries are exhausted, naming the attestation, config version and cause', async () => {
     db.rows = [mjnRow({ id: 'cfg_lost', version: 3 })];
-    fetchMock.mockResolvedValue(failResponse(500));
+    executorMock.mockResolvedValue(failResponse(500));
 
     await expect(runReactor(makeEvent({ payload: { attestationId: 'att_lost' } }))).rejects.toThrow(
-      /1\/1 emission\(s\) lost.*att_lost.*cfg_lost v3.*HTTP 500/,
+      /1\/1 emission\(s\) lost.*att_lost.*cfg_lost v3.*500/,
     );
-    expect(fetchMock).toHaveBeenCalledTimes(3); // default max attempts
+    expect(executorMock).toHaveBeenCalledTimes(3); // default max attempts
   });
 
   it('honours maxAttempts from the row config', async () => {
     db.rows = [mjnRow({ config: { maxAttempts: 2 } })];
-    fetchMock.mockRejectedValue(new Error('down'));
+    executorMock.mockRejectedValue(new Error('down'));
 
     await expect(runReactor(makeEvent())).rejects.toThrow(/lost/);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(executorMock).toHaveBeenCalledTimes(2);
   });
 
   it('falls back to the default attempt count for an invalid maxAttempts', async () => {
     db.rows = [mjnRow({ config: { maxAttempts: 'many', retryDelayMs: -5 } })];
-    fetchMock.mockResolvedValue(failResponse(502));
+    executorMock.mockResolvedValue(failResponse(502));
 
     await expect(runReactor(makeEvent())).rejects.toThrow(/lost/);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(executorMock).toHaveBeenCalledTimes(3);
   });
 
   it('does not retry a 4xx — retrying cannot fix the caller', async () => {
-    fetchMock.mockResolvedValue(failResponse(400));
+    executorMock.mockResolvedValue(failResponse(400));
 
-    await expect(runReactor(makeEvent())).rejects.toThrow(/HTTP 400/);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(runReactor(makeEvent())).rejects.toThrow(/400/);
+    expect(executorMock).toHaveBeenCalledTimes(1);
   });
 
   it('one lost rule does not stop the others; the reactor still throws', async () => {
@@ -332,13 +340,13 @@ describe('mjnReactor — idempotent retry; a lost emission is visible', () => {
         ],
       }),
     ];
-    fetchMock.mockResolvedValueOnce(failResponse(500)).mockResolvedValueOnce(okResponse());
+    executorMock.mockResolvedValueOnce(failResponse(500)).mockResolvedValueOnce(okResponse());
 
     await expect(runReactor(makeEvent())).rejects.toThrow(/1\/2 emission\(s\) lost/);
     expect(postedBodies().map((b) => b.reason)).toEqual(['first', 'second']);
   });
 
-  it('re-publishing the same event re-sends the same keys, so the pay service can dedupe', async () => {
+  it('re-publishing the same event re-sends the same keys, so the kernel ledger can dedupe', async () => {
     await runReactor(makeEvent());
     await runReactor(makeEvent());
 
@@ -346,15 +354,9 @@ describe('mjnReactor — idempotent retry; a lost emission is visible', () => {
     expect(keys).toEqual(['emission:att_1:0:subject', 'emission:att_1:0:subject']);
   });
 
-  it('tolerates an unreadable error body on a failed response', async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 400,
-      text: async () => {
-        throw new Error('stream closed');
-      },
-    });
-
-    await expect(runReactor(makeEvent())).rejects.toThrow(/HTTP 400/);
+  it('shares the registration across module copies via globalThis', async () => {
+    vi.resetModules();
+    const { getEmissionExecutor } = await import('../src/reactors/mjn');
+    expect(getEmissionExecutor()).toBe(executorMock);
   });
 });

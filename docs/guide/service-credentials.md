@@ -109,6 +109,20 @@ Bearer. Here the app *is* the caller — there is no user to attribute to — so
 User sessions and `session-app+jwt` keep working on both routes exactly as
 before — `attestations:write` is checked only on an app's own service token.
 
+## Pay scopes require operator approval (#2735)
+
+`pay:settle`, `pay:refund` and `pay:charge-pledges` are operator-approved-only service
+scopes. Requesting them at registration does not grant them: approve each app through the
+countersigned `apps:service-scopes` card. Pay checks the active app and its live approval
+on every call, not only at mint, so revocation takes effect immediately for these routes.
+Refunds require an existing payment bound to the caller app's DID. Pledge setup requires
+both the app's `pay:charge-pledges` bearer and the user's session Cookie; the kernel records
+the binding in `pay.transactions`. Charging names that setup's `setupIntentId`; the kernel
+derives amount and card details from its transaction and the confirmed Stripe setup, and
+refuses another app's or a legacy unbound setup. No shared pay service key is accepted.
+
+Use the existing SDK `createAppServiceTokenProvider` with `loadAppSigningKey`, refresh after
+a 401 once, and never retry a 403 scope/ownership refusal. No new env secret is needed.
 ## Calling it as a client
 
 ```ts

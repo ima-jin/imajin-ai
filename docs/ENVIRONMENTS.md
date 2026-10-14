@@ -139,6 +139,23 @@ Each service has a `.env.local` file. Common variables:
 **⚠️ Service-to-service URLs must come from env vars — never hardcode URLs.**
 
 Every app that uses env vars should have a matching `.env.example` file.
+### Scoped pay callers (#2735)
+
+Pay has no shared service API key. Remove the retired pay-key entry from existing kernel and
+app `.env.local` files and host/CI secret stores; setup no longer generates it and check-env
+uses the key-free `.env.example` manifests. No new environment variables are required.
+
+Registered apps use their existing app signing key and app-service token provider. Operators
+must approve `pay:refund` (refund only this app's payments) and `pay:charge-pledges` (create
+app-bound pledge setups and charge only those setups), alongside `pay:settle` where needed,
+through the countersigned `apps:service-scopes` card. Deploy the kernel contract before
+migrated callers. Pledge setup additionally forwards the user's session Cookie; charge requests
+name the recorded `setupIntentId`. Legacy unbound pledges require a new user-confirmed setup.
+Emission is kernel-internal and invoked in-process. Topup routes require the user's session
+Cookie; `/pay/api/balance/topup` aliases the existing Stripe checkout and can target only
+that user's own DID. It returns a checkout URL/session id and pending transaction, never a
+direct credit from caller amounts. Stripe confirms the receipt before MJN is credited;
+EMT topups remain pending until the incoming payment is matched.
 
 ### check-env annotations (#2246)
 

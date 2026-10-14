@@ -12,10 +12,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 
-const { mockLoadVaultAtBoot, mockProvideVaultInternalApiKey, mockEnsureSettleExecutor } = vi.hoisted(() => ({
+const { mockLoadVaultAtBoot, mockProvideVaultInternalApiKey, mockEnsureSettleExecutor, mockEnsureEmissionExecutor } = vi.hoisted(() => ({
   mockLoadVaultAtBoot: vi.fn().mockResolvedValue(undefined),
   mockProvideVaultInternalApiKey: vi.fn().mockResolvedValue(undefined),
   mockEnsureSettleExecutor: vi.fn(),
+  mockEnsureEmissionExecutor: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault/vault-repository', () => ({
@@ -26,6 +27,9 @@ vi.mock('@/src/lib/auth/provide-vault-internal-api-key', () => ({
 }));
 vi.mock('@/src/lib/pay/settle-executor', () => ({
   ensureSettleExecutorRegistered: mockEnsureSettleExecutor,
+}));
+vi.mock('@/src/lib/pay/emission-executor', () => ({
+  ensureEmissionExecutorRegistered: mockEnsureEmissionExecutor,
 }));
 
 import { register } from '../instrumentation';
@@ -45,9 +49,15 @@ afterEach(() => {
   mockLoadVaultAtBoot.mockClear();
   mockProvideVaultInternalApiKey.mockClear();
   mockEnsureSettleExecutor.mockClear();
+  mockEnsureEmissionExecutor.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
+  it('registers the in-process emission executor at boot (#2735)', async () => {
+    setRuntime('nodejs');
+    await register();
+    expect(mockEnsureEmissionExecutor).toHaveBeenCalledTimes(1);
+  });
   it('registers the in-process settle executor with the bus at boot (#2642)', async () => {
     setRuntime('nodejs');
 
@@ -109,5 +119,6 @@ describe('kernel instrumentation register()', () => {
 
     expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
     expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
+    expect(mockEnsureEmissionExecutor).not.toHaveBeenCalled();
   });
 });

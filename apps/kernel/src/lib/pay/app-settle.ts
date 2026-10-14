@@ -32,6 +32,7 @@ import { decodeProtectedHeader } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { db, transactions } from '@/src/db';
 import { authenticatePayApp } from './app-service-auth';
+export { authenticatePayApp } from './app-service-auth';
 import { STRIPE_BYO_RAIL } from './external-ref';
 import { verifyAgainstPayeeManifest } from './payee-manifest';
 import { settlePayment, type SettlePaymentResult } from './settle-core';

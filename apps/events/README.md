@@ -116,14 +116,15 @@ Events settles a paid ticket order itself. At checkout it authenticates to the p
 its **own app-service token** (minted from its signing key via `@imajin/auth-client`) and declares
 the payee manifest (the resolved `.fair` chain). When the pay webhook reports the payment, events
 calls `POST /pay/api/settle` with the same token, the checkout's `transaction_id` and the
-`fair_manifest`. `alreadySettled: true` is treated as success. The shared `PAY_SERVICE_API_KEY`
-is not used for settlement (refunds and campaign charge-pledges still use it, #2735).
+`fair_manifest`. `alreadySettled: true` is treated as success. Refunds and campaign pledges
+also use events' own app-service token; no shared pay key is configured or accepted (#2735).
 
 Operator prerequisites before ticket checkout works:
 
 1. Register events as an app and provision its signing key (`apps.provision`); give events
    `IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID` and the one-time `IMAJIN_APP_CLAIM_CODE`.
-2. Approve `pay:settle` for events through the operator-countersigned `apps:service-scopes` card.
+2. Approve `pay:settle`, `pay:refund` and `pay:charge-pledges` for events through the
+   operator-countersigned `apps:service-scopes` card. These scopes are never self-granted.
 3. Deploy the kernel contract (#2695) and the kernel build that adds `transactionId` to the pay
    `checkout.completed` webhook (it looks the `pay.transactions` row up by the Stripe session and
    sends its id — the key `/pay/api/settle` needs). If a webhook arrives without it, events logs
@@ -131,6 +132,19 @@ Operator prerequisites before ticket checkout works:
 
 Without these, checkout for an event with a `.fair` chain fails closed (503) rather than taking a
 payment that cannot pay the organizer.
+Refunds can only target payments bound to this events app's DID. Campaign setup sends both
+the app-service bearer and the backer's session Cookie, preserving `eventId` and `backerDid`
+metadata. The kernel records that setup's app binding in `pay.transactions`; later campaign
+charges send each pledge's `setupIntentId`, not caller-supplied card or amount authority.
+The kernel derives charge details from its recorded transaction and the confirmed Stripe
+SetupIntent. Legacy pledges without that binding fail closed and must complete a fresh setup;
+do not backfill app ownership from an app-supplied card/customer id.
+The kernel claims each pending pledge before charging. Interrupted/ambiguous charging
+outcomes require reconciliation and must not be retried as new charges after Stripe's
+idempotency retention window.
+
+Deploy the kernel #2735 contract before these callers. Each app-authenticated pay POST retries
+a 401 once after invalidating the cached token; 403 (scope/ownership refusal) is never retried.
 
 ---
 

@@ -22,9 +22,7 @@ import { eq, and } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
-
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
-const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY!;
+import { postPayAsApp } from '@/src/lib/pay-app-token';
 
 export async function OPTIONS(request: NextRequest) {
   return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
@@ -119,22 +117,12 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
     }
 
     // Call pay service to charge pledges
-    const payRes = await fetch(`${PAY_SERVICE_URL}/api/charge-pledges`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${PAY_SERVICE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        eventId,
-        pledges: confirmedPledges.map((p) => ({
-          pledgeId: p.id,
-          amount: p.amount,
-          currency: p.currency,
-          stripeCustomerId: p.stripeCustomerId,
-          stripePaymentMethodId: p.stripePaymentMethodId,
-        })),
-      }),
+    const payRes = await postPayAsApp('/api/charge-pledges', {
+      eventId,
+      pledges: confirmedPledges.map((p) => ({
+        pledgeId: p.id,
+        setupIntentId: p.stripeSetupIntentId,
+      })),
     });
 
     if (!payRes.ok) {
