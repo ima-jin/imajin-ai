@@ -13,6 +13,28 @@ interface AppSecretCard {
   claimed: boolean;
   secrets: AppDeclaredSecretStatus[];
 }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function isTimelineEntry(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return typeof value.phase === 'string' && ['minted', 'granted', 'fetched', 'rotated', 'revoked'].includes(value.phase)
+    && typeof value.at === 'string'
+    && ['operatorDid', 'via', 'grantId'].every((key) => value[key] === undefined || typeof value[key] === 'string');
+}
+function isSecretMetadata(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return typeof value.name === 'string' && (value.kind === 'random-32B' || value.kind === 'random-64B')
+    && typeof value.status === 'string' && ['missing', 'active', 'revoked'].includes(value.status)
+    && Array.isArray(value.timeline) && value.timeline.every(isTimelineEntry);
+}
+function isAppSecretCard(value: unknown): value is AppSecretCard {
+  if (!isRecord(value)) return false;
+  return (value.appDid === null || typeof value.appDid === 'string')
+    && (value.slug === null || typeof value.slug === 'string') && typeof value.name === 'string'
+    && typeof value.active === 'boolean' && typeof value.claimed === 'boolean'
+    && Array.isArray(value.secrets) && value.secrets.every(isSecretMetadata);
+}
 
 /** Metadata only. The sole write affordance stages a countersign proposal. */
 export function AppSecretsPanel() {
@@ -25,7 +47,12 @@ export function AppSecretsPanel() {
       const response = await fetch('/jin/api/app-secrets', { credentials: 'include' });
       if (response.status === 401 || response.status === 403) { setApps(null); return; }
       if (!response.ok) { setNotice('App-secret metadata unavailable.'); return; }
-      const body = await response.json() as { apps: AppSecretCard[] };
+      const body: unknown = await response.json();
+      if (!isRecord(body) || !Array.isArray(body.apps) || !body.apps.every(isAppSecretCard)) {
+        setApps(null);
+        setNotice('App-secret metadata unavailable.');
+        return;
+      }
       setApps(body.apps);
     } catch { setNotice('App-secret metadata unavailable.'); }
   }, []);

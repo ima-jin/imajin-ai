@@ -18,9 +18,10 @@ vi.mock('next/navigation', () => ({
 const { default: JinPage } = await import('../page');
 
 function installFetch() {
-  const spy = vi.fn(async () => (
-    { ok: true, status: 200, json: async () => ({ isOperator: false, approvals: [], entries: [] }) } as unknown as Response
-  ));
+  const spy = vi.fn(async (url: string) => {
+    if (url === '/jin/api/app-secrets') return new Response(null, { status: 403 });
+    return { ok: true, status: 200, json: async () => ({ isOperator: false, approvals: [], entries: [] }) } as unknown as Response;
+  });
   vi.stubGlobal('fetch', spy);
   return spy;
 }

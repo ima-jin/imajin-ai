@@ -14,6 +14,20 @@ const app = {
   ] }],
 };
 describe('AppSecretsPanel', () => {
+  it.each([
+    null, {}, { apps: null }, { apps: 'bad' }, { apps: [null] },
+    { apps: [{ ...app, secrets: undefined }] },
+    { apps: [{ ...app, claimed: 'true' }] },
+    { apps: [{ ...app, secrets: [{ ...app.secrets[0], timeline: null }] }] },
+    { apps: [{ ...app, secrets: [{ ...app.secrets[0], timeline: [{ phase: 'minted', at: {} }] }] }] },
+  ])('fails closed on malformed metadata without throwing or offering controls', async (body) => {
+    const fetchMock = vi.fn().mockResolvedValue(Response.json(body));
+    vi.stubGlobal('fetch', fetchMock);
+    const { container } = render(<AppSecretsPanel />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    expect(container.textContent).toBe('');
+    expect(screen.queryAllByRole('button')).toHaveLength(0);
+  });
   it('renders names/recipes and signed lifecycle, and Rotate only proposes without a reveal', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ apps: [app] }))
       .mockResolvedValueOnce(Response.json({ status: 'pending', proposalId: 'fake-proposal-2' }));
