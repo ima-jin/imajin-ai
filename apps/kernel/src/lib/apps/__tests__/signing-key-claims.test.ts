@@ -8,6 +8,8 @@ const NODE_DID = 'did:imajin:node';
 const APP_DID = 'did:imajin:app-under-test';
 const GRANT_ID = 'vdg_app_self_1';
 const SLUG = 'dykil';
+const { ensureAppDeclaredSecretsMock } = vi.hoisted(() => ({ ensureAppDeclaredSecretsMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../self-secrets', () => ({ ensureAppDeclaredSecrets: ensureAppDeclaredSecretsMock }));
 
 const { claimsRef, claimsStore, publishMock, logMock, idCounterRef } = vi.hoisted(() => {
   return {

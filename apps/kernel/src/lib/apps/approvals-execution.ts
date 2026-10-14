@@ -90,7 +90,7 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
     // #2663: the providesScopes/dependsOn list the operator saw on the card — the
     // pipeline registers exactly this and refuses a manifest that has drifted from it.
     const approvedDeclarations = parseManifestDeclarations(card.detail?.manifestDeclarations);
-    const outcome: AppProvisionOutcome = await runAppProvision({ slug, displayName, template, attestationTypes, approvedDeclarations });
+    const outcome: AppProvisionOutcome = await runAppProvision({ slug, displayName, template, attestationTypes, approvedDeclarations, authorizedBy });
     if (outcome.status === 'failed') {
       return { ok: false, error: `apps.provision failed at step '${outcome.failedStep}': ${outcome.error}` };
     }

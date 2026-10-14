@@ -63,6 +63,9 @@ import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import { NO_DECLARATIONS, sameDeclarations, type ManifestDeclarations } from './declarations-approval';
 import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-claims';
+import { validateSecrets } from './secret-declarations';
+import { ensureAppDeclaredSecrets } from './self-secrets';
+import type { VaultAuthorization } from '@/src/lib/vault/authorization';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -96,6 +99,7 @@ function resolveCallbackOrigin(): string {
 const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
 
 export interface AppProvisionParams {
+  authorizedBy?: VaultAuthorization;
   slug: string;
   displayName: string;
   template?: string;
@@ -342,6 +346,8 @@ async function registerApp(params: {
   }
 
   const navMetadata = resolveNavMetadata(slug, manifest);
+  const secrets = validateSecrets(manifest?.secrets);
+  if ('error' in secrets) throw new Error(secrets.error);
 
   // #2663: scopes the app defines for itself + the audiences its tokens must
   // also carry, both read from the manifest. Fail-closed like `entryUrl`: a
@@ -363,6 +369,7 @@ async function registerApp(params: {
   // granted. A manifest that changed since (or declares anything when none was
   // readable at proposal time) fails closed — re-propose to review the current list.
   const declared: ManifestDeclarations = {
+    secrets: secrets.ok,
     providesScopes: declarations.ok.providesScopes,
     dependsOn: declarations.ok.dependsOn,
     emittableEvents: emittable.ok,
@@ -397,6 +404,7 @@ async function registerApp(params: {
     // #2674: the whole approved list — the app's own scopes plus the scopes of the
     // dependencies the operator approved — is the ceiling PATCH and mint hold it to.
     requestedScopes: [...new Set([...declarations.ok.providesScopes, ...declarations.ok.dependsOn.flatMap((dep) => dep.scopes)])],
+    secrets: secrets.ok,
     providesScopes: declarations.ok.providesScopes,
     dependsOn: declarations.ok.dependsOn,
     emittableEvents: emittable.ok,
@@ -451,6 +459,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // (it's persisted right after the mint step below succeeds).
   if (existingRun?.status === 'succeeded') {
     const succeededAppDid = existingRun.appDid ?? '';
+    await ensureAppDeclaredSecrets(succeededAppDid, params.authorizedBy);
     const attestationTypeResults = attestationTypes.length > 0
       ? await seedAttestationTypes(succeededAppDid, slug, attestationTypes)
       : [];
@@ -547,6 +556,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   let grantId: string;
   let claimCode: string;
   try {
+    await ensureAppDeclaredSecrets(appDid, params.authorizedBy);
     grantId = await ensureAppSigningKeyGrant(appDid, nodeDid);
     claimCode = await issueSigningKeyClaim({ nodeDid, slug, appDid, grantId });
   } catch (err) {

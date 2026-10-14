@@ -72,6 +72,8 @@ const {
 // #2663: the registry/auth-backed validator is covered by app-declarations.test.ts;
 // here it passes manifest declarations through unless a test overrides it.
 const { validateAppDeclarationsMock } = vi.hoisted(() => ({ validateAppDeclarationsMock: vi.fn() }));
+const { ensureAppDeclaredSecretsMock } = vi.hoisted(() => ({ ensureAppDeclaredSecretsMock: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('../self-secrets', () => ({ ensureAppDeclaredSecrets: ensureAppDeclaredSecretsMock }));
 vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: validateAppDeclarationsMock }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => logMock }));

@@ -21,6 +21,7 @@ import { fetchAppManifest, tryGetInstallationToken, type AppManifest } from '@/s
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import type { ManifestDeclarations } from './declarations-approval';
+import { validateSecrets } from './secret-declarations';
 
 const log = createLogger('kernel:apps:manifest-preview');
 
@@ -43,6 +44,8 @@ async function readManifest(slug: string): Promise<AppManifest | null> {
 export async function previewManifestDeclarations(slug: string): Promise<ManifestPreviewResult> {
   const manifest = await readManifest(slug);
   if (!manifest) return { ok: null };
+  const secrets = validateSecrets(manifest.secrets);
+  if ('error' in secrets) return { error: secrets.error };
 
   const declarations = await validateAppDeclarations({
     providesScopes: manifest.providesScopes,
@@ -54,6 +57,7 @@ export async function previewManifestDeclarations(slug: string): Promise<Manifes
   if ('error' in emittable) return { error: emittable.error };
   return {
     ok: {
+      ...(secrets.ok.length > 0 ? { secrets: secrets.ok } : {}),
       providesScopes: declarations.ok.providesScopes,
       dependsOn: declarations.ok.dependsOn,
       emittableEvents: emittable.ok,

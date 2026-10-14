@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAdmin, verifySync } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isAppSelfSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 import { db, vaultDelegationGrants, vaultGrantRequests } from '@/src/db';
 import {
   canonicalizeGrantPayload,
@@ -284,6 +284,9 @@ export async function POST(request: NextRequest) {
   const fieldError = validateSignedFieldName(field);
   if (fieldError) {
     return NextResponse.json({ error: fieldError }, { status: 400 });
+  }
+  if (isAppSelfSecretField(field)) {
+    return NextResponse.json({ error: 'App self-secret grants are issued only by app provisioning' }, { status: 409 });
   }
 
   const metadataError = validateGrantMetadata(purpose, oneTime);

@@ -60,6 +60,7 @@ import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, appSigningKeyClaims, type AppSigningKeyClaimRow } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
+import { ensureAppDeclaredSecrets } from './self-secrets';
 
 const log = createLogger('kernel:apps:signing-key-claims');
 
@@ -214,6 +215,8 @@ export async function claimSigningKey(params: {
     return { status: 'expired' };
   }
 
+  // A failed issuance must not spend the code or bind a keystore to a failed boot.
+  await ensureAppDeclaredSecrets(row.appDid);
   const claimed = await db
     .update(appSigningKeyClaims)
     .set({

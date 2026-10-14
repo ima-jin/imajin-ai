@@ -313,6 +313,8 @@ export const registryApps = registrySchema.table('apps', {
   homepageUrl: text('homepage_url'),
   logoUrl: text('logo_url'),
   requestedScopes: jsonb('requested_scopes').$type<string[]>().default([]),
+  /** App self-secret recipes approved on /jin (#2799); never secret values. */
+  secrets: jsonb('secrets').$type<Array<{ name: string; kind: 'random-32B' | 'random-64B' }>>().notNull().default(sql`'[]'::jsonb`),
   status: text('status').notNull().default('active'),   // 'active' | 'revoked'
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),

@@ -443,6 +443,8 @@ export async function ensureRepoFromTemplate(
 
 /** Nav metadata (#2425) an app can publish about itself via `imajin.app.json` at its repo root. */
 export interface AppManifest {
+  /** Recipes only; validated before approval and issuance. */
+  secrets?: Array<{ name: string; kind: 'random-32B' | 'random-64B' }>;
   name?: string;
   icon?: string;
   entryUrl?: string;

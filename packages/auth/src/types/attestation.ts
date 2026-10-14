@@ -241,6 +241,8 @@ export const ATTESTATION_TYPES = [
   // only — never the claim code or any key material. See
   // MECHANICAL_ATTESTATION_TYPES below.
   'apps.signing-key.claimed',
+  // Value-free, node-signed app self-secret mint/grant/fetch/rotate/revoke facts.
+  'apps.secret.lifecycle',
 
   // Tool I/O as the committed boundary of an agent turn (#1978, epic #1758) —
   // one attestation per tool call within a turn, signed by the agent's own DID
@@ -348,6 +350,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2411/#2444 — minted mechanically by the kernel node key on every
   // successful app signing-key claim. See ATTESTATION_TYPES above.
   'apps.signing-key.claimed',
+  'apps.secret.lifecycle',
   // #1978 — agent-signed, unilateral, never bilateral/countersigned (same
   // class as 'agent.turn.usage' above). See ATTESTATION_TYPES above.
   'agent.turn.evidence',
