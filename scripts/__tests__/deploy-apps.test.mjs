@@ -56,10 +56,10 @@ function run(root, args, env = {}) {
 
 describe('ecosystem is the positive deploy build boundary (#2784)', () => {
   for (const env of ['dev', 'prod']) {
-    it(`${env} builds only declared monorepo apps, not events or external repos`, () => {
+    it(`${env} selects declared monorepo apps; prod still owns events`, () => {
       const apps = deployApps(require(`../../deploy/ecosystem.${env}.config.js`));
       expect(apps).toContain('kernel');
-      expect(apps).not.toContain('events');
+      expect(apps.includes('events')).toBe(env === 'prod');
       expect(apps).not.toContain('fixready');
       expect(apps.filter((app) => app === 'kernel')).toHaveLength(1);
       expect(apps.includes('corpus')).toBe(env === 'dev');
@@ -88,12 +88,12 @@ describe('ecosystem is the positive deploy build boundary (#2784)', () => {
   it('bounds graph and direct-path incremental changes by ecosystem ownership', () => {
     const root = fixture();
     writeFileSync(join(root, '.last-build-sha'), 'previous');
-    const output = run(root, ['--deploy-env', 'prod', '--dry-run'], {
+    const output = run(root, ['--deploy-env', 'dev', '--dry-run'], {
       GRAPH_CHANGES: '/home/jin/prod/imajin-ai/apps/events\n/home/jin/prod/imajin-ai/apps/kernel',
-      PATH_CHANGES: 'apps/events/app/page.tsx\napps/corpus/src/index.ts',
+      PATH_CHANGES: 'apps/events/app/page.tsx',
     });
-    expect(output).toContain('--prod --migration-owner=kernel kernel');
-    expect(output).not.toMatch(/events|corpus/);
+    expect(output).toContain('--dev --migration-owner=kernel kernel');
+    expect(output).not.toMatch(/events/);
   });
 
   it('events-only changes never invoke build.sh or stamp a dry run', () => {
@@ -108,25 +108,41 @@ describe('ecosystem is the positive deploy build boundary (#2784)', () => {
   it('same-SHA stale events does not trigger a deploy when owned apps are fresh', () => {
     const root = fixture();
     writeFileSync(join(root, '.last-build-sha'), 'current');
-    mkdirSync(join(root, 'apps/kernel/.next'));
-    writeFileSync(join(root, 'apps/kernel/.next/BUILD_ID'), 'built');
-    expect(run(root, ['--deploy-env', 'prod', '--dry-run'])).toContain('Already built');
+    for (const app of ['kernel', 'corpus']) {
+      mkdirSync(join(root, `apps/${app}/.next`));
+      writeFileSync(join(root, `apps/${app}/.next/BUILD_ID`), 'built');
+    }
+    expect(run(root, ['--deploy-env', 'dev', '--dry-run'])).toContain('Already built');
   });
 
   it('same-SHA stale owned app still builds even with an empty git diff', () => {
     const root = fixture();
     writeFileSync(join(root, '.last-build-sha'), 'current');
-    expect(run(root, ['--deploy-env', 'prod', '--dry-run']))
-      .toContain('--prod --migration-owner=kernel kernel');
+    expect(run(root, ['--deploy-env', 'dev', '--dry-run']))
+      .toContain('--dev --migration-owner=kernel corpus kernel');
   });
 
   it('keeps non-deploy discovery unchanged', () => {
     expect(run(fixture(), ['--dry-run'])).toContain('corpus events kernel');
   });
+  it('prod workflow full build still builds events with unscoped migrations', () => {
+    const root = fixture();
+    run(root, []);
+    expect(readFileSync(join(root, 'build-args'), 'utf8').trim().split('\n'))
+      .toEqual(['corpus', 'events', 'kernel']);
+  });
+
+  it('prod workflow incremental build still builds changed events', () => {
+    const root = fixture();
+    writeFileSync(join(root, '.last-build-sha'), 'previous');
+    run(root, [], { PATH_CHANGES: 'apps/events/app/page.tsx' });
+    expect(readFileSync(join(root, 'build-args'), 'utf8').trim().split('\n'))
+      .toEqual(['events']);
+  });
 
   it('rejects a missing or invalid deployment environment', () => {
     const root = fixture();
-    for (const args of [['--deploy-env'], ['--deploy-env', 'staging'], ['--unknown']]) {
+    for (const args of [['--deploy-env'], ['--deploy-env', 'prod'], ['--deploy-env', 'staging'], ['--unknown']]) {
       expect(() => run(root, args)).toThrow();
     }
   });
@@ -134,20 +150,20 @@ describe('ecosystem is the positive deploy build boundary (#2784)', () => {
 
 describe('kernel deploy workflow ownership wiring', () => {
   for (const env of ['dev', 'prod']) {
-    it(`${env} scopes both build selection and explicit migrations`, () => {
+    it(`${env} changes ownership only in dev; prod build and migrations stay unfiltered`, () => {
       const workflow = parse(readFileSync(join(ROOT, `.github/workflows/deploy-${env}.yml`), 'utf8'));
       const steps = workflow.jobs.deploy.steps;
       expect(steps.find((step) => step.name === 'Build changed apps').run)
-        .toBe(`./scripts/build-changed.sh --deploy-env ${env}`);
+        .toBe(env === 'dev' ? './scripts/build-changed.sh --deploy-env dev' : './scripts/build-changed.sh');
       expect(steps.find((step) => step.name === 'Run migrations').run)
-        .toBe('node scripts/migrate.mjs --owner kernel');
+        .toBe(env === 'dev' ? 'node scripts/migrate.mjs --owner kernel' : 'node scripts/migrate.mjs');
     });
   }
 
   it.each([
-    { flags: ['--migration-owner=kernel'], expected: ['--owner', 'kernel'] },
-    { flags: [], expected: [] },
-  ])('real build.sh forwards migration args $expected', ({ flags, expected }) => {
+    { env: 'dev', flags: ['--migration-owner=kernel'], expected: ['--owner', 'kernel'] },
+    { env: 'prod', flags: [], expected: [] },
+  ])('real build.sh forwards $env migration args $expected', ({ env, flags, expected }) => {
     const root = fixture();
     copyFileSync(join(ROOT, 'scripts/build.sh'), join(root, 'scripts/build.sh'));
     // Stop at migration invocation, before metadata/build/restart. The failure
@@ -156,7 +172,7 @@ describe('kernel deploy workflow ownership wiring', () => {
 printf '%s\\n' "$@" > migration-args
 exit 1
 `, { mode: 0o755 });
-    expect(() => execFileSync('/bin/bash', ['scripts/build.sh', '--dev', ...flags, 'kernel'], {
+    expect(() => execFileSync('/bin/bash', ['scripts/build.sh', `--${env}`, ...flags, 'kernel'], {
       cwd: root,
       env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}` },
       stdio: 'pipe',

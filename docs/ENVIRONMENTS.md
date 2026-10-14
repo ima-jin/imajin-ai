@@ -60,7 +60,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
 | Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
-| App | events (deploy external, [ima-jin/events](https://github.com/ima-jin/events); cutover pending #2784) | 3006 | 7006 | jin.imajin.ai/events |
+| App | events (dev release #2784; prod kernel-owned until #2516) | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
 | Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
 | Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
@@ -96,19 +96,28 @@ Caddy route (`jin.imajin.ai/dykil`) are unchanged; `dev-dykil` serves from
 `~/dev/dykil` and `prod-dykil` from `~/prod/dykil`, each a standalone pm2
 process claimed with its own app identity (see `docs/REGISTRATION.md`).
 
-**events ownership release (#2784):** events is no longer declared in the
-kernel's dev/prod ecosystem files; kernel deploys no longer build its retained
-source or run events-only migrations. Existing `dev-events` / `prod-events`
-pm2 processes keep their stored definitions until the operator re-points them.
-The precedent's name-based restart may still bounce them, but cannot change
-their cwd back to the monorepo. `apps/events` is retained pending prune-on-dev.
+**events ownership split (#2784):** this release changes **dev only**. Dev's
+kernel ecosystem/build/events-only migration ownership is removed. **Prod still
+declares `prod-events` at `~/prod/imajin-ai/apps/events` and keeps its existing
+build, migration and reconciliation path.** Prod release is a separate draft PR,
+held for #2529 soak plus Ryan's sign-off and #2516 window. The `events` schema
+and data remain app-owned; `apps/events` remains available for prod.
 
-Only after #2529 dev soak sign-off / in Ryan's #2516 prod window, reconcile
-the live entries from the standalone config to `~/dev/events` / `~/prod/events`,
-preserving **3006 / 7006** and Caddy's **`/events` prefix**. Verify live
-cwd/exec/args, listeners and prefixed health/app behavior, run **`pm2 save`
-after re-pointing**, and verify the persisted entries match. This PR does
-not execute cutover or change any server state. See `deploy/README.md`.
+**Before merging dev**, the #2529 operator runs the standalone deploy script
+from `~/dev/events` (`bash scripts/deploy.sh dev <approved-ref>`), reconciles any
+stale pm2 definition per that runbook, verifies **3006 `/events/api/health`**,
+public Caddy **`/events`**, and live cwd/exec/listener, then **`pm2 save`** and
+verifies persistence. Only then merge the dev release. At Ryan's #2516 window,
+after dev soak/sign-off, do the same from `~/prod/events` with `deploy.sh prod`,
+health on **7006**, and save/verify pm2 **before merging the prod draft**.
+Coordinate kernel deployments during transition; neither PR itself cuts over.
+
+**Rollback:** hold an unmerged release if checks fail; restore the known-good
+monorepo definition with matching build/dependencies. If merged, revert the
+appropriate release through review and the standard kernel deploy workflow
+(prod approval required), rebuild/verify before reconciling pm2, check health
+and run **`pm2 save`** / verify persistence. Do not restart a stale `.next`
+against drifting dependencies. No SQL/data rollback. See `deploy/README.md`.
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when

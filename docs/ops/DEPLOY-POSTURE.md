@@ -385,34 +385,37 @@ its old shared-header contract. Keep using the patched monorepo copy until the
 standalone migration is deployed and verified. Production monorepo use while
 #2516 is blocked is separate from this dev-cutover gate.
 
-## 11. events deploy ownership released, cutover pending (#2784)
+## 11. events ownership release is split by environment (#2784)
 
-Unlike the completed source prunes above, `apps/events` stays in this tree
-until #2529's standalone dev cutover holds. Kernel deploys no longer declare
-`dev-events` / `prod-events`, build the retained events copy, or run events-only
-migrations. Build selection is the positive set of in-repo apps in the
-environment's ecosystem; both deployment migration calls use the existing
-`--owner kernel` mode. Historical shared migrations remain unchanged under
-#1991; they are not a new baseline or schema migration. The `events` schema
-and data stay owned by [ima-jin/events](https://github.com/ima-jin/events).
+The dev release removes only `dev-events` from the kernel ecosystem and uses
+positive dev build ownership plus kernel-owner migrations. **Prod remains fully
+kernel-owned:** its ecosystem, unfiltered build and migration calls are unchanged,
+so `prod-events` continues to receive matching builds/dependencies until #2516.
+A separate prod-release PR stays **draft** and merges only in Ryan's window,
+after the #2529 soak and his sign-off. The `events` tables remain owner `events`;
+historical SQL is untouched. `apps/events` is not pruned by either release and
+must remain available while prod needs the monorepo copy.
 
-**After merge, existing pm2 definitions stay as they are.** The workflows'
-legacy name-based restarts can still bounce events but cannot reconcile it
-back to the monorepo, because neither ecosystem declares it. No live cutover
-is performed here. Only the operator, after dev soak sign-off in #2529 and
-during Ryan's prod window in #2516, replaces the entries from the standalone
-app's configuration:
+**Cut over first, merge second — in each environment.** In #2529, satisfy §10,
+coordinate kernel deploys so they cannot re-point the process during transition,
+reconcile/remove the stale monorepo entry as required by the standalone runbook,
+and run `bash scripts/deploy.sh dev <approved-ref>` from `~/dev/events`.
+Verify the live definition and health on **3006 `/events/api/health`**, the public
+Caddy **`/events` prefix**, and app behavior; **`pm2 save`**, verify persisted
+definitions, **then merge the dev PR**. Hold that merge until standalone dev is
+actually running. Only after dev soak and Ryan's approval/window, repeat from
+`~/prod/events` with `bash scripts/deploy.sh prod <approved-ref>`, verify **7006**
+and `/events`, save/verify pm2, **then merge the prod draft at #2516**. Verify
+subsequent kernel deployments preserve the standalone definition.
 
-- `dev-events`: `~/dev/events`, port **3006**.
-- `prod-events`: `~/prod/events`, port **7006**.
-- Caddy's **`/events` prefix** and upstream ports remain unchanged.
-- Reconcile/recreate, verify live cwd/exec/args and listeners plus prefixed
-  health/app behavior, then **`pm2 save`** and verify the persisted definitions.
-  A name-only restart is not a cwd/exec-path cutover; avoid exposing pm2 envs.
-
-See `deploy/README.md` for operator sequencing. This is ownership release,
-not source pruning, claim provisioning or permission to advance the prod window.
-The standalone events#38 prerequisite in §10 still applies.
+**Rollback:** before merge, hold the release and restore/reconcile the known-good
+monorepo definition using a matching build/dependency set. After merge, revert
+that environment's ownership release through review and deploy with the normal
+kernel workflow (prod approval remains required), rebuild/validate the monorepo
+copy before reconciling pm2, verify listener/prefixed health and **`pm2 save`** /
+verify persistence. Never run a frozen `.next` against drifting dependencies.
+No schema/data rollback, live server work or source pruning occurs here.
+See `deploy/README.md` for the full operator sequence.
 
 ## Decisions for Ryan
 

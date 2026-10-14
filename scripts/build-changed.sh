@@ -1,6 +1,6 @@
 #!/bin/bash
 # build-changed.sh — detect changed apps and pass them to build.sh
-# Usage: ./scripts/build-changed.sh [--deploy-env <dev|prod>] [--dry-run]
+# Usage: ./scripts/build-changed.sh [--deploy-env dev] [--dry-run]
 #
 # Detects which apps changed since the last successful build (via .last-build-sha),
 # walks the pnpm dependency graph to catch transitive changes (e.g. packages/db
@@ -38,8 +38,8 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN=true ;;
     --deploy-env)
       DEPLOY_ENV="${2:-}"
-      [[ "$DEPLOY_ENV" == "dev" || "$DEPLOY_ENV" == "prod" ]] || {
-        echo "Expected --deploy-env dev or prod" >&2
+      [[ "$DEPLOY_ENV" == "dev" ]] || {
+        echo "Expected --deploy-env dev; prod ownership stays with the kernel until #2516" >&2
         exit 1
       }
       shift

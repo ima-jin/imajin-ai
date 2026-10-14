@@ -170,6 +170,21 @@ module.exports = {
       "kill_timeout": 15000
     },
     {
+      "name": "prod-events",
+      "cwd": "/home/jin/prod/imajin-ai/apps/events",
+      "script": "node_modules/next/dist/bin/next",
+      "args": "start -p 7006",
+      "interpreter": "node",
+      "exec_mode": "fork",
+      "env": {
+        "PORT": 7006,
+        "NODE_ENV": "production"
+      },
+      "max_restarts": 10,
+      "min_uptime": "20s",
+      "kill_timeout": 15000
+    },
+    {
       "name": "prod-chat",
       "cwd": "/home/jin/prod/imajin-ai/apps/chat",
       "script": "server.js",

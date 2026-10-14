@@ -223,23 +223,24 @@ entries in `ownership-gaps.json` are kept identical by
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.
 
-### events deploy ownership handoff (#2784)
+### events deploy ownership handoff — dev only (#2784)
 
-The `events` schema and every `events.*` table in `ownership.json` remain
-owned by `events`, whose deploy/migration authority is now
-[ima-jin/events](https://github.com/ima-jin/events), not the kernel.
-All historical SQL and data remain in place; no migration is added, moved,
-rewritten or dropped. `apps/events` source remains until the #2529 dev cutover
-holds, and the open runtime gaps above are not erased by this ownership release.
+Every `events.*` table remains owner `events`; `ima-jin/events` owns that schema
+and data, not the kernel. **Deployment authority transfers per environment**:
+the dev workflow and its `build.sh` call use `migrate.mjs --owner kernel` after
+standalone dev cutover. Prod still runs the existing unfiltered migration calls
+and builds/reconciles `prod-events` until the separate prod draft merges in
+Ryan's #2516 window, after #2529 soak and sign-off.
 
-Kernel deploys now use `migrate.mjs --owner kernel` in both the workflow and
-`build.sh`, rather than the unfiltered runner. This excludes events-only
-migrations using the existing #1991 owner classification. Historical shared
-files (including the original seed and `0025`/`0026`) remain included by that
-existing mode; the per-owner ordering/fresh-database caveats below still apply.
-This change is for the existing dev/prod databases, not a baseline split.
-Standalone migration/cutover is operator-sequenced in #2529 / #2516; see
-`deploy/README.md`. Nothing in this PR runs migrations or changes live state.
+Historical SQL/data are not changed. Kernel-owner mode retains shared files
+(including the seed and `0025`/`0026`) under the existing #1991 rules and
+fresh-database/ordering caveats; this is not a baseline split. The open runtime
+gaps above remain visible. No source is pruned here; retain `apps/events` while
+prod still needs it. Both ownership-release PRs merge only after the respective
+standalone process is healthy and pm2 definitions are saved. Rollback is a
+reviewed per-environment revert and standard deploy/reconciliation with matching
+build/dependencies, health verification and `pm2 save`, not schema rollback.
+See `deploy/README.md`. Nothing here accesses live state.
 
 ### Fixed since the #1983 audit (kept so the history is not re-litigated)
 

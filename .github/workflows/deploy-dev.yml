@@ -82,8 +82,9 @@ jobs:
         run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env dev
 
       - name: Build changed apps
-        # Source retained for extraction is not deploy authority (#2784).
-        # The ecosystem defines builds; build.sh also uses kernel migrations.
+        # DEV ONLY (#2784): merge only after standalone dev-events is running
+        # from ~/dev/events, healthy on 3006 /events and persisted with pm2 save.
+        # Prod keeps its existing build/migration path until Ryan's #2516 window.
         run: ./scripts/build-changed.sh --deploy-env dev
 
       - name: Run migrations
@@ -107,8 +108,9 @@ jobs:
           # binary (#2447) and crash-looped. reconcile deletes + starts any app
           # whose stored exec differs from the file (or that pm2 lacks), and
           # restarts the rest. Anything not in the file keeps the name-based
-          # restart. events (#2784) is no longer declared: its stored definition
-          # stays unchanged until the operator's #2529 cutover to ~/dev/events.
+          # restart. events (#2784) is no longer declared: before merging this
+          # release, the #2529 operator must have re-pointed it to ~/dev/events,
+          # verified health and run pm2 save.
           # Like learn/coffee/market/dykil, it may still be bounced by name;
           # kernel deploys cannot re-point it to apps/events.
           source scripts/lib/pm2-owned.sh

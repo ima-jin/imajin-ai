@@ -102,13 +102,11 @@ jobs:
       - name: Build changed apps
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
         # by the diff since the last successful build (tracked via .last-build-sha).
-        # Falls back to all ecosystem-owned in-repo apps if no build stamp.
-        # Source retained for extraction is not deploy authority (#2784).
-        # build.sh's migrations are also kernel-scoped here.
-        run: ./scripts/build-changed.sh --deploy-env prod
+        # Falls back to full rebuild if .last-build-sha doesn't exist.
+        run: ./scripts/build-changed.sh
 
       - name: Run migrations
-        run: node scripts/migrate.mjs --owner kernel
+        run: node scripts/migrate.mjs
 
       - name: Reap orphaned port squatters
         run: ./scripts/reap-orphans.sh prod
@@ -133,15 +131,11 @@ jobs:
           fi
           echo "✅ prod-jin restarted from $ECOSYSTEM_FILE"
 
-          # Everything else declared here (prod-auth, prod-registry, …).
+          # Everything else (prod-events, …).
           # learn (#2503), coffee (#2500), market (#2512) and dykil (#2523) run from their own
           # repos now; their pm2 entries are no longer in the ecosystem file, so if the operator
           # keeps the prod-learn / prod-coffee / prod-market / prod-dykil names pm2 still lists,
           # the name-based restart below bounces them (harmless; this repo no longer builds or migrates them).
-          # events (#2784) is also no longer declared, but its live definition is
-          # NOT changed here. It keeps its stored cwd until the operator's #2516
-          # prod window re-points it to ~/prod/events and runs pm2 save. A restart
-          # by name cannot re-point it to the retained apps/events source.
           # links (#1986 phase 2) runs from its own repo/pm2 process now, so it is no
           # longer among these.
           #
