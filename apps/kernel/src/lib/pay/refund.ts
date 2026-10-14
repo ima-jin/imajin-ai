@@ -16,6 +16,12 @@ function isSellerSession(row: TransactionRow): row is TransactionRow & { toDid: 
   return row.rail === STRIPE_BYO_RAIL && Boolean(row.toDid) && Boolean(row.externalRef?.startsWith('cs_'));
 }
 
+function settledPaymentIntentOf(row: TransactionRow): string | undefined {
+  const recorded = (row.metadata as Record<string, unknown> | null)?.settledPaymentIntentId;
+  if (row.settledAt && typeof recorded === 'string' && recorded.startsWith('pi_')) return recorded;
+  return undefined;
+}
+
 /**
  * Resolve persisted references first. Intent-only callers may inspect ONLY
  * the authenticated app's recorded seller-account sessions, never platform Stripe.
@@ -67,12 +73,12 @@ export async function resolveOriginalTransaction(
 export async function refundSellerPayment(originalTx: TransactionRow, amount: number) {
   if (originalTx.rail !== STRIPE_BYO_RAIL || !originalTx.toDid) throw new Error('LEGACY_PLATFORM_PAYMENT');
   const { secretKey } = await resolveDidStripeKeys(originalTx.toDid);
-  // Generic checkout metadata is caller-controlled, even after persistence.
-  // Only the rail reference and the seller account's session establish authority.
-  let paymentIntentId: string | undefined;
+  // Only the verified settlement stamp, stored rail reference, or seller
+  // session can establish authority. Unstamped caller metadata is ignored.
+  let paymentIntentId = settledPaymentIntentOf(originalTx);
   if (originalTx.externalRef?.startsWith('pi_')) {
     paymentIntentId = originalTx.externalRef;
-  } else if (isSellerSession(originalTx)) {
+  } else if (!paymentIntentId && isSellerSession(originalTx)) {
     paymentIntentId = await sellerSessionPaymentIntent(secretKey, originalTx.externalRef);
   }
   if (!paymentIntentId) throw new Error('Original seller payment intent is unavailable');

@@ -61,7 +61,7 @@ describe('seller routes', () => {
     if (handler === charge) m.charge.mockRejectedValue(error);
     else if (handler === escrow) m.escrow.mockRejectedValue(error);
     else m.update.mockRejectedValue(error);
-    const body = handler === charge ? chargeBody : handler === escrow ? escrowBody : { escrowId: result.id, provider: 'stripe' };
+    const body = handler === charge ? chargeBody : handler === escrow ? escrowBody : { escrowId: result.id, provider: 'stripe', action: 'release' };
     const response = await handler(req(body));
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain(error.message);
@@ -105,6 +105,7 @@ describe('seller routes', () => {
     expect(m.keys).not.toHaveBeenCalled();
   });
   it.each(['release', 'refund'])('escrow %s resolves persisted seller, ignores body DID', async (action) => {
+    if (action === 'refund') m.auth.mockResolvedValue({ identity: { did: 'did:test:seller' } });
     const response = await update(req({ escrowId: result.id, provider: 'stripe', action, to: 'did:test:spoof' }));
     expect(response.status).toBe(200);
     expect(m.keys).toHaveBeenCalledWith('did:test:seller');
@@ -121,13 +122,13 @@ describe('seller routes', () => {
   it('forbids unrelated authenticated callers and app users', async () => {
     m.auth.mockResolvedValue({ identity: { did: 'did:test:outsider' } });
     m.appAuth.mockResolvedValue({ appAuth: { userDid: 'did:test:outsider' } });
-    for (const app of [false, true]) expect((await update(req({ escrowId: result.id, provider: 'stripe' }, app))).status).toBe(403);
+    for (const app of [false, true]) expect((await update(req({ escrowId: result.id, provider: 'stripe', action: 'release' }, app))).status).toBe(403);
     expect(m.keys).not.toHaveBeenCalled();
   });
   it('allows stored arbiter and fails closed if stored seller loses keys', async () => {
     m.auth.mockResolvedValue({ identity: { did: 'did:test:arbiter' } });
     m.keys.mockRejectedValue(new SellerNoCardRailError());
-    expect((await update(req({ escrowId: result.id, provider: 'stripe' }))).status).toBe(400);
+    expect((await update(req({ escrowId: result.id, provider: 'stripe', action: 'release' }))).status).toBe(400);
     expect(m.update).not.toHaveBeenCalled();
   });
   it('preserves depositor authentication', async () => {
@@ -135,7 +136,7 @@ describe('seller routes', () => {
     m.effective.mockResolvedValue({ ok: false, error: 'Unauthorized', status: 401 });
     expect((await escrow(req(escrowBody))).status).toBe(401);
     m.auth.mockResolvedValue({ error: 'Unauthorized', status: 401 });
-    expect((await update(req({ escrowId: result.id, provider: 'stripe' }))).status).toBe(401);
+    expect((await update(req({ escrowId: result.id, provider: 'stripe', action: 'release' }))).status).toBe(401);
     expect(m.keys).not.toHaveBeenCalled();
   });
 });

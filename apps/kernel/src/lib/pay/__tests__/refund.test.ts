@@ -124,6 +124,11 @@ describe('seller refund resolution', () => {
 });
 
 describe('refundSellerPayment', () => {
+  it('uses the verified settlement PI without a Stripe session round-trip', async () => {
+    await refundSellerPayment({ ...row, settledAt: new Date(), metadata: { settledPaymentIntentId: 'pi_verified' } } as never, 500);
+    expect(h.session).not.toHaveBeenCalled();
+    expect(h.refund).toHaveBeenCalledWith({ payment_intent: 'pi_verified', amount: 500 });
+  });
   it.each([500, 1000])('refunds %i cents against the persisted seller PI', async (amount) => {
     await refundSellerPayment({ ...row, externalRef: 'pi_test' } as never, amount);
     expect(h.keys).toHaveBeenCalledWith(row.toDid);
@@ -135,7 +140,7 @@ describe('refundSellerPayment', () => {
     expect(h.session).toHaveBeenCalledWith('test-only-seller-key', row.externalRef);
     expect(h.refund).toHaveBeenCalledWith({ payment_intent: 'pi_test', amount: 500 });
   });
-  it.each(['paymentIntentId', 'stripePaymentIntentId'])('ignores spoofed %s and refunds the seller-verified session intent', async (field) => {
+  it.each(['paymentIntentId', 'stripePaymentIntentId', 'settledPaymentIntentId'])('ignores spoofed %s and refunds the seller-verified session intent', async (field) => {
     await refundSellerPayment({ ...row, metadata: { [field]: 'pi_unrelated' } } as never, 500);
     expect(h.session).toHaveBeenCalledWith('test-only-seller-key', row.externalRef);
     expect(h.refund).toHaveBeenCalledWith({ payment_intent: 'pi_test', amount: 500 });
