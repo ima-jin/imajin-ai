@@ -1,6 +1,7 @@
 /** Sign exactly the serialized bytes delivered to an app using the published kernel key. */
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { computeKeyKid, crypto as authCrypto } from '@imajin/auth';
+import { canonicalKernelWebhookPayload } from '@imajin/auth/kernel-webhook';
 import { legacyWebhookHeaders, type LegacyWebhookApp } from './kernel-webhook-legacy';
 
 /** Append a callback path without dropping a configured base path or query string. */
@@ -17,9 +18,7 @@ export function signKernelWebhook(url: string, rawBody: string, method = 'POST')
 
   const timestamp = String(Math.floor(Date.now() / 1000));
   const nonce = randomUUID();
-  const target = new URL(url);
-  const bodyHash = createHash('sha256').update(rawBody, 'utf8').digest('hex');
-  const canonical = `imajin-webhook-v1\n${timestamp}\n${nonce}\n${method.toUpperCase()}\n${target.pathname}${target.search}\n${bodyHash}`;
+  const canonical = canonicalKernelWebhookPayload({ timestamp, nonce, method, url, rawBody });
 
   return {
     'x-kernel-kid': computeKeyKid(authCrypto.getPublicKey(privateKey)),

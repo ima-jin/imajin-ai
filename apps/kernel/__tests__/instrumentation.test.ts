@@ -11,6 +11,10 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
+const mockEnsureWebhookSigner = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/auth/register-webhook-signer', () => ({
+  ensureWebhookSignerRegistered: mockEnsureWebhookSigner,
+}));
 
 const { mockLoadVaultAtBoot, mockProvideVaultInternalApiKey, mockEnsureSettleExecutor, mockEnsureEmissionExecutor } = vi.hoisted(() => ({
   mockLoadVaultAtBoot: vi.fn().mockResolvedValue(undefined),
@@ -50,9 +54,15 @@ afterEach(() => {
   mockProvideVaultInternalApiKey.mockClear();
   mockEnsureSettleExecutor.mockClear();
   mockEnsureEmissionExecutor.mockClear();
+  mockEnsureWebhookSigner.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
+  it('registers the shared kernel webhook signer at server boot', async () => {
+    setRuntime('nodejs');
+    await register();
+    expect(mockEnsureWebhookSigner).toHaveBeenCalledTimes(1);
+  });
   it('registers the in-process emission executor at boot (#2735)', async () => {
     setRuntime('nodejs');
     await register();
@@ -120,5 +130,6 @@ describe('kernel instrumentation register()', () => {
     expect(mockLoadVaultAtBoot).not.toHaveBeenCalled();
     expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
     expect(mockEnsureEmissionExecutor).not.toHaveBeenCalled();
+    expect(mockEnsureWebhookSigner).not.toHaveBeenCalled();
   });
 });

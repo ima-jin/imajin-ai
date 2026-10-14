@@ -116,7 +116,6 @@ beforeEach(() => {
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
   process.env.PLATFORM_DID = 'did:imajin:platform';
   process.env.COFFEE_SERVICE_URL = 'http://coffee.test';
-  process.env.COFFEE_WEBHOOK_SECRET = 'coffee_secret';
 });
 
 afterEach(() => vi.unstubAllEnvs());
@@ -169,7 +168,6 @@ describe('settlement + idempotency read external_ref (#2176)', () => {
 
 describe('payment_intent.succeeded (relocated handler)', () => {
   it('delivers a signed coffee payment without a legacy bearer secret', async () => {
-    vi.stubEnv('COFFEE_WEBHOOK_SECRET', '');
     expect((await deliver('payment_intent.succeeded', coffeeIntent)).status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
@@ -192,7 +190,7 @@ describe('payment_intent.succeeded (relocated handler)', () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe('http://coffee.test/api/webhook/payment');
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer coffee_secret');
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
     expect(coffeePayload()).toMatchObject({
       type: 'payment.succeeded',
       tipId: 'tip_1',
@@ -347,7 +345,6 @@ describe('customer.subscription.* (relocated handlers)', () => {
   });
 
   it('deleted: notifies the coffee service of the cancellation', async () => {
-    vi.stubEnv('COFFEE_WEBHOOK_SECRET', '');
     const res = await deliver('customer.subscription.deleted', subscription);
 
     expect(res.status).toBe(200);

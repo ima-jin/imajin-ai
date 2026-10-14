@@ -2,7 +2,7 @@
  * Tests for the learn notification in apps/kernel/src/lib/pay/webhook-handlers.ts (ima-jin/learn#13).
  *
  * Learn creates a paid enrollment from the kernel's notification: an authenticated server-to-server
- * `POST {LEARN_SERVICE_URL}/api/webhook` (the same Bearer scheme market and events use) naming the
+ * `POST {LEARN_SERVICE_URL}/api/webhook` (using published-key kernel signatures) naming the
  * Stripe session, with `rail: "stripe-byo"` top-level for a payment the kernel settled on the
  * seller's own Stripe account (#2773). A learn outage must never fail the Stripe webhook ack.
  */
@@ -32,7 +32,6 @@ import { notifyCheckoutServices, notifyLearnService } from '../webhook-handlers'
 import type { StripeCheckoutSessionLike } from '../webhook-event-shapes';
 
 const LEARN_URL = 'https://learn.test/learn';
-const SECRET = 'learn-webhook-secret';
 const MARKET_URL = 'https://market.test/market';
 
 const fetchMock = vi.fn();
@@ -65,9 +64,7 @@ describe('learn enrollment notification', () => {
     vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     vi.stubGlobal('fetch', fetchMock);
     vi.stubEnv('LEARN_SERVICE_URL', LEARN_URL);
-    vi.stubEnv('LEARN_WEBHOOK_SECRET', SECRET);
     vi.stubEnv('MARKET_SERVICE_URL', MARKET_URL);
-    vi.stubEnv('MARKET_WEBHOOK_SECRET', 'market-secret');
     fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ received: true }), { status: 200 }));
   });
 
@@ -84,7 +81,7 @@ describe('learn enrollment notification', () => {
       const [url, init] = learnCalls()[0] as [string, RequestInit];
       expect(url).toBe(`${LEARN_URL}/api/webhook`);
       expect(init.method).toBe('POST');
-      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}`,
+      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json',
         'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/) });
 
       expect(sentBody()).toEqual({
@@ -139,14 +136,13 @@ describe('learn enrollment notification', () => {
     });
 
     it('delivers with a kernel signature when no legacy secret is configured', async () => {
-      vi.stubEnv('LEARN_WEBHOOK_SECRET', '');
       await notifyLearnService(learnSession());
       const headers = learnCalls()[0][1].headers;
       expect(headers).not.toHaveProperty('Authorization');
       expect(headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
     });
 
-    it('a learn 401 (secret mismatch) is logged and does not fail the ack either', async () => {
+    it('a learn 401 (signature rejection) is logged and does not fail the ack either', async () => {
       fetchMock.mockImplementation(async () => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
 
       await expect(notifyCheckoutServices(learnSession())).resolves.toBeUndefined();
