@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { computeKeyKid, crypto as authCrypto } from '@imajin/auth';
+import { createMemoryKernelWebhookNonceStore, verifyKernelWebhook, type KernelWebhookKey } from '@imajin/auth/kernel-webhook';
 import { getKernelSigningKeyDocument } from '../kernel-signing-key';
 import { kernelWebhookUrl, postKernelWebhook, signKernelWebhook } from '../kernel-webhook';
 
@@ -60,6 +61,33 @@ describe('published kernel webhook signing', () => {
     expect(authCrypto.verifySync(one['x-kernel-signature'], canonical(one, 'https://app.test/hook', '{}'), publicKey)).toBe(true);
   });
 
+  it('verifies real serialized outbound bytes through SDK discovery and rejects replay and tampering', async () => {
+    const url = 'https://app.test/mounted/api/webhook?tenant=%2F&v=2';
+    const payload = { type: 'payment.succeeded', metadata: { message: 'héllo', amount: 100 } };
+    await postKernelWebhook(url, payload, 'market');
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    let pinned: readonly KernelWebhookKey[] | null = null;
+    const discovery = vi.fn(async () => new Response(JSON.stringify(getKernelSigningKeyDocument())));
+    const options = {
+      authServiceUrl: 'https://kernel.test/auth',
+      fetch: discovery as typeof fetch,
+      nonceStore: createMemoryKernelWebhookNonceStore(),
+      pinStore: {
+        load: async () => pinned,
+        save: async (_namespace: string, keys: readonly KernelWebhookKey[]) => { pinned = [...keys]; },
+        withLock: async <T>(_namespace: string, operation: () => Promise<T>): Promise<T> => operation(),
+      },
+    };
+    await expect(verifyKernelWebhook(new Request(url, init), options)).resolves.toEqual(payload);
+    expect(discovery).toHaveBeenCalledWith('https://kernel.test/auth/.well-known/kernel-signing-key', expect.any(Object));
+    expect(pinned).toEqual(getKernelSigningKeyDocument()?.keys);
+    await expect(verifyKernelWebhook(new Request(url, init), options)).rejects.toMatchObject({ code: 'REPLAY' });
+    await expect(verifyKernelWebhook(new Request(url, { ...init, body: '{"type":"tampered"}' }), options))
+      .rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
+    await expect(verifyKernelWebhook(new Request(url.replace('tenant=%2F', 'tenant=changed'), init), options))
+      .rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
+  });
+
   it('keeps base paths and query bytes when appending callback paths', () => {
     expect(kernelWebhookUrl('https://app.test/base/?tenant=%2F&tenant=2', '/api/webhook'))
       .toBe('https://app.test/base/api/webhook?tenant=%2F&tenant=2');
@@ -97,6 +125,10 @@ describe('published kernel webhook signing', () => {
       vi.stubEnv(`${app.toUpperCase()}_WEBHOOK_SECRET`, 'obvious-fake-legacy-placeholder');
       for (let i = 0; i < 2; i++) await postKernelWebhook('https://app.test/hook', {}, app);
     }
+    expect(log.warn).toHaveBeenCalledTimes(4);
+    vi.resetModules();
+    const secondCopy = await import('../kernel-webhook-legacy');
+    secondCopy.legacyWebhookHeaders('market');
     expect(log.warn).toHaveBeenCalledTimes(4);
     for (const app of apps) {
       expect(log.warn).toHaveBeenCalledWith(

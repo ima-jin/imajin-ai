@@ -17,7 +17,9 @@ const LEGACY_SECRET_VARS = {
 } as const;
 
 export type LegacyWebhookApp = keyof typeof LEGACY_SECRET_VARS;
-const warned = new Set<string>();
+const WARNED_KEY = Symbol.for('@imajin/kernel:legacy-webhook-warnings');
+type WarningHolder = { [WARNED_KEY]?: Set<string> };
+const warned = (globalThis as WarningHolder)[WARNED_KEY] ??= new Set<string>();
 
 export function legacyWebhookHeaders(app: LegacyWebhookApp): Record<string, string> {
   const variable = LEGACY_SECRET_VARS[app];

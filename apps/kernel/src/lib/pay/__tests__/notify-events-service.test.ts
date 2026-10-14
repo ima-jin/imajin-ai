@@ -66,7 +66,6 @@ describe('events checkout notification carries the kernel transactionId', () => 
     mocks.limit.mockResolvedValue([{ id: 'tx_abc123' }]);
     vi.stubGlobal('fetch', fetchMock);
     vi.stubEnv('EVENTS_SERVICE_URL', EVENTS_URL);
-    vi.stubEnv('EVENTS_WEBHOOK_SECRET', 'events-secret');
     fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ received: true }), { status: 200 }));
   });
 
@@ -108,7 +107,6 @@ describe('events checkout notification carries the kernel transactionId', () => 
 
   describe('notifyEventsService', () => {
     it('delivers without legacy bearer configuration', async () => {
-      vi.stubEnv('EVENTS_WEBHOOK_SECRET', '');
       await notifyEventsService('checkout.completed', eventsSession());
       expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
       expect(fetchMock.mock.calls[0][1].headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
@@ -119,7 +117,7 @@ describe('events checkout notification carries the kernel transactionId', () => 
       expect(fetchMock).toHaveBeenCalledTimes(1);
       const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
       expect(url).toBe(`${EVENTS_URL}/api/webhook/payment`);
-      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json', Authorization: 'Bearer events-secret',
+      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json',
         'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/) });
       expect(postedBody()).toMatchObject({
         type: 'checkout.completed',
