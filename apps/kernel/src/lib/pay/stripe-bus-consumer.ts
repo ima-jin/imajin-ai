@@ -73,7 +73,7 @@ import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webho
 const log = createLogger('kernel');
 
 /** Name the consumer registers under — referenced by the `stripe.*` chains in `packages/bus/src/config.ts`. */
-export const PAY_STRIPE_REACTOR = 'pay-stripe';
+export const payStripeReactorName = 'pay-stripe';
 
 type StripeEventHandler = (stripeEvent: unknown) => Promise<void>;
 
@@ -260,7 +260,7 @@ let reactorRegistered = false;
  */
 export function ensurePayStripeReactorRegistered(): void {
   if (reactorRegistered) return;
-  registerReactor(PAY_STRIPE_REACTOR, payStripeReactor);
+  registerReactor(payStripeReactorName, payStripeReactor);
   reactorRegistered = true;
 }
 
