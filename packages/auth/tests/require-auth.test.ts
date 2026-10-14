@@ -10,7 +10,7 @@ import { setVaultInternalApiKey } from './support/internal-post-test-env';
 
 const AGENT = 'did:imajin:jin';
 const PRINCIPAL = 'did:imajin:ryan';
-const SESSION_TOKEN = 'session-token-abc';
+const SESSION_TOKEN = `${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`;
 const INTERNAL_KEY = 'test-internal-key';
 const ATTESTATION_KEY = 'test-attestation-key';
 
@@ -40,6 +40,13 @@ beforeEach(() => {
 });
 
 describe('requireAuth — cookie-only session option', () => {
+  it.each(['app+jwt', 'app-service+jwt'])('rejects %s even when placed in the session cookie', async (typ) => {
+    const { requireAuth } = await import('../src/require-auth');
+    const token = `${Buffer.from(JSON.stringify({ alg: 'EdDSA', typ })).toString('base64url')}.payload.signature`;
+    const result = await requireAuth(sessionRequest({ cookie: `imajin_session=${token}` }), { sessionOnly: true });
+    expect(result).toEqual({ error: 'User session required', status: 401 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   it('never falls back to a bearer when sessionOnly is requested', async () => {
     const { requireAuth } = await import('../src/require-auth');
     const result = await requireAuth(new Request('https://kernel.test/pay/api/topup', {

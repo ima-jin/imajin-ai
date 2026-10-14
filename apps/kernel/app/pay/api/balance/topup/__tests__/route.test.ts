@@ -38,7 +38,8 @@ import { POST as emtTopup } from '../../../topup/emt/route';
 const API_KEY = 'test-pay-api-key';
 
 function makeRequest(body: Record<string, unknown>): Request {
-  return jsonPostRequest('https://kernel.test/api/balance/topup', body, { Cookie: `${SESSION_COOKIE_NAME}=session-test` });
+  const token = `${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`;
+  return jsonPostRequest('https://kernel.test/api/balance/topup', body, { Cookie: `${SESSION_COOKIE_NAME}=${token}` });
 }
 
 beforeEach(() => {

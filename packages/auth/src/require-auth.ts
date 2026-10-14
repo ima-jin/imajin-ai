@@ -220,6 +220,9 @@ async function authenticateRequest(request: Request, sessionOnly = false): Promi
   const cookieHeader = request.headers.get("cookie");
   const sessionToken = extractSessionCookie(cookieHeader);
   if (sessionToken) {
+    if (sessionOnly && !hasSessionTokenHeader(sessionToken)) {
+      return { error: "User session required", status: 401 };
+    }
     return validateSessionCookie(sessionToken);
   }
   if (sessionOnly) return { error: "User session required", status: 401 };
@@ -230,6 +233,25 @@ async function authenticateRequest(request: Request, sessionOnly = false): Promi
   }
 
   return { error: "Not authenticated", status: 401 };
+}
+/**
+ * Reject credential-type confusion before the auth service verifies the JWT.
+ * Session JWTs have no typ (legacy/current mint) or JWT; app tokens declare
+ * app+jwt / app-service+jwt and cannot become sessions by moving into a cookie.
+ * This unverified header check grants nothing: validateSessionCookie still
+ * validates signature, expiry and identity via the canonical session endpoint.
+ */
+function hasSessionTokenHeader(token: string): boolean {
+  try {
+    const [header, payload, signature] = token.split(".");
+    if (!header || !payload || !signature) return false;
+    const parsed: unknown = JSON.parse(Buffer.from(header, "base64url").toString("utf8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+    const typ = (parsed as { typ?: unknown }).typ;
+    return typ === undefined || typ === "JWT";
+  } catch {
+    return false;
+  }
 }
 
 /**

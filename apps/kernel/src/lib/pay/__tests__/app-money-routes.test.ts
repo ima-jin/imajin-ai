@@ -233,7 +233,7 @@ describe('pledge recorded authority', () => {
   it('records the verified app and backer on pledge setup', async () => {
     const response = await setupRoute(request('setup-intent',
       { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt', app_did: OTHER, did: 'spoof' } },
-      'service', `${SESSION_COOKIE_NAME}=session`));
+      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
     expect(response.status).toBe(200);
     const [row] = await db.select().from(transactions);
     expect(row).toMatchObject({ appDid: APP, fromDid: 'did:imajin:backer', type: 'pledge', amount: '10.00000000', externalRef: 'seti_new' });
