@@ -42,10 +42,10 @@ describe('seller refund resolution', () => {
     expect(predicate.params).toEqual(['stripe', 'cs_test', 'stripe-byo', 'cs_test']);
     expect(h.keys).not.toHaveBeenCalled();
   });
-  it('uses persisted PI metadata before any account API lookup', async () => {
-    next([]); next([{ ...row, metadata: { paymentIntentId: 'pi_test' } }]);
-    expect(await resolveOriginalTransaction('pi_test', log, row.appDid)).toMatchObject({ id: 'tx_1' });
-    expect(h.session).not.toHaveBeenCalled();
+  it.each(['paymentIntentId', 'stripePaymentIntentId'])('ignores spoofed %s metadata when resolving another intent', async (field) => {
+    next([]); next([{ ...row, metadata: { [field]: 'pi_unrelated' } }]);
+    expect(await resolveOriginalTransaction('pi_unrelated', log, row.appDid)).toBeUndefined();
+    expect(h.session).toHaveBeenCalledWith('test-only-seller-key', row.externalRef);
     expect(renderWhere(h.where.mock.calls[1][0]).params).toEqual([row.appDid]);
   });
   it('checks seller-owned session candidates filtered by authenticated app', async () => {
@@ -97,10 +97,16 @@ describe('refundSellerPayment', () => {
     expect(h.session).toHaveBeenCalledWith('test-only-seller-key', row.externalRef);
     expect(h.refund).toHaveBeenCalledWith({ payment_intent: 'pi_test', amount: 500 });
   });
-  it('uses persisted intent metadata without reading the session', async () => {
-    await refundSellerPayment({ ...row, metadata: { paymentIntentId: 'pi_recorded' } } as never, 500);
-    expect(h.session).not.toHaveBeenCalled();
-    expect(h.refund).toHaveBeenCalledWith({ payment_intent: 'pi_recorded', amount: 500 });
+  it.each(['paymentIntentId', 'stripePaymentIntentId'])('ignores spoofed %s and refunds the seller-verified session intent', async (field) => {
+    await refundSellerPayment({ ...row, metadata: { [field]: 'pi_unrelated' } } as never, 500);
+    expect(h.session).toHaveBeenCalledWith('test-only-seller-key', row.externalRef);
+    expect(h.refund).toHaveBeenCalledWith({ payment_intent: 'pi_test', amount: 500 });
+  });
+  it('never falls back to caller metadata when a session has no payment intent', async () => {
+    h.session.mockResolvedValue(undefined);
+    await expect(refundSellerPayment({ ...row, metadata: { paymentIntentId: 'pi_unrelated' } } as never, 500))
+      .rejects.toThrow('Original seller payment intent');
+    expect(h.refund).not.toHaveBeenCalled();
   });
   it('fails clearly for legacy platform payments without reading a key', async () => {
     await expect(refundSellerPayment({ ...row, rail: 'stripe' } as never, 500)).rejects.toThrow('LEGACY_PLATFORM_PAYMENT');

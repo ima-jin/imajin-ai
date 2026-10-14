@@ -35,6 +35,8 @@ const mocks = vi.hoisted(() => {
   // Pay service
   const refundMock = vi.fn();
   const keysMock = vi.fn();
+  const sessionMock = vi.fn();
+  const logErrorMock = vi.fn();
 
   // Bus
   const publishMock = vi.fn().mockResolvedValue(undefined);
@@ -51,6 +53,8 @@ const mocks = vi.hoisted(() => {
     insertMock,
     refundMock,
     keysMock,
+    sessionMock,
+    logErrorMock,
     publishMock,
   };
 });
@@ -60,7 +64,7 @@ vi.mock('@imajin/logger', () => ({
   withLogger: (_service: string, handler: Function) =>
     (req: unknown) =>
       handler(req, {
-        log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+        log: { error: mocks.logErrorMock, info: vi.fn(), warn: vi.fn() },
         correlationId: 'test-cor-id',
       }),
   createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })),
@@ -72,7 +76,7 @@ vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
 }));
 vi.mock('@/src/lib/pay/providers/seller-pledge-refund', () => ({
   sellerPledgeRefundClient: () => ({ refunds: { create: mocks.refundMock } }),
-  sellerSessionPaymentIntent: async () => 'pi_test_original',
+  sellerSessionPaymentIntent: mocks.sessionMock,
 }));
 
 vi.mock('@/src/db', () => ({
@@ -168,9 +172,35 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     process.env.PAY_SERVICE_API_KEY = API_KEY;
     mocks.refundMock.mockResolvedValue(REFUND_RESULT);
     mocks.keysMock.mockResolvedValue({ secretKey: 'test-only-seller-key' });
+    mocks.sessionMock.mockResolvedValue('pi_test_original');
     mocks.publishMock.mockResolvedValue(undefined);
   });
 
+  it('verifies the recorded session instead of trusting forged PI metadata', async () => {
+    nextSelect([{ ...BASE_TX, metadata: { paymentIntentId: 'pi_unrelated', stripePaymentIntentId: 'pi_unrelated' } }]);
+    nextSelect([]);
+    const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef, amount: 27500 }) as never);
+    expect(res.status).toBe(200);
+    expect(mocks.sessionMock).toHaveBeenCalledWith('test-only-seller-key', BASE_TX.externalRef);
+    expect(mocks.refundMock).toHaveBeenCalledWith({ payment_intent: 'pi_test_original', amount: 27500 });
+  });
+  it('returns the caller intent reference after resolving a recorded seller session', async () => {
+    nextSelect([]); nextSelect([BASE_TX]); nextSelect([]);
+    const res = await POST(makeRequest({ paymentId: 'pi_test_original', amount: 27500 }) as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ paymentId: 'pi_test_original' });
+    expect(mocks.sessionMock).toHaveBeenCalledTimes(2);
+  });
+  it('explains and logs unsupported legacy intent resolution without platform API calls', async () => {
+    nextSelect([]); nextSelect([{ ...BASE_TX, rail: 'stripe', metadata: { paymentIntentId: 'pi_legacy' } }]);
+    const res = await POST(makeRequest({ paymentId: 'pi_legacy' }) as never);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'REFUND_PAYMENT_UNRESOLVED', error: expect.stringContaining('legacy platform') });
+    expect(mocks.logErrorMock).toHaveBeenCalled();
+    expect(mocks.keysMock).not.toHaveBeenCalled();
+    expect(mocks.sessionMock).not.toHaveBeenCalled();
+    expect(mocks.refundMock).not.toHaveBeenCalled();
+  });
   it('rejects legacy platform charges clearly without using credentials', async () => {
     nextSelect([{ ...BASE_TX, rail: 'stripe' }]);
     const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef }) as any);

@@ -31,20 +31,14 @@ export async function resolveOriginalTransaction(
     .limit(1);
   if (directMatch) return directMatch;
 
-  if (paymentId.startsWith('pi_')) {
-    const candidates = await db.select().from(transactions).where(eq(transactions.appDid, appDid));
-    for (const row of candidates) {
-      const metadata = row.metadata as Record<string, unknown> | null;
-      if (metadata?.paymentIntentId === paymentId || metadata?.stripePaymentIntentId === paymentId) return row;
-    }
-    for (const row of candidates) {
-      if (!isSellerSession(row)) continue;
-      const { secretKey } = await resolveDidStripeKeys(row.toDid);
-      try {
-        if (await sellerSessionPaymentIntent(secretKey, row.externalRef) === paymentId) return row;
-      } catch {
-        log.error({ transactionId: row.id }, '[refund] Seller session lookup unavailable');
-      }
+  if (!paymentId.startsWith('pi_')) return undefined;
+  const candidates = await db.select().from(transactions).where(eq(transactions.appDid, appDid));
+  for (const row of candidates.filter(isSellerSession)) {
+    const { secretKey } = await resolveDidStripeKeys(row.toDid);
+    try {
+      if (await sellerSessionPaymentIntent(secretKey, row.externalRef) === paymentId) return row;
+    } catch {
+      log.error({ transactionId: row.id }, '[refund] Seller session lookup unavailable');
     }
   }
   return undefined;
@@ -54,15 +48,13 @@ export async function resolveOriginalTransaction(
 export async function refundSellerPayment(originalTx: TransactionRow, amount: number) {
   if (originalTx.rail !== STRIPE_BYO_RAIL || !originalTx.toDid) throw new Error('LEGACY_PLATFORM_PAYMENT');
   const { secretKey } = await resolveDidStripeKeys(originalTx.toDid);
-  const metadata = originalTx.metadata as Record<string, unknown> | null;
-  const recorded = metadata?.paymentIntentId ?? metadata?.stripePaymentIntentId;
+  // Generic checkout metadata is caller-controlled, even after persistence.
+  // Only the rail reference and the seller account's session establish authority.
   const paymentIntentId = originalTx.externalRef?.startsWith('pi_')
     ? originalTx.externalRef
-    : typeof recorded === 'string' && recorded.startsWith('pi_')
-      ? recorded
-      : originalTx.externalRef?.startsWith('cs_')
-        ? await sellerSessionPaymentIntent(secretKey, originalTx.externalRef)
-        : undefined;
+    : isSellerSession(originalTx)
+      ? await sellerSessionPaymentIntent(secretKey, originalTx.externalRef)
+      : undefined;
   if (!paymentIntentId) throw new Error('Original seller payment intent is unavailable');
   const refund = await sellerPledgeRefundClient(secretKey).refunds.create({ payment_intent: paymentIntentId, amount });
   return { id: refund.id, paymentId: originalTx.externalRef!, amount: refund.amount, status: refund.status };

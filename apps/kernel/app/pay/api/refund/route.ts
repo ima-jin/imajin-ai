@@ -65,8 +65,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     // Stripe API to resolve payment intent → checkout session.
     const originalTx = await resolveOriginalTransaction(paymentId, log, auth.appDid);
     if (!originalTx) {
+      log.error({ appDid: auth.appDid }, 'Refund payment unresolved; legacy platform payments are unsupported');
       return NextResponse.json(
-        { error: 'Transaction not found for paymentId' },
+        { error: 'Transaction not found for paymentId; legacy platform payments require manual refund reconciliation', code: 'REFUND_PAYMENT_UNRESOLVED' },
         { status: 404, headers: cors }
       );
     }
@@ -113,7 +114,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
 
     return NextResponse.json({
       id: refundResult.id,
-      paymentId: refundResult.paymentId,
+      paymentId,
       amount: refundResult.amount,
       status: refundResult.status,
       transactionId: reversalId,
