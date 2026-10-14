@@ -1,5 +1,5 @@
 import { createHash, createPublicKey, randomUUID, verify } from 'node:crypto';
-import { mkdir, open, readFile, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, unlink, writeFile, type FileHandle } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { computeKeyKid } from './key-rotation';
 
@@ -62,6 +62,16 @@ export function canonicalKernelWebhookPayload(input: {
   return `imajin-webhook-v1\n${input.timestamp}\n${input.nonce}\n${input.method.toUpperCase()}\n${url.pathname}${url.search}\n${digest(input.rawBody)}`;
 }
 
+async function acquirePinLock(lockPath: string, deadline: number): Promise<FileHandle> {
+  try {
+    return await open(lockPath, 'wx', 0o600);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw error;
+    await new Promise((done) => setTimeout(done, 25));
+    return acquirePinLock(lockPath, deadline);
+  }
+}
+
 /** Durable public keys only. Use a persistent volume; a stale lock fails closed, never re-pins. */
 export function createFileKernelWebhookPinStore(
   directory = join(process.cwd(), 'data', 'kernel-webhook-pins'),
@@ -91,16 +101,7 @@ export function createFileKernelWebhookPinStore(
     async withLock(namespace, operation) {
       await mkdir(root, { recursive: true });
       const lockPath = `${filename(namespace)}.lock`;
-      const deadline = Date.now() + 10_000;
-      let lock;
-      while (!lock) {
-        try {
-          lock = await open(lockPath, 'wx', 0o600);
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || Date.now() >= deadline) throw error;
-          await new Promise((done) => setTimeout(done, 25));
-        }
-      }
+      const lock = await acquirePinLock(lockPath, Date.now() + 10_000);
       try {
         return await operation();
       } finally {
@@ -235,7 +236,9 @@ function configuration(options: VerifyKernelWebhookOptions) {
   if (base.protocol === 'http:' && !loopback && options.allowInsecureHttp !== true) {
     fail('INVALID_REQUEST', 'Remote kernel discovery requires HTTPS');
   }
-  return { now, maxAge, future, namespace: base.href.replace(/\/+$/, '') };
+  let namespace = base.href;
+  while (namespace.endsWith('/')) namespace = namespace.slice(0, -1);
+  return { now, maxAge, future, namespace };
 }
 
 /** Authenticate raw bytes before parsing JSON. Consumes the request body once; never trusts legacy shared-secret headers. */
@@ -249,7 +252,7 @@ export async function verifyKernelWebhook<T = unknown>(
     const nonce = request.headers.get('x-kernel-nonce') ?? '';
     const kid = request.headers.get('x-kernel-kid') ?? '';
     const signature = request.headers.get('x-kernel-signature') ?? '';
-    if (!/^(0|[1-9][0-9]{0,12})$/.test(timestamp)
+    if (!/^(0|[1-9]\d{0,12})$/.test(timestamp)
       || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nonce)
       || !/^auth-[0-9a-f]{16}$/.test(kid) || !/^[0-9a-f]{128}$/i.test(signature)) {
       fail('INVALID_REQUEST', 'Missing or malformed kernel webhook signature headers');
