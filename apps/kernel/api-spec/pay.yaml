@@ -2,7 +2,21 @@ openapi: "3.1.0"
 info:
   title: imajin pay
   version: "2.0.0"
-  description: Payments, balances, payment-rail (provider) account onboarding, .fair multi-party settlement, escrow, and webhooks. Rail-specific operations have rail-generic equivalents keyed by a `provider` (Stripe is one value). Runs as a kernel service at /{service}/api/... on a shared node domain.
+  description: |
+    Payments, balances, payment-rail (provider) account onboarding, .fair multi-party
+    settlement, escrow, and webhooks. Rail-specific operations have rail-generic
+    equivalents keyed by a provider (Stripe is one value). Runs as a kernel service
+    at /{service}/api/... on a shared node domain.
+    Outbound app callbacks carry detached Ed25519 signatures verified with
+    @ima-jin/auth verifyKernelWebhook and /auth/.well-known/kernel-signing-key.
+    Headers are x-kernel-audience (recipient app DID), x-kernel-kid,
+    x-kernel-timestamp (Unix seconds), x-kernel-nonce,
+    x-kernel-signature (hex). Canonical signed content is imajin-webhook-v1 followed
+    by audience, timestamp, nonce, uppercase method, pathname+query, SHA-256 hex of raw body,
+    each separated by a newline with no trailing newline. Defaults accept ±300s
+    and reject nonce reuse or an audience different from the receiver's own
+    app DID (AUDIENCE_MISMATCH). Failure codes and rollout are documented in
+    docs/security/kernel-webhooks.md. Stripe inbound authentication is unchanged.
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node

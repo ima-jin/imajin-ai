@@ -295,6 +295,39 @@ curl -X POST "${IMAJIN_AUTH_URL}/api/tokens/app" \
 # -> { "token": "...", "expiresIn": 600, "scopes": ["dykil:read", ...only the approved ones], "aud": ["dykil.imajin.ai", "jin.imajin.ai"] }
 ```
 
+### Signed payment callbacks and notify service tokens (#2798)
+
+Kernel payment, enrollment, listing-purchase, subscription and settlement HTTP
+callbacks carry detached Ed25519 signatures. Verify with `verifyKernelWebhook`
+from `@ima-jin/auth/kernel-webhook` before parsing or processing, passing your own app DID as the
+required `audience` option and your configured kernel auth URL. Never derive that
+expected DID from the callback header. The signed `x-kernel-audience` prevents
+cross-app replay at shared callback paths. The helper pins the published key set, follows overlapping rotation
+without app env/key-file edits, rejects timestamps outside ±300 seconds and
+consumes nonces atomically. Production replicas use a shared DB-backed nonce
+adapter and persistent pins; the default nonce store is process-local.
+See [the signature protocol and typed failures](security/kernel-webhooks.md).
+
+This is the integration contract, not a claim that every standalone app has
+already adopted it. Standalone coffee/learn/market remain Bearer-only until
+coffee#13/learn#15/market#15 respectively merge and deploy; retain the existing
+kernel callback Bearers and service URLs until each migration ships.
+Standalone events still uses `x-webhook-secret` for settlement/contact:
+events#38 must merge and deploy before #2529's standalone-events dev cutover.
+The monorepo `apps/events` copy in this PR already verifies signatures and uses
+the vault internal Bearer. See the rollout/removal gate in the linked protocol doc.
+
+For direct notifications, approve `notify:send`, `notify:broadcast` and/or
+`notify:interest` through the existing countersigned `apps:service-scopes` tool
+flow. The token must carry the endpoint's scope and the app must still have that
+scope in its active registry approval. Configure `@ima-jin/notify` at boot with
+an `appTokenProvider` that returns a fresh/cached service token minted through
+`/auth/api/apps/token/service` using the app's vault/keystore identity. User-session
+and delegated app tokens do not authorize these routes; token scopes are not
+self-granted. No new shared credential is required. See `packages/notify/README.md`
+for the callback configuration contract. The temporary rollout bridge is documented
+only in the dated removal note, not an integration path for new apps.
+
 ### Emitting events from an app: `POST /api/events` (#2638, #2641)
 
 A standalone app cannot import `@imajin/bus` (kernel-internal, never published), so the kernel

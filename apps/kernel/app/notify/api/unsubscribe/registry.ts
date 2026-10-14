@@ -1,3 +1,4 @@
+import { notifyRegistryKey } from '@/src/lib/notify/service-auth';
 import { registryServiceUrl, hasRegistryServiceUrl } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 
@@ -12,14 +13,14 @@ export async function updateRegistryPreference(did: string, scope: string): Prom
     return;
   }
   try {
-    const webhookSecret = process.env.NOTIFY_WEBHOOK_SECRET;
+    const internalKey = await notifyRegistryKey();
     const res = await fetch(
       `${registryServiceUrl()}/api/preferences/${encodeURIComponent(did)}/interests/${encodeURIComponent(scope)}`,
       {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(webhookSecret ? { 'x-webhook-secret': webhookSecret } : {}),
+          Authorization: `Bearer ${internalKey}`,
         },
         body: JSON.stringify({ marketing: false, email: false }),
       },

@@ -9,7 +9,12 @@
  * notifications they make — including the notification failure paths, which
  * must never fail the Stripe delivery.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
+vi.mock('@/src/lib/auth/kernel-webhook-recipient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/src/lib/auth/kernel-webhook-recipient')>(),
+  resolveKernelWebhookAudience: vi.fn(async (_url, recipient) => `did:imajin:${recipient.appSlug}`),
+}));
 
 interface TxFixture {
   id: string;
@@ -103,6 +108,7 @@ const coffeeIntent = {
 };
 
 beforeEach(() => {
+  vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
   vi.clearAllMocks();
   state.txRow = undefined;
   state.insertCalls = [];
@@ -114,8 +120,9 @@ beforeEach(() => {
   process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
   process.env.PLATFORM_DID = 'did:imajin:platform';
   process.env.COFFEE_SERVICE_URL = 'http://coffee.test';
-  process.env.COFFEE_WEBHOOK_SECRET = 'coffee_secret';
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 /** Assert a recorded `.where(...)` filters on the Stripe rail's `external_ref` — never the dropped `stripe_id` column. */
 function expectKeyedOnExternalRef(where: unknown, ref: string): void {
@@ -164,6 +171,12 @@ describe('settlement + idempotency read external_ref (#2176)', () => {
 });
 
 describe('payment_intent.succeeded (relocated handler)', () => {
+  it('delivers a signed coffee payment without a legacy bearer secret', async () => {
+    expect((await deliver('payment_intent.succeeded', coffeeIntent)).status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+    expect(fetchMock.mock.calls[0][1].headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
+  });
   it('completes the transaction, publishes payment.charge, and notifies the coffee service', async () => {
     const res = await deliver('payment_intent.succeeded', coffeeIntent);
 
@@ -181,7 +194,7 @@ describe('payment_intent.succeeded (relocated handler)', () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toBe('http://coffee.test/api/webhook/payment');
-    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer coffee_secret');
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
     expect(coffeePayload()).toMatchObject({
       type: 'payment.succeeded',
       tipId: 'tip_1',
@@ -340,6 +353,8 @@ describe('customer.subscription.* (relocated handlers)', () => {
 
     expect(res.status).toBe(200);
     expect(coffeePayload()).toMatchObject({ type: 'subscription.canceled', status: 'canceled', subscriptionId: 'sub_1' });
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+    expect(fetchMock.mock.calls[0][1].headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
   });
 
   it('deleted: does nothing for a non-coffee subscription', async () => {

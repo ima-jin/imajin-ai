@@ -217,6 +217,16 @@ export type {
 export { requireHardDIDOrAppToken } from "./require-hard-did-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
+// Webhook runtime uses Node filesystem/advisory-lock APIs. Import it from
+// "@imajin/auth/kernel-webhook" so unrelated browser consumers of this root
+// (including money's pure cryptographic helpers) do not load child_process.
+export type {
+  KernelWebhookErrorCode,
+  KernelWebhookKey,
+  KernelWebhookPinStore,
+  KernelWebhookNonceStore,
+  VerifyKernelWebhookOptions,
+} from "./kernel-webhook";
 export { resolveActingDid, resolveComposedBy, isUnderActAs } from "./acting-did";
 export {
   GRANT_SCOPE_REGISTRY,
@@ -258,7 +268,7 @@ export {
 } from "./knock";
 export type { KnockStatus, ExternalDidVerificationState } from "./knock";
 export { loadFromVault } from "./vault-client";
-export { bootstrapInternalApiKey, provideInternalApiKey } from "./internal-post";
+export { bootstrapInternalApiKey, provideInternalApiKey, getVaultInternalApiKey } from "./internal-post";
 export type {
   VaultBootstrapIdentity,
   VaultKeySpec,

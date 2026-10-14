@@ -23,10 +23,18 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-    webhookSecret:
-      type: http
-      scheme: bearer
-      description: "Bearer WEBHOOK_SECRET — internal payment webhook from pay service"
+    kernelWebhookSignature:
+      type: apiKey
+      in: header
+      name: x-kernel-signature
+      description: |
+        Detached Ed25519 kernel signature. Also requires x-kernel-audience (events'
+        own registered app DID), x-kernel-kid, x-kernel-timestamp (Unix seconds),
+        and x-kernel-nonce. The canonical seven lines are imajin-webhook-v1,
+        audience, timestamp, nonce, uppercase method, pathname plus query, and
+        SHA-256 hex of the exact raw body. verifyKernelWebhook authenticates before
+        parsing and rejects cross-app delivery, tampering, stale timestamps and
+        replay. The expected audience is trusted app identity, never the header.
   schemas:
     Event:
       type: object
@@ -1492,7 +1500,7 @@ paths:
       operationId: paymentWebhook
       summary: Payment webhook from pay service
       security:
-        - webhookSecret: []
+        - kernelWebhookSignature: []
       requestBody:
         required: true
         content:
@@ -1501,6 +1509,34 @@ paths:
       responses:
         "200":
           description: Event received
+        "400":
+          description: Signed body is not valid JSON
+        "401":
+          description: Missing or invalid signature, wrong audience, replay, stale or future timestamp
+        "503":
+          description: App identity, trusted key discovery or replay/pin storage unavailable
+
+  /api/webhook/settlement:
+    post:
+      tags: [events]
+      operationId: settlementWebhook
+      summary: Record a signed settlement.completed snapshot from the kernel bus
+      security:
+        - kernelWebhookSignature: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Authenticated settlement snapshot recorded
+        "400":
+          description: Invalid signed JSON body or missing orderId
+        "401":
+          description: Missing or invalid signature, wrong audience, replay, stale or future timestamp
+        "503":
+          description: App identity, trusted key discovery or replay/pin storage unavailable
 
   /api/proxy/connections:
     get:

@@ -44,5 +44,9 @@ export async function register() {
     // #2735: protocol emissions are also in-process, never app/user HTTP authority.
     const { ensureEmissionExecutorRegistered } = await import('@/src/lib/pay/emission-executor');
     ensureEmissionExecutorRegistered();
+
+    // #2798: every bus webhook uses the same published kernel key as pay callbacks.
+    const { ensureWebhookSignerRegistered } = await import('@/src/lib/auth/register-webhook-signer');
+    ensureWebhookSignerRegistered();
   }
 }

@@ -12,7 +12,7 @@ const log = createLogger('kernel');
  * Internal endpoint — resolve a DID to its contact email.
  * Used by the notify service to resolve DID → email for broadcast sends.
  *
- * Auth: x-webhook-secret header (must match NOTIFY_WEBHOOK_SECRET).
+ * Auth: vault-sourced internal Bearer key.
  *
  * Lookup order:
  *   1. auth.identities.contact_email (backfilled from Stripe / ticket metadata)
@@ -24,10 +24,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ did: string }> }
 ) {
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = await requireInternalApiKey(request);
+  if (authError) return authError;
 
   const { did } = await params;
   const decodedDid = decodeURIComponent(did);

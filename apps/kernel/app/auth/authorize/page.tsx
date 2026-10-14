@@ -2,8 +2,8 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { SCOPES } from '@imajin/auth';
-import type { Scope } from '@imajin/auth';
+import { SCOPES } from '@imajin/auth/scope-vocabulary';
+import type { Scope } from '@imajin/auth/scope-vocabulary';
 
 interface AppInfo {
   id: string;

@@ -17,7 +17,7 @@ vi.mock('@imajin/logger', () => ({
 
 stubRegistryResolverEnv();
 
-const SECRET = 'webhook-secret';
+const SECRET = 'fake-vault-internal-key';
 
 describe('resolveScopeForAttestation', () => {
   it('warns and returns null without calling fetch when the registry URL is not configured', async () => {
@@ -42,7 +42,7 @@ describe('resolveScopeForAttestation', () => {
     expect(await resolveScopeForAttestation('intro.completed', SECRET)).toBe('events');
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:7000/registry/api/interests',
-      expect.objectContaining({ headers: { 'x-webhook-secret': SECRET } }),
+      expect.objectContaining({ headers: { Authorization: `Bearer ${SECRET}` } }),
     );
   });
 
@@ -78,7 +78,7 @@ describe('didInterestExists', () => {
     expect(await didInterestExists('did:imajin:jin', 'events', SECRET)).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:7000/registry/api/preferences/did%3Aimajin%3Ajin',
-      expect.objectContaining({ headers: { 'x-webhook-secret': SECRET } }),
+      expect.objectContaining({ headers: { Authorization: `Bearer ${SECRET}` } }),
     );
   });
 });

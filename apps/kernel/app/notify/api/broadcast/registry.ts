@@ -10,7 +10,7 @@ const log = createLogger('kernel');
  */
 export async function fetchAudienceFromRegistry(
   scope: string,
-  webhookSecret: string,
+  internalKey: string,
 ): Promise<string[]> {
   if (!hasRegistryServiceUrl()) {
     log.warn({}, 'REGISTRY_SERVICE_URL not set — cannot fetch audience from registry');
@@ -18,7 +18,7 @@ export async function fetchAudienceFromRegistry(
   }
   try {
     const res = await fetch(`${registryServiceUrl()}/api/audience/${encodeURIComponent(scope)}?channel=email`, {
-      headers: { 'x-webhook-secret': webhookSecret },
+      headers: { Authorization: `Bearer ${internalKey}` },
       cache: 'no-store',
     });
     if (!res.ok) {
@@ -40,13 +40,13 @@ export async function fetchAudienceFromRegistry(
 export async function checkRegistryPreferences(
   did: string,
   scope: string,
-  webhookSecret: string,
+  internalKey: string,
 ): Promise<boolean> {
   if (!hasRegistryServiceUrl()) return true; // optimistic if registry not configured
   try {
     const res = await fetch(
       `${registryServiceUrl()}/api/preferences/${encodeURIComponent(did)}`,
-      { headers: { 'x-webhook-secret': webhookSecret }, cache: 'no-store' },
+      { headers: { Authorization: `Bearer ${internalKey}` }, cache: 'no-store' },
     );
     if (!res.ok) return true; // default to eligible on registry error
     const prefs = await res.json();

@@ -1,8 +1,7 @@
 /**
  * Tests for POST /auth/api/identity/:did/contact (#2058, sibling of
  * #1999/#2053's eligibility/evaluate route). Only the new POST handler is
- * covered here — the pre-existing GET handler (NOTIFY_WEBHOOK_SECRET auth)
- * is untouched by #2058 and out of scope.
+ * covered here — GET uses the same vault-sourced internal Bearer contract.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';
@@ -48,7 +47,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-import { POST } from '../route';
+import { GET, POST } from '../route';
 
 function makeReq(body: unknown, apiKey: string | undefined = API_KEY): NextRequest {
   const headers = new Headers();
@@ -140,5 +139,26 @@ describe('POST /auth/api/identity/:did/contact', () => {
 
     const res = await POST(makeReq({ email: 'new@example.com' }), makeParams(DID));
     expect(res.status).toBe(500);
+  });
+});
+
+
+describe('GET /auth/api/identity/:did/contact', () => {
+  it('resolves contact email using the vault internal Bearer', async () => {
+    h.mockDbSelect.mockReturnValue(makeSelectChain([{ id: DID, contactEmail: 'buyer@example.com' }]));
+    const response = await GET(makeReq({}), makeParams(DID));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ did: DID, email: 'buyer@example.com' });
+  });
+  it('rejects the retired notify header before looking up contact information', async () => {
+    const req = { headers: new Headers({ 'x-webhook-secret': 'fake-retired-key' }) } as NextRequest;
+    const response = await GET(req, makeParams(DID));
+    expect(response.status).toBe(401);
+    expect(h.mockDbSelect).not.toHaveBeenCalled();
+  });
+  it('fails closed when the vault internal credential is unavailable', async () => {
+    useVaultInternalKey(undefined);
+    expect((await GET(makeReq({}), makeParams(DID))).status).toBe(401);
+    expect(h.mockDbSelect).not.toHaveBeenCalled();
   });
 });

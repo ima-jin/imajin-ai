@@ -11,14 +11,10 @@
  * Key order follows vocabulary order, which is what the consent screens
  * (/auth/authorize, /auth/apps) and the app-registration forms render in.
  */
-import { SCOPE_VOCABULARY, type Scope } from './scope-vocabulary';
+import { SCOPES, type Scope } from './scope-vocabulary';
 
 export type { Scope };
-
-/** Scope → human-readable label shown on the consent screen. */
-export const SCOPES: Readonly<Record<Scope, string>> = Object.fromEntries(
-  SCOPE_VOCABULARY.map((entry) => [entry.scope, entry.label]),
-) as Record<Scope, string>;
+export { SCOPES };
 
 export function validateScopes(scopes: string[]): { valid: Scope[]; invalid: string[] } {
   const valid: Scope[] = [];

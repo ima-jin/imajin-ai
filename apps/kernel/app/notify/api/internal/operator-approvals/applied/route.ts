@@ -1,11 +1,10 @@
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 /**
  * POST /notify/api/internal/operator-approvals/applied — return-path hook
  * (#2059 task 4).
  *
  * The plugin calls this once the Gateway has actually applied an approved
- * proposal, so /jin can show 'applied' instead of 'approved'. Guarded by
- * the same webhook secret every other machine-to-kernel notify write uses
- * (`NOTIFY_WEBHOOK_SECRET`, see `POST /notify/api/send`) — no new secret.
+ * so /jin can show execution status. Auth: vault-sourced internal Bearer key.
  *
  * Deliberately minimal per the issue's scope: no signature, no new bus
  * event, just the state transition. Idempotent and silent on a proposal
@@ -27,10 +26,8 @@ export function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
+  const authError = await requireInternalApiKey(request);
+  if (authError) return authError;
 
   let body: { proposalId?: unknown };
   try {

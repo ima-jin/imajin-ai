@@ -3,10 +3,15 @@
  *
  * Market settles its own purchases through `/pay/api/settle` with its app-service token, so the
  * kernel's Stripe webhook must tell market a purchase was paid: an authenticated server-to-server
- * `POST {MARKET_SERVICE_URL}/api/webhook` (the same Bearer scheme `notifyEventsService` uses) naming
+ * `POST {MARKET_SERVICE_URL}/api/webhook` (using published-key kernel signatures) naming
  * the Stripe session. A market outage must never fail the Stripe webhook ack.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
+vi.mock('../../auth/kernel-webhook-recipient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../auth/kernel-webhook-recipient')>(),
+  resolveKernelWebhookAudience: vi.fn(async (_url, recipient) => `did:imajin:${recipient.appSlug}`),
+}));
 
 const mocks = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),
@@ -31,7 +36,6 @@ import { notifyCheckoutServices, notifyMarketService } from '../webhook-handlers
 import type { StripeCheckoutSessionLike } from '../webhook-event-shapes';
 
 const MARKET_URL = 'https://market.test/market';
-const SECRET = 'market-webhook-secret';
 const EVENTS_URL = 'https://events.test';
 
 const fetchMock = vi.fn();
@@ -59,11 +63,10 @@ const marketCalls = () => fetchMock.mock.calls.filter(([url]) => String(url).sta
 describe('market purchase notification', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     vi.stubGlobal('fetch', fetchMock);
     vi.stubEnv('MARKET_SERVICE_URL', MARKET_URL);
-    vi.stubEnv('MARKET_WEBHOOK_SECRET', SECRET);
     vi.stubEnv('EVENTS_SERVICE_URL', EVENTS_URL);
-    vi.stubEnv('EVENTS_WEBHOOK_SECRET', 'events-secret');
     mocks.publishMock.mockResolvedValue(undefined);
     fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ received: true }), { status: 200 }));
   });
@@ -81,7 +84,8 @@ describe('market purchase notification', () => {
       const [url, init] = marketCalls()[0] as [string, RequestInit];
       expect(url).toBe(`${MARKET_URL}/api/webhook`);
       expect(init.method).toBe('POST');
-      expect(init.headers).toEqual({ 'Content-Type': 'application/json', Authorization: `Bearer ${SECRET}` });
+      expect(init.headers).toMatchObject({ 'Content-Type': 'application/json',
+        'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/) });
 
       expect(JSON.parse(init.body as string)).toEqual({
         type: 'payment.succeeded',
@@ -143,7 +147,7 @@ describe('market purchase notification', () => {
       );
     });
 
-    it('a market 401 (secret mismatch) is logged and does not fail the ack either', async () => {
+    it('a market 401 (signature rejection) is logged and does not fail the ack either', async () => {
       fetchMock.mockImplementation(async () => new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 }));
 
       await expect(notifyCheckoutServices(marketSession())).resolves.toBeUndefined();
@@ -187,7 +191,7 @@ describe('market purchase notification', () => {
       expect(body.metadata.currency).toBeUndefined();
     });
 
-    it.each(['MARKET_SERVICE_URL', 'MARKET_WEBHOOK_SECRET'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
+    it.each(['MARKET_SERVICE_URL'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
       vi.stubEnv(missing, '');
 
       await expect(notifyMarketService(marketSession())).resolves.toBeUndefined();
@@ -197,6 +201,13 @@ describe('market purchase notification', () => {
         { sessionId: 'cs_test_market_1' },
         expect.stringContaining('market purchase will not settle'),
       );
+    });
+
+    it('delivers with a kernel signature when no legacy secret is configured', async () => {
+      await notifyMarketService(marketSession());
+      const headers = marketCalls()[0][1].headers;
+      expect(headers).not.toHaveProperty('Authorization');
+      expect(headers['x-kernel-signature']).toMatch(/^[a-f0-9]{128}$/);
     });
   });
 });

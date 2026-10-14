@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SCOPES } from '@imajin/auth';
-import type { Scope } from '@imajin/auth';
+import { SCOPES } from '@imajin/auth/scope-vocabulary';
+import type { Scope } from '@imajin/auth/scope-vocabulary';
 
 interface ConnectedApp {
   attestationId: string;

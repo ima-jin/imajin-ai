@@ -6,6 +6,11 @@
  * stripe-bus-convergence.test.ts.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { crypto as authCrypto } from '@imajin/auth';
+vi.mock('../../auth/kernel-webhook-recipient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../auth/kernel-webhook-recipient')>(),
+  resolveKernelWebhookAudience: vi.fn(async (_url, recipient) => `did:imajin:${recipient.appSlug}`),
+}));
 
 const h = vi.hoisted(() => ({
   settleByoMock: vi.fn(),
@@ -52,6 +57,7 @@ function byoEvent(overrides: Record<string, unknown> = {}, payload: Record<strin
 }
 
 beforeEach(() => {
+  vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
   h.settleByoMock.mockReset().mockResolvedValue({ settled: true });
   h.settleCheckoutMock.mockReset().mockResolvedValue({ settled: false, reason: 'not_found' });
   h.settleNodeTopupMock.mockReset().mockResolvedValue(false);
@@ -59,6 +65,8 @@ beforeEach(() => {
   h.getRelayEntryMock.mockReset();
   h.errorMock.mockReset();
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe('pay-stripe reactor — BYO payment_intent.succeeded (#2754)', () => {
   it('settles the payment_request the owner\'s own event names, handing over exactly the event\'s facts', async () => {
@@ -200,7 +208,6 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
     vi.stubGlobal('fetch', fetchMock);
     process.env.COFFEE_SERVICE_URL = 'https://coffee.test';
-    process.env.COFFEE_WEBHOOK_SECRET = 'coffee-secret';
     h.settleCheckoutMock.mockResolvedValue({
       settled: true,
       session: { ...SESSION, metadata: { service: 'coffee', tipId: 'tip_1', pageId: 'pg_1', pageHandle: 'h', to_did: 'did:imajin:page' } },
@@ -217,7 +224,6 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
     vi.stubGlobal('fetch', fetchMock);
     process.env.COFFEE_SERVICE_URL = 'https://coffee.test';
-    process.env.COFFEE_WEBHOOK_SECRET = 'coffee-secret';
     h.settleCheckoutMock.mockResolvedValue({
       settled: true,
       session: { ...SESSION, rail: 'stripe-byo', metadata: { service: 'coffee', tipId: 'tip_1', pageId: 'pg_1', pageHandle: 'h', to_did: 'did:imajin:page' } },
@@ -233,7 +239,6 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     const fetchMock = vi.fn(async () => ({ ok: true, text: async () => '' }));
     vi.stubGlobal('fetch', fetchMock);
     process.env.COFFEE_SERVICE_URL = 'https://coffee.test';
-    process.env.COFFEE_WEBHOOK_SECRET = 'coffee-secret';
     h.settleCheckoutMock.mockResolvedValue({
       settled: true,
       session: { ...SESSION, metadata: { service: 'coffee', tipId: 'tip_1' } },

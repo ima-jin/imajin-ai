@@ -15,6 +15,7 @@ import {
 } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
+import { requireNotifyAuth } from '@/src/lib/notify/service-auth';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -296,11 +297,8 @@ async function resolveEmailChannel(
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
-  // Verify webhook secret
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
+  const authError = await requireNotifyAuth(request, 'notify:send', cors);
+  if (authError) return authError;
 
   let body: {
     to: string;

@@ -16,6 +16,7 @@ export default defineConfig({
     // operator script and external verifiers can load them without pulling in
     // the server-only index bundle.
     'src/key-rotation.ts',
+    'src/kernel-webhook.ts',
   ],
   // ESM only. @noble/curves, @noble/ed25519, and @noble/hashes are all
   // "type": "module" with no "require" condition in their exports map, so a

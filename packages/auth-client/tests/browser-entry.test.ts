@@ -89,6 +89,21 @@ describe('requestAppToken via ./browser', () => {
 });
 
 describe('./browser import graph is client-safe', () => {
+  it('bundles the shared consent scope vocabulary without server webhook dependencies', async () => {
+    const result = await build({
+      entryPoints: [path.resolve(PKG_ROOT, '../auth/src/scope-vocabulary.ts')],
+      bundle: true,
+      platform: 'browser',
+      format: 'esm',
+      write: false,
+      metafile: true,
+      absWorkingDir: PKG_ROOT,
+      logLevel: 'silent',
+    });
+    expect(result.errors).toEqual([]);
+    expect(Object.keys(result.metafile.inputs)).toEqual(['../auth/src/scope-vocabulary.ts']);
+    expect(Object.values(result.metafile.inputs).flatMap((input) => input.imports)).toEqual([]);
+  });
   it('bundles for a browser target with no node built-ins, next/*, or keystore code', async () => {
     // platform: 'browser' makes esbuild error on any node built-in import
     // (fs, crypto, path, node:*) instead of silently externalising it.

@@ -42,6 +42,14 @@ They are listed honestly in §7 rather than papered over.
 | **S6. FAIR manifests and settle receipts** | `lib/kernel/sign-fair-manifest.ts`, `lib/media/create-asset.ts`, `manifest-helpers.ts`, `content-signer.ts`; receipts: `lib/media/settle.ts`, `settle/confirm/route.ts`, `packages/fair/src/receipt.ts` | Receipts minted before the swap fail verification (streaming 24 h, other actions 30 d); buyers re-settle. `.fair.json` manifests on disk keep a signature by the old key. | **GAP.** Current key only. No re-sign sweep exists for manifests. |
 | **S7. DFOS content chain (federation)** | `lib/auth/dfos.ts` (`createAttestationEntry`), `packages/dfos/src/content-publish.ts` (uses `AUTH_PRIVATE_KEY` when `DFOS_PRIVATE_KEY_HEX` is unset) | New entries signed by the new key are rejected by relays/peers until the node's DFOS identity chain registers that key (a chain `update`, `updateIdentityChain` in `packages/dfos/src/bridge.ts`). This is the "re-announce" step. | Peers and the relay, via the DFOS chain, which keeps key history natively. `key.rotated` is not needed for this role. If the node has no DFOS identity chain, `createAttestationEntry` already skips with a warning and there is nothing to re-announce. |
 
+S2 also covers detached kernel-to-app callback signatures (#2798):
+`apps/kernel/src/lib/auth/kernel-webhook.ts` signs payment, subscription and
+bus settlement callbacks with the same published key. `@ima-jin/auth`
+`verifyKernelWebhook` caches verified publication sets for a bounded TTL, requires
+overlap by both kid and public key, and accepts currently published non-expired
+keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
+or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |
@@ -456,6 +464,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/auth/jwt.ts` — S1
 - `apps/kernel/src/lib/kernel/corpus-access-claim.ts` — S2
 - `apps/kernel/src/lib/auth/kernel-signing-key.ts` — S2
+- `apps/kernel/src/lib/auth/kernel-webhook.ts` — S2 (detached app callbacks; published key and overlapping rotation)
 - `apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts` — S2
 - `apps/corpus/src/middleware/access-claim.ts` — S2 (verifier; public keys only)
 - `apps/kernel/src/lib/auth/emit-mechanical-attestation.ts` — S3

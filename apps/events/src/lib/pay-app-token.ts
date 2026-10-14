@@ -16,7 +16,8 @@
  *   - `pay:settle`, `pay:refund` and `pay:charge-pledges` approved for events
  *     via the `apps:service-scopes` card.
  */
-import { createAppServiceTokenProvider, loadAppSigningKey, type AppServiceTokenProvider } from '@imajin/auth-client';
+import { createAppServiceTokenProvider, type AppServiceTokenProvider } from '@imajin/auth-client';
+import { getEventsSigningIdentity, resetEventsIdentityForTests } from './app-identity';
 
 // Held on `globalThis` (not a module-level `let`): Next can bundle this module into more than one
 // route chunk of the same server process, and a one-time claim code can only be redeemed once — a
@@ -33,7 +34,7 @@ async function createProvider(): Promise<AppServiceTokenProvider> {
   if (!kernelUrl) {
     throw new Error('events pay app token: IMAJIN_KERNEL_URL is not set');
   }
-  const signingKey = await loadAppSigningKey({ kernelUrl, hostHint: 'events' });
+  const signingKey = await getEventsSigningIdentity();
   return createAppServiceTokenProvider({ kernelUrl, appDid: signingKey.appDid, privateKey: signingKey.privateKey });
 }
 
@@ -83,4 +84,5 @@ export async function postPayAsApp(path: string, body: unknown, cookie?: string)
 /** Forget the cached provider (tests only). */
 export function resetPayAppTokenForTests(): void {
   holder()[PROVIDER_KEY] = null;
+  resetEventsIdentityForTests();
 }

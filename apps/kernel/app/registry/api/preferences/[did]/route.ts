@@ -4,6 +4,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { db, didPreferences, didInterests } from '@/src/db';
 import { eq, asc } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { authorizePreferenceDid } from '@/src/lib/notify/registry-auth';
 
 const log = createLogger('kernel');
 
@@ -14,7 +15,7 @@ export function OPTIONS(request: NextRequest) {
 /**
  * GET /api/preferences/[did]
  * Returns global prefs + all interest scopes with channel toggles for this DID.
- * Requires the authenticated session DID to match the :did param.
+ * Requires the session DID to match :did, or the vault internal Bearer key.
  */
 export async function GET(
   request: NextRequest,
@@ -22,18 +23,9 @@ export async function GET(
 ) {
   const cors = corsHeaders(request);
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
-  }
-
   const { did } = await params;
-
-  const effectiveDid = resolveActingDid(authResult.identity);
-
-  if (effectiveDid !== did) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });
-  }
+  const auth = await authorizePreferenceDid(request, did, cors);
+  if (auth.error) return auth.error;
 
   try {
     // Get or return default global preferences

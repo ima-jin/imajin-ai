@@ -10,7 +10,7 @@ const log = createLogger('kernel');
  */
 export async function resolveScopeForAttestation(
   attestationType: string,
-  webhookSecret: string,
+  internalKey: string,
 ): Promise<string | null> {
   if (!hasRegistryServiceUrl()) {
     log.warn({ attestationType }, 'REGISTRY_SERVICE_URL not set — cannot resolve scope');
@@ -19,7 +19,7 @@ export async function resolveScopeForAttestation(
   try {
     // Fetch full interest catalog and find matching scope
     const res = await fetch(`${registryServiceUrl()}/api/interests`, {
-      headers: { 'x-webhook-secret': webhookSecret },
+      headers: { Authorization: `Bearer ${internalKey}` },
       cache: 'no-store',
     });
     if (!res.ok) {
@@ -42,13 +42,13 @@ export async function resolveScopeForAttestation(
 export async function didInterestExists(
   did: string,
   scope: string,
-  webhookSecret: string,
+  internalKey: string,
 ): Promise<boolean> {
   if (!hasRegistryServiceUrl()) return false;
   try {
     const res = await fetch(
       `${registryServiceUrl()}/api/preferences/${encodeURIComponent(did)}`,
-      { headers: { 'x-webhook-secret': webhookSecret }, cache: 'no-store' },
+      { headers: { Authorization: `Bearer ${internalKey}` }, cache: 'no-store' },
     );
     if (!res.ok) return false;
     const prefs = await res.json();
@@ -67,7 +67,7 @@ export async function createDidInterest(
   did: string,
   scope: string,
   attestationType: string,
-  webhookSecret: string,
+  internalKey: string,
 ): Promise<void> {
   if (!hasRegistryServiceUrl()) {
     log.warn({}, 'REGISTRY_SERVICE_URL not set — cannot create did_interest');
@@ -80,7 +80,7 @@ export async function createDidInterest(
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-webhook-secret': webhookSecret,
+          Authorization: `Bearer ${internalKey}`,
         },
         body: JSON.stringify({ createdByAttestation: attestationType }),
       },

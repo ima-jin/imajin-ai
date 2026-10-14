@@ -41,7 +41,6 @@ let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   process.env.NOTIFY_SERVICE_URL = 'http://notify.test';
-  process.env.NOTIFY_WEBHOOK_SECRET = 'test-secret';
   fetchMock = vi.fn().mockResolvedValue({ ok: true });
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -49,7 +48,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.NOTIFY_SERVICE_URL;
-  delete process.env.NOTIFY_WEBHOOK_SECRET;
 });
 
 describe('sendConsentRequestNotification — acting delegate (#2366)', () => {
@@ -85,3 +83,5 @@ describe('sendConsentRequestNotification — acting delegate (#2366)', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
+
+vi.mock('@imajin/auth', () => ({ getVaultInternalApiKey: () => 'fake-vault-internal-key' }));

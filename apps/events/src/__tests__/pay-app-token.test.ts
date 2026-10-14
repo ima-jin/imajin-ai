@@ -18,6 +18,7 @@ vi.mock('@imajin/auth-client', () => ({
 }));
 
 import { getPayAppToken, invalidatePayAppToken, postPayAsApp, resetPayAppTokenForTests } from '../lib/pay-app-token';
+import { getEventsAppDid, getEventsSigningIdentity } from '../lib/app-identity';
 
 const KERNEL_URL = 'https://kernel.test';
 const originalEnv = { ...process.env };
@@ -89,6 +90,23 @@ afterEach(() => {
 });
 
 describe('getPayAppToken', () => {
+  it('shares one claim redemption with concurrent webhook audience resolution', async () => {
+    delete process.env.IMAJIN_APP_DID;
+    const [token, audience, identity] = await Promise.all([
+      getPayAppToken(), getEventsAppDid(), getEventsSigningIdentity(),
+    ]);
+    expect(token).toBe('app-token');
+    expect(audience).toBe('did:imajin:events');
+    expect(identity.appDid).toBe(audience);
+    expect(mocks.loadAppSigningKey).toHaveBeenCalledOnce();
+    expect(mocks.createAppServiceTokenProvider).toHaveBeenCalledOnce();
+  });
+
+  it('uses its configured nonsecret app DID for callbacks without claiming again', async () => {
+    process.env.IMAJIN_APP_DID = 'did:imajin:configured-test-app';
+    expect(await getEventsAppDid()).toBe('did:imajin:configured-test-app');
+    expect(mocks.loadAppSigningKey).not.toHaveBeenCalled();
+  });
   it('loads the signing key via the claim-code path and returns a token minted from it', async () => {
     expect(await getPayAppToken()).toBe('app-token');
 

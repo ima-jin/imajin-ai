@@ -1048,6 +1048,9 @@ importers:
 
   packages/notify:
     dependencies:
+      '@imajin/auth':
+        specifier: workspace:*
+        version: link:../auth
       '@imajin/logger':
         specifier: workspace:*
         version: link:../logger

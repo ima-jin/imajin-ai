@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
 import { resolveScopeForAttestation, didInterestExists, createDidInterest } from './registry';
+import { requireNotifyAuth, notifyRegistryKey } from '@/src/lib/notify/service-auth';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -13,7 +14,7 @@ export function OPTIONS(request: NextRequest) {
  * Called internally whenever a user performs an action that maps to an interest scope.
  *
  * Body: { did: string, attestationType: string }
- * Auth: x-webhook-secret header
+ * Auth: approved notify:interest app-service token or vault internal Bearer.
  *
  * Flow:
  *   1. Look up which scope the attestationType maps to in the registry interest catalog
@@ -24,10 +25,9 @@ export function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
+  const authError = await requireNotifyAuth(request, 'notify:interest', cors);
+  if (authError) return authError;
+  const secret = await notifyRegistryKey();
 
   let body: { did: string; attestationType: string };
   try {

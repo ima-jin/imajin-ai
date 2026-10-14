@@ -20,6 +20,8 @@ import { verifySettlementSignature } from './settle-core';
 import { MJN, MJNX, creditUnit } from './ledger';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
+import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
+import type { LegacyWebhookApp } from '@/src/lib/auth/kernel-webhook-legacy';
 
 const log = createLogger('kernel');
 
@@ -577,7 +579,7 @@ interface PaidCheckoutTarget {
   /** Capitalised name used in log lines. */
   label: string;
   urlVar: string;
-  secretVar: string;
+  app: LegacyWebhookApp;
   /** What does not happen when the notification cannot be sent. */
   consequence: string;
 }
@@ -585,20 +587,20 @@ interface PaidCheckoutTarget {
 const MARKET_TARGET: PaidCheckoutTarget = {
   label: 'Market',
   urlVar: 'MARKET_SERVICE_URL',
-  secretVar: 'MARKET_WEBHOOK_SECRET',
+  app: 'market',
   consequence: 'market purchase will not settle',
 };
 
 const LEARN_TARGET: PaidCheckoutTarget = {
   label: 'Learn',
   urlVar: 'LEARN_SERVICE_URL',
-  secretVar: 'LEARN_WEBHOOK_SECRET',
+  app: 'learn',
   consequence: 'learn enrollment will not be created',
 };
 
 /**
- * POST a `payment.succeeded` for a paid checkout session to `${urlVar}/api/webhook` with
- * `Authorization: Bearer ${secretVar}`. The payload names the Stripe `sessionId` and carries the
+ * POST a signed `payment.succeeded` for a paid checkout session to `${urlVar}/api/webhook`.
+ * The payload names the Stripe `sessionId` and carries the
  * amount and currency in `metadata`; `rail` rides top-level and only when the kernel already
  * settled the payment on the seller's own Stripe account (#2773).
  *
@@ -607,40 +609,32 @@ const LEARN_TARGET: PaidCheckoutTarget = {
  */
 async function deliverPaidCheckout(target: PaidCheckoutTarget, session: StripeCheckoutSessionLike): Promise<void> {
   const serviceUrl = process.env[target.urlVar];
-  const webhookSecret = process.env[target.secretVar];
-  if (!serviceUrl || !webhookSecret) {
+  if (!serviceUrl) {
     log.error(
       { sessionId: session.id },
-      `${target.urlVar} or ${target.secretVar} not set — ${target.consequence}`,
+      `${target.urlVar} not set — ${target.consequence}`,
     );
     return;
   }
 
   try {
-    const response = await fetch(`${serviceUrl}/api/webhook`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${webhookSecret}`,
+    const response = await postKernelWebhook(kernelWebhookUrl(serviceUrl, '/api/webhook'), {
+      type: 'payment.succeeded',
+      sessionId: session.id,
+      paymentId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id,
+      // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
+      ...(session.rail && { rail: session.rail }),
+      // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
+      ...(session.sellerDid && { sellerDid: session.sellerDid }),
+      metadata: {
+        ...session.metadata,
+        amount: session.amount_total,
+        currency: session.currency?.toUpperCase(),
       },
-      body: JSON.stringify({
-        type: 'payment.succeeded',
-        sessionId: session.id,
-        paymentId:
-          typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : session.payment_intent?.id,
-        // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
-        ...(session.rail && { rail: session.rail }),
-        // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
-        ...(session.sellerDid && { sellerDid: session.sellerDid }),
-        metadata: {
-          ...session.metadata,
-          amount: session.amount_total,
-          currency: session.currency?.toUpperCase(),
-        },
-      }),
-    });
+    }, target.app);
 
     if (response.ok) {
       log.info({ sessionId: session.id }, `${target.label} service notified successfully`);
@@ -662,9 +656,8 @@ async function deliverPaidCheckout(target: PaidCheckoutTarget, session: StripeCh
 
 /**
  * Tell the market service a listing purchase was paid (#2740), so it can settle it through
- * its own app-service token on `POST /pay/api/settle`. Same server-to-server scheme as
- * `notifyEventsService`: `Authorization: Bearer ${MARKET_WEBHOOK_SECRET}` (market verifies
- * it against its own `WEBHOOK_SECRET`). The payload names the Stripe `sessionId` — market
+ * its own app-service token on `POST /pay/api/settle`. Uses the same signed server-to-server
+ * scheme as `notifyEventsService`. The payload names the Stripe `sessionId` — market
  * recorded the kernel payment it belongs to when the buyer started checkout — and carries
  * the amount and currency market's webhook reads from `metadata`.
  *
@@ -677,8 +670,8 @@ export async function notifyMarketService(session: StripeCheckoutSessionLike): P
 
 /**
  * Tell the learn app a course-enrollment checkout was paid (ima-jin/learn#13), so it can create
- * the enrollment. Learn verifies `Authorization: Bearer ${LEARN_WEBHOOK_SECRET}` against its own
- * `WEBHOOK_SECRET` and keys the enrollment off `metadata.courseId` / `metadata.studentDid`. The
+ * the enrollment. Learn verifies the kernel signature and keys the enrollment off
+ * `metadata.courseId` / `metadata.studentDid`. The
  * payload is the market one: `sessionId`, `paymentId`, a top-level `rail` for a BYO-settled
  * payment, and the amount and currency in `metadata`.
  *
@@ -745,38 +738,34 @@ export async function notifyEventsService(
   type: 'checkout.completed' | 'payment.failed',
   session: StripeCheckoutSessionLike,
 ): Promise<void> {
-  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL!;
-  const webhookSecret = process.env.EVENTS_WEBHOOK_SECRET!;
+  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL;
+  if (!eventsServiceUrl) {
+    log.error({}, 'EVENTS_SERVICE_URL not set — events payment notification cannot be delivered');
+    return;
+  }
 
   try {
     const transactionId = type === 'checkout.completed'
       ? (session.transactionId ?? await findTransactionIdForSession(session.id))
       : undefined;
-    const response = await fetch(`${eventsServiceUrl}/api/webhook/payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${webhookSecret}`,
-      },
-      body: JSON.stringify({
-        type,
-        sessionId: session.id,
-        ...(transactionId && { transactionId }),
-        // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
-        ...(session.rail && { rail: session.rail }),
-        // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
-        ...(session.sellerDid && { sellerDid: session.sellerDid }),
-        paymentId:
-          typeof session.payment_intent === 'string'
-            ? session.payment_intent
-            : session.payment_intent?.id,
-        customerEmail: session.customer_email || session.customer_details?.email || null,
-        customerName: session.customer_details?.name || null,
-        amountTotal: session.amount_total,
-        currency: session.currency,
-        metadata: session.metadata,
-      }),
-    });
+    const response = await postKernelWebhook(kernelWebhookUrl(eventsServiceUrl, '/api/webhook/payment'), {
+      type,
+      sessionId: session.id,
+      ...(transactionId && { transactionId }),
+      // #2773: present only for a payment the kernel already settled on the seller's own Stripe account.
+      ...(session.rail && { rail: session.rail }),
+      // Kernel-attested seller (BYO only) — unlike `metadata.sellerDid`, the caller cannot choose it.
+      ...(session.sellerDid && { sellerDid: session.sellerDid }),
+      paymentId:
+        typeof session.payment_intent === 'string'
+          ? session.payment_intent
+          : session.payment_intent?.id,
+      customerEmail: session.customer_email || session.customer_details?.email || null,
+      customerName: session.customer_details?.name || null,
+      amountTotal: session.amount_total,
+      currency: session.currency,
+      metadata: session.metadata,
+    }, 'events');
 
     if (response.ok) {
       log.info({}, 'Events service notified successfully');

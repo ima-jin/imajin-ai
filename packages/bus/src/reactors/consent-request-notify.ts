@@ -1,3 +1,4 @@
+import { getVaultInternalApiKey } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import type { BrokerPipelineState } from '../types';
 
@@ -34,13 +35,13 @@ export async function sendConsentRequestNotification(
   if (request.preview || request.mode === 'shadow') return;
 
   const notifyUrl = process.env.NOTIFY_SERVICE_URL;
-  const secret = process.env.NOTIFY_WEBHOOK_SECRET;
+  const secret = getVaultInternalApiKey();
   if (!notifyUrl || !secret) return;
 
   try {
     await fetch(`${notifyUrl}/api/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-webhook-secret': secret },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
       body: JSON.stringify({
         to: request.subject,
         scope: 'broker:consent-request',

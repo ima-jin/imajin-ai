@@ -102,7 +102,7 @@ import { getTemplate } from '@/src/lib/notify/template-store';
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const RECIPIENT = 'did:imajin:veteze';
-const WEBHOOK_SECRET = 'notify-webhook-secret';
+const WEBHOOK_SECRET = 'fake-vault-internal-key';
 const NOTIFICATION_ID = 'ntf_abcdefgh12345678';
 const EMAIL_SCOPE = 'test.email.scope';
 
@@ -129,7 +129,7 @@ type RouteRequest = Parameters<typeof POST>[0];
 function makeReq(body: unknown, opts: { secret?: string | null } = {}): RouteRequest {
   const headers = new Headers();
   const secret = opts.secret === undefined ? WEBHOOK_SECRET : opts.secret;
-  if (secret !== null) headers.set('x-webhook-secret', secret);
+  if (secret !== null) headers.set('authorization', `Bearer ${secret}`);
   return {
     headers,
     json: async () => body,
@@ -164,7 +164,6 @@ function recordedChannels(): string[] {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.NOTIFY_WEBHOOK_SECRET = WEBHOOK_SECRET;
   mockInsertValues.mockResolvedValue(undefined);
   mockSelectLimit.mockResolvedValue([]); // no preferences row → email + inapp default on
   mockUpdateWhere.mockResolvedValue(undefined);
@@ -572,3 +571,6 @@ describe('operator.approval.requested delivery addressee (#2723)', () => {
     expect(mockRecordApprovalRequested).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: RECIPIENT, kind, detail }));
   });
 });
+
+vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: vi.fn(async () => 'fake-vault-internal-key') }));
+vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: vi.fn(async () => null) }));

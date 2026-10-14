@@ -27,7 +27,12 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: "Bearer token (imajin_tok_* API token or internal service key)"
+      description: "Registered app-service JWT with endpoint scope and current operator approval, or vault-sourced internal Bearer key. User/session tokens are not accepted. A temporary notify-only legacy-header rollout bridge is opt-in; see legacyNotifyAuth."
+    legacyNotifyAuth:
+      type: apiKey
+      in: header
+      name: x-webhook-secret
+      description: "Deprecated rollout only (2026-10-14, #2798): accepted on send/broadcast/interest only when the legacy notify secret is explicitly set and no Authorization header is supplied. Warns once; unset the variable to disable. Never used for registry/contact/internal approval routes."
   schemas:
     Notification:
       type: object
@@ -266,127 +271,117 @@ paths:
     post:
       tags: [notify]
       operationId: sendNotification
-      summary: Send a notification to one or more recipients (internal service use)
-      description: Internal endpoint for kernel services to dispatch notifications. Requires bearer auth with service key.
+      summary: Send a notification
+      description: Requires notify:send in an app-service token and the active app's approvedServiceScopes, or the vault internal Bearer key. Registration and approval are checked on every request.
       security:
         - bearerAuth: []
+        - legacyNotifyAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [to, type, title]
+              required: [to, scope]
               properties:
-                to:
-                  oneOf:
-                    - type: string
-                      description: Single recipient DID
-                    - type: array
-                      items: { type: string }
-                      description: Multiple recipient DIDs
-                type: { type: string, description: "Notification type/scope" }
+                to: { type: string, description: Recipient DID }
+                scope: { type: string, description: Notification template scope }
                 title: { type: string }
                 body: { type: string }
                 data: { type: object }
-                channels:
-                  type: array
-                  items:
-                    type: string
-                    enum: [push, email, in-app]
-                  description: "Delivery channels (defaults to user preferences)"
+                urgency: { type: string, enum: [low, normal, urgent] }
       responses:
         "200":
-          description: Notification sent
+          description: Notification stored; sent reflects delivery outcome when email was attempted
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  sent: { type: integer, description: "Recipients notified" }
+                  id: { type: string }
+                  sent: { type: boolean }
         "400":
           description: Invalid request
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Unauthorized
+          description: Missing or invalid Bearer credential
+        "403":
+          description: Not an active approved app-service token, or missing notify:send
 
   /api/broadcast:
     post:
       tags: [notify]
       operationId: broadcastNotification
-      summary: Broadcast a notification to all subscribers of an interest scope
-      description: Internal — sends notifications to all DIDs subscribed to a given interest scope.
+      summary: Broadcast to an interest audience
+      description: Requires notify:broadcast in an app-service token and the active app's approvedServiceScopes, or the vault internal Bearer key. Registry calls use the kernel's own vault credential, never the caller token.
       security:
         - bearerAuth: []
+        - legacyNotifyAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [scope, type, title]
+              required: [scope, subject]
+              anyOf:
+                - required: [html]
+                - required: [markdown]
               properties:
-                scope: { type: string, description: "Interest scope to broadcast to" }
-                type: { type: string }
-                title: { type: string }
-                body: { type: string }
-                data: { type: object }
+                scope: { type: string }
+                dids: { type: array, items: { type: string } }
+                subject: { type: string }
+                html: { type: string }
+                markdown: { type: string }
+                text: { type: string }
+                channels: { type: array, items: { type: string, enum: [email, inapp, chat] } }
+                eventContext: { type: object }
+                replyTo: { type: string }
       responses:
         "200":
-          description: Broadcast queued
+          description: Broadcast processed
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  queued: { type: integer }
+                  sent: { type: integer }
+                  skipped: { type: integer }
+                  errors: { type: integer }
+        "400":
+          description: Invalid request
         "401":
-          description: Unauthorized
+          description: Missing or invalid Bearer credential
+        "403":
+          description: Not an active approved app-service token, or missing notify:broadcast
 
   /api/interest:
     post:
       tags: [notify]
       operationId: registerInterest
-      summary: Register the current identity's interest in a notification scope
+      summary: Record an interest signal for a DID from an attestation type
+      description: Requires notify:interest in an app-service token and the active app's approvedServiceScopes, or the vault internal Bearer key. The registry catalog maps attestationType to an interest scope; auto-subscribe preferences govern defaults.
       security:
-        - cookieAuth: []
+        - bearerAuth: []
+        - legacyNotifyAuth: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [scope]
+              required: [did, attestationType]
               properties:
-                scope: { type: string, description: "Interest scope to subscribe to" }
-                channels:
-                  type: array
-                  items: { type: string }
+                did: { type: string }
+                attestationType: { type: string }
       responses:
         "200":
-          description: Interest registered
+          description: Interest created, already present, or no matching catalog scope
+        "400":
+          description: Invalid request
         "401":
-          description: Unauthorized
-    delete:
-      tags: [notify]
-      operationId: unregisterInterest
-      summary: Remove interest registration for a scope
-      security:
-        - cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [scope]
-              properties:
-                scope: { type: string }
-      responses:
-        "200":
-          description: Interest removed
+          description: Missing or invalid Bearer credential
+        "403":
+          description: Not an active approved app-service token, or missing notify:interest
 
   /api/unsubscribe:
     get:
