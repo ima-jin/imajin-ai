@@ -170,9 +170,26 @@ describe('kernel public pin OS advisory locks', () => {
     }
   });
 
-  it('fails closed when the helper cannot create the lock path', async () => {
+  it('fails closed when the parent cannot create the lock path', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'kernel-lock-invalid-'));
     await expect(withKernelPinLock(join(directory, 'missing', 'lock'), async () => true))
-      .rejects.toThrow('Kernel pin OS lock unavailable or timed out');
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it('fails closed on unexpected acquisition helper exit without invoking the operation', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'kernel-lock-helper-exit-'));
+    await writeFile(join(directory, 'flock'), '#!/bin/sh\nexit 2\n', { mode: 0o700 });
+    const lockPath = join(directory, 'test.lock');
+    await writeFile(lockPath, 'legacy-owner');
+    vi.stubEnv('PATH', directory);
+    const operation = vi.fn(async () => true);
+    try {
+      await expect(withKernelPinLock(lockPath, operation))
+        .rejects.toThrow('Kernel pin OS lock unavailable or timed out');
+      expect(operation).not.toHaveBeenCalled();
+      expect(await readFile(lockPath, 'utf8')).toBe('legacy-owner');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+    await expect(withKernelPinLock(lockPath, operation)).resolves.toBe(true);
   });
 });
