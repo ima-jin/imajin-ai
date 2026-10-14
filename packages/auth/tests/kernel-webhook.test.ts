@@ -292,6 +292,16 @@ describe('kernel webhook TOFU and rotation', () => {
     expect(results.find((result) => result.status === 'rejected')).toMatchObject({ reason: { code: 'TRUST' } });
   });
 
+  it('normalizes trailing slashes without changing the kernel replay namespace', async () => {
+    const { options, fetch } = context();
+    const request = signedRequest();
+    options.authServiceUrl = `${AUTH}/////`;
+    await verifyKernelWebhook(request.clone(), options);
+    expect(fetch).toHaveBeenCalledWith(`${AUTH}/.well-known/kernel-signing-key`, expect.anything());
+    options.authServiceUrl = AUTH;
+    await expect(verifyKernelWebhook(request.clone(), options)).rejects.toMatchObject({ code: 'REPLAY' });
+  });
+
   it('namespaces both public pins and nonces by kernel auth URL', async () => {
     const { options, publish } = context();
     const nonce = randomUUID();

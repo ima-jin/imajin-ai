@@ -96,6 +96,23 @@ describe('kernel webhook durable-store failure paths', () => {
     }
   });
 
+  it('keeps the original deadline across lock retries instead of extending the wait', async () => {
+    const { request, options } = await fixture();
+    const realTime = Date.now();
+    const contention = Object.assign(new Error('already locked'), { code: 'EEXIST' });
+    vi.mocked(open).mockRejectedValueOnce(contention).mockRejectedValueOnce(contention);
+    const clock = vi.spyOn(Date, 'now').mockReturnValueOnce(realTime)
+      .mockReturnValueOnce(realTime + 9999).mockReturnValue(realTime + 10_000);
+    try {
+      await expect(verifyKernelWebhook(request, { ...options, clock: () => realTime }))
+        .rejects.toMatchObject({ code: 'STORE' });
+      expect(open).toHaveBeenCalledTimes(2);
+      expect(options.fetch).not.toHaveBeenCalled();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('rejects pin write failure, leaves no pin, and releases the lock', async () => {
     const { request, options, directory } = await fixture();
     vi.mocked(writeFile).mockRejectedValueOnce(Object.assign(new Error('disk full'), { code: 'ENOSPC' }));
