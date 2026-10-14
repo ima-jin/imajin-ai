@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: mocks.warnMock, error: vi.fn() }) }));
 vi.mock('@/src/lib/github/org-provisioning', () => ({
+  DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
   fetchAppManifest: mocks.fetchAppManifestMock,
   tryGetInstallationToken: mocks.tryGetInstallationTokenMock,
 }));
@@ -30,6 +31,13 @@ beforeEach(() => {
 });
 
 describe('previewManifestDeclarations (#2663)', () => {
+  it('#2799 snapshots template secret recipes before the fresh app repo exists', async () => {
+    const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' }];
+    mocks.fetchAppManifestMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ secrets });
+    const result = await previewManifestDeclarations('fresh-app', 'ima-jin/imajin-app-template');
+    expect(result).toEqual({ ok: { secrets, providesScopes: [], dependsOn: [], emittableEvents: [] } });
+    expect(mocks.fetchAppManifestMock).toHaveBeenNthCalledWith(2, 'imajin-app-template', 'installation-token', 'ima-jin');
+  });
   it('returns the validated declarations from the manifest, checked against the slug', async () => {
     const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }];
     mocks.fetchAppManifestMock.mockResolvedValue({ providesScopes: ['dykil:read'], dependsOn });

@@ -311,7 +311,7 @@ describe('POST /api/apps/provision — scope declarations on the card (#2663)', 
     const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
 
     expect(response.status).toBe(201);
-    expect(previewManifestDeclarationsMock).toHaveBeenCalledWith('dykil');
+    expect(previewManifestDeclarationsMock).toHaveBeenCalledWith('dykil', undefined);
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
     expect(recorded.detail.manifestDeclarations).toEqual(declarations);
     // ...and the same detail is what the content hash covers.

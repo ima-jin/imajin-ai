@@ -514,12 +514,12 @@ interface GitHubContentsResponse {
  * NOT a provisioning failure — same degrade-don't-fail posture as
  * `tryGetInstallationToken`'s callers in `provision.ts`.
  */
-export async function fetchAppManifest(slug: string, token: string | null): Promise<AppManifest | null> {
+export async function fetchAppManifest(slug: string, token: string | null, org = PROVISIONING_ORG): Promise<AppManifest | null> {
   if (token === null) return null;
   try {
     const res = await callGitHubApi<GitHubContentsResponse>({
       method: 'GET',
-      path: `/repos/${PROVISIONING_ORG}/${slug}/contents/imajin.app.json`,
+      path: `/repos/${org}/${slug}/contents/imajin.app.json`,
       token,
     });
     if (res.status !== 200 || res.data?.encoding !== 'base64') return null;

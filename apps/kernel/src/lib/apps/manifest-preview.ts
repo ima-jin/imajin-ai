@@ -17,7 +17,7 @@
  * so the operator is never asked to approve a list that would be refused anyway.
  */
 import { createLogger } from '@imajin/logger';
-import { fetchAppManifest, tryGetInstallationToken, type AppManifest } from '@/src/lib/github/org-provisioning';
+import { fetchAppManifest, tryGetInstallationToken, DEFAULT_APP_TEMPLATE, type AppManifest } from '@/src/lib/github/org-provisioning';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import type { ManifestDeclarations } from './declarations-approval';
@@ -29,10 +29,15 @@ export type ManifestPreviewResult =
   | { ok: ManifestDeclarations | null }
   | { error: string };
 
-async function readManifest(slug: string): Promise<AppManifest | null> {
+async function readManifest(slug: string, template?: string): Promise<AppManifest | null> {
   try {
     const token = await tryGetInstallationToken();
-    return await fetchAppManifest(slug, token);
+    const manifest = await fetchAppManifest(slug, token);
+    if (manifest || !template) return manifest;
+    const [org, repo] = template.split('/');
+    // A fresh repo doesn't exist until approval. Show the source manifest now;
+    // registerApp still re-checks the copied manifest against the signed list.
+    return await fetchAppManifest(repo, token, org);
   } catch (err) {
     // A malformed credential or a GitHub failure must not block raising the proposal.
     log.warn({ err: String(err), slug }, 'apps.provision: manifest preview unavailable (non-fatal)');
@@ -41,8 +46,8 @@ async function readManifest(slug: string): Promise<AppManifest | null> {
 }
 
 /** The validated declarations in `slug`'s `imajin.app.json`, `null` when unreadable, or `{ error }` when invalid. */
-export async function previewManifestDeclarations(slug: string): Promise<ManifestPreviewResult> {
-  const manifest = await readManifest(slug);
+export async function previewManifestDeclarations(slug: string, template = DEFAULT_APP_TEMPLATE): Promise<ManifestPreviewResult> {
+  const manifest = await readManifest(slug, template);
   if (!manifest) return { ok: null };
   const secrets = validateSecrets(manifest.secrets);
   if ('error' in secrets) return { error: secrets.error };
