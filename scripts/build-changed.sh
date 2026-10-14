@@ -58,7 +58,8 @@ if [[ -n "$DEPLOY_ENV" ]]; then
 fi
 
 is_build_target() {
-  [[ -z "$DEPLOY_ENV" || $'\n'"$OWNED_APPS"$'\n' == *$'\n'"$1"$'\n'* ]]
+  local app="$1"
+  [[ -z "$DEPLOY_ENV" || $'\n'"$OWNED_APPS"$'\n' == *$'\n'"$app"$'\n'* ]]
 }
 
 LAST_SHA_FILE=".last-build-sha"
