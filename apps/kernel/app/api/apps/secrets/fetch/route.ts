@@ -12,17 +12,19 @@ export async function POST(request: NextRequest) {
   const headers = { ...corsHeaders(request), 'Cache-Control': 'no-store' };
   const refuse = (status: number) => NextResponse.json({ error: 'App secret access refused' }, { status, headers });
   try {
-    const url = new URL(request.url);
-    if (url.protocol !== 'https:' && !(url.protocol === 'http:'
-      && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) return refuse(403);
+    // TLS is enforced by the SDK and deployment ingress. Next's internal URL
+    // may be HTTP behind that ingress; do not trust client forwarding headers
+    // or confuse an internal transport URL with the public TLS boundary.
     const body = await request.json();
-    if (!body || body.domain !== 'app-self-secrets-v1' || typeof body.appDid !== 'string'
+    if (!body || typeof body !== 'object' || Array.isArray(body)
+      || Object.keys(body).some((key) => !['domain', 'appDid', 'keys', 'recipientXPub', 'nonce', 'timestamp', 'signature'].includes(key))
+      || body.domain !== 'app-self-secrets-v1' || typeof body.appDid !== 'string'
       || body.appDid.length === 0 || body.appDid.length > 256
       || !Array.isArray(body.keys) || body.keys.length === 0 || body.keys.length > 32
       || body.keys.some((name: unknown) => typeof name !== 'string' || !/^[A-Z][A-Z0-9_]{0,63}$/.test(name))
       || new Set(body.keys).size !== body.keys.length
       || typeof body.recipientXPub !== 'string' || !/^[0-9a-f]{64}$/.test(body.recipientXPub)
-      || typeof body.timestamp !== 'number' || !Number.isFinite(body.timestamp)
+      || typeof body.timestamp !== 'number' || !Number.isSafeInteger(body.timestamp)
       || typeof body.nonce !== 'string' || body.nonce.length === 0 || body.nonce.length > 200
       || typeof body.signature !== 'string' || !/^[0-9a-f]{128}$/.test(body.signature)) return refuse(400);
     const { domain, appDid, keys, recipientXPub, nonce, timestamp, signature } = body;

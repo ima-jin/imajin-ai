@@ -92,6 +92,11 @@ describe('verifyBootstrapFetchAuth', () => {
     expect(outcome).toEqual({ status: 'stale_timestamp' });
   });
 
+  it('refuses a signed non-integer timestamp', async () => {
+    const req = signedRequest(keypair.privateKey, { timestamp: Date.now() + 0.5 });
+    expect(await verifyBootstrapFetchAuth(req)).toEqual({ status: 'stale_timestamp' });
+  });
+
   it('refuses a timestamp far in the future', async () => {
     const req = signedRequest(keypair.privateKey, { timestamp: Date.now() + 10 * 60_000 });
 

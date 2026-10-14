@@ -49,6 +49,41 @@ describe('sealed app-secret route', () => {
     expect((await POST(request(signed({}, registered.privateKey)))).status).toBe(403);
     expect(fetchSecret).not.toHaveBeenCalled();
   });
+  it('allows a production TLS ingress to use an internal HTTP Next URL', async () => {
+    expect((await POST(request(signed(), 'http://kernel-internal:3000/api/apps/secrets/fetch'))).status).toBe(200);
+  });
+  it('refuses fractional timestamps before authentication or secret lookup', async () => {
+    expect((await POST(request(signed({ timestamp: Date.now() + 0.5 })))).status).toBe(400);
+    expect(binding).not.toHaveBeenCalled();
+    expect(fetchSecret).not.toHaveBeenCalled();
+  });
+  it.each([
+    null, [], 'FAKE_TEST_SECRET', 1, {},
+    { keys: 'FAKE_TEST_SECRET' }, { keys: ['SESSION_SECRET', 'SESSION_SECRET'] },
+    { keys: ['not-a-declaration'] }, { nonce: '' }, { nonce: 'x'.repeat(201) },
+    { timestamp: 'FAKE_TEST_SECRET' }, { timestamp: Number.MAX_SAFE_INTEGER + 1 },
+    { signature: 'FAKE_TEST_SECRET' }, { recipientXPub: 'FAKE_TEST_SECRET' },
+    { appDid: '' }, { appDid: 'x'.repeat(257) }, { extra: 'FAKE_TEST_SECRET' },
+  ])('refuses malformed input without reflecting body or provider values: %j', async (malformed) => {
+    const body = malformed && typeof malformed === 'object' && !Array.isArray(malformed) && Object.keys(malformed).length > 0
+      ? { ...signed(), ...malformed } : malformed;
+    const response = await POST(request(body));
+    expect(response.status).toBe(400);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.text()).toBe('{"error":"App secret access refused"}');
+    expect(binding).not.toHaveBeenCalled();
+    expect(fetchSecret).not.toHaveBeenCalled();
+  });
+  it('redacts malformed JSON and never reaches crypto/decrypt', async () => {
+    const response = await POST(new NextRequest('http://internal/api/apps/secrets/fetch', {
+      method: 'POST', body: '{"secret":"FAKE_TEST_SECRET"',
+    }));
+    expect(response.status).toBe(403);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(await response.text()).toBe('{"error":"App secret access refused"}');
+    expect(binding).not.toHaveBeenCalled();
+    expect(fetchSecret).not.toHaveBeenCalled();
+  });
   it.each(['appDid', 'keys', 'recipientXPub', 'nonce', 'timestamp', 'domain'])('binds %s into signature', async (field) => {
     const body = signed();
     const changed = {
@@ -72,10 +107,9 @@ describe('sealed app-secret route', () => {
     expect(await response.text()).not.toContain('FAKE_TEST_SECRET');
     expect(fetchSecret).not.toHaveBeenCalled();
   });
-  it('refuses unbound apps and insecure remote HTTP', async () => {
+  it('refuses unbound apps before secret access', async () => {
     binding.mockResolvedValue(null);
     expect((await POST(request(signed()))).status).toBe(403);
-    expect((await POST(request(signed(), 'http://remote.example/api/apps/secrets/fetch'))).status).toBe(403);
     expect(fetchSecret).not.toHaveBeenCalled();
   });
   it('redacts decrypt/provider errors with no-store', async () => {

@@ -25,6 +25,7 @@ vi.mock('@imajin/bus', () => ({ publish: vi.fn() }));
 vi.mock('@/src/lib/vault', () => ({
   listGrantsForGrantee: vi.fn(),
   fetchGrantSecret: vi.fn(),
+  getGrantById: vi.fn(),
   ackGrant: vi.fn(),
 }));
 vi.mock('@/src/lib/vault/errors', () => ({ toVaultErrorResponse: vi.fn() }));

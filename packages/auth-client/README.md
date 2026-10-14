@@ -161,7 +161,9 @@ Values stay in process memory: never persist, log, or copy them into environment
 variables. `onMissing: 'fail'` throws a value-free error; `'degrade'` omits
 the unavailable name from `values` and lists it in `degraded`. Each key uses
 an independent fresh request so optional keys cannot hide required ones.
-HTTPS is required except for literal loopback hosts; redirects are refused.
+The SDK requires HTTPS except for literal loopback hosts; redirects are refused.
+Production ingress must enforce public TLS. The handler permits internal HTTP
+URLs under a TLS-terminating reverse proxy without trusting forwarding headers.
 The endpoint refuses inactive apps, revoked/undeclared names, wrong keys,
 altered requests and nonce replay. Nonces are currently tracked in the kernel
 process, matching the existing single-instance bootstrap fetch mechanism.

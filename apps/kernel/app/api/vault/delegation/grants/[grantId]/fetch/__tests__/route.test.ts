@@ -9,9 +9,10 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockRequireAuth, mockFetchGrantSecret, mockPublish } = vi.hoisted(() => ({
+const { mockRequireAuth, mockFetchGrantSecret, mockGetGrantById, mockPublish } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockFetchGrantSecret: vi.fn(),
+  mockGetGrantById: vi.fn(),
   mockPublish: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -25,6 +26,7 @@ vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
 
 vi.mock('@/src/lib/vault', () => ({
   fetchGrantSecret: mockFetchGrantSecret,
+  getGrantById: mockGetGrantById,
 }));
 
 vi.mock('@/src/lib/vault/errors', () => ({
@@ -52,6 +54,7 @@ function callRoute() {
 beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAuth.mockResolvedValue({ identity: { id: AGENT } });
+  mockGetGrantById.mockResolvedValue({ field: 'legacy-test' });
   mockPublish.mockResolvedValue(undefined);
 });
 

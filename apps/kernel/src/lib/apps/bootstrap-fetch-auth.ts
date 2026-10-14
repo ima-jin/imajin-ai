@@ -117,7 +117,7 @@ export async function verifyBootstrapFetchAuth(params: {
   }
 
   const now = Date.now();
-  if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > MAX_CLOCK_SKEW_MS) {
+  if (!Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > MAX_CLOCK_SKEW_MS) {
     return { status: 'stale_timestamp' };
   }
 
