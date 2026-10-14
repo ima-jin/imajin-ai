@@ -29,12 +29,25 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import { authenticatePayApp } from '@/src/lib/pay/app-service-auth';
-import { loadAppPledges, chargeBoundPledge, pledgeFailure, type PledgeReference } from '@/src/lib/pay/app-pledges';
+import { loadAppPledges, chargeBoundPledge, pledgeFailure, PledgeChargeError, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+
+async function readPledgeBatch(request: NextRequest): Promise<{ eventId: string; pledges: PledgeReference[] }> {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    throw new PledgeChargeError(400, 'INVALID_PLEDGE_REQUEST', 'Invalid JSON body');
+  }
+  if (!body || typeof body !== 'object') {
+    throw new PledgeChargeError(400, 'INVALID_PLEDGE_REQUEST', 'Pledge request must be an object');
+  }
+  return body;
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -58,7 +71,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   try {
-    const body = await request.json();
+    const body = await readPledgeBatch(request);
     const { eventId, pledges }: { eventId: string; pledges: PledgeReference[] } = body;
 
     if (!eventId || typeof eventId !== 'string') {

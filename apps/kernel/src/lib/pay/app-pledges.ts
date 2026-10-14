@@ -10,6 +10,7 @@ const referenceBody = setupIntentBody.pick({ pledgeId: true, sellerDid: true }).
 });
 const ATTEMPT_FIELD = 'imajin_pledge_charge_attempt';
 const MAX_CLAIM_DURATION_MS = 30_000;
+const RAIL_REQUEST = { timeout: 10_000, maxNetworkRetries: 0 };
 
 export type PledgeReference = z.infer<typeof referenceBody>;
 export interface BoundPledge extends VerifySetupIntentInput {
@@ -42,7 +43,7 @@ function resourceId(value: string | { id: string } | null): string | undefined {
 
 async function retrieveSellerSetup(secretKey: string, setupIntentId: string) {
   try {
-    return await sellerPledgeRefundClient(secretKey).setupIntents.retrieve(setupIntentId);
+    return await sellerPledgeRefundClient(secretKey).setupIntents.retrieve(setupIntentId, {}, RAIL_REQUEST);
   } catch (error) {
     if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404) {
       throw new PledgeChargeError(404, 'PLEDGE_SETUP_NOT_FOUND', 'Pledge setup was not found on the selected seller account');
@@ -109,7 +110,7 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
   // and idempotency key are identical. Stripe creates at most one intent.
   // Later requests see the permanent marker and fail closed even after the
   // Stripe idempotency retention period has elapsed.
-  await stripe.setupIntents.update(pledge.setupIntentId, { metadata: { [ATTEMPT_FIELD]: digest } });
+  await stripe.setupIntents.update(pledge.setupIntentId, { metadata: { [ATTEMPT_FIELD]: digest } }, RAIL_REQUEST);
   if (Date.now() - startedAt < 0 || Date.now() - startedAt > MAX_CLAIM_DURATION_MS) {
     throw new PledgeChargeError(409, 'PLEDGE_CHARGE_RECONCILIATION_REQUIRED', 'Pledge charge claim expired; reconciliation required');
   }
@@ -121,7 +122,7 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
     off_session: true,
     confirm: true,
     metadata: { ...expected, setupIntentId: pledge.setupIntentId, type: 'campaign_pledge_charge' },
-  }, { idempotencyKey: `pledge-charge:${digest}` });
+  }, { ...RAIL_REQUEST, idempotencyKey: `pledge-charge:${digest}` });
   return payment.status;
 }
 

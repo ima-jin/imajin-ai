@@ -106,7 +106,9 @@ describe('seller-account pledge authority', () => {
     expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
       amount: 1000, currency: 'cad', customer: 'cus_buyer', payment_method: 'pm_saved',
       metadata: expect.objectContaining({ sellerDid: SELLER, setupIntentId: REF.setupIntentId, appDid: h.app }),
-    }), { idempotencyKey: expect.stringMatching(/^pledge-charge:[a-f0-9]{64}$/) });
+    }), { idempotencyKey: expect.stringMatching(/^pledge-charge:[a-f0-9]{64}$/), timeout: 10_000, maxNetworkRetries: 0 });
+    expect(h.update).toHaveBeenCalledWith('seti_one', expect.any(Object), { timeout: 10_000, maxNetworkRetries: 0 });
+    expect(h.retrieve).toHaveBeenCalledWith('seti_one', {}, { timeout: 10_000, maxNetworkRetries: 0 });
     expect(h.update.mock.invocationCallOrder[0]).toBeLessThan(h.create.mock.invocationCallOrder[0]);
   });
   it.each(['sellerDid', 'pledgeId', 'eventId', 'appDid'])('rejects a mismatched %s binding with 403', async (field) => {
@@ -265,5 +267,12 @@ describe('route boundary', () => {
   });
   it('maps unsafe exceptions to a generic unavailable response', () => {
     expect(pledgeFailure(new Error('unsafe upstream text'))).toMatchObject({ status: 503, code: 'PLEDGE_CHARGE_UNAVAILABLE' });
+  });
+  it.each(['null', 'false', '"bad"', '{invalid'])('returns 400 for malformed body %s', async (body) => {
+    const req = new NextRequest('https://kernel.test/pay/api/charge-pledges', {
+      method: 'POST', headers: { authorization: 'Bearer fake-app-token', 'content-type': 'application/json' }, body,
+    });
+    expect((await POST(req)).status).toBe(400);
+    expect(h.keys).not.toHaveBeenCalled();
   });
 });
