@@ -255,7 +255,7 @@ export async function verifyKernelWebhook<T = unknown>(
       fail('INVALID_REQUEST', 'Missing or malformed kernel webhook signature headers');
     }
     const signedAt = Number(timestamp) * 1_000;
-    if (now - signedAt >= maxAge * 1_000) fail('STALE', 'Kernel webhook timestamp expired');
+    if (now - signedAt > maxAge * 1_000) fail('STALE', 'Kernel webhook timestamp expired');
     if (signedAt - now > future * 1_000) fail('FUTURE', 'Kernel webhook timestamp is in the future');
     const rawBody = new Uint8Array(await request.arrayBuffer());
     // Resolve cwd at first use, not package import, while sharing the lazy store.
@@ -288,10 +288,10 @@ export async function verifyKernelWebhook<T = unknown>(
     }
     // Recheck time after I/O; discovery must not extend freshness or key validity.
     const verifiedAt = (options.clock ?? Date.now)();
-    if (verifiedAt - signedAt >= maxAge * 1_000) fail('STALE', 'Kernel webhook expired during verification');
+    if (verifiedAt - signedAt > maxAge * 1_000) fail('STALE', 'Kernel webhook expired during verification');
     if (!active(key, verifiedAt)) fail('UNKNOWN_KEY', 'Kernel webhook key expired during verification');
     const consumed = await (options.nonceStore ?? defaultStores.nonceStore).consume(
-      `${namespace}\n${nonce.toLowerCase()}`, signedAt + maxAge * 1_000,
+      `${namespace}\n${nonce.toLowerCase()}`, signedAt + maxAge * 1_000 + 1,
     );
     if (consumed !== true) {
       if (consumed === false) fail('REPLAY', 'Kernel webhook nonce already consumed');

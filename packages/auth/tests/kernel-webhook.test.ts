@@ -132,6 +132,40 @@ describe('kernel webhook canonical protocol', () => {
     await expect(verifyKernelWebhook(signedRequest({ timestamp: Math.floor(NOW / 1000) + 10 }), options)).resolves.toBeTruthy();
   });
 
+  it('accepts exactly 300 seconds old once and retains replay evidence through that endpoint', async () => {
+    const { options } = context();
+    const now = Math.floor(NOW / 1000) * 1000;
+    options.clock = () => now;
+    options.nonceStore = createMemoryKernelWebhookNonceStore({ clock: () => now });
+    const request = signedRequest({ timestamp: now / 1000 - 300 });
+    await expect(verifyKernelWebhook(request.clone(), options)).resolves.toBeTruthy();
+    await expect(verifyKernelWebhook(request.clone(), options)).rejects.toMatchObject({ code: 'REPLAY' });
+  });
+
+  it('rejects a delivery 300 seconds plus one millisecond old', async () => {
+    const { options } = context();
+    const now = Math.floor(NOW / 1000) * 1000;
+    options.clock = () => now + 1;
+    await expect(verifyKernelWebhook(signedRequest({ timestamp: now / 1000 - 300 }), options))
+      .rejects.toMatchObject({ code: 'STALE' });
+  });
+
+  it('accepts exactly 300 seconds in the future', async () => {
+    const { options } = context();
+    const now = Math.floor(NOW / 1000) * 1000;
+    options.clock = () => now;
+    await expect(verifyKernelWebhook(signedRequest({ timestamp: now / 1000 + 300 }), options))
+      .resolves.toBeTruthy();
+  });
+
+  it('rejects a delivery 300 seconds plus one millisecond in the future', async () => {
+    const { options } = context();
+    const now = Math.floor(NOW / 1000) * 1000;
+    options.clock = () => now - 1;
+    await expect(verifyKernelWebhook(signedRequest({ timestamp: now / 1000 + 300 }), options))
+      .rejects.toMatchObject({ code: 'FUTURE' });
+  });
+
   it('atomically rejects duplicate concurrent deliveries', async () => {
     const { options } = context();
     const request = signedRequest();
