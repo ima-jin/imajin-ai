@@ -20,7 +20,7 @@
  *   charged: number,
  *   failed: number,
  *   total: number,
- *   results: Array<{ pledgeId: string, status: 'charged' | 'failed', error?: string }>
+ *   results: Array<{ pledgeId: string, status: 'charged' | 'failed', error?: string, code?: string }>
  * }
  */
 
@@ -31,7 +31,6 @@ import { withLogger } from '@imajin/logger';
 import { authenticatePayApp } from '@/src/lib/pay/app-service-auth';
 import { loadAppPledges, chargeBoundPledge, pledgeFailure, PledgeChargeError, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
-import { SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
@@ -99,7 +98,18 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // Sequential on purpose: each pledge is an off-session Stripe charge — one
     // card charge at a time (Stripe rate limits, no burst of simultaneous
     // charges), with `results` reported in pledge order.
-    await forEachSequential(bound, async (pledge) => {
+    await forEachSequential(bound, async (outcome) => {
+      if ('failure' in outcome) {
+        results.push({
+          pledgeId: outcome.pledgeId,
+          status: 'failed',
+          error: outcome.failure.error,
+          code: outcome.failure.code,
+        });
+        failed++;
+        return;
+      }
+      const { pledge } = outcome;
       try {
         const status = await chargeBoundPledge(pledge, eventId);
 
@@ -115,24 +125,26 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
             pledgeId: pledge.pledgeId,
             status: 'failed',
             error: 'Payment requires additional authentication (3D Secure)',
+            code: 'PLEDGE_CHARGE_REQUIRES_ACTION',
           });
           failed++;
         } else {
           results.push({
             pledgeId: pledge.pledgeId,
             status: 'failed',
-            error: `Payment status: ${status}`,
+            error: 'Payment did not complete; reconcile before retrying',
+            code: 'PLEDGE_CHARGE_RECONCILIATION_REQUIRED',
           });
           failed++;
         }
       } catch (err: unknown) {
         const failure = pledgeFailure(err);
-        if (err instanceof SellerNoCardRailError || (failure.status >= 400 && failure.status < 500)) throw err;
         log.error({ pledgeId: pledge.pledgeId }, 'Pledge charge failed');
         results.push({
           pledgeId: pledge.pledgeId,
           status: 'failed',
-          error: 'Seller pledge charge failed; reconcile before retrying',
+          error: failure.error,
+          code: failure.code,
         });
         failed++;
       }
@@ -146,9 +158,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }, { headers: cors });
   } catch (error) {
     log.error({}, 'Charge pledges error');
-    if (error instanceof SellerNoCardRailError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
-    }
     const failure = pledgeFailure(error);
     return NextResponse.json(
       { error: failure.error, code: failure.code },

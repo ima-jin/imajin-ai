@@ -21,7 +21,7 @@ vi.mock('@/src/lib/pay/app-service-auth', () => ({
 }));
 vi.mock('@/src/lib/pay/app-pledges', () => ({
   pledgeFailure: () => ({ status: 503, code: 'PLEDGE_CHARGE_UNAVAILABLE', error: 'Seller pledge charge unavailable' }),
-  loadAppPledges: async (_app: string, _event: string, pledges: unknown[]) => pledges,
+  loadAppPledges: async (_app: string, _event: string, pledges: { pledgeId: string }[]) => pledges.map((pledge) => ({ pledgeId: pledge.pledgeId, pledge })),
   chargeBoundPledge: async (pledge: { pledgeId: string; stripePaymentMethodId: string }) => {
     if (!pledge.stripePaymentMethodId) throw new Error('Missing Stripe customer or payment method');
     return (await h.create({ metadata: { pledgeId: pledge.pledgeId } })).status;
@@ -112,7 +112,7 @@ describe('POST /pay/api/charge-pledges', () => {
     expect(body).toMatchObject({ charged: 2, failed: 1, total: 3 });
     expect(body.results).toEqual([
       { pledgeId: 'p1', status: 'charged' },
-      { pledgeId: 'p2', status: 'failed', error: 'Seller pledge charge failed; reconcile before retrying' },
+      { pledgeId: 'p2', status: 'failed', error: 'Seller pledge charge unavailable', code: 'PLEDGE_CHARGE_UNAVAILABLE' },
       { pledgeId: 'p3', status: 'charged' },
     ]);
   });
@@ -128,7 +128,7 @@ describe('POST /pay/api/charge-pledges', () => {
 
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(body.results).toEqual([
-      { pledgeId: 'p1', status: 'failed', error: 'Seller pledge charge failed; reconcile before retrying' },
+      { pledgeId: 'p1', status: 'failed', error: 'Seller pledge charge unavailable', code: 'PLEDGE_CHARGE_UNAVAILABLE' },
       { pledgeId: 'p2', status: 'charged' },
     ]);
     expect(body).toMatchObject({ charged: 1, failed: 1 });
@@ -141,8 +141,20 @@ describe('POST /pay/api/charge-pledges', () => {
     const body = await res.json();
 
     expect(body.results).toEqual([
-      { pledgeId: 'p1', status: 'failed', error: 'Payment requires additional authentication (3D Secure)' },
+      { pledgeId: 'p1', status: 'failed', error: 'Payment requires additional authentication (3D Secure)', code: 'PLEDGE_CHARGE_REQUIRES_ACTION' },
     ]);
+  });
+
+  it.each(['requires_payment_method', 'canceled'])('reports %s as reconciliation failure and keeps going', async (status) => {
+    h.create.mockResolvedValueOnce({ status }).mockResolvedValueOnce({ status: 'succeeded' });
+    const res = await POST(request([pledge('p1'), pledge('p2')]) as never, {} as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ charged: 1, failed: 1, total: 2, results: [
+      { pledgeId: 'p1', status: 'failed', error: 'Payment did not complete; reconcile before retrying',
+        code: 'PLEDGE_CHARGE_RECONCILIATION_REQUIRED' },
+      { pledgeId: 'p2', status: 'charged' },
+    ] });
+    expect(h.create).toHaveBeenCalledTimes(2);
   });
 
   it('rejects a request without app-service authentication', async () => {

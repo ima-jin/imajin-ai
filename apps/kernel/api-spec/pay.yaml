@@ -1367,11 +1367,17 @@ paths:
         seller, pledge and event, then checks the customer buyer and saved card attachment
         on that same account. Amount, currency, customer and card come only from the verified
         Stripe setup; caller-supplied payment details are ignored.
-        The entire batch is preflighted before any charge. Missing or mismatched binding
-        is a clear 4xx. No kernel pledge row, events API lookup or platform key is used.
+        All references are structurally validated before preflight or charging; malformed
+        or duplicate references return HTTP 400. The entire batch is preflighted before
+        any charge. Binding, seller rail, setup and charge failures are safe per-pledge
+        outcomes: a valid batch always returns HTTP 200 with every result in request order,
+        continuing after individual failures. No kernel pledge row, events API lookup or platform key is used.
         A permanent Stripe SetupIntent attempt marker is written before charging.
         Concurrent attempts use identical Stripe idempotency keys and parameters; later
-        replays return 409 without another charge, including beyond Stripe's retention.
+        replays report PLEDGE_CHARGE_ALREADY_ATTEMPTED for each marked pledge without
+        another charge, including beyond Stripe's retention. A marker is not proof of
+        successful payment: replayed attempts are failed/reconciliation outcomes, never
+        assumed charged. Initially invalid bindings are also included in replay results.
         Ambiguous outcomes require reconciliation; this flow never clears the marker.
       security:
         - appServiceToken: []
@@ -1395,17 +1401,36 @@ paths:
                       sellerDid: { type: string, description: "Transacting seller DID, verified against the seller-account setup binding" }
       responses:
         "200":
-          description: Charge results for bound pledges
+          description: Full ordered batch outcomes, including preflight, charge and replay failures
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [charged, failed, total, results]
+                properties:
+                  charged: { type: integer, minimum: 0 }
+                  failed: { type: integer, minimum: 0 }
+                  total: { type: integer, minimum: 0 }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [pledgeId, status]
+                      properties:
+                        pledgeId: { type: string }
+                        status: { type: string, enum: [charged, failed] }
+                        error: { type: string, description: "Safe failure text; never upstream error details" }
+                        code:
+                          type: string
+                          description: "Safe failure code, including SELLER_NO_CARD_RAIL, PLEDGE_BINDING_MISMATCH, PLEDGE_SETUP_NOT_FOUND, PLEDGE_CHARGE_ALREADY_ATTEMPTED, PLEDGE_CHARGE_RECONCILIATION_REQUIRED, PLEDGE_CHARGE_REQUIRES_ACTION or PLEDGE_CHARGE_UNAVAILABLE"
         "401":
           description: Missing or invalid app-service token
         "403":
-          description: Missing approved scope or mismatched/missing seller-account app/pledge/event/buyer/card binding
+          description: Missing approved scope
         "400":
-          description: Invalid pledge references or SELLER_NO_CARD_RAIL
-        "404":
-          description: SetupIntent not found on the selected seller account
-        "409":
-          description: Setup incomplete, charge already attempted, or stale claim requiring reconciliation
+          description: Invalid request shape, eventId or pledge references
+        "429":
+          description: Rate limit exceeded
 
   /api/emission:
     post:

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { verifyByoSetupIntent } from '@/src/lib/stripe/byo-setup-intent';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { sellerPledgeRefundClient } from './providers/seller-pledge-refund';
-import { resolveDidStripeKeys } from './rails/stripe-keys';
+import { resolveDidStripeKeys, SellerNoCardRailError } from './rails/stripe-keys';
 import { SetupIntentError, setupIntentBody, setupIntentMetadata, type VerifySetupIntentInput } from './setup-intent';
 
 const referenceBody = setupIntentBody.pick({ pledgeId: true, sellerDid: true }).extend({
@@ -18,6 +18,9 @@ export interface BoundPledge extends VerifySetupIntentInput {
   appDid: string;
   paymentMethodId: string;
 }
+export type PledgePreflight =
+  | { pledgeId: string; pledge: BoundPledge }
+  | { pledgeId: string; failure: ReturnType<typeof pledgeFailure> };
 
 /** Safe client-facing failures, never Stripe's credential-bearing error text. */
 export class PledgeChargeError extends Error {
@@ -73,7 +76,7 @@ async function bindPledge(appDid: string, eventId: string, ref: PledgeReference)
 }
 
 /** Preflight every binding before starting any off-session charge. */
-export async function loadAppPledges(appDid: string, eventId: string, refs: PledgeReference[]): Promise<BoundPledge[]> {
+export async function loadAppPledges(appDid: string, eventId: string, refs: PledgeReference[]): Promise<PledgePreflight[]> {
   const seenSetups = new Set<string>();
   const seenPledges = new Set<string>();
   const references: PledgeReference[] = [];
@@ -87,9 +90,13 @@ export async function loadAppPledges(appDid: string, eventId: string, refs: Pled
     seenPledges.add(parsed.data.pledgeId);
     references.push(parsed.data);
   }
-  const result: BoundPledge[] = [];
+  const result: PledgePreflight[] = [];
   await forEachSequential(references, async (ref) => {
-    result.push(await bindPledge(appDid, eventId, ref));
+    try {
+      result.push({ pledgeId: ref.pledgeId, pledge: await bindPledge(appDid, eventId, ref) });
+    } catch (error) {
+      result.push({ pledgeId: ref.pledgeId, failure: pledgeFailure(error) });
+    }
   });
   return result;
 }
@@ -131,6 +138,9 @@ export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): P
 
 /** Only known domain errors cross the HTTP boundary. */
 export function pledgeFailure(error: unknown): { status: number; code: string; error: string } {
+  if (error instanceof SellerNoCardRailError) {
+    return { status: 400, code: error.code, error: "This seller hasn't set up card payments" };
+  }
   if (error instanceof PledgeChargeError || error instanceof SetupIntentError) {
     return { status: error.status, code: error.code, error: error.message };
   }
