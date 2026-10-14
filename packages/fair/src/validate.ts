@@ -1,13 +1,16 @@
-import type { FairManifest } from "./types";
+import type { SupportedFairManifest } from "./types";
 
 const SUM_TOLERANCE = 1e-6;
 const VALID_SETTLEMENT_SCHEMES = new Set(["x402", "stripe-link", "mjnx-direct", "solana-pay", "lightning"]);
 // #2419 — rounding tolerance (cents) for `taxes[].amount ≈ basisAmount × rateBps / 10000`.
 const TAX_AMOUNT_TOLERANCE_CENTS = 1;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function validateMoney(m: unknown, path: string): string[] {
   const errors: string[] = [];
-  if (typeof m !== "object" || m === null) {
+  if (!isRecord(m)) {
     errors.push(`${path} must be an object`);
     return errors;
   }
@@ -26,7 +29,34 @@ function validateMoney(m: unknown, path: string): string[] {
   return errors;
 }
 
-function validateDidShareList(list: unknown, path: string): string[] {
+function validateShareEntry(entry: unknown, path: string, requireDid: boolean): { errors: string[]; share: number } {
+  if (!isRecord(entry)) return { errors: [`${path} must be an object`], share: 0 };
+  const errors: string[] = [];
+  if (typeof entry.role !== "string" || !entry.role) errors.push(`${path}.role must be a non-empty string`);
+  const validShare = typeof entry.share === "number" && Number.isFinite(entry.share) && entry.share >= 0 && entry.share <= 1;
+  if (!validShare) errors.push(`${path}.share must be a number between 0 and 1`);
+  if ((requireDid || entry.did !== undefined) && (typeof entry.did !== "string" || !entry.did)) {
+    errors.push(`${path}.did must be a non-empty string`);
+  }
+  if (entry.name !== undefined && (typeof entry.name !== "string" || !entry.name)) {
+    errors.push(`${path}.name must be a non-empty string when present`);
+  }
+  errors.push(...validateEntryMetadata(entry, path));
+  return { errors, share: validShare ? entry.share as number : 0 };
+}
+function validateEntryMetadata(entry: Record<string, unknown>, path: string): string[] {
+  const errors: string[] = [];
+  if (entry.note !== undefined && typeof entry.note !== "string") errors.push(`${path}.note must be a string when present`);
+  if (entry.chainProof === undefined) return errors;
+  if (!isRecord(entry.chainProof)) return [...errors, `${path}.chainProof must be an object`];
+  if (typeof entry.chainProof.verified !== "boolean") errors.push(`${path}.chainProof.verified must be a boolean`);
+  if (entry.chainProof.verifiedAt !== undefined && typeof entry.chainProof.verifiedAt !== "string") {
+    errors.push(`${path}.chainProof.verifiedAt must be a string when present`);
+  }
+  return errors;
+}
+
+function validateDidShareList(list: unknown, path: string, requireDid = false): string[] {
   const errors: string[] = [];
   if (!Array.isArray(list)) {
     errors.push(`${path} must be an array`);
@@ -37,21 +67,9 @@ function validateDidShareList(list: unknown, path: string): string[] {
   }
   let shareSum = 0;
   for (let i = 0; i < list.length; i++) {
-    const entry = list[i] as Record<string, unknown>;
-    if (typeof entry.role !== "string" || !entry.role) {
-      errors.push(`${path}[${i}].role must be a non-empty string`);
-    }
-    if (typeof entry.share !== "number" || entry.share < 0 || entry.share > 1) {
-      errors.push(`${path}[${i}].share must be a number between 0 and 1`);
-    } else {
-      shareSum += entry.share;
-    }
-    if (entry.did !== undefined && (typeof entry.did !== "string" || !entry.did)) {
-      errors.push(`${path}[${i}].did must be a non-empty string when present`);
-    }
-    if (entry.name !== undefined && (typeof entry.name !== "string" || !entry.name)) {
-      errors.push(`${path}[${i}].name must be a non-empty string when present`);
-    }
+    const result = validateShareEntry(list[i], `${path}[${i}]`, requireDid);
+    errors.push(...result.errors);
+    shareSum += result.share;
   }
   if (Math.abs(shareSum - 1.0) > SUM_TOLERANCE) {
     errors.push(`${path} shares sum to ${shareSum.toFixed(6)}, must be 1.0 (±${SUM_TOLERANCE})`);
@@ -61,7 +79,7 @@ function validateDidShareList(list: unknown, path: string): string[] {
 
 function validateDistributionRight(right: unknown, path: string): string[] {
   const errors: string[] = [];
-  if (typeof right !== "object" || right === null) {
+  if (!isRecord(right)) {
     errors.push(`${path} must be an object`);
     return errors;
   }
@@ -117,7 +135,7 @@ function validateAccess(access: unknown): string[] {
     }
     return [];
   }
-  if (typeof access === "object") {
+  if (isRecord(access)) {
     return validateAccessObject(access as Record<string, unknown>);
   }
   return ["access must be a string or object"];
@@ -129,7 +147,7 @@ function validateSettlementSchemes(schemes: unknown): string[] {
   const errors: string[] = [];
   for (const s of schemes) {
     if (typeof s !== "string" || !VALID_SETTLEMENT_SCHEMES.has(s)) {
-      errors.push(`settlement.schemes contains invalid scheme: ${s}`);
+      errors.push("settlement.schemes contains invalid scheme");
     }
   }
   return errors;
@@ -138,7 +156,7 @@ function validateSettlementSchemes(schemes: unknown): string[] {
 /** Validate the optional `settlement` block. */
 function validateSettlement(settlement: unknown): string[] {
   if (settlement === undefined) return [];
-  if (typeof settlement !== "object" || settlement === null) return ["settlement must be an object"];
+  if (!isRecord(settlement)) return ["settlement must be an object"];
   const s = settlement as Record<string, unknown>;
   const errors: string[] = [];
   if (s.endpoint !== undefined && typeof s.endpoint !== "string") {
@@ -170,12 +188,13 @@ function validateRequiredFieldsV1_1(m: Record<string, unknown>): string[] {
 
 function validateTransferV1_1(transfer: unknown): string[] {
   if (transfer === undefined) return [];
+  if (!isRecord(transfer)) return ["transfer must be an object"];
   const t = transfer as Record<string, unknown>;
   const errors: string[] = [];
   if (typeof t.allowed !== "boolean") errors.push("transfer.allowed must be a boolean");
   if (t.price !== undefined) errors.push(...validateMoney(t.price, "transfer.price"));
   if (t.resaleRoyaltyBps !== undefined) {
-    if (typeof t.resaleRoyaltyBps !== "number" || t.resaleRoyaltyBps < 0 || t.resaleRoyaltyBps > 10000) {
+    if (typeof t.resaleRoyaltyBps !== "number" || !Number.isFinite(t.resaleRoyaltyBps) || t.resaleRoyaltyBps < 0 || t.resaleRoyaltyBps > 10000) {
       errors.push("transfer.resaleRoyaltyBps must be a number between 0 and 10000");
     }
   }
@@ -184,6 +203,7 @@ function validateTransferV1_1(transfer: unknown): string[] {
 
 function validateDistributionV1_1(distribution: unknown): string[] {
   if (distribution === undefined) return [];
+  if (!isRecord(distribution)) return ["distribution must be an object"];
   const d = distribution as Record<string, unknown>;
   const errors: string[] = [];
   for (const key of ["reproduction", "streaming", "derivative", "syndication"] as const) {
@@ -194,6 +214,7 @@ function validateDistributionV1_1(distribution: unknown): string[] {
 
 function validateTraining(training: unknown): string[] {
   if (training === undefined) return [];
+  if (!isRecord(training)) return ["training must be an object"];
   const t = training as Record<string, unknown>;
   if (typeof t.allowed !== "boolean") return ["training.allowed must be explicitly boolean"];
   return [];
@@ -201,6 +222,7 @@ function validateTraining(training: unknown): string[] {
 
 function validateCommercial(commercial: unknown): string[] {
   if (commercial === undefined) return [];
+  if (!isRecord(commercial)) return ["commercial must be an object"];
   const c = commercial as Record<string, unknown>;
   if (typeof c.allowed !== "boolean") return ["commercial.allowed must be a boolean"];
   return [];
@@ -209,7 +231,26 @@ function validateCommercial(commercial: unknown): string[] {
 function validateFees(fees: unknown): string[] {
   if (fees === undefined) return [];
   if (!Array.isArray(fees)) return ["fees must be an array"];
-  return [];
+  return Array.from(fees, (fee: unknown, i) => validateFeeEntry(fee, i)).flat();
+}
+
+function validateFeeEntry(fee: unknown, i: number): string[] {
+  if (!isRecord(fee)) return [`fees[${i}] must be an object`];
+  const errors: string[] = [];
+  for (const field of ["role", "name"] as const) {
+    if (typeof fee[field] !== "string" || !fee[field]) errors.push(`fees[${i}].${field} must be a non-empty string`);
+  }
+  for (const field of ["rateBps", "fixedCents", "minRateBps"] as const) {
+    if (field === "minRateBps" && fee[field] === undefined) continue;
+    const value = fee[field];
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+      errors.push(`fees[${i}].${field} must be a non-negative safe integer`);
+    }
+  }
+  if (typeof fee.minRateBps === "number" && typeof fee.rateBps === "number" && fee.minRateBps > fee.rateBps) {
+    errors.push(`fees[${i}].minRateBps must not exceed rateBps`);
+  }
+  return errors;
 }
 
 /**
@@ -222,7 +263,7 @@ function validateFees(fees: unknown): string[] {
  */
 function validateTaxEntry(tax: unknown, i: number): string[] {
   const errors: string[] = [];
-  if (typeof tax !== "object" || tax === null) {
+  if (!isRecord(tax)) {
     return [`taxes[${i}] must be an object`];
   }
   const t = tax as Record<string, unknown>;
@@ -245,7 +286,7 @@ function validateTaxEntry(tax: unknown, i: number): string[] {
 
   if (typeof t.basisAmount === "number" && typeof t.rateBps === "number" && typeof t.amount === "number") {
     const expected = Math.round((t.basisAmount * t.rateBps) / 10000);
-    if (Math.abs(expected - t.amount) > TAX_AMOUNT_TOLERANCE_CENTS) {
+    if (!Number.isFinite(expected) || Math.abs(expected - t.amount) > TAX_AMOUNT_TOLERANCE_CENTS) {
       errors.push(`taxes[${i}].amount (${t.amount}) does not match basisAmount × rateBps / 10000 (${expected})`);
     }
   }
@@ -279,7 +320,7 @@ function validateProvenance(provenance: unknown): string[] {
   const errors: string[] = [];
   for (let i = 0; i < provenance.length; i++) {
     const entry = provenance[i] as Record<string, unknown>;
-    if (typeof entry !== "object" || entry === null) {
+    if (!isRecord(entry)) {
       errors.push(`provenance[${i}] must be an object`);
       continue;
     }
@@ -320,7 +361,45 @@ function validateV1_1(manifest: Record<string, unknown>): string[] {
     ...validateFees(manifest.fees),
     ...validateProvenance(manifest.provenance),
     ...validateTaxes(manifest.taxes),
+    ...validateOptionalShareLists(manifest),
   ];
+}
+
+function validateOptionalShareLists(manifest: Record<string, unknown>): string[] {
+  return ["chain", "distributions"].flatMap((field) =>
+    manifest[field] === undefined ? [] : validateDidShareList(manifest[field], field));
+}
+
+function validateFeeManifest(manifest: Record<string, unknown>): string[] {
+  const errors = [
+    ...validateFees(manifest.fees),
+    ...validateDidShareList(manifest.chain, "chain", true),
+    ...validateDidShareList(manifest.distributions, "distributions", true),
+    ...validateDidShareList(manifest.attribution, "attribution", true),
+    ...validateTaxes(manifest.taxes),
+  ];
+  if (manifest.fees === undefined) errors.push("fees is required");
+  if (Array.isArray(manifest.fees) && manifest.fees.length === 0) errors.push("fees must not be empty");
+  const hasTaxes = Array.isArray(manifest.taxes) && manifest.taxes.length > 0;
+  if (hasTaxes && manifest.version !== "0.5.0") errors.push('version must be "0.5.0" when taxes[] is present');
+  if (!hasTaxes && manifest.version === "0.5.0") errors.push('version "0.5.0" requires a non-empty taxes[]');
+  // Document-only markers on a fee record would otherwise be silently ignored.
+  for (const field of ["fair", "id", "type", "owner", "created", "access", "transfer", "distribution"] as const) {
+    if (field in manifest) errors.push(`${field} is a document field, not a fee-manifest field`);
+  }
+  return errors;
+}
+
+function validateSupportedShape(m: Record<string, unknown>): string[] {
+  if ("fair" in m) {
+    if (m.fair !== "1.0" && m.fair !== "1.1" && m.fair !== "1.2") {
+      return ['fair must be "1.0", "1.1", or "1.2"'];
+    }
+    if (m.version !== undefined && m.version !== m.fair) return ["version must match fair for a document manifest"];
+    return m.fair === "1.0" ? validateV1_0(m) : validateV1_1(m);
+  }
+  if (m.version === "0.4.0" || m.version === "0.5.0") return validateFeeManifest(m);
+  return ['manifest requires a supported document fair or fee version ("0.4.0" or "0.5.0")'];
 }
 
 // ---------------------------------------------------------------------------
@@ -338,12 +417,7 @@ function validateRequiredFieldsV1_0(m: Record<string, unknown>): string[] {
 }
 
 function validateAttributionEntryV1_0(entry: Record<string, unknown>, i: number): { errors: string[]; share: number } {
-  const errors: string[] = [];
-  if (typeof entry.did !== "string" || !entry.did) errors.push(`attribution[${i}].did must be a non-empty string`);
-  if (typeof entry.role !== "string" || !entry.role) errors.push(`attribution[${i}].role must be a non-empty string`);
-  const shareValid = typeof entry.share === "number" && entry.share >= 0 && entry.share <= 1;
-  if (!shareValid) errors.push(`attribution[${i}].share must be a number between 0 and 1`);
-  return { errors, share: shareValid ? (entry.share as number) : 0 };
+  return validateShareEntry(entry, `attribution[${i}]`, true);
 }
 
 function validateAttributionV1_0(attribution: unknown): string[] {
@@ -351,6 +425,10 @@ function validateAttributionV1_0(attribution: unknown): string[] {
   let shareSum = 0;
   const errors: string[] = [];
   for (let i = 0; i < attribution.length; i++) {
+    if (!isRecord(attribution[i])) {
+      errors.push(`attribution[${i}] must be an object`);
+      continue;
+    }
     const { errors: entryErrors, share } = validateAttributionEntryV1_0(attribution[i] as Record<string, unknown>, i);
     errors.push(...entryErrors);
     shareSum += share;
@@ -361,11 +439,12 @@ function validateAttributionV1_0(attribution: unknown): string[] {
 
 function validateTransferV1_0(transfer: unknown): string[] {
   if (transfer === undefined) return [];
+  if (!isRecord(transfer)) return ["transfer must be an object"];
   const t = transfer as Record<string, unknown>;
   const errors: string[] = [];
   if (typeof t.allowed !== "boolean") errors.push("transfer.allowed must be a boolean");
   if (t.resaleRoyalty !== undefined) {
-    if (typeof t.resaleRoyalty !== "number" || t.resaleRoyalty < 0 || t.resaleRoyalty > 1) {
+    if (typeof t.resaleRoyalty !== "number" || !Number.isFinite(t.resaleRoyalty) || t.resaleRoyalty < 0 || t.resaleRoyalty > 1) {
       errors.push("transfer.resaleRoyalty must be a number between 0 and 1");
     }
   }
@@ -373,7 +452,7 @@ function validateTransferV1_0(transfer: unknown): string[] {
 }
 
 function validateSignatureField(fieldName: string, sig: unknown): string[] {
-  if (typeof sig !== "object" || sig === null) return [`${fieldName} must be an object`];
+  if (!isRecord(sig)) return [`${fieldName} must be an object`];
   const s = sig as Record<string, unknown>;
   const errors: string[] = [];
   if (s.algorithm !== "ed25519") errors.push(`${fieldName}.algorithm must be "ed25519"`);
@@ -396,6 +475,7 @@ function validateSignaturesV1_0(m: Record<string, unknown>): string[] {
 
 function validateIntentV1_0(intent: unknown): string[] {
   if (intent === undefined) return [];
+  if (!isRecord(intent)) return ["intent must be an object"];
   const i = intent as Record<string, unknown>;
   if (typeof i.purpose !== "string" || !i.purpose) return ["intent.purpose must be a non-empty string"];
   return [];
@@ -409,23 +489,23 @@ function validateV1_0(manifest: Record<string, unknown>): string[] {
     ...validateTransferV1_0(manifest.transfer),
     ...validateSignaturesV1_0(manifest),
     ...validateIntentV1_0(manifest.intent),
+    ...validateFees(manifest.fees),
+    ...validateOptionalShareLists(manifest),
+    ...validateTaxes(manifest.taxes),
+    ...validateFairVersionMatchesTaxes(manifest),
   ];
 }
 
 export function validateManifest(manifest: unknown): { ok: boolean; valid: boolean; errors: string[] } {
-  if (typeof manifest !== "object" || manifest === null) {
+  if (!isRecord(manifest)) {
     return { ok: false, valid: false, errors: ["manifest must be an object"] };
   }
 
-  const m = manifest as Record<string, unknown>;
-  // #2419: '1.2' manifests (taxes[] present) validate through the same
-  // v1.1 path — see validateRequiredFieldsV1_1 for the version-string check.
-  const isV1_1 = m.fair === "1.1" || m.fair === "1.2" || m.version === "1.1" || m.version === "1.2";
-  const errors = isV1_1 ? validateV1_1(m) : validateV1_0(m);
+  const errors = validateSupportedShape(manifest);
   const ok = errors.length === 0;
   return { ok, valid: ok, errors };
 }
 
-export function isValidManifest(manifest: unknown): manifest is FairManifest {
+export function isValidManifest(manifest: unknown): manifest is SupportedFairManifest {
   return validateManifest(manifest).ok;
 }

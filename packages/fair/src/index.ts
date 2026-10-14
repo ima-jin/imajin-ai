@@ -6,6 +6,7 @@ export type {
   FairIntegrity,
   FairIntent,
   FairManifest,
+  SupportedFairManifest,
   FairManifestV10,
   FairManifestV11,
   FairSignature,
@@ -24,7 +25,7 @@ export type {
   FairProvenanceRef,
   FairTax,
 } from './types';
-export { isFairManifestV11 } from './types';
+export { isFairManifestV11, isFairFeeManifest } from './types';
 
 export type { FairTemplate, TemplateConfig } from './templates';
 export { templates, getDefaultManifest } from './templates';
