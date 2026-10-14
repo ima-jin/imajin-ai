@@ -9,6 +9,7 @@ const log = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
 vi.mock('@imajin/db', () => ({ getClient: () => async () => [] }));
 const fetchMock = vi.fn();
+const audience = 'did:imajin:events';
 const url = 'https://events.test/events/api/webhook/settlement?tenant=%2F&v=2';
 const event: BusEvent = {
   id: 'evt_test', type: 'settlement.completed', issuer: 'did:imajin:buyer',
@@ -35,6 +36,16 @@ describe('signed bus webhook reactor', () => {
     expect(log.warn).toHaveBeenCalled();
   });
 
+  it('requires an explicit recipient for arbitrary webhook configs, never from payload', async () => {
+    const signer = vi.fn(() => ({}));
+    registerKernelWebhookSigner(signer);
+    const other = { ...event, type: 'custom.delivery', payload: { appDid: audience } };
+    await expect(webhookReactor(other, { url })).rejects.toThrow('recipient is required');
+    expect(signer).not.toHaveBeenCalled();
+    await expect(webhookReactor(other, { url, recipient: { appDid: audience } })).rejects.toThrow('omitted');
+    expect(signer).toHaveBeenCalledWith(url, expect.any(String), { appDid: audience });
+  });
+
   it('fails closed without a registered signer even with a legacy DB config secret', async () => {
     expect(getKernelWebhookSigner()).toBeUndefined();
     await expect(webhookReactor(event, { url, secret: 'obvious-fake-placeholder' })).rejects.toThrow('not registered');
@@ -53,19 +64,20 @@ describe('signed bus webhook reactor', () => {
     const pair = authCrypto.generateKeypair();
     const sign = vi.fn((target: string, rawBody: string) => {
       const headers = {
+        'x-kernel-audience': audience,
         'x-kernel-kid': computeKeyKid(pair.publicKey),
         'x-kernel-timestamp': String(Math.floor(Date.now() / 1000)),
         'x-kernel-nonce': randomUUID(),
       };
       return { ...headers, 'x-kernel-signature': authCrypto.signSync(canonicalKernelWebhookPayload({
-        url: target, rawBody, method: 'POST',
+        audience, url: target, rawBody, method: 'POST',
         timestamp: headers['x-kernel-timestamp'], nonce: headers['x-kernel-nonce'],
       }), pair.privateKey) };
     });
     registerKernelWebhookSigner(sign);
     await webhookReactor(event, { url, secret: 'obvious-fake-placeholder' });
     const [target, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(sign).toHaveBeenCalledWith(target, init.body);
+    expect(sign).toHaveBeenCalledWith(target, init.body, { appSlug: 'events' });
     expect(JSON.parse(init.body as string)).toEqual({
       type: event.type, issuer: event.issuer, subject: event.subject, scope: event.scope,
       payload: event.payload, timestamp: event.timestamp, correlationId: event.correlationId,
@@ -75,7 +87,7 @@ describe('signed bus webhook reactor', () => {
     expect(headers).not.toHaveProperty('x-webhook-secret');
     expect(headers).not.toHaveProperty('Authorization');
     const canonical = (body: string, targetUrl = target) => canonicalKernelWebhookPayload({
-      url: targetUrl, rawBody: body, method: 'POST',
+      audience, url: targetUrl, rawBody: body, method: 'POST',
       timestamp: headers['x-kernel-timestamp'], nonce: headers['x-kernel-nonce'],
     });
     expect(authCrypto.verifySync(headers['x-kernel-signature'], canonical(init.body as string), pair.publicKey)).toBe(true);
@@ -85,7 +97,7 @@ describe('signed bus webhook reactor', () => {
 
   it('logs downstream failures without falling back to unsigned delivery', async () => {
     registerKernelWebhookSigner(() => ({
-      'x-kernel-kid': 'fake', 'x-kernel-timestamp': '1',
+      'x-kernel-audience': audience, 'x-kernel-kid': 'fake', 'x-kernel-timestamp': '1',
       'x-kernel-nonce': 'fake', 'x-kernel-signature': 'fake',
     }));
     fetchMock.mockResolvedValue(new Response('unavailable', { status: 503 }));
@@ -101,6 +113,7 @@ describe('signed bus webhook reactor', () => {
     const chain = await getChainConfig('settlement.completed', 'events');
     const webhook = chain.reactors.find((reactor) => reactor.type === 'webhook');
     expect(webhook?.config.url).toBe(url);
+    expect(webhook?.config.recipient).toEqual({ appSlug: 'events' });
     expect(webhook?.config).not.toHaveProperty('secret');
   });
 

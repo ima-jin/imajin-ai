@@ -154,6 +154,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
       type: 'webhook',
       config: {
         url: settlementWebhookUrl(),
+        recipient: { appSlug: 'events' },
       },
       enabled: !!process.env.EVENTS_SERVICE_URL,
     },

@@ -8,6 +8,10 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
+vi.mock('../../auth/kernel-webhook-recipient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../auth/kernel-webhook-recipient')>(),
+  resolveKernelWebhookAudience: vi.fn(async (_url, recipient) => `did:imajin:${recipient.appSlug}`),
+}));
 
 const mocks = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),

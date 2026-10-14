@@ -2,7 +2,11 @@ import { createLogger } from '@imajin/logger';
 import type { ReactorHandler } from '../types';
 
 const log = createLogger('bus:webhook');
-export type KernelWebhookSigner = (url: string, rawBody: string) =>
+export interface KernelWebhookRecipient {
+  appDid?: string;
+  appSlug?: string;
+}
+export type KernelWebhookSigner = (url: string, rawBody: string, recipient: KernelWebhookRecipient) =>
   Record<string, string> | Promise<Record<string, string>>;
 
 // Instrumentation and routes can use separate Next chunks. Share registration
@@ -37,8 +41,13 @@ export const webhookReactor: ReactorHandler = async (event, config) => {
     timestamp: event.timestamp,
     correlationId: event.correlationId,
   });
-  const signatures = await signer(url, body);
-  for (const header of ['x-kernel-kid', 'x-kernel-timestamp', 'x-kernel-nonce', 'x-kernel-signature']) {
+  const recipient = config.recipient as KernelWebhookRecipient | undefined;
+  const trustedRecipient = recipient ?? (event.type === 'settlement.completed' ? { appSlug: 'events' } : undefined);
+  if (!trustedRecipient || (!trustedRecipient.appDid && !trustedRecipient.appSlug)) {
+    throw new Error('Kernel webhook recipient is required');
+  }
+  const signatures = await signer(url, body, trustedRecipient);
+  for (const header of ['x-kernel-kid', 'x-kernel-timestamp', 'x-kernel-nonce', 'x-kernel-signature', 'x-kernel-audience']) {
     if (!signatures[header]) throw new Error(`Kernel webhook signer omitted ${header}`);
   }
 

@@ -41,7 +41,7 @@ export { registerReactor, getReactor } from './registry';
 export { registerSettleExecutor, getSettleExecutor } from './reactors/settle';
 export type { SettleExecutor, SettleExecutorParams, SettleExecutorResult } from './reactors/settle';
 export { registerKernelWebhookSigner, getKernelWebhookSigner } from './reactors/webhook';
-export type { KernelWebhookSigner } from './reactors/webhook';
+export type { KernelWebhookSigner, KernelWebhookRecipient } from './reactors/webhook';
 export { registerEmissionExecutor, getEmissionExecutor } from './reactors/mjn';
 export type { EmissionExecutor, EmissionExecutorParams, EmissionExecutorResult } from './reactors/mjn';
 export { registerBrokerReactor, getBrokerReactor } from './broker-registry';

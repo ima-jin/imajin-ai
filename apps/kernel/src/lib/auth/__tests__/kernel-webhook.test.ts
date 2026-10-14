@@ -8,13 +8,19 @@ import { kernelWebhookUrl, postKernelWebhook, signKernelWebhook } from '../kerne
 const log = vi.hoisted(() => ({ warn: vi.fn() }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
 
+vi.mock('../kernel-webhook-recipient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../kernel-webhook-recipient')>(),
+  resolveKernelWebhookAudience: vi.fn(async (_url, recipient) => `did:imajin:${recipient.appSlug}`),
+}));
+
+const audience = 'did:imajin:market';
 const apps = ['events', 'market', 'learn', 'coffee'] as const;
 const fetchMock = vi.fn();
 let publicKey: string;
 
 function canonical(headers: Record<string, string>, url: string, body: string, method = 'POST'): string {
   const target = new URL(url);
-  return `imajin-webhook-v1\n${headers['x-kernel-timestamp']}\n${headers['x-kernel-nonce']}\n${method}\n${target.pathname}${target.search}\n${createHash('sha256').update(body).digest('hex')}`;
+  return `imajin-webhook-v1\n${headers['x-kernel-audience']}\n${headers['x-kernel-timestamp']}\n${headers['x-kernel-nonce']}\n${method}\n${target.pathname}${target.search}\n${createHash('sha256').update(body).digest('hex')}`;
 }
 
 describe('published kernel webhook signing', () => {
@@ -36,7 +42,7 @@ describe('published kernel webhook signing', () => {
   it('signs the exact raw UTF-8 body, method, path and query with the published key', () => {
     const url = 'https://app.test/base/api/webhook?a=%2F&b=two';
     const body = '{ "message": "héllo", "amount": 2 }\n';
-    const headers = signKernelWebhook(url, body);
+    const headers = signKernelWebhook(url, body, audience);
     expect(headers['x-kernel-timestamp']).toMatch(/^\d+$/);
     expect(headers['x-kernel-nonce']).toMatch(/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/);
     expect(headers['x-kernel-signature']).toMatch(/^[\da-f]{128}$/);
@@ -55,8 +61,8 @@ describe('published kernel webhook signing', () => {
   });
 
   it('normalizes method case and gives each delivery a fresh nonce', () => {
-    const one = signKernelWebhook('https://app.test/hook', '{}', 'post');
-    const two = signKernelWebhook('https://app.test/hook', '{}');
+    const one = signKernelWebhook('https://app.test/hook', '{}', audience, 'post');
+    const two = signKernelWebhook('https://app.test/hook', '{}', audience);
     expect(one['x-kernel-nonce']).not.toBe(two['x-kernel-nonce']);
     expect(authCrypto.verifySync(one['x-kernel-signature'], canonical(one, 'https://app.test/hook', '{}'), publicKey)).toBe(true);
   });
@@ -69,6 +75,7 @@ describe('published kernel webhook signing', () => {
     let pinned: readonly KernelWebhookKey[] | null = null;
     const discovery = vi.fn(async () => new Response(JSON.stringify(getKernelSigningKeyDocument())));
     const options = {
+      audience,
       authServiceUrl: 'https://kernel.test/auth',
       fetch: discovery as typeof fetch,
       nonceStore: createMemoryKernelWebhookNonceStore(),
@@ -81,11 +88,24 @@ describe('published kernel webhook signing', () => {
     await expect(verifyKernelWebhook(new Request(url, init), options)).resolves.toEqual(payload);
     expect(discovery).toHaveBeenCalledWith('https://kernel.test/auth/.well-known/kernel-signing-key', expect.any(Object));
     expect(pinned).toEqual(getKernelSigningKeyDocument()?.keys);
+    const otherApp = { ...options, audience: 'did:imajin:events', nonceStore: createMemoryKernelWebhookNonceStore() };
+    discovery.mockClear();
+    await expect(verifyKernelWebhook(new Request(url.replace('app.test', 'events.test'), init), otherApp))
+      .rejects.toMatchObject({ code: 'AUDIENCE_MISMATCH' });
+    expect(discovery).not.toHaveBeenCalled();
+    const forgedHeaders = new Headers(init.headers);
+    forgedHeaders.set('x-kernel-audience', otherApp.audience);
+    await expect(verifyKernelWebhook(new Request(url.replace('app.test', 'events.test'), { ...init, headers: forgedHeaders }), otherApp))
+      .rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
     await expect(verifyKernelWebhook(new Request(url, init), options)).rejects.toMatchObject({ code: 'REPLAY' });
     await expect(verifyKernelWebhook(new Request(url, { ...init, body: '{"type":"tampered"}' }), options))
       .rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
     await expect(verifyKernelWebhook(new Request(url.replace('tenant=%2F', 'tenant=changed'), init), options))
       .rejects.toMatchObject({ code: 'SIGNATURE_INVALID' });
+  });
+
+  it.each(['', 'market', 'did:imajin:bad\nheader'])('refuses malformed signing audience %j', (invalid) => {
+    expect(() => signKernelWebhook('https://app.test/hook', '{}', invalid)).toThrow('app DID');
   });
 
   it('keeps base paths and query bytes when appending callback paths', () => {
@@ -115,16 +135,14 @@ describe('published kernel webhook signing', () => {
   it('supports the same PKCS#8 encoding as the published key endpoint', () => {
     const seed = process.env.AUTH_PRIVATE_KEY!;
     vi.stubEnv('AUTH_PRIVATE_KEY', `302e020100300506032b657004220420${seed}`);
-    const headers = signKernelWebhook('https://app.test/hook', '{}');
+    const headers = signKernelWebhook('https://app.test/hook', '{}', audience);
     expect(headers['x-kernel-kid']).toBe(computeKeyKid(publicKey));
     expect(authCrypto.verifySync(headers['x-kernel-signature'], canonical(headers, 'https://app.test/hook', '{}'), publicKey)).toBe(true);
   });
 
   it('adds optional legacy bearer only when set and warns once per variable, never per delivery', async () => {
-    for (const app of apps) {
-      vi.stubEnv(`${app.toUpperCase()}_WEBHOOK_SECRET`, 'obvious-fake-legacy-placeholder');
-      for (let i = 0; i < 2; i++) await postKernelWebhook('https://app.test/hook', {}, app);
-    }
+    for (const app of apps) vi.stubEnv(`${app.toUpperCase()}_WEBHOOK_SECRET`, 'obvious-fake-legacy-placeholder');
+    await Promise.all(apps.flatMap((app) => Array.from({ length: 2 }, () => postKernelWebhook('https://app.test/hook', {}, app))));
     expect(log.warn).toHaveBeenCalledTimes(4);
     vi.resetModules();
     const secondCopy = await import('../kernel-webhook-legacy');

@@ -11,6 +11,10 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { crypto as authCrypto } from '@imajin/auth';
+vi.mock('@/src/lib/auth/kernel-webhook-recipient', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/src/lib/auth/kernel-webhook-recipient')>(),
+  resolveKernelWebhookAudience: vi.fn(async (_url, recipient) => `did:imajin:${recipient.appSlug}`),
+}));
 
 interface TxFixture {
   id: string;
