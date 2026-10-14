@@ -6,8 +6,32 @@ import type { EmissionConfig, EmissionRule } from '../emissions';
 
 const log = createLogger('bus:mjn');
 
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL;
-const PAY_SERVICE_API_KEY = process.env.PAY_SERVICE_API_KEY;
+export interface EmissionExecutorParams {
+  to_did: string;
+  amount: number;
+  unit: string;
+  reason: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type EmissionExecutorResult =
+  | { error: string; status: number }
+  | { id: string | null; amount: string; to_did: string; status: 'completed'; duplicate?: true };
+
+export type EmissionExecutor = (params: EmissionExecutorParams) => Promise<EmissionExecutorResult>;
+
+// Like settle, share the hook across Next instrumentation and route bundles,
+// without importing the kernel from this infrastructure package.
+const EXECUTOR_KEY = Symbol.for('@imajin/bus:emission-executor');
+type ExecutorHolder = { [EXECUTOR_KEY]?: EmissionExecutor | null };
+
+export function registerEmissionExecutor(executor: EmissionExecutor | null): void {
+  (globalThis as ExecutorHolder)[EXECUTOR_KEY] = executor;
+}
+
+export function getEmissionExecutor(): EmissionExecutor | undefined {
+  return (globalThis as ExecutorHolder)[EXECUTOR_KEY] ?? undefined;
+}
 
 /** Delivery attempts per emission before it is reported as failed. */
 const DEFAULT_MAX_ATTEMPTS = 3;
@@ -16,7 +40,7 @@ const DEFAULT_RETRY_DELAY_MS = 250;
 
 interface AttemptResult {
   ok: boolean;
-  /** Worth retrying (network error, 5xx, 429). A 4xx is the caller's bug — retrying cannot fix it. */
+  /** Worth retrying (thrown error, 5xx, 429). Other 4xx errors are permanent. */
   retryable: boolean;
   detail?: string;
 }
@@ -35,23 +59,15 @@ function nonNegativeNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
-async function postEmission(body: string): Promise<AttemptResult> {
+async function executeEmission(executor: EmissionExecutor, body: EmissionExecutorParams): Promise<AttemptResult> {
   try {
-    const response = await fetch(`${PAY_SERVICE_URL}/api/emission`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${PAY_SERVICE_API_KEY}`,
-      },
-      body,
-    });
-    if (response.ok) return { ok: true, retryable: false };
+    const result = await executor(body);
+    if (!('error' in result)) return { ok: true, retryable: false };
 
-    const text = await response.text().catch(() => '');
     return {
       ok: false,
-      retryable: response.status >= 500 || response.status === 429,
-      detail: `HTTP ${response.status} ${text}`.trim(),
+      retryable: result.status >= 500 || result.status === 429,
+      detail: `${result.status} ${result.error}`,
     };
   } catch (err) {
     return { ok: false, retryable: true, detail: String(err) };
@@ -59,23 +75,24 @@ async function postEmission(body: string): Promise<AttemptResult> {
 }
 
 /**
- * POST one emission, retrying transient failures. Every attempt carries the
- * same `idempotency_key` (in the body), which the pay service dedupes on — so
- * a retry after a lost response can never double-credit.
+ * Execute one emission, retrying transient failures with the same
+ * idempotency key, so a retry after a lost result cannot double-credit.
  */
 async function deliver(
-  body: string,
+  executor: EmissionExecutor,
+  body: EmissionExecutorParams,
   maxAttempts: number,
   retryDelayMs: number,
   attempt = 1
 ): Promise<AttemptResult & { attempts: number }> {
-  const result = await postEmission(body);
+  const result = await executeEmission(executor, body);
   if (result.ok || !result.retryable || attempt >= maxAttempts) return { ...result, attempts: attempt };
   await sleep(retryDelayMs * 2 ** (attempt - 1));
-  return deliver(body, maxAttempts, retryDelayMs, attempt + 1);
+  return deliver(executor, body, maxAttempts, retryDelayMs, attempt + 1);
 }
 
 interface EmissionContext {
+  executor: EmissionExecutor;
   attestationType: string;
   attestationId: string;
   emission: EmissionConfig;
@@ -103,7 +120,7 @@ async function emitRule(ctx: EmissionContext, rule: EmissionRule, index: number)
   // across a re-publish of the same event.
   const idempotencyKey = `emission:${attestationId}:${index}:${rule.to}`;
 
-  const body = JSON.stringify({
+  const body: EmissionExecutorParams = {
     to_did: targetDid,
     amount,
     unit: emission.unit,
@@ -119,9 +136,9 @@ async function emitRule(ctx: EmissionContext, rule: EmissionRule, index: number)
       issuer: event.issuer,
       subject: event.subject,
     },
-  });
+  };
 
-  const result = await deliver(body, ctx.maxAttempts, ctx.retryDelayMs);
+  const result = await deliver(ctx.executor, body, ctx.maxAttempts, ctx.retryDelayMs);
   if (result.ok) {
     log.info(
       { amount, targetDid: targetDid.slice(0, 24), attestationType, reason: rule.reason, attempts: result.attempts },
@@ -148,19 +165,19 @@ async function emitRule(ctx: EmissionContext, rule: EmissionRule, index: number)
  *    `attestationReactor` has stashed `payload.attestationId` on the shared
  *    event. Without it the emission would be untraceable, so it throws.
  *  - Delivery is awaited, retried with backoff on transient failures, and
- *    idempotent (the pay service dedupes on `idempotency_key`). A lost
+ *    idempotent (the kernel ledger dedupes on `idempotency_key`). A lost
  *    emission is logged at error level and the reactor throws, so it is
  *    visible — and re-publishing the event is safe.
  */
 export const mjnReactor: ReactorHandler = async (event, config) => {
-  if (!PAY_SERVICE_URL || !PAY_SERVICE_API_KEY) {
-    log.warn({}, 'MJN reactor: PAY_SERVICE_URL or PAY_SERVICE_API_KEY not set');
-    return;
-  }
 
   const attestationType = (config.attestationType as string) || event.type;
   const emission = await loadEmissionConfig(event.type, event.scope, attestationType);
   if (!emission || emission.rules.length === 0) return;
+  const executor = getEmissionExecutor();
+  if (!executor) {
+    throw new Error('mjn: no in-process emission executor registered (emission runs in the kernel process only)');
+  }
 
   const attestationId = typeof event.payload?.attestationId === 'string' ? event.payload.attestationId : undefined;
   if (!attestationId) {
@@ -168,6 +185,7 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
   }
 
   const ctx: EmissionContext = {
+    executor,
     attestationType,
     attestationId,
     emission,
@@ -185,7 +203,7 @@ export const mjnReactor: ReactorHandler = async (event, config) => {
     retryDelayMs: nonNegativeNumber(emission.settings.retryDelayMs, DEFAULT_RETRY_DELAY_MS),
   };
 
-  // Sequential on purpose: emissions credit a ledger (one pay-service write per
+  // Sequential on purpose: emissions credit a ledger (one kernel write per
   // rule, in schedule order) — later credits must not land before earlier ones.
   // A lost rule does not stop the others; failures are collected and thrown.
   const failures: string[] = [];
