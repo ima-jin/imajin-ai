@@ -63,6 +63,8 @@ import { executeGithubApproval, GITHUB_SOURCE } from '@/src/lib/github/approvals
 import { executeAppsProvisionApproval } from '@/src/lib/apps/approvals-execution';
 import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
 import { executeAppsServiceScopesApproval } from '@/src/lib/apps/service-scopes';
+import { executeAppSecretsApproval } from '@/src/lib/apps/secrets-operator';
+import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -97,14 +99,20 @@ async function runAppsExecution(
   proposalId: string,
   card: Parameters<typeof executeVaultApproval>[0],
 ): Promise<ExecutionOutcome> {
-  const isServiceScopes = card.kind === APPS_SERVICE_SCOPES_KIND;
-  const execution = isServiceScopes
-    ? await executeAppsServiceScopesApproval(card)
-    : await executeAppsProvisionApproval(card);
+  let execution;
+  if (card.kind === APPS_SERVICE_SCOPES_KIND) {
+    execution = await executeAppsServiceScopesApproval(card);
+  } else if (isAppSecretsKind(card.kind)) {
+    execution = await executeAppSecretsApproval(card);
+  } else if (card.kind === 'apps:provision') {
+    execution = await executeAppsProvisionApproval(card);
+  } else {
+    return { error: `Unrecognized apps proposal kind '${card.kind}'` };
+  }
   if (execution.ok) return { data: { ...execution.data } };
   log.error(
     { proposalId, kind: card.kind, error: execution.error },
-    isServiceScopes ? 'Service-scopes proposal approved but execution failed' : 'Apps proposal approved but execution failed',
+    'Apps proposal approved but execution failed',
   );
   return { error: execution.error };
 }

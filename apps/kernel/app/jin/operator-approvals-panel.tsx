@@ -66,6 +66,8 @@ import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decis
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
+import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
+import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 
 interface StoredKeypair {
   privateKey: string;
@@ -267,6 +269,24 @@ const DEFAULT_RENDERER: SourceRenderer = {
   decisionLabels: DEFAULT_DECISION_LABELS,
   renderDetail: renderDefaultDetail,
 };
+
+function renderAppSecretsDetail(approval: OperatorApprovalCard): ReactNode {
+  const snapshot = Array.isArray(approval.detail?.secrets)
+    ? validateSecrets(approval.detail.secrets)
+    : { error: 'Missing snapshot' };
+  return (
+    <div className="space-y-1 text-xs text-gray-400">
+      <p>{approval.summary}</p>
+      <p className="font-mono">{detailString(approval.detail, 'appDid', '—')}</p>
+      {approval.kind === 'apps:secrets-sync' ? (
+        <p>Approve only these manifest secrets: {'ok' in snapshot
+          ? snapshot.ok.map((secret) => `${secret.name} (${secret.kind})`).join(', ') || 'none'
+          : 'invalid snapshot — execution will be refused'}. No scope or event changes.</p>
+      ) : <p className="font-mono">{detailString(approval.detail, 'name', '—')}</p>}
+      <p>No values are revealed. Rotation takes effect at next boot; SESSION_SECRET signs users out after restart. Revoke blocks future fetches, not values already in memory.</p>
+    </div>
+  );
+}
 
 /** Read a string field out of `detail`, falling back when absent/mistyped — `detail` is untrusted, adapter-supplied JSON. */
 function detailString(detail: Record<string, unknown> | null, key: string, fallback: string): string {
@@ -572,6 +592,7 @@ function renderAppsServiceScopesDetail(approval: OperatorApprovalCard): ReactNod
 }
 
 function appsDecisionLabels(approval: OperatorApprovalCard): DecisionLabels {
+  if (isAppSecretsKind(approval.kind)) return { approve: 'Sign secret change', reject: 'Cancel' };
   if (approval.kind !== APPS_SERVICE_SCOPES_KIND) {
     return { approve: isClaimReissue(approval) ? 'Approve & reissue' : 'Approve & provision', reject: 'Deny' };
   }
@@ -582,8 +603,10 @@ function appsDecisionLabels(approval: OperatorApprovalCard): DecisionLabels {
 
 const APPS_RENDERER: SourceRenderer = {
   decisionLabels: appsDecisionLabels,
-  renderDetail: (approval) =>
-    approval.kind === APPS_SERVICE_SCOPES_KIND ? renderAppsServiceScopesDetail(approval) : renderAppsProvisionDetail(approval),
+  renderDetail: (approval) => {
+    if (isAppSecretsKind(approval.kind)) return renderAppSecretsDetail(approval);
+    return approval.kind === APPS_SERVICE_SCOPES_KIND ? renderAppsServiceScopesDetail(approval) : renderAppsProvisionDetail(approval);
+  },
 };
 
 // `github` (#2293): folds the retired pre-#2059 GitHub confirm rail
@@ -921,6 +944,7 @@ interface DecisionReveals {
  */
 function revealsFromDecision(approval: OperatorApprovalCard, decision: DecisionAction, body: DecisionResponseBody): DecisionReveals {
   const none: DecisionReveals = { bearer: null, claimCode: null, claimNotice: null };
+  if (isAppSecretsKind(approval.kind)) return none;
   if (decision !== 'approve') return none;
   const { proposalId } = approval;
   const displayName = detailString(approval.detail, 'displayName', approval.summary);
