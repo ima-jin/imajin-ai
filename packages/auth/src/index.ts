@@ -272,7 +272,7 @@ export {
 } from "./knock";
 export type { KnockStatus, ExternalDidVerificationState } from "./knock";
 export { loadFromVault } from "./vault-client";
-export { bootstrapInternalApiKey, provideInternalApiKey } from "./internal-post";
+export { bootstrapInternalApiKey, provideInternalApiKey, getVaultInternalApiKey } from "./internal-post";
 export type {
   VaultBootstrapIdentity,
   VaultKeySpec,

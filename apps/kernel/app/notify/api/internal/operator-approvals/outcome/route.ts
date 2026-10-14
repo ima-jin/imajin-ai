@@ -1,13 +1,11 @@
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 /**
  * POST /notify/api/internal/operator-approvals/outcome — post-exec outcome
  * follow-up (#2221 scope item 4).
  *
  * The gateway-exec bridge calls this once the OpenClaw gateway reports an
  * exec-finished event for a command it ran after an `allow-once` decision,
- * so /jin can show wish -> grant -> what actually ran. Guarded by the same
- * webhook secret every other machine-to-kernel notify write uses
- * (`NOTIFY_WEBHOOK_SECRET`, see `POST /notify/api/send` and the sibling
- * `.../operator-approvals/applied` route) — no new secret.
+ * so /jin can show execution status. Auth: vault-sourced internal Bearer key.
  *
  * Scoped to exec.command: attaching an outcome to any other kind's
  * proposal is rejected with 400, since no other kind has "the command
@@ -57,10 +55,8 @@ function validateOutcomeBody(
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
+  const authError = await requireInternalApiKey(request);
+  if (authError) return authError;
 
   let body: OutcomeRequestBody;
   try {

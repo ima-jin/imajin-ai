@@ -1,3 +1,4 @@
+import { getVaultInternalApiKey } from '@imajin/auth';
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { attempt } from '../concurrency';
@@ -19,13 +20,13 @@ export async function sendDisclosureReceipt(opts: {
   releasedAt: string;
 }): Promise<void> {
   const notifyUrl = process.env.NOTIFY_SERVICE_URL;
-  const secret = process.env.NOTIFY_WEBHOOK_SECRET;
+  const secret = getVaultInternalApiKey();
   if (!notifyUrl || !secret) return;
 
   try {
     await fetch(`${notifyUrl}/api/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-webhook-secret': secret },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
       body: JSON.stringify({
         to: opts.subjectDid,
         scope: 'broker:disclosure-receipt',

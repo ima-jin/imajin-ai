@@ -14,12 +14,12 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
 
 import { POST, OPTIONS } from '../route';
 
-const WEBHOOK_SECRET = 'notify-webhook-secret';
+const WEBHOOK_SECRET = 'fake-vault-internal-key';
 
 function makeReq(body: unknown, opts: { secret?: string | null } = {}): Request {
   const headers = new Headers();
   const secret = opts.secret === undefined ? WEBHOOK_SECRET : opts.secret;
-  if (secret !== null) headers.set('x-webhook-secret', secret);
+  if (secret !== null) headers.set('authorization', `Bearer ${secret}`);
   return new Request('https://test.imajin.ai/notify/api/internal/operator-approvals/outcome', {
     method: 'POST',
     headers,
@@ -31,7 +31,6 @@ const VALID_OUTCOME = { proposalId: PROPOSAL_ID, exitCode: 0, durationMs: 1234, 
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.NOTIFY_WEBHOOK_SECRET = WEBHOOK_SECRET;
   mockAttachApprovalOutcome.mockResolvedValue({ ok: true });
 });
 
@@ -92,3 +91,6 @@ describe('POST /notify/api/internal/operator-approvals/outcome (#2221)', () => {
     expect(res.status).toBe(400);
   });
 });
+
+vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: vi.fn(async () => 'fake-vault-internal-key') }));
+vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: vi.fn(async () => null) }));

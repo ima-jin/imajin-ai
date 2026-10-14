@@ -1,8 +1,7 @@
 /**
  * Tests for POST /auth/api/identity/:did/contact (#2058, sibling of
  * #1999/#2053's eligibility/evaluate route). Only the new POST handler is
- * covered here — the pre-existing GET handler (NOTIFY_WEBHOOK_SECRET auth)
- * is untouched by #2058 and out of scope.
+ * covered here — GET uses the same vault-sourced internal Bearer contract.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NextRequest } from 'next/server';

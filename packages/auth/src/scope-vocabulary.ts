@@ -316,6 +316,11 @@ export const SCOPE_VOCABULARY = [
   // Operator-approved only: a registered app may save/verify a pledge card on
   // the seller's sealed BYO account. Never self-granted via requestedScopes.
   { scope: 'pay:setup-intent', connector: null, label: 'Create and verify pledge payment methods bound to this app' },
+  // #2798: available to service tokens only through per-app operator approval
+  // (#2711), never self-granted through requestedScopes alone.
+  { scope: 'notify:send', connector: null, label: 'Send notifications as this registered app' },
+  { scope: 'notify:broadcast', connector: null, label: 'Broadcast notifications as this registered app' },
+  { scope: 'notify:interest', connector: null, label: 'Record interest signals as this registered app' },
 
   { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
     label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },

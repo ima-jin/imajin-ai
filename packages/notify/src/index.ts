@@ -1,5 +1,30 @@
 import { createLogger } from '@imajin/logger';
+import { getVaultInternalApiKey } from '@imajin/auth';
 const log = createLogger('notify');
+export interface NotifyConfiguration {
+  /** Defaults to NOTIFY_SERVICE_URL (a URL, never a credential). */
+  serviceUrl?: string;
+  /** Return a fresh/cached vault app-service token with approved notify scopes. */
+  appTokenProvider?: () => string | undefined | Promise<string | undefined>;
+  /** Internal callers only: supply the vault-resolved internal API key. */
+  internalSecretProvider?: () => string | undefined | Promise<string | undefined>;
+}
+
+let configuration: NotifyConfiguration = {};
+
+/** Configure at boot. Existing send/broadcast/interest call signatures remain unchanged. */
+export function configureNotify(options: NotifyConfiguration): void {
+  configuration = { ...options };
+}
+
+async function transport(): Promise<{ url: string; headers: Record<string, string> } | null> {
+  const url = configuration.serviceUrl ?? process.env.NOTIFY_SERVICE_URL;
+  const token = configuration.appTokenProvider
+    ? await configuration.appTokenProvider()
+    : await (configuration.internalSecretProvider ?? getVaultInternalApiKey)();
+  if (!url || !token) return null;
+  return { url, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` } };
+}
 
 export async function send(params: {
   to: string;
@@ -9,19 +34,15 @@ export async function send(params: {
   data?: Record<string, unknown>;
   urgency?: "low" | "normal" | "urgent";
 }): Promise<void> {
-  const notifyUrl = process.env.NOTIFY_SERVICE_URL;
-  const secret = process.env.NOTIFY_WEBHOOK_SECRET;
-  if (!notifyUrl || !secret) {
-    log.warn({}, "Notification skipped: NOTIFY_SERVICE_URL or NOTIFY_WEBHOOK_SECRET not set");
-    return;
-  }
   try {
-    const res = await fetch(`${notifyUrl}/api/send`, {
+    const target = await transport();
+    if (!target) {
+      log.warn({}, 'Notification skipped: service URL or credential provider unavailable');
+      return;
+    }
+    const res = await fetch(`${target.url}/api/send`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-webhook-secret": secret,
-      },
+      headers: target.headers,
       body: JSON.stringify(params),
     });
     if (!res.ok) {
@@ -41,19 +62,15 @@ export async function broadcast(params: {
   text?: string;
   channels?: ('email' | 'inapp' | 'chat')[];
 }): Promise<void> {
-  const notifyUrl = process.env.NOTIFY_SERVICE_URL;
-  const secret = process.env.NOTIFY_WEBHOOK_SECRET;
-  if (!notifyUrl || !secret) {
-    log.warn({}, "Broadcast skipped: NOTIFY_SERVICE_URL or NOTIFY_WEBHOOK_SECRET not set");
-    return;
-  }
   try {
-    const res = await fetch(`${notifyUrl}/api/broadcast`, {
+    const target = await transport();
+    if (!target) {
+      log.warn({}, 'Broadcast skipped: service URL or credential provider unavailable');
+      return;
+    }
+    const res = await fetch(`${target.url}/api/broadcast`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-webhook-secret": secret,
-      },
+      headers: target.headers,
       body: JSON.stringify(params),
     });
     if (!res.ok) {
@@ -69,18 +86,12 @@ export async function interest(params: {
   did: string;
   attestationType: string;
 }): Promise<void> {
-  const notifyUrl = process.env.NOTIFY_SERVICE_URL;
-  const secret = process.env.NOTIFY_WEBHOOK_SECRET;
-  if (!notifyUrl || !secret) {
-    return;
-  }
   try {
-    const res = await fetch(`${notifyUrl}/api/interest`, {
+    const target = await transport();
+    if (!target) return;
+    const res = await fetch(`${target.url}/api/interest`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-webhook-secret": secret,
-      },
+      headers: target.headers,
       body: JSON.stringify(params),
     });
     if (!res.ok) {
@@ -92,4 +103,4 @@ export async function interest(params: {
   }
 }
 
-export const notify = { send, broadcast, interest };
+export const notify = { send, broadcast, interest, configure: configureNotify };

@@ -14,7 +14,8 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => mocks.log,
 }));
 
-stubRegistryResolverEnv(['NOTIFY_WEBHOOK_SECRET']);
+stubRegistryResolverEnv([]);
+vi.mock('@/src/lib/notify/service-auth', () => ({ notifyRegistryKey: vi.fn(async () => 'fake-vault-internal-key') }));
 
 describe('updateRegistryPreference', () => {
   it('warns and skips the request without calling fetch when the registry URL is not configured', async () => {
@@ -30,7 +31,6 @@ describe('updateRegistryPreference', () => {
 
   it('PUTs the opt-out to the resolved registry URL when configured', async () => {
     process.env.REGISTRY_SERVICE_URL = 'http://localhost:7000/registry';
-    process.env.NOTIFY_WEBHOOK_SECRET = 'notify-secret';
     const { updateRegistryPreference } = await import('../registry');
     const fetchMock = vi.fn(async () => new Response(null, { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -41,7 +41,7 @@ describe('updateRegistryPreference', () => {
       'http://localhost:7000/registry/api/preferences/did%3Aimajin%3Ajin/interests/events',
       expect.objectContaining({
         method: 'PUT',
-        headers: expect.objectContaining({ 'x-webhook-secret': 'notify-secret' }),
+        headers: expect.objectContaining({ Authorization: 'Bearer fake-vault-internal-key' }),
         body: JSON.stringify({ marketing: false, email: false }),
       }),
     );

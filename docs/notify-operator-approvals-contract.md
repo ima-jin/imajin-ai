@@ -16,6 +16,40 @@ and WebSocket surfaces described below.
 and renders exactly as before, normalized onto `system-agent:*` — sources
 don't have to be lock-stepped with this contract's generalization.
 
+## Notify authentication migration (#2798)
+
+Notification payload compatibility above is unchanged, but transport authentication
+is deliberately breaking: there is no legacy shared notify secret acceptance.
+`/notify/api/send`, `/notify/api/broadcast`, and `/notify/api/interest` accept a
+registered **app-service** token with `notify:send`, `notify:broadcast`, or
+`notify:interest`, respectively. The app must be active and the endpoint scope
+must be present in both the token and `registry.apps.approved_service_scopes`.
+Approvals use the existing countersigned `apps:service-scopes` flow, and are
+re-read on every call; user/session tokens do not authorize these endpoints.
+These scopes are not globally service-eligible: requested scopes alone never
+grant access.
+
+Kernel/internal callers retain the vault-sourced internal Bearer contract
+(`provideInternalApiKey` / `getVaultInternalApiKey`, populated at boot). Internal
+approval `applied` and `outcome` callbacks require this vault credential, not a
+user token or the send scope. Adapters using the old shared notify credential
+must migrate before deployment; this repository does not change external adapters.
+
+`@imajin/notify` keeps the existing `send`, `broadcast`, and `interest` function
+signatures. `configureNotify({ serviceUrl, appTokenProvider })` accepts a callback
+that retrieves a fresh/cached app-service token from the app's vault-backed
+credential flow. Internal deployments may supply `internalSecretProvider`; by
+default the SDK uses `getVaultInternalApiKey()`. An unavailable app token never
+falls back to a more privileged internal credential. No shared-secret environment
+variable is read. Missing credentials still skip delivery, and delivery errors
+remain best-effort/logged rather than thrown.
+
+Registry audience/contact reads, interest creation, and email-unsubscribe writes
+now authenticate with the kernel's own vault internal Bearer key, never a forwarded
+app token. Session preference routes still enforce DID ownership; the internal
+PUT lane accepts only `{ marketing: false, email: false }` and cannot opt a user in.
+The signed email-unsubscribe token contract is otherwise unchanged.
+
 ## Overview
 
 ```
@@ -46,7 +80,7 @@ endpoint:
 
 ```
 POST /notify/api/send
-x-webhook-secret: <NOTIFY_WEBHOOK_SECRET>
+Authorization: Bearer <app-service token with operator-approved notify:send>
 Content-Type: application/json
 
 {
@@ -352,7 +386,7 @@ succeeds, it reports that back so `/jin` can show `applied` instead of
 
 ```
 POST /notify/api/internal/operator-approvals/applied
-x-webhook-secret: <NOTIFY_WEBHOOK_SECRET>
+Authorization: Bearer <vault-sourced internal API key>
 Content-Type: application/json
 
 { "proposalId": "string" }

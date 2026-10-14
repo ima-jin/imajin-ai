@@ -91,7 +91,7 @@ type RouteRequest = Parameters<typeof POST>[0];
 
 function makeReq(body: unknown): RouteRequest {
   const headers = new Headers();
-  headers.set('x-webhook-secret', 'notify-webhook-secret');
+  headers.set('authorization', 'Bearer fake-vault-internal-key');
   return { headers, json: async () => body } as unknown as RouteRequest;
 }
 
@@ -105,7 +105,6 @@ function pendingSignatureBody() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  process.env.NOTIFY_WEBHOOK_SECRET = 'notify-webhook-secret';
   mockInsertValues.mockResolvedValue(undefined);
   mockUpdateWhere.mockResolvedValue(undefined);
   mockDbUpdate.mockImplementation(() => ({ set: vi.fn(() => ({ where: mockUpdateWhere })) }));
@@ -146,3 +145,6 @@ describe('attest.pending_signature — recipient disabled email', () => {
     expect(row.scope).toBe('attest.pending_signature');
   });
 });
+
+vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: vi.fn(async () => 'fake-vault-internal-key') }));
+vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: vi.fn(async () => null) }));

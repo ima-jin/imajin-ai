@@ -1,10 +1,10 @@
 ﻿import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { nanoid } from 'nanoid';
 import { db, didInterests, didPreferences } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
+import { authorizePreferenceDid } from '@/src/lib/notify/registry-auth';
 
 const log = createLogger('kernel');
 
@@ -15,7 +15,8 @@ export function OPTIONS(request: NextRequest) {
 /**
  * PUT /api/preferences/[did]/interests/[scope]
  * Toggle per-scope marketing + channel booleans.
- * Requires the authenticated session DID to match the :did param.
+ * Requires the session DID to match :did. The vault internal Bearer lane may
+ * only disable marketing/email (the signed email unsubscribe return path).
  */
 export async function PUT(
   request: NextRequest,
@@ -23,24 +24,23 @@ export async function PUT(
 ) {
   const cors = corsHeaders(request);
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
-  }
-
   const { did, scope } = await params;
-
-  const effectiveDid = resolveActingDid(authResult.identity);
-
-  if (effectiveDid !== did) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });
-  }
+  const auth = await authorizePreferenceDid(request, did, cors);
+  if (auth.error) return auth.error;
+  const isInternal = auth.internal;
 
   let body: { marketing?: boolean; email?: boolean; inapp?: boolean; chat?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
+  }
+  // The internal unsubscribe lane may only turn email/marketing OFF.
+  if (isInternal && (
+    body.marketing !== false || body.email !== false ||
+    Object.keys(body).some((key) => key !== 'marketing' && key !== 'email')
+  )) {
+    return NextResponse.json({ error: 'Internal writes may only unsubscribe' }, { status: 403, headers: cors });
   }
 
   try {
@@ -73,8 +73,8 @@ export async function PUT(
           scope,
           marketing: body.marketing ?? true,
           email: body.email ?? true,
-          inapp: body.inapp ?? true,
-          chat: body.chat ?? true,
+          inapp: isInternal ? false : body.inapp ?? true,
+          chat: isInternal ? false : body.chat ?? true,
         })
         .returning();
     }
@@ -89,7 +89,7 @@ export async function PUT(
 /**
  * POST /api/preferences/[did]/interests/[scope]
  * Create a per-scope interest row lazily (called by notify interest signal).
- * Auth: x-webhook-secret (internal service call) OR session DID match.
+ * Auth: vault internal Bearer OR session DID match.
  */
 export async function POST(
   request: NextRequest,
@@ -99,21 +99,8 @@ export async function POST(
 
   const { did, scope } = await params;
 
-  // Allow internal service calls via webhook secret
-  const webhookSecret = request.headers.get('x-webhook-secret');
-  const isInternal = webhookSecret && webhookSecret === process.env.NOTIFY_WEBHOOK_SECRET;
-
-  if (!isInternal) {
-    // Fall back to session auth with DID check
-    const authResult = await requireAuth(request);
-    if ('error' in authResult) {
-      return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
-    }
-    const effectiveDid = resolveActingDid(authResult.identity);
-    if (effectiveDid !== did) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: cors });
-    }
-  }
+  const auth = await authorizePreferenceDid(request, did, cors);
+  if (auth.error) return auth.error;
 
   let body: { marketing?: boolean; email?: boolean; inapp?: boolean; chat?: boolean; createdByAttestation?: string };
   try {

@@ -1,3 +1,4 @@
+import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 import { NextRequest, NextResponse } from 'next/server';
 import { db, didPreferences, didInterests } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
@@ -15,17 +16,14 @@ const log = createLogger('kernel');
  *
  * Optional ?channel=email also requires did_interests.email = true.
  *
- * Auth: x-webhook-secret header (kernel services only)
+ * Auth: vault-sourced internal Bearer key (kernel services only)
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ scope: string }> }
 ) {
-  // Verify webhook secret
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = await requireInternalApiKey(request);
+  if (authError) return authError;
 
   const { scope } = await params;
   const { searchParams } = new URL(request.url);

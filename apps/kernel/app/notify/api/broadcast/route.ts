@@ -10,6 +10,7 @@ import { eq } from 'drizzle-orm';
 import { sendEmail, renderBroadcastEmail } from '@imajin/email';
 import { fetchAudienceFromRegistry, checkRegistryPreferences } from './registry';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { requireNotifyAuth, notifyRegistryKey } from '@/src/lib/notify/service-auth';
 
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
 
@@ -106,15 +107,14 @@ export function OPTIONS(request: NextRequest) {
  *   text?       — plain text fallback
  *   channels?   — default ['email']
  *
- * Auth: x-webhook-secret header (kernel services only)
+ * Auth: approved notify:broadcast app-service token or vault internal Bearer.
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const secret = request.headers.get('x-webhook-secret');
-  if (!secret || secret !== process.env.NOTIFY_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: cors });
-  }
+  const authError = await requireNotifyAuth(request, 'notify:broadcast', cors);
+  if (authError) return authError;
+  const secret = await notifyRegistryKey();
 
   let body: {
     scope: string;
