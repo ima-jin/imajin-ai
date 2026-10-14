@@ -10,6 +10,10 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT = fileURLToPath(new URL('../check-env.ts', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 describe('signed kernel callback configuration (#2798)', () => {
+  it('does not require shared receiver credentials in the live events template', () => {
+    const example = readFileSync(join(REPO_ROOT, 'apps/events/.env.example'), 'utf8');
+    expect(example).not.toMatch(/^(?:WEBHOOK_SECRET|NOTIFY_WEBHOOK_SECRET)=/m);
+  });
   it.each([
     'apps/kernel/.env.example',
     'packages/config/src/services.ts',
