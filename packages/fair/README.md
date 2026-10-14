@@ -7,6 +7,11 @@ is the TypeScript implementation consumed across `imajin-ai`.
 
 ## Schema versions
 
+- **Event fee manifest** (`FairFeeManifest`, `version: '0.4.0'`) —
+  the shape returned by `buildFairManifest`: required `fees`, `chain`,
+  `distributions`, and `attribution` arrays, without fabricated document
+  identity or access fields. Version `'0.5.0'` requires non-empty `taxes[]`;
+  `'0.4.0'` does not carry non-empty taxes.
 - **v1.0** (`FairManifestV10`) — original shape, preserved for backward
   compatibility.
 - **v1.1** (`FairManifestV11`, `fair`/`version: '1.1'`) — richer
@@ -18,6 +23,32 @@ is the TypeScript implementation consumed across `imajin-ai`.
   identically to before #2419. The tie is enforced both ways by
   `validateManifest` (#2439): a non-empty `taxes[]` on a `'1.1'` manifest
   is rejected, and so is `'1.2'` with no (or an empty) `taxes[]`.
+
+## Validation and editing
+
+`validateManifest` and `isValidManifest` accept both shapes and validate
+each against its own schema. Document manifests are identified by `fair`;
+fee manifests by `version: '0.4.0' | '0.5.0'` without `fair`. Unsupported
+versions and ambiguous mixed shapes are rejected, not projected into a
+different schema. Fee/share rows and tax/version invariants are checked.
+The exported `SupportedFairManifest` union covers both;
+`FairManifest` remains the document-only type for document/signing APIs.
+
+Import `FairEditor` from `@ima-jin/fair/react`. Its generic `manifest`
+and `onChange` props retain the input type. Fee records show attribution,
+revenue chain, processing fees and distribution shares; document-only
+access/transfer/integrity panels are not added to fee records, even when
+requested via `sections` or `template`. The editor emits the original
+shape with only the edited field changed: no percentage normalization,
+synthetic ownership/access fields, or migration of stored records.
+Untouched fees, taxes, signatures and extensions remain unchanged.
+Call `validateManifest` before persisting an edit; editing a signed
+record does not re-sign it.
+
+This fix ships in the next lockstep SDK release. Per repository convention,
+only the reviewed Release workflow PR bumps package versions; merging this
+fix before that release includes it in the automatic `@ima-jin/fair` publish
+(see [npm publishing](../../docs/npm-publishing.md)).
 
 ## `taxes[]` — sales tax collected in trust (#2419)
 
