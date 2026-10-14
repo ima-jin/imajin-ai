@@ -30,7 +30,12 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getPaymentService } from '@/src/lib/pay/pay';
+import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
+import { chargeSeller } from '@/src/lib/pay/providers/seller-stripe-payments';
+import { prepareSellerCharge, persistSellerCharge, SellerChargeAlreadyAttemptedError } from '@/src/lib/pay/providers/seller-transactions';
+import { rateLimit, getClientIP } from '@imajin/config';
+import { getCryptoOnlyProvider } from '@/src/lib/pay/providers/crypto-only';
+import { isCryptoCurrency } from '@/src/lib/pay/types';
 import { requireAuth, requireAppAuth , resolveActingDid } from '@imajin/auth';
 import type { ChargeRequest, Currency, Recipient } from '@/src/lib/pay';
 import { corsHeaders } from '@/src/lib/kernel/cors';
@@ -42,15 +47,57 @@ interface ChargeBody {
   amount: number;
   currency: Currency;
   to: Recipient;
+  sellerDid?: string;
   description?: string;
   metadata?: Record<string, string>;
   idempotencyKey?: string;
 }
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+async function authenticateCharge(request: NextRequest, cors: Record<string, string>) {
+  if (request.headers.get('x-app-did')) {
+    const result = await requireAppAuth(request, { scope: 'wallet:write' });
+    if ('error' in result) {
+      return { denied: NextResponse.json({ error: result.error }, { status: result.status, headers: cors }) };
+    }
+    return { fromDid: result.appAuth.userDid, appDid: result.appAuth.appDid };
+  }
+  const result = await requireAuth(request);
+  if ('error' in result) return {};
+  const denied = enforceRoutePolicy(result.identity, 'pay.charge', { headers: cors });
+  if (denied) return { denied };
+  return { fromDid: resolveActingDid(result.identity) };
+}
+
+function isSellerDid(value: unknown): value is string {
+  return typeof value === 'string' && value.startsWith('did:');
+}
+
+async function startSellerCharge(sellerDid: string, request: ChargeRequest, appDid?: string) {
+  const keys = await resolveDidStripeKeys(sellerDid);
+  if (!keys.publishableKey) throw new SellerNoCardRailError();
+  const boundRequest = {
+    ...request,
+    metadata: {
+      ...Object.fromEntries(Object.entries(request.metadata ?? {}).filter(([key]) => key !== 'appDid')),
+      ...(appDid && { appDid }),
+    },
+  };
+  const transactionId = await prepareSellerCharge(boundRequest, sellerDid, appDid);
+  const result = await chargeSeller(keys.secretKey, sellerDid, boundRequest, transactionId);
+  await persistSellerCharge(transactionId, result);
+  return { result, publishableKey: keys.publishableKey };
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
+  const rl = rateLimit(getClientIP(request), 10, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: 'Too many requests', retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } },
+    );
+  }
   try {
     const body: ChargeBody = await request.json();
     
@@ -86,29 +133,10 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       );
     }
 
-    // Optional: capture fromDid if authenticated
-    let fromDid: string | undefined;
-
-    // App auth path
-    if (request.headers.get('x-app-did')) {
-      const appResult = await requireAppAuth(request, { scope: 'wallet:write' });
-      if ('error' in appResult) {
-        return NextResponse.json(
-          { error: appResult.error },
-          { status: appResult.status, headers: cors }
-        );
-      }
-      fromDid = appResult.appAuth.userDid;
-    } else {
-      const authResult = await requireAuth(request);
-      if (!('error' in authResult)) {
-        fromDid = resolveActingDid(authResult.identity);
-        const delegationDenied = enforceRoutePolicy(authResult.identity, 'pay.charge', { headers: cors });
-        if (delegationDenied) return delegationDenied;
-      }
-    }
-    
-    const pay = getPaymentService();
+    // Anonymous charges remain supported; app requests must authenticate.
+    const auth = await authenticateCharge(request, cors);
+    if (auth.denied) return auth.denied;
+    const fromDid = auth.fromDid;
     
     const chargeRequest: ChargeRequest = {
       amount: body.amount,
@@ -120,7 +148,20 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       idempotencyKey: body.idempotencyKey,
     };
     
-    const result = await pay.charge(chargeRequest);
+    let result;
+    let publishableKey: string | undefined;
+    if (isCryptoCurrency(body.currency)) {
+      result = await getCryptoOnlyProvider().charge(chargeRequest);
+    } else {
+      const sellerDid = recipient.to.did ?? body.sellerDid;
+      if (!isSellerDid(sellerDid)) {
+        return NextResponse.json(
+          { error: 'to.did or sellerDid is required for card charges' },
+          { status: 400, headers: cors }
+        );
+      }
+      ({ result, publishableKey } = await startSellerCharge(sellerDid, chargeRequest, auth.appDid));
+    }
     
     return NextResponse.json({
       id: result.id,
@@ -130,12 +171,19 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       currency: result.currency,
       fee: result.fee,
       clientSecret: result.clientSecret,
+      publishableKey,
       signature: result.signature,
       createdAt: result.createdAt.toISOString(),
       metadata: result.metadata,
     }, { headers: cors });
   } catch (error) {
-    log.error({ err: String(error) }, 'Charge error');
+    if (error instanceof SellerChargeAlreadyAttemptedError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409, headers: cors });
+    }
+    if (error instanceof SellerNoCardRailError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
+    }
+    log.error({}, 'Charge error');
     return NextResponse.json(
       { error: 'Charge failed' },
       { status: 500, headers: cors }

@@ -3,10 +3,11 @@
  *
  * Wires the shared scope-manifest route factory for the Stripe connector
  * (token-paste pattern). GET returns { manifestAssetId, activeScopes,
- * validScopes, keySealed, credentialPending }. POST validates scopes
+ * validScopes, keySealed, publishableKeySealed, credentialPending }. POST validates scopes
  * fail-closed, publishes, returns { published, assetId, activeScopes }.
  */
 import { createConnectorScopeManifestRoute } from '@/src/lib/kernel/scope-manifest-route';
+import { publishableKeySealed } from '@/src/lib/stripe/connector';
 import {
   publishStripeScopeManifest,
   readActiveStripeScopes,
@@ -23,10 +24,11 @@ export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   readActiveScopes: readActiveStripeScopes,
   publish: publishStripeScopeManifest,
   getExtraFields: async (ownerDid) => {
-    const [keySealed, credentialPending] = await Promise.all([
+    const [keySealed, credentialPending, publicSealed] = await Promise.all([
       stripeKeySealed(ownerDid),
       stripeKeyPending(ownerDid),
+      publishableKeySealed(ownerDid),
     ]);
-    return { keySealed, credentialPending };
+    return { keySealed, credentialPending, publishableKeySealed: publicSealed };
   },
 });

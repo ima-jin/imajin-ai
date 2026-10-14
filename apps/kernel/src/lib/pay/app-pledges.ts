@@ -1,99 +1,148 @@
-import { and, eq } from 'drizzle-orm';
-import { db, transactions } from '@/src/db';
-import { getStripeClient } from './providers/stripe-client';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { verifyByoSetupIntent } from '@/src/lib/stripe/byo-setup-intent';
+import { forEachSequential } from '@/src/lib/async/sequential';
+import { sellerPledgeRefundClient } from './providers/seller-pledge-refund';
+import { resolveDidStripeKeys, SellerNoCardRailError } from './rails/stripe-keys';
+import { SetupIntentError, setupIntentBody, setupIntentMetadata, type VerifySetupIntentInput } from './setup-intent';
 
-type Failure = { error: string; status: number };
-export interface PledgeReference {
-  pledgeId: string;
-  setupIntentId: string;
-}
-export interface BoundPledge {
-  pledgeId: string;
-  transactionId: string;
-  setupIntentId: string;
-  amount: number;
-  currency: string;
-  customerId: string;
-  priorStatus: string;
-  metadata: Record<string, unknown>;
-}
+const referenceBody = setupIntentBody.pick({ pledgeId: true, sellerDid: true }).extend({
+  setupIntentId: z.string().regex(/^seti_[A-Za-z0-9]+$/),
+});
+const ATTEMPT_FIELD = 'imajin_pledge_charge_attempt';
+const MAX_CLAIM_DURATION_MS = 30_000;
+const RAIL_REQUEST = { timeout: 10_000, maxNetworkRetries: 0 };
 
-/** Preflight the entire batch before any charge: caller fields never establish ownership. */
-export async function loadAppPledges(
-  appDid: string,
-  eventId: string,
-  refs: PledgeReference[],
-): Promise<BoundPledge[] | Failure> {
-  const result: BoundPledge[] = [];
-  const seen = new Set<string>();
-  for (const ref of refs) {
-    if (!ref || typeof ref.pledgeId !== 'string' || !ref.pledgeId ||
-        typeof ref.setupIntentId !== 'string' || !ref.setupIntentId || seen.has(ref.setupIntentId)) {
-      return { error: 'Each pledge requires a unique setupIntentId and a pledgeId', status: 400 };
-    }
-    seen.add(ref.setupIntentId);
-    // Only setup-intent writes this first-class marker. Generic checkout's
-    // caller-controlled type/metadata cannot impersonate an authorized setup.
-    const [row] = await db.select().from(transactions)
-      .where(eq(transactions.idempotencyKey, `pledge-setup:${ref.setupIntentId}`)).limit(1);
-    const metadata = row?.metadata as Record<string, unknown> | null;
-    if (row?.appDid !== appDid || row.type !== 'pledge' || metadata?.eventId !== eventId) {
-      return { error: 'Forbidden - pledge was not created by this app for this campaign', status: 403 };
-    }
-    const amount = Math.round(Number(row.amount) * 100);
-    if (!Number.isSafeInteger(amount) || amount <= 0 || typeof metadata.stripeCustomerId !== 'string') {
-      return { error: 'Pledge has no valid recorded payment details', status: 409 };
-    }
-    if (!['pending', 'completed', 'processing'].includes(row.status)) {
-      return { error: 'Pledge is not chargeable', status: 409 };
-    }
-    result.push({
-      pledgeId: ref.pledgeId,
-      setupIntentId: ref.setupIntentId,
-      transactionId: row.id,
-      amount,
-      currency: row.currency.toLowerCase(),
-      customerId: metadata.stripeCustomerId,
-      priorStatus: row.status,
-      metadata,
-    });
+export type PledgeReference = z.infer<typeof referenceBody>;
+export interface BoundPledge extends VerifySetupIntentInput {
+  appDid: string;
+  paymentMethodId: string;
+}
+export type PledgePreflight =
+  | { pledgeId: string; pledge: BoundPledge }
+  | { pledgeId: string; failure: ReturnType<typeof pledgeFailure> };
+
+/** Safe client-facing failures, never Stripe's credential-bearing error text. */
+export class PledgeChargeError extends Error {
+  constructor(readonly status: number, readonly code: string, message: string) {
+    super(message);
+    this.name = 'PledgeChargeError';
   }
+}
+
+function mismatch(): never {
+  throw new PledgeChargeError(403, 'PLEDGE_BINDING_MISMATCH', 'Pledge does not match the seller-account setup binding');
+}
+
+function assertNotAttempted(metadata: Record<string, string> | null): void {
+  if (metadata?.[ATTEMPT_FIELD]) {
+    throw new PledgeChargeError(409, 'PLEDGE_CHARGE_ALREADY_ATTEMPTED',
+      'Pledge charge already attempted; reconcile the seller payment before retrying');
+  }
+}
+
+function resourceId(value: string | { id: string } | null): string | undefined {
+  return typeof value === 'string' ? value : value?.id;
+}
+
+async function retrieveSellerSetup(secretKey: string, setupIntentId: string) {
+  try {
+    return await sellerPledgeRefundClient(secretKey).setupIntents.retrieve(setupIntentId, {}, RAIL_REQUEST);
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404) {
+      throw new PledgeChargeError(404, 'PLEDGE_SETUP_NOT_FOUND', 'Pledge setup was not found on the selected seller account');
+    }
+    throw error;
+  }
+}
+
+/** All authority comes from #2788's seller Stripe metadata, not events card/amount fields or a kernel row. */
+async function bindPledge(appDid: string, eventId: string, ref: PledgeReference): Promise<BoundPledge> {
+  const { secretKey } = await resolveDidStripeKeys(ref.sellerDid);
+  const setup = await retrieveSellerSetup(secretKey, ref.setupIntentId);
+  const metadata = setup.metadata;
+  const parsed = setupIntentBody.safeParse({ ...metadata, amount: Number(metadata?.amount) });
+  if (!parsed.success || metadata?.appDid !== appDid) mismatch();
+  const binding = parsed.data;
+  if (binding.sellerDid !== ref.sellerDid || binding.pledgeId !== ref.pledgeId || binding.eventId !== eventId) mismatch();
+  assertNotAttempted(metadata);
+  const customerId = resourceId(setup.customer);
+  if (!customerId) mismatch();
+  const input = { ...binding, setupIntentId: ref.setupIntentId, customerId };
+  // Reuse #2788's checks: succeeded setup, complete app binding, customer buyer,
+  // and the saved payment method's attachment on this same seller account.
+  const verified = await verifyByoSetupIntent(appDid, input);
+  return { ...input, appDid, paymentMethodId: verified.paymentMethodId };
+}
+
+/** Preflight every binding before starting any off-session charge. */
+export async function loadAppPledges(appDid: string, eventId: string, refs: PledgeReference[]): Promise<PledgePreflight[]> {
+  const seenSetups = new Set<string>();
+  const seenPledges = new Set<string>();
+  const references: PledgeReference[] = [];
+  for (const ref of refs) {
+    const parsed = referenceBody.safeParse(ref);
+    if (!parsed.success || seenSetups.has(parsed.data.setupIntentId) || seenPledges.has(parsed.data.pledgeId)) {
+      throw new PledgeChargeError(400, 'INVALID_PLEDGE_REFERENCE',
+        'Each pledge requires a sellerDid, pledgeId and unique setupIntentId');
+    }
+    seenSetups.add(parsed.data.setupIntentId);
+    seenPledges.add(parsed.data.pledgeId);
+    references.push(parsed.data);
+  }
+  const result: PledgePreflight[] = [];
+  await forEachSequential(references, async (ref) => {
+    try {
+      result.push({ pledgeId: ref.pledgeId, pledge: await bindPledge(appDid, eventId, ref) });
+    } catch (error) {
+      result.push({ pledgeId: ref.pledgeId, failure: pledgeFailure(error) });
+    }
+  });
   return result;
 }
 
-/** Only Stripe's confirmed setup may supply the saved card; not the HTTP caller. */
+/** Durable Stripe-side attempt marker: never reset or automatically retry an ambiguous charge. */
 export async function chargeBoundPledge(pledge: BoundPledge, eventId: string): Promise<string> {
-  if (pledge.priorStatus === 'completed') return 'succeeded';
-  if (pledge.priorStatus === 'processing') return 'processing';
-  const stripe = getStripeClient();
-  const setup = await stripe.setupIntents.retrieve(pledge.setupIntentId);
-  const customer = typeof setup.customer === 'string' ? setup.customer : setup.customer?.id;
-  const paymentMethod = typeof setup.payment_method === 'string' ? setup.payment_method : setup.payment_method?.id;
-  if (setup.status !== 'succeeded' || customer !== pledge.customerId || !paymentMethod) {
-    throw new Error('Pledge setup is not confirmed for the recorded customer');
+  const startedAt = Date.now();
+  if (pledge.eventId !== eventId) mismatch();
+  const { secretKey } = await resolveDidStripeKeys(pledge.sellerDid);
+  const stripe = sellerPledgeRefundClient(secretKey);
+  const setup = await retrieveSellerSetup(secretKey, pledge.setupIntentId);
+  const expected = setupIntentMetadata(pledge.appDid, pledge);
+  if (setup.id !== pledge.setupIntentId || setup.status !== 'succeeded' ||
+      resourceId(setup.customer) !== pledge.customerId || resourceId(setup.payment_method) !== pledge.paymentMethodId ||
+      !Object.entries(expected).every(([field, value]) => setup.metadata?.[field] === value)) mismatch();
+  assertNotAttempted(setup.metadata);
+  await verifyByoSetupIntent(pledge.appDid, pledge);
+  const digest = createHash('sha256')
+    .update(JSON.stringify([pledge.appDid, pledge.sellerDid, pledge.setupIntentId])).digest('hex');
+  // Concurrent requests may both read an unmarked setup: their charge params
+  // and idempotency key are identical. Stripe creates at most one intent.
+  // Later requests see the permanent marker and fail closed even after the
+  // Stripe idempotency retention period has elapsed.
+  await stripe.setupIntents.update(pledge.setupIntentId, { metadata: { [ATTEMPT_FIELD]: digest } }, RAIL_REQUEST);
+  if (Date.now() - startedAt < 0 || Date.now() - startedAt > MAX_CLAIM_DURATION_MS) {
+    throw new PledgeChargeError(409, 'PLEDGE_CHARGE_RECONCILIATION_REQUIRED', 'Pledge charge claim expired; reconciliation required');
   }
-  // Claim once before the rail call. An interrupted charge is never retried
-  // after Stripe's idempotency retention expires: it needs reconciliation.
-  const claimed = await db.update(transactions).set({ status: 'charging' }).where(and(
-    eq(transactions.id, pledge.transactionId), eq(transactions.status, 'pending'),
-  )).returning({ id: transactions.id });
-  if (claimed.length === 0) throw new Error('Pledge charge already claimed; reconcile before retrying');
   const payment = await stripe.paymentIntents.create({
     amount: pledge.amount,
-    currency: pledge.currency,
+    currency: pledge.currency.toLowerCase(),
     customer: pledge.customerId,
-    payment_method: paymentMethod,
+    payment_method: pledge.paymentMethodId,
     off_session: true,
     confirm: true,
-    metadata: { eventId, pledgeId: pledge.pledgeId, type: 'campaign_pledge_charge' },
-  }, { idempotencyKey: `pledge-charge:${pledge.transactionId}` });
-  if (payment.status === 'succeeded' || payment.status === 'processing') {
-    await db.update(transactions).set({
-      status: payment.status === 'succeeded' ? 'completed' : 'processing',
-      ...(payment.status === 'succeeded' && { sourceKind: 'receipt' }),
-      externalRef: payment.id,
-      metadata: { ...pledge.metadata, setupIntentId: pledge.setupIntentId },
-    }).where(eq(transactions.id, pledge.transactionId));
-  }
+    metadata: { ...expected, setupIntentId: pledge.setupIntentId, type: 'campaign_pledge_charge' },
+  }, { ...RAIL_REQUEST, idempotencyKey: `pledge-charge:${digest}` });
   return payment.status;
+}
+
+/** Only known domain errors cross the HTTP boundary. */
+export function pledgeFailure(error: unknown): { status: number; code: string; error: string } {
+  if (error instanceof SellerNoCardRailError) {
+    return { status: 400, code: error.code, error: "This seller hasn't set up card payments" };
+  }
+  if (error instanceof PledgeChargeError || error instanceof SetupIntentError) {
+    return { status: error.status, code: error.code, error: error.message };
+  }
+  return { status: 503, code: 'PLEDGE_CHARGE_UNAVAILABLE', error: 'Seller pledge charge unavailable; reconcile before retrying an attempted charge' };
 }

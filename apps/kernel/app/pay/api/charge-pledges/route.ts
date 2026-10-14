@@ -10,7 +10,8 @@
  *   eventId: string,
  *   pledges: Array<{
  *     pledgeId: string,
- *     setupIntentId: string
+ *     setupIntentId: string,
+ *     sellerDid: string
  *   }>
  * }
  *
@@ -19,7 +20,7 @@
  *   charged: number,
  *   failed: number,
  *   total: number,
- *   results: Array<{ pledgeId: string, status: 'charged' | 'failed', error?: string }>
+ *   results: Array<{ pledgeId: string, status: 'charged' | 'failed', error?: string, code?: string }>
  * }
  */
 
@@ -27,12 +28,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { authenticatePayApp } from '@/src/lib/pay/app-settle';
-import { loadAppPledges, chargeBoundPledge, type PledgeReference } from '@/src/lib/pay/app-pledges';
+import { authenticatePayApp } from '@/src/lib/pay/app-service-auth';
+import { loadAppPledges, chargeBoundPledge, pledgeFailure, PledgeChargeError, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
 
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+
+async function readPledgeBatch(request: NextRequest): Promise<{ eventId: string; pledges: PledgeReference[] }> {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    throw new PledgeChargeError(400, 'INVALID_PLEDGE_REQUEST', 'Invalid JSON body');
+  }
+  if (!body || typeof body !== 'object') {
+    throw new PledgeChargeError(400, 'INVALID_PLEDGE_REQUEST', 'Pledge request must be an object');
+  }
+  return body;
+}
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -56,7 +70,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   }
 
   try {
-    const body = await request.json();
+    const body = await readPledgeBatch(request);
     const { eventId, pledges }: { eventId: string; pledges: PledgeReference[] } = body;
 
     if (!eventId || typeof eventId !== 'string') {
@@ -77,17 +91,25 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const bound = await loadAppPledges(auth.appDid, eventId, pledges);
-    if ('error' in bound) {
-      return NextResponse.json({ error: bound.error }, { status: bound.status, headers: cors });
-    }
-    const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string }> = [];
+    const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string; code?: string }> = [];
     let charged = 0;
     let failed = 0;
 
     // Sequential on purpose: each pledge is an off-session Stripe charge — one
     // card charge at a time (Stripe rate limits, no burst of simultaneous
     // charges), with `results` reported in pledge order.
-    await forEachSequential(bound, async (pledge) => {
+    await forEachSequential(bound, async (outcome) => {
+      if ('failure' in outcome) {
+        results.push({
+          pledgeId: outcome.pledgeId,
+          status: 'failed',
+          error: outcome.failure.error,
+          code: outcome.failure.code,
+        });
+        failed++;
+        return;
+      }
+      const { pledge } = outcome;
       try {
         const status = await chargeBoundPledge(pledge, eventId);
 
@@ -103,23 +125,26 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
             pledgeId: pledge.pledgeId,
             status: 'failed',
             error: 'Payment requires additional authentication (3D Secure)',
+            code: 'PLEDGE_CHARGE_REQUIRES_ACTION',
           });
           failed++;
         } else {
           results.push({
             pledgeId: pledge.pledgeId,
             status: 'failed',
-            error: `Payment status: ${status}`,
+            error: 'Payment did not complete; reconcile before retrying',
+            code: 'PLEDGE_CHARGE_RECONCILIATION_REQUIRED',
           });
           failed++;
         }
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Payment failed';
-        log.error({ err: errorMessage, pledgeId: pledge.pledgeId }, 'Pledge charge failed');
+        const failure = pledgeFailure(err);
+        log.error({ pledgeId: pledge.pledgeId }, 'Pledge charge failed');
         results.push({
           pledgeId: pledge.pledgeId,
           status: 'failed',
-          error: errorMessage,
+          error: failure.error,
+          code: failure.code,
         });
         failed++;
       }
@@ -132,10 +157,11 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       results,
     }, { headers: cors });
   } catch (error) {
-    log.error({ err: String(error) }, 'Charge pledges error');
+    log.error({}, 'Charge pledges error');
+    const failure = pledgeFailure(error);
     return NextResponse.json(
-      { error: 'Failed to charge pledges' },
-      { status: 500, headers: cors }
+      { error: failure.error, code: failure.code },
+      { status: failure.status, headers: cors }
     );
   }
 });

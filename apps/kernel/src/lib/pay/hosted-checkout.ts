@@ -1,7 +1,6 @@
 /**
  * Start the hosted Stripe Checkout session behind `POST /pay/api/checkout`
- * (#2757): on the SELLER'S OWN Stripe account when the request names a seller,
- * on the platform's own account when it does not.
+ * (#2757): on the SELLER'S OWN Stripe account, never a platform account.
  *
  * There is no Stripe Connect and no platform-held fallback. A seller is charged
  * through the #1785 BYO connector (`resolveCardRail`) or not at all:
@@ -12,7 +11,6 @@
 import { createLogger } from '@imajin/logger';
 import { createByoCheckoutSession, ByoCheckoutError } from '@/src/lib/stripe/byo-checkout';
 import { resolveCardRail, SELLER_NO_CARD_RAIL } from './payment-requests/card-rail';
-import { getPaymentService } from './pay';
 import type { CheckoutBody, CheckoutItem } from './checkout';
 import type { FiatCurrency } from './types';
 
@@ -79,6 +77,9 @@ async function startSellerCheckout(sellerDid: string, input: StartHostedCheckout
     return { ok: true, session, byoSellerDid: rail.ownerDid };
   } catch (error) {
     if (!(error instanceof ByoCheckoutError)) throw error;
+    if (error.code === 'no_key') {
+      return { ok: false, status: 400, error: "This seller hasn't set up card payments", code: SELLER_NO_CARD_RAIL };
+    }
     log.error(
       { err: error.message, code: error.code, stripeStatus: error.stripeStatus, sellerDid },
       "hosted checkout: could not create a Checkout Session on the seller's Stripe account",
@@ -92,20 +93,9 @@ async function startSellerCheckout(sellerDid: string, input: StartHostedCheckout
   }
 }
 
-/** Create the hosted session: on the seller's own account when one is named, else a platform-own charge. */
+/** A missing seller cannot establish whose sealed credential may transact. */
 export async function startHostedCheckout(input: StartHostedCheckoutInput): Promise<StartedHostedCheckout> {
   const sellerDid = sellerDidOf(input.body);
   if (sellerDid) return startSellerCheckout(sellerDid, input);
-
-  const { body, items, metadata } = input;
-  const session = await getPaymentService().checkout({
-    items,
-    currency: body.currency || 'CAD',
-    mode: body.mode,
-    customerEmail: body.customerEmail,
-    successUrl: body.successUrl,
-    cancelUrl: body.cancelUrl,
-    metadata,
-  });
-  return { ok: true, session };
+  return { ok: false, status: 400, error: 'sellerDid is required for card payments', code: SELLER_NO_CARD_RAIL };
 }

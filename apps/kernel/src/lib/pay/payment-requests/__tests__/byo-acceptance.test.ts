@@ -112,6 +112,7 @@ vi.mock('@/src/lib/pay/payment-requests/attestations', () => ({
 }));
 // The connector's sealed key / grants, and its routing + signing-secret custody.
 vi.mock('@/src/lib/stripe/connector-core', () => ({
+  stripePublishableKeyField: (did: string) => `stripe-publishable-key:${did}`,
   STRIPE_CONNECTOR_DID: 'did:imajin:stripe-connector',
   STRIPE_EVENTS_SCOPE: 'stripe:events',
   stripe: {

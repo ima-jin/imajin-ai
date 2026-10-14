@@ -752,6 +752,14 @@ paths:
         The recipient names a rail customer with the rail-generic `to.customerId` (+ optional
         `to.provider`); the original `to.stripeCustomerId` keeps working as an alias (#2177).
         Auth is optional — if provided, the charged DID is linked to the transaction.
+        Card charges require `to.did` (or `sellerDid` for a customer-only recipient).
+        Credentials come only from that seller's sealed Stripe connector; missing secret
+        or publishable key returns `SELLER_NO_CARD_RAIL`, never a node account fallback.
+        Rate-limited to 10 requests/minute per IP before any writes, including anonymous calls.
+        A pending kernel row is inserted before creating the PaymentIntent; its protected
+        payTransactionId metadata lets the verified seller webhook complete it. A supplied
+        idempotencyKey permanently claims one seller/payer/app-scoped attempt; repeats return
+        409 without creating another PaymentIntent, including beyond Stripe retention.
       security:
         - bearerAuth: []
       requestBody:
@@ -780,6 +788,7 @@ paths:
                   type: object
                   additionalProperties: { type: string }
                 idempotencyKey: { type: string }
+                sellerDid: { type: string, description: "Seller DID for card charges when to.did is absent" }
       responses:
         "200":
           description: Charge created
@@ -794,12 +803,17 @@ paths:
                   amount: { type: number }
                   currency: { type: string }
                   clientSecret: { type: string, description: "Rail client confirmation secret for the frontend (Stripe: PaymentIntent client secret)" }
+                  publishableKey: { type: string, description: "Client key from the same seller connector as the PaymentIntent" }
                   signature: { type: string, description: "Solana — if pre-signed" }
         "400":
           description: Invalid request
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: SELLER_CHARGE_ALREADY_ATTEMPTED — reconcile the existing attempt, never retry with a new key
+        "429":
+          description: Too many requests from this IP
 
   /api/checkout:
     post:
@@ -812,9 +826,11 @@ paths:
 
         A registered app may authenticate with its app-service token (#2642): the checkout
         row is then bound to the app's DID and records the declared `payeeManifest` (falling
-        back to `fairManifest`), and the returned `transactionId` is what the app later passes
-        to `POST /api/settle`. Requires the operator-approved `pay:settle` scope (403 otherwise).
-        Checkout without an app-service token is unchanged and is never settleable via the app path.
+        back to `fairManifest`). The returned `transactionId` identifies the pending payment
+        completed by the seller webhook. Requires the operator-approved `pay:settle` scope (403 otherwise).
+        Checkout requires a seller DID (also accepted as `metadata.sellerDid`).
+        Seller-owned charges settle through the seller's webhook, not `/api/settle`;
+        no platform balance moves. No app token means no app binding.
       security:
         - bearerAuth: []
         - appServiceToken: []
@@ -842,7 +858,7 @@ paths:
                 currency:
                   type: string
                   enum: [USD, CAD, EUR, GBP]
-                mode: { type: string, enum: [payment, subscription], default: payment }
+                mode: { type: string, enum: [payment], default: payment }
                 customerEmail: { type: string, format: email }
                 successUrl: { type: string, format: uri }
                 cancelUrl: { type: string, format: uri }
@@ -855,7 +871,8 @@ paths:
                   type: string
                   description: |
                     #2757: the seller whose OWN Stripe account (the BYO connector, #1785) is charged.
-                    A seller with no working card rail is a 400 `SELLER_NO_CARD_RAIL`. Absent = a platform-own charge.
+                    A seller with no working card rail is a 400 `SELLER_NO_CARD_RAIL`.
+                    Absent (including metadata.sellerDid) is rejected; no platform-own fallback.
       responses:
         "200":
           description: Checkout session created
@@ -888,7 +905,7 @@ paths:
         "502":
           description: >-
             Stripe refused or could not be reached on the seller's own account — `code` is one of
-            `CARD_RAIL_KEY_MISSING`, `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`
+            `CARD_RAIL_KEY_REJECTED`, `CARD_RAIL_UNAVAILABLE`, `CARD_RAIL_REQUEST_REJECTED`
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1016,6 +1033,8 @@ paths:
       description: |
         Holds funds from `from` until conditions are met (time-based auto-release or
         multi-signature release). Requires Bearer auth.
+        Card holds use the recipient `to` DID's sealed Stripe connector. The returned
+        clientSecret and publishableKey belong to that account. No node credential fallback.
       security:
         - bearerAuth: []
       requestBody:
@@ -1057,6 +1076,8 @@ paths:
                   currency: { type: string }
                   from: { type: string }
                   to: { type: string }
+                  clientSecret: { type: string }
+                  publishableKey: { type: string }
                   createdAt: { type: string, format: date-time }
         "400":
           description: Invalid request
@@ -1072,6 +1093,13 @@ paths:
       tags: [pay]
       operationId: releaseEscrow
       summary: Release or refund an escrow
+      description: |
+        Card updates use the persisted escrow recipient's sealed connector, not caller metadata.
+        Release/capture is allowed only for the recorded depositor (`fromDid`) or arbiter.
+        Refund/cancel is allowed only for the recorded recipient (`toDid`) or arbiter.
+        Unsupported actions are rejected rather than defaulting to capture. Legacy platform
+        escrows fail clearly. Capture/cancel updates the escrow row synchronously to
+        released/refunded; it is not a pending hosted checkout awaiting a completion webhook.
       security:
         - bearerAuth: []
       requestBody:
@@ -1080,10 +1108,11 @@ paths:
           application/json:
             schema:
               type: object
-              required: [action, escrowId]
+              required: [action, escrowId, provider]
               properties:
                 action: { type: string, enum: [release, refund] }
                 escrowId: { type: string }
+                provider: { type: string, enum: [stripe] }
       responses:
         "200":
           description: Escrow settled
@@ -1297,6 +1326,14 @@ paths:
         The kernel resolves the original transaction and refuses another app's payment
         or an unbound payment before refund or ledger side effects. Scope approval is
         checked live. No shared service key or user session substitutes for the app.
+        Only `stripe-byo` payments are supported: the persisted `toDid` selects the
+        account that took the charge. Legacy platform refunds fail with
+        `LEGACY_PLATFORM_PAYMENT` and a log line. BYO refunds do not move node balances.
+        Caller-controlled PaymentIntent metadata is never authority.
+        Verified BYO settlement records settledPaymentIntentId with first-class settledAt;
+        PI-only refunds match that provenance in SQL without Stripe session lookups.
+        Older seller sessions use a filtered, ordered fallback capped at 25 candidates.
+        A disconnected seller is skipped and cannot abort another seller's refund.
       security:
         - appServiceToken: []
       requestBody:
@@ -1308,7 +1345,7 @@ paths:
               required: [paymentId]
               properties:
                 paymentId: { type: string, description: "Stripe payment/session id resolved to the original kernel transaction" }
-                amount: { type: number, description: "Partial refund amount in cents (omit for full refund)" }
+                amount: { type: integer, minimum: 1, description: "Partial refund amount in cents (omit to refund the remaining amount)" }
                 reason: { type: string }
       responses:
         "200":
@@ -1341,19 +1378,24 @@ paths:
       summary: Charge confirmed pledge setups belonging to the calling app
       description: |
         Requires the app's own service bearer with operator-approved `pay:charge-pledges`.
-        Each `setupIntentId` must resolve to a transaction created by this app during setup.
-        The kernel rejects app mismatches and legacy unbound pledges, then derives the amount,
-        currency, customer and payment method from its recorded transaction and the confirmed
-        Stripe SetupIntent. Caller-supplied card and amount fields are not authority.
-        A pending transaction is atomically claimed as charging before the rail call. Completed
-        results can be replayed; an interrupted or ambiguous charging outcome fails closed and
-        requires reconciliation, not an automatic second charge after rail idempotency expires.
-
-        This existing charge path reads platform-account setups with a kernel-recorded
-        pledge-setup provenance marker. Seller-BYO setups created by the new
-        pay:setup-intent contract are deliberately not accepted: they live on another
-        Stripe account and require a separate seller-account charging migration.
-        No platform charge or fallback is attempted for those new setups.
+        Every pledge must name `sellerDid`, `pledgeId` and `setupIntentId`. The seller DID
+        selects the sealed BYO connector through the one shared DID resolver. The kernel
+        verifies #2788's SetupIntent binding against the authenticated app and requested
+        seller, pledge and event, then checks the customer buyer and saved card attachment
+        on that same account. Amount, currency, customer and card come only from the verified
+        Stripe setup; caller-supplied payment details are ignored.
+        All references are structurally validated before preflight or charging; malformed
+        or duplicate references return HTTP 400. The entire batch is preflighted before
+        any charge. Binding, seller rail, setup and charge failures are safe per-pledge
+        outcomes: a valid batch always returns HTTP 200 with every result in request order,
+        continuing after individual failures. No kernel pledge row, events API lookup or platform key is used.
+        A permanent Stripe SetupIntent attempt marker is written before charging.
+        Concurrent attempts use identical Stripe idempotency keys and parameters; later
+        replays report PLEDGE_CHARGE_ALREADY_ATTEMPTED for each marked pledge without
+        another charge, including beyond Stripe's retention. A marker is not proof of
+        successful payment: replayed attempts are failed/reconciliation outcomes, never
+        assumed charged. Initially invalid bindings are also included in replay results.
+        Ambiguous outcomes require reconciliation; this flow never clears the marker.
       security:
         - appServiceToken: []
       requestBody:
@@ -1369,17 +1411,43 @@ paths:
                   type: array
                   items:
                     type: object
-                    required: [pledgeId, setupIntentId]
+                    required: [pledgeId, setupIntentId, sellerDid]
                     properties:
                       pledgeId: { type: string }
                       setupIntentId: { type: string }
+                      sellerDid: { type: string, description: "Transacting seller DID, verified against the seller-account setup binding" }
       responses:
         "200":
-          description: Charge results for bound pledges
+          description: Full ordered batch outcomes, including preflight, charge and replay failures
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [charged, failed, total, results]
+                properties:
+                  charged: { type: integer, minimum: 0 }
+                  failed: { type: integer, minimum: 0 }
+                  total: { type: integer, minimum: 0 }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [pledgeId, status]
+                      properties:
+                        pledgeId: { type: string }
+                        status: { type: string, enum: [charged, failed] }
+                        error: { type: string, description: "Safe failure text; never upstream error details" }
+                        code:
+                          type: string
+                          description: "Safe failure code, including SELLER_NO_CARD_RAIL, PLEDGE_BINDING_MISMATCH, PLEDGE_SETUP_NOT_FOUND, PLEDGE_CHARGE_ALREADY_ATTEMPTED, PLEDGE_CHARGE_RECONCILIATION_REQUIRED, PLEDGE_CHARGE_REQUIRES_ACTION or PLEDGE_CHARGE_UNAVAILABLE"
         "401":
           description: Missing or invalid app-service token
         "403":
-          description: Missing approved scope, another app's setup or no app binding
+          description: Missing approved scope
+        "400":
+          description: Invalid request shape, eventId or pledge references
+        "429":
+          description: Rate limit exceeded
 
   /api/emission:
     post:

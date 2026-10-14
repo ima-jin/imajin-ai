@@ -10,8 +10,8 @@
  * platform-held fallback. A seller with no working card rail is a 400
  * `SELLER_NO_CARD_RAIL`. Such a payment settles from the seller's own
  * `payment_intent.succeeded` (`byo-checkout-settlement.ts`): the row is completed
- * and the originating service is told; no platform balance moves. Without a
- * seller the session is a platform-own charge, as before.
+ * and the originating service is told; no platform balance moves. A seller
+ * DID is required; there is no node credential fallback.
  *
  * Request:
  * {

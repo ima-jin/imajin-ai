@@ -213,6 +213,7 @@ async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
     const { settleCheckoutFromByoStripe } = await import('@/src/lib/pay/byo-checkout-settlement');
     const outcome = await settleCheckoutFromByoStripe({ ownerDid, transactionId: payTransactionId, paymentIntentId, amount, currency });
     if (!outcome.settled) return;
+    if ('directCharge' in outcome) return;
 
     const { session } = outcome;
     await notifyCheckoutServices(session);
@@ -225,8 +226,8 @@ async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
         receipt_email: session.customer_email ?? null,
       }, session.rail);
     }
-  } catch (error) {
-    log.error({ err: String(error), payTransactionId, ownerDid }, 'BYO Stripe checkout settlement error');
+  } catch {
+    log.error({ payTransactionId, ownerDid }, 'BYO Stripe checkout settlement error');
   }
 }
 

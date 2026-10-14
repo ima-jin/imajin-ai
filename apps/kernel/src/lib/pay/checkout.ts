@@ -30,7 +30,7 @@ export interface CheckoutBody {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payeeManifest?: Record<string, any>;
-  /** The seller whose own Stripe account (the BYO connector) is charged. Absent = a platform-own charge. */
+  /** The seller whose own Stripe account (the BYO connector) is charged. Required for card payments; never a platform-own fallback. */
   sellerDid?: string;
 }
 

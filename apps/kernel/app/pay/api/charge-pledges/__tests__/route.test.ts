@@ -11,13 +11,17 @@ import { jsonPostRequest } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 const h = vi.hoisted(() => ({
   create: vi.fn(),
 }));
-vi.mock('@/src/lib/pay/app-settle', () => ({
+vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
+  SellerNoCardRailError: class extends Error { code = 'SELLER_NO_CARD_RAIL'; },
+}));
+vi.mock('@/src/lib/pay/app-service-auth', () => ({
   authenticatePayApp: async (request: Request) => request.headers.get('authorization')
     ? { appDid: 'did:imajin:events' }
     : { error: 'App-service token required', status: 401 },
 }));
 vi.mock('@/src/lib/pay/app-pledges', () => ({
-  loadAppPledges: async (_app: string, _event: string, pledges: unknown[]) => pledges,
+  pledgeFailure: () => ({ status: 503, code: 'PLEDGE_CHARGE_UNAVAILABLE', error: 'Seller pledge charge unavailable' }),
+  loadAppPledges: async (_app: string, _event: string, pledges: { pledgeId: string }[]) => pledges.map((pledge) => ({ pledgeId: pledge.pledgeId, pledge })),
   chargeBoundPledge: async (pledge: { pledgeId: string; stripePaymentMethodId: string }) => {
     if (!pledge.stripePaymentMethodId) throw new Error('Missing Stripe customer or payment method');
     return (await h.create({ metadata: { pledgeId: pledge.pledgeId } })).status;
@@ -50,6 +54,8 @@ const KEY = 'test-pay-service-key';
 function pledge(id: string, overrides: Record<string, unknown> = {}) {
   return {
     pledgeId: id,
+    sellerDid: 'did:imajin:seller',
+    setupIntentId: `seti_${id}`,
     amount: 1000,
     currency: 'CAD',
     stripeCustomerId: `cus_${id}`,
@@ -68,7 +74,6 @@ function request(pledges: unknown[]) {
 
 beforeEach(() => {
   h.create.mockReset();
-  process.env.PAY_SERVICE_API_KEY = KEY;
 });
 
 describe('POST /pay/api/charge-pledges', () => {
@@ -107,7 +112,7 @@ describe('POST /pay/api/charge-pledges', () => {
     expect(body).toMatchObject({ charged: 2, failed: 1, total: 3 });
     expect(body.results).toEqual([
       { pledgeId: 'p1', status: 'charged' },
-      { pledgeId: 'p2', status: 'failed', error: 'card_declined' },
+      { pledgeId: 'p2', status: 'failed', error: 'Seller pledge charge unavailable', code: 'PLEDGE_CHARGE_UNAVAILABLE' },
       { pledgeId: 'p3', status: 'charged' },
     ]);
   });
@@ -123,7 +128,7 @@ describe('POST /pay/api/charge-pledges', () => {
 
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(body.results).toEqual([
-      { pledgeId: 'p1', status: 'failed', error: 'Missing Stripe customer or payment method' },
+      { pledgeId: 'p1', status: 'failed', error: 'Seller pledge charge unavailable', code: 'PLEDGE_CHARGE_UNAVAILABLE' },
       { pledgeId: 'p2', status: 'charged' },
     ]);
     expect(body).toMatchObject({ charged: 1, failed: 1 });
@@ -136,11 +141,23 @@ describe('POST /pay/api/charge-pledges', () => {
     const body = await res.json();
 
     expect(body.results).toEqual([
-      { pledgeId: 'p1', status: 'failed', error: 'Payment requires additional authentication (3D Secure)' },
+      { pledgeId: 'p1', status: 'failed', error: 'Payment requires additional authentication (3D Secure)', code: 'PLEDGE_CHARGE_REQUIRES_ACTION' },
     ]);
   });
 
-  it('rejects a request without the service API key', async () => {
+  it.each(['requires_payment_method', 'canceled'])('reports %s as reconciliation failure and keeps going', async (status) => {
+    h.create.mockResolvedValueOnce({ status }).mockResolvedValueOnce({ status: 'succeeded' });
+    const res = await POST(request([pledge('p1'), pledge('p2')]) as never, {} as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ charged: 1, failed: 1, total: 2, results: [
+      { pledgeId: 'p1', status: 'failed', error: 'Payment did not complete; reconcile before retrying',
+        code: 'PLEDGE_CHARGE_RECONCILIATION_REQUIRED' },
+      { pledgeId: 'p2', status: 'charged' },
+    ] });
+    expect(h.create).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects a request without app-service authentication', async () => {
     const res = await POST(
       jsonPostRequest('https://kernel.test/pay/api/charge-pledges', { eventId: 'evt_1', pledges: [pledge('p1')] }) as never,
       {} as never,

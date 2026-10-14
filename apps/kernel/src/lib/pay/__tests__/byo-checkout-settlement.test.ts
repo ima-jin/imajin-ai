@@ -41,6 +41,7 @@ vi.mock('@/src/db', () => ({
 vi.mock('drizzle-orm', () => ({
   and: (...conditions: unknown[]) => ({ and: conditions }),
   eq: (column: unknown, value: unknown) => ({ eq: [column, value] }),
+  isNull: (column: unknown) => ({ isNull: column }), or: (...conditions: unknown[]) => ({ or: conditions }),
 }));
 vi.mock('@/src/lib/stripe/byo-checkout', () => ({ retrieveByoCheckoutCustomer: h.retrieveCustomerMock }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: h.warnMock, error: vi.fn() }) }));
@@ -100,8 +101,9 @@ describe('settleCheckoutFromByoStripe', () => {
     });
     // The buyer is read back with the SELLER's key, from the seller's own session.
     expect(h.retrieveCustomerMock).toHaveBeenCalledWith(OWNER, 'cs_1');
-    // Only the status flips — no fee, chain or tax rows exist on this path.
-    expect(h.updateCalls).toEqual([{ status: 'completed' }]);
+    // Verified receipt provenance is stored atomically; no fee, chain or tax rows.
+    expect(h.updateCalls).toEqual([{ status: 'completed', settledAt: expect.any(Date),
+      metadata: { ...pendingRow().metadata, settledPaymentIntentId: 'pi_1' } }]);
   });
 
   it('falls back to the email given at checkout when the seller\'s session cannot be read back', async () => {
@@ -116,6 +118,23 @@ describe('settleCheckoutFromByoStripe', () => {
       session: { customer_email: 'given@example.com', customer_details: { email: 'given@example.com', name: null } },
     });
     expect(h.warnMock).toHaveBeenCalled();
+  });
+
+  it('overwrites caller checkout settlement metadata only in the verified completed update', async () => {
+    h.selectRows.push(pendingRow({ metadata: { settledPaymentIntentId: 'pi_spoof', note: 'keep' } }));
+    h.updateReturning.push({ id: 'tx_1' });
+    expect(await settleCheckoutFromByoStripe(INPUT)).toMatchObject({ settled: true });
+    expect(h.updateCalls).toEqual([{ status: 'completed', settledAt: expect.any(Date),
+      metadata: { settledPaymentIntentId: 'pi_1', note: 'keep' } }]);
+  });
+
+  it.each([null, 'pi_1'])('settles direct charges with externalRef %s without a checkout lookup', async (externalRef) => {
+    h.selectRows.push(pendingRow({ type: 'charge', externalRef }));
+    h.updateReturning.push({ id: 'tx_1' });
+    expect(await settleCheckoutFromByoStripe(INPUT)).toEqual({ settled: true, directCharge: true });
+    expect(h.updateCalls[0]).toMatchObject({ status: 'completed', externalRef: 'pi_1', settledAt: expect.any(Date),
+      metadata: expect.objectContaining({ settledPaymentIntentId: 'pi_1' }) });
+    expect(h.retrieveCustomerMock).not.toHaveBeenCalled();
   });
 
   it('prefers the email the seller\'s Stripe collected over the one given up front', async () => {
@@ -134,6 +153,7 @@ describe('settleCheckoutFromByoStripe', () => {
     ['the charge is a different amount than the row', pendingRow({ amount: '30' }), 'amount_mismatch'],
     ['the charge is in a different currency', pendingRow({ currency: 'USD' }), 'amount_mismatch'],
     ['the row is already completed (a replay)', pendingRow({ status: 'completed' }), 'not_pending'],
+    ['a direct charge is bound to another PaymentIntent', pendingRow({ type: 'charge', externalRef: 'pi_other' }), 'payment_mismatch'],
   ])('writes nothing when %s', async (_label, row, reason) => {
     if (row) h.selectRows.push(row);
 

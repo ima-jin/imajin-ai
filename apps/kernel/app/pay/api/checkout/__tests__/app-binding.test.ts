@@ -38,7 +38,8 @@ vi.mock('@/src/db', async () => {
 });
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: async (token: string) => mocks.tokens.get(token) ?? null }));
 vi.mock('@/src/lib/pay', () => ({ DEFAULT_PLATFORM_FEE_BPS: 100 }));
-vi.mock('@/src/lib/pay/pay', () => ({ getPaymentService: () => ({ checkout: mocks.payCheckout }) }));
+vi.mock('@/src/lib/stripe/byo-checkout', () => ({ createByoCheckoutSession: mocks.payCheckout }));
+vi.mock('@/src/lib/pay/payment-requests/card-rail', () => ({ resolveCardRail: async (ownerDid: string) => ({ kind: 'connector', ownerDid }), SELLER_NO_CARD_RAIL: 'SELLER_NO_CARD_RAIL' }));
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: vi.fn() }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: () => new Response(null, { status: 204 }) }));
 vi.mock('@imajin/config', () => ({ rateLimit: () => ({ limited: false }), getClientIP: () => '127.0.0.1' }));
@@ -84,6 +85,7 @@ function checkoutRequest(body: Record<string, unknown>, headers: Record<string, 
     body: JSON.stringify({
       items: [{ name: 'Support', amount: 1000, quantity: 1 }],
       currency: 'USD',
+      sellerDid: SELLER,
       successUrl: 'https://app.test/ok',
       cancelUrl: 'https://app.test/cancel',
       metadata: { service: 'coffee', type: 'checkout' },

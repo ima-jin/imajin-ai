@@ -8,8 +8,8 @@
  * key (see `connector.ts`), so this route is hand-written rather than a
  * thin factory wrapper.
  *
- *   GET  → `{ keySealed: boolean }`. An existence check, never the key.
- *   POST → seals `{ token }` (the restricted key) AND provisions the
+ *   GET  → `{ keySealed, publishableKeySealed }`. Status only, never key values.
+ *   POST → seals `{ token, publishableKey }` (a same-mode pair) AND provisions the
  *          owner's webhook endpoint. `token` matches the generic
  *          `credentialBodyKey` contract the connector card already posts.
  *
@@ -21,7 +21,8 @@ import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
 import { publicOrigin } from '@/src/lib/http/public-origin';
-import { connectAndProvisionWebhook, keySealed } from '@/src/lib/stripe/connector';
+import { connectAndProvisionWebhook, keySealed, publishableKeySealed } from '@/src/lib/stripe/connector';
+import { StripeCredentialError, validateStripeCredentialPair } from '@/src/lib/stripe/credential-pair';
 
 const log = createLogger('kernel');
 
@@ -36,7 +37,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
 
-  return NextResponse.json({ keySealed: await keySealed(auth.ownerDid) }, { headers: cors });
+  const [sealed, publicSealed] = await Promise.all([
+    keySealed(auth.ownerDid),
+    publishableKeySealed(auth.ownerDid),
+  ]);
+  return NextResponse.json({ keySealed: sealed, publishableKeySealed: publicSealed }, { headers: cors });
 }
 
 /** Optional non-empty trimmed string, or undefined. */
@@ -55,33 +60,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const { ownerDid } = auth;
 
-  let body: { token?: unknown };
+  let body: { token?: unknown; publishableKey?: unknown } | null;
   try {
-    body = (await request.json()) as { token?: unknown };
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
 
-  const token = optionalString(body.token);
-  if (!token) {
-    return NextResponse.json(
-      { error: 'token must be a non-empty string' },
-      { status: 400, headers: cors },
-    );
-  }
-
+  const token = optionalString(body?.token) ?? '';
+  const publishableKey = optionalString(body?.publishableKey);
   try {
-    await connectAndProvisionWebhook(ownerDid, token, publicOrigin(request));
+    validateStripeCredentialPair(token, publishableKey);
+    await connectAndProvisionWebhook(ownerDid, token, publicOrigin(request), publishableKey);
     log.info({ ownerDid }, 'Stripe restricted key sealed and webhook provisioned');
   } catch (err) {
+    if (err instanceof StripeCredentialError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code, field: err.field },
+        { status: 400, headers: cors },
+      );
+    }
     const message = err instanceof Error ? err.message : String(err);
-    log.error({ err: message, ownerDid }, 'Stripe connect failed');
+    log.error({ ownerDid }, 'Stripe connect failed');
     // stripe_key_not_restricted and stripe_key_missing_permission (#2754: no
     // Checkout Sessions = Write) are caller mistakes (400); anything else
     // (provisioning failure against Stripe's API) is a 502-shaped failure
     // reported as 500 to match this codebase's other connector routes.
     const status = CALLER_MISTAKES.some((prefix) => message.startsWith(prefix)) ? 400 : 500;
-    return NextResponse.json({ error: 'Failed to connect Stripe', detail: message }, { status, headers: cors });
+    return NextResponse.json({ error: 'Failed to connect Stripe' }, { status, headers: cors });
   }
 
   return NextResponse.json({ sealed: true }, { status: 201, headers: cors });

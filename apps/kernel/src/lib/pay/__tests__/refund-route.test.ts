@@ -34,6 +34,9 @@ const mocks = vi.hoisted(() => {
 
   // Pay service
   const refundMock = vi.fn();
+  const keysMock = vi.fn();
+  const sessionMock = vi.fn();
+  const logErrorMock = vi.fn();
 
   // Bus
   const publishMock = vi.fn().mockResolvedValue(undefined);
@@ -49,6 +52,9 @@ const mocks = vi.hoisted(() => {
     insertValuesMock,
     insertMock,
     refundMock,
+    keysMock,
+    sessionMock,
+    logErrorMock,
     publishMock,
   };
 });
@@ -58,14 +64,19 @@ vi.mock('@imajin/logger', () => ({
   withLogger: (_service: string, handler: Function) =>
     (req: unknown) =>
       handler(req, {
-        log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+        log: { error: mocks.logErrorMock, info: vi.fn(), warn: vi.fn() },
         correlationId: 'test-cor-id',
       }),
   createLogger: vi.fn(() => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() })),
 }));
 
-vi.mock('@/src/lib/pay/pay', () => ({
-  getPaymentService: () => ({ refund: mocks.refundMock }),
+vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
+  resolveDidStripeKeys: mocks.keysMock,
+  SellerNoCardRailError: class extends Error { code = 'SELLER_NO_CARD_RAIL'; },
+}));
+vi.mock('@/src/lib/pay/providers/seller-pledge-refund', () => ({
+  sellerPledgeRefundClient: () => ({ refunds: { create: mocks.refundMock } }),
+  sellerSessionPaymentIntent: mocks.sessionMock,
 }));
 
 vi.mock('@/src/db', () => ({
@@ -81,6 +92,9 @@ vi.mock('@/src/db', () => ({
     type: 'col_type',
     metadata: 'col_metadata',
     status: 'col_status',
+    appDid: 'col_appDid',
+    settledAt: 'col_settledAt',
+    createdAt: 'col_createdAt',
   },
   balances: { did: 'col_did', unit: 'col_unit', amount: 'col_amount' },
 }));
@@ -100,6 +114,7 @@ vi.mock('@/src/lib/pay/app-settle', () => ({
 // ─── Subject ────────────────────────────────────────────────────────────────
 
 import { POST } from '../../../../app/pay/api/refund/route';
+import { SellerNoCardRailError } from '../rails/stripe-keys';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -120,6 +135,7 @@ function makeRequest(body: Record<string, unknown>): Request {
 function nextSelect(rows: unknown[]): void {
   const p = Promise.resolve(rows) as any;
   p.limit = vi.fn().mockResolvedValue(rows);
+  p.orderBy = vi.fn(() => p);
   mocks.whereMock.mockImplementationOnce(() => p);
 }
 
@@ -134,8 +150,9 @@ const BASE_TX = {
   currency: 'CAD',
   status: 'completed',
   source: 'fiat',
+  rail: 'stripe-byo',
   externalRef: 'cs_test_session_abc',
-  metadata: {},
+  metadata: { paymentIntentId: 'pi_test_original' },
 };
 
 const REFUND_RESULT = {
@@ -158,9 +175,74 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     mocks.onConflictDoUpdateMock.mockResolvedValue(undefined);
     process.env.PAY_SERVICE_API_KEY = API_KEY;
     mocks.refundMock.mockResolvedValue(REFUND_RESULT);
+    mocks.keysMock.mockResolvedValue({ secretKey: 'test-only-seller-key' });
+    mocks.sessionMock.mockResolvedValue('pi_test_original');
     mocks.publishMock.mockResolvedValue(undefined);
   });
 
+  it('verifies the recorded session instead of trusting forged PI metadata', async () => {
+    nextSelect([{ ...BASE_TX, metadata: { paymentIntentId: 'pi_unrelated', stripePaymentIntentId: 'pi_unrelated' } }]);
+    nextSelect([]);
+    const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef, amount: 27500 }) as never);
+    expect(res.status).toBe(200);
+    expect(mocks.sessionMock).toHaveBeenCalledWith('test-only-seller-key', BASE_TX.externalRef);
+    expect(mocks.refundMock).toHaveBeenCalledWith({ payment_intent: 'pi_test_original', amount: 27500 });
+  });
+  it('returns the caller intent reference after resolving a recorded seller session', async () => {
+    nextSelect([]); nextSelect([]); nextSelect([BASE_TX]); nextSelect([]);
+    const res = await POST(makeRequest({ paymentId: 'pi_test_original', amount: 27500 }) as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ paymentId: 'pi_test_original' });
+    expect(mocks.sessionMock).toHaveBeenCalledTimes(2);
+  });
+  it('explains and logs unsupported legacy intent resolution without platform API calls', async () => {
+    nextSelect([]); nextSelect([]); nextSelect([{ ...BASE_TX, rail: 'stripe', metadata: { paymentIntentId: 'pi_legacy' } }]);
+    const res = await POST(makeRequest({ paymentId: 'pi_legacy' }) as never);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toMatchObject({ code: 'REFUND_PAYMENT_UNRESOLVED', error: expect.stringContaining('legacy platform') });
+    expect(mocks.logErrorMock).toHaveBeenCalled();
+    expect(mocks.keysMock).not.toHaveBeenCalled();
+    expect(mocks.sessionMock).not.toHaveBeenCalled();
+    expect(mocks.refundMock).not.toHaveBeenCalled();
+  });
+  it('rejects legacy platform charges clearly without using credentials', async () => {
+    nextSelect([{ ...BASE_TX, rail: 'stripe' }]);
+    const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef }) as any);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'LEGACY_PLATFORM_PAYMENT' });
+    expect(mocks.keysMock).not.toHaveBeenCalled();
+    expect(mocks.refundMock).not.toHaveBeenCalled();
+  });
+  it('rejects another app before reading seller keys', async () => {
+    nextSelect([{ ...BASE_TX, appDid: 'did:imajin:other' }]);
+    expect((await POST(makeRequest({ paymentId: BASE_TX.externalRef }) as any)).status).toBe(403);
+    expect(mocks.keysMock).not.toHaveBeenCalled();
+    expect(mocks.refundMock).not.toHaveBeenCalled();
+  });
+  it('fails with SELLER_NO_CARD_RAIL even if environment credentials are present', async () => {
+    nextSelect([BASE_TX]); nextSelect([]);
+    vi.stubEnv('STRIPE_SECRET_KEY', 'test-only-platform-key');
+    mocks.keysMock.mockRejectedValue(new SellerNoCardRailError());
+    const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef }) as any);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
+    expect(mocks.refundMock).not.toHaveBeenCalled();
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+  it('a full refund after a partial refund refunds only the remaining amount', async () => {
+    nextSelect([{ ...BASE_TX, status: 'partially_refunded' }]);
+    nextSelect([{ amount: '275.00' }]);
+    const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef }) as any);
+    expect(res.status).toBe(200);
+    expect(mocks.refundMock).toHaveBeenCalledWith({ payment_intent: 'pi_test_original', amount: 27500 });
+    expect(mocks.setMock).toHaveBeenCalledWith({ status: 'refunded' });
+  });
+  it.each([0, -1, 0.5, '100'])('rejects invalid amount %j without money movement', async (amount) => {
+    nextSelect([BASE_TX]);
+    expect((await POST(makeRequest({ paymentId: BASE_TX.externalRef, amount }) as any)).status).toBe(400);
+    expect(mocks.refundMock).not.toHaveBeenCalled();
+  });
   it('returns 401 when API key is missing', async () => {
     const req = new Request('https://kernel.test/api/refund', {
       method: 'POST',
@@ -212,9 +294,8 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     // Original tx should be marked partially_refunded (not fully refunded)
     expect(mocks.setMock).toHaveBeenCalledWith({ status: 'partially_refunded' });
     expect(mocks.refundMock).toHaveBeenCalledWith({
-      paymentId: 'cs_test_session_abc',
+      payment_intent: 'pi_test_original',
       amount: 27500,
-      reason: undefined,
     });
   });
 
@@ -230,7 +311,7 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
       .map((c: any[]) => c[0])
       .find((v: any) => v?.type === 'refund');
     expect(reversal).toMatchObject({
-      rail: 'stripe',
+      rail: 'stripe-byo',
       externalRef: 're_test_stripe',
       metadata: expect.objectContaining({ originalTxId: 'tx_original_1', originalStripeId: 'cs_test_session_abc' }),
     });
@@ -274,7 +355,7 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     expect(mocks.refundMock).not.toHaveBeenCalled();
   });
 
-  it('reverses settlement entries proportionally for a partial refund', async () => {
+  it('never reverses platform settlements or changes platform balances for a BYO refund', async () => {
     // One settlement entry worth $50 (platform fee). First ticket = 50% refund.
     // Expect reversal of $25 (50% of $50).
     const settlementTx = {
@@ -302,16 +383,16 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     const insertCall = mocks.insertValuesMock.mock.calls.find((c: any[]) =>
       c[0]?.metadata?.refundOfSettlement === true
     );
-    expect(insertCall).toBeDefined();
-    const reversalAmount = Number.parseFloat(insertCall![0].amount);
-    expect(reversalAmount).toBeCloseTo(25, 5);
+    expect(insertCall).toBeUndefined();
+    expect(mocks.insertMock).toHaveBeenCalledTimes(1);
+    expect(mocks.updateMock).toHaveBeenCalledTimes(1);
 
     // Settlement entry status → partially_refunded (not yet fully reversed)
     const statusUpdates = mocks.setMock.mock.calls.map((c: any[]) => c[0].status);
     expect(statusUpdates).toContain('partially_refunded');
   });
 
-  it('marks settlement entries as refunded on the final full refund', async () => {
+  it('does not update settlement entries on a final full BYO refund', async () => {
     const settlementTx = {
       id: 'tx_settlement_2',
       service: 'events',
@@ -337,5 +418,6 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     // Settlement entry should now be fully refunded
     const statusUpdates = mocks.setMock.mock.calls.map((c: any[]) => c[0].status);
     expect(statusUpdates).toContain('refunded');
+    expect(mocks.setMock).toHaveBeenCalledTimes(1);
   });
 });

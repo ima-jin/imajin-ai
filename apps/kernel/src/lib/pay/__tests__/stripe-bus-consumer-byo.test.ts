@@ -178,6 +178,16 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     expect(h.notifyServicesMock).not.toHaveBeenCalled();
   });
 
+  it('completes a direct charge without hosted checkout or coffee notifications', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    h.settleCheckoutMock.mockResolvedValue({ settled: true, directCharge: true });
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+    expect(h.settleCheckoutMock).toHaveBeenCalled();
+    expect(h.notifyServicesMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('notifies nobody when the settlement refused or was a replay', async () => {
     h.settleCheckoutMock.mockResolvedValue({ settled: false, reason: 'not_pending' });
 
