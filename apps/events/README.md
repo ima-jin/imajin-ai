@@ -94,8 +94,7 @@ PAY_SERVICE_URL="http://localhost:3004"
 AUTH_SERVICE_URL="http://localhost:3003"
 NEXT_PUBLIC_EVENTS_URL="http://localhost:3007"
 
-# Webhook (from pay service)
-WEBHOOK_SECRET="your-shared-secret"
+# Kernel callbacks are signed for this app's registered DID; no shared webhook key.
 
 # Registered-app identity (settlement, #2739)
 IMAJIN_KERNEL_URL="http://localhost:3000"
@@ -111,6 +110,16 @@ SMTP_FROM="Your Name <you@example.com>"
 ```
 
 ### Settlement (registered-app contract)
+The live monorepo payment and settlement receivers use `verifyKernelWebhook`
+with events' own registered app DID as the required audience. They reject
+unsigned, cross-app, replayed, stale or tampered callbacks before order/ticket
+writes. The app identity is shared with service-token minting through the existing
+vault/keystore flow, so concurrent callbacks never redeem a claim code twice.
+Organizer contact/reply-to and notify broadcast use the vault internal credential
+already loaded by `instrumentation.ts`, not a shared notify header.
+See [the wire protocol and persistent-store requirements](../../docs/security/kernel-webhooks.md).
+Multi-worker deployments must configure shared durable replay storage; the default
+in-memory store is atomic within one process and is not restart-safe.
 
 Events settles a paid ticket order itself. At checkout it authenticates to the pay service with
 its **own app-service token** (minted from its signing key via `@imajin/auth-client`) and declares

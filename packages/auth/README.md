@@ -92,6 +92,7 @@ import { verifyKernelWebhook, KernelWebhookError } from '@ima-jin/auth/kernel-we
 export async function POST(request: Request) {
   try {
     const event = await verifyKernelWebhook(request, {
+      audience: 'did:imajin:example-app',
       authServiceUrl: 'https://kernel.example/auth',
     });
     // Validate event shape, then apply the event idempotently.
@@ -105,9 +106,19 @@ export async function POST(request: Request) {
 }
 ```
 
+`audience` is required: pass the receiver's own registered app DID from its
+keystore/identity configuration, never the inbound `x-kernel-audience`. That header
+is signed and must match the configured DID; a delivery for another app fails with
+`AUDIENCE_MISMATCH` before fetching keys or consuming a nonce.
+
 `authServiceUrl` defaults to `AUTH_SERVICE_URL` and **already includes `/auth`**.
-The SDK fetches `${authServiceUrl}/.well-known/kernel-signing-key` on each
-verification (5-second timeout, no redirects or cached/stale fallback).
+The SDK fetches `${authServiceUrl}/.well-known/kernel-signing-key` with a
+5-second timeout and no redirects. Trusted key sets are cached by kernel URL and
+pin-store identity for 60 seconds by default (`discoveryCacheTtlMs`; `0` disables).
+Concurrent refreshes share one fetch. Unknown key IDs trigger a rate-limited
+refresh; failed discovery attempts are also throttled. Expired caches do not
+authorize callbacks after a discovery failure. Key validity is checked on every
+request, so an expired grace key is rejected even within the cache TTL.
 Remote discovery requires HTTPS. Loopback HTTP is allowed for development;
 `allowInsecureHttp: true` explicitly permits remote HTTP on a separately
 secured internal network, never a public network. First successful discovery
@@ -116,10 +127,15 @@ is trust-on-first-use (TOFU), so the first connection must be trustworthy.
 Pins contain **public keys only**, defaulting to
 `<cwd>/data/kernel-webhook-pins`. Put this directory on persistent storage.
 `createFileKernelWebhookPinStore(directory)` selects another persistent path.
-The file store uses an exclusive per-kernel lock and atomic replacement, so
-concurrent first-boot requests cannot silently overwrite each other's pins.
-A crashed process can leave a `.lock` file: verification fails closed until
-an operator confirms no process holds it and removes that stale lock.
+The file store uses an exclusive per-kernel advisory lock and atomic replacement,
+so concurrent first-boot requests cannot silently overwrite each other's pins.
+The default file adapter requires Linux util-linux `flock` on PATH and a local
+filesystem supporting advisory locks. A bounded helper process holds the lock;
+the operating system releases it when its owner exits, including a parent crash.
+An existing empty/stale `.lock` file therefore does not brick verification.
+The persistent lock inode must not be deleted while workers run. Missing tooling
+fails closed with `STORE`; use host/image provisioning for this prerequisite or
+an injected shared durable pin adapter. No secret value is passed to the helper.
 Do not delete pin files automatically or on network errors. An intentional
 rotation with no overlap requires an operator to inspect and explicitly reset
 that kernel's pin out of band.
@@ -127,7 +143,8 @@ that kernel's pin out of band.
 A fetched key set can replace a pin only when an active fetched entry matches
 **both the kid and public key** of an existing pin. Kids are independently
 recomputed from public keys. Only currently published, non-expired keys can
-verify deliveries, so withdrawn or expired grace keys do not remain trusted.
+verify deliveries. Expired grace keys are always rejected; a publication withdrawal
+is observed within the bounded cache TTL (or immediately with caching disabled).
 The kernel must publish old and new keys together during a rotation grace
 window, and every consumer must observe that overlap before the old key is
 withdrawn. Discovery or persistence failures reject the delivery.
@@ -143,8 +160,9 @@ global symbol registry. Replay evidence is **single-process and resets on restar
 Multi-worker/serverless deployments must supply a shared durable `nonceStore`
 whose `consume(key, expiresAtMs)` atomically inserts an unseen key with expiry,
 returning `false` for a duplicate. Never implement this as separate GET/SET
-operations. Both nonce keys and public pins are namespaced by the normalized
-kernel auth URL. Application event handling should additionally be idempotent.
+operations. Public pins are namespaced by normalized kernel auth URL; nonce keys
+also include the recipient audience. Application event handling should additionally
+be idempotent.
 
 Custom durable `pinStore` adapters implement `load(namespace)` (returns stored
 key entries or `null` on first use), `save(namespace, keys)`, and
@@ -155,16 +173,18 @@ Public entries contain `kid`, `publicKey` (64 lowercase hex characters),
 `algorithm: 'Ed25519'`, `validFrom` (ISO timestamp), and optional `validUntil`.
 
 The exported `canonicalKernelWebhookPayload` helper is shared with senders.
-It produces `imajin-webhook-v1`, integer Unix timestamp seconds, UUID nonce,
+It requires `audience` and produces `imajin-webhook-v1`, recipient app DID,
+integer Unix timestamp seconds, UUID nonce,
 uppercase HTTP method, URL pathname plus query, and lowercase SHA-256 hex of
 the exact raw body, joined with newlines (no trailing newline). The wire
-headers are `x-kernel-kid`, `x-kernel-timestamp`, `x-kernel-nonce`, and
+headers are `x-kernel-audience`, `x-kernel-kid`, `x-kernel-timestamp`, `x-kernel-nonce`, and
 `x-kernel-signature` (128-character Ed25519 hex). Verification uses Node's
 Ed25519 implementation, never string comparison of signatures.
 Unsigned deliveries and legacy shared-secret headers are not accepted.
 
 Error codes are `INVALID_REQUEST`, `STALE`, `FUTURE`, `SIGNATURE_INVALID`,
-`UNKNOWN_KEY`, `TRUST`, `DISCOVERY`, `STORE`, `REPLAY`, and `INVALID_BODY`.
+`UNKNOWN_KEY`, `TRUST`, `DISCOVERY`, `STORE`, `REPLAY`, `INVALID_BODY`, and
+`AUDIENCE_MISMATCH`.
 
 - **Sessions** — cookie-based session issuance and validation
 - **App tokens** — scoped tokens for registered third-party apps

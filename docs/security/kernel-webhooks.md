@@ -8,22 +8,27 @@ verification belongs alongside the shared auth cryptography rather than session 
 
 ## Wire contract
 
-Every kernel callback carries four headers:
+Every kernel callback carries five headers:
 
+- `x-kernel-audience`: the recipient app's registered DID, never a caller-selected payload field.
 - `x-kernel-kid`: `computeKeyKid` of the kernel's published Ed25519 public key.
 - `x-kernel-timestamp`: canonical integer Unix seconds.
 - `x-kernel-nonce`: unique UUID for this delivery attempt, not a credential.
 - `x-kernel-signature`: hex detached Ed25519 signature (64 bytes).
 
-The UTF-8 canonical string has six lines, no trailing newline: `imajin-webhook-v1`,
-timestamp, nonce, uppercase HTTP method, URL pathname plus query string, and
+The UTF-8 canonical string has seven lines, no trailing newline: `imajin-webhook-v1`,
+audience, timestamp, nonce, uppercase HTTP method, URL pathname plus query string, and
 lowercase SHA-256 hex of the exact raw request body bytes. Do not parse and
 re-serialize the body before verification. Route rewriting must preserve the
 signed external pathname/query; the kernel signs the URL it actually calls.
 Authorization bearer headers, when temporarily present, are not the signature.
 
-Call `await verifyKernelWebhook<MyPayload>(request, { authServiceUrl })` before
-any business effect. `authServiceUrl` is the trusted configured kernel URL ending
+Call `await verifyKernelWebhook<MyPayload>(request, { audience: ownAppDid, authServiceUrl })`
+before any business effect. `audience` is required and comes from the receiver's
+own registered identity/keystore, never from a request header or body. A callback
+addressed to another app is rejected before discovery or nonce consumption, even
+if that app shares the same callback path. Changing the audience header invalidates
+the signature. `authServiceUrl` is the trusted configured kernel URL ending
 in `/auth` (never supplied by the callback sender). It defaults to
 `AUTH_SERVICE_URL`. The helper returns parsed JSON or throws `KernelWebhookError`;
 the generic parameter is not schema validation, so validate the returned shape
@@ -32,7 +37,15 @@ before acting. Do not call `request.json()` first.
 The default window is ±300 seconds. Set `maxAgeSeconds` and
 `futureToleranceSeconds` explicitly only where needed; synchronize host clocks.
 Crypto verification uses Ed25519 verification, not string equality of signatures.
-Unsigned, stale, future, replayed, tampered or wrong-method/path callbacks fail closed.
+Unsigned, stale, future, replayed, tampered or wrong-audience/method/path callbacks fail closed.
+
+The kernel resolves active registry entries for its named payment receivers.
+Generic bus webhook configurations identify a recipient with
+`recipient: { appDid }` or `recipient: { appSlug }`; destinations must match that
+app's registered origin or a trusted first-party service URL. Existing
+`settlement.completed` configurations without a recipient resolve the registered
+events app, preserving the live monorepo delivery path. Other missing/revoked or
+ambiguous recipients fail closed; the event payload cannot select the audience.
 
 ## Trust and rotation
 
@@ -45,10 +58,26 @@ Protect the pin location from untrusted writes and persist it
 across deploys. An injected `pinStore` must implement `load`, `save` and
 `withLock(namespace, callback)`; load/reconcile/save is serialized across workers.
 
+The default file adapter requires Linux `flock` from util-linux on the server's
+PATH and a local filesystem supporting advisory locks. Acquisition is bounded.
+The lock is held by a helper tied to the parent pipe; process death closes the
+pipe and releases the kernel-held lock automatically. Existing empty/stale lock
+files do not own locks and need no manual deletion. Lock files remain in place
+to prevent competing workers locking different inodes; do not delete them during
+operation. Missing lock tooling fails closed with `STORE`; provision the runtime
+prerequisite through the host/image tool flow, or supply an appropriate shared
+`pinStore` adapter. Pin contents are never discarded during crash recovery.
+
 After first use, a newly fetched key set is trusted only when it shares both a
 `kid` and its public key with the stored pin. No-overlap replacement fails with
-`TRUST`, not an automatic re-pin. Currently published keys are accepted during
-their validity bounds; a removed/expired old key cannot authenticate callbacks.
+`TRUST`, not an automatic re-pin. Trusted discovery sets are cached for a bounded
+60-second TTL by kernel and pin-store identity; concurrent refreshes share one
+fetch. Unknown key IDs trigger a rate-limited refresh, including failed fetches.
+`discoveryCacheTtlMs: 0` disables caching when immediate publication checks are
+needed. Every request still checks key validity and timestamp bounds; expired
+grace keys cannot authenticate even from a cached set. Publication withdrawal can
+take at most the cache TTL to be observed. Once the TTL expires, discovery errors
+reject the delivery rather than falling back to stale keys.
 Publish old and new keys together during the rotation grace window so apps learn
 the new key without any env or file edit. Do not delete pins to bypass a trust
 failure; investigate discovery/rotation first. Rotation is the existing operator
@@ -60,7 +89,7 @@ The default in-memory nonce store is atomic within one process and evicts expire
 entries; it is not restart-safe or shared across replicas. Production replicas
 must inject a durable `nonceStore` with atomic
 `consume(namespacedNonce, expiresAtMs): Promise<boolean> | boolean`: true only
-for the first insert, false for reuse. The SDK passes a kernel-namespaced nonce
+for the first insert, false for reuse. The SDK passes a kernel-and-audience-namespaced nonce
 and an expiry that covers the full admissible timestamp window.
 
 A DB adapter can use a table owned by the receiving app, unique primary key
@@ -78,7 +107,7 @@ nonce, while session/transaction identifiers prevent duplicate settlement.
 
 `KernelWebhookError.code` is one of:
 `INVALID_REQUEST`, `STALE`, `FUTURE`, `SIGNATURE_INVALID`, `UNKNOWN_KEY`,
-`TRUST`, `DISCOVERY`, `STORE`, `REPLAY`, `INVALID_BODY`.
+`TRUST`, `DISCOVERY`, `STORE`, `REPLAY`, `INVALID_BODY`, `AUDIENCE_MISMATCH`.
 
 Apps should map authentication failures to 401, malformed JSON to 400, and
 discovery/store availability failures to 503 for retry. Log codes and transaction
@@ -91,6 +120,10 @@ and continue processing.
    publishing job; do not publish from a shell or hand-bump a feature version.
 2. Deploy the kernel through its deploy workflow. Callback URLs are non-secret
    config; no new shared webhook credential is provisioned.
+   The same monorepo release migrates the live events payment and settlement
+   receivers while #2516 remains blocked; standalone events#38 does not cover
+   that copy. Events resolves its own app DID through its existing registered
+   identity and uses its boot-loaded vault key for organizer contact/reply-to.
 3. Per-app #2241 children deploy verification with durable pins/replay storage and
    exercise a signed payment callback, replay, stale, tampered and unsigned inputs.
 4. Apps call notify using their own claimed app identity and scoped service token.

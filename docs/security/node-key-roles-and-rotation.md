@@ -45,9 +45,9 @@ They are listed honestly in §7 rather than papered over.
 S2 also covers detached kernel-to-app callback signatures (#2798):
 `apps/kernel/src/lib/auth/kernel-webhook.ts` signs payment, subscription and
 bus settlement callbacks with the same published key. `@ima-jin/auth`
-`verifyKernelWebhook` fetches the publication for each verification, requires
+`verifyKernelWebhook` caches verified publication sets for a bounded TTL, requires
 overlap by both kid and public key, and accepts currently published non-expired
-keys during grace. Unlike corpus's boot reconciliation, apps do not need a restart
+keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
 or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
 
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
