@@ -1,8 +1,8 @@
-﻿/**
+/**
  * POST /api/campaign/pledge/confirm
  *
- * Confirm a pledge after Stripe.js successfully confirms the SetupIntent.
- * Verifies the SetupIntent status and updates the pledge record.
+ * Confirm only after the kernel verifies Stripe success and every pledge/buyer binding
+ * on the recorded seller's BYO account. Client Stripe results are never authoritative.
  *
  * Request:
  * {
@@ -18,55 +18,125 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { requireAuth , resolveActingDid } from '@imajin/auth';
 import { db, pledges } from '@/src/db';
 import { eq, and } from 'drizzle-orm';
-import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
+import { corsHeaders } from '@imajin/config';
+import { authenticateDid, createPreflight, rateLimitResponse } from '../../../../../src/lib/campaign-route';
 import { withLogger } from '@imajin/logger';
+import { verifyPledgePayment, SETUP_INTENT_CONTRACT } from '../../../../../src/lib/pledge-payment';
 
-const PAY_SERVICE_URL = process.env.PAY_SERVICE_URL!;
+export const OPTIONS = createPreflight();
 
-export async function OPTIONS(request: NextRequest) {
-  return new NextResponse(null, { status: 204, headers: corsHeaders(request) });
+type Pledge = typeof pledges.$inferSelect;
+
+function paymentError(error: string, code: string, status: number, cors: HeadersInit) {
+  return NextResponse.json({ error, code }, { status, headers: cors });
+}
+async function readConfirmation(request: NextRequest, cors: HeadersInit) {
+  let body: Record<string, unknown>;
+  try {
+    const value: unknown = await request.json();
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      return paymentError('Invalid JSON body', 'invalid_request', 400, cors);
+    }
+    body = value as Record<string, unknown>;
+  } catch {
+    return paymentError('Invalid JSON body', 'invalid_request', 400, cors);
+  }
+  for (const field of ['pledgeId', 'setupIntentId', 'paymentMethodId']) {
+    if (typeof body[field] !== 'string' || !body[field]) {
+      return paymentError(`${field} is required`, 'invalid_request', 400, cors);
+    }
+  }
+  return body as { pledgeId: string; setupIntentId: string; paymentMethodId: string };
+}
+
+function confirmedResponse(pledge: Pledge, cors: HeadersInit) {
+  return NextResponse.json({
+    success: true,
+    pledge: { id: pledge.id, amount: pledge.amount, status: pledge.status },
+  }, { headers: cors });
+}
+
+function sameConfirmedPayment(current: Pledge, original: Pledge, paymentMethodId: string): boolean {
+  return ['confirmed', 'charged'].includes(current.status)
+    && current.backerDid === original.backerDid && current.eventId === original.eventId
+    && current.amount === original.amount && current.currency === original.currency
+    && current.stripeSetupIntentId === original.stripeSetupIntentId
+    && current.stripeCustomerId === original.stripeCustomerId
+    && current.stripePaymentMethodId === paymentMethodId
+    && (current.metadata as Record<string, unknown>)?.sellerDid
+      === (original.metadata as Record<string, unknown>)?.sellerDid;
+}
+
+async function verifyAndConfirm(pledge: Pledge, did: string, paymentMethodId: string, cors: HeadersInit) {
+  if (!['pending', 'confirmed', 'charged'].includes(pledge.status)) {
+    return paymentError('Pledge is not confirmable', 'pledge_state_conflict', 409, cors);
+  }
+  const metadata = pledge.metadata as Record<string, unknown> | null;
+  if (metadata?.setupIntentContract !== SETUP_INTENT_CONTRACT
+    || typeof metadata.sellerDid !== 'string' || !metadata.sellerDid
+    || !pledge.stripeCustomerId || !pledge.stripeSetupIntentId) {
+    return paymentError('Pledge requires a new payment setup', 'setup_intent_legacy', 409, cors);
+  }
+  const verified = await verifyPledgePayment({
+    pledgeId: pledge.id, eventId: pledge.eventId, buyerDid: did,
+    sellerDid: metadata.sellerDid, amount: pledge.amount, currency: pledge.currency,
+    setupIntentId: pledge.stripeSetupIntentId, customerId: pledge.stripeCustomerId,
+  });
+  if ('error' in verified) {
+    return paymentError(verified.error, verified.code, verified.status, cors);
+  }
+  if (paymentMethodId !== verified.paymentMethodId) {
+    return paymentError('Payment method does not match verified SetupIntent', 'setup_intent_payment_method_mismatch', 403, cors);
+  }
+  if (pledge.status !== 'pending') {
+    if (sameConfirmedPayment(pledge, pledge, verified.paymentMethodId)) return confirmedResponse(pledge, cors);
+    return paymentError('Confirmed payment does not match', 'pledge_state_conflict', 409, cors);
+  }
+
+  // Compare-and-set: a concurrent cancel, re-pledge or charge must never be overwritten.
+  const [confirmed] = await db
+    .update(pledges)
+    .set({
+      status: 'confirmed',
+      stripePaymentMethodId: verified.paymentMethodId,
+      metadata: {
+        ...metadata,
+        confirmedAt: new Date().toISOString(),
+      },
+    })
+    .where(and(
+      eq(pledges.id, pledge.id), eq(pledges.eventId, pledge.eventId),
+      eq(pledges.backerDid, did), eq(pledges.status, 'pending'),
+      eq(pledges.stripeSetupIntentId, pledge.stripeSetupIntentId),
+      eq(pledges.stripeCustomerId, pledge.stripeCustomerId),
+      eq(pledges.amount, pledge.amount), eq(pledges.currency, pledge.currency),
+      eq(pledges.metadata, pledge.metadata),
+    ))
+    .returning();
+  if (confirmed) return confirmedResponse(confirmed, cors);
+  const [current] = await db.select().from(pledges)
+    .where(and(eq(pledges.id, pledge.id), eq(pledges.backerDid, did))).limit(1);
+  if (current && sameConfirmedPayment(current, pledge, verified.paymentMethodId)) {
+    return confirmedResponse(current, cors);
+  }
+  return paymentError('Pledge changed; please retry', 'pledge_state_conflict', 409, cors);
 }
 
 export const POST = withLogger('events', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
 
-  const ip = getClientIP(request);
-  const rl = rateLimit(ip, 20, 60_000);
-  if (rl.limited) {
-    return NextResponse.json(
-      { error: 'Too many requests', retryAfter: rl.retryAfter },
-      { status: 429, headers: { ...cors, 'Retry-After': String(rl.retryAfter) } }
-    );
-  }
+  const limited = rateLimitResponse(request, 20, cors);
+  if (limited) return limited;
 
-  const authResult = await requireAuth(request);
-  if ('error' in authResult) {
-    return NextResponse.json(
-      { error: authResult.error },
-      { status: authResult.status, headers: cors }
-    );
-  }
-
-  const did = resolveActingDid(authResult.identity);
+  const did = await authenticateDid(request, cors);
+  if (did instanceof NextResponse) return did;
 
   try {
-    const body = await request.json();
+    const body = await readConfirmation(request, cors);
+    if (body instanceof NextResponse) return body;
     const { pledgeId, setupIntentId, paymentMethodId } = body;
-
-    if (!pledgeId || typeof pledgeId !== 'string') {
-      return NextResponse.json({ error: 'pledgeId is required' }, { status: 400, headers: cors });
-    }
-
-    if (!setupIntentId || typeof setupIntentId !== 'string') {
-      return NextResponse.json({ error: 'setupIntentId is required' }, { status: 400, headers: cors });
-    }
-
-    if (!paymentMethodId || typeof paymentMethodId !== 'string') {
-      return NextResponse.json({ error: 'paymentMethodId is required' }, { status: 400, headers: cors });
-    }
 
     // Find the pledge
     const [pledge] = await db
@@ -76,40 +146,17 @@ export const POST = withLogger('events', async (request: NextRequest, { log }) =
       .limit(1);
 
     if (!pledge) {
-      return NextResponse.json({ error: 'Pledge not found' }, { status: 404, headers: cors });
+      return paymentError('Pledge not found', 'pledge_not_found', 404, cors);
     }
 
     if (pledge.stripeSetupIntentId !== setupIntentId) {
       return NextResponse.json(
-        { error: 'SetupIntent ID mismatch' },
+        { error: 'SetupIntent ID mismatch', code: 'setup_intent_mismatch' },
         { status: 400, headers: cors }
       );
     }
 
-    // Update pledge to confirmed
-    await db
-      .update(pledges)
-      .set({
-        status: 'confirmed',
-        stripePaymentMethodId: paymentMethodId,
-        metadata: {
-          ...(pledge.metadata as Record<string, any>),
-          confirmedAt: new Date().toISOString(),
-        },
-      })
-      .where(eq(pledges.id, pledgeId));
-
-    return NextResponse.json(
-      {
-        success: true,
-        pledge: {
-          id: pledge.id,
-          amount: pledge.amount,
-          status: 'confirmed',
-        },
-      },
-      { headers: cors }
-    );
+    return await verifyAndConfirm(pledge, did, paymentMethodId, cors);
   } catch (error) {
     log.error({ err: String(error) }, 'Campaign pledge confirm error');
     return NextResponse.json(

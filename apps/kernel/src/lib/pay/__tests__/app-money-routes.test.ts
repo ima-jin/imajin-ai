@@ -241,20 +241,18 @@ describe('pledge recorded authority', () => {
     expect((await response.json()).failed).toBe(1);
     expect(h.create).not.toHaveBeenCalled();
   });
-  it('records the verified app and backer on pledge setup', async () => {
+  it('refuses the superseded platform setup contract even with a backer cookie', async () => {
     const response = await setupRoute(request('setup-intent',
       { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt', app_did: OTHER, did: 'spoof' } },
       'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(200);
-    const [row] = await db.select().from(transactions);
-    expect(row).toMatchObject({ appDid: APP, fromDid: 'did:imajin:backer', type: 'pledge',
-      amount: '10.00000000', externalRef: 'seti_new', idempotencyKey: 'pledge-setup:seti_new' });
-    expect(h.setup).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: expect.objectContaining({ app_did: APP, did: 'did:imajin:backer' }),
-    }));
-  });
-  it('requires a backer session in addition to the app token', async () => {
-    expect((await setupRoute(request('setup-intent', { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } }))).status).toBe(401);
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ code: 'SETUP_APP_UNAUTHORIZED' });
+    expect(await db.select().from(transactions)).toEqual([]);
     expect(h.setup).not.toHaveBeenCalled();
+  });
+  it('does not reuse pay:charge-pledges authority for BYO setup creation', async () => {
+    expect((await setupRoute(request('setup-intent', { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } }))).status).toBe(403);
+    expect(h.setup).not.toHaveBeenCalled();
+    expect(await db.select().from(transactions)).toEqual([]);
   });
 });

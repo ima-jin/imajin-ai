@@ -35,7 +35,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying the route's operator-approved per-app scope (pay:settle, pay:refund or pay:charge-pledges); active app and live approval checked on every call"
+      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying the route's operator-approved per-app scope (pay:settle, pay:refund, pay:charge-pledges or pay:setup-intent); active app and live approval checked on every call"
     railWebhookSignature:
       type: apiKey
       in: header
@@ -59,6 +59,52 @@ components:
       description: "Payment rail (provider) key — `stripe` is one value of the enum (#2177)"
       schema: { $ref: "#/components/schemas/WebhookProvider" }
   schemas:
+    SetupIntentBinding:
+      type: object
+      required: [pledgeId, eventId, buyerDid, sellerDid, amount, currency]
+      description: |
+        Values MUST come from the calling app's authenticated buyer and stored
+        pledge/event records, not buyer-submitted amounts or identities.
+        Unknown fields, including metadata and appDid, are ignored.
+      properties:
+        pledgeId: { type: string, minLength: 1, maxLength: 200, pattern: "^[A-Za-z0-9_-]+$" }
+        eventId: { type: string, minLength: 1, maxLength: 200, pattern: "^[A-Za-z0-9_-]+$" }
+        buyerDid: { type: string, maxLength: 500, pattern: "^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$" }
+        sellerDid: { type: string, maxLength: 500, pattern: "^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$" }
+        amount: { type: integer, minimum: 1, maximum: 99999900, description: "Pledge amount in minor units; bound as canonical decimal metadata, no charge yet" }
+        currency: { type: string, pattern: "^[A-Za-z]{3}$", description: "Three-letter currency; canonicalized to uppercase" }
+    SetupIntentVerifyRequest:
+      allOf:
+        - $ref: "#/components/schemas/SetupIntentBinding"
+        - type: object
+          required: [setupIntentId, customerId]
+          properties:
+            setupIntentId: { type: string, maxLength: 200, pattern: "^seti_[A-Za-z0-9]+$" }
+            customerId: { type: string, maxLength: 200, pattern: "^cus_[A-Za-z0-9]+$" }
+    SetupIntentVerified:
+      type: object
+      additionalProperties: false
+      required: [verified, setupIntentId, customerId, paymentMethodId, pledgeId, eventId, buyerDid, sellerDid, amount, currency]
+      properties:
+        verified: { type: boolean, const: true }
+        setupIntentId: { type: string }
+        customerId: { type: string }
+        paymentMethodId: { type: string, description: "Retrieved from the succeeded intent, never accepted from the buyer" }
+        pledgeId: { type: string }
+        eventId: { type: string }
+        buyerDid: { type: string }
+        sellerDid: { type: string }
+        amount: { type: integer }
+        currency: { type: string }
+    SetupIntentError:
+      type: object
+      additionalProperties: false
+      required: [error, code]
+      properties:
+        error: { type: string }
+        code:
+          type: string
+          enum: [setup_intent_invalid_request, setup_intent_binding_mismatch, setup_intent_not_succeeded, setup_intent_resource_not_found, SETUP_APP_UNAUTHORIZED, SELLER_NO_CARD_RAIL, SETUP_INTENT_UNAVAILABLE]
     PaymentProvider:
       type: string
       enum: [stripe, solana]
@@ -184,7 +230,129 @@ components:
         code: { type: string }
         url: { type: string }
 
+  responses:
+    SetupInvalid:
+      description: "Invalid JSON or binding fields (setup_intent_invalid_request)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SetupIntentError" }
+    SetupUnauthorized:
+      description: "Missing, invalid or expired app-service token (SETUP_APP_UNAUTHORIZED); user sessions and shared keys are not accepted"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SetupIntentError" }
+    SetupForbidden:
+      description: "App inactive or operator scope revoked (SETUP_APP_UNAUTHORIZED), or app/buyer/seller/pledge/intent/customer/payment-method binding mismatch (setup_intent_binding_mismatch)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SetupIntentError" }
+    SetupNotFound:
+      description: "Resource not found on seller account (setup_intent_resource_not_found)"
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SetupIntentError" }
+    SetupUnavailable:
+      description: "No active seller BYO connector (SELLER_NO_CARD_RAIL), registry/vault outage, rejected or insufficient seller key permissions, malformed Stripe response, timeout or upstream outage (SETUP_INTENT_UNAVAILABLE). No platform fallback."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/SetupIntentError" }
+
 paths:
+  /api/setup-intent:
+    post:
+      tags: [pay]
+      operationId: createAppSetupIntent
+      summary: Save a pledge card on the seller's own Stripe account
+      description: |
+        Registered-app only. The app must request pay:setup-intent and an
+        operator must approve it via the countersigned apps:service-scopes
+        card before minting an app-service token. The scope is NOT globally
+        service-eligible. Registry status and approval are rechecked every call.
+        pay:settle, user sessions, delegated tokens and shared keys cannot
+        create or verify intents.
+
+        The seller must have an active sealed BYO restricted key and an active
+        stripe:events grant. The restricted key needs Customers = Write,
+        Setup Intents = Write (including read), and Payment Methods = Read,
+        in addition to existing connector permissions. Stripe permission errors
+        fail closed with 503. No platform credential is used or accepted.
+
+        Creates a fresh customer with buyerDid/did metadata, then an off-session,
+        card-only SetupIntent. Reserved intent metadata appDid, pledgeId, eventId,
+        buyerDid, sellerDid, amount and currency comes only from the token and
+        validated app body; caller metadata cannot overwrite it. These bindings
+        must not be edited after creation.
+
+        Legacy platform SetupIntents/customer IDs cannot be verified or migrated
+        by this contract. Pending legacy pledges need a fresh setup on the seller
+        account; do not confirm them by trusting client paymentMethodId.
+      security:
+        - appServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetupIntentBinding" }
+      responses:
+        "200":
+          description: Seller-account SetupIntent created; no charge made
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [clientSecret, setupIntentId, customerId]
+                properties:
+                  clientSecret: { type: string }
+                  setupIntentId: { type: string }
+                  customerId: { type: string }
+        "400": { $ref: "#/components/responses/SetupInvalid" }
+        "401": { $ref: "#/components/responses/SetupUnauthorized" }
+        "403": { $ref: "#/components/responses/SetupForbidden" }
+        "404": { $ref: "#/components/responses/SetupNotFound" }
+        "503": { $ref: "#/components/responses/SetupUnavailable" }
+  /api/setup-intent/verify:
+    post:
+      tags: [pay]
+      operationId: verifyAppSetupIntent
+      summary: Verify a succeeded pledge SetupIntent and its attached buyer card
+      description: |
+        Same registered-app, live operator approval and seller BYO prerequisites
+        as creation. Retrieves the SetupIntent, customer and payment method using
+        only the seller's sealed key. Every reserved metadata field must match
+        the request and creating app DID. The intent must be succeeded and name
+        the expected customer; the customer must not be deleted and buyerDid/did
+        metadata must identify the buyer without conflicts. The payment method
+        must belong to that customer. Another app cannot verify the intent even
+        with its own operator-approved scope.
+
+        The exact success response is the authoritative verified binding. Only
+        its paymentMethodId may be stored by the app. Verification performs GETs
+        only and is read-only/idempotent; it neither confirms a pledge nor moves
+        money. Each Stripe request has a bounded 10-second timeout.
+      security:
+        - appServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetupIntentVerifyRequest" }
+      responses:
+        "200":
+          description: Verified binding; the payment method is ready for later off-session charging
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetupIntentVerified" }
+        "400": { $ref: "#/components/responses/SetupInvalid" }
+        "401": { $ref: "#/components/responses/SetupUnauthorized" }
+        "403": { $ref: "#/components/responses/SetupForbidden" }
+        "404": { $ref: "#/components/responses/SetupNotFound" }
+        "409":
+          description: "SetupIntent has not succeeded (setup_intent_not_succeeded)"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SetupIntentError" }
+        "503": { $ref: "#/components/responses/SetupUnavailable" }
   /api/health:
     get:
       tags: [pay]
@@ -1165,50 +1333,6 @@ paths:
         "404":
           description: Unknown payment
 
-  /api/setup-intent:
-    post:
-      tags: [pay]
-      operationId: createPledgeSetupIntent
-      summary: Create a user-confirmed, app-bound pledge setup
-      description: |
-        Both credentials are required: the app's own service bearer with operator-approved
-        `pay:charge-pledges` and the backer's user session Cookie. Records a pending app-bound
-        payment in `pay.transactions`, including the amount, currency and SetupIntent id.
-        Metadata `eventId` and `backerDid` identify the campaign and backer.
-      security:
-        - appServiceToken: []
-          cookieAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [amount, currency, metadata]
-              properties:
-                amount: { type: integer, description: "Pledged amount in cents" }
-                currency: { type: string }
-                metadata:
-                  type: object
-                  required: [eventId]
-                  properties:
-                    eventId: { type: string }
-                    backerDid: { type: string }
-      responses:
-        "200":
-          description: App-bound pledge setup recorded
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  clientSecret: { type: string }
-                  setupIntentId: { type: string }
-                  customerId: { type: string }
-        "401":
-          description: Missing or invalid app token or user session
-        "403":
-          description: Missing approved pay:charge-pledges scope or invalid backer authority
 
   /api/charge-pledges:
     post:
@@ -1224,6 +1348,12 @@ paths:
         A pending transaction is atomically claimed as charging before the rail call. Completed
         results can be replayed; an interrupted or ambiguous charging outcome fails closed and
         requires reconciliation, not an automatic second charge after rail idempotency expires.
+
+        This existing charge path reads platform-account setups with a kernel-recorded
+        pledge-setup provenance marker. Seller-BYO setups created by the new
+        pay:setup-intent contract are deliberately not accepted: they live on another
+        Stripe account and require a separate seller-account charging migration.
+        No platform charge or fallback is attempted for those new setups.
       security:
         - appServiceToken: []
       requestBody:

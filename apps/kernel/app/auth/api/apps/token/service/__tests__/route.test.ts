@@ -212,6 +212,15 @@ describe('POST /auth/api/apps/token/service — operator-approved service scopes
     expect(payload!.scope).toBe('');
   });
 
+  it('mints pay:setup-intent only after operator approval and drops it when revoked', async () => {
+    const requested = ['pay:setup-intent'];
+    expect((await mint(activeApp(requested))).scopes).toEqual([]);
+    const approved = await mint(activeApp(requested, requested));
+    expect(approved.scopes).toEqual(requested);
+    expect((await verifyAppToken(approved.token))!.scope).toBe('pay:setup-intent');
+    expect((await mint(activeApp(requested, []))).scopes).toEqual([]);
+  });
+
   it('after approval the token carries exactly the approved scopes the app requested', async () => {
     const body = await mint(activeApp(['identity:read', 'identity:write'], ['identity:read', 'identity:write']));
     expect(body.scopes).toEqual(['identity:read', 'identity:write']);

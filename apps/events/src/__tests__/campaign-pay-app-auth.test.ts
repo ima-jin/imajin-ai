@@ -91,17 +91,24 @@ afterEach(() => {
 });
 
 describe('campaign pay authority (#2735)', () => {
-  it('sends both credentials for setup and preserves event/backer metadata', async () => {
+  it('sends only the app credential and canonical buyer/seller/pledge bindings for BYO setup', async () => {
     nextRows([campaign]);
     nextRows([]);
     mocks.fetch.mockResolvedValue(Response.json({ clientSecret: 'secret', setupIntentId: 'seti_1', customerId: 'cus_1' }));
     expect((await pledge(request('pledge', { eventId: 'evt_1', amount: 100 }))).status).toBe(200);
+    const pledgeId = mocks.values.mock.calls[0][0].id;
     expect(mocks.fetch).toHaveBeenCalledWith('https://kernel.test/pay/api/setup-intent', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json', Authorization: 'Bearer events-app-token', Cookie: 'imajin_session=backer',
+        'Content-Type': 'application/json', Authorization: 'Bearer events-app-token',
       },
-      body: JSON.stringify({ amount: 100, currency: 'CAD', metadata: { eventId: 'evt_1', backerDid: 'did:imajin:creator' } }),
+      body: JSON.stringify({
+        pledgeId, eventId: 'evt_1', buyerDid: 'did:imajin:creator',
+        sellerDid: campaign.creatorDid, amount: 100, currency: 'CAD',
+      }),
+      cache: 'no-store',
+      redirect: 'error',
+      signal: expect.any(AbortSignal),
     });
     expect(mocks.values).toHaveBeenCalledWith(expect.objectContaining({ stripeSetupIntentId: 'seti_1' }));
   });
@@ -131,7 +138,9 @@ describe('campaign pay authority (#2735)', () => {
     nextRows([campaign]);
     nextRows([]);
     mocks.getToken.mockRejectedValue(new Error('not provisioned'));
-    expect((await pledge(request('pledge', { eventId: 'evt_1', amount: 100 }))).status).toBe(500);
+    const response = await pledge(request('pledge', { eventId: 'evt_1', amount: 100 }));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ code: 'payment_verification_unavailable' });
     expect(mocks.fetch).not.toHaveBeenCalled();
     expect(mocks.values).not.toHaveBeenCalled();
   });

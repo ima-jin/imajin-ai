@@ -31,6 +31,7 @@ const ROUTES: Record<string, () => Promise<{ OPTIONS: (req: NextRequest) => unkn
   refund: () => import('../refund/route'),
   settle: () => import('../settle/route'),
   'setup-intent': () => import('../setup-intent/route'),
+  'setup-intent/verify': () => import('../setup-intent/verify/route'),
   'topup/emt': () => import('../topup/emt/route'),
   'topup/stripe': () => import('../topup/stripe/route'),
   'transactions/[did]': () => import('../transactions/[did]/route'),

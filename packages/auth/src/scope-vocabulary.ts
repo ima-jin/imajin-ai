@@ -313,6 +313,9 @@ export const SCOPE_VOCABULARY = [
   // Money-moving scopes are operator-approved only, never self-request serviceEligible.
   { scope: 'pay:refund', connector: null, label: 'Refund payments this app created on its own behalf' },
   { scope: 'pay:charge-pledges', connector: null, label: 'Charge pledges this app created on its own behalf' },
+  // Operator-approved only: a registered app may save/verify a pledge card on
+  // the seller's sealed BYO account. Never self-granted via requestedScopes.
+  { scope: 'pay:setup-intent', connector: null, label: 'Create and verify pledge payment methods bound to this app' },
 
   { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
     label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },
