@@ -190,7 +190,7 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
       return NextResponse.json({ error: 'Escrow release/refund not supported by this provider' }, { status: 400 });
     }
     const transaction = await findSellerEscrow(escrowId);
-    if (!transaction || transaction.rail !== 'stripe-byo' || !transaction.toDid) {
+    if (transaction?.rail !== 'stripe-byo' || !transaction.toDid) {
       log.error({}, 'Legacy or unowned escrow cannot be released/refunded; platform fallback is disabled');
       return NextResponse.json({ error: 'Escrow has no seller-owned card rail', code: 'LEGACY_ESCROW_UNSUPPORTED' }, { status: 422 });
     }

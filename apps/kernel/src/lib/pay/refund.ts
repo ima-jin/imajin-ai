@@ -50,11 +50,12 @@ export async function refundSellerPayment(originalTx: TransactionRow, amount: nu
   const { secretKey } = await resolveDidStripeKeys(originalTx.toDid);
   // Generic checkout metadata is caller-controlled, even after persistence.
   // Only the rail reference and the seller account's session establish authority.
-  const paymentIntentId = originalTx.externalRef?.startsWith('pi_')
-    ? originalTx.externalRef
-    : isSellerSession(originalTx)
-      ? await sellerSessionPaymentIntent(secretKey, originalTx.externalRef)
-      : undefined;
+  let paymentIntentId: string | undefined;
+  if (originalTx.externalRef?.startsWith('pi_')) {
+    paymentIntentId = originalTx.externalRef;
+  } else if (isSellerSession(originalTx)) {
+    paymentIntentId = await sellerSessionPaymentIntent(secretKey, originalTx.externalRef);
+  }
   if (!paymentIntentId) throw new Error('Original seller payment intent is unavailable');
   const refund = await sellerPledgeRefundClient(secretKey).refunds.create({ payment_intent: paymentIntentId, amount });
   return { id: refund.id, paymentId: originalTx.externalRef!, amount: refund.amount, status: refund.status };

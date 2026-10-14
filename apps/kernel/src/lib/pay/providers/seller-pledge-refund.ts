@@ -9,7 +9,7 @@ export function sellerPledgeRefundClient(secretKey: string) {
 /** Stripe's ordinary customer list cannot filter metadata. Search on this seller account. */
 export async function findOrCreatePledgeCustomer(secretKey: string, buyerDid: string) {
   const stripe = sellerPledgeRefundClient(secretKey);
-  const escaped = buyerDid.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const escaped = buyerDid.replace(/\\/g, String.raw`\\`).replace(/'/g, String.raw`\'`);
   const customers = await stripe.customers.search({ query: `metadata['did']:'${escaped}'`, limit: 1 });
   const customer = customers.data.find((row) => row.metadata.did === buyerDid);
   return customer ?? stripe.customers.create({ metadata: { did: buyerDid, buyerDid } });
