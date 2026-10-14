@@ -130,8 +130,9 @@ Pins contain **public keys only**, defaulting to
 The file store uses an exclusive per-kernel advisory lock and atomic replacement,
 so concurrent first-boot requests cannot silently overwrite each other's pins.
 The default file adapter requires Linux util-linux `flock` on PATH and a local
-filesystem supporting advisory locks. A bounded helper process holds the lock;
-the operating system releases it when its owner exits, including a parent crash.
+filesystem supporting advisory locks. A bounded `flock` subprocess locks an
+inherited descriptor and exits; the parent descriptor retains ownership for the
+whole operation. Closing it or crashing the parent releases the lock automatically.
 An existing empty/stale `.lock` file therefore does not brick verification.
 The persistent lock inode must not be deleted while workers run. Missing tooling
 fails closed with `STORE`; use host/image provisioning for this prerequisite or

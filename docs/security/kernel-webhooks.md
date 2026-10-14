@@ -42,7 +42,9 @@ Unsigned, stale, future, replayed, tampered or wrong-audience/method/path callba
 The kernel resolves active registry entries for its named payment receivers.
 Generic bus webhook configurations identify a recipient with
 `recipient: { appDid }` or `recipient: { appSlug }`; destinations must match that
-app's registered origin or a trusted first-party service URL. Existing
+app's registered origin or a trusted, fixed kernel-routed service URL. The
+coffee/events/learn/market mappings apply to provisioned apps regardless of
+registry tier; relative nav paths and bare audience slugs do not grant origins. Existing
 `settlement.completed` configurations without a recipient resolve the registered
 events app, preserving the live monorepo delivery path. Other missing/revoked or
 ambiguous recipients fail closed; the event payload cannot select the audience.
@@ -60,8 +62,10 @@ across deploys. An injected `pinStore` must implement `load`, `save` and
 
 The default file adapter requires Linux `flock` from util-linux on the server's
 PATH and a local filesystem supporting advisory locks. Acquisition is bounded.
-The lock is held by a helper tied to the parent pipe; process death closes the
-pipe and releases the kernel-held lock automatically. Existing empty/stale lock
+The parent opens a persistent inode; a short-lived `flock` subprocess locks its
+inherited descriptor and exits. The parent descriptor retains the kernel-held
+lock until close or process death, so no long-lived helper can silently lose the
+lease. Existing empty/stale lock
 files do not own locks and need no manual deletion. Lock files remain in place
 to prevent competing workers locking different inodes; do not delete them during
 operation. Missing lock tooling fails closed with `STORE`; provision the runtime
@@ -147,8 +151,9 @@ migrate to that existing vault credential before deployment.
 
 Removal trigger: **all per-app verify children of #2241 are closed**. Delete the
 legacy module `auth/kernel-webhook-legacy.ts:12-33`, the import at
-`auth/kernel-webhook.ts:5` and optional header spread at `auth/kernel-webhook.ts:43`,
-and the legacy-specific cases in `auth/__tests__/kernel-webhook.test.ts:125-142`.
+`auth/kernel-webhook.ts:5` and optional `legacyWebhookHeaders(app)` spread at
+`auth/kernel-webhook.ts:47`, and the legacy-specific cases in
+`auth/__tests__/kernel-webhook.test.ts:143-161`.
 Also delete `notify/legacy-auth.ts:1-27`, its import at `notify/service-auth.ts:6`
 and its conditional call at `notify/service-auth.ts:21`; remove
 `notify/__tests__/legacy-auth.test.ts` and the legacy-only cases in
