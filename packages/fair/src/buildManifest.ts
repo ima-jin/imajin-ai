@@ -1,4 +1,5 @@
-import type { FairEntry, FairFee, FairTax } from './types';
+import type { FairEntry, FairFee, FairTax, FairFeeManifest } from './types';
+export type { FairFeeManifest } from './types';
 import {
   PROTOCOL_FEE_BPS,
   PROTOCOL_DID,
@@ -13,15 +14,6 @@ import {
 } from './constants';
 import { processorFeeEntry } from './processorFee';
 
-export interface FairFeeManifest {
-  version: string;
-  fees: FairFee[];
-  chain: FairEntry[];
-  distributions: FairEntry[];
-  attribution: FairEntry[];
-  /** #2419 — present only when the caller supplied `taxes` (non-empty). */
-  taxes?: FairTax[];
-}
 
 /** Caller-supplied input for a single tax row (#2419) — everything except the computed `basisAmount`/`amount`, which `buildFairManifest` derives from `basisAmountCents`. `registrationNumber` is required, per the issue's tax-row shape (sourced from the business-profile tax registration, #2423). */
 export interface BuildFairManifestTaxInput {

@@ -892,12 +892,21 @@ importers:
         specifier: ^18.2.0
         version: 18.3.1
     devDependencies:
+      '@testing-library/dom':
+        specifier: ^10.4.1
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
       '@types/react':
         specifier: ^18
         version: 18.3.28
+      react-dom:
+        specifier: ^18
+        version: 18.3.1(react@18.3.1)
       tsup:
         specifier: ^8.0.0
         version: 8.5.1(jiti@1.21.7)(postcss@8.5.25)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)

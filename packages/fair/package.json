@@ -43,7 +43,10 @@
     "jose": "^6.2.3"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/react": "^18",
+    "react-dom": "^18",
     "tsup": "^8.0.0",
     "typescript": "^5",
     "vitest": "^1.0.0",

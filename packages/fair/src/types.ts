@@ -256,15 +256,36 @@ export interface FairManifestV11 {
 
 /** Union type — narrow with `'version' in m && (m.version === '1.1' || m.version === '1.2')` */
 export type FairManifest = FairManifestV10 | FairManifestV11;
+/** Share-based fee manifest emitted by buildFairManifest, not a document. */
+export interface FairFeeManifest {
+  version: '0.4.0' | '0.5.0';
+  fees: FairFee[];
+  chain: FairEntry[];
+  distributions: FairEntry[];
+  attribution: FairEntry[];
+  /** Non-empty only for version 0.5.0. */
+  taxes?: FairTax[];
+}
+
+/** Both supported shapes; signing APIs intentionally remain document-only. */
+export type SupportedFairManifest = FairManifest | FairFeeManifest;
 
 // ============================================================================
 // Type guards
 // ============================================================================
+/**
+ * Discriminate an already-validated supported manifest (not a validator).
+ * Use isValidManifest to validate unknown input before trusting its fields.
+ */
+export function isFairFeeManifest(m: SupportedFairManifest | null | undefined): m is FairFeeManifest {
+  return !!m && typeof m === 'object' && !('fair' in m)
+    && (m.version === '0.4.0' || m.version === '0.5.0');
+}
 
 /**
  * True for both '1.1' and '1.2' (#2419) — the two share one structural
  * shape; '1.2' only ever differs by carrying a non-empty `taxes[]`.
  */
-export function isFairManifestV11(m: FairManifest | null | undefined): m is FairManifestV11 {
+export function isFairManifestV11(m: SupportedFairManifest | null | undefined): m is FairManifestV11 {
   return !!m && typeof m === 'object' && 'version' in m && (m.version === '1.1' || m.version === '1.2');
 }

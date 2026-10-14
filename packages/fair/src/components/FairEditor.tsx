@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
-import type { FairManifest, FairEntry, FairAccess, FairFee } from '../types';
+import { useState, useCallback, useEffect, useRef, useId } from 'react';
+import type { FairManifest, SupportedFairManifest, FairEntry, FairAccess, FairFee } from '../types';
 import type { FairTemplate } from '../templates';
 import { templates } from '../templates';
 
-export interface FairEditorProps {
-  manifest: FairManifest;
-  onChange?: (manifest: FairManifest) => void;
+export interface FairEditorProps<T extends SupportedFairManifest = SupportedFairManifest> {
+  manifest: T;
+  onChange?: (manifest: T) => void;
   readOnly?: boolean;
   sections?: ('attribution' | 'chain' | 'fees' | 'access' | 'transfer' | 'integrity' | 'intent' | 'terms' | 'distributions')[];
   template?: FairTemplate;
@@ -25,17 +25,13 @@ const CHAIN_ROLE_OPTIONS = [
 
 const ALL_SECTIONS = ['attribution', 'chain', 'fees', 'access', 'transfer', 'integrity', 'intent', 'terms', 'distributions'] as const;
 const SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'chain', 'fees', 'access', 'transfer', 'integrity'];
+const FEE_SECTION_DEFAULTS: NonNullable<FairEditorProps['sections']> = ['attribution', 'chain', 'fees', 'distributions'];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/**
- * Normalize share values: DB may store as 0-100 (percentage) or 0-1 (decimal).
- * Editor expects 0-1. If any share > 1, assume all are percentages and divide by 100.
- */
-function normalizeShares(entries: FairEntry[]): FairEntry[] {
-  const hasPercentage = entries.some(e => e.share > 1);
-  if (!hasPercentage) return entries;
-  return entries.map(e => ({ ...e, share: e.share / 100 }));
+
+function resolveDocument(manifest: SupportedFairManifest): FairManifest | undefined {
+  return 'fair' in manifest ? manifest : undefined;
 }
 
 function resolveAccess(manifest: FairManifest): FairAccess {
@@ -122,18 +118,35 @@ function shareBar(share: number, role: string) {
     </div>
   );
 }
-function createEntryListEditor(
+function useEntryListEditor(
   entries: FairEntry[],
   onChange: (entries: FairEntry[]) => void,
 ) {
+  // Keep UI identity outside the stored manifest, including across immutable edits.
+  const keys = useRef(new WeakMap<FairEntry, string>());
+  const sequence = useRef(0);
+  const prefix = useId();
+  const keyFor = (entry: FairEntry): string => {
+    let key = keys.current.get(entry);
+    if (key === undefined) {
+      key = `${prefix}-${sequence.current++}`;
+      keys.current.set(entry, key);
+    }
+    return key;
+  };
   const update = (i: number, patch: Partial<FairEntry>) => {
-    const next = entries.map((e, idx) => (idx === i ? { ...e, ...patch } : e));
+    const next = entries.map((e, idx) => {
+      if (idx !== i) return e;
+      const edited = { ...e, ...patch };
+      keys.current.set(edited, keyFor(e));
+      return edited;
+    });
     onChange(next);
   };
 
   const remove = (i: number) => onChange(entries.filter((_, idx) => idx !== i));
 
-  return { update, remove };
+  return { update, remove, keyFor };
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -196,7 +209,7 @@ function AttributionEdit({
   entries: FairEntry[];
   onChange: (entries: FairEntry[]) => void;
 }>) {
-  const { update, remove } = createEntryListEditor(entries, onChange);
+  const { update, remove, keyFor } = useEntryListEditor(entries, onChange);
 
   const add = () =>
     onChange([...entries, { did: '', role: 'collaborator', share: 0 }]);
@@ -204,7 +217,7 @@ function AttributionEdit({
   return (
     <div className="space-y-3">
       {entries.map((entry, i) => (
-        <div key={`${entry.did ?? 'unknown'}:${entry.role}:${entry.share}:${entry.note ?? ''}:${i}`} className="bg-[#252525] rounded-lg p-3 space-y-2">
+        <div key={keyFor(entry)} className="bg-[#252525] rounded-lg p-3 space-y-2">
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -288,7 +301,7 @@ function ChainEdit({
   entries: FairEntry[];
   onChange: (entries: FairEntry[]) => void;
 }>) {
-  const { update, remove } = createEntryListEditor(entries, onChange);
+  const { update, remove, keyFor } = useEntryListEditor(entries, onChange);
 
   const add = () =>
     onChange([...entries, { did: '', role: 'seller', share: 0 }]);
@@ -298,7 +311,7 @@ function ChainEdit({
       {entries.map((entry, i) => {
         const isProtocol = entry.role === 'protocol';
         return (
-          <div key={`${entry.did ?? 'unknown'}:${entry.role}:${entry.share}:${i}`} className="bg-[#252525] rounded-lg p-3 space-y-2">
+          <div key={keyFor(entry)} className="bg-[#252525] rounded-lg p-3 space-y-2">
             <div className="flex items-center gap-2">
               <input
                 type="text"
@@ -584,40 +597,36 @@ function Panel({ title, children }: Readonly<{ title: string; children: React.Re
 
 // ─── FairEditor ──────────────────────────────────────────────────────────────
 
-export function FairEditor({
+export function FairEditor<T extends SupportedFairManifest>({
   manifest,
   onChange,
   readOnly = false,
   sections: sectionsProp,
   template,
   resolveProfile,
-}: Readonly<FairEditorProps>) {
+}: Readonly<FairEditorProps<T>>) {
   // Derive active sections: explicit prop > template config > defaults
+  const defaults = 'fair' in manifest ? SECTION_DEFAULTS : FEE_SECTION_DEFAULTS;
   const sections: NonNullable<FairEditorProps['sections']> = sectionsProp
     ?? (template
       ? ALL_SECTIONS.filter(s => templates[template].sections[s])
-      : SECTION_DEFAULTS);
+      : defaults);
 
-  const [local, setLocal] = useState<FairManifest>(() => {
-    // Normalize shares on init — handle DB storing 0-100 vs 0-1
-    const normalizedAttribution = normalizeShares(manifest.attribution ?? []);
-    const normalizedChain = normalizeShares(manifest.chain ?? []);
-    if (normalizedAttribution !== manifest.attribution || normalizedChain !== manifest.chain) {
-      return { ...manifest, attribution: normalizedAttribution, chain: normalizedChain };
-    }
-    return manifest;
-  });
+  // Loading is lossless: never normalize shares or fabricate optional fields.
+  const [local, setLocal] = useState<T>(manifest);
+  useEffect(() => { setLocal(manifest); }, [manifest]);
 
   const update = useCallback(
-    (patch: Partial<FairManifest>) => {
-      const next = { ...local, ...patch } as FairManifest;
+    (patch: Partial<SupportedFairManifest>) => {
+      const next = { ...local, ...patch } as T;
       setLocal(next);
       onChange?.(next);
     },
     [local, onChange],
   );
 
-  const access = resolveAccess(local);
+  const documentManifest = resolveDocument(local);
+  const access = documentManifest ? resolveAccess(documentManifest) : undefined;
   const attribution = local.attribution ?? [];
   const chain = local.chain ?? [];
 
@@ -625,6 +634,7 @@ export function FairEditor({
   const allDids = [
     ...attribution.map(e => e.did),
     ...chain.map(e => e.did),
+    ...(local.distributions ?? []).map(e => e.did),
   ].filter((d): d is string => !!d);
   const didNames = useDidNames(allDids, resolveProfile);
 
@@ -640,9 +650,9 @@ export function FairEditor({
       <div className="flex items-center justify-between border-b border-gray-800 pb-3">
         <div className="flex items-center gap-2">
           <span className="text-orange-500 font-bold text-sm">.fair</span>
-          <span className="text-gray-600 text-xs">v{local.fair || (local as unknown as { version?: string }).version || '1.0'}</span>
+          <span className="text-gray-600 text-xs">v{documentManifest?.fair ?? local.version}</span>
         </div>
-        <span className="text-xs text-gray-600 truncate max-w-[200px]">{local.id}</span>
+        <span className="text-xs text-gray-600 truncate max-w-[200px]">{documentManifest?.id ?? 'Event fee manifest'}</span>
       </div>
 
       {/* Attribution */}
@@ -690,8 +700,22 @@ export function FairEditor({
         </Panel>
       )}
 
+      {/* Distribution shares are distinct from document distribution rights. */}
+      {sections.includes('distributions') && local.distributions && (
+        <Panel title="Distributions">
+          {readOnly ? (
+            <AttributionView entries={local.distributions} didNames={didNames} />
+          ) : (
+            <AttributionEdit
+              entries={local.distributions}
+              onChange={entries => update({ distributions: entries })}
+            />
+          )}
+        </Panel>
+      )}
+
       {/* Access */}
-      {sections.includes('access') && (
+      {sections.includes('access') && access && (
         <Panel title="Access">
           <AccessSection
             access={access}
@@ -702,10 +726,10 @@ export function FairEditor({
       )}
 
       {/* Transfer */}
-      {sections.includes('transfer') && (
+      {sections.includes('transfer') && documentManifest && (
         <Panel title="Transfer">
           <TransferSection
-            transfer={local.transfer}
+            transfer={documentManifest.transfer}
             readOnly={readOnly}
             onChange={t => update({ transfer: t })}
           />
@@ -713,9 +737,9 @@ export function FairEditor({
       )}
 
       {/* Integrity */}
-      {sections.includes('integrity') && (
+      {sections.includes('integrity') && documentManifest && (
         <Panel title="Integrity">
-          <IntegritySection integrity={local.integrity} />
+          <IntegritySection integrity={documentManifest.integrity} />
         </Panel>
       )}
 
