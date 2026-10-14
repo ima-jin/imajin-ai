@@ -55,8 +55,8 @@ import {
   disconnectAndDeprovision,
   handleVerifiedWebhookEvent,
   vaultField,
-  STRIPE_CONNECTOR_DID,
-  STRIPE_EVENTS_SCOPE,
+  stripeConnectorDid,
+  stripeEventsScope,
   publishableKeySealed,
 } from '../connector';
 
@@ -119,9 +119,9 @@ afterEach(() => {
 });
 
 describe('identity', () => {
-  it('STRIPE_CONNECTOR_DID and STRIPE_EVENTS_SCOPE are stable', () => {
-    expect(STRIPE_CONNECTOR_DID).toBe('did:imajin:stripe-connector');
-    expect(STRIPE_EVENTS_SCOPE).toBe('stripe:events');
+  it('stripeConnectorDid and stripeEventsScope are stable', () => {
+    expect(stripeConnectorDid).toBe('did:imajin:stripe-connector');
+    expect(stripeEventsScope).toBe('stripe:events');
   });
 
   it('vaultField encodes ownerDid for per-DID isolation', () => {

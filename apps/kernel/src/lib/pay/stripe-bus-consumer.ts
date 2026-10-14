@@ -47,7 +47,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { toRailEvent } from '@/src/lib/pay/providers/stripe-webhook';
 import { confirmWithdrawalFromRailEvent } from '@/src/lib/pay/withdraw-intent';
 import { getWithdrawRailByName } from '@/src/lib/pay/rails/registry';
-import { STRIPE_RAIL_NAME } from '@/src/lib/pay/providers/stripe-withdraw-rail';
+import { stripeRailName } from '@/src/lib/pay/providers/stripe-withdraw-rail';
 import type { RailEvent } from '@/src/lib/pay/rails/types';
 import {
   type FairManifest,
@@ -95,12 +95,12 @@ async function handleTransferCreated(stripeEvent: unknown): Promise<void> {
   // #2172 webhook fast path: confirms a withdrawal intent as soon as Stripe
   // reports the transfer, instead of waiting for the reconciliation cron
   // sweep. Idempotent on intent id — see `confirmWithdrawalFromRailEvent`.
-  const stripeRail = getWithdrawRailByName(STRIPE_RAIL_NAME);
+  const stripeRail = getWithdrawRailByName(stripeRailName);
   const intentId = stripeRail ? await confirmWithdrawalFromRailEvent(stripeRail, stripeEvent) : null;
   log.info({ intentId }, 'Transfer created');
 }
 
-/** Platform-account webhook (`POST /pay/api/webhook`, `STRIPE_WEBHOOK_SECRET`). */
+/** Retired platform-account handlers, retained for historical settlement characterization. */
 const PLATFORM_HANDLERS: Readonly<Record<string, StripeEventHandler>> = {
   'payment_intent.succeeded': onRailEvent(handlePaymentSucceeded),
   'payment_intent.payment_failed': onRailEvent(handlePaymentFailed),
@@ -140,6 +140,21 @@ export const payStripeReactor: ReactorHandler = async (event) => {
 
   const entry = getRelayEntry(relayId);
   if (!entry) return;
+  if (entry.ownerDid) {
+    if (event.issuer !== entry.ownerDid || event.payload?.ownerDid !== entry.ownerDid) {
+      entry.error = 'Connector owner mismatch';
+      return;
+    }
+    try {
+      await handleByoPaymentIntentSucceeded(event, true);
+      await handleByoCheckoutPaymentIntent(event, true);
+      entry.handled = true;
+    } catch {
+      // Never retain exception text containing Stripe objects or credential values.
+      entry.error = 'Connector settlement failed';
+    }
+    return;
+  }
 
   const stripeEvent = entry.stripeEvent as { type?: unknown } | null | undefined;
   const eventType = typeof stripeEvent?.type === 'string' ? stripeEvent.type : '';
@@ -168,7 +183,7 @@ export const payStripeReactor: ReactorHandler = async (event) => {
  * the connector's own envelope (`issuer` must be the owner DID in the payload).
  * Never throws: the connector has already answered Stripe.
  */
-async function handleByoPaymentIntentSucceeded(event: BusEvent): Promise<void> {
+async function handleByoPaymentIntentSucceeded(event: BusEvent, retryErrors = false): Promise<void> {
   if (event.type !== 'stripe.payment_intent.succeeded') return;
   const { ownerDid, paymentRequestId, paymentIntentId, amount, currency } = event.payload ?? {};
   if (
@@ -183,8 +198,9 @@ async function handleByoPaymentIntentSucceeded(event: BusEvent): Promise<void> {
     // which the platform webhook ingress (whose import graph is deliberately light) needs until a BYO event arrives.
     const { settlePaymentRequestFromByoStripe } = await import('@/src/lib/pay/payment-requests/byo-settlement');
     await settlePaymentRequestFromByoStripe({ ownerDid, paymentRequestId, paymentIntentId, amount, currency });
-  } catch (error) {
-    log.error({ err: String(error), paymentRequestId, ownerDid }, 'BYO Stripe settlement error');
+  } catch {
+    log.error({ paymentRequestId, ownerDid }, 'BYO Stripe settlement error');
+    if (retryErrors) throw new Error('Connector invoice settlement failed');
   }
 }
 
@@ -196,7 +212,7 @@ async function handleByoPaymentIntentSucceeded(event: BusEvent): Promise<void> {
  * completes the row; this then tells the originating service it was paid, exactly
  * as the platform path does. Never throws: the connector has already answered Stripe.
  */
-async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
+async function handleByoCheckoutPaymentIntent(event: BusEvent, retryErrors = false): Promise<void> {
   if (event.type !== 'stripe.payment_intent.succeeded') return;
   const { ownerDid, payTransactionId, paymentIntentId, amount, currency } = event.payload ?? {};
   if (
@@ -229,6 +245,7 @@ async function handleByoCheckoutPaymentIntent(event: BusEvent): Promise<void> {
     }
   } catch {
     log.error({ payTransactionId, ownerDid }, 'BYO Stripe checkout settlement error');
+    if (retryErrors) throw new Error('Connector checkout settlement failed');
   }
 }
 

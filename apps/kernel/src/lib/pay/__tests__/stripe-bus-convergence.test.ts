@@ -102,7 +102,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
 }));
 
 import { getChainConfig, publish } from '@imajin/bus';
-import { POST } from '../../../../app/pay/api/webhook/route';
+import { POST } from '../../../../app/pay/api/webhook/__tests__/legacy-relay-fixture';
 import { __resetStripeWebhookDedupForTests } from '../providers/stripe-webhook';
 import {
   PAY_STRIPE_REACTOR,

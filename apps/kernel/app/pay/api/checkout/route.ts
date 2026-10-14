@@ -36,7 +36,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolveActingDid } from '@imajin/auth';
 import type { FiatCurrency } from '@/src/lib/pay';
 import { db, transactions } from '@/src/db';
-import { externalRefColumns, STRIPE_BYO_RAIL } from '@/src/lib/pay/external-ref';
+import { externalRefColumns, stripeByoRail } from '@/src/lib/pay/external-ref';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
@@ -115,7 +115,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       amount: (totalAmount / 100).toString(), // Convert cents to dollars
       currency: body.currency || 'CAD',
       status: 'pending',
-      ...externalRefColumns(result.id, byoSellerDid ? STRIPE_BYO_RAIL : undefined),
+      ...externalRefColumns(result.id, byoSellerDid ? stripeByoRail : undefined),
       metadata: byoSellerDid
         ? { ...sessionMetadata, ...(body.customerEmail && { customer_email: body.customerEmail }), platform_fee_cents: 0 }
         : body.metadata,

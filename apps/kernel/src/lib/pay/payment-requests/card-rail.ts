@@ -17,7 +17,7 @@
  * could never settle is not a working rail, so it is not offered.
  */
 import { createLogger } from '@imajin/logger';
-import { stripe, STRIPE_EVENTS_SCOPE } from '@/src/lib/stripe/connector-core';
+import { stripe, stripeEventsScope } from '@/src/lib/stripe/connector-core';
 
 const log = createLogger('kernel');
 
@@ -31,7 +31,7 @@ export type CardRail =
   | { kind: 'none' };
 
 async function hasConnectorRail(sellerDid: string): Promise<boolean> {
-  return (await stripe.keySealed(sellerDid)) && (await stripe.resolveActiveGrant(sellerDid, STRIPE_EVENTS_SCOPE));
+  return (await stripe.keySealed(sellerDid)) && (await stripe.resolveActiveGrant(sellerDid, stripeEventsScope));
 }
 
 /**

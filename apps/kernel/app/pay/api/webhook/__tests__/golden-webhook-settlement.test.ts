@@ -105,7 +105,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
 // `{ signatureVerified: false }` for these fixtures, since none carry a
 // `fair_manifest.signature`. That is expected — see the suite docblock.
 
-import { POST } from '../route';
+import { POST } from './legacy-relay-fixture';
 
 type NextRequestLike = Parameters<typeof POST>[0];
 

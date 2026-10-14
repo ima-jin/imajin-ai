@@ -8,7 +8,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock('@/src/lib/stripe/connector-core', () => ({
   stripe: { keySealed: h.keySealedMock, resolveActiveGrant: h.resolveActiveGrantMock },
-  STRIPE_EVENTS_SCOPE: 'stripe:events',
+  stripeEventsScope: 'stripe:events',
 }));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: h.errorLogMock }),

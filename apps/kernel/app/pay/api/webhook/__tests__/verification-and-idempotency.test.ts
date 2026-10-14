@@ -51,7 +51,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
   settlePaymentRequestFromStripeCheckout: vi.fn(),
 }));
 
-import { POST } from '../route';
+import { POST } from './legacy-relay-fixture';
 
 function makeRequest(hasSignature = true): Parameters<typeof POST>[0] {
   return new Request('http://localhost:3000/pay/api/webhook', {

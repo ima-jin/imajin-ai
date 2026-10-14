@@ -21,7 +21,7 @@ vi.mock('@/src/db', async () => ({
   transactions: (await import('@/src/db/schemas/pay')).transactions,
 }));
 
-import { STRIPE_RAIL, externalRefColumns, whereExternalRef } from '../external-ref';
+import { stripeRail, externalRefColumns, whereExternalRef } from '../external-ref';
 
 // Heavy suite (embedded PGlite / seed replay): the 5000ms default is too tight on contended CI runners (#2548).
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -173,7 +173,7 @@ describe('migration 0178 — pay.transactions rail + external_ref', () => {
       expect(q.sql).toContain('"external_ref"');
       expect(q.sql).toContain('"rail"');
       expect(q.sql).not.toContain('stripe_id');
-      expect(q.params).toEqual([STRIPE_RAIL, 'cs_1']);
+      expect(q.params).toEqual([stripeRail, 'cs_1']);
     });
   });
 });

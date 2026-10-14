@@ -21,7 +21,7 @@ vi.mock('@/src/db', () => ({
 }));
 vi.mock('drizzle-orm', () => ({ eq: (field: unknown, value: unknown) => ({ field, value }) }));
 vi.mock('@/src/lib/stripe/connector-core', () => ({
-  STRIPE_EVENTS_SCOPE: 'stripe:events',
+  stripeEventsScope: 'stripe:events',
   stripePublishableKeyField: (did: string) => `${did}:publishable-key`,
   stripe: { loadSealedCredentials: mocks.loadKey, keySealed: mocks.keySealed, resolveActiveGrant: mocks.grant },
 }));

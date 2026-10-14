@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const { loadSealedCredentialsMock } = vi.hoisted(() => ({ loadSealedCredentialsMock: vi.fn() }));
 
 vi.mock('../connector-core', () => ({
-  STRIPE_EVENTS_SCOPE: 'stripe:events',
+  stripeEventsScope: 'stripe:events',
   stripe: {
     loadSealedCredentials: loadSealedCredentialsMock,
     keySealed: vi.fn().mockResolvedValue(true),
