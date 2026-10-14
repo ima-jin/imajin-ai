@@ -310,7 +310,7 @@ describe('server-verified pledge confirmation', () => {
       amount: 5000, currency: 'CAD', setupIntentId: 'seti_1', customerId: 'cus_1',
     });
     expect(whereParams(1)).toEqual([
-      'plg_1', BACKER_DID, 'pending', 'seti_1', 'cus_1', 5000, 'CAD',
+      'plg_1', EVENT_ID, BACKER_DID, 'pending', 'seti_1', 'cus_1', 5000, 'CAD',
       JSON.stringify({ sellerDid: CREATOR_DID, setupIntentContract: SETUP_INTENT_CONTRACT }),
     ]);
   });

@@ -107,7 +107,8 @@ async function verifyAndConfirm(pledge: Pledge, did: string, paymentMethodId: st
       },
     })
     .where(and(
-      eq(pledges.id, pledge.id), eq(pledges.backerDid, did), eq(pledges.status, 'pending'),
+      eq(pledges.id, pledge.id), eq(pledges.eventId, pledge.eventId),
+      eq(pledges.backerDid, did), eq(pledges.status, 'pending'),
       eq(pledges.stripeSetupIntentId, pledge.stripeSetupIntentId),
       eq(pledges.stripeCustomerId, pledge.stripeCustomerId),
       eq(pledges.amount, pledge.amount), eq(pledges.currency, pledge.currency),
