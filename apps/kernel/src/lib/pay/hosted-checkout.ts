@@ -77,6 +77,9 @@ async function startSellerCheckout(sellerDid: string, input: StartHostedCheckout
     return { ok: true, session, byoSellerDid: rail.ownerDid };
   } catch (error) {
     if (!(error instanceof ByoCheckoutError)) throw error;
+    if (error.code === 'no_key') {
+      return { ok: false, status: 400, error: "This seller hasn't set up card payments", code: SELLER_NO_CARD_RAIL };
+    }
     log.error(
       { err: error.message, code: error.code, stripeStatus: error.stripeStatus, sellerDid },
       "hosted checkout: could not create a Checkout Session on the seller's Stripe account",

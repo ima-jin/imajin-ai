@@ -141,8 +141,7 @@ async function createStripeWebhookEndpoint(
     body: body.toString(),
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`stripe_webhook_provision_failed: ${res.status} ${res.statusText}: ${text}`);
+    throw new Error(`stripe_webhook_provision_failed: HTTP ${res.status}`);
   }
 
   const data = (await res.json()) as StripeWebhookEndpointCreateResponse;
@@ -158,8 +157,7 @@ async function deleteStripeWebhookEndpoint(restrictedKey: string, endpointId: st
     headers: { Authorization: `Bearer ${restrictedKey}` },
   });
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`stripe_webhook_deprovision_failed: ${res.status} ${res.statusText}: ${text}`);
+    throw new Error(`stripe_webhook_deprovision_failed: HTTP ${res.status}`);
   }
 }
 

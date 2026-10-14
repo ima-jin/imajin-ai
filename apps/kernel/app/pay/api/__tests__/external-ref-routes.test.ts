@@ -36,6 +36,11 @@ vi.mock('@/src/lib/pay/providers/node-stripe', () => ({
     stripe: { checkout: { sessions: { create: mocks.payCheckout } } },
   }),
 }));
+vi.mock('@/src/lib/stripe/byo-checkout', () => ({ createByoCheckoutSession: mocks.payCheckout }));
+vi.mock('@/src/lib/pay/payment-requests/card-rail', () => ({
+  resolveCardRail: async (ownerDid: string) => ({ kind: 'connector', ownerDid }),
+  SELLER_NO_CARD_RAIL: 'SELLER_NO_CARD_RAIL',
+}));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: (prefix: string) => `${prefix}_test` }));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: () => new Response(null, { status: 204 }) }));
 vi.mock('@imajin/config', () => ({
@@ -88,6 +93,7 @@ describe('writers set rail + external_ref and no stripe_id (#2176, #2650)', () =
       jsonRequest('https://kernel.test/api/checkout', {
         items: [{ name: 'Ticket', amount: 1000, quantity: 1 }],
         currency: 'CAD',
+        sellerDid: 'did:imajin:seller',
         successUrl: 'https://app.test/ok',
         cancelUrl: 'https://app.test/cancel',
         metadata: { service: 'events', type: 'ticket' },
@@ -98,7 +104,7 @@ describe('writers set rail + external_ref and no stripe_id (#2176, #2650)', () =
     expect(mocks.insertValues).toHaveBeenCalledTimes(1);
     expect(mocks.insertValues.mock.calls[0][0]).toMatchObject({
       status: 'pending',
-      rail: 'stripe',
+      rail: 'stripe-byo',
       externalRef: 'cs_route_1',
     });
     expect(mocks.insertValues.mock.calls[0][0]).not.toHaveProperty('stripeId');

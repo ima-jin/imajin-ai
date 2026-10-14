@@ -126,8 +126,8 @@ function isKeyRefusal(res: StripeResponse): boolean {
 }
 
 function failureOf(res: StripeResponse, action: string): ByoCheckoutError {
-  const detail = res.body.error?.message ?? 'no detail';
-  const message = `stripe_${action}_failed: ${res.status} ${detail}`;
+  // Stripe authentication errors can echo the submitted credential.
+  const message = `stripe_${action}_failed: HTTP ${res.status}`;
   if (isKeyRefusal(res)) return new ByoCheckoutError('key_rejected', message, res.status);
   if (res.status === 429 || res.status >= 500) return new ByoCheckoutError('unavailable', message, res.status);
   return new ByoCheckoutError('request_rejected', message, res.status);

@@ -117,7 +117,6 @@ describe('startHostedCheckout — a seller is named', () => {
   });
 
   it.each([
-    ['no_key', 'CARD_RAIL_KEY_MISSING'],
     ['key_rejected', 'CARD_RAIL_KEY_REJECTED'],
     ['unavailable', 'CARD_RAIL_UNAVAILABLE'],
     ['request_rejected', 'CARD_RAIL_REQUEST_REJECTED'],
@@ -132,6 +131,11 @@ describe('startHostedCheckout — a seller is named', () => {
     h.createByoSessionMock.mockRejectedValue(new Error('db exploded'));
 
     await expect(startHostedCheckout(input())).rejects.toThrow('db exploded');
+  });
+  it('returns SELLER_NO_CARD_RAIL when the key disappears between rail selection and checkout', async () => {
+    h.createByoSessionMock.mockRejectedValue(new ByoCheckoutError('no_key', 'no key'));
+    expect(await startHostedCheckout(input())).toMatchObject({ ok: false, status: 400, code: 'SELLER_NO_CARD_RAIL' });
+    expect(h.platformCheckoutMock).not.toHaveBeenCalled();
   });
 });
 
