@@ -10,8 +10,12 @@ vi.mock('../connector-core', () => ({
     resolveActiveGrant: vi.fn().mockResolvedValue(true),
   },
   stripePublishableKeyField: (did: string) => `stripe-publishable-key:${did}`,
+  stripeWebhookSecretField: (did: string) => `stripe-webhook-secret:${did}`,
 }));
-vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/src/lib/vault', () => ({
+  loadAndUnseal: vi.fn().mockResolvedValue(undefined),
+  vaultFieldStatus: vi.fn().mockResolvedValue('ready'),
+}));
 
 import {
   ByoCheckoutError,
