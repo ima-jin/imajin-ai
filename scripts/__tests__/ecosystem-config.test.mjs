@@ -24,7 +24,7 @@ const EXTERNAL_WRAPPED = new Set([]);
 
 // Next apps (`next start`, in-repo or from a separate repo) that must run via the
 // next binary.
-const NEXT_APPS = ['events', 'fixready', 'karaoke', 'scorecard'];
+const NEXT_APPS = ['fixready', 'karaoke', 'scorecard'];
 
 function loadApps(env) {
   const apps = require(`${DEPLOY_DIR}ecosystem.${env}.config.js`).apps;
@@ -39,19 +39,9 @@ function portOf(app) {
 for (const env of ['dev', 'prod']) {
   describe(`deploy/ecosystem.${env}.config.js (#2447)`, () => {
     const apps = loadApps(env);
-    it('releases dev events only; prod stays kernel-owned until #2516 (#2784)', () => {
-      const events = apps.find((app) => app.name === `${env}-events`);
-      if (env === 'dev') {
-        expect(events).toBeUndefined();
-        expect(apps.some((app) => app.cwd?.endsWith('/apps/events'))).toBe(false);
-      } else {
-        expect(events).toMatchObject({
-          cwd: '/home/jin/prod/imajin-ai/apps/events',
-          script: NEXT_BIN,
-          args: 'start -p 7006',
-          env: { PORT: 7006 },
-        });
-      }
+    it('does not declare events after the respective cutover-window release (#2784)', () => {
+      expect(apps.some((app) => app.name === `${env}-events`)).toBe(false);
+      expect(apps.some((app) => app.cwd?.endsWith('/apps/events'))).toBe(false);
     });
 
     it('has unique app names and ports', () => {

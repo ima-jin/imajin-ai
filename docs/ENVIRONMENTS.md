@@ -60,7 +60,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
 | Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
-| App | events (dev release #2784; prod kernel-owned until #2516) | 3006 | 7006 | jin.imajin.ai/events |
+| App | events (dev #2804; prod release only at #2516 window) | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
 | Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
 | Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
@@ -96,11 +96,12 @@ Caddy route (`jin.imajin.ai/dykil`) are unchanged; `dev-dykil` serves from
 `~/dev/dykil` and `prod-dykil` from `~/prod/dykil`, each a standalone pm2
 process claimed with its own app identity (see `docs/REGISTRATION.md`).
 
-**events ownership split (#2784):** this release changes **dev only**. Dev's
-kernel ecosystem/build/events-only migration ownership is removed. **Prod still
-declares `prod-events` at `~/prod/imajin-ai/apps/events` and keeps its existing
-build, migration and reconciliation path.** Prod release is a separate draft PR,
-held for #2529 soak plus Ryan's sign-off and #2516 window. The `events` schema
+**events ownership split (#2784):** dev releases ownership in #2804. The separate
+prod-window draft removes `prod-events` and scopes prod builds/migrations only
+when it merges in Ryan's #2516 window, after #2529 soak/sign-off and standalone
+prod is running and saved. **Until that merge**, the kernel keeps its existing
+prod ecosystem, build, migration and reconciliation authority at
+`~/prod/imajin-ai/apps/events`; production never relies on a frozen build. The `events` schema
 and data remain app-owned; `apps/events` remains available for prod.
 
 **Before merging dev**, the #2529 operator runs the standalone deploy script

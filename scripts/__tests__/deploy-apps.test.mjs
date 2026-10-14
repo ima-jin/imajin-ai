@@ -56,10 +56,10 @@ function run(root, args, env = {}) {
 
 describe('ecosystem is the positive deploy build boundary (#2784)', () => {
   for (const env of ['dev', 'prod']) {
-    it(`${env} selects declared monorepo apps; prod still owns events`, () => {
+    it(`${env} selects declared monorepo apps after ownership release`, () => {
       const apps = deployApps(require(`../../deploy/ecosystem.${env}.config.js`));
       expect(apps).toContain('kernel');
-      expect(apps.includes('events')).toBe(env === 'prod');
+      expect(apps).not.toContain('events');
       expect(apps).not.toContain('fixready');
       expect(apps.filter((app) => app === 'kernel')).toHaveLength(1);
       expect(apps.includes('corpus')).toBe(env === 'dev');
@@ -125,24 +125,24 @@ describe('ecosystem is the positive deploy build boundary (#2784)', () => {
   it('keeps non-deploy discovery unchanged', () => {
     expect(run(fixture(), ['--dry-run'])).toContain('corpus events kernel');
   });
-  it('prod workflow full build still builds events with unscoped migrations', () => {
+  it('prod-window release bounds full builds and scopes migrations to kernel', () => {
     const root = fixture();
-    run(root, []);
+    run(root, ['--deploy-env', 'prod']);
     expect(readFileSync(join(root, 'build-args'), 'utf8').trim().split('\n'))
-      .toEqual(['corpus', 'events', 'kernel']);
+      .toEqual(['--prod', '--migration-owner=kernel', 'kernel']);
   });
 
-  it('prod workflow incremental build still builds changed events', () => {
+  it('prod-window release no longer builds events-only incremental changes', () => {
     const root = fixture();
     writeFileSync(join(root, '.last-build-sha'), 'previous');
-    run(root, [], { PATH_CHANGES: 'apps/events/app/page.tsx' });
-    expect(readFileSync(join(root, 'build-args'), 'utf8').trim().split('\n'))
-      .toEqual(['events']);
+    expect(run(root, ['--deploy-env', 'prod', '--dry-run'], {
+      PATH_CHANGES: 'apps/events/app/page.tsx',
+    })).toContain('No apps changed');
   });
 
   it('rejects a missing or invalid deployment environment', () => {
     const root = fixture();
-    for (const args of [['--deploy-env'], ['--deploy-env', 'prod'], ['--deploy-env', 'staging'], ['--unknown']]) {
+    for (const args of [['--deploy-env'], ['--deploy-env', 'staging'], ['--unknown']]) {
       expect(() => run(root, args)).toThrow();
     }
   });
@@ -150,18 +150,19 @@ describe('ecosystem is the positive deploy build boundary (#2784)', () => {
 
 describe('kernel deploy workflow ownership wiring', () => {
   for (const env of ['dev', 'prod']) {
-    it(`${env} changes ownership only in dev; prod build and migrations stay unfiltered`, () => {
+    it(`${env} scopes builds and migrations after its ownership release`, () => {
       const workflow = parse(readFileSync(join(ROOT, `.github/workflows/deploy-${env}.yml`), 'utf8'));
       const steps = workflow.jobs.deploy.steps;
       expect(steps.find((step) => step.name === 'Build changed apps').run)
-        .toBe(env === 'dev' ? './scripts/build-changed.sh --deploy-env dev' : './scripts/build-changed.sh');
+        .toBe(`./scripts/build-changed.sh --deploy-env ${env}`);
       expect(steps.find((step) => step.name === 'Run migrations').run)
-        .toBe(env === 'dev' ? 'node scripts/migrate.mjs --owner kernel' : 'node scripts/migrate.mjs');
+        .toBe('node scripts/migrate.mjs --owner kernel');
     });
   }
 
   it.each([
     { env: 'dev', flags: ['--migration-owner=kernel'], expected: ['--owner', 'kernel'] },
+    { env: 'prod', flags: ['--migration-owner=kernel'], expected: ['--owner', 'kernel'] },
     { env: 'prod', flags: [], expected: [] },
   ])('real build.sh forwards $env migration args $expected', ({ env, flags, expected }) => {
     const root = fixture();
