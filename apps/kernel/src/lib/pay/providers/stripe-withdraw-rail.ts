@@ -1,11 +1,9 @@
 /**
  * Stripe implementation of `WithdrawRail` (#2172).
  *
- * The only file outside the pre-existing, allowlisted call sites
- * (`scripts/stripe-import-allowlist.json`) that imports the `stripe`
- * package for the withdraw/reconciliation path — everything else in
- * `lib/pay/rails/` and the withdraw/reconciliation code talks to the
- * `WithdrawRail` interface only. Resolves the node DID's sealed connector
+ * Stripe SDK types and construction stay in `providers/`; the rail registry
+ * and withdraw/reconciliation code talk to the `WithdrawRail` interface only.
+ * Resolves the node DID's sealed connector
  * lazily per reconciliation call, with no platform-key fallback.
  *
  * #2757: RETIRED for new withdrawals. `execute()` used to `transfers.create`

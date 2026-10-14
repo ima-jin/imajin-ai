@@ -34,6 +34,25 @@ describe('node Stripe adapter', () => {
     expect(h.construct).toHaveBeenCalledWith('sk_test_fake');
   });
 
+  it('never reads a Stripe env credential, including when the sealed key is missing', async () => {
+    const originalEnv = process.env;
+    const reads: string[] = [];
+    process.env = new Proxy(originalEnv, {
+      get(target, property) {
+        if (typeof property === 'string' && property.startsWith('STRIPE_')) reads.push(property);
+        return Reflect.get(target, property);
+      },
+    });
+    try {
+      await getNodeStripeClient();
+      h.keys.mockRejectedValue(new SellerNoCardRailError());
+      await expect(getNodeStripeClient()).rejects.toBeInstanceOf(NodeCardRailNotConfiguredError);
+      expect(reads).toEqual([]);
+    } finally {
+      process.env = originalEnv;
+    }
+  });
+
   it('does not cache credentials after connector revocation', async () => {
     await getNodeStripeClient();
     h.keys.mockRejectedValue(new SellerNoCardRailError());

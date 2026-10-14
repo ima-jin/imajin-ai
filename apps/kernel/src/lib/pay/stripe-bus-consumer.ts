@@ -251,6 +251,8 @@ export function ensurePayStripeReactorRegistered(): void {
 
 async function handlePaymentSucceeded(event: RailEvent) {
   const paymentIntent = event.raw as unknown as StripePaymentIntentLike;
+  // Only the node connector may settle or emit effects for its new topups.
+  if (paymentIntent.metadata?.service === 'topup' && paymentIntent.metadata.nodeDid) return;
 
   // Idempotency: skip if already completed
   const existing = await db.select().from(transactions).where(whereExternalRef(paymentIntent.id)).limit(1);
@@ -292,6 +294,7 @@ async function handlePaymentSucceeded(event: RailEvent) {
 
 async function handlePaymentFailed(event: RailEvent) {
   const paymentIntent = event.raw as unknown as StripePaymentIntentLike;
+  if (paymentIntent.metadata?.service === 'topup' && paymentIntent.metadata.nodeDid) return;
 
   log.info({ id: paymentIntent.id, amount: paymentIntent.amount, lastError: paymentIntent.last_payment_error?.message }, 'Payment failed');
 
