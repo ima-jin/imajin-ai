@@ -12,6 +12,8 @@ const helpers = [
   'src/lib/pay/providers/seller-stripe-payments.ts',
   'src/lib/pay/providers/seller-pledge-refund.ts',
   'src/lib/stripe/byo-checkout.ts',
+  'src/lib/stripe/byo-setup-intent.ts',
+  'src/lib/pay/setup-intent-route.ts',
 ];
 
 describe('seller card paths never read node Stripe credentials', () => {
@@ -27,10 +29,14 @@ describe('seller card paths never read node Stripe credentials', () => {
   it('all seller account operations use the one shared sealed key resolver', () => {
     for (const path of [
       'app/pay/api/charge/route.ts', 'app/pay/api/escrow/route.ts',
-      'app/pay/api/setup-intent/route.ts', 'src/lib/pay/app-pledges.ts',
+      'src/lib/stripe/byo-setup-intent.ts', 'src/lib/pay/app-pledges.ts',
       'src/lib/pay/refund.ts', 'src/lib/stripe/byo-checkout.ts',
     ]) {
       expect(readFileSync(resolve(kernel, path), 'utf8')).toContain('resolveDidStripeKeys');
     }
+  });
+  it('pledge collection has no kernel pledge row or events API dependency', () => {
+    const source = readFileSync(resolve(kernel, 'src/lib/pay/app-pledges.ts'), 'utf8');
+    expect(source).not.toMatch(/@\/src\/db|\.select\(|\.insert\(|\.update\(transactions|events\/api|buildPublicUrl/);
   });
 });

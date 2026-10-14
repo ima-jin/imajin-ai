@@ -10,7 +10,8 @@
  *   eventId: string,
  *   pledges: Array<{
  *     pledgeId: string,
- *     setupIntentId: string
+ *     setupIntentId: string,
+ *     sellerDid: string
  *   }>
  * }
  *
@@ -27,8 +28,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { authenticatePayApp } from '@/src/lib/pay/app-settle';
-import { loadAppPledges, chargeBoundPledge, type PledgeReference } from '@/src/lib/pay/app-pledges';
+import { authenticatePayApp } from '@/src/lib/pay/app-service-auth';
+import { loadAppPledges, chargeBoundPledge, pledgeFailure, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
@@ -78,9 +79,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     const bound = await loadAppPledges(auth.appDid, eventId, pledges);
-    if ('error' in bound) {
-      return NextResponse.json({ error: bound.error }, { status: bound.status, headers: cors });
-    }
     const results: Array<{ pledgeId: string; status: 'charged' | 'failed'; error?: string; code?: string }> = [];
     let charged = 0;
     let failed = 0;
@@ -115,13 +113,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
           failed++;
         }
       } catch (err: unknown) {
-        const errorMessage = err instanceof SellerNoCardRailError ? err.message : 'Seller pledge charge failed';
+        const failure = pledgeFailure(err);
+        if (err instanceof SellerNoCardRailError || (failure.status >= 400 && failure.status < 500)) throw err;
         log.error({ pledgeId: pledge.pledgeId }, 'Pledge charge failed');
         results.push({
           pledgeId: pledge.pledgeId,
           status: 'failed',
-          error: errorMessage,
-          ...(err instanceof SellerNoCardRailError && { code: err.code }),
+          error: 'Seller pledge charge failed; reconcile before retrying',
         });
         failed++;
       }
@@ -133,11 +131,15 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       total: pledges.length,
       results,
     }, { headers: cors });
-  } catch {
+  } catch (error) {
     log.error({}, 'Charge pledges error');
+    if (error instanceof SellerNoCardRailError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
+    }
+    const failure = pledgeFailure(error);
     return NextResponse.json(
-      { error: 'Failed to charge pledges' },
-      { status: 500, headers: cors }
+      { error: failure.error, code: failure.code },
+      { status: failure.status, headers: cors }
     );
   }
 });

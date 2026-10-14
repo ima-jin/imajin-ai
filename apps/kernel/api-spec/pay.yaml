@@ -1361,21 +1361,18 @@ paths:
       summary: Charge confirmed pledge setups belonging to the calling app
       description: |
         Requires the app's own service bearer with operator-approved `pay:charge-pledges`.
-        Each `setupIntentId` must resolve to a transaction created by this app during setup.
-        The kernel rejects app mismatches and legacy unbound pledges, then derives the amount,
-        currency, customer and payment method from its recorded transaction and the confirmed
-        Stripe SetupIntent. Caller-supplied card and amount fields are not authority.
-        The persisted pledge seller DID supplies the sealed Stripe key; no node account
-        fallback. Setup/customer/card ownership is verified on that same seller account.
-        A pending transaction is atomically claimed as charging before the rail call. Completed
-        results can be replayed; an interrupted or ambiguous charging outcome fails closed and
-        requires reconciliation, not an automatic second charge after rail idempotency expires.
-
-        This existing charge path reads platform-account setups with a kernel-recorded
-        pledge-setup provenance marker. Seller-BYO setups created by the new
-        pay:setup-intent contract are deliberately not accepted: they live on another
-        Stripe account and require a separate seller-account charging migration.
-        No platform charge or fallback is attempted for those new setups.
+        Every pledge must name `sellerDid`, `pledgeId` and `setupIntentId`. The seller DID
+        selects the sealed BYO connector through the one shared DID resolver. The kernel
+        verifies #2788's SetupIntent binding against the authenticated app and requested
+        seller, pledge and event, then checks the customer buyer and saved card attachment
+        on that same account. Amount, currency, customer and card come only from the verified
+        Stripe setup; caller-supplied payment details are ignored.
+        The entire batch is preflighted before any charge. Missing or mismatched binding
+        is a clear 4xx. No kernel pledge row, events API lookup or platform key is used.
+        A permanent Stripe SetupIntent attempt marker is written before charging.
+        Concurrent attempts use identical Stripe idempotency keys and parameters; later
+        replays return 409 without another charge, including beyond Stripe's retention.
+        Ambiguous outcomes require reconciliation; this flow never clears the marker.
       security:
         - appServiceToken: []
       requestBody:
@@ -1391,17 +1388,24 @@ paths:
                   type: array
                   items:
                     type: object
-                    required: [pledgeId, setupIntentId]
+                    required: [pledgeId, setupIntentId, sellerDid]
                     properties:
                       pledgeId: { type: string }
                       setupIntentId: { type: string }
+                      sellerDid: { type: string, description: "Transacting seller DID, verified against the seller-account setup binding" }
       responses:
         "200":
           description: Charge results for bound pledges
         "401":
           description: Missing or invalid app-service token
         "403":
-          description: Missing approved scope, another app's setup or no app binding
+          description: Missing approved scope or mismatched/missing seller-account app/pledge/event/buyer/card binding
+        "400":
+          description: Invalid pledge references or SELLER_NO_CARD_RAIL
+        "404":
+          description: SetupIntent not found on the selected seller account
+        "409":
+          description: Setup incomplete, charge already attempted, or stale claim requiring reconciliation
 
   /api/emission:
     post:

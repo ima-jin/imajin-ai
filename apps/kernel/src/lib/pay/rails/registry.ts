@@ -10,7 +10,6 @@ import type { Unit } from '../ledger';
 import type { PayInRail, WithdrawRail } from './types';
 import { StripeWithdrawRail, STRIPE_RAIL_NAME } from '../providers/stripe-withdraw-rail';
 import { EmtPayInRail, EMT_RAIL_NAME } from './emt-pay-in-rail';
-export { resolveDidStripeKeys, SellerNoCardRailError } from './stripe-keys';
 
 export { resolveDidStripeKeys, SellerNoCardRailError } from './stripe-keys';
 

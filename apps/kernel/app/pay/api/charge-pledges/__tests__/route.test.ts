@@ -14,12 +14,13 @@ const h = vi.hoisted(() => ({
 vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
   SellerNoCardRailError: class extends Error { code = 'SELLER_NO_CARD_RAIL'; },
 }));
-vi.mock('@/src/lib/pay/app-settle', () => ({
+vi.mock('@/src/lib/pay/app-service-auth', () => ({
   authenticatePayApp: async (request: Request) => request.headers.get('authorization')
     ? { appDid: 'did:imajin:events' }
     : { error: 'App-service token required', status: 401 },
 }));
 vi.mock('@/src/lib/pay/app-pledges', () => ({
+  pledgeFailure: () => ({ status: 503, code: 'PLEDGE_CHARGE_UNAVAILABLE', error: 'Seller pledge charge unavailable' }),
   loadAppPledges: async (_app: string, _event: string, pledges: unknown[]) => pledges,
   chargeBoundPledge: async (pledge: { pledgeId: string; stripePaymentMethodId: string }) => {
     if (!pledge.stripePaymentMethodId) throw new Error('Missing Stripe customer or payment method');
@@ -53,6 +54,8 @@ const KEY = 'test-pay-service-key';
 function pledge(id: string, overrides: Record<string, unknown> = {}) {
   return {
     pledgeId: id,
+    sellerDid: 'did:imajin:seller',
+    setupIntentId: `seti_${id}`,
     amount: 1000,
     currency: 'CAD',
     stripeCustomerId: `cus_${id}`,
@@ -71,7 +74,6 @@ function request(pledges: unknown[]) {
 
 beforeEach(() => {
   h.create.mockReset();
-  process.env.PAY_SERVICE_API_KEY = KEY;
 });
 
 describe('POST /pay/api/charge-pledges', () => {
@@ -110,7 +112,7 @@ describe('POST /pay/api/charge-pledges', () => {
     expect(body).toMatchObject({ charged: 2, failed: 1, total: 3 });
     expect(body.results).toEqual([
       { pledgeId: 'p1', status: 'charged' },
-      { pledgeId: 'p2', status: 'failed', error: 'Seller pledge charge failed' },
+      { pledgeId: 'p2', status: 'failed', error: 'Seller pledge charge failed; reconcile before retrying' },
       { pledgeId: 'p3', status: 'charged' },
     ]);
   });
@@ -126,7 +128,7 @@ describe('POST /pay/api/charge-pledges', () => {
 
     expect(h.create).toHaveBeenCalledTimes(1);
     expect(body.results).toEqual([
-      { pledgeId: 'p1', status: 'failed', error: 'Seller pledge charge failed' },
+      { pledgeId: 'p1', status: 'failed', error: 'Seller pledge charge failed; reconcile before retrying' },
       { pledgeId: 'p2', status: 'charged' },
     ]);
     expect(body).toMatchObject({ charged: 1, failed: 1 });
@@ -143,7 +145,7 @@ describe('POST /pay/api/charge-pledges', () => {
     ]);
   });
 
-  it('rejects a request without the service API key', async () => {
+  it('rejects a request without app-service authentication', async () => {
     const res = await POST(
       jsonPostRequest('https://kernel.test/pay/api/charge-pledges', { eventId: 'evt_1', pledges: [pledge('p1')] }) as never,
       {} as never,

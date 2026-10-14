@@ -60,12 +60,8 @@ vi.mock('@/src/lib/pay/refund', async (original) => ({
 }));
 
 import { POST as refundRoute } from '../../../../app/pay/api/refund/route';
-import { POST as chargeRoute } from '../../../../app/pay/api/charge-pledges/route';
-import { POST as setupRoute } from '../../../../app/pay/api/setup-intent/route';
 import { db, transactions, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { SESSION_COOKIE_NAME } from '@imajin/config';
-import { SellerNoCardRailError } from '../rails/stripe-keys';
 
 let harness: PgliteLedgerHarness;
 const APP = 'did:imajin:app-a';
@@ -77,9 +73,6 @@ function request(path: string, body: unknown, token = 'service', cookie = '') {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(cookie ? { Cookie: cookie } : {}) },
     body: JSON.stringify(body),
   }) as never;
-}
-function chargeBody() {
-  return { eventId: 'evt', pledges: [{ pledgeId: 'p1', setupIntentId: 'seti_1' }] };
 }
 async function payment(appDid: string | null = APP, type = 'checkout') {
   await db.insert(transactions).values({
@@ -131,7 +124,6 @@ beforeEach(async () => {
 
 describe.each([
   ['refund', refundRoute, () => ({ paymentId: 'cs_payment' }), 'checkout', 'pay:refund'],
-  ['charge-pledges', chargeRoute, chargeBody, 'pledge', 'pay:charge-pledges'],
 ] as const)('%s app authority', (path, route, body, type, scope) => {
   it('rejects the retired shared key with no money movement', async () => {
     process.env.PAY_SERVICE_API_KEY = 'retired-shared-key';
@@ -164,192 +156,5 @@ describe.each([
   it('allows the owning app with the approved scope', async () => {
     await payment(APP, type);
     expect((await route(request(path, body()))).status).toBe(200);
-  });
-});
-
-describe('pledge recorded authority', () => {
-  it.each([
-    { deleted: true },
-    { metadata: { did: OTHER } },
-    { metadata: { did: 'did:imajin:backer', buyerDid: OTHER } },
-  ])('refuses a deleted or incorrectly bound customer %j', async (customer) => {
-    await payment(APP, 'pledge');
-    h.customer.mockResolvedValue(customer);
-    const response = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect((await response.json()).failed).toBe(1);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it('refuses a saved payment method attached to a different customer', async () => {
-    await payment(APP, 'pledge');
-    h.method.mockResolvedValue({ customer: 'cus_other' });
-    const response = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect((await response.json()).failed).toBe(1);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it('rejects missing seller identity before reading any key', async () => {
-    const response = await setupRoute(request('setup-intent',
-      { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } },
-      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(400);
-    expect(h.keys).not.toHaveBeenCalled();
-  });
-  it('uses persisted seller rather than a caller-supplied seller to charge', async () => {
-    await payment(APP, 'pledge');
-    await chargeRoute(request('charge-pledges', { ...chargeBody(), sellerDid: OTHER }));
-    expect(h.keys).toHaveBeenCalledWith('did:imajin:seller');
-  });
-  it('rejects missing seller keys without falling back to environment credentials', async () => {
-    await payment(APP, 'pledge');
-    vi.stubEnv('STRIPE_SECRET_KEY', 'test-only-platform-key');
-    h.keys.mockRejectedValue(new SellerNoCardRailError());
-    const response = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect((await response.json()).results[0]).toMatchObject({ status: 'failed', code: 'SELLER_NO_CARD_RAIL' });
-    expect(h.create).not.toHaveBeenCalled();
-    expect((await db.select().from(transactions))[0].status).toBe('pending');
-    vi.unstubAllEnvs();
-  });
-  it('refuses legacy platform pledges before looking up cards', async () => {
-    await payment(APP, 'pledge');
-    await db.update(transactions).set({ rail: 'stripe' });
-    const response = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect(response.status).toBe(409);
-    expect((await response.json()).error).toContain('Legacy platform');
-    expect(h.retrieve).not.toHaveBeenCalled();
-  });
-  it.each(['app_did', 'sellerDid', 'did', 'eventId', 'amount', 'currency'])('verifies setup %s binding before a charge', async (field) => {
-    await payment(APP, 'pledge');
-    const setup = await h.retrieve();
-    setup.metadata[field] = 'mismatched';
-    const response = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect((await response.json()).failed).toBe(1);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it('refuses setup without seller publishable key even when platform key exists', async () => {
-    vi.stubEnv('STRIPE_PUBLISHABLE_KEY', 'test-only-platform-publishable');
-    h.keys.mockResolvedValue({ secretKey: 'test-only-seller-key', publishableKey: undefined });
-    const response = await setupRoute(request('setup-intent',
-      { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt', sellerDid: 'did:imajin:seller' } },
-      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
-    expect(h.setup).not.toHaveBeenCalled();
-    expect(await db.select().from(transactions)).toEqual([]);
-    vi.unstubAllEnvs();
-  });
-  it('returns missing card rail for setup rather than invoking the SDK', async () => {
-    h.keys.mockRejectedValue(new SellerNoCardRailError());
-    const response = await setupRoute(request('setup-intent',
-      { amount: 1000, currency: 'CAD', sellerDid: 'did:imajin:seller', metadata: { eventId: 'evt' } },
-      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
-    expect(h.setup).not.toHaveBeenCalled();
-  });
-  it('cannot turn an app checkout into pledge authority by spoofing type and metadata', async () => {
-    await payment(APP, 'pledge');
-    await db.update(transactions).set({
-      idempotencyKey: null, externalRef: 'cs_forged',
-      metadata: { eventId: 'evt', stripeCustomerId: 'cus_recorded', setupIntentId: 'seti_1' },
-    });
-    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(403);
-    expect(h.create).not.toHaveBeenCalled();
-    expect(h.retrieve).not.toHaveBeenCalled();
-  });
-  it('keeps a processing payment non-completed and replays without a second rail call', async () => {
-    await payment(APP, 'pledge');
-    h.create.mockResolvedValue({ id: 'pi_processing', status: 'processing' });
-    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(200);
-    const [row] = await db.select().from(transactions);
-    expect(row).toMatchObject({ status: 'processing', externalRef: 'pi_processing' });
-    expect(row.sourceKind).not.toBe('receipt');
-    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(200);
-    expect(h.create).toHaveBeenCalledTimes(1);
-  });
-  it('fails closed after an ambiguous rail error, even if the caller retries much later', async () => {
-    await payment(APP, 'pledge');
-    h.create.mockRejectedValue(new Error('lost rail response'));
-    const first = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect((await first.json()).failed).toBe(1);
-    const [row] = await db.select().from(transactions);
-    expect(row.status).toBe('charging');
-    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(409);
-    expect(h.create).toHaveBeenCalledTimes(1);
-  });
-  it('a completed pledge retains its receipt for an owning-app refund', async () => {
-    await payment(APP, 'pledge');
-    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(200);
-    const [row] = await db.select().from(transactions);
-    expect(row).toMatchObject({ status: 'completed', externalRef: 'pi_1', appDid: APP });
-    expect((await refundRoute(request('refund', { paymentId: 'pi_1' }))).status).toBe(200);
-  });
-  it.each([
-    { amount: '0' },
-    { metadata: { eventId: 'evt' } },
-    { status: 'refunded' },
-  ])('refuses invalid recorded pledge state %j', async (values) => {
-    await payment(APP, 'pledge');
-    await db.update(transactions).set(values);
-    expect((await chargeRoute(request('charge-pledges', chargeBody()))).status).toBe(409);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it.each([
-    { pledges: [{ pledgeId: 'p1' }] },
-    { pledges: [null] },
-    { pledges: [{ pledgeId: 'p1', setupIntentId: 'seti_1' }, { pledgeId: 'p2', setupIntentId: 'seti_1' }] },
-  ])('rejects missing or duplicated setup references', async ({ pledges }) => {
-    await payment(APP, 'pledge');
-    expect((await chargeRoute(request('charge-pledges', { eventId: 'evt', pledges }))).status).toBe(400);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it('ignores caller amount and card fields, then replays without charging twice', async () => {
-    await payment(APP, 'pledge');
-    const body = { eventId: 'evt', pledges: [{ pledgeId: 'p1', setupIntentId: 'seti_1',
-      amount: 999999, stripeCustomerId: 'cus_other', stripePaymentMethodId: 'pm_other' }] };
-    expect((await chargeRoute(request('charge-pledges', body))).status).toBe(200);
-    expect(h.create).toHaveBeenCalledWith(expect.objectContaining({
-      amount: 1000, currency: 'cad', customer: 'cus_recorded', payment_method: 'pm_recorded',
-    }), { idempotencyKey: 'pledge-charge:tx_payment' });
-    expect((await chargeRoute(request('charge-pledges', body))).status).toBe(200);
-    expect(h.create).toHaveBeenCalledTimes(1);
-  });
-  it('preflights the entire batch, refusing an unowned last item without charging the first', async () => {
-    await payment(APP, 'pledge');
-    const body = chargeBody();
-    body.pledges.push({ pledgeId: 'p2', setupIntentId: 'seti_unknown' });
-    expect((await chargeRoute(request('charge-pledges', body))).status).toBe(403);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it('refuses a different campaign', async () => {
-    await payment(APP, 'pledge');
-    expect((await chargeRoute(request('charge-pledges', { ...chargeBody(), eventId: 'other' }))).status).toBe(403);
-  });
-  it.each([
-    { status: 'requires_action', customer: 'cus_recorded', payment_method: 'pm_recorded' },
-    { status: 'succeeded', customer: 'cus_other', payment_method: 'pm_recorded' },
-  ])('does not charge an unconfirmed or mismatched setup', async (setup) => {
-    await payment(APP, 'pledge');
-    h.retrieve.mockResolvedValue(setup);
-    const response = await chargeRoute(request('charge-pledges', chargeBody()));
-    expect((await response.json()).failed).toBe(1);
-    expect(h.create).not.toHaveBeenCalled();
-  });
-  it('records the verified app and backer on pledge setup', async () => {
-    const response = await setupRoute(request('setup-intent',
-      { amount: 1000, currency: 'CAD', sellerDid: 'did:imajin:seller', metadata: { eventId: 'evt', app_did: OTHER, did: 'spoof' } },
-      'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(200);
-    const [row] = await db.select().from(transactions);
-    expect(row).toMatchObject({ appDid: APP, fromDid: 'did:imajin:backer', type: 'pledge',
-      amount: '10.00000000', externalRef: 'seti_new', idempotencyKey: 'pledge-setup:seti_new' });
-    expect(row).toMatchObject({ rail: 'stripe-byo', toDid: 'did:imajin:seller' });
-    expect(h.keys).toHaveBeenCalledWith('did:imajin:seller');
-    expect(await response.json()).toMatchObject({ publishableKey: 'test-only-publishable-key' });
-    expect(h.setup).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: expect.objectContaining({ app_did: APP, did: 'did:imajin:backer' }),
-    }));
-  });
-  it('requires a backer session in addition to the app token', async () => {
-    expect((await setupRoute(request('setup-intent', { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt' } }))).status).toBe(401);
-    expect(h.setup).not.toHaveBeenCalled();
   });
 });
