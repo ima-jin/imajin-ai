@@ -186,6 +186,10 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
     if (auth.denied) return auth.denied;
     const actingDid = auth.actingDid;
 
+    if (action !== 'release' && action !== 'refund') {
+      return NextResponse.json({ error: 'action must be release or refund', code: 'INVALID_ESCROW_ACTION' }, { status: 400 });
+    }
+
     if (provider !== 'stripe') {
       return NextResponse.json({ error: 'Escrow release/refund not supported by this provider' }, { status: 400 });
     }
@@ -195,11 +199,15 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
       return NextResponse.json({ error: 'Escrow has no seller-owned card rail', code: 'LEGACY_ESCROW_UNSUPPORTED' }, { status: 422 });
     }
     const metadata = transaction.metadata as Record<string, unknown> | null;
-    if (![transaction.fromDid, transaction.toDid, metadata?.arbiter_did].includes(actingDid)) {
-      return NextResponse.json({ error: 'Forbidden - identity is not an escrow party' }, { status: 403 });
+    const actionParty = action === 'release' ? transaction.fromDid : transaction.toDid;
+    if (!actingDid || ![actionParty, metadata?.arbiter_did].includes(actingDid)) {
+      return NextResponse.json(
+        { error: 'Forbidden - identity is not authorized for this escrow action', code: 'ESCROW_ACTION_FORBIDDEN' },
+        { status: 403 },
+      );
     }
     const keys = await resolveDidStripeKeys(transaction.toDid);
-    const result = await updateSellerEscrow(keys.secretKey, escrowId, action === 'refund' ? 'refund' : 'release');
+    const result = await updateSellerEscrow(keys.secretKey, escrowId, action);
     await markSellerEscrow(transaction.id, result.status === 'refunded' ? 'refunded' : 'released');
     
     return NextResponse.json({

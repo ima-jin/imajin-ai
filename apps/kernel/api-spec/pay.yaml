@@ -1086,7 +1086,11 @@ paths:
       summary: Release or refund an escrow
       description: |
         Card updates use the persisted escrow recipient's sealed connector, not caller metadata.
-        Only a recorded escrow party may update it. Legacy platform escrows fail clearly.
+        Release/capture is allowed only for the recorded depositor (`fromDid`) or arbiter.
+        Refund/cancel is allowed only for the recorded recipient (`toDid`) or arbiter.
+        Unsupported actions are rejected rather than defaulting to capture. Legacy platform
+        escrows fail clearly. Capture/cancel updates the escrow row synchronously to
+        released/refunded; it is not a pending hosted checkout awaiting a completion webhook.
       security:
         - bearerAuth: []
       requestBody:
