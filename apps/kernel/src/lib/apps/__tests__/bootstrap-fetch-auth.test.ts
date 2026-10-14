@@ -117,4 +117,17 @@ describe('verifyBootstrapFetchAuth', () => {
     expect((await verifyBootstrapFetchAuth(first)).status).toBe('ok');
     expect((await verifyBootstrapFetchAuth(second)).status).toBe('ok');
   });
+
+  it('retains future-dated nonces until their full signature validity window ends', async () => {
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      const req = signedRequest(keypair.privateKey, { timestamp: now + 59_000 });
+      expect((await verifyBootstrapFetchAuth(req)).status).toBe('ok');
+      vi.mocked(Date.now).mockReturnValue(now + 61_000);
+      expect((await verifyBootstrapFetchAuth(req)).status).toBe('replayed_nonce');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
 });

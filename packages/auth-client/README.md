@@ -140,6 +140,33 @@ The browser entry's import graph is guaranteed free of node built-ins,
 `next/headers`, and keystore/signing-key code; `tests/browser-entry.test.ts`
 bundles it for a browser target to enforce that.
 
+## App-declared secrets (#2799)
+
+After `loadAppSigningKey()` establishes the bootstrap keystore, server code
+can call `loadFromVault({ keys: [{ key: 'SESSION_SECRET', onMissing: 'fail' }] })`.
+It returns `{ values, degraded }`. `appDid`, `kernelUrl`, and `keystorePath`
+use the same environment defaults as `loadAppSigningKey()`. Names must match
+the app manifest's `secrets` declarations; no grant IDs or generation recipes
+are supplied by the caller.
+
+This auth-client helper is **not** the generic grant loader exported by
+`@imajin/auth`; that API and its deferred acknowledgement handles are unchanged.
+Here, the bound bootstrap keystore (not the registered app signing key)
+authenticates every fetch. Domain, app DID, requested names, recipient key,
+nonce and timestamp are signed. The kernel returns only a vault-core sealed
+envelope; the SDK checks the decrypted DID, nonce and requested names before
+returning values. Rotation is picked up on the next fetch.
+
+Values stay in process memory: never persist, log, or copy them into environment
+variables. `onMissing: 'fail'` throws a value-free error; `'degrade'` omits
+the unavailable name from `values` and lists it in `degraded`. Each key uses
+an independent fresh request so optional keys cannot hide required ones.
+HTTPS is required except for literal loopback hosts; redirects are refused.
+The endpoint refuses inactive apps, revoked/undeclared names, wrong keys,
+altered requests and nonce replay. Nonces are currently tracked in the kernel
+process, matching the existing single-instance bootstrap fetch mechanism.
+This helper does not issue acknowledgements or claim that a fetched value was used.
+
 ## Part of Imajin
 
 [Imajin](https://imajin.ai) — sovereign technology infrastructure. Open source.
