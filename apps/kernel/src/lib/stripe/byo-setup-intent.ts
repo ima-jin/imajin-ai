@@ -9,7 +9,7 @@ import {
   type SetupIntentBinding,
   type VerifySetupIntentInput,
 } from '@/src/lib/pay/setup-intent';
-import { stripe, STRIPE_EVENTS_SCOPE } from './connector-core';
+import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 const API = 'https://api.stripe.com/v1';
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -25,13 +25,6 @@ function unavailable(): SetupIntentError {
   return new SetupIntentError(503, 'SETUP_INTENT_UNAVAILABLE', 'Seller payment setup is unavailable');
 }
 
-async function loadSellerKey(sellerDid: string): Promise<string> {
-  const credentials = await stripe.loadSealedCredentials(sellerDid);
-  if (!credentials?.apiKey || !await stripe.resolveActiveGrant(sellerDid, STRIPE_EVENTS_SCOPE)) {
-    throw new SetupIntentError(503, 'SELLER_NO_CARD_RAIL', 'Seller has no active BYO card connector');
-  }
-  return credentials.apiKey;
-}
 
 /** Never include upstream error text or the sealed key in a response/log. */
 async function stripeRequest(key: string, path: string, form?: URLSearchParams): Promise<Record<string, unknown>> {
@@ -102,7 +95,9 @@ async function expandedOrRetrieve(key: string, value: unknown, collection: strin
 }
 
 export async function createByoSetupIntent(appDid: string, input: SetupIntentBinding) {
-  const key = await loadSellerKey(input.sellerDid);
+  const { secretKey: key, publishableKey } = await resolveDidStripeKeys(input.sellerDid);
+  // The client cannot confirm a SetupIntent without this account's public key.
+  if (!publishableKey) throw new SellerNoCardRailError();
   // A fresh customer avoids accidentally reusing another buyer's record:
   // Stripe's ordinary customer list does not support filtering metadata.
   const customer = await stripeRequest(key, '/customers', new URLSearchParams({
@@ -128,11 +123,11 @@ export async function createByoSetupIntent(appDid: string, input: SetupIntentBin
   if (!metadataMatches(intent.metadata, expected)) {
     throw unavailable();
   }
-  return { clientSecret: intent.client_secret, setupIntentId: intent.id, customerId: customer.id };
+  return { clientSecret: intent.client_secret, setupIntentId: intent.id, customerId: customer.id, publishableKey };
 }
 
 export async function verifyByoSetupIntent(appDid: string, input: VerifySetupIntentInput) {
-  const key = await loadSellerKey(input.sellerDid);
+  const { secretKey: key } = await resolveDidStripeKeys(input.sellerDid);
   const intent = await stripeRequest(key, `/setup_intents/${encodeURIComponent(input.setupIntentId)}?expand[]=customer&expand[]=payment_method`);
   const paymentMethodId = assertIntent(intent, appDid, input);
   const customer = await expandedOrRetrieve(key, intent.customer, 'customers', input.customerId);

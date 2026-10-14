@@ -6,9 +6,13 @@ const mocks = vi.hoisted(() => ({
   registry: vi.fn(),
   select: vi.fn(),
   loadKey: vi.fn(),
+  keySealed: vi.fn(),
+  publishableKey: vi.fn(),
   grant: vi.fn(),
   fetch: vi.fn(),
 }));
+vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: mocks.publishableKey }));
+vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn() }) }));
 
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: mocks.verifyToken }));
 vi.mock('@/src/db', () => ({
@@ -18,7 +22,8 @@ vi.mock('@/src/db', () => ({
 vi.mock('drizzle-orm', () => ({ eq: (field: unknown, value: unknown) => ({ field, value }) }));
 vi.mock('@/src/lib/stripe/connector-core', () => ({
   STRIPE_EVENTS_SCOPE: 'stripe:events',
-  stripe: { loadSealedCredentials: mocks.loadKey, resolveActiveGrant: mocks.grant },
+  stripePublishableKeyField: (did: string) => `${did}:publishable-key`,
+  stripe: { loadSealedCredentials: mocks.loadKey, keySealed: mocks.keySealed, resolveActiveGrant: mocks.grant },
 }));
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => ({ 'Access-Control-Allow-Origin': 'https://events.test' }),
@@ -74,6 +79,8 @@ beforeEach(() => {
   mocks.registry.mockResolvedValue([{ status: 'active', approved: ['pay:setup-intent'] }]);
   mocks.select.mockReturnValue({ from: () => ({ where: () => ({ limit: mocks.registry }) }) });
   mocks.loadKey.mockResolvedValue({ apiKey: 'rk_test_seller' });
+  mocks.keySealed.mockResolvedValue(true);
+  mocks.publishableKey.mockResolvedValue('pk_test_seller');
   mocks.grant.mockResolvedValue(true);
   mocks.fetch.mockImplementation(async () => reply(intent()));
   vi.stubGlobal('fetch', mocks.fetch);
@@ -82,6 +89,11 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('registered-app BYO SetupIntent creation', () => {
+  it.each([undefined, ''])('refuses creation without a seller publishable key %j before any Stripe writes', async (key) => {
+    mocks.publishableKey.mockResolvedValue(key);
+    await expectFailure(await create(request(binding)), 503, 'SELLER_NO_CARD_RAIL');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
   it('creates a buyer-bound customer and an app/pledge-bound intent on only the seller key', async () => {
     mocks.fetch.mockResolvedValueOnce(reply(customer())).mockResolvedValueOnce(reply({ ...intent(), customer: 'cus_123' }));
     const response = await create(request({
@@ -91,8 +103,9 @@ describe('registered-app BYO SetupIntent creation', () => {
       appDid: OTHER_APP,
     }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ clientSecret: 'seti_123_secret_test', setupIntentId: 'seti_123', customerId: 'cus_123' });
+    expect(await response.json()).toEqual({ clientSecret: 'seti_123_secret_test', setupIntentId: 'seti_123', customerId: 'cus_123', publishableKey: 'pk_test_seller' });
     expect(mocks.loadKey).toHaveBeenCalledWith(SELLER);
+    expect(mocks.publishableKey).toHaveBeenCalledWith(`${SELLER}:publishable-key`);
     expect(mocks.grant).toHaveBeenCalledWith(SELLER, 'stripe:events');
     expect(mocks.fetch).toHaveBeenCalledTimes(2);
     const calls = mocks.fetch.mock.calls;
@@ -141,6 +154,14 @@ describe('registered-app BYO SetupIntent creation', () => {
 });
 
 describe('read-only verification', () => {
+  it('verifies with the sealed secret even when no publishable key exists', async () => {
+    mocks.publishableKey.mockResolvedValue(undefined);
+    const response = await verify(request(verification));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ verified: true, ...verification, paymentMethodId: 'pm_123' });
+    expect(mocks.fetch.mock.calls[0][1].method).toBe('GET');
+    expect(mocks.fetch.mock.calls[0][1].headers.Authorization).toBe('Bearer rk_test_seller');
+  });
   it('returns the exact verified contract; repeated verification only performs reads', async () => {
     for (let i = 0; i < 2; i++) {
       const response = await verify(request(verification));
@@ -286,6 +307,13 @@ describe.each([['create', create, binding], ['verify', verify, verification]] as
   it('fails closed for revoked seller Stripe event grant', async () => {
     mocks.grant.mockResolvedValue(false);
     await expectFailure(await handler(request(body)), 503, 'SELLER_NO_CARD_RAIL');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the sealed credential grant is revoked', async () => {
+    mocks.keySealed.mockResolvedValue(false);
+    await expectFailure(await handler(request(body)), 503, 'SELLER_NO_CARD_RAIL');
+    expect(mocks.loadKey).not.toHaveBeenCalled();
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 
