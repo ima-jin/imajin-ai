@@ -20,7 +20,7 @@ export async function settleNodeTopupFromStripe(input: SettleByoCheckoutInput): 
       eq(transactions.service, 'topup'),
       eq(transactions.type, 'topup'),
     )).limit(1);
-    if (!row || row.status !== 'pending') return false;
+    if (row?.status !== 'pending') return false;
 
     const metadata = (row.metadata ?? {}) as Record<string, unknown>;
     const topupAmount = Number(row.amount);

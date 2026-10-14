@@ -13,7 +13,7 @@ export async function resolveDidStripeKeys(did: string): Promise<{
   secretKey: string;
   publishableKey: string | undefined;
 }> {
-  if (!did || !did.startsWith('did:')) throw new SellerNoCardRailError();
+  if (!did?.startsWith('did:')) throw new SellerNoCardRailError();
   // Enumerating other rails must not initialize the Stripe connector or vault.
   const { resolveCardRail } = await import('../payment-requests/card-rail');
   const rail = await resolveCardRail(did);
