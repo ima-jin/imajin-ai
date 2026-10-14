@@ -76,13 +76,13 @@ describe('seller routes', () => {
   });
   it.each([charge, escrow])('does not create an unconfirmable intent when seller publishable key is absent', async (handler) => {
     m.keys.mockResolvedValue({ secretKey: 'sk_test_fake', publishableKey: undefined });
-    expect((await handler(req(handler === charge ? chargeBody : escrowBody))).status).toBe(422);
+    expect((await handler(req(handler === charge ? chargeBody : escrowBody))).status).toBe(400);
     expect(m.charge).not.toHaveBeenCalled(); expect(m.escrow).not.toHaveBeenCalled();
   });
   it.each([charge, escrow])('missing sealed key fails closed with no platform fallback', async (handler) => {
     m.keys.mockRejectedValue(new SellerNoCardRailError());
     const response = await handler(req(handler === charge ? chargeBody : escrowBody));
-    expect(response.status).toBe(422);
+    expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
     expect(m.charge).not.toHaveBeenCalled(); expect(m.escrow).not.toHaveBeenCalled();
   });
@@ -127,7 +127,7 @@ describe('seller routes', () => {
   it('allows stored arbiter and fails closed if stored seller loses keys', async () => {
     m.auth.mockResolvedValue({ identity: { did: 'did:test:arbiter' } });
     m.keys.mockRejectedValue(new SellerNoCardRailError());
-    expect((await update(req({ escrowId: result.id, provider: 'stripe' }))).status).toBe(422);
+    expect((await update(req({ escrowId: result.id, provider: 'stripe' }))).status).toBe(400);
     expect(m.update).not.toHaveBeenCalled();
   });
   it('preserves depositor authentication', async () => {

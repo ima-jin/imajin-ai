@@ -121,7 +121,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
     }, { headers: cors });
   } catch (error) {
     if (error instanceof SellerNoCardRailError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 503, headers: cors });
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
     }
     log.error({}, 'Seller refund failed');
     return NextResponse.json(

@@ -156,7 +156,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }, { headers: cors });
   } catch (error) {
     if (error instanceof SellerNoCardRailError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 422, headers: cors });
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
     }
     log.error({}, 'Escrow error');
     return NextResponse.json(
@@ -214,7 +214,7 @@ export const PUT = withLogger('kernel', async (request: NextRequest, { log }) =>
     });
   } catch (error) {
     if (error instanceof SellerNoCardRailError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 422 });
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     }
     log.error({}, 'Escrow release error');
     return NextResponse.json(

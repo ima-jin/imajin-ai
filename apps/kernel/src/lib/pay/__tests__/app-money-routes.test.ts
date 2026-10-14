@@ -230,7 +230,7 @@ describe('pledge recorded authority', () => {
     const response = await setupRoute(request('setup-intent',
       { amount: 1000, currency: 'CAD', metadata: { eventId: 'evt', sellerDid: 'did:imajin:seller' } },
       'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
     expect(h.setup).not.toHaveBeenCalled();
     expect(await db.select().from(transactions)).toEqual([]);
@@ -241,7 +241,7 @@ describe('pledge recorded authority', () => {
     const response = await setupRoute(request('setup-intent',
       { amount: 1000, currency: 'CAD', sellerDid: 'did:imajin:seller', metadata: { eventId: 'evt' } },
       'service', `${SESSION_COOKIE_NAME}=${Buffer.from(JSON.stringify({ alg: 'EdDSA' })).toString('base64url')}.payload.signature`));
-    expect(response.status).toBe(503);
+    expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
     expect(h.setup).not.toHaveBeenCalled();
   });

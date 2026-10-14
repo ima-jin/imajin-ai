@@ -154,7 +154,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }, { headers: cors });
   } catch (error) {
     if (error instanceof SellerNoCardRailError) {
-      return NextResponse.json({ error: error.message, code: error.code }, { status: 422, headers: cors });
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 400, headers: cors });
     }
     log.error({}, 'Charge error');
     return NextResponse.json(

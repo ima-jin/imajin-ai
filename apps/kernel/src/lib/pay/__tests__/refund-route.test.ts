@@ -220,7 +220,7 @@ describe('POST /api/refund — partial refund guard (#949)', () => {
     vi.stubEnv('STRIPE_SECRET_KEY', 'test-only-platform-key');
     mocks.keysMock.mockRejectedValue(new SellerNoCardRailError());
     const res = await POST(makeRequest({ paymentId: BASE_TX.externalRef }) as any);
-    expect(res.status).toBe(503);
+    expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ code: 'SELLER_NO_CARD_RAIL' });
     expect(mocks.refundMock).not.toHaveBeenCalled();
     expect(mocks.insertMock).not.toHaveBeenCalled();
