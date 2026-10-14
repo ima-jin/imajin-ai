@@ -217,6 +217,20 @@ export type {
 export { requireHardDIDOrAppToken } from "./require-hard-did-or-app-token";
 export { resolveEffectiveDid } from "./resolve-effective-did";
 export type { EffectiveDidResult } from "./resolve-effective-did";
+export {
+  canonicalKernelWebhookPayload,
+  verifyKernelWebhook,
+  KernelWebhookError,
+  createFileKernelWebhookPinStore,
+  createMemoryKernelWebhookNonceStore,
+} from "./kernel-webhook";
+export type {
+  KernelWebhookErrorCode,
+  KernelWebhookKey,
+  KernelWebhookPinStore,
+  KernelWebhookNonceStore,
+  VerifyKernelWebhookOptions,
+} from "./kernel-webhook";
 export { resolveActingDid, resolveComposedBy, isUnderActAs } from "./acting-did";
 export {
   GRANT_SCOPE_REGISTRY,
