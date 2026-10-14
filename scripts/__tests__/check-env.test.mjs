@@ -20,11 +20,50 @@ describe('signed kernel callback configuration (#2798)', () => {
     'scripts/check-env.ts',
     'scripts/setup-local.sh',
     'docs/ENVIRONMENTS.md',
-    'docs/ops/DEPLOY-POSTURE.md',
-    'deploy/README.md',
   ])('does not require a shared app webhook secret in %s', (file) => {
     expect(readFileSync(join(REPO_ROOT, file), 'utf8'))
       .not.toMatch(/(COFFEE|LEARN|MARKET|EVENTS|NOTIFY)_WEBHOOK_SECRET/);
+  });
+  it.each([
+    ['deploy/README.md', '## market is no longer', 'MARKET', 'market#15'],
+    ['docs/ops/DEPLOY-POSTURE.md', '## 6. learn is external', 'LEARN', 'learn#15'],
+    ['docs/ops/DEPLOY-POSTURE.md', '## 7. coffee is external', 'COFFEE', 'coffee#13'],
+    ['docs/ops/DEPLOY-POSTURE.md', '## 8. market is external', 'MARKET', 'market#15'],
+  ])('retains the temporary legacy Bearer for %s (%s) until its migration deploys', (file, heading, app, migration) => {
+    const document = readFileSync(join(REPO_ROOT, file), 'utf8');
+    const section = document.slice(document.indexOf(heading)).split('\n## ')[0].replace(/\s+/g, ' ');
+    expect(document).toContain(heading);
+    expect(section).toContain(`${app}_SERVICE_URL`);
+    expect(section).toContain(`${app}_WEBHOOK_SECRET`);
+    expect(section).toContain('`WEBHOOK_SECRET`');
+    expect(section).toMatch(/legacy Bearer|Bearer-only/);
+    const retention = app === 'COFFEE'
+      ? `Keep \`${app}_SERVICE_URL\` and \`${app}_WEBHOOK_SECRET\` set`
+      : 'leave both env vars in place';
+    expect(section.toLowerCase()).toContain(retention.toLowerCase());
+    expect(section).toContain(migration);
+    expect(section).toMatch(/merges and deploys/);
+    expect(section).toContain('kernel-webhook-legacy.ts');
+    expect(section).toContain('is set');
+    expect(section).toMatch(/signature is additive|also sends a detached signature/);
+    expect(section).not.toContain('the standalone app verifies the detached kernel signature');
+  });
+  it('documents the signed path as secret-free and gates legacy removal on all deployed standalone migrations', () => {
+    const document = readFileSync(join(REPO_ROOT, 'docs/security/kernel-webhooks.md'), 'utf8')
+      .replace(/\s+/g, ' ');
+    expect(document).toContain("The kernel's signed delivery path does not require these shared secrets");
+    expect(document).toContain('temporary legacy Bearers required only by the unmigrated receivers');
+    expect(document).toContain('Keep the existing kernel');
+    for (const app of ['COFFEE', 'LEARN', 'MARKET']) {
+      expect(document).toContain(`${app}_WEBHOOK_SECRET`);
+    }
+    const removalNote = document.slice(document.indexOf('## Dated removal note'));
+    expect(document).toContain('## Dated removal note');
+    for (const migration of ['coffee#13', 'learn#15', 'market#15', 'events#38']) {
+      expect(removalNote).toContain(migration);
+    }
+    expect(removalNote).toContain('migrations have merged and deployed');
+    expect(document).toContain('events#38 must merge and deploy before the #2529');
   });
 });
 describe('retired Stripe Connect configuration (#2791)', () => {

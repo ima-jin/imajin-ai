@@ -124,6 +124,8 @@ and continue processing.
 **Standalone rollout status (2026-10-14):** coffee#13, learn#15 and market#15
 are still open; standalone coffee, learn and market remain **Bearer-only**.
 Kernel signatures are additive until those migrations merge and deploy.
+The kernel's signed delivery path does not require these shared secrets;
+they are temporary legacy Bearers required only by the unmigrated receivers.
 Keep the existing kernel `COFFEE_WEBHOOK_SECRET`, `LEARN_WEBHOOK_SECRET` and
 `MARKET_WEBHOOK_SECRET` set, matching each app's existing `WEBHOOK_SECRET`;
 keep their service URLs configured too. `kernel-webhook-legacy.ts` attaches
