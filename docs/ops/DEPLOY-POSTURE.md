@@ -385,7 +385,7 @@ its old shared-header contract. Keep using the patched monorepo copy until the
 standalone migration is deployed and verified. Production monorepo use while
 #2516 is blocked is separate from this dev-cutover gate.
 
-## 10. events deploy ownership released, cutover pending (#2784)
+## 11. events deploy ownership released, cutover pending (#2784)
 
 Unlike the completed source prunes above, `apps/events` stays in this tree
 until #2529's standalone dev cutover holds. Kernel deploys no longer declare
@@ -412,6 +412,7 @@ app's configuration:
 
 See `deploy/README.md` for operator sequencing. This is ownership release,
 not source pruning, claim provisioning or permission to advance the prod window.
+The standalone events#38 prerequisite in §10 still applies.
 
 ## Decisions for Ryan
 

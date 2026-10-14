@@ -144,9 +144,24 @@ describe('kernel deploy workflow ownership wiring', () => {
     });
   }
 
-  it('build.sh forwards the selected owner to its migration call', () => {
-    const build = readFileSync(join(ROOT, 'scripts/build.sh'), 'utf8');
-    expect(build).toContain('--migration-owner=*) MIGRATION_FLAGS=("--owner" "${arg#*=}")');
-    expect(build).toContain('node scripts/migrate.mjs "${MIGRATION_FLAGS[@]}"');
+  it.each([
+    { flags: ['--migration-owner=kernel'], expected: ['--owner', 'kernel'] },
+    { flags: [], expected: [] },
+  ])('real build.sh forwards migration args $expected', ({ flags, expected }) => {
+    const root = fixture();
+    copyFileSync(join(ROOT, 'scripts/build.sh'), join(root, 'scripts/build.sh'));
+    // Stop at migration invocation, before metadata/build/restart. The failure
+    // is intentional and verifies the real command without any DB or pm2 use.
+    writeFileSync(join(root, 'bin/node'), `#!/bin/bash
+printf '%s\\n' "$@" > migration-args
+exit 1
+`, { mode: 0o755 });
+    expect(() => execFileSync('/bin/bash', ['scripts/build.sh', '--dev', ...flags, 'kernel'], {
+      cwd: root,
+      env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}` },
+      stdio: 'pipe',
+    })).toThrow();
+    expect(readFileSync(join(root, 'migration-args'), 'utf8').trim().split('\n'))
+      .toEqual(['scripts/migrate.mjs', ...expected]);
   });
 });
