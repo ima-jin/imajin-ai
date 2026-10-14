@@ -29,7 +29,17 @@ describe('POST /stripe/api/token — connect failures (#2754)', () => {
     const res = await post({ token: 'rk_live_x' });
 
     expect(res.status).toBe(201);
-    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_live_x', 'https://kernel.test');
+    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_live_x', 'https://kernel.test', undefined);
+  });
+
+  it('passes the owner-provided publishable key to the same connector', async () => {
+    expect((await post({ token: 'rk_test_fake', publishableKey: ' pk_test_fake ' })).status).toBe(201);
+    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_test_fake', 'https://kernel.test', 'pk_test_fake');
+  });
+
+  it.each(['', 12, null])('rejects a malformed optional publishable key', async (publishableKey) => {
+    expect((await post({ token: 'rk_test_fake', publishableKey })).status).toBe(400);
+    expect(mocks.connect).not.toHaveBeenCalled();
   });
 
   it.each([

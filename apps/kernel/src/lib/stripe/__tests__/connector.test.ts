@@ -130,6 +130,17 @@ describe('identity', () => {
 // ── connectAndProvisionWebhook (#1785) ────────────────────────────────────────
 
 describe('connectAndProvisionWebhook', () => {
+  it('seals the publishable key for the same owner after provisioning', async () => {
+    fetchMock().mockResolvedValue({ ok: true, json: async () => ({ id: 'we_new', secret: SIGNING_SECRET }) });
+    await connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, 'pk_test_fake');
+    expect(sealV1Mock).toHaveBeenCalledWith(`stripe-publishable-key:${OWNER}`, 'pk_test_fake');
+  });
+
+  it('rejects a non-publishable key before provisioning', async () => {
+    await expect(connectAndProvisionWebhook(OWNER, RESTRICTED_KEY, BASE_URL, 'not_a_key'))
+      .rejects.toThrow('stripe_publishable_key_invalid');
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('rejects a non-restricted key and never calls Stripe or seals anything', async () => {
     await expect(connectAndProvisionWebhook(OWNER, FULL_SECRET_KEY, BASE_URL))
       .rejects.toThrow(/stripe_key_not_restricted/);

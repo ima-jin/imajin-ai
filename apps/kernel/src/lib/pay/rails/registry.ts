@@ -12,6 +12,8 @@ import { StripeWithdrawRail, STRIPE_RAIL_NAME } from '../providers/stripe-withdr
 import { EmtPayInRail, EMT_RAIL_NAME } from './emt-pay-in-rail';
 export { resolveDidStripeKeys, SellerNoCardRailError } from './stripe-keys';
 
+export { resolveDidStripeKeys, SellerNoCardRailError } from './stripe-keys';
+
 export interface RailRegistryEntry {
   /** Lazily constructed: importing the registry never requires a sealed Stripe connector. */
   getRail: () => WithdrawRail;

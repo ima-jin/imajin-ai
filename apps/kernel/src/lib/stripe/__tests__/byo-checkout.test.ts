@@ -3,8 +3,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const { loadSealedCredentialsMock } = vi.hoisted(() => ({ loadSealedCredentialsMock: vi.fn() }));
 
 vi.mock('../connector-core', () => ({
-  stripe: { loadSealedCredentials: loadSealedCredentialsMock },
+  STRIPE_EVENTS_SCOPE: 'stripe:events',
+  stripe: {
+    loadSealedCredentials: loadSealedCredentialsMock,
+    keySealed: vi.fn().mockResolvedValue(true),
+    resolveActiveGrant: vi.fn().mockResolvedValue(true),
+  },
+  stripePublishableKeyField: (did: string) => `stripe-publishable-key:${did}`,
 }));
+vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn().mockResolvedValue(undefined) }));
 
 import {
   ByoCheckoutError,

@@ -26,7 +26,7 @@ import { connectAndProvisionWebhook, keySealed } from '@/src/lib/stripe/connecto
 const log = createLogger('kernel');
 
 /** `connectAndProvisionWebhook` failures that are the pasted key's fault, not ours or Stripe's. */
-const CALLER_MISTAKES = ['stripe_key_not_restricted', 'stripe_key_missing_permission'];
+const CALLER_MISTAKES = ['stripe_key_not_restricted', 'stripe_key_missing_permission', 'stripe_publishable_key_invalid'];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const cors = corsHeaders(request);
@@ -55,9 +55,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const { ownerDid } = auth;
 
-  let body: { token?: unknown };
+  let body: { token?: unknown; publishableKey?: unknown };
   try {
-    body = (await request.json()) as { token?: unknown };
+    body = (await request.json()) as typeof body;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400, headers: cors });
   }
@@ -70,8 +70,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  const publishableKey = optionalString(body.publishableKey);
+  if (body.publishableKey !== undefined && !publishableKey) {
+    return NextResponse.json({ error: 'publishableKey must be a non-empty string' }, { status: 400, headers: cors });
+  }
   try {
-    await connectAndProvisionWebhook(ownerDid, token, publicOrigin(request));
+    await connectAndProvisionWebhook(ownerDid, token, publicOrigin(request), publishableKey);
     log.info({ ownerDid }, 'Stripe restricted key sealed and webhook provisioned');
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

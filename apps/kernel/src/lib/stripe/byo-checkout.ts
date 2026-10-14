@@ -20,7 +20,7 @@
  * The restricted key is read from the sealed vault per call, used for one
  * request and never logged, returned or cached.
  */
-import { stripe } from './connector-core';
+import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 const STRIPE_API_BASE = 'https://api.stripe.com/v1';
 
@@ -134,11 +134,14 @@ function failureOf(res: StripeResponse, action: string): ByoCheckoutError {
 }
 
 async function loadKey(ownerDid: string): Promise<string> {
-  const credentials = await stripe.loadSealedCredentials(ownerDid);
-  if (!credentials?.apiKey) {
-    throw new ByoCheckoutError('no_key', 'stripe_no_key: no readable Stripe restricted key is sealed for this issuer');
+  try {
+    return (await resolveDidStripeKeys(ownerDid)).secretKey;
+  } catch (error) {
+    if (error instanceof SellerNoCardRailError) {
+      throw new ByoCheckoutError('no_key', 'stripe_no_key: no readable Stripe restricted key is sealed for this issuer');
+    }
+    throw error;
   }
-  return credentials.apiKey;
 }
 
 /** Flatten a Checkout Session create request into Stripe's bracketed form encoding. */

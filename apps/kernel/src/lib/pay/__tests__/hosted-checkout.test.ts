@@ -136,23 +136,11 @@ describe('startHostedCheckout — a seller is named', () => {
 });
 
 describe('startHostedCheckout — no seller is named', () => {
-  it('stays a platform-own charge and never asks the card rail', async () => {
-    const started = await startHostedCheckout(input({ sellerDid: undefined, mode: 'subscription' }));
-
-    expect(started).toEqual({ ok: true, session: SESSION });
-    expect(h.resolveCardRailMock).not.toHaveBeenCalled();
-    expect(h.createByoSessionMock).not.toHaveBeenCalled();
-    expect(h.platformCheckoutMock).toHaveBeenCalledWith({
-      items: [{ name: 'Ticket', amount: 2500, quantity: 1 }],
-      currency: 'CAD',
-      mode: 'subscription',
-      customerEmail: 'buyer@example.com',
-      successUrl: 'https://events.test/ok',
-      cancelUrl: 'https://events.test/cancel',
-      metadata: { service: 'events', eventId: 'ev_1' },
+  it('rejects without ever reaching the platform checkout', async () => {
+    expect(await startHostedCheckout(input({ sellerDid: undefined }))).toMatchObject({
+      ok: false, status: 400, code: 'SELLER_NO_CARD_RAIL',
     });
-    // The platform request carries no destination account or application fee any more.
-    expect(h.platformCheckoutMock.mock.calls[0][0]).not.toHaveProperty('connectedAccountId');
-    expect(h.platformCheckoutMock.mock.calls[0][0]).not.toHaveProperty('applicationFeeAmount');
+    expect(h.platformCheckoutMock).not.toHaveBeenCalled();
+    expect(h.createByoSessionMock).not.toHaveBeenCalled();
   });
 });

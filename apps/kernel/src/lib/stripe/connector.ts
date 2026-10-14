@@ -75,7 +75,7 @@ import { ensurePayStripeReactorRegistered } from '@/src/lib/pay/stripe-bus-consu
 import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import { verifyStripeWebhookSignature } from './webhook-verify';
 import { assertCheckoutSessionWriteAllowed } from './byo-checkout';
-import { stripe, STRIPE_EVENTS_SCOPE } from './connector-core';
+import { stripe, STRIPE_EVENTS_SCOPE, stripePublishableKeyField } from './connector-core';
 import {
   upsertWebhookIndex,
   resolveWebhookOwner,
@@ -214,7 +214,11 @@ export async function connectAndProvisionWebhook(
   ownerDid: string,
   restrictedKey: string,
   webhookBaseUrl: string,
+  publishableKey?: string,
 ): Promise<{ routingId: string; endpointId: string }> {
+  if (publishableKey !== undefined && !/^pk_(test|live)_\w+$/.test(publishableKey)) {
+    throw new Error('stripe_publishable_key_invalid: provide a Stripe publishable key');
+  }
   const trimmedKey = restrictedKey.trim();
   if (!isRestrictedKey(trimmedKey)) {
     throw new Error(
@@ -233,6 +237,7 @@ export async function connectAndProvisionWebhook(
   const { endpointId, signingSecret } = await createStripeWebhookEndpoint(trimmedKey, url);
 
   await stripe.sealApiKey(ownerDid, trimmedKey);
+  if (publishableKey) await sealAndStore(stripePublishableKeyField(ownerDid), publishableKey);
   await sealAndStore(webhookSecretField(ownerDid), signingSecret);
   await upsertWebhookIndex(routingId, ownerDid, endpointId);
 
@@ -275,6 +280,7 @@ export async function disconnectAndDeprovision(
   }
 
   await deleteFromVault(webhookSecretField(ownerDid));
+  await deleteFromVault(stripePublishableKeyField(ownerDid));
   const revoked = await stripe.revokeApiKey(ownerDid);
 
   log.info({ ownerDid, revoked, deprovisioned }, 'Stripe connector: disconnect complete');
