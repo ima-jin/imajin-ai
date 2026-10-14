@@ -64,7 +64,7 @@ const SERVICES: ServiceConfig[] = [
   {
     name: 'pay',
     title: 'imajin pay',
-    description: 'Payments, balances, Stripe Connect onboarding, .fair multi-party settlement, escrow, and webhooks.',
+    description: 'Payments, balances, .fair multi-party settlement, escrow, and webhooks.',
     prodUrl: 'https://pay.imajin.ai',
     devUrl: 'https://dev-pay.imajin.ai',
     port: 7004,
