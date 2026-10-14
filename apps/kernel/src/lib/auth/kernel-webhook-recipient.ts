@@ -26,6 +26,22 @@ function origin(value: string): string {
   }
   return url.origin;
 }
+function registeredOrigin(value: string): string | null {
+  try {
+    return origin(value);
+  } catch {
+    // Navigation entryUrl can be relative; legacy redirect hosts may be bare slugs.
+    // Neither grants an origin or blocks an otherwise valid absolute registration.
+    return null;
+  }
+}
+
+const KERNEL_SERVICE_URLS = new Map([
+  ['coffee', 'COFFEE_SERVICE_URL'],
+  ['events', 'EVENTS_SERVICE_URL'],
+  ['learn', 'LEARN_SERVICE_URL'],
+  ['market', 'MARKET_SERVICE_URL'],
+]);
 
 /** Resolve only trusted configuration, never an event payload or inbound header. */
 export async function resolveKernelWebhookAudience(
@@ -45,13 +61,13 @@ export async function resolveKernelWebhookAudience(
     ...(app.allowedRedirectHosts ?? []), ...(app.redirectUris ?? []),
     app.callbackUrl, app.homepageUrl, app.entryUrl,
   ].filter((value): value is string => typeof value === 'string' && value.length > 0);
-  // First-party services may use an internal origin different from their public registration.
-  if (app.tier === 'first_party' && app.slug) {
-    const serviceUrl = process.env[`${app.slug.toUpperCase()}_SERVICE_URL`];
-    if (serviceUrl) registered.push(serviceUrl);
-  }
+  // Known kernel-routed services may be provisioned as third_party and reached internally.
+  // Only these fixed operator-owned settings grant an additional origin, never arbitrary slugs.
+  const serviceSetting = KERNEL_SERVICE_URLS.get(app.slug ?? '');
+  const serviceUrl = serviceSetting ? process.env[serviceSetting] : undefined;
+  if (serviceUrl) registered.push(serviceUrl);
   const destination = origin(url);
-  if (!registered.some((value) => origin(value) === destination)) {
+  if (!registered.some((value) => registeredOrigin(value) === destination)) {
     throw new Error('Kernel webhook destination does not match its registered recipient');
   }
   return app.appDid;
