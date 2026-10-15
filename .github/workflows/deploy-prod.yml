@@ -112,6 +112,7 @@ jobs:
         run: ./scripts/reap-orphans.sh prod
 
       - name: Restart prod services
+        # #2815: preserve intentional stops except for the deployed prod-jin kernel.
         run: |
           # prod-jin is restarted from the ecosystem FILE, deliberately not by name.
           #

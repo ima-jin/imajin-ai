@@ -94,6 +94,7 @@ jobs:
         run: ./scripts/reap-orphans.sh dev
 
       - name: Restart dev services
+        # #2815: operator-stopped apps must stay stopped across kernel deploys.
         run: |
           DEV_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('dev-')).map(p => p.name).join(' '));")
           if [ -z "$DEV_PROCS" ]; then
