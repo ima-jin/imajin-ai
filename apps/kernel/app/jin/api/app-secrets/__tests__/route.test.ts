@@ -43,6 +43,13 @@ describe('app secret operator routes', () => {
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.record).not.toHaveBeenCalled();
   });
+  it('snapshots genuine declared-none secrets for signed Sync', async () => {
+    mocks.preview.mockResolvedValue({ ok: [] });
+    expect((await POST(req())).status).toBe(201);
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
+      detail: { appDid, appName: 'Fake app', slug: 'fake-app', secrets: [] },
+    }));
+  });
   it('refuses act-as writes before reading the app', async () => {
     mocks.actAs.mockReturnValue(Response.json({ error: 'act_as_not_permitted' }, { status: 403 }));
     expect((await POST(req())).status).toBe(403);
@@ -84,9 +91,16 @@ describe('app secret operator routes', () => {
     expect((await POST(req({ appDid, action: 'rotate', name: 'UNDECLARED' }))).status).toBe(400);
     expect(mocks.record).not.toHaveBeenCalled();
   });
-  it('refuses unreadable manifests, without staging a proposal', async () => {
-    mocks.preview.mockResolvedValue({ error: 'Manifest unreadable' });
-    expect((await POST(req())).status).toBe(409);
+  it.each([
+    "App 'fake-app' manifest unreadable (HTTP 404)",
+    "App 'fake-app' manifest unreadable (HTTP 503)",
+    "App 'fake-app' manifest unreadable",
+    "App 'fake-app' manifest invalid",
+  ])('passes names-only manifest failures without staging a proposal: %s', async (error) => {
+    mocks.preview.mockResolvedValue({ error });
+    const response = await POST(req());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error });
     expect(mocks.record).not.toHaveBeenCalled();
   });
   it('returns metadata only from the lifecycle read helper', async () => {

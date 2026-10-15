@@ -93,7 +93,7 @@ describe('ProvisionDeclarationsPreview', () => {
     render(<ProvisionDeclarationsPreview detail={{ manifestDeclarations: { providesScopes: [], dependsOn: [] } }} />);
 
     expect(screen.getByTestId('provision-declarations-preview').getAttribute('data-state')).toBe('empty');
-    expect(screen.getByText('Declares no scopes of its own, no dependencies, and no events it may emit.')).toBeDefined();
+    expect(screen.getByText('Declares no self secrets, no scopes of its own, no dependencies, and no events it may emit.')).toBeDefined();
     expect(screen.queryByTestId('provision-declarations-provides')).toBeNull();
   });
 
@@ -123,13 +123,14 @@ describe('ProvisionDeclarationsPreview', () => {
     ['not an object', { manifestDeclarations: 'dykil:read' }],
     ['missing dependsOn', { manifestDeclarations: { providesScopes: ['dykil:read'] } }],
     ['a malformed dependency', { manifestDeclarations: { providesScopes: [], dependsOn: [{ aud: 'jin.imajin.ai' }] } }],
-  ])('says nothing was read, and that approving registers none, when the snapshot is %s', (_label, detail) => {
+  ])('says nothing was read and provisioning fails closed when the snapshot is %s', (_label, detail) => {
     render(<ProvisionDeclarationsPreview detail={detail} />);
 
     const preview = screen.getByTestId('provision-declarations-preview');
     expect(preview.getAttribute('data-state')).toBe('unread');
     expect(preview.textContent).toMatch(/could be read/);
-    expect(preview.textContent).toMatch(/registers none/);
+    expect(preview.textContent).toMatch(/provisioning stops if it is unreadable or invalid/);
+    expect(preview.textContent).not.toMatch(/registers none/);
     expect(screen.queryByTestId('provision-declarations-provides')).toBeNull();
   });
 

@@ -4,7 +4,7 @@
  */
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { db, registryApps, appSigningKeyClaims, appProvisions } from '@/src/db';
-import { fetchAppManifest, tryGetInstallationToken } from '@/src/lib/github/org-provisioning';
+import { appManifestError, fetchAppManifest, tryGetInstallationToken } from '@/src/lib/github/org-provisioning';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { resolveVaultAuthorization, type VaultAuthorization } from '@/src/lib/vault/authorization';
 import { validateSecrets, type AppSecretDeclaration } from './secret-declarations';
@@ -20,10 +20,12 @@ export function sameSecretDeclarations(a: AppSecretDeclaration[], b: AppSecretDe
 export async function previewAppSecrets(slug: string): Promise<{ ok: AppSecretDeclaration[] } | { error: string }> {
   try {
     const manifest = await fetchAppManifest(slug, await tryGetInstallationToken());
-    if (!manifest) return { error: 'App manifest could not be read; no secrets were approved' };
-    return validateSecrets((manifest as unknown as Record<string, unknown>).secrets);
+    if ('error' in manifest) return { error: appManifestError(slug, manifest) };
+    const secrets = validateSecrets(manifest.ok.secrets);
+    if ('error' in secrets) return { error: appManifestError(slug, { error: 'invalid' }) };
+    return secrets;
   } catch {
-    return { error: 'App manifest could not be read; no secrets were approved' };
+    return { error: appManifestError(slug, { error: 'unreadable' }) };
   }
 }
 
