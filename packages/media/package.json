@@ -1,6 +1,6 @@
 {
   "name": "@imajin/media",
-  "version": "0.8.18",
+  "version": "0.8.19",
   "private": true,
   "description": "Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps",
   "license": "MIT",
