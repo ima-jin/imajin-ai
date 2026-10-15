@@ -77,7 +77,9 @@ OFFENDERS="$(
   node -e '
     const fs = require("fs");
     const path = require("path");
-    const [ecosystem, jlistFile, statePath, windowS, threshold, nowOverride] = process.argv.slice(1);
+    const [ecosystem, jlistFile, statePath, windowS, threshold, nowOverride, helper] = process.argv.slice(1);
+    const policy = require(helper);
+    const stopped = policy.stoppedNames();
     const win = Number(windowS), max = Number(threshold);
     const now = nowOverride ? Number(nowOverride) : Math.floor(Date.now() / 1000);
 
@@ -95,6 +97,7 @@ OFFENDERS="$(
     const next = {};
     for (const p of procs) {
       if (!p || !names.has(p.name)) continue;
+      if (policy.isIntentionallyStopped(p, stopped)) continue;
       const count = Number(p.pm2_env && p.pm2_env.restart_time);
       if (!Number.isFinite(count)) continue;
       // Keep samples inside the window. A counter that went DOWN (pm2 delete /
@@ -108,7 +111,7 @@ OFFENDERS="$(
       if (delta > max) console.log(p.name + " " + delta + " " + (now - samples[0][0]));
     }
     fs.writeFileSync(statePath, JSON.stringify(next));
-  ' "$ECOSYSTEM" "$JLIST_FILE" "$STATE" "$WINDOW" "$THRESHOLD" "${RESTART_ALERT_NOW:-}"
+  ' "$ECOSYSTEM" "$JLIST_FILE" "$STATE" "$WINDOW" "$THRESHOLD" "${RESTART_ALERT_NOW:-}" "$SCRIPT_DIR/lib/pm2-deploy-state.cjs"
 )"
 status=$?
 if [[ "$status" -ne 0 ]]; then

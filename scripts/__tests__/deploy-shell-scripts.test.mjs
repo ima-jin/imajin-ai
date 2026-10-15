@@ -22,6 +22,7 @@ const SHELL_SELF_TESTS = [
   'assert-pm2-listeners.test.sh',
   'check-pm2-restarts.test.sh',
   'pm2-reconcile.test.sh',
+  'pm2-deploy-state.test.sh',
   'check-pm2-status.test.sh',
   'pm2-health-check.test.sh',
   'install-pm2-health-cron.test.sh',

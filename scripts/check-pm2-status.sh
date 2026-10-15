@@ -84,7 +84,9 @@ PROBLEMS="$(
   node -e '
     const fs = require("fs");
     const path = require("path");
-    const [ecosystem, jlistFile, statePath, repeatS, nowOverride] = process.argv.slice(1);
+    const [ecosystem, jlistFile, statePath, repeatS, helper, nowOverride, scope] = process.argv.slice(1);
+    const policy = require(helper);
+    const stopped = policy.stoppedNames();
     const repeat = Number(repeatS);
     const now = nowOverride ? Number(nowOverride) : Math.floor(Date.now() / 1000);
 
@@ -96,6 +98,14 @@ PROBLEMS="$(
     let procs;
     try { procs = JSON.parse(fs.readFileSync(jlistFile, "utf8").trim() || "[]"); } catch { process.exit(3); }
     if (!Array.isArray(apps) || !Array.isArray(procs)) process.exit(3);
+    // Deploys also restart standalone apps by name. Their errored status must
+    // not disappear just because they are no longer in the kernel ecosystem.
+    if (process.env.PM2_DEPLOY_STOPPED_FILE) {
+      const declared = new Set(apps.map((app) => app.name));
+      apps = apps.concat(procs.filter((proc) =>
+        proc?.name?.startsWith(scope + "-") && !declared.has(proc.name)
+      ).map((proc) => ({ name: proc.name })));
+    }
 
     let state = {};
     try { state = JSON.parse(fs.readFileSync(statePath, "utf8")); } catch { /* first run / corrupt */ }
@@ -106,6 +116,7 @@ PROBLEMS="$(
       if (!app || !app.name) continue;
       const proc = procs.find((p) => p && p.name === app.name);
       if (!proc) continue;
+      if (policy.isIntentionallyStopped(proc, stopped)) continue;
       const status = proc.pm2_env && proc.pm2_env.status;
       const parked = status === "errored" || (status === "stopped" && app.autorestart !== false);
       if (!parked) continue;
@@ -116,7 +127,7 @@ PROBLEMS="$(
       console.log(app.name + " " + status + " " + (due ? "notify" : "quiet"));
     }
     fs.writeFileSync(statePath, JSON.stringify(next));
-  ' "$ECOSYSTEM" "$JLIST_FILE" "$STATE" "$REPEAT" "${STATUS_ALERT_NOW:-}"
+  ' "$ECOSYSTEM" "$JLIST_FILE" "$STATE" "$REPEAT" "$SCRIPT_DIR/lib/pm2-deploy-state.cjs" "${STATUS_ALERT_NOW:-}" "$SCOPE"
 )"
 status=$?
 if [[ "$status" -ne 0 ]]; then
