@@ -226,6 +226,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
     expect(recorded.detail).toMatchObject({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true, manifestDeclarations: null });
     expect(recorded.summary).toMatch(/^Reissue the claim code for app 'dykil'/);
+    expect(recorded.summary).not.toContain('Will retire');
     // The same detail is what the content hash covers, so the operator signs "reissue" and nothing else.
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ detail: recorded.detail }));
   });
@@ -250,7 +251,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
 
-  it('#2707: an ordinary proposal carries no reissueClaim key (its detail and hash are unchanged)', async () => {
+  it('#2707: an ordinary proposal carries no reissueClaim key', async () => {
     await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
 
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
@@ -259,6 +260,15 @@ describe('POST /api/apps/provision — idempotency', () => {
 });
 
 describe('POST /api/apps/provision — raising a new proposal', () => {
+  it('discloses the exact legacy retirement in the summary the operator countersigns', async () => {
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'Dykil' }) as never);
+
+    expect(response.status).toBe(201);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string };
+    expect(recorded.summary).toContain('Will retire app_first_party_dykil if it holds the slug or active audience');
+    expect(recorded.summary).toContain('no app schema/data is changed');
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ summary: recorded.summary }));
+  });
   it('records a new proposal with signerDid set to the acting DID', async () => {
     const response = await POST(postRequest({
       slug: 'dykil',

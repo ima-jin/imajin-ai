@@ -2,8 +2,8 @@
  * `apps.provision` (#2375) — gate 1+2 of epic #2370: one kernel-authoritative
  * call that creates an extracted app's GitHub repo, registers it in the
  * existing `registry.apps` table (#1990) as a `tier: 'third_party'` row
- * (never upserting any pre-existing legacy `first_party` row for the same
- * app — see `registerApp`'s docblock), and vault-seals its app-auth private
+ * (retiring a seeded legacy slug holder atomically — see `registerApp`'s
+ * docblock), and vault-seals its app-auth private
  * key, handing the app a one-time claim code to fetch it at first boot.
  *
  * ## Idempotency + fail-closed (`kernel.app_provisions`)
@@ -38,7 +38,7 @@
  * installation token (#2416) — see `org-provisioning.ts`'s docblock —
  * never a PAT.
  */
-import { and, eq } from 'drizzle-orm';
+import { and, arrayContains, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { emitAttestation } from '@imajin/auth';
 import { publish } from '@imajin/bus';
@@ -126,6 +126,8 @@ export interface AppProvisionSuccess {
    */
   secretsSet: string[];
   attestationTypeResults: AttestationTypeSeedOutcome[];
+  /** Seeded legacy row retired by this provision, retained across retries (#2810). */
+  retiredLegacyAppId?: string;
   /**
    * Plaintext one-time claim code (#2411) the app exchanges at first boot
    * for its own `app-signing-key` vault delegation grant, via
@@ -143,9 +145,24 @@ export interface AppProvisionFailure {
   status: 'failed';
   failedStep: string;
   error: string;
+  errorCode?: 'audience_conflict';
 }
 
 export type AppProvisionOutcome = AppProvisionSuccess | AppProvisionFailure;
+/** A different identity still answers the requested audience: never hijack it. */
+export class AppProvisionAudienceConflictError extends Error {
+  readonly code = 'audience_conflict';
+
+  constructor(slug: string, appId: string) {
+    super(`apps.provision: audience '${slug}' is already answered by active row '${appId}' — refusing an audience shadow`);
+    this.name = 'AppProvisionAudienceConflictError';
+  }
+}
+
+/** Omit absent retirement metadata for compatibility with pre-cutover outcomes. */
+function retirementContext(id: string | null | undefined): { retiredLegacyAppId?: string } {
+  return id ? { retiredLegacyAppId: id } : {};
+}
 
 async function getProvisionRow(slug: string): Promise<AppProvisionRow | undefined> {
   const [row] = await db.select().from(appProvisions).where(eq(appProvisions.slug, slug)).limit(1);
@@ -175,7 +192,10 @@ async function markFailed(nodeDid: string, slug: string, step: string, error: un
   await upsertProvisionRow(slug, { status: 'failed', failedStep: step, errorMessage: message });
   log.error({ slug, step, error: message }, 'apps.provision: step failed — no half-registered app is served');
   emitProvisionFailedEvent(nodeDid, slug, step, message);
-  return { status: 'failed', failedStep: step, error: message };
+  return {
+    status: 'failed', failedStep: step, error: message,
+    ...(error instanceof AppProvisionAudienceConflictError ? { errorCode: error.code } : {}),
+  };
 }
 
 /**
@@ -304,24 +324,54 @@ function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
   };
 }
 
+type ProvisionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Lock both ownership seams before changing either: a manually cleared slug
+ * does not remove an active audience. Only this slug's exact seed may retire.
+ */
+async function retireLegacyApp(tx: ProvisionTransaction, slug: string): Promise<string | null> {
+  const legacyId = `app_first_party_${slug}`;
+  const [holder] = await tx.select().from(registryApps)
+    .where(eq(registryApps.slug, slug)).limit(1).for('update');
+  if (holder && (holder.tier !== 'first_party' || holder.id !== legacyId)) {
+    throw new Error(`apps.provision: slug '${slug}' is already held by '${holder.id}' — only seeded first-party legacy rows can be superseded (expected '${legacyId}')`);
+  }
+  const audienceHolders = await tx.select().from(registryApps).where(and(
+    eq(registryApps.status, 'active'),
+    arrayContains(registryApps.tokenAudiences, [slug]),
+  )).for('update');
+  for (const row of audienceHolders) {
+    if (row.tier !== 'first_party' || row.id !== legacyId) {
+      throw new AppProvisionAudienceConflictError(slug, row.id);
+    }
+  }
+  const legacy = holder ?? audienceHolders[0];
+  if (!legacy) return null;
+  await tx.update(registryApps).set({
+    status: 'revoked',
+    revokedAt: sql`COALESCE(${registryApps.revokedAt}, NOW())`,
+    updatedAt: sql`NOW()`,
+    tokenAudiences: [],
+    slug: null,
+    placements: [],
+  }).where(eq(registryApps.id, legacy.id));
+  return legacy.id;
+}
+
 /**
  * Step 3 (register): insert a NEW `tier: 'third_party'` registry.apps row —
- * NEVER updates/upserts an existing row, and in particular never touches a
- * pre-existing LEGACY `tier: 'first_party'` row for the same slug (e.g.
- * dykil's `app_first_party_dykil`, seeded by
- * `0139_registry_apps_seed_first_party.sql` before #1985/#1991's
- * extraction). Idempotent on `appDid` (always sourced from the
+ * never upserting an existing identity. A slug holder may be superseded ONLY
+ * when it is the exact seeded `first_party` row (`app_first_party_${slug}`).
+ * Retirement uses 0185/0188's field set and commits with the new insert, so
+ * there is no audience overlap or half-cutover. No app schema/data is touched.
+ * This runs only through the countersigned apps:provision execution bridge.
+ * Idempotent on `appDid` (always sourced from the
  * `kernel.app_provisions` ledger, so a retry passes the SAME appDid and
  * this lookup finds the row this same pipeline already created — never
  * the differently-app-did'd legacy row): a matching row already existing
- * is treated as "already registered", a no-op. Returns the row id.
- *
- * If a legacy row's `slug` was ever left set for this same slug (only
- * possible for an app `0163_registry_apps_slug.sql` did NOT deliberately
- * exclude), the INSERT below fails on `registry.apps`'s unique `slug`
- * index — correctly fail-closed at the 'register' step, since provisioning
- * an app whose slug is still claimed by an untouched legacy row would
- * otherwise silently produce two rows answering to the same slug.
+ * is treated as "already registered", a no-op. Rows already retired by the
+ * guarded migrations have no slug/audiences and are left untouched.
  */
 async function registerApp(params: {
   slug: string;
@@ -332,7 +382,8 @@ async function registerApp(params: {
   approvedDeclarations: ManifestDeclarations | null;
   /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
   callbackOrigin: string;
-}): Promise<string> {
+  retiredLegacyAppId: string | null;
+}): Promise<{ id: string; retiredLegacyAppId?: string }> {
   const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
 
   const [existing] = await db
@@ -342,7 +393,7 @@ async function registerApp(params: {
     .limit(1);
 
   if (existing) {
-    return existing.id;
+    return { id: existing.id, ...retirementContext(params.retiredLegacyAppId) };
   }
 
   const navMetadata = resolveNavMetadata(slug, manifest);
@@ -381,54 +432,64 @@ async function registerApp(params: {
   }
 
   const id = `app_${nanoid(16)}`;
-  await db.insert(registryApps).values({
-    id,
-    ownerDid: 'did:imajin:platform',
-    name: navMetadata.name ?? displayName,
-    description: `${displayName} (provisioned via apps.provision #2375)`,
-    appDid,
-    publicKey,
-    // #2746: the sign-in redirect target (`/oauth/authorize` falls back to it
-    // while `redirect_uris` is empty; `/auth/authorize` redirects to it). It is
-    // the node's own public origin, never a placeholder.
-    callbackUrl: `${callbackOrigin}/${slug}`,
-    tier: 'third_party',
-    status: 'active',
-    slug,
-    allowedRedirectHosts: [slug],
-    tokenAudiences: [slug],
-    icon: navMetadata.icon,
-    entryUrl: navMetadata.entryUrl,
-    placements: navMetadata.placements,
-    requiredScope: navMetadata.requiredScope,
-    // #2674: the whole approved list — the app's own scopes plus the scopes of the
-    // dependencies the operator approved — is the ceiling PATCH and mint hold it to.
-    requestedScopes: [...new Set([...declarations.ok.providesScopes, ...declarations.ok.dependsOn.flatMap((dep) => dep.scopes)])],
-    secrets: secrets.ok,
-    providesScopes: declarations.ok.providesScopes,
-    dependsOn: declarations.ok.dependsOn,
-    emittableEvents: emittable.ok,
+  return db.transaction(async (tx) => {
+    const retiredLegacyAppId = await retireLegacyApp(tx, slug);
+    await tx.insert(registryApps).values({
+      id,
+      ownerDid: 'did:imajin:platform',
+      name: navMetadata.name ?? displayName,
+      description: `${displayName} (provisioned via apps.provision #2375)`,
+      appDid,
+      publicKey,
+      // #2746: the sign-in redirect target (`/oauth/authorize` falls back to it
+      // while `redirect_uris` is empty; `/auth/authorize` redirects to it). It is
+      // the node's own public origin, never a placeholder.
+      callbackUrl: `${callbackOrigin}/${slug}`,
+      tier: 'third_party',
+      status: 'active',
+      slug,
+      allowedRedirectHosts: [slug],
+      tokenAudiences: [slug],
+      icon: navMetadata.icon,
+      entryUrl: navMetadata.entryUrl,
+      placements: navMetadata.placements,
+      requiredScope: navMetadata.requiredScope,
+      // #2674: the whole approved list — the app's own scopes plus the scopes of the
+      // dependencies the operator approved — is the ceiling PATCH and mint hold it to.
+      requestedScopes: [...new Set([...declarations.ok.providesScopes, ...declarations.ok.dependsOn.flatMap((dep) => dep.scopes)])],
+      secrets: secrets.ok,
+      providesScopes: declarations.ok.providesScopes,
+      dependsOn: declarations.ok.dependsOn,
+      emittableEvents: emittable.ok,
+    });
+    // Commit the retirement's provenance with the cutover, not in a later step:
+    // grant/claim/ledger failures must not erase it from the eventual retry result.
+    await tx.update(appProvisions).set({
+      registeredAt: new Date(),
+      retiredLegacyAppId: retiredLegacyAppId ?? params.retiredLegacyAppId,
+      updatedAt: new Date(),
+    }).where(eq(appProvisions.slug, slug));
+    return { id, ...retirementContext(retiredLegacyAppId ?? params.retiredLegacyAppId) };
   });
-  return id;
 }
 
-function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppId: string, displayName: string, slug: string): void {
+function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppId: string, displayName: string, slug: string, retirement: { retiredLegacyAppId?: string }): void {
   emitAttestation({
     issuer_did: nodeDid,
     subject_did: appDid,
     type: 'registry.app.registered',
     context_id: registryAppId,
     context_type: 'registry_app',
-    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts: [slug] },
+    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts: [slug], ...retirement },
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
-function emitProvisionedEvent(nodeDid: string, slug: string, appDid: string, repoUrl: string, secretsSet: readonly string[]): void {
+function emitProvisionedEvent(nodeDid: string, slug: string, appDid: string, repoUrl: string, secretsSet: readonly string[], retirement: { retiredLegacyAppId?: string }): void {
   publish('apps.provisioned', {
     issuer: nodeDid,
     subject: appDid,
     scope: 'apps',
-    payload: { slug, appDid, repoUrl, secretsSet: [...secretsSet], context_id: slug, context_type: 'apps.provision' },
+    payload: { slug, appDid, repoUrl, secretsSet: [...secretsSet], context_id: slug, context_type: 'apps.provision', ...retirement },
   }).catch((err: unknown) => log.error({ err: String(err), slug }, 'Bus publish error for apps.provisioned'));
 }
 
@@ -483,6 +544,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       secretsSet: existingRun.secretsSet,
       attestationTypeResults,
       claimCode,
+      ...retirementContext(existingRun.retiredLegacyAppId),
     };
   }
 
@@ -525,11 +587,12 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // Manifest read (#2425) is best-effort and never throws (see
   // `fetchAppManifest`'s docblock) — a missing/invalid `imajin.app.json`
   // is not a provisioning failure, `registerApp` falls back to defaults.
-  let registryAppId: string;
+  let registration: { id: string; retiredLegacyAppId?: string };
+  let retirement: { retiredLegacyAppId?: string };
   try {
     const manifestToken = await tryGetInstallationToken();
     const manifest = await fetchAppManifest(slug, manifestToken);
-    registryAppId = await registerApp({
+    registration = await registerApp({
       slug,
       displayName,
       appDid,
@@ -537,9 +600,10 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       manifest,
       approvedDeclarations: params.approvedDeclarations ?? null,
       callbackOrigin,
+      retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
     });
-    await upsertProvisionRow(slug, { registeredAt: new Date() });
-    emitRegisteredAttestation(nodeDid, appDid, registryAppId, displayName, slug);
+    retirement = retirementContext(registration.retiredLegacyAppId);
+    emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, retirement);
   } catch (err) {
     return markFailed(nodeDid, slug, 'register', err);
   }
@@ -583,9 +647,9 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // Nothing is sealed into Actions secrets any more (#2437): report whatever the
   // ledger row already recorded (a pre-#2437 row keeps its history), else [].
   const secretsSet = existingRun?.secretsSet ?? [];
-  emitProvisionedEvent(nodeDid, slug, appDid, repo.repoUrl, secretsSet);
+  emitProvisionedEvent(nodeDid, slug, appDid, repo.repoUrl, secretsSet, retirement);
 
-  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode };
+  return { status: 'succeeded', repoUrl: repo.repoUrl, appDid, secretsSet, attestationTypeResults, claimCode, ...retirement };
 }
 
 /** Current ledger status for a slug, for `GET /api/apps/provision?slug=`. Undefined when never provisioned. */

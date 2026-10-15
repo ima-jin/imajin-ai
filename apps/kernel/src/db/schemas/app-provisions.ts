@@ -21,6 +21,8 @@ export const appProvisions = kernelAppProvisionsSchema.table('app_provisions', {
   /** true when this run created the repo; false when an existing repo was found and reused. */
   repoCreated: boolean('repo_created'),
   registeredAt: timestamp('registered_at', { withTimezone: true }),
+  /** Seeded legacy registry row retired by registration (#2810); retained across retries. */
+  retiredLegacyAppId: text('retired_legacy_app_id'),
   /** Legacy (pre-#2437): when the app key was sealed into Actions secrets. No longer written. */
   sealedAt: timestamp('sealed_at', { withTimezone: true }),
   /** Actions secret NAMES only — never values. Empty for every run after #2437; pre-#2437 rows may list a name. */

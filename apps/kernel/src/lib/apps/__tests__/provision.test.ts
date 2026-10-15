@@ -87,7 +87,9 @@ vi.mock('nanoid', () => ({ nanoid: () => 'testnanoid1234567' }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (col: string, val: unknown) => ({ col, val }),
+  arrayContains: (col: string, val: unknown[]) => ({ col, val, contains: true }),
   and: (...conds: FakeCond[]) => conds,
+  sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings.join('?'), values }),
 }));
 
 function storeFor(table: unknown) {
@@ -102,18 +104,21 @@ function projectRow(row: Record<string, unknown>, projection: Record<string, unk
   return out;
 }
 
-interface FakeCond { col: string; val: unknown }
+interface FakeCond { col: string; val: unknown; contains?: boolean }
 type FakeWhere = FakeCond | FakeCond[];
 
 function matchesWhere(row: Record<string, unknown>, where: FakeWhere | undefined): boolean {
   if (!where) return true;
   const conds = Array.isArray(where) ? where : [where];
-  return conds.every((cond) => row[cond.col] === cond.val);
+  return conds.every((cond) => cond.contains
+    ? (cond.val as unknown[]).every((value) => (row[cond.col] as unknown[] | undefined)?.includes(value))
+    : row[cond.col] === cond.val);
 }
 
 class FakeSelectChain {
   private table: unknown;
   private cond: FakeWhere | undefined;
+  private count = Infinity;
   constructor(private readonly projection?: Record<string, unknown>) {}
   from(table: unknown): this {
     this.table = table;
@@ -123,11 +128,18 @@ class FakeSelectChain {
     this.cond = cond;
     return this;
   }
-  limit(n: number): Promise<Record<string, unknown>[]> {
+  limit(n: number): this {
+    this.count = n;
+    return this;
+  }
+  for(_lock: string): this {
+    return this;
+  }
+  then<T>(resolveRows: (rows: Record<string, unknown>[]) => T): Promise<T> {
     let rows = [...storeFor(this.table).values()].filter((r) => matchesWhere(r, this.cond));
-    rows = rows.slice(0, n);
+    rows = rows.slice(0, this.count);
     if (this.projection) rows = rows.map((r) => projectRow(r, this.projection!));
-    return Promise.resolve(rows);
+    return Promise.resolve(resolveRows(rows));
   }
 }
 
@@ -140,7 +152,15 @@ class FakeUpdateChain {
   }
   where(cond: FakeCond): Promise<void> {
     for (const row of storeFor(this.table).values()) {
-      if (row[cond.col] === cond.val) Object.assign(row, this.patch);
+      if (row[cond.col] !== cond.val) continue;
+      for (const [key, value] of Object.entries(this.patch)) {
+        const expression = value as { sql?: string; values?: string[] } | null;
+        if (expression?.sql?.startsWith('COALESCE')) {
+          row[key] = row[expression.values![0]] ?? new Date();
+        } else {
+          row[key] = expression?.sql === 'NOW()' ? new Date() : value;
+        }
+      }
     }
     return Promise.resolve();
   }
@@ -152,22 +172,40 @@ class FakeInsertChain {
     if (this.table === appProvisionsRef) {
       appProvisionsStore.set(row.slug as string, { status: 'pending', secretsSet: [], attestationTypes: [], ...row });
     } else {
+      if ([...registryAppsStore.values()].some((existing) => existing.slug != null && existing.slug === row.slug)) {
+        return Promise.reject(new Error('duplicate key value violates unique constraint "uniq_registry_apps_slug"'));
+      }
       registryAppsStore.set(row.id as string, row);
     }
     return Promise.resolve();
   }
 }
 
-vi.mock('@/src/db', () => ({
-  appProvisions: appProvisionsRef,
-  registryApps: registryAppsRef,
-  vaultDelegationGrants: vaultDelegationGrantsRef,
-  db: {
+vi.mock('@/src/db', () => {
+  const fakeDb = {
     select: (projection?: Record<string, unknown>) => new FakeSelectChain(projection),
     update: (table: unknown) => new FakeUpdateChain(table),
     insert: (table: unknown) => new FakeInsertChain(table),
-  },
-}));
+    transaction: async <T>(work: (tx: typeof fakeDb) => Promise<T>): Promise<T> => {
+      const snapshots = [registryAppsStore, appProvisionsStore].map((store) => ({ store, before: structuredClone(store) }));
+      try {
+        return await work(fakeDb);
+      } catch (error) {
+        for (const { store, before } of snapshots) {
+          store.clear();
+          for (const [key, row] of before) store.set(key, row);
+        }
+        throw error;
+      }
+    },
+  };
+  return {
+    appProvisions: appProvisionsRef,
+    registryApps: registryAppsRef,
+    vaultDelegationGrants: vaultDelegationGrantsRef,
+    db: fakeDb,
+  };
+});
 
 vi.mock('@/src/lib/vault/sealing', () => ({
   getNodeSigningIdentity: getNodeSigningIdentityMock,
@@ -953,6 +991,226 @@ describe('runAppProvision — never writes the app key to GitHub Actions secrets
 });
 
 describe('runAppProvision — legacy first-party row coexistence (dykil, real dev state)', () => {
+  it.each([
+    ['dykil', null],
+    ['dykil', new Date('2026-10-01T00:00:00Z')],
+    [null, null],
+    [null, new Date('2026-10-01T00:00:00Z')],
+  ])('retires the exact seed holding the slug or audience atomically (slug=%s, revokedAt=%s)', async (slug, revokedAt) => {
+    const legacy = {
+      ...legacyDykilRow(), slug, revokedAt,
+      tokenAudiences: ['dykil'], placements: ['launcher', 'auth-submenu'],
+    };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome).toMatchObject({ status: 'succeeded', retiredLegacyAppId: legacy.id });
+    expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBe(legacy.id);
+    expect(registryAppsStore.size).toBe(2);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual({
+      ...legacy, status: 'revoked', revokedAt: revokedAt ?? expect.any(Date),
+      updatedAt: expect.any(Date), tokenAudiences: [], slug: null, placements: [],
+    });
+    expect([...registryAppsStore.values()].find((row) => row.slug === 'dykil')).toMatchObject({
+      tier: 'third_party', status: 'active', appDid: MINTED_DID, tokenAudiences: ['dykil'],
+    });
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'registry.app.registered',
+      payload: expect.objectContaining({ retiredLegacyAppId: legacy.id }),
+    }));
+    expect(publishMock).toHaveBeenCalledWith('apps.provisioned', expect.objectContaining({
+      payload: expect.objectContaining({ retiredLegacyAppId: legacy.id }),
+    }));
+    // Re-approved replay neither inserts again nor re-retires the legacy row.
+    const retired = structuredClone(registryAppsStore.get(legacy.id as string));
+    const replay = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    expect(replay).toMatchObject({ status: 'succeeded', retiredLegacyAppId: legacy.id });
+    expect(registryAppsStore.size).toBe(2);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(retired);
+  });
+
+  it.each([
+    ['app_other', 'third_party'],
+    ['app_first_party_dykil', 'third_party'],
+    ['app_custom_first_party', 'first_party'],
+    ['app_first_party_coffee', 'first_party'],
+  ])('fails closed for a non-seeded holder %s with tier %s', async (id, tier) => {
+    const holder = { ...legacyDykilRow(), id, tier, slug: 'dykil' };
+    registryAppsStore.set(id, { ...holder });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome).toMatchObject({
+      status: 'failed', failedStep: 'register',
+      error: expect.stringContaining('only seeded first-party legacy rows can be superseded'),
+    });
+    expect(registryAppsStore.size).toBe(1);
+    expect(registryAppsStore.get(id)).toEqual(holder);
+    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['dykil', null])('rolls back retirement when the new registry insert fails (legacy slug=%s)', async (slug) => {
+    const legacy = {
+      ...legacyDykilRow(), slug, revokedAt: null,
+      tokenAudiences: ['dykil'], placements: ['launcher'],
+    };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+    const { db } = await import('@/src/db');
+    const originalInsert = db.insert;
+    const insert = vi.spyOn(db, 'insert').mockImplementation((table) => {
+      if (table !== registryAppsRef) return originalInsert(table);
+      return {
+        values: async () => {
+          // The failure is after the retirement, not before the transaction.
+          expect(registryAppsStore.get(legacy.id as string)?.status).toBe('revoked');
+          expect(registryAppsStore.get(legacy.id as string)?.slug).toBeNull();
+          throw new Error('registry insert unavailable');
+        },
+      } as never;
+    });
+    try {
+      const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+      expect(outcome).toEqual({ status: 'failed', failedStep: 'register', error: 'registry insert unavailable' });
+      expect(registryAppsStore.size).toBe(1);
+      expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+      expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBeUndefined();
+      expect(emitAttestationMock).not.toHaveBeenCalled();
+      expect(publishMock.mock.calls.map(([name]) => name)).not.toContain('apps.provisioned');
+    } finally {
+      insert.mockRestore();
+    }
+  });
+
+  it.each([
+    ['app_shadow', 'third_party'],
+    ['app_first_party_coffee', 'first_party'],
+    ['app_first_party_dykil', 'third_party'],
+  ])('fails with a typed audience conflict for active shadow %s (%s)', async (id, tier) => {
+    const shadow = {
+      id, tier, status: 'active', slug: null,
+      tokenAudiences: ['other', 'dykil'], placements: ['launcher'],
+    };
+    registryAppsStore.set(id, { ...shadow });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome).toMatchObject({
+      status: 'failed', failedStep: 'register', errorCode: 'audience_conflict',
+      error: expect.stringContaining(`active row '${id}'`),
+    });
+    expect(registryAppsStore.size).toBe(1);
+    expect(registryAppsStore.get(id)).toEqual(shadow);
+    expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBeUndefined();
+    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses another active audience owner without retiring the eligible slug holder', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'] };
+    const shadow = { id: 'app_shadow', tier: 'third_party', status: 'active', slug: null, tokenAudiences: ['dykil'] };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+    registryAppsStore.set(shadow.id, { ...shadow });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome).toMatchObject({ status: 'failed', failedStep: 'register', errorCode: 'audience_conflict' });
+    expect(registryAppsStore.size).toBe(2);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+    expect(registryAppsStore.get(shadow.id)).toEqual(shadow);
+  });
+
+  it('ignores revoked audience rows belonging to other identities', async () => {
+    const revoked = { id: 'app_revoked', tier: 'third_party', status: 'revoked', slug: null, tokenAudiences: ['dykil'] };
+    registryAppsStore.set(revoked.id, { ...revoked });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(outcome).not.toHaveProperty('retiredLegacyAppId');
+    expect(registryAppsStore.get(revoked.id)).toEqual(revoked);
+  });
+  it('does not modify an already-retired legacy row from a guarded migration', async () => {
+    const legacy = {
+      ...legacyDykilRow(), status: 'revoked', revokedAt: new Date('2026-10-01T00:00:00Z'),
+      tokenAudiences: [], placements: [],
+    };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(outcome).not.toHaveProperty('retiredLegacyAppId');
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+    expect(registryAppsStore.size).toBe(2);
+  });
+  it('replays the retired id in result and audit after a post-registration grant failure', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'], placements: ['launcher'] };
+    registryAppsStore.set(legacy.id as string, legacy);
+    grantExistingMintedKeyMock.mockResolvedValueOnce({ status: 'no_reusable_grant' });
+
+    const failed = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(failed).toMatchObject({ status: 'failed', failedStep: 'app-signing-key-grant' });
+    expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBe(legacy.id);
+    const retired = structuredClone(registryAppsStore.get(legacy.id as string));
+    getMintedKeyByDidMock.mockResolvedValue({ status: 'active', publicKey: 'freshly-minted-public-key' });
+    emitAttestationMock.mockClear();
+
+    const retry = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(retry).toMatchObject({ status: 'succeeded', retiredLegacyAppId: legacy.id });
+    expect(registryAppsStore.size).toBe(2);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(retired);
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ retiredLegacyAppId: legacy.id }),
+    }));
+    expect(publishMock).toHaveBeenCalledWith('apps.provisioned', expect.objectContaining({
+      payload: expect.objectContaining({ retiredLegacyAppId: legacy.id }),
+    }));
+  });
+
+  it('rolls back both registry writes if persisting retirement provenance fails', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'], placements: ['launcher'] };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+    const { db } = await import('@/src/db');
+    const originalUpdate = db.update;
+    const update = vi.spyOn(db, 'update').mockImplementation((table) => {
+      if (table !== appProvisionsRef) return originalUpdate(table);
+      return {
+        set: (patch: Record<string, unknown>) => {
+          if (!patch.retiredLegacyAppId) return originalUpdate(table).set(patch);
+          return { where: vi.fn().mockRejectedValue(new Error('retirement ledger unavailable')) };
+        },
+      } as never;
+    });
+    try {
+      const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+      expect(outcome).toEqual({ status: 'failed', failedStep: 'register', error: 'retirement ledger unavailable' });
+      expect(registryAppsStore.size).toBe(1);
+      expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+      expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBeUndefined();
+      expect(emitAttestationMock).not.toHaveBeenCalled();
+    } finally {
+      update.mockRestore();
+    }
+  });
+
+  it('leaves the legacy slug holder untouched when the manifest differs from operator approval', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'], placements: ['launcher'] };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+    fetchAppManifestMock.mockResolvedValue({ providesScopes: ['dykil:write'] });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil', approvedDeclarations: null });
+
+    expect(outcome).toMatchObject({
+      status: 'failed', failedStep: 'register',
+      error: expect.stringContaining('differ from the list the operator approved'),
+    });
+    expect(registryAppsStore.size).toBe(1);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+  });
   it('creates a NEW third-party row for the slug and leaves the legacy first-party row completely untouched', async () => {
     // dykil is NOT provisioned at all today: only the legacy 0139 seed row
     // exists (no slug, tier: first_party), and the standalone repo already
@@ -1142,7 +1400,7 @@ describe('runAppProvision — fail-closed mid-step', () => {
     expect(loadAndUnsealByGranteeMock).not.toHaveBeenCalled();
   });
 
-  it('names the failed step when the register insert fails (e.g. slug still claimed by an untouched legacy row)', async () => {
+  it('names the failed step when the register insert fails on a concurrent slug claim', async () => {
     class FailingInsert {
       values(): Promise<void> {
         return Promise.reject(new Error('duplicate key value violates unique constraint "uniq_registry_apps_slug"'));

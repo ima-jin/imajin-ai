@@ -31,6 +31,7 @@ export interface AppsExecutionData {
   repoUrl: string;
   appDid: string;
   secretsSet: string[];
+  retiredLegacyAppId?: string;
   /**
    * Plaintext one-time app-signing-key claim code (#2411) — surfaced in
    * the decision route's response EXACTLY ONCE, same posture as #2252's
@@ -101,6 +102,7 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
         appDid: outcome.appDid,
         secretsSet: outcome.secretsSet,
         claimCode: outcome.claimCode,
+        ...(outcome.retiredLegacyAppId ? { retiredLegacyAppId: outcome.retiredLegacyAppId } : {}),
       },
     };
   } catch (err) {

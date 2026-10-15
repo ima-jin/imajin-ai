@@ -78,6 +78,21 @@ describe('executeAppsProvisionApproval — kind/detail validation', () => {
 });
 
 describe('executeAppsProvisionApproval — execution', () => {
+  it('includes the retired legacy row id in the operator-approved provision result', async () => {
+    runAppProvisionMock.mockResolvedValue({
+      status: 'succeeded',
+      repoUrl: 'https://github.com/ima-jin/dykil',
+      appDid: 'did:imajin:provisioned-dykil',
+      secretsSet: [],
+      claimCode: 'claim_test_code',
+      retiredLegacyAppId: 'app_first_party_dykil',
+    });
+
+    const result = await executeAppsProvisionApproval(card());
+
+    expect(result).toMatchObject({ ok: true, data: { retiredLegacyAppId: 'app_first_party_dykil' } });
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({ authorizedBy: AUTHORIZED_BY }));
+  });
   it('runs the pipeline and returns its data on success', async () => {
     runAppProvisionMock.mockResolvedValue({
       status: 'succeeded',
