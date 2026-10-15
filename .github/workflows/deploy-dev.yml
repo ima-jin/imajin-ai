@@ -81,7 +81,19 @@ jobs:
         # above fails the deploy if .env.local sets a different one, #2487).
         run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env dev
 
+      - name: Snapshot pm2 deploy state
+        run: |
+          set -o pipefail
+          # Names only, never pm2's full env. Cron does not inherit GITHUB_ENV.
+          PM2_DEPLOY_STOPPED_FILE="$(mktemp)"
+          export PM2_DEPLOY_STOPPED_FILE
+          echo "PM2_DEPLOY_STOPPED_FILE=$PM2_DEPLOY_STOPPED_FILE" >> "$GITHUB_ENV"
+          pm2 jlist | node scripts/lib/pm2-deploy-state.cjs dev --snapshot "$PM2_DEPLOY_STOPPED_FILE"
+
       - name: Build changed apps
+        env:
+          # build.sh also restarts built apps; preserve stops there too (#2815).
+          PM2_DEPLOY_RESTART_ONLINE_ONLY: '1'
         # DEV ONLY (#2784): merge only after standalone dev-events is running
         # from ~/dev/events, healthy on 3006 /events and persisted with pm2 save.
         # Prod keeps its existing build/migration path until Ryan's #2516 window.
@@ -97,11 +109,6 @@ jobs:
         # #2815: operator-stopped apps must stay stopped across kernel deploys.
         run: |
           set -o pipefail
-          # Store names only, never pm2's full environment. GITHUB_ENV limits the
-          # exemption to this deploy; cron does not inherit it.
-          PM2_DEPLOY_STOPPED_FILE="$(mktemp)"
-          export PM2_DEPLOY_STOPPED_FILE
-          echo "PM2_DEPLOY_STOPPED_FILE=$PM2_DEPLOY_STOPPED_FILE" >> "$GITHUB_ENV"
           DEV_PROCS=$(pm2 jlist | node scripts/lib/pm2-deploy-state.cjs dev "$PM2_DEPLOY_STOPPED_FILE")
           # Services declared in the ecosystem file are restarted FROM the file via
           # scripts/pm2-reconcile.sh (#2547). Neither `pm2 restart` nor

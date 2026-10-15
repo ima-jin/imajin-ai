@@ -262,6 +262,17 @@ if [[ ${#SUCCEEDED[@]} -gt 0 ]]; then
       continue
     fi
 
+    # Deploys must not wake operator-stopped apps before the workflow's final
+    # restart step even takes its snapshot (#2815). Manual builds are unchanged.
+    if [[ "${PM2_DEPLOY_RESTART_ONLINE_ONLY:-}" = 1 ]]; then
+      if ! decision="$(set -o pipefail; pm2 jlist | node "$REPO_ROOT/scripts/lib/pm2-deploy-state.cjs" "$ENV" --build "$name")"; then
+        echo "❌ Could not read pm2 restart state for $name" | tee -a "$REPORT"
+        RESTART_FAILED+=("$name")
+        continue
+      fi
+      [[ "$decision" = skip ]] && continue
+    fi
+
     port="$(service_port_for_app "$app")"
 
     # Daemon processes with no HTTP port (devPort/prodPort 0 or unset in the

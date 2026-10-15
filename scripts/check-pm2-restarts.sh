@@ -23,6 +23,7 @@
 #   RESTART_ALERT_STATE      state file (default ~/.cache/imajin/pm2-restarts.<scope>.json)
 #   RESTART_ALERT_WEBHOOK    optional URL; receives {"text": "..."} on alert
 #   RESTART_ALERT_NOW        override "now" (epoch seconds) — tests only
+#   PM2_DEPLOY_STOPPED_FILE  deploy-only pre-build stopped-name snapshot (#2815)
 #
 # Usage: scripts/check-pm2-restarts.sh [dev|prod] [ecosystem-file]
 # Exit:  0 healthy, 1 crash loop detected, 2 usage / environment error.

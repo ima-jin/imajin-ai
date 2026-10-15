@@ -21,6 +21,8 @@
 # orphan squatter never converges and fails the deploy.
 #
 # Usage: scripts/assert-pm2-listeners.sh [dev|prod] [ecosystem-file]
+# Env: PM2_DEPLOY_STOPPED_FILE — only still-stopped names in this deploy's
+# pre-build snapshot are exempt; newly stopped/errored apps still fail (#2815).
 
 set -uo pipefail
 

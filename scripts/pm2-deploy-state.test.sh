@@ -57,25 +57,28 @@ python3 - "$SCRIPT_DIR/../.github/workflows" "$WORK" <<'PY'
 import pathlib, sys
 for scope in ('dev', 'prod'):
     lines = (pathlib.Path(sys.argv[1]) / f'deploy-{scope}.yml').read_text().splitlines()
-    start = lines.index(f'      - name: Restart {scope} services')
-    start = lines.index('        run: |', start) + 1
-    script = []
-    for line in lines[start:]:
-        if line and not line.startswith('          '):
-            break
-        script.append(line[10:])
-    (pathlib.Path(sys.argv[2]) / f'{scope}.sh').write_text('\n'.join(script) + '\n')
+    for step, suffix in ((f'Restart {scope} services', ''), ('Snapshot pm2 deploy state', '-snapshot')):
+        start = lines.index(f'      - name: {step}')
+        start = lines.index('        run: |', start) + 1
+        script = []
+        for line in lines[start:]:
+            if line and not line.startswith('          '):
+                break
+            script.append(line[10:])
+        (pathlib.Path(sys.argv[2]) / f'{scope}{suffix}.sh').write_text('\n'.join(script) + '\n')
 PY
 
 assert_contains() {
-  if [[ "$1" != *"$2"* ]]; then
-    printf 'FAIL: missing %s in:\n%s\n' "$2" "$1" >&2
+  local haystack="$1" needle="$2"
+  if [[ "$haystack" != *"$needle"* ]]; then
+    printf 'FAIL: missing %s in:\n%s\n' "$needle" "$haystack" >&2
     exit 1
   fi
 }
 assert_absent() {
-  if [[ "$1" == *"$2"* ]]; then
-    printf 'FAIL: unexpected %s in:\n%s\n' "$2" "$1" >&2
+  local haystack="$1" needle="$2"
+  if [[ "$haystack" == *"$needle"* ]]; then
+    printf 'FAIL: unexpected %s in:\n%s\n' "$needle" "$haystack" >&2
     exit 1
   fi
 }
@@ -83,12 +86,25 @@ run_restart() {
   : > "$PM2_LOG"
   : > "$GITHUB_ENV"
   STATUS=0
-  OUT="$(cd "$WORK/repo" && bash -e "$WORK/$SCOPE.sh" 2>&1)" || STATUS=$?
+  OUT="$(cd "$WORK/repo" && bash -e "$WORK/$SCOPE-snapshot.sh" 2>&1)" || STATUS=$?
   printf '%s\n' "$OUT"
   if [[ -s "$GITHUB_ENV" ]]; then
     source "$GITHUB_ENV"
     export PM2_DEPLOY_STOPPED_FILE
   fi
+  [[ "$STATUS" -eq 0 ]] || return 0
+  if [[ -n "${STOP_AFTER_SNAPSHOT:-}" ]]; then
+    node - "$STOP_AFTER_SNAPSHOT" <<'JS'
+const fs = require('node:fs');
+const file = process.env.FAKE_JLIST, procs = JSON.parse(fs.readFileSync(file));
+const proc = procs.find((p) => p.name === process.argv[2]);
+proc.pm2_env.status = 'stopped';
+proc.pid = 0;
+fs.writeFileSync(file, JSON.stringify(procs));
+JS
+  fi
+  OUT="$(cd "$WORK/repo" && bash -e "$WORK/$SCOPE.sh" 2>&1)" || STATUS=$?
+  printf '%s\n' "$OUT"
 }
 expect_health() {
   local expected="$1" status=0 out
@@ -201,6 +217,13 @@ JS
   done
   # Cron has no snapshot: its existing stopped-app alerts remain intact.
   (unset PM2_DEPLOY_STOPPED_FILE; expect_health 1)
+  # An app that stops during the build must NOT enter the exemption snapshot.
+  printf '[{"name":"%s-file-online","pm2_env":{"status":"online"}}]' "$SCOPE" > "$FAKE_JLIST"
+  STOP_AFTER_SNAPSHOT="$SCOPE-file-online" run_restart
+  [[ "$STATUS" -eq 0 ]]
+  assert_contains "$OUT" "Skipping $SCOPE-file-online: pm2 status=stopped"
+  assert_absent "$(cat "$PM2_DEPLOY_STOPPED_FILE")" "$SCOPE-file-online"
+  expect_health 1
   # Known-stopped cron must not be re-added as if absent.
   printf '[{"name":"%s-kernel-cron","pm2_env":{"status":"stopped"}}]' "$SCOPE" > "$FAKE_JLIST"
   run_restart
@@ -221,6 +244,22 @@ JS
   FAIL_RESTART=restart run_restart
   [[ "$STATUS" -ne 0 ]]
   assert_contains "$(cat "$PM2_LOG")" "restart $SCOPE-name-online"
+done
+
+# A cluster name with mixed instance statuses cannot be restarted by name.
+printf '[]' > "$WORK/cluster-skip.json"
+printf '[{"name":"dev-cluster","pm2_env":{"status":"online"}},{"name":"dev-cluster","pm2_env":{"status":"stopped"}}]' \
+  | node "$SCRIPT_DIR/lib/pm2-deploy-state.cjs" dev "$WORK/cluster-skip.json" > "$WORK/cluster-selected"
+assert_absent "$(cat "$WORK/cluster-selected")" dev-cluster
+# The build phase shares the prod-jin exception but not for dev-jin.
+for scope in dev prod; do
+  decision="$(printf '[{"name":"%s-jin","pm2_env":{"status":"stopped"}}]' "$scope" \
+    | node "$SCRIPT_DIR/lib/pm2-deploy-state.cjs" "$scope" --build "$scope-jin")"
+  if [[ "$scope" = prod ]]; then
+    [[ "$decision" = restart ]]
+  else
+    [[ "$decision" = skip ]]
+  fi
 done
 
 # Failed/malformed/empty/non-array snapshots must never restart dev apps.

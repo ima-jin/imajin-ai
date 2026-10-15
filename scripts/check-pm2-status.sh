@@ -33,6 +33,7 @@
 #   STATUS_ALERT_REPEAT    seconds before re-sending the same alert (default 3600)
 #   STATUS_ALERT_STATE     state file (default ~/.cache/imajin/pm2-status.<scope>.json)
 #   STATUS_ALERT_NOW       override "now" (epoch seconds) — tests only
+#   PM2_DEPLOY_STOPPED_FILE deploy-only pre-build stopped-name snapshot (#2815)
 #
 # Usage: scripts/check-pm2-status.sh [dev|prod] [ecosystem-file]
 # Exit:  0 healthy, 1 errored/stopped app found, 2 usage / environment error.
@@ -112,10 +113,10 @@ PROBLEMS="$(
     if (!state || typeof state !== "object" || Array.isArray(state)) state = {};
 
     const next = {};
-    for (const app of apps) {
-      if (!app || !app.name) continue;
-      const proc = procs.find((p) => p && p.name === app.name);
-      if (!proc) continue;
+    const declarations = new Map(apps.filter((app) => app?.name).map((app) => [app.name, app]));
+    for (const proc of procs) {
+      const app = declarations.get(proc?.name);
+      if (!app) continue;
       if (policy.isIntentionallyStopped(proc, stopped)) continue;
       const status = proc.pm2_env && proc.pm2_env.status;
       const parked = status === "errored" || (status === "stopped" && app.autorestart !== false);

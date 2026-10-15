@@ -99,7 +99,19 @@ jobs:
         # fails the deploy if .env.local sets a different one, #2487).
         run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod
 
+      - name: Snapshot pm2 deploy state
+        run: |
+          set -o pipefail
+          # Snapshot before build.sh can restart anything (#2815).
+          PM2_DEPLOY_STOPPED_FILE="$(mktemp)"
+          export PM2_DEPLOY_STOPPED_FILE
+          echo "PM2_DEPLOY_STOPPED_FILE=$PM2_DEPLOY_STOPPED_FILE" >> "$GITHUB_ENV"
+          pm2 jlist | node scripts/lib/pm2-deploy-state.cjs prod --snapshot "$PM2_DEPLOY_STOPPED_FILE"
+
       - name: Build changed apps
+        env:
+          # build.sh also restarts built apps; preserve stops there too (#2815).
+          PM2_DEPLOY_RESTART_ONLINE_ONLY: '1'
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
         # by the diff since the last successful build (tracked via .last-build-sha).
         # Falls back to full rebuild if .last-build-sha doesn't exist.
@@ -152,10 +164,6 @@ jobs:
           # file and restarts the rest. Anything pm2 runs that is NOT in the file
           # keeps the name-based restart.
           source scripts/lib/pm2-owned.sh
-          # Names only; deploy checks inherit this snapshot, cron does not.
-          PM2_DEPLOY_STOPPED_FILE="$(mktemp)"
-          export PM2_DEPLOY_STOPPED_FILE
-          echo "PM2_DEPLOY_STOPPED_FILE=$PM2_DEPLOY_STOPPED_FILE" >> "$GITHUB_ENV"
           PROD_PROCS=$(pm2 jlist | node scripts/lib/pm2-deploy-state.cjs prod "$PM2_DEPLOY_STOPPED_FILE")
           # prod-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
           # The shared selector includes it only when absent, not when stopped.

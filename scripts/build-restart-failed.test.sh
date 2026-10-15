@@ -74,6 +74,7 @@ run_build_sh_scenario() {
   cp "$SCRIPT_DIR/build.sh" "$repo/scripts/build.sh"
   cp "$SCRIPT_DIR/lib/build-version.sh" "$repo/scripts/lib/build-version.sh"
   cp "$SCRIPT_DIR/lib/pm2-owned.sh" "$repo/scripts/lib/pm2-owned.sh"
+  cp "$SCRIPT_DIR/lib/pm2-deploy-state.cjs" "$repo/scripts/lib/pm2-deploy-state.cjs"
   cp "$SCRIPT_DIR/lib/deploy-skip.sh" "$repo/scripts/lib/deploy-skip.sh"
   cp "$SCRIPT_DIR/lib/reap-port.sh" "$repo/scripts/lib/reap-port.sh"
   echo '{"name":"fake-repo","version":"0.0.0-test"}' > "$repo/package.json"
@@ -146,7 +147,12 @@ EOF
 #!/usr/bin/env bash
 case "\$1" in
   jlist)
-    echo '[{"pid":4242,"name":"$name","pm2_env":{"status":"online"}}]'
+    if [[ "\${FAKE_PM2_STATUS:-}" = absent ]]; then
+      echo '[]'
+    else
+      printf '[{"pid":4242,"name":"$name","pm2_env":{"status":"%s"}}]' "\${FAKE_PM2_STATUS:-online}"
+    fi
+    exit "\${FAKE_PM2_JLIST_EXIT:-0}"
     ;;
   restart)
     exit $pm2_restart_exit
@@ -214,6 +220,22 @@ if [[ "$OUTPUT_3" == *"started from ecosystem config"* ]]; then
 else
   echo "✅ no cold-start fallback after a failed reconcile"
 fi
+
+# #2815: the build phase runs before the workflow restart step. A built
+# stopped/errored app must not be restarted/reconciled there either.
+for parked in stopped errored; do
+  RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 FAKE_PM2_STATUS="$parked" run_build_sh_scenario recapp false false 0 true)"
+  assert_eq "deploy build preserves $parked apps" "0" "${RESULT%%$'\n'*}"
+  assert_contains "deploy build logs the skipped pm2 status" "$RESULT" "Skipping dev-recapp: pm2 status=$parked"
+done
+RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 run_build_sh_scenario recapp false false 0 true)"
+assert_eq "deploy build still reconciles online apps and propagates failure" "2" "${RESULT%%$'\n'*}"
+RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 FAKE_PM2_STATUS=absent run_build_sh_scenario recapp false false 0 true)"
+assert_eq "unknown-to-pm2 declared app is not skipped during deploy build" "2" "${RESULT%%$'\n'*}"
+assert_contains "unknown app still reaches reconcile" "$RESULT" "pm2-reconcile failed for dev-recapp"
+RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 FAKE_PM2_JLIST_EXIT=1 run_build_sh_scenario svc false false 0)"
+assert_eq "failed pm2 snapshot fails deploy build loudly" "2" "${RESULT%%$'\n'*}"
+assert_contains "snapshot failure names app" "$RESULT" "Could not read pm2 restart state for dev-svc"
 
 if [[ "$FAILURES" -gt 0 ]]; then
   echo "$FAILURES assertion(s) failed."
