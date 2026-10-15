@@ -26,6 +26,33 @@ beforeEach(() => {
 });
 
 describe('manifest declarations preview (#2813)', () => {
+  it.each([
+    'foreign-org/template',
+    'ima-jin/..',
+    'ima-jin/../template',
+    'ima-jin/template/extra',
+    'ima-jin/%2e%2e',
+    'ima-jin',
+    'ima-jin/',
+    'ima-jin/Uppercase',
+    `ima-jin/${'a'.repeat(40)}`,
+    '',
+  ])('rejects unsafe template paths before any fetch or credential read: %s', async (template) => {
+    mocks.manifest.mockResolvedValue({ ok: {} });
+    expect(await previewManifestDeclarations('fresh-app', template))
+      .toEqual({ error: "App 'fresh-app' manifest invalid" });
+    expect(mocks.token).not.toHaveBeenCalled();
+    expect(mocks.manifest).not.toHaveBeenCalled();
+    expect(mocks.declarations).not.toHaveBeenCalled();
+  });
+
+  it('accepts an ima-jin template repo at the slug length boundary', async () => {
+    const repo = 'a'.repeat(39);
+    mocks.manifest.mockResolvedValueOnce({ error: 'unreadable', status: 404 })
+      .mockResolvedValueOnce({ ok: {} });
+    expect(await previewManifestDeclarations('fresh-app', `ima-jin/${repo}`)).toEqual({ ok: empty });
+    expect(mocks.manifest).toHaveBeenNthCalledWith(2, repo, 'installation-token', 'ima-jin');
+  });
   it.each([null, 'installation-token'])('snapshots the template source for a fresh repository with token %s', async (token) => {
     mocks.token.mockResolvedValue(token);
     const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' }];

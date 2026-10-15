@@ -65,6 +65,7 @@ export const GITHUB_ORG_CREDENTIAL_FIELD = 'github-org-provisioning';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_API_VERSION = '2022-11-28';
+const MAX_MANIFEST_RESPONSE_BYTES = 64 * 1024;
 
 /**
  * The sealed shape of {@link GITHUB_ORG_CREDENTIAL_FIELD} (#2416): a GitHub
@@ -306,6 +307,8 @@ interface GitHubApiOptions {
   /** Omit for an unauthenticated call — e.g. #2415's repo existence check, which must not require the org credential. */
   token?: string;
   body?: Record<string, unknown>;
+  /** Only manifest reads are bounded; credential and repo operations are unchanged. */
+  maxResponseBytes?: number;
 }
 
 /**
@@ -336,7 +339,10 @@ async function callGitHubApi<T = unknown>(opts: Readonly<GitHubApiOptions>): Pro
   if (res.status === 204) {
     return { status: res.status, data: null };
   }
-  const text = await res.text();
+  const text = opts.maxResponseBytes === undefined
+    ? await res.text()
+    : await readLimitedResponseText(res, opts.maxResponseBytes);
+  if (text === null) throw new GitHubResponseParseError(res.status);
   try {
     const data = text.length > 0 ? (JSON.parse(text) as T) : null;
     return { status: res.status, data };
@@ -520,7 +526,8 @@ interface GitHubContentsResponse {
  * Read and validate `imajin.app.json` (#2813). A supplied installation
  * token uses the Contents API's default branch (no explicit ref). A null
  * token reads the public raw file at HEAD without loading credentials.
- * Public reads bypass caching and have a 10-second request timeout.
+ * Public reads bypass caching, refuse redirects and have a 10-second timeout.
+ * Manifest response bodies (including the Contents API envelope) are capped at 64 KiB.
  * Transport/HTTP failures are unreadable; malformed JSON,
  * manifest shape or secret declarations are invalid. Missing secrets and
  * an explicit empty list are valid, but an unreadable manifest is not.
@@ -545,6 +552,29 @@ export async function fetchAppManifest(slug: string, token: string | null, org =
   return result;
 }
 
+/** Cancel on overflow without retaining or logging response content or cancellation errors. */
+async function readLimitedResponseText(response: Response, maxBytes: number): Promise<string | null> {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      bytesRead += value.byteLength;
+      if (bytesRead > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function parseAppManifest(text: string, status: number): AppManifestResult {
   try {
     const parsed: unknown = JSON.parse(text);
@@ -559,10 +589,13 @@ async function readPublicAppManifest(slug: string, org: string): Promise<AppMani
   const response = await fetch(`https://raw.githubusercontent.com/${org}/${slug}/HEAD/imajin.app.json`, {
     method: 'GET',
     cache: 'no-store',
+    redirect: 'error',
     signal: AbortSignal.timeout(10_000),
   });
   if (response.status === 200) {
-    return parseAppManifest(await response.text(), response.status);
+    const text = await readLimitedResponseText(response, MAX_MANIFEST_RESPONSE_BYTES);
+    if (text === null) return { error: 'invalid', status: response.status };
+    return parseAppManifest(text, response.status);
   }
   return { error: 'unreadable', status: response.status };
 }
@@ -572,6 +605,7 @@ async function readAuthenticatedAppManifest(slug: string, org: string, token: st
     method: 'GET',
     path: `/repos/${org}/${slug}/contents/imajin.app.json`,
     token,
+    maxResponseBytes: MAX_MANIFEST_RESPONSE_BYTES,
   });
   if (response.status === 200) {
     if (response.data?.encoding === 'base64' && typeof response.data.content === 'string') {

@@ -173,7 +173,7 @@ describe('fetchAppManifest (#2813)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toBe('https://raw.githubusercontent.com/ima-jin/dykil/HEAD/imajin.app.json');
-    expect(init).toEqual({ method: 'GET', cache: 'no-store', signal: expect.any(AbortSignal) });
+    expect(init).toEqual({ method: 'GET', cache: 'no-store', redirect: 'error', signal: expect.any(AbortSignal) });
     expect(new Headers(init.headers).has('Authorization')).toBe(false);
     expect(loadAndUnsealMock).not.toHaveBeenCalled();
     expect(warnMock).not.toHaveBeenCalled();
@@ -183,6 +183,20 @@ describe('fetchAppManifest (#2813)', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
     await expect(fetchAppManifest('app', null, 'other-org')).resolves.toEqual({ ok: {} });
     expect(fetchMock.mock.calls[0][0]).toBe('https://raw.githubusercontent.com/other-org/app/HEAD/imajin.app.json');
+  });
+
+  it('refuses public redirects and reports only unreadable when fetch rejects one', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('REDIRECT_PRIVATE_DESTINATION'));
+    await expect(fetchAppManifest('coffee', null)).resolves.toEqual({ error: 'unreadable' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://raw.githubusercontent.com/ima-jin/coffee/HEAD/imajin.app.json',
+      expect.objectContaining({ redirect: 'error' }),
+    );
+    expect(warnMock).toHaveBeenCalledWith(
+      { slug: 'coffee', error: 'unreadable' }, "App 'coffee' manifest unreadable",
+    );
+    expect(JSON.stringify(warnMock.mock.calls)).not.toContain('REDIRECT_PRIVATE_DESTINATION');
   });
 
   it('keeps the authenticated Contents API request and default branch unchanged', async () => {
@@ -208,11 +222,79 @@ describe('fetchAppManifest (#2813)', () => {
     expect(warnMock).not.toHaveBeenCalled();
   });
 
+  it('counts response bytes, not characters, for the size limit', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { name: 'é'.repeat(33 * 1024) }));
+    await expect(fetchAppManifest('coffee', null)).resolves.toEqual({ error: 'invalid', status: 200 });
+    expect(warnMock).toHaveBeenCalledWith(
+      { slug: 'coffee', error: 'invalid', status: 200 }, "App 'coffee' manifest invalid (HTTP 200)",
+    );
+  });
+
+  it('preserves UTF-8 characters split between response chunks', async () => {
+    const bytes = new TextEncoder().encode('{"name":"Café"}');
+    const split = bytes.indexOf(0xc3) + 1;
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, split));
+        controller.enqueue(bytes.slice(split));
+        controller.close();
+      },
+    });
+    fetchMock.mockResolvedValueOnce(new Response(body));
+    await expect(fetchAppManifest('coffee', null)).resolves.toEqual({ ok: { name: 'Café' } });
+    expect(body.locked).toBe(false);
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
   describe.each([['public', null], ['authenticated', INSTALLATION_TOKEN]] as const)('%s read', (_label, token) => {
     function manifestResponse(manifest: unknown): Response {
       if (token === null) return jsonResponse(200, manifest);
       return contentsResponse(manifest);
     }
+
+    function validResponseText(): string {
+      if (token === null) return '{}';
+      return JSON.stringify({ content: 'e30=', encoding: 'base64' });
+    }
+
+    it('accepts a valid response at exactly the 64 KiB limit', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(validResponseText().padEnd(64 * 1024)));
+      await expect(fetchAppManifest('coffee', token)).resolves.toEqual({ ok: {} });
+    });
+
+    it('rejects a response larger than 64 KiB with a names-only invalid result', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(validResponseText().padEnd(64 * 1024 + 1)));
+      await expect(fetchAppManifest('coffee', token)).resolves.toEqual({ error: 'invalid', status: 200 });
+      expect(warnMock).toHaveBeenCalledWith(
+        { slug: 'coffee', error: 'invalid', status: 200 }, "App 'coffee' manifest invalid (HTTP 200)",
+      );
+    });
+
+    it.each([false, true])('stops pulling and cancels on overflow even if cancellation fails: %s', async (cancelFails) => {
+      const cancel = vi.fn(async () => {
+        if (cancelFails) throw new Error('CANCEL_PRIVATE_DATA');
+      });
+      const chunks = [
+        new TextEncoder().encode(validResponseText().padEnd(64 * 1024)),
+        new Uint8Array([32]),
+        new TextEncoder().encode('UNREAD_PRIVATE_DATA'),
+      ];
+      const pull = vi.fn((controller: ReadableStreamDefaultController<Uint8Array>) => {
+        controller.enqueue(chunks[pull.mock.calls.length - 1]);
+      });
+      const body = new ReadableStream({ pull, cancel }, { highWaterMark: 0 });
+      fetchMock.mockResolvedValueOnce(new Response(body));
+      await expect(fetchAppManifest('coffee', token)).resolves.toEqual({ error: 'invalid', status: 200 });
+      expect(pull).toHaveBeenCalledTimes(2);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(body.locked).toBe(false);
+      expect(JSON.stringify(warnMock.mock.calls)).not.toContain('PRIVATE_DATA');
+    });
+
+    it('treats an empty response body as invalid', async () => {
+      fetchMock.mockResolvedValueOnce(new Response(null, { status: 200 }));
+      await expect(fetchAppManifest('coffee', token)).resolves.toEqual({ error: 'invalid', status: 200 });
+    });
 
     it.each([{}, { secrets: [] }, { icon: 'coffee' }])('accepts valid optional fields and absent/empty secrets: %j', async (manifest) => {
       fetchMock.mockResolvedValueOnce(manifestResponse(manifest));
@@ -248,8 +330,12 @@ describe('fetchAppManifest (#2813)', () => {
     );
 
     it('classifies a rejected response-body read as unreadable', async () => {
-      fetchMock.mockResolvedValueOnce({ status: 200, text: vi.fn().mockRejectedValue(new Error('BODY_PRIVATE_DATA')) });
+      const body = new ReadableStream({
+        start(controller) { controller.error(new Error('BODY_PRIVATE_DATA')); },
+      });
+      fetchMock.mockResolvedValueOnce(new Response(body));
       await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'unreadable' });
+      expect(body.locked).toBe(false);
       expect(JSON.stringify(warnMock.mock.calls)).not.toContain('BODY_PRIVATE_DATA');
     });
 
