@@ -15,18 +15,19 @@ import {
 } from '@/src/lib/kernel/connector-token-paste';
 
 /** Connector app DID — the selectable "Stripe" connector identity. */
-export const STRIPE_CONNECTOR_DID = 'did:imajin:stripe-connector';
+export const stripeConnectorDid = 'did:imajin:stripe-connector';
 
 /** Scope gating whether verified events get republished onto the owner's bus. */
-export const STRIPE_EVENTS_SCOPE = 'stripe:events';
+export const stripeEventsScope = 'stripe:events';
 
 /** Public client credential, sealed alongside the same owner's restricted key. */
 export const stripePublishableKeyField = (ownerDid: string): string => `stripe-publishable-key:${ownerDid}`;
+export const stripeWebhookSecretField = (ownerDid: string): string => `stripe-webhook-secret:${ownerDid}`;
 
 export const stripe = createConnectorTokenPaste({
   id: 'stripe',
   displayName: 'Stripe',
-  connectorDid: STRIPE_CONNECTOR_DID,
+  connectorDid: stripeConnectorDid,
   channel: 'stripe',
 });
 

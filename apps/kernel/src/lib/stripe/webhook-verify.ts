@@ -42,6 +42,7 @@ function parseSignatureHeader(header: string): { timestamp: string; v1Signatures
 
 /** Constant-time compare of two hex signature strings, guarding the length mismatch case. */
 function signaturesMatch(expectedHex: string, actualHex: string): boolean {
+  if (!/^[a-f0-9]{64}$/i.test(actualHex)) return false;
   const expected = Buffer.from(expectedHex, 'hex');
   const actual = Buffer.from(actualHex, 'hex');
   if (expected.length !== actual.length) return false;

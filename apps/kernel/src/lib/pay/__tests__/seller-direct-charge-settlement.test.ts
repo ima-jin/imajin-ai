@@ -45,7 +45,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({ settlePaymentRequest
 vi.mock('@/src/lib/pay/providers/stripe-webhook', () => ({ toRailEvent: vi.fn() }));
 vi.mock('@/src/lib/pay/withdraw-intent', () => ({ confirmWithdrawalFromRailEvent: vi.fn() }));
 vi.mock('@/src/lib/pay/rails/registry', () => ({ getWithdrawRailByName: vi.fn() }));
-vi.mock('@/src/lib/pay/providers/stripe-withdraw-rail', () => ({ STRIPE_RAIL_NAME: 'stripe' }));
+vi.mock('@/src/lib/pay/providers/stripe-withdraw-rail', () => ({ stripeRailName: 'stripe' }));
 vi.mock('@/src/lib/pay/webhook-handlers', () => ({ notifyCheckoutServices: h.notify }));
 
 import { POST } from '../../../../app/pay/api/charge/route';

@@ -102,10 +102,10 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
 }));
 
 import { getChainConfig, publish } from '@imajin/bus';
-import { POST } from '../../../../app/pay/api/webhook/route';
+import { POST } from '../../../../app/pay/api/webhook/__tests__/legacy-relay-fixture';
 import { __resetStripeWebhookDedupForTests } from '../providers/stripe-webhook';
 import {
-  PAY_STRIPE_REACTOR,
+  payStripeReactorName,
   ensurePayStripeReactorRegistered,
   hasStripeBusHandler,
   payStripeReactor,
@@ -152,7 +152,7 @@ describe('pay webhook -> connector bus -> pay-stripe reactor (#2177)', () => {
     ]) {
       const chain = await getChainConfig(type, 'stripe');
       expect(chain.source).toBe('defaults');
-      expect(chain.reactors).toEqual([{ type: PAY_STRIPE_REACTOR, config: {}, await: true, enabled: true }]);
+      expect(chain.reactors).toEqual([{ type: payStripeReactorName, config: {}, await: true, enabled: true }]);
     }
   });
 

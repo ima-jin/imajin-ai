@@ -11,8 +11,7 @@
  *
  * All verification (routing lookup, signing-secret load, HMAC + replay
  * check) happens in `handleVerifiedWebhookEvent`; this route only translates
- * its result into an HTTP response. Every rejection is a 4xx so Stripe does
- * not retry a delivery this node will never accept.
+ * its result into an HTTP response. Processing failures remain retryable.
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
@@ -31,7 +30,12 @@ export async function POST(
   const rawBody = await request.text();
   const signature = request.headers.get('stripe-signature');
 
-  const result = await handleVerifiedWebhookEvent(routingId, rawBody, signature);
+  let result;
+  try {
+    result = await handleVerifiedWebhookEvent(routingId, rawBody, signature);
+  } catch {
+    return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
+  }
 
   switch (result.status) {
     case 'ok':
@@ -45,5 +49,9 @@ export async function POST(
     case 'malformed_payload':
       log.warn({ routingId }, 'Stripe webhook: malformed JSON payload');
       return NextResponse.json({ error: 'Malformed payload' }, { status: 400 });
+    case 'connector_unavailable':
+      return NextResponse.json({ error: 'Webhook connector unavailable' }, { status: 503 });
+    case 'processing_failed':
+      return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });
   }
 }

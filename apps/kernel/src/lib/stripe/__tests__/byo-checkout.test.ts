@@ -3,15 +3,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 const { loadSealedCredentialsMock } = vi.hoisted(() => ({ loadSealedCredentialsMock: vi.fn() }));
 
 vi.mock('../connector-core', () => ({
-  STRIPE_EVENTS_SCOPE: 'stripe:events',
+  stripeEventsScope: 'stripe:events',
   stripe: {
     loadSealedCredentials: loadSealedCredentialsMock,
     keySealed: vi.fn().mockResolvedValue(true),
     resolveActiveGrant: vi.fn().mockResolvedValue(true),
   },
   stripePublishableKeyField: (did: string) => `stripe-publishable-key:${did}`,
+  stripeWebhookSecretField: (did: string) => `stripe-webhook-secret:${did}`,
 }));
-vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/src/lib/vault', () => ({
+  loadAndUnseal: vi.fn().mockResolvedValue(undefined),
+  vaultFieldStatus: vi.fn().mockResolvedValue('ready'),
+}));
 
 import {
   ByoCheckoutError,

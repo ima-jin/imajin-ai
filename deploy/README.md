@@ -489,6 +489,67 @@ needs no dykil checkout at all. The `dykil` Postgres schema stays in place
 (the standalone app reads it read-only and the legacy import depends on it);
 nothing here drops it. See `docs/ops/DEPLOY-POSTURE.md` for the full note.
 
+## events DEV ownership release; prod stays kernel-owned (#2784)
+
+This release removes only `dev-events` from `ecosystem.dev.config.js`.
+The dev workflow builds ecosystem-declared in-repo apps and uses
+`migrate.mjs --owner kernel`, including the call inside `build.sh`.
+**Prod is unchanged:** `prod-events` still points at
+`~/prod/imajin-ai/apps/events` on **7006**, and the prod workflow still
+builds, migrates and reconciles it through the existing unfiltered path.
+The new ownership CLI accepts dev only. Prod ownership is released by a
+separate draft PR that merges only in Ryan's #2516 window, after #2529 soak
+and his sign-off. Do not freeze prod's `.next` while its dependencies drift.
+
+The `events` schema and data remain owned by `events` / `ima-jin/events`.
+Historical shared SQL remains unchanged under #1991; this is not a baseline
+split. `apps/events` stays until prune-on-dev is safe, and must also remain
+available while prod still depends on the monorepo copy. No check-env contract,
+Caddy configuration, schema or data is changed here.
+
+### Operator sequence — standalone first, ownership release second
+
+**Dev (#2529):** hold this PR until standalone `dev-events` is actually running.
+Satisfy the standalone prerequisites (including events#38), coordinate a pause
+in kernel deploys during the transition, and from `~/dev/events` run
+`bash scripts/deploy.sh dev <approved-ref>`. The standalone script rejects a
+stale monorepo pm2 definition: at the approved cutover, inspect the old entry
+without exposing envs, remove that stale named entry and persist the removal
+as directed by the app's runbook, then run its deploy script to create the
+standalone definition. Verify live cwd/exec/args and listener belong to
+`~/dev/events`, health at **3006 `/events/api/health`** and the public Caddy
+**`/events` prefix**, and app behavior. Run **`pm2 save`**, verify persisted
+cwd/exec/port, **then merge the dev PR**. Verify the following kernel deploy
+keeps that standalone definition. Complete the #2529 soak before prod approval.
+
+**Prod (#2516):** keep the separate prod-release PR **draft**. Only after #2529
+soak plus Ryan's sign-off, during his window, perform the equivalent approved
+stale-entry reconciliation and run `bash scripts/deploy.sh prod <approved-ref>`
+from `~/prod/events`. Verify live definition, health on **7006
+`/events/api/health`**, Caddy `/events` and app behavior, run **`pm2 save`** and
+verify persistence, **then merge the prod-release PR in that window**. Resume
+kernel deployment only with the correct release/config. Ports **3006/7006**
+and the Caddy `/events` prefix remain unchanged throughout.
+
+Name-based kernel restarts may still bounce standalone processes, but reuse
+stored definitions. Removing an ecosystem declaration neither performs cutover
+nor makes it safe to leave a monorepo process on a frozen build.
+
+### Rollback — per environment
+
+If standalone verification fails before merge, **do not merge** that environment's
+ownership release. Reconcile the known-good monorepo pm2 definition from the
+still-owning ecosystem, using a verified matching build/dependency set, verify
+its listener and `/events/api/health`, and **`pm2 save`** / verify persistence.
+If the release has merged, **revert that environment's release** through a
+reviewed change and deploy using the standard kernel workflow (with production
+approval for prod). Build/validate the monorepo copy with its matching dependencies
+before restoring/reconciling its pm2 entry; check health and persist with
+**`pm2 save`**. Never restart an old `.next` on drifting `node_modules`.
+No SQL/data rollback or source pruning is part of this change.
+
+All commands above are operator-only instructions, not actions performed by this PR.
+
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 
 `ecosystem.prod.config.js` has no `prod-corpus` entry. Per #2232 (multi-host

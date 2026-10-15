@@ -85,7 +85,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
   settlePaymentRequestFromStripeCheckout: vi.fn(),
 }));
 
-import { POST } from '../route';
+import { POST } from './legacy-relay-fixture';
 
 type NextRequestLike = Parameters<typeof POST>[0];
 

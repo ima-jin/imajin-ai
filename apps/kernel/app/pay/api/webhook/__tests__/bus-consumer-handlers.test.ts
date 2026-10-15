@@ -62,7 +62,7 @@ vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({
   settlePaymentRequestFromStripeCheckout: vi.fn(),
 }));
 
-import { POST } from '../route';
+import { POST } from './legacy-relay-fixture';
 import { renderWhere } from '@/src/lib/pay/__tests__/mock-drizzle-table';
 
 type NextRequestLike = Parameters<typeof POST>[0];

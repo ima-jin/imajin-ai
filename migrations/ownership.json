@@ -310,49 +310,49 @@
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.events": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.orders": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.pledges": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0032_campaign_events.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.ticket_queue": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.ticket_transfers": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.ticket_types": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "events.tickets": {
       "owner": "events",
       "schema": "events",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "Events-owned table (#2784): ima-jin/events owns this schema and its data. Dev deployment ownership transfers after #2529 cutover; prod build/migration ownership stays with the kernel until the separate #2516-window release. Retain historical SQL and apps/events while prod needs them; no table or data is dropped."
     },
     "github.action_proposals": {
       "owner": "kernel",
@@ -658,7 +658,7 @@
       "owner": "kernel",
       "schema": "notify",
       "firstMigration": "0162_push_subscriptions.sql",
-      "notes": "#2291 phone push path \u2014 web-push (VAPID) subscriptions"
+      "notes": "#2291 phone push path — web-push (VAPID) subscriptions"
     },
     "notify.templates": {
       "owner": "kernel",
@@ -700,7 +700,7 @@
       "owner": "kernel",
       "schema": "pay",
       "firstMigration": "0001_seed.sql",
-      "notes": "#2176 \u2014 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref; #2650 \u2014 0181_pay_transactions_drop_stripe_id.sql drops the stripe_id alias column (and idx_transactions_stripe_id); #2642 \u2014 0182_pay_transactions_app_settle_binding.sql adds app_did + payee_manifest + settled_at + settle_batch_id"
+      "notes": "#2176 — 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref; #2650 — 0181_pay_transactions_drop_stripe_id.sql drops the stripe_id alias column (and idx_transactions_stripe_id); #2642 — 0182_pay_transactions_app_settle_binding.sql adds app_did + payee_manifest + settled_at + settle_batch_id"
     },
     "pay.withdrawal_requests": {
       "owner": "kernel",

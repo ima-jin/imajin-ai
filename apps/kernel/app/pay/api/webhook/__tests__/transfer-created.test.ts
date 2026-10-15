@@ -38,7 +38,7 @@ vi.mock('@/src/lib/pay/rails/registry', () => ({
   getWithdrawRailByName: (name: string) => (name === 'stripe' ? { name: 'stripe' } : null),
 }));
 
-import { POST } from '../route';
+import { POST } from './legacy-relay-fixture';
 
 function makeRequest(): Parameters<typeof POST>[0] {
   return new Request('http://localhost:3000/pay/api/webhook', {

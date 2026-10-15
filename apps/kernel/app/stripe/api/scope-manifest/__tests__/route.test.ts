@@ -16,7 +16,7 @@ vi.mock('@/src/lib/stripe/scope-manifest', () => ({
   findStripeManifestAsset: mocks.find,
   stripeKeySealed: mocks.keySealed,
   stripeKeyPending: mocks.keyPending,
-  VALID_STRIPE_SCOPES: ['stripe:events'],
+  validStripeScopes: ['stripe:events'],
 }));
 
 import { GET } from '../route';
