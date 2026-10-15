@@ -23,13 +23,21 @@ function isIntentionallyStopped(proc, stopped) {
   return proc?.pm2_env?.status === 'stopped' && stopped.has(proc.name);
 }
 function mayRestart(procs, name) {
-  const skipped = procs.filter((proc) => proc?.name === name && proc.pm2_env?.status !== 'online');
+  const matches = procs.filter((proc) => proc?.name === name);
+  const skipped = matches.filter((proc) => proc.pm2_env?.status === 'stopped');
   for (const proc of skipped) {
-    console.error(`Skipping ${name}: pm2 status=${proc.pm2_env?.status || 'unknown'} (not online)`);
+    console.error(`Skipping ${name}: pm2 status=${proc.pm2_env.status} (preserving deliberate stop)`);
   }
   // Absent is not deliberately stopped. A name-based restart affects all
-  // cluster instances, so one non-online instance excludes the whole name.
-  return skipped.length === 0;
+  // cluster instances, so one stopped instance excludes the whole name.
+  if (skipped.length) return false;
+  for (const proc of matches) {
+    const status = proc.pm2_env?.status;
+    if (status !== 'online') {
+      console.error(`Restarting ${name}: pm2 status=${status || 'unknown'} (deploy recovery)`);
+    }
+  }
+  return true;
 }
 
 function scopedProcesses(procs, scope) {

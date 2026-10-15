@@ -39,8 +39,10 @@ for (const name of process.argv[2].split(/[ ,]+/).filter(Boolean)) {
     proc = { name, pm2_env: {} };
     procs.push(proc);
   }
-  proc.pid = 100;
-  proc.pm2_env.status = 'online';
+  if (!process.env.KEEP_STATUS || proc.pm2_env.status !== process.env.KEEP_STATUS) {
+    proc.pid = 100;
+    proc.pm2_env.status = 'online';
+  }
 }
 fs.writeFileSync(process.env.FAKE_JLIST, JSON.stringify(procs));
 JS
@@ -116,6 +118,18 @@ expect_health() {
   printf '%s\n' "$out"
 }
 
+set_status() {
+  local name="$1" status="$2"
+  node - "$name" "$status" <<'JS'
+const fs = require('node:fs');
+const file = process.env.FAKE_JLIST, procs = JSON.parse(fs.readFileSync(file));
+const proc = procs.find((p) => p.name === process.argv[2]);
+proc.pm2_env.status = process.argv[3];
+proc.pid = process.argv[3] === 'online' ? 100 : 0;
+fs.writeFileSync(file, JSON.stringify(procs));
+JS
+}
+
 for SCOPE in dev prod; do
   export ECOSYSTEM_FILE="$WORK/$SCOPE.config.js"
   cat > "$ECOSYSTEM_FILE" <<EOF
@@ -125,6 +139,8 @@ module.exports = { apps: [
   { name: '$SCOPE-stale', cwd: '/srv', script: 'server.js' },
   { name: '$SCOPE-file-stopped', cwd: '/srv', script: 'server.js', env: { PORT: 7002 } },
   { name: '$SCOPE-file-errored', cwd: '/srv', script: 'server.js' },
+  { name: '$SCOPE-file-waiting', cwd: '/srv', script: 'server.js' },
+  { name: '$SCOPE-file-launching', cwd: '/srv', script: 'server.js' },
   { name: '$SCOPE-kernel-cron', cwd: '/srv', script: 'cron.js' }
 ] };
 EOF
@@ -133,8 +149,9 @@ const scope = process.argv[2];
 const specs = [
   ['jin', 'stopped'], ['file-online', 'online'], ['stale', 'online'],
   ['file-stopped', 'stopped'], ['file-errored', 'errored'],
+  ['file-waiting', 'waiting restart'], ['file-launching', 'launching'],
   ['name-online', 'online'], ['name-stopped', 'stopped'], ['name-errored', 'errored'],
-  ['launching', 'launching'], ['no-status', undefined],
+  ['name-waiting', 'waiting restart'], ['name-launching', 'launching'], ['no-status', undefined],
 ];
 const procs = specs.map(([suffix, status]) => ({
   name: `${scope}-${suffix}`, pid: status === 'online' ? 100 : 0,
@@ -150,18 +167,22 @@ JS
   [[ "$STATUS" -eq 0 ]]
   LOG="$(cat "$PM2_LOG")"
   assert_contains "$LOG" "restart $SCOPE-name-online"
-  assert_contains "$LOG" "startOrRestart $ECOSYSTEM_FILE --only $SCOPE-file-online --update-env"
+  assert_contains "$LOG" "startOrRestart $ECOSYSTEM_FILE --only $SCOPE-file-online,$SCOPE-file-errored,$SCOPE-file-waiting,$SCOPE-file-launching --update-env"
   assert_contains "$LOG" "delete $SCOPE-stale"
   assert_contains "$LOG" "start $ECOSYSTEM_FILE --only $SCOPE-stale --update-env"
   assert_contains "$LOG" "start $ECOSYSTEM_FILE --only $SCOPE-kernel-cron --update-env"
   for kind in file name; do
-    for state in stopped errored; do
-      assert_contains "$OUT" "Skipping $SCOPE-$kind-$state: pm2 status=$state"
-      assert_absent "$LOG" "$SCOPE-$kind-$state"
+    assert_contains "$OUT" "Skipping $SCOPE-$kind-stopped: pm2 status=stopped"
+    assert_absent "$LOG" "$SCOPE-$kind-stopped"
+    for state in errored waiting launching; do
+      pm2_status="$state"
+      [[ "$state" != waiting ]] || pm2_status="waiting restart"
+      assert_contains "$OUT" "Restarting $SCOPE-$kind-$state: pm2 status=$pm2_status (deploy recovery)"
+      assert_contains "$LOG" "$SCOPE-$kind-$state"
+      assert_absent "$(cat "$PM2_DEPLOY_STOPPED_FILE")" "$SCOPE-$kind-$state"
     done
   done
-  assert_contains "$OUT" "Skipping $SCOPE-launching: pm2 status=launching"
-  assert_contains "$OUT" "Skipping $SCOPE-no-status: pm2 status=unknown"
+  assert_contains "$OUT" "Restarting $SCOPE-no-status: pm2 status=unknown"
   assert_absent "$LOG" other-app
   if [[ "$SCOPE" = prod ]]; then
     assert_contains "$LOG" "startOrRestart $ECOSYSTEM_FILE --only prod-jin --update-env"
@@ -171,24 +192,18 @@ JS
   fi
   [[ "$(stat -c '%a' "$PM2_DEPLOY_STOPPED_FILE")" = 600 ]]
   assert_absent "$(cat "$PM2_DEPLOY_STOPPED_FILE")" padding
-  expect_health 1
-  # Even standalone errored apps must fail health, outside the ecosystem file.
-  node - "$FAKE_JLIST" "$SCOPE-file-errored" <<'JS'
-const fs = require('node:fs');
-const file = process.argv[2];
-const procs = JSON.parse(fs.readFileSync(file));
-fs.writeFileSync(file, JSON.stringify(procs.filter((p) => p.name !== process.argv[3])));
-JS
-  HEALTH_OUT="$(expect_health 1)"
-  assert_contains "$HEALTH_OUT" "$SCOPE-name-errored is errored in pm2"
-  # Remove the other errored app: only intentionally stopped apps remain.
-  node - "$FAKE_JLIST" <<'JS'
-const fs = require('node:fs');
-const file = process.argv[2];
-fs.writeFileSync(file, JSON.stringify(JSON.parse(fs.readFileSync(file))
-  .filter((p) => p.pm2_env.status !== 'errored')));
-JS
+  # All crashed/launching apps recovered; stopped apps remain exempt.
   expect_health 0
+  # A recovery that does not stick must still fail health, including apps
+  # outside the ecosystem. A first waiting-restart sample is already red.
+  for kind in file name; do
+    for state in errored "waiting restart"; do
+      set_status "$SCOPE-$kind-errored" "$state"
+      HEALTH_OUT="$(expect_health 1)"
+      assert_contains "$HEALTH_OUT" "$SCOPE-$kind-errored is $state in pm2"
+      set_status "$SCOPE-$kind-errored" online
+    done
+  done
   LISTEN_OUT="$(bash "$SCRIPT_DIR/assert-pm2-listeners.sh" "$SCOPE" "$ECOSYSTEM_FILE")"
   assert_contains "$LISTEN_OUT" "$SCOPE-file-stopped pm2 status=stopped before deploy"
   # Restart deltas of a deliberately stopped app must not invalidate the exemption.
@@ -217,6 +232,18 @@ JS
   done
   # Cron has no snapshot: its existing stopped-app alerts remain intact.
   (unset PM2_DEPLOY_STOPPED_FILE; expect_health 1)
+  # Exercise a restart command that succeeds but leaves its target unhealthy.
+  for kind in file name; do
+    for state in errored "waiting restart"; do
+      printf '[{"name":"%s-%s-errored","pm2_env":{"status":"%s","pm_exec_path":"/srv/server.js"}}]' \
+        "$SCOPE" "$kind" "$state" > "$FAKE_JLIST"
+      KEEP_STATUS="$state" run_restart
+      [[ "$STATUS" -eq 0 ]]
+      assert_contains "$OUT" "Restarting $SCOPE-$kind-errored: pm2 status=$state"
+      assert_contains "$(cat "$PM2_LOG")" "$SCOPE-$kind-errored"
+      expect_health 1
+    done
+  done
   # An app that stops during the build must NOT enter the exemption snapshot.
   printf '[{"name":"%s-file-online","pm2_env":{"status":"online"}}]' "$SCOPE" > "$FAKE_JLIST"
   STOP_AFTER_SNAPSHOT="$SCOPE-file-online" run_restart

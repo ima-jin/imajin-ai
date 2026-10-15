@@ -93,7 +93,7 @@ jobs:
       - name: Build changed apps
         env:
           # build.sh also restarts built apps; preserve stops there too (#2815).
-          PM2_DEPLOY_RESTART_ONLINE_ONLY: '1'
+          PM2_DEPLOY_PRESERVE_STOPPED: '1'
         # DEV ONLY (#2784): merge only after standalone dev-events is running
         # from ~/dev/events, healthy on 3006 /events and persisted with pm2 save.
         # Prod keeps its existing build/migration path until Ryan's #2516 window.

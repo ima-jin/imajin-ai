@@ -222,18 +222,23 @@ else
 fi
 
 # #2815: the build phase runs before the workflow restart step. A built
-# stopped/errored app must not be restarted/reconciled there either.
-for parked in stopped errored; do
-  RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 FAKE_PM2_STATUS="$parked" run_build_sh_scenario recapp false false 0 true)"
-  assert_eq "deploy build preserves $parked apps" "0" "${RESULT%%$'\n'*}"
-  assert_contains "deploy build logs the skipped pm2 status" "$RESULT" "Skipping dev-recapp: pm2 status=$parked"
+# stopped app must not be restarted/reconciled there either.
+RESULT="$(PM2_DEPLOY_PRESERVE_STOPPED=1 FAKE_PM2_STATUS=stopped run_build_sh_scenario recapp false false 0 true)"
+assert_eq "deploy build preserves stopped apps" "0" "${RESULT%%$'\n'*}"
+assert_contains "deploy build logs the skipped pm2 status" "$RESULT" "Skipping dev-recapp: pm2 status=stopped"
+for recovering in errored "waiting restart" launching; do
+  RESULT="$(PM2_DEPLOY_PRESERVE_STOPPED=1 FAKE_PM2_STATUS="$recovering" run_build_sh_scenario svc false false 0)"
+  assert_eq "deploy build restarts $recovering apps" "0" "${RESULT%%$'\n'*}"
+  assert_contains "deploy build logs recovery status" "$RESULT" "Restarting dev-svc: pm2 status=$recovering (deploy recovery)"
+  RESULT="$(PM2_DEPLOY_PRESERVE_STOPPED=1 FAKE_PM2_STATUS="$recovering" run_build_sh_scenario recapp false false 0 true)"
+  assert_eq "failed reconcile of a $recovering app remains red" "2" "${RESULT%%$'\n'*}"
 done
-RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 run_build_sh_scenario recapp false false 0 true)"
+RESULT="$(PM2_DEPLOY_PRESERVE_STOPPED=1 run_build_sh_scenario recapp false false 0 true)"
 assert_eq "deploy build still reconciles online apps and propagates failure" "2" "${RESULT%%$'\n'*}"
-RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 FAKE_PM2_STATUS=absent run_build_sh_scenario recapp false false 0 true)"
+RESULT="$(PM2_DEPLOY_PRESERVE_STOPPED=1 FAKE_PM2_STATUS=absent run_build_sh_scenario recapp false false 0 true)"
 assert_eq "unknown-to-pm2 declared app is not skipped during deploy build" "2" "${RESULT%%$'\n'*}"
 assert_contains "unknown app still reaches reconcile" "$RESULT" "pm2-reconcile failed for dev-recapp"
-RESULT="$(PM2_DEPLOY_RESTART_ONLINE_ONLY=1 FAKE_PM2_JLIST_EXIT=1 run_build_sh_scenario svc false false 0)"
+RESULT="$(PM2_DEPLOY_PRESERVE_STOPPED=1 FAKE_PM2_JLIST_EXIT=1 run_build_sh_scenario svc false false 0)"
 assert_eq "failed pm2 snapshot fails deploy build loudly" "2" "${RESULT%%$'\n'*}"
 assert_contains "snapshot failure names app" "$RESULT" "Could not read pm2 restart state for dev-svc"
 

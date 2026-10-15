@@ -73,7 +73,7 @@ jl() {
     const procs = (process.env.SPEC || "").split(/\s+/).filter(Boolean).map((kv) => {
       const [name, rest] = kv.split("=");
       const [status, restarts] = rest.split(":");
-      return { name, pm2_env: { status, restart_time: Number(restarts) } };
+      return { name, pm2_env: { status: status.replaceAll("_", " "), restart_time: Number(restarts) } };
     });
     process.stdout.write(JSON.stringify(procs));
   '
@@ -116,7 +116,7 @@ export RESTART_ALERT_WEBHOOK="$ENV_HOOK"
 
 reset_state
 run_case "healthy pm2 passes and reports both checks" 0 "$T0" "t-events=online:0 t-auth=online:0" 0 \
-  "no app exceeded" "no declared app is errored or stopped"
+  "no app exceeded" "no declared app is errored, stopped or waiting restart"
 
 reset_state
 out="$(PM2_HEALTH_QUIET=1 RESTART_ALERT_NOW="$T0" STATUS_ALERT_NOW="$T0" bash "$HEALTH" prod "$ECO" 2>&1)"
@@ -132,11 +132,15 @@ run_case "parked errored app fails and POSTs" 1 "$T0" "t-events=errored:0 t-auth
   "t-events is errored in pm2"
 
 reset_state
+run_case "waiting restart fails on first health check without counter history" 1 "$T0" \
+  "t-events=waiting_restart:0 t-auth=online:0" 1 "t-events is waiting restart in pm2"
+
+reset_state
 PM2_HEALTH_QUIET=1 run_case "problems are printed even in quiet mode" 1 "$T0" "t-events=online:0 t-auth=stopped:0" 1 \
   "t-auth is stopped in pm2"
 
 # Crash loop: restart counter jumps by 100 inside the window while pm2 still
-# says `online`/`waiting restart` — only the restart check can see it.
+# says `online` — only the restart-counter check can see it.
 reset_state
 run_case "baseline sample" 0 "$T0" "t-events=online:10 t-auth=online:0" 0
 run_case "crash loop fails and POSTs" 1 $((T0 + 60)) "t-events=online:110 t-auth=online:0" 1 \

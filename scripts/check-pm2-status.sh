@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# check-pm2-status.sh — alert when a pm2 app is parked `errored` or `stopped`
+# check-pm2-status.sh — alert on errored, stopped or waiting-restart pm2 apps
 # (#2572).
 #
 # Background: after `max_restarts` consecutive crashes pm2 gives up and parks
@@ -9,14 +9,14 @@
 # check-pm2-restarts.sh — which only sees the counter climb — goes quiet, and
 # nothing tells anyone the service is down. This is the companion check: it
 # reads `pm2 jlist` and flags every app the env's ecosystem file declares whose
-# status is `errored` or `stopped`.
+# status is `errored`, `stopped` or `waiting restart`.
 #
 # Deliberately NOT flagged:
 #   - `stopped` apps the ecosystem declares with `autorestart: false` — one-shot
 #     jobs legitimately sit `stopped` after a clean exit (an `errored` one-shot
 #     is still flagged);
-#   - transient states (`launching`, `stopping`, `waiting restart`) — a crash
-#     loop in progress is check-pm2-restarts.sh's job;
+#   - transient states (`launching`, `stopping`); `waiting restart` is flagged
+#     even before restart-counter history exists, since the app is down;
 #   - apps pm2 doesn't know at all (declared but not hosted here, e.g. corpus
 #     on gx10).
 #
@@ -36,7 +36,7 @@
 #   PM2_DEPLOY_STOPPED_FILE deploy-only pre-build stopped-name snapshot (#2815)
 #
 # Usage: scripts/check-pm2-status.sh [dev|prod] [ecosystem-file]
-# Exit:  0 healthy, 1 errored/stopped app found, 2 usage / environment error.
+# Exit:  0 healthy, 1 down/crash-looping app found, 2 usage / environment error.
 
 set -uo pipefail
 
@@ -78,7 +78,8 @@ if ! pm2 jlist 2>/dev/null > "$JLIST_FILE"; then
   exit 2
 fi
 
-# Prints one "<name> <status> <notify|quiet>" line per parked app and rewrites
+# Prints one tab-delimited "<name> <status> <notify|quiet>" line per down app
+# (pm2 statuses can contain spaces) and rewrites
 # the state file (an app that recovered drops out, so a relapse alerts again).
 # Exit 3 = could not load the ecosystem file or pm2 output.
 PROBLEMS="$(
@@ -119,13 +120,14 @@ PROBLEMS="$(
       if (!app) continue;
       if (policy.isIntentionallyStopped(proc, stopped)) continue;
       const status = proc.pm2_env && proc.pm2_env.status;
-      const parked = status === "errored" || (status === "stopped" && app.autorestart !== false);
+      const parked = status === "errored" || status === "waiting restart"
+        || (status === "stopped" && app.autorestart !== false);
       if (!parked) continue;
       const key = app.name + ":" + status;
       const last = Number(state[key]);
       const due = !Number.isFinite(last) || now - last >= repeat;
       next[key] = due ? now : last;
-      console.log(app.name + " " + status + " " + (due ? "notify" : "quiet"));
+      console.log([app.name, status, due ? "notify" : "quiet"].join("\t"));
     }
     fs.writeFileSync(statePath, JSON.stringify(next));
   ' "$ECOSYSTEM" "$JLIST_FILE" "$STATE" "$REPEAT" "$SCRIPT_DIR/lib/pm2-deploy-state.cjs" "${STATUS_ALERT_NOW:-}" "$SCOPE"
@@ -137,13 +139,13 @@ if [[ "$status" -ne 0 ]]; then
 fi
 
 if [[ -z "$PROBLEMS" ]]; then
-  echo "✅ check-pm2-status ($SCOPE): no declared app is errored or stopped."
+  echo "✅ check-pm2-status ($SCOPE): no declared app is errored, stopped or waiting restart."
   exit 0
 fi
 
 MESSAGE="pm2 apps down on $(hostname) ($SCOPE):"
 NOTIFY=false
-while read -r name app_status mode; do
+while IFS=$'\t' read -r name app_status mode; do
   [[ -z "$name" ]] && continue
   echo "❌ $name is $app_status in pm2"
   if [[ "$mode" = notify ]]; then

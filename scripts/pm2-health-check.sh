@@ -6,7 +6,7 @@
 # Runs, in order:
 #   1. the install check (pm2 + node on PATH, ecosystem file present),
 #   2. scripts/check-pm2-restarts.sh — crash loops (restart counter climbing),
-#   3. scripts/check-pm2-status.sh   — apps parked errored/stopped,
+#   3. scripts/check-pm2-status.sh   — errored/stopped/waiting-restart apps,
 # and exits with the worst result, so a crash loop OR a parked app is heard
 # either way. Both checks POST to the same alert webhook.
 #

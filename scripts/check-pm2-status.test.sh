@@ -7,7 +7,8 @@
 # the clock injected via STATUS_ALERT_NOW, asserting that:
 #   - an app parked `errored` or `stopped` fails the run, is named, and is
 #     POSTed to the webhook as {"text": ...};
-#   - healthy apps, transient states (launching / waiting restart), apps the
+#   - waiting-restart apps fail and alert even without counter history;
+#   - healthy apps, transient states (launching / stopping), apps the
 #     ecosystem doesn't declare, and declared-but-unknown apps do not alert;
 #   - a `stopped` one-shot (autorestart: false) does not alert, an `errored`
 #     one-shot still does;
@@ -100,7 +101,7 @@ jl() {
   SPEC="$spec" node -e '
     const procs = (process.env.SPEC || "").split(/\s+/).filter(Boolean).map((kv) => {
       const [name, status] = kv.split("=");
-      return { name, pm2_env: { status } };
+      return { name, pm2_env: { status: status.replaceAll("_", " ") } };
     });
     process.stdout.write(JSON.stringify(procs));
   '
@@ -145,7 +146,7 @@ T0=1000000
 reset_state() { rm -f "$STATUS_ALERT_STATE"; }
 
 reset_state
-run_case "all declared apps online passes" 0 "$T0" "t-events=online t-auth=online" 0 "no declared app is errored or stopped"
+run_case "all declared apps online passes" 0 "$T0" "t-events=online t-auth=online" 0 "no declared app is errored, stopped or waiting restart"
 
 reset_state
 run_case "errored app fails, is named and POSTed to the webhook" 1 "$T0" "t-events=errored t-auth=online" 1 \
@@ -161,8 +162,20 @@ reset_state
 run_case "errored one-shot still alerts" 1 "$T0" "t-events=online t-oneshot=errored" 1 "t-oneshot is errored in pm2"
 
 reset_state
-run_case "transient states (launching, waiting restart, stopping) do not alert" 0 "$T0" \
-  "t-events=launching t-auth=waiting_restart t-oneshot=stopping" 0 "$NO_PROBLEMS"
+run_case "transient states (launching, stopping) do not alert" 0 "$T0" \
+  "t-events=launching t-auth=stopping t-oneshot=stopping" 0 "$NO_PROBLEMS"
+
+reset_state
+run_case "waiting restart fails and preserves multiword status in log and webhook" 1 "$T0" \
+  "t-events=waiting_restart t-auth=online" 1 "t-events is waiting restart in pm2" "t-events is waiting restart;"
+run_case "waiting restart remains red without repeated webhook" 1 $((T0 + 60)) \
+  "t-events=waiting_restart" 0 "t-events is waiting restart in pm2"
+run_case "waiting restart repeats alert after interval" 1 $((T0 + 3700)) \
+  "t-events=waiting_restart" 1 "t-events is waiting restart;"
+
+reset_state
+run_case "waiting-restart one-shot is still unhealthy" 1 "$T0" "t-oneshot=waiting_restart" 1 \
+  "t-oneshot is waiting restart in pm2" "t-oneshot is waiting restart;"
 
 reset_state
 run_case "errored app the ecosystem does not declare is ignored" 0 "$T0" "t-events=online t-foreign=errored" 0 "$NO_PROBLEMS"
