@@ -184,12 +184,14 @@ vi.mock('@/src/db', () => {
     update: (table: unknown) => new FakeUpdateChain(table),
     insert: (table: unknown) => new FakeInsertChain(table),
     transaction: async <T>(work: (tx: typeof fakeDb) => Promise<T>): Promise<T> => {
-      const before = structuredClone(registryAppsStore);
+      const snapshots = [registryAppsStore, appProvisionsStore].map((store) => ({ store, before: structuredClone(store) }));
       try {
         return await work(fakeDb);
       } catch (error) {
-        registryAppsStore.clear();
-        for (const [key, row] of before) registryAppsStore.set(key, row);
+        for (const { store, before } of snapshots) {
+          store.clear();
+          for (const [key, row] of before) store.set(key, row);
+        }
         throw error;
       }
     },
@@ -996,6 +998,7 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
 
     expect(outcome).toMatchObject({ status: 'succeeded', retiredLegacyAppId: legacy.id });
+    expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBe(legacy.id);
     expect(registryAppsStore.size).toBe(2);
     expect(registryAppsStore.get(legacy.id as string)).toEqual({
       ...legacy, status: 'revoked', revokedAt: revokedAt ?? expect.any(Date),
@@ -1013,7 +1016,8 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
     }));
     // Re-approved replay neither inserts again nor re-retires the legacy row.
     const retired = structuredClone(registryAppsStore.get(legacy.id as string));
-    await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    const replay = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+    expect(replay).toMatchObject({ status: 'succeeded', retiredLegacyAppId: legacy.id });
     expect(registryAppsStore.size).toBe(2);
     expect(registryAppsStore.get(legacy.id as string)).toEqual(retired);
   });
@@ -1062,6 +1066,7 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
       expect(outcome).toEqual({ status: 'failed', failedStep: 'register', error: 'registry insert unavailable' });
       expect(registryAppsStore.size).toBe(1);
       expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+      expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBeUndefined();
       expect(emitAttestationMock).not.toHaveBeenCalled();
       expect(publishMock.mock.calls.map(([name]) => name)).not.toContain('apps.provisioned');
     } finally {
@@ -1082,6 +1087,57 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
     expect(outcome).not.toHaveProperty('retiredLegacyAppId');
     expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
     expect(registryAppsStore.size).toBe(2);
+  });
+  it('replays the retired id in result and audit after a post-registration grant failure', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'], placements: ['launcher'] };
+    registryAppsStore.set(legacy.id as string, legacy);
+    grantExistingMintedKeyMock.mockResolvedValueOnce({ status: 'no_reusable_grant' });
+
+    const failed = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(failed).toMatchObject({ status: 'failed', failedStep: 'app-signing-key-grant' });
+    expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBe(legacy.id);
+    const retired = structuredClone(registryAppsStore.get(legacy.id as string));
+    getMintedKeyByDidMock.mockResolvedValue({ status: 'active', publicKey: 'freshly-minted-public-key' });
+    emitAttestationMock.mockClear();
+
+    const retry = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(retry).toMatchObject({ status: 'succeeded', retiredLegacyAppId: legacy.id });
+    expect(registryAppsStore.size).toBe(2);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(retired);
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ retiredLegacyAppId: legacy.id }),
+    }));
+    expect(publishMock).toHaveBeenCalledWith('apps.provisioned', expect.objectContaining({
+      payload: expect.objectContaining({ retiredLegacyAppId: legacy.id }),
+    }));
+  });
+
+  it('rolls back both registry writes if persisting retirement provenance fails', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'], placements: ['launcher'] };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+    const { db } = await import('@/src/db');
+    const originalUpdate = db.update;
+    const update = vi.spyOn(db, 'update').mockImplementation((table) => {
+      if (table !== appProvisionsRef) return originalUpdate(table);
+      return {
+        set: (patch: Record<string, unknown>) => {
+          if (!patch.retiredLegacyAppId) return originalUpdate(table).set(patch);
+          return { where: vi.fn().mockRejectedValue(new Error('retirement ledger unavailable')) };
+        },
+      } as never;
+    });
+    try {
+      const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+      expect(outcome).toEqual({ status: 'failed', failedStep: 'register', error: 'retirement ledger unavailable' });
+      expect(registryAppsStore.size).toBe(1);
+      expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+      expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBeUndefined();
+      expect(emitAttestationMock).not.toHaveBeenCalled();
+    } finally {
+      update.mockRestore();
+    }
   });
 
   it('leaves the legacy slug holder untouched when the manifest differs from operator approval', async () => {

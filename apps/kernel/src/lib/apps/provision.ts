@@ -126,7 +126,7 @@ export interface AppProvisionSuccess {
    */
   secretsSet: string[];
   attestationTypeResults: AttestationTypeSeedOutcome[];
-  /** Seeded legacy row retired by this registration, if any (#2810). */
+  /** Seeded legacy row retired by this provision, retained across retries (#2810). */
   retiredLegacyAppId?: string;
   /**
    * Plaintext one-time claim code (#2411) the app exchanges at first boot
@@ -148,6 +148,11 @@ export interface AppProvisionFailure {
 }
 
 export type AppProvisionOutcome = AppProvisionSuccess | AppProvisionFailure;
+
+/** Omit absent retirement metadata for compatibility with pre-cutover outcomes. */
+function retirementContext(id: string | null | undefined): { retiredLegacyAppId?: string } {
+  return id ? { retiredLegacyAppId: id } : {};
+}
 
 async function getProvisionRow(slug: string): Promise<AppProvisionRow | undefined> {
   const [row] = await db.select().from(appProvisions).where(eq(appProvisions.slug, slug)).limit(1);
@@ -329,6 +334,7 @@ async function registerApp(params: {
   approvedDeclarations: ManifestDeclarations | null;
   /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
   callbackOrigin: string;
+  retiredLegacyAppId: string | null;
 }): Promise<{ id: string; retiredLegacyAppId?: string }> {
   const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
 
@@ -339,7 +345,7 @@ async function registerApp(params: {
     .limit(1);
 
   if (existing) {
-    return { id: existing.id };
+    return { id: existing.id, ...retirementContext(params.retiredLegacyAppId) };
   }
 
   const navMetadata = resolveNavMetadata(slug, manifest);
@@ -422,7 +428,14 @@ async function registerApp(params: {
       dependsOn: declarations.ok.dependsOn,
       emittableEvents: emittable.ok,
     });
-    return { id, ...(holder ? { retiredLegacyAppId: holder.id } : {}) };
+    // Commit the retirement's provenance with the cutover, not in a later step:
+    // grant/claim/ledger failures must not erase it from the eventual retry result.
+    await tx.update(appProvisions).set({
+      registeredAt: new Date(),
+      retiredLegacyAppId: holder?.id ?? params.retiredLegacyAppId,
+      updatedAt: new Date(),
+    }).where(eq(appProvisions.slug, slug));
+    return { id, ...retirementContext(holder?.id ?? params.retiredLegacyAppId) };
   });
 }
 
@@ -497,6 +510,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       secretsSet: existingRun.secretsSet,
       attestationTypeResults,
       claimCode,
+      ...retirementContext(existingRun.retiredLegacyAppId),
     };
   }
 
@@ -552,9 +566,9 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       manifest,
       approvedDeclarations: params.approvedDeclarations ?? null,
       callbackOrigin,
+      retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
     });
-    retirement = registration.retiredLegacyAppId ? { retiredLegacyAppId: registration.retiredLegacyAppId } : {};
-    await upsertProvisionRow(slug, { registeredAt: new Date() });
+    retirement = retirementContext(registration.retiredLegacyAppId);
     emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, retirement);
   } catch (err) {
     return markFailed(nodeDid, slug, 'register', err);
