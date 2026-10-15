@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 const { handle } = vi.hoisted(() => ({ handle: vi.fn() }));
 vi.mock('@/src/lib/stripe/connector', () => ({ handleVerifiedWebhookEvent: handle }));
 
 import { POST as unbound } from '../route';
-import { POST } from '../[routingId]/route';
+import { POST } from '../did/[routingId]/route';
 
 function request() {
-  return new Request('https://node.example/pay/api/webhook/stripewh_fake', {
+  return new Request('https://node.example/pay/api/webhook/did/stripewh_fake', {
     method: 'POST',
     headers: { 'stripe-signature': 'fake-signature' },
     body: '{"untrusted":"unchanged"}',
@@ -18,6 +20,10 @@ function request() {
 beforeEach(() => vi.clearAllMocks());
 
 describe('connector-bound pay webhook ingress', () => {
+  it('uses a distinct namespace from the existing provider alias', () => {
+    expect(existsSync(join(__dirname, '..', 'did', '[routingId]', 'route.ts'))).toBe(true);
+    expect(existsSync(join(__dirname, '..', '[routingId]', 'route.ts'))).toBe(false);
+  });
   it('rejects the unbound endpoint without reading or dispatching an event', async () => {
     const response = await unbound(request());
     expect(response.status).toBe(400);

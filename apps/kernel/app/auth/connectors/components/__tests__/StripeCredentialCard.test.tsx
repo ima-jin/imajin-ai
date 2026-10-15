@@ -22,7 +22,7 @@ function mount(status: Record<string, unknown> = {}, sealFailure?: string) {
     return new Response(JSON.stringify({
       manifestAssetId: null, activeScopes: ['stripe:events'],
       validScopes: ['stripe:events'], ...status, keySealed: primary, publishableKeySealed: paired,
-      webhookSecretSealed: webhook, webhookUrl: 'https://kernel.test/pay/api/webhook/stripewh_fake',
+      webhookSecretSealed: webhook, webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake',
       webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
     }));
   });
@@ -50,7 +50,7 @@ describe('Stripe paired-key connector card', () => {
     expect(input.type).toBe('password');
     expect(screen.queryByLabelText('Restricted Key')).toBeNull();
     expect(screen.queryByText('● Connected')).toBeNull();
-    expect(await screen.findByText('https://kernel.test/pay/api/webhook/stripewh_fake')).toBeDefined();
+    expect(await screen.findByText('https://kernel.test/pay/api/webhook/did/stripewh_fake')).toBeDefined();
     fill('Webhook signing secret', ' whsec_fake_entered ');
     fireEvent.submit(input.closest('form')!);
     await screen.findByText('Webhook signing secret sealed');

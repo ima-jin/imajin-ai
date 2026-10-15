@@ -210,7 +210,7 @@ describe('manual webhook setup', () => {
     findWebhookIndexByOwnerMock.mockResolvedValue({ routingId: 'stripewh_existing', endpointId: 'we_existing' });
     expect(await webhookStatus(OWNER, `${BASE_URL}///`)).toEqual({
       webhookSecretSealed: true, routingId: 'stripewh_existing',
-      webhookUrl: `${BASE_URL}/pay/api/webhook/stripewh_existing`,
+      webhookUrl: `${BASE_URL}/pay/api/webhook/did/stripewh_existing`,
       webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
     });
     expect(loadMock).not.toHaveBeenCalled();

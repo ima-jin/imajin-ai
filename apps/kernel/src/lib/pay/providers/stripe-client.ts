@@ -6,7 +6,7 @@
 import type Stripe from 'stripe';
 
 /**
- * @deprecated Use the seller/node DID-bound adapters instead. Platform
+ * Retired: use the seller/node DID-bound adapters instead. Platform
  * payments (including old platform refunds) cannot acquire a client.
  */
 export function getStripeClient(): Stripe {
@@ -14,7 +14,7 @@ export function getStripeClient(): Stripe {
 }
 
 /**
- * @deprecated There is no process-wide card account. For node availability,
+ * There is no process-wide card account. For node availability,
  * use isNodeCardRailConfigured; sellers must resolve their own card rail.
  */
 export function isStripeConfigured(): boolean {
@@ -31,15 +31,11 @@ export interface CheckoutSessionRef {
 }
 
 /**
- * Resolve a Stripe checkout session (`cs_xxx`) from a payment intent ID
- * (`pi_xxx`). Used by `refund.ts` for callers (e.g. events tickets) that
- * only know the payment intent ID. Returns `null` when no session matches.
+ * Retired platform session lookup. Preserve the async failure contract for
+ * historical callers without attempting a query with unavailable credentials.
  */
-export async function findCheckoutSessionByPaymentIntent(
-  paymentIntentId: string,
+export function findCheckoutSessionByPaymentIntent(
+  _paymentIntentId: string,
 ): Promise<CheckoutSessionRef | null> {
-  const stripe = getStripeClient();
-  const sessions = await stripe.checkout.sessions.list({ payment_intent: paymentIntentId, limit: 1 });
-  const session = sessions.data[0];
-  return session ? { id: session.id } : null;
+  return Promise.reject(new Error('Legacy platform card payments are unavailable; use a DID-bound sealed connector'));
 }

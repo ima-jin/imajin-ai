@@ -55,7 +55,7 @@ export async function webhookStatus(ownerDid: string, baseUrl: string) {
   return {
     webhookSecretSealed: status === 'ready',
     routingId: existing?.routingId ?? null,
-    webhookUrl: existing ? `${stripTrailingSlashes(baseUrl)}/pay/api/webhook/${existing.routingId}` : null,
+    webhookUrl: existing ? `${stripTrailingSlashes(baseUrl)}/pay/api/webhook/did/${existing.routingId}` : null,
     webhookEvents: stripeWebhookEvents,
   };
 }

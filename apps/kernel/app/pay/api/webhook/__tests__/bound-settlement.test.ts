@@ -29,7 +29,7 @@ vi.mock('@/src/lib/pay/rails/registry', () => ({ getWithdrawRailByName: vi.fn() 
 vi.mock('@imajin/bus', async () =>
   (await import('@/src/lib/pay/__tests__/in-process-bus')).createInProcessBusMock(vi.fn()));
 
-import { POST } from '../[routingId]/route';
+import { POST } from '../did/[routingId]/route';
 
 const ownerDid = 'did:imajin:fake-seller';
 const fakeSecret = 'whsec_fake_owner';
@@ -45,7 +45,7 @@ function delivery(eventId: string, signingSecret = fakeSecret, timestamp = Math.
     } },
   });
   const signature = createHmac('sha256', signingSecret).update(`${timestamp}.${body}`).digest('hex');
-  return new Request('https://node.example/pay/api/webhook/stripewh_fake', {
+  return new Request('https://node.example/pay/api/webhook/did/stripewh_fake', {
     method: 'POST', body, headers: { 'stripe-signature': `t=${timestamp},v1=${signature}` },
   }) as NextRequest;
 }

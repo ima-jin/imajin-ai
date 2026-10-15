@@ -26,7 +26,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.resolveOwner.mockResolvedValue({ ok: true, ownerDid: 'did:imajin:imajin-inc' });
   mocks.keySealed.mockResolvedValue(true);
-  mocks.webhookStatus.mockResolvedValue({ webhookSecretSealed: false, routingId: 'stripewh_fake', webhookUrl: 'https://kernel.test/pay/api/webhook/stripewh_fake' });
+  mocks.webhookStatus.mockResolvedValue({ webhookSecretSealed: false, routingId: 'stripewh_fake', webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake' });
   mocks.publishableKeySealed.mockResolvedValue(false);
 });
 
@@ -34,7 +34,7 @@ describe('GET /stripe/api/token', () => {
   it.each([true, false])('reports publishable-key sealed status %s without key material', async (sealed) => {
     mocks.publishableKeySealed.mockResolvedValue(sealed);
     const res = await GET(new NextRequest('https://kernel.test/stripe/api/token'));
-    expect(await res.json()).toEqual({ keySealed: true, publishableKeySealed: sealed, webhookSecretSealed: false, routingId: 'stripewh_fake', webhookUrl: 'https://kernel.test/pay/api/webhook/stripewh_fake' });
+    expect(await res.json()).toEqual({ keySealed: true, publishableKeySealed: sealed, webhookSecretSealed: false, routingId: 'stripewh_fake', webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake' });
     expect(mocks.keySealed).toHaveBeenCalledWith('did:imajin:imajin-inc');
     expect(mocks.publishableKeySealed).toHaveBeenCalledWith('did:imajin:imajin-inc');
   });

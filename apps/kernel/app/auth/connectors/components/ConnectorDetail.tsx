@@ -1409,8 +1409,8 @@ function WebhookSecretSetup({ route, onSaved, onReady }: Readonly<{
       setSecret('');
       await load();
       onSaved();
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not seal webhook signing secret');
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : 'Could not seal webhook signing secret');
     } finally {
       setBusy(false);
     }
