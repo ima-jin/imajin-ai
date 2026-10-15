@@ -6,7 +6,7 @@
 # Runs, in order:
 #   1. the install check (pm2 + node on PATH, ecosystem file present),
 #   2. scripts/check-pm2-restarts.sh — crash loops (restart counter climbing),
-#   3. scripts/check-pm2-status.sh   — apps parked errored/stopped,
+#   3. scripts/check-pm2-status.sh   — errored/stopped/waiting-restart apps,
 # and exits with the worst result, so a crash loop OR a parked app is heard
 # either way. Both checks POST to the same alert webhook.
 #
@@ -24,6 +24,9 @@
 #   PM2_HEALTH_QUIET=1        print nothing when everything is healthy (cron
 #                             sets this so the log only holds problems)
 #   PM2_ALERT_WEBHOOK_FILE    file holding the webhook URL (see above)
+#   PM2_DEPLOY_STOPPED_FILE   deploy-only JSON names observed stopped before
+#                             restart (#2815); still-stopped names are exempt
+#                             from both checks. Cron does not set this.
 #   (plus the RESTART_ALERT_* / STATUS_ALERT_* tunables of the two checks)
 #
 # Usage: scripts/pm2-health-check.sh [dev|prod] [ecosystem-file]

@@ -99,7 +99,19 @@ jobs:
         # fails the deploy if .env.local sets a different one, #2487).
         run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env prod
 
+      - name: Snapshot pm2 deploy state
+        run: |
+          set -o pipefail
+          # Snapshot before build.sh can restart anything (#2815).
+          PM2_DEPLOY_STOPPED_FILE="$(mktemp)"
+          export PM2_DEPLOY_STOPPED_FILE
+          echo "PM2_DEPLOY_STOPPED_FILE=$PM2_DEPLOY_STOPPED_FILE" >> "$GITHUB_ENV"
+          pm2 jlist | node scripts/lib/pm2-deploy-state.cjs prod --snapshot "$PM2_DEPLOY_STOPPED_FILE"
+
       - name: Build changed apps
+        env:
+          # build.sh also restarts built apps; preserve stops there too (#2815).
+          PM2_DEPLOY_PRESERVE_STOPPED: '1'
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
         # by the diff since the last successful build (tracked via .last-build-sha).
         # Falls back to full rebuild if .last-build-sha doesn't exist.
@@ -112,7 +124,9 @@ jobs:
         run: ./scripts/reap-orphans.sh prod
 
       - name: Restart prod services
+        # #2815: preserve intentional stops except for the deployed prod-jin kernel.
         run: |
+          set -o pipefail
           # prod-jin is restarted from the ecosystem FILE, deliberately not by name.
           #
           # `pm2 restart <name>` reuses pm2's saved process definition, so changes to
@@ -150,16 +164,9 @@ jobs:
           # file and restarts the rest. Anything pm2 runs that is NOT in the file
           # keeps the name-based restart.
           source scripts/lib/pm2-owned.sh
-          PROD_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('prod-')).map(p => p.name).join(' '));")
+          PROD_PROCS=$(pm2 jlist | node scripts/lib/pm2-deploy-state.cjs prod "$PM2_DEPLOY_STOPPED_FILE")
           # prod-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
-          # PROD_PROCS only lists what pm2 already runs, so on the first deploy
-          # that ships it (or after it was deleted) it would never be started and
-          # no job would ever fire. Always include it: startOrRestart below starts
-          # it from the ecosystem file when pm2 doesn't know it yet.
-          case " $PROD_PROCS " in
-            *" prod-kernel-cron "*) ;;
-            *) PROD_PROCS="$PROD_PROCS prod-kernel-cron" ;;
-          esac
+          # The shared selector includes it only when absent, not when stopped.
           FILE_PROCS=""
           NAME_PROCS=""
           for proc in $PROD_PROCS; do
@@ -206,7 +213,14 @@ jobs:
           PM2_ALERT_WEBHOOK: ${{ secrets.PM2_ALERT_WEBHOOK }}
         run: ./scripts/install-pm2-health-cron.sh prod "$ECOSYSTEM_FILE"
 
-      # One check right now so a deploy that leaves an app errored/stopped (or
-      # crash-looping) is red here instead of waiting for the first cron tick.
+      # Only apps already stopped before restart are exempt; restart failures
+      # and errored apps still fail loudly.
       - name: Post-deploy pm2 health check
         run: ./scripts/pm2-health-check.sh prod "$ECOSYSTEM_FILE"
+
+      - name: Remove deploy stopped-process list
+        if: ${{ always() }}
+        run: |
+          if [ -n "${PM2_DEPLOY_STOPPED_FILE:-}" ]; then
+            rm -f -- "$PM2_DEPLOY_STOPPED_FILE"
+          fi
