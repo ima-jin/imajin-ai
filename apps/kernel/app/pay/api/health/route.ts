@@ -6,11 +6,21 @@
 
 import { NextResponse } from 'next/server';
 import { getPaymentService } from '@/src/lib/pay/pay';
+import { isNodeCardRailConfigured } from '@/src/lib/pay/providers/node-card-rail';
+import type { HealthCheckResult } from '@/src/lib/pay/providers/types';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const pay = getPaymentService();
-    const health = await pay.healthCheck();
+    const cardReady = await isNodeCardRailConfigured();
+    const health: Record<string, HealthCheckResult> = process.env.SOLANA_RPC_URL
+      ? await getPaymentService().healthCheck()
+      : {};
+    health.stripe = {
+      healthy: cardReady,
+      ...(!cardReady && { message: 'Card rail not configured for this node' }),
+    };
     
     const allHealthy = Object.values(health).every(h => h.healthy);
     
@@ -23,8 +33,7 @@ export async function GET() {
     }, {
       status: allHealthy ? 200 : 503,
     });
-  } catch (error) {
-    console.error('Payment health check failed', error);
+  } catch {
     return NextResponse.json({
       status: 'unhealthy',
       error: 'Health check failed',

@@ -34,7 +34,7 @@ vi.mock('@/src/lib/kernel/id', () => ({ generateId: vi.fn() }));
 vi.mock('@/src/lib/pay/providers/stripe-webhook', () => ({ toRailEvent: vi.fn() }));
 vi.mock('@/src/lib/pay/withdraw-intent', () => ({ confirmWithdrawalFromRailEvent: vi.fn() }));
 vi.mock('@/src/lib/pay/rails/registry', () => ({ getWithdrawRailByName: vi.fn() }));
-vi.mock('@/src/lib/pay/providers/stripe-withdraw-rail', () => ({ STRIPE_RAIL_NAME: 'stripe' }));
+vi.mock('@/src/lib/pay/providers/stripe-withdraw-rail', () => ({ stripeRailName: 'stripe' }));
 vi.mock('@/src/lib/pay/webhook-handlers', () => ({ notifyCheckoutServices: h.notifyServicesMock }));
 vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({ settlePaymentRequestFromStripeCheckout: vi.fn() }));
 
@@ -69,6 +69,30 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 describe('pay-stripe reactor — BYO payment_intent.succeeded (#2754)', () => {
+  it('records a bound delivery outcome without dispatching legacy platform handlers', async () => {
+    const entry = { ownerDid: OWNER, handled: false };
+    h.getRelayEntryMock.mockReturnValue(entry);
+    await payStripeReactor(byoEvent({}, { ...PAYLOAD, relayId: 'bound_1' }), {});
+    expect(h.settleByoMock).toHaveBeenCalled();
+    expect(entry.handled).toBe(true);
+  });
+
+  it('reports a bound delivery failure so ingress can retry, without retaining exception text', async () => {
+    const entry = { ownerDid: OWNER, handled: false, error: undefined };
+    h.getRelayEntryMock.mockReturnValue(entry);
+    h.settleByoMock.mockRejectedValue(new Error('private upstream payload'));
+    await payStripeReactor(byoEvent({}, { ...PAYLOAD, relayId: 'bound_1' }), {});
+    expect(entry.handled).toBe(false);
+    expect(entry.error).toBe('Connector settlement failed');
+  });
+
+  it('refuses a bound delivery whose event claims another owner', async () => {
+    const entry = { ownerDid: 'did:imajin:other', handled: false, error: undefined };
+    h.getRelayEntryMock.mockReturnValue(entry);
+    await payStripeReactor(byoEvent({}, { ...PAYLOAD, relayId: 'bound_1' }), {});
+    expect(h.settleByoMock).not.toHaveBeenCalled();
+    expect(entry.error).toBe('Connector owner mismatch');
+  });
   it('settles the payment_request the owner\'s own event names, handing over exactly the event\'s facts', async () => {
     await payStripeReactor(byoEvent(), {});
 

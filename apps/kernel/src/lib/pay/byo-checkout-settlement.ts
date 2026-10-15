@@ -28,7 +28,7 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, transactions } from '@/src/db';
 import { retrieveByoCheckoutCustomer, type ByoCheckoutCustomer } from '@/src/lib/stripe/byo-checkout';
-import { STRIPE_BYO_RAIL } from './external-ref';
+import { stripeByoRail } from './external-ref';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 
 const log = createLogger('kernel');
@@ -102,7 +102,7 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
   const [row] = await db
     .select()
     .from(transactions)
-    .where(and(eq(transactions.id, input.transactionId), eq(transactions.rail, STRIPE_BYO_RAIL)))
+    .where(and(eq(transactions.id, input.transactionId), eq(transactions.rail, stripeByoRail)))
     .limit(1);
 
   const refusal = refusalOf(row, input);
@@ -123,7 +123,7 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
       metadata: { ...(row.metadata as Record<string, unknown> | null), settledPaymentIntentId: input.paymentIntentId },
       ...(isDirectCharge(row) && { externalRef: input.paymentIntentId }),
     })
-    .where(and(eq(transactions.id, row.id), eq(transactions.rail, STRIPE_BYO_RAIL), eq(transactions.status, 'pending'),
+    .where(and(eq(transactions.id, row.id), eq(transactions.rail, stripeByoRail), eq(transactions.status, 'pending'),
       ...(isDirectCharge(row)
         ? [or(isNull(transactions.externalRef), eq(transactions.externalRef, input.paymentIntentId))] : [])))
     .returning({ id: transactions.id });
@@ -147,7 +147,7 @@ export async function settleCheckoutFromByoStripe(input: SettleByoCheckoutInput)
       // The row is on the `stripe-byo` rail, so the platform-rail session lookup would not find it (#2739).
       transactionId: row.id,
       // #2773: tells market (and any app) the kernel settled this on the seller's own account — do not call /pay/api/settle.
-      rail: STRIPE_BYO_RAIL,
+      rail: stripeByoRail,
       // The row's `to_did` was checked against the event's owner above; metadata.sellerDid is not.
       sellerDid: input.ownerDid,
     },

@@ -6,19 +6,14 @@
  * @example
  * import { PaymentService } from '@/src/lib/pay';
  * 
- * // #2174: the Stripe client itself always comes from the shared adapter
- * // singleton (providers/stripe-client.ts), which reads STRIPE_SECRET_KEY
- * // internally — pass an empty object (or omit stripe entirely) to leave
- * // it unconfigured.
+ * // The legacy service supports independently configured Solana payments.
+ * // Card payments use the transacting DID's sealed connector through the
+ * // seller/node adapters; the old platform Stripe provider fails closed.
  * const pay = new PaymentService({
  *   providers: {
- *     stripe: {},
  *     solana: { rpcUrl: process.env.SOLANA_RPC_URL },
  *   },
  * });
- * 
- * // Fiat payment (routes to Stripe)
- * await pay.charge({ amount: 1500, currency: 'USD', to: { stripeCustomerId: 'cus_xxx' } });
  * 
  * // Crypto payment (routes to Solana)
  * await pay.charge({ amount: 100000000, currency: 'SOL', to: { solanaAddress: 'xxx' } });

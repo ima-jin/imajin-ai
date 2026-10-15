@@ -22,6 +22,11 @@ vi.mock('@/src/lib/mcp/oauth-config', () => ({
   MCP_RESOURCE: 'https://mcp.test.example/mcp',
 }));
 
+const readiness = vi.hoisted(() => ({ configured: vi.fn() }));
+vi.mock('@/src/lib/pay/providers/node-card-rail', () => ({
+  isNodeCardRailConfigured: readiness.configured,
+}));
+
 // Import AFTER mocks are registered
 const { GET } = await import('../agent.json/route');
 
@@ -43,13 +48,13 @@ type AgentCard = {
   skills: Array<{ id: string; name: string; description: string; tags: string[]; inputModes: string[]; outputModes: string[] }>;
 };
 
-function invoke(env: Record<string, string> = {}): AgentCard {
+async function invoke(env: Record<string, string> = {}): Promise<AgentCard> {
   const saved: Record<string, string | undefined> = {};
   for (const [k, v] of Object.entries(env)) {
     saved[k] = process.env[k];
     process.env[k] = v;
   }
-  const response = GET() as { body: AgentCard };
+  const response = (await GET()) as { body: AgentCard };
   for (const [k] of Object.entries(env)) {
     if (saved[k] === undefined) {
       delete process.env[k];
@@ -62,6 +67,7 @@ function invoke(env: Record<string, string> = {}): AgentCard {
 
 describe('GET /.well-known/agent.json', () => {
   beforeEach(() => {
+    readiness.configured.mockReset().mockResolvedValue(false);
     delete process.env.NEXT_PUBLIC_DOMAIN;
     delete process.env.NEXT_PUBLIC_SERVICE_PREFIX;
     // nodeUrl() consults these first (#1614), so an ambient value in the
@@ -74,8 +80,8 @@ describe('GET /.well-known/agent.json', () => {
     delete process.env.X402_ENABLED;
   });
 
-  it('returns required A2A Agent Card fields', () => {
-    const card = invoke();
+  it('returns required A2A Agent Card fields', async () => {
+    const card = await invoke();
     expect(card.schemaVersion).toBe('0.2');
     expect(card.name).toBe('imajin-node');
     expect(card.version).toBe('1.0.0');
@@ -85,13 +91,13 @@ describe('GET /.well-known/agent.json', () => {
 
   // #1614 — the card is the front door for cold agent contact, so it must not
   // claim surfaces or capabilities that do not exist.
-  it('does not advertise an A2A protocol block while /api/a2a/tasks is absent', () => {
-    const card = invoke();
+  it('does not advertise an A2A protocol block while /api/a2a/tasks is absent', async () => {
+    const card = await invoke();
     expect('a2a' in card.protocols).toBe(false);
   });
 
-  it('reports every A2A task-lifecycle capability as false (nothing backs them)', () => {
-    const card = invoke();
+  it('reports every A2A task-lifecycle capability as false (nothing backs them)', async () => {
+    const card = await invoke();
     expect(card.capabilities).toMatchObject({
       streaming: false,
       pushNotifications: false,
@@ -99,8 +105,8 @@ describe('GET /.well-known/agent.json', () => {
     });
   });
 
-  it('still advertises MCP, which is live', () => {
-    const card = invoke();
+  it('still advertises MCP, which is live', async () => {
+    const card = await invoke();
     expect(card.protocols.mcp.endpoint).toBe('https://mcp.test.example/mcp');
   });
 
@@ -108,26 +114,26 @@ describe('GET /.well-known/agent.json', () => {
   // after #1474 added `2026-07-28` dual-era support. Pinned to the real
   // constant (not a literal string) so a future protocol bump that forgets to
   // update this route fails this test instead of silently under-advertising.
-  it('advertises the newest MCP protocol revision the server actually serves', () => {
-    const card = invoke();
+  it('advertises the newest MCP protocol revision the server actually serves', async () => {
+    const card = await invoke();
     expect(card.protocols.mcp.version).toBe(LATEST_PROTOCOL_VERSION);
   });
 
-  it('builds node URL from env vars', () => {
-    const card = invoke({ NEXT_PUBLIC_DOMAIN: 'mynode.example', NEXT_PUBLIC_SERVICE_PREFIX: 'https://' });
+  it('builds node URL from env vars', async () => {
+    const card = await invoke({ NEXT_PUBLIC_DOMAIN: 'mynode.example', NEXT_PUBLIC_SERVICE_PREFIX: 'https://' });
     expect(card.url).toBe('https://mynode.example');
   });
 
-  it('defaults node URL to https://imajin.ai when env vars are absent', () => {
-    const card = invoke();
+  it('defaults node URL to https://imajin.ai when env vars are absent', async () => {
+    const card = await invoke();
     expect(card.url).toBe('https://imajin.ai');
   });
 
   // The shape prod actually runs: the prefix is a full origin, not a bare scheme.
   // Concatenating prefix + domain produced https://jin.imajin.ai/imajin.ai, so
   // every advertised URL 404'd (#1614).
-  it('does not double the host into a path segment in single-domain mode', () => {
-    const card = invoke({
+  it('does not double the host into a path segment in single-domain mode', async () => {
+    const card = await invoke({
       NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/',
       NEXT_PUBLIC_DOMAIN: 'imajin.ai',
     });
@@ -138,8 +144,8 @@ describe('GET /.well-known/agent.json', () => {
     );
   });
 
-  it('advertises no URL containing a doubled host segment', () => {
-    const card = invoke({
+  it('advertises no URL containing a doubled host segment', async () => {
+    const card = await invoke({
       NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/',
       NEXT_PUBLIC_DOMAIN: 'imajin.ai',
     });
@@ -154,8 +160,8 @@ describe('GET /.well-known/agent.json', () => {
     }
   });
 
-  it('prefers an explicit APP_URL over the prefix convention', () => {
-    const card = invoke({
+  it('prefers an explicit APP_URL over the prefix convention', async () => {
+    const card = await invoke({
       APP_URL: 'https://jin.imajin.ai',
       NEXT_PUBLIC_SERVICE_PREFIX: 'https://',
       NEXT_PUBLIC_DOMAIN: 'wrong.example',
@@ -163,15 +169,15 @@ describe('GET /.well-known/agent.json', () => {
     expect(card.url).toBe('https://jin.imajin.ai');
   });
 
-  it('includes MCP endpoint from mock MCP_ISSUER', () => {
-    const card = invoke();
+  it('includes MCP endpoint from mock MCP_ISSUER', async () => {
+    const card = await invoke();
     expect(card.protocols.mcp.endpoint).toBe('https://mcp.test.example/mcp');
     expect(card.authentication.oauth2.authorizationUrl).toContain('https://mcp.test.example');
   });
 
   // #1899 — agent-facing discovery of the knock onboarding flow.
-  it('advertises the knock onboarding flow, pointing at the knock endpoint, the auth spec, and the flow document', () => {
-    const card = invoke();
+  it('advertises the knock onboarding flow, pointing at the knock endpoint, the auth spec, and the flow document', async () => {
+    const card = await invoke();
     expect(card.onboarding).toEqual({
       flow: 'knock',
       endpoint: 'https://imajin.ai/auth/api/knock',
@@ -181,38 +187,52 @@ describe('GET /.well-known/agent.json', () => {
     });
   });
 
-  it('anchors the onboarding URLs to the resolved node origin, not a hardcoded default', () => {
-    const card = invoke({ NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/', NEXT_PUBLIC_DOMAIN: 'imajin.ai' });
+  it('anchors the onboarding URLs to the resolved node origin, not a hardcoded default', async () => {
+    const card = await invoke({ NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/', NEXT_PUBLIC_DOMAIN: 'imajin.ai' });
     expect(card.onboarding.endpoint).toBe('https://jin.imajin.ai/auth/api/knock');
     expect(card.onboarding.spec).toBe('https://jin.imajin.ai/auth/api/spec');
     expect(card.onboarding.flowDocument).toBe('https://jin.imajin.ai/.well-known/imajin-onboarding.json');
   });
 
-  it('federation.enabled is false when RELAY_DID is unset', () => {
-    const card = invoke();
+  it('federation.enabled is false when RELAY_DID is unset', async () => {
+    const card = await invoke();
     expect(card.federation.enabled).toBe(false);
     expect(card.federation.relayDid).toBeUndefined();
   });
 
-  it('federation.enabled is true and relayDid is set when RELAY_DID is present', () => {
-    const card = invoke({ RELAY_DID: 'did:imajin:test-relay' });
+  it('federation.enabled is true and relayDid is set when RELAY_DID is present', async () => {
+    const card = await invoke({ RELAY_DID: 'did:imajin:test-relay' });
     expect(card.federation.enabled).toBe(true);
     expect(card.federation.relayDid).toBe('did:imajin:test-relay');
   });
 
-  it('falls back to stripe when no payment env vars are set', () => {
-    const card = invoke();
-    expect(card.settlement.wireSchemes).toContain('stripe');
+  it('does not advertise stripe without a ready node connector', async () => {
+    const card = await invoke();
+    expect(card.settlement.wireSchemes).not.toContain('stripe');
   });
 
-  it('detects mjnx and usdc-base wire schemes from env', () => {
-    const card = invoke({ MJNX_ENABLED: 'true', X402_ENABLED: 'true' });
+  it('advertises stripe only when the configured node connector is ready', async () => {
+    readiness.configured.mockResolvedValue(true);
+    const card = await invoke();
+    expect(card.settlement.wireSchemes).toEqual(['stripe']);
+  });
+
+  it('ignores an obsolete env key and removes stripe after revocation', async () => {
+    readiness.configured.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    expect((await invoke()).settlement.wireSchemes).toContain('stripe');
+    const card = await invoke({ STRIPE_SECRET_KEY: 'sk_test_fake_ignored' });
+    expect(card.settlement.wireSchemes).toEqual([]);
+    expect(card.settlement.http402).toBe(true);
+  });
+
+  it('detects mjnx and usdc-base wire schemes from env', async () => {
+    const card = await invoke({ MJNX_ENABLED: 'true', X402_ENABLED: 'true' });
     expect(card.settlement.wireSchemes).toContain('mjnx');
     expect(card.settlement.wireSchemes).toContain('usdc-base');
   });
 
-  it('skills are derived from SERVICES — no internal or meta services included', () => {
-    const card = invoke();
+  it('skills are derived from SERVICES — no internal or meta services included', async () => {
+    const card = await invoke();
     const skillIds = card.skills.map((s) => s.id);
 
     const expectedExcluded = SERVICES
@@ -224,16 +244,16 @@ describe('GET /.well-known/agent.json', () => {
     }
   });
 
-  it('skills include core kernel services', () => {
-    const card = invoke();
+  it('skills include core kernel services', async () => {
+    const card = await invoke();
     const skillIds = new Set(card.skills.map((s) => s.id));
     expect(skillIds.has('registry')).toBe(true);
     expect(skillIds.has('media')).toBe(true);
     expect(skillIds.has('events')).toBe(true);
   });
 
-  it('each skill has required A2A fields', () => {
-    const card = invoke();
+  it('each skill has required A2A fields', async () => {
+    const card = await invoke();
     for (const skill of card.skills) {
       expect(skill).toHaveProperty('id');
       expect(skill).toHaveProperty('name');
@@ -243,8 +263,8 @@ describe('GET /.well-known/agent.json', () => {
     }
   });
 
-  it('response headers include CORS and cache-control', () => {
-    const response = GET() as { headers: Record<string, string> };
+  it('response headers include CORS and cache-control', async () => {
+    const response = (await GET()) as { headers: Record<string, string> };
     expect(response.headers['Access-Control-Allow-Origin']).toBe('*');
     expect(response.headers['Cache-Control']).toMatch(/max-age/);
   });

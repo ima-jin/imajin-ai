@@ -39,7 +39,7 @@
  */
 import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db, paymentRequests, transactions } from '@/src/db';
-import { externalRefColumns, STRIPE_BYO_RAIL } from '@/src/lib/pay/external-ref';
+import { externalRefColumns, stripeByoRail } from '@/src/lib/pay/external-ref';
 import type { PaymentRequest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
@@ -136,7 +136,7 @@ async function findReusableCheckoutSession(
     .where(
       and(
         eq(transactions.status, 'pending'),
-        eq(transactions.rail, STRIPE_BYO_RAIL),
+        eq(transactions.rail, stripeByoRail),
         sql`${transactions.metadata}->>'payment_request_id' = ${paymentRequestId}`,
       ),
     )
@@ -342,7 +342,7 @@ export async function createPaymentRequestCheckoutSession(
     amount: (existing.totalAmount / 100).toString(),
     currency: existing.currency,
     status: 'pending',
-    ...externalRefColumns(started.id, STRIPE_BYO_RAIL),
+    ...externalRefColumns(started.id, stripeByoRail),
     metadata,
     // fairManifest intentionally omitted — see module doc comment.
   });

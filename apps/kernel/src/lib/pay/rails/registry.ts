@@ -8,7 +8,7 @@
  */
 import type { Unit } from '../ledger';
 import type { PayInRail, WithdrawRail } from './types';
-import { StripeWithdrawRail, STRIPE_RAIL_NAME } from '../providers/stripe-withdraw-rail';
+import { StripeWithdrawRail, stripeRailName } from '../providers/stripe-withdraw-rail';
 import { EmtPayInRail, EMT_RAIL_NAME } from './emt-pay-in-rail';
 
 export { resolveDidStripeKeys, SellerNoCardRailError } from './stripe-keys';
@@ -37,7 +37,7 @@ const REGISTRY: Record<string, RailRegistryEntry> = {
   // #2757: enabled for NO unit — new withdrawals never use it (Connect is removed; withdrawals run on
   // the EMT request path). It stays registered so the reconciliation sweep and `transfer.created` fast
   // path can still settle an intent that was in flight when Connect went away.
-  [STRIPE_RAIL_NAME]: { getRail: getStripeRail, enabledUnits: [] },
+  [stripeRailName]: { getRail: getStripeRail, enabledUnits: [] },
 };
 
 /** Look up a rail by its registered name, regardless of unit. */

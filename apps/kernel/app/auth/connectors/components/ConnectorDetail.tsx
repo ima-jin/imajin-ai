@@ -34,7 +34,7 @@ import {
   type CredentialSealedFlags,
 } from '@/src/lib/kernel/connector-card-kind';
 import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-outcome';
-import { validateStripeCredentialPair } from '@/src/lib/stripe/credential-pair';
+import { validateStripeCredentialPair, validateStripeWebhookSecret } from '@/src/lib/stripe/credential-pair';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -1377,6 +1377,69 @@ function CredentialPasswordInput({ id, label, value, onChange, placeholder }: Re
  *                       hidden entirely when the connector has no such route
  *   - sealed boolean  → normalised by `credentialSealed`
  */
+function WebhookSecretSetup({ route, onSaved, onReady }: Readonly<{
+  route: string; onSaved: () => void; onReady: (ready: boolean) => void;
+}>) {
+  const [setup, setSetup] = useState<{
+    webhookUrl?: string | null; webhookSecretSealed?: boolean; webhookEvents?: string[];
+  } | null>(null);
+  const [secret, setSecret] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(async () => {
+    const response = await fetch(route);
+    if (!response.ok) throw new Error('Could not load webhook setup');
+    const data = await response.json();
+    setSetup(data);
+    onReady(data.webhookSecretSealed === true);
+  }, [route, onReady]);
+  useEffect(() => { void load().catch(() => setError('Could not load webhook setup')); }, [load]);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      validateStripeWebhookSecret(secret);
+      const response = await fetch(route, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ webhookSecret: secret.trim() }),
+      });
+      if (!response.ok) throw new Error('Could not seal webhook signing secret');
+      setSecret('');
+      await load();
+      onSaved();
+    } catch (error_) {
+      setError(error_ instanceof Error ? error_.message : 'Could not seal webhook signing secret');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-2" aria-label="Stripe webhook setup">
+      <h3 className="text-sm text-white">Webhook signing secret</h3>
+      <StatusDot ok={setup?.webhookSecretSealed === true}
+        label={setup?.webhookSecretSealed ? 'Webhook signing secret sealed' : 'Webhook signing secret missing'} />
+      {setup?.webhookUrl && (
+        <>
+          <p className="text-xs text-gray-400">Create an endpoint in Stripe Dashboard → Developers → Webhooks using this URL:</p>
+          <code className="block text-xs text-amber-300 break-all">{setup.webhookUrl}</code>
+          <p className="text-xs text-gray-400">Subscribe to: {setup.webhookEvents?.join(', ')}. Paste that endpoint&apos;s signing secret below. Replace it here after a rotation; your keys need not be entered again.</p>
+        </>
+      )}
+      <form onSubmit={(event) => { void save(event); }} className="space-y-2">
+        <CredentialPasswordInput label="Webhook signing secret" value={secret} onChange={setSecret} placeholder="Stripe signing secret (whsec_…)" />
+        {error && <p className="text-red-400 text-xs">{error}</p>}
+        <button type="submit" disabled={busy || !secret.trim() || !setup?.webhookUrl}
+          className="px-4 py-1.5 bg-amber-500 text-black text-sm rounded-lg disabled:opacity-50">
+          {busy ? 'Sealing…' : 'Seal webhook signing secret'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
 function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<CredentialPasteStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -1388,6 +1451,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   const [sealing, setSealing] = useState(false);
   const [sealError, setSealError] = useState<string | null>(null);
   const [showCredentialInput, setShowCredentialInput] = useState(false);
+  const [webhookReady, setWebhookReady] = useState(false);
 
   const ui = credentialCopy(entry);
   const additionalField = ui.additionalField;
@@ -1437,7 +1501,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   // Connected = a sealed credential plus at least one active scope. The old
   // Discord card hardcoded `discord:post`, which reported "Not configured" for a
   // deliberate read-only grant; any active scope means the connector can act.
-  const ready = sealed && !additionalMissing && activeSet.size > 0;
+  const ready = sealed && !additionalMissing && activeSet.size > 0 && (!ui.webhookSetup || webhookReady);
   const sealActionLabel = sealed ? 'Replace' : 'Seal';
   const credentialLabel = additionalField ? `${entry.name} keys` : ui.label;
   const sealButtonLabel = sealing ? 'Sealing…' : `${sealActionLabel} ${credentialLabel}`;
@@ -1593,6 +1657,9 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
           )}
 
           {/* ── Scope grants ── */}
+          {ui.webhookSetup && sealed && !additionalMissing && entry.tokenRoute && (
+            <WebhookSecretSetup route={entry.tokenRoute} onSaved={() => { void refreshStatus(); }} onReady={setWebhookReady} />
+          )}
           <ScopeGrantSection
             entry={entry}
             activeSet={activeSet}

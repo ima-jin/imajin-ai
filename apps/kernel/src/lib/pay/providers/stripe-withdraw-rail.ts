@@ -23,7 +23,7 @@ import type {
   RailTransfer,
 } from '../rails/types';
 
-export const STRIPE_RAIL_NAME = 'stripe';
+export const stripeRailName = 'stripe';
 
 /** Narrow, unknown-safe check for a Stripe `transfer.created` event payload. */
 function isTransferCreatedEvent(payload: unknown): payload is Stripe.Event & { data: { object: Stripe.Transfer } } {
@@ -33,7 +33,7 @@ function isTransferCreatedEvent(payload: unknown): payload is Stripe.Event & { d
 }
 
 export class StripeWithdrawRail implements WithdrawRail {
-  readonly name = STRIPE_RAIL_NAME;
+  readonly name = stripeRailName;
 
   async execute(intent: WithdrawalIntent): Promise<WithdrawRailExecuteResult> {
     // A caller that reserved funds then reaches here releases the reservation

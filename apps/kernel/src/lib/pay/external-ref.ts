@@ -18,7 +18,7 @@ import { and, eq, type SQL } from 'drizzle-orm';
 import { transactions } from '@/src/db';
 
 /** Rail name stored in `pay.transactions.rail` for Stripe-backed rows. */
-export const STRIPE_RAIL = 'stripe';
+export const stripeRail = 'stripe';
 
 /**
  * Rail name stored in `pay.transactions.rail` for a charge that ran on an
@@ -27,7 +27,7 @@ export const STRIPE_RAIL = 'stripe';
  * `rail = 'stripe'` rows are the ones its webhook handlers and reconciliation
  * act on, and a BYO charge must never be mistaken for one.
  */
-export const STRIPE_BYO_RAIL = 'stripe-byo';
+export const stripeByoRail = 'stripe-byo';
 
 /**
  * The columns a writer spreads into a `pay.transactions` insert so a row
@@ -35,12 +35,12 @@ export const STRIPE_BYO_RAIL = 'stripe-byo';
  */
 export function externalRefColumns(
   externalRef: string,
-  rail: string = STRIPE_RAIL,
+  rail: string = stripeRail,
 ): { rail: string; externalRef: string } {
   return { rail, externalRef };
 }
 
 /** `WHERE` predicate matching the transaction a rail knows by `externalRef`. */
-export function whereExternalRef(externalRef: string, rail: string = STRIPE_RAIL): SQL {
+export function whereExternalRef(externalRef: string, rail: string = stripeRail): SQL {
   return and(eq(transactions.rail, rail), eq(transactions.externalRef, externalRef)) as SQL;
 }

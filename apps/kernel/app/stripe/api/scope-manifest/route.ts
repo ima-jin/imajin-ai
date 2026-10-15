@@ -14,12 +14,12 @@ import {
   findStripeManifestAsset,
   stripeKeySealed,
   stripeKeyPending,
-  VALID_STRIPE_SCOPES,
+  validStripeScopes,
 } from '@/src/lib/stripe/scope-manifest';
 
 export const { GET, POST, OPTIONS } = createConnectorScopeManifestRoute({
   name: 'Stripe',
-  validScopes: VALID_STRIPE_SCOPES,
+  validScopes: validStripeScopes,
   findManifestAsset: findStripeManifestAsset,
   readActiveScopes: readActiveStripeScopes,
   publish: publishStripeScopeManifest,
