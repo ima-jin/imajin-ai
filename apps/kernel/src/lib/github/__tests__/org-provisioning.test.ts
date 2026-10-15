@@ -12,12 +12,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { generateKeyPairSync } from 'node:crypto';
 import * as jose from 'jose';
 
-const { loadAndUnsealMock } = vi.hoisted(() => ({
+const { loadAndUnsealMock, warnMock } = vi.hoisted(() => ({
   loadAndUnsealMock: vi.fn(),
+  warnMock: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
+  createLogger: () => ({ info: vi.fn(), warn: warnMock, error: vi.fn() }),
 }));
 
 vi.mock('@/src/lib/vault', () => ({
@@ -31,6 +32,7 @@ import {
   tryGetInstallationToken,
   ensureRepoFromTemplate,
   fetchAppManifest,
+  appManifestError,
   OrgCredentialMissingError,
   OrgCredentialMalformedError,
   PROVISIONING_ORG,
@@ -151,6 +153,170 @@ describe('loadOrgCredential', () => {
     const error: unknown = await loadOrgCredential().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(TypeError);
     expect(error).not.toBeInstanceOf(OrgCredentialMissingError);
+  });
+});
+
+describe('fetchAppManifest (#2813)', () => {
+  function contentsResponse(manifest: unknown): Response {
+    return jsonResponse(200, {
+      content: Buffer.from(JSON.stringify(manifest), 'utf-8').toString('base64'),
+      encoding: 'base64',
+    });
+  }
+
+  it('reads public HEAD without authorization or loading credentials when token is null', async () => {
+    const manifest = { name: 'Dykil', secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }] };
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, manifest));
+
+    await expect(fetchAppManifest('dykil', null)).resolves.toEqual({ ok: manifest });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://raw.githubusercontent.com/ima-jin/dykil/HEAD/imajin.app.json');
+    expect(init).toEqual({ method: 'GET', cache: 'no-store', signal: expect.any(AbortSignal) });
+    expect(new Headers(init.headers).has('Authorization')).toBe(false);
+    expect(loadAndUnsealMock).not.toHaveBeenCalled();
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the caller-supplied organization for the public HEAD read', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {}));
+    await expect(fetchAppManifest('app', null, 'other-org')).resolves.toEqual({ ok: {} });
+    expect(fetchMock.mock.calls[0][0]).toBe('https://raw.githubusercontent.com/other-org/app/HEAD/imajin.app.json');
+  });
+
+  it('keeps the authenticated Contents API request and default branch unchanged', async () => {
+    const manifest = {
+      name: 'Dykil', icon: 'icon', entryUrl: '/dykil', placements: ['launcher', 'home', 'auth-submenu'],
+      requiredScope: null, providesScopes: ['dykil:read'],
+      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
+      emittableEvents: ['dykil:created'], secrets: [{ name: 'SESSION_SECRET', kind: 'random-64B' }],
+    };
+    fetchMock.mockResolvedValueOnce(contentsResponse(manifest));
+    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN, 'other-org')).resolves.toEqual({ ok: manifest });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith('https://api.github.com/repos/other-org/dykil/contents/imajin.app.json', {
+      method: 'GET',
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'imajin-kernel-apps-provision/1.0',
+        Authorization: `Bearer ${INSTALLATION_TOKEN}`,
+      },
+    });
+    expect(loadAndUnsealMock).not.toHaveBeenCalled();
+    expect(warnMock).not.toHaveBeenCalled();
+  });
+
+  describe.each([['public', null], ['authenticated', INSTALLATION_TOKEN]] as const)('%s read', (_label, token) => {
+    function manifestResponse(manifest: unknown): Response {
+      if (token === null) return jsonResponse(200, manifest);
+      return contentsResponse(manifest);
+    }
+
+    it.each([{}, { secrets: [] }, { icon: 'coffee' }])('accepts valid optional fields and absent/empty secrets: %j', async (manifest) => {
+      fetchMock.mockResolvedValueOnce(manifestResponse(manifest));
+      await expect(fetchAppManifest('coffee', token)).resolves.toEqual({ ok: manifest });
+    });
+
+    it.each([204, 301, 401, 403, 404, 429, 500])('classifies HTTP %i as unreadable, retaining only status', async (status) => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(status, null));
+      await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'unreadable', status });
+      expect(warnMock).toHaveBeenCalledWith(
+        { slug: 'dykil', error: 'unreadable', status },
+        `App 'dykil' manifest unreadable (HTTP ${status})`,
+      );
+    });
+
+    it('classifies a non-JSON provider failure as unreadable without logging its body', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('PROVIDER_PRIVATE_DATA', { status: 503 }));
+      await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'unreadable', status: 503 });
+      expect(warnMock).toHaveBeenCalledWith(
+        { slug: 'dykil', error: 'unreadable', status: 503 }, "App 'dykil' manifest unreadable (HTTP 503)",
+      );
+      expect(JSON.stringify(warnMock.mock.calls)).not.toContain('PROVIDER_PRIVATE_DATA');
+    });
+
+    it.each([new Error('NETWORK_PRIVATE_DATA'), new DOMException('TIMEOUT_PRIVATE_DATA', 'TimeoutError')])(
+      'classifies transport errors as unreadable and never logs raw errors',
+      async (error) => {
+        fetchMock.mockRejectedValueOnce(error);
+        await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'unreadable' });
+        expect(warnMock).toHaveBeenCalledWith({ slug: 'dykil', error: 'unreadable' }, "App 'dykil' manifest unreadable");
+        expect(JSON.stringify(warnMock.mock.calls)).not.toContain('PRIVATE_DATA');
+      },
+    );
+
+    it('classifies a rejected response-body read as unreadable', async () => {
+      fetchMock.mockResolvedValueOnce({ status: 200, text: vi.fn().mockRejectedValue(new Error('BODY_PRIVATE_DATA')) });
+      await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'unreadable' });
+      expect(JSON.stringify(warnMock.mock.calls)).not.toContain('BODY_PRIVATE_DATA');
+    });
+
+    it('classifies malformed response JSON as invalid without logging parser details', async () => {
+      fetchMock.mockResolvedValueOnce(new Response('{"SECRET_VALUE": PRIVATE_DATA', { status: 200 }));
+      await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'invalid', status: 200 });
+      expect(warnMock).toHaveBeenCalledWith(
+        { slug: 'dykil', error: 'invalid', status: 200 }, "App 'dykil' manifest invalid (HTTP 200)",
+      );
+      expect(JSON.stringify(warnMock.mock.calls)).not.toContain('PRIVATE_DATA');
+    });
+
+    it.each([
+      null, [], 'not-an-object', 7,
+      { name: 7 }, { icon: 7 }, { entryUrl: 7 }, { requiredScope: 7 },
+      { placements: 'launcher' }, { placements: ['unknown'] },
+      { providesScopes: 'dykil:read' }, { providesScopes: [7] },
+      { dependsOn: 'jin.imajin.ai' }, { dependsOn: ['jin.imajin.ai'] }, { dependsOn: [null] },
+      { emittableEvents: 'dykil:created' }, { emittableEvents: [7] },
+      { secrets: null }, { secrets: {} }, { secrets: 'SESSION_SECRET' },
+      { secrets: [null] }, { secrets: ['SESSION_SECRET'] },
+      { secrets: [{ name: 'SESSION_SECRET' }] },
+      { secrets: [{ kind: 'random-32B' }] },
+      { secrets: [{ name: 7, kind: 'random-32B' }] },
+      { secrets: [{ name: 'SESSION_SECRET', kind: 7 }] },
+      { secrets: [{ name: 'lowercase', kind: 'random-32B' }] },
+      { secrets: [{ name: 'SESSION_SECRET', kind: 'provider-secret' }] },
+      { secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B', value: 'SECRET_PRIVATE_DATA' }] },
+      { secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B', provider: 'PROVIDER_PRIVATE_DATA' }] },
+      { secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }, { name: 'SESSION_SECRET', kind: 'random-64B' }] },
+      { secrets: Array.from({ length: 33 }, (_, index) => ({ name: `SECRET_${index}`, kind: 'random-32B' })) },
+    ])('rejects malformed shape or secret declarations: %j', async (manifest) => {
+      fetchMock.mockResolvedValueOnce(manifestResponse(manifest));
+      await expect(fetchAppManifest('dykil', token)).resolves.toEqual({ error: 'invalid', status: 200 });
+      expect(warnMock).toHaveBeenCalledWith(
+        { slug: 'dykil', error: 'invalid', status: 200 }, "App 'dykil' manifest invalid (HTTP 200)",
+      );
+      expect(JSON.stringify(warnMock.mock.calls)).not.toContain('PRIVATE_DATA');
+    });
+  });
+
+  it.each([null, {}, { encoding: 'none', content: '{}' }, { encoding: 'base64' }, { encoding: 'base64', content: 7 }])(
+    'classifies malformed Contents API envelope as invalid: %j', async (body) => {
+      fetchMock.mockResolvedValueOnce(jsonResponse(200, body));
+      await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toEqual({ error: 'invalid', status: 200 });
+    },
+  );
+
+  it('classifies malformed decoded JSON as invalid', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, {
+      encoding: 'base64', content: Buffer.from('SECRET_PRIVATE_DATA').toString('base64'),
+    }));
+    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toEqual({ error: 'invalid', status: 200 });
+    expect(JSON.stringify(warnMock.mock.calls)).not.toContain('SECRET_PRIVATE_DATA');
+  });
+});
+
+describe('appManifestError', () => {
+  it('formats only app name and classification when status is absent', () => {
+    expect(appManifestError('dykil', { error: 'unreadable' })).toBe("App 'dykil' manifest unreadable");
+    expect(appManifestError('dykil', { error: 'invalid' })).toBe("App 'dykil' manifest invalid");
+  });
+
+  it('adds the optional HTTP status without reading extra payload fields', () => {
+    const result = { error: 'invalid' as const, status: 200, value: 'SECRET_PRIVATE_DATA', cause: new Error('PROVIDER_PRIVATE_DATA') };
+    expect(appManifestError('dykil', result)).toBe("App 'dykil' manifest invalid (HTTP 200)");
+    expect(appManifestError('dykil', { error: 'unreadable', status: 404 })).toBe("App 'dykil' manifest unreadable (HTTP 404)");
   });
 });
 
@@ -505,107 +671,5 @@ describe('no GitHub Actions secrets (#2437)', () => {
       expect(['GET', 'POST']).toContain(init.method);
       expect(url).not.toContain('/actions/secrets');
     }
-  });
-});
-
-describe('fetchAppManifest (#2425)', () => {
-  function contentsResponse(manifest: unknown): Response {
-    const encoded = Buffer.from(JSON.stringify(manifest), 'utf-8').toString('base64');
-    return jsonResponse(200, { content: encoded, encoding: 'base64' });
-  }
-
-  it('returns null (never calls fetch) when the installation token is null', async () => {
-    const result = await fetchAppManifest('dykil', null);
-
-    expect(result).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it('returns the parsed, validated manifest for a 200 response', async () => {
-    fetchMock.mockResolvedValueOnce(contentsResponse({
-      name: 'Dykil',
-      icon: '\ud83d\udccb',
-      entryUrl: '/dykil',
-      placements: ['launcher', 'home', 'auth-submenu'],
-      requiredScope: 'creator',
-    }));
-
-    const result = await fetchAppManifest('dykil', INSTALLATION_TOKEN);
-
-    expect(result).toEqual({
-      name: 'Dykil',
-      icon: '\ud83d\udccb',
-      entryUrl: '/dykil',
-      placements: ['launcher', 'home', 'auth-submenu'],
-      requiredScope: 'creator',
-    });
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`https://api.github.com/repos/${PROVISIONING_ORG}/dykil/contents/imajin.app.json`);
-    expect((init.headers as Record<string, string>).Authorization).toBe(`Bearer ${INSTALLATION_TOKEN}`);
-  });
-
-  it('returns null (non-fatal) when the file does not exist (404)', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(404, { message: 'Not Found' }));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('returns null when the response is not base64-encoded', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { content: '{}', encoding: 'none' }));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('returns null when the decoded content is not valid JSON', async () => {
-    const encoded = Buffer.from('not json', 'utf-8').toString('base64');
-    fetchMock.mockResolvedValueOnce(jsonResponse(200, { content: encoded, encoding: 'base64' }));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('returns null when placements contains an unrecognized value', async () => {
-    fetchMock.mockResolvedValueOnce(contentsResponse({ placements: ['launcher', 'not-a-real-placement'] }));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('#2663: passes providesScopes and dependsOn through for later validation', async () => {
-    const declarations = {
-      providesScopes: ['dykil:read', 'dykil:write'],
-      dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],
-    };
-    fetchMock.mockResolvedValueOnce(contentsResponse({ name: 'Dykil', ...declarations }));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toEqual({ name: 'Dykil', ...declarations });
-  });
-
-  it.each([
-    ['providesScopes is not an array', { providesScopes: 'dykil:read' }],
-    ['providesScopes holds a non-string', { providesScopes: ['dykil:read', 7] }],
-    ['dependsOn is not an array', { dependsOn: 'jin.imajin.ai' }],
-    ['dependsOn holds a non-object', { dependsOn: ['jin.imajin.ai'] }],
-    ['dependsOn holds null', { dependsOn: [null] }],
-  ])('#2663: returns null when %s', async (_label, manifest) => {
-    fetchMock.mockResolvedValueOnce(contentsResponse(manifest));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('returns null when a field has the wrong type', async () => {
-    fetchMock.mockResolvedValueOnce(contentsResponse({ icon: 42 }));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('never throws when fetch itself rejects (network failure)', async () => {
-    fetchMock.mockRejectedValueOnce(new Error('network down'));
-
-    await expect(fetchAppManifest('dykil', INSTALLATION_TOKEN)).resolves.toBeNull();
-  });
-
-  it('accepts a manifest with only some fields set (all optional)', async () => {
-    fetchMock.mockResolvedValueOnce(contentsResponse({ icon: '\u2615' }));
-
-    await expect(fetchAppManifest('coffee', INSTALLATION_TOKEN)).resolves.toEqual({ icon: '\u2615' });
   });
 });
