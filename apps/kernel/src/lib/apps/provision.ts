@@ -38,7 +38,7 @@
  * installation token (#2416) — see `org-provisioning.ts`'s docblock —
  * never a PAT.
  */
-import { and, eq, sql } from 'drizzle-orm';
+import { and, arrayContains, eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { emitAttestation } from '@imajin/auth';
 import { publish } from '@imajin/bus';
@@ -145,9 +145,19 @@ export interface AppProvisionFailure {
   status: 'failed';
   failedStep: string;
   error: string;
+  errorCode?: 'audience_conflict';
 }
 
 export type AppProvisionOutcome = AppProvisionSuccess | AppProvisionFailure;
+/** A different identity still answers the requested audience: never hijack it. */
+export class AppProvisionAudienceConflictError extends Error {
+  readonly code = 'audience_conflict';
+
+  constructor(slug: string, appId: string) {
+    super(`apps.provision: audience '${slug}' is already answered by active row '${appId}' — refusing an audience shadow`);
+    this.name = 'AppProvisionAudienceConflictError';
+  }
+}
 
 /** Omit absent retirement metadata for compatibility with pre-cutover outcomes. */
 function retirementContext(id: string | null | undefined): { retiredLegacyAppId?: string } {
@@ -182,7 +192,10 @@ async function markFailed(nodeDid: string, slug: string, step: string, error: un
   await upsertProvisionRow(slug, { status: 'failed', failedStep: step, errorMessage: message });
   log.error({ slug, step, error: message }, 'apps.provision: step failed — no half-registered app is served');
   emitProvisionFailedEvent(nodeDid, slug, step, message);
-  return { status: 'failed', failedStep: step, error: message };
+  return {
+    status: 'failed', failedStep: step, error: message,
+    ...(error instanceof AppProvisionAudienceConflictError ? { errorCode: error.code } : {}),
+  };
 }
 
 /**
@@ -311,10 +324,45 @@ function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
   };
 }
 
+type ProvisionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * Lock both ownership seams before changing either: a manually cleared slug
+ * does not remove an active audience. Only this slug's exact seed may retire.
+ */
+async function retireLegacyApp(tx: ProvisionTransaction, slug: string): Promise<string | null> {
+  const legacyId = `app_first_party_${slug}`;
+  const [holder] = await tx.select().from(registryApps)
+    .where(eq(registryApps.slug, slug)).limit(1).for('update');
+  if (holder && (holder.tier !== 'first_party' || holder.id !== legacyId)) {
+    throw new Error(`apps.provision: slug '${slug}' is already held by '${holder.id}' — only seeded first-party legacy rows can be superseded (expected '${legacyId}')`);
+  }
+  const audienceHolders = await tx.select().from(registryApps).where(and(
+    eq(registryApps.status, 'active'),
+    arrayContains(registryApps.tokenAudiences, [slug]),
+  )).for('update');
+  for (const row of audienceHolders) {
+    if (row.tier !== 'first_party' || row.id !== legacyId) {
+      throw new AppProvisionAudienceConflictError(slug, row.id);
+    }
+  }
+  const legacy = holder ?? audienceHolders[0];
+  if (!legacy) return null;
+  await tx.update(registryApps).set({
+    status: 'revoked',
+    revokedAt: sql`COALESCE(${registryApps.revokedAt}, NOW())`,
+    updatedAt: sql`NOW()`,
+    tokenAudiences: [],
+    slug: null,
+    placements: [],
+  }).where(eq(registryApps.id, legacy.id));
+  return legacy.id;
+}
+
 /**
  * Step 3 (register): insert a NEW `tier: 'third_party'` registry.apps row —
  * never upserting an existing identity. A slug holder may be superseded ONLY
- * when it is a seeded legacy `first_party` row (`app_first_party_*`).
+ * when it is the exact seeded `first_party` row (`app_first_party_${slug}`).
  * Retirement uses 0185/0188's field set and commits with the new insert, so
  * there is no audience overlap or half-cutover. No app schema/data is touched.
  * This runs only through the countersigned apps:provision execution bridge.
@@ -323,7 +371,7 @@ function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
  * this lookup finds the row this same pipeline already created — never
  * the differently-app-did'd legacy row): a matching row already existing
  * is treated as "already registered", a no-op. Rows already retired by the
- * guarded migrations have no slug and are left untouched.
+ * guarded migrations have no slug/audiences and are left untouched.
  */
 async function registerApp(params: {
   slug: string;
@@ -385,21 +433,7 @@ async function registerApp(params: {
 
   const id = `app_${nanoid(16)}`;
   return db.transaction(async (tx) => {
-    const [holder] = await tx.select().from(registryApps)
-      .where(eq(registryApps.slug, slug)).limit(1).for('update');
-    if (holder && (holder.tier !== 'first_party' || !holder.id.startsWith('app_first_party_'))) {
-      throw new Error(`apps.provision: slug '${slug}' is already held by '${holder.id}' — only seeded first-party legacy rows can be superseded`);
-    }
-    if (holder) {
-      await tx.update(registryApps).set({
-        status: 'revoked',
-        revokedAt: sql`COALESCE(${registryApps.revokedAt}, NOW())`,
-        updatedAt: sql`NOW()`,
-        tokenAudiences: [],
-        slug: null,
-        placements: [],
-      }).where(eq(registryApps.id, holder.id));
-    }
+    const retiredLegacyAppId = await retireLegacyApp(tx, slug);
     await tx.insert(registryApps).values({
       id,
       ownerDid: 'did:imajin:platform',
@@ -432,10 +466,10 @@ async function registerApp(params: {
     // grant/claim/ledger failures must not erase it from the eventual retry result.
     await tx.update(appProvisions).set({
       registeredAt: new Date(),
-      retiredLegacyAppId: holder?.id ?? params.retiredLegacyAppId,
+      retiredLegacyAppId: retiredLegacyAppId ?? params.retiredLegacyAppId,
       updatedAt: new Date(),
     }).where(eq(appProvisions.slug, slug));
-    return { id, ...retirementContext(holder?.id ?? params.retiredLegacyAppId) };
+    return { id, ...retirementContext(retiredLegacyAppId ?? params.retiredLegacyAppId) };
   });
 }
 

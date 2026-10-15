@@ -87,6 +87,7 @@ vi.mock('nanoid', () => ({ nanoid: () => 'testnanoid1234567' }));
 
 vi.mock('drizzle-orm', () => ({
   eq: (col: string, val: unknown) => ({ col, val }),
+  arrayContains: (col: string, val: unknown[]) => ({ col, val, contains: true }),
   and: (...conds: FakeCond[]) => conds,
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings.join('?'), values }),
 }));
@@ -103,13 +104,15 @@ function projectRow(row: Record<string, unknown>, projection: Record<string, unk
   return out;
 }
 
-interface FakeCond { col: string; val: unknown }
+interface FakeCond { col: string; val: unknown; contains?: boolean }
 type FakeWhere = FakeCond | FakeCond[];
 
 function matchesWhere(row: Record<string, unknown>, where: FakeWhere | undefined): boolean {
   if (!where) return true;
   const conds = Array.isArray(where) ? where : [where];
-  return conds.every((cond) => row[cond.col] === cond.val);
+  return conds.every((cond) => cond.contains
+    ? (cond.val as unknown[]).every((value) => (row[cond.col] as unknown[] | undefined)?.includes(value))
+    : row[cond.col] === cond.val);
 }
 
 class FakeSelectChain {
@@ -988,9 +991,14 @@ describe('runAppProvision — never writes the app key to GitHub Actions secrets
 });
 
 describe('runAppProvision — legacy first-party row coexistence (dykil, real dev state)', () => {
-  it.each([null, new Date('2026-10-01T00:00:00Z')])('retires a seeded slug holder and inserts the new app together (revokedAt=%s)', async (revokedAt) => {
+  it.each([
+    ['dykil', null],
+    ['dykil', new Date('2026-10-01T00:00:00Z')],
+    [null, null],
+    [null, new Date('2026-10-01T00:00:00Z')],
+  ])('retires the exact seed holding the slug or audience atomically (slug=%s, revokedAt=%s)', async (slug, revokedAt) => {
     const legacy = {
-      ...legacyDykilRow(), slug: 'dykil', revokedAt,
+      ...legacyDykilRow(), slug, revokedAt,
       tokenAudiences: ['dykil'], placements: ['launcher', 'auth-submenu'],
     };
     registryAppsStore.set(legacy.id as string, { ...legacy });
@@ -1026,6 +1034,7 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
     ['app_other', 'third_party'],
     ['app_first_party_dykil', 'third_party'],
     ['app_custom_first_party', 'first_party'],
+    ['app_first_party_coffee', 'first_party'],
   ])('fails closed for a non-seeded holder %s with tier %s', async (id, tier) => {
     const holder = { ...legacyDykilRow(), id, tier, slug: 'dykil' };
     registryAppsStore.set(id, { ...holder });
@@ -1042,9 +1051,9 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
     expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
   });
 
-  it('rolls back retirement when the new registry insert fails partway through registration', async () => {
+  it.each(['dykil', null])('rolls back retirement when the new registry insert fails (legacy slug=%s)', async (slug) => {
     const legacy = {
-      ...legacyDykilRow(), slug: 'dykil', revokedAt: null,
+      ...legacyDykilRow(), slug, revokedAt: null,
       tokenAudiences: ['dykil'], placements: ['launcher'],
     };
     registryAppsStore.set(legacy.id as string, { ...legacy });
@@ -1074,6 +1083,54 @@ describe('runAppProvision — legacy first-party row coexistence (dykil, real de
     }
   });
 
+  it.each([
+    ['app_shadow', 'third_party'],
+    ['app_first_party_coffee', 'first_party'],
+    ['app_first_party_dykil', 'third_party'],
+  ])('fails with a typed audience conflict for active shadow %s (%s)', async (id, tier) => {
+    const shadow = {
+      id, tier, status: 'active', slug: null,
+      tokenAudiences: ['other', 'dykil'], placements: ['launcher'],
+    };
+    registryAppsStore.set(id, { ...shadow });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome).toMatchObject({
+      status: 'failed', failedStep: 'register', errorCode: 'audience_conflict',
+      error: expect.stringContaining(`active row '${id}'`),
+    });
+    expect(registryAppsStore.size).toBe(1);
+    expect(registryAppsStore.get(id)).toEqual(shadow);
+    expect(appProvisionsStore.get('dykil')?.retiredLegacyAppId).toBeUndefined();
+    expect(emitAttestationMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses another active audience owner without retiring the eligible slug holder', async () => {
+    const legacy = { ...legacyDykilRow(), slug: 'dykil', tokenAudiences: ['dykil'] };
+    const shadow = { id: 'app_shadow', tier: 'third_party', status: 'active', slug: null, tokenAudiences: ['dykil'] };
+    registryAppsStore.set(legacy.id as string, { ...legacy });
+    registryAppsStore.set(shadow.id, { ...shadow });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome).toMatchObject({ status: 'failed', failedStep: 'register', errorCode: 'audience_conflict' });
+    expect(registryAppsStore.size).toBe(2);
+    expect(registryAppsStore.get(legacy.id as string)).toEqual(legacy);
+    expect(registryAppsStore.get(shadow.id)).toEqual(shadow);
+  });
+
+  it('ignores revoked audience rows belonging to other identities', async () => {
+    const revoked = { id: 'app_revoked', tier: 'third_party', status: 'revoked', slug: null, tokenAudiences: ['dykil'] };
+    registryAppsStore.set(revoked.id, { ...revoked });
+
+    const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
+
+    expect(outcome.status).toBe('succeeded');
+    expect(outcome).not.toHaveProperty('retiredLegacyAppId');
+    expect(registryAppsStore.get(revoked.id)).toEqual(revoked);
+  });
   it('does not modify an already-retired legacy row from a guarded migration', async () => {
     const legacy = {
       ...legacyDykilRow(), status: 'revoked', revokedAt: new Date('2026-10-01T00:00:00Z'),

@@ -1,3 +1,4 @@
+-- 0191_app_provisions_retired_legacy.sql
 -- owner: kernel
 -- #2810: retain cutover provenance across failed attempts and approved retries.
 -- Generated with drizzle-kit from the app_provisions schema; made idempotent
