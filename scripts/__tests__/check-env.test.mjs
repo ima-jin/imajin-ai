@@ -217,6 +217,92 @@ describe('check-env annotations', () => {
   });
 });
 
+const APP_IDENTITY_KEYS = ['IMAJIN_KERNEL_URL', 'IMAJIN_APP_DID', 'IMAJIN_APP_CLAIM_CODE'];
+const CARVE_OUT_REASON = '#2516 monorepo events has no claimed prod identity until the standalone cutover; checkout/refund/settle and payment webhooks fail closed until set';
+
+describe('check-env prod carve-outs (#2818)', () => {
+  it.each([['prod', 0], ['dev', 1]])('missing identity keys in %s -> exit %i', (env, status) => {
+    const dir = makeRoot();
+    writeExample(dir, APP_IDENTITY_KEYS.map((key) => `# prod-carve-out: ${CARVE_OUT_REASON}\n${key}=\n`).join(''));
+    writeLocal(dir);
+    // Existing local files still require these keys even for a non-target.
+    writeEcosystem(dir, 'dev', ['kernel']);
+    writeEcosystem(dir, 'prod', [SERVICE]);
+    const result = run(dir, ['--env', env, SERVICE]);
+    expect(result.status).toBe(status);
+    for (const key of APP_IDENTITY_KEYS) expect(result.stdout).toContain(key);
+    if (env === 'prod') {
+      expect(result.stdout).toContain('1 warning');
+      expect(result.stdout).toContain('prod-carve-out, not set');
+      expect(result.stdout).toContain(CARVE_OUT_REASON);
+      expect(result.stdout.match(/#2516/g)).toHaveLength(1);
+      expect(result.stdout).not.toContain('error');
+    } else {
+      expect(result.stdout).toContain('3 errors');
+      expect(result.stdout).not.toContain('prod-carve-out, not set');
+    }
+  });
+
+  it.each(['dev', 'prod'])('set carve-out keys are fine in %s', (env) => {
+    const dir = makeRoot();
+    writeExample(dir, APP_IDENTITY_KEYS.map((key) => `# prod-carve-out: ${CARVE_OUT_REASON}\n${key}=\n`).join(''));
+    writeLocal(dir, APP_IDENTITY_KEYS.map((key) => `${key}=fixture\n`).join(''));
+    const result = run(dir, ['--env', env, SERVICE]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('all good');
+  });
+
+  it.each([
+    '# prod-carve-out: no issue ref\nREQUIRED_KEY=\n',
+    '# prod-carve-out: #2516 reason\n\nREQUIRED_KEY=\n',
+    '# prod-carve-out: #2516 reason\n# intervening comment\nREQUIRED_KEY=\n',
+  ])('does not relax a key without a valid adjacent annotation: %s', (example) => {
+    const dir = makeRoot();
+    writeExample(dir, example);
+    writeLocal(dir);
+    const result = run(dir, ['--env', 'prod', SERVICE]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('missing');
+    expect(result.stdout).toContain('REQUIRED_KEY');
+  });
+
+  it('keeps unrelated keys and wrong ports as errors in prod', () => {
+    const dir = makeRoot();
+    writeExample(dir, `# prod-carve-out: ${CARVE_OUT_REASON}\nIMAJIN_APP_DID=\nREQUIRED_KEY=\nPORT=\n`);
+    writeLocal(dir, 'PORT=3006\n');
+    const result = run(dir, ['--env', 'prod', SERVICE]);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('REQUIRED_KEY');
+    expect(result.stdout).toContain('wrong port');
+    expect(result.stdout).toContain(CARVE_OUT_REASON);
+  });
+
+  it.each(['dev', 'prod'])('preserves existing annotations in %s', (env) => {
+    const dir = makeRoot();
+    writeExample(dir, '# optional\nOPTIONAL_KEY=\n# vault-sourced: boot\nVAULT_KEY=\n# deprecated: legacy\nOLD_KEY=\n');
+    writeLocal(dir);
+    const missing = run(dir, ['--env', env, SERVICE]);
+    expect(missing.status).toBe(0);
+    expect(missing.stdout).toContain('optional, not set');
+    expect(missing.stdout).not.toContain('VAULT_KEY');
+    expect(missing.stdout).not.toContain('OLD_KEY');
+    writeLocal(dir, 'OPTIONAL_KEY=set\nVAULT_KEY=set\nOLD_KEY=set\n');
+    const present = run(dir, ['--env', env, SERVICE]);
+    expect(present.status).toBe(0);
+    expect(present.stdout).not.toContain('optional, not set');
+    expect(present.stdout).toContain('deprecated hand-provisioned value present; remove after rotation');
+    expect(present.stdout).toContain('legacy');
+  });
+
+  it('annotates exactly the three live events identity keys with the agreed reason', () => {
+    const example = readFileSync(join(REPO_ROOT, 'apps/events/.env.example'), 'utf8');
+    expect(example.match(/^# prod-carve-out:/gm)).toHaveLength(3);
+    for (const key of APP_IDENTITY_KEYS) {
+      expect(example).toContain(`# prod-carve-out: ${CARVE_OUT_REASON}\n${key}=`);
+    }
+  });
+});
+
 describe('check-env per-env deploy targets', () => {
   it('service-not-in-target with no .env.local -> ok (warn)', () => {
     const dir = makeRoot();
