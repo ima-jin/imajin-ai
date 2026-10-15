@@ -22,7 +22,7 @@
  */
 import { resolveDidStripeKeys, SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
-const STRIPE_API_BASE = 'https://api.stripe.com/v1';
+const stripeApiBase = 'https://api.stripe.com/v1';
 
 /** Hosted Checkout sessions expire after a day, matching the platform provider's session lifetime. */
 const SESSION_LIFETIME_SECONDS = 24 * 60 * 60;
@@ -99,7 +99,7 @@ async function stripeRequest(
 ): Promise<StripeResponse> {
   let res: Response;
   try {
-    res = await fetch(`${STRIPE_API_BASE}${path}`, {
+    res = await fetch(`${stripeApiBase}${path}`, {
       method,
       headers: {
         Authorization: `Bearer ${key}`,

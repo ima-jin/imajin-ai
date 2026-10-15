@@ -32,7 +32,7 @@ import {
   reverseSettlementEntries,
   refundSellerPayment,
 } from '@/src/lib/pay/refund';
-import { STRIPE_BYO_RAIL } from '@/src/lib/pay/external-ref';
+import { stripeByoRail } from '@/src/lib/pay/external-ref';
 import { SellerNoCardRailError } from '@/src/lib/pay/rails/stripe-keys';
 
 export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
@@ -79,7 +79,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log, cor
       );
     }
 
-    if (originalTx.rail !== STRIPE_BYO_RAIL || !originalTx.toDid) {
+    if (originalTx.rail !== stripeByoRail || !originalTx.toDid) {
       log.error({ transactionId: originalTx.id }, 'Legacy platform refund requires manual reconciliation');
       return NextResponse.json({ error: 'Legacy platform payments require manual refund reconciliation', code: 'LEGACY_PLATFORM_PAYMENT' }, { status: 409, headers: cors });
     }

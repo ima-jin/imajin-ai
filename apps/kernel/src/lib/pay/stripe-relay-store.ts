@@ -26,6 +26,8 @@ import type { StripeRelaySource } from '@imajin/bus';
 export type { StripeRelaySource };
 
 export interface StripeRelayEntry {
+  /** Present only for a connector-bound delivery; never dispatch it to legacy platform handlers. */
+  ownerDid?: string;
   /** Which webhook endpoint (and therefore which signing secret) verified this delivery. */
   source: StripeRelaySource;
   /** The full verified Stripe event (`{ id, type, data: { object }, account? }`). */
@@ -39,8 +41,8 @@ export interface StripeRelayEntry {
 const entries = new Map<string, StripeRelayEntry>();
 
 /** Register a verified event for hand-off; returns the entry so the caller can read the outcome. */
-export function putRelayEntry(relayId: string, source: StripeRelaySource, stripeEvent: unknown): StripeRelayEntry {
-  const entry: StripeRelayEntry = { source, stripeEvent, handled: false };
+export function putRelayEntry(relayId: string, source: StripeRelaySource, stripeEvent: unknown, ownerDid?: string): StripeRelayEntry {
+  const entry: StripeRelayEntry = { source, stripeEvent, handled: false, ownerDid };
   entries.set(relayId, entry);
   return entry;
 }

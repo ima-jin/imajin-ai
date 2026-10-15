@@ -38,7 +38,7 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
         <p className="text-xs text-gray-400">App scopes and dependencies</p>
         <p className="text-xs text-gray-500">
           No <span className="font-mono">imajin.app.json</span> declarations could be read for this proposal. Approving
-          registers none — provisioning stops if the manifest declares any.
+          cannot bypass the manifest read — provisioning stops if it is unreadable or invalid.
         </p>
       </div>
     );
@@ -64,7 +64,7 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
         </span>
       </Row>
       {isEmpty ? (
-        <p className="text-xs text-gray-500">Declares no scopes of its own, no dependencies, and no events it may emit.</p>
+        <p className="text-xs text-gray-500">Declares no self secrets, no scopes of its own, no dependencies, and no events it may emit.</p>
       ) : (
         <>
           <Row label="Provides scopes">

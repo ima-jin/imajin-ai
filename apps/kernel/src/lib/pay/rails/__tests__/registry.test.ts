@@ -7,13 +7,13 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('@/src/db', () => ({ db: {}, balances: {}, transactions: {}, withdrawalIntents: {} }));
 
 import { getWithdrawRail, getWithdrawRailByName, defaultRailForUnit, listRegisteredRails } from '../registry';
-import { STRIPE_RAIL_NAME } from '../../providers/stripe-withdraw-rail';
+import { stripeRailName } from '../../providers/stripe-withdraw-rail';
 import { MJN, MJNX } from '../../ledger';
 
 describe('rail registry (#2172 design amendment point 4: config-driven, not a switch statement)', () => {
   it('enables the retired stripe rail for no unit (#2757) — new withdrawals never resolve it', () => {
-    expect(getWithdrawRail(STRIPE_RAIL_NAME, MJN)).toBeNull();
-    expect(getWithdrawRail(STRIPE_RAIL_NAME, MJNX)).toBeNull();
+    expect(getWithdrawRail(stripeRailName, MJN)).toBeNull();
+    expect(getWithdrawRail(stripeRailName, MJNX)).toBeNull();
   });
 
   it('returns null for an unregistered rail name', () => {
@@ -21,7 +21,7 @@ describe('rail registry (#2172 design amendment point 4: config-driven, not a sw
   });
 
   it('getWithdrawRailByName ignores unit enablement, so in-flight intents still reconcile', () => {
-    expect(getWithdrawRailByName(STRIPE_RAIL_NAME)?.name).toBe(STRIPE_RAIL_NAME);
+    expect(getWithdrawRailByName(stripeRailName)?.name).toBe(stripeRailName);
     expect(getWithdrawRailByName('does-not-exist')).toBeNull();
   });
 
@@ -32,7 +32,7 @@ describe('rail registry (#2172 design amendment point 4: config-driven, not a sw
 
   it('listRegisteredRails returns every registered rail exactly once, as a stable singleton', () => {
     const rails = listRegisteredRails();
-    expect(rails.map((r) => r.name)).toEqual([STRIPE_RAIL_NAME]);
+    expect(rails.map((r) => r.name)).toEqual([stripeRailName]);
     expect(listRegisteredRails()[0]).toBe(rails[0]); // lazy singleton, not reconstructed per call
   });
 });

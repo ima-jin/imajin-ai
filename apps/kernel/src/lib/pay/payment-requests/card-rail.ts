@@ -9,15 +9,17 @@
  * the callers show no card button / answer `SELLER_NO_CARD_RAIL`. Stripe Connect
  * is gone (#2757) — there is no platform-held fallback.
  *
- * The connector rail requires BOTH a readable sealed key (`keySealed`: the
- * delegation grant behind it is active) AND the owner's `stripe:events` grant.
+ * The connector rail requires a readable sealed key (`keySealed`: the
+ * delegation grant behind it is active), the owner's `stripe:events` grant,
+ * and ready publishable-key and webhook-secret fields.
  * The second is what makes the money show up as Paid: settlement rides the
  * owner's own `stripe.*` event (`byo-settlement.ts`), and that event is only
  * published for an owner who granted the scope. A key that could charge but
  * could never settle is not a working rail, so it is not offered.
  */
 import { createLogger } from '@imajin/logger';
-import { stripe, STRIPE_EVENTS_SCOPE } from '@/src/lib/stripe/connector-core';
+import { stripe, stripeEventsScope, stripePublishableKeyField, stripeWebhookSecretField } from '@/src/lib/stripe/connector-core';
+import { vaultFieldStatus } from '@/src/lib/vault';
 
 const log = createLogger('kernel');
 
@@ -31,7 +33,17 @@ export type CardRail =
   | { kind: 'none' };
 
 async function hasConnectorRail(sellerDid: string): Promise<boolean> {
-  return (await stripe.keySealed(sellerDid)) && (await stripe.resolveActiveGrant(sellerDid, STRIPE_EVENTS_SCOPE));
+  if (!await stripe.keySealed(sellerDid) || !await stripe.resolveActiveGrant(sellerDid, stripeEventsScope)) {
+    return false;
+  }
+  // Manual endpoint setup can leave rk/pk sealed before the owner supplies the
+  // signing secret. Never offer a charge that cannot subsequently settle.
+  // Metadata only: availability must not unseal credentials or call Stripe.
+  const statuses = await Promise.all([
+    vaultFieldStatus(stripePublishableKeyField(sellerDid)),
+    vaultFieldStatus(stripeWebhookSecretField(sellerDid)),
+  ]);
+  return statuses.every(status => status === 'ready');
 }
 
 /**

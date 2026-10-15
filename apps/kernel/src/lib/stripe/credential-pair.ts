@@ -2,11 +2,21 @@
 export class StripeCredentialError extends Error {
   constructor(
     readonly code: string,
-    readonly field: 'token' | 'publishableKey',
+    readonly field: 'token' | 'publishableKey' | 'webhookSecret',
     message: string,
   ) {
     super(message);
     this.name = 'StripeCredentialError';
+  }
+}
+
+/** A signing secret is supplied by the owner from Stripe, never generated here. */
+export function validateStripeWebhookSecret(secret: string): void {
+  if (!/^whsec_\w+$/.test(secret.trim())) {
+    throw new StripeCredentialError(
+      'stripe_webhook_secret_invalid', 'webhookSecret',
+      'Provide the webhook signing secret starting with whsec_ from your Stripe endpoint.',
+    );
   }
 }
 

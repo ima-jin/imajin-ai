@@ -80,6 +80,14 @@ describe('verifyStripeWebhookSignature (#1785)', () => {
   });
 
   // ── replay ────────────────────────────────────────────────────────────────
+  it('rejects non-hex suffixes that Buffer decoding would otherwise truncate', () => {
+    const now = Date.now();
+    const header = signatureHeaderAt(BODY, SECRET, Math.floor(now / 1000));
+    expect(verifyStripeWebhookSignature(BODY, `${header}zz`, SECRET, { now })).toEqual({
+      ok: false,
+      reason: 'signature_mismatch',
+    });
+  });
 
   it('rejects a genuinely-signed delivery whose timestamp is older than the tolerance window (replay)', () => {
     const now = Date.now();

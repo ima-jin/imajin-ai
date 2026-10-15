@@ -30,7 +30,7 @@ import { db, paymentRequests, transactions } from '@/src/db';
 import type { PaymentRequest } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
-import { externalRefColumns, STRIPE_BYO_RAIL } from '@/src/lib/pay/external-ref';
+import { externalRefColumns, stripeByoRail } from '@/src/lib/pay/external-ref';
 import {
   OPEN_STATUSES,
   announcePaymentRequestPaid,
@@ -81,7 +81,7 @@ async function recordByoTransaction(paid: PaymentRequest, paymentIntentId: strin
   const [existing] = await db
     .select({ id: transactions.id })
     .from(transactions)
-    .where(and(eq(transactions.rail, STRIPE_BYO_RAIL), eq(transactions.externalRef, paymentIntentId)))
+    .where(and(eq(transactions.rail, stripeByoRail), eq(transactions.externalRef, paymentIntentId)))
     .limit(1);
   if (existing) return;
 
@@ -94,7 +94,7 @@ async function recordByoTransaction(paid: PaymentRequest, paymentIntentId: strin
     amount: (paid.totalAmount / 100).toString(),
     currency: paid.currency,
     status: 'completed',
-    ...externalRefColumns(paymentIntentId, STRIPE_BYO_RAIL),
+    ...externalRefColumns(paymentIntentId, stripeByoRail),
     metadata: { payment_request_id: paid.id, payment_intent_id: paymentIntentId, platform_fee_cents: 0 },
     fairManifest: manifestWithZeroPlatformFee(paid),
   });

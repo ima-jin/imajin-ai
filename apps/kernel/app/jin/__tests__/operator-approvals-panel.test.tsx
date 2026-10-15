@@ -1190,7 +1190,7 @@ describe('per-source renderer registry — apps', () => {
 
     const preview = screen.getByTestId('provision-declarations-preview');
     expect(preview.getAttribute('data-state')).toBe('unread');
-    expect(preview.textContent).toMatch(/registers none/);
+    expect(preview.textContent).toMatch(/provisioning stops if it is unreadable or invalid/);
   });
 
   it('reveals the claim code plus a paste-at URL derived from the origin and slug (#2427)', async () => {

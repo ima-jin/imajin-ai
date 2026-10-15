@@ -167,14 +167,14 @@ export async function POST(request: NextRequest) {
 
   // #2663: read the app's `providesScopes` / `dependsOn` from imajin.app.json NOW,
   // so the operator sees (and, by signing the card, approves) exactly that list.
-  // `null` = no manifest was readable; provisioning then registers none.
+  // An unreadable/invalid manifest blocks a fresh proposal, never approving [].
   // #2707: a reissue never re-registers anything (the succeeded branch of `runAppProvision`
   // only re-grants + issues a code), so it carries no declarations and needs no manifest read.
   // A reissue is only ever raised for a `succeeded` ledger row (#2745 guard above).
   const preview = reissueClaim ? { ok: null } : await previewManifestDeclarations(slug, template ?? undefined);
   if ('error' in preview) {
     return NextResponse.json(
-      { error: `imajin.app.json scope declarations rejected: ${preview.error}` },
+      { error: preview.error },
       { status: 400, headers: cors },
     );
   }
@@ -182,10 +182,10 @@ export async function POST(request: NextRequest) {
   const proposalId = generateId('appprov');
   // #2707: a reissue is flagged on the card itself (and so covered by the content hash the
   // operator signs) so /jin can say "Reissue claim code" instead of "Provision". Only set
-  // when true — an ordinary provision proposal's detail/hash is byte-identical to before.
+  // when true — an ordinary provision proposal carries the retirement notice instead.
   const summary = reissueClaim
     ? `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`
-    : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential.`;
+    : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
   const detail: Record<string, unknown> = { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok };
   if (reissueClaim) detail.reissueClaim = true;
   const contentHash = computeApprovalContentHash({

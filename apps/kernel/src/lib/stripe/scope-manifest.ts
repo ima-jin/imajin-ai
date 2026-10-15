@@ -21,30 +21,30 @@ import {
   validScopesForConnector,
   requiresConsentRow,
 } from '@/src/lib/kernel/scope-projections';
-import { STRIPE_CONNECTOR_DID } from './connector';
+import { stripeConnectorDid } from './connector';
 
 export { keySealed as stripeKeySealed, keyPending as stripeKeyPending } from './connector';
 
 const CONNECTOR = 'stripe' as const;
 
-export const STRIPE_SCOPE_DESCRIPTORS = connectorScopeDescriptors(CONNECTOR);
+export const stripeScopeDescriptors = connectorScopeDescriptors(CONNECTOR);
 
-export const VALID_STRIPE_SCOPES = validScopesForConnector(CONNECTOR);
+export const validStripeScopes = validScopesForConnector(CONNECTOR);
 
 const MANIFEST_CHANNEL = 'stripe';
 
 export function buildManifestContent(selectedScopes: readonly string[]): string {
   return buildConnectorManifestContent(
-    STRIPE_CONNECTOR_DID, MANIFEST_CHANNEL, STRIPE_SCOPE_DESCRIPTORS, selectedScopes,
+    stripeConnectorDid, MANIFEST_CHANNEL, stripeScopeDescriptors, selectedScopes,
   );
 }
 
 export function findStripeManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, STRIPE_CONNECTOR_DID);
+  return findConnectorManifestAsset(ownerDid, stripeConnectorDid);
 }
 
 export function readActiveStripeScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, STRIPE_CONNECTOR_DID);
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, stripeConnectorDid);
 }
 
 export function syncConsentGrants(
@@ -53,15 +53,15 @@ export function syncConsentGrants(
   requestedScopes: readonly string[],
 ): Promise<void> {
   return syncConnectorConsentGrants(
-    ownerDid, STRIPE_CONNECTOR_DID, manifestAssetId, requestedScopes,
+    ownerDid, stripeConnectorDid, manifestAssetId, requestedScopes,
     (s) => requiresConsentRow(CONNECTOR, s),
   );
 }
 
 export function publishStripeScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
   return publishConnectorScopeManifest({
-    ownerDid, connectorDid: STRIPE_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
-    filename: 'stripe-scope-manifest.md', scopeDescriptors: STRIPE_SCOPE_DESCRIPTORS,
+    ownerDid, connectorDid: stripeConnectorDid, channel: MANIFEST_CHANNEL,
+    filename: 'stripe-scope-manifest.md', scopeDescriptors: stripeScopeDescriptors,
     scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
   });
 }

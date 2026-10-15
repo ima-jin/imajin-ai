@@ -26,7 +26,7 @@ import {
 const log = createLogger('kernel');
 
 /** Bus scope for every `stripe.*` event, shared with the BYO connector (`connector.ts`). */
-const STRIPE_BUS_SCOPE = 'stripe';
+const stripeBusScope = 'stripe';
 
 export type StripeRelayResult =
   /** Published and fully handled by the consumer. */
@@ -130,7 +130,7 @@ export async function relayVerifiedStripeEvent(
     await publish(`stripe.${eventType}` as BusEventType, {
       issuer: owner,
       subject: owner,
-      scope: STRIPE_BUS_SCOPE,
+      scope: stripeBusScope,
       payload: {
         ownerDid: owner,
         ...facts,

@@ -6,14 +6,14 @@ import { forEachSequential } from '@/src/lib/async/sequential';
 import type { Logger } from '@imajin/logger';
 import { sellerPledgeRefundClient, sellerSessionPaymentIntent } from './providers/seller-pledge-refund';
 import { resolveDidStripeKeys } from './rails/stripe-keys';
-import { STRIPE_BYO_RAIL } from './external-ref';
+import { stripeByoRail } from './external-ref';
 import { MJN, creditUnit, debitUnit } from './ledger';
 
 type LoggerLike = Pick<Logger, 'error'>;
 type TransactionRow = typeof transactions.$inferSelect;
 const LEGACY_SELLER_SESSION_LOOKUP_LIMIT = 25;
 function isSellerSession(row: TransactionRow): row is TransactionRow & { toDid: string; externalRef: string } {
-  return row.rail === STRIPE_BYO_RAIL && Boolean(row.toDid) && Boolean(row.externalRef?.startsWith('cs_'));
+  return row.rail === stripeByoRail && Boolean(row.toDid) && Boolean(row.externalRef?.startsWith('cs_'));
 }
 
 function settledPaymentIntentOf(row: TransactionRow): string | undefined {
@@ -34,7 +34,7 @@ export async function resolveOriginalTransaction(
   const [directMatch] = await db
     .select()
     .from(transactions)
-    .where(or(whereExternalRef(paymentId), whereExternalRef(paymentId, STRIPE_BYO_RAIL)))
+    .where(or(whereExternalRef(paymentId), whereExternalRef(paymentId, stripeByoRail)))
     .limit(1);
   if (directMatch) return directMatch;
 
@@ -43,7 +43,7 @@ export async function resolveOriginalTransaction(
   // settledAt. Checkout metadata itself is caller-controlled, including this key.
   const [settledMatch] = await db.select().from(transactions).where(and(
     eq(transactions.appDid, appDid),
-    eq(transactions.rail, STRIPE_BYO_RAIL),
+    eq(transactions.rail, stripeByoRail),
     inArray(transactions.status, ['completed', 'partially_refunded']),
     isNotNull(transactions.settledAt),
     sql`${transactions.metadata}->>'settledPaymentIntentId' = ${paymentId}`,
@@ -54,7 +54,7 @@ export async function resolveOriginalTransaction(
   // or issue a Stripe request for pending, refunded, or non-seller payments.
   const candidates = await db.select().from(transactions).where(and(
     eq(transactions.appDid, appDid),
-    eq(transactions.rail, STRIPE_BYO_RAIL),
+    eq(transactions.rail, stripeByoRail),
     inArray(transactions.status, ['completed', 'partially_refunded']),
     sql`left(${transactions.externalRef}, 3) = ${'cs_'}`,
   )).orderBy(desc(transactions.createdAt), asc(transactions.id)).limit(LEGACY_SELLER_SESSION_LOOKUP_LIMIT);
@@ -71,7 +71,7 @@ export async function resolveOriginalTransaction(
 
 /** Only the account that took the original payment may refund it. */
 export async function refundSellerPayment(originalTx: TransactionRow, amount: number) {
-  if (originalTx.rail !== STRIPE_BYO_RAIL || !originalTx.toDid) throw new Error('LEGACY_PLATFORM_PAYMENT');
+  if (originalTx.rail !== stripeByoRail || !originalTx.toDid) throw new Error('LEGACY_PLATFORM_PAYMENT');
   const { secretKey } = await resolveDidStripeKeys(originalTx.toDid);
   // Only the verified settlement stamp, stored rail reference, or seller
   // session can establish authority. Unstamped caller metadata is ignored.
@@ -202,7 +202,7 @@ export async function applyRefundLedgerUpdates(params: {
     },
   });
 
-  if (originalTx.rail !== STRIPE_BYO_RAIL) {
+  if (originalTx.rail !== stripeByoRail) {
     await adjustBalancesForRefund(originalTx.toDid, originalTx.fromDid, refundedDollars, originalTx.currency);
   }
 
@@ -225,7 +225,7 @@ export async function reverseSettlementEntries(params: {
   reason?: string;
 }): Promise<void> {
   const { originalTx, requestedRefundDollars, txAmountDollars, isFullRefund, reason } = params;
-  if (originalTx.rail === STRIPE_BYO_RAIL) return;
+  if (originalTx.rail === stripeByoRail) return;
   const checkoutStripeId = originalTx.externalRef;
   if (!checkoutStripeId) return;
 

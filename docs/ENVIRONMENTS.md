@@ -186,7 +186,7 @@ EMT topups remain pending until the incoming payment is matched.
 `scripts/check-env.ts` validates every service's `.env.local` against its
 `.env.example` before a build (`scripts/build.sh`'s pre-flight step). By
 default every key in `.env.example` is **required** — missing it from
-`.env.local` is a hard error. Three comment annotations, placed on the line
+`.env.local` is a hard error. Comment annotations, placed on the line
 directly above a `KEY=value` line, change that:
 
 | Annotation | Missing from `.env.local` | Set in `.env.local` |
@@ -194,7 +194,15 @@ directly above a `KEY=value` line, change that:
 | `# optional` | OK (grouped into one warning per service) | normal |
 | `# vault-sourced: <reason>` | OK, silent (fetched at boot instead) | WARN — "deprecated hand-provisioned value present; remove after rotation" |
 | `# deprecated: <reason>` | OK, silent | WARN with `<reason>` |
+| `# prod-carve-out: <reason>` | WARN with reason, grouped in prod; **ERROR** in dev | normal |
 | _(none)_ | **ERROR** | normal |
+
+`prod-carve-out` is an interim, issue-linked exception: its reason must contain
+an issue reference matching `/#\d+/`; without one the comment is inert and the
+key stays required, including in prod. Only `--env prod` permits the warning.
+The three monorepo events app-identity keys use it until the standalone cutover
+(#2516): checkout/refund/settle and payment webhooks fail closed until set.
+Remove these annotation lines when `apps/events` is pruned (#2517) after #2516.
 
 ```
 # vault-sourced: fetched at boot via loadFromVault (#2243), do not set locally

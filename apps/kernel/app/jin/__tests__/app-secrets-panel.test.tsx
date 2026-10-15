@@ -53,6 +53,19 @@ describe('AppSecretsPanel', () => {
     await screen.findByRole('link', { name: 'Review proposal' });
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({ appDid: app.appDid, action: 'sync' });
   });
+  it.each([
+    "App 'fake-app' manifest unreadable (HTTP 404)",
+    "App 'fake-app' manifest invalid",
+  ])('shows the names-only Sync error instead of a pending or empty approval: %s', async (error) => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(Response.json({ apps: [app] }))
+      .mockResolvedValueOnce(Response.json({ error }, { status: 409 }));
+    vi.stubGlobal('fetch', fetchMock);
+    render(<AppSecretsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync manifest secrets' }));
+    expect(await screen.findByText(error)).toBeDefined();
+    expect(screen.queryByRole('link', { name: 'Review proposal' })).toBeNull();
+    expect(screen.queryByText(/Proposal pending/)).toBeNull();
+  });
   it('shows unclaimed provisions but offers no secret mutation controls', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ apps: [{ ...app, claimed: false }] })));
     render(<AppSecretsPanel />);

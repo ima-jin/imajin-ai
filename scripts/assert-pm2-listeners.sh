@@ -21,6 +21,8 @@
 # orphan squatter never converges and fails the deploy.
 #
 # Usage: scripts/assert-pm2-listeners.sh [dev|prod] [ecosystem-file]
+# Env: PM2_DEPLOY_STOPPED_FILE — only still-stopped names in this deploy's
+# pre-build snapshot are exempt; newly stopped/errored apps still fail (#2815).
 
 set -uo pipefail
 
@@ -68,13 +70,16 @@ pm2_pid_of() {
   return 0
 }
 
-# Does pm2 know a process named $1 at all (running or not)?
-pm2_knows() {
+# Classify from current pm2 state; only a pre-restart stopped app is exempt.
+pm2_check_state() {
   local name="$1" status
   pm2 jlist 2>/dev/null | node -e '
-    const procs = JSON.parse(require("fs").readFileSync(0) || "[]");
-    process.exit(procs.some((p) => p && p.name === process.argv[1]) ? 0 : 1);
-  ' "$name" 2>/dev/null
+    const policy = require(process.argv[2]);
+    const procs = policy.readProcesses(require("fs").readFileSync(0, "utf8"));
+    const stopped = policy.stoppedNames();
+    const proc = procs.find((p) => p && p.name === process.argv[1]);
+    console.log(!proc ? "unknown" : policy.isIntentionallyStopped(proc, stopped) ? "stopped" : "check");
+  ' "$name" "$SCRIPT_DIR/lib/pm2-deploy-state.cjs" 2>/dev/null
   status=$?
   return "$status"
 }
@@ -117,7 +122,15 @@ FAILED=0
 CHECKED=0
 while read -r name port; do
   [[ -z "$name" ]] && continue
-  if ! pm2_knows "$name"; then
+  state="$(pm2_check_state "$name")" || {
+    echo "assert-pm2-listeners: could not read pm2 state or deploy stopped-process list" >&2
+    exit 2
+  }
+  if [[ "$state" = stopped ]]; then
+    echo "ℹ️  $name pm2 status=stopped before deploy — skipping listener check"
+    continue
+  fi
+  if [[ "$state" = unknown ]]; then
     echo "ℹ️  $name not known to pm2 — skipping listener check"
     continue
   fi

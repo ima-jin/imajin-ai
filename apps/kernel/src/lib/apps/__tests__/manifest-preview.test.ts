@@ -1,125 +1,139 @@
-/**
- * Tests for apps/kernel/src/lib/apps/manifest-preview.ts (#2663) — the proposal-time
- * read that puts providesScopes/dependsOn on the card before the operator approves.
- */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  fetchAppManifestMock: vi.fn(),
-  tryGetInstallationTokenMock: vi.fn(),
-  validateAppDeclarationsMock: vi.fn(),
-  warnMock: vi.fn(),
+  manifest: vi.fn(),
+  token: vi.fn(),
+  declarations: vi.fn(),
 }));
-
-vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: mocks.warnMock, error: vi.fn() }) }));
-vi.mock('@/src/lib/github/org-provisioning', () => ({
-  DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
-  fetchAppManifest: mocks.fetchAppManifestMock,
-  tryGetInstallationToken: mocks.tryGetInstallationTokenMock,
+vi.mock('@/src/lib/github/org-provisioning', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/src/lib/github/org-provisioning')>(),
+  fetchAppManifest: mocks.manifest,
+  tryGetInstallationToken: mocks.token,
 }));
-vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: mocks.validateAppDeclarationsMock }));
+vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: mocks.declarations }));
+vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn() }));
 
 import { previewManifestDeclarations } from '../manifest-preview';
 
+const empty = { providesScopes: [], dependsOn: [], emittableEvents: [] };
 beforeEach(() => {
-  vi.clearAllMocks();
-  mocks.tryGetInstallationTokenMock.mockResolvedValue('installation-token');
-  mocks.fetchAppManifestMock.mockResolvedValue(null);
-  mocks.validateAppDeclarationsMock.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[] }) => ({
+  vi.resetAllMocks();
+  mocks.token.mockResolvedValue('installation-token');
+  mocks.manifest.mockResolvedValue({ error: 'unreadable', status: 404 });
+  mocks.declarations.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[] }) => ({
     ok: { providesScopes: input.providesScopes ?? [], dependsOn: input.dependsOn ?? [], requestedScopes: [] },
   }));
 });
 
-describe('previewManifestDeclarations (#2663)', () => {
-  it('#2799 snapshots template secret recipes before the fresh app repo exists', async () => {
+describe('manifest declarations preview (#2813)', () => {
+  it.each([
+    'foreign-org/template',
+    'ima-jin/..',
+    'ima-jin/../template',
+    'ima-jin/template/extra',
+    'ima-jin/%2e%2e',
+    'ima-jin',
+    'ima-jin/',
+    'ima-jin/Uppercase',
+    `ima-jin/${'a'.repeat(40)}`,
+    '',
+  ])('rejects unsafe template paths before any fetch or credential read: %s', async (template) => {
+    mocks.manifest.mockResolvedValue({ ok: {} });
+    expect(await previewManifestDeclarations('fresh-app', template))
+      .toEqual({ error: "App 'fresh-app' manifest invalid" });
+    expect(mocks.token).not.toHaveBeenCalled();
+    expect(mocks.manifest).not.toHaveBeenCalled();
+    expect(mocks.declarations).not.toHaveBeenCalled();
+  });
+
+  it('accepts an ima-jin template repo at the slug length boundary', async () => {
+    const repo = 'a'.repeat(39);
+    mocks.manifest.mockResolvedValueOnce({ error: 'unreadable', status: 404 })
+      .mockResolvedValueOnce({ ok: {} });
+    expect(await previewManifestDeclarations('fresh-app', `ima-jin/${repo}`)).toEqual({ ok: empty });
+    expect(mocks.manifest).toHaveBeenNthCalledWith(2, repo, 'installation-token', 'ima-jin');
+  });
+  it.each([null, 'installation-token'])('snapshots the template source for a fresh repository with token %s', async (token) => {
+    mocks.token.mockResolvedValue(token);
     const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' }];
-    mocks.fetchAppManifestMock.mockResolvedValueOnce(null).mockResolvedValueOnce({ secrets });
-    const result = await previewManifestDeclarations('fresh-app', 'ima-jin/imajin-app-template');
-    expect(result).toEqual({ ok: { secrets, providesScopes: [], dependsOn: [], emittableEvents: [] } });
-    expect(mocks.fetchAppManifestMock).toHaveBeenNthCalledWith(2, 'imajin-app-template', 'installation-token', 'ima-jin');
+    mocks.manifest.mockResolvedValueOnce({ error: 'unreadable', status: 404 })
+      .mockResolvedValueOnce({ ok: { secrets } });
+    expect(await previewManifestDeclarations('fresh-app', 'ima-jin/imajin-app-template'))
+      .toEqual({ ok: { ...empty, secrets } });
+    expect(mocks.manifest).toHaveBeenNthCalledWith(1, 'fresh-app', token);
+    expect(mocks.manifest).toHaveBeenNthCalledWith(2, 'imajin-app-template', token, 'ima-jin');
   });
-  it('returns the validated declarations from the manifest, checked against the slug', async () => {
+
+  it('uses public reads without credentials and snapshots secret names and declarations', async () => {
+    mocks.token.mockResolvedValue(null);
+    const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' }];
     const dependsOn = [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }];
-    mocks.fetchAppManifestMock.mockResolvedValue({ providesScopes: ['dykil:read'], dependsOn });
-
-    const result = await previewManifestDeclarations('dykil');
-
-    expect(result).toEqual({ ok: { providesScopes: ['dykil:read'], dependsOn, emittableEvents: [] } });
-    expect(mocks.fetchAppManifestMock).toHaveBeenCalledWith('dykil', 'installation-token');
-    expect(mocks.validateAppDeclarationsMock).toHaveBeenCalledWith({ providesScopes: ['dykil:read'], dependsOn, slug: 'dykil' });
+    mocks.manifest.mockResolvedValue({ ok: { secrets, providesScopes: ['coffee:read'], dependsOn } });
+    expect(await previewManifestDeclarations('coffee'))
+      .toEqual({ ok: { ...empty, secrets, providesScopes: ['coffee:read'], dependsOn } });
+    expect(mocks.manifest).toHaveBeenCalledWith('coffee', null);
+    expect(mocks.declarations).toHaveBeenCalledWith({ providesScopes: ['coffee:read'], dependsOn, slug: 'coffee' });
   });
 
-  it('returns the validator\'s normalised list, not the raw manifest value', async () => {
-    mocks.fetchAppManifestMock.mockResolvedValue({ providesScopes: ['dykil:read', 'dykil:read'] });
-    mocks.validateAppDeclarationsMock.mockResolvedValue({
-      ok: { providesScopes: ['dykil:read'], dependsOn: [], requestedScopes: [] },
-    });
-
-    expect(await previewManifestDeclarations('dykil')).toEqual({
-      ok: { providesScopes: ['dykil:read'], dependsOn: [], emittableEvents: [] },
-    });
+  it('snapshots normalized declarations rather than raw manifest values', async () => {
+    mocks.manifest.mockResolvedValue({ ok: { providesScopes: ['coffee:read', 'coffee:read'] } });
+    mocks.declarations.mockResolvedValue({ ok: { providesScopes: ['coffee:read'], dependsOn: [] } });
+    expect(await previewManifestDeclarations('coffee')).toEqual({ ok: { ...empty, providesScopes: ['coffee:read'] } });
   });
 
-  it('returns the empty list for a readable manifest that declares nothing', async () => {
-    mocks.fetchAppManifestMock.mockResolvedValue({ name: 'Dykil' });
-
-    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: { providesScopes: [], dependsOn: [], emittableEvents: [] } });
+  it.each([{}, { name: 'Coffee' }, { secrets: [] }])('accepts a readable manifest declaring no secrets: %j', async (manifest) => {
+    mocks.manifest.mockResolvedValue({ ok: manifest });
+    expect(await previewManifestDeclarations('coffee')).toEqual({ ok: empty });
   });
 
-  it('#2638: puts the emittableEvents the manifest asks for on the card, normalised', async () => {
-    mocks.fetchAppManifestMock.mockResolvedValue({ emittableEvents: ['tip.sent', 'tip.granted', 'tip.sent'] });
-
-    expect(await previewManifestDeclarations('coffee')).toEqual({
-      ok: { providesScopes: [], dependsOn: [], emittableEvents: ['tip.granted', 'tip.sent'] },
-    });
+  it('normalizes declared event types', async () => {
+    mocks.manifest.mockResolvedValue({ ok: { emittableEvents: ['tip.sent', 'tip.granted', 'tip.sent'] } });
+    expect(await previewManifestDeclarations('coffee'))
+      .toEqual({ ok: { ...empty, emittableEvents: ['tip.granted', 'tip.sent'] } });
   });
 
   it.each([
-    ['a wildcard', ['tip.*']],
-    ['an uppercase type', ['Tip.Granted']],
-    ['a non-string entry', [7]],
-    ['a non-array value', 'tip.granted'],
-    ['a kernel-owned payment_request type (#2717)', ['payment_request.paid']],
-    ['a kernel-owned loop type (#2717)', ['tip.granted', 'loop.completed']],
-  ])('#2638: rejects a manifest whose emittableEvents has %s, so the card never shows an unapprovable list', async (_label, emittableEvents) => {
-    mocks.fetchAppManifestMock.mockResolvedValue({ emittableEvents });
-
-    expect(await previewManifestDeclarations('coffee')).toEqual({ error: expect.stringContaining('emittableEvents') });
+    { error: 'unreadable', status: 404 },
+    { error: 'unreadable', status: 503 },
+    { error: 'unreadable' },
+    { error: 'invalid' },
+  ])('returns a names-only failure, never an empty snapshot: %j', async (failure) => {
+    mocks.token.mockResolvedValue(null);
+    mocks.manifest.mockResolvedValue(failure);
+    const result = await previewManifestDeclarations('coffee');
+    const status = failure.status ? ` (HTTP ${failure.status})` : '';
+    expect(result).toEqual({ error: `App 'coffee' manifest ${failure.error}${status}` });
+    expect(mocks.declarations).not.toHaveBeenCalled();
+    if (failure.status !== 404) expect(mocks.manifest).toHaveBeenCalledTimes(1);
   });
 
-  it('returns null — "nothing was read" — when there is no manifest', async () => {
-    mocks.fetchAppManifestMock.mockResolvedValue(null);
-
-    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: null });
-    expect(mocks.validateAppDeclarationsMock).not.toHaveBeenCalled();
+  it('does not mask an invalid app manifest with the template', async () => {
+    mocks.manifest.mockResolvedValueOnce({ error: 'invalid' }).mockResolvedValueOnce({ ok: {} });
+    expect(await previewManifestDeclarations('coffee')).toEqual({ error: "App 'coffee' manifest invalid" });
+    expect(mocks.manifest).toHaveBeenCalledTimes(1);
   });
 
-  it('returns null when the org credential is unsealed (no token)', async () => {
-    mocks.tryGetInstallationTokenMock.mockResolvedValue(null);
+  it.each(['token', 'manifest'] as const)('sanitizes unexpected %s failures', async (edge) => {
+    mocks[edge].mockRejectedValue(new Error('obviously-fake-provider-placeholder'));
+    expect(await previewManifestDeclarations('coffee')).toEqual({ error: "App 'coffee' manifest unreadable" });
+  });
 
-    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: null });
-    expect(mocks.fetchAppManifestMock).toHaveBeenCalledWith('dykil', null);
+  it('does not surface validator content', async () => {
+    mocks.manifest.mockResolvedValue({ ok: { providesScopes: ['coffee:read'] } });
+    mocks.declarations.mockResolvedValue({ error: 'obviously-fake-provider-placeholder' });
+    expect(await previewManifestDeclarations('coffee')).toEqual({ error: "App 'coffee' manifest invalid" });
   });
 
   it.each([
-    ['the credential is malformed', 'tryGetInstallationTokenMock'],
-    ['the manifest read throws', 'fetchAppManifestMock'],
-  ])('degrades to null, never throws, when %s', async (_label, which) => {
-    mocks[which as 'tryGetInstallationTokenMock' | 'fetchAppManifestMock'].mockRejectedValue(new Error('boom'));
-
-    expect(await previewManifestDeclarations('dykil')).toEqual({ ok: null });
-    expect(mocks.warnMock).toHaveBeenCalled();
-  });
-
-  it('returns the error when a readable manifest declares something invalid', async () => {
-    mocks.fetchAppManifestMock.mockResolvedValue({ providesScopes: ['media:write'] });
-    mocks.validateAppDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
-
-    expect(await previewManifestDeclarations('dykil')).toEqual({ error: 'providesScopes rejected: media:write' });
-  });
-  it('#2799 never logs provider errors that could include manifest material', async () => {
-    mocks.fetchAppManifestMock.mockRejectedValueOnce(new Error('obviously-fake-provider-placeholder'));
-    expect(await previewManifestDeclarations('coffee')).toEqual({ ok: null });
-    expect(JSON.stringify(mocks.warnMock.mock.calls)).not.toContain('obviously-fake-provider-placeholder');
+    { secrets: 'bad' },
+    { emittableEvents: ['tip.*'] },
+    { emittableEvents: ['Tip.Granted'] },
+    { emittableEvents: [7] },
+    { emittableEvents: 'tip.granted' },
+    { emittableEvents: ['payment_request.paid'] },
+    { emittableEvents: ['tip.granted', 'loop.completed'] },
+  ])('rejects invalid declarations with a names-only class: %j', async (manifest) => {
+    mocks.manifest.mockResolvedValue({ ok: manifest });
+    expect(await previewManifestDeclarations('coffee')).toEqual({ error: "App 'coffee' manifest invalid" });
   });
 });

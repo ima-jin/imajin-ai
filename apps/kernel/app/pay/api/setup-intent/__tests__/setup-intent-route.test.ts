@@ -8,10 +8,11 @@ const mocks = vi.hoisted(() => ({
   loadKey: vi.fn(),
   keySealed: vi.fn(),
   publishableKey: vi.fn(),
+  fieldStatus: vi.fn(),
   grant: vi.fn(),
   fetch: vi.fn(),
 }));
-vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: mocks.publishableKey }));
+vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: mocks.publishableKey, vaultFieldStatus: mocks.fieldStatus }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn() }) }));
 
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: mocks.verifyToken }));
@@ -21,8 +22,9 @@ vi.mock('@/src/db', () => ({
 }));
 vi.mock('drizzle-orm', () => ({ eq: (field: unknown, value: unknown) => ({ field, value }) }));
 vi.mock('@/src/lib/stripe/connector-core', () => ({
-  STRIPE_EVENTS_SCOPE: 'stripe:events',
+  stripeEventsScope: 'stripe:events',
   stripePublishableKeyField: (did: string) => `${did}:publishable-key`,
+  stripeWebhookSecretField: (did: string) => `${did}:webhook-secret`,
   stripe: { loadSealedCredentials: mocks.loadKey, keySealed: mocks.keySealed, resolveActiveGrant: mocks.grant },
 }));
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -81,6 +83,7 @@ beforeEach(() => {
   mocks.loadKey.mockResolvedValue({ apiKey: 'rk_test_seller' });
   mocks.keySealed.mockResolvedValue(true);
   mocks.publishableKey.mockResolvedValue('pk_test_seller');
+  mocks.fieldStatus.mockResolvedValue('ready');
   mocks.grant.mockResolvedValue(true);
   mocks.fetch.mockImplementation(async () => reply(intent()));
   vi.stubGlobal('fetch', mocks.fetch);
@@ -307,6 +310,14 @@ describe.each([['create', create, binding], ['verify', verify, verification]] as
   it('fails closed for revoked seller Stripe event grant', async () => {
     mocks.grant.mockResolvedValue(false);
     await expectFailure(await handler(request(body)), 503, 'SELLER_NO_CARD_RAIL');
+    expect(mocks.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(['publishable-key', 'webhook-secret'])('refuses incomplete seller %s setup before decrypting or calling Stripe', async field => {
+    mocks.fieldStatus.mockImplementation(async (name: string) => name.endsWith(field) ? 'absent' : 'ready');
+    await expectFailure(await handler(request(body)), 503, 'SELLER_NO_CARD_RAIL');
+    expect(mocks.loadKey).not.toHaveBeenCalled();
+    expect(mocks.publishableKey).not.toHaveBeenCalled();
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 

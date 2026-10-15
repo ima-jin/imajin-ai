@@ -3,6 +3,7 @@ import { SERVICES } from '@imajin/config';
 import { getMcpIssuer } from '@/src/lib/mcp/oauth-config';
 import { LATEST_PROTOCOL_VERSION } from '@/src/lib/mcp/protocol';
 import { nodeUrl } from '@/src/lib/http/node-url';
+import { isNodeCardRailConfigured } from '@/src/lib/pay/providers/node-card-rail';
 
 /**
  * /.well-known/agent.json — Agent Card (RFC-32 / epic #965, issue #966).
@@ -41,18 +42,16 @@ function buildSkills() {
     }));
 }
 
-/** Wire schemes supported by this node, inferred from env. */
-function detectWireSchemes(): string[] {
+/** Advertise cards only when the node's own sealed connector is ready. */
+async function detectWireSchemes(): Promise<string[]> {
   const schemes: string[] = [];
-  if (process.env.STRIPE_SECRET_KEY) schemes.push('stripe');
+  if (await isNodeCardRailConfigured()) schemes.push('stripe');
   if (process.env.MJNX_ENABLED === 'true') schemes.push('mjnx');
   if (process.env.X402_ENABLED === 'true') schemes.push('usdc-base');
-  // Always include the base scheme — every node speaks HTTP 402
-  if (schemes.length === 0) schemes.push('stripe');
   return schemes;
 }
 
-export function GET() {
+export async function GET() {
   const node = nodeUrl();
 
   const isFederated = !!process.env.RELAY_DID;
@@ -133,7 +132,7 @@ export function GET() {
     /** Settlement wire schemes available on this node */
     settlement: {
       http402: true,
-      wireSchemes: detectWireSchemes(),
+      wireSchemes: await detectWireSchemes(),
       fairPolicyUrl: `${node}/.well-known/fair-policy.json`,
     },
 

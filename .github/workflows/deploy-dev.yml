@@ -81,7 +81,19 @@ jobs:
         # above fails the deploy if .env.local sets a different one, #2487).
         run: node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all --env dev
 
+      - name: Snapshot pm2 deploy state
+        run: |
+          set -o pipefail
+          # Names only, never pm2's full env. Cron does not inherit GITHUB_ENV.
+          PM2_DEPLOY_STOPPED_FILE="$(mktemp)"
+          export PM2_DEPLOY_STOPPED_FILE
+          echo "PM2_DEPLOY_STOPPED_FILE=$PM2_DEPLOY_STOPPED_FILE" >> "$GITHUB_ENV"
+          pm2 jlist | node scripts/lib/pm2-deploy-state.cjs dev --snapshot "$PM2_DEPLOY_STOPPED_FILE"
+
       - name: Build changed apps
+        env:
+          # build.sh also restarts built apps; preserve stops there too (#2815).
+          PM2_DEPLOY_PRESERVE_STOPPED: '1'
         # DEV ONLY (#2784): merge only after standalone dev-events is running
         # from ~/dev/events, healthy on 3006 /events and persisted with pm2 save.
         # Prod keeps its existing build/migration path until Ryan's #2516 window.
@@ -94,12 +106,10 @@ jobs:
         run: ./scripts/reap-orphans.sh dev
 
       - name: Restart dev services
+        # #2815: operator-stopped apps must stay stopped across kernel deploys.
         run: |
-          DEV_PROCS=$(pm2 jlist | node -e "const procs = JSON.parse(require('fs').readFileSync(0)); console.log(procs.filter(p => p.name && p.name.startsWith('dev-')).map(p => p.name).join(' '));")
-          if [ -z "$DEV_PROCS" ]; then
-            echo "⚠️  No dev-* pm2 processes found to restart"
-            exit 0
-          fi
+          set -o pipefail
+          DEV_PROCS=$(pm2 jlist | node scripts/lib/pm2-deploy-state.cjs dev "$PM2_DEPLOY_STOPPED_FILE")
           # Services declared in the ecosystem file are restarted FROM the file via
           # scripts/pm2-reconcile.sh (#2547). Neither `pm2 restart` nor
           # `pm2 startOrRestart` on an existing process replaces the exec path pm2
@@ -115,14 +125,7 @@ jobs:
           # kernel deploys cannot re-point it to apps/events.
           source scripts/lib/pm2-owned.sh
           # dev-kernel-cron (#2550) is the scheduler for the kernel's cron jobs.
-          # DEV_PROCS only lists what pm2 already runs, so on the first deploy
-          # that ships it (or after it was deleted) it would never be started and
-          # no job would ever fire. Always include it: startOrRestart below starts
-          # it from the ecosystem file when pm2 doesn't know it yet.
-          case " $DEV_PROCS " in
-            *" dev-kernel-cron "*) ;;
-            *) DEV_PROCS="$DEV_PROCS dev-kernel-cron" ;;
-          esac
+          # The shared selector includes it only when absent, not when stopped.
           FILE_PROCS=""
           NAME_PROCS=""
           for proc in $DEV_PROCS; do
@@ -165,7 +168,14 @@ jobs:
           PM2_ALERT_WEBHOOK: ${{ secrets.PM2_ALERT_WEBHOOK }}
         run: ./scripts/install-pm2-health-cron.sh dev "$ECOSYSTEM_FILE"
 
-      # One check right now so a deploy that leaves an app errored/stopped (or
-      # crash-looping) is red here instead of waiting for the first cron tick.
+      # Only apps already stopped before restart are exempt; restart failures
+      # and errored apps still fail loudly.
       - name: Post-deploy pm2 health check
         run: ./scripts/pm2-health-check.sh dev "$ECOSYSTEM_FILE"
+
+      - name: Remove deploy stopped-process list
+        if: ${{ always() }}
+        run: |
+          if [ -n "${PM2_DEPLOY_STOPPED_FILE:-}" ]; then
+            rm -f -- "$PM2_DEPLOY_STOPPED_FILE"
+          fi

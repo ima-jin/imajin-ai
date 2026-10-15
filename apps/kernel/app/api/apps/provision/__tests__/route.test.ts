@@ -101,8 +101,8 @@ beforeEach(() => {
   getAppProvisionStatusMock.mockResolvedValue(undefined);
   findPendingAppsProvisionProposalMock.mockResolvedValue(undefined);
   recordApprovalRequestedMock.mockResolvedValue(undefined);
-  // Default: no manifest was readable at proposal time.
-  previewManifestDeclarationsMock.mockResolvedValue({ ok: null });
+  // Default: a readable manifest declaring nothing.
+  previewManifestDeclarationsMock.mockResolvedValue({ ok: { providesScopes: [], dependsOn: [], emittableEvents: [] } });
 });
 
 describe('POST /api/apps/provision — auth + validation', () => {
@@ -226,6 +226,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
     expect(recorded.detail).toMatchObject({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true, manifestDeclarations: null });
     expect(recorded.summary).toMatch(/^Reissue the claim code for app 'dykil'/);
+    expect(recorded.summary).not.toContain('Will retire');
     // The same detail is what the content hash covers, so the operator signs "reissue" and nothing else.
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ detail: recorded.detail }));
   });
@@ -250,7 +251,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
 
-  it('#2707: an ordinary proposal carries no reissueClaim key (its detail and hash are unchanged)', async () => {
+  it('#2707: an ordinary proposal carries no reissueClaim key', async () => {
     await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
 
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
@@ -259,6 +260,15 @@ describe('POST /api/apps/provision — idempotency', () => {
 });
 
 describe('POST /api/apps/provision — raising a new proposal', () => {
+  it('discloses the exact legacy retirement in the summary the operator countersigns', async () => {
+    const response = await POST(postRequest({ slug: 'dykil', displayName: 'Dykil' }) as never);
+
+    expect(response.status).toBe(201);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string };
+    expect(recorded.summary).toContain('Will retire app_first_party_dykil if it holds the slug or active audience');
+    expect(recorded.summary).toContain('no app schema/data is changed');
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ summary: recorded.summary }));
+  });
   it('records a new proposal with signerDid set to the acting DID', async () => {
     const response = await POST(postRequest({
       slug: 'dykil',
@@ -318,22 +328,27 @@ describe('POST /api/apps/provision — scope declarations on the card (#2663)', 
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({ detail: recorded.detail }));
   });
 
-  it('records null — "nothing was read" — when no manifest was readable', async () => {
+  it('records an empty declaration snapshot only for a readable declared-none manifest', async () => {
     const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
 
     expect(response.status).toBe(201);
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
-    expect(recorded.detail).toHaveProperty('manifestDeclarations', null);
+    expect(recorded.detail).toHaveProperty('manifestDeclarations', { providesScopes: [], dependsOn: [], emittableEvents: [] });
   });
 
-  it('refuses with 400 and raises no proposal when the manifest declares something invalid', async () => {
-    previewManifestDeclarationsMock.mockResolvedValue({ error: 'providesScopes rejected: media:write' });
+  it.each([
+    "App 'dykil' manifest invalid",
+    "App 'dykil' manifest unreadable (HTTP 404)",
+    "App 'dykil' manifest unreadable (HTTP 503)",
+    "App 'dykil' manifest unreadable",
+  ])('refuses with 400 and raises no proposal on manifest failure: %s', async (error) => {
+    previewManifestDeclarationsMock.mockResolvedValue({ error });
 
     const response = await POST(postRequest({ slug: 'dykil', displayName: 'dykil' }) as never);
     const body = await response.json();
 
     expect(response.status).toBe(400);
-    expect(body.error).toContain('media:write');
+    expect(body).toEqual({ error });
     expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
   });
 

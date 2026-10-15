@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 
 const mocks = vi.hoisted(() => ({
-  resolveOwner: vi.fn(), connect: vi.fn(), keySealed: vi.fn(), publishableKeySealed: vi.fn(), error: vi.fn(),
+  webhookStatus: vi.fn(), sealSecret: vi.fn(), resolveOwner: vi.fn(), connect: vi.fn(), keySealed: vi.fn(), publishableKeySealed: vi.fn(), error: vi.fn(),
 }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: mocks.error, info: vi.fn(), warn: vi.fn() }) }));
@@ -10,7 +10,7 @@ vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: 
 vi.mock('@/src/lib/kernel/connector-owner-did', () => ({ resolveConnectorOwnerDid: mocks.resolveOwner }));
 vi.mock('@/src/lib/http/public-origin', () => ({ publicOrigin: () => 'https://kernel.test' }));
 vi.mock('@/src/lib/stripe/connector', () => ({
-  connectAndProvisionWebhook: mocks.connect, keySealed: mocks.keySealed, publishableKeySealed: mocks.publishableKeySealed,
+  webhookStatus: mocks.webhookStatus, sealWebhookSecret: mocks.sealSecret, connectAndProvisionWebhook: mocks.connect, keySealed: mocks.keySealed, publishableKeySealed: mocks.publishableKeySealed,
 }));
 
 import { GET, POST } from '../route';
@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.resolveOwner.mockResolvedValue({ ok: true, ownerDid: 'did:imajin:imajin-inc' });
   mocks.keySealed.mockResolvedValue(true);
+  mocks.webhookStatus.mockResolvedValue({ webhookSecretSealed: false, routingId: 'stripewh_fake', webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake' });
   mocks.publishableKeySealed.mockResolvedValue(false);
 });
 
@@ -33,7 +34,7 @@ describe('GET /stripe/api/token', () => {
   it.each([true, false])('reports publishable-key sealed status %s without key material', async (sealed) => {
     mocks.publishableKeySealed.mockResolvedValue(sealed);
     const res = await GET(new NextRequest('https://kernel.test/stripe/api/token'));
-    expect(await res.json()).toEqual({ keySealed: true, publishableKeySealed: sealed });
+    expect(await res.json()).toEqual({ keySealed: true, publishableKeySealed: sealed, webhookSecretSealed: false, routingId: 'stripewh_fake', webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake' });
     expect(mocks.keySealed).toHaveBeenCalledWith('did:imajin:imajin-inc');
     expect(mocks.publishableKeySealed).toHaveBeenCalledWith('did:imajin:imajin-inc');
   });
@@ -47,13 +48,33 @@ describe('GET /stripe/api/token', () => {
 });
 
 describe('POST /stripe/api/token — connect failures (#2754)', () => {
+  it('accepts a signing-secret-only update without requiring the existing keys', async () => {
+    const response = await post({ webhookSecret: ' whsec_fake_owner ' });
+    expect(response.status).toBe(201);
+    expect(mocks.sealSecret).toHaveBeenCalledWith('did:imajin:imajin-inc', 'whsec_fake_owner');
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(JSON.stringify(await response.json())).not.toContain('whsec_');
+  });
+
+  it('accepts all three credentials on the same authenticated route', async () => {
+    expect((await post({ token: 'rk_test_fake', publishableKey: 'pk_test_fake', webhookSecret: 'whsec_fake_owner' })).status).toBe(201);
+    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_test_fake', 'https://kernel.test', 'pk_test_fake', 'whsec_fake_owner');
+  });
+
+  it.each(['', 'bad', 12, null])('rejects invalid signing secrets with a safe field error %s', async (webhookSecret) => {
+    const response = await post({ webhookSecret });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ code: 'stripe_webhook_secret_invalid', field: 'webhookSecret' });
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(mocks.sealSecret).not.toHaveBeenCalled();
+  });
   it('seals and reports 201 for a key that can take an invoice payment', async () => {
     mocks.connect.mockResolvedValue({ routingId: 'r', endpointId: 'e' });
 
     const res = await post({ token: 'rk_live_fake', publishableKey: 'pk_live_fake' });
 
     expect(res.status).toBe(201);
-    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_live_fake', 'https://kernel.test', 'pk_live_fake');
+    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_live_fake', 'https://kernel.test', 'pk_live_fake', undefined);
   });
 
   it('never returns or logs a raw upstream error that echoes a key', async () => {
@@ -83,7 +104,7 @@ describe('POST /stripe/api/token — connect failures (#2754)', () => {
 
   it('passes the owner-provided publishable key to the same connector', async () => {
     expect((await post({ token: 'rk_test_fake', publishableKey: ' pk_test_fake ' })).status).toBe(201);
-    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_test_fake', 'https://kernel.test', 'pk_test_fake');
+    expect(mocks.connect).toHaveBeenCalledWith('did:imajin:imajin-inc', 'rk_test_fake', 'https://kernel.test', 'pk_test_fake', undefined);
   });
 
   it.each([undefined, '', '  ', 12, null])('requires a nonempty publishable key with a typed 400', async (publishableKey) => {
