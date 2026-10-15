@@ -521,7 +521,7 @@ interface GitHubContentsResponse {
  * token uses the Contents API's default branch (no explicit ref). A null
  * token reads the public raw file at HEAD without loading credentials.
  * Public reads bypass caching and have a 10-second request timeout.
- * Never throws: transport/HTTP failures are unreadable; malformed JSON,
+ * Transport/HTTP failures are unreadable; malformed JSON,
  * manifest shape or secret declarations are invalid. Missing secrets and
  * an explicit empty list are valid, but an unreadable manifest is not.
  */

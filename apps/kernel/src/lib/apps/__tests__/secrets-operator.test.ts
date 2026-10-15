@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { OperatorApprovalCard } from '../../notify/operator-approvals-service';
 
 const mocks = vi.hoisted(() => ({
@@ -29,6 +29,7 @@ import { executeAppSecretsApproval, listOperatorAppSecrets, previewAppSecrets } 
 
 const declaration = { name: 'SESSION_SECRET', kind: 'random-32B' };
 const authorization = { operatorDid: 'did:imajin:fake-operator', decidedAt: '2026-10-14T00:00:00Z', approvalId: 'fake-proposal', contentHash: 'fake-hash' };
+afterEach(() => vi.unstubAllGlobals());
 function card(kind = 'apps:secrets-sync', detail: Record<string, unknown> = { slug: 'fake-app', secrets: [declaration] }) {
   return { kind, source: 'apps', detail: { appDid: 'did:imajin:fake-app', ...detail } } as OperatorApprovalCard;
 }
@@ -134,6 +135,39 @@ describe('app secret execution', () => {
   });
 });
 describe('metadata and manifest preview', () => {
+  it('reads a public manifest without credentials, then persists the signed Sync names and issues secrets', async () => {
+    const { fetchAppManifest } = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>('@/src/lib/github/org-provisioning');
+    mocks.manifest.mockImplementation(fetchAppManifest);
+    const fetchMock = vi.fn().mockImplementation(async () => Response.json({ secrets: [declaration] }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await previewAppSecrets('fake-app')).toEqual({ ok: [declaration] });
+    expect(await executeAppSecretsApproval(card())).toEqual({
+      ok: true, data: { appDid: 'did:imajin:fake-app', action: 'sync', names: ['SESSION_SECRET'] },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(url).toBe('https://raw.githubusercontent.com/ima-jin/fake-app/HEAD/imajin.app.json');
+      expect(init).toMatchObject({ method: 'GET', cache: 'no-store' });
+      expect(init.headers).toBeUndefined();
+    }
+    expect(mocks.set).toHaveBeenCalledWith({ secrets: [declaration] });
+    expect(mocks.ensure).toHaveBeenCalledWith('did:imajin:fake-app', authorization);
+  });
+  it.each([
+    [404, 'provider placeholder', 'unreadable'],
+    [503, 'provider placeholder', 'unreadable'],
+    [200, 'invalid JSON placeholder', 'invalid'],
+    [200, '{"secrets":"invalid placeholder"}', 'invalid'],
+  ])('real public reader failure %s refuses both preview and Sync without a write', async (status, body, failure) => {
+    const { fetchAppManifest } = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>('@/src/lib/github/org-provisioning');
+    mocks.manifest.mockImplementation(fetchAppManifest);
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(body, { status })));
+    const error = `App 'fake-app' manifest ${failure} (HTTP ${status})`;
+    expect(await previewAppSecrets('fake-app')).toEqual({ error });
+    expect(await executeAppSecretsApproval(card())).toEqual({ ok: false, error });
+    expect(mocks.set).not.toHaveBeenCalled();
+    expect(mocks.ensure).not.toHaveBeenCalled();
+  });
   it('rejects malformed manifests instead of treating them as no secrets', async () => {
     mocks.manifest.mockResolvedValue({ ok: { secrets: 'bad' } });
     expect(await previewAppSecrets('fake-app')).toEqual({ error: "App 'fake-app' manifest invalid" });
