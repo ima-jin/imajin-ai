@@ -6,60 +6,58 @@
  * (and in the hash the operator signs) when the operator approves — the ruling
  * is that the operator sees and approves that list on the apps.provision card.
  *
- * Best effort, like the provision-time manifest read: an unsealed org credential,
- * a repo that doesn't exist yet, or a missing/invalid manifest all yield `null`
- * ("nothing was read") rather than an error. What the card then shows, and what
- * provisioning then registers, is nothing — `registerApp` refuses a manifest that
- * declares anything the operator didn't see.
- *
- * A manifest that IS readable but declares something invalid (a vocabulary scope
- * as `providesScopes`, an unregistered `dependsOn` audience, ...) is an error here,
- * so the operator is never asked to approve a list that would be refused anyway.
+ * Public repositories can be read without an installation credential. A missing
+ * future app repository may use the template source for the approval snapshot.
+ * Unreadable or invalid manifests are errors, never empty approved declarations.
  */
-import { createLogger } from '@imajin/logger';
-import { fetchAppManifest, tryGetInstallationToken, DEFAULT_APP_TEMPLATE, type AppManifest } from '@/src/lib/github/org-provisioning';
+import { appManifestError, fetchAppManifest, tryGetInstallationToken, DEFAULT_APP_TEMPLATE, PROVISIONING_ORG, type AppManifestResult } from '@/src/lib/github/org-provisioning';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import type { ManifestDeclarations } from './declarations-approval';
 import { validateSecrets } from './secret-declarations';
+/** Same repo-safe identifier as the provision route's SLUG_PATTERN. */
+const SLUG_PATTERN = /^[a-z][a-z0-9-]{0,38}$/;
 
-const log = createLogger('kernel:apps:manifest-preview');
 
 export type ManifestPreviewResult =
-  | { ok: ManifestDeclarations | null }
+  | { ok: ManifestDeclarations }
   | { error: string };
 
-async function readManifest(slug: string, template?: string): Promise<AppManifest | null> {
+async function readManifest(slug: string, template: string): Promise<AppManifestResult> {
+  const parts = template.split('/');
+  if (parts.length !== 2 || parts[0] !== PROVISIONING_ORG || !SLUG_PATTERN.test(parts[1])) {
+    return { error: 'invalid' };
+  }
+  const [org, repo] = parts;
   try {
     const token = await tryGetInstallationToken();
     const manifest = await fetchAppManifest(slug, token);
-    if (manifest || !template) return manifest;
-    const [org, repo] = template.split('/');
+    if ('ok' in manifest) return manifest;
+    if (manifest.status !== 404) return manifest;
     // A fresh repo doesn't exist until approval. Show the source manifest now;
     // registerApp still re-checks the copied manifest against the signed list.
     return await fetchAppManifest(repo, token, org);
   } catch {
-    // A malformed credential or a GitHub failure must not block raising the proposal.
-    log.warn({ slug }, 'apps.provision: manifest preview unavailable (non-fatal)');
-    return null;
+    return { error: 'unreadable' };
   }
 }
 
-/** The validated declarations in `slug`'s `imajin.app.json`, `null` when unreadable, or `{ error }` when invalid. */
+/** Only readable, validated manifests can produce an approval snapshot. */
 export async function previewManifestDeclarations(slug: string, template = DEFAULT_APP_TEMPLATE): Promise<ManifestPreviewResult> {
-  const manifest = await readManifest(slug, template);
-  if (!manifest) return { ok: null };
+  const result = await readManifest(slug, template);
+  if ('error' in result) return { error: appManifestError(slug, result) };
+  const manifest = result.ok;
   const secrets = validateSecrets(manifest.secrets);
-  if ('error' in secrets) return { error: secrets.error };
+  if ('error' in secrets) return { error: appManifestError(slug, { error: 'invalid' }) };
 
   const declarations = await validateAppDeclarations({
     providesScopes: manifest.providesScopes,
     dependsOn: manifest.dependsOn,
     slug,
   });
-  if ('error' in declarations) return { error: declarations.error };
+  if ('error' in declarations) return { error: appManifestError(slug, { error: 'invalid' }) };
   const emittable = validateEmittableEvents(manifest.emittableEvents);
-  if ('error' in emittable) return { error: emittable.error };
+  if ('error' in emittable) return { error: appManifestError(slug, { error: 'invalid' }) };
   return {
     ok: {
       ...(secrets.ok.length > 0 ? { secrets: secrets.ok } : {}),

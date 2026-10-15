@@ -52,9 +52,11 @@ import {
   ensureRepoFromTemplate,
   tryGetInstallationToken,
   fetchAppManifest,
+  appManifestError,
   DEFAULT_APP_TEMPLATE,
   type EnsureRepoResult,
   type AppManifest,
+  type AppManifestResult,
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
 import { assertValidEntryUrl } from './entry-url';
@@ -296,19 +298,19 @@ async function ensureAppSigningKeyGrant(appDid: string, nodeDid: string): Promis
 /**
  * Nav metadata (#2425) for a newly registered row: prefers the app's own
  * `imajin.app.json` manifest (see `fetchAppManifest`), falling back to a
- * sane default when the manifest is absent/invalid — an `entryUrl` derived
+ * sane default when optional nav fields are absent — an `entryUrl` derived
  * from the slug and a single `auth-submenu` placement, so a freshly
  * extracted app is at least reachable through the hub's dynamic
  * `/auth/[app]` route without requiring every template to have adopted the
- * manifest convention yet.
+ * optional nav fields yet. Unreadable/invalid manifests fail registration.
  *
  * A manifest `entryUrl` is untrusted third-party input (#2434): it must be a
  * root-relative path or an `https:` URL (see `entry-url.ts`). An invalid one
  * THROWS — the caller's `register` step turns that into a fail-closed
- * `failedStep: 'register'` outcome with the validator's message, so no
+ * `failedStep: 'register'` outcome with a names-only invalid class, so no
  * registry row is written.
  */
-function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
+function resolveNavMetadata(slug: string, manifest: AppManifest): {
   name: string | undefined;
   icon: string | null;
   entryUrl: string;
@@ -316,11 +318,11 @@ function resolveNavMetadata(slug: string, manifest: AppManifest | null): {
   requiredScope: string | null;
 } {
   return {
-    name: manifest?.name,
-    icon: manifest?.icon ?? null,
-    entryUrl: manifest?.entryUrl === undefined ? `/${slug}` : assertValidEntryUrl(manifest.entryUrl),
-    placements: manifest?.placements ?? ['auth-submenu'],
-    requiredScope: manifest?.requiredScope ?? null,
+    name: manifest.name,
+    icon: manifest.icon ?? null,
+    entryUrl: manifest.entryUrl === undefined ? `/${slug}` : assertValidEntryUrl(manifest.entryUrl),
+    placements: manifest.placements ?? ['auth-submenu'],
+    requiredScope: manifest.requiredScope ?? null,
   };
 }
 
@@ -378,7 +380,7 @@ async function registerApp(params: {
   displayName: string;
   appDid: string;
   publicKey: string;
-  manifest: AppManifest | null;
+  manifest: AppManifest;
   approvedDeclarations: ManifestDeclarations | null;
   /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
   callbackOrigin: string;
@@ -396,25 +398,30 @@ async function registerApp(params: {
     return { id: existing.id, ...retirementContext(params.retiredLegacyAppId) };
   }
 
-  const navMetadata = resolveNavMetadata(slug, manifest);
-  const secrets = validateSecrets(manifest?.secrets);
-  if ('error' in secrets) throw new Error(secrets.error);
+  let navMetadata: ReturnType<typeof resolveNavMetadata>;
+  try {
+    navMetadata = resolveNavMetadata(slug, manifest);
+  } catch {
+    throw new Error(appManifestError(slug, { error: 'invalid' }));
+  }
+  const secrets = validateSecrets(manifest.secrets);
+  if ('error' in secrets) throw new Error(appManifestError(slug, { error: 'invalid' }));
 
   // #2663: scopes the app defines for itself + the audiences its tokens must
   // also carry, both read from the manifest. Fail-closed like `entryUrl`: a
   // bad declaration throws here, so no half-declared row is written.
   const declarations = await validateAppDeclarations({
-    providesScopes: manifest?.providesScopes,
-    dependsOn: manifest?.dependsOn,
+    providesScopes: manifest.providesScopes,
+    dependsOn: manifest.dependsOn,
     slug,
   });
   if ('error' in declarations) {
-    throw new Error(`apps.provision: invalid imajin.app.json scope declarations — ${declarations.error}`);
+    throw new Error(appManifestError(slug, { error: 'invalid' }));
   }
   // #2638/#2641: the event types the app asks to emit via POST /api/events.
-  const emittable = validateEmittableEvents(manifest?.emittableEvents);
+  const emittable = validateEmittableEvents(manifest.emittableEvents);
   if ('error' in emittable) {
-    throw new Error(`apps.provision: invalid imajin.app.json emittableEvents — ${emittable.error}`);
+    throw new Error(appManifestError(slug, { error: 'invalid' }));
   }
   // The operator approved a specific list on the /jin card; nothing beyond it is
   // granted. A manifest that changed since (or declares anything when none was
@@ -584,20 +591,22 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   const appDid = keypair.did;
 
   // ── Step 3: register (the app becomes servable ONLY from this point on) ──
-  // Manifest read (#2425) is best-effort and never throws (see
-  // `fetchAppManifest`'s docblock) — a missing/invalid `imajin.app.json`
-  // is not a provisioning failure, `registerApp` falls back to defaults.
+  // #2813: unreadable/invalid manifests fail before registry writes or secret
+  // issuance. Only a readable manifest may declare genuinely absent secrets.
   let registration: { id: string; retiredLegacyAppId?: string };
   let retirement: { retiredLegacyAppId?: string };
   try {
     const manifestToken = await tryGetInstallationToken();
-    const manifest = await fetchAppManifest(slug, manifestToken);
+    const manifest: AppManifestResult = await fetchAppManifest(slug, manifestToken);
+    if ('error' in manifest) {
+      throw new Error(appManifestError(slug, manifest));
+    }
     registration = await registerApp({
       slug,
       displayName,
       appDid,
       publicKey: keypair.publicKey,
-      manifest,
+      manifest: manifest.ok,
       approvedDeclarations: params.approvedDeclarations ?? null,
       callbackOrigin,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,

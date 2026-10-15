@@ -19,10 +19,10 @@
  * node, #2311's "v2 grant shape") — no new sealing route. See
  * `docs/REGISTRATION.md` for the App's setup (permissions, installation).
  * Nothing long-lived that can act on GitHub directly is stored: every
- * actual GitHub call authenticates with a short-lived installation access
+ * authenticated GitHub call uses a short-lived installation access
  * token minted on demand by {@link getInstallationToken} and cached only
  * in memory (see that function's docblock) — every GitHub action this
- * module takes lands in the org audit log as `imajin-provisioner[bot]`.
+ * module takes with that token lands in the org audit log as `imajin-provisioner[bot]`.
  *
  * ## No Actions secrets (#2437)
  * This module never writes GitHub Actions secrets. It used to seal the
@@ -33,12 +33,10 @@
  * vault claim path.
  *
  * ## Nav manifest read (#2425)
- * {@link fetchAppManifest} is a best-effort read of `imajin.app.json` from
- * the app's own (private) repo at `apps.provision` time — nav metadata an
- * extracted app can publish about itself. It uses the SAME installation
- * token as every other call in this module (passed in by the caller, see
- * `provision.ts`'s use of {@link tryGetInstallationToken}), never a
- * separate credential.
+ * {@link fetchAppManifest} reads `imajin.app.json` from the app's own repo.
+ * With a token it uses the Contents API; without one it reads the public
+ * raw file at HEAD. Unreadable and invalid manifests are explicit results,
+ * never silently replaced with defaults or empty secret declarations.
  *
  * No secret value (the App private key, a minted installation token, or a
  * minted app-auth private key) is ever logged.
@@ -47,6 +45,7 @@ import { createPrivateKey } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { loadAndUnseal } from '@/src/lib/vault';
+import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 
 const log = createLogger('kernel:github:org-provisioning');
 
@@ -66,6 +65,7 @@ export const GITHUB_ORG_CREDENTIAL_FIELD = 'github-org-provisioning';
 
 const GITHUB_API_BASE = 'https://api.github.com';
 const GITHUB_API_VERSION = '2022-11-28';
+const MAX_MANIFEST_RESPONSE_BYTES = 64 * 1024;
 
 /**
  * The sealed shape of {@link GITHUB_ORG_CREDENTIAL_FIELD} (#2416): a GitHub
@@ -79,7 +79,12 @@ export interface OrgAppCredential {
   installationId: string;
   privateKeyPem: string;
 }
-
+/** Retains classification metadata without retaining the response body. */
+class GitHubResponseParseError extends Error {
+  constructor(readonly status: number) {
+    super('GitHub response is not valid JSON');
+  }
+}
 /** Thrown when the org-scoped credential has never been sealed. */
 export class OrgCredentialMissingError extends Error {
   /** `message` defaults to the generic "not sealed" notice; a caller with more specific context (e.g. a missing repo) may override it. */
@@ -302,6 +307,8 @@ interface GitHubApiOptions {
   /** Omit for an unauthenticated call — e.g. #2415's repo existence check, which must not require the org credential. */
   token?: string;
   body?: Record<string, unknown>;
+  /** Only manifest reads are bounded; credential and repo operations are unchanged. */
+  maxResponseBytes?: number;
 }
 
 /**
@@ -332,9 +339,16 @@ async function callGitHubApi<T = unknown>(opts: Readonly<GitHubApiOptions>): Pro
   if (res.status === 204) {
     return { status: res.status, data: null };
   }
-  const text = await res.text();
-  const data = text.length > 0 ? (JSON.parse(text) as T) : null;
-  return { status: res.status, data };
+  const text = opts.maxResponseBytes === undefined
+    ? await res.text()
+    : await readLimitedResponseText(res, opts.maxResponseBytes);
+  if (text === null) throw new GitHubResponseParseError(res.status);
+  try {
+    const data = text.length > 0 ? (JSON.parse(text) as T) : null;
+    return { status: res.status, data };
+  } catch {
+    throw new GitHubResponseParseError(res.status);
+  }
 }
 
 export interface EnsureRepoResult {
@@ -458,6 +472,15 @@ export interface AppManifest {
   emittableEvents?: string[];
 }
 
+export type AppManifestResult = { ok: AppManifest } | { error: 'unreadable' | 'invalid'; status?: number };
+
+/** Names and classification only: never include values, provider bodies or raw errors. */
+export function appManifestError(slug: string, result: { error: 'unreadable' | 'invalid'; status?: number }): string {
+  const message = `App '${slug}' manifest ${result.error}`;
+  if (result.status !== undefined) return `${message} (HTTP ${result.status})`;
+  return message;
+}
+
 /** Mirrors `src/lib/kernel/app-nav.ts`'s `AppPlacement` — duplicated here (rather than imported) to keep this GitHub-specific module independent of kernel nav internals. */
 const VALID_MANIFEST_PLACEMENTS = new Set(['launcher', 'home', 'auth-submenu']);
 
@@ -479,16 +502,19 @@ function isValidManifestDeclarations(v: Record<string, unknown>): boolean {
 }
 
 function isValidManifest(value: unknown): value is AppManifest {
-  if (typeof value !== 'object' || value === null) return false;
-  const v = value as Record<string, unknown>;
-  return (
-    isOptionalString(v.name) &&
-    isOptionalString(v.icon) &&
-    isOptionalString(v.entryUrl) &&
-    (v.requiredScope === null || isOptionalString(v.requiredScope)) &&
-    isValidManifestPlacements(v.placements) &&
-    isValidManifestDeclarations(v)
-  );
+  if (typeof value === 'object' && value !== null && Array.isArray(value) === false) {
+    const v = value as Record<string, unknown>;
+    return (
+      isOptionalString(v.name) &&
+      isOptionalString(v.icon) &&
+      isOptionalString(v.entryUrl) &&
+      (v.requiredScope === null || isOptionalString(v.requiredScope)) &&
+      isValidManifestPlacements(v.placements) &&
+      isValidManifestDeclarations(v) &&
+      'ok' in validateSecrets(v.secrets)
+    );
+  }
+  return false;
 }
 
 interface GitHubContentsResponse {
@@ -497,42 +523,95 @@ interface GitHubContentsResponse {
 }
 
 /**
- * Best-effort read of `imajin.app.json` from the app's own repo at
- * `apps.provision` time (#2425) — nav metadata (name/icon/entryUrl/
- * placements/requiredScope) an extracted app can publish about itself so
- * `registerApp` doesn't have to fall back to defaults for every third-party
- * app. The repo is created PRIVATE (see `createRepoFromTemplate`), so this
- * always requires an installation token — unlike the anonymous-first
- * repo-existence check above. The caller passes in the token (see
- * `provision.ts`'s use of {@link tryGetInstallationToken}) rather than this
- * function minting its own, so a single token is reused for the whole
- * provisioning run.
- *
- * Never throws: returns `null` when the credential is unsealed, the file
- * doesn't exist (a template that hasn't adopted the manifest convention
- * yet), or its contents don't parse/validate. A missing/invalid manifest is
- * NOT a provisioning failure — same degrade-don't-fail posture as
- * `tryGetInstallationToken`'s callers in `provision.ts`.
+ * Read and validate `imajin.app.json` (#2813). A supplied installation
+ * token uses the Contents API's default branch (no explicit ref). A null
+ * token reads the public raw file at HEAD without loading credentials.
+ * Public reads bypass caching, refuse redirects and have a 10-second timeout.
+ * Manifest response bodies (including the Contents API envelope) are capped at 64 KiB.
+ * Transport/HTTP failures are unreadable; malformed JSON,
+ * manifest shape or secret declarations are invalid. Missing secrets and
+ * an explicit empty list are valid, but an unreadable manifest is not.
  */
-export async function fetchAppManifest(slug: string, token: string | null, org = PROVISIONING_ORG): Promise<AppManifest | null> {
-  if (token === null) return null;
+export async function fetchAppManifest(slug: string, token: string | null, org = PROVISIONING_ORG): Promise<AppManifestResult> {
+  let result: AppManifestResult;
   try {
-    const res = await callGitHubApi<GitHubContentsResponse>({
-      method: 'GET',
-      path: `/repos/${org}/${slug}/contents/imajin.app.json`,
-      token,
-    });
-    if (res.status !== 200 || res.data?.encoding !== 'base64') return null;
-
-    const decoded = Buffer.from(res.data.content, 'base64').toString('utf-8');
-    const parsed: unknown = JSON.parse(decoded);
-    if (!isValidManifest(parsed)) {
-      log.warn({ slug }, 'apps.provision: imajin.app.json failed validation, using defaults');
-      return null;
+    if (token === null) {
+      result = await readPublicAppManifest(slug, org);
+    } else {
+      result = await readAuthenticatedAppManifest(slug, org, token);
     }
-    return parsed;
-  } catch {
-    log.warn({ slug }, 'apps.provision: manifest read failed (non-fatal, using defaults)');
-    return null;
+  } catch (error) {
+    if (error instanceof GitHubResponseParseError) {
+      const classification = error.status === 200 ? 'invalid' : 'unreadable';
+      result = { error: classification, status: error.status };
+    } else {
+      result = { error: 'unreadable' };
+    }
   }
+  if ('error' in result) log.warn({ slug, ...result }, appManifestError(slug, result));
+  return result;
+}
+
+/** Cancel on overflow without retaining or logging response content or cancellation errors. */
+async function readLimitedResponseText(response: Response, maxBytes: number): Promise<string | null> {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      bytesRead += value.byteLength;
+      if (bytesRead > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        return null;
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function parseAppManifest(text: string, status: number): AppManifestResult {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (isValidManifest(parsed)) return { ok: parsed };
+  } catch {
+    // JSON parsing can expose input values in errors; retain classification only.
+  }
+  return { error: 'invalid', status };
+}
+
+async function readPublicAppManifest(slug: string, org: string): Promise<AppManifestResult> {
+  const response = await fetch(`https://raw.githubusercontent.com/${org}/${slug}/HEAD/imajin.app.json`, {
+    method: 'GET',
+    cache: 'no-store',
+    redirect: 'error',
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (response.status === 200) {
+    const text = await readLimitedResponseText(response, MAX_MANIFEST_RESPONSE_BYTES);
+    if (text === null) return { error: 'invalid', status: response.status };
+    return parseAppManifest(text, response.status);
+  }
+  return { error: 'unreadable', status: response.status };
+}
+
+async function readAuthenticatedAppManifest(slug: string, org: string, token: string): Promise<AppManifestResult> {
+  const response = await callGitHubApi<GitHubContentsResponse>({
+    method: 'GET',
+    path: `/repos/${org}/${slug}/contents/imajin.app.json`,
+    token,
+    maxResponseBytes: MAX_MANIFEST_RESPONSE_BYTES,
+  });
+  if (response.status === 200) {
+    if (response.data?.encoding === 'base64' && typeof response.data.content === 'string') {
+      return parseAppManifest(Buffer.from(response.data.content, 'base64').toString('utf-8'), response.status);
+    }
+    return { error: 'invalid', status: response.status };
+  }
+  return { error: 'unreadable', status: response.status };
 }

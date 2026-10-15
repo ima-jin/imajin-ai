@@ -167,14 +167,14 @@ export async function POST(request: NextRequest) {
 
   // #2663: read the app's `providesScopes` / `dependsOn` from imajin.app.json NOW,
   // so the operator sees (and, by signing the card, approves) exactly that list.
-  // `null` = no manifest was readable; provisioning then registers none.
+  // An unreadable/invalid manifest blocks a fresh proposal, never approving [].
   // #2707: a reissue never re-registers anything (the succeeded branch of `runAppProvision`
   // only re-grants + issues a code), so it carries no declarations and needs no manifest read.
   // A reissue is only ever raised for a `succeeded` ledger row (#2745 guard above).
   const preview = reissueClaim ? { ok: null } : await previewManifestDeclarations(slug, template ?? undefined);
   if ('error' in preview) {
     return NextResponse.json(
-      { error: `imajin.app.json scope declarations rejected: ${preview.error}` },
+      { error: preview.error },
       { status: 400, headers: cors },
     );
   }
