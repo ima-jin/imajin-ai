@@ -1,6 +1,6 @@
 /**
  * Execute the 0185/0188-style retirement against real embedded Postgres.
- * #2808 additionally requires a hand-cleared legacy slug to remain untouched.
+ * A hand-cleared slug must not prevent retirement of an active legacy row.
  */
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -112,11 +112,43 @@ describe('0190_retire_legacy_events_registry_row (#2808)', () => {
     expect(await registryRows()).toEqual(before);
   });
 
-  it('is a no-op when the slug was already cleared by hand, even with an active replacement', async () => {
+  it('retires an active legacy row whose slug was already cleared by hand when a replacement exists', async () => {
     await client.exec(`UPDATE registry.apps SET slug = NULL WHERE id = 'app_first_party_events'`);
     await provisionReplacement();
     await client.exec(`UPDATE registry.apps SET slug = 'events' WHERE id = 'app_standalone_events'`);
     const before = await registryRows();
+    expect(before.find((row) => row.id === 'app_first_party_events')).toMatchObject({
+      status: 'active',
+      slug: null,
+      token_audiences: ['events'],
+    });
+    await client.exec(retirement);
+    const after = await registryRows();
+    expect(after.find((row) => row.id === 'app_first_party_events')).toMatchObject({
+      status: 'revoked',
+      slug: null,
+      token_audiences: [],
+      placements: [],
+    });
+    expect(after.filter((row) => row.id !== 'app_first_party_events')).toEqual(
+      before.filter((row) => row.id !== 'app_first_party_events'),
+    );
+    const active = await client.query(
+      `SELECT id FROM registry.apps WHERE status = 'active' AND 'events' = ANY (token_audiences)`,
+    );
+    expect(active.rows).toEqual([{ id: 'app_standalone_events' }]);
+    await client.exec(retirement);
+    expect(await registryRows()).toEqual(after);
+  });
+
+  it('leaves a slug-cleared active legacy row untouched without a provisioned replacement', async () => {
+    await client.exec(`UPDATE registry.apps SET slug = NULL WHERE id = 'app_first_party_events'`);
+    const before = await registryRows();
+    expect(before.find((row) => row.id === 'app_first_party_events')).toMatchObject({
+      status: 'active',
+      slug: null,
+      token_audiences: ['events'],
+    });
     await client.exec(retirement);
     expect(await registryRows()).toEqual(before);
   });

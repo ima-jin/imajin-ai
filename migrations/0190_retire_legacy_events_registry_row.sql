@@ -21,8 +21,9 @@
 --
 -- Guarded: it runs only when ANOTHER active registry.apps row already answers the
 -- events audience. A node that never provisioned standalone events keeps its legacy
--- row untouched. A re-run, an already-revoked row, or an operator who already
--- cleared the slug by hand is a no-op.
+-- row untouched. An operator who already cleared the slug by hand still gets
+-- the active legacy row retired. An already-revoked row (including a re-run)
+-- is a no-op.
 
 UPDATE registry.apps
 SET status          = 'revoked',
@@ -33,7 +34,6 @@ SET status          = 'revoked',
     placements      = '{}'::text[]
 WHERE id = 'app_first_party_events'
   AND status = 'active'
-  AND slug IS NOT NULL
   AND EXISTS (
     SELECT 1
     FROM registry.apps provisioned
