@@ -385,6 +385,38 @@ its old shared-header contract. Keep using the patched monorepo copy until the
 standalone migration is deployed and verified. Production monorepo use while
 #2516 is blocked is separate from this dev-cutover gate.
 
+## 11. events ownership release is split by environment (#2784)
+
+The dev release removes only `dev-events` from the kernel ecosystem and uses
+positive dev build ownership plus kernel-owner migrations. **Prod remains fully
+kernel-owned:** its ecosystem, unfiltered build and migration calls are unchanged,
+so `prod-events` continues to receive matching builds/dependencies until #2516.
+A separate prod-release PR stays **draft** and merges only in Ryan's window,
+after the #2529 soak and his sign-off. The `events` tables remain owner `events`;
+historical SQL is untouched. `apps/events` is not pruned by either release and
+must remain available while prod needs the monorepo copy.
+
+**Cut over first, merge second — in each environment.** In #2529, satisfy §10,
+coordinate kernel deploys so they cannot re-point the process during transition,
+reconcile/remove the stale monorepo entry as required by the standalone runbook,
+and run `bash scripts/deploy.sh dev <approved-ref>` from `~/dev/events`.
+Verify the live definition and health on **3006 `/events/api/health`**, the public
+Caddy **`/events` prefix**, and app behavior; **`pm2 save`**, verify persisted
+definitions, **then merge the dev PR**. Hold that merge until standalone dev is
+actually running. Only after dev soak and Ryan's approval/window, repeat from
+`~/prod/events` with `bash scripts/deploy.sh prod <approved-ref>`, verify **7006**
+and `/events`, save/verify pm2, **then merge the prod draft at #2516**. Verify
+subsequent kernel deployments preserve the standalone definition.
+
+**Rollback:** before merge, hold the release and restore/reconcile the known-good
+monorepo definition using a matching build/dependency set. After merge, revert
+that environment's ownership release through review and deploy with the normal
+kernel workflow (prod approval remains required), rebuild/validate the monorepo
+copy before reconciling pm2, verify listener/prefixed health and **`pm2 save`** /
+verify persistence. Never run a frozen `.next` against drifting dependencies.
+No schema/data rollback, live server work or source pruning occurs here.
+See `deploy/README.md` for the full operator sequence.
+
 ## Decisions for Ryan
 
 DECISION · Migration collision prevention · Should merging a PR that adds a new migration file

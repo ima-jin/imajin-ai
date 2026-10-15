@@ -223,6 +223,25 @@ entries in `ownership-gaps.json` are kept identical by
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.
 
+### events deploy ownership handoff — dev only (#2784)
+
+Every `events.*` table remains owner `events`; `ima-jin/events` owns that schema
+and data, not the kernel. **Deployment authority transfers per environment**:
+the dev workflow and its `build.sh` call use `migrate.mjs --owner kernel` after
+standalone dev cutover. Prod still runs the existing unfiltered migration calls
+and builds/reconciles `prod-events` until the separate prod draft merges in
+Ryan's #2516 window, after #2529 soak and sign-off.
+
+Historical SQL/data are not changed. Kernel-owner mode retains shared files
+(including the seed and `0025`/`0026`) under the existing #1991 rules and
+fresh-database/ordering caveats; this is not a baseline split. The open runtime
+gaps above remain visible. No source is pruned here; retain `apps/events` while
+prod still needs it. Both ownership-release PRs merge only after the respective
+standalone process is healthy and pm2 definitions are saved. Rollback is a
+reviewed per-environment revert and standard deploy/reconciliation with matching
+build/dependencies, health verification and `pm2 save`, not schema rollback.
+See `deploy/README.md`. Nothing here accesses live state.
+
 ### Fixed since the #1983 audit (kept so the history is not re-litigated)
 
 - `relay.relay_config` reads in `coffee`/`learn`/`market`/`events` —

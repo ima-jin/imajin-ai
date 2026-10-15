@@ -39,6 +39,20 @@ function portOf(app) {
 for (const env of ['dev', 'prod']) {
   describe(`deploy/ecosystem.${env}.config.js (#2447)`, () => {
     const apps = loadApps(env);
+    it('releases dev events only; prod stays kernel-owned until #2516 (#2784)', () => {
+      const events = apps.find((app) => app.name === `${env}-events`);
+      if (env === 'dev') {
+        expect(events).toBeUndefined();
+        expect(apps.some((app) => app.cwd?.endsWith('/apps/events'))).toBe(false);
+      } else {
+        expect(events).toMatchObject({
+          cwd: '/home/jin/prod/imajin-ai/apps/events',
+          script: NEXT_BIN,
+          args: 'start -p 7006',
+          env: { PORT: 7006 },
+        });
+      }
+    });
 
     it('has unique app names and ports', () => {
       const names = apps.map((a) => a.name);
