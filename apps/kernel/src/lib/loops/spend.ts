@@ -73,6 +73,11 @@ export async function readRegistrySpend(principal: string, from: string, to: str
     ), runs AS (
       SELECT DISTINCT ON (run_id) * FROM scoped
       ORDER BY run_id, (kind = 'warp.run') DESC, last_seen_at DESC, loop_id
+    ), subjects AS (
+      SELECT run_id,
+        CASE WHEN COUNT(DISTINCT NULLIF(refs->>'issue', '')) = 1 THEN MIN(NULLIF(refs->>'issue', '')) END AS issue,
+        CASE WHEN COUNT(DISTINCT NULLIF(refs->>'pr', '')) = 1 THEN MIN(NULLIF(refs->>'pr', '')) END AS pr
+      FROM scoped GROUP BY run_id
     ), aliases AS (
       SELECT DISTINCT run_id, refs->>'sessionKey' AS session_key FROM scoped
       WHERE COALESCE(refs->>'sessionKey', '') <> ''
@@ -99,9 +104,11 @@ export async function readRegistrySpend(principal: string, from: string, to: str
         COUNT(*) AS turns
       FROM matched WHERE run_id IS NOT NULL GROUP BY run_id
     )
-    SELECT r.run_id, r.loop_id, r.refs, r.summary, r.state, r.started_at, r.last_seen_at,
+    SELECT r.run_id, r.loop_id,
+      (r.refs - 'issue' - 'pr') || jsonb_strip_nulls(jsonb_build_object('issue', s.issue, 'pr', s.pr)) AS refs,
+      r.summary, r.state, r.started_at, r.last_seen_at,
       c.usd, COALESCE(c.turns, 0) AS turns
-    FROM runs r LEFT JOIN costs c ON c.run_id = r.run_id
+    FROM runs r JOIN subjects s ON s.run_id = r.run_id LEFT JOIN costs c ON c.run_id = r.run_id
     WHERE (r.last_seen_at >= ${from}::timestamptz AND r.started_at < ${to}::timestamptz)
        OR c.turns > 0
     ORDER BY r.last_seen_at DESC, r.run_id

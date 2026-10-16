@@ -174,8 +174,8 @@ describe('default registry Spend entrypoint', () => {
     const result = await readRegistryLaneSpend(principal);
     expect(result.runs.map((run) => run.runId)).toEqual(['registered', 'legacy']);
     expect(result.closedIssueCost.meteredUsdPerIssue).toBe(7);
-    expect(sql.mock.calls[1].slice(1)).toEqual([principal, ['registered', 'legacy']]);
-    expect(sql.mock.calls[2].slice(1)).toEqual([['legacy', 'registry-session'], principal]);
+    expect(sql.mock.calls[1].slice(1)).toEqual([['registered', 'legacy'], principal]);
+    expect(sql.mock.calls[2].slice(1)).toEqual([['legacy', 'registry-session'], principal, principal]);
     expect(select).toHaveBeenCalledOnce();
     expect(getIssue).toHaveBeenCalledOnce();
     expect(getIssue).toHaveBeenCalledWith(principal, 'o/r', 2290);

@@ -47,6 +47,18 @@ async function usage(id: string, session: string | null, cost: number | null, ow
 }
 
 describe('registry usage join', () => {
+  it('uses unique signed subject refs across a run, without guessing among conflicting refs', async () => {
+    await loop('run1', 'r1');
+    await loop('review1', 'r1', undefined, { issue: 'o/r#9', pr: 'o/r#10' });
+    await usage('u1', 'r1', 2);
+    let result = await readRegistrySpend(principal, from, to);
+    expect(result.issues).toEqual([{ ref: 'o/r#9', runCount: 1, meteredUsd: 2 }]);
+    await loop('review2', 'r1', undefined, { issue: 'o/r#11' });
+    result = await readRegistrySpend(principal, from, to);
+    expect(result.issues).toEqual([]);
+    expect(result.runs[0].metered?.usd).toBe(2);
+    expect(result.prs).toEqual([{ ref: 'o/r#10', runCount: 1, meteredUsd: 2 }]);
+  });
   it('includes previous signed sessions after a run resumes, without cross-principal aliases', async () => {
     await loop('run1', 'r1', 'new-session');
     await pg.query('INSERT INTO kernel.loop_events VALUES ($1,$2,$3), ($1,$4,$5)', [
