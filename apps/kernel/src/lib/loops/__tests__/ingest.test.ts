@@ -26,6 +26,12 @@ vi.mock('@imajin/bus', () => ({
   publish: mockPublish,
 }));
 
+vi.mock('../surface-lease', () => ({
+  projectSurfaceLease: vi.fn().mockResolvedValue(null),
+  loopObservationId: vi.fn().mockReturnValue('signed-finish'),
+}));
+vi.mock('../surface-conflict', () => ({ signSurfaceConflict: vi.fn() }));
+
 import { ingestLoopEvent } from '../ingest';
 import type { LoopIngestRequest } from '../types';
 import { OUTPUTS } from './output-fixtures';

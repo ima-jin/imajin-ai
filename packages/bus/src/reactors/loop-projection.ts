@@ -105,8 +105,9 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
       INSERT INTO kernel.loop_events
         (id, loop_id, type, issuer, principal, payload, occurred_at)
       VALUES
-        (${randomUUID()}, ${loopId}, ${event.type}, ${event.issuer}, ${principal},
+        (${event.id ?? randomUUID()}, ${loopId}, ${event.type}, ${event.issuer}, ${principal},
          ${JSON.stringify(payload)}::jsonb, ${at}::timestamptz)
+      ON CONFLICT (id) DO NOTHING
     `;
   });
 };

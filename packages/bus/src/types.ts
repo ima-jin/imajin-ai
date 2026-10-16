@@ -1,4 +1,5 @@
 export interface BusEvent {
+  id?: string;               // stable signed-ingest observation id, when supplied
   type: string;              // 'ticket.purchased', 'newsletter.sent', etc.
   issuer: string;            // DID of the actor
   subject: string;           // DID of the target

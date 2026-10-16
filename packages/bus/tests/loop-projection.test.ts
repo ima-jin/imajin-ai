@@ -110,6 +110,18 @@ describe('loopProjectionReactor (#2295)', () => {
     resetStore();
   });
 
+  it.each(['surface.acquired', 'surface.released', 'surface.conflicted'])('never mutates lifecycle state for %s', async (type) => {
+    await loopProjectionReactor(makeEvent({ type }), {});
+    expect(calls).toHaveLength(0);
+  });
+
+  it('reuses the signed completion id and avoids duplicate immutable history', async () => {
+    await loopProjectionReactor(makeEvent({ type: 'loop.finished', id: 'signed-loop:completion' }), {});
+    expect(calls[0].values[0]).toBe('signed-loop:completion');
+    expect(calls[0].text).toContain('ON CONFLICT (id) DO NOTHING');
+    expect(calls[1].text).toContain('INSERT INTO kernel.loops');
+  });
+
   it('is a no-op for non-loop event types', async () => {
     await loopProjectionReactor(makeEvent({ type: 'warp.run.completed' }), {});
     expect(calls).toHaveLength(0);

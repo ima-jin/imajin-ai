@@ -26,7 +26,12 @@ export function isSurfaceEventType(value: unknown): value is SurfaceEventType {
 /** Exact, case-sensitive surface identity; no harness lookup or URI normalization. */
 export function isSurfaceUri(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > 2048) return false;
-  return /^(?:repo:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#branch:[^\s#]+|service:[A-Za-z0-9_.-]+@env:[A-Za-z0-9_.-]+|device:[A-Za-z0-9_.:-]+|issue:#[1-9][0-9]*)$/.test(value);
+  return [
+    /^repo:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#branch:[^\s#]+$/,
+    /^service:[A-Za-z0-9_.-]+@env:[A-Za-z0-9_.-]+$/,
+    /^device:[A-Za-z0-9_.:-]+$/,
+    /^issue:#[1-9][0-9]*$/,
+  ].some((pattern) => pattern.test(value));
 }
 
 export function isLoopLifecycleType(value: unknown): value is LoopLifecycleType {
@@ -199,7 +204,8 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
     if (type === 'surface.conflicted' && !envelopeResult.value.refs?.conflictingLoopId) {
       return { ok: false, error: 'payload.refs.conflictingLoopId is required for surface.conflicted' };
     }
-    envelopeResult.value.surface = surface;
+    // Validation must not insert optional defaults into signed wire data.
+    envelopeResult.value = { ...(payload as LoopEnvelope) };
   }
 
   const signatureResult = parseSignature(signature);

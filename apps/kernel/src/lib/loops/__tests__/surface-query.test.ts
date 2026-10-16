@@ -13,7 +13,7 @@ import { listLoopSurfaces } from '../surface-query';
 const PRINCIPAL = 'did:imajin:owner';
 const timestamp = '2026-10-16T12:00:00.000Z';
 const signature = { keyId: 'key', alg: 'ed25519', sig: 'signed' };
-const signedPayload = { loopId: 'loop_holder', surface: 'repo://ima-jin/imajin-ai', at: timestamp };
+const signedPayload = { loopId: 'loop_holder', surface: 'repo:ima-jin/imajin-ai#branch:main', at: timestamp };
 
 function rawLease(overrides: Record<string, unknown> = {}) {
   return {
