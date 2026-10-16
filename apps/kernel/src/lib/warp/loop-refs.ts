@@ -20,14 +20,17 @@ export function warpRunLoopRefs(run: Pick<WarpAgentRun, 'runId' | 'sessionId' | 
   if (run.sessionId) refs.sessionKey = run.sessionId;
   const issue = githubLoopRef(run.triggerUrl, 'issues');
   if (issue) refs.issue = issue;
-  const prs = new Set(
-    run.artifacts
-      .filter((artifact) => artifact.artifactType === 'PULL_REQUEST')
-      .map((artifact) => githubLoopRef(artifact.data?.url, 'pull'))
-      .filter((url): url is string => url !== undefined),
-  );
+  const prs = warpRunPrArtifacts(run);
   const triggerPr = githubLoopRef(run.triggerUrl, 'pull');
   if (triggerPr) refs.pr = triggerPr;
-  else if (prs.size === 1) refs.pr = [...prs][0];
+  else if (prs.length === 1) refs.pr = prs[0];
   return refs;
+}
+
+/** Only provider-typed artifacts establish PR appearance, not trigger URLs. */
+export function warpRunPrArtifacts(run: Pick<WarpAgentRun, 'artifacts'>): string[] {
+  return [...new Set(run.artifacts
+    .filter((artifact) => artifact.artifactType === 'PULL_REQUEST')
+    .map((artifact) => githubLoopRef(artifact.data?.url, 'pull'))
+    .filter((url): url is string => url !== undefined))];
 }
