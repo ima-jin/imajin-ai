@@ -50,7 +50,7 @@ components:
   schemas:
     ApprovalStatus:
       type: string
-      enum: [pending, approved, denied, withdrawn, applied]
+      enum: [pending, approved, denied, withdrawn, applied, expired]
     OperatorApprovalCard:
       type: object
       description: >-
@@ -100,6 +100,14 @@ components:
             durationMs: { type: integer }
             outputHash: { type: string }
         appliedAt: { type: string, format: date-time, nullable: true }
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: >-
+            This real session principal's Inbox archive timestamp (#2694),
+            or null. Only decided decision:card proposals support archiving.
+            Other principals' markers are never returned, including in outcome.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     OperatorCountersignature:
@@ -536,6 +544,68 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "500":
           description: Failed to record decision
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/operator-approvals/{proposalId}/archive:
+    post:
+      tags: [jin]
+      operationId: archiveOperatorApproval
+      summary: Archive a decided decision card in the addressee's Inbox
+      description: >-
+        Self-only: requires the real authenticated session DID, refuses
+        delegated and borrowed identities through the same act-as guard as
+        the decision rail, and verifies the proposal's resolved addressee.
+        Only source decision, kind decision:card, with status approved,
+        denied, withdrawn, applied, or expired may be archived.
+        Persists an idempotent per-principal timestamp in unsigned outcome
+        metadata without deleting the proposal, changing its signed decision,
+        content, status, or appliedAt, or executing anything.
+        No request body is required. After success, reload GET
+        /api/operator-approvals for this reader's archivedAt.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: proposalId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Archived, including an already-archived card
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean, const: true }
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: Not the proposal addressee, delegated, or under act-as
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/ActAsNotPermittedError"
+                  - $ref: "#/components/schemas/Error"
+        "404":
+          description: Proposal not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Not a decided decision card, or proposal changed before the write
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Failed to archive proposal
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
