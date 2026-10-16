@@ -12,6 +12,8 @@
  *  - fetchActualFee — never throws; returns `null` on any failure shape.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { stripeWebhookEvents, stripeEventAmount } from '@/src/lib/stripe/webhook-events';
+import { stripeWebhookObjects } from '@/src/lib/stripe/__tests__/webhook-fixtures';
 
 const state = vi.hoisted(() => ({
   constructEventMock: vi.fn(),
@@ -140,6 +142,12 @@ describe('verifyStripeWebhook', () => {
 });
 
 describe('toRailEvent', () => {
+  it.each(stripeWebhookEvents)('normalizes the shared %s contract', (type) => {
+    const raw = stripeWebhookObjects[type];
+    expect(toRailEvent({ type, data: { object: raw } })).toMatchObject({
+      rail: 'stripe', type, externalRef: raw.id, amount: stripeEventAmount(type, raw), raw,
+    });
+  });
   it('normalizes checkout.session.completed using amount_total', () => {
     const raw = { id: 'cs_1', amount_total: 5000, currency: 'usd', metadata: { foo: 'bar' } };
     expect(toRailEvent({ type: 'checkout.session.completed', data: { object: raw } })).toEqual({
@@ -164,9 +172,10 @@ describe('toRailEvent', () => {
     expect(railEvent?.amount).toBe(999);
   });
 
-  it('does not normalize Connect account/payout events (Stripe Connect is removed, #2757)', () => {
+  it('does not normalize Connect account events; owner payouts use the shared contract', () => {
     expect(toRailEvent({ type: 'account.updated', data: { object: { id: 'acct_1', charges_enabled: true } } })).toBeNull();
-    expect(toRailEvent({ type: 'payout.paid', data: { object: { id: 'po_1', amount: 300, currency: 'usd' } } })).toBeNull();
+    expect(toRailEvent({ type: 'payout.paid', data: { object: { id: 'po_1', amount: 300, currency: 'usd' } } }))
+      .toMatchObject({ externalRef: 'po_1', amount: 300, currency: 'usd' });
   });
 
   it('returns null for an event type this adapter deliberately does not normalize (transfer.created)', () => {

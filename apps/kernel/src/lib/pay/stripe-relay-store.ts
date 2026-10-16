@@ -47,7 +47,7 @@ export function putRelayEntry(relayId: string, source: StripeRelaySource, stripe
   return entry;
 }
 
-/** Look up a pending entry. `undefined` for any event not relayed by the pay webhook ingress (e.g. a BYO-connector event). */
+/** Look up a pending ingress entry. `undefined` for older direct bus events or an expired handoff. */
 export function getRelayEntry(relayId: string): StripeRelayEntry | undefined {
   return entries.get(relayId);
 }

@@ -20,14 +20,14 @@
  * ## Which events this consumes
  * Events the webhook ingress relayed (they carry a `relayId` that resolves in
  * `stripe-relay-store.ts`). The connector's BYO-account events (`connector.ts`,
- * same `stripe.*` types) carry no `relayId`, so they never reach the handlers
- * below — an owner's own Stripe events must never mutate the platform's
+ * same `stripe.*` types) use owner-bound relay entries, so they never reach the handlers
+ * below — an owner's own Stripe events must never mutate unrelated platform
  * `pay.transactions` or balances. One narrow exception (#2754):
  * {@link handleByoPaymentIntentSucceeded} settles a payment_request that the
  * owner's OWN `stripe.payment_intent.succeeded` names, iff that same owner
  * issued it; and (#2757) {@link handleByoCheckoutPaymentIntent} settles a
  * hosted checkout (events, market, coffee) the same way. Everything else a BYO
- * event says is ignored.
+ * event says is delivered on the bus only, without additional pay business handling.
  *
  * ## Failure contract
  * `publish()` swallows reactor errors, so a failing handler is recorded on the
@@ -69,6 +69,8 @@ import type {
 import { settlePaymentRequestFromStripeCheckout } from '@/src/lib/pay/payment-requests/checkout';
 import { getRelayEntry, type StripeRelaySource } from '@/src/lib/pay/stripe-relay-store';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
+import { isStripeWebhookEventType } from '@/src/lib/stripe/webhook-events';
+import type { StripeRelayEntry } from '@/src/lib/pay/stripe-relay-store';
 
 const log = createLogger('kernel');
 
@@ -124,6 +126,27 @@ const HANDLERS_BY_SOURCE: Readonly<Record<StripeRelaySource, Readonly<Record<str
 export function hasStripeBusHandler(source: StripeRelaySource, eventType: string): boolean {
   return Object.hasOwn(HANDLERS_BY_SOURCE[source], eventType);
 }
+/** Owner delivery recognition is not a claim that checkout/subscription events settle money. */
+async function consumeOwnerDelivery(event: BusEvent, entry: StripeRelayEntry): Promise<void> {
+  if (event.issuer !== entry.ownerDid || event.subject !== entry.ownerDid || event.payload?.ownerDid !== entry.ownerDid) {
+    entry.error = 'Connector owner mismatch';
+    return;
+  }
+  const stripeEvent = entry.stripeEvent as { type?: unknown };
+  const type = stripeEvent?.type;
+  if (typeof type !== 'string' || !isStripeWebhookEventType(type) || event.type !== `stripe.${type}`) {
+    entry.error = 'Connector event mismatch';
+    return;
+  }
+  try {
+    await handleByoPaymentIntentSucceeded(event, true);
+    await handleByoCheckoutPaymentIntent(event, true);
+    // Other mapped types are bus-only delivery; never dispatch them to PLATFORM_HANDLERS.
+    entry.handled = true;
+  } catch {
+    entry.error = 'Connector settlement failed';
+  }
+}
 
 /**
  * The `pay-stripe` reactor. Resolves the relayed delivery from its `relayId`,
@@ -141,18 +164,7 @@ export const payStripeReactor: ReactorHandler = async (event) => {
   const entry = getRelayEntry(relayId);
   if (!entry) return;
   if (entry.ownerDid) {
-    if (event.issuer !== entry.ownerDid || event.payload?.ownerDid !== entry.ownerDid) {
-      entry.error = 'Connector owner mismatch';
-      return;
-    }
-    try {
-      await handleByoPaymentIntentSucceeded(event, true);
-      await handleByoCheckoutPaymentIntent(event, true);
-      entry.handled = true;
-    } catch {
-      // Never retain exception text containing Stripe objects or credential values.
-      entry.error = 'Connector settlement failed';
-    }
+    await consumeOwnerDelivery(event, entry);
     return;
   }
 
@@ -176,8 +188,8 @@ export const payStripeReactor: ReactorHandler = async (event) => {
 
 /**
  * #2754: an owner's own (BYO connector) `stripe.payment_intent.succeeded` for
- * an invoice checkout created on their account. Not a relayed delivery — it has
- * no `relayId` — so it is handled here, separately from the platform handlers,
+ * an invoice checkout created on their account. Owner-bound relays and older
+ * direct bus events are handled here, separately from the platform handlers,
  * and only when it names a payment_request. `settlePaymentRequestFromByoStripe`
  * enforces ownership/amount; this just refuses anything that is not unmistakably
  * the connector's own envelope (`issuer` must be the owner DID in the payload).

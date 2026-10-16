@@ -1324,14 +1324,24 @@ paths:
     post:
       tags: [pay]
       operationId: didStripeWebhook
-      summary: Verify and settle an owner's Stripe connector event
+      summary: Verify and route an owner's Stripe connector event
       description: |
         The opaque routing ID selects a stored connector owner before any payload
         is parsed. Verify the raw body with that owner's vault-sealed signing
         secret, never with an account or identity selected by event metadata.
-        Forward payment_intent.succeeded, invoice.paid and payout.paid onto the
-        owner's bus. Settlement enforces transaction/invoice ownership; the node
-        is a DID using the same connector flow for topups.
+        Requires sealed credentials AND the owner's signed stripe:events grant;
+        sealing credentials never grants consent. Forward payment_intent.succeeded,
+        payment_intent.payment_failed, checkout.session.completed,
+        customer.subscription.created, customer.subscription.updated,
+        customer.subscription.deleted, invoice.paid and payout.paid onto the owner's
+        bus. The source of truth is src/lib/stripe/webhook-events.ts. Subscriptions
+        have no event-level amount. Raw Stripe objects remain in a private in-process
+        relay; bus payloads contain only safe references and monetary facts.
+        Only payment_intent.succeeded invokes existing owner-scoped transaction/invoice
+        settlement; the other mapped types are bus delivery, not new business handlers.
+        Owner events never dispatch to retired unscoped platform settlement handlers.
+        transfer.created remains a legacy-only withdrawal path, not a connector event.
+        The node is a DID using the same connector flow for topups.
         Successful event IDs are deduplicated per owner; stale signatures are
         rejected. Failed processing is not marked complete so Stripe may retry.
       security:

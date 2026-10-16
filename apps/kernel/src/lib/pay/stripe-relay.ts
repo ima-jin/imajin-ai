@@ -16,6 +16,7 @@
 import { randomUUID } from 'node:crypto';
 import { publish, type BusEventMap, type BusEventType } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { stripeEventAmount } from '@/src/lib/stripe/webhook-events';
 import { ensurePayStripeReactorRegistered, hasStripeBusHandler } from '@/src/lib/pay/stripe-bus-consumer';
 import {
   deleteRelayEntry,
@@ -43,12 +44,6 @@ interface RelayableStripeEvent {
   data?: { object?: unknown };
 }
 
-/** Same per-type amount fields `toRailEvent` normalizes (see `extractAmount`); every other type uses `amount`. */
-const AMOUNT_FIELD_BY_TYPE: Readonly<Record<string, string>> = {
-  'checkout.session.completed': 'amount_total',
-  'invoice.paid': 'amount_paid',
-};
-
 function platformDid(): string {
   return process.env.PLATFORM_DID || 'system';
 }
@@ -67,7 +62,7 @@ function describeEvent(event: RelayableStripeEvent): {
   currency: string | null;
 } {
   const object = (event.data?.object ?? {}) as Record<string, unknown>;
-  const amount = object[AMOUNT_FIELD_BY_TYPE[String(event.type)] ?? 'amount'];
+  const amount = stripeEventAmount(String(event.type), object);
   const currency = stringField(object, 'currency');
   return {
     eventId: typeof event.id === 'string' ? event.id : '',
@@ -78,8 +73,8 @@ function describeEvent(event: RelayableStripeEvent): {
 }
 
 /**
- * The three types the BYO connector also publishes (`connector.ts`) keep the
- * connector's type-specific field names, so one `stripe.*` type has one
+ * Three types have dedicated payload field names instead of the shared facts
+ * shape. Keep those field names consistent with the owner connector, so one `stripe.*` type has one
  * payload shape no matter who published it (the generic `objectId`/`amount`
  * facts are still present alongside).
  */

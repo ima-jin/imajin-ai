@@ -71,13 +71,13 @@ export interface LoopEventPayload {
 export type StripeRelaySource = 'platform' | 'connect';
 
 /**
- * Payload of a platform-account Stripe delivery relayed onto the bus by the
- * pay webhook ingress (#2177). Non-sensitive facts only — the verified Stripe
+ * Payload of a Stripe delivery relayed onto the bus by the pay webhook
+ * ingress or owner connector. Non-sensitive facts only — the verified Stripe
  * event itself is handed to the consumer in-process via `relayId`, never
  * carried here (see the `stripe.*` block in {@link BusEventMap}).
  */
 export type StripePlatformRelayPayload = {
-  /** The platform DID — the platform's own Stripe account is the "owner" of these events. */
+  /** The indexed connector owner, or platform DID for historical platform relays. */
   ownerDid: string;
   /** Stripe event id (`evt_...`). */
   eventId: string;
@@ -87,7 +87,7 @@ export type StripePlatformRelayPayload = {
   amount: number | null;
   /** Upper-cased ISO currency when the object has one, else null. */
   currency: string | null;
-  source: StripeRelaySource;
+  source?: StripeRelaySource;
   /** Opaque in-process hand-off key the `pay-stripe` reactor resolves. */
   relayId: string;
   context_id: string;
@@ -1871,9 +1871,9 @@ export interface BusEventMap {
    * the PLATFORM account's verified deliveries onto these same `stripe.*`
    * types — `ownerDid` is the platform DID and `source`/`relayId` are set — and
    * the kernel's `pay-stripe` reactor consumes them (every `stripe.*` default
-   * chain in `config.ts` is that single awaited reactor). A connector (BYO)
-   * event has neither `source` nor `relayId`, which is how the reactor tells
-   * the two apart. Platform-relayed payloads carry only non-sensitive facts
+   * chain in `config.ts` is that single awaited reactor). Connector (BYO)
+   * events also carry a relayId; the private relay entry's ownerDid binds them
+   * to owner-scoped handling, never historical platform handlers. Payloads carry only non-sensitive facts
    * (ids, amount, currency): the verified Stripe event itself never rides in
    * the bus payload, because these payloads are persisted and fanned out to
    * subscribers.
@@ -1926,8 +1926,7 @@ export interface BusEventMap {
     relayId?: string;
   };
   /**
-   * Platform-account deliveries relayed by the pay webhook ingress (#2177)
-   * for event types the BYO connector does not itself republish. Shared
+   * Owner-connector and historical platform deliveries. Shared
    * shape: see {@link StripePlatformRelayPayload}.
    */
   'stripe.payment_intent.payment_failed': StripePlatformRelayPayload;
