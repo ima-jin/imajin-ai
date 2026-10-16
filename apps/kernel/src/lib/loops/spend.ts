@@ -46,6 +46,7 @@ interface SpendRow {
 
 export function groupRegistrySubjects(runs: RegistryRunCost[], key: 'issue' | 'pr'): RegistrySubjectCost[] {
   const groups = new Map<string, RegistrySubjectCost>();
+  const unknown = new Set<string>();
   for (const run of runs) {
     const ref = run.refs[key];
     if (typeof ref !== 'string' || !ref) continue;
@@ -53,9 +54,12 @@ export function groupRegistrySubjects(runs: RegistryRunCost[], key: 'issue' | 'p
     group.runCount++;
     const usd = run.metered?.usd;
     if (usd !== null && usd !== undefined) group.meteredUsd = (group.meteredUsd ?? 0) + usd;
+    else unknown.add(ref);
     groups.set(ref, group);
   }
-  return [...groups.values()].sort((a, b) => a.ref.localeCompare(b.ref));
+  return [...groups.values()].map((group) => ({
+    ...group, meteredUsd: unknown.has(group.ref) ? null : group.meteredUsd,
+  })).sort((a, b) => a.ref.localeCompare(b.ref));
 }
 
 /** No Warp/Gateway calls: the entire join is scoped on both sides to principal. */
@@ -63,14 +67,21 @@ export async function readRegistrySpend(principal: string, from: string, to: str
   const sql = getClient();
   const rows = await sql`
     WITH scoped AS (
-      SELECT *, refs->>'runId' AS run_id FROM kernel.loops
-      WHERE principal = ${principal} AND COALESCE(refs->>'runId', '') <> ''
+      SELECT *, COALESCE(NULLIF(refs->>'runId', ''), loop_id) AS run_id FROM kernel.loops
+      WHERE principal = ${principal}
+        AND (COALESCE(refs->>'runId', '') <> '' OR COALESCE(refs->>'sessionKey', '') <> '')
     ), runs AS (
       SELECT DISTINCT ON (run_id) * FROM scoped
       ORDER BY run_id, (kind = 'warp.run') DESC, last_seen_at DESC, loop_id
     ), aliases AS (
       SELECT DISTINCT run_id, refs->>'sessionKey' AS session_key FROM scoped
       WHERE COALESCE(refs->>'sessionKey', '') <> ''
+      UNION
+      SELECT s.run_id, e.payload->'refs'->>'sessionKey' AS session_key
+      FROM scoped s JOIN kernel.loop_events e ON e.loop_id = s.loop_id
+      WHERE e.principal = ${principal}
+        AND COALESCE(e.payload->'refs'->>'sessionKey', '') <> ''
+        AND COALESCE(e.payload->'refs'->>'runId', s.run_id) = s.run_id
     ), unique_aliases AS (
       SELECT session_key, MIN(run_id) AS run_id FROM aliases
       GROUP BY session_key HAVING COUNT(DISTINCT run_id) = 1
@@ -83,7 +94,9 @@ export async function readRegistrySpend(principal: string, from: string, to: str
         AND u.created_at >= ${from}::timestamptz AND u.created_at < ${to}::timestamptz
         AND u.status IS DISTINCT FROM 'error'
     ), costs AS (
-      SELECT run_id, SUM(cost_usd) AS usd, COUNT(*) AS turns
+      SELECT run_id,
+        CASE WHEN COUNT(cost_usd) = COUNT(*) THEN SUM(cost_usd) ELSE NULL END AS usd,
+        COUNT(*) AS turns
       FROM matched WHERE run_id IS NOT NULL GROUP BY run_id
     )
     SELECT r.run_id, r.loop_id, r.refs, r.summary, r.state, r.started_at, r.last_seen_at,
@@ -111,8 +124,11 @@ export async function registeredRunIds(principal: string, runIds: string[]): Pro
   if (runIds.length === 0) return new Set();
   const sql = getClient();
   const rows = await sql`
-    SELECT DISTINCT refs->>'runId' AS run_id FROM kernel.loops
-    WHERE principal = ${principal} AND refs->>'runId' = ANY(${runIds}::text[])
+    SELECT DISTINCT wanted.run_id FROM unnest(${runIds}::text[]) AS wanted(run_id)
+    WHERE EXISTS (
+      SELECT 1 FROM kernel.loops l WHERE l.principal = ${principal}
+        AND (l.refs->>'runId' = wanted.run_id OR l.loop_id = wanted.run_id)
+    )
   ` as unknown as { run_id: string }[];
   return new Set(rows.map((row) => row.run_id));
 }
@@ -126,6 +142,10 @@ export async function unregisteredSessionIds(principal: string, sessionIds: stri
     WHERE NOT EXISTS (
       SELECT 1 FROM kernel.loops l WHERE l.principal = ${principal}
         AND (l.refs->>'runId' = u.session_id OR l.refs->>'sessionKey' = u.session_id)
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM kernel.loop_events e WHERE e.principal = ${principal}
+        AND e.payload->'refs'->>'sessionKey' = u.session_id
     )
   ` as unknown as { session_id: string }[];
   return rows.map((row) => row.session_id);

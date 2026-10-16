@@ -194,6 +194,6 @@ describe('getLoopWithHistory', () => {
     expect(result?.events.map((e) => e.type)).toEqual(['loop.started', 'loop.progress']);
     expect(calls[0].values).toEqual(['loop_1', PRINCIPAL]);
     expect(calls[1].text).toContain('FROM kernel.loop_events');
-    expect(calls[1].values).toEqual(['loop_1']);
+    expect(calls[1].values).toEqual(['loop_1', PRINCIPAL]);
   });
 });

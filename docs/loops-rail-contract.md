@@ -90,7 +90,10 @@ scoped. USD is summed from non-error `usage.incurred` rows in the half-open
 window: exact `session_id = runId` wins, otherwise an unambiguous
 `session_id = sessionKey` joins. Duplicate loops cannot multiply a usage row;
 shared session aliases stay unattributed. Null cost is unknown, not zero.
-Old loops with usage in the window are included.
+Old loops with usage in the window are included. Session-only loops use their
+stable loopId as the correlation identity, not an invented Warp run id. A run
+with any unpriced usage and a subject with any unknown run cost remain unknown,
+never a misleading partial total.
 
 `/jin/api/spend/runs` uses this registry first. Only Warp runs with no loop
 record (checked independently of pagination/time window) use the old branch

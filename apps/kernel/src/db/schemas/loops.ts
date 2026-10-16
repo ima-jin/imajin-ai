@@ -52,6 +52,7 @@ export const loopEvents = loopsSchema.table('loop_events', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
   loopIdIdx: index('idx_loop_events_loop_id').on(table.loopId, table.occurredAt),
+  sessionIdx: index('idx_loop_events_principal_session').on(table.principal, sql`(${table.payload}->'refs'->>'sessionKey')`),
   principalIdx: index('idx_loop_events_principal').on(table.principal, table.occurredAt),
 }));
 
