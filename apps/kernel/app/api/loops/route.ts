@@ -90,6 +90,10 @@ export async function GET(request: NextRequest) {
     kind: searchParams.get('kind'),
     since: searchParams.get('since'),
     ancestor: searchParams.get('ancestor'),
+    runId: searchParams.get('runId'),
+    issue: searchParams.get('issue'),
+    pr: searchParams.get('pr'),
+    sessionKey: searchParams.get('sessionKey'),
     limit: limitParam ? Number.parseInt(limitParam, 10) : undefined,
   });
 

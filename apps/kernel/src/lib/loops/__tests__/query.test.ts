@@ -52,10 +52,18 @@ describe('listLoops', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].text).toContain('SELECT * FROM kernel.loops');
     expect(calls[0].text).toContain('WHERE principal');
-    expect(calls[0].values).toEqual([PRINCIPAL, 'running', 'running', null, null, null, null, 50]);
+    expect(calls[0].values).toEqual([PRINCIPAL, '{}', 'running', 'running', null, null, null, null, 50]);
     expect(result).toHaveLength(1);
     expect(result[0].loopId).toBe('loop_1');
     expect(result[0].startedAt).toBe(new Date('2026-09-22T00:00:00.000Z').toISOString());
+  });
+
+  it('queries signed refs without interpolating them as SQL identifiers', async () => {
+    await listLoops({ principal: PRINCIPAL, runId: 'run1', issue: 'ima-jin/imajin-ai#2290', pr: 'pr1', sessionKey: 'session1' });
+    expect(calls[0].text).toContain('refs @>');
+    expect(JSON.parse(calls[0].values[1] as string)).toEqual({
+      runId: 'run1', issue: 'ima-jin/imajin-ai#2290', pr: 'pr1', sessionKey: 'session1',
+    });
   });
 
   it('clamps limit to the max and falls back to the default for invalid values', async () => {
@@ -84,7 +92,7 @@ describe('listLoops', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].text).toContain('WITH RECURSIVE lineage AS');
     expect(calls[0].text).toContain('JOIN lineage ON l.parent_loop_id = lineage.loop_id');
-    expect(calls[0].values).toEqual(['loop_root', PRINCIPAL, PRINCIPAL, null, null, null, null]);
+    expect(calls[0].values).toEqual(['loop_root', PRINCIPAL, PRINCIPAL, null, null, null, null, '{}', null, null]);
 
     expect(result.map((l) => l.loopId)).toEqual(['loop_root', 'loop_child', 'loop_grandchild', 'loop_ggc']);
     expect(result.map((l) => l.parentLoopId)).toEqual([null, 'loop_root', 'loop_child', 'loop_grandchild']);
@@ -94,7 +102,7 @@ describe('listLoops', () => {
     resolveWith([]);
     await listLoops({ principal: PRINCIPAL, ancestor: 'loop_root', state: 'blocked', kind: 'review' });
 
-    expect(calls[0].values).toEqual(['loop_root', PRINCIPAL, PRINCIPAL, 'blocked', 'blocked', 'review', 'review']);
+    expect(calls[0].values).toEqual(['loop_root', PRINCIPAL, PRINCIPAL, 'blocked', 'blocked', 'review', 'review', '{}', null, null]);
   });
 });
 
