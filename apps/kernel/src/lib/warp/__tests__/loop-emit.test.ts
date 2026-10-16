@@ -7,10 +7,11 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getNodeSigningIdentityMock, ingestLoopEventMock, signSyncMock, canonicalizeMock, logMock } = vi.hoisted(
+const { getNodeSigningIdentityMock, ingestLoopEventMock, signSyncMock, canonicalizeMock, logMock, observeArtifactMock } = vi.hoisted(
   () => ({
     getNodeSigningIdentityMock: vi.fn(),
     ingestLoopEventMock: vi.fn(),
+    observeArtifactMock: vi.fn(),
     signSyncMock: vi.fn(),
     canonicalizeMock: vi.fn((value: unknown) => JSON.stringify(value)),
     logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -33,6 +34,7 @@ vi.mock('@/src/lib/vault/sealing', () => ({
 vi.mock('@/src/lib/loops/ingest', () => ({
   ingestLoopEvent: ingestLoopEventMock,
 }));
+vi.mock('@/src/lib/github/loop-observe', () => ({ observeWarpPullRequestArtifact: observeArtifactMock }));
 
 import { emitWarpRunLoopEvent, type WarpRunLoopTransition } from '../loop-emit';
 
@@ -60,6 +62,20 @@ beforeEach(() => {
 });
 
 describe('emitWarpRunLoopEvent', () => {
+  it('observes every confirmed PR artifact in the same transition without treating a run finish as PR closure', async () => {
+    const prs = ['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2'];
+    await emitWarpRunLoopEvent({ ...TRANSITION, type: 'loop.finished', prArtifacts: prs });
+    expect(observeArtifactMock.mock.calls).toEqual(prs.map((url) => [TRANSITION.principalDid, url, TRANSITION.runId, TRANSITION.at]));
+  });
+  it('does not turn refs.pr alone into an artifact appearance event', async () => {
+    await emitWarpRunLoopEvent({ ...TRANSITION, refs: { pr: 'https://github.com/o/r/pull/1' } });
+    expect(observeArtifactMock).not.toHaveBeenCalled();
+  });
+  it('does not observe artifacts when the Warp lifecycle itself failed ingest', async () => {
+    ingestLoopEventMock.mockResolvedValueOnce({ ok: false, error: 'denied' });
+    await emitWarpRunLoopEvent({ ...TRANSITION, prArtifacts: ['https://github.com/o/r/pull/1'] });
+    expect(observeArtifactMock).not.toHaveBeenCalled();
+  });
   it('includes available refs but never permits overriding the authoritative runId', async () => {
     await emitWarpRunLoopEvent({ ...TRANSITION, refs: { runId: 'wrong', issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2', sessionKey: 'session' } });
     expect(ingestLoopEventMock.mock.calls[0][0].payload.refs).toEqual({

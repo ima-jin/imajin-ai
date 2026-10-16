@@ -103,6 +103,7 @@ describe('loopProjectionReactor (#2295)', () => {
       '2026-09-22T00:00:00.000Z',
       '2026-09-22T00:00:00.000Z',
       null, // finishedAt — only set on loop.finished
+      false, // initialObservation — normal transitions may advance existing loops
     ]);
   });
 
@@ -153,6 +154,7 @@ describe('loopProjectionReactor (#2295)', () => {
   it('guards the projection update against out-of-order delivery', async () => {
     await loopProjectionReactor(makeEvent(), {});
     expect(calls[1].text).toContain('WHERE kernel.loops.last_seen_at <= EXCLUDED.last_seen_at');
+    expect(calls[1].text).toContain('AND kernel.loops.principal = EXCLUDED.principal');
   });
 
   it('merges new refs over persisted refs instead of erasing sparse-event linkage', async () => {

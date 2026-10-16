@@ -45,6 +45,7 @@ import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { ingestLoopEvent } from '@/src/lib/loops/ingest';
 import type { LoopEnvelope, LoopLifecycleType, LoopRefs } from '@/src/lib/loops/types';
+import { observeWarpPullRequestArtifact } from '@/src/lib/github/loop-observe';
 
 const log = createLogger('kernel:warp-loop-emit');
 
@@ -69,6 +70,8 @@ export interface WarpRunLoopTransition {
   /** ISO 8601 — should match the timestamp already used on the sibling `warp.run.*` event. */
   at: string;
   refs?: LoopRefs;
+  /** Canonical URLs extracted only from provider-typed PULL_REQUEST artifacts. */
+  prArtifacts?: string[];
 }
 
 /**
@@ -115,6 +118,10 @@ export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): P
         { type: transition.type, runId: transition.runId, reason: result.error },
         'warp.run -> loop.* emission rejected at ingest',
       );
+      return;
+    }
+    for (const pr of transition.prArtifacts ?? []) {
+      await observeWarpPullRequestArtifact(transition.principalDid, pr, transition.runId, transition.at);
     }
   } catch (err) {
     log.error(

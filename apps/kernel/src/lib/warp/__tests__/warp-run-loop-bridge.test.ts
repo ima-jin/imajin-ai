@@ -134,6 +134,7 @@ describe('dispatchAgentRun bridges loop.started', () => {
     expect(emitWarpRunLoopEventMock.mock.calls[0][0].refs).toEqual({
       runId: RUN_ID, sessionKey: 'session', issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2',
     });
+    expect(emitWarpRunLoopEventMock.mock.calls[0][0].prArtifacts).toEqual(['https://github.com/o/r/pull/2']);
   });
   it('emits loop.started with loopId = runId, state = queued, and the Warp-confirmed parent lineage', async () => {
     respondJson({ run_id: RUN_ID, state: 'QUEUED', parent_run_id: 'run-parent-1' });

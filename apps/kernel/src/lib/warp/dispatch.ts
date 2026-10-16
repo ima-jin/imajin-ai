@@ -137,7 +137,7 @@ import { WarpApiError } from './errors';
 // module's "Why this lives in its own module" doc. The real implementation is
 // reached only through the dynamic `import()` in `bridgeWarpRunToLoop` below.
 import type { WarpRunLoopTransition } from './loop-emit';
-import { warpRunLoopRefs } from './loop-refs';
+import { warpRunLoopRefs, warpRunPrArtifacts } from './loop-refs';
 
 // Re-exported for callers that need to catch it without importing
 // corpus-context.ts directly (mirroring the WarpApiError re-export below).
@@ -194,8 +194,9 @@ function warpRunLoopTransition(
   summary: string,
   at: string,
   refs?: WarpRunLoopTransition['refs'],
+  prArtifacts?: string[],
 ): WarpRunLoopTransition {
-  return { type, runId, principalDid, parentRunId, state, summary, at, ...(refs ? { refs } : {}) };
+  return { type, runId, principalDid, parentRunId, state, summary, at, ...(refs ? { refs } : {}), ...(prArtifacts ? { prArtifacts } : {}) };
 }
 
 const DEFAULT_WARP_API_BASE_URL = 'https://app.warp.dev/api/v1';
@@ -1120,6 +1121,7 @@ export async function dispatchAgentRun(
       `Warp run dispatched (${config.name})`,
       new Date().toISOString(),
       warpRunLoopRefs(run),
+      warpRunPrArtifacts(run),
     ),
   );
 
@@ -1999,6 +2001,7 @@ async function publishRunProgress(
       summary,
       observedAt,
       warpRunLoopRefs(run),
+      warpRunPrArtifacts(run),
     ),
   );
 }
@@ -2255,6 +2258,7 @@ async function publishRunCompleted(
       `Warp run ${state}`,
       completedAt,
       warpRunLoopRefs(run),
+      warpRunPrArtifacts(run),
     ),
   );
 }
@@ -2312,7 +2316,7 @@ async function publishRunFailed(
   // #2296: loop.finished alongside warp.run.failed — same claim-gated
   // idempotency as publishRunCompleted above.
   await bridgeWarpRunToLoop(
-    warpRunLoopTransition('loop.finished', run.runId, principalDid, run.parentRunId, 'failed', summary, failedAt, warpRunLoopRefs(run)),
+    warpRunLoopTransition('loop.finished', run.runId, principalDid, run.parentRunId, 'failed', summary, failedAt, warpRunLoopRefs(run), warpRunPrArtifacts(run)),
   );
 }
 
@@ -2352,7 +2356,7 @@ async function publishRunBlocked(principalDid: string, run: WarpAgentRun): Promi
   // tracker.blockedNotified/hasPublishedBlockedNotice guard the caller
   // already applies — idempotent for free.
   await bridgeWarpRunToLoop(
-    warpRunLoopTransition('loop.blocked', run.runId, principalDid, run.parentRunId, 'blocked', summary, blockedAt, warpRunLoopRefs(run)),
+    warpRunLoopTransition('loop.blocked', run.runId, principalDid, run.parentRunId, 'blocked', summary, blockedAt, warpRunLoopRefs(run), warpRunPrArtifacts(run)),
   );
 }
 

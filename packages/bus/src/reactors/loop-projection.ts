@@ -50,6 +50,7 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
   const refs = (payload.refs && typeof payload.refs === 'object') ? payload.refs : {};
   const at = typeof payload.at === 'string' ? payload.at : (event.timestamp ?? new Date().toISOString());
   const finishedAt = event.type === 'loop.finished' ? at : null;
+  const initialObservation = payload.initialObservation === true;
 
   const { getClient } = await import('@imajin/db');
   const sql = getClient();
@@ -87,5 +88,7 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
       END,
       updated_at = now()
     WHERE kernel.loops.last_seen_at <= EXCLUDED.last_seen_at
+      AND kernel.loops.principal = EXCLUDED.principal
+      AND NOT ${initialObservation}
   `;
 };

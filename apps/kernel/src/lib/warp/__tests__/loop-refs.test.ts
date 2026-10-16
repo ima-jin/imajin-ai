@@ -1,10 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { githubLoopRef, warpRunLoopRefs } from '../loop-refs';
+import { githubLoopRef, warpRunLoopRefs, warpRunPrArtifacts } from '../loop-refs';
 
 const base = { runId: 'run', sessionId: 'session', triggerUrl: null, artifacts: [] };
 const artifact = (url: string) => ({ artifactType: 'PULL_REQUEST', createdAt: null, data: { url } });
 
 describe('Warp loop refs', () => {
+  it('extracts every distinct typed PR artifact, excluding unrelated prose', () => {
+    expect(warpRunPrArtifacts({ artifacts: [
+      artifact('https://github.com/o/r/pull/1'), artifact('https://github.com/o/r/pull/1#comment'),
+      artifact('https://github.com/o/r/pull/2'),
+      { artifactType: 'TEXT', createdAt: null, data: { url: 'https://github.com/o/r/pull/3' } },
+      artifact('https://invalid.example/o/r/pull/4'),
+    ] })).toEqual(['https://github.com/o/r/pull/1', 'https://github.com/o/r/pull/2']);
+  });
   it('uses confirmed run metadata and typed artifact URLs', () => {
     expect(warpRunLoopRefs({
       ...base, triggerUrl: 'https://github.com/ima-jin/imajin-ai/issues/2290',
