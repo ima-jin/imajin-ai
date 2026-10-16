@@ -3,6 +3,8 @@
  * Owners configure their endpoint in Stripe and paste its signing secret into
  * the same connector as their rk/pk pair. All three fields are vault sealed;
  * routing is resolved from the opaque index before signature verification.
+ * Sealed credentials alone do not enable ingress: the owner must sign consent
+ * for the owner-only stripe:events scope before deliveries can be processed.
  */
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
