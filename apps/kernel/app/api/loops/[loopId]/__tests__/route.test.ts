@@ -7,7 +7,7 @@ const { mockRequireAuth, mockGetLoopWithHistory } = vi.hoisted(() => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mockRequireAuth,
-  resolveActingDid: (identity: { id: string }) => identity.id,
+  resolveActingDid: (identity: { id: string; actingFor?: string }) => identity.actingFor ?? identity.id,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -32,6 +32,15 @@ beforeEach(() => {
 });
 
 describe('GET /api/loops/{loopId}', () => {
+  it('uses the delegated principal for typed output reads and disables caching', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:agent', actingFor: OPERATOR_DID } });
+    const history = { loop: { loopId: 'loop_abc123' }, events: [{ payload: { output: { kind: 'text', text: 'hello' } } }] };
+    mockGetLoopWithHistory.mockResolvedValueOnce(history);
+    const res = await GET(makeReq() as Parameters<typeof GET>[0], { params: Promise.resolve({ loopId: 'loop_abc123' }) });
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_abc123', OPERATOR_DID);
+    expect(res.headers.get('cache-control')).toBe('private, no-store');
+    expect(await res.json()).toEqual(history);
+  });
   it('returns 401 without a lookup when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
 

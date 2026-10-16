@@ -4,7 +4,7 @@
  * the recursive lineage query) onto the camelCase JSON shape the
  * `GET /api/loops` / `GET /api/loops/:loopId` routes return.
  */
-
+import type { LoopOutput, StoredLoopOutput } from '@imajin/bus';
 export interface LoopJson {
   loopId: string;
   kind: string;
@@ -27,7 +27,7 @@ export interface LoopEventJson {
   type: string;
   issuer: string;
   principal: string;
-  payload: Record<string, unknown>;
+  payload: Record<string, unknown> & { output?: LoopOutput | StoredLoopOutput };
   occurredAt: string;
   createdAt: string;
 }
