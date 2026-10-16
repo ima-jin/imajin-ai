@@ -115,11 +115,11 @@ export function ProvisionedAppScopes({ appDid }: Readonly<{ appDid: string }>) {
         </div>
       )}
       {result.error && <p role="alert" className="text-red-400">{result.error}</p>}
-      {result.message && <p role="status" className="text-gray-300">{result.message}</p>}
+      {result.message && <output className="block text-gray-300">{result.message}</output>}
       {result.proposalId && (
-        <p role="status" className="text-amber-300">
+        <output className="block text-amber-300">
           Proposal pending in <a className="underline" href={`#${approvalCardAnchorId(result.proposalId)}`}>Operator approvals below</a>. Nothing is approved until you countersign there.
-        </p>
+        </output>
       )}
     </div>
   );

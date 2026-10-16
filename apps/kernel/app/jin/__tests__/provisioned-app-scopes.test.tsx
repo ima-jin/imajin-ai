@@ -137,6 +137,7 @@ describe('provisioned app row service scopes', () => {
     const { unmount } = renderRow();
     unmount();
     await act(async () => { finish(response(scopes)); });
+    expect(screen.queryByTestId('provisioned-app')).toBeNull();
   });
 
   it('keeps a provision without an app DID visible without fetching scopes', () => {
