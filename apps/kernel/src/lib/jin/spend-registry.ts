@@ -1,7 +1,7 @@
 /** Registry-first Spend adapter; legacy Warp derivation is missing-loop only. */
 import {
   costPerClosedIssue, defaultInterimDeps, deriveInterimSpend, groupByIssue,
-  monthStartIso, RECENT_RUN_COUNT,
+  monthStartIso, RECENT_RUN_COUNT, MAX_GITHUB_LOOKUPS,
   type InterimDeps, type InterimRunCost, type InterimSpend, type IssueRef, type IssueState,
 } from './spend-interim-join';
 import {
@@ -61,6 +61,20 @@ async function issueStates(runs: InterimRunCost[], deps: InterimDeps): Promise<M
   return new Map(entries);
 }
 
+/** One per-request budget/cache shared by fallback and registry issue reads. */
+function boundedIssueReader(deps: InterimDeps): InterimDeps['readIssueState'] {
+  const cache = new Map<string, Promise<IssueState>>();
+  return (repo, number) => {
+    const key = `${repo}#${number}`;
+    const cached = cache.get(key);
+    if (cached) return cached;
+    if (cache.size >= MAX_GITHUB_LOOKUPS) return Promise.resolve('unknown');
+    const state = deps.readIssueState(repo, number).catch(() => 'unknown' as const);
+    cache.set(key, state);
+    return state;
+  };
+}
+
 export async function buildRegistrySpend(
   principal: string, deps: RegistrySpendDeps, now: Date = new Date(),
 ): Promise<RegistryLaneSpend> {
@@ -68,13 +82,14 @@ export async function buildRegistrySpend(
   const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)).toISOString();
   // Read registry first; never downgrade a DB failure to a heuristic join.
   const registry = await deps.readRegistry(principal, from, to);
-  const fallback = await deriveInterimSpend(principal, deps.interim, now, {
+  const interim = { ...deps.interim, readIssueState: boundedIssueReader(deps.interim) };
+  const fallback = await deriveInterimSpend(principal, interim, now, {
     registeredRunIds: (ids) => deps.registered(principal, ids),
     recentLimit: Number.MAX_SAFE_INTEGER,
   });
   const runs = [...registry.runs.map(registryRun), ...fallback.runs];
   runs.sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? '') || a.runId.localeCompare(b.runId));
-  const states = await issueStates(runs, deps.interim);
+  const states = await issueStates(runs, interim);
   const issues = groupByIssue(runs, states);
   return {
     label: fallback.runs.length > 0

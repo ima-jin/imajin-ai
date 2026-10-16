@@ -217,7 +217,7 @@ describe('aggregation', () => {
     );
     expect(issues).toEqual([
       { repo: 'o/r', number: 2, state: 'unknown', runCount: 1, warpTotal: null, meteredUsd: null },
-      { repo: 'o/r', number: 1, state: 'closed', runCount: 2, warpTotal: 2, meteredUsd: 0.5 },
+      { repo: 'o/r', number: 1, state: 'closed', runCount: 2, warpTotal: 2, meteredUsd: null },
     ]);
   });
 
@@ -228,7 +228,7 @@ describe('aggregation', () => {
       { repo: 'o/r', number: 3, state: 'open', runCount: 1, warpTotal: 100, meteredUsd: 100 },
       { repo: 'o/r', number: 4, state: 'unknown', runCount: 1, warpTotal: 100, meteredUsd: 100 },
     ];
-    expect(costPerClosedIssue(issues)).toEqual({ closedCount: 2, unknownCount: 1, warpPerIssue: 3, meteredUsdPerIssue: 0.5 });
+    expect(costPerClosedIssue(issues)).toEqual({ closedCount: 2, unknownCount: 1, warpPerIssue: 3, meteredUsdPerIssue: null });
   });
 
   it('has no per-issue figure with zero closed issues or no cost', () => {
@@ -244,6 +244,47 @@ describe('aggregation', () => {
 });
 
 describe('deriveInterimSpend', () => {
+  it('leaves shared session/conversation aliases unassigned while exact run IDs win collisions', async () => {
+    const runs = [
+      run({ runId: 'a', sessionId: 'shared', conversationId: 'a' }),
+      run({ runId: 'b', sessionId: 'a', conversationId: 'shared' }),
+      run({ runId: 'c', sessionId: 'shared', conversationId: 'unique' }),
+    ];
+    const out = await deriveInterimSpend(OPERATOR, deps({
+      listRuns: vi.fn(async () => ({ runs, hasNextPage: false })),
+      meteredBySession: vi.fn(async () => new Map([
+        ['a', { usd: 2, turns: 1 }],
+        ['shared', { usd: 50, turns: 5 }],
+        ['unique', { usd: 3, turns: 2 }],
+      ])),
+    }), NOW);
+    expect(out.runs.map((row) => row.metered)).toEqual([{ usd: 2, turns: 1 }, null, { usd: 3, turns: 2 }]);
+  });
+
+  it('counts a repeated run and repeated aliases only once', async () => {
+    const repeated = run({ sessionId: 'same', conversationId: 'same', artifacts: [prArtifact(null, 'feat/9-x')] });
+    const out = await deriveInterimSpend(OPERATOR, deps({
+      listRuns: vi.fn(async () => ({ runs: [repeated, repeated], hasNextPage: false })),
+      meteredBySession: vi.fn(async () => new Map([['same', { usd: 5, turns: 1 }]])),
+    }), NOW);
+    expect(out.runs).toHaveLength(1);
+    expect(out.issues[0]).toMatchObject({ runCount: 1, meteredUsd: 5 });
+  });
+
+  it('keeps mixed known and unknown session costs unknown regardless of order', async () => {
+    const out = await deriveInterimSpend(OPERATOR, deps({
+      listRuns: vi.fn(async () => ({
+        runs: [run({ runId: 'a', sessionId: 'unknown-a' }), run({ runId: 'b', sessionId: 'known-b' })],
+        hasNextPage: false,
+      })),
+      meteredBySession: vi.fn(async () => new Map([
+        ['a', { usd: 5, turns: 1 }], ['unknown-a', { usd: null, turns: 1 }],
+        ['b', { usd: null, turns: 1 }], ['known-b', { usd: 7, turns: 1 }],
+      ])),
+    }), NOW);
+    expect(out.runs.map((row) => row.metered)).toEqual([{ usd: null, turns: 2 }, { usd: null, turns: 2 }]);
+    expect(out.runs.every((row) => row.attribution === 'unattributed')).toBe(true);
+  });
   it('reports runs unavailable (and invents nothing) when Warp cannot be read', async () => {
     const out = await deriveInterimSpend(OPERATOR, deps({ listRuns: vi.fn(async () => { throw new Error('no key'); }) }), NOW);
     expect(out).toMatchObject({ runsAvailable: false, runs: [], issues: [], label: INTERIM_LABEL, windowFrom: '2026-10-01T00:00:00.000Z' });
