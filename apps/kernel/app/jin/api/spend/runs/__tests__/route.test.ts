@@ -18,7 +18,7 @@ vi.mock('@/src/lib/notify/operator-approvals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/src/lib/notify/operator-approvals')>();
   return { ...actual, getOperatorDid: mockGetOperatorDid };
 });
-vi.mock('@/src/lib/jin/spend-interim-join', () => ({ readInterimSpend: mockReadInterimSpend }));
+vi.mock('@/src/lib/jin/spend-registry', () => ({ readRegistryLaneSpend: mockReadInterimSpend }));
 
 import { GET, OPTIONS } from '../route';
 

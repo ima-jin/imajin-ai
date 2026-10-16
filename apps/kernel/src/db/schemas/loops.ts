@@ -33,6 +33,8 @@ export const loops = loopsSchema.table('loops', {
   parentIdx: index('idx_loops_parent').on(table.parentLoopId).where(sql`${table.parentLoopId} IS NOT NULL`),
   kindIdx: index('idx_loops_kind').on(table.kind),
   stateIdx: index('idx_loops_state').on(table.state),
+  refsIdx: index('idx_loops_refs').using('gin', table.refs.op('jsonb_path_ops')),
+  runIdx: index('idx_loops_principal_run').on(table.principal, sql`(${table.refs}->>'runId')`),
 }));
 
 export type LoopRow = typeof loops.$inferSelect;

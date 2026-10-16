@@ -102,6 +102,20 @@ describe('formatters', () => {
 });
 
 describe('SpendPanel operator gate', () => {
+  it('renders registry attribution and signed issue linkage from the Spend reader', async () => {
+    const registered = runCost({
+      warp: null, metered: { usd: 5, turns: 2 }, attribution: 'metered',
+      linkage: { branch: null, prUrl: null, prRepo: null, prNumber: null, issue: { repo: 'o/r', number: 2290 }, issueVia: 'registry' },
+    });
+    installFetch({ runs: { isOperator: true, interim: interim({
+      label: 'registry · signed loop refs + usage.incurred', runs: [registered],
+    }) } });
+    render(<SpendPanel />);
+    expect(await screen.findByText('registry · signed loop refs + usage.incurred')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /Fix the thing/ }));
+    expect(screen.getByText('issue #2290 (via registry)')).toBeDefined();
+    expect(screen.getByText('Metered: $5.00 over 2 turns')).toBeDefined();
+  });
   it('renders nothing for a non-operator — no header, no data, no interim block', async () => {
     const spy = installFetch({ spend: { isOperator: false, spend: null }, runs: { isOperator: false, interim: null } });
     const { container } = render(<SpendPanel />);

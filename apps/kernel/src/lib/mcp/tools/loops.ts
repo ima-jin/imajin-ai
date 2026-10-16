@@ -44,6 +44,10 @@ function loopsListFilters(args: Record<string, unknown>, principal: string): Lis
   const since = str(args, 'since');
   const limit = num(args, 'limit');
   const cursor = str(args, 'cursor');
+  const runId = str(args, 'runId');
+  const issue = str(args, 'issue');
+  const pr = str(args, 'pr');
+  const sessionKey = str(args, 'sessionKey');
 
   return {
     principal,
@@ -53,6 +57,10 @@ function loopsListFilters(args: Record<string, unknown>, principal: string): Lis
     ...(since === undefined ? {} : { since }),
     ...(limit === undefined ? {} : { limit }),
     ...(cursor === undefined ? {} : { cursor }),
+    ...(runId === undefined ? {} : { runId }),
+    ...(issue === undefined ? {} : { issue }),
+    ...(pr === undefined ? {} : { pr }),
+    ...(sessionKey === undefined ? {} : { sessionKey }),
   };
 }
 
@@ -70,6 +78,10 @@ const listLoopsTool: McpTool = {
   inputSchema: {
     type: 'object',
     properties: {
+      runId: { type: 'string', description: 'Exact signed refs.runId filter.' },
+      issue: { type: 'string', description: 'Exact signed refs.issue filter.' },
+      pr: { type: 'string', description: 'Exact signed refs.pr filter.' },
+      sessionKey: { type: 'string', description: 'Exact signed refs.sessionKey filter.' },
       state: {
         type: 'string',
         description: 'Optional loop lifecycle state filter, e.g. "queued", "running", "blocked", "finished".',
