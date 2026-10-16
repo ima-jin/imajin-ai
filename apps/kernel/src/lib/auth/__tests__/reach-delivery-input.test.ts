@@ -25,7 +25,7 @@ describe('reach delivery input', () => {
 
   it.each([
     { message: undefined }, { topic: undefined }, { replyHandle: undefined },
-    { message: '' }, { message: '   ' }, { message: 3 }, { topic: 'private-unknown' },
+    { message: '' }, { message: '   ' }, { message: 3 }, { topic: '' }, { topic: 'a'.repeat(201) },
     { message: 'a'.repeat(MAX_REACH_MESSAGE_LENGTH + 1) },
     { replyHandle: 'a'.repeat(MAX_REPLY_HANDLE_LENGTH + 1) },
     { replyHandle: ' ' }, { purpose: 'other' }, { field: 'other' },

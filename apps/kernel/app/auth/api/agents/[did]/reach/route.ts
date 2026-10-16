@@ -4,8 +4,9 @@
  * A foreign agent (already holding a did:imajin identity minted via the
  * existing, unmodified knock -> accept flow, #1883) asks whether `:did` — a
  * specific principal, e.g. Ryan — is open to being contacted about a
- * declared topic, on behalf of its own principal (e.g. Alice). Returns ONLY
- * a boolean answer, never the underlying gate data.
+ * declared topic, on behalf of its own principal (e.g. Alice). Boolean-only
+ * asks remain unchanged. A delivery bundle stores the full message only for
+ * an admitted, published topic in deliver mode, never the underlying gate data.
  *
  * No session/bearer auth on this route: the requester proves itself via a
  * request-body Ed25519 signature over the canonical transcript
@@ -22,13 +23,18 @@
  *   predicate: 'contains' | 'overlaps' | 'is_empty' | 'eq' | 'gte' | 'lte',
  *   arg?: unknown,        // e.g. 'business_development'
  *   issuedAt: string,     // ISO 8601
+ *   message?: string,     // delivery bundle: all three fields required together
+ *   topic?: string,       // canonical contact topic; must equal arg
+ *   replyHandle?: string, // opaque caller transport reference; no callback in #2588
  *   signature: string,    // hex Ed25519 over reachTranscript(did, { ...above })
  * }
- * Returns: { answer: boolean, transcriptHash: string, issuedAt: string }
+ * Returns: { delivered: true, reachId } on delivery, otherwise the existing
+ * { answer: boolean, transcriptHash: string, issuedAt: string } gate answer.
+ * Credential failures retain { error, onboarding }; sender limits return 429.
  *
  * All authorization decisions fail closed and are logged via
- * `agent.reach.answered` / `agent.reach.denied` bus events (routed to the
- * `audit-log` reactor, migrations/0151_foreign_principal_stubs.sql).
+ * `agent.reach.answered` / `agent.reach.denied` audit events. Delivery emits
+ * `agent.reach.delivered` with signed provenance through emit + notify.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';

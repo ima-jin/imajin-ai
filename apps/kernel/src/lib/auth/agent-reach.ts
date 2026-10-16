@@ -35,6 +35,8 @@ import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { isTierAdmitted } from '@/src/lib/jin/front-door';
 import { generateId } from '@/src/lib/kernel/id';
 import type { ReachDeliveryInput } from './reach-delivery-input';
+import { parseReachDelivery } from './reach-delivery-input';
+import { deliverReach } from './reach-delivery';
 
 const log = createLogger('kernel');
 
@@ -62,7 +64,7 @@ export interface ReachRequestInput extends Partial<ReachDeliveryInput> {
   signature: string;
 }
 
-export type ReachDenialReason = 'invalid_signature' | 'unauthorized' | 'principal_not_found' | 'requester_unknown';
+export type ReachDenialReason = 'invalid_signature' | 'unauthorized' | 'principal_not_found' | 'requester_unknown' | 'rate_limited';
 
 export interface ReachAnswer {
   answer: boolean;
@@ -157,7 +159,8 @@ interface EmitReachAttestationParams {
   input: ReachRequestInput;
   transcriptHash: string;
   signatureVerified: boolean;
-  outcome: 'answered' | 'denied';
+  outcome: 'answered' | 'denied' | 'delivered';
+  reachId?: string;
   reason?: ReachDenialReason;
   answer?: boolean;
   onBehalfOfStubDid?: string;
@@ -203,6 +206,7 @@ async function emitReachAttestation(params: EmitReachAttestationParams): Promise
       grantId: params.grantId ?? null,
       outcome: params.outcome,
       ...(params.outcome === 'denied' ? { reason: params.reason } : { answer: params.answer }),
+      ...(params.reachId ? { reachId: params.reachId } : {}),
     },
   }).catch((err: unknown) => log.error({ err: String(err), outcome: params.outcome }, '[agent-reach] emitAttestation failed'));
 }
@@ -226,6 +230,25 @@ async function denyReach(params: {
   await publishDenied({ requesterDid: params.input.requesterDid, principalDid: params.principalDid, reason: params.reason });
 }
 
+async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Promise<ReachDelivered | ReachDenied | null> {
+  const { principalDid, input, transcriptHash, onBehalfOfStubDid, grantId } = params;
+  const result = await deliverReach(params);
+  if (result.outcome === 'declined') return null;
+  if (result.outcome !== 'delivered') {
+    const reason = result.outcome === 'blocked' ? 'unauthorized' : 'rate_limited';
+    await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: true });
+    return denial(reason, result.outcome === 'blocked' ? 403 : 429);
+  }
+  if (!result.replayed) {
+    await emitReachAttestation({
+      principalDid, input, transcriptHash, signatureVerified: true, outcome: 'delivered',
+      answer: true, reachId: result.reachId, onBehalfOfStubDid, grantId,
+    });
+    await publish('agent.reach.delivered', result.event);
+  }
+  return { delivered: true, reachId: result.reachId };
+}
+
 /**
  * Evaluate one reach request against `principalDid`'s gate. Fails closed at
  * every step: an unknown principal, an unknown/unsigned-for requester, a
@@ -241,7 +264,7 @@ async function denyReach(params: {
 export async function reachPrincipal(
   principalDid: string,
   input: ReachRequestInput,
-): Promise<ReachAnswer | ReachDenied> {
+): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
   const transcript = reachTranscript(principalDid, input);
   const transcriptHash = hashTranscript(transcript);
 
@@ -299,6 +322,7 @@ export async function reachPrincipal(
   }
 
   const stub = await resolveOrMintForeignPrincipalStub({
+    // An unverified human claim, not a grant or an authenticated sender.
     platform: input.onBehalfOf.platform,
     externalRef: input.onBehalfOf.externalRef,
   });
@@ -317,8 +341,22 @@ export async function reachPrincipal(
     predicates: { [input.field]: { predicate: input.predicate, arg: input.arg } },
   });
 
-  const answer = isBrokerRelease(brokerResult) ? extractAnswer(brokerResult.data, input.field) : false;
+  let answer = isBrokerRelease(brokerResult) ? extractAnswer(brokerResult.data, input.field) : false;
   const issuedAt = new Date().toISOString();
+  const delivery = parseReachDelivery(input as unknown as Record<string, unknown>);
+  if (!delivery.ok) {
+    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
+    return denial('unauthorized', 403);
+  }
+  if (delivery.delivery) {
+    const result = await completeDelivery({
+      principalDid, input: { ...input, ...delivery.delivery }, metadata: principal.metadata,
+      requesterTier: requester.tier ?? 'unknown', onBehalfOfStubDid: stub.did,
+      grantId: introspection.grantId, transcriptHash, admitted: answer,
+    });
+    if (result) return result;
+    answer = false;
+  }
 
   await emitReachAttestation({
     principalDid,

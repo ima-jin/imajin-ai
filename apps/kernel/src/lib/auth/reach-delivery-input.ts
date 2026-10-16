@@ -1,4 +1,3 @@
-import { normalizeBrokerTerm } from '@imajin/auth/broker-consent-vocabulary';
 
 export interface ReachDeliveryInput {
   message: string;
@@ -23,8 +22,8 @@ export function parseReachDelivery(body: Record<string, unknown>):
   if (!boundedText(message, MAX_REACH_MESSAGE_LENGTH)) {
     return { ok: false, error: `message must be non-empty text of at most ${MAX_REACH_MESSAGE_LENGTH} characters` };
   }
-  if (typeof topic !== 'string' || normalizeBrokerTerm('contact_topic', topic) !== topic) {
-    return { ok: false, error: 'topic must be a canonical contact topic' };
+  if (!boundedText(topic, 200)) {
+    return { ok: false, error: 'topic must be non-empty text of at most 200 characters' };
   }
   if (!boundedText(replyHandle, MAX_REPLY_HANDLE_LENGTH)) {
     return { ok: false, error: `replyHandle must be non-empty text of at most ${MAX_REPLY_HANDLE_LENGTH} characters` };

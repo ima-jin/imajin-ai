@@ -62,6 +62,20 @@ describe('POST /auth/api/agents/:did/reach', () => {
     expect((response as { status: number }).status).toBe(400);
   });
 
+  it.each([null, [], 3, 'not-an-object'])('rejects non-object JSON %j with 400', async (body) => {
+    const response = await POST(makeRequest(body) as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect((response as { status: number }).status).toBe(400);
+    expect(reachPrincipalMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects incomplete delivery bundles before invoking the service', async () => {
+    const response = await POST(makeRequest(validBody({ message: 'Hello' })) as never, {
+      params: Promise.resolve({ did: PRINCIPAL_DID }),
+    });
+    expect((response as { status: number }).status).toBe(400);
+    expect(reachPrincipalMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a body missing onBehalfOf with 400', async () => {
     const body = validBody();
     delete (body as Record<string, unknown>).onBehalfOf;
