@@ -31,20 +31,19 @@ import { corsHeaders } from '@/src/lib/kernel/cors';
 import { parseLoopIngestRequest } from '@/src/lib/loops/types';
 import { ingestLoopEvent } from '@/src/lib/loops/ingest';
 import { listLoops } from '@/src/lib/loops/query';
+import { readLoopRequest } from '@/src/lib/loops/read-request';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
+  const body = await readLoopRequest(request);
+  if (!body.ok) {
+    return NextResponse.json({ error: body.error }, { status: body.status, headers: cors });
   }
 
-  const parsed = parseLoopIngestRequest(body);
+  const parsed = parseLoopIngestRequest(body.body);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400, headers: cors });
   }

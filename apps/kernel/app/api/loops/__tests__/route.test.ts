@@ -79,6 +79,11 @@ describe('OPTIONS /api/loops', () => {
 });
 
 describe('POST /api/loops (signed ingest)', () => {
+  it('returns 413 for an oversized chunked request without calling ingest', async () => {
+    const res = await POST(makePostReq({ text: 'x'.repeat(1024 * 1024) }) as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(413);
+    expect(mockIngestLoopEvent).not.toHaveBeenCalled();
+  });
   it('returns 400 for invalid JSON without calling ingestLoopEvent', async () => {
     const req = new Request('https://test.imajin.ai/api/loops', { method: 'POST', body: '{not json' });
     const res = await POST(req as Parameters<typeof POST>[0]);
