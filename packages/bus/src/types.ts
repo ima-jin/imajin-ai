@@ -67,6 +67,7 @@ export interface LoopRefs {
   runId?: string;
   sessionKey?: string;
   sessionId?: string;
+  conflictingLoopId?: string;
 }
 
 /**
@@ -2259,6 +2260,10 @@ export interface BusEventMap {
   'loop.progress': LoopEventPayload;
   'loop.blocked': LoopEventPayload;
   'loop.finished': LoopEventPayload;
+  /** Signed advisory observations on the loops rail (#2405), never dispatch gates. */
+  'surface.acquired': LoopEventPayload;
+  'surface.released': LoopEventPayload;
+  'surface.conflicted': LoopEventPayload;
   /**
    * A `notify.templates` row changed (#1510, data-driven notify templates).
    * Consumed by the kernel's `notify-template-hot-reload` reactor

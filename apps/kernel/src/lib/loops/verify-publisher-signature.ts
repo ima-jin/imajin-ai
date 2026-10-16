@@ -43,7 +43,7 @@ import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { createDbResolver } from '@imajin/auth/resolve-db';
 import { db, identities } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import type { LoopEnvelope, LoopLifecycleType, LoopPublisherSignature } from './types';
+import type { LoopEnvelope, LoopRailType, LoopPublisherSignature } from './types';
 
 export type VerifyLoopPublisherSignatureResult = { ok: true } | { ok: false; error: string };
 
@@ -72,7 +72,7 @@ async function resolvePublisherPublicKey(publisherDid: string): Promise<string |
  */
 export async function verifyLoopPublisherSignature(
   publisherDid: string,
-  fields: { type: LoopLifecycleType; payload: LoopEnvelope },
+  fields: { type: LoopRailType; payload: LoopEnvelope },
   signature: LoopPublisherSignature,
 ): Promise<VerifyLoopPublisherSignatureResult> {
   if (signature.alg !== 'ed25519') {
