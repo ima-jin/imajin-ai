@@ -12,7 +12,8 @@
  *   - typ:  'app-service+jwt'
  *   - sub:  appDid  (no user)
  *   - azp:  appDid
- *   - scope: app's registered requestedScopes (clamped to SCOPES vocabulary)
+ *   - scope: requested service-eligible scopes plus operator-approved scopes
+ *     (clamped to SCOPES vocabulary)
  *
  * Security: service tokens carry NO userDid — they cannot impersonate a user.
  * Routes that accept service tokens must resolve the effective user separately
@@ -90,7 +91,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid proof-of-possession signature' }, { status: 401, headers: cors });
   }
 
-  // Clamp app's registered scopes to the SCOPES vocabulary (ignore any stale/unknown
+  // Current operator approvals also count as requests for existing apps whose
+  // requestedScopes predates request recording on grant (#2824).
+  // Clamp the effective requests to the SCOPES vocabulary (ignore any stale/unknown
   // scopes), THEN clamp again to the service fence (#1803): a session-less service
   // token may only carry scopes marked `serviceEligible` in the vocabulary OR
   // explicitly approved by the operator for THIS app (#2711, countersigned
