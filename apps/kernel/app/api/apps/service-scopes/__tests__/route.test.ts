@@ -78,6 +78,7 @@ function post(body: unknown): Request {
     method: 'POST',
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
+
 }
 
 function app(overrides: Record<string, unknown> = {}) {
@@ -201,14 +202,28 @@ describe('POST /api/apps/service-scopes', () => {
 
 describe('GET /api/apps/service-scopes', () => {
   const get = (qs: string) => new Request(`https://kernel.test/api/apps/service-scopes${qs}`);
+  it('lets the operator read platform-owned requested scopes', async () => {
+    requireAuthMock.mockResolvedValue({ identity: { id: OPERATOR, scope: 'actor', subtype: 'human' } });
+    selectWhereMock.mockResolvedValue([app({ ownerDid: 'did:imajin:platform', requested: ['pay:settle'] })]);
+    const res = await GET(get(`?appDid=${APP_DID}`) as never);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ requestedScopes: ['pay:settle'], approvedServiceScopes: [] });
+  });
 
-  it('returns the approved set + last approval for the owner', async () => {
+  it.each([null, undefined, 'invalid', [1]])('uses empty scopes for malformed registry value %j', async (requested) => {
+    selectWhereMock.mockResolvedValue([app({ requested })]);
+    const res = await GET(get(`?appDid=${APP_DID}`) as never);
+    expect(await res.json()).toMatchObject({ requestedScopes: [] });
+  });
+
+  it('returns normalized requested and approved sets + last approval for the owner', async () => {
     selectWhereMock.mockResolvedValue([
-      { ownerDid: OWNER, approved: ['identity:write', 'identity:read'], approvalId: 'appscope_1', approvedAt: '2026-10-07T14:00:00.000Z' },
+      { ownerDid: OWNER, requested: ['pay:settle', 'identity:read', 'pay:settle'], approved: ['identity:write', 'identity:read'], approvalId: 'appscope_1', approvedAt: '2026-10-07T14:00:00.000Z' },
     ]);
     const res = await GET(get(`?appDid=${APP_DID}`) as never);
     expect(await res.json()).toEqual({
       appDid: APP_DID,
+      requestedScopes: ['identity:read', 'pay:settle'],
       approvedServiceScopes: ['identity:read', 'identity:write'],
       approvalId: 'appscope_1',
       approvedAt: '2026-10-07T14:00:00.000Z',
