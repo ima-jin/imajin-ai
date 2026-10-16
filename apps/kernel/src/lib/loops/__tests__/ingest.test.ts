@@ -1,11 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockVerify, mockAuthorize, mockPublish, logMock } = vi.hoisted(() => ({
+const { mockVerify, mockAuthorize, mockPublish, mockSql, logMock } = vi.hoisted(() => ({
   mockVerify: vi.fn(),
   mockAuthorize: vi.fn(),
   mockPublish: vi.fn(),
+  mockSql: vi.fn(),
   logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+vi.mock('@imajin/db', () => ({ getClient: () => mockSql }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => logMock,
@@ -25,6 +28,7 @@ vi.mock('@imajin/bus', () => ({
 
 import { ingestLoopEvent } from '../ingest';
 import type { LoopIngestRequest } from '../types';
+import { OUTPUTS } from './output-fixtures';
 
 const REQUEST: LoopIngestRequest = {
   type: 'loop.started',
@@ -44,6 +48,7 @@ const REQUEST: LoopIngestRequest = {
 beforeEach(() => {
   vi.clearAllMocks();
   mockAuthorize.mockResolvedValue({ authorized: true });
+  mockSql.mockResolvedValue([{ loop_id: 'loop_abc123' }]);
 });
 
 describe('ingestLoopEvent', () => {
@@ -139,5 +144,101 @@ describe('ingestLoopEvent', () => {
     const result = await ingestLoopEvent(REQUEST);
 
     expect(result).toEqual({ ok: false, error: 'Failed to publish loop event', status: 500 });
+  });
+
+  it.each(OUTPUTS)('ingests $kind without discarding nested JSON', async output => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const payload = { ...REQUEST.payload, output };
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toEqual({ ok: true });
+    expect(mockVerify).toHaveBeenCalledWith(REQUEST.publisherDid, { type: REQUEST.type, payload }, REQUEST.signature);
+    expect(mockPublish.mock.calls[0][1].payload.output).toEqual(output);
+    expect(mockSql).toHaveBeenCalledTimes(1);
+  });
+
+  it('redacts the entire persisted envelope only after verifying the signed original', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const payload = {
+      ...REQUEST.payload,
+      summary: 'Bearer original-secret',
+      refs: { sessionId: 'postgres://user:pass@host/db' },
+      metadata: { api_key: 'nested-secret' },
+      output: { kind: 'tool_result' as const, callId: '1', result: { newField: [{ accessToken: 'secret', value: 'retained' }] } },
+    };
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toEqual({ ok: true });
+    expect(mockVerify.mock.calls[0][1].payload).toBe(payload);
+    expect(payload.summary).toBe('Bearer original-secret');
+    const persisted = mockPublish.mock.calls[0][1].payload;
+    expect(persisted.summary).toBe('Bearer [REDACTED]');
+    expect(persisted.refs.sessionId).toBe('postgres://[REDACTED]@host/db');
+    expect(persisted.metadata.api_key).toBe('[REDACTED]');
+    expect(persisted.output.result.newField[0]).toEqual({ accessToken: '[REDACTED]', value: 'retained' });
+    expect(JSON.stringify(mockSql.mock.calls)).not.toContain('nested-secret');
+  });
+
+  it('spills redacted UTF8 output above 16KiB and publishes only the server wrapper', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const output = { kind: 'text' as const, text: `Bearer original-secret ${'界'.repeat(6000)}` };
+    expect(await ingestLoopEvent({ ...REQUEST, payload: { ...REQUEST.payload, output } })).toEqual({ ok: true });
+    expect(mockSql).toHaveBeenCalledTimes(2);
+    const stored = mockPublish.mock.calls[0][1].payload.output;
+    expect(stored).toMatchObject({ kind: 'text', truncated: true, artifactRef: { mediaType: 'application/json' } });
+    expect(stored.artifactRef.byteLength).toBeGreaterThan(16384);
+    expect(stored.preview.length).toBeLessThanOrEqual(512);
+    expect(JSON.stringify(mockSql.mock.calls)).not.toContain('original-secret');
+  });
+
+  it('fails ownership conflicts before artifact writes and publish', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockSql.mockResolvedValueOnce([]);
+    const output = { kind: 'text' as const, text: 'x'.repeat(20000) };
+    expect(await ingestLoopEvent({ ...REQUEST, payload: { ...REQUEST.payload, output } })).toMatchObject({ status: 409, code: 'loop_owner_conflict' });
+    expect(mockSql).toHaveBeenCalledTimes(1);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('fails artifact storage closed without logging driver errors or publishing', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockSql.mockResolvedValueOnce([{ loop_id: 'loop_abc123' }]).mockRejectedValueOnce(new Error('raw secret payload'));
+    const output = { kind: 'text' as const, text: 'x'.repeat(20000) };
+    expect(await ingestLoopEvent({ ...REQUEST, payload: { ...REQUEST.payload, output } })).toMatchObject({ status: 500 });
+    expect(mockPublish).not.toHaveBeenCalled();
+    expect(JSON.stringify(logMock.error.mock.calls)).not.toContain('raw secret payload');
+  });
+
+  it('maps a reactor ownership conflict to 409', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockPublish.mockRejectedValueOnce({ code: 'loop_owner_conflict' });
+    expect(await ingestLoopEvent(REQUEST)).toMatchObject({ status: 409 });
+  });
+
+  it('rejects publisher storage wrappers even for direct callers', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const output = { kind: 'text', artifactRef: { id: 'forged' }, preview: 'text', truncated: true };
+    expect(await ingestLoopEvent({ ...REQUEST, payload: { ...REQUEST.payload, output } } as unknown as LoopIngestRequest)).toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it.each(['loopId', 'principal'])('rejects redaction-changing identity %s before ownership writes', async field => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const payload = { ...REQUEST.payload, [field]: 'did:imajin:sk-secretcredential' };
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('enforces metadata budget after redaction expansion', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const metadata = Object.fromEntries(Array.from({ length: 1000 }, (_, index) => [`token${index}`, '']));
+    const payload = { ...REQUEST.payload, metadata };
+    expect(Buffer.byteLength(JSON.stringify(payload), 'utf8')).toBeLessThan(16384);
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+  });
+
+  it('enforces metadata budget for direct ingest callers', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    expect(await ingestLoopEvent({ ...REQUEST, payload: { ...REQUEST.payload, metadata: 'x'.repeat(16384) } })).toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
   });
 });

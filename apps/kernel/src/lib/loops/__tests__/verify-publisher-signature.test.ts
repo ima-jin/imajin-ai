@@ -34,6 +34,7 @@ vi.mock('@/src/lib/vault/sealing', () => ({
 }));
 
 import { verifyLoopPublisherSignature } from '../verify-publisher-signature';
+import { parseLoopIngestRequest } from '../types';
 
 const NODE_DID = 'did:imajin:79d90672eb5b176d';
 
@@ -65,6 +66,28 @@ beforeEach(() => {
 });
 
 describe('verifyLoopPublisherSignature', () => {
+  it.each([
+    {},
+    { parentLoopId: null, refs: null },
+    { parentLoopId: 'parent', refs: { sessionId: 'session' } },
+  ])('verifies real signatures after parsing absent/null fields and extensions %#', async optional => {
+    const fields = {
+      type: 'loop.progress' as const,
+      payload: {
+        ...FIELDS.payload,
+        ...optional,
+        at: new Date().toISOString(),
+        output: { kind: 'tool_call', callId: '1', name: 'tool', args: { unknown: { password: 'not-redacted-before-verification' } } },
+        extension: { preserve: [1, null, true] },
+      },
+    };
+    const signature = { keyId: NODE_KEYPAIR.publicKey, alg: 'ed25519', sig: authCrypto.signSync(canonicalize(fields), NODE_KEYPAIR.privateKey) };
+    const parsed = parseLoopIngestRequest({ ...fields, publisherDid: NODE_DID, signature });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error('parse failed');
+    expect(canonicalize({ type: parsed.value.type, payload: parsed.value.payload })).toBe(canonicalize(fields));
+    expect(await verifyLoopPublisherSignature(NODE_DID, { type: parsed.value.type, payload: parsed.value.payload }, parsed.value.signature)).toEqual({ ok: true });
+  });
   it('accepts a valid signature from the publisher DID\'s current registered key (happy path)', async () => {
     const { privateKey, publicKey } = authCrypto.generateKeypair();
     mockLimit.mockResolvedValueOnce([{ id: PUBLISHER_DID, publicKey, type: 'actor', tier: 'established' }]);

@@ -23,6 +23,10 @@ import * as bus from '@imajin/bus';
 import { verifyLoopPublisherSignature } from './verify-publisher-signature';
 import { authorizeLoopPublisher } from './authorize-publisher';
 import type { LoopIngestRequest } from './types';
+import { prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
+import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
+import { redactLoopText } from './output-redaction';
+import { canonicalize } from '@imajin/auth';
 
 const log = createLogger('kernel:loops');
 
@@ -33,8 +37,18 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
 
   const verification = await verifyLoopPublisherSignature(publisherDid, { type, payload }, signature);
   if (!verification.ok) {
-    log.warn({ type, loopId: payload.loopId, publisherDid, reason: verification.error }, 'loop event signature rejected');
+    log.warn({ type }, 'loop event signature rejected');
     return { ok: false, error: verification.error, status: 400 };
+  }
+  if (!isBoundedLoopJson(payload) || !isWithinLoopMetadataBudget(payload) || (payload.output !== undefined && !isLoopOutput(payload.output))) {
+    return { ok: false, error: 'Invalid loop output', status: 400 };
+  }
+  const sanitized = redactLoopEnvelope(payload);
+  if (!isWithinLoopMetadataBudget(sanitized)) {
+    return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };
+  }
+  if (sanitized.loopId !== payload.loopId || sanitized.principal !== payload.principal || redactLoopText(publisherDid) !== publisherDid) {
+    return { ok: false, error: 'Loop identity fields must not contain credentials', status: 400 };
   }
 
   // #2358: a valid signature only proves publisherDid controls its own key —
@@ -43,7 +57,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   // (summary/refs/etc. may carry operator-authored free text).
   const authorization = await authorizeLoopPublisher(publisherDid, payload.principal);
   if (!authorization.authorized) {
-    log.warn({ publisherDid, principal: payload.principal }, 'loop event publisher not authorized for principal');
+    log.warn({ publisherDid: redactLoopText(publisherDid), principal: redactLoopText(payload.principal) }, 'loop event publisher not authorized for principal');
     return {
       ok: false,
       error: 'publisherDid is not authorized to publish loop history for principal',
@@ -53,23 +67,37 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   }
 
   try {
+    if (!await reserveLoopOwnership(type, sanitized)) {
+      return { ok: false, error: 'Loop belongs to a different principal', status: 409, code: 'loop_owner_conflict' };
+    }
+    const persistedPayload = await prepareLoopOutput(sanitized);
     await bus.publish(type, {
-      issuer: publisherDid,
-      subject: payload.principal,
+      issuer: redactLoopText(publisherDid),
+      subject: sanitized.principal,
       scope: 'loop',
       payload: {
-        ...payload,
-        // Persist the exact signed envelope separately from projection metadata.
-        // Never mutate payload: signature verification covers { type, payload }.
-        publisherProof: { type, payload, publisherDid, signature },
+        ...persistedPayload,
+        // Exact proofs are safe only when redaction/storage left the envelope
+        // unchanged; never reintroduce credentials or spilled output via a proof.
+        ...(persistedPayload === sanitized && canonicalize(payload) === canonicalize(sanitized)
+          ? { publisherProof: { type, payload, publisherDid, signature } }
+          : {}),
       },
-      correlationId: payload.loopId,
+      correlationId: sanitized.loopId,
     });
   } catch (err) {
-    log.error({ err: String(err), type, loopId: payload.loopId }, 'loop event publish failed');
+    if (isOwnershipConflict(err)) {
+      return { ok: false, error: 'Loop belongs to a different principal', status: 409, code: 'loop_owner_conflict' };
+    }
+    // Driver and reactor errors can embed query parameters or entire payloads.
+    log.error({ type }, 'loop event publish failed');
     return { ok: false, error: 'Failed to publish loop event', status: 500 };
   }
 
-  log.info({ type, loopId: payload.loopId, kind: payload.kind, principal: payload.principal }, 'loop event ingested');
+  log.info({ type, loopId: sanitized.loopId, kind: sanitized.kind, principal: sanitized.principal }, 'loop event ingested');
   return { ok: true };
+}
+
+function isOwnershipConflict(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'loop_owner_conflict';
 }
