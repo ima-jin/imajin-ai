@@ -8,6 +8,7 @@ import {
   blockReachSender,
   getReachEnvelope,
   listReachEnvelopes,
+  markReachPublished,
   persistReachEnvelope,
   type PersistReachEnvelopeParams,
 } from '../reach-envelope-store';
@@ -23,6 +24,7 @@ const migration = readFileSync(fileURLToPath(new URL(
 let database: PGlite;
 let statements: Array<{ sql: string; params: unknown[]; transaction: boolean }>;
 let failInsert = false;
+let failAttestation = false;
 
 function params(overrides: Partial<PersistReachEnvelopeParams> = {}): PersistReachEnvelopeParams {
   return {
@@ -42,6 +44,13 @@ function params(overrides: Partial<PersistReachEnvelopeParams> = {}): PersistRea
     requestIssuedAt: new Date(Date.now() - 1000).toISOString(),
     signedEvent: { type: 'agent.reach.delivered', payload: { signature: { sig: 'signed-provenance' } } },
     dailyCap: 100,
+    deliveryAttestation: {
+      id: `att_reach_${overrides.reachId ?? 'rch_1'}`, issuerDid: 'did:imajin:node',
+      subjectDid: overrides.principalDid ?? 'did:imajin:owner', type: 'agent.reach',
+      contextId: overrides.reachId ?? 'rch_1', contextType: 'agent.reach',
+      payload: { outcome: 'delivered', transcriptHash: overrides.transcriptHash ?? 'hash-1' },
+      signature: 'signed-attestation', cid: null, attestationStatus: null, issuedAt: new Date(),
+    },
     ...overrides,
   };
 }
@@ -50,14 +59,20 @@ beforeAll(async () => {
   database = new PGlite();
   await database.waitReady;
   await database.exec(migration);
+  await database.exec(`CREATE TABLE auth.attestations (
+    id text PRIMARY KEY, issuer_did text NOT NULL, subject_did text NOT NULL,
+    type text NOT NULL, context_id text, context_type text, payload jsonb,
+    signature text NOT NULL, cid text, attestation_status text, issued_at timestamptz NOT NULL
+  )`);
 });
 
 afterAll(async () => { await database?.close(); });
 
 beforeEach(async () => {
-  await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks');
+  await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks, auth.attestations');
   statements = [];
   failInsert = false;
+  failAttestation = false;
   // The real engine evaluates every storage/count/isolation query. PGlite is
   // single-connection, so the advisory-lock call is recorded (not executed).
   // This asserts lock placement but does NOT prove multi-connection contention.
@@ -67,6 +82,7 @@ beforeEach(async () => {
         statements.push({ sql, params: values, transaction });
         if (sql.includes('pg_advisory_xact_lock')) return [];
         if (failInsert && sql.includes('INSERT INTO auth.reach_envelopes')) throw new Error('insert failed');
+        if (failAttestation && sql.includes('INSERT INTO auth.attestations')) throw new Error('attestation insert failed');
         return (await target.query(sql, values)).rows;
       },
     };
@@ -95,9 +111,10 @@ describe('reach envelope storage (#2588)', () => {
   });
   it('persists full private envelope and signed provenance with an explicitly unverified claim', async () => {
     const input = params();
-    expect(await persistReachEnvelope(input)).toEqual({ stored: true, reachId: input.reachId });
+    expect(await persistReachEnvelope(input)).toMatchObject({ stored: true, reachId: input.reachId });
     const expected: Partial<PersistReachEnvelopeParams> = { ...input };
     delete expected.dailyCap;
+    delete expected.deliveryAttestation;
     expect(await getReachEnvelope(input)).toEqual({ ...expected, claimVerified: false });
     const write = statements.find(({ sql }) => sql.includes('INSERT INTO auth.reach_envelopes'));
     expect(write?.transaction).toBe(true);
@@ -121,9 +138,9 @@ describe('reach envelope storage (#2588)', () => {
     expect(await persistReachEnvelope(params({ reachId: 'over', transcriptHash: 'over' })))
       .toEqual({ stored: false, reason: 'rate_limited' });
     expect(await persistReachEnvelope(params({ reachId: 'other-sender', requesterDid: 'other' })))
-      .toEqual({ stored: true, reachId: 'other-sender' });
+      .toMatchObject({ stored: true, reachId: 'other-sender' });
     expect(await persistReachEnvelope(params({ reachId: 'other-owner', principalDid: 'other-owner' })))
-      .toEqual({ stored: true, reachId: 'other-owner' });
+      .toMatchObject({ stored: true, reachId: 'other-owner' });
   });
 
   it('supports a lower sender cap and zero daily or sender caps', async () => {
@@ -141,14 +158,17 @@ describe('reach envelope storage (#2588)', () => {
     }))).toEqual({ stored: false, reason: 'rate_limited' });
     expect(await persistReachEnvelope(params({
       reachId: 'other', requesterDid: 'other', dailyCap: null, perSenderDailyCap: 1,
-    }))).toEqual({ stored: true, reachId: 'other' });
+    }))).toMatchObject({ stored: true, reachId: 'other' });
   });
 
   it('returns original reachId on replay even after quota exhaustion, without replacing signed content', async () => {
     const original = params({ dailyCap: 1 });
     await persistReachEnvelope(original);
-    expect(await persistReachEnvelope({ ...original, reachId: 'replacement', message: 'do not overwrite' }))
-      .toEqual({ stored: true, reachId: original.reachId, replayed: true });
+    expect(await persistReachEnvelope({
+      ...original, reachId: 'replacement', message: 'do not overwrite',
+      deliveryAttestation: { ...original.deliveryAttestation, id: 'att_reach_replacement' },
+    }))
+      .toMatchObject({ stored: true, reachId: original.reachId, replayed: true });
     expect((await getReachEnvelope(original))?.message).toBe(original.message);
     expect(await listReachEnvelopes(original)).toHaveLength(1);
   });
@@ -160,9 +180,9 @@ describe('reach envelope storage (#2588)', () => {
     await blockReachSender(input);
     expect(await persistReachEnvelope(input)).toEqual({ stored: false, reason: 'blocked' });
     expect(await persistReachEnvelope(params({ reachId: 'other', requesterDid: 'other' })))
-      .toEqual({ stored: true, reachId: 'other' });
+      .toMatchObject({ stored: true, reachId: 'other' });
     expect(await persistReachEnvelope(params({ reachId: 'other-owner', principalDid: 'other-owner' })))
-      .toEqual({ stored: true, reachId: 'other-owner' });
+      .toMatchObject({ stored: true, reachId: 'other-owner' });
     const blockIndex = statements.findIndex(({ sql }) => sql.includes('INSERT INTO auth.reach_sender_blocks'));
     expect(statements[blockIndex - 1]).toMatchObject({ transaction: true, params: [`reach:${input.principalDid}`] });
     expect(statements[blockIndex - 1].sql).toContain('pg_advisory_xact_lock');
@@ -175,7 +195,7 @@ describe('reach envelope storage (#2588)', () => {
       await database.exec(`UPDATE auth.reach_envelopes SET created_at =
         (date_trunc('day', statement_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') - interval '1 second'`);
       expect(await persistReachEnvelope(params({ reachId: 'today', transcriptHash: 'today', dailyCap: 1 })))
-        .toEqual({ stored: true, reachId: 'today' });
+        .toMatchObject({ stored: true, reachId: 'today' });
     } finally {
       await database.exec("SET TIME ZONE 'UTC'");
     }
@@ -205,6 +225,7 @@ describe('reach envelope storage (#2588)', () => {
     await database.exec(migration);
     expect(await listReachEnvelopes(params())).toHaveLength(1);
     await expect(database.query(`INSERT INTO auth.reach_envelopes
+      (reach_id, principal_did, requester_did, transcript_hash, envelope, created_at)
       SELECT 'duplicate', principal_did, requester_did, transcript_hash, envelope, created_at
       FROM auth.reach_envelopes`)).rejects.toThrow('idx_reach_envelopes_replay');
   });
@@ -212,6 +233,53 @@ describe('reach envelope storage (#2588)', () => {
   it.each([-1, 1.5, Number.NaN, Infinity])('fails closed on invalid caps (%s)', async (cap) => {
     await expect(persistReachEnvelope(params({ dailyCap: cap }))).rejects.toThrow('caps');
     await expect(persistReachEnvelope(params({ perSenderDailyCap: cap }))).rejects.toThrow('caps');
+    expect(statements).toHaveLength(0);
+  });
+
+  it('commits exactly one signed attestation with a delivery, and never another on replay', async () => {
+    const input = params();
+    await persistReachEnvelope(input);
+    await persistReachEnvelope(input);
+    const rows = await database.query('SELECT * FROM auth.attestations');
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]).toMatchObject({
+      id: 'att_reach_rch_1', subject_did: input.principalDid, signature: 'signed-attestation',
+      attestation_status: null, payload: input.deliveryAttestation.payload,
+    });
+    expect(statements.find(({ sql }) => sql.includes('INSERT INTO auth.attestations'))?.transaction).toBe(true);
+  });
+
+  it('rolls back the envelope when its attestation insert fails', async () => {
+    failAttestation = true;
+    await expect(persistReachEnvelope(params())).rejects.toThrow('attestation insert failed');
+    expect(await listReachEnvelopes(params())).toEqual([]);
+    expect((await database.query('SELECT * FROM auth.attestations')).rows).toEqual([]);
+  });
+
+  it('recovers the original pending signed event on retry and marks publication owner-scoped/idempotently', async () => {
+    const original = params();
+    expect(await persistReachEnvelope(original)).toMatchObject({
+      published: false, signedEvent: original.signedEvent,
+    });
+    const retry = params({ reachId: 'replacement', signedEvent: { different: 'must not replace original' } });
+    expect(await persistReachEnvelope(retry)).toMatchObject({
+      replayed: true, reachId: original.reachId, published: false, signedEvent: original.signedEvent,
+    });
+    await markReachPublished({ principalDid: 'wrong-owner', reachId: original.reachId });
+    expect(await persistReachEnvelope(original)).toMatchObject({ published: false });
+    await markReachPublished(original);
+    const firstMark = await database.query('SELECT published_at FROM auth.reach_envelopes');
+    await markReachPublished(original);
+    expect(await database.query('SELECT published_at FROM auth.reach_envelopes')).toEqual(firstMark);
+    expect(await persistReachEnvelope(original)).toMatchObject({
+      published: true, replayed: true, signedEvent: original.signedEvent,
+    });
+  });
+
+  it('rejects an unrelated prepared attestation before writing', async () => {
+    const input = params();
+    input.deliveryAttestation.subjectDid = 'other-owner';
+    await expect(persistReachEnvelope(input)).rejects.toThrow('bind');
     expect(statements).toHaveLength(0);
   });
 

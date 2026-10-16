@@ -31,6 +31,7 @@ export const reachEnvelopes = reachSchema.table('reach_envelopes', {
   envelope: jsonb('envelope').$type<ReachEnvelope>().notNull(),
   // Database time, not either supplied timestamp, is authoritative for caps.
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  publishedAt: timestamp('published_at', { withTimezone: true }),
 }, (table) => ({
   replayIdx: uniqueIndex('idx_reach_envelopes_replay').on(table.principalDid, table.requesterDid, table.transcriptHash),
   principalDayIdx: index('idx_reach_envelopes_principal_day').on(table.principalDid, table.createdAt),

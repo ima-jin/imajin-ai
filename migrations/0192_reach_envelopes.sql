@@ -9,8 +9,11 @@ CREATE TABLE IF NOT EXISTS auth.reach_envelopes (
   requester_did text NOT NULL,
   transcript_hash text NOT NULL,
   envelope jsonb NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  published_at timestamptz
 );
+
+ALTER TABLE auth.reach_envelopes ADD COLUMN IF NOT EXISTS published_at timestamptz;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reach_envelopes_replay
   ON auth.reach_envelopes (principal_did, requester_did, transcript_hash);
