@@ -1054,7 +1054,7 @@ function CardActions({
           type="button"
           onClick={() => onDecide(approval, 'withdrawn')}
           disabled={busy}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="min-h-11 px-3 py-2 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {busy ? '…' : 'Withdraw'}
         </button>
