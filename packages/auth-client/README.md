@@ -1,6 +1,7 @@
 # @ima-jin/auth-client
 
 "Sign in with Imajin" SDK for federated apps. Lightweight JWT session management + ready-made Next.js route handlers.
+Standalone apps must forward root sign-in callback parameters before applying login or claim gates.
 
 ## Install
 
@@ -53,6 +54,79 @@ import { authConfig } from '@/lib/auth-config';
 const user = await getSession(authConfig);
 if (!user) redirect('/');
 ```
+
+### Standalone apps: forward the root callback in middleware
+
+The kernel sends sign-in callbacks to the registered app home URL, for example
+`https://jin.imajin.ai/coffee?attestation_id=...&user_did=...`.
+`forwardAuthCallback` issues a **307** to `/coffee/api/auth/callback` with the
+identical query string. Only the app root (with or without a trailing slash)
+and two nonempty callback parameters qualify; other requests return `null`.
+The callback route above creates the session and redirects within the app.
+
+In an existing `middleware.ts`, rename the existing exported `middleware`
+function to a non-exported `appMiddleware` function, leaving its body unchanged.
+Then add this import and wrapper **before any claim/login gate**:
+
+```ts
+import { type NextRequest } from 'next/server';
+import { forwardAuthCallback } from '@ima-jin/auth-client/middleware';
+
+export function middleware(request: NextRequest) {
+  const callback = forwardAuthCallback(request, {
+    publicUrl: process.env.NEXT_PUBLIC_APP_URL,
+    basePath: process.env.NEXT_PUBLIC_BASE_PATH,
+  });
+  if (callback) {
+    return callback;
+  }
+  return appMiddleware(request);
+}
+```
+
+`appMiddleware` is your existing implementation, including the claim gate and
+its conditional `standaloneDashboardMiddleware(request, { service: 'coffee' })`
+call from `@ima-jin/config`; keep those checks and their ordering unchanged.
+Do not replace the claim gate with an unconditional dashboard middleware call.
+Keep the existing middleware `config` export (including `runtime: 'nodejs'`
+when the claim gate reads the keystore). Its literal matcher must include `'/'`
+as well as its existing catch-all so Next.js matches the bare basePath root:
+
+```ts
+export const config = {
+  runtime: 'nodejs',
+  matcher: ['/', '/((?!_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+Use the `/middleware` entry to avoid pulling session, vault, or Node-only
+keystore code into the helper's import graph. It also works in Edge middleware
+when the rest of your middleware does not require Node.js. The root entry
+exports the helper too, for existing Node.js consumers.
+
+Set `NEXT_PUBLIC_APP_URL` to the **full public app URL including its basePath**
+(for example `https://dev-jin.imajin.ai/coffee`) and use the same value for
+`authConfig.publicUrl`. The helper's optional `basePath` overrides path
+inference; otherwise the public URL pathname is used, falling back to
+`request.nextUrl.basePath`. This supports both raw and Next.js-normalized
+request paths.
+
+Both middleware and handler redirects prefer `publicUrl` for the public origin.
+Without it, they use the first `x-forwarded-host` / `x-forwarded-proto` values
+(falling back to the request protocol), then the request origin. Only rely on
+forwarding headers behind ingress that overwrites them; configure `publicUrl`
+for production.
+
+`loginRedirect` and `logoutRedirect` are app-relative: `/` becomes `/coffee/`,
+`/dashboard` becomes `/coffee/dashboard`, and all callback `auth_error`
+redirects stay under `/coffee`. Already-prefixed paths are not doubled.
+Absolute URLs retain their destinations. Apps without a basePath keep their
+existing root destinations. No registry or kernel callback changes are needed.
+
+Regression command (from the monorepo root):
+`pnpm exec vitest run packages/auth-client/tests`.
+The intended patch release is **0.8.21**; repository policy reserves manifest
+version bumps for the Release workflow. Publishing is separate from this change.
 
 ### 4. Fetch this app's own signing key at boot (#2411)
 
@@ -135,6 +209,7 @@ returns `null` on any failure.
 | `@ima-jin/auth-client/browser` | Client components / any browser bundle — only `requestAppToken` and its types |
 | `@ima-jin/auth-client` | Server code — sessions, route handlers, `loadAppSigningKey()` (it also still exports `requestAppToken`, so existing imports keep working) |
 | `@ima-jin/auth-client/handlers` | Next.js route handler factories |
+| `@ima-jin/auth-client/middleware` | Root callback forwarding without Node-only dependencies |
 
 The browser entry's import graph is guaranteed free of node built-ins,
 `next/headers`, and keystore/signing-key code; `tests/browser-entry.test.ts`

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createSessionToken, sessionCookieOptions, clearCookieOptions, type SessionConfig } from './session';
+import { appRedirectUrl } from './redirect-url';
 
 export interface ImajinAuthConfig extends SessionConfig {
   /** Imajin auth/kernel base URL (e.g. https://jin.imajin.ai) */
@@ -15,8 +16,7 @@ export interface ImajinAuthConfig extends SessionConfig {
 }
 
 function redirectTo(path: string, req: NextRequest, config: ImajinAuthConfig) {
-  const base = config.publicUrl || req.nextUrl.origin;
-  return NextResponse.redirect(new URL(path, base));
+  return NextResponse.redirect(appRedirectUrl(path, req, config));
 }
 
 /** Create the GET handler for /api/auth/callback */
