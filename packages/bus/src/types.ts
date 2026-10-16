@@ -901,15 +901,47 @@ export interface BusEventMap {
     context_type: 'agent.reach';
   };
   /**
-   * Emitted when a reach request is refused — invalid signature, no active
-   * `agent:reach` grant (including a just-revoked one, #2251's fail-closed
-   * revocation test), or an unknown principal. `reason` is a closed,
-   * non-PII enum — never the raw rejection detail string.
+   * Signed, admitted delivery (#2588), already persisted by the service.
+   * `onBehalfOf` remains an unverified claim even though the node signs its
+   * provenance. This event does not create a chat or invoke a reply callback.
+   */
+  'agent.reach.delivered': {
+    reachId: string;
+    principalDid: string;
+    requesterDid: string;
+    onBehalfOfStubDid: string;
+    /** Caller-declared foreign identity, NOT a verified identity claim. */
+    onBehalfOf: {
+      platform: string;
+      externalRef: string;
+      selfDescription?: string;
+    };
+    topic: string;
+    message: string;
+    replyHandle: string;
+    transcriptHash: string;
+    requesterSignature: string;
+    requesterTier: string;
+    grantId: string;
+    /** Delivery server's ISO timestamp, distinct from the caller's request timestamp. */
+    issuedAt: string;
+    requestIssuedAt: string;
+    source: 'reach';
+    claimVerified: false;
+    context_id: string;
+    context_type: 'agent.reach';
+    url: string;
+    /** Node signature over the canonical event envelope with this signature omitted. */
+    signature: { keyId: string; alg: 'ed25519'; sig: string };
+  };
+  /**
+   * Refused reach request. Closed, non-PII reason vocabulary — never the raw
+   * rejection detail, transcript, message, or principal policy.
    */
   'agent.reach.denied': {
     requesterDid: string;
     principalDid: string;
-    reason: 'invalid_signature' | 'unauthorized' | 'principal_not_found' | 'requester_unknown';
+    reason: 'invalid_signature' | 'unauthorized' | 'principal_not_found' | 'requester_unknown' | 'rate_limited';
     context_id: string;
     context_type: 'agent.reach';
   };

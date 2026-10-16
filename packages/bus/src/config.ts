@@ -424,6 +424,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
   ],
+  // #2588 / migration 0193 — the service persists the signed envelope and
+  // mints exactly one attestation. This chain only emits and notifies the
+  // principal; raw message/reply details belong in notify data, not previews.
+  'agent.reach.delivered': emitAndNotify(
+    'New Reach message',
+    'Reach message about {{topic}} from {{requesterDid}}',
+  ),
   // #2252 — delegate-grant bearer credential for static-header foreign
   // clients (knock -> approve -> scoped bearer). `audit-log` persists every
   // knock/issue/use/deny/revoke, mirroring agent.reach's #2251 pattern

@@ -16,6 +16,7 @@ import {
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
 import { requireNotifyAuth } from '@/src/lib/notify/service-auth';
+import { pushWebNotificationToOperator } from '@/src/lib/notify/web-push';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -276,6 +277,26 @@ async function resolveInAppChannels(
 }
 
 /**
+ * #2588 — Reach shares the existing per-DID phone subscriptions. Respect the
+ * in-app preference, require a delivery id, and never forward caller-supplied
+ * title/body/url or message content onto a phone's lock screen.
+ */
+function pushReachToPhone(
+  scope: string,
+  inappEnabled: boolean | null,
+  to: string,
+  data: Record<string, unknown>,
+): void {
+  if (scope !== 'agent.reach.delivered' || !inappEnabled) return;
+  if (typeof data.reachId !== 'string' || data.reachId.length === 0) return;
+  void pushWebNotificationToOperator(to, {
+    title: 'New Reach message',
+    body: 'A Reach sender sent you a message.',
+    url: `/jin?lane=inbox&reachId=${encodeURIComponent(data.reachId)}`,
+  });
+}
+
+/**
  * Resolve + send the email leg when enabled, and report which channels
  * landed alongside the raw outcome (still needed for the response body).
  * Extracted from POST (#2119) so the nested delivered-check doesn't add to
@@ -372,6 +393,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
     recipientDid,
     buildNotificationFrame({ id, scope, title, body: notifBody, data, createdAt }),
   );
+  pushReachToPhone(scope, inappEnabled, recipientDid, data);
 
   // Send email if enabled and template has email config (#1854: the result
   // is a structured outcome, not a boolean, so the response below can be
