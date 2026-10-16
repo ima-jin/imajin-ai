@@ -767,7 +767,7 @@ paths:
     get:
       tags: [apps]
       operationId: getAppServiceScopes
-      summary: Read an app's currently approved service scopes (#2711)
+      summary: Read an app's requested and approved service scopes (#2711, #2822)
       security:
         - cookieAuth: []
       parameters:
@@ -777,7 +777,18 @@ paths:
           schema: { type: string }
       responses:
         "200":
-          description: "`{ appDid, approvedServiceScopes, approvalId, approvedAt }` — approvalId/approvedAt identify the last countersigned change."
+          description: "Requested and approved scopes under the same owner/operator gate; approvalId/approvedAt identify the last countersigned change."
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [appDid, requestedScopes, approvedServiceScopes, approvalId, approvedAt]
+                properties:
+                  appDid: { type: string }
+                  requestedScopes: { type: array, items: { type: string }, readOnly: true, description: "Normalized registry requested scopes; not an approval." }
+                  approvedServiceScopes: { type: array, items: { type: string } }
+                  approvalId: { type: string, nullable: true }
+                  approvedAt: { type: string, format: date-time, nullable: true }
         "400":
           description: Missing appDid query parameter
           content:

@@ -23,6 +23,11 @@
       "import": "./dist/handlers.js",
       "require": "./dist/handlers.cjs"
     },
+    "./middleware": {
+      "types": "./dist/middleware.d.ts",
+      "import": "./dist/middleware.js",
+      "require": "./dist/middleware.cjs"
+    },
     "./browser": {
       "types": "./dist/browser.d.ts",
       "import": "./dist/browser.js",
