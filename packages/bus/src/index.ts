@@ -34,6 +34,8 @@ registerReactor('loop-projection', loopProjectionReactor);
 
 export { publish } from './publish';
 export type { PublishResult } from './publish';
+export { registerChainObserver } from './chain-observer';
+export type { ChainObservation, ChainObserver } from './chain-observer';
 export { publishAppEvent, APP_EVENT_REACTORS, APP_EVENT_SCOPE } from './publish-app-event';
 export type { AppEventInput, AppEventResult } from './publish-app-event';
 export { broker } from './broker';

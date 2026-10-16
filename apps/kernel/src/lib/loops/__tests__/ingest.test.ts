@@ -115,9 +115,21 @@ describe('ingestLoopEvent', () => {
       issuer: 'did:imajin:warp-node',
       subject: 'did:imajin:ryan',
       scope: 'loop',
-      payload: REQUEST.payload,
+      payload: { ...REQUEST.payload, publisherProof: REQUEST },
       correlationId: 'loop_abc123',
     });
+  });
+
+  it('preserves the exact signed payload without mutating it or trusting caller proof metadata', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    mockPublish.mockResolvedValueOnce(undefined);
+    const request = { ...REQUEST, payload: { ...REQUEST.payload, publisherProof: 'untrusted' } };
+    const before = JSON.stringify(request);
+    await ingestLoopEvent(request);
+    const published = mockPublish.mock.calls[0][1].payload;
+    expect(published.publisherProof).toEqual(request);
+    expect(published.publisherProof.payload.publisherProof).toBe('untrusted');
+    expect(JSON.stringify(request)).toBe(before);
   });
 
   it('reports a 500 when publish itself throws', async () => {

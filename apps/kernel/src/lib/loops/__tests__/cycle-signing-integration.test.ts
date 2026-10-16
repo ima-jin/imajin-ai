@@ -21,7 +21,7 @@
  * node DID, which is exactly the production bug #2338 fixes.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { crypto as authCrypto } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 
 const NODE_DID = 'did:imajin:node-witness';
 
@@ -78,6 +78,14 @@ describe('cycle.ts signing (real verify-publisher-signature path)', () => {
       'loop.started',
       expect.objectContaining({ issuer: NODE_DID, subject: 'did:imajin:ryan', scope: 'loop' }),
     );
+    // Proof survives ingest as a separate nested copy of the signed envelope,
+    // so a history reader can independently re-verify the stored event.
+    const proof = mockPublish.mock.calls[0][1].payload.publisherProof;
+    expect(authCrypto.verifySync(
+      proof.signature.sig,
+      canonicalize({ type: proof.type, payload: proof.payload }),
+      publicKey,
+    )).toBe(true);
   });
 
   it('ingests successfully even when the node DID has no identity-registry entry at all (#2338 regression)', async () => {

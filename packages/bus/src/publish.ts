@@ -1,4 +1,6 @@
 import { createLogger } from '@imajin/logger';
+import { randomUUID } from 'node:crypto';
+import { observeChain } from './chain-observer';
 import { forEachSequential } from './concurrency';
 import { getChainConfig } from './config';
 import { getReactor } from './registry';
@@ -65,7 +67,10 @@ export async function publish<T extends BusEventType>(
     .filter((r) => r.enabled)
     .map((r) => r.type)
     .filter((t) => !getReactor(t));
+  const observation = { invocationId: `bus_${randomUUID()}`, event: fullEvent };
+  await observeChain({ ...observation, phase: 'started', failed: false, at: new Date().toISOString() });
   if (missing.length > 0) {
+    await observeChain({ ...observation, phase: 'finished', failed: true, at: new Date().toISOString() });
     throw new Error(
       `Unknown reactor(s) in chain for eventType=${config.eventType} scope=${config.scope ?? 'null'}: ${missing.join(', ')}`
     );
@@ -74,6 +79,8 @@ export async function publish<T extends BusEventType>(
   // Sequential on purpose: chain order is the contract — an awaited reactor
   // (e.g. `attestation`) must finish before the next one reads what it stashed
   // on the shared event (e.g. `attestationId` for `mjn`).
+  let failed = false;
+  const pending: Promise<void>[] = [];
   await forEachSequential(config.reactors, async (reactor) => {
     if (!reactor.enabled) return;
 
@@ -83,14 +90,22 @@ export async function publish<T extends BusEventType>(
       if (reactor.await) {
         await handler(fullEvent, reactor.config);
       } else {
-        handler(fullEvent, reactor.config).catch((err: unknown) => {
+        pending.push(handler(fullEvent, reactor.config).catch((err: unknown) => {
+          failed = true;
           log.error({ err: String(err), reactor: reactor.type, event: type }, 'Reactor failed');
-        });
+        }));
       }
     } catch (err) {
+      failed = true;
       log.error({ err: String(err), reactor: reactor.type, event: type }, 'Reactor threw');
     }
   });
+
+  const finish = () => observeChain({ ...observation, phase: 'finished', failed, at: new Date().toISOString() });
+  // Preserve publish's fire-and-forget contract, but do not report completion
+  // while non-awaited reactors are still executing.
+  if (pending.length > 0) void Promise.all(pending).then(finish);
+  else await finish();
 
   const attestationId = fullEvent.payload?.attestationId;
   return typeof attestationId === 'string' ? { attestationId } : {};

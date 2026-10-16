@@ -154,4 +154,10 @@ describe('loopProjectionReactor (#2295)', () => {
     await loopProjectionReactor(makeEvent(), {});
     expect(calls[1].text).toContain('WHERE kernel.loops.last_seen_at <= EXCLUDED.last_seen_at');
   });
+
+  it('merges new refs over persisted refs instead of erasing sparse-event linkage', async () => {
+    await loopProjectionReactor(makeEvent(), {});
+    expect(calls[1].text).toContain('refs = kernel.loops.refs || EXCLUDED.refs');
+    expect(calls[1].values[4]).toBe('{}');
+  });
 });

@@ -44,7 +44,7 @@ import { createLogger } from '@imajin/logger';
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { ingestLoopEvent } from '@/src/lib/loops/ingest';
-import type { LoopEnvelope, LoopLifecycleType } from '@/src/lib/loops/types';
+import type { LoopEnvelope, LoopLifecycleType, LoopRefs } from '@/src/lib/loops/types';
 
 const log = createLogger('kernel:warp-loop-emit');
 
@@ -68,6 +68,7 @@ export interface WarpRunLoopTransition {
   summary: string;
   /** ISO 8601 — should match the timestamp already used on the sibling `warp.run.*` event. */
   at: string;
+  refs?: LoopRefs;
 }
 
 /**
@@ -87,7 +88,7 @@ export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): P
       kind: WARP_RUN_LOOP_KIND,
       principal: transition.principalDid,
       parentLoopId: transition.parentRunId,
-      refs: { runId: transition.runId },
+      refs: { ...transition.refs, runId: transition.runId },
       state: transition.state,
       summary: transition.summary,
       at: transition.at,
