@@ -87,7 +87,7 @@ export interface RunLinkage {
   prRepo: string | null;
   prNumber: number | null;
   issue: IssueRef | null;
-  issueVia: 'branch' | 'pr-body' | null;
+  issueVia: 'branch' | 'pr-body' | 'registry' | null;
 }
 
 export interface InterimRunCost {
@@ -350,6 +350,10 @@ export async function deriveInterimSpend(
   principalDid: string,
   deps: InterimDeps,
   now: Date = new Date(),
+  options: {
+    registeredRunIds?: (runIds: string[]) => Promise<Set<string>>;
+    recentLimit?: number;
+  } = {},
 ): Promise<InterimSpend> {
   const windowFrom = monthStartIso(now);
   const base = { label: INTERIM_LABEL, windowFrom };
@@ -369,6 +373,12 @@ export async function deriveInterimSpend(
     };
   }
 
+  // Fail closed if registry membership is unavailable, rather than silently
+  // re-enabling heuristic attribution for runs that already have loop records.
+  if (options.registeredRunIds) {
+    const registered = await options.registeredRunIds(page.runs.map((r) => r.runId));
+    page = { ...page, runs: page.runs.filter((r) => !registered.has(r.runId)) };
+  }
   const sessionKeys = page.runs.flatMap((r) => [r.runId, r.sessionId, r.conversationId]).filter((k): k is string => !!k);
   const metered = await deps.meteredBySession(principalDid, [...new Set(sessionKeys)]).catch((err) => {
     log.warn({ err: String(err) }, 'spend lane: metered join unavailable');
@@ -392,7 +402,7 @@ export async function deriveInterimSpend(
     runsAvailable: true,
     runsTruncated: page.hasNextPage,
     githubAvailable: [...states.values()].some((s) => s !== 'unknown'),
-    runs: runs.slice(0, RECENT_RUN_COUNT),
+    runs: runs.slice(0, options.recentLimit ?? RECENT_RUN_COUNT),
     issues,
     closedIssueCost: costPerClosedIssue(issues),
   };
