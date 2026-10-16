@@ -33,6 +33,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';
 import { reachPrincipal, type ReachRequestInput } from '@/src/lib/auth/agent-reach';
+import { parseReachDelivery } from '@/src/lib/auth/reach-delivery-input';
+
+export const dynamic = 'force-dynamic';
 
 function isReachOnBehalfOf(value: unknown): value is ReachRequestInput['onBehalfOf'] {
   if (typeof value !== 'object' || value === null) return false;
@@ -44,6 +47,9 @@ function isReachOnBehalfOf(value: unknown): value is ReachRequestInput['onBehalf
 const KNOWN_PREDICATES = new Set(['contains', 'overlaps', 'is_empty', 'eq', 'gte', 'lte']);
 
 function parseBody(body: Record<string, unknown>): { ok: true; input: ReachRequestInput } | { ok: false; error: string } {
+  if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    return { ok: false, error: 'body must be an object' };
+  }
   const { requesterDid, onBehalfOf, purpose, field, predicate, arg, issuedAt, signature } = body;
 
   if (typeof requesterDid !== 'string' || !requesterDid.startsWith('did:imajin:')) {
@@ -67,6 +73,8 @@ function parseBody(body: Record<string, unknown>): { ok: true; input: ReachReque
   if (typeof signature !== 'string' || signature.length === 0) {
     return { ok: false, error: 'signature is required' };
   }
+  const delivery = parseReachDelivery(body);
+  if (!delivery.ok) return delivery;
 
   return {
     ok: true,
@@ -79,6 +87,7 @@ function parseBody(body: Record<string, unknown>): { ok: true; input: ReachReque
       arg,
       issuedAt,
       signature,
+      ...delivery.delivery,
     },
   };
 }

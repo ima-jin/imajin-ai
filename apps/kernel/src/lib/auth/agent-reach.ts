@@ -34,6 +34,7 @@ import { resolveOrMintForeignPrincipalStub } from './foreign-principal-stub';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { isTierAdmitted } from '@/src/lib/jin/front-door';
 import { generateId } from '@/src/lib/kernel/id';
+import type { ReachDeliveryInput } from './reach-delivery-input';
 
 const log = createLogger('kernel');
 
@@ -49,7 +50,7 @@ export interface ReachOnBehalfOf {
   selfDescription?: string;
 }
 
-export interface ReachRequestInput {
+export interface ReachRequestInput extends Partial<ReachDeliveryInput> {
   requesterDid: string;
   onBehalfOf: ReachOnBehalfOf;
   purpose: string;
@@ -75,6 +76,11 @@ export interface ReachDenied {
   status: number;
 }
 
+export interface ReachDelivered {
+  delivered: true;
+  reachId: string;
+}
+
 /**
  * The canonical transcript the requester signs and both records hash.
  * Deliberately excludes `signature` itself (nothing signs its own signature)
@@ -91,6 +97,9 @@ export function reachTranscript(principalDid: string, input: Omit<ReachRequestIn
     predicate: input.predicate,
     arg: input.arg ?? null,
     issuedAt: input.issuedAt,
+    // Omit entirely for legacy asks: existing signatures remain valid.
+    ...(input.message === undefined && input.topic === undefined && input.replyHandle === undefined
+      ? {} : { message: input.message ?? null, topic: input.topic ?? null, replyHandle: input.replyHandle ?? null }),
   });
 }
 
