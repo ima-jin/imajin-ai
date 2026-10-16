@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  *                           which status transition was written
  */
 const {
-  sealMock, loadMock, publishMock,
+  sealMock, loadMock, publishMock, observePullRequestMock,
   whereMock,
   proposalLimitMock,
   proposalCountMock,
@@ -29,6 +29,7 @@ const {
   sealMock: vi.fn(),
   loadMock: vi.fn(),
   publishMock: vi.fn(),
+  observePullRequestMock: vi.fn(),
   whereMock: vi.fn(),           // channelLinks grant check
   proposalLimitMock: vi.fn(),   // proposals select().where().orderBy().limit()
   proposalCountMock: vi.fn(),   // proposals select({count}).where()
@@ -128,6 +129,7 @@ vi.mock('@/src/db', () => {
 });
 
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
+vi.mock('../loop-observe', () => ({ observePullRequest: observePullRequestMock }));
 
 // #2293: connector.ts raises/closes the /jin operator-approvals card as
 // opaque service calls — mocked here as simple spies (not real db-backed
@@ -284,6 +286,7 @@ beforeEach(() => {
   whereMock.mockReset();
   publishMock.mockReset();
   publishMock.mockResolvedValue(undefined);
+  observePullRequestMock.mockReset().mockResolvedValue(undefined);
   // Proposal mocks — default: no live grant, zero done writes, operations succeed.
   proposalLimitMock.mockReset();
   proposalLimitMock.mockResolvedValue([]);
@@ -859,6 +862,7 @@ describe('getPullRequest (#1528)', () => {
     noGrant();
     await expect(getPullRequest(OWNER, REPO, 5)).rejects.toThrow(/github_no_grant/);
     expect(fetch).not.toHaveBeenCalled();
+    expect(observePullRequestMock).not.toHaveBeenCalled();
   });
 
   it('fetches the single-PR endpoint and surfaces merge detail', async () => {
@@ -871,6 +875,16 @@ describe('getPullRequest (#1528)', () => {
 
     expect(fetchUrls()[0]).toBe(`https://api.github.com/repos/${REPO}/pulls/5`);
     expect(pr).toMatchObject({ number: 5, mergeable: true, mergeable_state: 'clean', changed_files: 3 });
+    expect(fetchUrls()).toHaveLength(1);
+    expect(observePullRequestMock).toHaveBeenCalledWith(OWNER, pr);
+  });
+
+  it('preserves the provider read response when the loop observer is unavailable', async () => {
+    grant(['github:read']);
+    mockFetchSequence(ghResponse(MOCK_PR));
+    observePullRequestMock.mockRejectedValueOnce(new Error('loop rail offline'));
+    await expect(getPullRequest(OWNER, REPO, 5)).resolves.toEqual(MOCK_PR);
+    expect(fetchUrls()).toHaveLength(1);
   });
 });
 

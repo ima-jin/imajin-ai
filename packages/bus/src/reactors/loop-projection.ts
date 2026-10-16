@@ -76,12 +76,15 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
       kind = EXCLUDED.kind,
       principal = EXCLUDED.principal,
       parent_loop_id = COALESCE(EXCLUDED.parent_loop_id, kernel.loops.parent_loop_id),
-      refs = EXCLUDED.refs,
+      refs = kernel.loops.refs || EXCLUDED.refs,
       state = EXCLUDED.state,
       summary = EXCLUDED.summary,
       last_event_type = EXCLUDED.last_event_type,
       last_seen_at = EXCLUDED.last_seen_at,
-      finished_at = COALESCE(EXCLUDED.finished_at, kernel.loops.finished_at),
+      finished_at = CASE
+        WHEN EXCLUDED.last_event_type = 'loop.started' THEN NULL
+        ELSE COALESCE(EXCLUDED.finished_at, kernel.loops.finished_at)
+      END,
       updated_at = now()
     WHERE kernel.loops.last_seen_at <= EXCLUDED.last_seen_at
   `;

@@ -1314,6 +1314,14 @@ export async function getPullRequest(
     path: `/repos/${repo}/pulls/${pullNumber}`,
     token,
   });
+  // No extra provider read: witness only the explicit authenticated response.
+  // Dynamic import keeps this read available even if the observation rail fails.
+  try {
+    const { observePullRequest } = await import('./loop-observe');
+    await observePullRequest(ownerDid, data);
+  } catch (err) {
+    log.warn({ err: String(err), ownerDid }, 'PR loop observation unavailable (non-fatal)');
+  }
   return data;
 }
 

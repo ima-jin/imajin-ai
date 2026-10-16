@@ -48,5 +48,8 @@ export async function register() {
     // #2798: every bus webhook uses the same published kernel key as pay callbacks.
     const { ensureWebhookSignerRegistered } = await import('@/src/lib/auth/register-webhook-signer');
     ensureWebhookSignerRegistered();
+
+    const { ensureBusChainObserverRegistered } = await import('@/src/lib/loops/bus-chain');
+    ensureBusChainObserverRegistered();
   }
 }

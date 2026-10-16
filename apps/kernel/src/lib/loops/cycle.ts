@@ -74,6 +74,7 @@ import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { ingestLoopEvent } from './ingest';
 import { getLoopWithHistory } from './query';
 import type { LoopEnvelope, LoopLifecycleType } from './types';
+import { emitKernelLoopEvent } from './emit';
 
 const log = createLogger('kernel:cycle');
 
@@ -86,6 +87,11 @@ export type CyclePhaseName = (typeof CYCLE_PHASES)[number];
 
 export function isCyclePhaseName(value: unknown): value is CyclePhaseName {
   return typeof value === 'string' && (CYCLE_PHASES as readonly string[]).includes(value);
+}
+function reviewLifecycleType(status: CyclePhaseStatus): LoopLifecycleType {
+  if (status === 'started') return 'loop.started';
+  if (status === 'blocked') return 'loop.blocked';
+  return 'loop.finished';
 }
 
 /** `loop.phase`'s own `status` vocabulary (#2314), plus `blocked` — the one
@@ -280,7 +286,20 @@ export async function cyclePhase(
     counts,
   };
 
-  return signAndIngest(type, payload);
+  const result = await signAndIngest(type, payload);
+  if (result.ok && phase === 'review') {
+    await emitKernelLoopEvent(reviewLifecycleType(status), {
+      loopId: `${correlationId}:review`,
+      kind: 'review',
+      principal,
+      parentLoopId: correlationId,
+      state: status,
+      summary: `cycle review phase ${status}`,
+      at: payload.at,
+      source: 'cycle.review-phase',
+    });
+  }
+  return result;
 }
 
 /**
