@@ -250,12 +250,13 @@ function ExternalGrantPointer({ count, channel }: Readonly<{ count: number | und
 // ── Shared subcomponents ──────────────────────────────────────────────────────
 
 /** Header badge for connector cards — eliminates nested ternary duplication. */
-function ConnectorStatusBadge({ loading, error, ready, pending }: Readonly<{
-  loading: boolean; error: boolean; ready: boolean; pending?: boolean;
+function ConnectorStatusBadge({ loading, error, ready, pending, incomplete }: Readonly<{
+  loading: boolean; error: boolean; ready: boolean; pending?: boolean; incomplete?: boolean;
 }>) {
   if (loading) return <Badge variant="info">Checking…</Badge>;
   if (error) return <Badge variant="inactive">Unavailable</Badge>;
   if (ready) return <Badge variant="active">● Connected</Badge>;
+  if (incomplete) return <Badge variant="pending">Incomplete — webhook consent required</Badge>;
   // Sealed but not yet granted by the owner agent (Tier 1) — distinct from
   // "not configured", which would tell the user to redo work they already did.
   if (pending) return <Badge variant="pending">⏳ Waiting for owner approval</Badge>;
@@ -362,13 +363,14 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
 }
 
 /** Shared scope-grant section — used by GitHub, Discord, and QuickBooks. */
-function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle }: Readonly<{
+function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle, requiredScope }: Readonly<{
   entry: ConnectorEntry; activeSet: Set<string>; stepNumber: string | number;
   grantingScope: string | null; grantError: string | null;
   tokenSealed: boolean; noTokenHint: string;
   onToggle: (name: string, enable: boolean) => void;
+  requiredScope?: string;
 }>) {
-  const hasActive = activeSet.size > 0;
+  const hasActive = requiredScope ? activeSet.has(requiredScope) : activeSet.size > 0;
   // Only worth saying when the credential actually blocks something: on a card
   // whose scopes are all credential-free the hint would be a lie (#1679).
   const showNoTokenHint = !tokenSealed && entry.scopes.some((scope) => !scope.credentialFree);
@@ -1440,6 +1442,38 @@ function WebhookSecretSetup({ route, onSaved, onReady }: Readonly<{
   );
 }
 
+/** Webhook setup needs the owner's explicit grant independently of sealed credentials. */
+function WebhookConsentNotice({ scope, credentialsReady }: Readonly<{
+  scope: string; credentialsReady: boolean;
+}>) {
+  return (
+    <output className="block border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
+      <span className="block font-medium">Grant {scope} to receive webhooks.</span>
+      <span className="block text-xs mt-1">
+        Enable the {scope} scope below with your owner consent. Sealing credentials does not grant it automatically.
+      </span>
+      {credentialsReady && (
+        <span className="block text-xs mt-1">
+          Credentials are sealed, but webhook deliveries return HTTP 503 connector_unavailable until this grant is active.
+        </span>
+      )}
+    </output>
+  );
+}
+
+function credentialReadiness(entry: ConnectorEntry, status: CredentialPasteStatus | null, webhookReady: boolean) {
+  const ui = credentialCopy(entry);
+  const activeSet = new Set(status?.activeScopes ?? []);
+  const sealed = status !== null && credentialSealed(status);
+  const additionalMissing = !!ui.additionalField && status?.[ui.additionalField.sealedFlag] !== true;
+  // Ordinary paste connectors can act with any active scope. Webhook connectors
+  // specifically need their channel's events grant, not an unrelated capability.
+  const requiredScope = ui.webhookSetup ? `${entry.channel}:events` : undefined;
+  const scopesReady = requiredScope ? activeSet.has(requiredScope) : activeSet.size > 0;
+  const credentialsReady = sealed && !additionalMissing && (!ui.webhookSetup || webhookReady);
+  return { activeSet, sealed, additionalMissing, requiredScope, scopesReady, credentialsReady };
+}
+
 function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const [status, setStatus] = useState<CredentialPasteStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -1495,13 +1529,9 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
     setStatus,
   );
 
-  const activeSet = new Set(status?.activeScopes ?? []);
-  const sealed = status !== null && credentialSealed(status);
-  const additionalMissing = !!additionalField && status?.[additionalField.sealedFlag] !== true;
-  // Connected = a sealed credential plus at least one active scope. The old
-  // Discord card hardcoded `discord:post`, which reported "Not configured" for a
-  // deliberate read-only grant; any active scope means the connector can act.
-  const ready = sealed && !additionalMissing && activeSet.size > 0 && (!ui.webhookSetup || webhookReady);
+  const { activeSet, sealed, additionalMissing, requiredScope, scopesReady, credentialsReady } =
+    credentialReadiness(entry, status, webhookReady);
+  const ready = credentialsReady && scopesReady;
   const sealActionLabel = sealed ? 'Replace' : 'Seal';
   const credentialLabel = additionalField ? `${entry.name} keys` : ui.label;
   const sealButtonLabel = sealing ? 'Sealing…' : `${sealActionLabel} ${credentialLabel}`;
@@ -1553,6 +1583,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
           error={!!statusError}
           ready={ready}
           pending={status?.credentialPending}
+          incomplete={!!requiredScope && credentialsReady && !scopesReady}
         />
       </div>
 
@@ -1561,6 +1592,10 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
 
       {!statusLoading && !statusError && status && (
         <div className="space-y-6">
+
+          {requiredScope && !scopesReady && (
+            <WebhookConsentNotice scope={requiredScope} credentialsReady={credentialsReady} />
+          )}
 
           {/* ── Step 1: the credential ── */}
           <div>
@@ -1668,6 +1703,7 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
             grantError={grantError}
             tokenSealed={sealed}
             noTokenHint={`Seal your ${ui.label} (step 1) to enable scope grants.`}
+            requiredScope={requiredScope}
             onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
           />
 

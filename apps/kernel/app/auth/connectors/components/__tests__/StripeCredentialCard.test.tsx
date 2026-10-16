@@ -7,11 +7,17 @@ import { ConnectorDetail } from '../ConnectorDetail';
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
 
 const entry = getConnector('stripe')!;
-function mount(status: Record<string, unknown> = {}, sealFailure?: string) {
+function mount(status: Record<string, unknown> = {}, sealFailure?: string, grantFailure?: string) {
   let paired = status.publishableKeySealed === true;
   let primary = status.keySealed !== false;
   let webhook = status.webhookSecretSealed === true;
+  let activeScopes = (status.activeScopes ?? ['stripe:events']) as string[];
   const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+    if (url === entry.statusEndpoint && init?.method === 'POST') {
+      if (grantFailure) return new Response(JSON.stringify({ error: grantFailure }), { status: 403 });
+      activeScopes = JSON.parse(String(init.body)).scopes;
+      return new Response(JSON.stringify({ activeScopes }));
+    }
     if (url === entry.tokenRoute && init?.method === 'POST') {
       if (sealFailure) return new Response(JSON.stringify({ error: sealFailure, code: 'stripe_key_mode_mismatch', field: 'publishableKey' }), { status: 400 });
       paired = true;
@@ -20,8 +26,9 @@ function mount(status: Record<string, unknown> = {}, sealFailure?: string) {
       return new Response(JSON.stringify({ sealed: true }), { status: 201 });
     }
     return new Response(JSON.stringify({
-      manifestAssetId: null, activeScopes: ['stripe:events'],
+      manifestAssetId: null,
       validScopes: ['stripe:events'], ...status, keySealed: primary, publishableKeySealed: paired,
+      activeScopes,
       webhookSecretSealed: webhook, webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake',
       webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
     }));
@@ -42,6 +49,88 @@ function posts(mock: ReturnType<typeof mount>) {
   return mock.mock.calls.filter(([, init]) => init?.method === 'POST');
 }
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+const consentInstruction = 'Grant stripe:events to receive webhooks.';
+const incompleteBadge = 'Incomplete — webhook consent required';
+const sealedWithoutConsent = {
+  keySealed: true, publishableKeySealed: true, webhookSecretSealed: true, activeScopes: [],
+};
+function eventsToggle() {
+  return screen.getByRole('checkbox', { name: entry.scopes.find((scope) => scope.name === 'stripe:events')!.label }) as HTMLInputElement;
+}
+
+describe('Stripe webhook owner consent readiness', () => {
+  it('makes the required grant obvious on a fresh card without selecting or posting it', async () => {
+    const mock = mount({ keySealed: false, activeScopes: [] });
+    expect(await screen.findByText(consentInstruction)).toBeDefined();
+    expect(screen.getByText(/Sealing credentials does not grant it automatically/)).toBeDefined();
+    expect(eventsToggle().checked).toBe(false);
+    expect(eventsToggle().disabled).toBe(true);
+    expect(screen.queryByText('● Connected')).toBeNull();
+    expect(posts(mock)).toHaveLength(0);
+  });
+  it('shows an explicit incomplete HTTP 503 state when credentials are sealed without consent', async () => {
+    const mock = mount(sealedWithoutConsent);
+    expect(await screen.findByText(incompleteBadge)).toBeDefined();
+    expect(screen.getByText(consentInstruction)).toBeDefined();
+    expect(screen.getByText(/HTTP 503 connector_unavailable/)).toBeDefined();
+    expect(eventsToggle().checked).toBe(false);
+    expect(eventsToggle().disabled).toBe(false);
+    expect(screen.queryByText('● Connected')).toBeNull();
+    expect(posts(mock)).toHaveLength(0);
+  });
+  it('does not consider an unrelated active scope sufficient for webhook readiness', async () => {
+    const mock = mount({ ...sealedWithoutConsent, activeScopes: ['stripe:other'] });
+    expect(await screen.findByText(incompleteBadge)).toBeDefined();
+    expect(screen.getByText(/HTTP 503 connector_unavailable/)).toBeDefined();
+    expect(screen.getByRole('heading', { name: /Scope grants/ }).textContent).not.toContain('✓');
+    expect(screen.queryByText('● Connected')).toBeNull();
+    expect(posts(mock)).toHaveLength(0);
+  });
+  it('connects only after a successful explicit owner toggle, preserving other active scopes', async () => {
+    const mock = mount({ ...sealedWithoutConsent, activeScopes: ['stripe:other'] });
+    await screen.findByText(incompleteBadge);
+    fireEvent.click(eventsToggle());
+    expect(await screen.findByText('● Connected')).toBeDefined();
+    expect(posts(mock)).toHaveLength(1);
+    expect(posts(mock)[0][0]).toBe(entry.statusEndpoint);
+    expect(JSON.parse(String(posts(mock)[0][1]?.body))).toEqual({ scopes: ['stripe:other', 'stripe:events'] });
+    expect(eventsToggle().checked).toBe(true);
+    expect(screen.queryByText(consentInstruction)).toBeNull();
+    expect(screen.queryByText(/HTTP 503 connector_unavailable/)).toBeNull();
+  });
+  it('retains the warning and unchecked scope when the owner grant fails', async () => {
+    const mock = mount(sealedWithoutConsent, undefined, 'Owner approval required');
+    await screen.findByText(incompleteBadge);
+    fireEvent.click(eventsToggle());
+    expect(await screen.findByText(/Owner approval required/)).toBeDefined();
+    expect(screen.getByText(incompleteBadge)).toBeDefined();
+    expect(screen.getByText(/HTTP 503 connector_unavailable/)).toBeDefined();
+    expect(eventsToggle().checked).toBe(false);
+    expect(screen.queryByText('● Connected')).toBeNull();
+    expect(posts(mock)).toHaveLength(1);
+  });
+  it('returns to incomplete when the owner explicitly revokes the events grant', async () => {
+    const mock = mount({ ...sealedWithoutConsent, activeScopes: ['stripe:events'] });
+    await screen.findByText('● Connected');
+    fireEvent.click(eventsToggle());
+    expect(await screen.findByText(incompleteBadge)).toBeDefined();
+    expect(screen.getByText(/HTTP 503 connector_unavailable/)).toBeDefined();
+    expect(JSON.parse(String(posts(mock)[0][1]?.body))).toEqual({ scopes: [] });
+  });
+  it('does not grant automatically after sealing the keys and webhook signing secret', async () => {
+    const mock = mount({ keySealed: false, activeScopes: [] });
+    await screen.findByLabelText('Restricted Key');
+    fill('Restricted Key', 'rk_test_fake'); fill('Publishable Key', 'pk_test_fake'); submit();
+    const input = await screen.findByLabelText('Webhook signing secret');
+    fill('Webhook signing secret', 'whsec_fake_manual');
+    fireEvent.submit(input.closest('form')!);
+    await screen.findByText(incompleteBadge);
+    expect(eventsToggle().checked).toBe(false);
+    expect(posts(mock)).toHaveLength(2);
+    expect(posts(mock).every(([url]) => url === entry.tokenRoute)).toBe(true);
+    expect(screen.queryByText('● Connected')).toBeNull();
+  });
+});
 
 describe('Stripe paired-key connector card', () => {
   it('lets an existing owner add a signing secret in the same card without re-entering keys', async () => {
