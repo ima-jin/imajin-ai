@@ -67,10 +67,9 @@ import type {
   StripeInvoiceLike,
 } from '@/src/lib/pay/webhook-event-shapes';
 import { settlePaymentRequestFromStripeCheckout } from '@/src/lib/pay/payment-requests/checkout';
-import { getRelayEntry, type StripeRelaySource } from '@/src/lib/pay/stripe-relay-store';
+import { getRelayEntry, type StripeRelaySource, type StripeRelayEntry } from '@/src/lib/pay/stripe-relay-store';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
 import { isStripeWebhookEventType } from '@/src/lib/stripe/webhook-events';
-import type { StripeRelayEntry } from '@/src/lib/pay/stripe-relay-store';
 
 const log = createLogger('kernel');
 
