@@ -147,7 +147,7 @@ describe('typed surface URIs', () => {
   it.each(['repo:ima-jin/imajin-ai#branch:feat/2405-leases', 'service:kernel@env:prod', 'device:phone-1', 'issue:#2405'])('accepts %s', (surface) => {
     expect(isSurfaceUri(surface)).toBe(true);
   });
-  it.each([null, 1, '', 'repo:owner/repo', 'repo:owner/repo#branch:', 'repo:owner/repo#branch:main extra', 'service:kernel', 'device:', 'issue:#0', 'issue:#-1', 'issue:#1.5', 'https://host', 'device:' + 'a'.repeat(2049)])('rejects malformed URI %#', (surface) => {
+  it.each([null, 1, '', 'repo:owner/repo', 'repo:owner/repo#branch:', 'repo:owner/repo#branch:main extra', 'repo:owner/repo#branch:main\0', 'issue:#2405\n', 'service:kernel', 'device:', 'issue:#0', 'issue:#-1', 'issue:#1.5', 'https://host', 'device:' + 'a'.repeat(2049)])('rejects malformed URI %#', (surface) => {
     expect(isSurfaceUri(surface)).toBe(false);
   });
 });

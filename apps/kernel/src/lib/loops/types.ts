@@ -26,6 +26,7 @@ export function isSurfaceEventType(value: unknown): value is SurfaceEventType {
 /** Exact, case-sensitive surface identity; no harness lookup or URI normalization. */
 export function isSurfaceUri(value: unknown): value is string {
   if (typeof value !== 'string' || value.length > 2048) return false;
+  if (/\s/.test(value) || value.includes('\0')) return false;
   return [
     /^repo:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#branch:[^\s#]+$/,
     /^service:[A-Za-z0-9_.-]+@env:[A-Za-z0-9_.-]+$/,
