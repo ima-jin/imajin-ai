@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { createCallbackHandler, createLogoutHandler, type ImajinAuthConfig } from '../src/handlers';
 import { verifySessionToken } from '../src/session';
+import { forwardAuthCallback } from '../src/middleware';
 
 const origin = 'https://jin.imajin.ai';
 const query = '?attestation_id=att_123&user_did=did:imajin:alice';
@@ -103,6 +104,19 @@ describe.each([
 });
 
 describe('public origin and path boundaries', () => {
+  it('hands the root callback to the handler and lands signed in under the app basePath', async () => {
+    const config = { ...baseConfig, publicUrl: `${origin}/coffee` };
+    const rootRequest = new NextRequest(`${config.publicUrl}${query}`, { nextConfig: { basePath: '/coffee' } });
+    const forwarded = forwardAuthCallback(rootRequest, config);
+    expect(forwarded?.status).toBe(307);
+    const callbackRequest = new NextRequest(forwarded!.headers.get('location')!, {
+      nextConfig: { basePath: '/coffee' },
+    });
+    const response = await createCallbackHandler(config)(callbackRequest);
+    expect(response.headers.get('location')).toBe(`${origin}/coffee/`);
+    expect(await verifySessionToken(response.cookies.get('imajin_session')!.value, config))
+      .toMatchObject({ did: profile.did, attestationId: 'att_123' });
+  });
   it('shares forwarded origin resolution between handlers and middleware', async () => {
     const req = new NextRequest(`http://localhost:3000/coffee/api/auth/callback${query}`, {
       nextConfig: { basePath: '/coffee' },
