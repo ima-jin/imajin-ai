@@ -223,14 +223,15 @@ entries in `ownership-gaps.json` are kept identical by
   `REFERENCES` in `migrations/`), so no table has to be moved together with
   another owner's table.
 
-### events deploy ownership handoff — dev only (#2784)
+### events deploy ownership handoff — per-environment releases (#2784)
 
 Every `events.*` table remains owner `events`; `ima-jin/events` owns that schema
 and data, not the kernel. **Deployment authority transfers per environment**:
 the dev workflow and its `build.sh` call use `migrate.mjs --owner kernel` after
-standalone dev cutover. Prod still runs the existing unfiltered migration calls
-and builds/reconciles `prod-events` until the separate prod draft merges in
-Ryan's #2516 window, after #2529 soak and sign-off.
+standalone dev cutover. The separate prod release switches both prod migration
+calls to kernel-owner mode only when it merges in Ryan's #2516 window, after
+#2529 soak/sign-off and standalone prod is running and saved. Until that merge,
+prod retains its existing unfiltered migration and monorepo build/reconcile path.
 
 Historical SQL/data are not changed. Kernel-owner mode retains shared files
 (including the seed and `0025`/`0026`) under the existing #1991 rules and

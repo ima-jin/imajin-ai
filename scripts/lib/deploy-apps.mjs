@@ -19,8 +19,8 @@ export function deployApps(config) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const env = process.argv[2];
-  if (env !== 'dev') {
-    throw new Error('Usage: deploy-apps.mjs dev; prod ownership stays with the kernel until #2516');
+  if (!['dev', 'prod'].includes(env)) {
+    throw new Error('Usage: deploy-apps.mjs <dev|prod>');
   }
   const config = require(`../../deploy/ecosystem.${env}.config.js`);
   console.log(deployApps(config).join('\n'));

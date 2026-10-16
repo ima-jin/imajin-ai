@@ -388,11 +388,12 @@ standalone migration is deployed and verified. Production monorepo use while
 ## 11. events ownership release is split by environment (#2784)
 
 The dev release removes only `dev-events` from the kernel ecosystem and uses
-positive dev build ownership plus kernel-owner migrations. **Prod remains fully
-kernel-owned:** its ecosystem, unfiltered build and migration calls are unchanged,
-so `prod-events` continues to receive matching builds/dependencies until #2516.
-A separate prod-release PR stays **draft** and merges only in Ryan's window,
-after the #2529 soak and his sign-off. The `events` tables remain owner `events`;
+positive dev build ownership plus kernel-owner migrations. The separate prod
+release removes `prod-events` and applies ecosystem build ownership plus
+kernel-owner migration calls to prod. That PR stays **draft** and merges only
+in Ryan's #2516 window, after #2529 soak/sign-off and standalone prod is running
+and saved. Until that merge, prod remains fully kernel-owned and receives
+matching builds/dependencies through its existing unfiltered path. The `events` tables remain owner `events`;
 historical SQL is untouched. `apps/events` is not pruned by either release and
 must remain available while prod needs the monorepo copy.
 
