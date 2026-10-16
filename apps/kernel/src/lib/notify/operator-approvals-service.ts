@@ -9,7 +9,7 @@
  * (#1817): the kernel signs the decision using its own signing identity,
  * witnessing the operator's explicit tap.
  */
-import { and, desc, eq, or, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { canonicalize, crypto as authCrypto, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import * as bus from '@imajin/bus';
@@ -56,11 +56,21 @@ export interface OperatorApprovalCard {
   /** Post-exec outcome follow-up (#2221, exec.command only) — null until the bridge reports one. */
   outcome: ExecCommandOutcome | null;
   appliedAt: string | null;
+  /** This reader's unsigned Inbox archive marker, never another principal's. */
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
+/** Archive markers are private Inbox metadata, not part of the public execution outcome. */
+function publicOutcome(outcome: OperatorApprovalRow['outcome']): ExecCommandOutcome | null {
+  if (!outcome) return null;
+  const visible = { ...outcome };
+  delete visible.inboxArchivedBy;
+  return Object.keys(visible).length ? visible as unknown as ExecCommandOutcome : null;
+}
+
+function toCard(row: OperatorApprovalRow, archivedAt: string | null = null): OperatorApprovalCard {
   const decisionRecord = row.decision as { payload?: OperatorApprovalDecidedPayload } | null;
   return {
     proposalId: row.proposalId,
@@ -76,8 +86,9 @@ function toCard(row: OperatorApprovalRow): OperatorApprovalCard {
     contentHash: effectiveContentHash(row),
     status: row.status,
     decision: decisionRecord?.payload ?? null,
-    outcome: (row.outcome as ExecCommandOutcome | null) ?? null,
+    outcome: publicOutcome(row.outcome),
     appliedAt: row.appliedAt ? row.appliedAt.toISOString() : null,
+    archivedAt,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -181,6 +192,68 @@ async function loadApproval(proposalId: string): Promise<OperatorApprovalRow | u
 export type DecideOperatorApprovalResult =
   | { ok: true; card: OperatorApprovalCard }
   | { ok: false; error: string; status: number };
+
+const ARCHIVABLE_STATUSES = ['approved', 'denied', 'withdrawn', 'applied', 'expired'];
+
+function isArchivableDecision(row: OperatorApprovalRow): boolean {
+  return row.source === 'decision' && row.kind === 'decision:card' && ARCHIVABLE_STATUSES.includes(row.status);
+}
+
+function archivedAtFor(row: OperatorApprovalRow, inboxDid: string): string | null {
+  if (!isArchivableDecision(row)) return null;
+  const markers = row.outcome?.inboxArchivedBy;
+  if (!markers || typeof markers !== 'object' || !Object.hasOwn(markers, inboxDid)) return null;
+  const marker = (markers as Record<string, unknown>)[inboxDid];
+  return typeof marker === 'string' ? marker : null;
+}
+
+/**
+ * Archive only the real addressee's decided decision card. This unsigned
+ * preference never applies a proposal, signs a decision, or deletes a row.
+ * Merge against the live JSONB value in one UPDATE, preserving concurrent
+ * markers and outcome metadata; the first timestamp for this DID wins.
+ */
+export async function archiveOperatorApproval(params: {
+  proposalId: string;
+  operatorDid: string;
+}): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const { proposalId, operatorDid } = params;
+  const row = await loadApproval(proposalId);
+  if (!row) return { ok: false, error: 'Proposal not found', status: 404 };
+  if (resolveApprovalAddressee(row, row.operatorDid) !== operatorDid) {
+    return { ok: false, error: 'This proposal is not addressed to you', status: 403 };
+  }
+  if (!isArchivableDecision(row)) {
+    return { ok: false, error: 'Only decided decision cards may be archived', status: 409 };
+  }
+
+  const archivedAt = new Date().toISOString();
+  const markers = sql`case
+    when jsonb_typeof(${operatorApprovals.outcome}->'inboxArchivedBy') = 'object'
+      then ${operatorApprovals.outcome}->'inboxArchivedBy'
+    else '{}'::jsonb end`;
+  const firstMarker = sql`case
+    when jsonb_typeof((${markers})->${operatorDid}::text) = 'string'
+      then (${markers})->${operatorDid}::text
+    else to_jsonb(${archivedAt}::text) end`;
+  const updated = await db.update(operatorApprovals).set({
+    outcome: sql`jsonb_set(
+      coalesce(${operatorApprovals.outcome}, '{}'::jsonb),
+      '{inboxArchivedBy}',
+      (${markers}) || jsonb_build_object(${operatorDid}::text, ${firstMarker})
+    )`,
+  }).where(and(
+    eq(operatorApprovals.proposalId, proposalId),
+    eq(operatorApprovals.operatorDid, operatorDid),
+    eq(operatorApprovals.source, 'decision'),
+    eq(operatorApprovals.kind, 'decision:card'),
+    inArray(operatorApprovals.status, ARCHIVABLE_STATUSES),
+  )).returning({ proposalId: operatorApprovals.proposalId });
+  if (!updated.length) {
+    return { ok: false, error: 'Proposal changed before it could be archived', status: 409 };
+  }
+  return { ok: true };
+}
 
 export interface DecideOperatorApprovalParams {
   proposalId: string;
@@ -558,5 +631,7 @@ export async function listApprovalsForOperator(
     .from(operatorApprovals)
     .where(and(...conditions))
     .orderBy(desc(operatorApprovals.createdAt));
-  return rows.filter((row) => resolveApprovalAddressee(row, row.operatorDid) === inboxDid).map(toCard);
+  return rows
+    .filter((row) => resolveApprovalAddressee(row, row.operatorDid) === inboxDid)
+    .map((row) => toCard(row, archivedAtFor(row, inboxDid)));
 }
