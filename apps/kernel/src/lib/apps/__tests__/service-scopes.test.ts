@@ -38,6 +38,7 @@ vi.mock('@/src/db', () => ({
   registryApps: {
     appDid: 'registryApps.appDid',
     status: 'registryApps.status',
+    requestedScopes: 'registryApps.requestedScopes',
     approvedServiceScopes: 'registryApps.approvedServiceScopes',
   },
   operatorApprovals: { source: 's', kind: 'k', status: 'st', detail: 'd' },
@@ -78,8 +79,8 @@ function card(detail: Record<string, unknown> | null, overrides: Partial<Operato
 const grant = (scopes: string[]) => card({ appDid: APP_DID, action: 'grant', scopes });
 const revoke = (scopes: string[]) => card({ appDid: APP_DID, action: 'revoke', scopes });
 
-function appRow(approved: string[], status = 'active') {
-  selectWhereMock.mockResolvedValueOnce([{ status, approved }]);
+function appRow(approved: string[], status = 'active', requested: string[] = []) {
+  selectWhereMock.mockResolvedValueOnce([{ status, approved, requested }]);
 }
 
 beforeEach(() => {
@@ -89,24 +90,34 @@ beforeEach(() => {
 });
 
 describe('mintableServiceScopes', () => {
-  it('mints notify endpoint scopes only when requested AND operator-approved', () => {
+  it('mints notify endpoint scopes only when operator-approved, including implicit requests', () => {
     const notifyScopes = ['notify:send', 'notify:broadcast', 'notify:interest'];
     expect(mintableServiceScopes(notifyScopes, [])).toEqual([]);
-    expect(mintableServiceScopes([], notifyScopes)).toEqual([]);
+    expect(mintableServiceScopes([], notifyScopes)).toEqual(notifyScopes);
     expect(mintableServiceScopes(notifyScopes, notifyScopes)).toEqual(notifyScopes);
     expect(mintableServiceScopes(notifyScopes, ['notify:send'])).toEqual(['notify:send']);
   });
-  it('is empty for requestedScopes alone (fail-closed) and never returns an unrequested approved scope', () => {
+  it('is empty for unapproved requestedScopes alone and treats approval as a request', () => {
     expect(mintableServiceScopes(['identity:write'], [])).toEqual([]);
-    expect(mintableServiceScopes([], ['identity:write'])).toEqual([]);
+    expect(mintableServiceScopes([], ['identity:write'])).toEqual(['identity:write']);
+    expect(mintableServiceScopes(undefined, ['identity:write'])).toEqual(['identity:write']);
     expect(mintableServiceScopes(null, undefined)).toEqual([]);
   });
 
-  it('returns requested ∩ (eligible ∪ approved), clamped to the vocabulary', () => {
+  it('returns effective requests ∩ (eligible ∪ approved), clamped to the vocabulary', () => {
     expect(mintableServiceScopes(['identity:write', 'supply:read', 'bogus:scope'], ['identity:write', 'bogus:scope'])).toEqual([
       'identity:write',
       'supply:read',
     ]);
+  });
+});
+
+describe('mintableServiceScopes — duplicate and stale scopes', () => {
+  it('deduplicates explicit and implicit requests and rejects unknown approvals', () => {
+    expect(mintableServiceScopes(
+      ['attestations:write', 'attestations:write'],
+      ['attestations:write', 'media:write', 'media:write', 'bogus:scope'],
+    )).toEqual(['attestations:write', 'media:write']);
   });
 });
 
@@ -179,7 +190,7 @@ describe('executeAppsServiceScopesApproval — validation', () => {
 
 describe('executeAppsServiceScopesApproval — execution', () => {
   it('grant: stores the union on the app with the approval id + decision timestamp', async () => {
-    appRow(['identity:read']);
+    appRow(['identity:read'], 'active', ['supply:read']);
 
     const result = await executeAppsServiceScopesApproval(grant(['identity:write', 'identity:read']));
 
@@ -189,9 +200,28 @@ describe('executeAppsServiceScopesApproval — execution', () => {
     });
     expect(setMock).toHaveBeenCalledWith({
       approvedServiceScopes: ['identity:read', 'identity:write'],
+      requestedScopes: ['identity:read', 'identity:write', 'supply:read'],
       serviceScopesApprovalId: 'appscope_1',
       serviceScopesApprovedAt: new Date(DECIDED_AT),
     });
+  });
+
+  it('granting twice records requests and approvals without duplicates', async () => {
+    const scopes = ['attestations:write', 'media:write'];
+    appRow([]);
+    await executeAppsServiceScopesApproval(grant(scopes));
+    expect(setMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      approvedServiceScopes: scopes,
+      requestedScopes: scopes,
+    }));
+
+    appRow(scopes, 'active', scopes);
+    await executeAppsServiceScopesApproval(grant(scopes));
+    expect(setMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      approvedServiceScopes: scopes,
+      requestedScopes: scopes,
+    }));
+    expect(setMock).toHaveBeenCalledTimes(2);
   });
 
   it('revoke: removes only the named scopes, and works on a revoked app', async () => {
@@ -201,6 +231,7 @@ describe('executeAppsServiceScopesApproval — execution', () => {
 
     expect(result).toEqual({ ok: true, data: { appDid: APP_DID, action: 'revoke', approvedServiceScopes: ['identity:read'] } });
     expect(setMock).toHaveBeenCalledWith(expect.objectContaining({ approvedServiceScopes: ['identity:read'] }));
+    expect(setMock.mock.calls[0][0]).not.toHaveProperty('requestedScopes');
   });
 
   it('reports a failed write without throwing', async () => {

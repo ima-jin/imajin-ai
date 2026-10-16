@@ -229,9 +229,31 @@ describe('POST /auth/api/apps/token/service — operator-approved service scopes
     expect(payload!.scope).toBe('identity:read identity:write');
   });
 
-  it('an approved scope the app never requested is not minted (intersection, not union)', async () => {
+  it('includes approval as an implicit request for existing apps', async () => {
     const body = await mint(activeApp(['identity:read'], ['identity:read', 'identity:write']));
-    expect(body.scopes).toEqual(['identity:read']);
+    expect(body.scopes).toEqual(['identity:read', 'identity:write']);
+  });
+
+  it('mints exactly the approved dykil scopes when requested_scopes is empty (#2824)', async () => {
+    const scopes = ['attestations:write', 'media:write'];
+    const body = await mint(activeApp([], scopes));
+    expect(body.scopes).toEqual(scopes);
+    expect((await verifyAppToken(body.token))!.scope).toBe('attestations:write media:write');
+  });
+
+  it('never mints unapproved dykil requests and drops revoked scopes from the JWT (#2824)', async () => {
+    const scopes = ['attestations:write', 'media:write'];
+    const unapproved = await mint(activeApp(scopes));
+    expect(unapproved.scopes).toEqual([]);
+    expect((await verifyAppToken(unapproved.token))!.scope).toBe('');
+
+    const partiallyRevoked = await mint(activeApp(scopes, ['media:write']));
+    expect(partiallyRevoked.scopes).toEqual(['media:write']);
+    expect((await verifyAppToken(partiallyRevoked.token))!.scope).toBe('media:write');
+
+    const fullyRevoked = await mint(activeApp(scopes));
+    expect(fullyRevoked.scopes).toEqual([]);
+    expect((await verifyAppToken(fullyRevoked.token))!.scope).toBe('');
   });
 
   it('approval widens only that scope — other requested, unapproved scopes stay fenced out', async () => {

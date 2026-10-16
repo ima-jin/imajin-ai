@@ -16,8 +16,9 @@
  *     genuine operator countersignature, unconditionally (never gated by the
  *     opt-in `OPERATOR_COUNTERSIGN_REQUIRED` flag);
  *   - the approved set is stored on `registry.apps.approved_service_scopes`
- *     (with the approval id + timestamp) and the mint becomes
- *     `requestedScopes ∩ (serviceEligible ∪ approved)`.
+ *     (with the approval id + timestamp); a grant also records the scopes in
+ *     `requestedScopes`. The mint treats current approvals as implicit requests
+ *     for apps approved before request recording (#2824).
  *
  * Revocation is the same rail with `action: 'revoke'`: it removes scopes from
  * the approved set, so the next minted token drops them.
@@ -58,16 +59,16 @@ export function normalizeScopes(scopes: readonly string[]): string[] {
 
 /**
  * The scopes a session-less service token may carry for an app (#2711):
- * `requestedScopes ∩ (serviceEligibleScopes() ∪ approved)`, with the requested
- * set first clamped to the scope vocabulary. A scope present ONLY in
- * `requestedScopes` never survives; neither does an approved scope the app
- * did not request.
+ * `(requestedScopes ∪ approved) ∩ (serviceEligibleScopes() ∪ approved)`,
+ * clamped to the scope vocabulary. Approval also records a request (#2824),
+ * including implicitly for existing apps without persisted requests. Requests
+ * alone never authorize a scope outside the unchanged service-eligible set.
  */
 export function mintableServiceScopes(
   requestedScopes: readonly string[] | null | undefined,
   approvedServiceScopes: readonly string[] | null | undefined,
 ): string[] {
-  const { valid } = validateScopes([...(requestedScopes ?? [])]);
+  const { valid } = validateScopes([...new Set([...(requestedScopes ?? []), ...(approvedServiceScopes ?? [])])]);
   const allowed = new Set<string>([...serviceEligibleScopes(), ...(approvedServiceScopes ?? [])]);
   return valid.filter((scope) => allowed.has(scope));
 }
@@ -113,7 +114,8 @@ export async function findPendingServiceScopesProposal(
 
 /**
  * Execute an approved `apps:service-scopes` proposal: add (grant) or remove
- * (revoke) the scopes on the app's approved set. Never throws.
+ * (revoke) the scopes on the app's approved set. A grant also records them as
+ * requested; revocation leaves requests intact, not authorization. Never throws.
  *
  * Fails closed at the same choke point as vault/access/apps:provision:
  * `resolveVaultAuthorization` returning `null` (no genuine, already-verified
@@ -141,7 +143,7 @@ export async function executeAppsServiceScopesApproval(card: OperatorApprovalCar
 
   try {
     const [app] = await db
-      .select({ status: registryApps.status, approved: registryApps.approvedServiceScopes })
+      .select({ status: registryApps.status, approved: registryApps.approvedServiceScopes, requested: registryApps.requestedScopes })
       .from(registryApps)
       .where(eq(registryApps.appDid, detail.appDid));
     if (!app) return { ok: false, error: `Unknown app DID '${detail.appDid}'` };
@@ -159,6 +161,9 @@ export async function executeAppsServiceScopesApproval(card: OperatorApprovalCar
       .update(registryApps)
       .set({
         approvedServiceScopes,
+        ...(detail.action === 'grant'
+          ? { requestedScopes: normalizeScopes([...(parseScopeList(app.requested) ?? []), ...detail.scopes]) }
+          : {}),
         serviceScopesApprovalId: authorizedBy.approvalId,
         serviceScopesApprovedAt: new Date(authorizedBy.decidedAt),
       })
