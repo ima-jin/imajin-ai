@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
+import { stripeWebhookEvents } from '@/src/lib/stripe/webhook-events';
 import { ConnectorDetail } from '../ConnectorDetail';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
@@ -30,7 +31,7 @@ function mount(status: Record<string, unknown> = {}, sealFailure?: string, grant
       validScopes: ['stripe:events'], ...status, keySealed: primary, publishableKeySealed: paired,
       activeScopes,
       webhookSecretSealed: webhook, webhookUrl: 'https://kernel.test/pay/api/webhook/did/stripewh_fake',
-      webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
+      webhookEvents: stripeWebhookEvents,
     }));
   });
   vi.stubGlobal('fetch', fetchMock);
@@ -59,6 +60,14 @@ function eventsToggle() {
 }
 
 describe('Stripe webhook owner consent readiness', () => {
+  it('displays exactly the shared ingress event list in the endpoint instructions', async () => {
+    mount(sealedWithoutConsent);
+    const instructions = await screen.findByText(/^Subscribe to:/);
+    expect(instructions.textContent).toBe(
+      `Subscribe to: ${stripeWebhookEvents.join(', ')}. Paste that endpoint's signing secret below. Replace it here after a rotation; your keys need not be entered again.`,
+    );
+    expect(instructions.textContent).not.toContain('transfer.created');
+  });
   it('makes the required grant obvious on a fresh card without selecting or posting it', async () => {
     const mock = mount({ keySealed: false, activeScopes: [] });
     expect(await screen.findByText(consentInstruction)).toBeDefined();
