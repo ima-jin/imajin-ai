@@ -33,6 +33,7 @@ registerReactor('payment-request-notify', paymentRequestNotifyReactor);
 registerReactor('loop-projection', loopProjectionReactor);
 
 export { publish } from './publish';
+export { LoopOwnershipConflictError } from './reactors/loop-projection';
 export type { PublishResult } from './publish';
 export { registerChainObserver } from './chain-observer';
 export type { ChainObservation, ChainObserver } from './chain-observer';

@@ -62,6 +62,14 @@ describe('ingestLoopEvent', () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
+  it('rejects a redaction-changing publisher without changing issuer identity', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    expect(await ingestLoopEvent({ ...REQUEST, publisherDid: 'did:imajin:sk-secretcredential' }))
+      .toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
   it('verifies over { type, payload } before publishing', async () => {
     mockVerify.mockResolvedValueOnce({ ok: true });
     mockPublish.mockResolvedValueOnce(undefined);
@@ -219,7 +227,7 @@ describe('ingestLoopEvent', () => {
     expect(mockPublish).not.toHaveBeenCalled();
   });
 
-  it.each(['loopId', 'principal'])('rejects redaction-changing identity %s before ownership writes', async field => {
+  it.each(['loopId', 'principal', 'parentLoopId'])('rejects redaction-changing identity %s before ownership writes', async field => {
     mockVerify.mockResolvedValueOnce({ ok: true });
     const payload = { ...REQUEST.payload, [field]: 'did:imajin:sk-secretcredential' };
     expect(await ingestLoopEvent({ ...REQUEST, payload })).toMatchObject({ status: 400 });

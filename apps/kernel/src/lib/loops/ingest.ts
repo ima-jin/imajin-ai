@@ -47,7 +47,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   if (!isWithinLoopMetadataBudget(sanitized)) {
     return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };
   }
-  if (sanitized.loopId !== payload.loopId || sanitized.principal !== payload.principal || redactLoopText(publisherDid) !== publisherDid) {
+  if (!hasStableLoopIdentity(request, sanitized)) {
     return { ok: false, error: 'Loop identity fields must not contain credentials', status: 400 };
   }
 
@@ -72,7 +72,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     }
     const persistedPayload = await prepareLoopOutput(sanitized);
     await bus.publish(type, {
-      issuer: redactLoopText(publisherDid),
+      issuer: publisherDid,
       subject: sanitized.principal,
       scope: 'loop',
       payload: {
@@ -100,4 +100,10 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
 
 function isOwnershipConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'loop_owner_conflict';
+}
+
+function hasStableLoopIdentity(request: LoopIngestRequest, sanitized: LoopIngestRequest['payload']): boolean {
+  const bindings = ['loopId', 'principal', 'parentLoopId'] as const;
+  return bindings.every(field => sanitized[field] === request.payload[field])
+    && redactLoopText(request.publisherDid) === request.publisherDid;
 }
