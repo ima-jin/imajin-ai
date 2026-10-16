@@ -1073,6 +1073,12 @@
       "schema": "kernel",
       "firstMigration": "0157_loops_rail.sql",
       "notes": ""
+    },
+    "kernel.surface_lease": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0192_surface_lease.sql",
+      "notes": "#2405 — signed warn-only surface holdings attached to loops"
     }
   },
   "views": {},
