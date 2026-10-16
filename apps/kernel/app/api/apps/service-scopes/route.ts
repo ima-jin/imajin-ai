@@ -19,7 +19,7 @@
  * Idempotent: an identical already-pending proposal is reused rather than
  * raising a duplicate card.
  *
- * GET /api/apps/service-scopes?appDid= — the app's currently approved set +
+ * GET /api/apps/service-scopes?appDid= — the app's requested and approved sets +
  * the approval id/timestamp of the last change (same owner/operator gate).
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -202,6 +202,7 @@ export async function GET(request: NextRequest) {
   const [app] = await db
     .select({
       ownerDid: registryApps.ownerDid,
+      requested: registryApps.requestedScopes,
       approved: registryApps.approvedServiceScopes,
       approvalId: registryApps.serviceScopesApprovalId,
       approvedAt: registryApps.serviceScopesApprovedAt,
@@ -217,6 +218,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(
     {
       appDid,
+      requestedScopes: normalizeScopes(parseScopeList(app.requested) ?? []),
       approvedServiceScopes: normalizeScopes(parseScopeList(app.approved) ?? []),
       approvalId: app.approvalId,
       approvedAt: app.approvedAt,

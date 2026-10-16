@@ -9,6 +9,7 @@
  * (Ryan's 2026-10-09 ruling on #2745, option a).
  */
 import type { ProvisionedApp } from './provisioned-apps';
+import { ProvisionedAppScopes } from './provisioned-app-scopes';
 
 function ProvisionedAppRow({
   app,
@@ -16,7 +17,7 @@ function ProvisionedAppRow({
   onReissue,
 }: Readonly<{ app: ProvisionedApp; reissueBusy: boolean; onReissue: (app: ProvisionedApp) => void }>) {
   return (
-    <li className="flex items-center gap-2 text-xs" data-testid="provisioned-app" data-slug={app.slug}>
+    <li className="flex flex-wrap items-center gap-2 text-xs" data-testid="provisioned-app" data-slug={app.slug}>
       <span className="font-mono text-gray-200">{app.slug}</span>
       <span className={app.claimed ? 'text-green-400' : 'text-amber-400'}>{app.claimed ? 'claimed' : 'unclaimed'}</span>
       {!app.claimed && (
@@ -30,6 +31,7 @@ function ProvisionedAppRow({
           {reissueBusy ? 'Proposing…' : 'Reissue claim code'}
         </button>
       )}
+      {app.appDid && <ProvisionedAppScopes key={app.appDid} appDid={app.appDid} />}
     </li>
   );
 }
