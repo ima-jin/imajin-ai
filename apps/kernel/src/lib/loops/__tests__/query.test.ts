@@ -3,15 +3,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Fake postgres.js tagged-template client. `resolveWith` queues the next
 // call's return value; `calls` records each query's skeleton + interpolated
 // values, mirroring packages/bus's fakeSql test pattern.
-const { calls, fakeSql, resolveWith } = vi.hoisted(() => {
+const { calls, fakeSql, resolveWith, resolveUsing } = vi.hoisted(() => {
   const calls: Array<{ text: string; values: unknown[] }> = [];
-  const queue: unknown[][] = [];
+  type Query = { text: string; values: unknown[] };
+  const queue: Array<unknown[] | ((query: Query) => unknown[])> = [];
   const resolveWith = (rows: unknown[]) => { queue.push(rows); };
+  const resolveUsing = (query: (query: Query) => unknown[]) => { queue.push(query); };
   const fakeSql = (strings: TemplateStringsArray, ...values: unknown[]) => {
-    calls.push({ text: strings.join(' ? '), values });
-    return Promise.resolve(queue.shift() ?? []);
+    const query = { text: strings.join(' ? '), values };
+    calls.push(query);
+    const response = queue.shift() ?? [];
+    return Promise.resolve(typeof response === 'function' ? response(query) : response);
   };
-  return { calls, fakeSql, resolveWith };
+  return { calls, fakeSql, resolveWith, resolveUsing };
 });
 
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
@@ -195,5 +199,35 @@ describe('getLoopWithHistory', () => {
     expect(calls[0].values).toEqual(['loop_1', PRINCIPAL]);
     expect(calls[1].text).toContain('FROM kernel.loop_events');
     expect(calls[1].values).toEqual(['loop_1', PRINCIPAL]);
+    expect(calls[1].text).toContain('ORDER BY occurred_at ASC, id ASC');
+  });
+
+  it('excludes foreign-principal legacy history and orders tied timestamps by id', async () => {
+    const at = '2026-09-22T00:00:00.000Z';
+    const event = {
+      loop_id: 'loop_1', type: 'loop.progress', issuer: 'did:imajin:warp-node',
+      principal: PRINCIPAL, payload: { output: { kind: 'text', text: 'private' } },
+      occurred_at: at, created_at: at,
+    };
+    const rows = [
+      { ...event, id: 'evt_c' },
+      { ...event, id: 'evt_foreign', principal: 'did:imajin:other' },
+      { ...event, id: 'evt_b' },
+      { ...event, id: 'evt_a', occurred_at: '2026-09-21T00:00:00.000Z' },
+      { ...event, id: 'evt_unrelated', loop_id: 'loop_2' },
+    ];
+    resolveWith([rawLoopRow()]);
+    resolveUsing(({ text, values }) => {
+      // Emulate this query against mixed-principal, deliberately unordered
+      // history. SQL-shape assertions make either missing predicate fail.
+      expect(text.replaceAll(/\s+/g, ' ')).toContain('WHERE loop_id = ? AND principal = ?');
+      expect(text).toContain('ORDER BY occurred_at ASC, id ASC');
+      return rows.filter((row) => row.loop_id === values[0] && row.principal === values[1])
+        .sort((a, b) => a.occurred_at.localeCompare(b.occurred_at) || a.id.localeCompare(b.id));
+    });
+    const result = await getLoopWithHistory('loop_1', PRINCIPAL);
+    expect(result?.events.map((row) => row.id)).toEqual(['evt_a', 'evt_b', 'evt_c']);
+    expect(result?.events.every((row) => row.principal === PRINCIPAL)).toBe(true);
+    expect(result?.events[0].payload).toEqual(event.payload);
   });
 });
