@@ -63,7 +63,7 @@ function redactQuotedAssignments(text: string): string {
 /** Redact credential-shaped strings, including free text and external references. */
 export function redactLoopText(text: string): string {
   return redactQuotedAssignments(redactPem(text))
-    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/-]+=*/gi, `$1 ${LOOP_REDACTED}`)
+    .replace(/\b(Bearer|Basic)\s+[a-z0-9._~+/-]+=*/gi, `$1 ${LOOP_REDACTED}`)
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, LOOP_REDACTED)
     .replace(/\b(?:sk|rk|pk)-[A-Za-z0-9_-]{8,}/g, LOOP_REDACTED)
     .replace(/\b[rs]k_(?:live|test)_[A-Za-z0-9]+/g, LOOP_REDACTED)
