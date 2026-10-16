@@ -37,6 +37,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import type { ReachDeliveryInput } from './reach-delivery-input';
 import { parseReachDelivery } from './reach-delivery-input';
 import { deliverReach } from './reach-delivery';
+import { markReachPublished } from './reach-envelope-store';
 
 const log = createLogger('kernel');
 
@@ -159,8 +160,7 @@ interface EmitReachAttestationParams {
   input: ReachRequestInput;
   transcriptHash: string;
   signatureVerified: boolean;
-  outcome: 'answered' | 'denied' | 'delivered';
-  reachId?: string;
+  outcome: 'answered' | 'denied';
   reason?: ReachDenialReason;
   answer?: boolean;
   onBehalfOfStubDid?: string;
@@ -206,7 +206,6 @@ async function emitReachAttestation(params: EmitReachAttestationParams): Promise
       grantId: params.grantId ?? null,
       outcome: params.outcome,
       ...(params.outcome === 'denied' ? { reason: params.reason } : { answer: params.answer }),
-      ...(params.reachId ? { reachId: params.reachId } : {}),
     },
   }).catch((err: unknown) => log.error({ err: String(err), outcome: params.outcome }, '[agent-reach] emitAttestation failed'));
 }
@@ -231,7 +230,7 @@ async function denyReach(params: {
 }
 
 async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Promise<ReachDelivered | ReachDenied | null> {
-  const { principalDid, input, transcriptHash, onBehalfOfStubDid, grantId } = params;
+  const { principalDid, input, transcriptHash } = params;
   const result = await deliverReach(params);
   if (result.outcome === 'declined') return null;
   if (result.outcome !== 'delivered') {
@@ -239,12 +238,11 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
     await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: true });
     return denial(reason, result.outcome === 'blocked' ? 403 : 429);
   }
-  if (!result.replayed) {
-    await emitReachAttestation({
-      principalDid, input, transcriptHash, signatureVerified: true, outcome: 'delivered',
-      answer: true, reachId: result.reachId, onBehalfOfStubDid, grantId,
-    });
+  // The attestation committed with the envelope, so publication retries can
+  // never mint a second one. Reuse the original signed event on retries.
+  if (!result.published) {
     await publish('agent.reach.delivered', result.event);
+    await markReachPublished({ principalDid, reachId: result.reachId });
   }
   return { delivered: true, reachId: result.reachId };
 }

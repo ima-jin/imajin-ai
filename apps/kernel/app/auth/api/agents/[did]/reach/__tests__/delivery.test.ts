@@ -8,7 +8,10 @@ const mocks = vi.hoisted(() => ({
   rows: new Map<string, Record<string, unknown>>(),
   envelopes: new Map<string, Record<string, unknown>>(),
   attest: vi.fn(), publish: vi.fn(), broker: vi.fn(), grant: vi.fn(),
-  persist: vi.fn(), limit: vi.fn(), node: vi.fn(),
+  persist: vi.fn(), markPublished: vi.fn(), prepareAttestation: vi.fn(), limit: vi.fn(), node: vi.fn(),
+}));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({
+  prepareMechanicalAttestation: (...args: unknown[]) => mocks.prepareAttestation(...args),
 }));
 
 vi.mock('next/server', () => ({
@@ -54,6 +57,7 @@ vi.mock('@/src/lib/auth/foreign-principal-stub', () => ({
 }));
 vi.mock('@/src/lib/auth/reach-envelope-store', () => ({
   persistReachEnvelope: (...args: unknown[]) => mocks.persist(...args),
+  markReachPublished: (...args: unknown[]) => mocks.markPublished(...args),
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: () => mocks.node() }));
@@ -95,6 +99,10 @@ beforeEach(() => {
   setTopic();
   mocks.rows.set(requesterDid, { id: requesterDid, publicKey: senderKey.publicKey, tier: 'established' });
   mocks.attest.mockResolvedValue({ attestationId: 'att_test' });
+  mocks.prepareAttestation.mockImplementation(async (params: Record<string, unknown>, id: string) => ({
+    ...params, id, signature: 'prepared-node-attestation',
+  }));
+  mocks.markPublished.mockResolvedValue(undefined);
   mocks.publish.mockResolvedValue({});
   mocks.broker.mockResolvedValue({ status: 'released', data: { contact_topics: { result: true } } });
   mocks.grant.mockResolvedValue({ authorized: true, grantId: 'grant_test' });
@@ -102,7 +110,7 @@ beforeEach(() => {
   mocks.node.mockReturnValue({ senderDid: nodeDid, senderPubkey: nodeKey.publicKey, privateKeyHex: nodeKey.privateKey });
   mocks.persist.mockImplementation(async (envelope: Record<string, unknown>) => {
     mocks.envelopes.set(String(envelope.reachId), envelope);
-    return { stored: true, reachId: envelope.reachId };
+    return { stored: true, reachId: envelope.reachId, published: false, signedEvent: envelope.signedEvent };
   });
 });
 
@@ -129,9 +137,14 @@ describe('signed reach delivery through POST', () => {
       type, issuer: event.issuer, subject: 'did:imajin:other', scope: event.scope, payload: unsignedPayload,
     }), signature.keyId)).toBe(false);
     expect(stored?.signedEvent).toEqual({ type, ...event });
-    expect(mocks.attest).toHaveBeenCalledTimes(1);
-    expect(mocks.attest.mock.calls[0][0].payload).toMatchObject({ outcome: 'delivered', reachId: response.body.reachId });
-    expect(JSON.stringify(mocks.attest.mock.calls)).not.toContain(input.message);
+    expect(mocks.attest).not.toHaveBeenCalled();
+    expect(mocks.prepareAttestation).toHaveBeenCalledTimes(1);
+    expect(stored?.deliveryAttestation).toMatchObject({
+      id: `att_reach_${response.body.reachId}`,
+      payload: { outcome: 'delivered', reachId: response.body.reachId, signatureVerified: true },
+    });
+    expect(JSON.stringify(stored?.deliveryAttestation)).not.toContain(input.message);
+    expect(mocks.markPublished).toHaveBeenCalledWith({ principalDid, reachId: response.body.reachId });
   });
 
   it.each([{ published: false }, { open: false }, { mode: 'decline' }])('returns existing false-answer shape without storing a body for %j', async (patch) => {
@@ -198,10 +211,38 @@ describe('signed reach delivery through POST', () => {
   });
 
   it('does not recreate delivery or attestation on a stored transcript replay', async () => {
-    mocks.persist.mockResolvedValue({ stored: true, reachId: 'reach_original', replayed: true });
+    mocks.persist.mockResolvedValue({ stored: true, reachId: 'reach_original', replayed: true, published: true, signedEvent: {} });
     expect((await post(signedBody())).body).toEqual({ delivered: true, reachId: 'reach_original' });
     expect(mocks.publish).not.toHaveBeenCalled();
     expect(mocks.attest).not.toHaveBeenCalled();
+  });
+
+  it('retries the original pending signed event after publication failure without recreating the stored attestation', async () => {
+    const input = signedBody();
+    let original: Record<string, unknown> | undefined;
+    mocks.persist.mockImplementation(async (envelope: Record<string, unknown>) => {
+      const replayed = original !== undefined;
+      original ??= envelope;
+      mocks.envelopes.set(String(original.reachId), original);
+      return { stored: true, reachId: original.reachId, replayed, published: false, signedEvent: original.signedEvent };
+    });
+    mocks.publish.mockRejectedValueOnce(new Error('bus unavailable')).mockResolvedValue({});
+    await expect(post(input)).rejects.toThrow('bus unavailable');
+    expect(mocks.markPublished).not.toHaveBeenCalled();
+    const response = await post(input);
+    expect(response.body).toEqual({ delivered: true, reachId: original?.reachId });
+    expect(mocks.publish.mock.calls[0]).toEqual(mocks.publish.mock.calls[1]);
+    expect(mocks.markPublished).toHaveBeenCalledTimes(1);
+    expect(mocks.envelopes.size).toBe(1);
+    expect(mocks.attest).not.toHaveBeenCalled();
+  });
+
+  it('fails closed before persistence or publication when attestation signing fails', async () => {
+    mocks.prepareAttestation.mockRejectedValue(new Error('signing unavailable'));
+    await expect(post(signedBody())).rejects.toThrow('signing unavailable');
+    expect(mocks.persist).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+    expect(mocks.markPublished).not.toHaveBeenCalled();
   });
 
   it('never claims delivery when persistence fails', async () => {

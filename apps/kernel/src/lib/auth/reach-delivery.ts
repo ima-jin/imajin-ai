@@ -6,6 +6,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { persistReachEnvelope } from './reach-envelope-store';
 import type { ReachRequestInput } from './agent-reach';
 import type { ReachDeliveryInput } from './reach-delivery-input';
+import { prepareMechanicalAttestation } from './emit-mechanical-attestation';
 
 type DeliveredEvent = {
   issuer: string;
@@ -16,7 +17,7 @@ type DeliveredEvent = {
 
 export type ReachDeliveryResult =
   | { outcome: 'declined' | 'rate_limited' | 'blocked' }
-  | { outcome: 'delivered'; reachId: string; replayed: boolean; event: DeliveredEvent };
+  | { outcome: 'delivered'; reachId: string; published: boolean; event: DeliveredEvent };
 
 /** No transport is opened: replyHandle is opaque state for #2589. */
 export async function deliverReach(params: {
@@ -73,7 +74,22 @@ export async function deliverReach(params: {
     ...unsignedPayload,
     dailyCap: config.dailyCap,
     signedEvent: { type: provenance.type, ...event },
+    deliveryAttestation: await prepareMechanicalAttestation({
+      subjectDid: principalDid,
+      type: 'agent.reach',
+      contextId: reachId,
+      contextType: 'agent.reach',
+      payload: {
+        requesterDid: input.requesterDid, principalDid, reachId,
+        onBehalfOfStubDid: params.onBehalfOfStubDid,
+        transcriptHash: params.transcriptHash, requesterSignature: input.signature,
+        signatureVerified: true, grantId: params.grantId, outcome: 'delivered',
+      },
+    }, `att_reach_${reachId}`),
   });
   if (!stored.stored) return { outcome: stored.reason };
-  return { outcome: 'delivered', reachId: stored.reachId, replayed: stored.replayed === true, event };
+  return {
+    outcome: 'delivered', reachId: stored.reachId, published: stored.published,
+    event: stored.signedEvent as unknown as DeliveredEvent,
+  };
 }
