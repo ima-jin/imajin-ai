@@ -307,14 +307,14 @@ function generateId(prefix: string): string {
 // Examples: crs_m1abc123, lsn_m1def456, enr_m1ghi789
 ```
 
-## Testing
-
-### Loop session output publishers
+## Loop session output publishers
 
 See [the signed loop output contract](guide/loop-output.md) for the eight
 `payload.output` kinds, signing, redaction, storage bounds, and private
 artifact retrieval used by the plugin and `/jin` Runs. This uses the existing
 database and auth configuration; no new environment variables are required.
+
+## Testing
 
 - **End-to-end test cases:** `tests/HAPPY_PATH.md`
 - **Security audit checklist:** `tests/AUDIT.md`

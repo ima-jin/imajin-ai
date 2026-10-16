@@ -337,7 +337,16 @@ components:
     StoredLoopEnvelope:
       type: object
       description: "Sanitized envelope retaining loop metadata and optional inline output or private artifact wrapper."
+      required: [loopId, kind, principal, state, summary, at]
       properties:
+        loopId: { type: string }
+        kind: { type: string }
+        principal: { type: string }
+        parentLoopId: { type: [string, "null"] }
+        refs: { $ref: "#/components/schemas/LoopRefs" }
+        state: { type: string }
+        summary: { type: string }
+        at: { type: string, format: date-time }
         output:
           oneOf:
             - $ref: "#/components/schemas/LoopOutput"

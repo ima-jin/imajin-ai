@@ -68,7 +68,11 @@ that every arbitrary secret can be recognized.
 The HTTP request cap is **1,048,576 UTF-8 bytes**, counted while streaming,
 even without or with a false Content-Length. Larger requests return 413.
 Split larger source output into multiple observations before signing.
-Envelope metadata and JSON nesting are additionally bounded at validation.
+Envelope metadata (everything except `output`) is capped at **16,384 UTF-8
+JSON bytes**, both before and after redaction. JSON nesting is capped at
+**24 levels** and traversal at **20,000 values**. Credential-shaped principal,
+publisher, and loop identifiers are rejected rather than rewritten: redaction
+must never collapse authorization identities.
 The inline output cap is **16,384 UTF-8 JSON bytes after redaction**.
 Output above it is stored in `kernel.loop_output_artifacts` and replaced by:
 
