@@ -106,6 +106,25 @@ still uses the existing principal-authorized connector; unavailable is unknown.
 
 `/jin` Runs uses the same projection through direct-human operator-gated
 adapters, not the Warp or gateway API. Nonoperators see no Runs lane.
+## Native lifecycle observations (#2290)
+
+- Warp publishes authoritative run/session ids, exact GitHub trigger refs and
+  unambiguous typed PR artifact refs; it never infers subjects from prompts or
+  branches. Sparse transitions preserve existing refs.
+- A `bus.chain` is one actual `publish()` invocation, with its own UUID.
+  Completion waits for awaited and fire-and-forget reactors to settle.
+  Correlation ids remain trace metadata, not invented parent loops. The kernel
+  injects the signed observer; the bus never imports kernel code and never
+  observes `loop.*` recursively.
+- `review` follows the cycle's real review-phase transitions. `pr` first
+  appears from a confirmed typed PR artifact, parented to its run. That initial
+  observation cannot overwrite an existing PR projection. Existing authenticated
+  `getPullRequest` observations update open/draft/closed/merged state without
+  any new API call, poller or gateway dependency.
+- New history rows retain server-assigned `publisherProof` containing the exact
+  original signed payload/type, publisher DID and signature for audit. Older
+  history is not backfilled with fabricated proofs. Projection ownership cannot
+  move between principals, and history reads are also principal scoped.
 
 ## Summary table
 

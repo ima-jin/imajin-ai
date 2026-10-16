@@ -493,6 +493,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/inference/resolve.ts` — S5
 - `apps/kernel/src/lib/usage/billed/receipt.ts` — S5
 - `apps/kernel/src/lib/loops/cycle.ts` — S5
+- `apps/kernel/src/lib/loops/emit.ts` — S5 (signed native loop lifecycle observations)
 - `apps/kernel/src/lib/loops/authorize-publisher.ts` — S5
 - `apps/kernel/src/lib/loops/verify-publisher-signature.ts` — S5
 - `apps/kernel/src/lib/warp/loop-emit.ts` — S5
