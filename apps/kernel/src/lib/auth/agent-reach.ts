@@ -86,6 +86,7 @@ export interface ReachDelivered {
   delivered: true;
   reachId: string;
 }
+export type ReachResult = ReachAnswer | ReachDenied | ReachDelivered;
 
 /**
  * The canonical transcript the requester signs and both records hash.
@@ -266,7 +267,7 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
 export async function reachPrincipal(
   principalDid: string,
   input: ReachRequestInput,
-): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
+): Promise<ReachResult> {
   const transcript = reachTranscript(principalDid, input);
   const transcriptHash = hashTranscript(transcript);
 
@@ -358,7 +359,7 @@ async function evaluateReach(params: {
   introspection: { grantId?: string };
   transcriptHash: string;
   signatureVerified: boolean;
-}): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
+}): Promise<ReachResult> {
   const { principalDid, input, principal, requester, introspection, transcriptHash, signatureVerified } = params;
   const stub = await resolveOrMintForeignPrincipalStub({
     // An unverified human claim, not a grant or an authenticated sender.

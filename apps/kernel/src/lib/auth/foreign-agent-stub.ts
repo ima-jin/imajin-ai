@@ -85,11 +85,12 @@ export function blockForeignAgentStub(requesterDid: string, principalDid: string
       eq(foreignAgentStubs.principalDid, principalDid),
     )).returning({ stubDid: foreignAgentStubs.stubDid });
     if (revoked.length > 0) {
+      const surfaces = JSON.stringify([`reach:${principalDid}`]);
       await tx.update(delegateGrantBearers).set({
         status: 'revoked', tokenHash: null, revokedAt: new Date(), revokedBy: principalDid,
       }).where(and(
         inArray(delegateGrantBearers.principalDid, revoked.map((stub) => stub.stubDid)),
-        sql`${delegateGrantBearers.surfaces} = ${JSON.stringify([`reach:${principalDid}`])}::jsonb`,
+        sql`${delegateGrantBearers.surfaces} = ${surfaces}::jsonb`,
       ));
     }
     return revoked.length > 0;
