@@ -37,20 +37,6 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   return { provisionId, kernelBaseUrl, operatorToken, runnerToken, outDir, composeDir, dryRun };
 }
 
-/**
- * Maps an untrusted `'hosted' | 'local'` value from the kernel response to one
- * of a fixed set of literal strings before it's ever written to the console.
- * Unlike a transform (encoding/escaping) function, this can't propagate any
- * attacker-chosen bytes through to the log sink at all - the output is always
- * one of the two literals below (or a static fallback), never a value derived
- * from the input string itself (CRLF injection, CWE-117 / SonarCloud tssecurity:S5145).
- */
-function describePlacement(placement: string): string {
-  if (placement === 'hosted') return 'hosted';
-  if (placement === 'local') return 'local';
-  return 'unrecognized-placement';
-}
-
 export async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const result = await runProvision({
@@ -63,15 +49,27 @@ export async function main(): Promise<void> {
     dryRun: args.dryRun,
   });
 
-  // Log the operator-supplied provisionId (already validated by parseArgs) rather than the
-  // server-returned result.provision.id - they're always the same value, but this avoids
-  // treating kernel response data as a log sink source at all.
-  console.log(`Provision ${args.provisionId} (${describePlacement(result.provision.placement)}): wrote ${result.filesWritten.length} file(s) to ${result.outDir}.`);
+  // JSON escapes control characters in every untrusted field, including paths.
+  // Escape Unicode line separators too so each event stays on one physical line.
+  console.log(JSON.stringify({
+    event: 'provision-written',
+    provisionId: args.provisionId,
+    placement: result.provision.placement,
+    fileCount: result.filesWritten.length,
+    outDir: result.outDir,
+  }).replaceAll('\u0085', String.raw`\u0085`).replaceAll('\u2028', String.raw`\u2028`).replaceAll('\u2029', String.raw`\u2029`));
   if (args.dryRun) {
     console.log('[dry-run] No files were actually written, no compose command ran, and no callback was sent.');
-    for (const path of result.filesWritten) console.log(`  - ${path}`);
+    for (const path of result.filesWritten) {
+      console.log(JSON.stringify({ event: 'provision-file', path })
+        .replaceAll('\u0085', String.raw`\u0085`).replaceAll('\u2028', String.raw`\u2028`).replaceAll('\u2029', String.raw`\u2029`));
+    }
   } else {
-    console.log(`compose ran: ${result.composeRan}, callback sent: ${result.callbackSent}`);
+    console.log(JSON.stringify({
+      event: 'provision-status',
+      composeRan: result.composeRan,
+      callbackSent: result.callbackSent,
+    }));
   }
 }
 
@@ -80,12 +78,10 @@ if (isMain) {
   try {
     await main();
   } catch (err: unknown) {
-    // Deliberately doesn't interpolate `err.message` into the log line - some error paths (see
-    // runner.ts) can be constructed from kernel-response data, and doing so would be a
-    // log-injection taint path (CWE-117 / SonarCloud tssecurity:S5145). Print the full error
-    // object (stack included) as a separate, non-concatenated console.error argument instead.
-    console.error('claw-provisioner: fatal error');
-    console.error(err);
+    console.error(JSON.stringify({
+      event: 'claw-provisioner-fatal',
+      error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
+    }).replaceAll('\u0085', String.raw`\u0085`).replaceAll('\u2028', String.raw`\u2028`).replaceAll('\u2029', String.raw`\u2029`));
     process.exitCode = 1;
   }
 }
