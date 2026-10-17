@@ -25,6 +25,34 @@ export interface ChainConfig {
 }
 
 export type ReactorHandler = (event: BusEvent, config: Record<string, unknown>) => Promise<void>;
+/** JSON values carried without lossy tool/provider-specific coercion. */
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+/** Publisher output; lifecycle names remain unchanged. */
+export type LoopOutput =
+  | { kind: 'text'; text: string; role?: string }
+  | { kind: 'tool_call'; callId: string; name: string; args: JsonValue }
+  | { kind: 'tool_result'; callId: string; result: JsonValue; isError?: boolean }
+  | { kind: 'artifact'; ref: string; name?: string; mediaType?: string }
+  | { kind: 'decision'; decision: string; reason?: string }
+  | { kind: 'approval_request'; approvalId: string; action: string; details?: JsonValue }
+  | { kind: 'spawn'; loopId: string; principal?: string }
+  | { kind: 'model_change'; model: string; previousModel?: string; provider?: string };
+
+export interface LoopOutputArtifactRef {
+  id: string;
+  sha256: string;
+  byteLength: number;
+  mediaType: 'application/json';
+}
+
+/** Constructed only by the kernel after redaction and scoped persistence. */
+export interface StoredLoopOutput {
+  kind: LoopOutput['kind'];
+  artifactRef: LoopOutputArtifactRef;
+  preview: string;
+  truncated: true;
+}
 
 /**
  * Kernel loop registry (#2295, epic #2290) — the `refs` block of a loop
@@ -38,6 +66,7 @@ export interface LoopRefs {
   pr?: string;
   runId?: string;
   sessionKey?: string;
+  sessionId?: string;
 }
 
 /**
@@ -53,12 +82,13 @@ export interface LoopEventPayload {
   principal: string;
   /** Lineage — the loop this one was spawned from, when known. */
   parentLoopId?: string | null;
-  refs?: LoopRefs;
+  refs?: LoopRefs | null;
   /** Publisher-defined state label, e.g. 'queued' | 'running' | 'blocked' | 'succeeded' | 'failed'. */
   state: string;
   summary: string;
   /** ISO 8601 — when the publisher observed this transition (bounded at ingest for clock skew). */
   at: string;
+  output?: LoopOutput | StoredLoopOutput;
   /** Index signature so `BusEventMap[T]` stays assignable to `BusEvent.payload` (`Record<string, unknown>`) in publish()'s generic signature. */
   [key: string]: unknown;
 }

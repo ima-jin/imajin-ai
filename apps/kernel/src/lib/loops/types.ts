@@ -10,6 +10,8 @@
  * public key (`keyId`), fixed `alg`, and a hex signature.
  */
 import { SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
+import type { LoopOutput } from '@imajin/bus';
+import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 
 export const LOOP_LIFECYCLE_TYPES = ['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished'] as const;
 export type LoopLifecycleType = (typeof LOOP_LIFECYCLE_TYPES)[number];
@@ -23,6 +25,7 @@ export interface LoopRefs {
   pr?: string;
   runId?: string;
   sessionKey?: string;
+  sessionId?: string;
 }
 
 export interface LoopEnvelope {
@@ -30,7 +33,8 @@ export interface LoopEnvelope {
   kind: string;
   principal: string;
   parentLoopId?: string | null;
-  refs?: LoopRefs;
+  refs?: LoopRefs | null;
+  output?: LoopOutput;
   state: string;
   summary: string;
   at: string;
@@ -54,7 +58,7 @@ export interface LoopIngestRequest {
 const ED25519_PUBLIC_KEY_HEX = /^[0-9a-f]{64}$/i;
 const ED25519_SIGNATURE_HEX = /^[0-9a-f]{128}$/i;
 const MAX_SUMMARY_LENGTH = 2000;
-const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey']);
+const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId']);
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -62,18 +66,18 @@ function isDid(value: unknown): value is string {
   return typeof value === 'string' && value.startsWith('did:') && value.length > 4;
 }
 
-function parseRefs(raw: unknown): ParseResult<LoopRefs | undefined> {
-  if (raw === undefined) return { ok: true, value: undefined };
+function parseRefs(raw: unknown): ParseResult<LoopRefs | null | undefined> {
+  if (raw === undefined || raw === null) return { ok: true, value: raw };
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, error: 'payload.refs must be an object' };
   }
   const refs: LoopRefs = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (!REFS_KEYS.has(key)) {
-      return { ok: false, error: `payload.refs.${key} is not a recognized ref (issue|pr|runId|sessionKey)` };
+      return { ok: false, error: 'payload.refs contains an unrecognized ref' };
     }
     if (typeof value !== 'string' || value.length === 0) {
-      return { ok: false, error: `payload.refs.${key} must be a non-empty string` };
+      return { ok: false, error: 'payload.refs values must be non-empty strings' };
     }
     (refs as Record<string, string>)[key] = value;
   }
@@ -89,7 +93,7 @@ export function isWithinClockSkew(at: string): boolean {
 }
 
 function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
-  if (typeof raw !== 'object' || raw === null) {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     return { ok: false, error: 'payload must be an object' };
   }
   const { loopId, kind, principal, parentLoopId, refs, state, summary, at } = raw as Record<string, unknown>;
@@ -121,20 +125,17 @@ function parseEnvelope(raw: unknown): ParseResult<LoopEnvelope> {
 
   const refsResult = parseRefs(refs);
   if (!refsResult.ok) return refsResult;
+  if (!isBoundedLoopJson(raw)) return { ok: false, error: 'payload must contain bounded JSON' };
+  const { output } = raw as Record<string, unknown>;
+  if (!isWithinLoopMetadataBudget(raw as Record<string, unknown>)) {
+    return { ok: false, error: 'payload metadata exceeds 16 KiB' };
+  }
+  if (output !== undefined && !isLoopOutput(output)) {
+    return { ok: false, error: 'payload.output must be a valid publisher output kind' };
+  }
 
-  return {
-    ok: true,
-    value: {
-      loopId,
-      kind,
-      principal,
-      parentLoopId: (parentLoopId as string | null | undefined) ?? null,
-      refs: refsResult.value,
-      state,
-      summary,
-      at,
-    },
-  };
+  // Do not reconstruct: absent/null optionals and extensions are signed fields.
+  return { ok: true, value: raw as LoopEnvelope };
 }
 
 function parseSignature(raw: unknown): ParseResult<LoopPublisherSignature> {

@@ -1,4 +1,5 @@
-import { pgSchema, text, jsonb, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgSchema, text, jsonb, timestamp, index, integer, uniqueIndex } from 'drizzle-orm/pg-core';
+import type { LoopOutput } from '@imajin/bus';
 import { sql } from 'drizzle-orm';
 
 /**
@@ -58,3 +59,17 @@ export const loopEvents = loopsSchema.table('loop_events', {
 
 export type LoopEventRow = typeof loopEvents.$inferSelect;
 export type NewLoopEventRow = typeof loopEvents.$inferInsert;
+
+/** Private output storage; readers must filter principal AND loop. */
+export const loopOutputArtifacts = loopsSchema.table('loop_output_artifacts', {
+  id: text('id').primaryKey(),
+  loopId: text('loop_id').notNull(),
+  principal: text('principal').notNull(),
+  sha256: text('sha256').notNull(),
+  byteLength: integer('byte_length').notNull(),
+  mediaType: text('media_type').notNull().default('application/json'),
+  content: jsonb('content').$type<LoopOutput>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  scopeHashIdx: uniqueIndex('idx_loop_output_artifacts_scope_hash').on(table.principal, table.loopId, table.sha256),
+}));

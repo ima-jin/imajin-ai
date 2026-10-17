@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseLoopIngestRequest } from '../types';
+import { OUTPUTS } from './output-fixtures';
 
 function validBody(overrides: Record<string, unknown> = {}) {
   return {
@@ -26,7 +27,7 @@ describe('parseLoopIngestRequest', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('expected success');
     expect(result.value.signature).toEqual({ keyId: 'a'.repeat(64), alg: 'ed25519', sig: 'b'.repeat(128) });
-    expect(result.value.payload.parentLoopId).toBeNull();
+    expect(result.value.payload).not.toHaveProperty('parentLoopId');
   });
 
   it('accepts optional parentLoopId and refs', () => {
@@ -65,5 +66,40 @@ describe('parseLoopIngestRequest', () => {
   ])('rejects $label', ({ raw }) => {
     const result = parseLoopIngestRequest(raw);
     expect(result.ok).toBe(false);
+  });
+
+  it.each(OUTPUTS)('accepts publisher output $kind without reconstruction', output => {
+    const payload = { ...validBody().payload, output, parentLoopId: null, refs: null, metadata: { future: true } };
+    const result = parseLoopIngestRequest(validBody({ payload }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('expected valid output');
+    expect(result.value.payload).toBe(payload);
+  });
+
+  it.each([
+    null, [], {}, { kind: 'unknown' }, { kind: 'text', text: 1 },
+    { kind: 'tool_call', callId: '1', name: 'name' },
+    { kind: 'tool_result', callId: '1', result: {}, isError: 'false' },
+    { kind: 'artifact', ref: 1 }, { kind: 'decision', decision: {} },
+    { kind: 'approval_request', approvalId: '1', action: [] },
+    { kind: 'spawn', loopId: 'child', principal: 1 },
+    { kind: 'model_change', model: 'new', previousModel: 1 },
+    { kind: 'text', text: 'hello', artifactRef: {} },
+    { kind: 'text', text: 'hello', result: 'type confusion' },
+  ])('rejects malformed output %#', output => {
+    expect(parseLoopIngestRequest(validBody({ payload: { ...validBody().payload, output } })).ok).toBe(false);
+  });
+
+  it('bounds metadata by UTF8 bytes', () => {
+    expect(parseLoopIngestRequest(validBody({ payload: { ...validBody().payload, metadata: '界'.repeat(6000) } })).ok).toBe(false);
+  });
+
+  it('bounds nested output JSON and node counts', () => {
+    let nested: unknown = 'end';
+    for (let depth = 0; depth < 25; depth++) nested = { child: nested };
+    for (const args of [nested, new Array(20001).fill(0)]) {
+      const output = { kind: 'tool_call', callId: '1', name: 'name', args };
+      expect(parseLoopIngestRequest(validBody({ payload: { ...validBody().payload, output } })).ok).toBe(false);
+    }
   });
 });

@@ -219,7 +219,9 @@ export async function getLoopWithHistory(loopId: string, principal: string): Pro
   if (!loopRow) return null;
 
   const eventRows = (await sql`
-    SELECT * FROM kernel.loop_events WHERE loop_id = ${loopId} AND principal = ${principal} ORDER BY occurred_at ASC
+    SELECT * FROM kernel.loop_events
+    WHERE loop_id = ${loopId} AND principal = ${principal}
+    ORDER BY occurred_at ASC, id ASC
   `) as unknown as RawLoopEventRow[];
 
   return {

@@ -98,6 +98,9 @@ export async function publish<T extends BusEventType>(
     } catch (err) {
       failed = true;
       log.error({ err: String(err), reactor: reactor.type, event: type }, 'Reactor threw');
+      // Loop ingest promises read-after-write: ownership/persistence failures
+      // in its awaited projection must reach the caller, never report success.
+      if (reactor.await && reactor.type === 'loop-projection') throw err;
     }
   });
 

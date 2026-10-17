@@ -3,10 +3,16 @@ import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 const { sql } = vi.hoisted(() => ({ sql: vi.fn() }));
 vi.mock('@imajin/db', () => ({ getClient: () => sql }));
-import { loopProjectionReactor } from '../../../../../../packages/bus/src/reactors/loop-projection';
+import { loopProjectionReactor, LoopOwnershipConflictError } from '../../../../../../packages/bus/src/reactors/loop-projection';
 import type { BusEvent } from '../../../../../../packages/bus/src/types';
 
 const pg = new PGlite();
+function taggedSql(executor: Pick<PGlite, 'query'>) {
+  return async (strings: TemplateStringsArray, ...values: unknown[]) => {
+    const text = strings.reduce((result, part, index) => result + (index ? `$${index}` : '') + part, '');
+    return (await executor.query(text, values)).rows;
+  };
+}
 beforeAll(async () => {
   await pg.exec(`CREATE SCHEMA kernel;
     CREATE TABLE kernel.bus_chain_configs (
@@ -14,9 +20,10 @@ beforeAll(async () => {
       UNIQUE(event_type, scope)
     );`);
   await pg.exec(readFileSync(new URL('../../../../../../migrations/0157_loops_rail.sql', import.meta.url), 'utf8'));
-  sql.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
-    const text = strings.reduce((result, part, index) => result + (index ? `$${index}` : '') + part, '');
-    return (await pg.query(text, values)).rows;
+  sql.mockImplementation(taggedSql(pg));
+  Object.assign(sql, {
+    begin: (work: (tx: ReturnType<typeof taggedSql>) => Promise<void>) =>
+      pg.transaction(tx => work(taggedSql(tx))),
   });
 }, 30_000);
 afterAll(() => pg.close());
@@ -33,11 +40,12 @@ async function project(type: string, at: string, refs?: Record<string, string>, 
 describe('real loop projection SQL', () => {
   it('does not let another principal overwrite a globally unique loop id', async () => {
     await project('loop.started', '2026-10-16T00:00:00Z', { issue: 'original' }, { loopId: 'collision' });
-    await project('loop.finished', '2026-10-16T00:01:00Z', { issue: 'hostile' }, { loopId: 'collision', principal: 'did:imajin:other' });
+    await expect(project('loop.finished', '2026-10-16T00:01:00Z', { issue: 'hostile' }, { loopId: 'collision', principal: 'did:imajin:other' }))
+      .rejects.toBeInstanceOf(LoopOwnershipConflictError);
     const current = await pg.query('SELECT principal, refs, state FROM kernel.loops WHERE loop_id = $1', ['collision']);
     expect(current.rows).toEqual([{ principal, refs: { issue: 'original' }, state: 'loop.started' }]);
     const foreignHistory = await pg.query('SELECT principal FROM kernel.loop_events WHERE loop_id = $1 AND principal = $2', ['collision', 'did:imajin:other']);
-    expect(foreignHistory.rows).toEqual([{ principal: 'did:imajin:other' }]);
+    expect(foreignHistory.rows).toEqual([]);
   });
   it('inserts the first PR artifact once and retains lineage when provider state arrives', async () => {
     const extra = { loopId: 'pr:first', kind: 'pr', parentLoopId: 'source-run', state: 'artifact-observed', initialObservation: true };

@@ -37,6 +37,16 @@ vi.mock('@/src/lib/loops/query', () => ({
 import { GET, POST, OPTIONS } from '../route';
 
 const OPERATOR_DID = 'did:imajin:ryan';
+const OUTPUTS = [
+  { kind: 'text', text: 'hello' },
+  { kind: 'tool_call', callId: 'call_1', name: 'search', args: { query: 'loops' } },
+  { kind: 'tool_result', callId: 'call_1', result: { hits: 3 }, isError: false },
+  { kind: 'artifact', ref: 'asset_1' },
+  { kind: 'decision', decision: 'Use SQL' },
+  { kind: 'approval_request', approvalId: 'proposal_1', action: 'deploy', details: { target: 'dev' } },
+  { kind: 'spawn', loopId: 'child_1' },
+  { kind: 'model_change', model: 'next', previousModel: 'old', provider: 'provider' },
+];
 
 function makeGetReq(query = ''): Request {
   return new Request(`https://test.imajin.ai/api/loops${query}`);
@@ -79,6 +89,33 @@ describe('OPTIONS /api/loops', () => {
 });
 
 describe('POST /api/loops (signed ingest)', () => {
+  it.each(OUTPUTS)('accepts typed $kind output without stripping signed content', async (output) => {
+    mockIngestLoopEvent.mockResolvedValueOnce({ ok: true });
+    const body = validIngestBody();
+    const payload = { ...body.payload, refs: { sessionKey: 'session-key', sessionId: 'session-id', runId: 'run-id' }, output };
+    const response = await POST(makePostReq({ ...body, type: 'loop.progress', payload }) as Parameters<typeof POST>[0]);
+    expect(response.status).toBe(201);
+    expect(mockIngestLoopEvent).toHaveBeenCalledWith(expect.objectContaining({ payload }));
+  });
+
+  it.each([403, 409, 500])('preserves ingest rejection status %i', async (status) => {
+    mockIngestLoopEvent.mockResolvedValueOnce({ ok: false, error: 'Rejected', code: 'rejected', status });
+    const response = await POST(makePostReq(validIngestBody()) as Parameters<typeof POST>[0]);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error: 'Rejected', code: 'rejected' });
+  });
+
+  it('rejects unknown output kinds before ingestion', async () => {
+    const body = validIngestBody();
+    const response = await POST(makePostReq({ ...body, payload: { ...body.payload, output: { kind: 'unknown' } } }) as Parameters<typeof POST>[0]);
+    expect(response.status).toBe(400);
+    expect(mockIngestLoopEvent).not.toHaveBeenCalled();
+  });
+  it('returns 413 for an oversized chunked request without calling ingest', async () => {
+    const res = await POST(makePostReq({ text: 'x'.repeat(1024 * 1024) }) as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(413);
+    expect(mockIngestLoopEvent).not.toHaveBeenCalled();
+  });
   it('returns 400 for invalid JSON without calling ingestLoopEvent', async () => {
     const req = new Request('https://test.imajin.ai/api/loops', { method: 'POST', body: '{not json' });
     const res = await POST(req as Parameters<typeof POST>[0]);

@@ -16,7 +16,8 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ loopId: string }> }) {
   const params = await props.params;
-  const cors = corsHeaders(request);
+  const cors = new Headers(corsHeaders(request));
+  cors.set('Cache-Control', 'private, no-store');
 
   const auth = await requireAuth(request);
   if ('error' in auth) {

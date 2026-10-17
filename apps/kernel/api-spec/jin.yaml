@@ -166,6 +166,7 @@ components:
         pr: { type: string, description: "GitHub PR number." }
         runId: { type: string, description: "Warp run id." }
         sessionKey: { type: string, description: "OpenClaw gateway session key." }
+        sessionId: { type: string, description: "Original source session id." }
     RegistryRunCost:
       type: object
       required: [runId, loopId, refs, summary, state, startedAt, lastSeenAt, metered]
@@ -227,6 +228,96 @@ components:
           type: array
           description: Runs grouped by non-empty string PR ref, sorted by ref.
           items: { $ref: "#/components/schemas/RegistrySubjectCost" }
+    LoopOutput:
+      oneOf:
+        - $ref: "#/components/schemas/LoopTextOutput"
+        - $ref: "#/components/schemas/LoopToolCallOutput"
+        - $ref: "#/components/schemas/LoopToolResultOutput"
+        - $ref: "#/components/schemas/LoopArtifactOutput"
+        - $ref: "#/components/schemas/LoopDecisionOutput"
+        - $ref: "#/components/schemas/LoopApprovalRequestOutput"
+        - $ref: "#/components/schemas/LoopSpawnOutput"
+        - $ref: "#/components/schemas/LoopModelChangeOutput"
+      discriminator:
+        propertyName: kind
+    LoopTextOutput:
+      type: object
+      required: [kind, text]
+      properties:
+        kind: { const: text }
+        text: { type: string }
+        role: { type: string }
+    LoopToolCallOutput:
+      type: object
+      required: [kind, callId, name, args]
+      properties:
+        kind: { const: tool_call }
+        callId: { type: string }
+        name: { type: string }
+        args: { description: "Full JSON arguments, redacted before persistence." }
+    LoopToolResultOutput:
+      type: object
+      required: [kind, callId, result]
+      properties:
+        kind: { const: tool_result }
+        callId: { type: string }
+        result: { description: "Full JSON result, redacted before persistence." }
+        isError: { type: boolean }
+    LoopArtifactOutput:
+      type: object
+      required: [kind, ref]
+      properties:
+        kind: { const: artifact }
+        ref: { type: string }
+        name: { type: string }
+        mediaType: { type: string }
+    LoopDecisionOutput:
+      type: object
+      required: [kind, decision]
+      properties:
+        kind: { const: decision }
+        decision: { type: string }
+        reason: { type: string }
+    LoopApprovalRequestOutput:
+      type: object
+      required: [kind, approvalId, action]
+      properties:
+        kind: { const: approval_request }
+        approvalId: { type: string }
+        action: { type: string }
+        details: { description: "Full JSON approval details, not an executable command." }
+    LoopSpawnOutput:
+      type: object
+      required: [kind, loopId]
+      properties:
+        kind: { const: spawn }
+        loopId: { type: string }
+        principal: { type: string }
+    LoopModelChangeOutput:
+      type: object
+      required: [kind, model]
+      properties:
+        kind: { const: model_change }
+        model: { type: string }
+        previousModel: { type: string }
+        provider: { type: string }
+    LoopOutputArtifactRef:
+      type: object
+      required: [id, sha256, byteLength, mediaType]
+      properties:
+        id: { type: string }
+        sha256: { type: string }
+        byteLength: { type: integer }
+        mediaType: { const: application/json }
+    StoredLoopOutput:
+      type: object
+      description: "Server-only overflow representation; publishers submit original typed output, never this wrapper."
+      required: [kind, artifactRef, preview, truncated]
+      properties:
+        kind: { type: string, enum: [text, tool_call, tool_result, artifact, decision, approval_request, spawn, model_change] }
+        artifactRef: { $ref: "#/components/schemas/LoopOutputArtifactRef" }
+        preview: { type: string }
+        truncated: { const: true }
     LoopEnvelope:
       type: object
       description: >-
@@ -242,6 +333,25 @@ components:
         state: { type: string, example: "running", description: "Publisher-defined state label." }
         summary: { type: string, maxLength: 2000 }
         at: { type: string, format: date-time, description: "When the publisher observed this transition. Bounded at ingest for clock skew." }
+        output: { $ref: "#/components/schemas/LoopOutput" }
+    StoredLoopEnvelope:
+      type: object
+      description: "Sanitized envelope retaining loop metadata and optional inline output or private artifact wrapper."
+      required: [loopId, kind, principal, state, summary, at]
+      properties:
+        loopId: { type: string }
+        kind: { type: string }
+        principal: { type: string }
+        parentLoopId: { type: [string, "null"] }
+        refs: { $ref: "#/components/schemas/LoopRefs" }
+        state: { type: string }
+        summary: { type: string }
+        at: { type: string, format: date-time }
+        output:
+          oneOf:
+            - $ref: "#/components/schemas/LoopOutput"
+            - $ref: "#/components/schemas/StoredLoopOutput"
+      additionalProperties: true
     LoopPublisherSignature:
       type: object
       description: >-
@@ -281,7 +391,7 @@ components:
         type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished] }
         issuer: { type: string, description: "The verified publisher DID." }
         principal: { type: string }
-        payload: { $ref: "#/components/schemas/LoopEnvelope" }
+        payload: { $ref: "#/components/schemas/StoredLoopEnvelope" }
         occurredAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
     ApprovalRef:
@@ -1061,6 +1171,11 @@ paths:
         publishing the event onto the bus — an unsigned or forged event is
         never persisted. On success, `kernel.loops` / `kernel.loop_events`
         are durable before this call returns (read-after-write).
+        Optional payload.output records typed session output. Verification
+        covers the original envelope; secrets are redacted before any bus
+        or artifact persistence. Output above 16384 UTF-8 JSON bytes is
+        replaced by an artifact reference and truncated preview.
+        Maximum complete HTTP request size is 1048576 bytes.
       security: []
       requestBody:
         required: true
@@ -1090,10 +1205,17 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "500":
-          description: Verified event failed to publish
+          description: Verified event failed to publish or store an output artifact
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+        "403":
+          description: Publisher has no loops:publish authority for the principal
+        "409":
+          description: Loop id is already owned by a different principal
+        "413":
+          description: Complete request exceeds 1048576 bytes
 
     get:
       tags: [loops]
@@ -1248,6 +1370,9 @@ paths:
         but belongs to a different principal is reported as 404, identical
         to one that doesn't exist at all — never confirms existence to a
         caller who isn't allowed to see it.
+        Events are ordered by occurredAt then id ascending. Each event's
+        payload.output is a typed inline output or StoredLoopOutput.
+        Responses are private and no-store.
       security:
         - cookieAuth: []
       parameters:
@@ -1277,3 +1402,36 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/loops/{loopId}/artifacts/{artifactId}:
+    get:
+      tags: [loops]
+      operationId: getLoopOutputArtifact
+      summary: Retrieve full redacted oversized output for the caller's loop
+      description: >-
+        Authenticated by the same effective principal as loop history.
+        The hash is not a bearer capability. Wrong-principal, wrong-loop,
+        and nonexistent artifacts all return 404. Private, no-store.
+      security:
+        - cookieAuth: []
+      parameters:
+        - { name: loopId, in: path, required: true, schema: { type: string } }
+        - { name: artifactId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Full redacted output and content-address metadata
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/LoopOutputArtifactRef"
+                  - type: object
+                    required: [output]
+                    properties:
+                      output: { $ref: "#/components/schemas/LoopOutput" }
+        "400":
+          description: Empty route identifier
+        "401":
+          description: Not authenticated
+        "404":
+          description: Artifact not found within this principal and loop

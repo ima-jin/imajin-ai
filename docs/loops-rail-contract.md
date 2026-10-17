@@ -121,9 +121,12 @@ adapters, not the Warp or gateway API. Nonoperators see no Runs lane.
   observation cannot overwrite an existing PR projection. Existing authenticated
   `getPullRequest` observations update open/draft/closed/merged state without
   any new API call, poller or gateway dependency.
-- New history rows retain server-assigned `publisherProof` containing the exact
-  original signed payload/type, publisher DID and signature for audit. Older
-  history is not backfilled with fabricated proofs. Projection ownership cannot
+- Unchanged inline history rows retain server-assigned `publisherProof` containing
+  the exact original signed payload/type, publisher DID and signature for audit.
+  Proofs are omitted when redaction or output spilling changes the envelope:
+  the raw signed payload must not reintroduce credentials or unbounded output.
+  Caller-supplied proof metadata is never trusted. Older history is not
+  backfilled with fabricated proofs. Projection ownership cannot
   move between principals, and history reads are also principal scoped.
 
 ## Summary table

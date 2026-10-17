@@ -46,6 +46,10 @@ vi.mock('@imajin/bus', () => ({
   publish: mockPublish,
 }));
 
+vi.mock('@imajin/db', () => ({
+  getClient: () => vi.fn().mockResolvedValue([{ loop_id: 'reserved' }]),
+}));
+
 import { startCycle } from '../cycle';
 
 beforeEach(() => {
