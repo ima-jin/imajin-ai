@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CommunityTabs, type CommunityTab } from '../CommunityTabs';
+import { CommunityTabs } from '../CommunityTabs';
 import { CommunityChat } from '../CommunityChat';
 
 interface CommunityPageClientProps {
@@ -26,7 +26,7 @@ export function CommunityPageClient({
   membersContent,
   communityDid,
 }: Readonly<CommunityPageClientProps>) {
-  const [activeTab, setActiveTab] = useState<CommunityTab>('overview');
+  const [activeTab, setActiveTab] = useState('overview');
 
   const tabs = enabledTabs;
 

@@ -1,6 +1,5 @@
 import { ProfileWidgets } from '../ProfileWidgets';
-import { getForestConfig } from '../../lib/profile-data';
-import { getViewerMembership } from '../../lib/profile-data';
+import { getForestConfig, getViewerMembership } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
 import { ServiceLinks } from '../ServiceLinks';
