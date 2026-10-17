@@ -41,7 +41,7 @@ function OperatorSecretEntry({ name, active, busy, submit }: Readonly<{
 
 function SecretStatus({ secret }: Readonly<{ secret: AppDeclaredSecretStatus }>) {
   if (secret.kind !== 'operator-supplied') return secret.status;
-  const rotated = secret.timeline.filter((entry) => entry.phase === 'rotated').at(-1);
+  const rotated = secret.timeline.findLast((entry) => entry.phase === 'rotated');
   return <>{secret.status === 'active' ? 'set' : 'not set'}{rotated && (
     <> · last rotated <time dateTime={rotated.at}>{rotated.at}</time></>
   )}</>;
