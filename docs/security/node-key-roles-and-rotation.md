@@ -497,6 +497,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/loops/authorize-publisher.ts` — S5
 - `apps/kernel/src/lib/loops/verify-publisher-signature.ts` — S5
 - `apps/kernel/src/lib/warp/loop-emit.ts` — S5
+- `apps/kernel/src/lib/auth/reach-delivery.ts` — S5 (node-signed reach delivery events; delivery attestations use S3 preparation)
 - `apps/kernel/src/lib/github/approvals-execution.ts` — S5
 - `apps/kernel/src/lib/access/approvals-execution.ts` — S5
 - `apps/kernel/src/lib/vault/approvals-execution.ts` — S5
