@@ -51,6 +51,10 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    internalKeyAuth:
+      type: apiKey
+      in: header
+      name: x-internal-key
   schemas:
     ApprovalStatus:
       type: string
@@ -114,6 +118,66 @@ components:
             Other principals' markers are never returned, including in outcome.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        sessionBinding:
+          allOf: [{ $ref: "#/components/schemas/SessionApprovalBinding" }]
+          nullable: true
+          description: "Verified native approval-to-loop association; never inferred from harness refs."
+        sessionOutcome:
+          type: object
+          nullable: true
+          description: "Read projection of a correlated, verified agent result; completed means approval resolved, not process execution finished."
+          required: [commandId, outcome, at]
+          properties:
+            commandId: { type: string }
+            outcome: { type: string, enum: [completed, failed] }
+            at: { type: string, format: date-time }
+            reason: { type: string }
+    SessionApprovalBinding:
+      type: object
+      additionalProperties: false
+      required: [loopId, principalDid, agentDid, approvalId]
+      properties:
+        loopId: { type: string }
+        principalDid: { type: string }
+        agentDid: { type: string }
+        approvalId: { type: string }
+    SessionCommandSignature:
+      type: object
+      additionalProperties: false
+      required: [keyId, alg, sig]
+      properties:
+        keyId: { type: string, pattern: "^[a-fA-F0-9]{64}$" }
+        alg: { type: string, enum: [ed25519] }
+        sig: { type: string, pattern: "^[a-fA-F0-9]{128}$" }
+    SessionCommand:
+      type: object
+      description: >-
+        Plugin #77 command frame. Kernel grant and principal wish both sign
+        canonicalize({type,commandId,to,principal,issuer,issuedAt,expiresAt,payload}).
+        Prepare returns the grant; dispatch requires the full countersignature.
+        Payload is strictly allowlisted per command and never contains harness keys.
+      required: [type, commandId, to, principal, issuer, issuedAt, expiresAt, payload, signature]
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum: [session.send, session.abort, session.spawn, session.approve, session.deny]
+        commandId: { type: string }
+        to: { type: string, description: "Verified owning agent DID, never a gateway address." }
+        principal: { type: string }
+        issuer: { type: string }
+        issuedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        payload:
+          type: object
+          description: >-
+            Send: {loopId,message,agentId?}; abort: {loopId,runId?};
+            spawn: {parentLoopId,task,label?,agentId?,group?,model?};
+            approve/deny: {loopId,approvalId,kind?}. Target must match the
+            route loop. Approval dispatch uses the existing decision route only.
+          additionalProperties: { type: string }
+        signature: { $ref: "#/components/schemas/SessionCommandSignature" }
+        countersignature: { $ref: "#/components/schemas/SessionCommandSignature" }
     OperatorCountersignature:
       type: object
       nullable: true
@@ -508,6 +572,101 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/internal/session-events:
+    post:
+      tags: [jin, loops]
+      operationId: ingestSessionCommandEvent
+      summary: Internal authenticated-socket handoff for signed plugin observations
+      description: >-
+        Called by the local WebSocket dispatcher only. The internal API key
+        authenticates the handoff; socketDid is taken from the authenticated
+        socket metadata. Independently verifies the current agent signature
+        and principal/loop/command correlation before persisting signed
+        loop.approval.bound or loop.session.*.completed/failed evidence.
+        No unsigned result, unknown command or client-selected destination is
+        accepted. This is not a public approval or command dispatch endpoint.
+      security: [{ internalKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [socketDid, frame]
+              properties:
+                socketDid: { type: string }
+                frame:
+                  type: object
+                  required: [type, attestation]
+                  properties:
+                    type: { type: string }
+                    attestation:
+                      type: object
+                      required: [from, type, timestamp, payload, signature]
+                      properties:
+                        from: { type: string }
+                        type: { type: string, const: agent }
+                        timestamp: { type: integer }
+                        payload: { type: object }
+                        signature: { type: string }
+      responses:
+        "200": { description: Accepted correlated evidence, or an identical duplicate }
+        "400": { description: Invalid or oversized envelope }
+        "401": { description: Internal key required }
+        "403": { description: Publisher, current key, authority or command correlation mismatch }
+        "404": { description: Unknown command or principal-owned loop }
+        "409": { description: Conflicting binding/result, or command not dispatched }
+        "500": { description: Observation unavailable }
+  /api/runs/{loopId}/commands:
+    post:
+      tags: [jin, loops]
+      operationId: commandRun
+      summary: Prepare or dispatch a principal-signed loop command
+      description: >-
+        Self-only node operator, no acting-as or delegated identity. Prepare
+        binds the originating verified agent and adds a five-minute kernel
+        grant. Dispatch rechecks that grant, the full principal wish, the
+        current key and serving relationship before durably claiming the
+        command ID and attempting delivery to one own-agent DID socket.
+        Delivery is not execution: only a correlated signed plugin outcome
+        establishes completed/failed. Native approve/deny may be prepared
+        here but must be dispatched through the shared approval decision
+        endpoint, which atomically chooses one execution rail.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: loopId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  additionalProperties: false
+                  required: [action, type, payload]
+                  properties:
+                    action: { type: string, const: prepare }
+                    type:
+                      type: string
+                      enum: [session.send, session.abort, session.spawn, session.approve, session.deny]
+                    payload: { type: object, additionalProperties: { type: string } }
+                - type: object
+                  additionalProperties: false
+                  required: [action, command]
+                  properties:
+                    action: { type: string, const: dispatch }
+                    command: { $ref: "#/components/schemas/SessionCommand" }
+      responses:
+        "200":
+          description: "Prepared {command}, or dispatched {commandId,delivered}; neither is an execution receipt."
+        "400": { description: Invalid JSON, command shape, payload or unexpected fields }
+        "401": { description: Authentication required }
+        "403": { description: Not the direct operator, invalid wish/grant, changed authority or wrong execution rail }
+        "404": { description: Run not found within principal scope }
+        "409": { description: Inactive run, unavailable origin proof or consumed command ID }
+        "500": { description: Command unavailable }
+        "503": { description: Command signer unavailable }
   /api/reach:
     get:
       tags: [jin]
@@ -721,6 +880,12 @@ paths:
         client-side; required
         (400 otherwise) once the per-node `OPERATOR_COUNTERSIGN_REQUIRED`
         flag is on, verified whenever supplied regardless of the flag.
+        Native loop-bound approvals (#2404) additionally require
+        `sessionCommand`: a kernel-granted session.approve/session.deny
+        frame with the complete principal-signed wish. The shared service
+        atomically records decision and command correlation, suppresses all
+        legacy executable fan-out, and waits for the signed plugin result.
+        A stale binding or missing wish never falls back to the legacy rail.
       security:
         - cookieAuth: []
       parameters:
@@ -741,6 +906,8 @@ paths:
                 reason: { type: string }
                 operatorSignature:
                   $ref: "#/components/schemas/OperatorCountersignature"
+                sessionCommand:
+                  $ref: "#/components/schemas/SessionCommand"
                 decidedAt:
                   type: string
                   format: date-time

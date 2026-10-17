@@ -176,6 +176,69 @@ See [ENVIRONMENTS.md](./ENVIRONMENTS.md) for the full port table. The convention
 - `x100-x199` = imajin apps
 - `x400-x499` = client apps
 
+## Interactive Runs on /jin (#2404)
+
+The Runs lane uses the existing principal-scoped loop registry, not a harness
+API. Threads are a lineage tree; Blocked-on-you combines blocked loops and the
+same pending approval cards shown in the operator Inbox. Opening a thread shows
+typed signed events, a composer, stop and child-spawn controls. A surface
+collision warns on both threads without preventing commands.
+
+`POST /jin/api/runs/{loopId}/commands` prepares a short-lived command with
+`action: "prepare"`, `type: "session.send" | "session.abort" | "session.spawn"`
+and a bounded `payload`. The target is `payload.loopId` (send/stop) or
+`payload.parentLoopId` (spawn); spawn also accepts task, label, group and model.
+The server resolves the verified originating agent, not a client-selected DID.
+After signing the complete prepared command in the browser, the operator
+submits it with `action: "dispatch"` and `command`. The principal's private key
+never leaves the browser. A missing key, stale grant, revoked binding, ended
+loop or ambiguous publisher fails closed.
+
+Both Ed25519 signatures cover the identical canonical object:
+`{type, commandId, to, principal, issuer, issuedAt, expiresAt, payload}`.
+The kernel grant and principal wish are checked before the durable correlation
+record is claimed and the command is sent only to the target agent's own DID
+socket. Delegated notification sockets are not command recipients. Registry
+`refs` remain opaque: no session keys are read or forwarded, no gateway RPC is
+made, and no transcript is fetched.
+
+Native approval cards acquire a thread association only from a verified
+`loop.approval.bound` signed envelope binding
+`{loopId, principalDid, agentDid, approvalId}`. Approve/deny still uses
+`POST /jin/api/operator-approvals/{proposalId}/decision` and the existing
+approval service, with a separate full-command wish. A converted proposal
+selects one execution rail atomically and suppresses the legacy executable
+`operator.approval.decided` fan-out. An unavailable wish must never silently
+fall back to that legacy rail.
+
+Command correlation, signed bindings and outcomes reuse `kernel.loop_events`;
+this feature needs no new schema. A socket send means only delivery attempted.
+The UI waits for the correlated agent-signed
+`loop.session.{send,approve,deny,abort,spawn}.{completed,failed}` observation.
+The kernel verifies the authenticated socket DID, current agent key, principal,
+command ID, command type and payload hash before recording an outcome. Spawn
+lineage is accepted only from the signed child/parent attestation.
+The existing outbound plugin WebSocket forwards only authenticated
+`loop.approval.bound` and command-result frames to
+`POST /jin/api/internal/session-events`. Its `socketDid` comes from socket
+authentication, not the frame. The internal API key protects this in-process
+handoff; the agent signature is still independently required. Outbound commands
+use the local `/chat/api/internal/session-command` transport, deliberately
+separate from notification fan-out and its delegated recipients. Neither
+internal endpoint is a harness RPC or a public command bypass.
+
+The wire fixtures follow
+[plugin #77](https://github.com/ima-jin/openclaw-imajin-plugin/issues/77) and
+its [command documentation](https://github.com/ima-jin/openclaw-imajin-plugin/blob/issue-77-loop-addressed-sessions/docs/session-commands.md).
+With the kernel development server running, open `/dev/runs-preview` to drive
+the real Runs components and shared approval controller at phone width. The
+fixture generates keys in memory, verifies both command signatures, and delays
+signed outcomes until after transport acceptance. It never writes browser
+credentials. The preview route and its mock transport refuse production use.
+A fixture preview is not evidence of a live gateway round-trip: that check
+remains pending the separately implemented plugin #77. Do not disable signature
+checks or change server/environment settings to make a preview appear live.
+
 ## Shared Packages
 
 Code shared across services lives in `packages/`:

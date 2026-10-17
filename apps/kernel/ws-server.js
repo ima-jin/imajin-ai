@@ -4,6 +4,7 @@ const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification
 const { createPrivateNotifications, isPrivateReachFrame } = require('./src/lib/ws/private-notifications');
 const { createHeartbeat } = require('./src/lib/ws/heartbeat');
 const { handleDidConnectionsRequest, DID_CONNECTIONS_PATH } = require('./src/lib/ws/did-connections');
+const { SESSION_COMMAND_PATH, handleSessionCommandRequest, isSessionEvent, forwardSessionEvent } = require('./src/lib/ws/session-commands');
 
 /** @type {Map<import('ws').WebSocket, { did: string, alsoDids: Set<string>, subscriptions: Set<string> }>} */
 const socketMeta = new Map();
@@ -415,6 +416,10 @@ async function dispatchMessage(ws, meta, msg) {
     return;
   }
 
+  if (isSessionEvent(msg.type)) {
+    await forwardSessionEvent(meta, msg);
+    return;
+  }
   switch (msg.type) {
     case 'ping':
       ws.send(JSON.stringify({ type: 'pong' }));
@@ -622,6 +627,10 @@ function setupBroadcastRoute(server) {
   server.removeAllListeners('request');
 
   server.on('request', (req, res) => {
+    if (req.method === 'POST' && req.url === SESSION_COMMAND_PATH) {
+      handleSessionCommandRequest(req, res, didSockets, socketMeta, process.env.AUTH_INTERNAL_API_KEY);
+      return;
+    }
     if (req.method === 'POST' && DID_PUSH_PATHS.has(req.url)) {
       const internalKey = req.headers['x-internal-key'];
       if (!internalKey || internalKey !== process.env.AUTH_INTERNAL_API_KEY) {
