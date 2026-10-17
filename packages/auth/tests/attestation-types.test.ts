@@ -4,6 +4,9 @@ import { ATTESTATION_TYPES } from '../src/types/attestation';
 const ATTESTATION_TYPES_SET = new Set<string>(ATTESTATION_TYPES);
 
 describe('ATTESTATION_TYPES', () => {
+  it('contains media.uploaded', () => {
+    expect(ATTESTATION_TYPES_SET.has('media.uploaded')).toBe(true);
+  });
   it('contains github_account', () => {
     expect(ATTESTATION_TYPES_SET.has('github_account')).toBe(true);
   });

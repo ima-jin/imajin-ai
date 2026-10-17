@@ -13,6 +13,7 @@ import { publishContentEvent } from "@imajin/dfos";
 import { computeCid } from "@imajin/cid";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { deriveArticleProjection, mergeArticleMetadata } from "@/src/lib/media/article-core";
+import { emitUploadAttestation } from "@/src/lib/media/emit-upload-attestation";
 
 const log = createLogger("kernel");
 
@@ -364,6 +365,15 @@ export async function createAsset(input: CreateAssetInput): Promise<CreateAssetR
       })
       .catch((err: unknown) => log.error({ err: String(err) }, "Classification failed"));
   }
+
+  emitUploadAttestation({
+    assetId,
+    ownerDid,
+    uploadedBy,
+    manifestUrl,
+    manifestDigest,
+    contentHash: hash,
+  });
 
   return { asset: record, deduplicated: false };
 }

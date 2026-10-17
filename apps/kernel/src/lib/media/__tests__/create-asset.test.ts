@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile } from 'node:fs/promises';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -50,7 +50,11 @@ vi.mock('drizzle-orm', () => ({
   sql: vi.fn(),
 }));
 
-vi.mock('@imajin/auth', () => ({ hexToBytes: vi.fn(() => new Uint8Array()) }));
+const mockEmitAttestation = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+vi.mock('@imajin/auth', () => ({
+  hexToBytes: vi.fn(() => new Uint8Array()),
+  emitAttestation: mockEmitAttestation,
+}));
 
 vi.mock('@/src/lib/media/classify', () => ({
   classifyAsset: vi.fn().mockResolvedValue({ category: 'text', confidence: 0.9 }),
@@ -132,6 +136,9 @@ function setupInsert(metadataOverride: unknown = { context: { app: 'article' } }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv('PLATFORM_DID', 'did:imajin:node');
+  mockEmitAttestation.mockReset().mockResolvedValue({});
+  vi.mocked(writeFile).mockReset().mockResolvedValue(undefined);
   // Restore chained implementations cleared by clearAllMocks.
   mockSelectFromWhere.mockImplementation(() => ({ limit: mockSelectFromWhereLimit }));
   mockSelectFrom.mockImplementation(() => ({ where: mockSelectFromWhere }));
@@ -144,6 +151,89 @@ beforeEach(() => {
   mockUpdateSetWhere.mockResolvedValue(undefined);
 });
 
+afterEach(() => vi.unstubAllEnvs());
+
+describe('createAsset — media.uploaded (#2276)', () => {
+  const input = { ...MARKDOWN_INPUT, mimeType: 'text/plain', baseUrl: 'https://test.imajin.ai' };
+
+  it('emits node-witnessed provenance only after the .fair and asset row are written', async () => {
+    setupInsert();
+
+    await createAsset(input);
+    expect(writeFile).toHaveBeenCalledTimes(2);
+    expect(String(vi.mocked(writeFile).mock.calls[1][0])).toMatch(/\.fair\.json$/);
+    expect(vi.mocked(writeFile).mock.invocationCallOrder[1]).toBeLessThan(mockEmitAttestation.mock.invocationCallOrder[0]);
+    expect(mockInsertValuesReturning.mock.invocationCallOrder[0]).toBeLessThan(mockEmitAttestation.mock.invocationCallOrder[0]);
+
+    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
+    expect(mockEmitAttestation).toHaveBeenCalledWith({
+      issuer_did: 'did:imajin:node',
+      subject_did: 'did:imajin:asset_testid1234567890',
+      type: 'media.uploaded',
+      context_id: 'asset_testid1234567890',
+      context_type: 'media',
+      payload: {
+        asset_did: 'did:imajin:asset_testid1234567890',
+        uploader_did: input.ownerDid,
+        owner_did: input.ownerDid,
+        fair_manifest_ref: 'https://test.imajin.ai/media/api/assets/asset_testid1234567890/fair',
+        fair_manifest_digest: 'sha256:deadbeef',
+        content_hash: 'deadbeef',
+      },
+    });
+  });
+
+  it('preserves the agent uploader separately from the acting principal owner', async () => {
+    setupInsert();
+    await createAsset({ ...input, uploadedBy: 'did:imajin:agent' });
+    expect(mockEmitAttestation).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({
+        uploader_did: 'did:imajin:agent',
+        owner_did: input.ownerDid,
+      }),
+    }));
+  });
+
+  it.each([1, 2])('does not emit when storage write %i fails', async (writeNumber) => {
+    if (writeNumber === 2) vi.mocked(writeFile).mockResolvedValueOnce(undefined);
+    vi.mocked(writeFile).mockRejectedValueOnce(new Error('disk full'));
+    await expect(createAsset(input)).rejects.toThrow('Storage failure');
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+  });
+
+  it('does not emit when the asset row insert fails', async () => {
+    mockInsertValuesReturning.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(createAsset(input)).rejects.toThrow('Database failure');
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+  });
+
+  it('does not mint new provenance for a dedup hit owned by someone else', async () => {
+    mockSelectFromWhereLimit.mockResolvedValueOnce([{ id: 'asset_existing', ownerDid: 'did:imajin:other' }]);
+    expect((await createAsset(input)).deduplicated).toBe(true);
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+  });
+
+  it.each(['throw', 'reject', 'pending'])('completes successfully when the emitter is %s', async (behavior) => {
+    setupInsert();
+    mockEmitAttestation.mockImplementation(() => {
+      if (behavior === 'throw') throw new Error('emitter threw');
+      if (behavior === 'reject') return Promise.reject(new Error('delivery failed'));
+      return new Promise(() => { /* Simulate delivery that never completes. */ });
+    });
+    const result = await createAsset(input);
+    expect(result.asset.id).toBe('asset_testid1234567890');
+    expect(mockEmitAttestation).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+
+  it('skips rather than fabricating an issuer when the node DID is unavailable', async () => {
+    setupInsert();
+    vi.stubEnv('PLATFORM_DID', '');
+    expect((await createAsset(input)).deduplicated).toBe(false);
+    expect(mockEmitAttestation).not.toHaveBeenCalled();
+  });
+});
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 describe('createAsset — article frontmatter projection (#1244)', () => {
