@@ -1,4 +1,5 @@
 import { Avatar } from './Avatar';
+import { VerifiedDomains } from './VerifiedDomains';
 import { getScopeLabel } from '../lib/profile-utils';
 import { isVerifiedTier } from '@imajin/auth';
 import type { ProfileData, IdentityInfo } from '../lib/types';
@@ -46,6 +47,7 @@ export function ScopeHeader({ profile, identity }: Readonly<ScopeHeaderProps>) {
           </span>
         )}
       </div>
+      <VerifiedDomains did={profile.did} />
     </>
   );
 }

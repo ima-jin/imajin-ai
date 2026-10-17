@@ -3,6 +3,8 @@ import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { eq, and, isNull } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import IdentitySettingsPanel from '../components/IdentitySettingsPanel';
+import DomainsSection from '../components/DomainsSection';
+import { canManageIdentityDomains } from '@/src/lib/domains/access';
 
 export default async function SettingsPage() {
   const { sessionDid, effectiveDid } = await getEffectiveDid();
@@ -20,16 +22,18 @@ export default async function SettingsPage() {
     .where(eq(identities.id, did))
     .limit(1);
 
-  // Actor scope: security is now accessible via the Security tab
-  if (!identity || identity.scope === 'actor') {
+  const canManageDomains = await canManageIdentityDomains(did, sessionDid);
+  if (!canManageDomains) {
     return (
       <div className="text-zinc-500 text-sm py-8">
-        Account settings are available via the tabs above.
+        You need owner or admin access to manage domains for this identity.
       </div>
     );
   }
 
-  // Non-actor: check admin/owner access
+  if (identity?.scope === 'actor') return <DomainsSection key={did} did={did} />;
+
+  // Existing group settings remain owner-only; domains also permit admins.
   const [membership] = await db
     .select({ role: identityMembers.role })
     .from(identityMembers)
@@ -42,13 +46,10 @@ export default async function SettingsPage() {
     )
     .limit(1);
 
-  if (membership?.role !== 'owner') {
-    return (
-      <div className="text-zinc-500 text-sm py-8">
-        You need owner access to manage settings for this identity.
-      </div>
-    );
-  }
-
-  return <IdentitySettingsPanel groupDid={did} />;
+  return (
+    <div className="space-y-6">
+      <DomainsSection key={did} did={did} />
+      {membership?.role === 'owner' && <IdentitySettingsPanel groupDid={did} />}
+    </div>
+  );
 }
