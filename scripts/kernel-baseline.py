@@ -80,21 +80,24 @@ class Scratch:
         run(DOCKER, "rm", "-f", self.container)
 
 
+def normalized_seed(table, row):
+    if table == "kernel.bus_chain_configs":
+        row["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"imajin:baseline:chain:{row['event_type']}:{row['scope']}"))
+    if table == "notify.templates":
+        row["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"imajin:baseline:template:{row['scope']}"))
+    # History uses now() defaults; fix only seed bookkeeping timestamps.
+    for column in ("created_at", "updated_at"):
+        if row.get(column) is not None:
+            row[column] = "2000-01-01T00:00:00+00:00"
+    return json.dumps(row, sort_keys=True, separators=(",", ":"))
+
+
 def seed_rows(scratch, db):
     result = []
     for table in SEEDS:
         rows = scratch.sql(db, f"SELECT to_jsonb(t)::text FROM {table} t ORDER BY to_jsonb(t)::text")
         for line in rows.splitlines():
-            row = json.loads(line)
-            if table == "kernel.bus_chain_configs":
-                row["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"imajin:baseline:chain:{row['event_type']}:{row['scope']}"))
-            if table == "notify.templates":
-                row["id"] = str(uuid.uuid5(uuid.NAMESPACE_URL, f"imajin:baseline:template:{row['scope']}"))
-            # History uses now() defaults; fix only seed bookkeeping timestamps.
-            for column in ("created_at", "updated_at"):
-                if row.get(column) is not None:
-                    row[column] = "2000-01-01T00:00:00+00:00"
-            result.append((table, json.dumps(row, sort_keys=True, separators=(",", ":"))))
+            result.append((table, normalized_seed(table, json.loads(line))))
     return sorted(result)
 
 
