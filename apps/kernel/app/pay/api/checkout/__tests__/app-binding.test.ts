@@ -57,6 +57,7 @@ import { POST } from '../route';
 import { transactions } from '@/src/db/schemas/pay';
 
 const APP = 'did:imajin:coffee-app';
+const EVENTS_APP = 'did:imajin:registered-events-app';
 const OTHER_APP = 'did:imajin:unapproved-app';
 const SELLER = 'did:imajin:creator';
 const PLATFORM = 'did:imajin:platform';
@@ -118,6 +119,7 @@ beforeAll(async () => {
       [`app_${appDid}`, appDid, JSON.stringify(approved)],
     );
   await insertApp(APP, ['pay:settle']);
+  await insertApp(EVENTS_APP, ['pay:settle']);
   await insertApp(OTHER_APP, []);
 });
 
@@ -224,13 +226,14 @@ describe('POST /pay/api/checkout — seller requires an app service token (#2866
   });
 
   it('accepts the events app-token checkout and binds metadata-only sellers to the verified app', async () => {
+    mocks.tokens.set(SERVICE_TOKEN, { sub: EVENTS_APP, azp: EVENTS_APP, scope: 'pay:settle', attestationId: '', isServiceToken: true });
     const res = await POST(checkoutRequest({
       sellerDid: undefined,
       metadata: { service: 'events', eventId: 'evt_1', sellerDid: SELLER, appDid: OTHER_APP },
     }, { Authorization: `Bearer ${SERVICE_TOKEN}` }));
 
     expect(res.status).toBe(200);
-    expect(await rowFor((await res.json()).transactionId)).toMatchObject({ appDid: APP, toDid: SELLER, service: 'events' });
+    expect(await rowFor((await res.json()).transactionId)).toMatchObject({ appDid: EVENTS_APP, toDid: SELLER, service: 'events' });
     expect(mocks.payCheckout).toHaveBeenCalledTimes(1);
   });
 
