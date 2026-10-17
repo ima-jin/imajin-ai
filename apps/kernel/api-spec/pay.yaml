@@ -1,4 +1,5 @@
 openapi: "3.1.0"
+# #2540: Registered-app order payment reads belong to the kernel pay contract.
 info:
   title: imajin pay
   version: "2.0.0"
