@@ -125,8 +125,8 @@ existing root destinations. No registry or kernel callback changes are needed.
 
 Regression command (from the monorepo root):
 `pnpm exec vitest run packages/auth-client/tests`.
-The intended patch release is **0.8.21**; repository policy reserves manifest
-version bumps for the Release workflow. Publishing is separate from this change.
+Repository policy reserves all manifest version bumps for the normal reviewed
+Release workflow. Feature changes do not select or bump package versions.
 
 ### 4. Fetch this app's own signing key at boot (#2411)
 
@@ -243,6 +243,31 @@ The endpoint refuses inactive apps, revoked/undeclared names, wrong keys,
 altered requests and nonce replay. Nonces are currently tracked in the kernel
 process, matching the existing single-instance bootstrap fetch mechanism.
 This helper does not issue acknowledgements or claim that a fetched value was used.
+
+### Load before importing the server (#2821)
+
+`operator-supplied` manifest declarations use the same encrypted fetch path after
+an operator supplies the value and countersigns a set/rotate proposal on `/jin`.
+Manifest sync alone does not produce an operator value. Pending staging is not
+an app grant, and responses/approval cards never echo entered values.
+
+Use `createVaultBoot<Config>({ vault, configure })` for module-load consumers.
+Keep the returned `boot` instance in a server-only config module with no DB/server
+imports. After `loadAppSigningKey()` establishes the bootstrap keystore, call
+`boot.start(async (config) => { const server = await import('./server'); return server.start(config); })`.
+The helper awaits vault loading and optional async configuration before invoking
+that callback. Imported DB modules can then read `boot.getConfig().DATABASE_URL`
+at module initialization. Refactor existing `process.env` consumers to use this
+config; the helper never populates `process.env`.
+
+`getConfig()` fails before initialization or after failed startup. Configuration
+is shallow-frozen and typed `Readonly<Config>`. `start()` is one-shot (also for
+concurrent attempts); retry by restarting the process. Load/configure/start errors
+are replaced with a fixed diagnostic without their original messages or causes.
+Never statically import the DB/server before this boundary, print configuration,
+or log caught provider errors. See
+[`docs/app-self-secrets-author.md`](../../docs/app-self-secrets-author.md) for the
+complete entrypoint/config/DB example and follow-up adoption inventory.
 
 ## Part of Imajin
 

@@ -119,6 +119,34 @@ cp apps/auth/.env.example apps/auth/.env.local
 | `AUTH_PRIVATE_KEY` | auth only | Ed25519 PKCS#8 key for signing JWTs | See below |
 | `NEXT_PUBLIC_DISABLE_INVITE_GATE` | auth only | Skip invite codes in dev | Set to `true` |
 | `NEXT_PUBLIC_SERVICE_PREFIX` | All services | URL pattern for cross-service links | `http://localhost:` for local dev |
+### App secrets and import ordering (#2821)
+
+Registered apps can declare names/kinds in `imajin.app.json`: generated
+`random-32B`/`random-64B` or `operator-supplied` for existing/external strings.
+Never put values in that manifest. Operator values go through the masked `/jin`
+set/rotate input and a separate verified human countersign. Sealed pending
+staging is not an active credential; responses, approval cards and diagnostics
+must not echo submitted values or underlying provider messages.
+
+For runtime adoption, establish the app bootstrap keystore with
+`loadAppSigningKey()`, then use `createVaultBoot<Config>({ vault, configure })`
+from the released `@ima-jin/auth-client`. Keep its instance in a server-only
+config module. `boot.start(callback)` loads credentials into typed in-memory
+configuration **before** the callback dynamically imports/starts the server.
+DB modules evaluated during that import read `boot.getConfig().DATABASE_URL`;
+refactor existing env-reading consumers instead of assigning secrets to
+`process.env`. An eager static DB/server import still initializes too early.
+The complete example and regression command are in the
+[app author guide](app-self-secrets-author.md#pre-import-boot-boundary-for-database-consumers).
+
+Start follow-up adoption with events/coffee/learn/market/links `DATABASE_URL`,
+then use the [full adoption inventory](app-self-secrets-author.md#adoption-order-follow-up-work-not-an-automatic-cutover)
+for the remaining app/environment keys. Coffee `WEBHOOK_SECRET` is vestigial
+and excluded. This feature does not migrate standalone repositories or change
+server/env/deploy files. Approvals do not restart apps: coordinate the next
+restart and session invalidation when rotating `SESSION_SECRET`. #2260 remains
+separate. Feature PRs never bump package versions; consume the helper through
+the normal reviewed Release workflow, with no promised hard-coded version.
 
 ### Service URL Pattern
 

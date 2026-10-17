@@ -21,5 +21,7 @@ export { generateBootstrapKeypair, signBootstrapPayload, canonicalizeBootstrapFe
 export { readKeystore, writeKeystore, resolveKeystorePath } from './keystore';
 export { loadFromVault } from './load-from-vault';
 export type { LoadFromVaultOptions, AppVaultCredentials, AppVaultKeySpec } from './load-from-vault';
+export { createVaultBoot } from './vault-boot';
+export type { VaultBootOptions, VaultBoot } from './vault-boot';
 export { canonicalizeAppSecretFetchPayload, openAppSecretEnvelope, APP_SECRET_X_DOMAIN } from './app-secret-envelope';
 export type { AppSecretFetchPayload, AppSecretEnvelope, AppSecretPayload } from './app-secret-envelope';

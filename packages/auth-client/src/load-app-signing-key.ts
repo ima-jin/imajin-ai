@@ -87,16 +87,14 @@ async function postForSigningKey(
       headers: { 'Content-Type': 'application/json', ...fetchOptions?.headers },
       body: JSON.stringify(body),
     });
-  } catch (err) {
-    throw new Error(`loadAppSigningKey: could not reach the kernel (${err instanceof Error ? err.message : String(err)})`);
+  } catch {
+    throw new Error('loadAppSigningKey: could not reach the kernel');
   }
 
   const responseBody = (await res.json().catch(() => null)) as SigningKeyResponseBody | null;
   if (!res.ok) {
-    // Deliberately only the kernel's own short, value-free `error` string —
-    // never any other part of the response body.
-    const reason = typeof responseBody?.error === 'string' ? responseBody.error : `status ${res.status}`;
-    throw new Error(`loadAppSigningKey: ${failureContext} failed (${reason})`);
+    // Provider messages are untrusted and may contain secret material.
+    throw new Error(`loadAppSigningKey: ${failureContext} failed`);
   }
   if (typeof responseBody?.appDid !== 'string' || typeof responseBody.privateKey !== 'string') {
     throw new TypeError(`loadAppSigningKey: ${failureContext} response was malformed`);
