@@ -366,6 +366,8 @@ export const registryApps = registrySchema.table('apps', {
   requiredScope: text('required_scope'),
   /** Directory curation only (0203_registry_apps_featured.sql); countersigned apps:featured proposals, never an install or grant. */
   featured: boolean('featured').notNull().default(false),
+  /** Discovery/addition only; never a public-page or API access gate (#2897). */
+  visibility: text('visibility').$type<'public' | 'unlisted' | 'private' | 'internal'>().notNull().default('public'),
   /**
    * Scopes this app defines and enforces itself (#2663,
    * 0176_registry_apps_provides_scopes_depends_on.sql) — e.g. `dykil:read`.
