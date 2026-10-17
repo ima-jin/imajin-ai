@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { reachEnvelopes, reachSenderBlocks } from '@/src/db/schemas/reach';
+import { isReachSenderBlocked } from '../reach-block';
+import { didFromPublicKey } from '../crypto';
 import {
   blockReachSender,
   getReachEnvelope,
@@ -25,6 +27,34 @@ let database: PGlite;
 let statements: Array<{ sql: string; params: unknown[]; transaction: boolean }>;
 let failInsert = false;
 let failAttestation = false;
+let failRevocation = false;
+const senderKey = 'ab'.repeat(32);
+const rotatedKey = 'cd'.repeat(32);
+const foreignDid = 'did:web:foreign.example';
+const foreignStub = 'did:imajin:foreign-stub';
+
+async function foreignSender(overrides: {
+  principalDid?: string;
+  requesterDid?: string;
+  stubDid?: string;
+  signerKey?: string;
+  requesterAliases?: string[];
+  signerAliases?: string[];
+  promotedTo?: string;
+} = {}) {
+  const principalDid = overrides.principalDid ?? 'did:imajin:owner';
+  const stubDid = overrides.stubDid ?? foreignStub;
+  await database.query(`INSERT INTO auth.identities (id)
+    SELECT value FROM jsonb_array_elements_text($1::jsonb) ON CONFLICT DO NOTHING`,
+  [JSON.stringify([principalDid, stubDid, ...(overrides.promotedTo ? [overrides.promotedTo] : [])])]);
+  await database.query(`INSERT INTO auth.foreign_agent_stubs
+    (stub_did, requester_did, principal_did, signer_key, requester_aliases, signer_aliases, promoted_to)
+    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7)`, [
+    stubDid, overrides.requesterDid ?? foreignDid, principalDid, overrides.signerKey ?? senderKey,
+    JSON.stringify(overrides.requesterAliases ?? []), JSON.stringify(overrides.signerAliases ?? []),
+    overrides.promotedTo ?? null,
+  ]);
+}
 
 function params(overrides: Partial<PersistReachEnvelopeParams> = {}): PersistReachEnvelopeParams {
   return {
@@ -59,6 +89,10 @@ beforeAll(async () => {
   database = new PGlite();
   await database.waitReady;
   await database.exec(migration);
+  await database.exec('CREATE TABLE auth.identities (id text PRIMARY KEY)');
+  await database.exec(readFileSync(new URL(
+    '../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url,
+  ), 'utf8'));
   await database.exec(`CREATE TABLE auth.attestations (
     id text PRIMARY KEY, issuer_did text NOT NULL, subject_did text NOT NULL,
     type text NOT NULL, context_id text, context_type text, payload jsonb,
@@ -66,13 +100,126 @@ beforeAll(async () => {
   )`);
 });
 
+describe('recipient-scoped reach block cascade (#2599)', () => {
+  it('blocks a displayed alias, stub, promoted DID and all known signer identities, and revokes joined credentials', async () => {
+    // Reverse order forces a second pass through the joined alias groups.
+    await foreignSender({
+      stubDid: 'did:imajin:rotated-stub', requesterDid: 'did:web:rotated.example', signerKey: rotatedKey,
+      signerAliases: [senderKey], promotedTo: 'did:imajin:promoted',
+    });
+    await foreignSender({ requesterAliases: ['did:web:displayed.example'] });
+    await foreignSender({ principalDid: 'other-owner', stubDid: 'other-stub' });
+    await persistReachEnvelope(params({ requesterDid: foreignDid, onBehalfOfStubDid: 'claimed-a' }));
+    await persistReachEnvelope(params({
+      reachId: 'rotated', transcriptHash: 'rotated', requesterDid: 'did:web:rotated.example', onBehalfOfStubDid: 'claimed-b',
+    }));
+    await persistReachEnvelope(params({
+      reachId: 'other-owner', principalDid: 'other-owner', requesterDid: foreignDid, onBehalfOfStubDid: 'other-claim',
+    }));
+    await blockReachSender({ principalDid: 'did:imajin:owner', requesterDid: 'did:web:displayed.example' });
+    const identities = [
+      foreignDid, foreignStub, 'did:web:displayed.example', 'did:web:rotated.example',
+      'did:imajin:rotated-stub', 'did:imajin:promoted', didFromPublicKey(senderKey), didFromPublicKey(rotatedKey),
+      'claimed-a', 'claimed-b',
+    ];
+    const rows = await database.query<{ requester_did: string }>('SELECT requester_did FROM auth.reach_sender_blocks');
+    expect(rows.rows.map((row) => row.requester_did)).toEqual(expect.arrayContaining(identities));
+    for (const requesterDid of identities) {
+      expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid })).toBe(true);
+      expect(await isReachSenderBlocked({ principalDid: 'other-owner', requesterDid })).toBe(false);
+    }
+    expect(await isReachSenderBlocked({
+      principalDid: 'did:imajin:owner', requesterDid: 'did:web:brand-new.example', publicKey: senderKey.toUpperCase(),
+    })).toBe(true);
+    expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid: 'other-claim' })).toBe(false);
+    const credentials = await database.query<{ principal_did: string; revoked_at: Date | null }>(
+      'SELECT principal_did, revoked_at FROM auth.foreign_agent_stubs',
+    );
+    expect(credentials.rows.filter((row) => row.principal_did === 'did:imajin:owner')
+      .every((row) => row.revoked_at !== null)).toBe(true);
+    expect(credentials.rows.find((row) => row.principal_did === 'other-owner')?.revoked_at).toBeNull();
+  });
+
+  it.each([foreignStub, foreignDid, didFromPublicKey(senderKey), 'did:imajin:promoted'])(
+    'cascades when blocking the known sender identity %s', async (requesterDid) => {
+      await foreignSender({ promotedTo: 'did:imajin:promoted' });
+      await persistReachEnvelope(params({ requesterDid: foreignDid }));
+      await blockReachSender({ principalDid: 'did:imajin:owner', requesterDid });
+      expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid: foreignDid })).toBe(true);
+      expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid: 'new-agent', onBehalfOfStubDid: 'did:imajin:stub' }))
+        .toBe(true);
+    },
+  );
+
+  it('rechecks a claimed-principal block after admission so a new agent cannot persist an in-flight delivery', async () => {
+    const input = params({ requesterDid: 'old-agent' });
+    await persistReachEnvelope(input);
+    const inflight = params({ reachId: 'inflight', requesterDid: 'new-agent', transcriptHash: 'inflight' });
+    expect(await isReachSenderBlocked(inflight)).toBe(false);
+    await blockReachSender(input);
+    statements = [];
+    expect(await persistReachEnvelope(inflight)).toEqual({ stored: false, reason: 'blocked' });
+    expect(statements[0].sql).toContain('pg_advisory_xact_lock');
+    expect(statements.every((statement) => statement.transaction)).toBe(true);
+    expect(await listReachEnvelopes(input)).toHaveLength(1);
+    expect((await database.query('SELECT * FROM auth.attestations')).rows).toHaveLength(1);
+    expect(await persistReachEnvelope(params({
+      reachId: 'unrelated', requesterDid: 'new-agent', transcriptHash: 'unrelated', onBehalfOfStubDid: 'unrelated',
+    }))).toMatchObject({ stored: true });
+  });
+
+  it('uses existing block rows and credential tombstones without requiring a previous delivery', async () => {
+    await foreignSender({ requesterAliases: ['did:web:alias.example'] });
+    await database.query('INSERT INTO auth.reach_sender_blocks (principal_did, requester_did) VALUES ($1, $2)',
+      ['did:imajin:owner', foreignStub]);
+    expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid: 'did:web:alias.example' })).toBe(true);
+    await database.exec('TRUNCATE auth.reach_sender_blocks');
+    await database.exec('UPDATE auth.foreign_agent_stubs SET revoked_at = now()');
+    expect(await isReachSenderBlocked({
+      principalDid: 'did:imajin:owner', requesterDid: 'unknown', publicKey: senderKey,
+    })).toBe(true);
+  });
+
+  it('keeps revocation and block insertion atomic and preserves the original tombstone on retry', async () => {
+    await foreignSender();
+    failRevocation = true;
+    await expect(blockReachSender({ principalDid: 'did:imajin:owner', requesterDid: foreignDid })).rejects.toThrow('revocation failed');
+    expect((await database.query('SELECT * FROM auth.reach_sender_blocks')).rows).toEqual([]);
+    expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid: foreignDid })).toBe(false);
+    failRevocation = false;
+    await blockReachSender({ principalDid: 'did:imajin:owner', requesterDid: foreignDid });
+    const first = await database.query('SELECT revoked_at FROM auth.foreign_agent_stubs');
+    await blockReachSender({ principalDid: 'did:imajin:owner', requesterDid: foreignStub });
+    expect(await database.query('SELECT revoked_at FROM auth.foreign_agent_stubs')).toEqual(first);
+    const lockIndex = statements.findIndex(({ sql }) => sql.includes('pg_advisory_xact_lock'));
+    expect(statements[lockIndex + 1].sql).toContain('FOR UPDATE');
+  });
+
+  it('parameterizes opaque sender identities and ignores invalid keys rather than broadening the match', async () => {
+    const opaqueDid = "did:web:example' OR true --";
+    await foreignSender({ signerKey: 'legacy-invalid-key', signerAliases: ['also-invalid'] });
+    await blockReachSender({ principalDid: 'did:imajin:owner', requesterDid: opaqueDid });
+    expect(await isReachSenderBlocked({
+      principalDid: 'did:imajin:owner', requesterDid: opaqueDid, publicKey: 'not-a-key',
+    })).toBe(true);
+    expect(await isReachSenderBlocked({ principalDid: 'did:imajin:owner', requesterDid: foreignDid })).toBe(false);
+    expect(statements.every(({ sql }) => !sql.includes(opaqueDid))).toBe(true);
+  });
+
+  it('propagates guard database failures rather than failing open', async () => {
+    mocked.getClient.mockReturnValue({ unsafe: vi.fn().mockRejectedValue(new Error('database unavailable')) });
+    await expect(isReachSenderBlocked(params())).rejects.toThrow('database unavailable');
+  });
+});
+
 afterAll(async () => { await database?.close(); });
 
 beforeEach(async () => {
-  await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks, auth.attestations');
+  await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks, auth.attestations, auth.foreign_agent_stubs, auth.identities');
   statements = [];
   failInsert = false;
   failAttestation = false;
+  failRevocation = false;
   // The real engine evaluates every storage/count/isolation query. PGlite is
   // single-connection, so the advisory-lock call is recorded (not executed).
   // This asserts lock placement but does NOT prove multi-connection contention.
@@ -83,6 +230,7 @@ beforeEach(async () => {
         if (sql.includes('pg_advisory_xact_lock')) return [];
         if (failInsert && sql.includes('INSERT INTO auth.reach_envelopes')) throw new Error('insert failed');
         if (failAttestation && sql.includes('INSERT INTO auth.attestations')) throw new Error('attestation insert failed');
+        if (failRevocation && sql.includes('UPDATE auth.foreign_agent_stubs')) throw new Error('revocation failed');
         return (await target.query(sql, values)).rows;
       },
     };
@@ -137,7 +285,7 @@ describe('reach envelope storage (#2588)', () => {
     }
     expect(await persistReachEnvelope(params({ reachId: 'over', transcriptHash: 'over' })))
       .toEqual({ stored: false, reason: 'rate_limited' });
-    expect(await persistReachEnvelope(params({ reachId: 'other-sender', requesterDid: 'other' })))
+    expect(await persistReachEnvelope(params({ reachId: 'other-sender', requesterDid: 'other', onBehalfOfStubDid: 'other-claim' })))
       .toMatchObject({ stored: true, reachId: 'other-sender' });
     expect(await persistReachEnvelope(params({ reachId: 'other-owner', principalDid: 'other-owner' })))
       .toMatchObject({ stored: true, reachId: 'other-owner' });
@@ -151,13 +299,45 @@ describe('reach envelope storage (#2588)', () => {
       .toEqual({ stored: false, reason: 'rate_limited' });
   });
 
+  it('enforces the durable 25/day account cap across unrelated signing agents with no process-local counter', async () => {
+    for (let i = 0; i < 25; i++) {
+      expect(await persistReachEnvelope(params({
+        reachId: `account_${i}`, requesterDid: `agent_${i}`, transcriptHash: `account_${i}`, dailyCap: null,
+      }))).toMatchObject({ stored: true });
+    }
+    expect(await persistReachEnvelope(params({
+      reachId: 'rotating-over', requesterDid: 'brand-new-agent', transcriptHash: 'rotating-over', dailyCap: null,
+    }))).toEqual({ stored: false, reason: 'rate_limited' });
+    expect(await persistReachEnvelope(params({
+      reachId: 'other-account', requesterDid: 'brand-new-agent', onBehalfOfStubDid: 'other-account', dailyCap: null,
+    }))).toMatchObject({ stored: true });
+    expect(await persistReachEnvelope(params({
+      reachId: 'other-recipient', principalDid: 'other-owner', requesterDid: 'brand-new-agent', dailyCap: null,
+    }))).toMatchObject({ stored: true });
+  });
+
+  it('shares a durable quota across known foreign aliases even when they change claimed accounts, counting each delivery once', async () => {
+    await foreignSender({ requesterAliases: ['did:web:rotated.example'] });
+    const first = params({ requesterDid: foreignDid, perSenderDailyCap: 2 });
+    await persistReachEnvelope(first);
+    const second = params({
+      reachId: 'alias-second', transcriptHash: 'alias-second', requesterDid: 'did:web:rotated.example', perSenderDailyCap: 2,
+    });
+    expect(await persistReachEnvelope(second)).toMatchObject({ stored: true });
+    expect(await persistReachEnvelope(params({
+      reachId: 'alias-third', transcriptHash: 'alias-third', requesterDid: didFromPublicKey(senderKey),
+      onBehalfOfStubDid: 'different-account', perSenderDailyCap: 2,
+    }))).toEqual({ stored: false, reason: 'rate_limited' });
+    expect(await persistReachEnvelope(first)).toMatchObject({ stored: true, replayed: true });
+  });
+
   it('allows a null principal cap while retaining the sender cap', async () => {
     await persistReachEnvelope(params({ dailyCap: null, perSenderDailyCap: 1 }));
     expect(await persistReachEnvelope(params({
       reachId: 'second', transcriptHash: 'second', dailyCap: null, perSenderDailyCap: 1,
     }))).toEqual({ stored: false, reason: 'rate_limited' });
     expect(await persistReachEnvelope(params({
-      reachId: 'other', requesterDid: 'other', dailyCap: null, perSenderDailyCap: 1,
+      reachId: 'other', requesterDid: 'other', onBehalfOfStubDid: 'other-claim', dailyCap: null, perSenderDailyCap: 1,
     }))).toMatchObject({ stored: true, reachId: 'other' });
   });
 
@@ -179,13 +359,14 @@ describe('reach envelope storage (#2588)', () => {
     await blockReachSender(input);
     await blockReachSender(input);
     expect(await persistReachEnvelope(input)).toEqual({ stored: false, reason: 'blocked' });
-    expect(await persistReachEnvelope(params({ reachId: 'other', requesterDid: 'other' })))
+    expect(await persistReachEnvelope(params({ reachId: 'other', requesterDid: 'other', onBehalfOfStubDid: 'other-claim' })))
       .toMatchObject({ stored: true, reachId: 'other' });
     expect(await persistReachEnvelope(params({ reachId: 'other-owner', principalDid: 'other-owner' })))
       .toMatchObject({ stored: true, reachId: 'other-owner' });
     const blockIndex = statements.findIndex(({ sql }) => sql.includes('INSERT INTO auth.reach_sender_blocks'));
-    expect(statements[blockIndex - 1]).toMatchObject({ transaction: true, params: [`reach:${input.principalDid}`] });
-    expect(statements[blockIndex - 1].sql).toContain('pg_advisory_xact_lock');
+    const blockLock = statements.slice(0, blockIndex).reverse().find(({ sql }) => sql.includes('pg_advisory_xact_lock'));
+    expect(blockLock).toMatchObject({ transaction: true, params: [`reach:${input.principalDid}`] });
+    expect(statements[blockIndex].transaction).toBe(true);
   });
 
   it('does not count previous UTC calendar-day deliveries in a non-UTC session', async () => {

@@ -985,6 +985,18 @@ export interface BusEventMap {
     /** Human principal's own signature over the canonical unsigned event. */
     signature: { keyId: string; alg: 'ed25519'; sig: string };
   };
+  /** Throttled reach attempt (#2599): never IPs, limiter keys, message bodies, or signatures. */
+  'agent.reach.throttled': {
+    principalDid: string;
+    /** Absent for the pre-authentication IP guard; never trust an unverified requester DID. */
+    requesterDid?: string;
+    dimension: 'ip' | 'tier' | 'stub' | 'principal' | 'daily';
+    tier?: string;
+    /** Seconds until the caller may retry. */
+    retryAfter: number;
+    context_id: string;
+    context_type: 'agent.reach';
+  };
   /** Refused reach request; disclosure-safe closed reason vocabulary only. */
   'agent.reach.denied': {
     requesterDid: string;
