@@ -29,6 +29,8 @@ import { resolveRealmOwner } from '@/src/lib/quickbooks/realm-index';
 import { verifyIntuitWebhookSignature } from '@/src/lib/quickbooks/webhook-verify';
 import { settlePaidInvoices } from '@/src/lib/quickbooks/settlement';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { withConnectorConnection } from '@/src/lib/kernel/connector-connection-context';
+import { connectionSlot } from '@/src/lib/kernel/connection-slots';
 
 const log = createLogger('kernel');
 
@@ -81,7 +83,7 @@ async function settleWebhookPayload(payload: Readonly<QuickBooksWebhookPayload>)
       return;
     }
     try {
-      const result = await settlePaidInvoices(owner.ownerDid, owner.appDid);
+      const result = await withConnectorConnection('quickbooks', owner.ownerDid, connectionSlot(owner.slot), () => settlePaidInvoices(owner.ownerDid, owner.appDid === owner.ownerDid ? undefined : owner.appDid));
       log.info(
         { realmId, ownerDid: owner.ownerDid, settled: result.settled.length, skipped: result.skipped.length },
         'QuickBooks webhook: settlement run complete',
@@ -120,7 +122,7 @@ export async function POST(request: NextRequest) {
 
   let verifierToken: string | undefined;
   try {
-    const config = await loadConfig(owner.appDid);
+    const config = await loadConfig(owner.appDid, owner.appDid === owner.ownerDid ? connectionSlot(owner.slot) : 'primary');
     verifierToken = config.webhookVerifierToken;
   } catch (err) {
     log.error({ err: String(err), appDid: owner.appDid }, 'QuickBooks webhook: failed to load app config');

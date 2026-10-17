@@ -14,7 +14,7 @@ import { nextServerMockFactory, makeRequest } from '@/src/lib/kernel/__tests__/n
 const {
   requireAuthMock, resolveActingDidMock,
   buildAuthorizeUrlMock, exchangeCodeAndStoreMock, storeConfigMock,
-  revokeAtGoogleMock, readConfigFlowMock,
+  revokeAtGoogleMock, readConfigFlowMock, resetGoogleConnectionStateMock, captureGoogleAccountEmailMock,
   signStateMock, verifyStateMock,
   vaultFieldStatusMock,
   sharedDisconnectPostMock,
@@ -26,6 +26,8 @@ const {
   exchangeCodeAndStoreMock: vi.fn(async () => undefined),
   storeConfigMock: vi.fn(async () => undefined),
   revokeAtGoogleMock: vi.fn(async () => undefined),
+  resetGoogleConnectionStateMock: vi.fn(async () => undefined),
+  captureGoogleAccountEmailMock: vi.fn(async () => undefined),
   readConfigFlowMock: vi.fn(async () => 'authorization_code' as const),
   signStateMock: vi.fn(() => 'state123'),
   verifyStateMock: vi.fn(() => ({ did: 'did:imajin:owner' })),
@@ -60,6 +62,8 @@ vi.mock('@/src/lib/google/connector', () => ({
   exchangeCodeAndStore: exchangeCodeAndStoreMock,
   storeConfig: storeConfigMock,
   revokeAtGoogle: revokeAtGoogleMock,
+  captureGoogleAccountEmail: captureGoogleAccountEmailMock,
+  resetGoogleConnectionState: resetGoogleConnectionStateMock,
   readConfigFlow: readConfigFlowMock,
   configField: (did: string) => `google-config:${did}`,
   oauthVaultField: (did: string) => `google-oauth:${did}`,
@@ -107,11 +111,11 @@ vi.mock('@/src/lib/kernel/connector-oauth-routes', () => ({
       return { status: 307, headers: { location: url } };
     },
   createCallbackHandler:
-    (opts: { verifyState: (state: string) => { did: string; appDid?: string }; exchange: (did: string, code: string, params: URLSearchParams, appDid?: string) => Promise<void> }) =>
+    (opts: { verifyState: (state: string) => { did: string; appDid?: string; slot?: string }; exchange: (did: string, code: string, params: URLSearchParams, appDid?: string, slot?: string) => Promise<void> }) =>
     async (request: { url: string }) => {
       const params = new URL(request.url).searchParams;
       const verified = opts.verifyState(params.get('state') ?? '');
-      await opts.exchange(verified.did, params.get('code') ?? '', params, verified.appDid);
+      await opts.exchange(verified.did, params.get('code') ?? '', params, verified.appDid, verified.slot);
       return { status: 307 };
     },
   createConfigureHandler: (opts: {
@@ -132,6 +136,11 @@ vi.mock('@/src/lib/kernel/connector-oauth-routes', () => ({
     },
   }),
   createDisconnectHandler: createDisconnectHandlerMock,
+  requestConnectionSlot: (request: { url: string }) => {
+    const slot = new URL(request.url).searchParams.get('slot') ?? 'primary';
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slot)) throw new Error('invalid_connection');
+    return slot;
+  },
 }));
 
 vi.mock('next/server', () => nextServerMockFactory());
@@ -142,7 +151,12 @@ beforeEach(() => {
   resolveActingDidMock.mockReset();
   resolveActingDidMock.mockReturnValue('did:imajin:owner');
   buildAuthorizeUrlMock.mockClear();
-  exchangeCodeAndStoreMock.mockClear();
+  exchangeCodeAndStoreMock.mockReset();
+  exchangeCodeAndStoreMock.mockResolvedValue(undefined);
+  resetGoogleConnectionStateMock.mockReset();
+  resetGoogleConnectionStateMock.mockResolvedValue(undefined);
+  captureGoogleAccountEmailMock.mockReset();
+  captureGoogleAccountEmailMock.mockResolvedValue(undefined);
   storeConfigMock.mockClear();
   revokeAtGoogleMock.mockReset();
   revokeAtGoogleMock.mockResolvedValue(undefined);
@@ -167,12 +181,39 @@ describe('GET /google/api/connect', () => {
 });
 
 describe('GET /google/api/callback', () => {
+  it('resets only the signed slot after exchange and before capturing its new account email', async () => {
+    const order: string[] = [];
+    verifyStateMock.mockReturnValue({ did: 'did:imajin:owner', slot: 'work' });
+    exchangeCodeAndStoreMock.mockImplementation(async () => { order.push('exchange'); });
+    resetGoogleConnectionStateMock.mockImplementation(async () => { order.push('reset'); });
+    captureGoogleAccountEmailMock.mockImplementation(async () => { order.push('capture'); });
+    const { GET } = await import('../callback/route');
+    await GET(makeRequest('https://kernel.test/google/api/callback?code=new-account&state=signed&slot=primary'));
+    expect(order).toEqual(['exchange', 'reset', 'capture']);
+    expect(resetGoogleConnectionStateMock).toHaveBeenCalledWith('did:imajin:owner', 'work');
+    expect(captureGoogleAccountEmailMock).toHaveBeenCalledWith('did:imajin:owner', 'work');
+  });
+
+  it('does not reset current state or metadata when the new authorization exchange fails', async () => {
+    exchangeCodeAndStoreMock.mockRejectedValue(new Error('invalid_grant'));
+    const { GET } = await import('../callback/route');
+    await expect(GET(makeRequest('https://kernel.test/google/api/callback?code=bad&state=signed'))).rejects.toThrow('invalid_grant');
+    expect(resetGoogleConnectionStateMock).not.toHaveBeenCalled();
+    expect(captureGoogleAccountEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('does not capture new identity when operational state cannot be reset', async () => {
+    resetGoogleConnectionStateMock.mockRejectedValue(new Error('database unavailable'));
+    const { GET } = await import('../callback/route');
+    await expect(GET(makeRequest('https://kernel.test/google/api/callback?code=new&state=signed'))).rejects.toThrow('database unavailable');
+    expect(captureGoogleAccountEmailMock).not.toHaveBeenCalled();
+  });
   it('exchanges the code via the google connector, no extra callback params', async () => {
     const { GET } = await import('../callback/route');
 
     await GET(makeRequest('https://kernel.test/google/api/callback?code=abc&state=xyz'));
 
-    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc');
+    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', {}, undefined, undefined);
   });
 });
 
@@ -231,7 +272,7 @@ describe('POST /google/api/disconnect (#2144 — revoke both directions)', () =>
     const { POST } = await import('../disconnect/route');
     await POST(makeRequest('https://kernel.test/google/api/disconnect'));
 
-    expect(revokeAtGoogleMock).toHaveBeenCalledWith('did:imajin:owner');
+    expect(revokeAtGoogleMock).toHaveBeenCalledWith('did:imajin:owner', 'primary');
     expect(sharedDisconnectPostMock).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(['revokeAtGoogle', 'sharedDisconnect']);
   });

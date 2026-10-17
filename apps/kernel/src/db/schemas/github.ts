@@ -25,6 +25,7 @@ export const githubActionProposals = githubSchema.table(
     id: text('id').primaryKey(),
     /** DID of the resource owner */
     ownerDid: text('owner_did').notNull(),
+    slot: text('slot').notNull().default('primary'),
     /** DID of the acting agent (optional, null when the owner acts directly) */
     agentDid: text('agent_did'),
     /** Connector scope — 'github:write' */

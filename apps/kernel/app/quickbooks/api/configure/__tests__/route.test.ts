@@ -23,6 +23,7 @@ const APP_DID = 'did:imajin:agrifortress';
 
 function makeRequest(body: unknown): Parameters<typeof POST>[0] {
   return {
+    url: 'https://kernel.test/quickbooks/api/configure',
     json: async () => body,
   } as unknown as Parameters<typeof POST>[0];
 }

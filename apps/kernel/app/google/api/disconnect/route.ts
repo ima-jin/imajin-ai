@@ -1,7 +1,7 @@
-import type { NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { createDisconnectHandler } from '@/src/lib/kernel/connector-oauth-routes';
+import { createDisconnectHandler, requestConnectionSlot } from '@/src/lib/kernel/connector-oauth-routes';
 import { GOOGLE_CONNECTOR_DID, revokeAtGoogle } from '@/src/lib/google/connector';
 
 const log = createLogger('kernel');
@@ -25,6 +25,12 @@ const sharedDisconnect = createDisconnectHandler({
  * token, so it must run BEFORE the shared handler tombstones it.
  */
 export async function POST(request: NextRequest) {
+  let slot: string;
+  try {
+    slot = requestConnectionSlot(request);
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Invalid connection slot' }, { status: 400 });
+  }
   const auth = await requireAuth(request);
   if ('error' in auth) {
     // Let the shared handler produce the exact same 401 shape — no need to
@@ -34,7 +40,7 @@ export async function POST(request: NextRequest) {
   const ownerDid = resolveActingDid(auth.identity);
 
   try {
-    await revokeAtGoogle(ownerDid);
+    await revokeAtGoogle(ownerDid, slot);
   } catch (err) {
     // revokeAtGoogle itself is best-effort and should not throw, but this is
     // one more layer of "the owner's own revoke must never be blocked".

@@ -1,0 +1,172 @@
+openapi: "3.1.0"
+info:
+  title: imajin github
+  version: "1.0.0"
+  description: >-
+    GitHub OAuth connections. Omitted slot selectors mean primary; BYO config,
+    tokens and grants are isolated per slot. App-owned configuration is shared
+    from primary without sharing its token or grants. Connection labels and
+    account emails are listed and edited through the connections service.
+servers:
+  - url: https://{node}.imajin.ai/github
+    variables:
+      node: { default: jin }
+  - url: http://localhost:3000/github
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: imajin_session }
+  parameters:
+    slot:
+      name: slot
+      in: query
+      required: false
+      schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$", default: primary }
+      description: Stable connection slot, never a display label.
+  schemas:
+    ScopeStatus:
+      type: object
+      properties:
+        manifestAssetId: { type: [string, "null"] }
+        activeScopes: { type: array, items: { type: string } }
+        validScopes: { type: array, items: { type: string } }
+        configSealed: { type: boolean }
+        tokenSealed: { type: boolean }
+        credentialPending: { type: boolean }
+        flow: { type: [string, "null"], enum: [device, authorization_code, null] }
+paths:
+  /api/configure:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    post:
+      operationId: githubConfigure
+      summary: Seal BYO OAuth config for the selected connection
+      description: Device flow accepts clientId only; authorization-code flow also requires clientSecret and redirectUri.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientId]
+              properties:
+                flow: { type: string, enum: [device, authorization_code] }
+                clientId: { type: string }
+                clientSecret: { type: string }
+                redirectUri: { type: string, format: uri }
+      responses:
+        "201": { description: Configuration sealed }
+        "400": { description: Invalid slot or configuration }
+        "401": { description: Not authenticated }
+  /api/connect:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    get:
+      operationId: githubConnect
+      summary: Start authorization for the selected slot
+      parameters:
+        - name: returnTo
+          in: query
+          schema: { type: string, example: "/auth/connectors/github?slot=work" }
+      responses:
+        "307": { description: Redirect to GitHub with signed slot-bound state }
+        "400": { description: Invalid slot or missing configuration }
+        "401": { description: Not authenticated }
+        "409": { description: Configuration pending owner approval }
+  /api/callback:
+    get:
+      security: []
+      operationId: githubCallback
+      summary: Complete authorization for the slot bound into signed state
+      description: Legacy state defaults to primary. Untrusted callback slot parameters cannot change the signed selection.
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+      responses:
+        "307": { description: Redirect to returnTo with connected or error outcome }
+  /api/device/start:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    post:
+      operationId: githubDeviceStart
+      summary: Start a device grant bound to the owner and selected slot
+      responses:
+        "200":
+          description: Opaque signed ticket and human verification code; never the access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ticket: { type: string }
+                  userCode: { type: string }
+                  verificationUri: { type: string, format: uri }
+                  verificationUriComplete: { type: string, format: uri }
+                  interval: { type: number }
+        "400": { description: Invalid slot or device configuration }
+        "401": { description: Not authenticated }
+  /api/device/poll:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    post:
+      operationId: githubDevicePoll
+      summary: Poll a device ticket without crossing slot boundaries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket]
+              properties:
+                ticket: { type: string }
+      responses:
+        "200":
+          description: On authorized, the token is sealed for the ticket's slot and never returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [authorized, pending, slow_down, expired, denied] }
+        "400": { description: Invalid ticket or mismatched slot }
+        "401": { description: Not authenticated }
+  /api/disconnect:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    post:
+      operationId: githubDisconnect
+      summary: Revoke only the selected connection and its grants
+      responses:
+        "200": { description: Disconnected; other slots unchanged }
+        "400": { description: Invalid slot }
+        "401": { description: Not authenticated }
+  /api/scope-manifest:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    get:
+      operationId: githubScopeManifestStatus
+      summary: Read credential and scope status for this slot only
+      responses:
+        "200":
+          description: Slot status; missing slots do not inherit primary grants or tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ScopeStatus" }
+    post:
+      operationId: githubPublishScopeManifest
+      summary: Replace only the selected slot's granted scopes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scopes]
+              properties:
+                scopes: { type: array, items: { type: string } }
+      responses:
+        "200": { description: Server-confirmed activeScopes for the selected connection }
+        "400": { description: Invalid slot or unknown scope }
+        "401": { description: Not authenticated }

@@ -12,6 +12,7 @@
  */
 import { createLogger } from '@imajin/logger';
 import { db, calendarEntries } from '@/src/db';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
 import { generateId } from '../kernel/id';
 import { publishCalendarEntry } from '../calendar';
 import { requireGrantAndToken, googleApiFetch } from './connector';
@@ -136,7 +137,7 @@ export async function createEvent(ownerDid: string, params: Readonly<CreateEvent
     startsAt: new Date(params.startIso),
     endsAt: new Date(params.endIso),
     visibility: 'private',
-    metadata: { source: 'google', googleEventId: data.id, googleCalendarId: 'primary' },
+    metadata: { source: 'google', slot: currentConnectionSlot('google', ownerDid), googleEventId: data.id, googleCalendarId: 'primary' },
   });
 
   // Reuses the existing intention-model event rather than inventing

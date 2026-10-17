@@ -43,12 +43,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findGoogleManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, GOOGLE_CONNECTOR_DID);
+export function findGoogleManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, GOOGLE_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveGoogleScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GOOGLE_CONNECTOR_DID);
+export function readActiveGoogleScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GOOGLE_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -62,10 +62,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishGoogleScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishGoogleScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: GOOGLE_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'google-scope-manifest.md', scopeDescriptors: GOOGLE_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

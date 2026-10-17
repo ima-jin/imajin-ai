@@ -27,6 +27,7 @@ const h = vi.hoisted(() => {
       channelUid: 'channelUid',
       did: 'did',
       appDid: 'appDid',
+      slot: 'slot',
       scopes: 'scopes',
       status: 'status',
       revokedAt: 'revokedAt',
@@ -186,6 +187,29 @@ describe('channelLinksSurface — gate', () => {
 });
 
 describe('channelLinksSurface — apply (grant + footprint reconcile)', () => {
+  it('rejects a manifest that attempts to move grants to another slot', async () => {
+    h.state.assetMetadata.slot = 'artifact';
+    await channelLinksSurface.apply(ctx, { 'github:read': desc('read', 'repos') });
+    expect(h.state.channelRows).toHaveLength(0);
+    vi.mocked(readFile).mockResolvedValue(MANIFEST_HEADER.replace('channel: github', 'channel: github\nslot: ../primary') as never);
+    await channelLinksSurface.apply(ctx, { 'github:read': desc('read', 'repos') });
+    expect(h.state.channelRows).toHaveLength(0);
+  });
+
+  it('reprojects a named slot without modifying the primary manifest grants', async () => {
+    const primary = { ...activeRow('github:read'), slot: 'primary' };
+    h.state.channelRows = [primary];
+    h.state.assetMetadata.slot = 'artifact';
+    vi.mocked(readFile).mockResolvedValue(MANIFEST_HEADER.replace('channel: github', 'channel: github\nslot: artifact') as never);
+    const namedCtx = { ...ctx, assetId: 'asset_artifact' };
+    await channelLinksSurface.apply(namedCtx, { 'github:read': desc('read', 'repos') });
+    await channelLinksSurface.apply(namedCtx, { 'github:read': desc('read', 'repos') });
+    expect(h.state.channelRows).toHaveLength(2);
+    expect(h.state.channelRows.find((row) => row.slot === 'artifact')?.status).toBe('active');
+    await channelLinksSurface.remove(namedCtx, ['github:read']);
+    expect(primary.status).toBe('active');
+    expect(h.state.channelRows.find((row) => row.slot === 'artifact')?.status).toBe('revoked');
+  });
   it('materializes one ACTIVE row per released scope, with only the released scopes', async () => {
     await channelLinksSurface.apply(ctx, {
       'github:read': desc('read', 'repos'),

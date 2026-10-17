@@ -49,12 +49,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findXaiManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, XAI_CONNECTOR_DID);
+export function findXaiManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, XAI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveXaiScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, XAI_CHANNEL, XAI_CONNECTOR_DID);
+export function readActiveXaiScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, XAI_CHANNEL, XAI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -68,10 +68,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishXaiScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishXaiScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: XAI_CONNECTOR_DID, channel: XAI_CHANNEL,
     filename: 'xai-scope-manifest.md', scopeDescriptors: XAI_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

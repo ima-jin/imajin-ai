@@ -7,7 +7,7 @@ const { mockListActiveGrantOwners, mockListWatchExpirations, mockWatch } = vi.ho
 }));
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
-vi.mock('@/src/lib/google/connector', () => ({ listActiveGrantOwners: mockListActiveGrantOwners }));
+vi.mock('@/src/lib/google/connector', () => ({ listActiveGrantConnections: mockListActiveGrantOwners }));
 vi.mock('@/src/lib/google/gmail', () => ({ listWatchExpirations: mockListWatchExpirations, watch: mockWatch }));
 
 import { GET } from '../route.js';
@@ -32,6 +32,21 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
     _resetCronSecretForTests();
   });
 
+  it('renews expired secondary despite healthy primary watch for the same DID', async () => {
+    _setCronSecretForTests('test-secret');
+    mockListActiveGrantOwners.mockResolvedValue([
+      { ownerDid: JIN, slot: 'primary' }, { ownerDid: JIN, slot: 'work' },
+    ]);
+    mockListWatchExpirations.mockResolvedValue([
+      { ownerDid: JIN, slot: 'primary', expiration: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000) },
+      { ownerDid: JIN, slot: 'work', expiration: new Date(Date.now() - 1000) },
+    ]);
+    mockWatch.mockResolvedValue({});
+    const response = await GET(makeRequest(CRON_AUTH) as never);
+    expect(response.status).toBe(200);
+    expect(mockWatch).toHaveBeenCalledTimes(1);
+    expect(mockWatch).toHaveBeenCalledWith(JIN, 'work');
+  });
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
     _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
@@ -55,7 +70,7 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
 
   it('renews every owner with no prior watch row', async () => {
     _setCronSecretForTests('test-secret');
-    mockListActiveGrantOwners.mockResolvedValue([JIN, OTHER]);
+    mockListActiveGrantOwners.mockResolvedValue([{ ownerDid: JIN, slot: 'primary' }, { ownerDid: OTHER, slot: 'primary' }]);
     mockListWatchExpirations.mockResolvedValue([]);
     mockWatch.mockResolvedValue({ historyId: '1', expiration: Date.now() + 7 * 24 * 60 * 60 * 1000, emailAddress: 'x@y.com' });
 
@@ -64,16 +79,16 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
 
     expect(response.status).toBe(200);
     expect(mockListActiveGrantOwners).toHaveBeenCalledWith('google:gmail:read');
-    expect(mockWatch).toHaveBeenCalledWith(JIN);
-    expect(mockWatch).toHaveBeenCalledWith(OTHER);
+    expect(mockWatch).toHaveBeenCalledWith(JIN, 'primary');
+    expect(mockWatch).toHaveBeenCalledWith(OTHER, 'primary');
     expect(body.owners).toBe(2);
     expect(body.renewed).toBe(2);
   });
 
   it('skips an owner whose watch is not near expiry', async () => {
     _setCronSecretForTests('test-secret');
-    mockListActiveGrantOwners.mockResolvedValue([JIN]);
-    mockListWatchExpirations.mockResolvedValue([{ ownerDid: JIN, expiration: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000) }]);
+    mockListActiveGrantOwners.mockResolvedValue([{ ownerDid: JIN, slot: 'primary' }]);
+    mockListWatchExpirations.mockResolvedValue([{ ownerDid: JIN, slot: 'primary', expiration: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000) }]);
 
     const response = await GET(makeRequest(CRON_AUTH) as never);
     const body = await response.json() as { renewed: number };
@@ -85,18 +100,18 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
 
   it('renews an owner whose watch expires within the renewal window', async () => {
     _setCronSecretForTests('test-secret');
-    mockListActiveGrantOwners.mockResolvedValue([JIN]);
-    mockListWatchExpirations.mockResolvedValue([{ ownerDid: JIN, expiration: new Date(Date.now() + 1000) }]);
+    mockListActiveGrantOwners.mockResolvedValue([{ ownerDid: JIN, slot: 'primary' }]);
+    mockListWatchExpirations.mockResolvedValue([{ ownerDid: JIN, slot: 'primary', expiration: new Date(Date.now() + 1000) }]);
     mockWatch.mockResolvedValue({ historyId: '1', expiration: Date.now(), emailAddress: 'x@y.com' });
 
     const response = await GET(makeRequest(CRON_AUTH) as never);
-    expect(mockWatch).toHaveBeenCalledWith(JIN);
+    expect(mockWatch).toHaveBeenCalledWith(JIN, 'primary');
     expect(response.status).toBe(200);
   });
 
   it('collects a per-owner failure without aborting the rest of the sweep', async () => {
     _setCronSecretForTests('test-secret');
-    mockListActiveGrantOwners.mockResolvedValue([JIN, OTHER]);
+    mockListActiveGrantOwners.mockResolvedValue([{ ownerDid: JIN, slot: 'primary' }, { ownerDid: OTHER, slot: 'primary' }]);
     mockListWatchExpirations.mockResolvedValue([]);
     mockWatch
       .mockRejectedValueOnce(new Error('google_no_credential'))
@@ -107,7 +122,7 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
 
     expect(response.status).toBe(200);
     expect(body.renewed).toBe(1);
-    expect(body.failures).toEqual([{ ownerDid: JIN, error: 'Error: google_no_credential' }]);
+    expect(body.failures).toEqual([{ ownerDid: JIN, slot: 'primary', error: 'Error: google_no_credential' }]);
   });
 
   it('returns 500 when enumerating owners throws', async () => {

@@ -29,6 +29,7 @@ ${OPERATOR_APPROVALS_TABLE_SQL}
 CREATE TABLE IF NOT EXISTS github.action_proposals (
   id text PRIMARY KEY,
   owner_did text NOT NULL,
+  slot text NOT NULL DEFAULT 'primary',
   agent_did text,
   scope text NOT NULL,
   tool text NOT NULL,

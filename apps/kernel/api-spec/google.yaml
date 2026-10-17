@@ -34,6 +34,16 @@ tags:
     description: Google Workspace connector
 
 components:
+  parameters:
+    connectionSlot:
+      name: slot
+      in: query
+      required: false
+      description: >-
+        Connection slot; omitted means primary. Tokens, BYO OAuth config and
+        grants are isolated per slot. App-owned OAuth config is shared from
+        primary, but a new slot never borrows primary credentials or grants.
+      schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$", default: primary }
   securitySchemes:
     cookieAuth:
       type: apiKey
@@ -75,6 +85,8 @@ components:
 
 paths:
   /api/connect:
+    parameters:
+      - $ref: "#/components/parameters/connectionSlot"
     get:
       tags: [google]
       operationId: googleConnect
@@ -118,7 +130,10 @@ paths:
         Not a session-authenticated route: the signed `state` param
         authenticates the owner DID. Exchanges the code, seals the token
         bundle, then redirects into the app with `?connected=google` on
-        success or `?error=<code>&connector=google` on failure.
+        success or `?error=<code>&connector=google` on failure. The signed
+        state binds the slot (legacy state without a slot means primary);
+        callback query parameters cannot override it. The returnTo URL
+        preserves the selected slot in the connector detail UI.
       parameters:
         - name: code
           in: query
@@ -132,6 +147,8 @@ paths:
         "307":
           description: Redirect back into the app (success or failure)
   /api/configure:
+    parameters:
+      - $ref: "#/components/parameters/connectionSlot"
     post:
       tags: [google]
       operationId: googleConfigure
@@ -177,6 +194,8 @@ paths:
         "204":
           description: No content
   /api/disconnect:
+    parameters:
+      - $ref: "#/components/parameters/connectionSlot"
     post:
       tags: [google]
       operationId: googleDisconnect
@@ -184,7 +203,8 @@ paths:
       description: >-
         Revokes the sealed refresh token at Google's own revoke endpoint
         (best-effort), then purges the sealed vault fields, revokes the
-        active `channel_links` row, and publishes `connector.disconnected`.
+        active `channel_links` row, and publishes `connector.disconnected`,
+        only for the selected slot. Other connections remain active.
       security:
         - cookieAuth: []
       responses:
@@ -202,6 +222,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
   /api/scope-manifest:
+    parameters:
+      - $ref: "#/components/parameters/connectionSlot"
     get:
       tags: [google]
       operationId: googleScopeManifestStatus

@@ -50,12 +50,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findOpenaiManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, OPENAI_CONNECTOR_DID);
+export function findOpenaiManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, OPENAI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveOpenaiScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, OPENAI_CHANNEL, OPENAI_CONNECTOR_DID);
+export function readActiveOpenaiScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, OPENAI_CHANNEL, OPENAI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -69,10 +69,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishOpenaiScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishOpenaiScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: OPENAI_CONNECTOR_DID, channel: OPENAI_CHANNEL,
     filename: 'openai-scope-manifest.md', scopeDescriptors: OPENAI_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

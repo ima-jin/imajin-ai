@@ -8,6 +8,7 @@ const { sealMock, loadMock, whereMock, upsertRealmIndexMock } = vi.hoisted(() =>
 }));
 
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
+vi.mock('../../kernel/connector-registry-store', () => ({ recordConnectorRegistration: vi.fn() }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: whereMock }) }) },
   channelLinks: { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' },
@@ -209,7 +210,7 @@ describe('exchangeCodeAndStore (#1210)', () => {
 
     await exchangeCodeAndStore(OWNER, 'code123', 'realm9');
 
-    expect(upsertRealmIndexMock).toHaveBeenCalledWith('realm9', OWNER, OWNER);
+    expect(upsertRealmIndexMock).toHaveBeenCalledWith('realm9', OWNER, OWNER, undefined);
   });
 
   it('loads client credentials from configDid while sealing tokens at ownerDid (#1704)', async () => {
@@ -236,7 +237,7 @@ describe('exchangeCodeAndStore (#1210)', () => {
 
     await exchangeCodeAndStore(OWNER, 'code123', 'realm9', APP);
 
-    expect(upsertRealmIndexMock).toHaveBeenCalledWith('realm9', OWNER, APP);
+    expect(upsertRealmIndexMock).toHaveBeenCalledWith('realm9', OWNER, APP, undefined);
   });
 });
 

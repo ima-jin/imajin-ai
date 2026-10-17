@@ -21,6 +21,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { SERVICES } from '@imajin/config';
+import { getConnector } from './connector-registry';
 
 /**
  * Cap on the spec text handed back, in characters.
@@ -129,7 +130,7 @@ function summarise(service: string, text: string): ApiSpecSummary {
   return {
     service,
     endpoint: specEndpoint(service),
-    label: SERVICE_LABELS.get(service) ?? null,
+    label: SERVICE_LABELS.get(service) ?? getConnector(service)?.name ?? null,
     title: stringOrNull(parsed.info?.title),
     version: stringOrNull(parsed.info?.version),
     paths:

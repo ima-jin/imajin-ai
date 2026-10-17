@@ -26,6 +26,7 @@ export const quickbooksSchema = pgSchema('kernel');
 export const quickbooksRealmIndex = quickbooksSchema.table('quickbooks_realm_index', {
   realmId: text('realm_id').primaryKey(),
   ownerDid: text('owner_did').notNull(),
+  slot: text('slot').notNull().default('primary'),
   appDid: text('app_did').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

@@ -17,6 +17,7 @@ const {
   sealMock, loadMock, publishMock, observePullRequestMock,
   whereMock,
   proposalLimitMock,
+  proposalWhereMock,
   proposalCountMock,
   proposalInsertMock,
   proposalUpdateMock,
@@ -32,6 +33,7 @@ const {
   observePullRequestMock: vi.fn(),
   whereMock: vi.fn(),           // channelLinks grant check
   proposalLimitMock: vi.fn(),   // proposals select().where().orderBy().limit()
+  proposalWhereMock: vi.fn(),
   proposalCountMock: vi.fn(),   // proposals select({count}).where()
   proposalInsertMock: vi.fn(),  // proposals insert().values()
   proposalUpdateMock: vi.fn(),  // proposals update().set().where()
@@ -75,7 +77,7 @@ vi.mock('@/src/db', () => {
     channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes',
   };
   const githubActionProposals = {
-    id: 'id', ownerDid: 'owner_did', agentDid: 'agent_did',
+    id: 'id', ownerDid: 'owner_did', agentDid: 'agent_did', slot: 'slot',
     scope: 'scope', tool: 'tool', riskTier: 'risk_tier',
     target: 'target', argsSummary: 'args_summary',
     status: 'status', approvedUntil: 'approved_until',
@@ -110,7 +112,10 @@ vi.mock('@/src/db', () => {
             if (_isCountQuery) {
               return { where: proposalCountMock };
             }
-            return { where: () => ({ orderBy: orderedRowQuery }) };
+            return { where: (predicate: unknown) => {
+              proposalWhereMock(predicate);
+              return { orderBy: orderedRowQuery };
+            } };
           },
         };
       },
@@ -170,6 +175,7 @@ vi.mock('../allowlist', () => ({
 }));
 
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { withConnectorConnection } from '@/src/lib/kernel/connector-connection-context';
 import {
   resolveActiveGrant,
   sealPat,
@@ -359,7 +365,42 @@ function fetchUrls(): string[] {
 // ΓöÇΓöÇ vaultField ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 describe('vaultField', () => {
+  it('partitions write-approval lookup and pending cards by connection', async () => {
+    grant(['github:write']);
+    await withConnectorConnection('github', OWNER, 'artifact', () =>
+      createIssue(OWNER, REPO, 'Slot-bound request', 'Body'),
+    );
+    expect(proposalWhereMock).toHaveBeenLastCalledWith(expect.arrayContaining([
+      { col: 'slot', val: 'artifact' },
+    ]));
+    expect(proposalInsertMock).toHaveBeenLastCalledWith(expect.objectContaining({ slot: 'artifact' }));
+    expect(recordApprovalRequestedMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ slot: 'artifact' }),
+    }));
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('encodes the ownerDid in the field name for per-DID isolation', () => {
+    expect(vaultField(OWNER)).toBe(`github-pat:${OWNER}`);
+  });
+
+  it('isolates PAT fallback by selected slot without borrowing primary', async () => {
+    grant(['github:read']);
+    loadMock.mockImplementation(async (field: string) =>
+      field === `github-pat:${OWNER}` ? PAT : undefined,
+    );
+    await expect(withConnectorConnection('github', OWNER, 'artifact', () =>
+      getIssue(OWNER, REPO, 42),
+    )).rejects.toThrow('github_no_credential');
+    expect(loadMock).toHaveBeenCalledWith(`github-pat:${OWNER}:artifact`);
+    expect(loadMock).not.toHaveBeenCalledWith(`github-pat:${OWNER}`);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('seals PATs into explicit and contextual slots', async () => {
+    await sealPat(OWNER, PAT, 'artifact');
+    expect(sealMock).toHaveBeenLastCalledWith(`github-pat:${OWNER}:artifact`, PAT);
+    await withConnectorConnection('github', OWNER, 'personal', () => sealPat(OWNER, PAT));
+    expect(sealMock).toHaveBeenLastCalledWith(`github-pat:${OWNER}:personal`, PAT);
     expect(vaultField(OWNER)).toBe(`github-pat:${OWNER}`);
   });
 });

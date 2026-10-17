@@ -50,12 +50,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findMoonshotManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, MOONSHOT_CONNECTOR_DID);
+export function findMoonshotManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, MOONSHOT_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveMoonshotScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MOONSHOT_CHANNEL, MOONSHOT_CONNECTOR_DID);
+export function readActiveMoonshotScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MOONSHOT_CHANNEL, MOONSHOT_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -69,10 +69,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishMoonshotScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishMoonshotScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: MOONSHOT_CONNECTOR_DID, channel: MOONSHOT_CHANNEL,
     filename: 'moonshot-scope-manifest.md', scopeDescriptors: MOONSHOT_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

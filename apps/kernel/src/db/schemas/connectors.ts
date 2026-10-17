@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 /**
  * Connector registry (#1924, Phase 1 of #1922).
  *
- * One row per `(owner_did, provider)` connector installation. Before this,
+ * One row per `(owner_did, provider, slot)` connector installation. Before this,
  * connector state had no single home: scopes lived in `auth.channel_links`,
  * the wrapped field key in `kernel.vault_delegation_grants`, the ciphertext in
  * the file vault, and the catalogue of supported connectors in the static
@@ -34,6 +34,10 @@ export const connectors = connectorsSchema.table('connectors', {
   ownerDid: text('owner_did').notNull(),
   /** `CONNECTOR_REGISTRY` id, e.g. `'gemini'` | `'anthropic'` | `'xai'`. */
   provider: text('provider').notNull(),
+  slot: text('slot').notNull().default('primary'),
+  /** Owner-facing metadata only; neither field grants credential access. */
+  label: text('label'),
+  accountEmail: text('account_email'),
   /** Channel label used in `auth.channel_links.channel`. Conventionally equals `provider`. */
   channel: text('channel').notNull(),
   /** Connector app DID used in `auth.channel_links.app_did`. */
@@ -80,9 +84,9 @@ export const connectors = connectorsSchema.table('connectors', {
   sealedKeyFieldIdx: index('idx_connectors_sealed_key_field')
     .on(table.sealedKeyField)
     .where(sql`${table.sealedKeyField} IS NOT NULL`),
-  /** One registration per (owner, provider) — the upsert target. */
-  ownerProviderUniq: uniqueIndex('uniq_connectors_owner_provider')
-    .on(table.ownerDid, table.provider),
+  /** One registration per (owner, provider, slot) — the upsert target. */
+  ownerProviderUniq: uniqueIndex('uniq_connectors_owner_provider_slot')
+    .on(table.ownerDid, table.provider, table.slot),
 }));
 
 export type ConnectorRow = typeof connectors.$inferSelect;

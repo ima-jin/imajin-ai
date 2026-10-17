@@ -13,7 +13,7 @@ const { onConflictDoUpdateMock, valuesMock, insertMock, limitMock, whereMock, or
 
 vi.mock('@/src/db', () => ({
   db: { insert: insertMock, select: selectMock },
-  quickbooksRealmIndex: { realmId: 'realm_id', ownerDid: 'owner_did', appDid: 'app_did', updatedAt: 'updated_at' },
+  quickbooksRealmIndex: { realmId: 'realm_id', ownerDid: 'owner_did', appDid: 'app_did', slot: 'slot', updatedAt: 'updated_at' },
 }));
 
 import { upsertRealmIndex, resolveRealmOwner, resolveAppDidForOwner } from '../realm-index';
@@ -33,11 +33,18 @@ beforeEach(() => {
 });
 
 describe('upsertRealmIndex (xprize #35)', () => {
+  it('records the named connection for webhook reverse lookup', async () => {
+    await upsertRealmIndex(REALM, OWNER, APP, 'work');
+    expect(valuesMock).toHaveBeenCalledWith({ realmId: REALM, ownerDid: OWNER, appDid: APP, slot: 'work' });
+    expect(onConflictDoUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+      set: expect.objectContaining({ slot: 'work' }),
+    }));
+  });
   it('inserts with an onConflict upsert keyed by realmId', async () => {
     await upsertRealmIndex(REALM, OWNER, APP);
 
     expect(insertMock).toHaveBeenCalledTimes(1);
-    expect(valuesMock).toHaveBeenCalledWith({ realmId: REALM, ownerDid: OWNER, appDid: APP });
+    expect(valuesMock).toHaveBeenCalledWith({ realmId: REALM, ownerDid: OWNER, appDid: APP, slot: 'primary' });
     expect(onConflictDoUpdateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         target: 'realm_id',

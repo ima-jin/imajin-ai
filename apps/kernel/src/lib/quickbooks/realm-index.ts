@@ -13,12 +13,15 @@
  * to `ownerDid` for the original BYO-app model, where the owner configures
  * their own app.
  */
-import { eq, desc } from 'drizzle-orm';
+import { and, eq, desc } from 'drizzle-orm';
 import { db, quickbooksRealmIndex } from '@/src/db';
+import { connectionSlot } from '../kernel/connection-slots';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
 
 export interface QuickBooksRealmOwner {
   ownerDid: string;
   appDid: string;
+  slot?: string;
 }
 
 /**
@@ -29,20 +32,21 @@ export interface QuickBooksRealmOwner {
  * one — always lands here: same `realmId` re-authorized overwrites the row in
  * place; a new `realmId` for the same DID inserts a fresh row.
  */
-export async function upsertRealmIndex(realmId: string, ownerDid: string, appDid: string): Promise<void> {
+export async function upsertRealmIndex(realmId: string, ownerDid: string, appDid: string, slot?: string): Promise<void> {
+  const selected = connectionSlot(slot ?? currentConnectionSlot('quickbooks', ownerDid));
   await db
     .insert(quickbooksRealmIndex)
-    .values({ realmId, ownerDid, appDid })
+    .values({ realmId, ownerDid, appDid, slot: selected })
     .onConflictDoUpdate({
       target: quickbooksRealmIndex.realmId,
-      set: { ownerDid, appDid, updatedAt: new Date() },
+      set: { ownerDid, appDid, slot: selected, updatedAt: new Date() },
     });
 }
 
 /** Resolve the `{ ownerDid, appDid }` pair a webhook's `realmId` belongs to, or undefined. */
 export async function resolveRealmOwner(realmId: string): Promise<QuickBooksRealmOwner | undefined> {
   const [row] = await db
-    .select({ ownerDid: quickbooksRealmIndex.ownerDid, appDid: quickbooksRealmIndex.appDid })
+    .select({ ownerDid: quickbooksRealmIndex.ownerDid, appDid: quickbooksRealmIndex.appDid, slot: quickbooksRealmIndex.slot })
     .from(quickbooksRealmIndex)
     .where(eq(quickbooksRealmIndex.realmId, realmId))
     .limit(1);
@@ -56,11 +60,11 @@ export async function resolveRealmOwner(realmId: string): Promise<QuickBooksReal
  * `channel_links` and has no `realmId` in hand. Falls back to `ownerDid`
  * itself (BYO-app model) when no row is indexed yet.
  */
-export async function resolveAppDidForOwner(ownerDid: string): Promise<string> {
+export async function resolveAppDidForOwner(ownerDid: string, slot?: string): Promise<string> {
   const [row] = await db
     .select({ appDid: quickbooksRealmIndex.appDid })
     .from(quickbooksRealmIndex)
-    .where(eq(quickbooksRealmIndex.ownerDid, ownerDid))
+    .where(and(eq(quickbooksRealmIndex.ownerDid, ownerDid), eq(quickbooksRealmIndex.slot, connectionSlot(slot ?? currentConnectionSlot('quickbooks', ownerDid)))))
     .orderBy(desc(quickbooksRealmIndex.updatedAt))
     .limit(1);
   return row?.appDid ?? ownerDid;

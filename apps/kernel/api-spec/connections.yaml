@@ -24,6 +24,16 @@ components:
       type: http
       scheme: bearer
   schemas:
+    ConnectorConnection:
+      type: object
+      required: [slot, label, accountEmail, connected]
+      properties:
+        slot: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$" }
+        label: { type: string, description: "Editable display label; selectors use the stable slot identifier." }
+        accountEmail: { type: [string, "null"], description: "Connected account identity, when supplied by the provider." }
+        connected: { type: boolean }
+        configured: { type: boolean }
+        scopes: { type: array, items: { type: string } }
     Pod:
       type: object
       properties:
@@ -78,6 +88,97 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/connectors/{id}/connections:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, examples: [google, github, quickbooks] }
+    get:
+      tags: [connections]
+      operationId: listConnectorConnections
+      summary: List the authenticated owner's labelled connector connections
+      description: >-
+        Returns non-secret metadata only. Existing unsuffixed credentials resolve
+        as primary without re-sealing. Disconnected slots may remain available
+        for reconnecting. Labels are not unique identifiers: ambiguous label
+        selectors fail with an error listing matching slots.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Connections for this connector and owner
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connections]
+                properties:
+                  connections:
+                    type: array
+                    items: { $ref: "#/components/schemas/ConnectorConnection" }
+        "401":
+          description: Not authenticated
+        "404":
+          description: Unknown connector
+    post:
+      tags: [connections]
+      operationId: createConnectorConnection
+      summary: Create a named connection slot before configuring or authorizing it
+      description: >-
+        Creating a slot grants no capabilities and copies no primary tokens,
+        credentials or grants. App-owned OAuth configuration may be shared;
+        BYO configuration remains per-slot.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slot]
+              properties:
+                slot: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$" }
+                label: { type: string, maxLength: 80 }
+      responses:
+        "201":
+          description: Connection slot created
+        "400":
+          description: Invalid slot or label
+        "401":
+          description: Not authenticated
+        "409":
+          description: Slot already exists
+    patch:
+      tags: [connections]
+      operationId: renameConnectorConnection
+      summary: Update a connection's display label without changing its stable slot
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: slot
+          in: query
+          required: false
+          schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$", default: primary }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label: { type: string, minLength: 1, maxLength: 80 }
+      responses:
+        "200":
+          description: Label updated
+        "400":
+          description: Invalid slot or label
+        "401":
+          description: Not authenticated
+        "404":
+          description: Connection not found
   /api/health:
     get:
       tags: [connections]

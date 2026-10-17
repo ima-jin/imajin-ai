@@ -35,6 +35,7 @@ import {
 } from '@/src/lib/kernel/connector-card-kind';
 import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-outcome';
 import { validateStripeCredentialPair, validateStripeWebhookSecret } from '@/src/lib/stripe/credential-pair';
+import { ConnectionSlots, slotRoute, useConnectionSlot, useRefreshConnections } from './ConnectionSlots';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -181,6 +182,12 @@ async function postScopeToggle(
 
 /** Connect/reconnect href for a connector, carrying `returnTo` (#1529). */
 function connectHref(entry: ConnectorEntry): string {
+  const url = new URL(entry.connectRoute!, 'http://localhost');
+  const slot = url.searchParams.get('slot');
+  if (slot) {
+    url.searchParams.set('returnTo', slotRoute(`/auth/connectors/${entry.id}`, slot));
+    return `${url.pathname}${url.search}`;
+  }
   return buildConnectHref(entry.connectRoute!, entry.id);
 }
 
@@ -351,13 +358,13 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
           className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
         />
         <div className="min-w-0">
-          <span className={`text-sm font-mono block ${isActive ? 'text-white' : 'text-gray-400'}`}>
+          <span className={`text-sm font-mono break-all block ${isActive ? 'text-white' : 'text-gray-400'}`}>
             {scope.name}
           </span>
           <span className="text-xs text-gray-600 truncate block">{scope.label}</span>
         </div>
       </label>
-      <div className="flex items-center gap-2 shrink-0 ml-4">{badge}</div>
+      <div className="flex items-center gap-2 shrink-0 ml-2">{badge}</div>
     </div>
   );
 }
@@ -770,6 +777,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
  * server already sealed the bundle, so all the UI does is refresh status.
  */
 function useGitHubDeviceConnect(onConnected: () => void) {
+  const slot = useConnectionSlot();
   const [stage, setStage] = useState<DeviceStage>('idle');
   const [grant, setGrant] = useState<DeviceGrant | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -785,7 +793,7 @@ function useGitHubDeviceConnect(onConnected: () => void) {
       await delay(waitMs);
       if (abandoned.current) return;
       const { status } = await postJson<{ status: DevicePollStatus }>(
-        '/github/api/device/poll', { ticket },
+        slotRoute('/github/api/device/poll', slot), { ticket },
       );
       if (abandoned.current) return;
       if (status === 'authorized') {
@@ -802,14 +810,14 @@ function useGitHubDeviceConnect(onConnected: () => void) {
       }
       if (status === 'slow_down') waitMs += DEVICE_SLOW_DOWN_INCREMENT_MS;
     }
-  }, [onConnected]);
+  }, [onConnected, slot]);
 
   const start = useCallback(async () => {
     setStage('starting');
     setError(null);
     setGrant(null);
     try {
-      const next = await postJson<DeviceGrant>('/github/api/device/start', {});
+      const next = await postJson<DeviceGrant>(slotRoute('/github/api/device/start', slot), {});
       if (abandoned.current) return;
       setGrant(next);
       setStage('awaiting');
@@ -819,7 +827,7 @@ function useGitHubDeviceConnect(onConnected: () => void) {
       setError(err instanceof Error ? err.message : String(err));
       setStage('error');
     }
-  }, [pollUntilSettled]);
+  }, [pollUntilSettled, slot]);
 
   return { stage, grant, error, start };
 }
@@ -1012,6 +1020,8 @@ function GitHubDeviceReconnect({ onConnected }: Readonly<{ onConnected: () => vo
 // ── GitHub card (interactive: configure → connect → grant) — #1352 ─────────
 
 function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+  const slot = useConnectionSlot();
+  const refreshConnections = useRefreshConnections();
   const [status, setStatus] = useState<GitHubStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -1073,16 +1083,17 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
       const r = await fetch(entry.statusEndpoint!);
       if (!r.ok) return;
       setStatus(await r.json() as GitHubStatus);
+      refreshConnections();
       setStatusError(null);
     } catch { /* non-fatal */ }
-  }, [entry.statusEndpoint]);
+  }, [entry.statusEndpoint, refreshConnections]);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
   const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
     entry.disconnectRoute!,
     'Disconnect GitHub? This will revoke the grant and delete all sealed credentials.',
-    () => { void fetchStatus(); },
+    () => { void fetchStatus(); refreshConnections(); },
   );
 
   const activeSet = new Set(status?.activeScopes ?? []);
@@ -1119,7 +1130,7 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
     setConfiguring(true);
     setConfigError(null);
     try {
-      const r = await fetch('/github/api/configure', {
+      const r = await fetch(slotRoute('/github/api/configure', slot), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(configureBody()),
@@ -1140,9 +1151,9 @@ function GitHubConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   }
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+    <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <span className="text-3xl">{entry.icon}</span>
           <div>
@@ -1568,9 +1579,9 @@ function CredentialPasteConnectorCard({ entry }: Readonly<{ entry: ConnectorEntr
   }
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+    <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <span className="text-3xl">{entry.icon}</span>
           <div>
@@ -1768,8 +1779,8 @@ interface OAuthConnectorCardOptions<TExtra = undefined> {
   configureRoute: string;
   /** Callback path appended to `window.location.origin` to prefill the default redirect URI. */
   callbackPath: string;
-  /** Scope name whose presence (alongside both credential booleans) marks the card "connected". */
-  readyScope: string;
+  /** Optional required scope; otherwise any declared granted scope marks the card connected. */
+  readyScope?: string;
   copy: OAuthConnectorCardCopy;
   extra?: OAuthConnectorCardExtraField<TExtra>;
 }
@@ -1784,6 +1795,8 @@ function createOAuthConnectorCard<TExtra = undefined>(
   opts: Readonly<OAuthConnectorCardOptions<TExtra>>,
 ): (props: Readonly<{ entry: ConnectorEntry }>) => React.ReactElement {
   return function OAuthConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
+    const slot = useConnectionSlot();
+    const refreshConnections = useRefreshConnections();
     const [status, setStatus] = useState<OAuthConnectorStatus | null>(null);
     const [statusLoading, setStatusLoading] = useState(true);
     const [statusError, setStatusError] = useState<string | null>(null);
@@ -1813,16 +1826,17 @@ function createOAuthConnectorCard<TExtra = undefined>(
         const r = await fetch(entry.statusEndpoint!);
         if (!r.ok) return;
         setStatus(await r.json() as OAuthConnectorStatus);
+        refreshConnections();
         setStatusError(null);
       } catch { /* non-fatal */ }
-    }, [entry.statusEndpoint]);
+    }, [entry.statusEndpoint, refreshConnections]);
 
     useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
     const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
       entry.disconnectRoute!,
-      opts.copy.disconnectConfirmMessage,
-      () => { void fetchStatus(); },
+      `${opts.copy.disconnectConfirmMessage}\nConnection slot: ${slot}.`,
+      () => { void fetchStatus(); refreshConnections(); },
     );
 
     const { grantingScope, grantError, handleToggleScope } = useScopeToggle(
@@ -1832,12 +1846,15 @@ function createOAuthConnectorCard<TExtra = undefined>(
     );
 
     const activeSet = new Set(status?.activeScopes ?? []);
-    const readyForRead = status !== null && status.configSealed && status.tokenSealed && activeSet.has(opts.readyScope);
+    const scopesReady = opts.readyScope
+      ? activeSet.has(opts.readyScope)
+      : entry.scopes.some((scope) => activeSet.has(scope.name));
+    const readyForRead = status !== null && status.configSealed && status.tokenSealed && scopesReady;
 
     async function handleConfigure(e: React.FormEvent) {
       e.preventDefault(); setConfiguring(true); setConfigError(null);
       try {
-        const r = await fetch(opts.configureRoute, {
+        const r = await fetch(slotRoute(opts.configureRoute, slot), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             clientId: clientId.trim(), clientSecret: clientSecret.trim(), redirectUri: redirectUri.trim(),
@@ -1852,8 +1869,8 @@ function createOAuthConnectorCard<TExtra = undefined>(
     }
 
     return (
-      <div className="bg-white/5 border border-white/10 rounded-xl p-6">
-        <div className={`flex items-start justify-between ${entry.custodyNotice ? 'mb-4' : 'mb-6'}`}>
+      <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
+        <div className={`flex flex-wrap items-start justify-between gap-3 ${entry.custodyNotice ? 'mb-4' : 'mb-6'}`}>
           <div className="flex items-center gap-3">
             <span className="text-3xl">{entry.icon}</span>
             <div><h2 className="text-lg font-semibold text-white">{entry.name}</h2>
@@ -2000,7 +2017,7 @@ const QuickBooksConnectorCard = createOAuthConnectorCard<{ environment: 'sandbox
     initial: { environment: 'sandbox' },
     toBody: (value) => ({ environment: value.environment }),
     render: (value, setValue) => (
-      <select value={value.environment} onChange={(e) => setValue({ environment: e.target.value as 'sandbox' | 'production' })}
+      <select aria-label="QuickBooks environment" value={value.environment} onChange={(e) => setValue({ environment: e.target.value as 'sandbox' | 'production' })}
         className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500/50">
         <option value="sandbox">Sandbox</option>
         <option value="production">Production</option>
@@ -2014,7 +2031,6 @@ const QuickBooksConnectorCard = createOAuthConnectorCard<{ environment: 'sandbox
 const GoogleConnectorCard = createOAuthConnectorCard({
   configureRoute: '/google/api/configure',
   callbackPath: '/google/api/callback',
-  readyScope: 'google:gmail:read',
   copy: {
     configStepLabel: 'OAuth Client (Google Cloud Console)',
     configSealedLabel: 'OAuth client config sealed',
@@ -2022,8 +2038,9 @@ const GoogleConnectorCard = createOAuthConnectorCard({
     connectLabel: 'Connect Google Account →',
     disconnectLabel: 'Disconnect Google Workspace',
     disconnectConfirmMessage:
-      'Disconnect Google Workspace? This revokes the grant at Google, deletes the sealed refresh token, ' +
-      'and stops every google_* tool from acting on your behalf.',
+      'Disconnect this Google Workspace connection? This revokes its grant at Google, ' +
+      'deletes its sealed refresh token, and stops google_* tools from using this connection. ' +
+      'Other connections are not affected.',
   },
 });
 
@@ -2103,9 +2120,9 @@ function NativeConnectorCard({ entry }: Readonly<{ entry: ConnectorEntry }>) {
   const hasAnyActive = activeSet.size > 0;
 
   return (
-    <div className="bg-white/5 border border-white/10 rounded-xl p-6">
+    <div className="bg-white/5 border border-white/10 rounded-xl p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
           <span className="text-3xl">{entry.icon}</span>
           <div>
@@ -2225,7 +2242,18 @@ export function ConnectorDetail({ entry }: Readonly<{ entry: ConnectorEntry }>) 
       return <CredentialPasteConnectorCard entry={entry} />;
     case 'oauth': {
       const OAuthCard = OAUTH_CARDS[entry.id];
-      return OAuthCard ? <OAuthCard entry={entry} /> : <PendingConnectorCard entry={entry} />;
+      return OAuthCard ? (
+        <Suspense fallback={<p className="text-sm text-gray-400">Loading connections…</p>}>
+          <ConnectionSlots connectorId={entry.id}>
+            {(slot) => <OAuthCard entry={{
+              ...entry,
+              statusEndpoint: entry.statusEndpoint ? slotRoute(entry.statusEndpoint, slot) : null,
+              disconnectRoute: entry.disconnectRoute ? slotRoute(entry.disconnectRoute, slot) : null,
+              connectRoute: entry.connectRoute ? slotRoute(entry.connectRoute, slot) : null,
+            }} />}
+          </ConnectionSlots>
+        </Suspense>
+      ) : <PendingConnectorCard entry={entry} />;
     }
   }
 }

@@ -403,6 +403,7 @@ export const channelLinkTokens = authSchema.table('channel_link_tokens', {
  */
 export const channelLinks = authSchema.table('channel_links', {
   id: text('id').primaryKey(),
+  slot: text('slot').notNull().default('primary'),
   channel: text('channel').notNull(),                        // 'telegram' | 'whatsapp' | 'signal'
   channelUid: text('channel_uid').notNull(),                 // external account id
   did: text('did').notNull(),                                // linked Imajin user DID
@@ -413,6 +414,7 @@ export const channelLinks = authSchema.table('channel_links', {
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (table) => ({
   didIdx: index('idx_channel_links_did').on(table.did),
+  slotIdx: index('idx_channel_links_slot').on(table.did, table.channel, table.slot, table.status),
   lookupIdx: index('idx_channel_links_lookup').on(table.channel, table.channelUid, table.status),
   pairUnique: uniqueIndex('uniq_channel_links_pair').on(table.channel, table.channelUid, table.appDid),
 }));

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
-import { listActiveGrantOwners } from '@/src/lib/google/connector';
+import { listActiveGrantConnections } from '@/src/lib/google/connector';
 import { listWatchExpirations, watch } from '@/src/lib/google/gmail';
 import { requireCronAuth } from '@/src/cron/auth';
 import { forEachSequential } from '@/src/lib/async/sequential';
@@ -15,10 +15,12 @@ const RENEWAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 interface RenewResult {
   ownerDid: string;
+  slot: string;
 }
 
 interface RenewFailure {
   ownerDid: string;
+  slot: string;
   error: string;
 }
 
@@ -43,14 +45,14 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
 
   try {
-    const owners = await listActiveGrantOwners('google:gmail:read');
+    const owners = await listActiveGrantConnections('google:gmail:read');
     const expirations = new Map(
-      (await listWatchExpirations()).map((row) => [row.ownerDid, row.expiration]),
+      (await listWatchExpirations()).map((row) => [`${row.ownerDid}|${row.slot}`, row.expiration]),
     );
 
     const now = Date.now();
-    const dueForRenewal = owners.filter((ownerDid) => {
-      const expiration = expirations.get(ownerDid);
+    const dueForRenewal = owners.filter(({ ownerDid, slot }) => {
+      const expiration = expirations.get(`${ownerDid}|${slot}`);
       return !expiration || expiration.getTime() - now <= RENEWAL_WINDOW_MS;
     });
 
@@ -58,13 +60,13 @@ export async function GET(request: NextRequest) {
     const failures: RenewFailure[] = [];
 
     // Sequential on purpose: one Gmail API call at a time keeps the sweep under Google's per-user rate limits.
-    await forEachSequential(dueForRenewal, async (ownerDid) => {
+    await forEachSequential(dueForRenewal, async ({ ownerDid, slot }) => {
       try {
-        await watch(ownerDid);
-        results.push({ ownerDid });
+        await watch(ownerDid, slot);
+        results.push({ ownerDid, slot });
       } catch (err) {
         log.error({ err: String(err), ownerDid }, 'Gmail watch renewal: owner failed');
-        failures.push({ ownerDid, error: String(err) });
+        failures.push({ ownerDid, slot, error: String(err) });
       }
     });
 

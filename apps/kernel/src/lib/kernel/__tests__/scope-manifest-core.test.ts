@@ -19,7 +19,7 @@ const h = vi.hoisted(() => {
 
   const F = {
     assets: { id: 'id', ownerDid: 'ownerDid', status: 'status', metadata: 'metadata' },
-    channelLinks: { id: 'id', channel: 'channel', channelUid: 'channelUid', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', revokedAt: 'revokedAt', createdAt: 'createdAt' },
+    channelLinks: { slot: 'slot', id: 'id', channel: 'channel', channelUid: 'channelUid', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes', revokedAt: 'revokedAt', createdAt: 'createdAt' },
     consentGrants: {
       id: 'id', subject: 'subject', grantedTo: 'grantedTo', purpose: 'purpose',
       allowedFields: 'allowedFields', mode: 'mode', status: 'status',
@@ -31,7 +31,8 @@ const h = vi.hoisted(() => {
   const match = (row: Row, pred: Pred | undefined): boolean => {
     if (!pred) return true;
     switch (pred.op) {
-      case 'eq': return row[pred.col as string] === pred.val;
+      case 'slot': return ((row.metadata as Row)?.slot ?? 'primary') === pred.val;
+      case 'eq': return (pred.col === 'slot' ? row.slot ?? 'primary' : row[pred.col as string]) === pred.val;
       case 'ne': return row[pred.col as string] !== pred.val;
       case 'and': return (pred.preds ?? []).every((p) => match(row, p));
       case 'like': {
@@ -96,6 +97,37 @@ const h = vi.hoisted(() => {
   return { state, F, db, updateCalls, insertCalls };
 });
 
+describe('connection slot manifests', () => {
+  it('resolves legacy unlabelled metadata only as primary', async () => {
+    h.state.assetRows = [assetRow()];
+    expect((await findConnectorManifestAsset(OWNER, CONNECTOR_DID))?.id).toBe(ASSET_ID);
+    expect(await findConnectorManifestAsset(OWNER, CONNECTOR_DID, 'work')).toBeNull();
+  });
+
+  it('publishes a distinct asset, metadata, content and grant rows for work without touching primary', async () => {
+    h.state.assetRows = [assetRow()];
+    h.state.channelRows = [{
+      id: 'legacy', channel: CHANNEL, channelUid: `${ASSET_ID}#test:read`,
+      did: OWNER, appDid: CONNECTOR_DID, scopes: ['test:read'], status: 'active',
+    }];
+    mockCreate.mockResolvedValue({ asset: assetRow({ id: 'asset_work' }) });
+    const id = await publishConnectorScopeManifest(publishOpts({ slot: 'work' }));
+    expect(id).toBe('asset_work');
+    expect(mockCreate.mock.calls[0][0].filename).toBe('test-manifest-work.md');
+    expect(mockUpdate.mock.calls[0][0].content).toContain('slot: work');
+    expect(h.updateCalls.find((call) => call.table === h.F.assets)?.set.metadata)
+      .toMatchObject({ slot: 'work' });
+    expect(h.state.channelRows.find((row) => row.id === 'legacy')?.status).toBe('active');
+    expect(h.state.channelRows.find((row) => row.slot === 'work'))
+      .toMatchObject({ channelUid: 'asset_work#test:read', scopes: ['test:read'] });
+    h.state.assetRows.push(assetRow({ id: 'asset_work', metadata: { kind: 'scope-manifest', connector: CONNECTOR_DID, slot: 'work' } }));
+    await publishConnectorScopeManifest(publishOpts({ slot: 'work', scopes: [] }));
+    expect(h.state.channelRows.find((row) => row.slot === 'work')?.status).toBe('revoked');
+    expect(await readActiveConnectorScopes(OWNER, CHANNEL, CONNECTOR_DID)).toEqual(['test:read']);
+    expect(await readActiveConnectorScopes(OWNER, CHANNEL, CONNECTOR_DID, 'work')).toEqual([]);
+  });
+});
+
 vi.mock('@/src/db', () => ({
   db: h.db, assets: h.F.assets, channelLinks: h.F.channelLinks, consentGrants: h.F.consentGrants,
 }));
@@ -104,7 +136,10 @@ vi.mock('drizzle-orm', () => ({
   ne: (col: unknown, val: unknown) => ({ op: 'ne', col, val }),
   and: (...preds: unknown[]) => ({ op: 'and', preds }),
   like: (col: unknown, val: unknown) => ({ op: 'like', col, val }),
-  sql: Object.assign((_s: TemplateStringsArray, ..._v: unknown[]) => ({ op: 'sql' }), {}),
+  sql: Object.assign((strings: TemplateStringsArray, ...values: unknown[]) =>
+    strings.join('').includes('COALESCE')
+      ? { op: 'slot', val: values.at(-1) }
+      : { op: 'sql' }, {}),
 }));
 vi.mock('@imajin/logger', () => ({
   createLogger: vi.fn(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() })),

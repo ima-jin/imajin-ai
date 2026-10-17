@@ -39,8 +39,10 @@
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { db, channelLinks } from '@/src/db';
-import { revokeConnectorRegistration } from '../kernel/connector-registry-store';
+import { db, channelLinks, googleWorkspaceState } from '@/src/db';
+import { recordConnectorRegistration, revokeConnectorRegistration } from '../kernel/connector-registry-store';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
+import { connectionSlot } from '../kernel/connection-slots';
 import {
   createConnectorOAuth,
   ConnectorCredentialPendingError,
@@ -97,6 +99,26 @@ export interface GoogleApiRequest {
   body?: Record<string, unknown>;
   /** Human label used in the thrown error message, e.g. `'Gmail'`, `'Drive'`. */
   apiLabel: string;
+}
+
+/** Non-secret account identity for the connection picker; failure never blocks connect. */
+export async function captureGoogleAccountEmail(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<void> {
+  try {
+    const token = await google.loadAccessToken(ownerDid, undefined, connectionSlot(slot));
+    if (!token) return;
+    const profile = await googleApiFetch<{ emailAddress?: string }>({
+      baseUrl: 'https://gmail.googleapis.com/gmail/v1/users/me',
+      path: '/profile',
+      token,
+      apiLabel: 'Gmail',
+    });
+    if (typeof profile.emailAddress === 'string' && profile.emailAddress.includes('@')) {
+      await recordConnectorRegistration({ ownerDid, provider: 'google', slot, accountEmail: profile.emailAddress });
+    }
+  } catch {
+    // Provider error bodies may contain sensitive data; record only the operation.
+    log.warn({ ownerDid, slot }, 'google: account email unavailable (non-fatal)');
+  }
 }
 
 /**
@@ -184,6 +206,21 @@ export const buildAuthorizeUrl = google.buildAuthorizeUrl;
 export const exchangeCodeAndStore = google.exchangeCodeAndStore;
 export const resolveActiveGrant = google.resolveActiveGrant;
 
+/** A fresh authorization may replace the account in this slot; refresh must never call this. */
+export async function resetGoogleConnectionState(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<void> {
+  const selected = connectionSlot(slot);
+  await db.update(googleWorkspaceState)
+    .set({
+      gmailHistoryId: null,
+      gmailWatchExpiration: null,
+      gmailEmailAddress: null,
+      drivePageToken: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(googleWorkspaceState.ownerDid, ownerDid), eq(googleWorkspaceState.slot, selected)));
+  await recordConnectorRegistration({ ownerDid, provider: 'google', slot: selected, accountEmail: null });
+}
+
 /**
  * Which BYO-app flow the owner's sealed config is for, or null when nothing
  * is sealed yet (or the config is sealed behind a pending delegation grant).
@@ -191,9 +228,9 @@ export const resolveActiveGrant = google.resolveActiveGrant;
  * endpoint), but this stays symmetrical with the other OAuth connectors so
  * the shared scope-manifest route can report a `flow` field uniformly.
  */
-export async function readConfigFlow(ownerDid: string): Promise<'authorization_code' | null> {
+export async function readConfigFlow(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<'authorization_code' | null> {
   try {
-    await google.loadConfig(ownerDid);
+    await google.loadConfig(ownerDid, slot);
     return 'authorization_code';
   } catch (err) {
     if (err instanceof ConnectorCredentialPendingError) return null;
@@ -208,8 +245,14 @@ export async function readConfigFlow(ownerDid: string): Promise<'authorization_c
  * `resolveActiveGrant`, used by the Gmail watch-renewal cron sweep.
  */
 export async function listActiveGrantOwners(requiredScope: string): Promise<string[]> {
+  return (await listActiveGrantConnections(requiredScope))
+    .filter((row) => row.slot === 'primary').map((row) => row.ownerDid);
+}
+
+/** Enumerate installations, not just owners: each mailbox needs its own watch. */
+export async function listActiveGrantConnections(requiredScope: string): Promise<Array<{ ownerDid: string; slot: string }>> {
   const rows = await db
-    .select({ did: channelLinks.did, scopes: channelLinks.scopes })
+    .select({ did: channelLinks.did, slot: channelLinks.slot, scopes: channelLinks.scopes })
     .from(channelLinks)
     .where(
       and(
@@ -218,12 +261,13 @@ export async function listActiveGrantOwners(requiredScope: string): Promise<stri
         eq(channelLinks.status, 'active'),
       ),
     );
-  const owners = new Set<string>();
+  const owners = new Map<string, { ownerDid: string; slot: string }>();
   for (const row of rows) {
     const scopes = Array.isArray(row.scopes) ? (row.scopes as string[]) : [];
-    if (scopes.includes(requiredScope)) owners.add(row.did);
+    const slot = connectionSlot(row.slot);
+    if (scopes.includes(requiredScope)) owners.set(`${row.did}|${slot}`, { ownerDid: row.did, slot });
   }
-  return [...owners];
+  return [...owners.values()];
 }
 
 // ── Google-side revoke detection (reactive half, #2144) ──────────────────────
@@ -241,7 +285,7 @@ function isInvalidGrantError(err: unknown): boolean {
  * Best-effort on the bookkeeping — a failure here must not stop the caller
  * from still seeing (and honouring) `google_credential_revoked`.
  */
-async function tombstoneOnDetectedRevoke(ownerDid: string): Promise<void> {
+async function tombstoneOnDetectedRevoke(ownerDid: string, slot: string): Promise<void> {
   try {
     await db
       .update(channelLinks)
@@ -250,11 +294,12 @@ async function tombstoneOnDetectedRevoke(ownerDid: string): Promise<void> {
         and(
           eq(channelLinks.channel, GOOGLE_CHANNEL),
           eq(channelLinks.did, ownerDid),
+          eq(channelLinks.slot, slot),
           eq(channelLinks.appDid, GOOGLE_CONNECTOR_DID),
           eq(channelLinks.status, 'active'),
         ),
       );
-    await revokeConnectorRegistration(ownerDid, 'google');
+    await revokeConnectorRegistration(ownerDid, 'google', slot);
     await publish('connector.disconnected', {
       issuer: ownerDid,
       subject: ownerDid,
@@ -262,6 +307,7 @@ async function tombstoneOnDetectedRevoke(ownerDid: string): Promise<void> {
       payload: {
         ownerDid,
         connector: 'google',
+        slot,
         context_id: ownerDid,
         context_type: 'google',
       },
@@ -285,8 +331,9 @@ async function tombstoneOnDetectedRevoke(ownerDid: string): Promise<void> {
  *     `invalid_grant` (the owner or a Workspace admin revoked access on
  *     Google's side). The grant is tombstoned as part of raising this.
  */
-export async function requireGrantAndToken(ownerDid: string, scope: string): Promise<string> {
-  const hasGrant = await google.resolveActiveGrant(ownerDid, scope);
+export async function requireGrantAndToken(ownerDid: string, scope: string, slot = currentConnectionSlot('google', ownerDid)): Promise<string> {
+  slot = connectionSlot(slot);
+  const hasGrant = await google.resolveActiveGrant(ownerDid, scope, slot);
   if (!hasGrant) {
     throw new Error(
       `google_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +
@@ -296,7 +343,7 @@ export async function requireGrantAndToken(ownerDid: string, scope: string): Pro
 
   let accessToken: string | undefined;
   try {
-    accessToken = await google.loadAccessToken(ownerDid);
+    accessToken = await google.loadAccessToken(ownerDid, undefined, slot);
   } catch (err) {
     if (err instanceof ConnectorCredentialPendingError) {
       throw new Error(
@@ -304,7 +351,7 @@ export async function requireGrantAndToken(ownerDid: string, scope: string): Pro
       );
     }
     if (isInvalidGrantError(err)) {
-      await tombstoneOnDetectedRevoke(ownerDid);
+      await tombstoneOnDetectedRevoke(ownerDid, slot);
       throw new Error(
         `google_credential_revoked: Google rejected the refresh token for DID ${ownerDid} ` +
         `(revoked on Google's side) — the grant has been tombstoned; reconnect via /google/api/connect`,
@@ -334,10 +381,10 @@ export async function requireGrantAndToken(ownerDid: string, scope: string): Pro
  * must never block the owner's own disconnect (which still purges the vault
  * and revokes the local grant regardless of this call's outcome).
  */
-export async function revokeAtGoogle(ownerDid: string): Promise<void> {
+export async function revokeAtGoogle(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<void> {
   let tokens: GoogleTokens | undefined;
   try {
-    tokens = await google.loadTokens(ownerDid);
+    tokens = await google.loadTokens(ownerDid, connectionSlot(slot));
   } catch (err) {
     log.warn({ err: String(err), ownerDid }, 'google disconnect: could not load tokens to revoke (non-fatal)');
     return;
@@ -352,9 +399,8 @@ export async function revokeAtGoogle(ownerDid: string): Promise<void> {
       body: new URLSearchParams({ token: tokenToRevoke }).toString(),
     });
     if (!res.ok) {
-      const text = await res.text().catch(() => '');
       log.warn(
-        { ownerDid, status: res.status, body: text },
+        { ownerDid, slot, status: res.status },
         'google disconnect: provider-side revoke returned non-2xx (non-fatal)',
       );
       return;

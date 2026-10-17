@@ -12,13 +12,9 @@ export const GET = createCallbackHandler({
   verifyState,
   connectorName: 'QuickBooks',
   connectorId: 'quickbooks',
-  exchange: async (ownerDid, code, searchParams, configDid) => {
+  exchange: async (ownerDid, code, searchParams, configDid, slot) => {
     const realmId = searchParams.get('realmId');
     if (!realmId) throw new MissingCallbackParamError('realmId');
-    if (configDid) {
-      await exchangeCodeAndStore(ownerDid, code, realmId, configDid);
-      return;
-    }
-    await exchangeCodeAndStore(ownerDid, code, realmId);
+    await exchangeCodeAndStore(ownerDid, code, realmId, configDid, slot);
   },
 });

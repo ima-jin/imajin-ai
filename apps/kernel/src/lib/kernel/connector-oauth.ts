@@ -48,12 +48,22 @@
  * When supplied, config is loaded from `configDid`'s vault while tokens are
  * still sealed/read at `ownerDid`'s vault. When omitted, `ownerDid` is used for
  * both — the original BYO-app behaviour, unchanged.
+ *
+ * Connection slots (#2365): owner-based entry points accept a trailing `slot`,
+ * defaulting to the provider/owner invocation context (otherwise `primary`).
+ * Primary retains its legacy vault keys; named connections append `:${slot}`.
+ * Explicit `configDid` always reads shared primary app config, while BYO config
+ * follows the connection slot. Exchanges seal `configDid` with the token bundle
+ * so later refreshes cannot accidentally switch provider app registrations.
  */
 import { createLogger } from '@imajin/logger';
 import { and, eq } from 'drizzle-orm';
 import { db, channelLinks } from '@/src/db';
 import { sealAndStoreV2, loadAndUnseal } from '@/src/lib/vault';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { connectionSlot, connectionVaultField } from './connection-slots';
+import { currentConnectionSlot } from './connector-connection-context';
+import { recordConnectorRegistration } from './connector-registry-store';
 
 const log = createLogger('kernel');
 
@@ -320,17 +330,17 @@ export interface ConnectorOAuth<
   TTokens extends { accessToken: string; refreshToken?: string },
 > {
   /** Vault key for the per-DID config. */
-  configField(ownerDid: string): string;
+  configField(ownerDid: string, slot?: string): string;
   /** Vault key for the per-DID token bundle. */
-  tokenField(ownerDid: string): string;
+  tokenField(ownerDid: string, slot?: string): string;
   /** Seal a config in the vault. */
-  storeConfig(ownerDid: string, config: TConfig): Promise<void>;
+  storeConfig(ownerDid: string, config: TConfig, slot?: string): Promise<void>;
   /** Load and parse the sealed config; throws `${name}_no_config` if absent. */
-  loadConfig(ownerDid: string): Promise<TConfig>;
+  loadConfig(ownerDid: string, slot?: string): Promise<TConfig>;
   /** Seal a token bundle in the vault. */
-  storeTokens(ownerDid: string, tokens: TTokens): Promise<void>;
+  storeTokens(ownerDid: string, tokens: TTokens, slot?: string): Promise<void>;
   /** Load the sealed token bundle; returns undefined if none exists. */
-  loadTokens(ownerDid: string): Promise<TTokens | undefined>;
+  loadTokens(ownerDid: string, slot?: string): Promise<TTokens | undefined>;
   /**
    * Load the token bundle, refreshing it first (via `shouldRefresh`) when
    * necessary. Returns undefined if no bundle is sealed. Re-seals the
@@ -340,17 +350,17 @@ export interface ConnectorOAuth<
    * for the refresh are loaded from — the refreshed bundle is still sealed at
    * `ownerDid` either way.
    */
-  loadAndRefreshTokens(ownerDid: string, configDid?: string): Promise<TTokens | undefined>;
+  loadAndRefreshTokens(ownerDid: string, configDid?: string, slot?: string): Promise<TTokens | undefined>;
   /**
    * Convenience wrapper: `loadAndRefreshTokens` → returns `.accessToken`, or
    * undefined when no bundle is sealed. Use this for the OAuth-first gate.
    */
-  loadAccessToken(ownerDid: string, configDid?: string): Promise<string | undefined>;
+  loadAccessToken(ownerDid: string, configDid?: string, slot?: string): Promise<string | undefined>;
   /**
    * Build the provider authorize redirect URL using the sealed config at
    * `configDid` (#1704), or at `ownerDid` when `configDid` is omitted.
    */
-  buildAuthorizeUrl(ownerDid: string, state: string, configDid?: string): Promise<string>;
+  buildAuthorizeUrl(ownerDid: string, state: string, configDid?: string, slot?: string): Promise<string>;
   /**
    * Exchange an authorization code for tokens, seal the bundle at `ownerDid`,
    * and log. `extra` carries any callback-only params (e.g. `{ realmId }` for
@@ -362,12 +372,13 @@ export interface ConnectorOAuth<
     code: string,
     extra?: Record<string, unknown>,
     configDid?: string,
+    slot?: string,
   ): Promise<void>;
   /**
    * Resolve whether an ACTIVE channel_links row for ownerDid + scope exists.
    * Fail-closed: DB errors propagate.
    */
-  resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean>;
+  resolveActiveGrant(ownerDid: string, requiredScope: string, slot?: string): Promise<boolean>;
 
   // ── Device authorization grant (#1391) ────────────────────────────────────
 
@@ -377,7 +388,7 @@ export interface ConnectorOAuth<
    * Start a device flow: ask the provider for a device code + user code using
    * the DID's sealed `clientId`. Requires no secret and no redirect URI.
    */
-  requestDeviceCode(ownerDid: string): Promise<DeviceAuthorization>;
+  requestDeviceCode(ownerDid: string, slot?: string): Promise<DeviceAuthorization>;
   /**
    * Poll the token endpoint once with `deviceCode`.
    *
@@ -387,7 +398,7 @@ export interface ConnectorOAuth<
    * failures and unrecognised OAuth error codes; the four RFC 8628 states are
    * returned as values so a route can map them to HTTP without try/catch.
    */
-  pollDeviceTokenOnce(ownerDid: string, deviceCode: string): Promise<DevicePollStatus>;
+  pollDeviceTokenOnce(ownerDid: string, deviceCode: string, slot?: string): Promise<DevicePollStatus>;
   /**
    * Blocking convenience wrapper: poll until authorized, honouring `slow_down`
    * backoff and giving up when the device code expires. Resolves once the token
@@ -401,6 +412,7 @@ export interface ConnectorOAuth<
     ownerDid: string,
     deviceCode: string,
     options?: DevicePollOptions,
+    slot?: string,
   ): Promise<void>;
 }
 
@@ -411,20 +423,24 @@ export function createConnectorOAuth<
   TTokens extends { accessToken: string; refreshToken?: string },
 >(opts: ConnectorOAuthOptions<TConfig, TTokens>): ConnectorOAuth<TConfig, TTokens> {
 
-  function configField(ownerDid: string): string {
-    return `${opts.configPrefix}:${ownerDid}`;
+  function selectedSlot(ownerDid: string, slot?: string): string {
+    return connectionSlot(slot ?? currentConnectionSlot(opts.name, ownerDid));
   }
 
-  function tokenField(ownerDid: string): string {
-    return `${opts.tokenPrefix}:${ownerDid}`;
+  function configField(ownerDid: string, slot?: string): string {
+    return connectionVaultField(opts.configPrefix, ownerDid, selectedSlot(ownerDid, slot));
   }
 
-  async function storeConfig(ownerDid: string, config: TConfig): Promise<void> {
-    await sealAndStoreV2(configField(ownerDid), JSON.stringify(config));
+  function tokenField(ownerDid: string, slot?: string): string {
+    return connectionVaultField(opts.tokenPrefix, ownerDid, selectedSlot(ownerDid, slot));
   }
 
-  async function loadConfig(ownerDid: string): Promise<TConfig> {
-    const field = configField(ownerDid);
+  async function storeConfig(ownerDid: string, config: TConfig, slot?: string): Promise<void> {
+    await sealAndStoreV2(configField(ownerDid, slot), JSON.stringify(config));
+  }
+
+  async function loadConfig(ownerDid: string, slot?: string): Promise<TConfig> {
+    const field = configField(ownerDid, slot);
     let raw: string | undefined;
     try {
       raw = await loadAndUnseal(field);
@@ -440,12 +456,15 @@ export function createConnectorOAuth<
     return opts.parseConfig(JSON.parse(raw));
   }
 
-  async function storeTokens(ownerDid: string, tokens: TTokens): Promise<void> {
-    await sealAndStoreV2(tokenField(ownerDid), JSON.stringify(tokens));
+  async function storeTokens(ownerDid: string, tokens: TTokens, slot?: string): Promise<void> {
+    const selected = selectedSlot(ownerDid, slot);
+    const field = tokenField(ownerDid, selected);
+    await sealAndStoreV2(field, JSON.stringify(tokens));
+    await recordConnectorRegistration({ ownerDid, provider: opts.name, slot: selected, sealedKeyField: field });
   }
 
-  async function loadTokens(ownerDid: string): Promise<TTokens | undefined> {
-    const field = tokenField(ownerDid);
+  async function loadTokens(ownerDid: string, slot?: string): Promise<TTokens | undefined> {
+    const field = tokenField(ownerDid, slot);
     let raw: string | undefined;
     try {
       raw = await loadAndUnseal(field);
@@ -501,7 +520,7 @@ export function createConnectorOAuth<
     return data;
   }
 
-  async function refreshBundle(ownerDid: string, config: TConfig, tokens: TTokens): Promise<TTokens> {
+  async function refreshBundle(ownerDid: string, config: TConfig, tokens: TTokens & { configDid?: string }, slot?: string): Promise<TTokens> {
     const rt = tokens.refreshToken;
     if (!rt) {
       throw new Error(`${opts.name}_refresh: no refresh token available for DID ${ownerDid}`);
@@ -510,28 +529,30 @@ export function createConnectorOAuth<
       grant_type: 'refresh_token',
       refresh_token: rt,
     }));
-    const refreshed = opts.buildTokens(data, {}, tokens);
-    await storeTokens(ownerDid, refreshed);
+    const refreshed = { ...opts.buildTokens(data, {}, tokens), ...(tokens.configDid ? { configDid: tokens.configDid } : {}) };
+    await storeTokens(ownerDid, refreshed, slot);
     return refreshed;
   }
 
-  async function loadAndRefreshTokens(ownerDid: string, configDid?: string): Promise<TTokens | undefined> {
-    const tokens = await loadTokens(ownerDid);
+  async function loadAndRefreshTokens(ownerDid: string, configDid?: string, slot?: string): Promise<TTokens | undefined> {
+    const tokens = await loadTokens(ownerDid, slot) as (TTokens & { configDid?: string }) | undefined;
     if (tokens === undefined) return undefined;
     if (opts.shouldRefresh(tokens)) {
-      const config = await loadConfig(configDid ?? ownerDid);
-      return refreshBundle(ownerDid, config, tokens);
+      const persistedConfigDid = tokens.configDid ?? configDid;
+      const config = await loadConfig(persistedConfigDid ?? ownerDid, persistedConfigDid ? 'primary' : slot);
+      return refreshBundle(ownerDid, config, { ...tokens, ...(persistedConfigDid ? { configDid: persistedConfigDid } : {}) }, slot);
     }
     return tokens;
   }
 
-  async function loadAccessToken(ownerDid: string, configDid?: string): Promise<string | undefined> {
-    const tokens = await loadAndRefreshTokens(ownerDid, configDid);
+  async function loadAccessToken(ownerDid: string, configDid?: string, slot?: string): Promise<string | undefined> {
+    const tokens = await loadAndRefreshTokens(ownerDid, configDid, slot);
     return tokens?.accessToken;
   }
 
-  async function buildAuthorizeUrl(ownerDid: string, state: string, configDid?: string): Promise<string> {
-    const config = requireAuthCodeConfig(opts.name, await loadConfig(configDid ?? ownerDid));
+  async function buildAuthorizeUrl(ownerDid: string, state: string, configDid?: string, slot?: string): Promise<string> {
+    slot = selectedSlot(ownerDid, slot);
+    const config = requireAuthCodeConfig(opts.name, await loadConfig(configDid ?? ownerDid, configDid ? 'primary' : slot));
     const params = new URLSearchParams({
       client_id: config.clientId,
       response_type: 'code',
@@ -550,14 +571,16 @@ export function createConnectorOAuth<
     code: string,
     extra: Record<string, unknown> = {},
     configDid?: string,
+    slot?: string,
   ): Promise<void> {
-    const config = requireAuthCodeConfig(opts.name, await loadConfig(configDid ?? ownerDid));
+    slot = selectedSlot(ownerDid, slot);
+    const config = requireAuthCodeConfig(opts.name, await loadConfig(configDid ?? ownerDid, configDid ? 'primary' : slot));
     const data = await postToken(config, new URLSearchParams({
       grant_type: 'authorization_code',
       code,
       redirect_uri: config.redirectUri,
     }));
-    await storeTokens(ownerDid, opts.buildTokens(data, extra, undefined));
+    await storeTokens(ownerDid, { ...opts.buildTokens(data, extra, undefined), ...(configDid ? { configDid } : {}) }, slot);
     const logFields = configDid ? { ownerDid, configDid } : { ownerDid };
     log.info(logFields, `${opts.name} account connected via OAuth`);
   }
@@ -578,9 +601,9 @@ export function createConnectorOAuth<
     return opts.deviceCodeUrl;
   }
 
-  async function requestDeviceCode(ownerDid: string): Promise<DeviceAuthorization> {
+  async function requestDeviceCode(ownerDid: string, slot?: string): Promise<DeviceAuthorization> {
     const url = requireDeviceCodeUrl();
-    const config = await loadConfig(ownerDid);
+    const config = await loadConfig(ownerDid, slot);
 
     // No client_secret and no redirect_uri by design — that omission is the
     // entire point of the device path (#1391).
@@ -632,9 +655,9 @@ export function createConnectorOAuth<
     };
   }
 
-  async function pollDeviceTokenOnce(ownerDid: string, deviceCode: string): Promise<DevicePollStatus> {
+  async function pollDeviceTokenOnce(ownerDid: string, deviceCode: string, slot?: string): Promise<DevicePollStatus> {
     requireDeviceCodeUrl();
-    const config = await loadConfig(ownerDid);
+    const config = await loadConfig(ownerDid, slot);
 
     const data = await postTokenRaw(config, new URLSearchParams({
       grant_type: DEVICE_GRANT_TYPE,
@@ -656,7 +679,7 @@ export function createConnectorOAuth<
     }
 
     // Sealed before returning: the caller only ever learns that it worked.
-    await storeTokens(ownerDid, opts.buildTokens(data, {}, undefined));
+    await storeTokens(ownerDid, opts.buildTokens(data, {}, undefined), slot);
     log.info({ ownerDid }, `${opts.name} account connected via device flow`);
     return 'authorized';
   }
@@ -665,6 +688,7 @@ export function createConnectorOAuth<
     ownerDid: string,
     deviceCode: string,
     options: DevicePollOptions = {},
+    slot?: string,
   ): Promise<void> {
     const sleep = options.sleep ?? defaultSleep;
     const budgetMs = (options.expiresIn ?? DEFAULT_DEVICE_EXPIRY_SECONDS) * 1000;
@@ -675,7 +699,7 @@ export function createConnectorOAuth<
     // than read off the clock, so the deadline is deterministic under an
     // injected `sleep` (and unaffected by how slow the provider is to answer).
     const pollFrom = async (waitMs: number, elapsedMs: number): Promise<void> => {
-      const status = await pollDeviceTokenOnce(ownerDid, deviceCode);
+      const status = await pollDeviceTokenOnce(ownerDid, deviceCode, slot);
       if (status === 'authorized') return;
       if (status === 'denied') {
         throw new Error(`${opts.name}_device_denied: the owner declined the device authorization`);
@@ -694,7 +718,7 @@ export function createConnectorOAuth<
     await pollFrom((options.interval ?? DEFAULT_DEVICE_INTERVAL_SECONDS) * 1000, 0);
   }
 
-  async function resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean> {
+  async function resolveActiveGrant(ownerDid: string, requiredScope: string, slot?: string): Promise<boolean> {
     const rows = await db
       .select({ scopes: channelLinks.scopes })
       .from(channelLinks)
@@ -704,6 +728,7 @@ export function createConnectorOAuth<
           eq(channelLinks.did, ownerDid),
           eq(channelLinks.appDid, opts.connectorDid),
           eq(channelLinks.status, 'active'),
+          eq(channelLinks.slot, selectedSlot(ownerDid, slot)),
         ),
       );
     return rows.some((row) => {

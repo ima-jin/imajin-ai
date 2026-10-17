@@ -109,7 +109,7 @@ describe('QuickBooks callback route — appDid recovered from signed state', () 
 
     await GET(makeRequest('https://kernel.test/quickbooks/api/callback?code=abc&state=xyz&realmId=42'));
 
-    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', '42', 'did:imajin:agrifortress');
+    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', '42', 'did:imajin:agrifortress', undefined);
   });
 
   it('omits configDid when no appDid was signed (BYO-app, unchanged)', async () => {
@@ -118,6 +118,6 @@ describe('QuickBooks callback route — appDid recovered from signed state', () 
 
     await GET(makeRequest('https://kernel.test/quickbooks/api/callback?code=abc&state=xyz&realmId=42'));
 
-    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', '42');
+    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', '42', undefined, undefined);
   });
 });

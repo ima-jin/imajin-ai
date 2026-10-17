@@ -1,4 +1,5 @@
 import type { McpTool } from '../types';
+import { withToolConnection } from '../connection-selector';
 import { pingTool } from './ping';
 import { mediaTools } from './media';
 import { mediaWriteTools } from './media-write';
@@ -72,7 +73,7 @@ export const ALL_TOOLS: McpTool[] = [
   ...googleCalendarTools,
   ...googleDriveTools,
   ...googleMeetTools,
-];
+].map(withToolConnection);
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));
 

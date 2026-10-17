@@ -55,12 +55,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findAnthropicManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, ANTHROPIC_CONNECTOR_DID);
+export function findAnthropicManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, ANTHROPIC_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveAnthropicScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, ANTHROPIC_CONNECTOR_DID);
+export function readActiveAnthropicScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, ANTHROPIC_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -74,10 +74,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishAnthropicScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishAnthropicScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: ANTHROPIC_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'anthropic-scope-manifest.md', scopeDescriptors: ANTHROPIC_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

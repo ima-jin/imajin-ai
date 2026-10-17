@@ -52,12 +52,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findTypesafeManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, TYPESAFE_CONNECTOR_DID);
+export function findTypesafeManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, TYPESAFE_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveTypesafeScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, TYPESAFE_CHANNEL, TYPESAFE_CONNECTOR_DID);
+export function readActiveTypesafeScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, TYPESAFE_CHANNEL, TYPESAFE_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -71,10 +71,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishTypesafeScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishTypesafeScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: TYPESAFE_CONNECTOR_DID, channel: TYPESAFE_CHANNEL,
     filename: 'typesafe-scope-manifest.md', scopeDescriptors: TYPESAFE_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

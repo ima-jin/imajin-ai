@@ -1676,6 +1676,8 @@ export interface BusEventMap {
    */
   'connector.disconnected': {
     ownerDid: string;
+    /** Connection installation; absent on legacy events means primary. */
+    slot?: string;
     /** Short connector id, e.g. 'github', 'discord', 'quickbooks'. */
     connector: string;
     context_id: string;
@@ -1698,6 +1700,7 @@ export interface BusEventMap {
    */
   'mail.received': {
     ownerDid: string;
+    slot?: string;
     onBehalfOf: string;
     messageId: string;
     threadId: string;
@@ -1707,6 +1710,7 @@ export interface BusEventMap {
   };
   'mail.sent': {
     ownerDid: string;
+    slot?: string;
     onBehalfOf: string;
     messageId: string;
     threadId: string;
@@ -1715,6 +1719,7 @@ export interface BusEventMap {
   };
   'drive.file.changed': {
     ownerDid: string;
+    slot?: string;
     onBehalfOf: string;
     fileId: string;
     /** Drive's own change type, e.g. 'update' | 'remove'. */
@@ -1724,6 +1729,7 @@ export interface BusEventMap {
   };
   'meet.transcript.available': {
     ownerDid: string;
+    slot?: string;
     onBehalfOf: string;
     conferenceRecordId: string;
     transcriptId: string;

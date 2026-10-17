@@ -48,12 +48,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findWarpManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, WARP_CONNECTOR_DID);
+export function findWarpManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, WARP_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveWarpScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, WARP_CHANNEL, WARP_CONNECTOR_DID);
+export function readActiveWarpScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, WARP_CHANNEL, WARP_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -67,10 +67,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishWarpScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishWarpScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: WARP_CONNECTOR_DID, channel: WARP_CHANNEL,
     filename: 'warp-scope-manifest.md', scopeDescriptors: WARP_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

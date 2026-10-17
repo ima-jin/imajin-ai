@@ -10,17 +10,26 @@
  *      already succeeded, or make a completed revoke look like it failed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { withConnectorConnection } from '../connector-connection-context';
 
-const { insertValues, conflictSets, updateSets, insertMock, updateMock } = vi.hoisted(() => {
+const { insertValues, conflictSets, updateSets, insertMock, updateMock, returningRows } = vi.hoisted(() => {
   const insertValues: Record<string, unknown>[] = [];
   const conflictSets: Record<string, unknown>[] = [];
   const updateSets: Record<string, unknown>[] = [];
+  const returningRows = {
+    insert: [] as Record<string, unknown>[],
+    update: [] as Record<string, unknown>[],
+  };
+  const insertReturning = async () => returningRows.insert;
+  const updateReturning = async () => returningRows.update;
   const insertMock = vi.fn(() => ({
     values: (v: Record<string, unknown>) => {
       insertValues.push(v);
       return {
-        onConflictDoUpdate: async ({ set }: { set: Record<string, unknown> }) => {
+        onConflictDoUpdate: ({ set }: { set: Record<string, unknown> }) => {
           conflictSets.push(set);
+          return Object.assign(Promise.resolve(), { returning: insertReturning });
         },
       };
     },
@@ -28,10 +37,46 @@ const { insertValues, conflictSets, updateSets, insertMock, updateMock } = vi.ho
   const updateMock = vi.fn(() => ({
     set: (s: Record<string, unknown>) => {
       updateSets.push(s);
-      return { where: async () => undefined };
+      return { where: () => Object.assign(Promise.resolve(), { returning: updateReturning }) };
     },
   }));
-  return { insertValues, conflictSets, updateSets, insertMock, updateMock };
+  return { insertValues, conflictSets, updateSets, insertMock, updateMock, returningRows };
+});
+
+describe('renameConnectorConnection', () => {
+  it('materializes a synthetic primary label without installing a field, scope grant or spend cap', async () => {
+    returningRows.insert = [{ slot: 'primary', label: 'Personal' }];
+    expect(await renameConnectorConnection(OWNER, 'google', 'primary', 'Personal'))
+      .toEqual({ slot: 'primary', label: 'Personal' });
+    expect(insertValues[0]).toMatchObject({
+      id: connectorRegistryId(OWNER, 'google', 'primary'),
+      ownerDid: OWNER, provider: 'google', slot: 'primary', label: 'Personal',
+    });
+    for (const field of ['sealedKeyField', 'scopes', 'accountEmail', 'spendCap', 'expiresAt']) {
+      expect(insertValues[0]).not.toHaveProperty(field);
+      expect(conflictSets[0]).not.toHaveProperty(field);
+      expect(updateSets[0]).not.toHaveProperty(field);
+    }
+    expect(Object.keys(conflictSets[0]).sort()).toEqual(['label', 'updatedAt']);
+  });
+
+  it('renames an existing connection without inserting or replacing any metadata', async () => {
+    const existing = { slot: 'primary', label: 'Personal', sealedKeyField: 'google-oauth:did:owner', scopes: ['google:gmail-read'] };
+    returningRows.update = [existing];
+    expect(await renameConnectorConnection(OWNER, 'google', 'primary', 'Personal')).toEqual(existing);
+    expect(insertMock).not.toHaveBeenCalled();
+    expect(Object.keys(updateSets[0]).sort()).toEqual(['label', 'updatedAt']);
+  });
+
+  it('does not invent an absent nonprimary connection', async () => {
+    expect(await renameConnectorConnection(OWNER, 'google', 'missing', 'Missing')).toBeUndefined();
+    expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('propagates metadata write failures rather than claiming rename succeeded', async () => {
+    insertMock.mockImplementationOnce(() => { throw new Error('database unavailable'); });
+    await expect(renameConnectorConnection(OWNER, 'google', 'primary', 'Personal')).rejects.toThrow('database unavailable');
+  });
 });
 
 vi.mock('drizzle-orm', () => ({
@@ -54,6 +99,7 @@ import {
   revokeConnectorRegistration,
   syncConnectorRegistrationScopes,
   setConnectorSpendCap,
+  renameConnectorConnection,
 } from '../connector-registry-store';
 
 const OWNER = 'did:imajin:farmer';
@@ -65,11 +111,23 @@ beforeEach(() => {
   updateSets.length = 0;
   insertMock.mockClear();
   updateMock.mockClear();
+  returningRows.insert = [];
+  returningRows.update = [];
 });
 
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 describe('connectorRegistryId', () => {
+  it('preserves historical primary IDs and separates slots, including request context', () => {
+    const legacy = `conn_${createHash('sha256').update(`${OWNER}|google`).digest('hex').slice(0, 24)}`;
+    expect(connectorRegistryId(OWNER, 'google')).toBe(legacy);
+    expect(connectorRegistryId(OWNER, 'google', 'primary')).toBe(legacy);
+    expect(connectorRegistryId(OWNER, 'google', 'work')).not.toBe(legacy);
+    withConnectorConnection('google', OWNER, 'work', () => {
+      expect(connectorRegistryId(OWNER, 'google')).toBe(connectorRegistryId(OWNER, 'google', 'work'));
+      expect(connectorRegistryId(OWNER, 'google', 'primary')).toBe(legacy);
+    });
+  });
   /**
    * The 0114 backfill computes the same expression in SQL. If the two ever
    * disagree, the backfill and the application write two rows for one
@@ -86,6 +144,18 @@ describe('connectorRegistryId', () => {
 // ── recordConnectorRegistration ───────────────────────────────────────────────
 
 describe('recordConnectorRegistration', () => {
+  it('records slot metadata without erasing a previously sealed field or existing label', async () => {
+    await recordConnectorRegistration({ ownerDid: OWNER, provider: 'google', slot: 'work', accountEmail: 'work@example.test' });
+    expect(insertValues[0]).toMatchObject({ slot: 'work', label: 'work', accountEmail: 'work@example.test' });
+    expect(conflictSets[0]).not.toHaveProperty('sealedKeyField');
+    expect(conflictSets[0]).not.toHaveProperty('label');
+  });
+
+  it('uses bound connection context for omitted write selectors', async () => {
+    await withConnectorConnection('xai', OWNER, 'work', () =>
+      recordConnectorRegistration({ ownerDid: OWNER, provider: 'xai', sealedKeyField: `${SEALED_FIELD}:work` }));
+    expect(insertValues[0]).toMatchObject({ slot: 'work', id: connectorRegistryId(OWNER, 'xai', 'work') });
+  });
   it('writes the vault FIELD NAME, never anything that could be key material', async () => {
     await recordConnectorRegistration({ ownerDid: OWNER, provider: 'xai', sealedKeyField: SEALED_FIELD });
 

@@ -9,12 +9,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 //     (unchanged BYO-app behaviour);
 //   - tokens are always sealed/read at `ownerDid`, regardless of `configDid`.
 
-const { sealMock, loadMock } = vi.hoisted(() => ({
+const { sealMock, loadMock, whereMock, recordMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
+  whereMock: vi.fn().mockResolvedValue([]),
+  recordMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
+vi.mock('../connector-registry-store', () => ({ recordConnectorRegistration: recordMock }));
 
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => args,
@@ -22,11 +25,12 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 vi.mock('@/src/db', () => ({
-  db: { select: () => ({ from: () => ({ where: () => Promise.resolve([]) }) }) },
-  channelLinks: {},
+  db: { select: () => ({ from: () => ({ where: whereMock }) }) },
+  channelLinks: { slot: 'slot' },
 }));
 
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../connector-oauth';
+import { withConnectorConnection } from '../connector-connection-context';
 
 const OWNER = 'did:imajin:supplier';
 const APP = 'did:imajin:agrifortress';
@@ -93,6 +97,78 @@ beforeEach(() => {
   sealMock.mockResolvedValue(undefined);
   loadMock.mockReset();
   sealedConfigs();
+  whereMock.mockReset().mockResolvedValue([]);
+  recordMock.mockReset();
+});
+
+describe('connection slots', () => {
+  it('restricts every grant lookup to the selected slot and propagates DB failures', async () => {
+    const connector = makeConnector();
+    expect(await connector.resolveActiveGrant(OWNER, 'testly:read', 'work')).toBe(false);
+    expect(whereMock).toHaveBeenCalledWith(expect.arrayContaining([{ col: 'slot', val: 'work' }]));
+    whereMock.mockRejectedValueOnce(new Error('database unavailable'));
+    await expect(connector.resolveActiveGrant(OWNER, 'testly:read', 'work')).rejects.toThrow('database unavailable');
+  });
+  it('preserves primary fields and isolates named config and token fields', async () => {
+    const connector = makeConnector();
+    expect(connector.configField(OWNER)).toBe(`testly-config:${OWNER}`);
+    expect(connector.tokenField(OWNER, 'primary')).toBe(`testly-oauth:${OWNER}`);
+    await connector.storeConfig(OWNER, APP_CONFIG, 'work');
+    await connector.storeTokens(OWNER, { accessToken: 'work-at', expiresAt: 1 }, 'work');
+    expect(sealMock).toHaveBeenCalledWith(`testly-config:${OWNER}:work`, JSON.stringify(APP_CONFIG));
+    expect(sealMock).toHaveBeenCalledWith(`testly-oauth:${OWNER}:work`, expect.any(String));
+    expect(recordMock).toHaveBeenCalledWith({ ownerDid: OWNER, provider: 'testly', slot: 'work', sealedKeyField: `testly-oauth:${OWNER}:work` });
+    expect(await connector.loadTokens(OWNER, 'work')).toBeUndefined();
+    await expect(connector.loadConfig(OWNER, 'work')).rejects.toThrow('testly_no_config');
+  });
+
+  it('defaults to the provider/owner context without borrowing primary tokens', async () => {
+    const connector = makeConnector();
+    loadMock.mockResolvedValue(undefined);
+    await withConnectorConnection('testly', OWNER, 'work', async () => {
+      expect(connector.tokenField(OWNER)).toBe(`testly-oauth:${OWNER}:work`);
+      expect(connector.tokenField(APP)).toBe(`testly-oauth:${APP}`);
+      expect(connector.tokenField(OWNER, 'primary')).toBe(`testly-oauth:${OWNER}`);
+      expect(await connector.loadAccessToken(OWNER)).toBeUndefined();
+    });
+    expect(loadMock).toHaveBeenCalledWith(`testly-oauth:${OWNER}:work`);
+    expect(loadMock).not.toHaveBeenCalledWith(`testly-oauth:${OWNER}`);
+  });
+
+  it('uses slot-specific BYO config, but explicit app config always uses shared primary', async () => {
+    const connector = makeConnector();
+    loadMock.mockImplementation(async (field: string) => {
+      if (field === `testly-config:${OWNER}:work`) return JSON.stringify(OWNER_CONFIG);
+      if (field === `testly-config:${APP}`) return JSON.stringify(APP_CONFIG);
+    });
+    expect(new URL(await connector.buildAuthorizeUrl(OWNER, 'state', undefined, 'work')).searchParams.get('client_id')).toBe('owner-cid');
+    expect(new URL(await connector.buildAuthorizeUrl(OWNER, 'state', APP, 'work')).searchParams.get('client_id')).toBe('app-cid');
+    expect(loadMock).not.toHaveBeenCalledWith(`testly-config:${APP}:work`);
+  });
+
+  it('persists configDid per slot and refreshes with the same app without a caller override', async () => {
+    const connector = makeConnector(() => true);
+    const vault = new Map<string, string>([[`testly-config:${APP}`, JSON.stringify(APP_CONFIG)]]);
+    loadMock.mockImplementation(async (field: string) => vault.get(field));
+    sealMock.mockImplementation(async (field: string, value: string) => { vault.set(field, value); });
+    const fetchMock = stubFetch({ access_token: 'at', refresh_token: 'rt' });
+    await connector.exchangeCodeAndStore(OWNER, 'code', {}, APP, 'work');
+    expect(JSON.parse(vault.get(`testly-oauth:${OWNER}:work`)!)).toMatchObject({ configDid: APP });
+    await connector.loadAndRefreshTokens(OWNER, undefined, 'work');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(loadMock).not.toHaveBeenCalledWith(`testly-config:${OWNER}:work`);
+    expect(JSON.parse(vault.get(`testly-oauth:${OWNER}:work`)!)).toMatchObject({ configDid: APP });
+    expect(vault.has(`testly-oauth:${OWNER}`)).toBe(false);
+  });
+
+  it('rejects invalid slots before authorize or exchange side effects even with shared config', async () => {
+    const connector = makeConnector();
+    const fetchMock = stubFetch({ access_token: 'at' });
+    await expect(connector.buildAuthorizeUrl(OWNER, 'state', APP, '../primary')).rejects.toThrow('invalid_connection');
+    await expect(connector.exchangeCodeAndStore(OWNER, 'code', {}, APP, '../primary')).rejects.toThrow('invalid_connection');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(loadMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('buildAuthorizeUrl with configDid', () => {

@@ -12,17 +12,23 @@
  * `requireGrantAndToken`; the bearer token is only ever used in the
  * Authorization header, never logged or returned to a caller.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, googleWorkspaceState } from '@/src/db';
 import { generateId } from '../kernel/id';
+import { currentConnectionSlot, withConnectorConnection } from '../kernel/connector-connection-context';
+import { connectionSlot } from '../kernel/connection-slots';
+import { recordConnectorRegistration } from '../kernel/connector-registry-store';
 import { forEachSequential } from '../async/sequential';
 import { requireGrantAndToken, googleApiFetch } from './connector';
 
 const log = createLogger('kernel');
 
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
+function statePredicate(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)) {
+  return and(eq(googleWorkspaceState.ownerDid, ownerDid), eq(googleWorkspaceState.slot, connectionSlot(slot)));
+}
 
 interface GmailApiOptions {
   method?: 'GET' | 'POST';
@@ -120,6 +126,7 @@ export async function sendMessage(
       payload: {
         ownerDid,
         onBehalfOf: ownerDid,
+        slot: currentConnectionSlot('google', ownerDid),
         messageId: data.id,
         threadId: data.threadId,
         context_id: data.id,
@@ -147,7 +154,7 @@ async function persistWatchState(ownerDid: string, result: Readonly<GmailWatchRe
   const existing = await db
     .select({ id: googleWorkspaceState.id })
     .from(googleWorkspaceState)
-    .where(eq(googleWorkspaceState.ownerDid, ownerDid));
+    .where(statePredicate(ownerDid));
 
   const fields = {
     gmailHistoryId: result.historyId,
@@ -157,10 +164,13 @@ async function persistWatchState(ownerDid: string, result: Readonly<GmailWatchRe
   };
 
   if (existing[0]) {
-    await db.update(googleWorkspaceState).set(fields).where(eq(googleWorkspaceState.ownerDid, ownerDid));
+    await db.update(googleWorkspaceState).set(fields).where(statePredicate(ownerDid));
   } else {
-    await db.insert(googleWorkspaceState).values({ id: generateId('gws'), ownerDid, ...fields });
+    await db.insert(googleWorkspaceState).values({ id: generateId('gws'), ownerDid, slot: currentConnectionSlot('google', ownerDid), ...fields });
   }
+  await recordConnectorRegistration({
+    ownerDid, provider: 'google', slot: currentConnectionSlot('google', ownerDid), accountEmail: result.emailAddress,
+  });
 }
 
 /**
@@ -174,7 +184,11 @@ async function persistWatchState(ownerDid: string, result: Readonly<GmailWatchRe
  * push payload names the mailbox by address, not by DID, so the webhook route
  * needs that reverse index to resolve which owner a push belongs to.
  */
-export async function watch(ownerDid: string): Promise<GmailWatchResult> {
+export async function watch(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<GmailWatchResult> {
+  return withConnectorConnection('google', ownerDid, slot, () => watchSelectedConnection(ownerDid));
+}
+
+async function watchSelectedConnection(ownerDid: string): Promise<GmailWatchResult> {
   const token = await requireGrantAndToken(ownerDid, 'google:gmail:read');
   const topicName = process.env.GOOGLE_GMAIL_PUBSUB_TOPIC;
   if (!topicName) {
@@ -202,34 +216,39 @@ export async function watch(ownerDid: string): Promise<GmailWatchResult> {
 
 /** Resolve the ownerDid a Gmail push notification's `emailAddress` belongs to, or undefined. */
 export async function resolveOwnerByGmailAddress(emailAddress: string): Promise<string | undefined> {
+  return (await resolveConnectionsByGmailAddress(emailAddress))[0]?.ownerDid;
+}
+
+/** A mailbox may be linked more than once; process every matching installation independently. */
+export async function resolveConnectionsByGmailAddress(emailAddress: string): Promise<Array<{ ownerDid: string; slot: string }>> {
   const rows = await db
-    .select({ ownerDid: googleWorkspaceState.ownerDid })
+    .select({ ownerDid: googleWorkspaceState.ownerDid, slot: googleWorkspaceState.slot })
     .from(googleWorkspaceState)
     .where(eq(googleWorkspaceState.gmailEmailAddress, emailAddress));
-  return rows[0]?.ownerDid;
+  return rows.map((row) => ({ ownerDid: row.ownerDid, slot: connectionSlot(row.slot) }));
 }
 
 /** Read the last-seen historyId stored for `ownerDid`, or undefined. */
-export async function readStoredHistoryId(ownerDid: string): Promise<string | undefined> {
+export async function readStoredHistoryId(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<string | undefined> {
   const rows = await db
     .select({ gmailHistoryId: googleWorkspaceState.gmailHistoryId })
     .from(googleWorkspaceState)
-    .where(eq(googleWorkspaceState.ownerDid, ownerDid));
+    .where(statePredicate(ownerDid, slot));
   return rows[0]?.gmailHistoryId ?? undefined;
 }
 
 /** Advance the stored historyId cursor for `ownerDid` after processing a push. */
-export async function advanceHistoryId(ownerDid: string, historyId: string): Promise<void> {
+export async function advanceHistoryId(ownerDid: string, historyId: string, slot = currentConnectionSlot('google', ownerDid)): Promise<void> {
   await db
     .update(googleWorkspaceState)
     .set({ gmailHistoryId: historyId, updatedAt: new Date() })
-    .where(eq(googleWorkspaceState.ownerDid, ownerDid));
+    .where(statePredicate(ownerDid, slot));
 }
 
 /** Every (ownerDid, watch expiration) pair with a live Gmail watch, for the renewal cron. */
-export async function listWatchExpirations(): Promise<Array<{ ownerDid: string; expiration: Date | null }>> {
+export async function listWatchExpirations(): Promise<Array<{ ownerDid: string; slot: string; expiration: Date | null }>> {
   return await db
-    .select({ ownerDid: googleWorkspaceState.ownerDid, expiration: googleWorkspaceState.gmailWatchExpiration })
+    .select({ ownerDid: googleWorkspaceState.ownerDid, slot: googleWorkspaceState.slot, expiration: googleWorkspaceState.gmailWatchExpiration })
     .from(googleWorkspaceState);
 }
 
@@ -301,6 +320,7 @@ async function publishMailReceived(
       payload: {
         ownerDid,
         onBehalfOf: ownerDid,
+        slot: currentConnectionSlot('google', ownerDid),
         messageId: added.message.id,
         threadId: added.message.threadId,
         historyId: historyRecordId,

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { currentConnectionSlot } from '../connector-connection-context';
 
 // ─── Tests for createConnectorScopeManifestRoute factory ─────────────────────
 //
@@ -99,14 +100,45 @@ function makeStubs(overrides: {
   };
 }
 
-function makeRequest(opts: { body?: unknown } = {}) {
+function makeRequest(opts: { body?: unknown; slot?: string } = {}) {
   return {
+    url: `https://example.com/test/api/scope-manifest${opts.slot ? `?slot=${opts.slot}` : ''}`,
     headers: { get: () => null },
     json: async () => opts.body,
   } as unknown as import('next/server').NextRequest;
 }
 
 const VALID_SCOPES = ['test:read', 'test:write'] as const;
+
+describe('connection selectors', () => {
+  beforeEach(() => { h.authResult = { identity: {} }; });
+
+  it('binds GET and POST callbacks to the selected slot without leaking context', async () => {
+    const seen: string[] = [];
+    const { GET, POST } = createConnectorScopeManifestRoute({
+      name: 'Test', provider: 'test', validScopes: VALID_SCOPES,
+      findManifestAsset: async (owner) => { seen.push(currentConnectionSlot('test', owner)); return null; },
+      readActiveScopes: async (owner) => { seen.push(currentConnectionSlot('test', owner)); return []; },
+      publish: async (owner) => { seen.push(currentConnectionSlot('test', owner)); return 'asset'; },
+    });
+    await GET(makeRequest({ slot: 'work' }));
+    await POST(makeRequest({ slot: 'work', body: { scopes: [] } }));
+    expect(seen).toEqual(['work', 'work', 'work', 'work']);
+    expect(currentConnectionSlot('test', h.actingDid)).toBe('primary');
+    seen.length = 0;
+    await GET(makeRequest());
+    expect(seen).toEqual(['primary', 'primary']);
+  });
+
+  it('rejects invalid slot before reading or publishing grants', async () => {
+    const stubs = makeStubs();
+    const { GET, POST } = createConnectorScopeManifestRoute({ name: 'Test', validScopes: VALID_SCOPES, ...stubs });
+    expect((await GET(makeRequest({ slot: 'Bad' }))).status).toBe(400);
+    expect((await POST(makeRequest({ slot: 'Bad', body: { scopes: [] } }))).status).toBe(400);
+    expect(stubs.findManifestAsset).not.toHaveBeenCalled();
+    expect(stubs.publish).not.toHaveBeenCalled();
+  });
+});
 
 // ── OPTIONS ───────────────────────────────────────────────────────────────────
 
@@ -246,6 +278,7 @@ describe('POST', () => {
       name: 'Test', validScopes: VALID_SCOPES, ...makeStubs(),
     });
     const bad = {
+      url: 'https://example.com/test/api/scope-manifest',
       headers: { get: () => null },
       json: async () => { throw new Error('bad json'); },
     } as unknown as import('next/server').NextRequest;
