@@ -3,8 +3,9 @@ import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 import { reachStatus } from '../reach-status';
 
-const mocked = vi.hoisted(() => ({ getClient: vi.fn() }));
+const mocked = vi.hoisted(() => ({ getClient: vi.fn(), stub: vi.fn() }));
 vi.mock('@imajin/db', () => ({ getClient: mocked.getClient }));
+vi.mock('../foreign-agent-stub', () => ({ findForeignAgentStub: mocked.stub }));
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
 
 let database: PGlite;
@@ -22,6 +23,7 @@ beforeAll(async () => {
 });
 afterAll(async () => { await database.close(); });
 beforeEach(async () => {
+  mocked.stub.mockReset().mockResolvedValue(null);
   await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks');
   await database.query(`
     INSERT INTO auth.reach_envelopes (reach_id, principal_did, requester_did, transcript_hash, envelope)
@@ -50,5 +52,19 @@ describe('requester-scoped reach_status', () => {
   it('withholds an existing reply after the principal blocks its sender', async () => {
     await database.query('INSERT INTO auth.reach_sender_blocks (principal_did, requester_did) VALUES ($1, $2)', [principalDid, requesterDid]);
     expect(await reachStatus(params)).toEqual({ reachId: params.reachId, state: 'blocked', reply: null });
+  });
+
+  it('withholds a reply for a revoked foreign stub without refusing its status', async () => {
+    mocked.stub.mockResolvedValue({ revokedAt: new Date() });
+    expect(await reachStatus(params)).toEqual({ reachId: params.reachId, state: 'blocked', reply: null });
+    expect(mocked.stub).toHaveBeenCalledWith(requesterDid, principalDid);
+  });
+
+  it('does not let an active stub replace the committed requester or principal', async () => {
+    mocked.stub.mockResolvedValue({ revokedAt: null });
+    expect(await reachStatus(params)).toEqual({ reachId: params.reachId, state: 'replied', reply });
+    mocked.stub.mockClear();
+    expect(await reachStatus({ ...params, requesterDid: 'did:imajin:alias' })).toBeNull();
+    expect(mocked.stub).not.toHaveBeenCalled();
   });
 });

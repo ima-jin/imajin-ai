@@ -6,8 +6,7 @@ import { reachStatusTranscript, parseSignedReachStatus, authenticateSignedReachS
 import { FUTURE_TOLERANCE, SIGNED_MESSAGE_MAX_AGE } from '@imajin/auth';
 
 const mocked = vi.hoisted(() => ({ resolve: vi.fn(), status: vi.fn() }));
-vi.mock('@imajin/auth/resolve-db', () => ({ createDbResolver: () => mocked.resolve }));
-vi.mock('@/src/db', () => ({ db: {}, identities: {} }));
+vi.mock('@/src/lib/auth/reach-authority', () => ({ resolveReachRequester: mocked.resolve }));
 vi.mock('@/src/lib/auth/reach-status', () => ({ reachStatus: mocked.status }));
 
 const keys = generateKeyPairSync('ed25519');
@@ -74,6 +73,29 @@ describe('signed reach_status route', () => {
   it('returns the same not-found response for unknown or unrelated receipts', async () => {
     mocked.status.mockResolvedValue(null);
     expect((await request()).status).toBe(404);
+  });
+  it('passes the supplied key to reach resolution and binds its exact value in the signature', async () => {
+    const fields = { requesterDid: 'did:web:agent.example', publicKey, issuedAt: new Date().toISOString() };
+    const signed = {
+      ...fields,
+      signature: sign(null, Buffer.from(reachStatusTranscript(principalDid, reachId, fields)), keys.privateKey).toString('hex'),
+    };
+    expect((await request(signed)).status).toBe(200);
+    expect(mocked.resolve).toHaveBeenCalledWith(fields.requesterDid, publicKey);
+    mocked.status.mockClear();
+    // Same Ed25519 key bytes: rejection proves the field itself was signed.
+    expect((await request({ ...signed, publicKey: publicKey.toUpperCase() })).status).toBe(401);
+    const { publicKey: omitted, ...withoutKey } = signed;
+    expect(omitted).toBe(publicKey);
+    expect((await request(withoutKey)).status).toBe(401);
+    expect((await request({ ...body(), publicKey })).status).toBe(401);
+    expect(mocked.status).not.toHaveBeenCalled();
+  });
+
+  it.each([null, 123, '', 'bad', 'g'.repeat(64)])('rejects a malformed optional publicKey: %j', async (publicKey) => {
+    expect((await request({ ...body(), publicKey })).status).toBe(400);
+    expect(mocked.resolve).not.toHaveBeenCalled();
+    expect(mocked.status).not.toHaveBeenCalled();
   });
 
   it.each([null, [], {}, { ...body(), issuedAt: 'no' }, { ...body(), signature: 'bad' }, { ...body(), requesterDid: 'not-a-did' }])(
