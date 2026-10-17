@@ -1,4 +1,9 @@
 # Cookie isolation & scoped app tokens (#1069 Phase 1)
+**Phase 2 dispatch (Ryan, 2026-10-17):** host-only sessions become the
+deployed default, with `SESSION_COOKIE_SCOPE=domain` as rollback. Same-origin
+path-proxied apps remain outside this fix: phase 3 needs ops/Caddy cookie
+stripping or a cookie Path design. Phase 4 removes the cookie fallback.
+The historical rollout below will be updated alongside the implementation.
 
 **Historical phase/audit context:** rollout language below records #1069 Phase 1,
 not current app deployment status. Events now runs standalone from
