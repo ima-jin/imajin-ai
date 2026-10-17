@@ -31,6 +31,9 @@ export function emitUploadAttestation(params: {
     context_id: params.assetId,
     context_type: "media",
     payload: {
+      // The asset DID is the lookup key, not a login-capable party. Without
+      // explicit public disclosure only the node could read this proof.
+      disclosure_scope: "public",
       asset_did: `did:imajin:${params.assetId}`,
       uploader_did: params.uploadedBy,
       owner_did: params.ownerDid,

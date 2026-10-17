@@ -173,6 +173,7 @@ describe('createAsset — media.uploaded (#2276)', () => {
       context_id: 'asset_testid1234567890',
       context_type: 'media',
       payload: {
+        disclosure_scope: 'public',
         asset_did: 'did:imajin:asset_testid1234567890',
         uploader_did: input.ownerDid,
         owner_did: input.ownerDid,

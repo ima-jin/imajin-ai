@@ -171,6 +171,7 @@ describe('media.uploaded — createAsset → emitAttestation → internal POST (
     const assetDid = `did:imajin:${result.asset.id}`;
     const manifest = asset.fairManifest as Record<string, unknown>;
     const payload = {
+      disclosure_scope: 'public',
       asset_did: assetDid,
       uploader_did: expectedUploader,
       owner_did: OWNER_DID,
@@ -189,6 +190,7 @@ describe('media.uploaded — createAsset → emitAttestation → internal POST (
       type: 'media.uploaded',
       contextId: result.asset.id,
       contextType: 'media',
+      disclosureScope: 'public',
       payload,
       signature: 'fixture-attestation-signature',
       issuedAt: expect.any(Date),
