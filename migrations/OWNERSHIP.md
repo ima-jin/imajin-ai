@@ -160,6 +160,14 @@ operator curation, not installation or authorization; this migration adds no
 tables and does not change anyone's enabled-app list or grants. Number 0202 is
 reserved for #2863 and 0204 for #2857.
 
+### App-owned event conversations (#2539)
+
+`0209_chat_conversations_app_binding.sql` adds nullable `app_did` to the
+kernel-owned `chat.conversations_v2`. Existing rows remain unbound: membership
+and mutable context are not evidence of app ownership. The registered-app
+conversation route binds app and creator at insertion and cannot adopt legacy
+rows or transfer either binding. No events-owned schema or data is touched.
+
 ### Environment variables
 
 The guard (`scripts/check-migration-ownership.mjs`) reads two optional
