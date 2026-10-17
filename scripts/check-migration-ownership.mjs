@@ -76,7 +76,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND } from './lib/migration-ownership-parser.mjs';
+import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND, stripSqlComments } from './lib/migration-ownership-parser.mjs';
 import { detectTouchedOwners, detectTouchedSchemas, maskForSchemaScan } from './lib/migration-schema-scan.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
@@ -315,6 +315,7 @@ function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
   if (!isNew) return [];
   const touched = detectTouchedSchemas(sql);
   const masked = maskForSchemaScan(sql);
+  const statements = stripSqlComments(sql).split(';');
   const violations = [];
   for (const [schema, entry] of Object.entries(externalSchemas)) {
     // Metadata keys are identifiers, never arbitrary regex fragments.
@@ -329,7 +330,11 @@ function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
       String.raw`\bsearch_path\s*(?:=|TO)\s*[^;]*\b${schema}\b`,
       'i',
     );
-    if (touched.has(schema) || schemaDDL.test(masked) || searchPath.test(masked)) {
+    const quotedSearchPath = statements.some((statement) => {
+      const setting = /^\s*SET\s+(?:(?:LOCAL|SESSION)\s+)?search_path\s*(?:=|TO)\s+(.+)$/i.exec(statement);
+      return setting?.[1].split(',').some((value) => value.trim().replaceAll(/['"]/g, '') === schema);
+    });
+    if (touched.has(schema) || schemaDDL.test(masked) || searchPath.test(masked) || quotedSearchPath) {
       violations.push(
         `${filePath}: schema "${schema}" is externally owned by ${entry.repository}. ` +
         `Author this migration in that repository, not the kernel. Historical migration files remain immutable.`,

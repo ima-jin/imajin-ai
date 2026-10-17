@@ -99,11 +99,11 @@ Full detail: `migrations/ownership.json`.
 `market → ima-jin/market`. App schemas/data remain in place; pruning never
 permits dropping them. **New root migrations may not reference these
 schemas**, whether declared kernel-owned or app-owned, DDL or DML, even
-if added to `sharedMigrationAllowlist`. Schema DDL and identifier-valued
+if added to `sharedMigrationAllowlist`. Schema DDL and literal/identifier-valued
 `search_path` settings are checked too.
 Like the existing scanner, this is a static heuristic, not a PostgreSQL
-parser: dynamically constructed SQL and string-valued
-`set_config`/`search_path` require review, never an ownership bypass.
+parser: dynamically constructed SQL and `set_config` calls require review,
+never an ownership bypass.
 
 Historical SQL and table-owner/origin rows remain unchanged. Dykil's
 baseline/ledger live in `ima-jin/dykil`
