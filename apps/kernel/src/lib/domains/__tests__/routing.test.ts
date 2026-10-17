@@ -10,11 +10,16 @@ vi.mock('../service', () => ({
   resolveVerifiedDomain: mocks.verified,
   resolveRoutableDomain: mocks.routable,
 }));
-vi.mock('@/src/db', () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => mocks.rows }) }) }) },
-  registryApps: { entryUrl: 'entryUrl', ownerDid: 'ownerDid', appDid: 'appDid', status: 'status' },
-  forestConfig: { landingService: 'landingService', groupDid: 'groupDid' },
-}));
+vi.mock('@/src/db', () => {
+  const limit = async () => mocks.rows;
+  const where = () => ({ limit });
+  const from = () => ({ where });
+  return {
+    db: { select: () => ({ from }) },
+    registryApps: { entryUrl: 'entryUrl', ownerDid: 'ownerDid', appDid: 'appDid', status: 'status' },
+    forestConfig: { landingService: 'landingService', groupDid: 'groupDid' },
+  };
+});
 vi.mock('drizzle-orm', () => ({ eq: vi.fn(), and: vi.fn() }));
 import { domainFromHost, domainLanding, publicDomainEvidence, safeLanding } from '../routing';
 
