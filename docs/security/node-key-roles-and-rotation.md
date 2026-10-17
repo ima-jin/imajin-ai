@@ -220,16 +220,36 @@ through `/jin` after the identity change.
 restart": the old vault entries, grants and provisions rows (all keyed by the old node
 DID) are untouched by anything the new key does in steps 4-5.
 
-### Step 3. Swap the env
+### Step 3. Generate and install the new key
 
-On the prod host edit `apps/kernel/.env.local`:
+On the node host, with workspace packages built, run:
 
+```bash
+node -- scripts/key-rotation.mjs generate --env-file apps/kernel/.env.local --grace-hours 48
 ```
-AUTH_PRIVATE_KEY=<new key>
-AUTH_PREVIOUS_PUBLIC_KEY=<old public key>
-AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM=<from preflight>
-AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL=<from preflight>
-```
+
+The `--` ends Node's own options so it does not auto-load `--env-file` before the
+script can validate it. The tool generates the Ed25519 key **in-process**: do not hand-generate, paste,
+echo or pass private material through shell commands, child-process environments
+or an agent transcript. It reads the current key directly from the file and runs
+the shared preflight to set `AUTH_PREVIOUS_PUBLIC_KEY`, `_VALID_FROM` and
+`_VALID_UNTIL` together with the new `AUTH_PRIVATE_KEY`. The window starts at
+generation time; restart all pinning verifiers before it ends. Output contains
+only public keys, kids and status text.
+
+The original file is retained byte-for-byte as
+`apps/kernel/.env.local.key-rotation.bak`. Both files have mode **0600**;
+installation uses a same-directory temporary file and atomic rename, preserving
+every unrelated line. Run only in an operator-controlled directory. Duplicate
+rotation assignments, symlinks, nonregular files, missing/invalid current keys
+and existing backups fail closed. On failure inspect file **status**, never dump
+contents: a backup may already exist, and must not be blindly overwritten.
+Failed backup writes are removed before installation; if storage errors also
+prevent cleanup, the leftover backup may be incomplete and is not safe rollback.
+Before step 6, rollback is restoring this backup as `.env.local` and restarting
+per the restart rule; neither key needs to enter a shell variable. Retain the
+backup until the handover has been signed and all destruction gates in step 12
+have passed.
 
 ### Step 4. Restart with the fail-closed boot check (#1520)
 
@@ -366,9 +386,19 @@ ends at the loaded key, that the node DID source is `relay_config`, and that
 
 ### Step 12. Destroy the old private key
 
-Every copy: secret manager version, shell history, `.env.local` backups, the operator's
-terminal environment. Keep the old **public** key: it is the anchor for `verify --anchor`
-and for any external verifier that pinned it.
+Only after the rotation, custody checks and handover verification have passed:
+
+```bash
+node -- scripts/key-rotation.mjs destroy --env-file apps/kernel/.env.local
+```
+
+This removes `apps/kernel/.env.local.key-rotation.bak` without reading or printing
+its key material; the current env file is untouched. Removal is not a guarantee
+of physical erasure on SSDs, copy-on-write filesystems or snapshots. Retire every
+other old-key copy through its custody tooling (secret-manager versions, storage
+backups/snapshots and any legacy operator environment/history), never by pasting
+or echoing private material. Keep the old **public** key: it is the anchor for
+`verify --anchor` and for any external verifier that pinned it.
 
 ### Gate summary
 
