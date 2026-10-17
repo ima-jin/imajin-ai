@@ -32,6 +32,56 @@ paste** ceremony, not the interactive OAuth dance — see "Connect Muse: knock
 -> approve -> paste bearer" below for the full runbook. Path A and Path B
 both point into that runbook at the step where they need the credential.
 
+## Reach a person — Muse custom connector (reach-only OpenAPI + bearer)
+
+Use this path to contact Ryan (or replace `ryan` with another person's handle),
+not to access your own media. The recipient does not connect Muse, hand-issue
+a token, or pre-accept each agent. Admission still follows their reach gate.
+This is separate from the operator-approved delegate-grant flow below.
+
+1. **Get a reach-only bearer.** POST JSON to
+   `https://jin.imajin.ai/reach/ryan/knock` with an `agentLabel` and an
+   `onBehalfOf` claim containing `platform` and an opaque `externalRef`
+   (optionally `selfDescription`). Do not put an email or other PII in the
+   reference. The who-it-acts-for claim is unverified; it grants no authority
+   as that human. Store the returned bearer securely when shown once.
+   Knock issuance depends on the recipient's gate admitting static-header clients.
+2. **Paste the spec URL into Muse:**
+
+   > Build a custom connector to reach Ryan. Import
+   > `https://jin.imajin.ai/reach/ryan/openapi.json`.
+   > The card is public. The two POST operations accept
+   > `Authorization: Bearer <reach-only bearer>`; I will paste it into your
+   > secure credential prompt, not this chat. Use the URLs in the spec.
+
+3. **Check the generated operations:** exactly `reach_card` (GET),
+   `reach_ask_send` (one combined POST), and `reach_status` (POST).
+   The spec is public and cacheable, and an unknown handle returns 404.
+   It binds the real card and canonical DID-based action/status paths to
+   that person; do not prepend `/reach/ryan` to those paths.
+4. **Ask or send.** A bearer ask uses `{"arg":"collaboration"}`.
+   To attempt delivery, send the **complete** `message`, `topic`, and
+   `replyHandle` bundle, for example
+   `{"message":"Hello Ryan","topic":"collaboration","replyHandle":"opaque-muse-thread"}`.
+   Do not send a partial bundle. If `arg` is supplied with delivery it must
+   equal `topic`. Only opted-in public topic labels are advertised, never
+   private gate rules; unpublished topics answer boolean-only. An ask is not
+   a promise of delivery. Only `{"delivered":true,"reachId":"..."}` confirms
+   delivery; a declined delivery returns `answer:false`.
+5. **Read the reply.** Pass the returned `reachId` to `reach_status` with
+   the same bearer; **no body or signature is needed for bearer status**.
+   Read `state` and `reply`. Replies are principal-signed events; a reachId
+   alone never authorizes access to someone else's receipt. A blocked sender
+   gets no reply content; an expired/revoked or wrong-recipient bearer fails.
+
+Both POSTs also accept signed request bodies **when Authorization is omitted**,
+as documented by the spec. The empty OpenAPI security alternative denotes that
+body-signature flow, not anonymous permission. If Authorization is present,
+bearer auth takes precedence and never falls back to a signature.
+Do not use a media/MCP bearer here or assume this reach-only bearer grants
+general API/MCP access. On 401, check the bearer and recipient, then knock
+again if needed; on 403, the gate did not admit the request; on 429, back off.
+
 ## Connect Muse: knock -> approve -> paste bearer
 
 This is the #2252 flow both Path A and Path B below use to get a real,
