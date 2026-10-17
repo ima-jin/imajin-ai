@@ -7,6 +7,9 @@ import { PrimitiveMatrix } from '@/src/components/www/PrimitiveMatrix';
 import { toMatrixProps } from '@/src/components/www/matrix';
 import { BugReportButton } from '@/src/components/www/bug-report-button';
 import matrixData from '../../../docs/matrix-status.json';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { domainFromHost, domainLanding } from '@/src/lib/domains/routing';
 
 // Revalidate stats every 15 minutes (ISR)
 export const revalidate = 900;
@@ -47,6 +50,9 @@ async function getNetworkStats() {
 }
 
 export default async function Home() {
+  const host = domainFromHost((await headers()).get('host'));
+  const destination = host ? await domainLanding(host) : null;
+  if (destination) redirect(destination);
   await getNetworkStats();
 
   return (

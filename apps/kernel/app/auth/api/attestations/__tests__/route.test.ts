@@ -161,6 +161,14 @@ beforeEach(() => {
 });
 
 describe('node-issued-only types (#2081)', () => {
+  it.each(['domain.verified', 'domain.revoked'])('rejects arbitrary %s without database writes or bus emission', async (type) => {
+    const res = await POST(makeReq(baseBody({ type })));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: `Attestation type "${type}" requires the verified domain ceremony` });
+    expect(h.mockSelectLimit).not.toHaveBeenCalled();
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+    expect(h.mockPublish).not.toHaveBeenCalled();
+  });
   it('rejects key.rotated from a caller before touching the database', async () => {
     const res = await POST(makeReq(baseBody({ type: 'key.rotated' })));
 

@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAttestationEntry } from '@/src/lib/auth/dfos';
 import { createLogger } from '@imajin/logger';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
+import { ceremonyAttestationRejection } from '@/src/lib/auth/ceremony-attestation-types';
 
 const log = createLogger('kernel');
 
@@ -39,6 +40,11 @@ export async function POST(request: NextRequest) {
     typeof type !== 'string'
   ) {
     return NextResponse.json({ error: 'issuer_did, subject_did, and type are required strings' }, { status: 400 });
+  }
+
+  const ceremonyRejection = ceremonyAttestationRejection(type);
+  if (ceremonyRejection) {
+    return NextResponse.json({ error: ceremonyRejection }, { status: 403 });
   }
 
   let issuedAt: Date;

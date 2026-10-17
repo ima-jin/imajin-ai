@@ -215,7 +215,7 @@ describe('POST /api/events — payload.interestDids cap (#2717)', () => {
 });
 
 describe('POST /api/events — kernel-owned namespaces (403)', () => {
-  it.each(['payment_request.paid', 'loop.completed', 'attestation.created', 'vault.secret_read'])(
+  it.each(['payment_request.paid', 'loop.completed', 'attestation.created', 'vault.secret_read', 'domain.verified', 'domain.revoked'])(
     'refuses %s even when a stored allowlist somehow holds it',
     async (type) => {
       mocks.resolveEmittableEventsMock.mockResolvedValue([type]);
