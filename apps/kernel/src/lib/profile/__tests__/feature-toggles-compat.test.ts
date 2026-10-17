@@ -20,9 +20,10 @@ describe('resolveEnabledApps (#2425)', () => {
     expect(resolveEnabledApps({ enabledApps: ['learn', 'market'] }).sort()).toEqual(['learn', 'market']);
   });
 
-  it('unions legacy fields and enabledApps without duplicates when both are present', () => {
-    const apps = resolveEnabledApps({ links: 'ryan', enabledApps: ['links', 'events'] });
-    expect(apps.sort()).toEqual(['events', 'links']);
+  it('uses explicit enabledApps exactly, without legacy resurrection', () => {
+    const apps = resolveEnabledApps({ links: 'ryan', enabledApps: ['events', 'events'] });
+    expect(apps).toEqual(['events']);
+    expect(resolveEnabledApps({ coffee: 'ryan', enabledApps: [] })).toEqual([]);
   });
 
   it('treats an empty-string legacy value as not enabled', () => {
@@ -43,6 +44,7 @@ describe('isAppEnabled (#2425)', () => {
 
   it('returns true when either shape enables the slug', () => {
     expect(isAppEnabled({ enabledApps: ['coffee'] }, 'coffee')).toBe(true);
+    expect(isAppEnabled({ coffee: 'legacy', enabledApps: [] }, 'coffee')).toBe(false);
   });
 
   it('returns false for null feature toggles', () => {

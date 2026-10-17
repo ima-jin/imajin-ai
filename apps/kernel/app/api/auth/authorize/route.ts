@@ -24,6 +24,8 @@ import { withLogger } from '@imajin/logger';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 import { revokeAttestationOnce } from '@/src/lib/auth/revoke-attestation';
 import { projectAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
+import { addConsentedApp } from '@/src/lib/kernel/app-membership';
+import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 
 function sameScopeSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
@@ -63,6 +65,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   const [app] = await db
     .select({
       id: registryApps.id,
+      slug: registryApps.slug,
       appDid: registryApps.appDid,
       publicKey: registryApps.publicKey,
       status: registryApps.status,
@@ -97,8 +100,8 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   }
 
   // Re-consent: look for an active grant already on file for this (user, app).
-  const [existing] = await db
-    .select({ id: attestations.id, payload: attestations.payload })
+  const existingGrants = await db
+    .select({ id: attestations.id, payload: attestations.payload, expiresAt: attestations.expiresAt })
     .from(attestations)
     .where(
       and(
@@ -109,6 +112,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
       )
     );
 
+  const existing = existingGrants.find((grant) => isLiveAppAuthorization(grant));
   if (existing) {
     const existingScopes = (existing.payload as { scopes?: string[] } | null)?.scopes ?? [];
     if (sameScopeSet(existingScopes, validScopes)) {
@@ -127,6 +131,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
       // re-submit, so a grant that was manually revoked out-of-band gets
       // re-materialised alongside the attestation it is derived from.
       await projectAppAuthorizationGrant({ ownerDid: identity.id, appDid: app.appDid, scopes: validScopes });
+      await addConsentedApp(identity.id, app.slug);
       return NextResponse.json({ attestationId: existing.id, userDid: identity.id }, { status: 201 });
     }
 
@@ -189,6 +194,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   // matching the attestation's issuerDid and what ends up as `sub` on every
   // app token minted against this grant.
   await projectAppAuthorizationGrant({ ownerDid: identity.id, appDid: app.appDid, scopes: validScopes });
+  await addConsentedApp(identity.id, app.slug);
 
   return NextResponse.json({ attestationId, userDid: identity.id }, { status: 201 });
 });

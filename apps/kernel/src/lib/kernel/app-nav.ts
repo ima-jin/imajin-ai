@@ -15,13 +15,13 @@
  * Enabled-for-identity resolution: every non-actor scope is gated by
  * `profile.forest_config.enabled_services` for that identity's own DID
  * (unchanged from `apps/kernel/app/auth/layout.tsx`'s pre-#2425 logic).
- * Actor scope follows the actor's own `feature_toggles` (#2434 — #2425
- * DECISION ruled b); an actor that never configured toggles still sees every
- * app. See `resolveActorEnabledSlugs`.
+ * Actor scope follows explicit membership (legacy-only fallback) union live
+ * person-issued app.authorized grants. No identity gets default apps.
  */
 import { and, eq } from 'drizzle-orm';
-import { db, identities, forestConfig, registryApps, profiles } from '@/src/db';
-import { hasConfiguredAppToggles, resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
+import { db, identities, forestConfig, registryApps, profiles, attestations } from '@/src/db';
+import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
+import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 
 /** The 3 nav surfaces an app registry row can declare itself visible on. */
 export type AppPlacement = 'launcher' | 'home' | 'auth-submenu';
@@ -36,6 +36,16 @@ export interface NavApp {
   placements: AppPlacement[];
   requiredScope: string | null;
   tier: string;
+  description?: string | null;
+  featured?: boolean;
+  appDid?: string;
+}
+export interface AppDirectoryApp extends NavApp {
+  description: string | null;
+  featured: boolean;
+  added: boolean;
+  authorized: boolean;
+  available: boolean;
 }
 
 function isAppPlacement(value: string): value is AppPlacement {
@@ -54,6 +64,9 @@ async function listNavCapableApps(): Promise<NavApp[]> {
       requiredScope: registryApps.requiredScope,
       tier: registryApps.tier,
       status: registryApps.status,
+      description: registryApps.description,
+      featured: registryApps.featured,
+      appDid: registryApps.appDid,
     })
     .from(registryApps);
 
@@ -70,20 +83,19 @@ async function listNavCapableApps(): Promise<NavApp[]> {
       placements,
       requiredScope: row.requiredScope,
       tier: row.tier,
+      description: row.description ?? null,
+      featured: row.featured ?? false,
+      appDid: row.appDid,
     });
   }
   return apps;
 }
 
 /**
- * Actor scope (#2434, #2425 DECISION ruled b): an actor follows its own
- * `profile.profiles.feature_toggles` (via `resolveEnabledApps`, which unions
- * the legacy per-app fields with `enabledApps`). An actor that has NEVER
- * configured app toggles — see `hasConfiguredAppToggles` — sees every
- * nav-capable app, so existing actors keep today's nav with no migration.
- * `null` means "every nav-capable app is enabled".
+ * Explicit actor membership, with fallback for profiles that only have legacy
+ * fields. Unconfigured profiles start empty.
  */
-async function resolveActorEnabledSlugs(did: string): Promise<Set<string> | null> {
+async function resolveActorEnabledSlugs(did: string): Promise<Set<string>> {
   const [profileRow] = await db
     .select({ featureToggles: profiles.featureToggles })
     .from(profiles)
@@ -91,18 +103,15 @@ async function resolveActorEnabledSlugs(did: string): Promise<Set<string> | null
     .limit(1);
 
   const featureToggles = profileRow?.featureToggles;
-  if (!hasConfiguredAppToggles(featureToggles)) return null;
   return new Set(resolveEnabledApps(featureToggles));
 }
 
 /**
- * `null` return means "every nav-capable app is enabled": an identity with no
- * resolvable scope (matching `layout.tsx`'s existing fallback) or an actor
- * that never configured its toggles. Every other scope is gated by
+ * Actors use profile membership. Every other scope is gated by
  * `profile.forest_config.enabled_services` for that identity's own DID.
  */
-async function resolveEnabledSlugsForIdentity(did: string, scope: string | undefined): Promise<Set<string> | null> {
-  if (!scope) return null;
+async function resolveEnabledSlugsForIdentity(did: string, scope: string | undefined): Promise<Set<string>> {
+  if (!scope) return new Set();
   if (scope === 'actor') return resolveActorEnabledSlugs(did);
 
   const [forestRow] = await db
@@ -135,6 +144,12 @@ function passesScopeGate(app: NavApp, scope: string | undefined): boolean {
  * surface.
  */
 export async function resolveNavAppsForIdentity(did: string): Promise<NavApp[]> {
+  const directory = await resolveAppDirectoryForIdentity(did);
+  return directory.filter((app) => app.available && (app.added || app.authorized));
+}
+
+/** All active nav-capable apps, including those not yet added or scope-available. */
+export async function resolveAppDirectoryForIdentity(did: string): Promise<AppDirectoryApp[]> {
   const [identity] = await db
     .select({ scope: identities.scope })
     .from(identities)
@@ -142,15 +157,30 @@ export async function resolveNavAppsForIdentity(did: string): Promise<NavApp[]> 
     .limit(1);
   const scope = identity?.scope;
 
-  const [navCapable, enabledSlugs] = await Promise.all([
+  const [navCapable, enabledSlugs, grants] = await Promise.all([
     listNavCapableApps(),
     resolveEnabledSlugsForIdentity(did, scope),
+    scope === 'actor'
+      ? db.select({
+        subjectDid: attestations.subjectDid,
+        revokedAt: attestations.revokedAt,
+        expiresAt: attestations.expiresAt,
+      }).from(attestations).where(and(
+        eq(attestations.issuerDid, did),
+        eq(attestations.type, 'app.authorized'),
+      ))
+      : Promise.resolve([]),
   ]);
-
-  return navCapable.filter((app) => {
-    const enabled = enabledSlugs === null || enabledSlugs.has(app.slug);
-    return enabled && passesScopeGate(app, scope);
-  });
+  const authorizedDids = new Set(grants.filter((grant) => isLiveAppAuthorization(grant)).map((grant) => grant.subjectDid));
+  return navCapable.map((app) => ({
+    ...app,
+    description: app.description ?? null,
+    featured: app.featured ?? false,
+    added: enabledSlugs.has(app.slug),
+    authorized: !!app.appDid && authorizedDids.has(app.appDid),
+    available: !!scope && passesScopeGate(app, scope),
+  })).sort((a, b) => Number(b.featured) - Number(a.featured)
+    || a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug));
 }
 
 /** Narrow a resolved nav-app list down to the ones visible on a given placement. */

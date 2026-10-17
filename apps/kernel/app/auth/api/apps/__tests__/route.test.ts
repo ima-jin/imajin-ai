@@ -159,6 +159,6 @@ describe('GET /auth/api/apps (#2425)', () => {
   it('sets a short, private cache header', async () => {
     const res = await GET(makeReq('https://kernel.test/auth/api/apps'));
 
-    expect(res.headers.get('Cache-Control')).toBe('private, max-age=30');
+    expect(res.headers.get('Cache-Control')).toBe('private, no-store');
   });
 });
