@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq, like } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { db, internalSecretProvisions } from '@/src/db';
-import { sealAndStore, loadAndUnseal, deleteFromVault } from '@/src/lib/vault';
+import { sealAndStore, loadAndUnseal, deleteFromVault, vaultService } from '@/src/lib/vault';
 import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { isAppSecretStagingField } from '@/src/lib/vault/field-grammar';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
@@ -45,10 +45,12 @@ function provisionTuple(ref: string) {
   );
 }
 
-/** Vault first: a failed tombstone must leave the marker available for retry. */
+/** Retire the single-use claim before erasure so an in-flight reader cannot claim it. */
 async function discardStaging(ref: string): Promise<void> {
-  await deleteFromVault(location(ref).field);
   await db.delete(internalSecretProvisions).where(provisionTuple(ref));
+  // A tombstone alone leaves decryptable v1 history. Only a UUID-derived
+  // private staging location may reach this irreversible erasure.
+  await vaultService.purge(location(ref).field);
 }
 
 type StagingProposal = Pick<OperatorApprovalCard, 'proposalId' | 'operatorDid' | 'source' | 'kind' | 'detail' | 'status'>;
@@ -73,7 +75,7 @@ export async function discardAppSecretForProposal(card: StagingProposal): Promis
     }
     await discardStaging(ref);
   } catch {
-    // Provider exceptions can contain input. Keep the marker for the TTL sweep.
+    // Provider exceptions can contain input. Vault enumeration supplies retries.
     log.error({ proposalId: card.proposalId }, 'App-secret staging cleanup failed');
   }
 }
@@ -100,9 +102,20 @@ export async function sweepExpiredAppSecretStaging(now: number = Date.now()): Pr
     eq(internalSecretProvisions.ownerDid, getNodeSigningIdentity().senderDid),
     like(internalSecretProvisions.field, 'internal-secret:app-self:staging:%'),
   ));
+  const candidates = new Map(rows.map(row => [row.field, row]));
+  // Consumption deletes its claim before tombstoning; staging seals before
+  // inserting a marker. Discover those crash windows from vault names too.
+  const vault = await vaultService.loadVault();
+  for (const { field } of vault.entries) {
+    if (!isAppSecretStagingField(field) || candidates.has(field)) continue;
+    const id = field.slice('internal-secret:app-self:staging:'.length);
+    if (!REF_PATTERN.test(id)) continue;
+    const { purpose } = location(id);
+    candidates.set(field, { id, purpose, field });
+  }
   let swept = 0;
   let failed = false;
-  for (const row of rows) {
+  for (const row of candidates.values()) {
     try {
       if (await sweepStagingRow(row, now)) swept++;
     } catch {

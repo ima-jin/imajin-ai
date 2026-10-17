@@ -239,11 +239,12 @@ describe('GET /api/cron/vault-grant-expiry', () => {
 
   it('returns only a generic error when staging cleanup fails', async () => {
     _setCronSecretForTests('test-secret');
-    mockReturning.mockResolvedValue([]);
+    mockReturning.mockResolvedValue([makeGrant()]);
     mockSweepStaging.mockRejectedValue(new Error('OBVIOUSLY_FAKE_INPUT'));
     const response = await GET(makeRequest(CRON_AUTH) as never);
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(mockPublish).toHaveBeenCalledOnce();
   });
 
   it('returns 500 when the DB update throws', async () => {

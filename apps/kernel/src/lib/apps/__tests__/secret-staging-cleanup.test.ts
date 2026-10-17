@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
   seal: vi.fn(), read: vi.fn(), erase: vi.fn(), insert: vi.fn(),
-  rows: vi.fn(), remove: vi.fn(), error: vi.fn(),
+  rows: vi.fn(), remove: vi.fn(), error: vi.fn(), vault: vi.fn(),
 }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: state.error }) }));
 vi.mock('@/src/lib/vault', () => ({
   sealAndStore: state.seal, loadAndUnseal: state.read, deleteFromVault: state.erase,
+  vaultService: { purge: state.erase, loadVault: state.vault },
 }));
 vi.mock('@/src/lib/vault/sealing', () => ({
   getNodeSigningIdentity: () => ({ senderDid: 'did:imajin:fake-node' }), isVaultTier1: () => false,
@@ -31,6 +32,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   stored.clear();
   state.rows.mockResolvedValue([]);
+  state.vault.mockResolvedValue({ entries: [] });
   state.seal.mockImplementation(async (field: string, data: string) => { stored.set(field, data); });
   state.read.mockImplementation(async (field: string) => stored.get(field));
   state.erase.mockImplementation(async (field: string) => { stored.delete(field); });
@@ -50,12 +52,12 @@ async function stagedRow() {
 }
 
 describe('staging retirement', () => {
-  it.each(['denied', 'expired', 'withdrawn'])('deletes the vault field then its provision on %s', async (status) => {
+  it.each(['denied', 'expired', 'withdrawn'])('retires the claim then erases the vault field on %s', async (status) => {
     const row = await stagedRow();
     await discardAppSecretForProposal(terminalCard(row.id, { status }));
     expect(stored.has(row.field)).toBe(false);
     expect(state.remove).toHaveBeenCalledOnce();
-    expect(state.erase.mock.invocationCallOrder[0]).toBeLessThan(state.remove.mock.invocationCallOrder[0]);
+    expect(state.remove.mock.invocationCallOrder[0]).toBeLessThan(state.erase.mock.invocationCallOrder[0]);
     await discardAppSecretForProposal(terminalCard(row.id, { status }));
     expect(stored.has(row.field)).toBe(false);
   });
@@ -78,14 +80,14 @@ describe('staging retirement', () => {
     expect(state.remove).not.toHaveBeenCalled();
   });
 
-  it('keeps the marker retryable and never logs a provider exception containing input', async () => {
+  it('retries failed erasure and never logs a provider exception containing input', async () => {
     const row = await stagedRow();
     state.erase.mockRejectedValueOnce(new Error(VALUE));
     await discardAppSecretForProposal(terminalCard(row.id));
-    expect(state.remove).not.toHaveBeenCalled();
+    expect(state.remove).toHaveBeenCalledOnce();
     expect(JSON.stringify(state.error.mock.calls)).not.toContain(VALUE);
     await discardAppSecretForProposal(terminalCard(row.id));
-    expect(state.remove).toHaveBeenCalledOnce();
+    expect(state.remove).toHaveBeenCalledTimes(2);
   });
 
   it('sweeps at expiresAt, preserves unexpired input, and removes stale markers idempotently', async () => {
@@ -132,9 +134,29 @@ describe('staging retirement', () => {
     state.erase.mockRejectedValueOnce(new Error(VALUE));
     await expect(sweepExpiredAppSecretStaging(Number.MAX_SAFE_INTEGER)).rejects.toThrow('App-secret staging sweep incomplete');
     expect(state.erase).toHaveBeenCalledTimes(2);
-    expect(state.remove).toHaveBeenCalledOnce();
+    expect(state.remove).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(state.error.mock.calls)).not.toContain(VALUE);
     state.rows.mockResolvedValue([row]);
     expect(await sweepExpiredAppSecretStaging(Number.MAX_SAFE_INTEGER)).toBe(1);
+  });
+
+  it('discovers orphan input without a provisions row and ignores unrelated vault names', async () => {
+    const row = await stagedRow();
+    state.vault.mockResolvedValue({ entries: [
+      { field: row.field }, { field: row.field },
+      { field: 'GH_TOKEN' }, { field: 'internal-secret:app-self:staging:invalid' },
+    ] });
+    expect(await sweepExpiredAppSecretStaging(Number.MAX_SAFE_INTEGER)).toBe(1);
+    expect(state.erase).toHaveBeenCalledOnce();
+    expect(state.erase).toHaveBeenCalledWith(row.field);
+  });
+
+  it('sweeps orphan input after erasure fails and its claim has already been removed', async () => {
+    const row = await stagedRow();
+    state.erase.mockRejectedValueOnce(new Error(VALUE));
+    await discardAppSecretForProposal(terminalCard(row.id));
+    state.vault.mockResolvedValue({ entries: [{ field: row.field }] });
+    expect(await sweepExpiredAppSecretStaging(Number.MAX_SAFE_INTEGER)).toBe(1);
+    expect(stored.has(row.field)).toBe(false);
   });
 });

@@ -61,8 +61,6 @@ export async function GET(request: NextRequest) {
       .returning();
 
     const erasedGrantIds = await eraseInactiveGrantKeyMaterial(swept);
-    // Reuse the existing hourly vault housekeeping job; no second scheduler.
-    const appSecretStagingSwept = await sweepExpiredAppSecretStaging();
 
     // Emit vault.delegation.revoked per row — mirrors POST /api/vault/delegation/revoke.
     for (const grant of swept) {
@@ -86,6 +84,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Publish grant revocations before staging housekeeping can fail.
+    // Reuse the existing hourly vault job; no second scheduler.
+    const appSecretStagingSwept = await sweepExpiredAppSecretStaging();
+
     log.info(
       { swept: swept.length, keyMaterialErased: erasedGrantIds.length },
       'Vault grant expiry sweep complete',
@@ -100,7 +102,7 @@ export async function GET(request: NextRequest) {
     });
   } catch {
     // Staging provider errors may contain operator input.
-    log.error('Vault grant expiry sweep failed');
+    log.error({}, 'Vault grant expiry sweep failed');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -98,6 +98,44 @@ describe('VaultEntryService', () => {
         expect(loaded?.cid).toBe('cid:persist-1');
     });
 
+    it.each([false, true])('purges all ciphertext generations without changing other fields (lock=%s)', async (locked) => {
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
+        const service = new VaultEntryService(repository, { lock: locked ? new InMemoryFieldLock() : undefined });
+        const field = 'internal-secret:app-self:staging:fake-ref';
+        await service.set(createEntry(field, 'cid:staging-1'));
+        await service.set(createEntry(field, 'cid:staging-2'));
+        await service.set(createEntry(field, 'cid:staging-deleted', { deleted: true }));
+        const other = await service.set(createEntry('ACTIVE_SECRET', 'cid:active'));
+        await service.purge(field);
+        const reloaded = new VaultEntryService(new FileVaultRepository({ vaultPath }));
+        expect(await reloaded.loadVault()).toEqual({ version: VAULT_ENTRY_VERSION_V1, entries: [other] });
+        expect(await reloaded.getHistory(field)).toEqual([]);
+        expect(fs.readFileSync(vaultPath, 'utf8')).not.toContain('enc:cid:staging');
+        await service.purge(field);
+        expect(await service.get('ACTIVE_SECRET')).toEqual(other);
+    });
+
+    it('serializes purge with writes to unrelated fields', async () => {
+        const service = new VaultEntryService(new FileVaultRepository({ vaultPath, allowBootstrap: true }));
+        await service.set(createEntry('STAGING', 'cid:staging'));
+        await Promise.all([
+            service.purge('STAGING'),
+            service.set(createEntry('ACTIVE', 'cid:active'))
+        ]);
+        expect((await service.loadVault()).entries.map(entry => entry.field)).toEqual(['ACTIVE']);
+    });
+
+    it('releases the field lock after failed purge so erasure can retry', async () => {
+        const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
+        const service = new VaultEntryService(repository, { lock: new InMemoryFieldLock() });
+        await service.set(createEntry('STAGING', 'cid:staging'));
+        vi.spyOn(repository, 'save').mockRejectedValueOnce(new Error('fake write failure'));
+        await expect(service.purge('STAGING')).rejects.toThrow('fake write failure');
+        expect(await service.get('STAGING')).toBeDefined();
+        await service.purge('STAGING');
+        expect(await service.get('STAGING')).toBeUndefined();
+    });
+
     it('uses per-field locking when a lock is provided', async () => {
         const repository = new FileVaultRepository({ vaultPath, allowBootstrap: true });
         const lock = new InMemoryFieldLock();
