@@ -82,6 +82,13 @@ afterEach(() => {
 });
 
 describe('ServiceEmbed loading/error states (#2275)', () => {
+  it('uses an exact destination without adding a dashboard suffix', async () => {
+    globalThis.fetch = mockFetch() as unknown as typeof fetch;
+    const src = `${ORIGIN}/home?x=1&embed=hub&did=group#files`;
+    render(<ServiceEmbed service="coffee" did="group" baseUrl={`${ORIGIN}/home?x=1#files`} embedSrc={src} />);
+    const iframe = await screen.findByTitle<HTMLIFrameElement>('coffee dashboard');
+    expect(iframe.getAttribute('src')).toBe(src);
+  });
   it('shows a spinner while the health check is in flight, then mounts the iframe once it passes', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch;
 

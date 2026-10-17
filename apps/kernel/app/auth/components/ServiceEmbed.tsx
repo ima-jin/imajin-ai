@@ -16,6 +16,8 @@ interface Props {
   did: string;
   /** Registry-resolved origin or single-node path for this app. */
   baseUrl: string;
+  /** Exact registry destination with hub parameters, when one is declared. */
+  embedSrc?: string;
 }
 
 type EmbedPhase = 'checking' | 'loading' | 'ready' | 'error';
@@ -58,7 +60,7 @@ function resolveExpectedOrigin(baseUrl: string): string | null {
   }
 }
 
-export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>) {
+export default function ServiceEmbed({ service, did, baseUrl, embedSrc }: Readonly<Props>) {
   const [phase, setPhase] = useState<EmbedPhase>('checking');
   const [errorReason, setErrorReason] = useState<ErrorReason>('unavailable');
   const [attempt, setAttempt] = useState(0);
@@ -70,7 +72,7 @@ export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>)
   const targetWindowRef = useRef<Window | null>(null);
   const { toast } = useToast();
 
-  const src = buildEmbedSrc(did, baseUrl);
+  const src = embedSrc ?? buildEmbedSrc(did, baseUrl);
   const expectedOrigin = resolveExpectedOrigin(baseUrl);
 
   const clearHandshakeTimeout = useCallback(() => {

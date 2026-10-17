@@ -27,8 +27,8 @@ vi.mock('../../lib/get-effective-did', () => ({ getEffectiveDid: mocks.getEffect
 vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveNavAppsForIdentity: mocks.resolveNavAppsForIdentity }));
 
 vi.mock('../../components/ServiceEmbed', () => ({
-  default: ({ service, did, baseUrl }: { service: string; did: string; baseUrl?: string }) => (
-    <div data-testid="service-embed">{`${service}:${did}:${baseUrl ?? ''}`}</div>
+  default: ({ service, did, baseUrl, embedSrc }: { service: string; did: string; baseUrl?: string; embedSrc?: string }) => (
+    <div data-testid="service-embed" data-embed-src={embedSrc}>{`${service}:${did}:${baseUrl ?? ''}`}</div>
   ),
 }));
 
@@ -86,6 +86,9 @@ describe('AppPage /auth/[app] (#2425)', () => {
       `coffee:${DID}:https://registry-resolved.example/coffee`,
     );
     expect(mocks.notFound).not.toHaveBeenCalled();
+    expect(screen.getByTestId('service-embed').getAttribute('data-embed-src')).toBe(
+      `https://registry-resolved.example/coffee?embed=hub&did=${encodeURIComponent(DID)}`,
+    );
   });
 
   it('#2425 send-back: resolves the embed baseUrl from the registry row\'s slug via registryAppPublicUrl, not a hardcoded map', async () => {

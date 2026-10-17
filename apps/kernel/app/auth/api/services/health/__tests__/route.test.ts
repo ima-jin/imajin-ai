@@ -15,10 +15,10 @@ vi.mock('next/server', () => ({
 
 const mocks = vi.hoisted(() => ({
   registryLookup: vi.fn(),
-  registryAppPublicUrl: vi.fn(),
+  registryAppBaseUrl: vi.fn(),
 }));
 
-vi.mock('@/src/lib/apps/public-url', () => ({ registryAppPublicUrl: mocks.registryAppPublicUrl }));
+vi.mock('@/src/lib/apps/public-url', () => ({ registryAppBaseUrl: mocks.registryAppBaseUrl }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: mocks.registryLookup }) }) }) },
   registryApps: { slug: 'slug', entryUrl: 'entryUrl', status: 'status' },
@@ -37,7 +37,7 @@ beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.registryLookup.mockResolvedValue([]);
-  mocks.registryAppPublicUrl.mockReturnValue('https://node.example/coffee');
+  mocks.registryAppBaseUrl.mockReturnValue('https://node.example/coffee');
 });
 
 afterEach(() => {
@@ -59,13 +59,13 @@ describe('GET /auth/api/services/health', () => {
     const res = await GET(makeRequest(service) as never);
     expect(res.status).toBe(400);
     expect(mocks.registryLookup).toHaveBeenCalledWith(1);
-    expect(mocks.registryAppPublicUrl).not.toHaveBeenCalled();
+    expect(mocks.registryAppBaseUrl).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it('#2425 send-back: accepts any ACTIVE registry.apps slug, not just the historical 6-app list', async () => {
     mocks.registryLookup.mockResolvedValue([{ slug: 'a-brand-new-app', entryUrl: 'https://registry.example/dashboard-app' }]);
-    mocks.registryAppPublicUrl.mockReturnValue('https://node.example/a-brand-new-app');
+    mocks.registryAppBaseUrl.mockReturnValue('https://node.example/a-brand-new-app');
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 })) as unknown as typeof fetch;
 
     const { GET } = await import('../route');
@@ -73,16 +73,16 @@ describe('GET /auth/api/services/health', () => {
     const body = await res.json();
 
     expect(mocks.registryLookup).toHaveBeenCalledWith(1);
-    expect(mocks.registryAppPublicUrl).toHaveBeenCalledWith({
+    expect(mocks.registryAppBaseUrl).toHaveBeenCalledWith({
       slug: 'a-brand-new-app',
       entryUrl: 'https://registry.example/dashboard-app',
     });
     expect(body).toEqual({ ok: true, checked: true, status: 200 });
   });
 
-  it('fails open when registryAppPublicUrl resolves to a relative path (single-node mode, no separate origin to probe)', async () => {
+  it('fails open when registryAppBaseUrl resolves to a relative path (single-node mode, no separate origin to probe)', async () => {
     mocks.registryLookup.mockResolvedValue([{ slug: 'coffee', entryUrl: 'https://registry.example/dashboard-app' }]);
-    mocks.registryAppPublicUrl.mockReturnValue('/coffee');
+    mocks.registryAppBaseUrl.mockReturnValue('/coffee');
     const fetchSpy = vi.fn();
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
 
@@ -94,9 +94,20 @@ describe('GET /auth/api/services/health', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it('skips probing when a deep/query/fragment destination has no known application base', async () => {
+    mocks.registryLookup.mockResolvedValue([{ slug: 'deep-app', entryUrl: 'https://app.example/home?x=1#files' }]);
+    mocks.registryAppBaseUrl.mockReturnValue(null);
+    const fetchSpy = vi.fn();
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    const { GET } = await import('../route');
+    const res = await GET(makeRequest('deep-app') as never);
+    expect(await res.json()).toEqual({ ok: true, checked: false });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('reports ok when the service health endpoint responds 2xx', async () => {
     mocks.registryLookup.mockResolvedValue([{ slug: 'coffee', entryUrl: 'https://registry.example/dashboard-app' }]);
-    mocks.registryAppPublicUrl.mockReturnValue('https://node.example/coffee');
+    mocks.registryAppBaseUrl.mockReturnValue('https://node.example/coffee');
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 })) as unknown as typeof fetch;
 
     const { GET } = await import('../route');
@@ -112,7 +123,7 @@ describe('GET /auth/api/services/health', () => {
 
   it('reports not-ok when the service health endpoint responds 5xx', async () => {
     mocks.registryLookup.mockResolvedValue([{ slug: 'coffee', entryUrl: 'https://registry.example/dashboard-app' }]);
-    mocks.registryAppPublicUrl.mockReturnValue('https://node.example/coffee');
+    mocks.registryAppBaseUrl.mockReturnValue('https://node.example/coffee');
     globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 503 })) as unknown as typeof fetch;
 
     const { GET } = await import('../route');
@@ -124,7 +135,7 @@ describe('GET /auth/api/services/health', () => {
 
   it('reports not-ok when the service is unreachable', async () => {
     mocks.registryLookup.mockResolvedValue([{ slug: 'coffee', entryUrl: 'https://registry.example/dashboard-app' }]);
-    mocks.registryAppPublicUrl.mockReturnValue('https://node.example/coffee');
+    mocks.registryAppBaseUrl.mockReturnValue('https://node.example/coffee');
     globalThis.fetch = vi.fn().mockRejectedValue(new Error('network down')) as unknown as typeof fetch;
 
     const { GET } = await import('../route');

@@ -23,7 +23,7 @@
  * app that only exists as a registry row.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
+import { registryAppBaseUrl } from '@/src/lib/apps/public-url';
 import { db, registryApps } from '@/src/db';
 import { and, eq } from 'drizzle-orm';
 
@@ -44,13 +44,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'unknown_service' }, { status: 400 });
   }
 
-  const baseUrl = registryAppPublicUrl({ slug: service, entryUrl: app.entryUrl });
-  if (!/^https?:\/\//.test(baseUrl)) {
+  const baseUrl = registryAppBaseUrl({ slug: service, entryUrl: app.entryUrl });
+  if (!baseUrl || !/^https?:\/\//.test(baseUrl)) {
     return NextResponse.json({ ok: true, checked: false });
   }
 
   try {
-    const res = await fetch(`${baseUrl}/api/health`, {
+    const res = await fetch(`${baseUrl.replace(/\/$/, '')}/api/health`, {
       signal: AbortSignal.timeout(HEALTH_CHECK_TIMEOUT_MS),
     });
     return NextResponse.json({ ok: res.ok, checked: true, status: res.status });

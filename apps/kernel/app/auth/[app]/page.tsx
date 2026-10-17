@@ -2,6 +2,7 @@ import { redirect, notFound } from 'next/navigation';
 import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
 import { getEffectiveDid } from '../lib/get-effective-did';
 import ServiceEmbed from '../components/ServiceEmbed';
+import { registryAppEmbedUrl } from '../lib/service-registry';
 import { resolveNavAppsForIdentity } from '@/src/lib/kernel/app-nav';
 
 /**
@@ -31,5 +32,5 @@ export default async function AppPage({ params }: Readonly<PageProps>) {
   }
 
   const baseUrl = registryAppPublicUrl(match);
-  return <ServiceEmbed service={app} did={effectiveDid} baseUrl={baseUrl} />;
+  return <ServiceEmbed service={app} did={effectiveDid} baseUrl={baseUrl} embedSrc={registryAppEmbedUrl(match, effectiveDid)} />;
 }
