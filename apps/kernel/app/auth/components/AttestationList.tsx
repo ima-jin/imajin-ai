@@ -295,6 +295,7 @@ export default async function AttestationList({ sessionDid, searchParams, exclud
                       {relTime}
                     </span>
                     <svg
+                      aria-hidden="true"
                       className="w-4 h-4 text-zinc-600 transition-transform group-open:rotate-180"
                       fill="none"
                       viewBox="0 0 24 24"

@@ -154,25 +154,15 @@ describe('importBugAsIssue (#2184)', () => {
 });
 
 describe('bugImportConnectorErrorResponse (#2184)', () => {
-  it('maps github_no_grant to 412 (connector scope never enabled)', async () => {
-    const res = bugImportConnectorErrorResponse(new Error('github_no_grant: nope'));
+  it.each([
+    ['github_no_grant: nope', 412, 'github_connector_not_enabled'],
+    ['github_no_credential: nothing sealed', 409, 'github_connector_not_connected'],
+    ['github_credential_pending: awaiting approval', 409, 'github_connector_pending'],
+  ])('maps %s to %i and %s', async (message, status, error) => {
+    const res = bugImportConnectorErrorResponse(new Error(message));
     expect(res).not.toBeNull();
-    expect(res!.status).toBe(412);
-    expect(await res!.json()).toMatchObject({ error: 'github_connector_not_enabled' });
-  });
-
-  it('maps github_no_credential to 409 (grant exists but nothing connected)', async () => {
-    const res = bugImportConnectorErrorResponse(new Error('github_no_credential: nothing sealed'));
-    expect(res).not.toBeNull();
-    expect(res!.status).toBe(409);
-    expect(await res!.json()).toMatchObject({ error: 'github_connector_not_connected' });
-  });
-
-  it('maps github_credential_pending to 409 (sealed credential awaiting delegation approval)', async () => {
-    const res = bugImportConnectorErrorResponse(new Error('github_credential_pending: awaiting approval'));
-    expect(res).not.toBeNull();
-    expect(res!.status).toBe(409);
-    expect(await res!.json()).toMatchObject({ error: 'github_connector_pending' });
+    expect(res!.status).toBe(status);
+    expect(await res!.json()).toMatchObject({ error });
   });
 
   it('returns null for an error it does not recognize, so the caller falls back to a generic failure', () => {

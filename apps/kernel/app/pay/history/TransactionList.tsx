@@ -64,6 +64,7 @@ function StatusBadge({ status }: Readonly<{ status: string }>) {
 function ChevronIcon() {
   return (
     <svg
+      aria-hidden="true"
       className="w-4 h-4 text-zinc-600 transition-transform group-open:rotate-180"
       fill="none"
       viewBox="0 0 24 24"
