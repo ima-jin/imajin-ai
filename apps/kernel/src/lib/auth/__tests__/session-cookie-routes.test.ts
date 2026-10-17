@@ -8,6 +8,8 @@ const state = vi.hoisted(() => ({
   signature: vi.fn(),
   publish: vi.fn(async () => undefined),
   emailMfa: vi.fn(() => true),
+  chainIdentity: null as Record<string, unknown> | null,
+  grace: vi.fn(async () => null),
 }));
 const identity = { id: 'did:imajin:FAKE_USER', publicKey: 'FAKE_PUBLIC_KEY', scope: 'actor', tier: 'preliminary', handle: 'fake' };
 
@@ -21,8 +23,15 @@ vi.mock('@/src/db', () => {
     return chain;
   }
   return {
-    db: { select: query, update: () => ({ set: () => ({ where: async () => undefined }) }) },
-    identities: {}, challenges: {}, mfaMethods: {}, identityChains: {}, credentials: {},
+    db: {
+      select: query,
+      update: () => ({ set: () => ({ where: async () => undefined }) }),
+      insert: () => ({ values: () => ({
+        returning: async () => [{ id: 'did:imajin:FAKE_USER', scope: 'actor', tier: 'preliminary' }],
+        onConflictDoNothing: async () => undefined,
+      }) }),
+    },
+    identities: {}, challenges: {}, mfaMethods: {}, identityChains: {}, credentials: {}, profiles: {}, onboardTokens: {},
   };
 });
 vi.mock('@/src/lib/auth/jwt', async () => {
@@ -35,10 +44,29 @@ vi.mock('@/src/lib/auth/jwt', async () => {
     verifyMfaChallengeToken: async () => ({ sub: 'did:imajin:FAKE_USER', methods: ['email'] }),
   };
 });
-vi.mock('@/src/lib/auth/crypto', () => ({ verifySignature: state.signature }));
+vi.mock('@/src/lib/auth/crypto', () => ({
+  verifySignature: state.signature,
+  didFromPublicKey: () => 'did:imajin:FAKE_USER',
+}));
 vi.mock('@/src/lib/auth/emit-session-attestation', () => ({ emitSessionAttestation: async () => undefined }));
 vi.mock('@/src/lib/auth/log-device', () => ({ logDevice: async () => undefined }));
-vi.mock('@/src/lib/auth/dfos', () => ({ getChainByImajinDid: async () => null }));
+vi.mock('@/src/lib/auth/dfos', () => ({
+  getChainByImajinDid: async () => null,
+  getIdentityByDfosDid: async () => state.chainIdentity,
+  storeDfosChain: async () => true,
+}));
+vi.mock('@/src/lib/auth/chain-providers', () => ({
+  verifyChainLog: async () => ({ valid: true, did: 'did:dfos:FAKE_CHAIN', publicKeyHex: 'FAKE_PUBLIC_KEY' }),
+}));
+vi.mock('@/src/lib/auth/onboard', () => ({
+  addScopeMembership: async () => undefined,
+  handleExpiredOrUsedToken: state.grace,
+  resolveOnboardIdentity: async () => ({
+    did: 'did:imajin:FAKE_USER', identity: { tier: 'preliminary' }, created: false, claimActivated: false,
+  }),
+  resolveOnboardRedirect: async () => 'https://jin.imajin.ai/events',
+}));
+vi.mock('@/src/lib/auth/consume-invite', () => ({ consumePendingInvites: async () => undefined }));
 vi.mock('@/src/lib/auth/encrypt', () => ({ decryptSecret: () => 'FAKE_UNUSED' }));
 vi.mock('@/src/lib/auth/email-mfa-codes', () => ({ verifyEmailMfaCode: state.emailMfa }));
 vi.mock('@imajin/bus', () => ({ publish: state.publish }));
@@ -57,6 +85,10 @@ import { POST as logout } from '../../../../app/auth/api/logout/route';
 import { POST as connectionsLogout } from '../../../../app/connections/api/auth/logout/route';
 import { POST as profileLogout } from '../../../../app/profile/api/auth/logout/route';
 import { GET as session } from '../../../../app/auth/api/session/route';
+import { POST as presentChain } from '../../../../app/auth/api/identity/present-chain/route';
+import { POST as generate } from '../../../../app/auth/api/onboard/generate/route';
+import { POST as claim } from '../../../../app/auth/api/onboard/claim/route';
+import { GET as verifyOnboard } from '../../../../app/auth/api/onboard/verify/route';
 
 beforeEach(() => {
   vi.stubEnv('IMAJIN_ENV', 'prod');
@@ -68,8 +100,14 @@ beforeEach(() => {
   state.verify.mockImplementation(async (token: string) =>
     token.startsWith('FAKE_') ? { sub: identity.id, scope: 'actor' } : null);
   state.signature.mockResolvedValue(true);
+  state.chainIdentity = null;
+  state.grace.mockResolvedValue(null);
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}')));
 });
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 function request(path: string, body?: unknown, cookie = '') {
   return new NextRequest(`https://jin.imajin.ai${path}`, {
@@ -93,6 +131,47 @@ function expectMigrated(response: NextResponse) {
 }
 
 describe('kernel session routes — phase 2', () => {
+  it.each(['known-chain', 'known-key', 'new-identity'])('migrates sessions from present-chain (%s)', async (branch) => {
+    state.chainIdentity = branch === 'known-chain' ? { imajinDid: identity.id, scope: 'actor', tier: 'preliminary' } : null;
+    state.rows = branch === 'known-key' ? [[identity]] : [[]];
+    const response = await presentChain(request('/auth/api/identity/present-chain', { chainLog: ['FAKE_CHAIN_ENTRY'] }));
+    expect(response.status).toBe(branch === 'new-identity' ? 201 : 200);
+    expectMigrated(response);
+  });
+
+  it('onboard generate preserves the active forest cookie and migrates the session', async () => {
+    state.rows = [[identity]];
+    const response = await generate(request('/auth/api/onboard/generate', { publicKey: '0'.repeat(64), scopeDid: 'did:imajin:FAKE_GROUP' }));
+    expect(response.status).toBe(200);
+    expect(response.headers.getSetCookie()).toHaveLength(3);
+    expect(response.headers.getSetCookie().filter(h => h.startsWith('imajin_session='))).toHaveLength(2);
+    expect(response.headers.get('set-cookie')).toContain('x-acting-as=did%3Aimajin%3AFAKE_GROUP');
+  });
+
+  it('onboard claim preserves the active forest cookie and migrates the session', async () => {
+    state.rows = [[{ id: 'FAKE_RECORD', usedAt: new Date(), email: 'fake@example.com', scopeDid: 'did:imajin:FAKE_GROUP' }], [{ did: identity.id }], [identity]];
+    const response = await claim(request('/auth/api/onboard/claim', { handoffToken: 'FAKE_HANDOFF' }));
+    expect(response.status).toBe(200);
+    expect(response.headers.getSetCookie()).toHaveLength(3);
+    expect(response.headers.getSetCookie().filter(h => h.startsWith('imajin_session='))).toHaveLength(2);
+  });
+
+  it('non-polling email verification preserves same-origin landing and both cookie headers', async () => {
+    vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
+    state.rows = [[{ id: 'FAKE_RECORD', email: 'fake@example.com', scopeDid: 'did:imajin:FAKE_GROUP' }]];
+    const response = await verifyOnboard(request('/auth/api/onboard/verify?token=FAKE_ONBOARD'));
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe('https://jin.imajin.ai/events');
+    expect(response.headers.getSetCookie()).toHaveLength(3);
+    expect(response.headers.getSetCookie().filter(h => h.startsWith('imajin_session='))).toHaveLength(2);
+  });
+
+  it('used-email fallback stays on the kernel host instead of events.imajin.ai', async () => {
+    vi.stubEnv('APP_URL', 'https://dev-jin.imajin.ai');
+    const response = await verifyOnboard(request('/auth/api/onboard/verify?token=FAKE_USED'));
+    expect(response.status).toBe(410);
+    expect(state.grace).toHaveBeenCalledWith('FAKE_USED', null, expect.anything(), 'https://dev-jin.imajin.ai/events');
+  });
   it('login migrates an existing legacy session and preserves response data', async () => {
     state.rows = [[{ id: 'FAKE_CHALLENGE_ID', identityId: identity.id, challenge: 'FAKE_CHALLENGE' }], [identity], []];
     const response = await login(request('/auth/api/login/verify', { challengeId: 'FAKE_ID', signature: 'FAKE_SIGNATURE' }, 'imajin_session=FAKE_LEGACY'));

@@ -42,7 +42,7 @@ not a browser redirect, and is unchanged.
 `deploy/ecosystem.dev.config.js` owns `dev-jin:3000`;
 `deploy/ecosystem.prod.config.js` owns `prod-jin:7000`. Its old split-service
 entries are documented drift, not proof those vhosts are required:
-`deploy/README.md` ("Ecosystem config drift") documents one kernel process
+`deploy/README.md` ("Known drift captured on 2026-07-16") documents one kernel process
 behind path routing. `docs/ENVIRONMENTS.md` now records the same boundary.
 The separate MCP discovery host does not need the session: `/oauth/authorize`
 anchors browser login/consent to the configured kernel origin, and callbacks

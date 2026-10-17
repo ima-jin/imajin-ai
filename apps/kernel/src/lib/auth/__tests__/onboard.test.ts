@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getSessionCookieOptions } from '@imajin/config';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,9 @@ const {
   mockFindClaimableStubDid: vi.fn(),
   mockVerifyClaimantEmail: vi.fn(),
   mockMintOrAccrueClaimableStub: vi.fn(),
+}));
+vi.mock('@/src/lib/auth/jwt', () => ({
+  createSessionToken: async () => 'FAKE_GRACE_SESSION',
 }));
 
 vi.mock('@/src/db', () => ({
@@ -51,7 +55,7 @@ vi.mock('@imajin/logger', () => ({
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
-import { resolveOnboardIdentity, resolveOnboardRedirect } from '../onboard';
+import { handleExpiredOrUsedToken, resolveOnboardIdentity, resolveOnboardRedirect } from '../onboard';
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
 
@@ -84,10 +88,30 @@ function insertChain(returning: unknown[] = []) {
 
 beforeEach(() => {
   vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
+  vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://jin.imajin.ai/');
+  vi.stubEnv('IMAJIN_ENV', 'prod');
+  vi.stubEnv('SESSION_COOKIE_SCOPE', '');
   vi.clearAllMocks();
   mockDbInsert.mockImplementation(() => insertChain());
 });
 afterEach(() => vi.unstubAllEnvs());
+describe('email-scanner grace session migration', () => {
+  it('reissues a host-only session and expires the domain cookie', async () => {
+    queueSelect(
+      [{ usedAt: new Date(), email: 'fake@example.com', redirectUrl: 'https://jin.imajin.ai/events' }],
+      [{ did: 'did:imajin:FAKE_USER' }],
+      [{ tier: 'soft' }],
+    );
+    const response = await handleExpiredOrUsedToken(
+      'FAKE_ONBOARD', null, getSessionCookieOptions(), 'https://jin.imajin.ai/events',
+    );
+    expect(response?.status).toBe(307);
+    const headers = response!.headers.getSetCookie();
+    expect(headers).toHaveLength(2);
+    expect(headers.find(h => h.startsWith('imajin_session=FAKE_GRACE_SESSION'))).not.toMatch(/Domain=/i);
+    expect(headers.find(h => h.includes('Domain=.imajin.ai'))).toContain('Max-Age=0');
+  });
+});
 
 // ─── resolveOnboardIdentity ────────────────────────────────────────────────────
 

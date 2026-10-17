@@ -24,7 +24,8 @@ function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
     if (['node_modules', '.next', '__tests__', 'public'].includes(entry.name)) return [];
     const path = resolve(directory, entry.name);
-    return entry.isDirectory() ? sourceFiles(path) : /\.tsx?$/.test(path) ? [path] : [];
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.tsx?$/.test(path) ? [path] : [];
   });
 }
 

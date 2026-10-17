@@ -22,7 +22,8 @@ export function withSessionCookie(
 
   // Local HTTP has never had a parent-domain cookie.
   if (options.secure) {
-    const { domain: _domain, ...hostOptions } = options;
+    const hostOptions = { ...options };
+    delete hostOptions.domain;
     const otherScope = options.domain ? hostOptions : { ...hostOptions, domain: '.imajin.ai' };
     const expired = new NextResponse();
     expired.cookies.set(name, '', { ...otherScope, maxAge: 0, expires: new Date(0) });

@@ -161,6 +161,23 @@ beforeEach(() => {
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('POST /api/register — auth.credentials email row (#1855)', () => {
+  it('uses the shared session writer on login-via-register', async () => {
+    mockDbSelect.mockImplementationOnce(() => selectChain([IDENTITY]));
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ created: false });
+    expect(response.headers.get('set-cookie')).toContain('session=mock-token');
+  });
+
+  it('uses the shared session writer after auto-accepting an invite', async () => {
+    mockResolveInviteCode.mockResolvedValueOnce({ ok: true, inviteData: { id: 'FAKE_INVITE' } } as never);
+    mockAutoAcceptInvite.mockResolvedValueOnce({ ok: true } as never);
+    mockDbInsert.mockImplementationOnce(() => insertChain([IDENTITY]));
+    const response = await POST(makeRequest(VALID_BODY));
+    expect(response.status).toBe(201);
+    expect(await response.json()).toMatchObject({ inviteAccepted: true });
+    expect(response.headers.get('set-cookie')).toContain('session=mock-token');
+  });
   it('inserts an auth.credentials row with normalized email on new registration', async () => {
     mockDbInsert
       .mockImplementationOnce(() => insertChain([IDENTITY]))
