@@ -85,6 +85,11 @@ export function createConnectHandler(
   signState: (ownerDid: string, returnTo?: string, appDid?: string, slot?: string) => string,
   resolveConfigDid?: (request: NextRequest, ownerDid: string) => Promise<string | undefined>,
 ) {
+  function signConnectionState(ownerDid: string, returnTo: string | undefined, configDid: string | undefined, slot: string) {
+    if (slot !== 'primary') return signState(ownerDid, returnTo, configDid, slot);
+    if (configDid) return signState(ownerDid, returnTo, configDid);
+    return signState(ownerDid, returnTo);
+  }
   return async function GET(request: NextRequest) {
     let slot: string;
     try { slot = requestConnectionSlot(request); } catch (err) { return invalidSlot(err); }
@@ -132,14 +137,7 @@ export function createConnectHandler(
 
     const { searchParams } = new URL(request.url);
     const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
-    let state: string;
-    if (slot !== 'primary') {
-      state = signState(ownerDid, returnTo ?? undefined, configDid, slot);
-    } else {
-      state = configDid
-      ? signState(ownerDid, returnTo ?? undefined, configDid)
-      : signState(ownerDid, returnTo ?? undefined);
-    }
+    const state = signConnectionState(ownerDid, returnTo ?? undefined, configDid, slot);
     try {
       return NextResponse.redirect(await (slot === 'primary'
         ? buildAuthorizeUrl(ownerDid, state, configDid)
