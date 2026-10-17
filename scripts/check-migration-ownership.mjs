@@ -327,11 +327,11 @@ function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
       'i',
     );
     const searchPath = new RegExp(
-      String.raw`\bsearch_path\s*(?:=|TO)\s*[^;]*\b${schema}\b`,
+      String.raw`\bsearch_path"?\s*(?:=|TO)\s*[^;]*\b${schema}\b`,
       'i',
     );
     const quotedSearchPath = statements.some((statement) => {
-      const setting = /^\s*SET\s+(?:(?:LOCAL|SESSION)\s+)?search_path\s*(?:=|TO)\s+(.+)$/i.exec(statement);
+      const setting = /^\s*SET\s+(?:(?:LOCAL|SESSION)\s+)?"?search_path"?\s*(?:=|TO)\s*(.+)$/i.exec(statement);
       return setting?.[1].split(',').some((value) => value.trim().replaceAll(/['"]/g, '') === schema);
     });
     if (touched.has(schema) || schemaDDL.test(masked) || searchPath.test(masked) || quotedSearchPath) {

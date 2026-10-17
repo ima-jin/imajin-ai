@@ -120,6 +120,8 @@ describe('check-migration-ownership', () => {
     ['kernel', 'UPDATE dykil.surveys SET title = title;'],
     ['dykil', 'SET search_path TO dykil; CREATE TABLE surveys (id text);'],
     ['kernel', "SET LOCAL search_path TO 'dykil', pg_catalog; SELECT * FROM surveys;"],
+    ['kernel', 'SET "search_path" TO \'dykil\'; SELECT * FROM surveys;'],
+    ['kernel', "SET search_path='dykil'; SELECT * FROM surveys;"],
     ['learn', 'DELETE FROM learn.courses;'],
     ['coffee', 'UPDATE coffee.pages SET id = id;'],
     ['market', 'SELECT * FROM market.listings;'],
