@@ -158,6 +158,7 @@ describe('pinned scope sets (change these deliberately)', () => {
       'google:gmail:read', 'google:gmail:send',
       'google:calendar:read', 'google:calendar:write',
       'google:drive:read', 'google:meet:records',
+      'google:search-console:read', 'google:business-profile:read',
     ]],
     ['TypeSafe.ai', 'typesafe', ['typesafe:decide']],
   ] satisfies Array<[string, ConnectorId, string[]]>)('pins the %s connector card toggles', (_label, id, expected) => {
@@ -203,6 +204,8 @@ describe('pinned scope sets (change these deliberately)', () => {
       'google:calendar:write',
       'google:drive:read',
       'google:meet:records',
+      'google:search-console:read',
+      'google:business-profile:read',
       'discovery:read',
       'inference:read',
       'inference:write',
