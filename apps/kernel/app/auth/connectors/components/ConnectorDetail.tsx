@@ -36,6 +36,8 @@ import {
 import { buildConnectHref, readConnectOutcome } from '@/src/lib/kernel/connect-outcome';
 import { validateStripeCredentialPair, validateStripeWebhookSecret } from '@/src/lib/stripe/credential-pair';
 import { ConnectionSlots, slotRoute, useConnectionSlot, useRefreshConnections } from './ConnectionSlots';
+import { GoogleSetupChecklist } from './GoogleSetupChecklist';
+import type { GoogleSetupView } from '@/src/lib/google/setup-content';
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -322,10 +324,11 @@ function ConnectOutcomeBanner(props: Readonly<{ connectorId: string; onConnected
 }
 
 /** One scope row inside a ScopeGrantSection. */
-function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onToggle }: Readonly<{
+function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onToggle, blocked }: Readonly<{
   scope: ConnectorScope; isActive: boolean; isGranting: boolean;
   isAnyGranting: boolean; tokenSealed: boolean;
   onToggle: (name: string, enable: boolean) => void;
+  blocked?: boolean;
 }>) {
   const isLocked = scope.releaseClass === 'never';
   // #1679: the credential step gates the scopes that SPEND the credential, not
@@ -353,7 +356,7 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
         <input
           type="checkbox"
           checked={isActive}
-          disabled={isLocked || credentialBlocked || isGranting || isAnyGranting}
+          disabled={isLocked || credentialBlocked || isGranting || isAnyGranting || blocked}
           onChange={(e) => { onToggle(scope.name, e.target.checked); }}
           className="w-4 h-4 rounded accent-amber-500 cursor-pointer disabled:cursor-not-allowed"
         />
@@ -370,12 +373,13 @@ function ScopeRow({ scope, isActive, isGranting, isAnyGranting, tokenSealed, onT
 }
 
 /** Shared scope-grant section — used by GitHub, Discord, and QuickBooks. */
-function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle, requiredScope }: Readonly<{
+function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantError, tokenSealed, noTokenHint, onToggle, requiredScope, blockedScopes }: Readonly<{
   entry: ConnectorEntry; activeSet: Set<string>; stepNumber: string | number;
   grantingScope: string | null; grantError: string | null;
   tokenSealed: boolean; noTokenHint: string;
   onToggle: (name: string, enable: boolean) => void;
   requiredScope?: string;
+  blockedScopes?: ReadonlySet<string>;
 }>) {
   const hasActive = requiredScope ? activeSet.has(requiredScope) : activeSet.size > 0;
   // Only worth saying when the credential actually blocks something: on a card
@@ -402,6 +406,7 @@ function ScopeGrantSection({ entry, activeSet, stepNumber, grantingScope, grantE
             isAnyGranting={grantingScope !== null}
             tokenSealed={tokenSealed}
             onToggle={onToggle}
+            blocked={blockedScopes?.has(scope.name) && !activeSet.has(scope.name)}
           />
         ))}
       </div>
@@ -1775,6 +1780,7 @@ interface OAuthConnectorCardExtraField<TExtra> {
 }
 
 interface OAuthConnectorCardOptions<TExtra = undefined> {
+  guidedGoogleSetup?: boolean;
   /** POST route that seals `{ clientId, clientSecret, redirectUri, ...extra }`. */
   configureRoute: string;
   /** Callback path appended to `window.location.origin` to prefill the default redirect URI. */
@@ -1783,6 +1789,16 @@ interface OAuthConnectorCardOptions<TExtra = undefined> {
   readyScope?: string;
   copy: OAuthConnectorCardCopy;
   extra?: OAuthConnectorCardExtraField<TExtra>;
+}
+
+function googleSetupUi(guided: boolean | undefined, view: GoogleSetupView | null) {
+  return {
+    configureId: guided ? 'google-oauth-configure' : undefined,
+    connectId: guided ? 'google-account-connect' : undefined,
+    clientIdType: guided ? 'password' : 'text',
+    blockedScopes: guided && !view?.businessProfileAvailable
+      ? new Set(['google:business-profile:read']) : undefined,
+  };
 }
 
 /**
@@ -1800,6 +1816,8 @@ function createOAuthConnectorCard<TExtra = undefined>(
     const [status, setStatus] = useState<OAuthConnectorStatus | null>(null);
     const [statusLoading, setStatusLoading] = useState(true);
     const [statusError, setStatusError] = useState<string | null>(null);
+    const [googleSetup, setGoogleSetup] = useState<GoogleSetupView | null>(null);
+    const setupUi = googleSetupUi(opts.guidedGoogleSetup, googleSetup);
 
     const [showConfigure, setShowConfigure] = useState(false);
     const [clientId, setClientId] = useState('');
@@ -1892,6 +1910,11 @@ function createOAuthConnectorCard<TExtra = undefined>(
         )}
 
         <ConnectOutcomeBanner connectorId={entry.id} onConnected={refreshStatus} />
+        {opts.guidedGoogleSetup && (
+          <GoogleSetupChecklist slot={slot}
+            revision={`${status?.configSealed}:${status?.tokenSealed}`}
+            onChange={setGoogleSetup} />
+        )}
 
         {statusLoading && <p className="text-gray-500 text-sm">Loading status…</p>}
         {statusError && <p className="text-red-400 text-sm">Could not load status: {statusError}</p>}
@@ -1899,7 +1922,7 @@ function createOAuthConnectorCard<TExtra = undefined>(
         {!statusLoading && !statusError && status && (
           <div className="space-y-6">
             {/* Step 1: Configure OAuth App */}
-            <div>
+            <div id={setupUi.configureId}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2">
                   <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
@@ -1914,11 +1937,11 @@ function createOAuthConnectorCard<TExtra = undefined>(
               </div>
               {!status.configSealed || showConfigure ? (
                 <form onSubmit={(e) => { void handleConfigure(e); }} className="space-y-2">
-                  <input type="text" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" required
+                  <input type={setupUi.clientIdType} aria-label="OAuth client ID" value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" required
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
-                  <input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" required
+                  <input type="password" aria-label="OAuth client secret" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client Secret" required
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
-                  <input type="url" value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} placeholder="Redirect URI" required
+                  <input type="url" aria-label="OAuth redirect URI" value={redirectUri} onChange={(e) => setRedirectUri(e.target.value)} placeholder="Redirect URI" required
                     className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-amber-500/50" />
                   {opts.extra?.render(extraValue, setExtraValue)}
                   {configError && <p className="text-red-400 text-xs">{configError}</p>}
@@ -1939,7 +1962,7 @@ function createOAuthConnectorCard<TExtra = undefined>(
             </div>
 
             {/* Step 2: Connect account */}
-            <div>
+            <div id={setupUi.connectId}>
               <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-2 mb-3">
                 <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold ${
                   status.tokenSealed ? 'bg-green-500/20 text-green-400' : 'bg-amber-500/20 text-amber-400'}`}>
@@ -1972,8 +1995,9 @@ function createOAuthConnectorCard<TExtra = undefined>(
               stepNumber={3}
               grantingScope={grantingScope}
               grantError={grantError}
-              tokenSealed={status.tokenSealed}
+              tokenSealed={opts.guidedGoogleSetup || status.tokenSealed}
               noTokenHint="Connect your account (step 2) to enable scope grants."
+              blockedScopes={setupUi.blockedScopes}
               onToggle={(name, enable) => { void handleToggleScope(name, enable); }}
             />
 
@@ -2029,10 +2053,11 @@ const QuickBooksConnectorCard = createOAuthConnectorCard<{ environment: 'sandbox
 // ── Google Workspace card (Pattern A — OAuth, like QuickBooks) — #2144 ──────
 
 const GoogleConnectorCard = createOAuthConnectorCard({
+  guidedGoogleSetup: true,
   configureRoute: '/google/api/configure',
   callbackPath: '/google/api/callback',
   copy: {
-    configStepLabel: 'OAuth Client (Google Cloud Console)',
+    configStepLabel: 'Import OAuth client into identity vault',
     configSealedLabel: 'OAuth client config sealed',
     accountStepLabel: 'Google Account',
     connectLabel: 'Connect Google Account →',
