@@ -17,6 +17,7 @@
  */
 import { getClient } from '@imajin/db';
 import { serializeLoop, serializeLoopEvent, type LoopJson, type LoopEventJson, type RawLoopRow, type RawLoopEventRow } from './serialize';
+import { projectHorizon, type Horizon } from './horizon';
 
 export interface ListLoopsFilters {
   principal: string;
@@ -199,6 +200,7 @@ export async function listLoopsPage(filters: ListLoopsPageFilters): Promise<Loop
 export interface LoopWithHistory {
   loop: LoopJson;
   events: LoopEventJson[];
+  horizon: Horizon;
 }
 
 /**
@@ -224,8 +226,10 @@ export async function getLoopWithHistory(loopId: string, principal: string): Pro
     ORDER BY occurred_at ASC, id ASC
   `) as unknown as RawLoopEventRow[];
 
+  const events = eventRows.map(serializeLoopEvent);
   return {
     loop: serializeLoop(loopRow),
-    events: eventRows.map(serializeLoopEvent),
+    events,
+    horizon: projectHorizon(events, loopId, principal),
   };
 }
