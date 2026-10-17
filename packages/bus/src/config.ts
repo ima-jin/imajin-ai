@@ -424,6 +424,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
   ],
+  // #2599 / migration 0200 — complete the metadata-only audit write before
+  // publish resolves. Limiter keys, IPs, message bodies and signatures stay private.
+  'agent.reach.throttled': [
+    {
+      type: 'audit-log',
+      config: { fields: ['principalDid', 'requesterDid', 'dimension', 'tier', 'retryAfter', 'context_id', 'context_type'] },
+      await: true,
+      enabled: true,
+    },
+  ],
   // #2588 / migration 0196 — the service persists the signed envelope and
   // mints exactly one attestation. This chain only emits and notifies the
   // principal; raw message/reply details belong only in principal-scoped notify
