@@ -34,7 +34,7 @@ export async function readApprovalSessionOutcome(
 
 async function readCorrelatedOutcome(command: SessionCommandFrame, principal: string, approvalId: string): Promise<SessionOutcome | null> {
   const record = await getSessionEvent('result', command.commandId, principal);
-  if (!record || record.issuer !== command.to || record.principal !== principal) return null;
+  if (record?.issuer !== command.to || record.principal !== principal) return null;
   if (record.loop_id !== command.payload.loopId) return null;
   const attestation = sessionAttestationSchema.safeParse(record.payload.attestation);
   if (!attestation.success || attestation.data.from !== command.to) return null;
