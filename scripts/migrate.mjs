@@ -74,6 +74,7 @@ import { createRequire } from 'node:module';
 import envUtils from './env-utils.js';
 import { parseArgs, scopeForOwner } from './lib/migrate-owner-filter.mjs';
 import { mapSequentially } from './lib/sequential.mjs';
+import { prepareKernelBaseline } from './lib/kernel-baseline.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
@@ -97,7 +98,7 @@ const postgres = kernelRequire('postgres');
 
 // Read DATABASE_URL from apps/kernel/.env.local, fallback to env var
 const envPath = resolve(kernelDir, '.env.local');
-const databaseUrl = envUtils.readEnvValueFromFile(envPath, 'DATABASE_URL') || process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL || envUtils.readEnvValueFromFile(envPath, 'DATABASE_URL');
 
 if (!databaseUrl) {
   console.error(`❌ No DATABASE_URL found in ${envPath} or environment`);
@@ -128,6 +129,11 @@ async function getApplied() {
 
 async function runMigrations() {
   await ensureTrackingTable();
+  if (!args.owner || args.owner === 'kernel') {
+    const manifest = JSON.parse(readFileSync(resolve(migrationsDir, 'kernel-baseline.json'), 'utf8'));
+    const content = readFileSync(resolve(migrationsDir, manifest.filename), 'utf8');
+    await prepareKernelBaseline(sql, manifest, content);
+  }
   const applied = await getApplied();
 
   const files = readdirSync(migrationsDir)

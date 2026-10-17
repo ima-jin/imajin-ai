@@ -6,8 +6,9 @@ set -euo pipefail
 export LC_ALL=C
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="postgres:16-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4"
-MIGRATION="$ROOT/migrations/0201_reconcile_seed_era_drift.sql"
-MEMBERSHIP_MIGRATION="$ROOT/migrations/0216_restore_conversation_members_unique.sql"
+HISTORY="$ROOT/migrations/archive/pre-kernel-baseline"
+MIGRATION="$HISTORY/0201_reconcile_seed_era_drift.sql"
+MEMBERSHIP_MIGRATION="$HISTORY/0216_restore_conversation_members_unique.sql"
 TMP="$(mktemp -d)"
 CONTAINER=""
 cleanup() {
@@ -114,7 +115,7 @@ assert_keys() {
 printf 'Bootstrapping all migrations directly with per-file transactions...\n'
 query postgres 'CREATE DATABASE seed_drift_baseline' >/dev/null
 count=0
-for migration in "$ROOT"/migrations/[0-9][0-9][0-9][0-9]_*.sql; do
+for migration in "$HISTORY"/[0-9][0-9][0-9][0-9]_*.sql; do
   if [[ "$migration" == "$MIGRATION" ]]; then snapshot seed_drift_baseline before_first; fi
   if ! sql seed_drift_baseline --single-transaction < "$migration" > "$TMP/bootstrap.log" 2>&1; then
     cat "$TMP/bootstrap.log" >&2
