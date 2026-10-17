@@ -49,6 +49,36 @@ function validateBody(body: Record<string, unknown>): string | null {
   return null;
 }
 
+async function prepareDetail(
+  body: Record<string, unknown>,
+  app: { name: string; slug: string | null; secrets: unknown },
+  proposalId: string, operatorDid: string,
+): Promise<{ detail: Record<string, unknown> } | { error: string; status?: number }> {
+  const appDid = body.appDid as string;
+  const action = body.action as AppSecretAction;
+  const detail: Record<string, unknown> = { appDid, appName: app.name };
+  if (action === 'sync') {
+    if (!app.slug) return { error: 'App has no manifest repo slug', status: 409 };
+    const snapshot = await previewAppSecrets(app.slug);
+    if ('error' in snapshot) return { error: snapshot.error, status: 409 };
+    return { detail: { ...detail, slug: app.slug, secrets: snapshot.ok } };
+  }
+  const declared = validateSecrets(app.secrets ?? []);
+  if ('error' in declared || typeof body.name !== 'string') return { error: 'Secret is not declared for this app' };
+  const declaration = declared.ok.find((secret) => secret.name === body.name);
+  if (!declaration) return { error: 'Secret is not declared for this app' };
+  detail.name = body.name;
+  if (declaration.kind === 'operator-supplied' && (action === 'set' || action === 'rotate')) {
+    if (!isAppSecretValue(body.value)) return { error: 'Operator input must be a nonempty string of at most 65536 UTF-8 bytes' };
+    detail.stagingRef = await stageAppSecret({
+      proposalId, operatorDid, appDid, name: body.name, action,
+    }, body.value);
+  } else if (body.value !== undefined || action === 'set') {
+    return { error: 'Operator input not accepted for this action' };
+  }
+  return { detail };
+}
+
 export async function POST(request: NextRequest) {
   const auth = await authorize(request, true);
   if (auth.response) return auth.response;
@@ -69,29 +99,10 @@ export async function POST(request: NextRequest) {
     }).from(registryApps).where(eq(registryApps.appDid, appDid));
     if (!app) return fail('Unknown app', 404);
     if (app.status !== 'active' || !(await hasClaimedApp(appDid))) return fail('App must be active and claimed', 409);
-    const detail: Record<string, unknown> = { appDid, appName: app.name };
     const proposalId = generateId('appsecret');
-    if (action === 'sync') {
-      if (!app.slug) return fail('App has no manifest repo slug', 409);
-      const snapshot = await previewAppSecrets(app.slug);
-      if ('error' in snapshot) return fail(snapshot.error, 409);
-      detail.slug = app.slug;
-      detail.secrets = snapshot.ok;
-    } else {
-      const declared = validateSecrets(app.secrets ?? []);
-      if ('error' in declared || typeof body.name !== 'string') return fail('Secret is not declared for this app');
-      const declaration = declared.ok.find((secret) => secret.name === body.name);
-      if (!declaration) return fail('Secret is not declared for this app');
-      detail.name = body.name;
-      if (declaration.kind === 'operator-supplied' && (action === 'set' || action === 'rotate')) {
-        if (!isAppSecretValue(body.value)) return fail('Operator input must be a nonempty string of at most 65536 UTF-8 bytes');
-        detail.stagingRef = await stageAppSecret({
-          proposalId, operatorDid: auth.operatorDid, appDid, name: body.name, action,
-        }, body.value);
-      } else if (body.value !== undefined || action === 'set') {
-        return fail('Operator input not accepted for this action');
-      }
-    }
+    const prepared = await prepareDetail(body, app, proposalId, auth.operatorDid);
+    if ('error' in prepared) return fail(prepared.error, prepared.status);
+    const { detail } = prepared;
     const kind = appSecretsKind(action);
     const summary = `${action} app secrets for '${app.name}'`;
     const contentHash = computeApprovalContentHash({ proposalId, source: 'apps', kind, summary, keysTouched: [], detail });
