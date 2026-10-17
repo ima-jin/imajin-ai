@@ -234,9 +234,27 @@ describe.each([derivedDid, webDid])('foreign reach round trip: %s', (requesterDi
 it('rejects a tampered key even when both keys are verified by the did:web document', async () => {
   const reachId = await send(webDid);
   const input = signedStatus(webDid, reachId);
+  expect((await pollHttp(reachId, signedStatus('did:web:unregistered.example', reachId))).status).toBe(401);
   expect((await pollHttp(reachId, { ...input, publicKey: otherKeys.publicKey })).status).toBe(401);
   expect((await pollHttp(reachId, { ...input, publicKey: senderKeys.publicKey.toUpperCase() })).status).toBe(401);
   vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ verificationMethod: [] })));
+  expect((await pollHttp(reachId, input)).status).toBe(401);
+});
+
+it('preserves legacy transcripts and uses the registered key rather than a supplied override', async () => {
+  const reachId = await send(derivedDid);
+  await database.insert(schema.identities).values({
+    id: derivedDid, publicKey: senderKeys.publicKey, scope: 'actor', subtype: 'agent',
+  });
+  const input = signedStatus(derivedDid, reachId);
+  expect(JSON.parse(reachStatusTranscript(principalDid, reachId, input))).toEqual({
+    type: 'reach_status', principalDid, reachId, requesterDid: derivedDid, issuedAt: input.issuedAt,
+  });
+  expect((await pollHttp(reachId, input)).status).toBe(200);
+  const override = { ...input, publicKey: otherKeys.publicKey };
+  override.signature = authCrypto.signSync(reachStatusTranscript(principalDid, reachId, override), otherKeys.privateKey);
+  expect((await pollHttp(reachId, override)).status).toBe(401);
+  await pg.query('UPDATE auth.identities SET suspended_at = now() WHERE id = $1', [derivedDid]);
   expect((await pollHttp(reachId, input)).status).toBe(401);
 });
 
