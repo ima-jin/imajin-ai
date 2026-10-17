@@ -7,6 +7,7 @@ type Predicate = { column?: string; value?: unknown; predicates?: Predicate[]; m
 const h = vi.hoisted(() => {
   const grants: Grant[] = [];
   const vault = new Map<string, string>();
+  const identities = { id: 'identityId', metadata: 'metadata' };
   const matches = (row: Grant, predicate: Predicate): boolean => {
     if (predicate.predicates) return predicate.predicates.every((entry) => matches(row, entry));
     const actual = row[predicate.column as keyof Grant];
@@ -16,8 +17,10 @@ const h = vi.hoisted(() => {
   const seal = vi.fn(async (field: string, value: string) => { vault.set(field, value); });
   const load = vi.fn(async (field: string) => vault.get(field));
   return {
-    grants, vault, where, seal, load, registration: vi.fn(), sign: vi.fn(), audit: vi.fn(),
-    db: { select: () => ({ from: () => ({ where }) }) },
+    grants, vault, where, seal, load, identities, registration: vi.fn(), sign: vi.fn(), audit: vi.fn(),
+    db: { select: () => ({ from: (table: unknown) => table === identities
+      ? { where: () => ({ limit: async () => [{ metadata: {} }] }) }
+      : { where } }) },
     channelLinks: {
       channel: 'channel', did: 'did', appDid: 'appDid', slot: 'slot', status: 'status', scopes: 'scopes',
     },
@@ -30,7 +33,7 @@ vi.mock('drizzle-orm', () => ({
   like: vi.fn(), ne: vi.fn(), sql: vi.fn(),
 }));
 vi.mock('@/src/db', () => ({
-  db: h.db, channelLinks: h.channelLinks, googleWorkspaceState: {}, assets: {}, consentGrants: {},
+  db: h.db, identities: h.identities, channelLinks: h.channelLinks, googleWorkspaceState: {}, assets: {}, consentGrants: {},
 }));
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: h.seal, loadAndUnseal: h.load }));
 vi.mock('../../kernel/connector-registry-store', () => ({
