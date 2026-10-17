@@ -31,7 +31,7 @@ export function isSurfaceUri(value: unknown): value is string {
     /^repo:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#branch:[^\s#]+$/,
     /^service:[A-Za-z0-9_.-]+@env:[A-Za-z0-9_.-]+$/,
     /^device:[A-Za-z0-9_.:-]+$/,
-    /^issue:#[1-9][0-9]*$/,
+    /^issue:#[1-9]\d*$/,
   ].some((pattern) => pattern.test(value));
 }
 
