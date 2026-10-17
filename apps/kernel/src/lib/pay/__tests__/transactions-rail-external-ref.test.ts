@@ -31,7 +31,7 @@ const MIGRATION = '0178_pay_transactions_rail_external_ref.sql';
 function findMigrationsDir(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 12; i++) {
-    const candidate = join(dir, 'migrations');
+    const candidate = join(dir, 'migrations/archive/pre-kernel-baseline');
     if (existsSync(join(candidate, MIGRATION))) return candidate;
     dir = dirname(dir);
   }

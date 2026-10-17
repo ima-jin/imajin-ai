@@ -105,7 +105,7 @@ beforeAll(async () => {
       principal_did text, surfaces jsonb, status text, token_hash text, revoked_at timestamptz, revoked_by text
     );`);
   for (const migration of ['0195_reach_envelopes.sql', '0198_foreign_agent_stubs.sql']) {
-    await pg.exec(readFileSync(new URL(`../../../../../../migrations/${migration}`, import.meta.url), 'utf8'));
+    await pg.exec(readFileSync(new URL(`../../../../../../migrations/archive/pre-kernel-baseline/${migration}`, import.meta.url), 'utf8'));
   }
 });
 afterAll(async () => { await pg.close(); });

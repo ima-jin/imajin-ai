@@ -64,8 +64,8 @@ beforeAll(async () => {
       created_at timestamptz NOT NULL DEFAULT now()
     );
   `);
-  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/0157_loops_rail.sql'), 'utf8'));
-  const migration = readFileSync(resolve(process.cwd(), 'migrations/0194_surface_lease.sql'), 'utf8');
+  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/archive/pre-kernel-baseline/0157_loops_rail.sql'), 'utf8'));
+  const migration = readFileSync(resolve(process.cwd(), 'migrations/archive/pre-kernel-baseline/0194_surface_lease.sql'), 'utf8');
   await client.exec(migration);
   await client.exec(migration);
   const makeTagged = (connection: Pick<PGlite, 'query'>) => async (strings: TemplateStringsArray, ...values: unknown[]) => {

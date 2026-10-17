@@ -31,7 +31,7 @@ function taggedSql(executor: Pick<PGlite, 'query'>): TaggedSql {
   };
 }
 
-const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../migrations');
+const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../migrations/archive/pre-kernel-baseline');
 const outputMigration = readdirSync(migrationsDir).find(name => name.endsWith('_loop_output_artifacts.sql'));
 const migrationNames = ['0157_loops_rail.sql', '0194_surface_lease.sql', outputMigration];
 const PRINCIPAL = 'did:imajin:owner';
