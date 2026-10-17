@@ -24,7 +24,7 @@ function isTimelineEntry(value: unknown): boolean {
 }
 function isSecretMetadata(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  return typeof value.name === 'string' && (value.kind === 'random-32B' || value.kind === 'random-64B')
+  return typeof value.name === 'string' && ['random-32B', 'random-64B', 'operator-supplied'].includes(value.kind as string)
     && typeof value.status === 'string' && ['missing', 'active', 'revoked'].includes(value.status)
     && Array.isArray(value.timeline) && value.timeline.every(isTimelineEntry);
 }
