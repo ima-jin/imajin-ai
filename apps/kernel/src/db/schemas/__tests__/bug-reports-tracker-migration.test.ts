@@ -26,7 +26,7 @@ vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 function findRepoMigrationsDir(): string {
   let dir = dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 12; i++) {
-    const candidate = join(dir, 'migrations');
+    const candidate = join(dir, 'migrations/archive/pre-kernel-baseline');
     if (existsSync(candidate)) return candidate;
     const parent = dirname(dir);
     if (parent === dir) break;

@@ -93,8 +93,8 @@ describe('usageBilled drizzle schema', () => {
   });
 });
 
-describe('migrations/0125_usage_billed_manual.sql (#2030)', () => {
-  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/0125_usage_billed_manual.sql'), 'utf-8');
+describe('migrations/archive/pre-kernel-baseline/0125_usage_billed_manual.sql (#2030)', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline/0125_usage_billed_manual.sql'), 'utf-8');
 
   it('adds every manual/backfill column idempotently, defaulting source/currency for existing api rows', () => {
     expect(sql).toMatch(/ALTER TABLE usage\.billed ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'api'/);
@@ -109,8 +109,8 @@ describe('migrations/0125_usage_billed_manual.sql (#2030)', () => {
   });
 });
 
-describe('migrations/0127_usage_billed_receipts.sql (#1951)', () => {
-  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/0127_usage_billed_receipts.sql'), 'utf-8');
+describe('migrations/archive/pre-kernel-baseline/0127_usage_billed_receipts.sql (#1951)', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline/0127_usage_billed_receipts.sql'), 'utf-8');
 
   it('adds every receipt/FX-snapshot column idempotently', () => {
     for (const column of [
@@ -126,8 +126,8 @@ describe('migrations/0127_usage_billed_receipts.sql (#1951)', () => {
   });
 });
 
-describe('migrations/0122_usage_billed.sql', () => {
-  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/0122_usage_billed.sql'), 'utf-8');
+describe('migrations/archive/pre-kernel-baseline/0122_usage_billed.sql', () => {
+  const sql = readFileSync(resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline/0122_usage_billed.sql'), 'utf-8');
 
   it('creates the usage.billed table with every required column', () => {
     expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS usage\.billed/);

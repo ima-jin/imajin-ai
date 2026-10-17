@@ -16,7 +16,7 @@ const params = { principalDid, requesterDid, reachId: 'reach_1' };
 
 beforeAll(async () => {
   database = new PGlite();
-  await database.exec(readFileSync(new URL('../../../../../../migrations/0195_reach_envelopes.sql', import.meta.url), 'utf8'));
+  await database.exec(readFileSync(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0195_reach_envelopes.sql', import.meta.url), 'utf8'));
   mocked.getClient.mockReturnValue({
     unsafe: async (sql: string, values: unknown[]) => (await database.query(sql, values)).rows,
   });

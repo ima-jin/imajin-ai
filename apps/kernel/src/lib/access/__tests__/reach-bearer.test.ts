@@ -112,7 +112,7 @@ beforeAll(async () => {
       payload jsonb, signature text, cid text, attestation_status text, issued_at timestamptz
     );`);
   for (const name of ['0156_delegate_grant_bearers.sql', '0198_foreign_agent_stubs.sql', '0195_reach_envelopes.sql']) {
-    await pg.exec(readFileSync(new URL(`../../../../../../migrations/${name}`, import.meta.url), 'utf8'));
+    await pg.exec(readFileSync(new URL(`../../../../../../migrations/archive/pre-kernel-baseline/${name}`, import.meta.url), 'utf8'));
   }
   state.client = {
     ...executor(pg),

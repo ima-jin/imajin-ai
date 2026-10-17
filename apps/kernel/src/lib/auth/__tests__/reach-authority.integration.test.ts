@@ -74,7 +74,7 @@ beforeAll(async () => {
       handle_claimed_at timestamptz, contact_email text, key_roles jsonb,
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
     );`);
-  const migration = await readFile(new URL('../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('../../../../../../migrations/archive/pre-kernel-baseline/0198_foreign_agent_stubs.sql', import.meta.url), 'utf8');
   await pg.exec(migration);
   await pg.exec(`CREATE TABLE auth.delegate_grant_bearers (
     principal_did text, surfaces jsonb, status text, token_hash text, revoked_at timestamptz, revoked_by text

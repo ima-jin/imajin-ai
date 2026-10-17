@@ -61,8 +61,8 @@ beforeAll(async () => {
       id text PRIMARY KEY, loop_id text, type text, issuer text, principal text, payload jsonb, occurred_at timestamptz
     );
   `);
-  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/0157_loops_rail.sql'), 'utf8'));
-  const migration = readFileSync(resolve(process.cwd(), 'migrations/0194_surface_lease.sql'), 'utf8');
+  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/archive/pre-kernel-baseline/0157_loops_rail.sql'), 'utf8'));
+  const migration = readFileSync(resolve(process.cwd(), 'migrations/archive/pre-kernel-baseline/0194_surface_lease.sql'), 'utf8');
   await client.exec(migration);
   await client.exec(migration);
   const makeTagged = (connection: Pick<PGlite, 'query'>) => async (strings: TemplateStringsArray, ...values: unknown[]) => {

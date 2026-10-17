@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 
 vi.setConfig({ testTimeout: 30_000 });
-const migration = (name: string) => readFileSync(resolve(__dirname, '../../../../../../migrations', name), 'utf8');
+const migration = (name: string) => readFileSync(resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline', name), 'utf8');
 let client: PGlite;
 afterEach(async () => { await client?.close(); });
 
