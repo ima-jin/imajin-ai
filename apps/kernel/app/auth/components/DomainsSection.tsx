@@ -120,7 +120,7 @@ export default function DomainsSection({ did }: Readonly<{ did: string }>) {
         </div>
         <button type="submit" disabled={busy || loading || !domain.trim()} className={buttonClass}>Add domain</button>
       </form>
-      {loading && <p role="status" className="text-sm text-zinc-400">Loading domains…</p>}
+      {loading && <output className="text-sm text-zinc-400">Loading domains…</output>}
       {!loading && !error && domains.length === 0 && <p className="text-sm text-zinc-500">No domains added.</p>}
       <ul className="space-y-3">
         {domains.map((binding) => (

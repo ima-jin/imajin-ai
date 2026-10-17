@@ -6,6 +6,7 @@ import { db, attestations, domainBindings, identities, nodes, registryApps, type
 import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-attestation';
 import { domainSigningIdentity, getImajinOrganization } from './signing';
 import { DomainError, isImajinDomain, normalizeDomain } from './normalize';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export { DomainError, normalizeDomain } from './normalize';
 export type DomainBinding = Pick<DomainBindingRow,
@@ -98,7 +99,7 @@ async function assertNoVerifiedCompetitor(tx: Transaction, domain: string, zoneO
 export async function addDomain(input: { domain: string; zoneOwner: string; appDid?: string | null }): Promise<DomainBinding> {
   const domain = normalizeDomain(input.domain);
   if (isImajinDomain(domain)) throw new DomainError('reserved_domain', 'Imajin domains require organization issuance', 403);
-  return db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     await lockDomain(tx, domain);
     await assertNoVerifiedCompetitor(tx, domain, input.zoneOwner);
     const siteOwner = await resolveSiteOwner(tx, input.zoneOwner, domain, input.appDid);
@@ -169,7 +170,7 @@ async function transition(tx: Transaction, row: DomainBindingRow, status: 'verif
 
 export async function verifyDomain(input: string, zoneOwner: string): Promise<DomainBinding> {
   const domain = normalizeDomain(input);
-  return db.transaction(async (tx) => {
+  return await db.transaction(async (tx) => {
     await lockDomain(tx, domain);
     const row = await claim(tx, domain, zoneOwner);
     if (!row) throw new DomainError('domain_not_found', 'Domain claim not found', 404);
@@ -283,7 +284,7 @@ export async function recheckDomains(limit = 100): Promise<{ checked: number; re
     or(isNull(domainBindings.checkedAt), lt(domainBindings.checkedAt, new Date(Date.now() - 24 * 60 * 60 * 1000))),
   )).orderBy(asc(domainBindings.checkedAt)).limit(Math.max(1, Math.min(limit, 500)));
   const result = { checked: 0, revoked: 0, failed: 0 };
-  for (const row of rows) {
+  await forEachSequential(rows, async (row) => {
     try {
       const checked = await verifyDomain(row.domain, row.zoneOwner);
       result.checked++;
@@ -292,6 +293,6 @@ export async function recheckDomains(limit = 100): Promise<{ checked: number; re
       result.failed++;
       log.warn({ domain: row.domain }, 'Domain recheck failed; no ownership evidence was changed');
     }
-  }
+  });
   return result;
 }

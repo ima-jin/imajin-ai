@@ -130,6 +130,15 @@ function provisionDetail(
   if (reissueClaim) detail.reissueClaim = true;
   return detail;
 }
+
+function provisionSummary(body: ProvisionRequestBody, slug: string, displayName: string, operatorDid: string, reissueClaim: boolean): string {
+  if (reissueClaim) {
+    return `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`;
+  }
+  const siteOwnerDid = typeof body.siteOwnerDid === 'string' ? body.siteOwnerDid : operatorDid;
+  const domain = typeof body.domain === 'string' ? body.domain : `${slug}.imajin.ai`;
+  return `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+}
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -214,9 +223,7 @@ export async function POST(request: NextRequest) {
   // #2707: a reissue is flagged on the card itself (and so covered by the content hash the
   // operator signs) so /jin can say "Reissue claim code" instead of "Provision". Only set
   // when true — an ordinary provision proposal carries the retirement notice instead.
-  const summary = reissueClaim
-    ? `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`
-    : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Site owner: ${body.siteOwnerDid ?? operatorDid}; issue ${body.domain ?? `${slug}.imajin.ai`} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+  const summary = provisionSummary(body, slug, displayName, operatorDid, reissueClaim);
   const detail = provisionDetail(body, { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok }, reissueClaim);
   const contentHash = computeApprovalContentHash({
     proposalId,

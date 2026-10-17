@@ -5,9 +5,9 @@ import { validateEntryUrl } from '@/src/lib/apps/entry-url';
 
 /** Host, not X-Forwarded-Host: forwarded headers are not ownership evidence. */
 export function domainFromHost(host: string | null): string | null {
-  if (!host || !/^[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(host)) return null;
+  if (!host || !/^[a-z0-9.-]+(?::\d{1,5})?$/i.test(host)) return null;
   try {
-    return normalizeDomain(host.replace(/:[0-9]+$/, ''));
+    return normalizeDomain(host.replace(/:\d+$/, ''));
   } catch {
     return null;
   }
