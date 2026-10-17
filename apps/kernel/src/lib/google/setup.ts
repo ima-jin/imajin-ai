@@ -34,12 +34,17 @@ export function nextGoogleSetupStep(
   now: string,
   caseUrl?: string,
 ): GoogleSetupStepState {
+  let pendingSince: string | null = null;
+  if (status === 'pending_google') {
+    pendingSince = now;
+    if (previous.status === 'pending_google') pendingSince = previous.pendingSince ?? now;
+  }
+  const savedCaseUrl = caseUrl ?? previous.caseUrl;
   return {
     status,
     updatedAt: now,
-    pendingSince: status === 'pending_google'
-      ? (previous.status === 'pending_google' ? previous.pendingSince ?? now : now) : null,
-    ...(caseUrl === undefined ? (previous.caseUrl ? { caseUrl: previous.caseUrl } : {}) : { caseUrl }),
+    pendingSince,
+    ...(savedCaseUrl === undefined ? {} : { caseUrl: savedCaseUrl }),
   };
 }
 
@@ -54,7 +59,7 @@ export async function readGoogleSetup(ownerDid: string, slot = currentConnection
 }
 
 /** Row locking prevents simultaneous step edits from discarding other steps or slots. */
-export async function updateGoogleSetup(
+export function updateGoogleSetup(
   ownerDid: string,
   slot: string,
   stepId: GoogleSetupStepId,
