@@ -22,6 +22,7 @@ import { forEachSequential } from '@/src/lib/async/sequential';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
 import type { LegacyWebhookApp } from '@/src/lib/auth/kernel-webhook-legacy';
+import { resolveRegistryAppBaseUrl } from '@/src/lib/apps/registry-url';
 
 const log = createLogger('kernel');
 
@@ -578,7 +579,6 @@ function isLearnCheckout(session: StripeCheckoutSessionLike): boolean {
 interface PaidCheckoutTarget {
   /** Capitalised name used in log lines. */
   label: string;
-  urlVar: string;
   app: LegacyWebhookApp;
   /** What does not happen when the notification cannot be sent. */
   consequence: string;
@@ -586,20 +586,18 @@ interface PaidCheckoutTarget {
 
 const MARKET_TARGET: PaidCheckoutTarget = {
   label: 'Market',
-  urlVar: 'MARKET_SERVICE_URL',
   app: 'market',
   consequence: 'market purchase will not settle',
 };
 
 const LEARN_TARGET: PaidCheckoutTarget = {
   label: 'Learn',
-  urlVar: 'LEARN_SERVICE_URL',
   app: 'learn',
   consequence: 'learn enrollment will not be created',
 };
 
 /**
- * POST a signed `payment.succeeded` for a paid checkout session to `${urlVar}/api/webhook`.
+ * POST a signed `payment.succeeded` to the registered app's `/api/webhook`.
  * The payload names the Stripe `sessionId` and carries the
  * amount and currency in `metadata`; `rail` rides top-level and only when the kernel already
  * settled the payment on the seller's own Stripe account (#2773).
@@ -608,16 +606,16 @@ const LEARN_TARGET: PaidCheckoutTarget = {
  * and must not fail the Stripe webhook ack.
  */
 async function deliverPaidCheckout(target: PaidCheckoutTarget, session: StripeCheckoutSessionLike): Promise<void> {
-  const serviceUrl = process.env[target.urlVar];
-  if (!serviceUrl) {
-    log.error(
-      { sessionId: session.id },
-      `${target.urlVar} not set — ${target.consequence}`,
-    );
-    return;
-  }
 
   try {
+    const serviceUrl = await resolveRegistryAppBaseUrl(target.app);
+    if (!serviceUrl) {
+      log.error(
+        { sessionId: session.id },
+        `${target.label} registry URL unavailable — ${target.consequence}`,
+      );
+      return;
+    }
     const response = await postKernelWebhook(kernelWebhookUrl(serviceUrl, '/api/webhook'), {
       type: 'payment.succeeded',
       sessionId: session.id,
@@ -738,13 +736,13 @@ export async function notifyEventsService(
   type: 'checkout.completed' | 'payment.failed',
   session: StripeCheckoutSessionLike,
 ): Promise<void> {
-  const eventsServiceUrl = process.env.EVENTS_SERVICE_URL;
-  if (!eventsServiceUrl) {
-    log.error({}, 'EVENTS_SERVICE_URL not set — events payment notification cannot be delivered');
-    return;
-  }
 
   try {
+    const eventsServiceUrl = await resolveRegistryAppBaseUrl('events');
+    if (!eventsServiceUrl) {
+      log.error({}, 'Events registry URL unavailable — events payment notification cannot be delivered');
+      return;
+    }
     const transactionId = type === 'checkout.completed'
       ? (session.transactionId ?? await findTransactionIdForSession(session.id))
       : undefined;

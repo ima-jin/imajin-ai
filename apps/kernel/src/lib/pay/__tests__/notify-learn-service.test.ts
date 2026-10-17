@@ -2,7 +2,7 @@
  * Tests for the learn notification in apps/kernel/src/lib/pay/webhook-handlers.ts (ima-jin/learn#13).
  *
  * Learn creates a paid enrollment from the kernel's notification: an authenticated server-to-server
- * `POST {LEARN_SERVICE_URL}/api/webhook` (using published-key kernel signatures) naming the
+ * `POST {registered learn URL}/api/webhook` (using published-key kernel signatures) naming the
  * Stripe session, with `rail: "stripe-byo"` top-level for a payment the kernel settled on the
  * seller's own Stripe account (#2773). A learn outage must never fail the Stripe webhook ack.
  */
@@ -15,9 +15,13 @@ vi.mock('../../auth/kernel-webhook-recipient', async (importOriginal) => ({
 
 const mocks = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),
+  resolveRegistryAppBaseUrl: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/src/lib/apps/registry-url', () => ({
+  resolveRegistryAppBaseUrl: mocks.resolveRegistryAppBaseUrl,
+}));
 vi.mock('@/src/db', () => ({
   db: {},
   feeLedger: {},
@@ -67,8 +71,7 @@ describe('learn enrollment notification', () => {
     vi.clearAllMocks();
     vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('LEARN_SERVICE_URL', LEARN_URL);
-    vi.stubEnv('MARKET_SERVICE_URL', MARKET_URL);
+    mocks.resolveRegistryAppBaseUrl.mockImplementation(async (slug: string) => slug === 'learn' ? LEARN_URL : MARKET_URL);
     fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ received: true }), { status: 200 }));
   });
 
@@ -137,6 +140,23 @@ describe('learn enrollment notification', () => {
         { sessionId: 'cs_test_learn_1', status: 503, error: 'upstream exploded' },
         'Learn service webhook failed',
       );
+    });
+
+    it('fails soft when registry discovery throws', async () => {
+      mocks.resolveRegistryAppBaseUrl.mockRejectedValue(new Error('registry down'));
+      await expect(notifyLearnService(learnSession())).resolves.toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        { sessionId: 'cs_test_learn_1', err: expect.stringContaining('registry down') },
+        'Failed to notify learn service',
+      );
+    });
+
+    it('uses the registered URL even when a stale environment URL is set', async () => {
+      vi.stubEnv('LEARN_SERVICE_URL', 'https://stale-learn.test');
+      await notifyLearnService(learnSession());
+      expect(mocks.resolveRegistryAppBaseUrl).toHaveBeenCalledWith('learn');
+      expect(learnCalls()).toHaveLength(1);
     });
 
     it('delivers with a kernel signature when no legacy secret is configured', async () => {
@@ -209,15 +229,15 @@ describe('learn enrollment notification', () => {
       expect(body.metadata.currency).toBeUndefined();
     });
 
-    it.each(['LEARN_SERVICE_URL'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
-      vi.stubEnv(missing, '');
+    it('does not call out, and logs loudly, when the registry URL is missing', async () => {
+      mocks.resolveRegistryAppBaseUrl.mockResolvedValue(null);
 
       await expect(notifyLearnService(learnSession())).resolves.toBeUndefined();
 
       expect(fetchMock).not.toHaveBeenCalled();
       expect(mocks.log.error).toHaveBeenCalledWith(
         { sessionId: 'cs_test_learn_1' },
-        'LEARN_SERVICE_URL not set — learn enrollment will not be created',
+        'Learn registry URL unavailable — learn enrollment will not be created',
       );
     });
   });

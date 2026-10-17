@@ -3,7 +3,7 @@
  *
  * Market settles its own purchases through `/pay/api/settle` with its app-service token, so the
  * kernel's Stripe webhook must tell market a purchase was paid: an authenticated server-to-server
- * `POST {MARKET_SERVICE_URL}/api/webhook` (using published-key kernel signatures) naming
+ * `POST {registered market URL}/api/webhook` (using published-key kernel signatures) naming
  * the Stripe session. A market outage must never fail the Stripe webhook ack.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -15,9 +15,13 @@ vi.mock('../../auth/kernel-webhook-recipient', async (importOriginal) => ({
 
 const mocks = vi.hoisted(() => ({
   publishMock: vi.fn().mockResolvedValue(undefined),
+  resolveRegistryAppBaseUrl: vi.fn(),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('@/src/lib/apps/registry-url', () => ({
+  resolveRegistryAppBaseUrl: mocks.resolveRegistryAppBaseUrl,
+}));
 vi.mock('@/src/db', () => ({
   db: {},
   feeLedger: {},
@@ -65,8 +69,7 @@ describe('market purchase notification', () => {
     vi.clearAllMocks();
     vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('MARKET_SERVICE_URL', MARKET_URL);
-    vi.stubEnv('EVENTS_SERVICE_URL', EVENTS_URL);
+    mocks.resolveRegistryAppBaseUrl.mockImplementation(async (slug: string) => slug === 'market' ? MARKET_URL : EVENTS_URL);
     mocks.publishMock.mockResolvedValue(undefined);
     fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ received: true }), { status: 200 }));
   });
@@ -191,8 +194,8 @@ describe('market purchase notification', () => {
       expect(body.metadata.currency).toBeUndefined();
     });
 
-    it.each(['MARKET_SERVICE_URL'])('does not call out, and logs loudly, when %s is missing', async (missing) => {
-      vi.stubEnv(missing, '');
+    it('does not call out, and logs loudly, when the registry URL is missing', async () => {
+      mocks.resolveRegistryAppBaseUrl.mockResolvedValue(null);
 
       await expect(notifyMarketService(marketSession())).resolves.toBeUndefined();
 
@@ -201,6 +204,23 @@ describe('market purchase notification', () => {
         { sessionId: 'cs_test_market_1' },
         expect.stringContaining('market purchase will not settle'),
       );
+    });
+
+    it('fails soft when registry discovery throws', async () => {
+      mocks.resolveRegistryAppBaseUrl.mockRejectedValue(new Error('registry down'));
+      await expect(notifyMarketService(marketSession())).resolves.toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        { sessionId: 'cs_test_market_1', err: expect.stringContaining('registry down') },
+        'Failed to notify market service',
+      );
+    });
+
+    it('uses the registered URL even when a stale environment URL is set', async () => {
+      vi.stubEnv('MARKET_SERVICE_URL', 'https://stale-market.test');
+      await notifyMarketService(marketSession());
+      expect(mocks.resolveRegistryAppBaseUrl).toHaveBeenCalledWith('market');
+      expect(marketCalls()).toHaveLength(1);
     });
 
     it('delivers with a kernel signature when no legacy secret is configured', async () => {
