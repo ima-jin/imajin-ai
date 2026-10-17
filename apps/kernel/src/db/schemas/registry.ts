@@ -312,6 +312,13 @@ export const registryApps = registrySchema.table('apps', {
   callbackUrl: text('callback_url').notNull(),           // OAuth redirect URI
   homepageUrl: text('homepage_url'),
   logoUrl: text('logo_url'),
+  /** Repository identifiers are owner/name, including owners outside ima-jin (#2905). */
+  sourceRepo: text('source_repo'),
+  template: text('template'),
+  templateRef: text('template_ref'),
+  templateSyncedAt: timestamp('template_synced_at', { withTimezone: true }),
+  /** Completed the one-time template join; a candidate may have a template but not be joined. */
+  joined: boolean('joined').notNull().default(false),
   requestedScopes: jsonb('requested_scopes').$type<string[]>().default([]),
   /** App self-secret recipes approved on /jin (#2799); never secret values. */
   secrets: jsonb('secrets').$type<Array<{ name: string; kind: 'random-32B' | 'random-64B' | 'operator-supplied' }>>().notNull().default(sql`'[]'::jsonb`),
@@ -409,6 +416,7 @@ export const registryApps = registrySchema.table('apps', {
   ownerIdx: index('idx_registry_apps_owner').on(table.ownerDid),
   statusIdx: index('idx_registry_apps_status').on(table.status),
   tierIdx: index('idx_registry_apps_tier').on(table.tier),
+  templateIdx: index('idx_registry_apps_template').on(table.template),
   slugUniq: uniqueIndex('uniq_registry_apps_slug').on(table.slug).where(sql`${table.slug} IS NOT NULL`),
 }));
 

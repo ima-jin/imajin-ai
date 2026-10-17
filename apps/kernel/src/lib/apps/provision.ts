@@ -54,6 +54,7 @@ import {
   fetchAppManifest,
   appManifestError,
   DEFAULT_APP_TEMPLATE,
+  PROVISIONING_ORG,
   type EnsureRepoResult,
   type AppManifest,
   type AppManifestResult,
@@ -385,6 +386,8 @@ async function registerApp(params: {
   /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
   callbackOrigin: string;
   retiredLegacyAppId: string | null;
+  template: string;
+  repoCreated: boolean;
 }): Promise<{ id: string; retiredLegacyAppId?: string }> {
   const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
 
@@ -455,6 +458,10 @@ async function registerApp(params: {
       tier: 'third_party',
       status: 'active',
       slug,
+      sourceRepo: `${PROVISIONING_ORG}/${slug}`,
+      template: params.template,
+      // A newly generated repo starts joined; reusing a repo does not prove adoption.
+      joined: params.repoCreated,
       allowedRedirectHosts: [slug],
       tokenAudiences: [slug],
       icon: navMetadata.icon,
@@ -610,6 +617,8 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       approvedDeclarations: params.approvedDeclarations ?? null,
       callbackOrigin,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
+      template,
+      repoCreated: repo.created,
     });
     retirement = retirementContext(registration.retiredLegacyAppId);
     emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, retirement);

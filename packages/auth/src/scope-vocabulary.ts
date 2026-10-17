@@ -629,6 +629,9 @@ export const SCOPE_VOCABULARY = [
   // decision (approval.decision) is the sole path to an approve/reject outcome;
   // there is deliberately no auto-approval or standing-approval policy here.
   { scope: 'consent:write', connector: null, label: 'Raise consent requests for another identity to approve on your behalf' },
+  // #2905: the cascade sees private-app repository lineage, so this is NOT
+  // serviceEligible. Grant via the countersigned apps:service-scopes card.
+  { scope: 'registry:template-read', connector: null, label: 'Discover registered apps and join readiness for template update cascades' },
 ] as const satisfies readonly ScopeVocabularyEntry[];
 
 /** Every scope string in the vocabulary, as a literal union. */

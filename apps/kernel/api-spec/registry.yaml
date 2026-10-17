@@ -19,6 +19,17 @@ tags:
 
 components:
   securitySchemes:
+    appServiceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: app-service+jwt
+      description: |
+        Mint using POST /auth/api/apps/token/service with the registered app's
+        proof of possession. Audience is imajin:apps; signature, expiry, sub=azp
+        and live active registration are checked. Inventory reads additionally
+        require registry:template-read in requestedScopes, approved through the
+        countersigned apps:service-scopes operator card. Approval is checked
+        again on each read; adding requestedScopes alone never grants it.
     cookieAuth:
       type: apiKey
       in: cookie
@@ -45,6 +56,50 @@ components:
         before, and independently of, cookieAuth/bearerAuth — any other
         `Authorization` scheme (or none) falls through to those unchanged.
   schemas:
+    AppLineage:
+      type: object
+      description: |
+        Owner-editable metadata accepted by POST /api/registry/apps,
+        POST /api/admin/registry/apps and PATCH /api/registry/apps/{appId}.
+        Also returned by app list/detail and admin list. Omission on PATCH
+        preserves a field; null clears nullable fields. This is not a credential
+        or grant of GitHub access. Third-party source repositories may be in any org.
+      properties:
+        sourceRepo:
+          type: [string, "null"]
+          description: GitHub owner/name, not a URL. No ima-jin organization restriction.
+          example: gbscontracting/website
+        template:
+          type: [string, "null"]
+          description: Template repository owner/name; includes pending join candidates.
+          example: ima-jin/imajin-app-template
+        templateRef:
+          type: [string, "null"]
+          maxLength: 255
+          description: Last merged template tag/SHA. Null means not yet reported, not unjoined.
+        templateSyncedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When that template sync merged, as reported by the owner or app.
+        joined:
+          type: boolean
+          default: false
+          description: One-time template join completed; explicit and independent of templateRef.
+    TemplateApp:
+      type: object
+      required: [appId, sourceRepo, templateRef, joined]
+      properties:
+        appId: { type: string }
+        sourceRepo: { type: [string, "null"], example: "gbscontracting/website" }
+        templateRef: { type: [string, "null"] }
+        joined: { type: boolean }
+    TemplateSyncReport:
+      type: object
+      additionalProperties: false
+      required: [templateRef, templateSyncedAt]
+      properties:
+        templateRef: { type: string, minLength: 1, maxLength: 255 }
+        templateSyncedAt: { type: string, format: date-time }
     Node:
       type: object
       properties:
@@ -105,6 +160,104 @@ components:
         error: { type: string }
 
 paths:
+  /api/registry/apps/by-template:
+    servers:
+      - url: https://{node}.imajin.ai
+        variables:
+          node: { default: jin }
+      - url: http://localhost:3000
+    get:
+      tags: [registry]
+      operationId: listAppsByTemplate
+      summary: Complete active-app inventory for a template release cascade
+      description: |
+        Kernel-root route (not /registry/api). Returns a bare array, ordered by
+        appId, with no pagination cap. Includes private/member apps for this
+        privileged automation reader, and joined=false candidates so the
+        consumer can open one-time adoption issues. Revoked apps are excluded.
+        An unknown template returns []. A null sourceRepo cannot receive a sync
+        PR; a null templateRef means unknown history, not joined=false.
+        The consumer is ima-jin/imajin-app-template#30. Repository access and PR
+        creation remain the consumer's GitHub App responsibility, not this API's.
+      security:
+        - cookieAuth: []
+        - appServiceAuth: []
+      parameters:
+        - name: template
+          in: query
+          required: true
+          schema: { type: string, example: "ima-jin/imajin-app-template" }
+          description: Exact owner/name repository identifier.
+      responses:
+        "200":
+          description: Full cascade inventory, including not-yet-joined apps
+          headers:
+            Cache-Control: { schema: { type: string, const: no-store } }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TemplateApp" }
+        "400":
+          description: Missing or invalid template identifier
+        "401":
+          description: Requires operator session or valid active app-service token (not a person's bearer token)
+        "403":
+          description: Service token lacks the minted scope or its live operator approval
+
+  /api/registry/apps/{appId}/template:
+    servers:
+      - url: https://{node}.imajin.ai
+        variables:
+          node: { default: jin }
+      - url: http://localhost:3000
+    patch:
+      tags: [registry]
+      operationId: reportTemplateSync
+      summary: App reports its last merged template sync
+      description: |
+        Kernel-root route. Call only after the sync PR merges (or from the
+        updated app). Authenticates as the app's own DID, never a human or the
+        cascade app writing another app's row. Both fields are required.
+        Cannot edit sourceRepo, template, joined or other registry fields;
+        those remain owner-controlled via PATCH /api/registry/apps/{appId}.
+        No extra service scope is needed for this app-owned metadata report.
+        Six backfilled derived apps are joined=true with unknown refs/times;
+        scorecard, karaoke and fixready remain joined=false until adopted.
+      security:
+        - appServiceAuth: []
+      parameters:
+        - name: appId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TemplateSyncReport" }
+      responses:
+        "200":
+          description: Persisted merged sync history
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/TemplateSyncReport" }
+                  - type: object
+                    required: [appId]
+                    properties:
+                      appId: { type: string }
+        "400":
+          description: Invalid JSON, unknown fields, empty ref or invalid timestamp
+        "401":
+          description: Invalid, expired or revoked app-service credential
+        "403":
+          description: Credential belongs to a different app
+        "404":
+          description: App not found
+        "409":
+          description: App has not joined a template or was revoked during the request
   /api/health:
     get:
       tags: [registry]

@@ -101,6 +101,18 @@ beforeEach(() => {
 });
 
 describe('PATCH /api/registry/apps/:appId — providesScopes (#2663)', () => {
+  it('lets the owner record cross-org lineage, explicit join state and sync history', async () => {
+    const lineage = { sourceRepo: 'gbscontracting/website', template: 'ima-jin/imajin-app-template', templateRef: 'v2', templateSyncedAt: '2026-10-17T00:00:00Z', joined: true };
+    expect((await patch(lineage)).status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ ...lineage, templateSyncedAt: new Date(lineage.templateSyncedAt) }));
+    expect((await patch({ joined: false, templateRef: null })).status).toBe(200);
+    expect(mocks.setMock).toHaveBeenLastCalledWith(expect.objectContaining({ joined: false, templateRef: null }));
+  });
+
+  it('rejects invalid lineage atomically', async () => {
+    expect((await patch({ name: 'Must not change', template: 'invalid' })).status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
   it("validates against the app's slug and persists it", async () => {
     const res = await patch({ providesScopes: ['dykil:read'] });
 

@@ -7,6 +7,7 @@ import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
 import { withLogger } from '@imajin/logger';
+import { validateTemplateLineage } from '@/src/lib/apps/template-lineage';
 
 /** `[origin]` of an absolute URL, or `null` when it isn't one. */
 function originOf(url: string): string[] | null {
@@ -96,6 +97,10 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: declarations.error }, { status: 400 });
   }
   const { requestedScopes: scopes, providesScopes: ownScopes } = declarations.ok;
+  const lineage = validateTemplateLineage(body);
+  if ('error' in lineage) {
+    return NextResponse.json({ error: lineage.error }, { status: 400 });
+  }
 
   // #1990: self-service registration always yields a third_party app.
   // first_party is reserved for the admin surface (POST /api/admin/registry/apps).
@@ -120,6 +125,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     providesScopes: ownScopes,
     tier: 'third_party',
     allowedRedirectHosts,
+    ...lineage.ok,
     // #1348: this surface only ever takes a single callbackUrl, so the
     // registered redirect_uris set is that one URI. Kept in sync with
     // callbackUrl so /oauth/authorize's exact-set match behaves identically
@@ -168,6 +174,11 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
       callbackUrl: registryApps.callbackUrl,
       homepageUrl: registryApps.homepageUrl,
       logoUrl: registryApps.logoUrl,
+      sourceRepo: registryApps.sourceRepo,
+      template: registryApps.template,
+      templateRef: registryApps.templateRef,
+      templateSyncedAt: registryApps.templateSyncedAt,
+      joined: registryApps.joined,
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
