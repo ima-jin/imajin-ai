@@ -16,6 +16,7 @@ const {
   mockSet,
   mockUpdateReturning,
   mockSession,
+  mockPublicAppToggles,
 } = vi.hoisted(() => {
   const mockFindFirst = vi.fn();
   const mockRequireAuth = vi.fn();
@@ -23,10 +24,11 @@ const {
   const mockSelectLimit = vi.fn();
   const mockUpdateReturning = vi.fn();
   const mockSession = vi.fn();
+  const mockPublicAppToggles = vi.fn();
   const mockSet = vi.fn((_updates: Record<string, unknown>) => ({
     where: () => ({ returning: mockUpdateReturning }),
   }));
-  return { mockFindFirst, mockRequireAuth, mockResolveActingDid, mockSelectLimit, mockSet, mockUpdateReturning, mockSession };
+  return { mockFindFirst, mockRequireAuth, mockResolveActingDid, mockSelectLimit, mockSet, mockUpdateReturning, mockSession, mockPublicAppToggles };
 });
 
 vi.mock('@/src/db', () => ({
@@ -59,6 +61,7 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => ({}),
 }));
 vi.mock('@/src/lib/kernel/session', () => ({ getSessionFromCookies: mockSession }));
+vi.mock('@/src/lib/profile/public-app-toggles', () => ({ projectPublicAppToggles: mockPublicAppToggles }));
 
 import { GET, PUT } from '../route';
 import { GET as GET_OWNER_EMAIL } from '../etransfer-email/route';
@@ -88,6 +91,7 @@ beforeEach(() => {
   mockSelectLimit.mockResolvedValue([{ scope: 'business' }]);
   mockUpdateReturning.mockResolvedValue([{ did: BUSINESS_DID, etransferEmail: 'pay@biz.example' }]);
   mockSession.mockResolvedValue(null);
+  mockPublicAppToggles.mockImplementation(async (toggles) => toggles);
 });
 
 describe('PUT /profile/api/profile/:id — etransferEmail (#2665)', () => {
@@ -141,6 +145,24 @@ describe('PUT /profile/api/profile/:id — etransferEmail (#2665)', () => {
 });
 
 describe('GET /profile/api/profile/:id — the email is owner-only (#2665)', () => {
+  it('preserves the owner’s complete app preferences without a public projection (#2897)', async () => {
+    const featureToggles = { enabledApps: ['private-app'], coffee: 'private-handle' };
+    mockFindFirst.mockResolvedValue({ did: BUSINESS_DID, featureToggles });
+    mockSession.mockResolvedValue({ did: BUSINESS_DID });
+    const body = await (await GET(getRequest(), params())).json();
+    expect(body.featureToggles).toEqual(featureToggles);
+    expect(mockPublicAppToggles).not.toHaveBeenCalled();
+  });
+
+  it.each([null, { did: OTHER_DID }])('projects app preferences for non-owner viewer %j (#2897)', async session => {
+    const featureToggles = { enabledApps: ['private-app', 'public-app'], links: 'hidden' };
+    mockFindFirst.mockResolvedValue({ did: BUSINESS_DID, featureToggles });
+    mockSession.mockResolvedValue(session);
+    mockPublicAppToggles.mockResolvedValue({ enabledApps: ['public-app'], links: null });
+    const body = await (await GET(getRequest(), params())).json();
+    expect(mockPublicAppToggles).toHaveBeenCalledWith(featureToggles);
+    expect(body.featureToggles).toEqual({ enabledApps: ['public-app'], links: null });
+  });
   it('is withheld from an anonymous reader', async () => {
     const res = await GET(getRequest(), params());
     expect(res.status).toBe(200);
