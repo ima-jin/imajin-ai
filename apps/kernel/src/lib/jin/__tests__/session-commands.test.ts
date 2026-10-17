@@ -36,11 +36,11 @@ function envelope(payload: Record<string, unknown>, from = agent, timestamp = Da
   const signed = { from, type: 'agent' as const, timestamp, payload };
   return { ...signed, signature: crypto.signSync(canonicalize(signed), agentKey.privateKey) };
 }
-async function lifecycle(type = 'loop.started', publisher = agent, id = loopId) {
-  const payload = { loopId: id, principal, kind: 'openclaw.session', state: 'running', parentLoopId: null, summary: 'Started', at: new Date().toISOString() };
+async function lifecycle(type = 'loop.started', publisher = agent, id = loopId, owner = principal) {
+  const payload = { loopId: id, principal: owner, kind: 'openclaw.session', state: 'running', parentLoopId: null, summary: 'Started', at: new Date().toISOString() };
   const proof = { type, payload, publisherDid: publisher, signature: { alg: 'ed25519', keyId: agentKey.publicKey, sig: crypto.signSync(canonicalize({ type, payload }), agentKey.privateKey) } };
   await pg.query(`INSERT INTO kernel.loop_events (id,loop_id,type,issuer,principal,payload,occurred_at)
-    VALUES ($1,$2,$3,$4,$5,$6,NOW())`, [crypto.generateKeypair().publicKey, id, type, publisher, principal, JSON.stringify({ publisherProof: proof })]);
+    VALUES ($1,$2,$3,$4,$5,$6,NOW())`, [crypto.generateKeypair().publicKey, id, type, publisher, owner, JSON.stringify({ publisherProof: proof })]);
 }
 async function signCommand(type: SessionCommandType = 'session.send', payload: Record<string, string> = { loopId, message: 'Hello' }) {
   const frame = await prepareSessionCommand(loopId, principal, type, payload);
@@ -219,6 +219,10 @@ describe('originating agent proof', () => {
     mocks.service.mockResolvedValue([]);
     await expect(resolveSessionCommandTarget(loopId, principal)).rejects.toThrow('no longer serves');
   });
+  it('rejects a parent lineage projection that differs from signed origin', async () => {
+    await pg.exec(`UPDATE kernel.loops SET parent_loop_id='foreign-parent'`);
+    await expect(resolveSessionCommandTarget(loopId, principal)).rejects.toThrow('stale or invalid');
+  });
   it('rejects multiple publishers, missing proof, missing origin and revoked agent key', async () => {
     await lifecycle('loop.progress', 'did:imajin:node');
     await expect(resolveSessionCommandTarget(loopId, principal)).rejects.toThrow('Ambiguous');
@@ -282,6 +286,26 @@ describe('signed socket bindings and outcomes', () => {
     await expect(ingestSessionCommandFrame(agent, binding({ loopId: 'another' }))).rejects.toThrow('Conflicting');
     expect(await getSessionBinding(principal, 'native-approval')).toBeNull();
   });
+  it('marks conflicting simultaneous bindings ambiguous and deduplicates identical reconnect races', async () => {
+    await pg.query(`INSERT INTO kernel.loops (loop_id,kind,principal,state) VALUES ('another','openclaw.session',$1,'running')`, [principal]);
+    await lifecycle('loop.started', agent, 'another');
+    const results = await Promise.allSettled([binding(), binding({ loopId: 'another' })].map(frame => ingestSessionCommandFrame(agent, frame)));
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(await getSessionBinding(principal, 'native-approval')).toBeNull();
+    const duplicate = binding({ approvalId: 'different-native-id' });
+    expect(await Promise.all([ingestSessionCommandFrame(agent, duplicate), ingestSessionCommandFrame(agent, duplicate)]))
+      .toEqual(expect.arrayContaining([{ accepted: true, duplicate: false }, { accepted: true, duplicate: true }]));
+  });
+  it('keeps colon-containing principal/approval tuples distinct across principals', async () => {
+    const other = `${principal}:x`;
+    mocks.service.mockResolvedValue([principal, other]);
+    await pg.query(`INSERT INTO kernel.loops (loop_id,kind,principal,state) VALUES ('other','openclaw.session',$1,'running')`, [other]);
+    await lifecycle('loop.started', agent, 'other', other);
+    await ingestSessionCommandFrame(agent, binding({ approvalId: 'x:y' }));
+    await ingestSessionCommandFrame(agent, binding({ loopId: 'other', principalDid: other, approvalId: 'y' }));
+    expect((await getSessionBinding(principal, 'x:y'))?.loopId).toBe(loopId);
+    expect((await getSessionBinding(other, 'y'))?.loopId).toBe('other');
+  });
   it('does not count delivery as completion; persists only correlated signed result and dedups it', async () => {
     const frame = await signCommand();
     await dispatchSessionCommand(loopId, principal, frame);
@@ -297,7 +321,7 @@ describe('signed socket bindings and outcomes', () => {
   it.each([
     { commandId: 'unknown' }, { principal: 'did:imajin:foreign' }, { issuer: 'did:imajin:foreign' },
     { agentDid: 'did:imajin:foreign' }, { payloadHash: '0'.repeat(64) }, { command: 'session.abort' },
-    { approvalId: 'unbound' }, { loopId: 'other' }, { childLoopId: 'untrusted' },
+    { approvalId: 'unbound' }, { loopId: 'other' }, { childLoopId: 'untrusted' }, { parentLoopId: 'foreign-parent' },
     { at: '2020-01-01T00:00:00.000Z' }, { at: new Date(Date.now() + 600_000).toISOString() },
   ])('rejects uncorrelated signed outcome %j', async extra => {
     const frame = await signCommand();

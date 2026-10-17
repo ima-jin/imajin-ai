@@ -7,6 +7,14 @@ import type { SessionCommandFrame, SessionAttestation, SessionOutcome } from './
 export function sessionEventId(kind: string, key: string): string {
   return `session:${kind}:${createHash('sha256').update(key).digest('hex')}`;
 }
+export async function readSessionLoopIdentity(loopId: string, principal: string) {
+  const client = getClient();
+  const rows = await client`
+    SELECT loop_id,parent_loop_id FROM kernel.loops
+    WHERE loop_id=${loopId} AND principal=${principal} LIMIT 1
+  `;
+  return rows[0] ?? null;
+}
 
 export interface StoredSessionEvent {
   id: string;

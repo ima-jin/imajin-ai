@@ -5,13 +5,20 @@ import {
   sessionCommandFrameSchema, type SessionAttestation, type SessionBinding, type SessionCommandFrame, type SessionOutcome,
 } from './session-command-contract';
 import { SessionCommandError, requireSessionAgent, resolveSessionCommandTarget } from './session-command-authority';
-import { appendSessionEvent, getSessionEvent, persistSessionOutcome, readBindingEvents } from './session-command-store';
+import { appendSessionEvent, getSessionEvent, persistSessionOutcome, readBindingEvents, readSessionLoopIdentity } from './session-command-store';
 
 const MAX_INTAKE_BYTES = 24 * 1024;
 const MAX_AGE = 5 * 60_000;
 /** Durable execution-rail marker: invalid/stale bindings must NEVER restore legacy fan-out. */
 export async function hasSessionBinding(principal: string, approvalId: string): Promise<boolean> {
   return (await readBindingEvents(principal, approvalId)).length > 0;
+}
+async function requireKnownOutcomeParent(outcome: SessionOutcome, command: SessionCommandFrame, loopId: string) {
+  if (outcome.parentLoopId === undefined || command.type === 'session.spawn') return;
+  const loop = await readSessionLoopIdentity(loopId, command.principal);
+  if (!loop || (loop.parent_loop_id ?? null) !== outcome.parentLoopId) {
+    throw new SessionCommandError('Outcome parent lineage mismatch', 403);
+  }
 }
 
 async function verifyAttestation(attestation: SessionAttestation, agent: string, principal: string, fresh: boolean) {
@@ -44,6 +51,18 @@ export async function getSessionBinding(principal: string, approvalId: string, a
   }
 }
 
+async function compareExistingBinding(
+  original: unknown, attestation: SessionAttestation, binding: SessionBinding, key: string,
+) {
+  const old = sessionAttestationSchema.parse(original);
+  if (canonicalize(old.payload) !== canonicalize(binding)) {
+    await appendSessionEvent('binding-conflict', `${key}:${canonicalize(binding)}`, binding.loopId, 'loop.approval.bound',
+      binding.agentDid, binding.principalDid, { attestation });
+    throw new SessionCommandError('Conflicting approval binding', 409);
+  }
+  return { accepted: true, duplicate: true };
+}
+
 async function ingestBinding(socketDid: string, attestation: SessionAttestation) {
   const binding = sessionBindingSchema.parse(attestation.payload);
   await verifyAttestation(attestation, socketDid, binding.principalDid, true);
@@ -52,18 +71,13 @@ async function ingestBinding(socketDid: string, attestation: SessionAttestation)
   }
   const key = canonicalize([binding.principalDid, binding.approvalId]);
   const existing = await getSessionEvent('binding', key, binding.principalDid);
-  if (existing) {
-    const old = sessionAttestationSchema.parse(existing.payload.attestation);
-    if (canonicalize(old.payload) !== canonicalize(binding)) {
-      await appendSessionEvent('binding-conflict', `${key}:${canonicalize(binding)}`, binding.loopId, 'loop.approval.bound',
-        socketDid, binding.principalDid, { attestation });
-      throw new SessionCommandError('Conflicting approval binding', 409);
-    }
-    return { accepted: true, duplicate: true };
-  }
+  if (existing) return compareExistingBinding(existing.payload.attestation, attestation, binding, key);
   const inserted = await appendSessionEvent('binding', key, binding.loopId, 'loop.approval.bound',
     socketDid, binding.principalDid, { attestation });
-  if (!inserted) throw new SessionCommandError('Concurrent binding already recorded', 409);
+  if (!inserted) {
+    const raced = await getSessionEvent('binding', key, binding.principalDid);
+    return compareExistingBinding(raced?.payload.attestation, attestation, binding, key);
+  }
   return { accepted: true, duplicate: false };
 }
 
@@ -105,6 +119,7 @@ async function ingestOutcome(socketDid: string, type: string, attestation: Sessi
   if (command.to !== socketDid) throw new SessionCommandError('Foreign command outcome', 403);
   requireOutcomeCorrelation(type, outcome, command);
   requireOutcomeLineage(outcome, command, stored.loop_id);
+  await requireKnownOutcomeParent(outcome, command, stored.loop_id);
   if (!await getSessionEvent('attempt', outcome.commandId, outcome.principal)) {
     throw new SessionCommandError('Command has not been dispatched', 409);
   }
