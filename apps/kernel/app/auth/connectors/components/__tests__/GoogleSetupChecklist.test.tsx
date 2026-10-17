@@ -129,6 +129,35 @@ describe('Google guided admin UI', () => {
     await waitFor(() => expect(business.disabled).toBe(false));
   });
 
+  it('aligns Google controls with checklist steps and disables import until every field is present', async () => {
+    const first = render(<ConnectorDetail entry={googleEntry()} />);
+    let button = await screen.findByRole('button', { name: 'Save config' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(document.querySelector('#google-oauth-configure h3 span')?.textContent).toBe('5');
+    expect(document.querySelector('#google-account-connect h3 span')?.textContent).toBe('6');
+    expect(screen.getByText('Import the OAuth client into this identity vault first.')).toBeDefined();
+    expect(screen.queryByText('Complete step 1 first.')).toBeNull();
+    const clientId = screen.getByLabelText('OAuth client ID') as HTMLInputElement;
+    const secret = screen.getByLabelText('OAuth client secret') as HTMLInputElement;
+    const redirect = screen.getByLabelText('OAuth redirect URI') as HTMLInputElement;
+    expect(clientId.autocomplete).toBe('new-password');
+    expect(secret.autocomplete).toBe('new-password');
+    fireEvent.change(clientId, { target: { value: 'mock-client-id' } });
+    expect(button.disabled).toBe(true);
+    fireEvent.change(secret, { target: { value: 'mock-client-secret' } });
+    expect(button.disabled).toBe(false);
+    fireEvent.change(redirect, { target: { value: '' } });
+    expect(button.disabled).toBe(true);
+    fireEvent.submit(clientId.closest('form')!);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/configure'))).toBe(false);
+    first.unmount();
+    render(<ConnectorDetail entry={googleEntry()} />);
+    button = await screen.findByRole('button', { name: 'Save config' }) as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect((screen.getByLabelText('OAuth client ID') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('OAuth client secret') as HTMLInputElement).value).toBe('');
+  });
+
   it('refreshes approval after client import even when vault sealed flags have not changed', async () => {
     saved.configSealed = true;
     saved.businessProfileApproved = true;
