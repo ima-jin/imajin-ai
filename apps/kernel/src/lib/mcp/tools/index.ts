@@ -21,6 +21,8 @@ import { gmailTools } from './google-gmail';
 import { calendarTools as googleCalendarTools } from './google-calendar';
 import { driveTools as googleDriveTools } from './google-drive';
 import { meetTools as googleMeetTools } from './google-meet';
+import { searchConsoleTools } from './google-search-console';
+import { businessProfileTools } from './google-business-profile';
 
 /**
  * The MCP tool registry. To add a tool: create `./<tool>.ts` exporting an
@@ -75,6 +77,8 @@ export const ALL_TOOLS: McpTool[] = [
   ...googleCalendarTools,
   ...googleDriveTools,
   ...googleMeetTools,
+  ...searchConsoleTools,
+  ...businessProfileTools,
 ].map(withToolConnection);
 
 const TOOLS_BY_NAME = new Map<string, McpTool>(ALL_TOOLS.map((t) => [t.name, t]));
