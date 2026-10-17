@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ rows: [] as object[], issue: vi.fn() }));
-vi.mock('@/src/db', () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => mocks.rows }) }) }) },
-  identities: { id: 'id' }, registryApps: { ownerDid: 'ownerDid', appDid: 'appDid', status: 'status' },
-}));
+vi.mock('@/src/db', () => {
+  const limit = async () => mocks.rows;
+  const where = () => ({ limit });
+  const from = () => ({ where });
+  return {
+    db: { select: () => ({ from }) },
+    identities: { id: 'id' }, registryApps: { ownerDid: 'ownerDid', appDid: 'appDid', status: 'status' },
+  };
+});
 vi.mock('drizzle-orm', () => ({ and: vi.fn(), eq: vi.fn() }));
 vi.mock('@/src/lib/domains/service', () => ({
   normalizeDomain: (input: string) => input.toLowerCase(), issueImajinDomain: mocks.issue,

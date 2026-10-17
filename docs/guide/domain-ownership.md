@@ -19,6 +19,10 @@ of `/auth/settings`:
    eligible DNS bindings and revokes failed proofs. Removing a domain also
    writes `domain.revoked`; it does not erase its history.
 
+Rechecks become due after 24 hours. Public evidence, verified routing and
+credential resolution fail closed after 48 hours without a successful DNS
+check, even if the scheduler or revocation signer is unavailable.
+
 The site owner is resolved from the registry, never from caller-supplied
 `siteOwner` data. Agent delegates cannot execute ownership-affecting domain
 mutations: the shared #2360 policy returns `AGENT_APPROVAL_REQUIRED`. They can
@@ -40,7 +44,7 @@ approval. Reissuing a signing-key claim cannot transfer ownership.
 
 Issuance uses the existing unique `@imajin` business identity, not an arbitrary
 node claiming to be Imajin. Bootstrap that organization's signing key through
-the vault, with an active `domain.issue` purpose grant to the configured node
+the vault, with an active reusable `domain.issue` purpose grant to the configured node
 DID. The kernel checks the fetched key against the organization's registered
 public key before signing. Missing organization identity, missing grant, or a
 key mismatch fails provisioning at the domain step rather than publishing
