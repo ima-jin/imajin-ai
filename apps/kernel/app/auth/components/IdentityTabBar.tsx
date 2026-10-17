@@ -105,6 +105,7 @@ export default function IdentityTabBar({
       {serviceTabs.map((tab) => (
         <TabLink key={tab.href} tab={tab} pathname={pathname} badge={badges[serviceFromHref(tab.href)]} />
       ))}
+      <TabLink tab={{ label: 'Add app', href: '/auth/app-directory', exact: false }} pathname={pathname} />
     </div>
   );
 }

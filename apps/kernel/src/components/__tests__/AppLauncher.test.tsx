@@ -36,6 +36,35 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('AppLauncher registry navigation', () => {
+  it('offers Add app to signed-in soft identities without enabling identity switching', async () => {
+    render(<AppLauncher {...props} tier="soft" />);
+    await screen.findByText('Coffee');
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
+    expect(screen.queryByText('Switch To')).toBeNull();
+  });
+
+  it.each(['soft', 'hard', 'creator'] as const)('keeps Add app reachable while %s flyout is loading and empty', async (tier) => {
+    let resolveRegistry: (value: Response) => void = () => undefined;
+    request.mockImplementationOnce(() => new Promise((resolve) => { resolveRegistry = resolve; }))
+      .mockResolvedValueOnce(Response.json({ apps: [] }));
+    render(<AppLauncher {...props} tier={tier} inline={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /Launcher/ }));
+    expect(screen.getByText('Loading...')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
+    await act(async () => { resolveRegistry(Response.json({ services: [] })); });
+    await screen.findByText('No apps to show.');
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
+    expect(screen.queryByText('Coffee')).toBeNull();
+  });
+
+  it('keeps Add app reachable when launcher discovery fails', async () => {
+    request.mockResolvedValue(Response.json({}, { status: 503 }));
+    render(<AppLauncher {...props} inline={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /Launcher/ }));
+    await screen.findByText('No apps to show.');
+    expect(screen.getByRole('link', { name: 'Add app' })).toBeDefined();
+    expect(screen.queryByText('Coffee')).toBeNull();
+  });
   it.each(['grid', 'list'] as const)('shows only added apps and kernel pages in %s mode without Creator Tools', async (variant) => {
     render(<AppLauncher {...props} variant={variant} />);
     await screen.findByText('Coffee');
@@ -47,13 +76,15 @@ describe('AppLauncher registry navigation', () => {
     expect(screen.getByText('Wallet').closest('a')?.getAttribute('href')).toBe('/pay');
     expect(screen.getByText('Media').closest('a')?.getAttribute('href')).toBe('/media');
     expect(screen.getByText('See all apps →').getAttribute('href')).toBe('/kernel');
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
     expect(request.mock.calls.some(([url]) => String(url).includes('/api/specs'))).toBe(false);
   });
 
   it.each(['', '/', 'https://node.test/'])('keeps home destination %j intact', async (url) => {
+    const services = publicServices.map((entry) => entry.name === 'kernel' ? { ...entry, url } : entry);
     request.mockImplementation(async (input: string) => ({
       ok: true, json: async () => input.includes('/api/launcher')
-        ? { services: publicServices.map((entry) => entry.name === 'kernel' ? { ...entry, url } : entry) }
+        ? { services }
         : { apps },
     }));
     render(<AppLauncher {...props} />);
@@ -65,6 +96,7 @@ describe('AppLauncher registry navigation', () => {
     render(<AppLauncher {...props} tier="anonymous" />);
     await screen.findByText('Not added');
     expect(screen.queryByText('Wallet')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Add app' })).toBeNull();
     expect(request.mock.calls.some(([url]) => String(url).includes('/api/apps'))).toBe(false);
   });
 
@@ -80,7 +112,7 @@ describe('AppLauncher registry navigation', () => {
     expect(screen.getByText('Home')).toBeDefined();
   });
 
-  it.each(['imajin:session-changed', 'imajin:acting-as-changed'])('refetches and clears previous apps on %s', async (event) => {
+  it.each(['imajin:session-changed', 'imajin:acting-as-changed', 'imajin:apps-changed'])('refetches and clears previous apps on %s', async (event) => {
     render(<AppLauncher {...props} />);
     await screen.findByText('Coffee');
     apps = [];
@@ -106,6 +138,7 @@ describe('AppLauncher registry navigation', () => {
     render(<AppLauncher registryUrl="https://node.test/registry" tier="hard" inline />);
     await screen.findByText('Coffee');
     expect(request).toHaveBeenCalledWith('https://node.test/auth/api/apps?placement=launcher', expect.anything());
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('https://node.test/auth/app-directory');
   });
 
   it('opens/closes the flyout and switches identities', async () => {

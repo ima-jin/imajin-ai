@@ -94,6 +94,13 @@ function RegisterPage() {
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
   const [tempDid, setTempDid] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (copiedTimer.current !== null) {
+      clearTimeout(copiedTimer.current);
+    }
+  }, []);
 
   // Handle availability checking
   const [handleStatus, setHandleStatus] = useState<HandleCheckStatus>('idle');
@@ -154,7 +161,13 @@ function RegisterPage() {
   function copyDid(did: string) {
     fireAndForget(navigator.clipboard.writeText(did), 'profile:register:clipboard');
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copiedTimer.current !== null) {
+      clearTimeout(copiedTimer.current);
+    }
+    copiedTimer.current = setTimeout(() => {
+      copiedTimer.current = null;
+      setCopied(false);
+    }, 2000);
   }
 
   // see: passkey support (Phase 2) is not yet implemented here — this only

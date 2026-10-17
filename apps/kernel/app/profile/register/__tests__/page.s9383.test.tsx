@@ -6,7 +6,7 @@
  * clipboard copy and the temporary-DID generation for image upload.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 
 const keyState = { failRandom: false };
 
@@ -79,6 +79,7 @@ async function registerAndShowSuccess() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   keyState.failRandom = false;
   localStorage.clear();
   vi.unstubAllGlobals();
@@ -86,6 +87,37 @@ afterEach(() => {
 });
 
 describe('DID copy', () => {
+  it('resets the copied state two seconds after the latest copy', async () => {
+    installClipboard(async () => {});
+    await registerAndShowSuccess();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByText(PROFILE_DID));
+    act(() => vi.advanceTimersByTime(1000));
+    fireEvent.click(screen.getByText(PROFILE_DID));
+    expect(vi.getTimerCount()).toBe(1);
+
+    act(() => vi.advanceTimersByTime(1999));
+    expect(screen.getByText('✅ Copied!')).toBeDefined();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(screen.getByText('📋 Click to copy')).toBeDefined();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears the copy reset timer on unmount', async () => {
+    installClipboard(async () => {});
+    await registerAndShowSuccess();
+    vi.useFakeTimers();
+
+    fireEvent.click(screen.getByText(PROFILE_DID));
+    expect(vi.getTimerCount()).toBe(1);
+
+    cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => vi.runAllTimers());
+  });
+
   it('writes the DID to the clipboard and shows the copied state', async () => {
     const writeText = vi.fn(async () => {});
     installClipboard(writeText);

@@ -91,7 +91,7 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
   }
 
   // #2434: every "is app X on for this profile" question goes through
-  // resolveEnabledApps (legacy fields ∪ enabledApps) — including `links`,
+  // resolveEnabledApps (explicit enabledApps, legacy-only fallback) — including `links`,
   // which used to read the legacy `featureToggles.links` field directly and
   // so ignored a profile that enabled links via `enabledApps` only.
   const enabledApps = resolveEnabledApps(profile.featureToggles);

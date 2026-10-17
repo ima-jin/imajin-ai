@@ -159,6 +159,14 @@ changed or added in a PR (`git diff origin/main...HEAD -- migrations/`):
 
 Wired into CI as `pnpm check:migration-ownership`, a step in the
 `lint-and-typecheck` job in `.github/workflows/ci.yml`.
+### App directory curation (#2871)
+
+`0203_registry_apps_featured.sql` is kernel-owned and adds only
+`registry.apps.featured` (`boolean NOT NULL DEFAULT false`). The existing
+`registry.apps` owner and `firstMigration` remain unchanged. Featuring is
+operator curation, not installation or authorization; this migration adds no
+tables and does not change anyone's enabled-app list or grants. Number 0202 is
+reserved for #2863 and 0204 for #2857.
 
 ### Environment variables
 

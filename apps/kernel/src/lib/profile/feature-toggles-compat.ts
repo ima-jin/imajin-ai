@@ -9,9 +9,8 @@
  * working — no migration, no data loss.
  *
  * `resolveEnabledApps` is the single place that reconciles both shapes: it
- * is a pure union, so a profile that has only ever used the legacy fields,
- * only the new field, or (transiently) both, all resolve to the same
- * correct enabled-app set.
+ * treats an explicit enabledApps array as authoritative. Only legacy-only
+ * profiles fall back to per-app fields, so removing an app cannot resurrect it.
  */
 import type { FeatureToggles } from '@/src/db/schemas/profile';
 
@@ -19,14 +18,15 @@ import type { FeatureToggles } from '@/src/db/schemas/profile';
 export const LEGACY_APP_SLUGS = ['links', 'coffee', 'dykil', 'learn'] as const;
 
 /**
- * Resolve the full set of app slugs enabled on a profile, unioning the
- * modern `enabledApps` array with any truthy legacy per-app field. Deduped;
+ * Resolve the explicit app slugs, falling back to legacy fields only when
+ * the modern `enabledApps` array is absent. Deduped;
  * order is not significant.
  */
 export function resolveEnabledApps(featureToggles: FeatureToggles | null | undefined): string[] {
   if (!featureToggles) return [];
+  if (featureToggles.enabledApps !== undefined) return [...new Set(featureToggles.enabledApps)];
 
-  const enabled = new Set(featureToggles.enabledApps ?? []);
+  const enabled = new Set<string>();
   for (const slug of LEGACY_APP_SLUGS) {
     if (featureToggles[slug]) {
       enabled.add(slug);
@@ -40,8 +40,7 @@ export function resolveEnabledApps(featureToggles: FeatureToggles | null | undef
  * True when `enabledApps` exists (even empty — an explicit "none") or any
  * legacy per-app field is present (even `null`, which the profile edit form
  * writes for an app switched off). A profile whose `feature_toggles` has none
- * of those keys has never touched app toggles; actor nav treats that as "show
- * every app" rather than "show none". No migration: it is derived from the
+ * of those keys has never touched app toggles. No migration: it is derived from the
  * shape already stored.
  */
 export function hasConfiguredAppToggles(featureToggles: FeatureToggles | null | undefined): boolean {
@@ -52,10 +51,5 @@ export function hasConfiguredAppToggles(featureToggles: FeatureToggles | null | 
 
 /** Convenience check for a single slug — `resolveEnabledApps(ft).includes(slug)` without building the whole array at call sites that only need one answer. */
 export function isAppEnabled(featureToggles: FeatureToggles | null | undefined, slug: string): boolean {
-  if (!featureToggles) return false;
-  if (featureToggles.enabledApps?.includes(slug)) return true;
-  if ((LEGACY_APP_SLUGS as readonly string[]).includes(slug)) {
-    return Boolean(featureToggles[slug as (typeof LEGACY_APP_SLUGS)[number]]);
-  }
-  return false;
+  return resolveEnabledApps(featureToggles).includes(slug);
 }

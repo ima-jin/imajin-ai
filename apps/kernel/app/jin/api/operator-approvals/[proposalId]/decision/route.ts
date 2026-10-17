@@ -63,6 +63,8 @@ import { executeGithubApproval, GITHUB_SOURCE } from '@/src/lib/github/approvals
 import { executeAppsProvisionApproval } from '@/src/lib/apps/approvals-execution';
 import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
 import { executeAppsServiceScopesApproval } from '@/src/lib/apps/service-scopes';
+import { APPS_FEATURED_KIND } from '@/src/lib/apps/featured-kind';
+import { executeAppsFeaturedApproval } from '@/src/lib/apps/featured';
 import { executeAppSecretsApproval } from '@/src/lib/apps/secrets-operator';
 import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
 
@@ -102,6 +104,8 @@ async function runAppsExecution(
   let execution;
   if (card.kind === APPS_SERVICE_SCOPES_KIND) {
     execution = await executeAppsServiceScopesApproval(card);
+  } else if (card.kind === APPS_FEATURED_KIND) {
+    execution = await executeAppsFeaturedApproval(card);
   } else if (isAppSecretsKind(card.kind)) {
     execution = await executeAppSecretsApproval(card);
   } else if (card.kind === 'apps:provision') {

@@ -1016,6 +1016,62 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/apps/featured:
+    post:
+      tags: [apps]
+      operationId: proposeAppFeatured
+      summary: Propose directory featuring for a registered app (#2871)
+      description: >-
+        The real node operator, without act-as or delegation, stages an
+        apps:featured proposal on the existing operator-approvals rail.
+        Nothing changes until the operator countersigns an approve decision
+        through POST /jin/api/operator-approvals/{proposalId}/decision.
+        Execution always requires a verified operator countersignature,
+        independent of the node-wide optional countersign flag. No decision
+        mode is accepted. The proposal content hash binds appDid and featured.
+        Changes only registry.apps.featured (NOT NULL, default false);
+        never installs, adds enabledApps, issues authorization, changes scopes,
+        or creates attestations. Self-service app registration cannot set it.
+        An identical pending proposal is reused. Featuring requires an active
+        app at proposal and execution time; unfeaturing a revoked app is allowed.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [appDid, featured]
+              properties:
+                appDid: { type: string, minLength: 1 }
+                featured: { type: boolean }
+      responses:
+        "200":
+          description: Identical pending proposal reused
+        "201":
+          description: New proposal staged; app metadata is unchanged until countersigned approval
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, proposalId]
+                properties:
+                  status: { type: string, enum: [pending] }
+                  proposalId: { type: string }
+        "400":
+          description: Invalid JSON, missing appDid, or featured is not a boolean
+        "401":
+          description: Not authenticated
+        "403":
+          description: Not the real node operator, or acting as/for another identity
+        "404":
+          description: Unknown app DID
+        "409":
+          description: Cannot feature an inactive app
+        "500":
+          description: Failed to raise proposal
+
   /api/apps/service-scopes:
     post:
       tags: [apps]

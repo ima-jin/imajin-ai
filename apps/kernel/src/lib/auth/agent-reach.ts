@@ -331,6 +331,15 @@ export async function reachPrincipalWithBearer(
   if (reachInputTooLarge(body)) return denial('body_too_large', 413);
   const credential = await resolveReachBearer(token, principalDid);
   if (!credential) return denial('unauthorized', 401);
+  return reachPrincipalWithCredential(principalDid, credential, body);
+}
+
+/** Transport adapters pass only a live, audience-verified reach credential. */
+export async function reachPrincipalWithCredential(
+  principalDid: string,
+  credential: NonNullable<Awaited<ReturnType<typeof resolveReachBearer>>>,
+  body: Record<string, unknown>,
+): Promise<ReachResult> {
   const [principal] = await db.select({ id: identities.id, metadata: identities.metadata })
     .from(identities).where(eq(identities.id, principalDid)).limit(1);
   const metadata = principal?.metadata as Record<string, unknown> | null;

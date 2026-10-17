@@ -33,6 +33,9 @@ export default defineConfig({
         // SonarCloud parses them as source either way, so leaving them out of the
         // report measures them as 0% covered rather than skipping them.
         'apps/*/src/**/*.js',
+        // App-root socket entrypoint, exercised by real WebSocket integration
+        // tests (#2859), also runs outside Next and must appear in lcov.
+        'apps/*/ws-server.js',
         // Static assets SonarCloud still analyzes as source (e.g. a PWA service
         // worker under public/, #2291) — same rationale as the src/**/*.js entry
         // above: nothing in sonar-project.properties excludes apps/*/public/**

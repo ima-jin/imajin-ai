@@ -31,6 +31,14 @@ describe('mergeFeatureToggles (#2434)', () => {
     expect(merged).not.toHaveProperty('coffee');
   });
 
+  it('preserves legacy-only selections absent from the form when first creating an explicit list', () => {
+    const merged = mergeFeatureToggles(
+      { coffee: 'ryan' },
+      form({ serviceToggles: { 'new-app': true } }),
+    );
+    expect(resolveEnabledApps(merged)).toEqual(['coffee', 'new-app']);
+  });
+
   it('does not clear selections when registry choices are unavailable', () => {
     const merged = mergeFeatureToggles(
       { coffee: 'ryan', enabledApps: ['new-app'] },
@@ -45,7 +53,7 @@ describe('mergeFeatureToggles (#2434)', () => {
       form({ serviceToggles: { links: true, coffee: false, dykil: false, learn: false, inference: false } }),
     );
 
-    expect(merged.enabledApps).toEqual(['events', 'market', 'some-new-app']);
+    expect(merged.enabledApps).toEqual(['events', 'market', 'some-new-app', 'links']);
     expect(merged.links).toBe('ryan');
   });
 
@@ -112,6 +120,14 @@ describe('mergeFeatureToggles (#2434)', () => {
     );
 
     expect(merged.enabledApps).toEqual(['coffee', 'events']);
+  });
+
+  it('can re-enable a legacy app after directory removal created an explicit empty list', () => {
+    const merged = mergeFeatureToggles(
+      { enabledApps: [], coffee: 'old' },
+      form({ serviceToggles: { coffee: true } }),
+    );
+    expect(resolveEnabledApps(merged)).toEqual(['coffee']);
   });
 
   it('does not mutate the loaded toggles', () => {

@@ -53,6 +53,7 @@ function scopeIcon(scope: string): string {
 
 export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices, identityDid }: Readonly<AppLauncherProps>) {
   const [services, setServices] = useState<LauncherService[]>([]);
+  const [loading, setLoading] = useState(true);
   const [revision, setRevision] = useState(0);
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -65,20 +66,26 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     const refresh = () => { setServices([]); setRevision((value) => value + 1); };
     globalThis.addEventListener('imajin:session-changed', refresh);
     globalThis.addEventListener('imajin:acting-as-changed', refresh);
+    globalThis.addEventListener('imajin:apps-changed', refresh);
     return () => {
       globalThis.removeEventListener('imajin:session-changed', refresh);
       globalThis.removeEventListener('imajin:acting-as-changed', refresh);
+      globalThis.removeEventListener('imajin:apps-changed', refresh);
     };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     setServices([]);
+    setLoading(true);
     // Existing direct consumers need not pass authUrl: derive it from the
     // registry's node, never the standalone application's own origin.
     const authBase = authUrl ?? new URL('../auth', new URL(`${registryUrl}/`, globalThis.location.href)).href;
     void loadLauncherServices(registryUrl, authBase, tier !== 'anonymous').then((entries) => {
-      if (!cancelled) setServices(entries);
+      if (!cancelled) {
+        setServices(entries);
+        setLoading(false);
+      }
     });
     return () => { cancelled = true; };
   }, [registryUrl, authUrl, tier, activeIdentity, identityDid, revision]);
@@ -101,6 +108,9 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const { kernel, core, developer, meta } = groupByCategory(visible);
 
   const wwwUrl = services.find((s) => s.name === 'kernel')?.url ?? services.find((s) => s.name === 'www')?.url ?? '/';
+  const directoryUrl = authUrl
+    ? `${authUrl.replace(/\/$/, '')}/app-directory`
+    : `${registryUrl.replace(/\/?registry\/?$/, '/auth')}/app-directory`;
 
   function renderTile(service: LauncherService) {
     const isCurrent = service.name === currentService;
@@ -168,6 +178,14 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
 
   const footer = (
     <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
+      {tier !== 'anonymous' && (
+        <a
+          href={directoryUrl}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+        >
+          Add app
+        </a>
+      )}
       <a
         href={wwwUrl || '/'}
         className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
@@ -247,6 +265,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   if (inline) {
     return <div className="space-y-0.5">{content}</div>;
   }
+  const emptyMessage = loading ? 'Loading...' : 'No apps to show.';
 
   return (
     <div className="relative" ref={panelRef}>
@@ -275,7 +294,12 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       {showPanel && (
         <div className={`absolute left-0 mt-2 ${variant === 'grid' ? 'w-72' : 'w-56'} bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl py-2 z-50`}>
           {visible.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-gray-400">Loading...</div>
+            <>
+              <output className="block px-4 py-3 text-sm text-gray-400">
+                {emptyMessage}
+              </output>
+              {footer}
+            </>
           ) : (
             content
           )}

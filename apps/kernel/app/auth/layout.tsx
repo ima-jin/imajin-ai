@@ -79,8 +79,8 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   // Registry-driven nav apps (#2425) — replaces the old hard-coded
   // actor-scope fallback list. `resolveNavAppsForIdentity` resolves the
   // enabled set itself: non-actor scopes from forest_config (as above), actors
-  // from their own feature_toggles (#2434 — #2425 ruling b; an actor that
-  // never configured toggles still sees every app). The six extractable app
+  // from explicit feature_toggles membership union live app.authorized grants
+  // (#2871; no default apps). The six extractable app
   // slugs (coffee/dykil/links/learn/events/market) come from `registry.apps`.
   const navApps = filterByPlacement(await resolveNavAppsForIdentity(did), 'auth-submenu');
 

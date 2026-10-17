@@ -65,5 +65,5 @@ export async function GET(request: NextRequest) {
   const apps = await resolveNavAppsForIdentity(did);
   const result = placement ? filterByPlacement(apps, placement) : apps;
 
-  return routeCors(NextResponse.json({ apps: result }, { headers: { 'Cache-Control': 'private, max-age=30' } }), request);
+  return routeCors(NextResponse.json({ apps: result }, { headers: { 'Cache-Control': 'private, no-store' } }), request);
 }

@@ -11,7 +11,7 @@
  * and overlays only what the form actually controls.
  */
 import type { FeatureToggles } from '@/src/db/schemas/profile';
-import { LEGACY_APP_SLUGS } from './feature-toggles-compat';
+import { LEGACY_APP_SLUGS, resolveEnabledApps } from './feature-toggles-compat';
 
 export interface FeatureTogglesFormState {
   /** Keyed by registry app slug plus the kernel-owned `inference` toggle. */
@@ -25,20 +25,19 @@ export interface FeatureTogglesFormState {
 /**
  * `enabledApps` is preserved verbatim except for the slugs this form
  * controls: one the user switched OFF must also leave `enabledApps`,
- * otherwise `resolveEnabledApps` (a union of both shapes) would keep it
- * enabled and the form's toggle would be silently ineffective.
+ * and one switched ON must enter it, including legacy app slugs.
  */
 function mergeEnabledApps(
-  existing: readonly string[] | undefined,
+  existing: FeatureToggles | null | undefined,
   serviceToggles: Readonly<Record<string, boolean>>,
 ): string[] | undefined {
   const appToggles = Object.entries(serviceToggles).filter(([slug]) => slug !== 'inference');
   const hasGenericApp = appToggles.some(([slug]) => !(LEGACY_APP_SLUGS as readonly string[]).includes(slug));
-  if (existing === undefined && !hasGenericApp) return undefined;
-  const enabled = new Set(existing ?? []);
+  if (existing?.enabledApps === undefined && !hasGenericApp) return undefined;
+  const enabled = new Set(resolveEnabledApps(existing));
   for (const [slug, on] of appToggles) {
     if (!on) enabled.delete(slug);
-    else if (!(LEGACY_APP_SLUGS as readonly string[]).includes(slug)) enabled.add(slug);
+    else enabled.add(slug);
   }
   return [...enabled];
 }
@@ -60,7 +59,7 @@ export function mergeFeatureToggles(
     merged[slug] = form.serviceToggles[slug] && form.handle ? form.handle : null;
   }
 
-  const enabledApps = mergeEnabledApps(existing?.enabledApps, form.serviceToggles);
+  const enabledApps = mergeEnabledApps(existing, form.serviceToggles);
   if (enabledApps !== undefined) {
     merged.enabledApps = enabledApps;
   }
