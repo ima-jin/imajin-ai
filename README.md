@@ -1,202 +1,166 @@
 # Imajin
 
 **You compose. Imajin orchestrates. Signed. Legible.**
-*Imajin — programmable trust. The speed of thought, signed.*
 
-You send a voice note, take a photo, drop a file. Your agent works out what you meant and does it on your behalf — and you decide what leaves your hands before anything does. Every step is signed, so the record of what happened is yours to read, check, and keep. The machinery recedes; the proof remains.
-
-[See it live](https://imajin.ai) · Source-available under the [Imajin Network License](./LICENSE.md) — not MIT. Self-hostable: your data, your keys, your domain.
-
----
+You bring your identity, choose your tools, and compose work with other people and agents. You keep authorship and control; with Imajin's signed, scoped rails you can connect, disclose selectively, and account for what happened — *the speed of thought, signed.*
 
 ## What it is
 
-The kernel is six primitives — **Attestation · Communication · Attribution (`.fair`) · Settlement · Discovery · Revocation** — plus the rails that serve them: auth, pay, registry, connections, chat, media, the event bus, and the vault.
+The kernel is **Attestation · Communication · Attribution · Settlement · Discovery · Revocation**, plus the rails that serve them: identity/auth, the bus, connectors, inference passthrough and media. Identity is the subject, not a seventh primitive.
 
-- **Attestation** — every trust-relevant act is a signed, append-only record. Unsigned attestations are rejected at write.
-- **Communication** — DID-addressed messaging, scoped by identity type.
-- **Attribution (`.fair`)** — every asset carries a signed manifest of who contributed what, in what proportion.
-- **Settlement** — transactions verify `.fair` signatures before money moves.
-- **Discovery** — a registry of identities and apps, plus selective disclosure for what a node reveals to whom.
-- **Revocation** — the option to leave: withdraw, tombstone, or hard-destroy. Propagation is part of the primitive.
+**Proof of history, not proof of work:** signatures and linked records establish who asserted what, under whose authority.
+They do not prove every underlying claim true; see the [proof model](docs/guide/proof-model.md) and [whitepaper](docs/mjn-whitepaper.md).
 
-**Proof of history, not proof of work.** Imajin doesn't burn electricity to win a lottery; it keeps a signed, append-only record of real things that happened, and the value is in the record. The rest is in the [MJN Whitepaper](./docs/mjn-whitepaper.md).
+Revocation is the option to leave: withdraw → soft tombstone → hard destruction of hash/key while retaining the tombstone. The record remembers **that**, not **what**; propagation is part of the primitive ([canonical ruling](https://github.com/ima-jin/imajin-ai/issues/2027)), not a claim that every propagation use case is finished.
 
 ## What you can do today
 
-As of 2026-10-05. Each line below is something you can do on a node running this repo's kernel; the dated detail and PR links are in the [build log](./apps/kernel/content/build-log.md) (September 2026 entry) and the [process log](./apps/kernel/content/process-log.md).
+**Replay dated 2026-10-16; repository and registry verification performed 2026-10-17 UTC.**
 
-- **Hold your own identity.** Create a DID, keep your keys, and recover them with recovery codes — shipped September 2026. Production registration is invite-only.
-- **Bring your own model.** Seal your own provider key — Anthropic, OpenAI, Gemini, xAI, Moonshot, Z.ai, OpenRouter, or any OpenAI-compatible local endpoint — and route your agent's completions through the kernel's inference passthrough ([kernel README](./apps/kernel/README.md#inference-connectors)).
-- **Connect your tools.** Authorize Google Workspace (connector v1, September 2026) with a sealed refresh token you can revoke from either side.
-- **Lend a credential without giving it away.** Grant an agent a scoped, one-time-use credential from your vault, and revoke it in one tap from `/jin` — September 2026.
-- **Read what your agents spent.** Every node serves a public, signed per-DID usage rollup at `GET /usage/api/rollup/{did}/latest` ([#2030](https://github.com/ima-jin/imajin-ai/issues/2030)) — a receipt you can verify, not a number we assert.
-- **Move money you can account for.** Request, send, top up, and withdraw through the kernel's MJN/MJNx ledger, with Stripe reconciled against it (September 2026).
-- **Check the record.** Resolve a `did:imajin` publicly ([RFC-40](./docs/rfcs/RFC-40-did-imajin-resolution.md); [#1443](https://github.com/ima-jin/imajin-ai/issues/1443) closed 2026-07-28) and read the durable audit log ([#1140](https://github.com/ima-jin/imajin-ai/issues/1140) closed 2026-07-30).
-- **Use apps built on Imajin.** Sell tickets, run a survey, take a course — see [Kernel vs. apps](#kernel-vs-apps).
-- **Build one.** Register an app as an identity and have the kernel serve it — see [Build an app](#build-an-app).
+- Run the kernel locally, register an identity, and compose with its auth, profile, messaging, media and settlement surfaces. Start with the [developer guide](docs/guide/README.md); permissions, connector configuration and deployment state determine what is available.
+- Build a registered app using published auth-client and SDK packages rather than kernel imports. See [Build an app](#build-an-app).
+- Use apps built on Imajin from their own repositories: coffee, learn and market completed standalone **prod and dev** cutovers on 2026-10-16 ([coffee #2497](https://github.com/ima-jin/imajin-ai/issues/2497), [learn #2502](https://github.com/ima-jin/imajin-ai/issues/2502), [market #2510](https://github.com/ima-jin/imajin-ai/issues/2510)). Cutover is not a guarantee that all app flows are defect-free; their issue threads retain sign-in and settlement follow-ups.
+
+**v0.8.21 has shipped as tagged source and npm SDK artifacts** ([tag](https://github.com/ima-jin/imajin-ai/tree/v0.8.21)); the [kernel production deploy](https://github.com/ima-jin/imajin-ai/actions/runs/38981978863) was still awaiting approval when checked on 2026-10-17 UTC. On 2026-10-16, work formerly grouped under v0.9.0 — the `/jin` console and reach chain — was hoisted onto the current train. That is a scheduling ruling, **not a claim those feature sets have shipped**; the [reach-chain tracker](https://github.com/ima-jin/imajin-ai/issues/2587) remains the status source.
 
 ## Kernel vs. apps
 
-The kernel is the six primitives (Attestation · Communication · Attribution · Settlement · Discovery · Revocation) and the rails that serve them; everything else is a third-party service that the kernel serves under the registered-app contract ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981)). A node operator runs the kernel, not a calendar. These are **apps built on Imajin**, each registered as an identity ([#1990](https://github.com/ima-jin/imajin-ai/issues/1990), closed 2026-09-14), each documenting itself in a README it owns.
+A node operator runs the kernel, not a calendar. Third-party services are **apps built on Imajin**, registered as identities and limited to the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981): scoped tokens, published SDK and public kernel APIs, not shared kernel internals.
 
-Extraction into separate repos is in progress, not finished ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981) is still open): the apps below still live in this monorepo and run beside the kernel. `links` was the first to leave — `apps/links` was pruned on 2026-09-28 and it now lives at [ima-jin/links](https://github.com/ima-jin/links).
+Generated inventory of `apps/*` at the source commit recorded below (includes the kernel and internal services without pretending they are all third-party apps):
 
-<!-- apps:start -->
-| App | What it does | Docs |
-|---|---|---|
-| [broker-agent](./apps/broker-agent) | Telegram broker agent — conversational surface for broker-mediated social coordination | [README](./apps/broker-agent/README.md) |
-| [corpus](./apps/corpus) | Per-DID corpus indexing and BM25 search service — an internal daemon (port 8003 in production), not a subdomain web app | [README](./apps/corpus/README.md) |
-| [events](./apps/events) | Create events. Sell tickets. Own your audience | [README](./apps/events/README.md) |
-<!-- apps:end -->
+| Directory at HEAD | What it is | Boundary / status (2026-10-16) | Owned README |
+|---|---|---|---|
+| `apps/broker-agent` | Telegram conversational surface for broker-mediated coordination | In monorepo; rail/app classification remains undecided in #1981; not asserted production-ready | [README](apps/broker-agent/README.md) |
+| `apps/corpus` | Per-DID indexing and BM25 search | In monorepo; internal daemon, not a public vertical; rail/app classification remains undecided | [README](apps/corpus/README.md) |
+| `apps/events` | Event pages, ticketing and check-in | Monorepo copy retained; standalone dev exists, but prod cutover is **not complete** as of 2026-10-16 ([#2516](https://github.com/ima-jin/imajin-ai/issues/2516)) | [README](apps/events/README.md) |
+| `apps/kernel` | Attestation · Communication · Attribution · Settlement · Discovery · Revocation, plus supporting rails | The kernel itself, **not** a third-party app | [README](apps/kernel/README.md) |
 
-**learn** ([#2503](https://github.com/ima-jin/imajin-ai/issues/2503)) has left this monorepo: it lives in its own repo, [ima-jin/learn](https://github.com/ima-jin/learn), registered through the app contract and still served at `jin.imajin.ai/learn` via the same Caddy route.
+Apps whose monorepo copies have already been pruned:
 
-**coffee** ([#1984](https://github.com/ima-jin/imajin-ai/issues/1984), [#2500](https://github.com/ima-jin/imajin-ai/issues/2500)) has left this monorepo: it lives in its own repo, [ima-jin/coffee](https://github.com/ima-jin/coffee), registered through the app contract and still served at `jin.imajin.ai/coffee` via the same Caddy route.
+| App | What you compose | Location / status as of 2026-10-16 | Owned README |
+|---|---|---|---|
+| coffee | Tips and support | Standalone prod + dev; `apps/coffee` absent at HEAD | [coffee](https://github.com/ima-jin/coffee/blob/main/README.md) |
+| learn | Courses and learning | Standalone prod + dev; `apps/learn` absent at HEAD | [learn](https://github.com/ima-jin/learn/blob/main/README.md) |
+| market | Listings and purchases | Standalone prod + dev; `apps/market` absent at HEAD | [market](https://github.com/ima-jin/market/blob/main/README.md) |
+| links | Link-in-bio pages | Own repository; monorepo copy pruned 2026-09-28 | [links](https://github.com/ima-jin/links/blob/main/README.md) |
+| dykil | Surveys and signed responses | Own repository; monorepo copy pruned ([#2523](https://github.com/ima-jin/imajin-ai/issues/2523)); cutover/import acceptance **still in progress** ([#2522](https://github.com/ima-jin/imajin-ai/issues/2522)) | [dykil](https://github.com/ima-jin/dykil/blob/main/README.md) |
 
-**market** ([#1989](https://github.com/ima-jin/imajin-ai/issues/1989), [#2512](https://github.com/ima-jin/imajin-ai/issues/2512)) has left this monorepo: it lives in its own repo, [ima-jin/market](https://github.com/ima-jin/market), registered through the app contract and still served at `jin.imajin.ai/market` via the same Caddy route.
+Events also has a [standalone app-owned README](https://github.com/ima-jin/events/blob/main/README.md); the retained [monorepo README](apps/events/README.md) documents the copy still present here. **Events prod cutover #2516 is not done as of 2026-10-16.**
 
-**dykil** ([#1985](https://github.com/ima-jin/imajin-ai/issues/1985), [#2523](https://github.com/ima-jin/imajin-ai/issues/2523)) has left this monorepo: it lives in its own repo, [ima-jin/dykil](https://github.com/ima-jin/dykil), registered through the app contract and still served at `jin.imajin.ai/dykil` via the same Caddy route.
-
-`apps/kernel` is the kernel service itself, not an app — see its [README](./apps/kernel/README.md). Whether `broker-agent` and `corpus` are kernel rails or apps is undecided ([#1981](https://github.com/ima-jin/imajin-ai/issues/1981), [#1726](https://github.com/ima-jin/imajin-ai/issues/1726)).
+Under the 2026-10-09 [prune-on-dev ruling](https://github.com/ima-jin/imajin-ai/issues/1981#issuecomment-6083425361), app source is pruned once standalone dev holds; pruning does not prove prod acceptance and does not drop app schema/data. Events is the explicit live-prod exception.
 
 ## Build an app
 
-An app registers with the kernel as an identity, gets scoped tokens, and never reaches into kernel internals. Fork [imajin-app-template](https://github.com/ima-jin/imajin-app-template) — it carries the contract, the CI gates, and the agent rules a registered app needs. Registration mechanics: [docs/REGISTRATION.md](./docs/REGISTRATION.md) — including how an app emits events through `POST /api/events` (an operator-approved allowlist; notify and audit only, never money). The contract itself: [#1981](https://github.com/ima-jin/imajin-ai/issues/1981).
+Start from the [app template's owned README](https://github.com/ima-jin/imajin-app-template/blob/main/README.md), preserving template history. Follow the [registration contract](docs/REGISTRATION.md) and the template's own setup, schema ownership and claim instructions.
 
-The SDK packages an app needs (all four install from npm today — see [Packages](#packages-sdk)):
+For sign-in and session handlers, use [`@ima-jin/auth-client`](packages/auth-client/README.md). Add published [`auth`](packages/auth/package.json), [`config`](packages/config/package.json), [`logger`](packages/logger/package.json), [`ui`](packages/ui/package.json) or [`fair`](packages/fair/package.json) only where your app needs them.
 
-- [`@imajin/auth-client`](./packages/auth-client) — "Sign in with Imajin": sessions and ready-made Next.js route handlers.
-- [`@imajin/auth`](./packages/auth) — signing, verification, and scoped app-token guards.
-- [`@imajin/config`](./packages/config) — CORS, service routing, session config.
-- [`@imajin/fair`](./packages/fair) — `.fair` attribution types and validator.
+```bash
+npm install @ima-jin/auth-client@0.8.21
+```
 
-Packages publish under the `@ima-jin` scope, not `@imajin` — npm doesn't recognize the scope this repo imports from, so [`scripts/prepare-npm-publish.mjs`](./scripts/prepare-npm-publish.mjs) rewrites it at publish time. Details: [docs/packages/PUBLISHING.md](./docs/packages/PUBLISHING.md).
-
-Apps built on Imajin in their own repos: [imajin-karaoke](https://github.com/ima-jin/imajin-karaoke), [imajin-fixready](https://github.com/ima-jin/imajin-fixready), [imajin-scorecard](https://github.com/ima-jin/imajin-scorecard).
+External apps install **`@ima-jin/*` from npmjs.org anonymously**; in-repo imports remain **`@imajin/*`**. The publish pipeline rewrites the scope and strips `private: true` in the publish copy; the workspace flag is not evidence of publication. See [publishing mechanics](docs/npm-publishing.md). Never use workspace-only packages as an out-of-repo install instruction or access another service's database.
 
 ## Packages (SDK)
 
-<!-- packages:start -->
-Generated from `packages/*/package.json` and the live npm registry, 2026-10-05. **10 of 29 packages are published** and install anonymously from npmjs.org with `npm install @ima-jin/<name>`; the rest are workspace-only (depended on via `workspace:*` inside this monorepo). Every `package.json` in the repo stays `private: true` as a publish safety net ([docs/npm-publishing.md](./docs/npm-publishing.md)), so the manifest flag is not the status — the registry is. Packages publish under `@ima-jin`, never `@imajin`.
+Generated from every `packages/*/package.json` at `ddc114bbd028a1efa5852569e36d0569343c8739`. Descriptions use manifest text where supplied (long plugin descriptions shortened); manifests without descriptions use their public exports. Publish status was checked anonymously on **2026-10-17 UTC** with `npm view <published-name> version --registry=https://registry.npmjs.org --userconfig=/dev/null`: **12 published, 18 workspace-only**. Registry links expose the live `latest` record; the version shown is the checked snapshot, not a promise about future releases.
 
-Publish history: SDK publish [#1982](https://github.com/ima-jin/imajin-ai/issues/1982), build + dist exports [#1011](https://github.com/ima-jin/imajin-ai/issues/1011), and the `auth` database removal [#1992](https://github.com/ima-jin/imajin-ai/issues/1992) are closed. Normalizing the remaining packages for npm, [#1581](https://github.com/ima-jin/imajin-ai/issues/1581), is still open. Install notes: [docs/packages/PUBLISHING.md](./docs/packages/PUBLISHING.md).
+### Core SDK and workspace libraries
 
-| Package | What it does | Published |
+| Workspace package | What it provides | Publish status |
 |---|---|---|
-| [`@imajin/auth`](./packages/auth) | Ed25519 keypairs, DID + session/app-token auth guards, permission tiers | npm — `npm install @ima-jin/auth` |
-| [`@imajin/auth-client`](./packages/auth-client) | "Sign in with Imajin" SDK — JWT sessions, ready-made Next.js route handlers | npm — `npm install @ima-jin/auth-client` |
-| [`@imajin/bus`](./packages/bus) | Event bus: publish → reactor chain (attestation, mjn, settle, notify, emit, webhook) | Workspace-only |
-| [`@imajin/chat`](./packages/chat) | Chat UI components — orchestrator, message bubble, voice, media | Workspace-only |
-| [`@imajin/cid`](./packages/cid) | Deterministic CIDv1 (dag-cbor + SHA-256) content addressing | npm — `npm install @ima-jin/cid` |
-| [`@imajin/config`](./packages/config) | Shared service config — CORS, routing, sessions, handle validation | npm — `npm install @ima-jin/config` |
-| [`@imajin/db`](./packages/db) | Shared Postgres handle (postgres-js + Drizzle ORM) | npm — `npm install @ima-jin/db` |
-| [`@imajin/dfos`](./packages/dfos) | DFOS protocol bridge — content publish, chain signer, relay | Workspace-only |
-| [`@imajin/email`](./packages/email) | Email sending (SendGrid), templates, QR generation | Workspace-only |
-| [`@imajin/emit`](./packages/emit) | Fire-and-forget system-event emission (audit/telemetry sink) | Workspace-only |
-| [`eslint-config-imajin`](./packages/eslint-config-imajin) | Shared ESLint flat config for the monorepo | Workspace-only |
-| [`@imajin/fair`](./packages/fair) | .fair attribution types, validator, builder, React components | npm — `npm install @ima-jin/fair` |
-| [`@imajin/input`](./packages/input) | Input components — emoji, voice, GPS, file upload | Workspace-only |
-| [`@imajin/llm`](./packages/llm) | LLM inference abstraction — cost tracking, provider routing | Workspace-only |
-| [`@imajin/logger`](./packages/logger) | Structured logging (pino-backed) and request middleware | npm — `npm install @ima-jin/logger` |
-| [`@imajin/media`](./packages/media) | Media browser and asset display components | Workspace-only |
-| [`@imajin/money`](./packages/money) | Currency-safe Money type, signed FX snapshots, ECB rate cache | Workspace-only |
-| [`@imajin/notify`](./packages/notify) | Cross-channel notification client (email/in-app/chat) | Workspace-only |
-| [`@imajin/onboard`](./packages/onboard) | Anonymous-to-soft-DID onboarding (<OnboardGate>) | Workspace-only |
-| [`@imajin/tokens`](./packages/tokens) | Design tokens (DTCG format, Style Dictionary v4) | npm — `npm install @ima-jin/tokens` |
-| [`@imajin/trust-graph`](./packages/trust-graph) | Trust graph queries — pod membership, trust distance/radius | Workspace-only |
-| [`@imajin/ui`](./packages/ui) | Shared UI — nav bar, identity management, app launcher, theming | npm — `npm install @ima-jin/ui` |
-| [`@imajin/vault-core`](./packages/vault-core) | Vault entry models — sealing, delegation, integrity verification | npm — `npm install @ima-jin/vault-core` |
-<!-- packages:end -->
+| [`@imajin/auth`](packages/auth/package.json) | Authentication, scoped authorization, DID helpers, signing and verification | [`@ima-jin/auth@0.8.21`](https://registry.npmjs.org/@ima-jin/auth/latest) |
+| [`@imajin/auth-client`](packages/auth-client/package.json) | "Sign in with Imajin" SDK for federated apps — JWT session management and ready-made Next.js route handlers | [`@ima-jin/auth-client@0.8.21`](https://registry.npmjs.org/@ima-jin/auth-client/latest) |
+| [`@imajin/bus`](packages/bus/package.json) | Event publishing, consent brokering and ordered reactor chains | Workspace-only; npm 404 |
+| [`@imajin/chat`](packages/chat/package.json) | Chat components, message rendering and real-time hooks | Workspace-only; npm 404 |
+| [`@imajin/cid`](packages/cid/package.json) | Deterministic CIDv1 (dag-cbor + SHA-256) helpers shared across Imajin services | [`@ima-jin/cid@0.8.21`](https://registry.npmjs.org/@ima-jin/cid/latest) |
+| [`@imajin/config`](packages/config/package.json) | Shared configuration for Imajin services — CORS, service routing, session config, handle validation, and route helpers | [`@ima-jin/config@0.8.21`](https://registry.npmjs.org/@ima-jin/config/latest) |
+| [`@imajin/db`](packages/db/package.json) | Drizzle/postgres database handle shared across Imajin services | [`@ima-jin/db@0.8.21`](https://registry.npmjs.org/@ima-jin/db/latest) |
+| [`@imajin/dfos`](packages/dfos/package.json) | DFOS identity-chain verification and content publishing | Workspace-only; npm 404 |
+| [`@imajin/email`](packages/email/package.json) | Email delivery, templates and QR generation | Workspace-only; npm 404 |
+| [`@imajin/emit`](packages/emit/package.json) | Service-scoped operational event emission | Workspace-only; npm 404 |
+| [`eslint-config-imajin`](packages/eslint-config-imajin/package.json) | Shared ESLint flat config for imajin-ai monorepo | Workspace-only; npm 404 |
+| [`@imajin/fair`](packages/fair/package.json) | Shared .fair attribution types, validator, builder, and React components | [`@ima-jin/fair@0.8.21`](https://registry.npmjs.org/@ima-jin/fair/latest) |
+| [`@imajin/input`](packages/input/package.json) | Composable text, voice, location and attachment inputs | Workspace-only; npm 404 |
+| [`@imajin/llm`](packages/llm/package.json) | Vercel AI SDK provider factory and usage-cost calculation | Workspace-only; npm 404 |
+| [`@imajin/logger`](packages/logger/package.json) | Structured logging and request middleware | [`@ima-jin/logger@0.8.21`](https://registry.npmjs.org/@ima-jin/logger/latest) |
+| [`@imajin/media`](packages/media/package.json) | Media browser, asset display components, and resolveMediaRef/resolveAssetUrl helpers for Imajin apps | [`@ima-jin/media@0.8.21`](https://registry.npmjs.org/@ima-jin/media/latest) |
+| [`@imajin/money`](packages/money/package.json) | Currency-safe Money primitive, signed FX snapshots, and ECB rate cache-through (#1950) | Workspace-only; npm 404 |
+| [`@imajin/notify`](packages/notify/package.json) | Credential-provider-backed notification and broadcast client | Workspace-only; npm 404 |
+| [`@imajin/onboard`](packages/onboard/package.json) | OnboardGate — React component that gates a page behind Imajin onboarding (handle/identity setup) | [`@ima-jin/onboard@0.8.21`](https://registry.npmjs.org/@ima-jin/onboard/latest) |
+| [`@imajin/provision-bootstrap`](packages/provision-bootstrap/package.json) | Build-time ESM compilation for the service-bootstrap entrypoint | Workspace-only; npm 404 |
+| [`@imajin/tokens`](packages/tokens/package.json) | Imajin design tokens — DTCG format, built with Style Dictionary v4 | [`@ima-jin/tokens@0.8.21`](https://registry.npmjs.org/@ima-jin/tokens/latest) |
+| [`@imajin/trust-graph`](packages/trust-graph/package.json) | Pod membership traversal and trust-graph queries | Workspace-only; npm 404 |
+| [`@imajin/ui`](packages/ui/package.json) | Shared UI components for Imajin apps — NavBar, identity management, app launcher, theming, and common patterns | [`@ima-jin/ui@0.8.21`](https://registry.npmjs.org/@ima-jin/ui/latest) |
+| [`@imajin/vault-core`](packages/vault-core/package.json) | Vault entry models, integrity verification, sealing and delegation primitives for Imajin nodes | [`@ima-jin/vault-core@0.8.21`](https://registry.npmjs.org/@ima-jin/vault-core/latest) |
 
-### Plugin surface (OpenClaw)
+### Plugin and harness surface
 
-The packages that let an OpenClaw or Claude Code agent act as a kernel-registered identity.
+The [OpenClaw Imajin plugin](https://github.com/ima-jin/openclaw-imajin-plugin/blob/main/README.md) lives in its own repository, outside this manifest inventory. Channel, inference passthrough, reflex guard, envelope, provisioner and usage-emitter packages below are workspace-only; no npm installation is claimed for them.
 
-<!-- plugin:start -->
-None of these are published to npm yet — all workspace-only (checked against the registry, 2026-10-05).
-
-| Package | What it does | Published |
+| Workspace package | What it provides | Publish status |
 |---|---|---|
-| [`@imajin/claw-envelope`](./packages/claw-envelope) | Harness-agnostic context-envelope generator, plus the agent identity bootstrap CLI | Workspace-only |
-| [`@imajin/claw-provisioner`](./packages/claw-provisioner) | Operator-executed runner that materializes an envelope and boots the deploy stack | Workspace-only |
-| [`@imajin/nanoclaw-imajin-channel`](./packages/nanoclaw-imajin-channel) | NanoClaw channel adapter — bridges jin.imajin.ai chat to an agent's own DID | Workspace-only |
-| [`@imajin/openclaw-infer-passthrough`](./packages/openclaw-infer-passthrough) | Local OpenAI-compatible proxy — mints kernel app-tokens, forwards inference calls to the kernel | Workspace-only |
-| [`@imajin/openclaw-reflex-guard`](./packages/openclaw-reflex-guard) | OpenClaw post-turn instruction-check guard (sealed-term + fuzzy reflex) | Workspace-only |
-| [`@imajin/usage-emitter-claude-code`](./packages/usage-emitter-claude-code) | Reference usage.incurred emitter — tails a Claude Code session log, posts it to the kernel | Workspace-only |
-<!-- plugin:end -->
+| [`@imajin/claw-envelope`](packages/claw-envelope/package.json) | Harness-agnostic RFC-31 context envelopes and agent identity bootstrap | Workspace-only; npm 404 |
+| [`@imajin/claw-provisioner`](packages/claw-provisioner/package.json) | Operator-executed envelope materialization and hosted-runner provisioning | Workspace-only; npm 404 |
+| [`@imajin/nanoclaw-imajin-channel`](packages/nanoclaw-imajin-channel/package.json) | NanoClaw chat channel, MCP token refresh and usage-emitter sidecars | Workspace-only; npm 404 |
+| [`@imajin/openclaw-infer-passthrough`](packages/openclaw-infer-passthrough/package.json) | Local OpenAI-compatible proxy to kernel inference with direct fallback | Workspace-only; npm 404 |
+| [`@imajin/openclaw-reflex-guard`](packages/openclaw-reflex-guard/package.json) | OpenClaw post-turn sealed-term guard and fuzzy-reflex scaffold | Workspace-only; npm 404 |
+| [`@imajin/usage-emitter-claude-code`](packages/usage-emitter-claude-code/package.json) | Claude Code session usage emitter to the kernel usage API | Workspace-only; npm 404 |
 
 ## Run a node
 
-The kernel only. Apps run separately; each has its own README.
+For a local kernel: **Node.js 22+, pnpm 9, PostgreSQL 14+** and its client tools. The [setup helper](scripts/setup-local.sh) installs workspace dependencies, prepares local env files (including the retained events copy), migrates the local database and provisions service bootstrap identities. It does **not** require starting a vertical.
 
 ```bash
 git clone https://github.com/ima-jin/imajin-ai.git
 cd imajin-ai
 bash scripts/setup-local.sh
-pnpm --filter @imajin/kernel dev   # http://localhost:3000
+pnpm --filter @imajin/kernel dev
 ```
 
-`setup-local.sh` installs dependencies, creates the `imajin_dev` database, wires `.env.local`, runs migrations, and disables the invite gate **for local dev only** — production registration is invite-only. Full guide: [docs/DEVELOPER.md](./docs/DEVELOPER.md). Deployment topology: [docs/ENVIRONMENTS.md](./docs/ENVIRONMENTS.md).
+Open `http://localhost:3000/register` locally and save your key file. The helper disables the invite gate **for local development only**; production registration remains policy-gated. Only the kernel is started by the command above — not `pnpm dev`, which starts the workspace.
+
+Setup details: [local development](docs/DEVELOPER.md). Production deployment: [operations/environment reference](docs/ENVIRONMENTS.md) and [deploy configuration](deploy/README.md); use the reviewed release/deploy workflows, not a manual production `git pull`. Extracted apps use their own deployment docs.
 
 ## Project status
 
 <!-- stats:start -->
-| Metric | Value | Method |
-|---|---|---|
-| Codebase | 450,950 lines (`.ts`/`.tsx`) | `git ls-files '*.ts' '*.tsx' \| xargs cat \| wc -l` |
-| Commits | 4,579 | `git rev-list --count HEAD` |
-| First commit | 2026-02-11 | `git log --reverse --format=%ad --date=short` |
-| Services | the kernel + 3 apps built on Imajin, 29 shared packages | `ls apps`, `ls packages` |
+Generated 2026-10-17 UTC from source commit [`ddc114bb`](https://github.com/ima-jin/imajin-ai/commit/ddc114bbd028a1efa5852569e36d0569343c8739) for the 2026-10-16 replay.
 
-_As of commit `5d278d72` (2026-10-05). Regenerated at each replay of [#2028](https://github.com/ima-jin/imajin-ai/issues/2028)._
+| Repository metric | Computed value |
+|---|---|
+| Reachable commits (`git rev-list --count HEAD`, full history) | 5126 |
+| `apps/*/package.json` | 4 (includes kernel and internal services) |
+| `packages/*/package.json` | 30 |
 <!-- stats:end -->
 
-Identities and inference cost aren't typed into this README. There's no public identity-count endpoint. For inference cost, read the signed `usage.rollup` receipt at `GET /usage/api/rollup/{did}/latest` ([#2030](https://github.com/ima-jin/imajin-ai/issues/2030)) — this README doesn't assert a dollar figure it can't sign.
+No live identity count or unsigned inference-cost estimate is asserted here. Signed usage records are described by the [usage-rollup read model](apps/kernel/app/usage/api/rollup/[did]/latest/route.ts).
 
-## Docs, RFCs, spec
+## Docs / RFCs / spec
 
-| Doc | What it covers |
-|---|---|
-| [MJN Whitepaper](./docs/mjn-whitepaper.md) | The protocol: Attestation · Communication · Attribution · Settlement · Discovery · Revocation, the cryptographic stack, the infrastructure layers |
-| [RFC index](./docs/rfcs/INDEX.md) | All RFCs, including the conformance suite ([RFC-21](./docs/rfcs/RFC-21-imajin-conformance-suite.md), tracked in [#1287](https://github.com/ima-jin/imajin-ai/issues/1287)) |
-| [Developer Guide](./docs/DEVELOPER.md) | Local setup, env vars, workflows |
-| [Environments](./docs/ENVIRONMENTS.md) | Database and deployment topology |
-| [Migrations](./docs/MIGRATIONS.md) | The database migration system |
-| [Build log](./apps/kernel/content/build-log.md) · [Process log](./apps/kernel/content/process-log.md) | What merged, and how decisions were made |
+- [Developer guide index](docs/guide/README.md) · [HTTP walkthrough](docs/developer-guide.md) · [environment reference](docs/ENVIRONMENTS.md) · [migrations](docs/MIGRATIONS.md).
+- [Whitepaper](docs/mjn-whitepaper.md) · [RFC index](docs/rfcs/INDEX.md) · [API spec source](apps/kernel/app/jin/api/spec/route.ts).
+- [Conformance tracker #1287](https://github.com/ima-jin/imajin-ai/issues/1287): the assembled node suite remains tracked work, not a certification asserted by this README.
+- The two-entity architecture (Canadian reference-build company / proposed Swiss protocol steward) remains a [memo and conformance dependency in #1287](https://github.com/ima-jin/imajin-ai/issues/1287), not a claim that the proposed entity exists.
+- [Build log](apps/kernel/content/build-log.md) · [generated process log](apps/kernel/content/process-log.md). Historical entries retain their dates; they are not current deployment claims.
 
-This repository is the Imajin Inc. reference implementation of the MJN protocol, not the protocol spec itself. The method and spec work is scoped to move toward a separate protocol entity over time — the "two-entity" split referenced in [RFC-40](./docs/rfcs/RFC-40-did-imajin-resolution.md) §10 and the RFC-20/21 conformance framing. That split is still evolving; the RFC index is the canonical pointer.
+Linked docs can lag the implementation; the read-only drift inventory for this replay is recorded on [#2028](https://github.com/ima-jin/imajin-ai/issues/2028). This replay changes only the root README.
 
 ## Contributing
 
-This is early. The architecture is stabilizing but APIs will change.
-
-If you want to run your own node or build on the stack, start with the [Developer Guide](./docs/DEVELOPER.md), then open an issue or find us on [DFOS](https://app.dfos.com/j/c3rff6e96e4ca9hncc43en).
-
-**Talk to us first.** Before requesting assignment on issues, claiming work, or submitting PRs — come find us on DFOS and introduce yourself. No drive-by PRs: unsolicited PRs from accounts with no prior conversation will be closed. Bot accounts and automated "/apply" comments will be deleted and blocked.
+Read [AGENTS.md](AGENTS.md), the [canonical patterns](docs/guide/canonical-patterns.md) and the [PR checklist](docs/PR-CHECKLIST.md). Use an isolated worktree and a PR; respect service boundaries. Repository checks: `pnpm lint`, `pnpm typecheck`, `pnpm test:coverage`, `pnpm build`. Release workflows alone bump manifest versions.
 
 ## Security
 
-Found a vulnerability, or want to know what we do and don't guarantee yet? See [SECURITY.md](SECURITY.md) for the responsible-disclosure process and an honest list of known limitations. We're pre-1.0 sovereign plumbing — not claiming to be unhackable, just claiming to be honest about where we are.
+See [SECURITY.md](SECURITY.md) for responsible disclosure and known limitations. User signatures, node assertions and operational logs are different guarantees; consult the [proof model](docs/guide/proof-model.md), not the hero, when deciding what a verifier can establish.
 
 ## A note on use
 
-Imajin is source-available under the [Imajin Network License](./LICENSE.md). We're not going to stop you — the license means what it says, run it for anything you like within its terms. That's the point of a sovereign system.
+You can use a general-purpose tool well or badly. The commitment here is legibility, not a promise to make misuse impossible: authority, disclosure and signed actions should leave an inspectable record, including our own. A signature proves who asserted a claim, not that the claim is true; soft-DID activity and unsigned operational logs are not user signatures.
 
-But know what you're running. Imajin signs everything. Every action leaves an attributable, non-repudiable record — that's not a feature we bolted on, it's the whole thesis. For two thousand years the money was in the lie; Imajin is built so that hiding stops paying and disclosure starts.
-
-So we'll be honest about the uses we don't jive with: surveillance, targeting, anything built to act on people in the dark. We're not going to forbid them. We're going to do something we think is stronger — make them *legible*. If you use this system to do something you'd rather not have on the record, understand that the system's job is to put it on the record. That's not a bug we'll fix for you.
-
-We hold ourselves to the same thing. Imajin is built in the open, its actions signed, its history auditable — including ours. This is the ethical promise; [LICENSE.md](./LICENSE.md) is what's actually enforceable. We're prepared to be on the record. That's the deal we're offering everyone else, and we took it first.
-
-Two gaps this promise depended on are closed, and dated: anyone can resolve our DIDs without asking us ([RFC-40](./docs/rfcs/RFC-40-did-imajin-resolution.md); [#1443](https://github.com/ima-jin/imajin-ai/issues/1443) closed 2026-07-28), and actions are persisted to a durable audit log rather than only emitted ([#1140](https://github.com/ima-jin/imajin-ai/issues/1140) closed 2026-07-30). The tracking issue, [#1427](https://github.com/ima-jin/imajin-ai/issues/1427), closed 2026-09-23.
-
-Have at it. Careful what you wish for.
+The [honest-record accountability issue #1427](https://github.com/ima-jin/imajin-ai/issues/1427) closed on 2026-09-23 after the resolver and durable audit-log gaps shipped. That closes those tracked gaps, not every security or revocation-propagation use case. Check the implementation, [known limitations](SECURITY.md), and [license](LICENSE.md).
 
 ## License
 
-[Imajin Network License (INL) v1.0](./LICENSE.md) — **not MIT.** Free to use, copy, modify, and sell for personal use, non-commercial use, small businesses, and 90-day evaluation. Organizations with over CAD $1,000,000 annual revenue doing commercial use must additionally run a Node Identity, produce `.fair` attribution manifests for what they process, and stay protocol-conformant — participation, not a fee. Read [LICENSE.md](./LICENSE.md) for the full terms.
-
----
-
-*Built by [Imajin](https://imajin.ai) — 今人 (ima-jin) — "now-person" / "imagination"*
+[Imajin Network License (INL) v1.0](LICENSE.md), **not MIT**. Source-available, with notice requirements for everyone and network-participation conditions for covered commercial organizations above the CAD $1 million annual-revenue threshold. Read the license for the actual conditions and exemptions; this summary does not replace it.
