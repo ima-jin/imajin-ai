@@ -1,25 +1,34 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { LoopWithHistory, LoopsPage } from '@/src/lib/loops/query';
+import { RunOutput } from './run-output';
+import { RunComposer } from './run-composer';
+import type { SessionCommandClient } from './session-command-client';
+
 
 interface DetailProps {
   loopId: string;
   onSelect: (loopId: string) => void;
   onDenied: () => void;
+  client?: SessionCommandClient;
 }
 
-export function RunsPanelDetail({ loopId, onSelect, onDenied }: Readonly<DetailProps>) {
+export function RunsPanelDetail({ loopId, onSelect, onDenied, client }: Readonly<DetailProps>) {
   const [detail, setDetail] = useState<LoopWithHistory | null>(null);
+  const [commandAvailable, setCommandAvailable] = useState(false);
   const [lineage, setLineage] = useState<LoopsPage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const refreshDetail = useCallback(() => setRefresh((value) => value + 1), []);
 
   useEffect(() => {
     const controller = new AbortController();
-    setDetail(null);
-    setLineage(null);
+    let inFlight = false;
     setError(null);
     async function load() {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const responses = await Promise.all([
           fetch(`/jin/api/runs/${encodeURIComponent(loopId)}`, { credentials: 'include', signal: controller.signal }),
@@ -38,26 +47,39 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied }: Readonly<DetailP
           return;
         }
         setDetail(history.detail);
+        setCommandAvailable(history.commandTarget?.available === true);
         setLineage(tree.page);
+        setError(null);
       } catch {
-        if (!controller.signal.aborted) setError('Run history unavailable. Try opening this run again.');
+        if (!controller.signal.aborted) {
+          setCommandAvailable(false);
+          setError('Run history unavailable. Try opening this run again.');
+        }
+      } finally {
+        inFlight = false;
       }
     }
     void load();
-    return () => controller.abort();
-  }, [loopId, onDenied]);
+    const timer = setInterval(() => void load(), 3000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [loopId, onDenied, refresh]);
 
-  if (error) return <p role="alert" className="text-sm text-red-300">{error}</p>;
-  if (!detail) return <output className="text-xs text-gray-400">Loading history…</output>;
+  useEffect(() => { setDetail(null); setLineage(null); setCommandAvailable(false); }, [loopId]);
+
+  if (!detail || detail.loop.loopId !== loopId) return error
+    ? <p role="alert" className="text-sm text-red-300">{error}</p>
+    : <output className="text-xs text-gray-400">Loading history…</output>;
 
   return (
     <div className="min-w-0 space-y-3 text-xs text-gray-400" data-testid="run-detail">
       <p className="break-all font-mono">{detail.loop.loopId}</p>
+      {error && <p role="alert" className="text-red-300">{error}</p>}
       <dl className="space-y-1">
-        {Object.entries(detail.loop.refs).map(([key, value]) => (
-          <div key={key} className="break-all"><dt className="inline text-gray-500">{key}: </dt><dd className="inline">{String(value)}</dd></div>
+        {(['issue', 'pr'] as const).map((key) => typeof detail.loop.refs[key] === 'string' && (
+          <div key={key} className="break-all"><dt className="inline text-gray-500">{key}: </dt><dd className="inline">{String(detail.loop.refs[key])}</dd></div>
         ))}
       </dl>
+      <RunComposer key={loopId} loopId={loopId} events={detail.events} disabled={!commandAvailable || !!detail.loop.finishedAt} onDispatched={refreshDetail} client={client} />
       <div>
         <h4 className="font-semibold text-gray-200">Lineage</h4>
         {detail.loop.parentLoopId && (
@@ -85,6 +107,7 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied }: Readonly<DetailP
               <p className="text-gray-200">{event.type}</p>
               <time dateTime={event.occurredAt}>{event.occurredAt}</time>
               <p>{String(event.payload.summary ?? '')}</p>
+              {event.payload.output && <RunOutput output={event.payload.output} />}
               <p className="break-all">Signed by {event.issuer}</p>
             </li>
           ))}
