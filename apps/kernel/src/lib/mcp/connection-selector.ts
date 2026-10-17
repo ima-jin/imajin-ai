@@ -21,9 +21,9 @@ export async function resolveToolConnection(
   const matches = rows.filter((row) => row.label === selector);
   if (matches.length === 1) return connectionSlot(matches[0].slot);
   if (matches.length > 1) {
-    throw new Error(`ambiguous_connection: '${selector}' matches slots: ${matches.map((row) => row.slot).sort().join(', ')}`);
+    throw new Error(`ambiguous_connection: '${selector}' matches slots: ${matches.map((row) => row.slot).sort((left, right) => left.localeCompare(right, 'en')).join(', ')}`);
   }
-  throw new Error(`unknown_connection: '${selector}' is not a ${provider} connection; available slots: ${rows.map((row) => row.slot).sort().join(', ') || 'primary'}`);
+  throw new Error(`unknown_connection: '${selector}' is not a ${provider} connection; available slots: ${rows.map((row) => row.slot).sort((left, right) => left.localeCompare(right, 'en')).join(', ') || 'primary'}`);
 }
 
 /** Bind the selected connection once; all nested action/token/grant calls inherit it. */

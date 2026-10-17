@@ -23,6 +23,15 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockListWatchExpirations.mockResolvedValue([]);
+  });
+
+  afterEach(() => {
+    _resetCronSecretForTests();
+  });
+
   it('renews expired secondary despite healthy primary watch for the same DID', async () => {
     _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([
@@ -38,15 +47,6 @@ describe('GET /api/cron/google-gmail-watch-renew (#2144)', () => {
     expect(mockWatch).toHaveBeenCalledTimes(1);
     expect(mockWatch).toHaveBeenCalledWith(JIN, 'work');
   });
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockListWatchExpirations.mockResolvedValue([]);
-  });
-
-  afterEach(() => {
-    _resetCronSecretForTests();
-  });
-
   it('returns 401 when CRON_SECRET is set and Authorization header is missing', async () => {
     _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([]);
