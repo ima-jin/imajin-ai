@@ -26,7 +26,7 @@ export async function deliverReach(params: {
   metadata: unknown;
   requesterTier: string;
   onBehalfOfStubDid: string;
-  grantId: string;
+  grantId: string | null;
   transcriptHash: string;
   admitted: boolean;
 }): Promise<ReachDeliveryResult> {

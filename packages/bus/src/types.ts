@@ -923,7 +923,8 @@ export interface BusEventMap {
     transcriptHash: string;
     requesterSignature: string;
     requesterTier: string;
-    grantId: string;
+    /** Null when the principal's gate supplies reach authority (#2590). */
+    grantId: string | null;
     /** Delivery server's ISO timestamp, distinct from the caller's request timestamp. */
     issuedAt: string;
     requestIssuedAt: string;

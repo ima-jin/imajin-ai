@@ -1,3 +1,4 @@
+-- 0198_foreign_agent_stubs.sql
 -- owner: kernel
 -- #2590: auto-minted, reach-only requester stubs. Never full agent identities.
 -- Revocation is a durable tombstone: repeat contact cannot remint a blocked sender.

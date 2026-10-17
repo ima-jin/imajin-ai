@@ -5,7 +5,15 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '@/src/db/schemas/auth';
 
-const state = vi.hoisted(() => ({ db: null as unknown, grant: vi.fn() }));
+const state = vi.hoisted(() => ({ db: null as unknown, grant: vi.fn(), persist: vi.fn(), node: vi.fn() }));
+vi.mock('../reach-envelope-store', () => ({
+  persistReachEnvelope: (...args: unknown[]) => state.persist(...args),
+  markReachPublished: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../emit-mechanical-attestation', () => ({
+  prepareMechanicalAttestation: vi.fn().mockResolvedValue({ id: 'att_reach_test' }),
+}));
+vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: () => state.node() }));
 vi.mock('@/src/db', async () => {
   const tables = await import('@/src/db/schemas/auth');
   return { ...tables, get db() { return state.db; } };
@@ -32,6 +40,7 @@ import {
   blockForeignAgentStub, promoteForeignAgentStub,
 } from '../foreign-agent-stub';
 import { resolveReachRequester } from '../reach-authority';
+import { publish } from '@imajin/bus';
 
 const pg = new PGlite();
 const database = drizzle(pg, { schema });
@@ -64,7 +73,7 @@ beforeAll(async () => {
       handle_claimed_at timestamptz, contact_email text, key_roles jsonb,
       created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
     );`);
-  const migration = await readFile(new URL('../../../../../../migrations/0193_foreign_agent_stubs.sql', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url), 'utf8');
   await pg.exec(migration);
   // Plain-SQL runner migrations must also be safe on a second application.
   await pg.exec(migration);
@@ -74,11 +83,20 @@ beforeEach(async () => {
   await pg.exec('TRUNCATE auth.foreign_agent_stubs, auth.identities CASCADE');
   const gate = defaultFrontDoorConfig();
   gate.tiers.soft = true;
+  gate.topics.business_development = { open: true, published: true, mode: 'deliver' };
   await database.insert(schema.identities).values([
     { id: principalDid, publicKey: 'principal', scope: 'actor', metadata: { agentReachGate: gate, agentReachTopics: ['business_development'] } },
     { id: otherPrincipal, publicKey: 'other', scope: 'actor' },
   ]);
   state.grant.mockReset().mockResolvedValue({ authorized: false });
+  state.persist.mockReset().mockImplementation(async (envelope: Record<string, unknown>) => ({
+    stored: true, reachId: envelope.reachId, published: false, signedEvent: envelope.signedEvent,
+  }));
+  state.node.mockReturnValue({
+    senderDid: 'did:imajin:node', senderPubkey: rotatedKey,
+    privateKeyHex: rotatedKeys.privateKey.export({ format: 'der', type: 'pkcs8' }).subarray(-32).toString('hex'),
+  });
+  vi.mocked(publish).mockClear();
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
     verificationMethod: [{ publicKeyHex: publicKey }, { publicKeyHex: rotatedKey }],
   }), { status: 200 })));
@@ -86,6 +104,19 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('gate authority and foreign-agent stubs (#2590)', () => {
+  it('delivers a stranger first contact with no grant through the signed envelope path', async () => {
+    const input = signedInput({
+      message: 'PRIVATE first-contact message', topic: 'business_development', replyHandle: 'PRIVATE reply handle',
+    });
+    expect(await reachPrincipal(principalDid, input)).toMatchObject({ delivered: true, reachId: expect.any(String) });
+    expect(await findForeignAgentStub(requesterDid, principalDid)).toMatchObject({ capability: 'reach', principalDid });
+    expect(state.persist).toHaveBeenCalledWith(expect.objectContaining({
+      message: input.message, replyHandle: input.replyHandle, requesterSignature: input.signature, grantId: null,
+    }));
+    expect(publish).toHaveBeenCalledWith('agent.reach.delivered', expect.objectContaining({
+      subject: principalDid, payload: expect.objectContaining({ grantId: null, requesterTier: 'soft', claimVerified: false }),
+    }));
+  });
   it('succeeds on first signed call without identity, knock, connection or grant; repeat calls reuse the stub', async () => {
     expect(await reachPrincipal(principalDid, signedInput())).toMatchObject({ answer: true });
     const first = await findForeignAgentStub(requesterDid, principalDid);

@@ -338,8 +338,8 @@ export async function reachPrincipal(
   if (delivery.delivery) {
     const result = await completeDelivery({
       principalDid, input: { ...input, ...delivery.delivery }, metadata: principal.metadata,
-      requesterTier: requester.tier ?? 'unknown', onBehalfOfStubDid: stub.did,
-      grantId: introspection.grantId, transcriptHash, admitted: answer,
+      requesterTier: typeof requester.tier === 'string' ? requester.tier : 'unknown', onBehalfOfStubDid: stub.did,
+      grantId: introspection.grantId ?? null, transcriptHash, admitted: answer,
     });
     if (result) return result;
     answer = false;
