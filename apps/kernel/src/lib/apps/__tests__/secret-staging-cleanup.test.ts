@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { FileVaultRepository, VaultEntryService, sealSecret, unsealSecret } from '@imajin/vault-core';
 
 const state = vi.hoisted(() => ({
   seal: vi.fn(), read: vi.fn(), erase: vi.fn(), insert: vi.fn(),
-  rows: vi.fn(), remove: vi.fn(), error: vi.fn(), vault: vi.fn(),
+  rows: vi.fn(), remove: vi.fn(), error: vi.fn(), vault: vi.fn(), claim: vi.fn(),
 }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: state.error }) }));
 vi.mock('@/src/lib/vault', () => ({
@@ -17,10 +21,13 @@ vi.mock('@/src/db', () => ({
   db: {
     insert: () => ({ values: state.insert }),
     select: () => ({ from: () => ({ where: state.rows }) }),
-    delete: () => ({ where: state.remove }),
+    delete: () => ({ where: () => ({
+      returning: state.claim,
+      then: (resolve: (value: unknown) => unknown, reject: (reason: unknown) => unknown) => state.remove().then(resolve, reject),
+    }) }),
   },
 }));
-import { discardAppSecretForProposal, sweepExpiredAppSecretStaging, stageAppSecret } from '../secret-staging';
+import { consumeAppSecret, discardAppSecretForProposal, sweepExpiredAppSecretStaging, stageAppSecret } from '../secret-staging';
 
 const binding = {
   proposalId: 'fake-proposal', operatorDid: 'did:imajin:fake-owner',
@@ -33,6 +40,7 @@ beforeEach(() => {
   stored.clear();
   state.rows.mockResolvedValue([]);
   state.vault.mockResolvedValue({ entries: [] });
+  state.remove.mockResolvedValue([]);
   state.seal.mockImplementation(async (field: string, data: string) => { stored.set(field, data); });
   state.read.mockImplementation(async (field: string) => stored.get(field));
   state.erase.mockImplementation(async (field: string) => { stored.delete(field); });
@@ -158,5 +166,60 @@ describe('staging retirement', () => {
     state.vault.mockResolvedValue({ entries: [{ field: row.field }] });
     expect(await sweepExpiredAppSecretStaging(Number.MAX_SAFE_INTEGER)).toBe(1);
     expect(stored.has(row.field)).toBe(false);
+  });
+
+  it('a reader paused after unsealing cannot claim input retired by rejection', async () => {
+    const row = await stagedRow();
+    let available = true;
+    state.claim.mockImplementation(async () => available ? [{ id: row.id }] : []);
+    state.remove.mockImplementation(async () => { available = false; return []; });
+    let resume!: (value: string | undefined) => void;
+    const data = stored.get(row.field);
+    state.read.mockImplementationOnce(() => new Promise<string | undefined>(resolve => { resume = resolve; }));
+    const consumption = consumeAppSecret(row.id, binding);
+    const refused = expect(consumption).rejects.toThrow('App-secret staging unavailable');
+    await discardAppSecretForProposal(terminalCard(row.id));
+    resume(data);
+    await refused;
+    expect(stored.has(row.field)).toBe(false);
+  });
+
+  it.each(['reject', 'expiry'])('%s leaves no staging ciphertext in the real persisted vault', async (mode) => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'staging-erasure-'));
+    const vaultPath = path.join(directory, 'vault.json');
+    try {
+      const service = new VaultEntryService(new FileVaultRepository({ vaultPath, allowBootstrap: true }));
+      const key = Buffer.alloc(32, 1); // Deliberately public test-only key.
+      let sequence = 0;
+      state.seal.mockImplementation(async (field: string, data: string) => {
+        const blob = sealSecret(data, key);
+        await service.set({
+          version: 1, field, cid: `fake-cid-${sequence++}`, ...blob,
+          senderDid: 'did:imajin:fake-node', senderPubkey: 'fake-pubkey',
+          keyId: 'fake-key', signature: 'fake-signature', timestamp: new Date().toISOString(),
+        });
+      });
+      state.read.mockImplementation(async (field: string) => {
+        const entry = await service.get(field);
+        return entry && unsealSecret(entry, key);
+      });
+      state.erase.mockImplementation((field: string) => service.purge(field));
+      state.vault.mockImplementation(() => service.loadVault());
+      await state.seal('ACTIVE_SECRET', 'OBVIOUSLY_FAKE_ACTIVE_INPUT');
+      const before = (await service.loadVault()).entries;
+      const row = await stagedRow();
+      if (mode === 'reject') {
+        await discardAppSecretForProposal(terminalCard(row.id));
+      } else {
+        expect(await sweepExpiredAppSecretStaging(Date.now() + 24 * 60 * 60 * 1000)).toBe(1);
+      }
+      const reloaded = new VaultEntryService(new FileVaultRepository({ vaultPath }));
+      expect((await reloaded.loadVault()).entries).toEqual(before);
+      expect(await reloaded.getHistory(row.field)).toEqual([]);
+      expect(await reloaded.get(row.field)).toBeUndefined();
+      expect(state.remove).toHaveBeenCalledOnce();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
