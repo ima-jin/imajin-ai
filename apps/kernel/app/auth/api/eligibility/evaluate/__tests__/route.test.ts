@@ -4,7 +4,7 @@
  * Exercises the full path through checkHardEligibility (mocking only the DB
  * layer + emitAttestation), not just the route's own auth/parsing branches,
  * so these tests double as coverage for the hard-eligibility state machine
- * itself — the single owner apps/events' check-in route now delegates to
+ * itself — the single owner the standalone events check-in route delegates to
  * instead of re-deriving locally.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';

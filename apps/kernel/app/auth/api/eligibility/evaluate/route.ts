@@ -8,8 +8,8 @@
  *
  * This is the single owner of the hard-eligibility state machine. It exists
  * so apps never need to re-derive the rule (or read/write `auth.identities`
- * directly) themselves — see apps/events' check-in route, the worst offender
- * called out in the #1983 extraction audit.
+ * directly) themselves. The former monorepo check-in implementation was an
+ * offender in #1983; standalone ima-jin/events still consumes this HTTP contract.
  *
  * Authenticated the same way as POST /api/attestations/internal: a Bearer
  * token equal to `ATTESTATION_INTERNAL_API_KEY`. No session cookie — the

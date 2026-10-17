@@ -80,7 +80,7 @@ export async function GET(
  *
  * Auth: service-to-service via requireInternalApiKey (Bearer
  * ATTESTATION_INTERNAL_API_KEY, shared with /api/eligibility/evaluate and
- * the attestations routes, #2053). Both apps/events call sites resolve/
+ * the attestations routes, #2053). The events checkout/webhook callers resolve/
  * validate the email before calling this route themselves (an
  * `optionalAuth`-checked session for checkout, or a Stripe webhook payload
  * with no end-user session at all) — there is no session belonging to `did`
