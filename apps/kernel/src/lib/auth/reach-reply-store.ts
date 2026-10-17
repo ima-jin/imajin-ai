@@ -6,6 +6,21 @@ export type StoreReachReplyResult =
   | { ok: true; reply: SignedReachReplyEvent; published: boolean }
   | { ok: false; status: 403 | 404 | 409; error: string };
 
+/** Read-time block state is authoritative, never a stale envelope JSON field. */
+export async function listReachInbox(params: { principalDid: string }): Promise<Array<ReachEnvelope & { blocked: boolean }>> {
+  const rows = await getClient().unsafe<{ envelope: ReachEnvelope; blocked: boolean }[]>(`
+    SELECT deliveries.envelope, blocks.requester_did IS NOT NULL AS blocked
+    FROM auth.reach_envelopes AS deliveries
+    LEFT JOIN auth.reach_sender_blocks AS blocks
+      ON blocks.principal_did = deliveries.principal_did
+      AND blocks.requester_did = deliveries.requester_did
+    WHERE deliveries.principal_did = $1
+    ORDER BY deliveries.created_at DESC, deliveries.reach_id DESC
+    LIMIT 25
+  `, [params.principalDid]);
+  return rows.map((row) => ({ ...row.envelope, blocked: row.blocked }));
+}
+
 /** Uses the same principal lock as block and delivery, in READ COMMITTED. */
 export function persistReachReply(params: {
   principalDid: string;

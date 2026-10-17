@@ -2,7 +2,7 @@ import { requireAuth } from '@imajin/auth';
 import { NextRequest, NextResponse } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { listReachEnvelopes } from '@/src/lib/auth/reach-envelope-store';
+import { listReachInbox } from '@/src/lib/auth/reach-reply-store';
 import { isReachPrincipal } from '@/src/lib/auth/reach-reply-service';
 
 const log = createLogger('kernel:reach');
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'A direct human session is required' }, { status: 403, headers });
   }
   try {
-    const envelopes = await listReachEnvelopes({ principalDid: auth.identity.id });
+    const envelopes = await listReachInbox({ principalDid: auth.identity.id });
     return NextResponse.json({ principalDid: auth.identity.id, envelopes }, { headers });
   } catch (error) {
     log.error({ err: String(error) }, 'Reach inbox read failed');

@@ -7,8 +7,9 @@ import { NextRequest } from 'next/server';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import { GET } from '@/app/jin/api/reach/route';
 import { POST } from '@/app/jin/api/reach/[reachId]/reply/route';
+import { POST as BLOCK } from '@/app/jin/api/reach/[reachId]/block/route';
 import { blockReachSender, getReachEnvelope } from '../reach-envelope-store';
-import { markReachReplyPublished, persistReachReply } from '../reach-reply-store';
+import { listReachInbox, markReachReplyPublished, persistReachReply } from '../reach-reply-store';
 import { isReachPrincipal, parseReachReplyInput, replyToReach, type ReachReplyInput } from '../reach-reply-service';
 import { canonicalReachReply, reachReplyEvent, type SignedReachReplyEvent } from '../reach-reply-wire';
 
@@ -282,7 +283,7 @@ describe('reach inbox and reply HTTP routes', () => {
   it('lists only the authenticated human principal and requires a real session', async () => {
     const response = await GET(new NextRequest('https://example.test/jin/api/reach'));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ principalDid: identity.id, envelopes: [envelope] });
+    expect(await response.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: false }] });
     expect(mocked.requireAuth).toHaveBeenCalledWith(expect.anything(), { sessionOnly: true });
   });
 
@@ -334,5 +335,60 @@ describe('reach inbox and reply HTTP routes', () => {
   it('returns 500 when the inbox storage cannot be read', async () => {
     mocked.getClient.mockReturnValue({ unsafe: vi.fn().mockRejectedValue(new Error('offline')) });
     expect((await GET(new NextRequest('https://example.test/jin/api/reach'))).status).toBe(500);
+  });
+});
+
+describe('owner-only reach sender block', () => {
+  it('blocks the stored requester idempotently and restores authoritative state on inbox refresh', async () => {
+    const props = { params: Promise.resolve({ reachId: envelope.reachId }) };
+    expect(await (await BLOCK(request({ requesterDid: 'must-not-use-body' }), props)).json()).toEqual({ blocked: true });
+    expect(await (await BLOCK(request({}), props)).json()).toEqual({ blocked: true });
+    const refreshed = await GET(new NextRequest('https://example.test/jin/api/reach'));
+    expect(await refreshed.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: true }] });
+    expect((await database.query('SELECT * FROM auth.reach_sender_blocks')).rows)
+      .toMatchObject([{ principal_did: identity.id, requester_did: envelope.requesterDid }]);
+    expect(await replyToReach({ identity, reachId: envelope.reachId, input: signedInput() }))
+      .toMatchObject({ ok: false, status: 403 });
+  });
+
+  it.each(['unknown', 'nonowner'])('refuses %s reach ids without creating blocks', async (mode) => {
+    const reachId = mode === 'unknown' ? 'unknown' : envelope.reachId;
+    if (mode === 'nonowner') mocked.requireAuth.mockResolvedValue({ identity: { ...identity, id: 'did:imajin:other' } });
+    expect((await BLOCK(request({}), { params: Promise.resolve({ reachId }) })).status).toBe(404);
+    expect((await database.query('SELECT * FROM auth.reach_sender_blocks')).rows).toEqual([]);
+  });
+
+  it.each([
+    { ...identity, subtype: 'agent' }, { ...identity, actingAs: 'did:group' },
+    { ...identity, actingFor: identity.id },
+  ])('refuses agents and every delegation shape', async (caller) => {
+    mocked.requireAuth.mockResolvedValue({ identity: caller });
+    expect((await BLOCK(request({}), { params: Promise.resolve({ reachId: envelope.reachId }) })).status).toBe(403);
+    expect((await database.query('SELECT * FROM auth.reach_sender_blocks')).rows).toEqual([]);
+  });
+
+  it('requires a session and refuses unauthenticated callers', async () => {
+    mocked.requireAuth.mockResolvedValue({ error: 'User session required', status: 401 });
+    expect((await BLOCK(request({}), { params: Promise.resolve({ reachId: envelope.reachId }) })).status).toBe(401);
+    expect(mocked.requireAuth).toHaveBeenCalledWith(expect.anything(), { sessionOnly: true });
+  });
+
+  it('reports a block storage failure rather than claiming success', async () => {
+    mocked.getClient.mockReturnValue({
+      ...executor(database, false),
+      begin: vi.fn().mockRejectedValue(new Error('database unavailable')),
+    });
+    expect((await BLOCK(request({}), { params: Promise.resolve({ reachId: envelope.reachId }) })).status).toBe(503);
+  });
+
+  it('joins block state on both owner and requester, not untrusted envelope JSON', async () => {
+    await database.query(`UPDATE auth.reach_envelopes
+      SET envelope = envelope || '{"blocked":true}'::jsonb`);
+    expect(await listReachInbox({ principalDid: identity.id })).toEqual([{ ...envelope, blocked: false }]);
+    await blockReachSender({ principalDid: 'other-owner', requesterDid: envelope.requesterDid });
+    expect(await listReachInbox({ principalDid: identity.id })).toEqual([{ ...envelope, blocked: false }]);
+    expect(await listReachInbox({ principalDid: 'other-owner' })).toEqual([]);
+    await blockReachSender(envelope);
+    expect(await listReachInbox({ principalDid: identity.id })).toEqual([{ ...envelope, blocked: true }]);
   });
 });
