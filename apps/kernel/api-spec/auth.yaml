@@ -38,6 +38,33 @@ components:
       name: x-internal-key
       description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    PendingOwnerTransfer:
+      type: object
+      required: [id, from, to, by, policy, createdAt]
+      properties:
+        id: { type: string }
+        from: { type: string, description: Current owner DID }
+        to: { type: string, description: Named human recipient DID }
+        by: { type: string, description: Initiating owner DID }
+        policy: { type: string, example: owner-only }
+        createdAt: { type: string, format: date-time }
+    GroupOwnership:
+      type: object
+      required: [groupDid, groupName, ownerDid, policy, pendingTransfer, viewerDid, viewerRole, canTransfer, canAccept, acceptanceUrl]
+      properties:
+        groupDid: { type: string }
+        groupName: { type: [string, "null"] }
+        ownerDid: { type: string }
+        policy: { type: string, example: owner-only }
+        pendingTransfer:
+          oneOf:
+            - { $ref: "#/components/schemas/PendingOwnerTransfer" }
+            - { type: "null" }
+        viewerDid: { type: string }
+        viewerRole: { type: [string, "null"] }
+        canTransfer: { type: boolean }
+        canAccept: { type: boolean }
+        acceptanceUrl: { type: string, description: Relative URL of the recipient acceptance page }
     DirectoryApp:
       type: object
       required: [slug, name, icon, description, placements, featured, added, authorized, available]
@@ -284,6 +311,151 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/groups/{groupDid}/transfer-owner:
+    parameters:
+      - { name: groupDid, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [auth]
+      operationId: getGroupOwnership
+      summary: Current owner and pending ownership invitation
+      description: |
+        Active members and the named pending recipient may read this state.
+        A recipient does not need act-as permission or prior membership to review
+        their DID-bound invitation. Never changes ownership.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current ownership and caller-specific available actions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupOwnership" }
+        "401": { description: Authentication required }
+        "403": { description: Not an active member or the named recipient }
+        "404": { description: Group identity not found }
+        "503": { description: Configured ownership policy is unavailable; fails closed }
+    post:
+      tags: [auth]
+      operationId: proposeGroupOwnerTransfer
+      summary: Owner invites another person to take ownership
+      description: |
+        The current owner names an existing, unsuspended human actor DID.
+        Existing members must explicitly accept too. For a non-member, the
+        pending transfer is a DID-bound membership invitation: acceptance joins
+        them and transfers ownership in one transaction. The DID, profile and
+        keys are preserved. Only one pending proposal is allowed.
+
+        Every proposal, cancel and acceptance consults the node's replaceable
+        ownership-policy hook. Configure registry.node_config key
+        identity.ownership.policy to a registered policy id (JSON string);
+        absent configuration defaults to owner-only. Unknown policies fail closed.
+        No quorum, controller consent or cooling-off is implemented.
+
+        Independently, #2360's value-moving delegation rule rejects delegated
+        agents with 403 AGENT_APPROVAL_REQUIRED. The owner approves by executing
+        from their own session; a request-body flag or header grants no approval.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newOwnerDid]
+              properties:
+                newOwnerDid: { type: string }
+      responses:
+        "201":
+          description: Pending acceptance; owner remains unchanged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupOwnership" }
+        "400": { description: Invalid JSON, invalid recipient, or transfer to self }
+        "401": { description: Authentication required }
+        "403": { description: Ownership policy denied or AGENT_APPROVAL_REQUIRED }
+        "404": { description: Group or recipient not found }
+        "409": { description: A pending transfer already exists or ownership is inconsistent }
+        "503": { description: Configured ownership policy is unavailable; fails closed }
+    delete:
+      tags: [auth]
+      operationId: cancelGroupOwnerTransfer
+      summary: Owner cancels the matching pending transfer
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transferId]
+              properties:
+                transferId: { type: string }
+      responses:
+        "200": { description: Pending transfer cancelled; owner unchanged }
+        "400": { description: Invalid JSON or missing transferId }
+        "401": { description: Authentication required }
+        "403": { description: Ownership policy denied or AGENT_APPROVAL_REQUIRED }
+        "404": { description: Group not found }
+        "409": { description: Proposal no longer pending or transferId is stale }
+        "503": { description: Configured ownership policy is unavailable; fails closed }
+  /api/groups/{groupDid}/transfer-owner/accept:
+    parameters:
+      - { name: groupDid, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [auth]
+      operationId: acceptGroupOwnerTransfer
+      summary: Named person accepts ownership and any required membership invitation
+      description: |
+        Requires the named recipient's own authenticated session and the exact
+        pending transferId. Rechecks the current owner and node policy under a
+        group identity row lock; cancel, replacement and replay cannot execute
+        a stale proposal. The previous owner becomes an unrestricted admin and
+        may leave through DELETE /api/groups/{groupDid}/controllers/{controllerDid}.
+
+        The role changes, pending-proposal removal and signed
+        identity.owner.transferred attestation are committed atomically.
+        Signing or attestation-write failure leaves ownership unchanged.
+        Attestation payload includes from, to, by and policy. This mechanical
+        record is signed by the node over canonical JSON
+        {subject_did,type,context_id,context_type,payload,issued_at}, with
+        issued_at in milliseconds; verify the Ed25519 signature against the
+        issuer's published public key. The group DID is subject and context.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transferId]
+              properties:
+                transferId: { type: string }
+      responses:
+        "200":
+          description: Ownership transferred without recreating the identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, ownerDid, attestationId]
+                properties:
+                  ok: { type: boolean, const: true }
+                  ownerDid: { type: string }
+                  attestationId: { type: string }
+        "400": { description: Invalid JSON or missing transferId }
+        "401": { description: Authentication required }
+        "403": { description: Not the named human recipient, ownership policy denied, or AGENT_APPROVAL_REQUIRED }
+        "404": { description: Group or recipient not found }
+        "409": { description: Stale, cancelled, accepted or otherwise invalid proposal }
+        "500": { description: Transfer or attestation could not be committed; no ownership change }
+        "503": { description: Configured ownership policy is unavailable; fails closed }
   /api/agents/{did}/reach/{reachId}/status:
     post:
       tags: [auth]
