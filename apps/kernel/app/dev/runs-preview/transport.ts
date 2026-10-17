@@ -73,6 +73,7 @@ export async function createRunsPreviewTransport() {
   const proofs: Record<string, unknown>[] = [];
   const prepared = new Map<string, SessionCommandFrame>();
   const used = new Set<string>();
+  const timers = new Set<ReturnType<typeof setTimeout>>();
   const signature = async (body: unknown, key: Uint8Array, publicKey: Uint8Array) => ({
     keyId: ed.etc.bytesToHex(publicKey), alg: 'ed25519' as const, sig: ed.etc.bytesToHex(await ed.signAsync(encode(body), key)),
   });
@@ -113,7 +114,8 @@ export async function createRunsPreviewTransport() {
     if (!validWish || !validGrant || canonicalCommandJson(commandBody(command)) !== canonicalCommandJson(commandBody(expected))) return json({ error: 'Invalid full-body signatures' }, 403);
     used.add(command.commandId);
     // Deliberately later than delivery: transport acceptance is not execution.
-    setTimeout(() => { void outcome(command, loopId); }, 500);
+    const timer = setTimeout(() => { timers.delete(timer); void outcome(command, loopId); }, 500);
+    timers.add(timer);
     return json({ commandId: command.commandId, delivered: true });
   }
   async function approvalDecision(proposalId: string, data: Record<string, unknown>) {
@@ -150,6 +152,7 @@ export async function createRunsPreviewTransport() {
       commandTarget: { available: loop.kind !== 'warp.run', agentDid: agent } });
   };
   return { fetcher, proofs, bindingProofs, agentPublicKey: ed.etc.bytesToHex(agentPublic),
+    dispose: () => { for (const timer of timers) clearTimeout(timer); timers.clear(); },
     keypair: { privateKey: ed.etc.bytesToHex(principalKey), publicKey: ed.etc.bytesToHex(principalPublic) } };
 }
 
@@ -161,5 +164,5 @@ export async function installRunsPreview() {
     prepare: (loopId, type, payload) => prepareSignedSessionCommand(loopId, type, payload, fixture.keypair),
     dispatch: dispatchSessionCommand,
   };
-  return { client, dispose: () => { globalThis.fetch = previousFetch; } };
+  return { client, dispose: () => { fixture.dispose(); globalThis.fetch = previousFetch; } };
 }
