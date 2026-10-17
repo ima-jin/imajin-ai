@@ -1716,6 +1716,15 @@ export interface BusEventMap {
    * event instead of forking a second calendar event vocabulary — see
    * `apps/kernel/src/lib/google/calendar.ts`.
    */
+  /** Successful Google reader provenance only: provider data never enters audit. */
+  'google.data.read': {
+    ownerDid: string;
+    onBehalfOf: string;
+    slot: string;
+    operation: string;
+    context_id: string;
+    context_type: 'google';
+  };
   'mail.received': {
     ownerDid: string;
     slot?: string;

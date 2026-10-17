@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   notifyServicesMock: vi.fn(),
   getRelayEntryMock: vi.fn(),
   errorMock: vi.fn(),
+  checkoutAppSlugMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/pay/payment-requests/byo-settlement', () => ({ settlePaymentRequestFromByoStripe: h.settleByoMock }));
@@ -36,6 +37,7 @@ vi.mock('@/src/lib/pay/withdraw-intent', () => ({ confirmWithdrawalFromRailEvent
 vi.mock('@/src/lib/pay/rails/registry', () => ({ getWithdrawRailByName: vi.fn() }));
 vi.mock('@/src/lib/pay/providers/stripe-withdraw-rail', () => ({ stripeRailName: 'stripe' }));
 vi.mock('@/src/lib/pay/webhook-handlers', () => ({ notifyCheckoutServices: h.notifyServicesMock }));
+vi.mock('@/src/lib/pay/checkout-notification-owner', () => ({ checkoutAppSlug: h.checkoutAppSlugMock }));
 vi.mock('@/src/lib/pay/payment-requests/checkout', () => ({ settlePaymentRequestFromStripeCheckout: vi.fn() }));
 
 import { payStripeReactor } from '../stripe-bus-consumer';
@@ -64,6 +66,7 @@ beforeEach(() => {
   h.notifyServicesMock.mockReset().mockResolvedValue(undefined);
   h.getRelayEntryMock.mockReset();
   h.errorMock.mockReset();
+  h.checkoutAppSlugMock.mockReset().mockResolvedValue('coffee');
 });
 
 afterEach(() => vi.unstubAllEnvs());
@@ -242,6 +245,20 @@ describe('pay-stripe reactor — BYO hosted-checkout settlement (#2757)', () => 
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, { body: string }];
     expect(url).toBe('https://coffee.test/api/webhook/payment');
     expect(JSON.parse(init.body)).toMatchObject({ type: 'payment.succeeded', tipId: 'tip_1', paymentId: 'pi_1', amount: 2500, status: 'completed' });
+  });
+
+  it('never sends a coffee callback for another app even when its checkout metadata names coffee', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubEnv('COFFEE_SERVICE_URL', 'https://coffee.test');
+    h.checkoutAppSlugMock.mockResolvedValue('events');
+    const session = { ...SESSION, metadata: { service: 'coffee', tipId: 'victim_tip' } };
+    h.settleCheckoutMock.mockResolvedValue({ settled: true, session });
+
+    await payStripeReactor(byoEvent({}, CHECKOUT_PAYLOAD), {});
+
+    expect(h.checkoutAppSlugMock).toHaveBeenCalledWith(session);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('tells coffee the tip was settled on the seller\'s own Stripe account (rail), so it does not call /pay/api/settle (#2773)', async () => {

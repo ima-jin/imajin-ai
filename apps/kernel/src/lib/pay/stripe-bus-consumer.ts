@@ -70,6 +70,7 @@ import { settlePaymentRequestFromStripeCheckout } from '@/src/lib/pay/payment-re
 import { getRelayEntry, type StripeRelaySource, type StripeRelayEntry } from '@/src/lib/pay/stripe-relay-store';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
 import { isStripeWebhookEventType } from '@/src/lib/stripe/webhook-events';
+import { checkoutAppSlug } from '@/src/lib/pay/checkout-notification-owner';
 
 const log = createLogger('kernel');
 
@@ -245,7 +246,7 @@ async function handleByoCheckoutPaymentIntent(event: BusEvent, retryErrors = fal
 
     const { session } = outcome;
     await notifyCheckoutServices(session);
-    if (session.metadata?.service === 'coffee') {
+    if (session.metadata?.service === 'coffee' && await checkoutAppSlug(session) === 'coffee') {
       await notifyCoffeeService('payment.succeeded', {
         id: paymentIntentId,
         amount,

@@ -41,7 +41,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { startHostedCheckout } from '@/src/lib/pay/hosted-checkout';
+import { sellerDidOf, startHostedCheckout } from '@/src/lib/pay/hosted-checkout';
 import {
   resolveCheckoutIdentity,
   taxLineItems,
@@ -68,16 +68,15 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   try {
     const body: CheckoutBody = await request.json();
 
-    const bodyValidation = validateCheckoutBody(body);
-    if (!bodyValidation.ok) {
-      return NextResponse.json({ error: bodyValidation.error }, { status: bodyValidation.status, headers: cors });
-    }
-
-    const identityResult = await resolveCheckoutIdentity(request);
+    const identityResult = await resolveCheckoutIdentity(request, sellerDidOf(body));
     if (!identityResult.ok) {
       return NextResponse.json({ error: identityResult.error }, { status: identityResult.status, headers: cors });
     }
     const { identity, appDid } = identityResult;
+    const bodyValidation = validateCheckoutBody(body);
+    if (!bodyValidation.ok) {
+      return NextResponse.json({ error: bodyValidation.error }, { status: bodyValidation.status, headers: cors });
+    }
 
     // #2419: tax is appended as its own manual Stripe line item, derived
     // from the manifest's `taxes[]` — never folded into `body.items` (the
@@ -120,9 +119,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         ? { ...sessionMetadata, ...(body.customerEmail && { customer_email: body.customerEmail }), platform_fee_cents: 0 }
         : body.metadata,
       fairManifest: body.fairManifest || null,
-      // #2642: an app-service-token checkout binds the payment to the calling app and
-      // records the payee manifest it declared; checkout without one leaves all of
-      // this NULL, and such rows are never settleable via the app path.
+      // Seller checkouts require an app-service token, so every pending seller
+      // payment is bound to the verified app, never a caller-supplied metadata DID.
       ...(appDid && { appDid, payeeManifest: body.payeeManifest ?? body.fairManifest ?? null }),
     });
 
