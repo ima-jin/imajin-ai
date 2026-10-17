@@ -5,6 +5,8 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'domain.verified',
+  'domain.revoked',
   'event.attendance',
   'institution.verified',
   'vouch.given',
@@ -286,6 +288,8 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'domain.verified',
+  'domain.revoked',
   'session.created',
   'media.uploaded',
   'agent.turn.usage',
