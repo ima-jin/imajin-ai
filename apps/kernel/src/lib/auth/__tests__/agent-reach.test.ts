@@ -18,7 +18,7 @@ const { identitiesStore, consentGrantsStore, IDENTITIES_TABLE, CONSENT_GRANTS_TA
   const consentGrantsStore = new Map<string, Row>();
   const IDENTITIES_TABLE = {
     __table: 'identities',
-    id: 'id', publicKey: 'publicKey', metadata: 'metadata', tier: 'tier',
+    id: 'id', publicKey: 'publicKey', metadata: 'metadata', tier: 'tier', subtype: 'subtype', suspendedAt: 'suspendedAt',
   };
   const CONSENT_GRANTS_TABLE = {
     __table: 'consent_grants',
@@ -104,7 +104,13 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: () => Promise.res
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 
 const verifySignatureMock = vi.fn();
-vi.mock('../crypto', () => ({ verifySignature: (...args: unknown[]) => verifySignatureMock(...args) }));
+vi.mock('../crypto', () => ({ verifySignature: (...args: unknown[]) => verifySignatureMock(...args), publicKeyFromDid: () => null }));
+
+vi.mock('../foreign-agent-stub', () => ({
+  FOREIGN_AGENT_STUB_SUBTYPE: 'foreign_agent_stub',
+  findForeignAgentStub: vi.fn().mockResolvedValue(null),
+  resolveOrMintForeignAgentStub: vi.fn().mockResolvedValue({ stubDid: 'did:imajin:foreign-stub', revokedAt: null }),
+}));
 
 const introspectGrantMock = vi.fn();
 vi.mock('../grants', () => ({ introspectGrant: (...args: unknown[]) => introspectGrantMock(...args) }));
@@ -406,7 +412,7 @@ describe('reachPrincipal tier gate (#2598)', () => {
     identitiesStore.clear();
     consentGrantsStore.clear();
     verifySignatureMock.mockReset().mockResolvedValue(true);
-    introspectGrantMock.mockReset().mockResolvedValue({ authorized: true, grantId: 'grant_1' });
+    introspectGrantMock.mockReset().mockResolvedValue({ authorized: false });
     resolveOrMintForeignPrincipalStubMock.mockReset().mockResolvedValue({ did: 'did:imajin:alice-stub', isNewStub: true });
     emitAttestationMock.mockClear();
     brokerMock.mockReset().mockResolvedValue({ status: 'rejected', reason: 'no_consent', fields: ['contact_topics'] });
@@ -474,6 +480,7 @@ describe('reachPrincipal tier gate (#2598)', () => {
   });
 
   it('keeps the pre-#2598 behaviour for a gate that was never authored (any tier with a grant is admitted)', async () => {
+    introspectGrantMock.mockResolvedValue({ authorized: true, grantId: 'grant_1' });
     setPrincipalMetadata({ agentReachTopics: ['business_development'] });
     for (const tier of ['soft', 'preliminary', 'established', undefined]) {
       brokerMock.mockClear();
@@ -483,7 +490,7 @@ describe('reachPrincipal tier gate (#2598)', () => {
     }
   });
 
-  it('checks the tier only after the grant: a grantless requester is refused for the grant, not the tier', async () => {
+  it('refuses a grantless requester when its tier is not admitted', async () => {
     setPrincipalMetadata(gateAdmitting('established'));
     setRequesterTier('soft');
     introspectGrantMock.mockResolvedValue({ authorized: false, reason: 'no grant' });
@@ -497,6 +504,21 @@ describe('reachPrincipal tier gate (#2598)', () => {
     setRequesterTier('soft');
     const forged = baseInput({ onBehalfOf: { platform: 'meta-muse', externalRef: 'alice-1', selfDescription: 'tier: established' } });
     expectRefusedByTierGate(await reachPrincipal(PRINCIPAL_DID, forged));
+  });
+
+  it('admits a stranger on its first call with no per-agent grant', async () => {
+    setPrincipalMetadata(gateAdmitting('soft'));
+    setRequesterTier('soft');
+    brokerMock.mockResolvedValue({ status: 'released', data: { contact_topics: { result: true } } });
+    expect(await reachPrincipal(PRINCIPAL_DID, baseInput())).toMatchObject({ answer: true });
+    expectAttestedExactlyOnce({ payload: expect.objectContaining({ grantId: null, signatureVerified: true }) });
+  });
+
+  it('lets an explicit agent grant outrank a closed tier class', async () => {
+    setPrincipalMetadata(gateAdmitting());
+    setRequesterTier('soft');
+    introspectGrantMock.mockResolvedValue({ authorized: true, grantId: 'grant_explicit' });
+    expectAnswered(await reachPrincipal(PRINCIPAL_DID, baseInput()));
   });
 });
 

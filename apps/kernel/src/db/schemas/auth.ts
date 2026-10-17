@@ -493,6 +493,21 @@ export const foreignPrincipalStubs = authSchema.table('foreign_principal_stubs',
 
 export type ForeignPrincipalStub = typeof foreignPrincipalStubs.$inferSelect;
 export type NewForeignPrincipalStub = typeof foreignPrincipalStubs.$inferInsert;
+/** Reach-only foreign agents (#2590), distinct from the claimed human above. */
+export const foreignAgentStubs = authSchema.table('foreign_agent_stubs', {
+  stubDid: text('stub_did').primaryKey().references(() => identities.id),
+  requesterDid: text('requester_did').notNull(),
+  signerKey: text('signer_key').notNull(),
+  requesterAliases: jsonb('requester_aliases').notNull().default([]).$type<string[]>(),
+  principalDid: text('principal_did').notNull().references(() => identities.id),
+  capability: text('capability').notNull().default('reach'),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  promotedTo: text('promoted_to').references(() => identities.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  requesterPrincipalUniq: uniqueIndex('uniq_foreign_agent_stubs_requester_principal').on(table.requesterDid, table.principalDid),
+  signerPrincipalUniq: uniqueIndex('uniq_foreign_agent_stubs_signer_principal').on(table.signerKey, table.principalDid),
+}));
 
 /**
  * Scoped delegation grants for external agents (#1882) — grant/revoke

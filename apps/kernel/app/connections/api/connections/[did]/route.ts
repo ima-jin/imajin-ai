@@ -4,6 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
+import { blockForeignAgentStub } from '@/src/lib/auth/foreign-agent-stub';
 
 /**
  * DELETE /api/connections/:did - Disconnect from a connection
@@ -32,7 +33,10 @@ export async function DELETE(
     .where(and(eq(connections.didA, didA), eq(connections.didB, didB)))
     .returning();
 
-  if (result.length === 0) {
+  // A stranger needs no connection to be blocked. Revoke synchronously, not
+  // through an eventually-consistent reactor, before returning success.
+  const blocked = await blockForeignAgentStub(targetDid, effectiveDid);
+  if (result.length === 0 && !blocked) {
     return NextResponse.json({ error: 'Connection not found' }, { status: 404 });
   }
 

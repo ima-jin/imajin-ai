@@ -132,6 +132,7 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: vi.fn().mockResol
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 vi.mock('@imajin/cid', () => ({ computeCid: vi.fn().mockResolvedValue('cid_fixed') }));
+vi.mock('../foreign-agent-stub', () => ({ promoteForeignAgentStub: vi.fn().mockResolvedValue(undefined) }));
 
 // Deliberately NOT mocking '@/src/lib/auth/crypto' — this test exercises the
 // real Ed25519 keygen/derive/sign/verify implementation. generateKeypair

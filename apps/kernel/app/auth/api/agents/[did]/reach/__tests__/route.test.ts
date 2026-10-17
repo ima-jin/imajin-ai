@@ -75,6 +75,28 @@ describe('POST /auth/api/agents/:did/reach', () => {
     expect((response as { status: number }).status).toBe(400);
     expect(reachPrincipalMock).not.toHaveBeenCalled();
   });
+  it('forwards did:web and its proof key to the verifier, not a caller-asserted verification state', async () => {
+    reachPrincipalMock.mockResolvedValue({ answer: true, transcriptHash: 'h', issuedAt: 'now' });
+    const body = validBody({ requesterDid: 'did:web:agent.example', publicKey: 'a'.repeat(64), verified: true });
+    const response = await POST(makeRequest(body) as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect(response.status).toBe(200);
+    expect(reachPrincipalMock).toHaveBeenCalledWith(PRINCIPAL_DID, expect.objectContaining({
+      requesterDid: body.requesterDid, publicKey: 'a'.repeat(64),
+    }));
+    expect(reachPrincipalMock.mock.calls[0][1]).not.toHaveProperty('verified');
+  });
+
+  it.each(['did:key:z123', '', 'not-a-did'])('rejects unsupported requester %s', async (requesterDid) => {
+    const response = await POST(makeRequest(validBody({ requesterDid })) as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect(response.status).toBe(400);
+    expect(reachPrincipalMock).not.toHaveBeenCalled();
+  });
+
+  it.each([5, 'bad', 'a'.repeat(63)])('rejects malformed proof key %s', async (publicKey) => {
+    const response = await POST(makeRequest(validBody({ publicKey })) as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect(response.status).toBe(400);
+    expect(reachPrincipalMock).not.toHaveBeenCalled();
+  });
 
   it('rejects a body missing onBehalfOf with 400', async () => {
     const body = validBody();

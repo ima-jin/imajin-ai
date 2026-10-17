@@ -896,7 +896,8 @@ export interface BusEventMap {
     purpose: string;
     field: string;
     answer: boolean;
-    grantId: string;
+    /** Null when the principal's tier gate, not a per-agent delegation grant, supplies authority (#2590). */
+    grantId: string | null;
     context_id: string;
     context_type: 'agent.reach';
   };

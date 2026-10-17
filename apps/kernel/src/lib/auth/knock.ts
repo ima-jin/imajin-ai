@@ -31,6 +31,7 @@ import { generateId } from '@/src/lib/kernel/id';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { resolveExternalDidVerification } from '@/src/lib/auth/did-web';
+import { promoteForeignAgentStub } from '@/src/lib/auth/foreign-agent-stub';
 import {
   canonicalize,
   crypto as authCrypto,
@@ -303,6 +304,12 @@ export async function acceptKnock(params: RespondToKnockParams): Promise<{ resul
       metadata: knock.selfDescription ? { selfDescription: knock.selfDescription, onboardedVia: 'knock' } : { onboardedVia: 'knock' },
     });
     minted = true;
+  }
+
+  // Only this human-accept path links reach-only stubs to a full identity.
+  await promoteForeignAgentStub(knock.agentDid, params.requestedBy, knock.agentDid, knock.publicKey);
+  if (knock.externalDid && knock.externalDidVerification === 'verified') {
+    await promoteForeignAgentStub(knock.externalDid, params.requestedBy, knock.agentDid, knock.publicKey);
   }
 
   // "Every agent identity is born from a principal relationship" — link via
