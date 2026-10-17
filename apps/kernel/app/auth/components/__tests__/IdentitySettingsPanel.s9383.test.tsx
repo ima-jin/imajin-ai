@@ -49,6 +49,18 @@ afterEach(() => {
 });
 
 describe('IdentitySettingsPanel fire-and-forget calls', () => {
+  it('shows inherited private apps without offering a manual toggle', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url === '/auth/api/apps/directory'
+        ? { apps: [{ slug: 'artifact', name: 'Artifact', visibility: 'private', inherited: true, available: true }] }
+        : { enabledServices: [] },
+    })));
+    render(<IdentitySettingsPanel groupDid={GROUP_DID} />);
+    const label = await screen.findByText('Included with membership');
+    expect(label.closest('button')?.disabled).toBe(true);
+    expect(screen.getByText('Artifact')).toBeDefined();
+  });
   it('offers registry-only apps without a static manifest row', async () => {
     const fetchSpy = installFetch();
     render(<IdentitySettingsPanel groupDid={GROUP_DID} />);

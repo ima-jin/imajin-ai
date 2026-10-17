@@ -163,6 +163,8 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {selectableServices.map((svc) => {
             const isEnabled = svc.inherited || enabledServices.includes(svc.name);
+            const selectionLabel = isEnabled ? 'Enabled' : 'Disabled';
+            const statusLabel = svc.inherited ? 'Included with membership' : selectionLabel;
             return (
               <button type="button"
                 key={svc.name}
@@ -179,7 +181,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
                 <span
                   className={`text-xs leading-tight ${isEnabled ? 'text-amber-400/70' : 'text-gray-600'}`}
                 >
-                  {svc.inherited ? 'Included with membership' : (isEnabled ? 'Enabled' : 'Disabled')}
+                  {statusLabel}
                 </span>
               </button>
             );
