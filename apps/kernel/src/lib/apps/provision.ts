@@ -69,6 +69,7 @@ import { APP_SIGNING_KEY_PURPOSE, issueSigningKeyClaim } from './signing-key-cla
 import { validateSecrets } from './secret-declarations';
 import { ensureAppDeclaredSecrets } from './self-secrets';
 import type { VaultAuthorization } from '@/src/lib/vault/authorization';
+import { provisionAppDomain, validateProvisionOwner } from './provision-domain';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -103,6 +104,9 @@ const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
 
 export interface AppProvisionParams {
   authorizedBy?: VaultAuthorization;
+  /** Ownership and host are part of the operator-countersigned proposal. */
+  siteOwnerDid?: string;
+  domain?: string;
   slug: string;
   displayName: string;
   template?: string;
@@ -390,6 +394,7 @@ async function registerApp(params: {
   /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
   callbackOrigin: string;
   retiredLegacyAppId: string | null;
+  ownerDid: string;
 }): Promise<{ id: string; retiredLegacyAppId?: string }> {
   const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
 
@@ -449,7 +454,7 @@ async function registerApp(params: {
     const retiredLegacyAppId = await retireLegacyApp(tx, slug);
     await tx.insert(registryApps).values({
       id,
-      ownerDid: 'did:imajin:platform',
+      ownerDid: params.ownerDid,
       name: navMetadata.name ?? displayName,
       description: `${displayName} (provisioned via apps.provision #2375)`,
       appDid,
@@ -516,24 +521,17 @@ function mergeAttestationTypes(existing: readonly string[], newlySeeded: Attesta
   return [...merged];
 }
 
-/**
- * Run (or resume) the full provisioning pipeline for one slug. Never
- * throws — every outcome is `{ status: 'succeeded' | 'failed', ... }`, so
- * the operator-approvals execution bridge can report it uniformly.
- */
-export async function runAppProvision(params: AppProvisionParams): Promise<AppProvisionOutcome> {
-  const { slug, displayName, template = DEFAULT_APP_TEMPLATE, attestationTypes = [] } = params;
-  const nodeDid = getNodeSigningIdentity().senderDid;
-
-  const existingRun = await getProvisionRow(slug);
-
-  // Idempotent on slug: a prior success returns the cached result without
-  // re-creating anything — but a newly requested attestationTypes list is
-  // still additive-seeded, since that step never re-creates the app itself.
-  // `existingRun.appDid` is always set by the time a run reaches 'succeeded'
-  // (it's persisted right after the mint step below succeeds).
-  if (existingRun?.status === 'succeeded') {
+/** Resume an already registered app without recreating its repo or identity. */
+async function resumeSucceededProvision(
+  params: AppProvisionParams, existingRun: AppProvisionRow, nodeDid: string,
+): Promise<AppProvisionOutcome> {
+    const { slug, attestationTypes = [] } = params;
     const succeededAppDid = existingRun.appDid ?? '';
+    try {
+      await provisionAppDomain(succeededAppDid, slug, params.domain, params.siteOwnerDid);
+    } catch (err) {
+      return { status: 'failed', failedStep: 'domain', error: err instanceof Error ? err.message : 'Domain issuance failed' };
+    }
     await ensureAppDeclaredSecrets(succeededAppDid, params.authorizedBy);
     const attestationTypeResults = attestationTypes.length > 0
       ? await seedAttestationTypes(succeededAppDid, slug, attestationTypes)
@@ -560,13 +558,24 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       claimCode,
       ...retirementContext(existingRun.retiredLegacyAppId),
     };
-  }
+}
+
+/**
+ * Run (or resume) the full provisioning pipeline for one slug.
+ * The operator bridge reports failed steps without exposing credentials.
+ */
+export async function runAppProvision(params: AppProvisionParams): Promise<AppProvisionOutcome> {
+  const { slug, displayName, template = DEFAULT_APP_TEMPLATE, attestationTypes = [] } = params;
+  const nodeDid = getNodeSigningIdentity().senderDid;
+  const existingRun = await getProvisionRow(slug);
+  if (existingRun?.status === 'succeeded') return resumeSucceededProvision(params, existingRun, nodeDid);
 
   // #2746: resolve the callback origin up front so a node with no public URL
   // fails closed before the repo is created or any key is minted.
   let callbackOrigin: string;
   try {
     callbackOrigin = resolveCallbackOrigin();
+    await validateProvisionOwner(params.siteOwnerDid);
   } catch (err) {
     return markFailed(nodeDid, slug, 'config', err);
   }
@@ -617,11 +626,18 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       approvedDeclarations: params.approvedDeclarations ?? null,
       callbackOrigin,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
+      ownerDid: params.siteOwnerDid ?? params.authorizedBy?.operatorDid ?? 'did:imajin:platform',
     });
     retirement = retirementContext(registration.retiredLegacyAppId);
     emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, retirement);
   } catch (err) {
     return markFailed(nodeDid, slug, 'register', err);
+  }
+  // A successful provision must have evidence signed by the zone owner's org.
+  try {
+    await provisionAppDomain(appDid, slug, params.domain, params.siteOwnerDid);
+  } catch (err) {
+    return markFailed(nodeDid, slug, 'domain', err);
   }
 
   // ── Step 4: app-signing-key grant + claim code (#2411, kernel-internal) ──

@@ -78,6 +78,15 @@ describe('executeAppsProvisionApproval — kind/detail validation', () => {
 });
 
 describe('executeAppsProvisionApproval — execution', () => {
+  it('passes only the countersigned site-owner and host choices to provisioning', async () => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'domain', error: 'missing org grant' });
+    await executeAppsProvisionApproval(card({
+      detail: { slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai' },
+    }));
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({
+      siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', authorizedBy: AUTHORIZED_BY,
+    }));
+  });
   it('includes the retired legacy row id in the operator-approved provision result', async () => {
     runAppProvisionMock.mockResolvedValue({
       status: 'succeeded',
