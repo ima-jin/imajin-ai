@@ -25,7 +25,7 @@ export const MAX_EMITTABLE_EVENTS = 50;
  */
 export const KERNEL_EVENT_NAMESPACES: ReadonlySet<string> = new Set([
   'access', 'agent', 'app', 'apps', 'approval', 'asset', 'attestation', 'audit', 'auth', 'broker', 'bus',
-  'connection', 'connector', 'consent', 'fee', 'group', 'handle', 'identity', 'kernel', 'loop', 'mjn',
+  'connection', 'connector', 'consent', 'domain', 'fee', 'group', 'handle', 'identity', 'kernel', 'loop', 'mjn',
   'notify', 'operator', 'order', 'pay', 'payment', 'payment_request', 'pod', 'profile', 'registry',
   'scope', 'session', 'settle', 'settlement', 'stripe', 'stub', 'supply', 'telemetry', 'transaction',
   'usage', 'vault', 'vouch',

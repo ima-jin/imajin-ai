@@ -144,6 +144,10 @@ describe('resolveEmittableEvents', () => {
 });
 
 describe('kernel-owned namespaces (#2717)', () => {
+  it.each(['domain.verified', 'domain.revoked'])('refuses app approval or emission of %s', (type) => {
+    expect(isKernelEventType(type)).toBe(true);
+    expect(validateEmittableEvents([type])).toEqual({ error: expect.stringContaining('kernel-owned') });
+  });
   it.each(['payment_request.paid', 'payment_request.created', 'loop.completed', 'attestation.created', 'identity.verified.hard', 'vault.secret_read', 'settlement.completed', 'order.paid', 'mjn'])(
     'treats %s as kernel-owned',
     (type) => {

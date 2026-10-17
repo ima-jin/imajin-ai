@@ -3,7 +3,7 @@ import { db, attestations, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
 import { eq, and, isNull, ne, desc, notInArray, inArray, sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, KEY_ROTATED_ATTESTATION_TYPE, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { computeCid } from '@imajin/cid';
 import { withLogger } from '@imajin/logger';
@@ -17,6 +17,7 @@ import { trustRadius } from '@imajin/trust-graph';
 import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
 import { encodeAttestationCursor, parseAttestationCursor } from './attestation-cursor';
 import type { AttestationCursor } from './attestation-cursor';
+import { ceremonyAttestationRejection } from '@/src/lib/auth/ceremony-attestation-types';
 
 const ATTESTATION_LIMIT_MAX = 100;
 const ATTESTATION_REF_MAX_LENGTH = 256;
@@ -165,15 +166,16 @@ async function rejectUnauthorizedWrite(request: NextRequest, cors: HeadersInit):
  * Returns the rejection response, or null when the type may be submitted.
  */
 async function rejectUnsubmittableType(type: string, cors: HeadersInit): Promise<NextResponse | null> {
+  const ceremonyRejection = ceremonyAttestationRejection(type);
+  if (ceremonyRejection) {
+    return NextResponse.json({ error: ceremonyRejection }, { status: 403, headers: cors });
+  }
   const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
   if (!isKnownType) {
     return NextResponse.json(
       { error: `Invalid type. Must be one of: ${ATTESTATION_TYPES.join(', ')}, or a type registered via /auth/api/attestations/types` },
       { status: 400, headers: cors }
     );
-  }
-  if (type === KEY_ROTATED_ATTESTATION_TYPE) {
-    return NextResponse.json({ error: `Attestation type "${type}" is node-issued only` }, { status: 403, headers: cors });
   }
   return null;
 }
