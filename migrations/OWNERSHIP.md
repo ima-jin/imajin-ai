@@ -1,5 +1,17 @@
 # Migration Ownership Map
 
+## Current baseline layout (#2525)
+Active root SQL is kernel-only, including the generated baseline. All app
+schemas (including events and links) are prohibited in active SQL regardless
+of owner headers or historical allowlists. The complete pre-cut chain moved
+unchanged to `archive/pre-kernel-baseline/`, ignored by the runtime runner.
+Ownership origins and gaps below remain historical audit records; their
+`firstMigration` filenames resolve into that archive. The audit map builder
+replays archived history plus post-cut SQL, not the generated baseline.
+See [BASELINE.md](BASELINE.md) for the executable procedure, seed inventory,
+operator restore commands and merge holds. Older deferrals below are
+historical, superseded by #2525's October 16/17 rulings.
+
 Phase 1 of #1991. Every table/view/type/function created anywhere in
 `migrations/` lives in exactly one Postgres schema, and every schema is
 assigned to exactly one owner. This document explains the rule, how the
