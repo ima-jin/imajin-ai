@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db, forestConfig, registryApps } from '@/src/db';
 import { normalizeDomain, resolveRoutableDomain, resolveVerifiedDomain } from './service';
+import { validateEntryUrl } from '@/src/lib/apps/entry-url';
 
 /** Host, not X-Forwarded-Host: forwarded headers are not ownership evidence. */
 export function domainFromHost(host: string | null): string | null {
@@ -47,12 +48,13 @@ export async function domainLanding(domain: string): Promise<string | null> {
 }
 
 export function safeLanding(entry: string, domain: string): string | null {
-  if (entry.startsWith('/') && !entry.startsWith('//') && !entry.includes('\\')) {
-    return entry === '/' ? null : entry;
-  }
+  if (!validateEntryUrl(entry).ok) return null;
   try {
-    const target = new URL(entry);
-    if (target.protocol !== 'https:' || target.username || target.password || target.hostname === domain) return null;
+    const target = new URL(entry, `https://${domain}`);
+    if (normalizeDomain(target.hostname) === normalizeDomain(domain)) {
+      if (target.pathname === '/') return null;
+      return `${target.pathname}${target.search}${target.hash}`;
+    }
     return target.toString();
   } catch {
     return null;

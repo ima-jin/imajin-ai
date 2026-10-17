@@ -334,11 +334,12 @@ describe('runAppProvision — verified domain issuance', () => {
     expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
     expect(appProvisionsStore.get('dev-gbs')?.status).toBe('failed');
   });
-  it.each([new Error('Organization grant unavailable'), 'unavailable'])('fails closed on an idempotent retry when issuance is unavailable', async (error) => {
+  it('recovers a claim without issuing a second host or depending on the organization signing grant', async () => {
     appProvisionsStore.set('dev-gbs', { slug: 'dev-gbs', status: 'succeeded', appDid: MINTED_DID, attestationTypes: [], secretsSet: [] });
-    provisionAppDomainMock.mockRejectedValueOnce(error);
-    expect(await runAppProvision({ slug: 'dev-gbs', displayName: 'GBS' })).toMatchObject({ status: 'failed', failedStep: 'domain' });
-    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+    provisionAppDomainMock.mockRejectedValue(new Error('Organization grant unavailable'));
+    expect(await runAppProvision({ slug: 'dev-gbs', displayName: 'GBS' })).toMatchObject({ status: 'succeeded' });
+    expect(provisionAppDomainMock).not.toHaveBeenCalled();
+    expect(issueSigningKeyClaimMock).toHaveBeenCalled();
   });
 });
 

@@ -26,7 +26,7 @@ propose the action for the owner to execute.
 
 The management endpoints are under
 `/auth/api/identities/:did/domains`; see
-`apps/kernel/api-spec/domains.yaml` for the full contract. Public verified
+`apps/kernel/api-spec/auth.yaml` for the full contract. Public verified
 evidence is available at `/auth/api/identities/:did/domains/public` and is
 linked from that identity's profile.
 
