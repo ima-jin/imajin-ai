@@ -153,13 +153,13 @@
     "auth.reach_envelopes": {
       "owner": "kernel",
       "schema": "auth",
-      "firstMigration": "0192_reach_envelopes.sql",
+      "firstMigration": "0195_reach_envelopes.sql",
       "notes": ""
     },
     "auth.reach_sender_blocks": {
       "owner": "kernel",
       "schema": "auth",
-      "firstMigration": "0192_reach_envelopes.sql",
+      "firstMigration": "0195_reach_envelopes.sql",
       "notes": ""
     },
     "auth.recovery_attempts": {

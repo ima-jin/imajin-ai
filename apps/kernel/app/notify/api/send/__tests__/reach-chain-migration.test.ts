@@ -23,7 +23,7 @@ describe('Reach chain migration parity (#2588)', () => {
           ('agent.reach.delivered', 'agent', '[{"type":"attestation"}]', false),
           ('unrelated.event', 'agent', '[]', false);
       `);
-      const sql = migration('0193_seed_agent_reach_delivered_chain.sql');
+      const sql = migration('0196_seed_agent_reach_delivered_chain.sql');
       await db.exec(sql);
       await db.exec(sql);
       const { rows } = await db.query<{ scope: string | null; reactors: unknown; enabled: boolean }>(

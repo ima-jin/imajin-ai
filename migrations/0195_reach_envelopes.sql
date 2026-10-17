@@ -1,4 +1,4 @@
--- 0192_reach_envelopes.sql
+-- 0195_reach_envelopes.sql
 -- owner: kernel
 -- Private delivery storage only. No chat, reply handling or callback workflow.
 CREATE SCHEMA IF NOT EXISTS auth;

@@ -9,14 +9,16 @@ const { mockSend, mockEmit, mockAttestation } = vi.hoisted(() => ({
 
 vi.mock('@imajin/db', () => ({ getClient: () => () => Promise.resolve([]) }));
 vi.mock('@imajin/notify', () => ({ send: mockSend, interest: vi.fn() }));
+vi.mock('@imajin/emit', () => ({ emit: mockEmit }));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() }),
 }));
 vi.mock('../src/registry', async () => {
   const { notifyReactor } = await import('../src/reactors/notify');
+  const { emitReactor } = await import('../src/reactors/emit');
   return {
     getReactor: (type: string) => ({
-      emit: mockEmit,
+      emit: emitReactor,
       notify: notifyReactor,
       attestation: mockAttestation,
     })[type],
@@ -64,8 +66,21 @@ describe('Reach delivery chain (#2588)', () => {
 
     expect(mockEmit).toHaveBeenCalledTimes(1);
     expect(mockEmit.mock.calls[0][0]).toMatchObject({
-      type: 'agent.reach.delivered', issuer: NODE, subject: PRINCIPAL, payload: PAYLOAD,
+      action: 'agent.reach.delivered', did: NODE, service: 'agent',
     });
+    const emittedPayload = mockEmit.mock.calls[0][0].payload;
+    expect(emittedPayload).toEqual({
+      reachId: PAYLOAD.reachId,
+      principalDid: PRINCIPAL,
+      requesterDid: REQUESTER,
+      topic: PAYLOAD.topic,
+      requesterTier: PAYLOAD.requesterTier,
+      transcriptHash: PAYLOAD.transcriptHash,
+      issuedAt: PAYLOAD.issuedAt,
+    });
+    for (const key of ['message', 'replyHandle', 'requesterSignature']) {
+      expect(emittedPayload).not.toHaveProperty(key);
+    }
     expect(mockAttestation).not.toHaveBeenCalled();
     expect(mockSend).toHaveBeenCalledTimes(1);
     expect(mockSend).toHaveBeenCalledWith({
@@ -89,7 +104,7 @@ describe('Reach delivery chain (#2588)', () => {
   });
 
   it('keeps actual SQL-seeded reactors identical to fallback DEFAULTS', async () => {
-    const sql = readFileSync(new URL('../../../migrations/0193_seed_agent_reach_delivered_chain.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../migrations/0196_seed_agent_reach_delivered_chain.sql', import.meta.url), 'utf8');
     const literal = sql.match(/'(\[[^\n]+\])'::jsonb/)?.[1];
     expect(literal).toBeDefined();
     const cfg = await getChainConfig('agent.reach.delivered', 'agent');

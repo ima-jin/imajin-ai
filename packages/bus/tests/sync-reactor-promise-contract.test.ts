@@ -29,6 +29,33 @@ describe('emitReactor', () => {
     await expect(emitReactor(event, {})).resolves.toBeUndefined();
     expect(emitMock).toHaveBeenCalledWith(expect.objectContaining({ service: 'test', did: 'did:imajin:a', status: 'success' }));
   });
+  it('preserves the full payload when no allowlist is configured', async () => {
+    const payload = { public: 'metadata', private: 'content' };
+    await emitReactor({ ...event, payload }, {});
+    expect(emitMock.mock.calls[0][0].payload).toBe(payload);
+  });
+
+  it('projects only listed, present string keys without mutating the event', async () => {
+    const payload = { public: 'metadata', private: 'content', count: 0, flag: false };
+    await emitReactor({ ...event, payload }, { fields: ['public', 'count', 'flag', 'missing', 42, null] });
+    expect(emitMock.mock.calls[0][0].payload).toEqual({ public: 'metadata', count: 0, flag: false });
+    expect(payload).toEqual({ public: 'metadata', private: 'content', count: 0, flag: false });
+  });
+
+  it('emits no payload keys with an empty allowlist', async () => {
+    await emitReactor({ ...event, payload: { private: 'content' } }, { fields: [] });
+    expect(emitMock.mock.calls[0][0].payload).toEqual({});
+  });
+  it('projects an absent payload to an empty object', async () => {
+    await emitReactor({ ...event, payload: undefined }, { fields: ['public'] });
+    expect(emitMock.mock.calls[0][0].payload).toEqual({});
+  });
+
+  it('ignores a non-array fields value, matching audit-log semantics', async () => {
+    const payload = { public: 'metadata' };
+    await emitReactor({ ...event, payload }, { fields: 'public' });
+    expect(emitMock.mock.calls[0][0].payload).toBe(payload);
+  });
 
   it('rejects (not throws) when emit throws synchronously', async () => {
     emitMock.mockImplementation(() => {
