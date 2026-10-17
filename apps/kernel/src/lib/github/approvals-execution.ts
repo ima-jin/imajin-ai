@@ -45,6 +45,7 @@ import { db, githubActionProposals, operatorApprovals } from '@/src/db';
 import { getNodeSigningIdentity } from '../vault/sealing';
 import type { OperatorApprovalCard } from '../notify/operator-approvals-service';
 import { GITHUB_TTL_MODES } from '../notify/operator-decision-modes';
+import { connectionSlot } from '../kernel/connection-slots';
 
 const log = createLogger('kernel:github:approvals-execution');
 
@@ -80,6 +81,7 @@ function resolveApprovedUntil(mode: GithubTtlMode): Date | null {
 
 interface GithubDetail {
   ownerDid: string;
+  slot: string;
   agentDid: string | null;
   tool: string;
   target: string;
@@ -91,8 +93,16 @@ function readGithubDetail(card: OperatorApprovalCard): GithubDetail | null {
   if (!detail || typeof detail.ownerDid !== 'string' || typeof detail.tool !== 'string' || typeof detail.target !== 'string' || typeof detail.argsSummary !== 'string') {
     return null;
   }
+  if (detail.slot !== undefined && typeof detail.slot !== 'string') return null;
+  let slot: string;
+  try {
+    slot = connectionSlot(detail.slot as string | undefined);
+  } catch {
+    return null;
+  }
   return {
     ownerDid: detail.ownerDid,
+    slot,
     agentDid: typeof detail.agentDid === 'string' ? detail.agentDid : null,
     tool: detail.tool,
     target: detail.target,
@@ -107,6 +117,7 @@ function signOwnerAuthorization(proposalId: string, detail: GithubDetail, mode: 
   const authPayload = {
     proposalId,
     ownerDid: detail.ownerDid,
+    ...(detail.slot === 'primary' ? {} : { connection: detail.slot }),
     tool: detail.tool,
     target: detail.target,
     ttl: mode,
@@ -149,6 +160,9 @@ async function executeApprove(card: OperatorApprovalCard, detail: GithubDetail, 
       and(
         eq(githubActionProposals.id, card.proposalId),
         eq(githubActionProposals.ownerDid, detail.ownerDid),
+        eq(githubActionProposals.slot, detail.slot),
+        eq(githubActionProposals.slot, detail.slot),
+        eq(githubActionProposals.slot, detail.slot),
       ),
     );
 

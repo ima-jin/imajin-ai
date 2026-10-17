@@ -120,6 +120,23 @@ describe('executeGithubApproval — kind/detail validation', () => {
 });
 
 describe('executeGithubApproval — approve', () => {
+  it('binds nonprimary approval authorization to its connection', async () => {
+    const named = card();
+    named.detail = { ...named.detail, slot: 'artifact' };
+    expect(await executeGithubApproval(named, 'approve', undefined)).toEqual({ ok: true });
+    expect(githubUpdateSetMock).toHaveBeenCalledWith(expect.objectContaining({
+      ownerAuthorization: expect.objectContaining({
+        payload: expect.objectContaining({ connection: 'artifact' }),
+      }),
+    }));
+  });
+
+  it.each([42, '../primary'])('rejects invalid slot detail %s', async (slot) => {
+    const named = card();
+    named.detail = { ...named.detail, slot };
+    expect((await executeGithubApproval(named, 'approve', undefined)).ok).toBe(false);
+    expect(githubUpdateSetMock).not.toHaveBeenCalled();
+  });
   it('defaults to a single-call approval (approvedUntil null) when mode is omitted', async () => {
     const result = await executeGithubApproval(card(), 'approve', undefined);
 

@@ -450,6 +450,7 @@ async function retireLapsedApprovals(
       .where(
         and(
           eq(githubActionProposals.ownerDid, ownerDid),
+          eq(githubActionProposals.slot, currentConnectionSlot('github', ownerDid)),
           eq(githubActionProposals.scope, scope),
           eq(githubActionProposals.riskTier, risk),
           eq(githubActionProposals.status, 'approved'),
@@ -480,6 +481,7 @@ async function retireLapsedApprovals(
           eq(operatorApprovals.kind, kind),
           eq(operatorApprovals.status, 'approved'),
           sql`${operatorApprovals.detail}->>'ownerDid' = ${ownerDid}`,
+          sql`COALESCE(${operatorApprovals.detail}->>'slot', 'primary') = ${currentConnectionSlot('github', ownerDid)}`,
           sql`(${operatorApprovals.outcome}->>'approvedUntil') IS NOT NULL`,
           sql`(${operatorApprovals.outcome}->>'approvedUntil')::timestamptz <= ${now.toISOString()}`,
         ),
@@ -513,6 +515,7 @@ async function resolveLiveGrant(
     .where(
       and(
         eq(githubActionProposals.ownerDid, ownerDid),
+        eq(githubActionProposals.slot, currentConnectionSlot('github', ownerDid)),
         eq(githubActionProposals.scope, scope),
         eq(githubActionProposals.riskTier, risk),
         eq(githubActionProposals.status, 'approved'),
@@ -628,7 +631,8 @@ async function raiseGithubOperatorApproval(params: {
     const source = GITHUB_SOURCE;
     const kind = risk === 'append' ? GITHUB_APPEND_KIND : GITHUB_MUTATE_KIND;
     const keysTouched: string[] = [];
-    const detail = { ownerDid, agentDid: agentDid ?? null, scope, riskTier: risk, tool, target, argsSummary };
+    const slot = currentConnectionSlot('github', ownerDid);
+    const detail = { ownerDid, slot, agentDid: agentDid ?? null, scope, riskTier: risk, tool, target, argsSummary };
     const contentHash = computeApprovalContentHash({
       proposalId, source, kind, summary: argsSummary, keysTouched, detail,
     });
@@ -669,6 +673,7 @@ async function insertDoneRow(
   await db.insert(githubActionProposals).values({
     id,
     ownerDid,
+    slot: currentConnectionSlot('github', ownerDid),
     agentDid: agentDid ?? null,
     scope,
     tool,
@@ -737,6 +742,7 @@ async function requireWriteGate(params: RequireWriteGateParams): Promise<WriteGa
   await db.insert(githubActionProposals).values({
     id: proposalId,
     ownerDid,
+    slot: currentConnectionSlot('github', ownerDid),
     agentDid: agentDid ?? null,
     scope,
     tool,

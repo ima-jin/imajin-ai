@@ -39,7 +39,7 @@ describe('connection slots', () => {
   it('does not leak between concurrent tool invocations or after errors', async () => {
     const results = await Promise.all(['personal', 'artifact'].map((slot) =>
       withConnectorConnection('google', 'alice', slot, async () => {
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        await Promise.resolve();
         return currentConnectionSlot('google', 'alice');
       }),
     ));

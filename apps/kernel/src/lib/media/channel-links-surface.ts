@@ -7,6 +7,7 @@ import { db, assets, channelLinks } from "@/src/db";
 import { and, eq, inArray, like } from "drizzle-orm";
 import { parseFrontmatter } from "./frontmatter";
 import { forEachSequential } from "../async/sequential";
+import { connectionSlot } from "../kernel/connection-slots";
 import {
   registerProjectionSurface,
   type ProjectionContext,
@@ -87,6 +88,7 @@ interface ManifestConnector {
   appDid: string;
   /** Connector channel label — `auth.channel_links.channel`. */
   channel: string;
+  slot: string;
 }
 
 /**
@@ -158,7 +160,15 @@ async function resolveManifestConnector(
     return null;
   }
 
-  return { appDid, channel };
+  // Slot identity is pinned on creation; editing cannot move grants to primary.
+  try {
+    const slot = connectionSlot(typeof metadata.slot === "string" ? metadata.slot : undefined);
+    const declaredSlot = connectionSlot(typeof data.slot === "string" ? data.slot : undefined);
+    if (slot !== declaredSlot) return null;
+    return { appDid, channel, slot };
+  } catch {
+    return null;
+  }
 }
 
 /** Flip active link rows to revoked and fire `channel.link.revoked` per row. */
@@ -210,7 +220,7 @@ export const channelLinksSurface: ProjectionSurface = {
     const connector = await resolveManifestConnector(ctx);
     if (!connector) return; // Not a manifest (or unattributed) → no-op.
 
-    const { appDid, channel } = connector;
+    const { appDid, channel, slot } = connector;
     const releasedScopes = Object.keys(released);
     const releasedSet = new Set(releasedScopes);
 
@@ -228,6 +238,7 @@ export const channelLinksSurface: ProjectionSurface = {
           channelUid: scopeUid(ctx.assetId, scope),
           did: ctx.ownerDid,
           appDid,
+          slot,
           scopes: [scope],
           status: "active",
           createdAt: now,
@@ -235,7 +246,7 @@ export const channelLinksSurface: ProjectionSurface = {
         })
         .onConflictDoUpdate({
           target: [channelLinks.channel, channelLinks.channelUid, channelLinks.appDid],
-          set: { scopes: [scope], status: "active", revokedAt: null },
+          set: { slot, scopes: [scope], status: "active", revokedAt: null },
         });
     });
 
