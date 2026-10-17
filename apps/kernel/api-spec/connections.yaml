@@ -23,6 +23,14 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    appServiceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: app-service+jwt
+      description: >-
+        Existing POST /auth/api/apps/token/service credential. Requires
+        connections:read in the token and current operator-approved service
+        scopes of an active registry app. Not a session or delegated app token.
   schemas:
     ConnectorConnection:
       type: object
@@ -88,6 +96,94 @@ tags:
     description: imajin connections service
 
 paths:
+  /api/apps/pods:
+    get:
+      tags: [connections]
+      operationId: listAppMemberPodIds
+      summary: List active direct member pod IDs by DID within the app's owner grants
+      description: >-
+        Requires a live app-authorization channel_links grant of connections:read
+        from each pod owner to this exact app (channel=app, status=active,
+        revokedAt=null). The existing OAuth consent flow creates this grant.
+        Registration, operator approval, an ownerDid/appDid query parameter,
+        X-Acting-For, or a forwarded cookie alone never grants access.
+        Only entitled pods are returned, of any type; no recursive membership,
+        removed membership, names, or unrelated owners' pods. No matches returns
+        an empty list. Responses are Cache-Control: no-store.
+      security:
+        - appServiceAuth: []
+      parameters:
+        - name: did
+          in: query
+          required: true
+          schema: { type: string, pattern: "^did:", maxLength: 2048 }
+          description: Target member DID, not an impersonated owner
+      responses:
+        "200":
+          description: Active direct memberships visible to this app, ordered by pod ID
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [podIds]
+                properties:
+                  podIds: { type: array, items: { type: string } }
+        "400":
+          description: Missing or invalid DID
+        "401":
+          description: Missing, invalid, expired, or wrong-type/audience app-service credential
+        "403":
+          description: Missing scope, inactive/unregistered app, or revoked operator approval
+        "503":
+          description: Membership or authorization store unavailable (fails closed)
+  /api/apps/pods/{id}/members:
+    get:
+      tags: [connections]
+      operationId: listAppPodMembers
+      summary: Read active direct pod members with the pod owner's grant to this app
+      description: >-
+        Same service credential and live owner-grant gates as GET /api/apps/pods.
+        Missing pods and pods without the owner's active connections:read grant
+        to this exact app both return 404; registration or sharing an app owner
+        never substitutes for the grant. Empty entitled pods return members=[].
+        All active direct roles are returned (including owner and cohost);
+        callers enforce their own organizer-role policy. Removed members are
+        excluded. No pod metadata or addedBy is disclosed. Cache-Control: no-store.
+      security:
+        - appServiceAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Minimal active direct membership records
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [podId, members]
+                properties:
+                  podId: { type: string }
+                  members:
+                    type: array
+                    items:
+                      type: object
+                      required: [podId, did, role, joinedAt]
+                      properties:
+                        podId: { type: string }
+                        did: { type: string }
+                        role: { type: string, examples: [owner, cohost, member] }
+                        joinedAt: { type: string, format: date-time }
+        "401":
+          description: Missing, invalid, expired, or wrong-type/audience app-service credential
+        "403":
+          description: Missing scope, inactive/unregistered app, or revoked operator approval
+        "404":
+          description: Pod not found or not entitled
+        "503":
+          description: Membership or authorization store unavailable (fails closed)
   /api/connectors/{id}/connections:
     parameters:
       - name: id
