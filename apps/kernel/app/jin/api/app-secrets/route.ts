@@ -1,4 +1,4 @@
-/** Metadata and proposal-only operator surface. No plaintext or fetch action. */
+/** Metadata/proposal surface: accepts operator input once, never returns it. */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
 import { eq } from 'drizzle-orm';
@@ -11,11 +11,13 @@ import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-ser
 import { listOperatorAppSecrets, hasClaimedApp, previewAppSecrets } from '@/src/lib/apps/secrets-operator';
 import { APP_SECRET_ACTIONS, appSecretsKind, type AppSecretAction } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
+import { isAppSecretValue, stageAppSecret } from '@/src/lib/apps/secret-staging';
 
 export const dynamic = 'force-dynamic';
 
 async function authorize(request: NextRequest, write = false) {
-  const cors = corsHeaders(request);
+  const cors = new Headers(corsHeaders(request));
+  cors.set('Cache-Control', 'no-store');
   const auth = await requireAuth(request);
   if ('error' in auth) return { response: NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors }) };
   if (write) {
@@ -40,9 +42,10 @@ export async function GET(request: NextRequest) {
 }
 
 function validateBody(body: Record<string, unknown>): string | null {
-  if (Object.keys(body).some((key) => !['appDid', 'action', 'name'].includes(key))) return 'Only appDid, action and name are accepted';
-  if (typeof body.appDid !== 'string' || !body.appDid || !APP_SECRET_ACTIONS.includes(body.action as AppSecretAction)) return 'appDid and a sync, rotate or revoke action are required';
+  if (Object.keys(body).some((key) => !['appDid', 'action', 'name', 'value'].includes(key))) return 'Invalid app-secret proposal';
+  if (typeof body.appDid !== 'string' || !body.appDid || !APP_SECRET_ACTIONS.includes(body.action as AppSecretAction)) return 'appDid and a sync, set, rotate or revoke action are required';
   if (body.action === 'sync' && body.name !== undefined) return 'Sync accepts no secret name';
+  if ((body.action === 'sync' || body.action === 'revoke') && body.value !== undefined) return 'Operator input not accepted for this action';
   return null;
 }
 
@@ -67,6 +70,7 @@ export async function POST(request: NextRequest) {
     if (!app) return fail('Unknown app', 404);
     if (app.status !== 'active' || !(await hasClaimedApp(appDid))) return fail('App must be active and claimed', 409);
     const detail: Record<string, unknown> = { appDid, appName: app.name };
+    const proposalId = generateId('appsecret');
     if (action === 'sync') {
       if (!app.slug) return fail('App has no manifest repo slug', 409);
       const snapshot = await previewAppSecrets(app.slug);
@@ -75,10 +79,19 @@ export async function POST(request: NextRequest) {
       detail.secrets = snapshot.ok;
     } else {
       const declared = validateSecrets(app.secrets ?? []);
-      if ('error' in declared || typeof body.name !== 'string' || !declared.ok.some((secret) => secret.name === body.name)) return fail('Secret is not declared for this app');
+      if ('error' in declared || typeof body.name !== 'string') return fail('Secret is not declared for this app');
+      const declaration = declared.ok.find((secret) => secret.name === body.name);
+      if (!declaration) return fail('Secret is not declared for this app');
       detail.name = body.name;
+      if (declaration.kind === 'operator-supplied' && (action === 'set' || action === 'rotate')) {
+        if (!isAppSecretValue(body.value)) return fail('Operator input must be a nonempty string of at most 65536 UTF-8 bytes');
+        detail.stagingRef = await stageAppSecret({
+          proposalId, operatorDid: auth.operatorDid, appDid, name: body.name, action,
+        }, body.value);
+      } else if (body.value !== undefined || action === 'set') {
+        return fail('Operator input not accepted for this action');
+      }
     }
-    const proposalId = generateId('appsecret');
     const kind = appSecretsKind(action);
     const summary = `${action} app secrets for '${app.name}'`;
     const contentHash = computeApprovalContentHash({ proposalId, source: 'apps', kind, summary, keysTouched: [], detail });

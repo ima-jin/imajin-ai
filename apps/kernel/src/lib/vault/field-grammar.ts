@@ -50,6 +50,12 @@ export interface ParsedVaultFieldName {
   name: string;
 }
 
+/** Pending operator input is private to the countersigned app-secret rail. */
+export function isAppSecretStagingField(field: string): boolean {
+  const parsed = parseVaultFieldName(field);
+  return parsed.ok && parsed.value.namespace === INTERNAL_SECRET_NAMESPACE && parsed.value.name.startsWith('app-self:staging:');
+}
+
 export type VaultFieldNameParse =
   | { ok: true; value: ParsedVaultFieldName }
   | { ok: false; reason: 'required' | 'invalid'; message: string };

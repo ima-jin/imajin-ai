@@ -5,12 +5,13 @@ const state = vi.hoisted(() => ({
   grants: [] as Array<Record<string, unknown>>,
   facts: [] as Array<Record<string, unknown>>,
   generate: vi.fn(), grant: vi.fn(), fetch: vi.fn(), rotate: vi.fn(), revoke: vi.fn(),
-  attest: vi.fn(), tier1: false,
+  attest: vi.fn(), seal: vi.fn(), invalidate: vi.fn(), lock: vi.fn(), tier1: false,
 }));
 vi.mock('drizzle-orm', () => ({
   eq: (column: string, value: unknown) => ({ column, value }),
   and: (...clauses: unknown[]) => clauses,
   asc: (column: string) => column,
+  sql: (parts: TemplateStringsArray, ...values: unknown[]) => ({ parts, values }),
 }));
 function testQuery(projection: Record<string, unknown> | undefined, conditions: Array<{ column: string; value: unknown }>) {
   const clauses = Array.isArray(conditions) ? conditions : [conditions];
@@ -31,7 +32,10 @@ vi.mock('@/src/db', () => {
   const columns = new Proxy({}, { get: (_target, key) => key });
   return {
     registryApps: columns, vaultDelegationGrants: columns, attestations: columns,
-    db: { select: testSelect },
+    db: {
+      select: testSelect,
+      transaction: async (run: (tx: { execute: typeof state.lock }) => Promise<void>) => run({ execute: state.lock }),
+    },
   };
 });
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ emitMechanicalAttestation: state.attest }));
@@ -40,6 +44,7 @@ vi.mock('@/src/lib/vault/sealing', () => ({
 }));
 vi.mock('@/src/lib/vault/internal-secret', () => ({
   getOrGenerateInternalSecret: state.generate, internalSecretField: (purpose: string) => `internal-secret:${purpose}`,
+  sealAndRecordInternalSecret: state.seal, invalidateInternalSecret: state.invalidate,
 }));
 vi.mock('@/src/lib/vault/shared-internal-secret', () => ({ grantInternalSecretTo: state.grant }));
 vi.mock('@/src/lib/vault/internal-secret-rotate', () => ({ rotateInternalSecret: state.rotate }));
@@ -47,7 +52,7 @@ vi.mock('@/src/lib/vault/internal-secret-revoke', () => ({ revokeInternalSecret:
 vi.mock('@/src/lib/vault', () => ({ fetchGrantSecret: state.fetch }));
 import {
   appSecretPurpose, ensureAppDeclaredSecrets, fetchAppDeclaredSecret, listAppDeclaredSecrets,
-  revokeAppDeclaredSecret, rotateAppDeclaredSecret,
+  revokeAppDeclaredSecret, rotateAppDeclaredSecret, setAppDeclaredSecret,
 } from '../self-secrets';
 
 const APP = 'did:imajin:app-under-test';
@@ -68,6 +73,42 @@ beforeEach(() => {
 });
 
 describe('app-scoped existing-vault lifecycle', () => {
+  it('leaves operator declarations missing on sync/claim and rejects generated rotation', async () => {
+    state.app.secrets[0].kind = 'operator-supplied';
+    await ensureAppDeclaredSecrets(APP, AUTH);
+    expect(state.generate).not.toHaveBeenCalled();
+    expect(state.grant).not.toHaveBeenCalled();
+    expect(state.seal).not.toHaveBeenCalled();
+    await expect(rotateAppDeclaredSecret(APP, 'SESSION_SECRET', AUTH)).rejects.toThrow('Operator input required');
+  });
+  it('sets supplied input through custody without generation or plaintext hashes in audit', async () => {
+    state.app.secrets[0].kind = 'operator-supplied';
+    await setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'OBVIOUSLY_FAKE_OPERATOR_INPUT', AUTH);
+    expect(state.seal).toHaveBeenCalledWith('did:imajin:node', appSecretPurpose(APP, 'SESSION_SECRET'), 'OBVIOUSLY_FAKE_OPERATOR_INPUT');
+    expect(state.generate).not.toHaveBeenCalled();
+    expect(state.grant).toHaveBeenCalled();
+    expect(state.attest.mock.calls.map(([fact]) => fact.payload.phase)).toEqual(['minted', 'granted']);
+    expect(JSON.stringify(state.attest.mock.calls)).not.toContain('OBVIOUSLY_FAKE_OPERATOR_INPUT');
+    for (const [fact] of state.attest.mock.calls) expect(fact.payload).not.toHaveProperty('contentHash');
+  });
+  it('rotates supplied input using existing regrant custody and never generates', async () => {
+    state.app.secrets[0].kind = 'operator-supplied';
+    state.grants = [grantRow()];
+    await setAppDeclaredSecret(APP, 'SESSION_SECRET', 'rotate', 'OBVIOUSLY_FAKE_REPLACEMENT', AUTH);
+    expect(state.rotate).toHaveBeenCalledWith(grantRow().field, 'OBVIOUSLY_FAKE_REPLACEMENT');
+    expect(state.seal).not.toHaveBeenCalled();
+    expect(state.generate).not.toHaveBeenCalled();
+    expect(state.attest.mock.calls.at(-1)?.[0].payload.phase).toBe('rotated');
+  });
+  it('refuses set/rotate state drift and non-operator declarations', async () => {
+    await expect(setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'FAKE_INPUT', AUTH)).rejects.toThrow('not accepted');
+    state.app.secrets[0].kind = 'operator-supplied';
+    await expect(setAppDeclaredSecret(APP, 'SESSION_SECRET', 'rotate', 'FAKE_INPUT', AUTH)).rejects.toThrow('state changed');
+    state.grants = [grantRow()];
+    await expect(setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'FAKE_INPUT', AUTH)).rejects.toThrow('state changed');
+    expect(state.seal).not.toHaveBeenCalled();
+    expect(state.rotate).not.toHaveBeenCalled();
+  });
   it('issues missing declared secrets without returning bytes; signed facts contain only metadata', async () => {
     const result = await ensureAppDeclaredSecrets(APP, AUTH);
     expect(result).toBeUndefined();

@@ -8,8 +8,10 @@ import { appManifestError, fetchAppManifest, tryGetInstallationToken } from '@/s
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { resolveVaultAuthorization, type VaultAuthorization } from '@/src/lib/vault/authorization';
 import { validateSecrets, type AppSecretDeclaration } from './secret-declarations';
-import { ensureAppDeclaredSecrets, rotateAppDeclaredSecret, revokeAppDeclaredSecret, listAppDeclaredSecrets } from './self-secrets';
+import { ensureAppDeclaredSecrets, rotateAppDeclaredSecret, revokeAppDeclaredSecret, listAppDeclaredSecrets, setAppDeclaredSecret } from './self-secrets';
 import { appSecretsKind, isAppSecretsKind } from './secrets-kind';
+import { consumeAppSecret } from './secret-staging';
+import { getOperatorDid } from '@/src/lib/notify/operator-approvals';
 
 export function sameSecretDeclarations(a: AppSecretDeclaration[], b: AppSecretDeclaration[]): boolean {
   const canonical = (list: AppSecretDeclaration[]) => JSON.stringify([...list].sort((x, y) => x.name.localeCompare(y.name)));
@@ -101,6 +103,9 @@ async function executeSync(
 export async function executeAppSecretsApproval(card: OperatorApprovalCard): Promise<AppSecretsExecutionResult> {
   const authorizedBy = resolveVaultAuthorization(card);
   if (!authorizedBy) return { ok: false, error: `${card.kind} requires a countersigned operator decision` };
+  if (card.status !== 'approved' || card.decision?.decision !== 'approve') {
+    return { ok: false, error: 'App secrets require an approved operator decision' };
+  }
   if (card.source !== 'apps' || !isAppSecretsKind(card.kind)) return { ok: false, error: 'Unrecognized app-secret proposal kind' };
   const appDid = card.detail?.appDid;
   if (typeof appDid !== 'string' || !appDid) return { ok: false, error: 'App-secret proposal is missing appDid' };
@@ -120,12 +125,23 @@ export async function executeAppSecretsApproval(card: OperatorApprovalCard): Pro
     if (typeof name !== 'string' || !current.ok.some((secret) => secret.name === name)) {
       return { ok: false, error: 'Secret is not declared for this app' };
     }
-    if (card.kind === appSecretsKind('rotate')) {
+    const declaration = current.ok.find((secret) => secret.name === name)!;
+    const suppliedAction = card.kind === appSecretsKind('set') ? 'set' : 'rotate';
+    if (card.kind === appSecretsKind('set') || (card.kind === appSecretsKind('rotate') && declaration.kind === 'operator-supplied')) {
+      if (declaration.kind !== 'operator-supplied' || typeof card.detail?.stagingRef !== 'string'
+        || authorizedBy.operatorDid !== await getOperatorDid()) {
+        return { ok: false, error: 'App-secret operator input unavailable' };
+      }
+      const value = await consumeAppSecret(card.detail.stagingRef, {
+        proposalId: authorizedBy.approvalId, operatorDid: authorizedBy.operatorDid, appDid, name, action: suppliedAction,
+      });
+      await setAppDeclaredSecret(appDid, name, suppliedAction, value, authorizedBy);
+    } else if (card.kind === appSecretsKind('rotate')) {
       await rotateAppDeclaredSecret(appDid, name, authorizedBy);
     } else {
       await revokeAppDeclaredSecret(appDid, name, authorizedBy);
     }
-    return { ok: true, data: { appDid, action: card.kind === appSecretsKind('rotate') ? 'rotate' : 'revoke', names: [name] } };
+    return { ok: true, data: { appDid, action: card.kind === appSecretsKind('set') ? 'set' : card.kind === appSecretsKind('rotate') ? 'rotate' : 'revoke', names: [name] } };
   } catch {
     // Provider errors may contain credential material; never log or surface them.
     return { ok: false, error: 'App-secret execution failed' };

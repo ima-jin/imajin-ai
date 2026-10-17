@@ -86,12 +86,12 @@ export async function rotateInternalSecret(field: string, plaintext: string): Pr
       await vaultService.set(sealed.entry);
       return { ...sealed, ...reissue };
     })
-    .catch((err: unknown) => {
+    .catch(() => {
       log.error(
-        { err: String(err), field, purpose },
+        { field, purpose },
         'Vault: internal-secret rotate failed — grants and the provisions row were rolled back together; re-run the rotate (if the failure was the final commit, the entry may already hold the new value and the re-run repairs the grants)',
       );
-      throw err;
+      throw new Error('Vault internal-secret rotation failed');
     });
 
   invalidateInternalSecret(purpose);

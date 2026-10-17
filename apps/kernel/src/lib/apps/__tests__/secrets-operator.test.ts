@@ -3,9 +3,11 @@ import type { OperatorApprovalCard } from '../../notify/operator-approvals-servi
 
 const mocks = vi.hoisted(() => ({
   auth: vi.fn(), select: vi.fn(), set: vi.fn(), write: vi.fn(), manifest: vi.fn(),
-  ensure: vi.fn(), rotate: vi.fn(), revoke: vi.fn(), list: vi.fn(),
+  ensure: vi.fn(), rotate: vi.fn(), revoke: vi.fn(), list: vi.fn(), consume: vi.fn(), supplied: vi.fn(), owner: vi.fn(),
 }));
 vi.mock('../../vault/authorization', () => ({ resolveVaultAuthorization: mocks.auth }));
+vi.mock('../secret-staging', () => ({ consumeAppSecret: mocks.consume }));
+vi.mock('@/src/lib/notify/operator-approvals', () => ({ getOperatorDid: mocks.owner }));
 vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn() }));
 vi.mock('@/src/lib/github/org-provisioning', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/src/lib/github/org-provisioning')>(),
@@ -14,6 +16,7 @@ vi.mock('@/src/lib/github/org-provisioning', async (importOriginal) => ({
 vi.mock('../self-secrets', () => ({
   ensureAppDeclaredSecrets: mocks.ensure, rotateAppDeclaredSecret: mocks.rotate,
   revokeAppDeclaredSecret: mocks.revoke, listAppDeclaredSecrets: mocks.list,
+  setAppDeclaredSecret: mocks.supplied,
 }));
 vi.mock('@/src/db', () => ({
   registryApps: {}, appProvisions: {}, appSigningKeyClaims: {},
@@ -31,7 +34,7 @@ const declaration = { name: 'SESSION_SECRET', kind: 'random-32B' };
 const authorization = { operatorDid: 'did:imajin:fake-operator', decidedAt: '2026-10-14T00:00:00Z', approvalId: 'fake-proposal', contentHash: 'fake-hash' };
 afterEach(() => vi.unstubAllGlobals());
 function card(kind = 'apps:secrets-sync', detail: Record<string, unknown> = { slug: 'fake-app', secrets: [declaration] }) {
-  return { kind, source: 'apps', detail: { appDid: 'did:imajin:fake-app', ...detail } } as OperatorApprovalCard;
+  return { kind, source: 'apps', status: 'approved', decision: { decision: 'approve' }, detail: { appDid: 'did:imajin:fake-app', ...detail } } as OperatorApprovalCard;
 }
 beforeEach(() => {
   vi.clearAllMocks();
@@ -39,19 +42,60 @@ beforeEach(() => {
   mocks.rotate.mockReset();
   mocks.revoke.mockReset();
   mocks.auth.mockReturnValue(authorization);
+  mocks.owner.mockResolvedValue(authorization.operatorDid);
+  mocks.consume.mockResolvedValue('OBVIOUSLY_FAKE_OPERATOR_INPUT');
   mocks.select.mockReturnValueOnce([{ status: 'active', slug: 'fake-app', secrets: [declaration] }])
     .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
   mocks.manifest.mockResolvedValue({ ok: { secrets: [declaration] } });
   mocks.write.mockResolvedValue(undefined);
 });
 describe('app secret execution', () => {
-  it.each(['sync', 'rotate', 'revoke'])('refuses unsigned %s without any read or mutation', async (action) => {
+  it.each(['pending', 'denied', 'withdrawn', 'expired', 'applied'])('refuses %s cards even when signature authorization fields exist', async (status) => {
+    expect((await executeAppSecretsApproval({ ...card(), status } as OperatorApprovalCard)).ok).toBe(false);
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.select).not.toHaveBeenCalled();
+  });
+  it('refuses an approved-looking card carrying a signed rejection', async () => {
+    const rejected = card();
+    rejected.decision = { decision: 'reject' } as NonNullable<OperatorApprovalCard['decision']>;
+    expect((await executeAppSecretsApproval(rejected)).ok).toBe(false);
+    expect(mocks.consume).not.toHaveBeenCalled();
+  });
+  it.each(['sync', 'set', 'rotate', 'revoke'])('refuses unsigned %s without any read or mutation', async (action) => {
     mocks.auth.mockReturnValue(null);
     expect((await executeAppSecretsApproval(card(`apps:secrets-${action}`))).ok).toBe(false);
     expect(mocks.select).not.toHaveBeenCalled();
     expect(mocks.ensure).not.toHaveBeenCalled();
     expect(mocks.rotate).not.toHaveBeenCalled();
     expect(mocks.revoke).not.toHaveBeenCalled();
+    expect(mocks.consume).not.toHaveBeenCalled();
+  });
+  it.each(['set', 'rotate'])('consumes only a reference bound to the approved owner/app/name/%s action', async (action) => {
+    mocks.select.mockReset().mockReturnValueOnce([{ status: 'active', secrets: [{ name: 'DATABASE_URL', kind: 'operator-supplied' }] }])
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
+    const result = await executeAppSecretsApproval(card(`apps:secrets-${action}`, { name: 'DATABASE_URL', stagingRef: 'fake-reference' }));
+    expect(mocks.consume).toHaveBeenCalledWith('fake-reference', {
+      proposalId: authorization.approvalId, operatorDid: authorization.operatorDid, appDid: 'did:imajin:fake-app', name: 'DATABASE_URL', action,
+    });
+    expect(mocks.supplied).toHaveBeenCalledWith('did:imajin:fake-app', 'DATABASE_URL', action, 'OBVIOUSLY_FAKE_OPERATOR_INPUT', authorization);
+    expect(result).toEqual({ ok: true, data: { appDid: 'did:imajin:fake-app', action, names: ['DATABASE_URL'] } });
+  });
+  it('refuses input for generated declarations and a signer who is not the current owner', async () => {
+    expect((await executeAppSecretsApproval(card('apps:secrets-set', { name: 'SESSION_SECRET', stagingRef: 'fake-reference' }))).ok).toBe(false);
+    mocks.select.mockReset().mockReturnValueOnce([{ status: 'active', secrets: [{ name: 'DATABASE_URL', kind: 'operator-supplied' }] }])
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
+    mocks.owner.mockResolvedValue('did:imajin:fake-other-owner');
+    expect((await executeAppSecretsApproval(card('apps:secrets-set', { name: 'DATABASE_URL', stagingRef: 'fake-reference' }))).ok).toBe(false);
+    expect(mocks.consume).not.toHaveBeenCalled();
+    expect(mocks.supplied).not.toHaveBeenCalled();
+  });
+  it('redacts provider failure after approval without importing input', async () => {
+    mocks.select.mockReset().mockReturnValueOnce([{ status: 'active', secrets: [{ name: 'DATABASE_URL', kind: 'operator-supplied' }] }])
+      .mockReturnValueOnce([{ appDid: 'did:imajin:fake-app' }]);
+    mocks.consume.mockRejectedValueOnce(new Error('OBVIOUSLY_FAKE_OPERATOR_INPUT'));
+    expect(await executeAppSecretsApproval(card('apps:secrets-set', { name: 'DATABASE_URL', stagingRef: 'fake-reference' })))
+      .toEqual({ ok: false, error: 'App-secret execution failed' });
+    expect(mocks.supplied).not.toHaveBeenCalled();
   });
   it('previews public manifest secrets with no installation credential', async () => {
     expect(await previewAppSecrets('fake-app')).toEqual({ ok: [declaration] });
@@ -135,6 +179,13 @@ describe('app secret execution', () => {
   });
 });
 describe('metadata and manifest preview', () => {
+  it('reads operator-supplied names and kinds through the real manifest validator', async () => {
+    const { fetchAppManifest } = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>('@/src/lib/github/org-provisioning');
+    mocks.manifest.mockImplementation(fetchAppManifest);
+    const secrets = [{ name: 'DATABASE_URL', kind: 'operator-supplied' }];
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json({ secrets })));
+    expect(await previewAppSecrets('fake-app')).toEqual({ ok: secrets });
+  });
   it('reads a public manifest without credentials, then persists the signed Sync names and issues secrets', async () => {
     const { fetchAppManifest } = await vi.importActual<typeof import('@/src/lib/github/org-provisioning')>('@/src/lib/github/org-provisioning');
     mocks.manifest.mockImplementation(fetchAppManifest);

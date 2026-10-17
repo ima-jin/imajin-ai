@@ -172,7 +172,7 @@ export function emitGrantEvents(params: {
       context_id: field,
       context_type: 'vault',
     },
-  }).catch((err: unknown) => log.error({ err: String(err), grantId }, 'Bus publish error for vault.grant.fulfilled'));
+  }).catch(() => log.error({ grantId }, 'Bus publish error for vault.grant.fulfilled'));
 }
 
 /** Narrow re-export for tests that need the raw grant row shape. */
