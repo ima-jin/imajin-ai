@@ -54,6 +54,90 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('Reach sender blocking', () => {
+  it('blocks in one tap without a local signing key and hides all of that sender’s composers and replies', async () => {
+    const fetchMock = installFetch([
+      envelope(),
+      { ...envelope(), reachId: 'reach_2', reply: signedReply('Private reply'), replyPublishedAt: '2026-10-17T01:00:00.000Z' },
+    ], json({ blocked: true }));
+    render(<ReachInboxPanel />);
+    await screen.findByText('Private reply');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Block sender' })[0]);
+    await waitFor(() => expect(screen.getAllByText('Blocked — replies are disabled.')).toHaveLength(2));
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByText('Private reply')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Block sender' })).toBeNull();
+    const posts = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0]).toEqual(['/jin/api/reach/reach_1/block', { method: 'POST', credentials: 'include' }]);
+  });
+
+  it('does not claim success on failure and clears the error after a successful retry', async () => {
+    const fetchMock = installFetch(undefined, json({ error: 'Block unavailable' }, 503));
+    render(<ReachInboxPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Block sender' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Block unavailable');
+    expect(screen.queryByText('Blocked — replies are disabled.')).toBeNull();
+    expect(screen.getByRole('textbox')).toBeDefined();
+    fetchMock.mockResolvedValueOnce(json({ blocked: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Block sender' }));
+    await screen.findByText('Blocked — replies are disabled.');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('rejects a response which does not confirm blocked:true', async () => {
+    installFetch(undefined, json({ blocked: false }));
+    render(<ReachInboxPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Block sender' }));
+    expect((await screen.findByRole('alert')).textContent).toContain('did not confirm');
+    expect(screen.queryByText('Blocked — replies are disabled.')).toBeNull();
+  });
+
+  it('honors persisted blocked state when refreshing', async () => {
+    const fetchMock = installFetch();
+    render(<ReachInboxPanel />);
+    await screen.findByRole('textbox');
+    fetchMock.mockResolvedValueOnce(json({
+      principalDid: envelope().principalDid,
+      envelopes: [{ ...envelope(), blocked: true, reply: signedReply('Hidden reply') }],
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh reach inbox' }));
+    await screen.findByText('Blocked — replies are disabled.');
+    expect(screen.queryByText('Hidden reply')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry signed reply' })).toBeNull();
+  });
+});
+
+describe('Reach pending publication recovery', () => {
+  it('retries the stored signed event after reload without a browser key or a new signature', async () => {
+    const reply = signedReply();
+    const fetchMock = installFetch([{ ...envelope(), reply }]);
+    render(<ReachInboxPanel />);
+    await screen.findByText('Reply signed — publication pending.');
+    expect(screen.queryByText('Replied — signed by you')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry signed reply' }));
+    await screen.findByText('Replied — signed by you');
+    expect(screen.queryByRole('button', { name: 'Retry signed reply' })).toBeNull();
+    const post = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST');
+    expect(post?.[0]).toBe('/jin/api/reach/reach_1/reply');
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({
+      message: reply.payload.message, issuedAt: reply.payload.issuedAt, signature: reply.payload.signature,
+    });
+  });
+
+  it('keeps the immutable retry available if publication fails again', async () => {
+    installFetch([{ ...envelope(), reply: signedReply() }], json({ error: 'Publication unavailable' }, 503));
+    render(<ReachInboxPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry signed reply' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Publication unavailable');
+    expect(screen.getByText('Reply signed — publication pending.')).toBeDefined();
+    expect(screen.queryByText('Replied — signed by you')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Retry signed reply' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
 describe('ReachInboxPanel', () => {
   it('renders requester metadata and claims as untrusted plain text', async () => {
     installFetch();
@@ -140,11 +224,11 @@ describe('ReachInboxPanel', () => {
     await screen.findByText('Replied — signed by you');
   });
 
-  it('shows existing replies and blocked rows without a composer', async () => {
-    installFetch([{ ...envelope(), reply: signedReply('<script>reply</script>'), blocked: true }]);
+  it('shows existing published replies as plain text without a composer', async () => {
+    installFetch([{ ...envelope(), reply: signedReply('<script>reply</script>'), replyPublishedAt: '2026-10-17T01:00:00.000Z' }]);
     render(<ReachInboxPanel />);
     expect(await screen.findByText('<script>reply</script>')).toBeDefined();
-    expect(screen.getByText('Blocked — replies are disabled.')).toBeDefined();
+    expect(screen.getByText('Replied — signed by you')).toBeDefined();
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 

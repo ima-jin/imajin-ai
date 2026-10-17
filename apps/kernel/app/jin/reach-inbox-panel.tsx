@@ -21,6 +21,42 @@ interface ReachInbox {
   envelopes: InboxEnvelope[];
   actAs?: unknown;
 }
+function PendingReply({ reply, onPublished }: Readonly<{
+  reply: SignedReachReplyEvent;
+  onPublished: () => void;
+}>) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const retrying = useRef(false);
+
+  async function retry() {
+    if (retrying.current) return;
+    retrying.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const { reachId, message, issuedAt, signature } = reply.payload;
+      await sendSignedReply(reachId, { message, issuedAt, signature });
+      onPublished();
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      retrying.current = false;
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      <p className="text-sm text-amber-200">Reply signed — publication pending.</p>
+      <button type="button" onClick={() => void retry()} disabled={pending}
+        className="rounded bg-amber-700 px-3 py-2 text-sm text-white disabled:opacity-40">
+        {pending ? 'Retrying signed reply…' : 'Retry signed reply'}
+      </button>
+      {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
+    </div>
+  );
+}
 
 interface SignedRequest {
   message: string;
@@ -38,6 +74,17 @@ async function responseError(response: Response): Promise<string> {
     return body.error;
   }
   return `Reach request failed (${response.status}). Please try again.`;
+}
+async function sendSignedReply(reachId: string, signed: SignedRequest): Promise<SignedReachReplyEvent> {
+  const response = await fetch(`/jin/api/reach/${encodeURIComponent(reachId)}/reply`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(signed),
+  });
+  if (!response.ok) throw new Error(await responseError(response));
+  const body = await response.json() as { reply: SignedReachReplyEvent };
+  return body.reply;
 }
 
 function ReplyComposer({ envelope, onReply }: Readonly<{
@@ -61,15 +108,7 @@ function ReplyComposer({ envelope, onReply }: Readonly<{
         const signature = await signReachReply(reachReplyEvent(envelope, message, issuedAt));
         signedRequest.current = { message, issuedAt, signature };
       }
-      const response = await fetch(`/jin/api/reach/${encodeURIComponent(envelope.reachId)}/reply`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signedRequest.current),
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      const body = await response.json() as { reply: SignedReachReplyEvent };
-      onReply(body.reply);
+      onReply(await sendSignedReply(envelope.reachId, signedRequest.current));
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -107,13 +146,65 @@ function ReplyComposer({ envelope, onReply }: Readonly<{
   );
 }
 
-function ReachCard({ envelope }: Readonly<{ envelope: InboxEnvelope }>) {
+function BlockSender({ envelope, onBlocked }: Readonly<{
+  envelope: InboxEnvelope;
+  onBlocked: (requesterDid: string) => void;
+}>) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const blocking = useRef(false);
+
+  async function block() {
+    if (blocking.current) return;
+    blocking.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const response = await fetch(`/jin/api/reach/${encodeURIComponent(envelope.reachId)}/block`, {
+        method: 'POST', credentials: 'include',
+      });
+      if (!response.ok) throw new Error(await responseError(response));
+      const body = await response.json() as { blocked?: boolean };
+      if (body.blocked !== true) throw new Error('The server did not confirm the sender block. Please try again.');
+      onBlocked(envelope.requesterDid);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      blocking.current = false;
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <button type="button" onClick={() => void block()} disabled={pending}
+        className="rounded border border-red-900 px-3 py-2 text-sm text-red-300 disabled:opacity-40">
+        {pending ? 'Blocking sender…' : 'Block sender'}
+      </button>
+      {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
+    </div>
+  );
+}
+
+function ReachCard({ envelope, onBlocked }: Readonly<{
+  envelope: InboxEnvelope;
+  onBlocked: (requesterDid: string) => void;
+}>) {
   const [reply, setReply] = useState(envelope.reply);
+  const [published, setPublished] = useState(Boolean(envelope.replyPublishedAt));
   const blocked = envelope.blocked || envelope.state === 'blocked';
   const hasReply = Boolean(reply) || envelope.state === 'replied';
   const replyPending = envelope.state === 'pending';
 
-  useEffect(() => setReply(envelope.reply), [envelope.reply]);
+  useEffect(() => {
+    setReply(envelope.reply);
+    setPublished(Boolean(envelope.replyPublishedAt));
+  }, [envelope.reply, envelope.replyPublishedAt]);
+
+  function receiveReply(signed: SignedReachReplyEvent) {
+    setReply(signed);
+    setPublished(true);
+  }
 
   return (
     <article className="rounded-lg border border-gray-800 bg-gray-900/40 p-4">
@@ -132,10 +223,12 @@ function ReachCard({ envelope }: Readonly<{ envelope: InboxEnvelope }>) {
         </p>
       </div>
       {blocked && <p className="mt-3 text-sm text-red-300">Blocked — replies are disabled.</p>}
-      {hasReply && <p className="mt-3 text-xs text-green-300">Replied — signed by you</p>}
-      {reply && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{reply.payload.message}</p>}
-      {replyPending && <p className="mt-3 text-sm text-gray-400">Reply pending — replies are disabled.</p>}
-      {!blocked && !hasReply && !replyPending && <ReplyComposer envelope={envelope} onReply={setReply} />}
+      {!blocked && hasReply && published && <p className="mt-3 text-xs text-green-300">Replied — signed by you</p>}
+      {!blocked && reply && <p className="mt-2 whitespace-pre-wrap break-words text-sm">{reply.payload.message}</p>}
+      {!blocked && reply && !published && <PendingReply reply={reply} onPublished={() => setPublished(true)} />}
+      {!blocked && replyPending && <p className="mt-3 text-sm text-gray-400">Reply pending — replies are disabled.</p>}
+      {!blocked && !hasReply && !replyPending && <ReplyComposer envelope={envelope} onReply={receiveReply} />}
+      {!blocked && <BlockSender envelope={envelope} onBlocked={onBlocked} />}
     </article>
   );
 }
@@ -145,6 +238,18 @@ export function ReachInboxPanel() {
   const [error, setError] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  function markSenderBlocked(requesterDid: string) {
+    setInbox(current => {
+      if (!current) return current;
+      return {
+        ...current,
+        envelopes: current.envelopes.map(envelope => {
+          if (envelope.requesterDid !== requesterDid) return envelope;
+          return { ...envelope, blocked: true };
+        }),
+      };
+    });
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -186,7 +291,7 @@ export function ReachInboxPanel() {
       {inbox && envelopes.length === 0 && <p className="text-sm text-gray-500">No reach messages yet.</p>}
       <div className="space-y-3">
         {envelopes.filter(envelope => envelope.principalDid === inbox?.principalDid).map(envelope => (
-          <ReachCard key={envelope.reachId} envelope={envelope} />
+          <ReachCard key={envelope.reachId} envelope={envelope} onBlocked={markSenderBlocked} />
         ))}
       </div>
     </section>
