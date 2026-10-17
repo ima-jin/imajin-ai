@@ -5,9 +5,9 @@ import { createLogger } from '@imajin/logger';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 import { authenticateContactApp, relatedContactDids } from '@/src/lib/profile/app-contact-auth';
 import { backfillContact } from '@/src/lib/profile/backfill-contact';
-import { corsHeaders, corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+import { corsHeaders } from '@/src/lib/kernel/cors';
 
-export { OPTIONS };
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
 export const dynamic = 'force-dynamic';
 
 const log = createLogger('kernel');

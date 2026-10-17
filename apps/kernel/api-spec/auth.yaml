@@ -2740,7 +2740,10 @@ paths:
         Atomic, independently NULL-guarded backfill of auth.identities.contact_email
         and an existing profile.profiles.contact_email. Normalizes by trimming and
         lowercasing; never overwrites either column, creates a profile, or writes
-        verified credentials. backfilled is true if either column was filled.
+        verified credentials. A missing profile address uses the existing identity
+        contact email when present, not a conflicting posted address, so a backfill
+        cannot change the effective email through the higher-precedence profile
+        fallback. backfilled is true if either column was filled.
         Repeated calls are safe no-ops when both existing rows already have email.
 
         Accepts the existing vault-only ATTESTATION_INTERNAL_API_KEY Bearer, or a
@@ -2800,6 +2803,11 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: App scope not granted or no relationship to the target person
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Contact authorization unavailable; no contact read or write performed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

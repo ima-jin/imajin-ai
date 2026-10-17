@@ -123,7 +123,7 @@ describe('registered-app contact backfill', () => {
     h.mockProfileUpdate.mockReturnValue(profile);
     const response = await POST(makeReq({ email: 'Buyer@Example.com' }), makeParams(DID));
     expect(await response.json()).toEqual({ did: DID, contactEmail: 'existing@example.com', backfilled: true });
-    expect(profile.set).toHaveBeenCalledWith({ contactEmail: 'buyer@example.com' });
+    expect(profile.set).toHaveBeenCalledWith({ contactEmail: 'existing@example.com' });
   });
 });
 

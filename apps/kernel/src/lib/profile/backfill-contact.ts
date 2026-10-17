@@ -12,7 +12,7 @@ export async function backfillContact(did: string, email: string) {
       .from(identities).where(eq(identities.id, did)).limit(1))[0];
     if (!identity) return null;
     const profileRows = await tx.update(profiles)
-      .set({ contactEmail: email })
+      .set({ contactEmail: identity.contactEmail ?? email })
       .where(and(eq(profiles.did, did), isNull(profiles.contactEmail)))
       .returning({ did: profiles.did });
     return {
