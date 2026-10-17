@@ -42,7 +42,7 @@ export async function GET(request: NextRequest, context: Context) {
       ? await db.select().from(googleWorkspaceState).where(eq(googleWorkspaceState.ownerDid, ownerDid))
       : [];
     for (const row of googleState) slots.add(row.slot);
-    const connections = await Promise.all([...slots].sort().map(async (slot) => {
+    const connections = await Promise.all([...slots].sort((a, b) => a.localeCompare(b)).map(async (slot) => {
       const registration = rows.find((row) => row.slot === slot);
       const state = googleState.find((row) => row.slot === slot);
       const scopes = await readActiveConnectorScopes(ownerDid, connector.channel, connector.connectorDid, slot);
