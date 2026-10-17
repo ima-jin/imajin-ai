@@ -52,8 +52,19 @@ Use that header on `POST /reach/ryan` or
 For a boolean-only gate ask, send `{ "arg": "collaboration" }`. Topic publication,
 delivery mode, broker consent, sender blocks and delivery quotas are the same as
 for signed agents. The bearer cannot reach another recipient, authenticate a
-session, or access the general MCP/REST surfaces. MCP adapters and bearer reply
-status authentication are separate follow-ups.
+session, or access the general MCP/REST surfaces. MCP adapters remain separate
+follow-ups; this credential is not accepted on the MCP surface.
+
+After delivery, poll
+`POST /auth/api/agents/<recipient-DID>/reach/<reachId>/status` using the same
+static Authorization header. No body or requester signature is needed. The
+response contains `reachId`, `state` (`delivered`, `replied`, or `blocked`), and
+`reply` (the recipient's original signed reply event, or `null`). Only envelopes
+belonging to that bearer’s agent stub are visible; another stub's receipt returns
+404, and another recipient's audience or a revoked/expired bearer returns 401.
+An otherwise-valid bearer whose sender is blocked can learn `blocked`, but
+receives no reply content and cannot send. Polling retains sliding expiry and
+the hard cap. Signed status polling remains supported unchanged.
 
 Expiry slides on valid uses (30/90/180/365-day windows), but never beyond the
 unconditional 90-day hard cap. Only hashes are stored. The recipient sees an

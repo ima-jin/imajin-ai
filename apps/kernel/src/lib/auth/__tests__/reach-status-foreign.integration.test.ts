@@ -9,6 +9,7 @@ import * as schema from '@/src/db/schemas/auth';
 const mocked = vi.hoisted(() => ({ db: null as unknown, client: vi.fn(), jwt: vi.fn() }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
+  ...await import('@/src/db/schemas/access'),
   get db() { return mocked.db; },
 }));
 vi.mock('@imajin/db', () => ({ getClient: mocked.client }));
@@ -96,6 +97,9 @@ beforeAll(async () => {
     CREATE TABLE auth.attestations (
       id text PRIMARY KEY, issuer_did text, subject_did text, type text, context_id text, context_type text,
       payload jsonb, signature text, cid text, attestation_status text, issued_at timestamptz
+    );
+    CREATE TABLE auth.delegate_grant_bearers (
+      principal_did text, surfaces jsonb, status text, token_hash text, revoked_at timestamptz, revoked_by text
     );`);
   for (const migration of ['0195_reach_envelopes.sql', '0198_foreign_agent_stubs.sql']) {
     await pg.exec(readFileSync(new URL(`../../../../../../migrations/${migration}`, import.meta.url), 'utf8'));

@@ -165,8 +165,13 @@ interface UsedBearer {
   purpose: string;
 }
 
-/** Live audience + capability + stub + sender-block checks precede an atomic expiry slide. */
-export async function resolveReachBearer(token: string, principalDid: string):
+/**
+ * Live audience + capability + stub checks precede an atomic expiry slide.
+ * Status readers may authenticate an otherwise-valid sender-blocked bearer
+ * solely to report `blocked`; their requester-scoped reader withholds replies.
+ * This never admits a revoked credential or grants blocked send authority.
+ */
+export async function resolveReachBearer(token: string, principalDid: string, operation: 'send' | 'status' = 'send'):
   Promise<{ requesterDid: string; bearerId: string; onBehalfOf: ReachKnockInput['onBehalfOf'] } | null> {
   const [row] = await getClient().unsafe<UsedBearer[]>(`
     UPDATE auth.delegate_grant_bearers b
@@ -179,10 +184,10 @@ export async function resolveReachBearer(token: string, principalDid: string):
       AND s.capability = 'reach' AND s.revoked_at IS NULL
       AND p.id = s.principal_did AND p.suspended_at IS NULL AND p.scope = 'actor' AND p.subtype = 'human'
       AND a.id = s.stub_did AND a.suspended_at IS NULL
-      AND NOT EXISTS (SELECT 1 FROM auth.reach_sender_blocks r
-        WHERE r.principal_did = $3 AND r.requester_did = b.principal_did)
+      AND ($4::boolean OR NOT EXISTS (SELECT 1 FROM auth.reach_sender_blocks r
+        WHERE r.principal_did = $3 AND r.requester_did = b.principal_did))
     RETURNING b.id, b.principal_did, b.purpose
-  `, [hashToken(token), JSON.stringify([reachBearerSurface(principalDid)]), principalDid]);
+  `, [hashToken(token), JSON.stringify([reachBearerSurface(principalDid)]), principalDid, operation === 'status']);
   if (!row) return null;
   const claim = parseReachKnock({ agentLabel: 'stored', ...JSON.parse(row.purpose) });
   if (!claim.ok) return null;

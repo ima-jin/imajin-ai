@@ -5,9 +5,10 @@ import { POST } from '../route';
 import { reachStatusTranscript, parseSignedReachStatus, authenticateSignedReachStatus } from '@/src/lib/auth/reach-status-auth';
 import { FUTURE_TOLERANCE, SIGNED_MESSAGE_MAX_AGE } from '@imajin/auth';
 
-const mocked = vi.hoisted(() => ({ resolve: vi.fn(), status: vi.fn() }));
+const mocked = vi.hoisted(() => ({ resolve: vi.fn(), status: vi.fn(), bearer: vi.fn() }));
 vi.mock('@/src/lib/auth/reach-authority', () => ({ resolveReachRequester: mocked.resolve }));
 vi.mock('@/src/lib/auth/reach-status', () => ({ reachStatus: mocked.status }));
+vi.mock('@/src/lib/access/reach-bearer', () => ({ resolveReachBearer: mocked.bearer }));
 
 const keys = generateKeyPairSync('ed25519');
 const publicKey = keys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('hex');
@@ -30,6 +31,50 @@ function request(raw: unknown = body(), targetReach = reachId) {
 beforeEach(() => {
   mocked.resolve.mockReset().mockResolvedValue({ publicKey });
   mocked.status.mockReset().mockResolvedValue({ reachId, state: 'replied', reply });
+  mocked.bearer.mockReset().mockResolvedValue({ requesterDid: 'did:imajin:foreign_static' });
+});
+
+describe('HTTP reach bearer status', () => {
+  async function poll(authorization = 'Bearer synthetic', raw?: unknown) {
+    return POST(new NextRequest('https://node.test/status', {
+      method: 'POST', headers: { authorization }, ...(raw === undefined ? {} : { body: JSON.stringify(raw) }),
+    }), { params: Promise.resolve({ did: principalDid, reachId }) });
+  }
+  it('needs no signature or body and uses only the authenticated stub for receipt ownership', async () => {
+    const response = await poll();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ reachId, state: 'replied', reply });
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(mocked.bearer).toHaveBeenCalledWith('synthetic', principalDid, 'status');
+    expect(mocked.status).toHaveBeenCalledWith({ principalDid, reachId, requesterDid: 'did:imajin:foreign_static' });
+    expect(mocked.resolve).not.toHaveBeenCalled();
+  });
+  it('ignores a body attempting to impersonate another requester', async () => {
+    await poll('Bearer synthetic', body());
+    expect(mocked.status).toHaveBeenCalledWith({ principalDid, reachId, requesterDid: 'did:imajin:foreign_static' });
+    expect(mocked.resolve).not.toHaveBeenCalled();
+  });
+  it('does not fall back to signatures for a revoked or foreign-audience bearer', async () => {
+    mocked.bearer.mockResolvedValue(null);
+    expect((await poll('Bearer invalid', body())).status).toBe(401);
+    expect(mocked.status).not.toHaveBeenCalled();
+    expect(mocked.resolve).not.toHaveBeenCalled();
+  });
+  it('rejects unsupported authorization without resolving a credential', async () => {
+    expect((await poll('Basic synthetic')).status).toBe(401);
+    expect(mocked.bearer).not.toHaveBeenCalled();
+    expect(mocked.status).not.toHaveBeenCalled();
+  });
+  it('returns 404 for another requester’s receipt', async () => {
+    mocked.status.mockResolvedValue(null);
+    const response = await poll();
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: 'Reach not found' });
+  });
+  it('reports blocked state without reply content for an otherwise-valid blocked sender', async () => {
+    mocked.status.mockResolvedValue({ reachId, state: 'blocked', reply: null });
+    expect(await (await poll()).json()).toEqual({ reachId, state: 'blocked', reply: null });
+  });
 });
 
 describe('signed reach_status route', () => {

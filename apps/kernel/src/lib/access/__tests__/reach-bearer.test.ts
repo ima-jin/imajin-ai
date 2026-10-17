@@ -6,19 +6,25 @@ import { NextRequest } from 'next/server';
 import * as authSchema from '@/src/db/schemas/auth';
 import * as accessSchema from '@/src/db/schemas/access';
 import { defaultFrontDoorConfig } from '@/src/lib/jin/front-door';
-import { emitAttestation } from '@imajin/auth';
+import { emitAttestation, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { hashToken } from '@/src/lib/mcp/oauth-config';
 import { blockForeignAgentStub, introspectForeignAgentStub } from '@/src/lib/auth/foreign-agent-stub';
 import { resolveReachRequester } from '@/src/lib/auth/reach-authority';
 import { resolveDelegateGrantBearer } from '../delegate-grant';
 import { POST as validateSession } from '@/app/auth/api/validate/route';
+import { POST as knock } from '@/app/reach/[handle]/knock/route';
+import { POST as send } from '@/app/reach/[handle]/route';
+import { POST as reply } from '@/app/jin/api/reach/[reachId]/reply/route';
+import { POST as status } from '@/app/auth/api/agents/[did]/reach/[reachId]/status/route';
+import { getReachEnvelope } from '@/src/lib/auth/reach-envelope-store';
+import { reachReplyEvent, canonicalReachReply } from '@/src/lib/auth/reach-reply-wire';
 import {
   issueReachBearer, resolveReachBearer, listReachBearerKnocks, blockReachBearerKnock,
   parseReachKnock, resolveReachRecipient,
 } from '../reach-bearer';
 
-const state = vi.hoisted(() => ({ db: null as unknown, client: null as unknown, log: vi.fn() }));
+const state = vi.hoisted(() => ({ db: null as unknown, client: null as unknown, log: vi.fn(), auth: vi.fn(), node: vi.fn() }));
 vi.mock('@imajin/db', () => ({ getClient: () => state.client }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), ...await import('@/src/db/schemas/access'),
@@ -26,9 +32,27 @@ vi.mock('@/src/db', async () => ({
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@imajin/auth', async (original) => ({
-  ...await original<typeof import('@imajin/auth')>(), emitAttestation: vi.fn().mockResolvedValue({}),
+  ...await original<typeof import('@imajin/auth')>(), emitAttestation: vi.fn().mockResolvedValue({}), requireAuth: state.auth,
 }));
-vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/bus', () => ({
+  publish: vi.fn().mockResolvedValue(undefined),
+  broker: vi.fn().mockResolvedValue({ status: 'released', data: { contact_topics: { result: true } } }),
+  isBrokerRelease: (result: { status: string }) => result.status === 'released',
+}));
+vi.mock('@imajin/config', async original => ({
+  ...await original<typeof import('@imajin/config')>(),
+  rateLimit: () => ({ limited: false, retryAfter: 0 }), getClientIP: () => '192.0.2.1',
+}));
+vi.mock('@/src/lib/auth/foreign-principal-stub', () => ({
+  resolveOrMintForeignPrincipalStub: async () => ({ did: 'did:imajin:unverified-human' }),
+}));
+vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: state.node }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({
+  prepareMechanicalAttestation: async (params: Record<string, unknown>, id: string) => ({
+    ...params, id, issuerDid: 'did:imajin:node', signature: 'test-attestation-signature',
+    cid: null, attestationStatus: null, issuedAt: new Date(),
+  }),
+}));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: state.log }),
   withLogger: (_name: string, fn: (request: unknown, ctx: unknown) => unknown) =>
@@ -40,6 +64,8 @@ const pg = new PGlite();
 const database = drizzle(pg, { schema: { ...authSchema, ...accessSchema } });
 const owner = 'did:imajin:ryan';
 const other = 'did:imajin:other';
+const ownerKeys = authCrypto.generateKeypair();
+const nodeKeys = authCrypto.generateKeypair();
 const input = { agentLabel: 'Muse', onBehalfOf: { platform: 'muse', externalRef: 'opaque-alice', selfDescription: 'Alice' }, slidingWindowDays: 30 };
 let failInsert = false;
 let queries: string[] = [];
@@ -75,6 +101,10 @@ beforeAll(async () => {
     CREATE TABLE auth.tokens (
       id text PRIMARY KEY, identity_id text, key_id text, key_role text, expires_at timestamptz,
       revoked_at timestamptz, created_at timestamptz, last_used_at timestamptz
+    );
+    CREATE TABLE auth.attestations (
+      id text PRIMARY KEY, issuer_did text, subject_did text, type text, context_id text, context_type text,
+      payload jsonb, signature text, cid text, attestation_status text, issued_at timestamptz
     );`);
   for (const name of ['0156_delegate_grant_bearers.sql', '0198_foreign_agent_stubs.sql', '0195_reach_envelopes.sql']) {
     await pg.exec(readFileSync(new URL(`../../../../../../migrations/${name}`, import.meta.url), 'utf8'));
@@ -87,13 +117,102 @@ beforeAll(async () => {
     },
   };
 });
+
+describe('static-header HTTP round trip', () => {
+  async function contact() {
+    const response = await knock(new NextRequest('https://node.test/reach/ryan/knock', {
+      method: 'POST', body: JSON.stringify(input),
+    }), { params: Promise.resolve({ handle: 'ryan' }) });
+    expect(response.status).toBe(201);
+    const credential = await response.json();
+    const delivery = await send(new NextRequest('https://node.test/reach/ryan', {
+      method: 'POST', headers: { authorization: `Bearer ${credential.bearer}` },
+      body: JSON.stringify({ topic: 'business_development', message: 'A stranger would like to talk', replyHandle: 'opaque:thread' }),
+    }), { params: Promise.resolve({ handle: 'ryan' }) });
+    expect(delivery.status).toBe(200);
+    const { reachId } = await delivery.json();
+    expect(reachId).toEqual(expect.any(String));
+    return { ...credential, reachId };
+  }
+  function poll(bearer: string, reachId: string, principalDid = owner) {
+    return status(new NextRequest('https://node.test/status', {
+      method: 'POST', headers: { authorization: `Bearer ${bearer}` },
+    }), { params: Promise.resolve({ did: principalDid, reachId }) });
+  }
+  async function answer(reachId: string) {
+    const envelope = await getReachEnvelope({ principalDid: owner, reachId });
+    if (!envelope) throw new Error('Missing delivered fixture');
+    const event = reachReplyEvent(envelope, 'Yes, let us talk', new Date().toISOString());
+    const signature = {
+      alg: 'ed25519', keyId: ownerKeys.publicKey,
+      sig: authCrypto.signSync(canonicalReachReply(event), ownerKeys.privateKey),
+    };
+    const response = await reply(new NextRequest('https://node.test/reply', {
+      method: 'POST', body: JSON.stringify({ message: event.payload.message, issuedAt: event.payload.issuedAt, signature }),
+    }), { params: Promise.resolve({ reachId }) });
+    expect(response.status).toBe(200);
+    return (await response.json()).reply;
+  }
+
+  it('knocks, sends, receives the principal’s genuine signed reply through bearer-only polling', async () => {
+    const credential = await contact();
+    expect(await (await poll(credential.bearer, credential.reachId)).json())
+      .toEqual({ reachId: credential.reachId, state: 'delivered', reply: null });
+    const signedReply = await answer(credential.reachId);
+    const response = await poll(credential.bearer, credential.reachId);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    const receipt = await response.json();
+    expect(receipt).toEqual({ reachId: credential.reachId, state: 'replied', reply: signedReply });
+    const { signature, ...payload } = receipt.reply.payload;
+    expect(authCrypto.verifySync(signature.sig, canonicalReachReply({ ...receipt.reply, payload }), ownerKeys.publicKey)).toBe(true);
+    expect(JSON.stringify(receipt)).not.toContain('A stranger would like to talk');
+    expect(JSON.stringify(receipt)).not.toContain('opaque:thread');
+  });
+  it('rejects principal A’s bearer on principal B’s HTTP status with 401', async () => {
+    const credential = await contact();
+    expect((await poll(credential.bearer, credential.reachId, other)).status).toBe(401);
+  });
+  it('returns 404 for another stub’s reachId even after a principal reply', async () => {
+    const first = await contact();
+    const second = await contact();
+    await answer(first.reachId);
+    expect((await poll(second.bearer, first.reachId)).status).toBe(404);
+    expect((await poll(first.bearer, 'unknown')).status).toBe(404);
+  });
+  it('returns 401 for a revoked bearer, never a blocked receipt or existing reply', async () => {
+    const credential = await contact();
+    await answer(credential.reachId);
+    await blockReachBearerKnock({ principalDid: owner, requestId: credential.requestId });
+    const response = await poll(credential.bearer, credential.reachId);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: 'Invalid reach credential' });
+  });
+  it('allows a still-valid sender-blocked credential to learn blocked but not read the reply or send', async () => {
+    const credential = await contact();
+    await answer(credential.reachId);
+    await pg.query('INSERT INTO auth.reach_sender_blocks (principal_did, requester_did) VALUES ($1,$2)', [owner, credential.requesterDid]);
+    expect(await resolveReachBearer(credential.bearer, owner)).toBeNull();
+    const response = await poll(credential.bearer, credential.reachId);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ reachId: credential.reachId, state: 'blocked', reply: null });
+    expect((await pg.query('SELECT status FROM auth.delegate_grant_bearers')).rows).toEqual([{ status: 'active' }]);
+  });
+  it.each(['expires_at', 'hard_cap_at'])('rejects a bearer past %s on status too', async column => {
+    const credential = await contact();
+    await pg.exec(`UPDATE auth.delegate_grant_bearers SET ${column} = now() - interval '1 second'`);
+    expect((await poll(credential.bearer, credential.reachId)).status).toBe(401);
+  });
+});
 afterAll(async () => { await pg.close(); });
 beforeEach(async () => {
-  await pg.exec('TRUNCATE auth.delegate_grant_bearers, auth.delegate_grant_requests, auth.foreign_agent_stubs, auth.identities, auth.reach_sender_blocks CASCADE');
+  await pg.exec('TRUNCATE auth.delegate_grant_bearers, auth.delegate_grant_requests, auth.foreign_agent_stubs, auth.identities, auth.reach_sender_blocks, auth.reach_envelopes, auth.attestations CASCADE');
   const gate = defaultFrontDoorConfig();
   gate.tiers.soft = true;
+  gate.topics.business_development = { open: true, published: true, mode: 'deliver' };
   await database.insert(authSchema.identities).values([
-    { id: owner, scope: 'actor', subtype: 'human', publicKey: 'owner', handle: 'ryan', metadata: { agentReachGate: gate } },
+    { id: owner, scope: 'actor', subtype: 'human', publicKey: ownerKeys.publicKey, handle: 'ryan',
+      metadata: { agentReachGate: gate, agentReachTopics: ['business_development'] } },
     { id: other, scope: 'actor', subtype: 'human', publicKey: 'other', handle: 'other' },
   ]);
   failInsert = false;
@@ -101,6 +220,10 @@ beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(emitAttestation).mockResolvedValue({} as never);
   vi.mocked(publish).mockResolvedValue(undefined);
+  state.auth.mockResolvedValue({ identity: { id: owner, scope: 'actor', subtype: 'human' } });
+  state.node.mockReturnValue({
+    senderDid: 'did:imajin:node', senderPubkey: nodeKeys.publicKey, privateKeyHex: nodeKeys.privateKey,
+  });
 });
 
 describe('reach bearer issuance (#2591)', () => {
