@@ -58,11 +58,11 @@ describe('buildLauncherEntries (#2434)', () => {
   });
 
   it('uses services.ts only as presentation hints (grouping, visibility, description) for a registry app that has one', async () => {
-    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'coffee', name: 'Coffee', icon: '☕' })]);
+    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'events', name: 'Events', icon: '🎫' })]);
 
-    const coffee = (await buildLauncherEntries()).find((e) => e.name === 'coffee');
+    const events = (await buildLauncherEntries()).find((e) => e.name === 'events');
 
-    expect(coffee).toMatchObject({ source: 'registry', category: 'creator', visibility: 'creator', icon: '☕' });
+    expect(events).toMatchObject({ source: 'registry', category: 'core', visibility: 'public', icon: '🎫' });
   });
 
   it('keeps kernel-native and project tiles from services.ts, marked static', async () => {
