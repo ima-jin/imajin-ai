@@ -17,7 +17,8 @@ info:
     review sub-agent) use to report a `loop.started|progress|blocked|finished`
     lifecycle transition; `GET /api/loops` and `GET /api/loops/{loopId}` are
     the per-principal read the /jin Runs lane and the orchestrator's MCP
-    tools (#2297) both consume.
+    tools (#2297) both consume. `GET /api/loops/spend` attributes metered USD
+    to registered runs and their signed issue/PR refs (#2290).
 servers:
   - url: https://{node}.imajin.ai/{service}
     description: production node
@@ -47,6 +48,9 @@ components:
       type: apiKey
       in: cookie
       name: imajin_session
+    bearerAuth:
+      type: http
+      scheme: bearer
   schemas:
     ApprovalStatus:
       type: string
@@ -162,6 +166,67 @@ components:
         pr: { type: string, description: "GitHub PR number." }
         runId: { type: string, description: "Warp run id." }
         sessionKey: { type: string, description: "OpenClaw gateway session key." }
+    RegistryRunCost:
+      type: object
+      required: [runId, loopId, refs, summary, state, startedAt, lastSeenAt, metered]
+      additionalProperties: false
+      properties:
+        runId: { type: string, description: "Signed refs.runId, or loopId for a session-only loop." }
+        loopId: { type: string, description: "Representative loop for this deduplicated run (warp.run preferred, then most recently seen)." }
+        refs:
+          type: object
+          additionalProperties: true
+          description: >-
+            Registry refs, with issue/pr retained only when each has one
+            distinct non-empty signed value across the run's loops.
+        summary: { type: string }
+        state: { type: string, description: "Publisher-defined state label." }
+        startedAt: { type: string, format: date-time }
+        lastSeenAt: { type: string, format: date-time }
+        metered:
+          type: [object, "null"]
+          description: >-
+            Null when no non-error usage rows match this run in the window.
+            An object with usd=null means usage exists but at least one
+            matched row has unknown cost; a known zero remains 0.
+          required: [usd, turns]
+          additionalProperties: false
+          properties:
+            usd: { type: [number, "null"], description: "Sum in USD, or null if any matched usage cost is unknown." }
+            turns: { type: integer, minimum: 1, description: "Number of matched non-error usage rows." }
+    RegistrySubjectCost:
+      type: object
+      required: [ref, runCount, meteredUsd]
+      additionalProperties: false
+      properties:
+        ref: { type: string, description: "Signed issue or PR ref, in the publisher's vocabulary." }
+        runCount: { type: integer, minimum: 1 }
+        meteredUsd:
+          type: [number, "null"]
+          description: Sum of run USD, or null if any grouped run has no metering or unknown USD (never substituted with 0).
+    RegistrySpend:
+      type: object
+      required: [currency, windowFrom, windowTo, runs, issues, prs]
+      additionalProperties: false
+      properties:
+        currency: { type: string, enum: [USD] }
+        windowFrom: { type: string, format: date-time, description: "Inclusive UTC lower bound." }
+        windowTo: { type: string, format: date-time, description: "Exclusive UTC upper bound." }
+        runs:
+          type: array
+          description: >-
+            Deduplicated registered runs with runId or sessionKey refs whose
+            lifetime overlaps the window, or that have matched usage in it.
+            Ordered by lastSeenAt descending, then runId.
+          items: { $ref: "#/components/schemas/RegistryRunCost" }
+        issues:
+          type: array
+          description: Runs grouped by non-empty string issue ref, sorted by ref.
+          items: { $ref: "#/components/schemas/RegistrySubjectCost" }
+        prs:
+          type: array
+          description: Runs grouped by non-empty string PR ref, sorted by ref.
+          items: { $ref: "#/components/schemas/RegistrySubjectCost" }
     LoopEnvelope:
       type: object
       description: >-
@@ -1088,6 +1153,87 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: "?principal= does not match the caller's effective DID"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/loops/spend:
+    get:
+      tags: [loops]
+      operationId: getLoopSpend
+      summary: Read the caller's registry-attributed spend in USD
+      description: >-
+        Kernel-root route (no /jin prefix). Uses `requireAuth`: session cookie
+        first, otherwise Bearer token. The cookie is imajin_session in
+        production, or imajin_session_dev when IMAJIN_ENV=dev or
+        NODE_ENV=development. Scoped to `resolveActingDid` with
+        precedence actingFor, actingAs, then the authenticated identity's DID;
+        delegation must be authorized. An optional principal must match that
+        effective DID, never broaden the lookup. Both registry and usage
+        reads are principal-scoped. Usage matches exact run ids before unique
+        sessionKey aliases; ambiguous aliases are not allocated, each usage
+        row counts at most once, and error-status usage is excluded. No
+        external provider calls, pagination, row limit, or window-length cap.
+      servers:
+        - url: https://{node}.imajin.ai
+          variables:
+            node:
+              default: jin
+        - url: http://localhost:3000
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: principal
+          in: query
+          required: false
+          schema: { type: string }
+          description: Defaults to the caller's effective DID; if supplied (even empty), must equal it or returns 403.
+        - name: window
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$|^\d{4}-\d{2}-\d{2}\.\.\d{4}-\d{2}-\d{2}$'
+            example: "2026-10"
+          description: >-
+            Defaults to the current UTC calendar month when absent. Accepts
+            YYYY-MM (month 01–12) or YYYY-MM-DD..YYYY-MM-DD with an inclusive
+            end date, converted to a half-open UTC interval ending at midnight
+            the following day. Range dates use JavaScript Date parsing; invalid
+            dates or an exclusive upper bound not after the start return 400.
+            Empty or malformed values return 400. No maximum range length.
+      responses:
+        "200":
+          description: Registry spend, with unknown USD represented as null rather than 0
+          headers:
+            Cache-Control:
+              schema: { type: string, enum: [no-store] }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegistrySpend" }
+        "400":
+          description: "Invalid window — error: window must be YYYY-MM or YYYY-MM-DD..YYYY-MM-DD"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Not authenticated, or invalid/expired session or Bearer token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: "Unauthorized delegation, or error: principal must match the authenticated caller"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: "Registry spend read failed — error: Registry spend unavailable"
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: "Authentication service unavailable — error: Auth service unavailable"
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
