@@ -43,8 +43,11 @@ export async function routeMessage(
     { role: 'user', content: messageText },
   ];
 
-  // Tool-use loop — keeps going until Claude stops calling tools.
-  for (let turn = 0; turn < 5; turn++) {
+  // Each turn depends on all tool results from the previous turn.
+  async function runTurn(turn: number): Promise<string> {
+    if (turn === 5) {
+      return 'I ran into an issue processing that. Please try again.';
+    }
     const response = await client.messages.create({
       model: 'claude-opus-4-7',
       max_tokens: 2048,
@@ -54,8 +57,9 @@ export async function routeMessage(
       messages,
     });
 
+    const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
     // If Claude is done (no tool calls), return its text.
-    if (response.stop_reason === 'end_turn' || !response.content.some((b) => b.type === 'tool_use')) {
+    if (response.stop_reason === 'end_turn' || toolUses.length === 0) {
       const textBlock = response.content.find((b) => b.type === 'text');
       return textBlock?.type === 'text' ? textBlock.text : 'Done.';
     }
@@ -65,7 +69,6 @@ export async function routeMessage(
 
     // Execute all tool calls and collect results. Sequential on purpose: the
     // tools act on the kernel for one user and may build on each other in a turn.
-    const toolUses = response.content.filter((b): b is Anthropic.ToolUseBlock => b.type === 'tool_use');
     const toolResults = await mapSequentially(
       toolUses,
       async (block): Promise<Anthropic.ToolResultBlockParam> => {
@@ -81,7 +84,8 @@ export async function routeMessage(
     );
 
     messages.push({ role: 'user', content: toolResults });
+    return runTurn(turn + 1);
   }
 
-  return 'I ran into an issue processing that. Please try again.';
+  return runTurn(0);
 }

@@ -77,4 +77,33 @@ describe('rewriteMarkdownRefs', () => {
     ]);
     expect(result.unresolved).toEqual(['./c.png']);
   });
+
+  it.each([
+    ['[a](pic.png "caption")', '[a](https://node.example/media/api/assets/asset_pic)'],
+    ['![a](pic.png \n "caption")', '![a](https://node.example/media/api/assets/asset_pic)'],
+    ['[[a](pic.png)', '[[a](https://node.example/media/api/assets/asset_pic)'],
+    ['[a](pic.png )', '[a](pic.png )'],
+    ['[a](pic.png"caption")', '[a](pic.png"caption")'],
+    ['[a](pic.png "unfinished)', '[a](pic.png "unfinished)'],
+    ['[a](pic.png "")', '[a](https://node.example/media/api/assets/asset_pic)'],
+    ['[a]()', '[a]()'],
+    ['[a](', '[a]('],
+  ])('preserves reference syntax for %s', (input, expected) => {
+    expect(rewriteMarkdownRefs(input, resolve).content).toBe(expected);
+  });
+
+  it('finds a valid link inside an invalid outer target', () => {
+    expect(rewriteMarkdownRefs('[outer](bad[inner](pic.png)', resolve).unresolved)
+      .toEqual(['bad[inner](pic.png']);
+    expect(rewriteMarkdownRefs('[outer](bad"[inner](pic.png)', resolve).content)
+      .toBe('[outer](bad"[inner](https://node.example/media/api/assets/asset_pic)');
+  });
+
+  it.each([
+    '['.repeat(100_000),
+    '[a]('.repeat(20_000),
+    '[a](pic.png "' + ' '.repeat(100_000),
+  ])('handles long malformed input without rescanning tails (%#)', (input) => {
+    expect(rewriteMarkdownRefs(input, resolve).content).toBe(input);
+  });
 });
