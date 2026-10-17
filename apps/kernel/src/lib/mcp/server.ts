@@ -30,12 +30,18 @@ import {
 } from './protocol';
 import { resolveActiveMcpGrant } from './mcp-grant';
 import { ALL_TOOLS, toolByName } from './tools';
-import type { McpToolContext } from './types';
+import type { McpTool, McpToolContext } from './types';
+
+/** Explicit registries cannot fall back to the owner's tools. */
+export interface McpSurface {
+  tools: readonly McpTool[];
+  discovery: ReturnType<typeof discoverResult>;
+}
 
 /** `ListToolsResult` — a `CacheableResult` as of 2026-07-28 (SEP-2549). */
-function listToolsResult() {
+function listToolsResult(surface?: McpSurface) {
   return {
-    tools: ALL_TOOLS.map((t) => ({
+    tools: (surface?.tools ?? ALL_TOOLS).map((t) => ({
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,
@@ -72,9 +78,11 @@ async function denyForMissingScope(
 }
 
 /** `tools/call` — identical in both eras. */
-async function callTool(msg: JsonRpcMessage, ctx: McpToolContext) {
+async function callTool(msg: JsonRpcMessage, ctx: McpToolContext, surface?: McpSurface) {
   const name = msg.params?.name;
-  const tool = typeof name === 'string' ? toolByName(name) : undefined;
+  const tool = surface
+    ? surface.tools.find((candidate) => candidate.name === name)
+    : typeof name === 'string' ? toolByName(name) : undefined;
   if (!tool) return rpcError(msg.id, MCP_ERROR_INVALID_PARAMS, `Unknown tool: ${String(name)}`);
   // Per-tool scope gate (#1170): the /mcp route only checks that SOME media
   // scope is present; the authoritative read-vs-write decision is here. A
@@ -102,12 +110,12 @@ async function callTool(msg: JsonRpcMessage, ctx: McpToolContext) {
  * (which the route reports as HTTP 404). `server/discover` is handled by the
  * caller because it answers in both eras.
  */
-async function dispatchModern(msg: JsonRpcMessage, ctx: McpToolContext): Promise<object | null> {
+async function dispatchModern(msg: JsonRpcMessage, ctx: McpToolContext, surface?: McpSurface): Promise<object | null> {
   switch (msg.method) {
     case 'tools/list':
-      return ok(msg.id, listToolsResult());
+      return ok(msg.id, listToolsResult(surface));
     case 'tools/call':
-      return callTool(msg, ctx);
+      return callTool(msg, ctx, surface);
     default:
       return rpcError(msg.id, MCP_ERROR_METHOD_NOT_FOUND, `Method not found: ${String(msg.method)}`);
   }
@@ -118,6 +126,7 @@ async function dispatchLegacy(
   msg: JsonRpcMessage,
   ctx: McpToolContext,
   isNotification: boolean,
+  surface?: McpSurface,
 ): Promise<object | null> {
   switch (msg.method) {
     case 'initialize':
@@ -136,10 +145,10 @@ async function dispatchLegacy(
       return ok(msg.id, {});
 
     case 'tools/list':
-      return ok(msg.id, listToolsResult());
+      return ok(msg.id, listToolsResult(surface));
 
     case 'tools/call':
-      return callTool(msg, ctx);
+      return callTool(msg, ctx, surface);
 
     default:
       return isNotification
@@ -161,6 +170,7 @@ async function dispatchLegacy(
 export async function handleMcpRpc(
   msg: JsonRpcMessage,
   ctx: McpToolContext,
+  surface?: McpSurface,
 ): Promise<object | null> {
   const isNotification = msg.id === undefined || msg.id === null;
 
@@ -179,10 +189,10 @@ export async function handleMcpRpc(
   // Answered in both eras: it is the modern replacement for `initialize`, and
   // it is also the probe a dual-era client uses to detect our era.
   if (msg.method === 'server/discover') {
-    return isNotification ? null : ok(msg.id, discoverResult());
+    return isNotification ? null : ok(msg.id, surface?.discovery ?? discoverResult());
   }
 
   return isModernProtocolVersion(declared)
-    ? dispatchModern(msg, ctx)
-    : dispatchLegacy(msg, ctx, isNotification);
+    ? dispatchModern(msg, ctx, surface)
+    : dispatchLegacy(msg, ctx, isNotification, surface);
 }
