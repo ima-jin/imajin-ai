@@ -12,6 +12,7 @@
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { requireGrantAndToken, googleApiFetch } from './connector';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
 import { forEachSequential } from '../async/sequential';
 
 const log = createLogger('kernel');
@@ -80,6 +81,7 @@ export async function listTranscripts(ownerDid: string, conferenceRecordId: stri
         payload: {
           ownerDid,
           onBehalfOf: ownerDid,
+          slot: currentConnectionSlot('google', ownerDid),
           conferenceRecordId,
           transcriptId: transcript.name,
           context_id: transcript.name,

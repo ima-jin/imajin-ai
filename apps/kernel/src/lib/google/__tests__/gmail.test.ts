@@ -15,7 +15,7 @@ const { requireGrantAndTokenMock, publishMock, dbSelectWhereMock, dbInsertValues
   dbUpdateWhereMock: vi.fn(),
 }));
 
-vi.mock('drizzle-orm', () => ({ eq: (col: unknown, val: unknown) => ({ col, val }) }));
+vi.mock('drizzle-orm', () => ({ and: (...args: unknown[]) => args, eq: (col: unknown, val: unknown) => ({ col, val }) }));
 // googleApiFetch is the real shared implementation (#2144 review) — reimplemented
 // here rather than partially importing the real module, since `requireGrantAndToken`
 // still needs to be a plain mock and the two live in the same module.
@@ -37,6 +37,7 @@ vi.mock('../connector', () => ({
     return res.json();
   },
 }));
+vi.mock('../../kernel/connector-registry-store', () => ({ recordConnectorRegistration: vi.fn() }));
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
 vi.mock('@/src/db', () => ({
   db: {
@@ -49,10 +50,11 @@ vi.mock('@/src/db', () => ({
       },
     }),
   },
-  googleWorkspaceState: { ownerDid: 'owner_did', gmailEmailAddress: 'gmail_email_address' },
+  googleWorkspaceState: { slot: 'slot', ownerDid: 'owner_did', gmailEmailAddress: 'gmail_email_address' },
 }));
 
-import { listThreads, getMessage, sendMessage, watch, resolveOwnerByGmailAddress, processHistorySince } from '../gmail';
+import { listThreads, getMessage, sendMessage, watch, resolveOwnerByGmailAddress, resolveConnectionsByGmailAddress, readStoredHistoryId, advanceHistoryId, processHistorySince } from '../gmail';
+import { withConnectorConnection } from '../../kernel/connector-connection-context';
 
 const OWNER = 'did:imajin:jin';
 const TOKEN = 'gmail-access-token';
@@ -148,6 +150,16 @@ describe('sendMessage (google:gmail:send)', () => {
 });
 
 describe('watch (google:gmail:read, push registration)', () => {
+  it('persists two mailbox watches under distinct slots for the same DID', async () => {
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => Promise.resolve({
+      ok: true,
+      json: async () => url.endsWith('/profile') ? PROFILE_FIXTURE : WATCH_FIXTURE,
+    }));
+    await Promise.all([watch(OWNER), watch(OWNER, 'work')]);
+    expect(dbInsertValuesMock).toHaveBeenCalledWith(expect.objectContaining({ ownerDid: OWNER, slot: 'primary' }));
+    expect(dbInsertValuesMock).toHaveBeenCalledWith(expect.objectContaining({ ownerDid: OWNER, slot: 'work' }));
+    expect(dbSelectWhereMock).toHaveBeenCalledWith(expect.arrayContaining([{ col: 'slot', val: 'work' }]));
+  });
   it('throws when GOOGLE_GMAIL_PUBSUB_TOPIC is unset', async () => {
     delete process.env.GOOGLE_GMAIL_PUBSUB_TOPIC;
     await expect(watch(OWNER)).rejects.toThrow(/google_gmail_watch_unconfigured/);
@@ -169,6 +181,14 @@ describe('watch (google:gmail:read, push registration)', () => {
 });
 
 describe('resolveOwnerByGmailAddress', () => {
+  it('retains every matching mailbox installation, including two connections for one owner', async () => {
+    dbSelectWhereMock.mockResolvedValue([
+      { ownerDid: OWNER, slot: 'primary' }, { ownerDid: OWNER, slot: 'work' },
+    ]);
+    expect(await resolveConnectionsByGmailAddress('same@example.com')).toEqual([
+      { ownerDid: OWNER, slot: 'primary' }, { ownerDid: OWNER, slot: 'work' },
+    ]);
+  });
   it('resolves the ownerDid for a known mailbox', async () => {
     dbSelectWhereMock.mockResolvedValue([{ ownerDid: OWNER }]);
     expect(await resolveOwnerByGmailAddress('jin@artifactads.com')).toBe(OWNER);
@@ -177,6 +197,20 @@ describe('resolveOwnerByGmailAddress', () => {
   it('returns undefined for an unknown mailbox', async () => {
     dbSelectWhereMock.mockResolvedValue([]);
     expect(await resolveOwnerByGmailAddress('nobody@example.com')).toBeUndefined();
+  });
+});
+
+describe('Gmail history cursor slot isolation', () => {
+  it('reads and advances only the selected slot, with explicit selectors overriding context', async () => {
+    dbSelectWhereMock.mockResolvedValue([{ gmailHistoryId: '42' }]);
+    await withConnectorConnection('google', OWNER, 'work', async () => {
+      expect(await readStoredHistoryId(OWNER)).toBe('42');
+      await advanceHistoryId(OWNER, '43');
+      expect(dbSelectWhereMock).toHaveBeenLastCalledWith(expect.arrayContaining([{ col: 'slot', val: 'work' }]));
+      expect(dbUpdateWhereMock).toHaveBeenLastCalledWith(expect.arrayContaining([{ col: 'slot', val: 'work' }]));
+      await advanceHistoryId(OWNER, '44', 'primary');
+      expect(dbUpdateWhereMock).toHaveBeenLastCalledWith(expect.arrayContaining([{ col: 'slot', val: 'primary' }]));
+    });
   });
 });
 

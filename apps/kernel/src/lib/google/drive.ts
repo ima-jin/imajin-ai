@@ -13,12 +13,19 @@ import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, googleWorkspaceState } from '@/src/db';
 import { generateId } from '../kernel/id';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
 import { forEachSequential } from '../async/sequential';
 import { requireGrantAndToken, googleApiFetch, googleApiRequest } from './connector';
 
 const log = createLogger('kernel');
 
 const DRIVE_API_BASE = 'https://www.googleapis.com/drive/v3';
+function statePredicate(ownerDid: string) {
+  return and(
+    eq(googleWorkspaceState.ownerDid, ownerDid),
+    eq(googleWorkspaceState.slot, currentConnectionSlot('google', ownerDid)),
+  );
+}
 
 interface DriveApiOptions {
   path: string;
@@ -101,7 +108,7 @@ async function readStoredPageToken(ownerDid: string): Promise<string | undefined
   const rows = await db
     .select({ drivePageToken: googleWorkspaceState.drivePageToken })
     .from(googleWorkspaceState)
-    .where(eq(googleWorkspaceState.ownerDid, ownerDid));
+    .where(statePredicate(ownerDid));
   return rows[0]?.drivePageToken ?? undefined;
 }
 
@@ -109,17 +116,18 @@ async function storePageToken(ownerDid: string, pageToken: string): Promise<void
   const existing = await db
     .select({ id: googleWorkspaceState.id })
     .from(googleWorkspaceState)
-    .where(eq(googleWorkspaceState.ownerDid, ownerDid));
+    .where(statePredicate(ownerDid));
 
   if (existing[0]) {
     await db
       .update(googleWorkspaceState)
       .set({ drivePageToken: pageToken, updatedAt: new Date() })
-      .where(and(eq(googleWorkspaceState.ownerDid, ownerDid)));
+      .where(statePredicate(ownerDid));
   } else {
     await db.insert(googleWorkspaceState).values({
       id: generateId('gws'),
       ownerDid,
+      slot: currentConnectionSlot('google', ownerDid),
       drivePageToken: pageToken,
     });
   }
@@ -184,6 +192,7 @@ export async function listChanges(ownerDid: string): Promise<ListChangesResult> 
         payload: {
           ownerDid,
           onBehalfOf: ownerDid,
+          slot: currentConnectionSlot('google', ownerDid),
           fileId: change.fileId,
           changeType: change.removed ? 'remove' : 'update',
           context_id: change.fileId,

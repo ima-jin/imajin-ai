@@ -18,7 +18,7 @@ vi.mock('drizzle-orm', () => ({
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
 
 vi.mock('@/src/db', () => {
-  const channelLinks = { channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' };
+  const channelLinks = { slot: 'slot', channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' };
   return {
     db: {
       select: () => ({ from: () => ({ where: whereMock }) }),
@@ -34,8 +34,10 @@ vi.mock('@/src/db', () => {
 });
 
 vi.mock('@imajin/bus', () => ({ publish: publishMock }));
-vi.mock('../../kernel/connector-registry-store', () => ({ revokeConnectorRegistration: revokeRegistrationMock }));
+vi.mock('../../kernel/connector-registry-store', () => ({ recordConnectorRegistration: vi.fn(), revokeConnectorRegistration: revokeRegistrationMock }));
 
+import { withConnectorConnection } from '../../kernel/connector-connection-context';
+import { recordConnectorRegistration } from '../../kernel/connector-registry-store';
 import { VaultDelegationError } from '@/src/lib/vault/errors';
 import { describeActiveGrantContract } from '../../kernel/__tests__/connector-active-grant-contract';
 import {
@@ -45,6 +47,8 @@ import {
   requireGrantAndToken,
   revokeAtGoogle,
   listActiveGrantOwners,
+  listActiveGrantConnections,
+  captureGoogleAccountEmail,
   storeConfig,
   configField,
   oauthVaultField,
@@ -279,7 +283,7 @@ describe('requireGrantAndToken (#2144, fail-closed)', () => {
 
     // Tombstone bookkeeping ran: local grant revoked, registry mirrored, event published.
     expect(updateSetMock).toHaveBeenCalledWith(expect.objectContaining({ status: 'revoked' }));
-    expect(revokeRegistrationMock).toHaveBeenCalledWith(OWNER, 'google');
+    expect(revokeRegistrationMock).toHaveBeenCalledWith(OWNER, 'google', 'primary');
     expect(publishMock).toHaveBeenCalledWith('connector.disconnected', expect.objectContaining({
       subject: OWNER,
       payload: expect.objectContaining({ connector: 'google' }),
@@ -356,5 +360,98 @@ describe('storeConfig / readConfigFlow (#2144)', () => {
 describe('identity constants', () => {
   it('exposes the connector DID', () => {
     expect(GOOGLE_CONNECTOR_DID).toBe('did:imajin:google-connector');
+  });
+});
+
+describe('Google connection slot isolation (#2365)', () => {
+  function credentials() {
+    const values = new Map([
+      [`google-config:${OWNER}`, JSON.stringify(CONFIG)],
+      [`google-config:${OWNER}:work`, JSON.stringify(CONFIG)],
+      [`google-oauth:${OWNER}`, JSON.stringify({
+        accessToken: 'primary-access', refreshToken: 'primary-refresh', expiresAt: Date.now() + 3_600_000,
+      })],
+      [`google-oauth:${OWNER}:work`, JSON.stringify({
+        accessToken: 'work-access', refreshToken: 'work-refresh', expiresAt: Date.now() + 3_600_000,
+      })],
+    ]);
+    loadMock.mockImplementation(async (field: string) => values.get(field));
+    return values;
+  }
+
+  it('loads each slot token independently, keeping primary at the unsuffixed field', async () => {
+    grant(['google:gmail:read']);
+    credentials();
+    const [primary, work] = await Promise.all([
+      requireGrantAndToken(OWNER, 'google:gmail:read'),
+      withConnectorConnection('google', OWNER, 'work', () => requireGrantAndToken(OWNER, 'google:gmail:read')),
+    ]);
+    expect([primary, work]).toEqual(['primary-access', 'work-access']);
+    expect(loadMock).toHaveBeenCalledWith(`google-oauth:${OWNER}`);
+    expect(loadMock).toHaveBeenCalledWith(`google-oauth:${OWNER}:work`);
+  });
+
+  it('a new slot cannot borrow primary credentials or grants', async () => {
+    credentials();
+    whereMock.mockImplementation(async (conditions: Array<{ col: string; val: string }>) =>
+      conditions.some((condition) => condition.col === 'slot' && condition.val === 'primary')
+        ? [{ scopes: ['google:gmail:read'] }] : [],
+    );
+    await expect(requireGrantAndToken(OWNER, 'google:gmail:read', 'new')).rejects.toThrow('google_no_grant');
+    expect(loadMock).not.toHaveBeenCalled();
+    grant(['google:gmail:read']);
+    await expect(requireGrantAndToken(OWNER, 'google:gmail:read', 'new')).rejects.toThrow('google_no_credential');
+    expect(loadMock).not.toHaveBeenCalledWith(`google-oauth:${OWNER}`);
+  });
+
+  it('revokeAtGoogle sends only the selected connection token', async () => {
+    credentials();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true });
+    await revokeAtGoogle(OWNER, 'work');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0][1].body as string;
+    expect(new URLSearchParams(body).get('token')).toBe('work-refresh');
+    expect(loadMock).not.toHaveBeenCalledWith(`google-oauth:${OWNER}`);
+  });
+
+  it('invalid_grant tombstones only the failed slot and primary remains usable', async () => {
+    const values = credentials();
+    values.set(`google-oauth:${OWNER}:work`, JSON.stringify({
+      accessToken: 'work-access', refreshToken: 'work-refresh', expiresAt: 0,
+    }));
+    grant(['google:gmail:read']);
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: false, status: 400, text: async () => '{"error":"invalid_grant"}',
+    });
+    await expect(requireGrantAndToken(OWNER, 'google:gmail:read', 'work')).rejects.toThrow('google_credential_revoked');
+    expect(updateWhereMock).toHaveBeenCalledWith(expect.arrayContaining([{ col: 'slot', val: 'work' }]));
+    expect(revokeRegistrationMock).toHaveBeenCalledWith(OWNER, 'google', 'work');
+    expect(await requireGrantAndToken(OWNER, 'google:gmail:read', 'primary')).toBe('primary-access');
+  });
+
+  it('enumerates owner/slot pairs without merging two mailbox grants', async () => {
+    whereMock.mockResolvedValue([
+      { did: OWNER, slot: 'primary', scopes: ['google:gmail:read'] },
+      { did: OWNER, slot: 'work', scopes: ['google:gmail:read'] },
+      { did: OWNER, slot: 'send-only', scopes: ['google:gmail:send'] },
+    ]);
+    expect(await listActiveGrantConnections('google:gmail:read')).toEqual([
+      { ownerDid: OWNER, slot: 'primary' }, { ownerDid: OWNER, slot: 'work' },
+    ]);
+    expect(await listActiveGrantOwners('google:gmail:read')).toEqual([OWNER]);
+  });
+
+  it('account-email capture uses selected credentials and tolerates unavailable profile scope', async () => {
+    credentials();
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ emailAddress: 'work@example.test' }) });
+    await captureGoogleAccountEmail(OWNER, 'work');
+    expect(recordConnectorRegistration).toHaveBeenCalledWith({
+      ownerDid: OWNER, provider: 'google', slot: 'work', accountEmail: 'work@example.test',
+    });
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/profile'), expect.objectContaining({
+      headers: { Authorization: 'Bearer work-access' },
+    }));
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('unavailable'));
+    await expect(captureGoogleAccountEmail(OWNER, 'work')).resolves.toBeUndefined();
   });
 });

@@ -1,11 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import {
-  resolveOwnerByGmailAddress,
+  resolveConnectionsByGmailAddress,
   readStoredHistoryId,
   advanceHistoryId,
   processHistorySince,
 } from '@/src/lib/google/gmail';
+import { withConnectorConnection } from '@/src/lib/kernel/connector-connection-context';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
 
@@ -80,22 +82,23 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return new NextResponse(null, { status: 204 });
   }
 
-  const ownerDid = await resolveOwnerByGmailAddress(emailAddress);
-  if (!ownerDid) {
+  const connections = await resolveConnectionsByGmailAddress(emailAddress);
+  if (!connections.length) {
     log.warn({ emailAddress }, 'gmail webhook: no owner registered for this mailbox — dropping push');
     return new NextResponse(null, { status: 204 });
   }
 
-  try {
-    const startHistoryId = (await readStoredHistoryId(ownerDid)) ?? String(historyId);
-    const latestHistoryId = await processHistorySince(ownerDid, startHistoryId);
-    await advanceHistoryId(ownerDid, latestHistoryId);
-  } catch (err) {
-    // Fail-open on the HTTP response (Pub/Sub retry would just replay the same
-    // history diff), but log loudly — a mailbox stuck failing history reads is
-    // an operational problem to notice, not silently ignore.
-    log.error({ err: String(err), ownerDid }, 'gmail webhook: history processing failed');
-  }
+  await forEachSequential(connections, ({ ownerDid, slot }) =>
+    withConnectorConnection('google', ownerDid, slot, async () => {
+      try {
+        const startHistoryId = (await readStoredHistoryId(ownerDid, slot)) ?? String(historyId);
+        const latestHistoryId = await processHistorySince(ownerDid, startHistoryId);
+        await advanceHistoryId(ownerDid, latestHistoryId, slot);
+      } catch {
+        log.error({ ownerDid, slot }, 'gmail webhook: history processing failed');
+      }
+    }),
+  );
 
   return new NextResponse(null, { status: 204 });
 }

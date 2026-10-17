@@ -58,10 +58,11 @@ vi.mock('@/src/db', () => ({
       },
     }),
   },
-  googleWorkspaceState: { id: 'id', ownerDid: 'owner_did', drivePageToken: 'drive_page_token' },
+  googleWorkspaceState: { slot: 'slot', id: 'id', ownerDid: 'owner_did', drivePageToken: 'drive_page_token' },
 }));
 
 import { listFiles, getFile, getFileContent, listChanges } from '../drive';
+import { withConnectorConnection } from '../../kernel/connector-connection-context';
 
 const OWNER = 'did:imajin:jin';
 const TOKEN = 'drive-access-token';
@@ -129,6 +130,27 @@ describe('getFileContent (google:drive:read)', () => {
 });
 
 describe('listChanges (google:drive:read)', () => {
+  it('keeps cursor reads and writes independent for two connections of one owner', async () => {
+    const workCursor = { drivePageToken: 'work-old', id: 'work-row' };
+    selectWhereMock.mockImplementation((conditions: Array<{ col: string; val: string }>) =>
+      Promise.resolve(conditions.some((condition) => condition.col === 'slot' && condition.val === 'work') ? [workCursor] : []),
+    );
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockImplementation((url: string) => Promise.resolve({
+      ok: true,
+      json: async () => url.includes('startPageToken') ? { startPageToken: 'primary-new' }
+        : { changes: [], newStartPageToken: 'work-new' },
+    }));
+    await Promise.all([
+      listChanges(OWNER),
+      withConnectorConnection('google', OWNER, 'work', () => listChanges(OWNER)),
+    ]);
+    expect(insertValuesMock).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: OWNER, slot: 'primary', drivePageToken: 'primary-new',
+    }));
+    expect(updateSetMock).toHaveBeenCalledWith(expect.objectContaining({ drivePageToken: 'work-new' }));
+    expect(updateWhereMock).toHaveBeenCalledWith(expect.arrayContaining([{ col: 'slot', val: 'work' }]));
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('pageToken=work-old'), expect.anything());
+  });
   it('fails closed without a grant', async () => {
     requireGrantAndTokenMock.mockRejectedValue(new Error('google_no_grant: nope'));
     await expect(listChanges(OWNER)).rejects.toThrow(/google_no_grant/);

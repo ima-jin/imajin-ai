@@ -9,13 +9,14 @@ const { mockResolveOwner, mockReadStoredHistoryId, mockAdvanceHistoryId, mockPro
 
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }) }));
 vi.mock('@/src/lib/google/gmail', () => ({
-  resolveOwnerByGmailAddress: mockResolveOwner,
+  resolveConnectionsByGmailAddress: mockResolveOwner,
   readStoredHistoryId: mockReadStoredHistoryId,
   advanceHistoryId: mockAdvanceHistoryId,
   processHistorySince: mockProcessHistorySince,
 }));
 
 import { POST } from '../route.js';
+import { currentConnectionSlot } from '@/src/lib/kernel/connector-connection-context';
 
 const OWNER = 'did:imajin:jin';
 
@@ -39,6 +40,7 @@ describe('POST /google/api/webhook/gmail (#2144)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockReadStoredHistoryId.mockResolvedValue('100');
+    mockProcessHistorySince.mockReset();
     mockProcessHistorySince.mockResolvedValue('101');
     mockAdvanceHistoryId.mockResolvedValue(undefined);
   });
@@ -46,6 +48,27 @@ describe('POST /google/api/webhook/gmail (#2144)', () => {
   afterEach(() => {
     if (originalPushToken === undefined) delete process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN;
     else process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN = originalPushToken;
+  });
+
+  it('routes every matched installation independently without borrowing primary context', async () => {
+    delete process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN;
+    mockResolveOwner.mockResolvedValue([
+      { ownerDid: OWNER, slot: 'work' }, { ownerDid: OWNER, slot: 'primary' },
+    ]);
+    const slots: string[] = [];
+    mockProcessHistorySince.mockImplementation(async () => {
+      const slot = currentConnectionSlot('google', OWNER);
+      slots.push(slot);
+      if (slot === 'work') throw new Error('google_no_grant');
+      return '200';
+    });
+    const response = await POST(pushRequest(pubsubEnvelope({ emailAddress: 'same@example.com', historyId: 200 })) as never);
+    expect(response.status).toBe(204);
+    expect(slots).toEqual(['work', 'primary']);
+    expect(mockAdvanceHistoryId).toHaveBeenCalledTimes(1);
+    expect(mockAdvanceHistoryId).toHaveBeenCalledWith(OWNER, '200', 'primary');
+    expect(mockReadStoredHistoryId).toHaveBeenCalledWith(OWNER, 'work');
+    expect(currentConnectionSlot('google', OWNER)).toBe('primary');
   });
 
   it('returns 401 when a push token is configured and missing/wrong', async () => {
@@ -56,7 +79,7 @@ describe('POST /google/api/webhook/gmail (#2144)', () => {
 
   it('accepts the push when the token matches', async () => {
     process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN = 'secret';
-    mockResolveOwner.mockResolvedValue(OWNER);
+    mockResolveOwner.mockResolvedValue([{ ownerDid: OWNER, slot: 'primary' }]);
     const response = await POST(
       pushRequest(pubsubEnvelope({ emailAddress: 'a@b.com', historyId: 1 }), { token: 'secret' }) as never,
     );
@@ -72,7 +95,7 @@ describe('POST /google/api/webhook/gmail (#2144)', () => {
 
   it('drops the push (204, no processing) when the mailbox is unknown', async () => {
     delete process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN;
-    mockResolveOwner.mockResolvedValue(undefined);
+    mockResolveOwner.mockResolvedValue([]);
     const response = await POST(pushRequest(pubsubEnvelope({ emailAddress: 'unknown@x.com', historyId: 5 })) as never);
     expect(response.status).toBe(204);
     expect(mockProcessHistorySince).not.toHaveBeenCalled();
@@ -80,19 +103,19 @@ describe('POST /google/api/webhook/gmail (#2144)', () => {
 
   it('resolves the owner, diffs history since the stored cursor, and advances it', async () => {
     delete process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN;
-    mockResolveOwner.mockResolvedValue(OWNER);
+    mockResolveOwner.mockResolvedValue([{ ownerDid: OWNER, slot: 'primary' }]);
 
     const response = await POST(pushRequest(pubsubEnvelope({ emailAddress: 'jin@artifactads.com', historyId: 200 })) as never);
 
     expect(response.status).toBe(204);
     expect(mockResolveOwner).toHaveBeenCalledWith('jin@artifactads.com');
     expect(mockProcessHistorySince).toHaveBeenCalledWith(OWNER, '100');
-    expect(mockAdvanceHistoryId).toHaveBeenCalledWith(OWNER, '101');
+    expect(mockAdvanceHistoryId).toHaveBeenCalledWith(OWNER, '101', 'primary');
   });
 
   it('still acks 204 when history processing throws (Pub/Sub retry would just replay the same diff)', async () => {
     delete process.env.GOOGLE_GMAIL_PUBSUB_PUSH_TOKEN;
-    mockResolveOwner.mockResolvedValue(OWNER);
+    mockResolveOwner.mockResolvedValue([{ ownerDid: OWNER, slot: 'primary' }]);
     mockProcessHistorySince.mockRejectedValue(new Error('Gmail API error 500'));
 
     const response = await POST(pushRequest(pubsubEnvelope({ emailAddress: 'jin@artifactads.com', historyId: 200 })) as never);
