@@ -125,6 +125,7 @@ describe('step observations (#2878)', () => {
     const event = stepEvent();
     event.payload!.at = 'not-a-timestamp';
     await expect(loopProjectionReactor(event, {})).rejects.toThrow('at must be a valid timestamp');
+    await expect(loopProjectionReactor(event, {})).rejects.toBeInstanceOf(TypeError);
     expect(calls).toHaveLength(0);
   });
 

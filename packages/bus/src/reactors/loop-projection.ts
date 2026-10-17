@@ -27,7 +27,7 @@ function validateStepObservation(event: BusEvent, payload: Record<string, unknow
     throw new Error('Invalid step observation: issuer, subject and scope are required');
   }
   if (!Number.isFinite(Date.parse(payload.at as string))) {
-    throw new Error('Invalid step observation: at must be a valid timestamp');
+    throw new TypeError('Invalid step observation: at must be a valid timestamp');
   }
 }
 export class LoopOwnershipConflictError extends Error {
