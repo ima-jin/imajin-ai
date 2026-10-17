@@ -5,6 +5,8 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'domain.verified',
+  'domain.revoked',
   'mail.sent',
   'event.attendance',
   'institution.verified',
@@ -293,10 +295,15 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+<<<<<<< HEAD
   'mail.sent',
   'identity.owner.transferred',
   // #2894 — unilateral read provenance, never awaiting a countersignature.
   'google.data.read',
+=======
+  'domain.verified',
+  'domain.revoked',
+>>>>>>> d65b4216 (feat(identity): implement verified domain binding core (#2902))
   'session.created',
   'onboard.link.sent',
   'onboard.link.requested',

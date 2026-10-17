@@ -30,6 +30,8 @@
 | **.fair manifest validate / verify / sign** | `validateManifest`, `verifyManifest`, `signManifest` | `packages/fair` | Re-implement chain validation or signature checks. |
 | **.fair settlement field disclosure** | `composeEffectivePolicy(communityOverlay, subjectGates)` + `applyDisclosureGates(manifest, policy, grantedFields)` | `apps/kernel/src/lib/media/fair-disclosure-policy.ts` | Hard-code which `.fair` fields to include/exclude in a route. Use the three-layer model (floor → community overlay → subject gates) and query `kernel.consent_grants` for `on-consent` fields. Overlay is data: set `fair.disclosure.overlay` in `nodeConfig`. See [fair-settlement-disclosure.md](./fair-settlement-disclosure.md). |
 | **Rate limiting** | `rateLimit(key, limit, windowMs)`, `getClientIP` | `@imajin/config` | Hand-roll a limiter. Key by IP *and* (for abuse-sensitive flows) by email/subject. |
+| **Verified domain ownership and routing** | `addDomain`, `verifyDomain`, `removeDomain`, `listDomains`, `resolveVerifiedDomain`, `issueImajinDomain`, `resolveRoutableDomain` | `apps/kernel/src/lib/domains/service.ts` | Accept a caller-supplied site owner, invent verified evidence, route pending claims, or use the node identity as the Imajin organization. Mutating routes must enforce shared delegation policy and owner/admin authorization. |
+| **Domain-scoped vault credentials** | `resolveDomainCredential(domain, granteeDid, purpose)` | `apps/kernel/src/lib/vault/domain-credential.ts` | Fall back to node environment credentials or raw unseal. Resolve verified binding → zone owner → active subject/purpose/grantee-bound grant → existing grant fetch. |
 
 ### App-owned checkout patterns
 

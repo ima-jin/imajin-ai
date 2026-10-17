@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "auth.domain_bindings": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0204_domain_bindings.sql",
+      "notes": "Verified domain ownership and routing-only legacy forest bindings (#2902)."
+    },
     "auth.agent_knocks": {
       "owner": "kernel",
       "schema": "auth",

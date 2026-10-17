@@ -23,6 +23,11 @@ const log = createLogger('kernel');
 function genId(prefix: string): string {
   return `${prefix}_${Date.now().toString(36)}${randomUUID().replaceAll('-', '').slice(0, 12)}`;
 }
+/** Explicit issuer/key pairs are for custody-backed issuers, never request input. */
+export interface AttestationSigningIdentity {
+  issuerDid: string;
+  privateKey: string;
+}
 
 export interface MechanicalAttestationParams {
   subjectDid: string;
@@ -49,10 +54,11 @@ export interface PreparedMechanicalAttestation {
 export async function prepareMechanicalAttestation(
   params: MechanicalAttestationParams,
   id = genId("att"),
+  signingIdentity?: AttestationSigningIdentity,
 ): Promise<PreparedMechanicalAttestation> {
-  const privateKey = process.env.AUTH_PRIVATE_KEY;
+  const privateKey = signingIdentity?.privateKey ?? process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) throw new Error('AUTH_PRIVATE_KEY not set');
-  const platformDid = await getNodeDid();
+  const platformDid = signingIdentity?.issuerDid ?? await getNodeDid();
   if (!platformDid) throw new Error('node DID not set');
   const issuedAtMs = Date.now();
   const canonicalPayload = canonicalize({
