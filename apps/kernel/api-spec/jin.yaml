@@ -122,6 +122,16 @@ components:
           allOf: [{ $ref: "#/components/schemas/SessionApprovalBinding" }]
           nullable: true
           description: "Verified native approval-to-loop association; never inferred from harness refs."
+        sessionOutcome:
+          type: object
+          nullable: true
+          description: "Read projection of a correlated, verified agent result; completed means approval resolved, not process execution finished."
+          required: [commandId, outcome, at]
+          properties:
+            commandId: { type: string }
+            outcome: { type: string, enum: [completed, failed] }
+            at: { type: string, format: date-time }
+            reason: { type: string }
     SessionApprovalBinding:
       type: object
       additionalProperties: false

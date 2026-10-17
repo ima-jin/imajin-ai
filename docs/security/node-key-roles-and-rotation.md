@@ -493,6 +493,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/api/auth/revoke/route.ts` — S4
 - `apps/kernel/src/lib/auth/document-signatures.ts` — S4
 - `apps/kernel/src/lib/notify/operator-approvals-service.ts` — S5
+- `apps/kernel/src/lib/jin/session-commands.ts` — S5 (short-lived loop-addressed command grants; a separate full principal wish is always required, and rotation invalidates prepared grants)
 - `apps/kernel/src/lib/auth/verify-witness-record.ts` — S5 (verifier; consumes the `key.rotated` history)
 - `apps/kernel/src/lib/notify/operator-countersign.ts` — S5 (mention only; the countersign is the operator's key)
 - `apps/kernel/src/lib/consent-requests/consent-requests.ts` — S5

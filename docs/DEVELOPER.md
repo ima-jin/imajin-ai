@@ -230,6 +230,11 @@ internal endpoint is a harness RPC or a public command bypass.
 The wire fixtures follow
 [plugin #77](https://github.com/ima-jin/openclaw-imajin-plugin/issues/77) and
 its [command documentation](https://github.com/ima-jin/openclaw-imajin-plugin/blob/issue-77-loop-addressed-sessions/docs/session-commands.md).
+With the kernel development server running, open `/dev/runs-preview` to drive
+the real Runs components and shared approval controller at phone width. The
+fixture generates keys in memory, verifies both command signatures, and delays
+signed outcomes until after transport acceptance. It never writes browser
+credentials. The preview route and its mock transport refuse production use.
 A fixture preview is not evidence of a live gateway round-trip: that check
 remains pending the separately implemented plugin #77. Do not disable signature
 checks or change server/environment settings to make a preview appear live.
