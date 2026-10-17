@@ -26,12 +26,17 @@ describe('Host parsing and safe registry destinations', () => {
   it('normalizes a Host and drops its port', () => {
     expect(domainFromHost('GBS.Example:443')).toBe('gbs.example');
   });
-  it.each(['/', '//evil.test', '/\\evil.test', 'javascript:alert(1)', 'http://evil.test', 'https://user:pass@evil.test', 'https://gbs.example/', 'broken'])('refuses %s', (entry) => {
+  it.each([
+    '/', '/?view=home', '/./', '/app/..', '/#home', 'https://gbs.example./',
+    '//evil.test', '/\\evil.test', '/\nredirect', 'javascript:alert(1)',
+    'http://evil.test', 'https://user:pass@evil.test', 'https://gbs.example/', 'broken',
+  ])('refuses %s', (entry) => {
     expect(safeLanding(entry, 'gbs.example')).toBeNull();
   });
   it('accepts safe local and HTTPS registry entries', () => {
     expect(safeLanding('/events', 'gbs.example')).toBe('/events');
     expect(safeLanding('https://app.example/start', 'gbs.example')).toBe('https://app.example/start');
+    expect(safeLanding('https://gbs.example./start?view=1#page', 'gbs.example')).toBe('/start?view=1#page');
   });
 });
 describe('public proof and verified routing', () => {

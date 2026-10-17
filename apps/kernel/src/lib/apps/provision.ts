@@ -527,11 +527,8 @@ async function resumeSucceededProvision(
 ): Promise<AppProvisionOutcome> {
     const { slug, attestationTypes = [] } = params;
     const succeededAppDid = existingRun.appDid ?? '';
-    try {
-      await provisionAppDomain(succeededAppDid, slug, params.domain, params.siteOwnerDid);
-    } catch (err) {
-      return { status: 'failed', failedStep: 'domain', error: err instanceof Error ? err.message : 'Domain issuance failed' };
-    }
+    // Claim-code recovery must not infer a new host from the slug, or require
+    // the zone owner's signing grant. The original issued host is unchanged.
     await ensureAppDeclaredSecrets(succeededAppDid, params.authorizedBy);
     const attestationTypeResults = attestationTypes.length > 0
       ? await seedAttestationTypes(succeededAppDid, slug, attestationTypes)
