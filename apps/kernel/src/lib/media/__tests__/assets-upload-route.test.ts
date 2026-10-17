@@ -247,6 +247,17 @@ describe('POST /media/api/assets — ?compact=1', () => {
 // ─── Auth modes (#2393) ──────────────────────────────────────────────────────
 
 describe('POST /media/api/assets — auth modes (#2393)', () => {
+  it('keeps the authenticated uploader distinct from its on-behalf-of owner (#2276)', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: { id: 'did:imajin:agent', actingFor: 'did:imajin:principal', scope: 'actor' },
+    });
+
+    expect((await POST(uploadRequest())).status).toBe(201);
+    expect(mockCreateAsset).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: 'did:imajin:principal',
+      uploadedBy: 'did:imajin:agent',
+    }));
+  });
   it('resolves owner/uploadedBy from the session identity on the cookie path', async () => {
     const res = await POST(uploadRequest());
 
