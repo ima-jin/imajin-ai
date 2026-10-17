@@ -55,10 +55,10 @@ describe('signed reach_status route', () => {
   });
 
   it.each([
-    Date.now() - SIGNED_MESSAGE_MAX_AGE - 1000,
-    Date.now() + FUTURE_TOLERANCE + 1000,
-  ])('rejects stale/future signatures', async (at) => {
-    expect((await request(body(new Date(at).toISOString()))).status).toBe(401);
+    -SIGNED_MESSAGE_MAX_AGE - 1000,
+    FUTURE_TOLERANCE + 1000,
+  ])('rejects stale/future signatures', async (offset) => {
+    expect((await request(body(new Date(Date.now() + offset).toISOString()))).status).toBe(401);
     expect(mocked.status).not.toHaveBeenCalled();
   });
 

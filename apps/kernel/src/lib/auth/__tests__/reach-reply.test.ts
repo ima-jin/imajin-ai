@@ -242,11 +242,10 @@ describe('reach reply principal signatures and persistence', () => {
     expect(mocked.publish).not.toHaveBeenCalled();
   });
 
-  it.each([
-    new Date(Date.now() - SIGNED_MESSAGE_MAX_AGE - 10_000).toISOString(),
-    new Date(Date.now() + FUTURE_TOLERANCE + 10_000).toISOString(),
-    'not-a-date',
-  ])('rejects a correctly signed but invalid timestamp %s', async (issuedAt) => {
+  it.each(['stale', 'future', 'malformed'])('rejects a correctly signed but invalid %s timestamp', async (kind) => {
+    let issuedAt = 'not-a-date';
+    if (kind === 'stale') issuedAt = new Date(Date.now() - SIGNED_MESSAGE_MAX_AGE - 10_000).toISOString();
+    if (kind === 'future') issuedAt = new Date(Date.now() + FUTURE_TOLERANCE + 10_000).toISOString();
     expect(await replyToReach({ identity, reachId: envelope.reachId, input: signedInput('Reply', issuedAt) }))
       .toMatchObject({ ok: false, status: 401 });
   });
