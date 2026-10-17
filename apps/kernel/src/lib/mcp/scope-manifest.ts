@@ -57,12 +57,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findMcpManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, MCP_CONNECTOR_DID);
+export function findMcpManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, MCP_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveMcpScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MCP_CHANNEL, MCP_CONNECTOR_DID);
+export function readActiveMcpScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MCP_CHANNEL, MCP_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -89,11 +89,12 @@ export function publishMcpScopeManifest(
   ownerDid: string,
   scopes: readonly string[],
   appDid?: string,
+  slot?: string,
 ): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: MCP_CONNECTOR_DID, channel: MCP_CHANNEL,
     filename: 'mcp-scope-manifest.md', scopeDescriptors: MCP_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), appDid,
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), appDid, slot,
   });
 }
 

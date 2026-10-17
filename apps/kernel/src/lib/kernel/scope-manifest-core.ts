@@ -27,6 +27,14 @@ import { generateId } from '@/src/lib/kernel/id';
 import { addAssetToGrantsFolder } from '@/src/lib/media/folders';
 import { syncConnectorRegistrationScopes } from '@/src/lib/kernel/connector-registry-store';
 import { forEachSequential } from '@/src/lib/async/sequential';
+import { connectionSlot } from './connection-slots';
+import { currentConnectionSlot } from './connector-connection-context';
+import { CONNECTOR_REGISTRY } from './connector-registry';
+
+function manifestSlot(ownerDid: string, connectorDid: string, slot?: string): string {
+  const provider = CONNECTOR_REGISTRY.find((entry) => entry.connectorDid === connectorDid)?.id;
+  return connectionSlot(slot ?? (provider ? currentConnectionSlot(provider, ownerDid) : undefined));
+}
 
 // ── Shared types ──────────────────────────────────────────────────────────────
 
@@ -48,6 +56,7 @@ export function buildConnectorManifestContent(
   channel: string,
   scopeDescriptors: Readonly<Record<string, ConnectorScopeDescriptor>>,
   selectedScopes: readonly string[],
+  slot?: string,
 ): string {
   const scopes = selectedScopes.filter((s) => s in scopeDescriptors);
 
@@ -56,6 +65,7 @@ export function buildConnectorManifestContent(
     'kind: scope-manifest',
     `connector: "${connectorDid}"`,
     `channel: ${channel}`,
+    ...(connectionSlot(slot) === 'primary' ? [] : [`slot: ${connectionSlot(slot)}`]),
   ];
 
   for (const scope of scopes) {
@@ -85,7 +95,9 @@ export function buildConnectorManifestContent(
 export async function findConnectorManifestAsset(
   ownerDid: string,
   connectorDid: string,
+  slot?: string,
 ): Promise<Asset | null> {
+  const selected = manifestSlot(ownerDid, connectorDid, slot);
   const [row] = await db
     .select()
     .from(assets)
@@ -95,6 +107,7 @@ export async function findConnectorManifestAsset(
         eq(assets.status, 'active'),
         sql`${assets.metadata}->>'kind' = ${'scope-manifest'}`,
         sql`${assets.metadata}->>'connector' = ${connectorDid}`,
+        sql`COALESCE(${assets.metadata}->>'slot', 'primary') = ${selected}`,
       ),
     )
     .limit(1);
@@ -107,7 +120,9 @@ export async function readActiveConnectorScopes(
   ownerDid: string,
   channel: string,
   connectorDid: string,
+  slot?: string,
 ): Promise<string[]> {
+  const selected = manifestSlot(ownerDid, connectorDid, slot);
   const rows = await db
     .select({ scopes: channelLinks.scopes })
     .from(channelLinks)
@@ -116,6 +131,7 @@ export async function readActiveConnectorScopes(
         eq(channelLinks.channel, channel),
         eq(channelLinks.did, ownerDid),
         eq(channelLinks.appDid, connectorDid),
+        eq(channelLinks.slot, selected),
         eq(channelLinks.status, 'active'),
       ),
     );
@@ -156,7 +172,9 @@ export async function listExternalScopeGrantees(
   ownerDid: string,
   channel: string,
   connectorDid: string,
+  slot?: string,
 ): Promise<ExternalScopeGrantee[]> {
+  const selected = manifestSlot(ownerDid, connectorDid, slot);
   const rows = await db
     .select({ appDid: channelLinks.appDid, scopes: channelLinks.scopes })
     .from(channelLinks)
@@ -166,6 +184,7 @@ export async function listExternalScopeGrantees(
         eq(channelLinks.did, ownerDid),
         eq(channelLinks.status, 'active'),
         ne(channelLinks.appDid, connectorDid),
+        eq(channelLinks.slot, selected),
       ),
     );
 
@@ -184,8 +203,9 @@ export async function countExternalScopeGrantees(
   ownerDid: string,
   channel: string,
   connectorDid: string,
+  slot?: string,
 ): Promise<number> {
-  const grantees = await listExternalScopeGrantees(ownerDid, channel, connectorDid);
+  const grantees = await listExternalScopeGrantees(ownerDid, channel, connectorDid, slot);
   const distinctAppDids = new Set<string>();
   for (const grantee of grantees) distinctAppDids.add(grantee.appDid);
   return distinctAppDids.size;
@@ -344,21 +364,23 @@ export async function publishConnectorScopeManifest(opts: {
   scopes: readonly string[];
   isOnConsent: (scopeName: string) => boolean;
   appDid?: string;
+  slot?: string;
 }): Promise<string> {
   const { ownerDid, connectorDid, channel, filename, scopeDescriptors, scopes, isOnConsent, appDid } = opts;
   const grantee = appDid ?? connectorDid;
+  const slot = manifestSlot(ownerDid, connectorDid, opts.slot);
 
-  const content = buildConnectorManifestContent(connectorDid, channel, scopeDescriptors, scopes);
+  const content = buildConnectorManifestContent(connectorDid, channel, scopeDescriptors, scopes, slot);
   let assetId: string;
 
-  const existing = await findConnectorManifestAsset(ownerDid, connectorDid);
+  const existing = await findConnectorManifestAsset(ownerDid, connectorDid, slot);
   if (existing) {
     assetId = existing.id;
   } else {
     const { asset } = await createAsset({
       ownerDid,
       buffer: Buffer.from(content, 'utf-8'),
-      filename,
+      filename: slot === 'primary' ? filename : filename.replace(/\.md$/, `-${slot}.md`),
       mimeType: 'text/markdown',
       access: 'private',
       dedup: false,
@@ -368,7 +390,7 @@ export async function publishConnectorScopeManifest(opts: {
     await db
       .update(assets)
       .set({
-        metadata: { kind: 'scope-manifest', connector: connectorDid, channel },
+        metadata: { kind: 'scope-manifest', connector: connectorDid, channel, slot },
         updatedAt: new Date(),
       })
       .where(eq(assets.id, asset.id));
@@ -424,6 +446,7 @@ export async function publishConnectorScopeManifest(opts: {
         channelUid,
         did: ownerDid,
         appDid: grantee,
+        slot,
         scopes: [scopeName],
         status: 'active',
         createdAt: now,
@@ -431,7 +454,7 @@ export async function publishConnectorScopeManifest(opts: {
       })
       .onConflictDoUpdate({
         target: [channelLinks.channel, channelLinks.channelUid, channelLinks.appDid],
-        set: { scopes: [scopeName], status: 'active', revokedAt: null },
+        set: { scopes: [scopeName], status: 'active', revokedAt: null, slot },
       });
   });
 
@@ -445,6 +468,7 @@ export async function publishConnectorScopeManifest(opts: {
       and(
         eq(channelLinks.did, ownerDid),
         eq(channelLinks.appDid, grantee),
+        eq(channelLinks.slot, slot),
         eq(channelLinks.status, 'active'),
         like(channelLinks.channelUid, `${assetId}${SCOPE_UID_SEP}%`),
       ),
@@ -465,7 +489,7 @@ export async function publishConnectorScopeManifest(opts: {
   // test), so it is the provider key. Never throws — the authoritative
   // channel_links rows above are already written, and a projection failure
   // must not turn a successful publish into a 500.
-  await syncConnectorRegistrationScopes(ownerDid, channel, scopes);
+  await syncConnectorRegistrationScopes(ownerDid, channel, scopes, slot);
 
   return assetId;
 }

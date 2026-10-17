@@ -3,7 +3,7 @@ import { pgSchema, text, timestamp, uniqueIndex, index } from 'drizzle-orm/pg-co
 /**
  * Google Workspace connector operational state (#2144).
  *
- * One row per connecting DID. Distinct from `auth.channel_links` (authoritative
+ * One row per connecting DID and slot. Distinct from `auth.channel_links` (authoritative
  * for grants) and the vault (authoritative for the sealed refresh token): this
  * table holds small, non-secret cursors the connector needs between calls and
  * that have no other home —
@@ -27,6 +27,9 @@ export const googleWorkspaceState = googleSchema.table('google_workspace_state',
   id: text('id').primaryKey(),
   /** DID that connected the Google Workspace account. */
   ownerDid: text('owner_did').notNull(),
+  slot: text('slot').notNull().default('primary'),
+  /** Connected Google account, including accounts without Gmail. Not a credential. */
+  accountEmail: text('account_email'),
   /** Last-seen Gmail `historyId`, or null before the first `users.watch` call. */
   gmailHistoryId: text('gmail_history_id'),
   /** When the current Gmail push subscription expires; null before the first watch. */
@@ -38,7 +41,7 @@ export const googleWorkspaceState = googleSchema.table('google_workspace_state',
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => ({
-  ownerDidUniq: uniqueIndex('uniq_google_workspace_state_owner').on(table.ownerDid),
+  ownerDidUniq: uniqueIndex('uniq_google_workspace_state_owner_slot').on(table.ownerDid, table.slot),
   gmailEmailIdx: index('idx_google_workspace_state_gmail_email').on(table.gmailEmailAddress),
 }));
 

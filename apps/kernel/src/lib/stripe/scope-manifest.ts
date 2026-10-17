@@ -39,12 +39,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findStripeManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, stripeConnectorDid);
+export function findStripeManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, stripeConnectorDid, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveStripeScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, stripeConnectorDid);
+export function readActiveStripeScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, stripeConnectorDid, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -58,10 +58,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishStripeScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishStripeScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: stripeConnectorDid, channel: MANIFEST_CHANNEL,
     filename: 'stripe-scope-manifest.md', scopeDescriptors: stripeScopeDescriptors,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

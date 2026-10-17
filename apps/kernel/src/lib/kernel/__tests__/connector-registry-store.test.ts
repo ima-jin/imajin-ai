@@ -10,6 +10,8 @@
  *      already succeeded, or make a completed revoke look like it failed.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { createHash } from 'node:crypto';
+import { withConnectorConnection } from '../connector-connection-context';
 
 const { insertValues, conflictSets, updateSets, insertMock, updateMock } = vi.hoisted(() => {
   const insertValues: Record<string, unknown>[] = [];
@@ -70,6 +72,16 @@ beforeEach(() => {
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 describe('connectorRegistryId', () => {
+  it('preserves historical primary IDs and separates slots, including request context', () => {
+    const legacy = `conn_${createHash('sha256').update(`${OWNER}|google`).digest('hex').slice(0, 24)}`;
+    expect(connectorRegistryId(OWNER, 'google')).toBe(legacy);
+    expect(connectorRegistryId(OWNER, 'google', 'primary')).toBe(legacy);
+    expect(connectorRegistryId(OWNER, 'google', 'work')).not.toBe(legacy);
+    withConnectorConnection('google', OWNER, 'work', () => {
+      expect(connectorRegistryId(OWNER, 'google')).toBe(connectorRegistryId(OWNER, 'google', 'work'));
+      expect(connectorRegistryId(OWNER, 'google', 'primary')).toBe(legacy);
+    });
+  });
   /**
    * The 0114 backfill computes the same expression in SQL. If the two ever
    * disagree, the backfill and the application write two rows for one
@@ -86,6 +98,18 @@ describe('connectorRegistryId', () => {
 // ── recordConnectorRegistration ───────────────────────────────────────────────
 
 describe('recordConnectorRegistration', () => {
+  it('records slot metadata without erasing a previously sealed field or existing label', async () => {
+    await recordConnectorRegistration({ ownerDid: OWNER, provider: 'google', slot: 'work', accountEmail: 'work@example.test' });
+    expect(insertValues[0]).toMatchObject({ slot: 'work', label: 'work', accountEmail: 'work@example.test' });
+    expect(conflictSets[0]).not.toHaveProperty('sealedKeyField');
+    expect(conflictSets[0]).not.toHaveProperty('label');
+  });
+
+  it('uses bound connection context for omitted write selectors', async () => {
+    await withConnectorConnection('xai', OWNER, 'work', () =>
+      recordConnectorRegistration({ ownerDid: OWNER, provider: 'xai', sealedKeyField: `${SEALED_FIELD}:work` }));
+    expect(insertValues[0]).toMatchObject({ slot: 'work', id: connectorRegistryId(OWNER, 'xai', 'work') });
+  });
   it('writes the vault FIELD NAME, never anything that could be key material', async () => {
     await recordConnectorRegistration({ ownerDid: OWNER, provider: 'xai', sealedKeyField: SEALED_FIELD });
 

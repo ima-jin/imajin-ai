@@ -44,12 +44,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findQuickBooksManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, QUICKBOOKS_CONNECTOR_DID);
+export function findQuickBooksManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, QUICKBOOKS_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveQuickBooksScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, QUICKBOOKS_CONNECTOR_DID);
+export function readActiveQuickBooksScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, QUICKBOOKS_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -63,11 +63,11 @@ export function syncConsentGrants(
   );
 }
 
-export function publishQuickBooksScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishQuickBooksScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: QUICKBOOKS_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'quickbooks-scope-manifest.md', scopeDescriptors: QUICKBOOKS_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }
 

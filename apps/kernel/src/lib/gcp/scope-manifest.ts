@@ -58,12 +58,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findGcpManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, GCP_CONNECTOR_DID);
+export function findGcpManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, GCP_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveGcpScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GCP_CONNECTOR_DID);
+export function readActiveGcpScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GCP_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -77,10 +77,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishGcpScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishGcpScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: GCP_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'gcp-scope-manifest.md', scopeDescriptors: GCP_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

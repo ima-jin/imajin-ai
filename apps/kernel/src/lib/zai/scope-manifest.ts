@@ -50,12 +50,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findZaiManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, ZAI_CONNECTOR_DID);
+export function findZaiManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, ZAI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveZaiScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, ZAI_CHANNEL, ZAI_CONNECTOR_DID);
+export function readActiveZaiScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, ZAI_CHANNEL, ZAI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -69,10 +69,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishZaiScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishZaiScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: ZAI_CONNECTOR_DID, channel: ZAI_CHANNEL,
     filename: 'zai-scope-manifest.md', scopeDescriptors: ZAI_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

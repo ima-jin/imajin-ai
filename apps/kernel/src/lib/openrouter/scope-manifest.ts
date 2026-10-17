@@ -50,12 +50,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findOpenrouterManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, OPENROUTER_CONNECTOR_DID);
+export function findOpenrouterManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, OPENROUTER_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveOpenrouterScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, OPENROUTER_CHANNEL, OPENROUTER_CONNECTOR_DID);
+export function readActiveOpenrouterScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, OPENROUTER_CHANNEL, OPENROUTER_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -69,10 +69,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishOpenrouterScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishOpenrouterScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: OPENROUTER_CONNECTOR_DID, channel: OPENROUTER_CHANNEL,
     filename: 'openrouter-scope-manifest.md', scopeDescriptors: OPENROUTER_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

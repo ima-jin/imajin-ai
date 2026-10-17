@@ -21,6 +21,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveConnectorOwnerDid } from '@/src/lib/kernel/connector-owner-did';
+import { connectionSlot } from './connection-slots';
+import { withConnectorConnection } from './connector-connection-context';
 
 const log = createLogger('kernel');
 
@@ -35,6 +37,8 @@ function optionsHandler(request: NextRequest): Promise<NextResponse> {
 interface ManifestAsset { id: string }
 
 export interface ConnectorRouteOpts {
+  /** Explicit registry id; route pathname supplies it for existing wrappers. */
+  provider?: string;
   /**
    * Connector display name used in log messages and error strings,
    * e.g. `'GitHub'`, `'MCP'`. Keep it short.
@@ -109,14 +113,8 @@ export function createConnectorScopeManifestRoute(
    * the card falls back to its unconfigured state and Disconnect stays reachable.
    * The error is logged so the underlying fault is still visible.
    */
-  async function GET(request: NextRequest): Promise<NextResponse> {
+  async function readState(request: NextRequest, ownerDid: string): Promise<NextResponse> {
     const cors = corsHeaders(request);
-
-    const auth = await resolveConnectorOwnerDid(request);
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
-    }
-    const { ownerDid } = auth;
 
     async function readExtraFields(): Promise<Record<string, unknown>> {
       if (!opts.getExtraFields) {
@@ -160,14 +158,8 @@ export function createConnectorScopeManifestRoute(
    * Unknown scope names are rejected 400 (fail-closed).
    * An empty array revokes all scopes.
    */
-  async function POST(request: NextRequest): Promise<NextResponse> {
+  async function publishState(request: NextRequest, ownerDid: string): Promise<NextResponse> {
     const cors = corsHeaders(request);
-
-    const auth = await resolveConnectorOwnerDid(request);
-    if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
-    }
-    const { ownerDid } = auth;
 
     let body: { scopes?: unknown };
     try {
@@ -215,5 +207,23 @@ export function createConnectorScopeManifestRoute(
     );
   }
 
-  return { GET, POST, OPTIONS: optionsHandler };
+  function scoped(handler: (request: NextRequest, ownerDid: string) => Promise<NextResponse>): RouteHandler {
+    return async (request) => {
+      const cors = corsHeaders(request);
+      const auth = await resolveConnectorOwnerDid(request);
+      if (!auth.ok) {
+        return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
+      }
+      let slot: string;
+      try {
+        slot = connectionSlot(new URL(request.url).searchParams.get('slot'));
+      } catch {
+        return NextResponse.json({ error: 'Invalid connection slot' }, { status: 400, headers: cors });
+      }
+      const provider = opts.provider ?? new URL(request.url).pathname.split('/')[1];
+      return withConnectorConnection(provider, auth.ownerDid, slot, () => handler(request, auth.ownerDid));
+    };
+  }
+
+  return { GET: scoped(readState), POST: scoped(publishState), OPTIONS: optionsHandler };
 }

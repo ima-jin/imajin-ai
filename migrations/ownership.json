@@ -46,7 +46,7 @@
       "owner": "kernel",
       "schema": "auth",
       "firstMigration": "0044_channel_links.sql",
-      "notes": ""
+      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "auth.claim_stub_index": {
       "owner": "kernel",
@@ -370,7 +370,7 @@
       "owner": "kernel",
       "schema": "github",
       "firstMigration": "0073_github_action_proposals.sql",
-      "notes": ""
+      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "inference.attestations": {
       "owner": "kernel",
@@ -424,7 +424,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0114_connectors_registry.sql",
-      "notes": ""
+      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "kernel.consent_grants": {
       "owner": "kernel",
@@ -448,7 +448,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0136_google_workspace_state.sql",
-      "notes": "Renumbered from 0133 (#2144 hotfix) — 0133 collided with the independently merged 0133_pay_balance_units.sql."
+      "notes": "Renumbered from 0133 (#2144 hotfix) \u2014 0133 collided with the independently merged 0133_pay_balance_units.sql. #2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "kernel.identity_aliases": {
       "owner": "kernel",
@@ -472,13 +472,13 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0145_payment_request_bus_chains.sql",
-      "notes": "Renumbered from 0144 (#2216 post-merge) — 0144 collided with the independently merged 0144_pay_payment_request_recipient_claim.sql (#2214)."
+      "notes": "Renumbered from 0144 (#2216 post-merge) \u2014 0144 collided with the independently merged 0144_pay_payment_request_recipient_claim.sql (#2214)."
     },
     "kernel.quickbooks_realm_index": {
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0088_quickbooks_realm_index.sql",
-      "notes": ""
+      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "kernel.stripe_webhook_index": {
       "owner": "kernel",
@@ -670,13 +670,13 @@
       "owner": "kernel",
       "schema": "notify",
       "firstMigration": "0162_push_subscriptions.sql",
-      "notes": "#2291 phone push path — web-push (VAPID) subscriptions"
+      "notes": "#2291 phone push path \u2014 web-push (VAPID) subscriptions"
     },
     "notify.templates": {
       "owner": "kernel",
       "schema": "notify",
       "firstMigration": "0158_notify_templates.sql",
-      "notes": "#1510 — data-driven notify templates; rows seeded disabled, see migration header"
+      "notes": "#1510 \u2014 data-driven notify templates; rows seeded disabled, see migration header"
     },
     "operator.approvals": {
       "owner": "kernel",
@@ -712,7 +712,7 @@
       "owner": "kernel",
       "schema": "pay",
       "firstMigration": "0001_seed.sql",
-      "notes": "#2176 — 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref; #2650 — 0181_pay_transactions_drop_stripe_id.sql drops the stripe_id alias column (and idx_transactions_stripe_id); #2642 — 0182_pay_transactions_app_settle_binding.sql adds app_did + payee_manifest + settled_at + settle_batch_id"
+      "notes": "#2176 \u2014 0178_pay_transactions_rail_external_ref.sql adds rail + external_ref; #2650 \u2014 0181_pay_transactions_drop_stripe_id.sql drops the stripe_id alias column (and idx_transactions_stripe_id); #2642 \u2014 0182_pay_transactions_app_settle_binding.sql adds app_did + payee_manifest + settled_at + settle_batch_id"
     },
     "pay.withdrawal_requests": {
       "owner": "kernel",

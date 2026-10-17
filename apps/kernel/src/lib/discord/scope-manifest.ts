@@ -44,12 +44,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findDiscordManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, DISCORD_CONNECTOR_DID);
+export function findDiscordManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, DISCORD_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveDiscordScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, DISCORD_CONNECTOR_DID);
+export function readActiveDiscordScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, DISCORD_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -63,11 +63,11 @@ export function syncConsentGrants(
   );
 }
 
-export function publishDiscordScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishDiscordScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: DISCORD_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'discord-scope-manifest.md', scopeDescriptors: DISCORD_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }
 

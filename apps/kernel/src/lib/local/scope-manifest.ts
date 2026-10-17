@@ -43,12 +43,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findLocalManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, LOCAL_CONNECTOR_DID);
+export function findLocalManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, LOCAL_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveLocalScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, LOCAL_CHANNEL, LOCAL_CONNECTOR_DID);
+export function readActiveLocalScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, LOCAL_CHANNEL, LOCAL_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -62,10 +62,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishLocalScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishLocalScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: LOCAL_CONNECTOR_DID, channel: LOCAL_CHANNEL,
     filename: 'local-scope-manifest.md', scopeDescriptors: LOCAL_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

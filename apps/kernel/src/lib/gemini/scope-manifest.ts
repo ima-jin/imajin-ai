@@ -56,12 +56,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findGeminiManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, GEMINI_CONNECTOR_DID);
+export function findGeminiManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, GEMINI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveGeminiScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GEMINI_CONNECTOR_DID);
+export function readActiveGeminiScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GEMINI_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -75,10 +75,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishGeminiScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishGeminiScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: GEMINI_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'gemini-scope-manifest.md', scopeDescriptors: GEMINI_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }

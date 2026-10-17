@@ -30,6 +30,8 @@ import { createHash } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
 import { db, connectors, type ConnectorRow } from '@/src/db';
 import { getConnector } from './connector-registry';
+import { connectionSlot } from './connection-slots';
+import { currentConnectionSlot } from './connector-connection-context';
 
 const log = createLogger('kernel');
 
@@ -38,10 +40,13 @@ const log = createLogger('kernel');
  *
  * Deterministic rather than random so the backfill and the application cannot
  * write two rows for the same installation: both land on the same primary key
- * and the unique `(owner_did, provider)` index, whichever runs first.
+ * and the unique `(owner_did, provider, slot)` index, whichever runs first.
+ * Primary keeps the historical digest; other slots append their slug.
  */
-export function connectorRegistryId(ownerDid: string, provider: string): string {
-  const digest = createHash('sha256').update(`${ownerDid}|${provider}`).digest('hex');
+export function connectorRegistryId(ownerDid: string, provider: string, slot?: string): string {
+  const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
+  const suffix = selected === 'primary' ? '' : `|${selected}`;
+  const digest = createHash('sha256').update(`${ownerDid}|${provider}${suffix}`).digest('hex');
   return `conn_${digest.slice(0, 24)}`;
 }
 
@@ -50,6 +55,9 @@ export interface ConnectorRegistration {
   ownerDid: string;
   /** `CONNECTOR_REGISTRY` id, e.g. `'xai'`. */
   provider: string;
+  slot?: string;
+  label?: string;
+  accountEmail?: string | null;
   /**
    * Vault field name of the sealed credential, e.g. `xai-api-key:did:…`.
    * Omitted for connectors that seal nothing (the native MCP connector).
@@ -81,7 +89,8 @@ function connectorIdentity(provider: string): { channel: string; connectorDid: s
  * Re-sealing an already-registered connector re-activates it, which is the
  * right reading of "the owner just pasted a key again".
  */
-export async function recordConnectorRegistration(reg: ConnectorRegistration): Promise<void> {
+export async function recordConnectorRegistration(reg: ConnectorRegistration, slot?: string): Promise<void> {
+  const selected = connectionSlot(slot ?? reg.slot ?? currentConnectionSlot(reg.provider, reg.ownerDid));
   const identity = connectorIdentity(reg.provider);
   if (!identity) {
     log.warn({ provider: reg.provider }, 'connector registry: unknown provider — skipping registration');
@@ -93,9 +102,12 @@ export async function recordConnectorRegistration(reg: ConnectorRegistration): P
     await db
       .insert(connectors)
       .values({
-        id: connectorRegistryId(reg.ownerDid, reg.provider),
+        id: connectorRegistryId(reg.ownerDid, reg.provider, selected),
         ownerDid: reg.ownerDid,
         provider: reg.provider,
+        slot: selected,
+        label: reg.label ?? selected,
+        accountEmail: reg.accountEmail,
         channel: identity.channel,
         connectorDid: identity.connectorDid,
         sealedKeyField: reg.sealedKeyField ?? null,
@@ -105,11 +117,13 @@ export async function recordConnectorRegistration(reg: ConnectorRegistration): P
         revokedAt: null,
       })
       .onConflictDoUpdate({
-        target: [connectors.ownerDid, connectors.provider],
+        target: [connectors.ownerDid, connectors.provider, connectors.slot],
         set: {
           channel: identity.channel,
           connectorDid: identity.connectorDid,
-          sealedKeyField: reg.sealedKeyField ?? null,
+          ...(reg.sealedKeyField === undefined ? {} : { sealedKeyField: reg.sealedKeyField }),
+          ...(reg.label === undefined ? {} : { label: reg.label }),
+          ...(reg.accountEmail === undefined ? {} : { accountEmail: reg.accountEmail }),
           status: 'active',
           updatedAt: now,
           revokedAt: null,
@@ -132,13 +146,14 @@ export async function recordConnectorRegistration(reg: ConnectorRegistration): P
  * is still the place a spend cap and a lease live, and re-pasting the key
  * re-activates the same row.
  */
-export async function revokeConnectorRegistration(ownerDid: string, provider: string): Promise<void> {
+export async function revokeConnectorRegistration(ownerDid: string, provider: string, slot?: string): Promise<void> {
+  const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
   const now = new Date();
   try {
     await db
       .update(connectors)
       .set({ status: 'revoked', scopes: [], revokedAt: now, updatedAt: now })
-      .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider)));
+      .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider), eq(connectors.slot, selected)));
   } catch (err) {
     log.warn(
       { err: String(err), ownerDid, provider },
@@ -159,7 +174,9 @@ export async function syncConnectorRegistrationScopes(
   ownerDid: string,
   provider: string,
   scopes: readonly string[],
+  slot?: string,
 ): Promise<void> {
+  const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
   const identity = connectorIdentity(provider);
   if (!identity) {
     log.warn({ provider }, 'connector registry: unknown provider — skipping scope sync');
@@ -172,9 +189,11 @@ export async function syncConnectorRegistrationScopes(
     await db
       .insert(connectors)
       .values({
-        id: connectorRegistryId(ownerDid, provider),
+        id: connectorRegistryId(ownerDid, provider, selected),
         ownerDid,
         provider,
+        slot: selected,
+        label: selected,
         channel: identity.channel,
         connectorDid: identity.connectorDid,
         scopes: snapshot,
@@ -183,7 +202,7 @@ export async function syncConnectorRegistrationScopes(
         updatedAt: now,
       })
       .onConflictDoUpdate({
-        target: [connectors.ownerDid, connectors.provider],
+        target: [connectors.ownerDid, connectors.provider, connectors.slot],
         set: { scopes: snapshot, updatedAt: now },
       });
   } catch (err) {
@@ -210,11 +229,13 @@ export function listConnectorRegistrations(ownerDid: string): Promise<ConnectorR
 export async function readConnectorRegistration(
   ownerDid: string,
   provider: string,
+  slot?: string,
 ): Promise<ConnectorRow | undefined> {
+  const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
   const rows = await db
     .select()
     .from(connectors)
-    .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider)))
+    .where(and(eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider), eq(connectors.slot, selected)))
     .limit(1);
   return rows[0];
 }
@@ -235,7 +256,9 @@ export async function setConnectorSpendCap(
   ownerDid: string,
   provider: string,
   cap: Record<string, unknown> | null,
+  slot?: string,
 ): Promise<void> {
+  const selected = connectionSlot(slot ?? currentConnectionSlot(provider, ownerDid));
   const identity = connectorIdentity(provider);
   if (!identity) {
     throw new Error(`connector registry: unknown provider '${provider}'`);
@@ -245,9 +268,11 @@ export async function setConnectorSpendCap(
   await db
     .insert(connectors)
     .values({
-      id: connectorRegistryId(ownerDid, provider),
+      id: connectorRegistryId(ownerDid, provider, selected),
       ownerDid,
       provider,
+      slot: selected,
+      label: selected,
       channel: identity.channel,
       connectorDid: identity.connectorDid,
       spendCap: cap,
@@ -256,7 +281,43 @@ export async function setConnectorSpendCap(
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [connectors.ownerDid, connectors.provider],
+      target: [connectors.ownerDid, connectors.provider, connectors.slot],
       set: { spendCap: cap, updatedAt: now },
     });
+}
+
+/** Metadata creation must fail closed, but creates no credential or scope grant. */
+export async function createConnectorConnection(
+  ownerDid: string,
+  provider: string,
+  slot?: string,
+  label?: string,
+): Promise<ConnectorRow> {
+  const selected = connectionSlot(slot);
+  const identity = connectorIdentity(provider);
+  if (!identity) throw new Error(`Unknown connector: ${provider}`);
+  const [row] = await db.insert(connectors).values({
+    id: connectorRegistryId(ownerDid, provider, selected),
+    ownerDid, provider, slot: selected, label: label ?? selected,
+    channel: identity.channel, connectorDid: identity.connectorDid,
+    status: 'active',
+  }).onConflictDoNothing({
+    target: [connectors.ownerDid, connectors.provider, connectors.slot],
+  }).returning();
+  if (row) return row;
+  throw new Error('connection_exists');
+}
+
+export async function renameConnectorConnection(
+  ownerDid: string,
+  provider: string,
+  slot: string,
+  label: string,
+): Promise<ConnectorRow | undefined> {
+  const [row] = await db.update(connectors).set({ label, updatedAt: new Date() })
+    .where(and(
+      eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider),
+      eq(connectors.slot, connectionSlot(slot)),
+    )).returning();
+  return row;
 }

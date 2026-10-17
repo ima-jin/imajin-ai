@@ -44,12 +44,12 @@ export function buildManifestContent(selectedScopes: readonly string[]): string 
   );
 }
 
-export function findGitHubManifestAsset(ownerDid: string): Promise<Asset | null> {
-  return findConnectorManifestAsset(ownerDid, GITHUB_CONNECTOR_DID);
+export function findGitHubManifestAsset(ownerDid: string, slot?: string): Promise<Asset | null> {
+  return findConnectorManifestAsset(ownerDid, GITHUB_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
-export function readActiveGitHubScopes(ownerDid: string): Promise<string[]> {
-  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GITHUB_CONNECTOR_DID);
+export function readActiveGitHubScopes(ownerDid: string, slot?: string): Promise<string[]> {
+  return readActiveConnectorScopes(ownerDid, MANIFEST_CHANNEL, GITHUB_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 /**
@@ -58,8 +58,8 @@ export function readActiveGitHubScopes(ownerDid: string): Promise<string[]> {
  * card's own scope-manifest grantee. Powers the card's one-line pointer
  * toward #2288's Grants lane; the grants themselves are never listed here.
  */
-export function countExternalGitHubScopeGrantees(ownerDid: string): Promise<number> {
-  return countExternalScopeGrantees(ownerDid, MANIFEST_CHANNEL, GITHUB_CONNECTOR_DID);
+export function countExternalGitHubScopeGrantees(ownerDid: string, slot?: string): Promise<number> {
+  return countExternalScopeGrantees(ownerDid, MANIFEST_CHANNEL, GITHUB_CONNECTOR_DID, ...(slot === undefined ? [] : [slot]));
 }
 
 export function syncConsentGrants(
@@ -73,10 +73,10 @@ export function syncConsentGrants(
   );
 }
 
-export function publishGitHubScopeManifest(ownerDid: string, scopes: readonly string[]): Promise<string> {
+export function publishGitHubScopeManifest(ownerDid: string, scopes: readonly string[], slot?: string): Promise<string> {
   return publishConnectorScopeManifest({
     ownerDid, connectorDid: GITHUB_CONNECTOR_DID, channel: MANIFEST_CHANNEL,
     filename: 'github-scope-manifest.md', scopeDescriptors: GITHUB_SCOPE_DESCRIPTORS,
-    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s),
+    scopes, isOnConsent: (s) => requiresConsentRow(CONNECTOR, s), slot,
   });
 }
