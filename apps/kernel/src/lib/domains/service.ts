@@ -17,6 +17,30 @@ const RESERVED_LABELS = new Set([
   'auth', 'pay', 'profile', 'chat', 'media', 'notify', 'registry', 'connections',
   'www', 'jin', 'dev-jin', 'dev', 'api', 'admin', 'relay', 'vault', 'mail', 'smtp', 'ns1', 'ns2',
 ]);
+const APP_DOMAIN_AUTHORITY = {
+  ownerDid: registryApps.ownerDid,
+  entryUrl: registryApps.entryUrl,
+  callbackUrl: registryApps.callbackUrl,
+  homepageUrl: registryApps.homepageUrl,
+};
+type AppDomainAuthority = Pick<typeof registryApps.$inferSelect, 'ownerDid' | 'entryUrl' | 'callbackUrl' | 'homepageUrl'>;
+
+/**
+ * DNS control alone cannot attribute an attacker's site to a victim app.
+ * Cross-owner custom hosts must already be advertised by the authoritative app
+ * registry; trusted organization issuance is its own on-record authorization.
+ */
+function appAuthorizesDomain(app: AppDomainAuthority, domain: string, zoneOwner: string, organizationIssued: boolean): boolean {
+  if (organizationIssued || app.ownerDid === zoneOwner) return true;
+  return [app.entryUrl, app.callbackUrl, app.homepageUrl].some((value) => {
+    if (!value) return false;
+    try {
+      const url = new URL(value);
+      return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+        && normalizeDomain(url.hostname) === domain;
+    } catch { return false; }
+  });
+}
 
 function binding(row: DomainBindingRow): DomainBinding {
   const { domain, zoneOwner, siteOwner, appDid, method, status, attestation, verifiedAt, checkedAt } = row;
@@ -26,10 +50,10 @@ async function hasCurrentSiteOwner(row: DomainBindingRow): Promise<boolean> {
   // Cron checks after 24h; reads expire DNS evidence at 48h even if cron stops.
   if (row.method === 'dns-txt' && (!row.checkedAt || row.checkedAt.getTime() < Date.now() - 48 * 60 * 60 * 1000)) return false;
   if (!row.appDid) return true;
-  const [app] = await db.select({ ownerDid: registryApps.ownerDid }).from(registryApps).where(and(
+  const [app] = await db.select(APP_DOMAIN_AUTHORITY).from(registryApps).where(and(
     eq(registryApps.appDid, row.appDid), eq(registryApps.status, 'active'), eq(registryApps.ownerDid, row.siteOwner),
   )).limit(1);
-  return Boolean(app);
+  return Boolean(app && appAuthorizesDomain(app, row.domain, row.zoneOwner, row.method === 'imajin-issued'));
 }
 
 /** Every mutation serializes by domain, including nonexistent/pending claims. */
@@ -37,18 +61,21 @@ async function lockDomain(tx: Transaction, domain: string): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${domain}, 2902))`);
 }
 
-async function resolveSiteOwner(tx: Transaction, zoneOwner: string, appDid?: string | null): Promise<string> {
+async function resolveSiteOwner(tx: Transaction, zoneOwner: string, domain: string, appDid?: string | null, organizationIssued = false): Promise<string> {
   const [zone] = await tx.select({ id: identities.id }).from(identities)
     .where(and(eq(identities.id, zoneOwner), isNull(identities.suspendedAt))).limit(1);
   if (!zone) throw new DomainError('identity_not_found', 'Zone owner identity not found', 404);
   if (!appDid) return zoneOwner;
-  const [app] = await tx.select({ ownerDid: registryApps.ownerDid }).from(registryApps)
-    .where(and(eq(registryApps.appDid, appDid), eq(registryApps.status, 'active'))).limit(1);
+  const [app] = await tx.select(APP_DOMAIN_AUTHORITY).from(registryApps)
+    .where(and(eq(registryApps.appDid, appDid), eq(registryApps.status, 'active'))).limit(1).for('share');
   if (!app) throw new DomainError('app_not_found', 'Active registered app not found', 404);
   // App ownership is authoritative registry data, never arbitrary request data.
   const [owner] = await tx.select({ id: identities.id }).from(identities)
     .where(and(eq(identities.id, app.ownerDid), isNull(identities.suspendedAt))).limit(1);
   if (!owner) throw new DomainError('app_owner_unavailable', 'Registered app owner is unavailable', 409);
+  if (!appAuthorizesDomain(app, domain, zoneOwner, organizationIssued)) {
+    throw new DomainError('app_domain_not_authorized', 'The app owner must register this domain in its app URLs before it can be bound', 403);
+  }
   return app.ownerDid;
 }
 
@@ -74,7 +101,7 @@ export async function addDomain(input: { domain: string; zoneOwner: string; appD
   return db.transaction(async (tx) => {
     await lockDomain(tx, domain);
     await assertNoVerifiedCompetitor(tx, domain, input.zoneOwner);
-    const siteOwner = await resolveSiteOwner(tx, input.zoneOwner, input.appDid);
+    const siteOwner = await resolveSiteOwner(tx, input.zoneOwner, domain, input.appDid);
     const existing = await claim(tx, domain, input.zoneOwner);
     if (existing?.status === 'legacy') return binding(existing);
     if (existing?.status === 'verified') {
@@ -163,7 +190,7 @@ export async function verifyDomain(input: string, zoneOwner: string): Promise<Do
 
 async function verificationFailure(tx: Transaction, row: DomainBindingRow): Promise<DomainError | null> {
   try {
-    const owner = await resolveSiteOwner(tx, row.zoneOwner, row.appDid);
+    const owner = await resolveSiteOwner(tx, row.zoneOwner, row.domain, row.appDid);
     if (owner !== row.siteOwner) return new DomainError('app_owner_changed', 'Re-add claim with the current app owner', 409);
     if (!await hasTxtProof(row.domain, row.zoneOwner)) {
       return new DomainError('txt_not_found', 'Publish your exact zone owner DID at _imajin.' + row.domain, 409);
@@ -230,7 +257,7 @@ export async function issueImajinDomain(input: { domain: string; appDid: string 
   return db.transaction(async (tx) => {
     await lockDomain(tx, domain);
     await assertNoVerifiedCompetitor(tx, domain, org.id);
-    const siteOwner = await resolveSiteOwner(tx, org.id, input.appDid);
+    const siteOwner = await resolveSiteOwner(tx, org.id, domain, input.appDid, true);
     const existing = await claim(tx, domain, org.id);
     if (existing?.status === 'verified') {
       if (existing.appDid !== input.appDid || existing.siteOwner !== siteOwner) {
