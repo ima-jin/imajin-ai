@@ -124,6 +124,42 @@ describe('PATCH /api/admin/registry/apps/:appId — approving an emit list', () 
 });
 
 describe('PATCH /api/admin/registry/apps/:appId — refusals', () => {
+  it('updates only validated presentation fields and preserves membership and authority', async () => {
+    const profileWidget = { path: '/profile/studio', label: 'Studio' };
+    const res = await patch({ entryUrl: 'https://studio.example.test', profileWidget, placements: ['launcher'], tier: 'first_party', enabledApps: ['fixture-studio'] });
+    expect(res.status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith({
+      entryUrl: 'https://studio.example.test', profileWidget, placements: ['launcher'], icon: null, requiredScope: null, updatedAt: expect.any(Date),
+    });
+    expect(mocks.emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({ type: 'registry.app.presentation.updated' }));
+  });
+  it('can remove a widget explicitly with null', async () => {
+    expect((await patch({ profileWidget: null })).status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ profileWidget: null }));
+  });
+  it('preserves existing presentation fields on a partial widget update', async () => {
+    mocks.limitMock.mockResolvedValue([{ id: APP_ID, appDid: APP_DID, entryUrl: 'https://studio.example.test', placements: ['launcher'], icon: 'S' }]);
+    expect((await patch({ profileWidget: { path: '/profile', label: 'Studio' } })).status).toBe(200);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ entryUrl: 'https://studio.example.test', placements: ['launcher'], icon: 'S' }));
+  });
+  it('returns 404 for a presentation update to an absent app', async () => {
+    mocks.limitMock.mockResolvedValue([]);
+    expect((await patch({ profileWidget: null })).status).toBe(404);
+    expect(mocks.setMock).not.toHaveBeenCalled();
+  });
+  it.each([
+    { entryUrl: 'javascript:alert(1)', profileWidget: { path: '/profile', label: 'Studio' } },
+    { entryUrl: 'https://studio.example.test', profileWidget: { path: '//evil.test', label: 'Studio' } },
+    { profileWidget: { path: '/profile', label: 'Studio' } },
+    { profileWidget: null, emittableEvents: [] },
+  ])('rejects invalid or mixed presentation updates %j', async (body) => {
+    expect((await patch(body)).status).toBe(400);
+    expect(mocks.setMock).not.toHaveBeenCalled();
+  });
+  it('succeeds if presentation audit forwarding fails', async () => {
+    mocks.emitAttestationMock.mockRejectedValueOnce(new Error('unavailable'));
+    expect((await patch({ profileWidget: null })).status).toBe(200);
+  });
   it('returns 404 for an unknown app, writing nothing', async () => {
     mocks.limitMock.mockResolvedValue([]);
 

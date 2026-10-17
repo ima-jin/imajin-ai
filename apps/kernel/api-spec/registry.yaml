@@ -58,6 +58,37 @@ components:
         statusCode: { type: [integer, "null"] }
         error: { type: string }
         migrations: { type: object }
+    ProfileWidget:
+      type: [object, "null"]
+      additionalProperties: false
+      required: [path, label]
+      description: >-
+        Optional link-only profile contribution, also accepted in imajin.app.json.
+        Path is root-relative on the validated registered entryUrl origin (node
+        origin for a relative entryUrl). No independent origin, HTML, scripts,
+        or iframe content. Protocol-relative URLs, backslashes, encoded
+        separators and controls are rejected. The link receives URL-encoded did
+        and optional handle query parameters naming the profile owner.
+        Active registration alone never enables the widget or installs an app.
+        Rendering requires owner enabledApps (actor) or forest enabled_services
+        (business/community/family); family visibility remains member-only.
+      properties:
+        path: { type: string, maxLength: 2048, pattern: "^/(?!/)", example: "/profile/studio" }
+        label: { type: string, minLength: 1, maxLength: 80 }
+        icon: { type: string, minLength: 1, maxLength: 32 }
+    AppPresentation:
+      type: object
+      properties:
+        entryUrl:
+          type: [string, "null"]
+          description: Validated root-relative path or HTTPS URL without credentials. Required when profileWidget is non-null.
+        profileWidget: { $ref: "#/components/schemas/ProfileWidget" }
+        icon: { type: [string, "null"], maxLength: 32 }
+        placements:
+          type: array
+          default: []
+          items: { type: string, enum: [launcher, home, auth-submenu] }
+        requiredScope: { type: [string, "null"], enum: [actor, business, community, family, null] }
     Node:
       type: object
       properties:
@@ -118,6 +149,84 @@ components:
         error: { type: string }
 
 paths:
+  /api/admin/registry/apps:
+    servers:
+      - url: /
+    get:
+      operationId: adminListRegistryApps
+      summary: List all registry apps including presentation declarations
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "{apps} including entryUrl, slug, icon, placements, requiredScope and nullable profileWidget" }
+        "401": { description: Admin session required }
+    post:
+      operationId: adminRegisterRegistryApp
+      summary: Register an app and optional safe profile contribution
+      description: >-
+        Admin session required. Registry metadata only; never writes enabledApps,
+        enabled_services, authorization grants, or featured. A widget does not
+        require any nav placement. Provisioned apps accept the same optional
+        profileWidget in imajin.app.json, snapshotted on the signed approval card.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AppPresentation"
+                - type: object
+                  required: [name, ownerDid, callbackUrl]
+                  properties:
+                    name: { type: string }
+                    ownerDid: { type: string }
+                    callbackUrl: { type: string, format: uri }
+                    slug: { type: string, pattern: "^[a-z][a-z0-9-]{0,38}$" }
+                    tier: { type: string, enum: [first_party, third_party], default: third_party }
+                    description: { type: string }
+                    homepageUrl: { type: string }
+                    logoUrl: { type: string }
+                    publicKey: { type: string }
+                    requestedScopes: { type: array, items: { type: string } }
+                    providesScopes: { type: array, items: { type: string } }
+                    dependsOn: { type: array, items: { type: object } }
+                    emittableEvents: { type: array, items: { type: string } }
+                    allowedRedirectHosts: { type: array, items: { type: string } }
+                    tokenAudiences: { type: array, items: { type: string } }
+      responses:
+        "201": { description: Registered app including presentation fields and one-time generated keypair when applicable }
+        "400": { description: Invalid registration or unsafe widget declaration }
+        "401": { description: Admin session required }
+        "409": { description: Slug already registered }
+  /api/admin/registry/apps/{appId}:
+    servers:
+      - url: /
+    parameters:
+      - { name: appId, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: adminUpdateRegistryApp
+      summary: Update app presentation or approved emittable events
+      description: >-
+        Partial presentation update preserves omitted fields. profileWidget:null
+        removes the contribution. Validated and audited, without installation
+        or grants. Do not mix presentation and emittableEvents in one request.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/AppPresentation"
+                - type: object
+                  required: [emittableEvents]
+                  properties:
+                    emittableEvents: { type: array, items: { type: string } }
+      responses:
+        "200": { description: "{ok:true,app} with updated metadata" }
+        "400": { description: Invalid declaration or mixed update }
+        "401": { description: Admin session required }
+        "404": { description: App not found }
   /registry/api/health:
     get:
       servers:

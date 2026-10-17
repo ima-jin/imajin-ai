@@ -13,6 +13,14 @@ afterEach(cleanup);
 const DEPENDENCY_ID = 'provision-declarations-dependency';
 
 describe('ProvisionDeclarationsPreview', () => {
+  it('shows the widget label and path before signing, with explicit owner opt-in wording', () => {
+    render(<ProvisionDeclarationsPreview detail={{ manifestDeclarations: {
+      providesScopes: [], dependsOn: [], profileWidget: { path: '/profile/studio', label: 'Studio' },
+    } }} />);
+    expect(screen.getByText(/Profile widget \(owner opt-in required\)/)).toBeTruthy();
+    expect(screen.getByText(/Studio — \/profile\/studio/)).toBeTruthy();
+    expect(screen.getByTestId('provision-declarations-preview').getAttribute('data-state')).toBe('declared');
+  });
   it('shows secret names and generation recipes before approval, with no reveal', () => {
     render(<ProvisionDeclarationsPreview detail={{ manifestDeclarations: {
       providesScopes: [], dependsOn: [], secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }],

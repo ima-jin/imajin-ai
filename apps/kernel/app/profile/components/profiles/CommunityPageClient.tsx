@@ -6,39 +6,29 @@ import { CommunityChat } from '../CommunityChat';
 
 interface CommunityPageClientProps {
   // Tab config
-  enabledTabs: CommunityTab[];
+  enabledTabs: { id: string; label: string; icon: string; memberOnly?: boolean }[];
   isMember: boolean;
 
   // Content passed from server
   overviewContent: React.ReactNode;
-  eventsContent: React.ReactNode;
+  widgetContents: { id: string; content: React.ReactNode }[];
   membersContent: React.ReactNode;
-  marketContent: React.ReactNode | null;
 
   // Chat
   communityDid: string;
 }
 
-const TAB_CONFIG: Record<CommunityTab, { label: string; icon: string; memberOnly?: boolean }> = {
-  overview: { label: 'Overview', icon: '🏠' },
-  events: { label: 'Events', icon: '🎟' },
-  chat: { label: 'Chat', icon: '💬', memberOnly: true },
-  members: { label: 'Members', icon: '👥' },
-  market: { label: 'Market', icon: '🛍' },
-};
-
 export function CommunityPageClient({
   enabledTabs,
   isMember,
   overviewContent,
-  eventsContent,
+  widgetContents,
   membersContent,
-  marketContent,
   communityDid,
 }: Readonly<CommunityPageClientProps>) {
   const [activeTab, setActiveTab] = useState<CommunityTab>('overview');
 
-  const tabs = enabledTabs.map(id => ({ id, ...TAB_CONFIG[id] }));
+  const tabs = enabledTabs;
 
   return (
     <>
@@ -50,10 +40,9 @@ export function CommunityPageClient({
       />
 
       {activeTab === 'overview' && overviewContent}
-      {activeTab === 'events' && eventsContent}
+      {widgetContents.find((widget) => widget.id === activeTab)?.content}
       {activeTab === 'chat' && isMember && <CommunityChat communityDid={communityDid} />}
       {activeTab === 'members' && membersContent}
-      {activeTab === 'market' && marketContent}
     </>
   );
 }

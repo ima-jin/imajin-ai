@@ -939,6 +939,12 @@ paths:
         repo/mint/register/seal pipeline (`src/lib/apps/provision.ts`) only
         runs once the operator countersigns an 'approve' decision —
         provisioning is operator-authority, never self-service.
+        Optional imajin.app.json profileWidget ({path,label,icon?}) is a
+        validated link-only contribution on the registered entryUrl origin,
+        snapshotted on the signed operator card and rechecked for drift at
+        execution. It never adds anyone's apps: rendering requires the profile
+        owner's enabledApps or forest enabled_services. See registry.yaml
+        ProfileWidget for the declaration contract.
         Idempotent on `slug`: an already-succeeded slug returns the cached
         result immediately (status 200, no proposal); an already-pending
         proposal for the same slug is reused rather than duplicated.

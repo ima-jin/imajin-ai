@@ -59,6 +59,7 @@ import {
   type AppManifestResult,
 } from '@/src/lib/github/org-provisioning';
 import { seedAttestationTypes, type AttestationTypeSeedOutcome } from './attestation-types';
+import { validateProfileWidget } from './profile-widget';
 import { assertValidEntryUrl } from './entry-url';
 import { configuredNodeUrl } from '@/src/lib/http/node-url';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
@@ -316,8 +317,12 @@ function resolveNavMetadata(slug: string, manifest: AppManifest): {
   entryUrl: string;
   placements: string[];
   requiredScope: string | null;
+  profileWidget: AppManifest['profileWidget'];
 } {
+  const widget = validateProfileWidget(manifest.profileWidget);
+  if ('error' in widget) throw new Error(widget.error);
   return {
+    profileWidget: widget.ok,
     name: manifest.name,
     icon: manifest.icon ?? null,
     entryUrl: manifest.entryUrl === undefined ? `/${slug}` : assertValidEntryUrl(manifest.entryUrl),
@@ -427,6 +432,7 @@ async function registerApp(params: {
   // granted. A manifest that changed since (or declares anything when none was
   // readable at proposal time) fails closed — re-propose to review the current list.
   const declared: ManifestDeclarations = {
+    profileWidget: navMetadata.profileWidget,
     secrets: secrets.ok,
     providesScopes: declarations.ok.providesScopes,
     dependsOn: declarations.ok.dependsOn,
@@ -459,6 +465,7 @@ async function registerApp(params: {
       tokenAudiences: [slug],
       icon: navMetadata.icon,
       entryUrl: navMetadata.entryUrl,
+      profileWidget: navMetadata.profileWidget,
       placements: navMetadata.placements,
       requiredScope: navMetadata.requiredScope,
       // #2674: the whole approved list — the app's own scopes plus the scopes of the

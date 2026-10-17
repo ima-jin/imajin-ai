@@ -18,6 +18,8 @@
  * Actor scope follows explicit membership (legacy-only fallback) union live
  * person-issued app.authorized grants. No identity gets default apps.
  */
+import type { ProfileWidgetDeclaration } from '@/src/lib/apps/profile-widget';
+import { validateProfileWidget } from '@/src/lib/apps/profile-widget';
 import { and, eq } from 'drizzle-orm';
 import { db, identities, forestConfig, registryApps, profiles, attestations } from '@/src/db';
 import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
@@ -39,6 +41,7 @@ export interface NavApp {
   description?: string | null;
   featured?: boolean;
   appDid?: string;
+  profileWidget?: ProfileWidgetDeclaration | null;
 }
 export interface AppDirectoryApp extends NavApp {
   description: string | null;
@@ -53,9 +56,10 @@ function isAppPlacement(value: string): value is AppPlacement {
 }
 
 /** Every active, slug-having registry row that declares at least one nav placement. */
-async function listNavCapableApps(): Promise<NavApp[]> {
+async function listRegistryApps(): Promise<NavApp[]> {
   const rows = await db
     .select({
+      profileWidget: registryApps.profileWidget,
       slug: registryApps.slug,
       name: registryApps.name,
       icon: registryApps.icon,
@@ -74,8 +78,9 @@ async function listNavCapableApps(): Promise<NavApp[]> {
   for (const row of rows) {
     if (row.status !== 'active' || !row.slug) continue;
     const placements = (row.placements ?? []).filter(isAppPlacement);
-    if (placements.length === 0) continue;
+    const widget = validateProfileWidget(row.profileWidget);
     apps.push({
+      profileWidget: 'ok' in widget ? widget.ok : null,
       slug: row.slug,
       name: row.name,
       icon: row.icon,
@@ -89,6 +94,15 @@ async function listNavCapableApps(): Promise<NavApp[]> {
     });
   }
   return apps;
+}
+
+async function listNavCapableApps(): Promise<NavApp[]> {
+  return (await listRegistryApps()).filter((app) => app.placements.length > 0);
+}
+
+/** Active declared widget apps, independent of launcher placement and viewer grants. */
+export async function resolveProfileWidgetApps(): Promise<NavApp[]> {
+  return (await listRegistryApps()).filter((app) => app.profileWidget);
 }
 
 /**

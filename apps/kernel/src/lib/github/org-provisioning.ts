@@ -41,6 +41,7 @@
  * No secret value (the App private key, a minted installation token, or a
  * minted app-auth private key) is ever logged.
  */
+import { validateProfileWidget, type ProfileWidgetDeclaration } from '@/src/lib/apps/profile-widget';
 import { createPrivateKey } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { createLogger } from '@imajin/logger';
@@ -463,6 +464,7 @@ export interface AppManifest {
   icon?: string;
   entryUrl?: string;
   placements?: string[];
+  profileWidget?: ProfileWidgetDeclaration | null;
   requiredScope?: string | null;
   /** Scopes the app defines and enforces itself (#2663), e.g. `dykil:read`. Validated at register time. */
   providesScopes?: string[];
@@ -510,6 +512,7 @@ function isValidManifest(value: unknown): value is AppManifest {
       isOptionalString(v.entryUrl) &&
       (v.requiredScope === null || isOptionalString(v.requiredScope)) &&
       isValidManifestPlacements(v.placements) &&
+      'ok' in validateProfileWidget(v.profileWidget) &&
       isValidManifestDeclarations(v) &&
       'ok' in validateSecrets(v.secrets)
     );

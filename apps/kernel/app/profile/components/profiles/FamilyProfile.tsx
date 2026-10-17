@@ -1,10 +1,13 @@
+import { ProfileWidgets } from '../ProfileWidgets';
+import { getForestConfig } from '../../lib/profile-data';
 import { getMembersByRole } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
 import { MemberList } from '../MemberList';
 import type { ProfileViewProps } from '../../lib/types';
 
-export async function FamilyProfile({ profile, identity, viewer }: Readonly<ProfileViewProps>) {
+export async function FamilyProfile({ profile, identity, viewer, registryApps }: Readonly<ProfileViewProps>) {
+  const forestConfig = await getForestConfig(profile.did);
   const members = await getMembersByRole(profile.did);
   const isMember = viewer.viewerDid
     ? members.some((m) => m.did === viewer.viewerDid)
@@ -21,6 +24,8 @@ export async function FamilyProfile({ profile, identity, viewer }: Readonly<Prof
             {profile.bio && (
               <p className="text-gray-300 mb-6">{profile.bio}</p>
             )}
+
+            <ProfileWidgets apps={registryApps} enabledSlugs={forestConfig?.enabledServices ?? []} profile={profile} viewerDid={viewer.viewerDid} />
 
             {/* Member list (flat, no role grouping) */}
             <MemberList

@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 
-export type CommunityTab = 'overview' | 'events' | 'chat' | 'members' | 'market';
+export type CommunityTab = string;
 
 interface CommunityTabsProps {
   tabs: { id: CommunityTab; label: string; icon: string; memberOnly?: boolean }[];
@@ -19,7 +19,7 @@ export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: Readon
       if (tabs.find(t => t.id === hash)?.memberOnly && !isMember) return;
       onTabChange(hash);
     }
-  }, []);
+  }, [tabs, isMember, onTabChange]);
 
   // Update hash when tab changes
   const handleTabChange = (tab: CommunityTab) => {

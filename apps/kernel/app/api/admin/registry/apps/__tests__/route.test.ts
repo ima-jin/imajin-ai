@@ -122,6 +122,31 @@ describe('POST /api/admin/registry/apps (#1990)', () => {
     mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
   });
 
+  it('registers a third-party profile widget with nav metadata but never owner app membership', async () => {
+    const profileWidget = { path: '/profile/studio', label: 'Studio', icon: 'S' };
+    const response = await POST(makePostRequest({
+      name: 'Fixture Studio', slug: 'fixture-studio', ownerDid: 'did:imajin:developer',
+      callbackUrl: 'https://studio.example.test/callback', entryUrl: 'https://studio.example.test',
+      placements: ['launcher'], profileWidget, featured: true, enabledApps: ['fixture-studio'],
+    }) as never);
+    expect(response.status).toBe(201);
+    const row = mocks.insertValuesMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(row).toMatchObject({ tier: 'third_party', profileWidget, entryUrl: 'https://studio.example.test', placements: ['launcher'] });
+    expect(row).not.toHaveProperty('enabledApps');
+    expect(row).not.toHaveProperty('featured');
+  });
+
+  it.each([
+    { path: '//evil.test', label: 'Studio' }, { path: '/profile', label: '' }, { path: '/profile', label: 'Studio', html: '<script />' },
+  ])('rejects invalid widget declarations without registry writes: %j', async (profileWidget) => {
+    const response = await POST(makePostRequest({
+      name: 'Fixture Studio', ownerDid: 'did:imajin:developer', callbackUrl: 'https://studio.example.test/callback',
+      entryUrl: 'https://studio.example.test', profileWidget,
+    }) as never);
+    expect(response.status).toBe(400);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
   it('rejects a non-admin caller with 401', async () => {
     mocks.requireAdminMock.mockResolvedValue(null);
 

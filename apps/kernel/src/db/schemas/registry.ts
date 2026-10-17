@@ -362,6 +362,8 @@ export const registryApps = registrySchema.table('apps', {
    */
   icon: text('icon'),
   entryUrl: text('entry_url'),
+  /** Optional link-only profile contribution; public rendering additionally requires owner opt-in. */
+  profileWidget: jsonb('profile_widget').$type<{ path: string; label: string; icon?: string }>(),
   placements: text('placements').array().notNull().default(sql`'{}'::text[]`),
   requiredScope: text('required_scope'),
   /** Directory curation only (0203_registry_apps_featured.sql); countersigned apps:featured proposals, never an install or grant. */
