@@ -149,6 +149,12 @@ describe('app-owned event conversation metadata', () => {
     expect(after).toEqual({ ...before, name: 'Event name', updatedAt: after.updatedAt });
     expect(after.updatedAt!.getTime()).toBeGreaterThan(before.updatedAt!.getTime());
   });
+  it('allows service-only renames for the already bound creator', async () => {
+    await seed();
+    expect((await put(request(undefined, 'service', null))).status).toBe(200);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await rows()).toMatchObject([{ name: 'Event name', appDid: APP, createdBy: OWNER }]);
+  });
   it.each([OTHER_APP, null])('refuses other-app/legacy binding %s with the same human owner', async (appDid) => {
     await seed(appDid);
     const before = await rows();

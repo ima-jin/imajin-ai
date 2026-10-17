@@ -46,8 +46,16 @@ export async function PUT(
       return errorResponse('Valid event DID, name (1–200 characters), and createdBy are required', 400, cors);
     }
     const { name, createdBy } = body.data;
-    const denied = await authorizeCreator(request, auth.appDid, createdBy);
-    if (denied) return errorResponse(denied.error, denied.status, cors);
+    const [existing] = await db.select({
+      appDid: conversationsV2.appDid, createdBy: conversationsV2.createdBy,
+    }).from(conversationsV2).where(eq(conversationsV2.did, did)).limit(1);
+    if (existing && (existing.appDid !== auth.appDid || existing.createdBy !== createdBy)) {
+      return errorResponse('Conversation is not owned by this app and creator', 403, cors);
+    }
+    if (!existing) {
+      const denied = await authorizeCreator(request, auth.appDid, createdBy);
+      if (denied) return errorResponse(denied.error, denied.status, cors);
+    }
 
     const [event] = await db.select({ did: identities.id }).from(identities).where(and(
       eq(identities.id, did),

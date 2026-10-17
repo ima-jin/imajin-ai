@@ -676,10 +676,12 @@ paths:
         insufficient. Session-only and delegated app tokens are not accepted
         as the service credential.
 
-        createdBy must be the verified app DID, or match the verified acting
+        On initial creation, createdBy must be the verified app DID, or match the verified acting
         identity of an additional forwarded imajin_session Cookie (including
         validated X-Acting-As / X-Acting-For delegation for the chat service).
-        The app token alone never authorizes attribution to a human.
+        The app token alone never authorizes new attribution to a human.
+        Renames need no human session: createdBy must match the immutable
+        creator already bound to that app's conversation.
 
         The DID must identify an active registered event. Call this BEFORE
         syncing members so creation atomically records the name, creator and
