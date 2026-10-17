@@ -143,8 +143,8 @@ longer exists.
 **Env vars referenced by deploy workflows but not documented — checked, not found live today.** The
 issue's original example (`PROFILE_INTERNAL_API_KEY`, `REGISTRY_SERVICE_URL` needing `/registry`) is
 now documented in every consuming app's `.env.example` (`apps/kernel/.env.example:140`,
-`apps/events/.env.example:81-82`, formerly `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
-the `/registry` suffix in `apps/events/.env.example:28`,
+formerly `apps/events/.env.example:81-82` and `apps/learn/.env.example:48-49`; `REGISTRY_SERVICE_URL` present with
+the `/registry` suffix in the former `apps/events/.env.example:28`,
 `apps/kernel/.env.example:211`, formerly `apps/learn/.env.example:21` and `apps/market/.env.example:21`) — this
 specific instance from the "why now" section has since been fixed. It's evidence the underlying
 gap (a var lands in a PR body / chat and only gets into `.env.example` as a follow-up) is real, not
@@ -369,54 +369,40 @@ kernel API). What changes here:
   `apps/*/.env.example`, so it no longer mints a dykil bootstrap identity: the
   standalone app claims its own (`ima-jin/dykil` `docs/REGISTRATION.md`).
 
-## 10. Standalone events dev cutover is gated (#2529)
+## 10. Standalone events cutover completed; source pruned (#2517)
 
-The monorepo `apps/events` copy patched by #2798 already verifies audience-bound
-kernel signatures for payment and settlement callbacks and uses the vault internal
-Bearer for organizer contact/reply-to. That does **not** describe standalone
-[`ima-jin/events`](https://github.com/ima-jin/events): its settlement and contact
-calls still use `x-webhook-secret` until
-[events#38](https://github.com/ima-jin/events/issues/38) ships.
+[`ima-jin/events`](https://github.com/ima-jin/events) owns the app, including its
+signed callback/contact integration, setup, build and deploy. The former #2798
+monorepo receiver and events#38 prerequisite were cutover-era concerns, not
+reasons to keep source here: #2529 standalone dev was signed off on
+2026-10-16 02:33Z; standalone prod has run from `~/prod/events` since
+2026-10-16 22:44Z, per the latest Jin comment on #2517. This source prune does
+not claim #2516 step 8 buy/refund acceptance is complete.
 
-**events#38 must merge and deploy before the #2529 standalone-events dev cutover.**
-Do not point dev traffic at the unmigrated standalone receiver: the signed-only
-bus settlement callback and vault-only contact endpoint are incompatible with
-its old shared-header contract. Keep using the patched monorepo copy until the
-standalone migration is deployed and verified. Production monorepo use while
-#2516 is blocked is separate from this dev-cutover gate.
+- #2804/#2806 already released `dev-events`/`prod-events` ecosystem ownership.
+  The standalone pm2 definitions use `~/dev/events` / `~/prod/events`.
+- Ports **3006/7006**, health **`/events/api/health`** and the Caddy **`/events`
+  prefix** are unchanged. Kernel local setup/check-env no longer manages events.
+- Public kernel surfaces consumed by the standalone app remain available.
+  All migration files, ownership metadata, existing tables and data are unchanged;
+  #1991/#2844 ownership work and the #2525 squash remain separate.
 
-## 11. events ownership release is split by environment (#2784)
+## 11. events prune production guard and rollback
 
-The dev release removes only `dev-events` from the kernel ecosystem and uses
-positive dev build ownership plus kernel-owner migrations. The separate prod
-release removes `prod-events` and applies ecosystem build ownership plus
-kernel-owner migration calls to prod. That PR stays **draft** and merges only
-in Ryan's #2516 window, after #2529 soak/sign-off and standalone prod is running
-and saved. Until that merge, prod remains fully kernel-owned and receives
-matching builds/dependencies through its existing unfiltered path. The `events` tables remain owner `events`;
-historical SQL is untouched. `apps/events` is not pruned by either release and
-must remain available while prod needs the monorepo copy.
+**Deploy guard: this pruned kernel reaches prod only in a release cut after
+#2516 step 8 (events buy/refund) passes. Until then
+`~/prod/imajin-ai/apps/events` stays on disk as the rollback path;
+Ryan's tap 2 gates the prod deploy.**
 
-**Cut over first, merge second — in each environment.** In #2529, satisfy §10,
-coordinate kernel deploys so they cannot re-point the process during transition,
-reconcile/remove the stale monorepo entry as required by the standalone runbook,
-and run `bash scripts/deploy.sh dev <approved-ref>` from `~/dev/events`.
-Verify the live definition and health on **3006 `/events/api/health`**, the public
-Caddy **`/events` prefix**, and app behavior; **`pm2 save`**, verify persisted
-definitions, **then merge the dev PR**. Hold that merge until standalone dev is
-actually running. Only after dev soak and Ryan's approval/window, repeat from
-`~/prod/events` with `bash scripts/deploy.sh prod <approved-ref>`, verify **7006**
-and `/events`, save/verify pm2, **then merge the prod draft at #2516**. Verify
-subsequent kernel deployments preserve the standalone definition.
+Merging #2517 does not authorize a deploy, release dispatch or removal of the
+prod disk copy. The #2784 split-window cutover instructions are historical;
+future events deployments follow the standalone repo's runbook.
 
-**Rollback:** before merge, hold the release and restore/reconcile the known-good
-monorepo definition using a matching build/dependency set. After merge, revert
-that environment's ownership release through review and deploy with the normal
-kernel workflow (prod approval remains required), rebuild/validate the monorepo
-copy before reconciling pm2, verify listener/prefixed health and **`pm2 save`** /
-verify persistence. Never run a frozen `.next` against drifting dependencies.
-No schema/data rollback, live server work or source pruning occurs here.
-See `deploy/README.md` for the full operator sequence.
+**Rollback:** an operator uses reviewed code and a matching build/dependency set
+through the standard approved workflow, verifies cwd/listener/prefixed health
+and pm2 persistence, and never runs a frozen `.next` against drifting dependencies.
+No schema/data rollback or live server work occurs in this source prune.
+See [deploy/README.md](../../deploy/README.md#events-is-external-now-2517).
 
 ## Decisions for Ryan
 

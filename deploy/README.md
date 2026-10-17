@@ -37,7 +37,7 @@ Standalone app deployments require their own caller migration, tracked in
 [events#28](https://github.com/ima-jin/events/issues/28);
 [market#13](https://github.com/ima-jin/market/issues/13) tracks a test-only reference.
 See [scoped pay configuration](../docs/ENVIRONMENTS.md#scoped-pay-callers-2735)
-and [events operator prerequisites](../apps/events/README.md#settlement-registered-app-contract).
+and [events operator prerequisites](https://github.com/ima-jin/events/blob/main/README.md).
 
 ## Node-owned Stripe card rail (#2790, #2793)
 
@@ -489,67 +489,47 @@ needs no dykil checkout at all. The `dykil` Postgres schema stays in place
 (the standalone app reads it read-only and the legacy import depends on it);
 nothing here drops it. See `docs/ops/DEPLOY-POSTURE.md` for the full note.
 
-## events ownership released per cutover window (#2784)
+## events is external now (#2517)
 
-The dev release (#2804) removes `dev-events`; this separate prod-window release
-removes `prod-events` from `ecosystem.prod.config.js`, extends positive ecosystem
-build ownership to prod, and scopes both prod migration calls to `--owner kernel`.
-It is **DRAFT ON PURPOSE**, stacked after #2804, and merges **only in Ryan's
-#2516 window**, after #2529 soak/sign-off and standalone prod-events is healthy
-and saved. Before this prod release merges, production remains kernel-owned:
-the prior ecosystem/build/unfiltered migration path continues to manage the
-monorepo process. Never merge first and leave a frozen prod `.next` running
-against drifting dependencies. The dev ecosystem/workflow are unchanged by
-the incremental prod delta.
+Events is built, tested and deployed from [ima-jin/events](https://github.com/ima-jin/events),
+not this workspace. Standalone dev was signed off in #2529 on 2026-10-16 02:33Z;
+prod has run from `~/prod/events` since 2026-10-16 22:44Z. #2804 and #2806
+already removed `dev-events` and `prod-events` from the kernel ecosystems.
+The processes use `~/dev/events` / `~/prod/events`; #2517 removes the kernel
+source copy and local setup/check-env references. A kernel-only node needs
+no events checkout. The app owns its deploy script and registered identity.
+Its ports **3006 dev / 7006 prod**, health **`/events/api/health`**, and Caddy
+**`/events` prefix** are unchanged; no Caddy reconfiguration accompanies this prune.
 
 The `events` schema and data remain owned by `events` / `ima-jin/events`.
-Historical shared SQL remains unchanged under #1991; this is not a baseline
-split. `apps/events` stays until prune-on-dev is safe, and must also remain
-available while prod still depends on the monorepo copy. No check-env contract,
-Caddy configuration, schema or data is changed here.
+All migration files and ownership metadata remain untouched, including shared
+history. This is not the #1991 ownership handoff, #2844 or the #2525 baseline squash;
+no schema or data is dropped. Public kernel APIs used by standalone remain available.
 
-### Operator sequence — standalone first, ownership release second
+### Deploy guard — source prune is not production approval
 
-**Dev (#2529):** hold #2804 until standalone `dev-events` is actually running.
-Satisfy the standalone prerequisites (including events#38), coordinate a pause
-in kernel deploys during the transition, and from `~/dev/events` run
-`bash scripts/deploy.sh dev <approved-ref>`. The standalone script rejects a
-stale monorepo pm2 definition: at the approved cutover, inspect the old entry
-without exposing envs, remove that stale named entry and persist the removal
-as directed by the app's runbook, then run its deploy script to create the
-standalone definition. Verify live cwd/exec/args and listener belong to
-`~/dev/events`, health at **3006 `/events/api/health`** and the public Caddy
-**`/events` prefix**, and app behavior. Run **`pm2 save`**, verify persisted
-cwd/exec/port, **then merge the dev PR**. Verify the following kernel deploy
-keeps that standalone definition. Complete the #2529 soak before prod approval.
+**Deploy guard: this pruned kernel reaches prod only in a release cut after
+#2516 step 8 (events buy/refund) passes. Until then
+`~/prod/imajin-ai/apps/events` stays on disk as the rollback path;
+Ryan's tap 2 gates the prod deploy.**
 
-**Prod (#2516):** keep the separate prod-release PR **draft**. Only after #2529
-soak plus Ryan's sign-off, during his window, perform the equivalent approved
-stale-entry reconciliation and run `bash scripts/deploy.sh prod <approved-ref>`
-from `~/prod/events`. Verify live definition, health on **7006
-`/events/api/health`**, Caddy `/events` and app behavior, run **`pm2 save`** and
-verify persistence, **then merge the prod-release PR in that window**. Resume
-kernel deployment only with the correct release/config. Ports **3006/7006**
-and the Caddy `/events` prefix remain unchanged throughout.
+Do not deploy this prune, remove the on-disk rollback copy or dispatch a release
+as part of the source cleanup. Follow the reviewed release workflow and existing
+production approval only after that acceptance gate is satisfied. The completed
+cutover sequence is recorded in #2529/#2516/#2784; use the standalone repo's
+current runbook for future app deployments, not the former monorepo sequence.
 
 Name-based kernel restarts may still bounce standalone processes, but reuse
 stored definitions. Removing an ecosystem declaration neither performs cutover
 nor makes it safe to leave a monorepo process on a frozen build.
 
-### Rollback — per environment
+### Rollback
 
-If standalone verification fails before merge, **do not merge** that environment's
-ownership release. Reconcile the known-good monorepo pm2 definition from the
-still-owning ecosystem, using a verified matching build/dependency set, verify
-its listener and `/events/api/health`, and **`pm2 save`** / verify persistence.
-If the release has merged, **revert that environment's release** through a
-reviewed change and deploy using the standard kernel workflow (with production
-approval for prod). Build/validate the monorepo copy with its matching dependencies
-before restoring/reconciling its pm2 entry; check health and persist with
-**`pm2 save`**. Never restart an old `.next` on drifting `node_modules`.
-No SQL/data rollback or source pruning is part of this change.
-
-All commands above are operator-only instructions, not actions performed by this PR.
+Preserve the prod disk copy until the guard above clears. A rollback is an
+operator action using reviewed code and a verified matching build/dependency set,
+through the standard approved workflow; verify cwd, listener, prefixed health and
+pm2 persistence. Never restart an old `.next` against drifting `node_modules`.
+No SQL/data rollback or live server action is part of #2517.
 
 ## corpus is not in the prod pm2 config (#2232, decided 2026-09-22)
 

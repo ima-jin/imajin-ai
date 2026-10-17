@@ -3,6 +3,14 @@
 Refs #2519 (step 1 of 5) · Part of #1985 · Companion to
 [`dykil-entanglements.md`](./dykil-entanglements.md)
 
+**Historical design/audit:** the route inventory, gap assessments and table
+disposition proposals below record #2519's pre-extraction model, not current
+source or authorization to drop data. Current apps live in
+[ima-jin/dykil](https://github.com/ima-jin/dykil) and
+[ima-jin/events](https://github.com/ima-jin/events); their kernel copies were
+pruned in #2523 and #2517. The events prune leaves all migration files,
+ownership metadata, schemas and data untouched.
+
 Dykil is not a template fork. It dissolves into three kernel primitives:
 
 - **Survey definition = signed document** (a media asset owned by the survey owner's DID).

@@ -1,5 +1,11 @@
 # Audit: Events Service `sendEmail` Call Sites (#889)
 
+**Historical audit:** the call sites, line numbers and proposed changes below
+record the pre-extraction #889 monorepo implementation, not files available at
+HEAD. `apps/events` was pruned in #2517; current app behavior and email work
+belong to [ima-jin/events](https://github.com/ima-jin/events). Do not recreate
+these paths or import kernel-internal bus/email code into a standalone app.
+
 ## Overview
 
 Seven `sendEmail()` call sites in `apps/events/` bypass the bus → notify reactor → kernel pipeline. Each already publishes a bus event for attestations/MJN in some cases, but the buyer-facing email was left as a direct send when the notify reactor was wired.

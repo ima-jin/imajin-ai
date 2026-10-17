@@ -27,28 +27,30 @@ Revocation is the option to leave: withdraw → soft tombstone → hard destruct
 
 A node operator runs the kernel, not a calendar. Third-party services are **apps built on Imajin**, registered as identities and limited to the [registered-app contract](https://github.com/ima-jin/imajin-ai/issues/1981): scoped tokens, published SDK and public kernel APIs, not shared kernel internals.
 
-Generated inventory of `apps/*` at the source commit recorded below (includes the kernel and internal services without pretending they are all third-party apps):
+Current `apps/*` inventory after #2517 (includes the kernel and internal services without pretending they are all third-party apps):
 
-| Directory at HEAD | What it is | Boundary / status (2026-10-16) | Owned README |
+| Directory at HEAD | What it is | Boundary / status (2026-10-17) | Owned README |
 |---|---|---|---|
 | `apps/broker-agent` | Telegram conversational surface for broker-mediated coordination | In monorepo; rail/app classification remains undecided in #1981; not asserted production-ready | [README](apps/broker-agent/README.md) |
 | `apps/corpus` | Per-DID indexing and BM25 search | In monorepo; internal daemon, not a public vertical; rail/app classification remains undecided | [README](apps/corpus/README.md) |
-| `apps/events` | Event pages, ticketing and check-in | Monorepo copy retained; standalone dev exists, but prod cutover is **not complete** as of 2026-10-16 ([#2516](https://github.com/ima-jin/imajin-ai/issues/2516)) | [README](apps/events/README.md) |
 | `apps/kernel` | Attestation · Communication · Attribution · Settlement · Discovery · Revocation, plus supporting rails | The kernel itself, **not** a third-party app | [README](apps/kernel/README.md) |
 
 Apps whose monorepo copies have already been pruned:
 
-| App | What you compose | Location / status as of 2026-10-16 | Owned README |
+| App | What you compose | Location / status as of 2026-10-17 | Owned README |
 |---|---|---|---|
 | coffee | Tips and support | Standalone prod + dev; `apps/coffee` absent at HEAD | [coffee](https://github.com/ima-jin/coffee/blob/main/README.md) |
+| events | Event pages, ticketing and check-in | Standalone prod + dev signed off; kernel copy pruned in #2517 | [events](https://github.com/ima-jin/events/blob/main/README.md) |
 | learn | Courses and learning | Standalone prod + dev; `apps/learn` absent at HEAD | [learn](https://github.com/ima-jin/learn/blob/main/README.md) |
 | market | Listings and purchases | Standalone prod + dev; `apps/market` absent at HEAD | [market](https://github.com/ima-jin/market/blob/main/README.md) |
 | links | Link-in-bio pages | Own repository; monorepo copy pruned 2026-09-28 | [links](https://github.com/ima-jin/links/blob/main/README.md) |
 | dykil | Surveys and signed responses | Own repository; monorepo copy pruned ([#2523](https://github.com/ima-jin/imajin-ai/issues/2523)); cutover/import acceptance **still in progress** ([#2522](https://github.com/ima-jin/imajin-ai/issues/2522)) | [dykil](https://github.com/ima-jin/dykil/blob/main/README.md) |
 
-Events also has a [standalone app-owned README](https://github.com/ima-jin/events/blob/main/README.md); the retained [monorepo README](apps/events/README.md) documents the copy still present here. **Events prod cutover #2516 is not done as of 2026-10-16.**
+Events standalone dev was signed off on 2026-10-16 02:33Z and prod has run from `~/prod/events` since 2026-10-16 22:44Z ([#2517 status](https://github.com/ima-jin/imajin-ai/issues/2517#issuecomment-6228145370)). Ports **3006/7006** and the Caddy **`/events` prefix** are unchanged; app setup and deployment belong to [ima-jin/events](https://github.com/ima-jin/events).
 
-Under the 2026-10-09 [prune-on-dev ruling](https://github.com/ima-jin/imajin-ai/issues/1981#issuecomment-6083425361), app source is pruned once standalone dev holds; pruning does not prove prod acceptance and does not drop app schema/data. Events is the explicit live-prod exception.
+Under the 2026-10-09 [prune-on-dev ruling](https://github.com/ima-jin/imajin-ai/issues/1981#issuecomment-6083425361), app source is pruned once standalone dev holds; pruning does not prove prod acceptance and does not drop app schema/data.
+
+**Deploy guard:** this pruned kernel reaches prod only in a release cut after **#2516 step 8 (events buy/refund) passes**. Until then **`~/prod/imajin-ai/apps/events` stays on disk as the rollback path**; **Ryan's tap 2 gates the prod deploy**. Merging this source prune is not deployment approval.
 
 ## Build an app
 
@@ -110,7 +112,7 @@ The [OpenClaw Imajin plugin](https://github.com/ima-jin/openclaw-imajin-plugin/b
 
 ## Run a node
 
-For a local kernel: **Node.js 22+, pnpm 9, PostgreSQL 14+** and its client tools. The [setup helper](scripts/setup-local.sh) installs workspace dependencies, prepares local env files (including the retained events copy), migrates the local database and provisions service bootstrap identities. It does **not** require starting a vertical.
+For a local kernel: **Node.js 22+, pnpm 9, PostgreSQL 14+** and its client tools. The [setup helper](scripts/setup-local.sh) installs workspace dependencies, prepares local kernel env files, migrates the local database and provisions service bootstrap identities. It does **not** set up or require starting standalone events or another vertical.
 
 ```bash
 git clone https://github.com/ima-jin/imajin-ai.git
@@ -126,7 +128,7 @@ Setup details: [local development](docs/DEVELOPER.md). Production deployment: [o
 ## Project status
 
 <!-- stats:start -->
-Generated 2026-10-17 UTC from source commit [`ddc114bb`](https://github.com/ima-jin/imajin-ai/commit/ddc114bbd028a1efa5852569e36d0569343c8739) for the 2026-10-16 replay.
+Historical snapshot generated 2026-10-17 UTC from source commit [`ddc114bb`](https://github.com/ima-jin/imajin-ai/commit/ddc114bbd028a1efa5852569e36d0569343c8739) for the 2026-10-16 replay, before the #2517 events prune. The app count below includes that former copy; the current inventory above does not.
 
 | Repository metric | Computed value |
 |---|---|

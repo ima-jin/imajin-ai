@@ -77,7 +77,12 @@ Proposal: promote the countersign layer to the kernel — a pending-signatures s
 
 ## 5. The kernel sheds its verticals
 
-Current `apps/`: broker-agent, coffee, corpus, dykil, events, kernel, learn, links, market. Under this RFC:
+Historical `apps/` inventory at the 2026-08-12 proposal: broker-agent, coffee,
+corpus, dykil, events, kernel, learn, links, market. Extraction has since moved
+the verticals to their own repos; events lives in [ima-jin/events](https://github.com/ima-jin/events)
+and its monorepo copy was pruned in #2517. The 2026-08-11 traces and sequencing
+below remain historical design evidence, not a current code inventory or deploy plan.
+Under the original proposal:
 
 - **Step out as external services** (composing via `requireAppAuth`, exactly like `catalyst-power/xprize`): **market, events, coffee, learn.** Each has a transactional component that becomes a receipt-grammar configuration; none needs kernel-internal access once the grammar and the countersign layer are kernel-level.
 - **Stays kernel:** the six primitives, identity/auth, pay/settlement, chat, media, connections, the bus/reactor substrate, the receipt grammar, the countersign layer, inference.

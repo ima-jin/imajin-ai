@@ -40,7 +40,7 @@ Run with `--help` for all options. Use `--force` to regenerate `.env.local` file
 - Runs `pnpm install`
 - Creates the `imajin_dev` database (skip if it already exists)
 - Generates an Ed25519 keypair (`AUTH_PRIVATE_KEY`) and all internal API keys
-- Writes `.env.local` for kernel and every in-repo vertical (events) with secrets wired together and service URLs pointing to the consolidated kernel at `:3000`. `links` (#1986 phase 2), `learn` (#2503), `coffee` (#2500), `market` (#2512) and `dykil` (#2523) now live in their own repos, [ima-jin/links](https://github.com/ima-jin/links), [ima-jin/learn](https://github.com/ima-jin/learn), [ima-jin/coffee](https://github.com/ima-jin/coffee), [ima-jin/market](https://github.com/ima-jin/market) and [ima-jin/dykil](https://github.com/ima-jin/dykil), and are set up separately.
+- Writes the kernel's `.env.local` with local service URLs pointing to the consolidated kernel at `:3000`. All extracted verticals are set up separately in their own repos: [ima-jin/events](https://github.com/ima-jin/events) (#2517), [ima-jin/links](https://github.com/ima-jin/links), [ima-jin/learn](https://github.com/ima-jin/learn), [ima-jin/coffee](https://github.com/ima-jin/coffee), [ima-jin/market](https://github.com/ima-jin/market) and [ima-jin/dykil](https://github.com/ima-jin/dykil).
 - Runs all migrations via `./scripts/migrate.sh`
 
 ### Minimum Services for Local Dev
@@ -51,7 +51,7 @@ You don't need to run all apps. Start with what you need:
 |---------|------|-----|
 | **kernel** | 3000 | Required — auth, identity, profile, registry, and all core platform services |
 
-Add userspace apps (events, etc.) as needed. Each app's `.env.example` has all the defaults.
+Add userspace apps as needed from their standalone repositories. For events, follow [its owned README](https://github.com/ima-jin/events/blob/main/README.md); it is not a workspace filter target here. Its existing ports (3006 dev / 7006 prod) and `/events` routing prefix are unchanged.
 
 ### Fresh Start (Reset Everything)
 
@@ -131,7 +131,6 @@ Service-to-service (server-side) URLs use `AUTH_SERVICE_URL=http://localhost:300
 ```bash
 # Run a single service in dev mode
 pnpm --filter @imajin/kernel dev       # localhost:3000
-pnpm --filter @imajin/events dev       # localhost:3006
 
 # Build a service
 pnpm --filter @imajin/kernel build
@@ -173,7 +172,7 @@ If you edit a shared package (e.g., `@imajin/ui`), the consuming app may not pic
 Fix: delete the build cache and rebuild:
 
 ```bash
-cd apps/events
+cd apps/kernel
 rm -rf .next
 pnpm build
 ```
@@ -196,7 +195,7 @@ Each service owns a Postgres schema within the shared database. They don't share
 | `media` | kernel | assets, folders |
 | `pay` | kernel | payments, balances |
 | `registry` | kernel | nodes, heartbeats |
-| `events` | events | events, tickets |
+| `events` | [standalone events](https://github.com/ima-jin/events) | events, tickets (historical migrations remain unchanged in the kernel repo; no schema/data removal in #2517) |
 | `coffee` | coffee | pages, tips |
 | `learn` | learn | courses, modules, lessons, enrollments, lesson_progress (app now in [ima-jin/learn](https://github.com/ima-jin/learn), #2503; schema stays here) |
 
@@ -243,15 +242,15 @@ npx drizzle-kit studio
 
 ## Adding a New Service
 
-1. **Copy an existing app** (e.g., `apps/events`) as a starting point
-2. **Update `package.json`**: name, port in dev script
-3. **Create schema**: new pgSchema in `src/db/schema.ts`
-4. **Copy auth lib**: `src/lib/auth.ts` from any existing app
-5. **Create `.env.example`** with required variables
-6. **Assign port**: follow the convention in ENVIRONMENTS.md
-7. **Build and verify**: `pnpm --filter @imajin/new-service build`
+Start from [ima-jin/imajin-app-template](https://github.com/ima-jin/imajin-app-template)
+in a separate repository, preserving its history. Follow its owned README and the
+[registered-app contract](./REGISTRATION.md): scoped tokens, published `@ima-jin/*`
+SDK packages and public kernel APIs, never kernel-internal imports or another
+service's tables. Configure and build the app using its own setup/deploy scripts;
+do not copy a removed monorepo app or add a workspace filter for it here.
 
-See [DEPLOYMENT.md](../DEPLOYMENT.md) for server-side setup (pm2, Caddy, DNS).
+See [ENVIRONMENTS.md](./ENVIRONMENTS.md) and [deploy/README.md](../deploy/README.md)
+for kernel deployment configuration (pm2, Caddy, DNS).
 
 ## Code Patterns
 

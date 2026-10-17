@@ -1,5 +1,12 @@
 # Cookie isolation & scoped app tokens (#1069 Phase 1)
 
+**Historical phase/audit context:** rollout language below records #1069 Phase 1,
+not current app deployment status. Events now runs standalone from
+[ima-jin/events](https://github.com/ima-jin/events) in dev and prod; its kernel
+copy was pruned in #2517. It is userspace, not a kernel component; the historical
+3006/7006 port assignment and `/events` prefix do not confer kernel trust.
+Current app authentication behavior must be checked in the app's own repository.
+
 Status: **Phase 1 — primitives only.** Everything in this document is
 opt-in and off by default. No app's default authentication behavior changes
 as a result of the code that ships alongside this doc. Flipping any of the
@@ -45,7 +52,7 @@ processes), `docs/ENVIRONMENTS.md`, and `docs/developer-guide.md`.
 | Host / path | Backing process (port) | Classification | Notes |
 |---|---|---|---|
 | `jin.imajin.ai` (`auth`, `pay`, `profile`, `connections`, `registry`, `chat`, `media`, `notify` — via subdomains per ENVIRONMENTS.md, or paths per developer-guide.md) | `prod-jin` (7000) | Kernel-authenticated | One Next.js process (RFC-19). This is the trusted core the session cookie exists to authenticate. |
-| `jin.imajin.ai/events` (or `events.imajin.ai`) | `prod-events` (7006) | **Ambiguous — see below** | `ENVIRONMENTS.md` lists it under the "Core" port tier; RFC-19 explicitly lists `events` under "What's NOT in the kernel" (userspace). Treat as userspace (lower trust) until confirmed otherwise. |
+| `jin.imajin.ai/events` | `prod-events` (7006) | Userspace app | Standalone [ima-jin/events](https://github.com/ima-jin/events) (#2517); historical core-range port, unchanged `/events` route. Not part of the kernel ecosystem. |
 | `jin.imajin.ai/coffee` | `prod-coffee` (7100) | Userspace app | Tipping/support pages. Chosen as the Phase 1 reference app (low risk, small surface). Now a standalone app from [ima-jin/coffee](https://github.com/ima-jin/coffee) (#2500). |
 | `jin.imajin.ai/dykil` | `prod-dykil` (7101) | Userspace app | Community spending surveys. |
 | `jin.imajin.ai/links` | `prod-links` (7102) | Userspace app | Link-in-bio pages. |
@@ -86,9 +93,9 @@ processes), `docs/ENVIRONMENTS.md`, and `docs/developer-guide.md`.
    the same full-trust credential the kernel uses for itself. This is why
    the fix is a token primitive the app must actively request and that is
    bound to its own audience, not just a narrower cookie `domain` attribute.
-3. **`events`'s classification is internally contradictory** in this
-   repo's own docs (see table above) and needs a human call before Phase 2
-   routing decisions are made for it.
+3. **Events classification resolved by extraction (#2517):** it is a standalone
+   userspace app. Live routing and cookie exposure still require operator
+   verification; classification alone does not provide isolation.
 4. **`fixready`, `karaoke`, and the undocumented `scorecard` app** live
    outside this monorepo or are simply undocumented; their cookie handling
    cannot be audited here and must be checked directly against their own
@@ -214,8 +221,8 @@ migration.
 3. **Phase 3 — flip the cookie scope.** Set `SESSION_COOKIE_SCOPE=host` on
    the kernel first, then on each app that has completed Phase 2, in the
    order the audit table above orders them by confidence (kernel's own
-   domains → coffee/dykil/links/learn/market → events, once its
-   classification is resolved → fixready/karaoke/scorecard, once audited).
+   domains → coffee/dykil/links/learn/market/events →
+   fixready/karaoke/scorecard, once audited).
    Expect a brief forced re-login window for any user whose browser had
    only ever held the old wildcard cookie the moment their next request
    lands on a host that no longer receives it. **Rollback:** unset
@@ -236,8 +243,8 @@ Explicitly out of scope for this PR, tracked here rather than lost:
 
 - Live DNS/Caddy vhost inventory to close the "forgotten/preview subdomain"
   unknown (needs ops-server access, not just this repo).
-- Resolving whether `events` is kernel or userspace, and updating
-  `docs/ENVIRONMENTS.md` / `docs/developer-guide.md` / RFC-19 to agree.
+- Events is now explicitly standalone userspace (#2517); verify its actual
+  cookie/token behavior in ima-jin/events rather than inferring trust from its port.
 - Auditing `fixready`, `karaoke`, and `scorecard` (separate repos / entirely
   undocumented) for how they consume the session cookie today.
 - Moving `verifyAppToken` fully in-process (kernel public key published via

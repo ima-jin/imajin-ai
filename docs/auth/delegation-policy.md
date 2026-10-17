@@ -43,19 +43,15 @@ Ruling a: `POST /pay/api/balance/withdraw` and `POST /pay/api/payment-requests/[
 
 ## Inventory
 
-Every owner-mutation route reviewed across `apps/kernel` and the userspace services (`events`; `learn`, `coffee`, `market` and `dykil` were reviewed too, until they left this repo in #2503, #2500, #2512 and #2523 — their `learn.course.delete`, `learn.module.delete`, `learn.lesson.delete`, `coffee.page.delete`, `coffee.tip`, `market.listing.purchase`, `market.listing.delete`, `market.seller.settings` and `dykil.survey.delete` entries went with them, since this registry only lists routes whose handlers live here). "Prior gate" is what existed before this change.
+The inventory below covers owner-mutation handlers in `apps/kernel`.
+Events left this repo in #2517, following learn (#2503), coffee (#2500),
+market (#2512) and dykil (#2523); their app-local route entries are no longer
+kernel registry entries. Events' current routes and delegation decisions belong
+to [ima-jin/events](https://github.com/ima-jin/events). "Prior gate" records
+the historical state before the policy was applied.
 
 | Route | Irreversible? | Money / attribution? | Prior gate | Class | Key — why |
 | --- | --- | --- | --- | --- | --- |
-| `POST /api/campaign/[eventId]/settle` (events) | yes | yes | none | **value-moving** | `events.campaign.settle` — settles a funded campaign |
-| `POST /api/checkout/balance` (events) | yes | yes | none | **value-moving** | `events.checkout.balance` — pays for tickets from balance |
-| `POST /api/events/[id]/cohosts` (events) | yes | yes | none | **value-moving** | `events.event.cohost-add` — adds a co-host (attribution share) |
-| `PATCH /api/events/[id]/fair` (events) | yes | yes | none | **value-moving** | `events.event.fair-update` — rewrites event .fair splits |
-| `POST /api/orders/[id]/confirm-payment` (events) | yes | yes | none | **value-moving** | `events.order.confirm-payment` — confirms an e-Transfer order |
-| `POST /api/orders/[id]/refund` (events) | yes | yes | none | **value-moving** | `events.order.refund` — refunds an order |
-| `POST /api/tickets/[id]/confirm-payment` (events) | yes | yes | none | **value-moving** | `events.ticket.confirm-payment` — confirms an e-Transfer, issues ticket |
-| `POST /api/events/[id]/tickets/[ticketId]/mark-refund-sent` (events) | yes | yes | none | **value-moving** | `events.ticket.mark-refund-sent` — records an off-platform refund |
-| `POST /api/events/[id]/tickets/[ticketId]/refund` (events) | yes | yes | none | **value-moving** | `events.ticket.refund` — refunds a ticket |
 | `PUT /media/api/assets/[id]/fair` (kernel) | yes | yes | none | **value-moving** | `media.asset.fair-update` — rewrites .fair attribution and splits |
 | `POST /media/api/assets/[id]/settle` (kernel) | yes | yes | none | **value-moving** | `media.asset.settle` — buyer initiates a priced settlement |
 | `POST /media/api/assets/[id]/settle/confirm` (kernel) | yes | yes | none | **value-moving** | `media.asset.settle-confirm` — confirms payment receipt, signs receipt |
@@ -69,8 +65,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `POST /pay/api/escrow` (kernel) | yes | yes | none | **value-moving** | `pay.escrow.create` — locks funds in escrow |
 | `PUT /pay/api/escrow` (kernel) | yes | yes | none | **value-moving** | `pay.escrow.update` — releases or refunds escrowed funds |
 | `POST /pay/api/payment-requests/[id]/settle` (kernel) | yes | yes | none | **value-moving** | `pay.payment-request.settle` — marks a payment request settled |
-| `POST /api/campaign/[eventId]/cancel` (events) | yes | no | none | **irreversible** | `events.campaign.cancel` — cancels a funding campaign |
-| `POST /api/events/[id]/tickets/[ticketId]/cancel` (events) | yes | no | none | **irreversible** | `events.ticket.cancel` — cancels an issued ticket |
 | `DELETE /calendar/api/entries/[id]` (kernel) | yes | no | none | **irreversible** | `kernel.calendar.entry.delete` — deletes a calendar entry |
 | `DELETE /chat/api/conversations/[id]` (kernel) | yes | no | none | **irreversible** | `kernel.chat.conversation.delete` — deletes a conversation |
 | `DELETE /chat/api/d/[did]/messages/[msgId]` (kernel) | yes | no | none | **irreversible** | `kernel.chat.message.delete` — deletes a message |
@@ -86,8 +80,6 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 | `DELETE /media/api/folders/[id]` (kernel) | yes | no | none | **irreversible** | `media.folder.delete` — deletes a folder |
 | `POST /media/api/workspace/history-grant` (kernel) | yes | no | none | **irreversible** | `media.workspace.history-grant` — discloses workspace history, no revoke path yet |
 | `POST /pay/api/payment-requests/[id]/void` (kernel) | yes | no | none | **irreversible** | `pay.payment-request.void` — voids a payment request |
-| `POST /api/campaign/pledge` (events) | no | initiates only | none | **reversible** | `events.campaign.pledge` — creates a Stripe SetupIntent; the owner still authorises the card (proposal artifact) |
-| `POST /api/campaign/pledge/confirm` (events) | no | initiates only | none | **reversible** | `events.campaign.pledge-confirm` — verifies a SetupIntent the owner already authorised in Stripe.js |
 | `PATCH /media/api/assets/[id]/article` (kernel) | no | no | none | **reversible** | `media.asset.article` — article projection metadata |
 | `POST /media/api/assets/[id]/classify` (kernel) | no | no | none | **reversible** | `media.asset.classify` — classification metadata |
 | `PUT /media/api/assets/[id]/content` (kernel) | no | no | none | **reversible** | `media.asset.content-write` — versioned content overwrite |
@@ -103,10 +95,10 @@ Every owner-mutation route reviewed across `apps/kernel` and the userspace servi
 
 - **Already self-only** (refuse `actingFor` outright): `POST /auth/api/grants`, `POST /auth/api/agents/provision`, `/auth/api/identity/[did]/agents`, `/auth/api/apps`, the `/jin` operator-approval and vault-proposal rails (`isUnderActAs`).
 - **Creation / communication on the owner's behalf** — the intended agent use: `POST` create routes (assets, folders, pages, surveys, events, courses, listings), chat/message send and edit, reactions, calendar entry create/update, availability, connections invites, notifications read, usage/receipts emit.
-- **Machine-to-machine, no owner delegate**: webhooks (`quickbooks`, `google`, `events/webhook/payment`), `infer/*`, `usage/*` emitters, `registry/api/bump/*`, admin routes (own `requireAdmin`).
+- **Machine-to-machine, no owner delegate**: webhooks (`quickbooks`, `google`), `infer/*`, `usage/*` emitters, `registry/api/bump/*`, admin routes (own `requireAdmin`).
 - **Authority-shrinking**: `POST /api/auth/revoke`, `DELETE /api/broker/consent/[id]`, grant `ack` — a delegate withdrawing access cannot hurt the owner and the owner can re-grant.
 - **Config pointers**, re-settable: `PUT/DELETE /warp/api/environment`, `/local/api/settings`, notification preferences, profile contact-visibility.
-- **Considered, left for a follow-up ruling**: `PATCH /events/[id]` / `PUT` (event metadata incl. status), `events/.../tiers`, `.../invites`, `.../message` (outbound email), `DELETE` group/member routes under `connections/api/groups` (session-cookie auth, no actingFor path today), `checkout/free`, `checkout/etransfer`, and learn's enroll route (now in ima-jin/learn, #2503).
+- **Considered, left for a follow-up ruling**: `DELETE` group/member routes under `connections/api/groups` (session-cookie auth, no actingFor path today). Historical events metadata/tiers/invites/message and checkout/free/etransfer reviews now belong to ima-jin/events (#2517), as learn's enroll review belongs to ima-jin/learn (#2503).
 
 ## DECISION cards
 

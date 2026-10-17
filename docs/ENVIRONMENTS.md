@@ -49,7 +49,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 ### Port Convention
 
 - `3xxx` = development, `7xxx` = production (1:1 mapping)
-- `x000-x099` — **Core platform** (kernel, events)
+- `x000-x099` — **Core platform** (kernel); standalone events retains its historical 3006/7006 assignment without becoming kernel-owned
 - `x100-x199` — **Imajin apps** (coffee, dykil, links, learn — account-based, DID-linked)
 - `x400-x499` — **Client apps** (fixready, karaoke — standalone repos, own databases)
 - Internal daemons (e.g. corpus) are not subdomain-routed and don't follow this
@@ -60,7 +60,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
 | Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
-| App | events (dev #2804; prod release only at #2516 window) | 3006 | 7006 | jin.imajin.ai/events |
+| App | events (external, [ima-jin/events](https://github.com/ima-jin/events)) | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
 | Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
 | Imajin | links (external, [ima-jin/links](https://github.com/ima-jin/links)) | 3102 | 7102 | jin.imajin.ai/links |
@@ -96,29 +96,23 @@ Caddy route (`jin.imajin.ai/dykil`) are unchanged; `dev-dykil` serves from
 `~/dev/dykil` and `prod-dykil` from `~/prod/dykil`, each a standalone pm2
 process claimed with its own app identity (see `docs/REGISTRATION.md`).
 
-**events ownership split (#2784):** dev releases ownership in #2804. The separate
-prod-window draft removes `prod-events` and scopes prod builds/migrations only
-when it merges in Ryan's #2516 window, after #2529 soak/sign-off and standalone
-prod is running and saved. **Until that merge**, the kernel keeps its existing
-prod ecosystem, build, migration and reconciliation authority at
-`~/prod/imajin-ai/apps/events`; production never relies on a frozen build. The `events` schema
-and data remain app-owned; `apps/events` remains available for prod.
+**events is external (#2517):** standalone dev was signed off in #2529 on
+2026-10-16 02:33Z; prod has run from `~/prod/events` since 2026-10-16 22:44Z.
+#2804 and #2806 released kernel ecosystem ownership. `dev-events` and
+`prod-events` now belong to [ima-jin/events](https://github.com/ima-jin/events)
+checkouts at `~/dev/events` and `~/prod/events`. The kernel no longer builds
+or sets up events; app deployment follows that repo's runbook. Ports
+**3006/7006**, health **`/events/api/health`**, and the Caddy **`/events` prefix**
+are unchanged. Existing migrations, ownership metadata, schema and data are
+untouched by this source prune.
 
-**Before merging dev**, the #2529 operator runs the standalone deploy script
-from `~/dev/events` (`bash scripts/deploy.sh dev <approved-ref>`), reconciles any
-stale pm2 definition per that runbook, verifies **3006 `/events/api/health`**,
-public Caddy **`/events`**, and live cwd/exec/listener, then **`pm2 save`** and
-verifies persistence. Only then merge the dev release. At Ryan's #2516 window,
-after dev soak/sign-off, do the same from `~/prod/events` with `deploy.sh prod`,
-health on **7006**, and save/verify pm2 **before merging the prod draft**.
-Coordinate kernel deployments during transition; neither PR itself cuts over.
-
-**Rollback:** hold an unmerged release if checks fail; restore the known-good
-monorepo definition with matching build/dependencies. If merged, revert the
-appropriate release through review and the standard kernel deploy workflow
-(prod approval required), rebuild/verify before reconciling pm2, check health
-and run **`pm2 save`** / verify persistence. Do not restart a stale `.next`
-against drifting dependencies. No SQL/data rollback. See `deploy/README.md`.
+**Deploy guard:** this pruned kernel reaches prod only in a release cut after
+**#2516 step 8 (events buy/refund) passes**. Until then
+**`~/prod/imajin-ai/apps/events` stays on disk as the rollback path**;
+**Ryan's tap 2 gates the prod deploy**. Do not deploy or remove that rollback
+copy as part of merging #2517. Any rollback uses reviewed code and matching
+build/dependencies through the standard approved workflow; no SQL/data rollback.
+See [deploy/README.md](../deploy/README.md#events-is-external-now-2517).
 
 The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when
@@ -200,9 +194,9 @@ directly above a `KEY=value` line, change that:
 `prod-carve-out` is an interim, issue-linked exception: its reason must contain
 an issue reference matching `/#\d+/`; without one the comment is inert and the
 key stays required, including in prod. Only `--env prod` permits the warning.
-The three monorepo events app-identity keys use it until the standalone cutover
-(#2516): checkout/refund/settle and payment webhooks fail closed until set.
-Remove these annotation lines when `apps/events` is pruned (#2517) after #2516.
+The former monorepo events app-identity carve-outs were removed with its source
+in #2517. Standalone events validates its configuration in its own repository;
+kernel check-env does not require an events `.env.local`.
 
 ```
 # vault-sourced: fetched at boot via loadFromVault (#2243), do not set locally
@@ -334,12 +328,11 @@ dropped; other running processes keep theirs until restart.
 
 ### Service bootstrap identities (#2353, #2442)
 
-Each userspace service that fetches `ATTESTATION_INTERNAL_API_KEY` from the
-vault at boot authenticates with its own bootstrap identity:
+An in-repo service that fetches a kernel-internal credential from the vault at
+boot authenticates with its own bootstrap identity:
 `<SVC>_VAULT_BOOTSTRAP_DID` / `_PRIVATE_KEY` in `apps/<svc>/.env.local`
-(today: events; plus the kernel's own
-`KERNEL_CRON_VAULT_BOOTSTRAP_*` pair for its cron scheduler, which is granted the
-cron secret instead of the attestation key). The pair stays **required**
+(the kernel's own `KERNEL_CRON_VAULT_BOOTSTRAP_*` pair serves its cron scheduler,
+which is granted the cron secret instead of the attestation key). The pair stays **required**
 (no `check-env` annotation) — but nobody mints it by hand any more.
 `scripts/provision-service-bootstrap.mjs` does, and the deploy runs it:
 
@@ -376,7 +369,7 @@ cron secret instead of the attestation key). The pair stays **required**
 Local dev: `scripts/setup-local.sh` runs the same script with `--all` after
 migrations. To provision (or re-check) by hand:
 `node --env-file=apps/kernel/.env.local scripts/provision-service-bootstrap.mjs --all`
-(or pass a single `<service>`, e.g. `events`).
+(or pass a single in-repo `<service>`, e.g. `kernel`).
 
 #### Standalone apps in their own repo (#2712)
 

@@ -20,7 +20,7 @@ You interact with MJN the same way you interact with Stripe or Auth0 — by call
 | **profile** | jin.imajin.ai/profile | Public profiles, handles, discovery |
 | **connections** | jin.imajin.ai/connections | Trust graph — pods, invites, groups, vouch attestations |
 | **pay** | jin.imajin.ai/pay | Payments — Stripe checkout, balances, settlement with .fair verification |
-| **events** | jin.imajin.ai/events | Events, tickets, check-in, registration surveys |
+| **events** | jin.imajin.ai/events | Events, tickets, check-in, registration surveys — standalone [ima-jin/events](https://github.com/ima-jin/events), not a kernel workspace app (#2517) |
 | **chat** | jin.imajin.ai/chat | DID-based messaging — conversations, media, reactions, WebSocket |
 | **notify** | jin.imajin.ai/notify | Notifications, preferences, event broadcasts |
 | **media** | jin.imajin.ai/media | Asset storage with .fair attribution, DID-pegged folders |
@@ -33,6 +33,10 @@ You interact with MJN the same way you interact with Stripe or Auth0 — by call
 | **dykil** | jin.imajin.ai/dykil | Community spending surveys |
 
 Every service exposes an OpenAPI spec at `/api/spec`.
+
+Events setup, API implementation and deployment now belong to its standalone
+repository. Existing routing stays **`/events`**, with **3006 dev / 7006 prod**;
+the HTTP examples below are app API examples, not monorepo startup instructions.
 
 ---
 

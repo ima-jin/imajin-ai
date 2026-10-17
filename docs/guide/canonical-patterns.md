@@ -24,15 +24,20 @@
 | **Session-less service credential (machine-to-machine reads)** | `POST /auth/api/apps/token/service` to mint, `requireAppAuth(request, { scope })` to gate | `apps/kernel/app/auth/api/apps/token/service/route.ts`, [service-credentials.md](./service-credentials.md) | Borrow a human's attestation/session for a webhook, cron, or other automated caller. A registered app proves possession of its own keypair and gets a token attributed to its own DID (`userDid: ''`, `isServiceToken: true`) — never a borrowed human identity. |
 | **Session auth** | `requireAuth(request)` / `optionalAuth(request)` | `@imajin/auth` | Parse the session cookie or call `/api/session` by hand. |
 | **Principal ↔ agent binding (`serviceOf`) + live connection** | `resolveServingAgents(principalDid)`, `listServiceOf(agentDid)` | `apps/kernel/src/lib/auth/agent-service.ts`, [agent-service-binding.md](../agents/agent-service-binding.md) | Query `identity_members` for agents inline, address a gateway instead of the agent DID, or treat `subtype='agent'` / a `serviceOf` entry as authority — authority is only `resolveAgentAuthority()`. |
-| **Checkout buyer identity** | `resolveCheckoutIdentity(request, body, log, opts)` | `apps/events/src/lib/checkout-common.ts` | Reinvent soft-DID minting / profile-email backfill in a checkout route. Pass `opts.createSoftDid` for free-RSVP-style eager DID creation. |
-| **Ticket reconciliation after payment** | `confirmHeldTickets(...)` | `apps/events/src/lib/confirm-payment.ts` | Flip ticket status / increment sold / emit `ticket.purchased` / send bundle email inline. |
 | **Settlement (fee split → ledger/balances)** | `settlePayment()`, called by `POST /api/settle` (and `settleReactor` via the bus) | `apps/kernel/src/lib/pay/settle-core.ts`, `apps/kernel/app/pay/api/settle/route.ts`, `packages/bus/src/reactors/settle.ts` | Write `feeLedger` / `balances` rows inline. **Known debt:** the Stripe webhook's consumer still credits `feeLedger`/`balanceRollups` inline (`apps/kernel/src/lib/pay/stripe-bus-consumer.ts` — the `pay-stripe` reactor on the #1785 `stripe.*` bus events, #2177; the webhook routes are ingress only) via a different manifest shape — it now shares `settlePayment()`'s signature-verification primitive (non-blocking), but not its crediting mechanics. See #1073 and "Known divergences" below. |
 | **.fair manifest build** | `buildFairManifest(...)` | `packages/fair` | Hand-assemble fee/chain objects. |
 | **.fair manifest validate / verify / sign** | `validateManifest`, `verifyManifest`, `signManifest` | `packages/fair` | Re-implement chain validation or signature checks. |
 | **.fair settlement field disclosure** | `composeEffectivePolicy(communityOverlay, subjectGates)` + `applyDisclosureGates(manifest, policy, grantedFields)` | `apps/kernel/src/lib/media/fair-disclosure-policy.ts` | Hard-code which `.fair` fields to include/exclude in a route. Use the three-layer model (floor → community overlay → subject gates) and query `kernel.consent_grants` for `on-consent` fields. Overlay is data: set `fair.disclosure.overlay` in `nodeConfig`. See [fair-settlement-disclosure.md](./fair-settlement-disclosure.md). |
-| **Contact-email resolution / backfill** | `getContactEmail`, `backfillContactEmail` (auth store) + `backfillProfileContactEmail` (profile store) | `apps/events/src/lib/contact-email.ts`, `checkout-common.ts` | Write `UPDATE ... contact_email` ad hoc. Note: notify resolution order is **profile → auth → www**; keep both stores aligned. |
 | **Rate limiting** | `rateLimit(key, limit, windowMs)`, `getClientIP` | `@imajin/config` | Hand-roll a limiter. Key by IP *and* (for abuse-sensitive flows) by email/subject. |
-| **Order + tickets creation** | `createOrderWithTickets(...)`, `validateCart(...)` | `apps/events/src/lib/checkout-common.ts` | Insert orders/tickets and sold-count logic inline. |
+
+### App-owned checkout patterns
+
+The former events checkout-identity, ticket reconciliation, contact-email and
+order-creation helpers are no longer kernel primitives or import targets.
+`apps/events` was pruned in #2517; consult [ima-jin/events](https://github.com/ima-jin/events)
+for its current implementation. External apps use published SDKs and the
+[public registered-app API](../REGISTRATION.md), never removed app internals
+or direct SQL against another service's tables.
 
 ## Connector lifecycle and app-facing invocation
 
