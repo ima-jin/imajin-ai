@@ -80,31 +80,29 @@ describe('trusted kernel webhook recipient registry', () => {
     await expect(resolveKernelWebhookAudience('https://market.test/api/webhook', { appSlug: 'events' }))
       .rejects.toThrow('does not match');
   });
-  it.each(['coffee', 'events', 'learn', 'market'])(
-    'supports actual provisioned %s rows with relative nav entries and bare redirect hosts', async (slug) => {
-      mocks.limit.mockResolvedValue([{
-        ...app, slug, tier: 'third_party', appDid: `did:imajin:provisioned-${slug}`,
-        callbackUrl: `https://node.test/${slug}/api/auth/callback`,
-        entryUrl: `/${slug}`, allowedRedirectHosts: [slug],
-      }]);
-      vi.stubEnv(`${slug.toUpperCase()}_SERVICE_URL`, `http://localhost:3006/${slug}`);
-      await expect(resolveKernelWebhookAudience(`http://localhost:3006/${slug}/api/webhook`, { appSlug: slug }))
-        .resolves.toBe(`did:imajin:provisioned-${slug}`);
-      await expect(resolveKernelWebhookAudience(`https://node.test/${slug}/api/webhook`, { appSlug: slug }))
-        .resolves.toBe(`did:imajin:provisioned-${slug}`);
-    },
-  );
-
-  it('accepts only the matching known kernel-routed internal service URL', async () => {
-    vi.stubEnv('EVENTS_SERVICE_URL', 'http://events-internal:3006/base');
-    vi.stubEnv('MARKET_SERVICE_URL', 'http://market-internal:3009');
-    await expect(resolveKernelWebhookAudience('http://events-internal:3006/api/webhook', { appSlug: 'events' }))
-      .resolves.toBe(app.appDid);
-    await expect(resolveKernelWebhookAudience('http://market-internal:3009/api/webhook', { appSlug: 'events' }))
+  it('trusts a third-party entry origin without any app-specific env settings', async () => {
+    const thirdParty = {
+      ...app, slug: 'fixture-studio', tier: 'third_party', appDid: 'did:imajin:fixture-studio',
+      callbackUrl: 'https://node.test/callback', entryUrl: 'https://studio.example.test',
+    };
+    mocks.limit.mockResolvedValue([thirdParty]);
+    await expect(resolveKernelWebhookAudience('https://studio.example.test/api/webhook', { appSlug: 'fixture-studio' }))
+      .resolves.toBe(thirdParty.appDid);
+    vi.stubEnv('FIXTURE-STUDIO_SERVICE_URL', 'https://unregistered.test');
+    await expect(resolveKernelWebhookAudience('https://unregistered.test/hook', { appSlug: 'fixture-studio' }))
       .rejects.toThrow('does not match');
-    mocks.limit.mockResolvedValue([{ ...app, tier: 'third_party', slug: 'unrelated' }]);
-    vi.stubEnv('UNRELATED_SERVICE_URL', 'http://events-internal:3006');
-    await expect(resolveKernelWebhookAudience('http://events-internal:3006/api/webhook', { appSlug: 'unrelated' }))
+  });
+
+  it('resolves a relative registry entry against the configured node origin', async () => {
+    vi.stubEnv('APP_URL', 'https://node.test');
+    mocks.limit.mockResolvedValue([{ ...app, callbackUrl: '', entryUrl: '/fixture-studio' }]);
+    await expect(resolveKernelWebhookAudience('https://node.test/fixture-studio/hook', { appSlug: 'events' }))
+      .resolves.toBe(app.appDid);
+  });
+
+  it('does not grant first-party env settings any additional trust', async () => {
+    vi.stubEnv('EVENTS_SERVICE_URL', 'http://events-internal:3006/base');
+    await expect(resolveKernelWebhookAudience('http://events-internal:3006/api/webhook', { appSlug: 'events' }))
       .rejects.toThrow('does not match');
   });
 

@@ -27,10 +27,10 @@ describe('registryAppPublicUrl', () => {
     expect(registryAppBaseUrl({ slug: 'coffee', entryUrl: 'javascript:alert(1)' })).toBeNull();
   });
 
-  it('uses explicit app base overrides even when the registry entry is deep', () => {
+  it('does not let an env override invent an API base', () => {
     vi.stubEnv('NEXT_PUBLIC_COFFEE_URL', 'http://localhost:9555/base');
     expect(registryAppBaseUrl({ slug: 'coffee', entryUrl: '/coffee/start?launch=1' }))
-      .toBe('http://localhost:9555/base');
+      .toBeNull();
   });
   it('uses the app entry URL rather than legacy localhost port hints', () => {
     vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'http://localhost:');
@@ -39,9 +39,9 @@ describe('registryAppPublicUrl', () => {
     expect(registryAppPublicUrl({ slug: 'links', entryUrl: null })).toBe('/links');
   });
 
-  it('honors an explicit local app endpoint', () => {
+  it('uses the registry destination even with a stale env override', () => {
     vi.stubEnv('NEXT_PUBLIC_COFFEE_URL', 'http://localhost:9444');
-    expect(registryAppPublicUrl({ slug: 'coffee', entryUrl: '/coffee' })).toBe('http://localhost:9444');
+    expect(registryAppPublicUrl({ slug: 'coffee', entryUrl: '/coffee' })).toBe('/coffee');
   });
 
   it('rejects unsafe registry destinations', () => {
