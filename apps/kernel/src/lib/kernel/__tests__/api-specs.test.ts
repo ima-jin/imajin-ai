@@ -32,6 +32,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('OAuth connector specifications (#2365)', () => {
+  it.each(['github', 'quickbooks'])('serves and labels the %s slot routes', async (provider) => {
+    pinCwdToKernel();
+    const route = provider === 'github'
+      ? await import('../../../../app/github/api/spec/route')
+      : await import('../../../../app/quickbooks/api/spec/route');
+    const response = route.GET();
+    expect(response.headers.get('Content-Type')).toBe('text/yaml');
+    const spec = parse(await response.text());
+    expect(spec.components.parameters.slot.schema.default).toBe('primary');
+    expect(spec.paths['/api/connect'].parameters).toContainEqual({ $ref: '#/components/parameters/slot' });
+    expect(listApiSpecs().find((item) => item.service === provider)?.label).toBeTruthy();
+  });
+});
+
 describe('auth.yaml identity search contract (#2780)', () => {
   const auth = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/auth.yaml'), 'utf-8'));
   const search = auth.paths['/api/search']?.get;
