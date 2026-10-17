@@ -27,6 +27,7 @@ export interface Horizon {
 }
 interface ReplayStep {
   stepId: string;
+  queuedAt: number;
   declaration: StepDeclaration;
   update: StepUpdate;
   state: StepState;
@@ -39,7 +40,14 @@ export function projectHorizon(events: LoopEventJson[], loopId: string, principa
   const steps = new Map<string, ReplayStep>();
   const ordered = events.filter(event => event.loopId === loopId && event.principal === principal)
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id));
-  for (const event of ordered) replayEvent(steps, event);
+  // Seed immutable declarations first so a batched same-timestamp update
+  // cannot sort before its queue merely because its signed hash is smaller.
+  for (const event of ordered) {
+    if (event.type === 'step.queued') replayEvent(steps, event);
+  }
+  for (const event of ordered) {
+    if (event.type !== 'step.queued') replayEvent(steps, event);
+  }
   const projected = [...steps.values()].map(step => projectStep(step, now));
   const visible = projected.filter(step => includeExited || step.zone !== 'done')
     .sort((a, b) => a.rank - b.rank || a.stepId.localeCompare(b.stepId));
@@ -57,13 +65,13 @@ function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson): void
   if (event.type === 'step.queued') {
     // The earliest declaration wins: a later queue cannot erase exit criteria.
     if (!steps.has(stepId)) steps.set(stepId, {
-      stepId, declaration: event.payload.step as StepDeclaration,
+      stepId, queuedAt: Date.parse(event.occurredAt), declaration: event.payload.step as StepDeclaration,
       update: {}, state: 'queued', evidence: new Map(),
     });
     return;
   }
   const step = steps.get(stepId);
-  if (!step) return;
+  if (!step || Date.parse(event.occurredAt) < step.queuedAt) return;
   if (event.type === 'step.updated') {
     step.update = { ...step.update, ...event.payload.update as StepUpdate };
   } else if (event.type === 'step.claimed') {

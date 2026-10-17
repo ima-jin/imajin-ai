@@ -30,6 +30,9 @@ not URLs the kernel fetches. A code declaration requires `repository` in
 `owner/repo` form. Updates are sparse and cannot replace exit conditions or kind.
 The earliest queued declaration by `(occurred_at, id)` wins, including on retry.
 Declare before sharpening/working (timestamps determine order, not arrival).
+Declarations are seeded before folding other facts so co-timestamped batches
+cannot lose an update to signed-id ordering. Facts dated before their declaration
+are retained in history but do not affect that step.
 Unknown-step observations stay in history but cannot create an undeclared item.
 
 Code items declare exactly one of each:

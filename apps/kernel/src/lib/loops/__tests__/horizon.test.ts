@@ -123,4 +123,15 @@ describe('signed horizon projection', () => {
     const retry = stepEvent('step.queued', 1, { step: { ...CODE_STEP, intention: 'Changed', rank: -99 } });
     expect(project([queuedStep(), retry, queuedStep()]).steps[0]).toMatchObject({ intention: CODE_STEP.intention, rank: 10 });
   });
+
+  it('replays co-timestamped facts even when their signed id sorts before the declaration, but ignores pre-queue facts', () => {
+    const queue = { ...queuedStep(), id: 'z-queue' };
+    const update = { ...stepEvent('step.updated', 0, { update: STEP_ISSUE_UPDATE }), id: 'a-update' };
+    const premature = stepEvent('step.updated', -1, { update: STEP_READY });
+    const result = project([update, premature, queue]);
+    expect(result.steps[0].zone).toBe('middle');
+    expect(result.steps[0].issue).toEqual(STEP_ISSUE_UPDATE.issue);
+    expect(result.steps[0]).not.toHaveProperty('briefRef');
+    expect(project([queue, update, premature])).toEqual(result);
+  });
 });
