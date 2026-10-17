@@ -175,7 +175,7 @@ describe('app-owned event conversation metadata', () => {
   });
   it('atomically chooses one app binding under competing creates', async () => {
     const responses = await Promise.all([put(), put(request(undefined, 'other-app'))]);
-    expect(responses.map((response) => response.status).sort()).toEqual([200, 403]);
+    expect(responses.map((response) => response.status).sort((a, b) => a - b)).toEqual([200, 403]);
     expect(await rows()).toHaveLength(1);
   });
   it('cannot claim legacy rooms through writable context or admin membership', async () => {
