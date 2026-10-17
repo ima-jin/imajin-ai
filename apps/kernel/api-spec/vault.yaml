@@ -152,6 +152,9 @@ paths:
         rotation. The old owner must match; old access remains until successful
         replacement. External-issuer auto-rotation is out of scope. The
         synchronous import executor fails closed under external Tier-1 custody.
+        Coarse acting-for agent delegation cannot read or submit imports.
+        Imported fields are excluded from the legacy plaintext rotation sweep;
+        use this countersigned re-import rail for replacement credentials.
         Plaintext is never echoed, logged, returned, or persisted unsealed.
       security:
         - cookieAuth: []
