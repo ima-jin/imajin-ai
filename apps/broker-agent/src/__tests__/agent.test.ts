@@ -88,6 +88,61 @@ describe('routeMessage', () => {
     ]);
   });
 
+  it('waits for each turn to finish before requesting the next dependent turn', async () => {
+    const events: string[] = [];
+    executeTool.mockImplementation(async (name: string) => {
+      events.push(`start-${name}`);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      events.push(`end-${name}`);
+      return `result-${name}`;
+    });
+    create
+      .mockImplementationOnce(async () => {
+        events.push('turn-1');
+        return { stop_reason: 'tool_use', content: [toolUse('t1', 'first')] };
+      })
+      .mockImplementationOnce(async ({ messages }) => {
+        events.push('turn-2');
+        expect(messages.at(-1)).toEqual({
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't1', content: 'result-first' }],
+        });
+        return { stop_reason: 'tool_use', content: [toolUse('t2', 'second')] };
+      })
+      .mockImplementationOnce(async ({ messages }) => {
+        events.push('turn-3');
+        expect(messages.at(-1)).toEqual({
+          role: 'user',
+          content: [{ type: 'tool_result', tool_use_id: 't2', content: 'result-second' }],
+        });
+        return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Complete' }] };
+      });
+
+    await expect(routeMessage('did:imajin:u', 'dependent tasks', kernel)).resolves.toBe('Complete');
+    expect(events).toEqual([
+      'turn-1', 'start-first', 'end-first',
+      'turn-2', 'start-second', 'end-second', 'turn-3',
+    ]);
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      model: 'claude-opus-4-7',
+      max_tokens: 2048,
+      thinking: { type: 'enabled', budget_tokens: 1024 },
+    }));
+  });
+
+  it('accepts a final text response on the fifth turn', async () => {
+    executeTool.mockResolvedValue('ok');
+    create
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: [toolUse('t1', 'loop')] })
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: [toolUse('t2', 'loop')] })
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: [toolUse('t3', 'loop')] })
+      .mockResolvedValueOnce({ stop_reason: 'tool_use', content: [toolUse('t4', 'loop')] })
+      .mockResolvedValueOnce({ stop_reason: 'end_turn', content: [{ type: 'text', text: 'Finished' }] });
+
+    await expect(routeMessage('did:imajin:u', 'x', kernel)).resolves.toBe('Finished');
+    expect(create).toHaveBeenCalledTimes(5);
+    expect(executeTool).toHaveBeenCalledTimes(4);
+  });
   it('gives up after five tool-use turns', async () => {
     executeTool.mockResolvedValue('ok');
     create.mockResolvedValue({ stop_reason: 'tool_use', content: [toolUse('t', 'loop')] });
@@ -96,5 +151,6 @@ describe('routeMessage', () => {
       'I ran into an issue processing that. Please try again.',
     );
     expect(create).toHaveBeenCalledTimes(5);
+    expect(executeTool).toHaveBeenCalledTimes(5);
   });
 });

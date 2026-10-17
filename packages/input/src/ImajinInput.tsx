@@ -258,7 +258,7 @@ export function ImajinInput({
       {transcribing && (
         <div className="flex items-center gap-2 px-3 py-2 bg-orange-500/10 border border-orange-500/30 border-b-0 rounded-t-2xl">
           <div className="w-4 h-4 flex-shrink-0">
-            <svg className="animate-spin w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="animate-spin w-4 h-4 text-orange-400" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
@@ -283,7 +283,7 @@ export function ImajinInput({
               className="p-2 text-gray-500 hover:text-orange-400 transition-colors rounded-full hover:bg-gray-800"
               title="Emoji"
             >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg aria-hidden="true" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.182 15.182a4.5 4.5 0 01-6.364 0M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9.75 9.75c0 .414-.168.75-.375.75S9 10.164 9 9.75 9.168 9 9.375 9s.375.336.375.75zm-.375 0h.008v.015h-.008V9.75zm5.625 0c0 .414-.168.75-.375.75s-.375-.336-.375-.75.168-.75.375-.75.375.336.375.75zm-.375 0h.008v.015h-.008V9.75z" />
               </svg>
             </button>
@@ -323,7 +323,7 @@ export function ImajinInput({
                 title="Attach"
                 style={{ transition: 'transform 0.2s, color 0.2s' }}
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
                 </svg>
               </button>
@@ -405,7 +405,7 @@ export function ImajinInput({
               className="p-2 text-orange-500 hover:text-orange-400 transition-colors rounded-full hover:bg-gray-800"
               title="Send"
             >
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <svg aria-hidden="true" className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
             </button>

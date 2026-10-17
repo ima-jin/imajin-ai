@@ -12,6 +12,8 @@ import type { FeatureToggles } from '@/src/db/schemas/profile';
 import { mergeFeatureToggles } from '@/src/lib/profile/feature-toggles-merge';
 import { isAppEnabled } from '@/src/lib/profile/feature-toggles-compat';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
+import { loadRegistryAppOptions } from '@/src/lib/profile/app-options';
+import type { LauncherEntry } from '@/src/lib/kernel/launcher';
 
 interface Profile {
   did: string;
@@ -29,21 +31,14 @@ interface Profile {
 
 type AvatarMode = 'emoji' | 'image';
 
-const SERVICES = [
-  { key: 'links', label: 'Links', description: 'Your link collection' },
-  { key: 'coffee', label: 'Coffee', description: 'Accept coffee tips' },
-  { key: 'dykil', label: 'Dykil', description: 'Your Dykil profile' },
-  { key: 'learn', label: 'Learn', description: 'Learning content' },
-  { key: 'inference', label: 'Ask Me', description: 'Let people query your presence' },
-];
 
 /** Map feature_toggles to a keyed boolean record for the service toggle UI. */
-function buildServiceToggles(ft: FeatureToggles): Record<string, boolean> {
-  const toggles: Record<string, boolean> = {};
-  for (const svc of SERVICES) {
+function buildServiceToggles(ft: FeatureToggles, apps: readonly LauncherEntry[]): Record<string, boolean> {
+  const toggles: Record<string, boolean> = { inference: !!ft.inference_enabled };
+  for (const svc of apps) {
     // App slugs resolve through both the legacy fields and `enabledApps` (#2425), so a
     // profile that only uses `enabledApps` doesn't render OFF and get switched off on save.
-    toggles[svc.key] = svc.key === 'inference' ? !!ft.inference_enabled : isAppEnabled(ft, svc.key);
+    toggles[svc.name] = isAppEnabled(ft, svc.name);
   }
   return toggles;
 }
@@ -75,6 +70,7 @@ function EditProfileContent() {
   const [visibility, setVisibility] = useState<'public' | 'incognito'>('public');
   const [avatarMode, setAvatarMode] = useState<AvatarMode>('emoji');
   const [serviceToggles, setServiceToggles] = useState<Record<string, boolean>>({});
+  const [appOptions, setAppOptions] = useState<LauncherEntry[]>([]);
   const [showMarketItems, setShowMarketItems] = useState(false);
   const [showEvents, setShowEvents] = useState(false);
   // The toggles the profile was loaded with — the base the save MERGES into (#2434),
@@ -115,6 +111,10 @@ function EditProfileContent() {
     } catch { /* non-fatal */ }
 
     try {
+      // Registry unavailability must not prevent editing the profile or clear
+      // existing app selections on save. Absent options are left untouched.
+      const apps = await loadRegistryAppOptions().catch(() => []);
+      setAppOptions(apps);
       const response = await fetch(`/profile/api/profile/${did}`);
       if (response.status === 404) {
         // No profile yet — start with empty form for new identity setup
@@ -124,6 +124,7 @@ function EditProfileContent() {
         setHandle('');
         setEmail('');
         setPhone('');
+        setServiceToggles(buildServiceToggles({}, apps));
         setLoading(false);
         return;
       }
@@ -166,7 +167,7 @@ function EditProfileContent() {
       // Set service toggles from feature_toggles
       const ft = profile.featureToggles ?? profile.feature_toggles ?? {};
       setLoadedToggles(ft);
-      setServiceToggles(buildServiceToggles(ft));
+      setServiceToggles(buildServiceToggles(ft, apps));
       setShowMarketItems(!!ft.show_market_items);
       setShowEvents(!!ft.show_events);
       setAvatarMode(detectAvatarMode(profile.avatar));
@@ -509,7 +510,8 @@ function EditProfileContent() {
             <h3 className="font-medium text-white mb-1">Apps</h3>
             <p className="text-sm text-gray-400 mb-4">Choose which Imajin apps appear on your profile.</p>
             <div className="space-y-3">
-              {SERVICES.map((svc) => (
+              {[...appOptions.map((app) => ({ key: app.name, label: app.label, description: app.description })),
+                { key: 'inference', label: 'Ask Me', description: 'Let people query your presence' }].map((svc) => (
                 <div key={svc.key} className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-white font-medium">{svc.label}</p>

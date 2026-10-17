@@ -12,9 +12,6 @@ interface Props {
   showSecurity: boolean;
   showMoney: boolean;
   showTax: boolean;
-  /** Pay/Media are kernel-native services (never pruned), gated directly rather than via `apps` (#2425). */
-  showPay: boolean;
-  showMedia: boolean;
   /** Registry-driven extractable apps (coffee/dykil/links/learn/events/market) enabled for this identity (#2425). */
   apps: readonly NavApp[];
   landingService?: string | null;
@@ -42,12 +39,6 @@ const ALL_TABS: Tab[] = [
   { label: 'Settings', href: '/auth/settings', exact: false },
   { label: 'Members', href: '/auth/members', exact: false },
 ];
-
-/** Kernel-native tabs (#2425) — never pruned, so they stay a small fixed list rather than registry rows. */
-const KERNEL_NATIVE_TABS: Record<'pay' | 'media', Tab> = {
-  pay: { label: 'Pay', href: '/auth/pay', exact: false },
-  media: { label: 'Media', href: '/auth/media', exact: false },
-};
 
 function serviceFromHref(href: string): string {
   return href.split('/').pop() ?? '';
@@ -85,8 +76,6 @@ export default function IdentityTabBar({
   showSecurity,
   showMoney,
   showTax,
-  showPay,
-  showMedia,
   apps,
 }: Readonly<Props>) {
   const pathname = usePathname();
@@ -101,11 +90,7 @@ export default function IdentityTabBar({
     return true;
   });
 
-  const serviceTabs: Tab[] = [
-    ...apps.map(navAppToTab),
-    ...(showPay ? [KERNEL_NATIVE_TABS.pay] : []),
-    ...(showMedia ? [KERNEL_NATIVE_TABS.media] : []),
-  ];
+  const serviceTabs = apps.map(navAppToTab);
 
   return (
     <div className="border-b border-zinc-800 flex gap-1 flex-wrap">

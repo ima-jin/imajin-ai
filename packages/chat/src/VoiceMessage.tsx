@@ -18,6 +18,31 @@ function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+function formatCaptionTimestamp(ms: number): string {
+  const hours = Math.floor(ms / 3600000).toString().padStart(2, '0');
+  const minutes = Math.floor((ms % 3600000) / 60000).toString().padStart(2, '0');
+  const seconds = Math.floor((ms % 60000) / 1000).toString().padStart(2, '0');
+  const milliseconds = (ms % 1000).toString().padStart(3, '0');
+  return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
+function buildCaptionSource(transcript: string, durationMs: number): string {
+  // A blank cue line terminates a WebVTT cue; keep the whole transcript in one
+  // cue even when the source contains paragraphs or Windows line endings.
+  const text = transcript.replaceAll(/\r\n?/g, '\n')
+    .split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+  // Keep a valid, cue-free document until a transcript arrives. Updating src
+  // then populates the existing native text track without fabricating captions.
+  if (text.length === 0) return `data:text/vtt;charset=utf-8,${encodeURIComponent('WEBVTT\n\n')}`;
+
+  const escapedText = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  // WebVTT requires the end to be strictly after the start, including when
+  // duration metadata is missing/zero. Round up to cover fractional milliseconds.
+  const endMs = Number.isFinite(durationMs) ? Math.max(1, Math.ceil(durationMs)) : 1;
+  const vtt = `WEBVTT\n\n00:00:00.000 --> ${formatCaptionTimestamp(endMs)}\n${escapedText}\n`;
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
+}
+
 export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn, mediaUrl = '' }: Readonly<VoiceMessageProps>) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -28,6 +53,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   const audioSrc = `${mediaUrl}/api/assets/${assetId}`;
   const totalDuration = durationMs / 1000;
+  const captionSrc = useMemo(() => buildCaptionSource(transcript, durationMs), [transcript, durationMs]);
 
   // Stable per-bar ids (S6479): the waveform prop is fixed data for this
   // message, so ids are generated once per `waveform` reference rather than
@@ -100,8 +126,9 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   return (
     <div className="min-w-[200px] max-w-[280px]">
-      {/* eslint-disable-next-line jsx-a11y/media-has-caption -- voice messages use visible transcript below */}
-      <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message" />
+      <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message">
+        <track kind="captions" src={captionSrc} srcLang="und" label="Transcript" default={transcript.trim().length > 0} />
+      </audio>
 
       {/* Player row */}
       <div className="flex items-center gap-2">
@@ -111,12 +138,12 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
               <rect x="6" y="4" width="4" height="16" />
               <rect x="14" y="4" width="4" height="16" />
             </svg>
           ) : (
-            <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
           )}
@@ -182,7 +209,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
             onClick={() => setShowTranscript(!showTranscript)}
             className={`text-xs ${transcriptBtnColor} transition flex items-center gap-1`}
           >
-            <svg className={`w-3 h-3 transition-transform ${showTranscript ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className={`w-3 h-3 transition-transform ${showTranscript ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
             Transcript

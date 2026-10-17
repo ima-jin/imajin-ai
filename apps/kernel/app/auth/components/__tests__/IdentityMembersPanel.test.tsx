@@ -64,6 +64,11 @@ function controller(overrides: Partial<ControllerFixture> = {}): ControllerFixtu
 /** Serves the group endpoint; every other request (config) 404s harmlessly. */
 function installFetch(controllers: ControllerFixture[]) {
   const spy = vi.fn(async (url: string, _init?: RequestInit) => {
+    if (url === '/registry/api/launcher') {
+      return { ok: true, json: async () => ({
+        services: [{ name: 'registry-only', label: 'Registry App', source: 'registry' }],
+      }) } as unknown as Response;
+    }
     if (url.endsWith('/controllers')) {
       return { ok: true, status: 201, json: async () => ({ ok: true }) } as unknown as Response;
     }
@@ -176,6 +181,11 @@ describe('provenance', () => {
 });
 
 describe('agent role', () => {
+  it('offers registry-only apps for delegation without static rows', async () => {
+    await renderPanel();
+    fireEvent.change(roleSelect(), { target: { value: 'agent' } });
+    expect(screen.getByLabelText('Registry App')).toBeDefined();
+  });
   it('offers agent in the role dropdown', async () => {
     await renderPanel();
 

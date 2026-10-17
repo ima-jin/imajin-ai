@@ -20,9 +20,11 @@ import IdentitySettingsPanel from '../IdentitySettingsPanel';
 const GROUP_DID = 'did:imajin:group';
 
 function installFetch() {
-  const spy = vi.fn(async () => ({
+  const spy = vi.fn(async (url: string) => ({
     ok: true,
-    json: async () => ({
+    json: async () => url === '/registry/api/launcher' ? ({
+      services: [{ name: 'registry-only', label: 'Registry App', icon: '🧩', source: 'registry' }],
+    }) : ({
       enabledServices: [],
       landingService: null,
       joinVisibility: 'invite',
@@ -46,6 +48,17 @@ afterEach(() => {
 });
 
 describe('IdentitySettingsPanel fire-and-forget calls', () => {
+  it('offers registry-only apps without a static manifest row', async () => {
+    const fetchSpy = installFetch();
+    render(<IdentitySettingsPanel groupDid={GROUP_DID} />);
+    await waitFor(() => expect(screen.getByText('Registry App')).toBeDefined());
+    fireEvent.click(screen.getByText('Registry App'));
+    fireEvent.click(screen.getByText('Save Changes'));
+    await waitFor(() => expect(fetchSpy.mock.calls.some((call) =>
+      (call as unknown[])[1] && ((call as unknown[])[1] as RequestInit).method === 'PATCH')).toBe(true));
+    const patch = fetchSpy.mock.calls.find((call) => ((call as unknown[])[1] as RequestInit | undefined)?.method === 'PATCH');
+    expect(JSON.parse(String(((patch as unknown[])[1] as RequestInit).body)).enabledServices).toEqual(['registry-only']);
+  });
   it('loads config on mount', async () => {
     const fetchSpy = installFetch();
     render(<IdentitySettingsPanel groupDid={GROUP_DID} />);

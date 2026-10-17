@@ -17,6 +17,7 @@
 import { SERVICES, buildPublicUrl, getService } from '@imajin/config';
 import type { ServiceVisibility, ServiceCategory } from '@imajin/config';
 import { resolveLauncherApps, type NavApp } from './app-nav';
+import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
 
 /** Categories that stay driven by `SERVICES`: not extractable apps, never pruned. */
 const STATIC_LAUNCHER_CATEGORIES: ReadonlySet<ServiceCategory> = new Set<ServiceCategory>(['kernel', 'meta']);
@@ -63,7 +64,7 @@ function registryEntry(app: NavApp): LauncherEntry {
     label: app.name,
     visibility: hint?.visibility ?? 'public',
     category: hint?.category ?? 'core',
-    url: buildPublicUrl(app.slug),
+    url: registryAppPublicUrl(app),
     source: 'registry',
   };
 }

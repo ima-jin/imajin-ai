@@ -20,12 +20,15 @@ export default function AuthLayoutShell({ leftRail, identityDetail, tabBar, chil
   // Redirect to landing service when landing on /auth directly
   useEffect(() => {
     if (pathname === '/auth' && landingService) {
-      router.replace(`/auth/${landingService}`);
+      const href = landingService === 'pay' || landingService === 'media'
+        ? `/${landingService}`
+        : `/auth/${landingService}`;
+      router.replace(href);
     }
   }, [pathname, landingService, router]);
 
   if (BYPASS_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return <>{children}</>;
+    return children;
   }
 
   return (

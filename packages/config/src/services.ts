@@ -56,19 +56,16 @@ export const SERVICES: readonly ServiceDefinition[] = [
   { name: "media",       label: "Media",       icon: "📁", description: "Files, images, and .fair attribution",               devPort: 3000, prodPort: 7000, schema: "media",       tier: "core",   visibility: "authenticated", category: "kernel" },
   { name: "registry",    label: "Registry",    icon: "📡", description: "Service registry and DFOS relay",                    devPort: 3000, prodPort: 7000, schema: "registry",    tier: "core",   visibility: "public",        category: "kernel" },
   { name: "notify",      label: "Notify",      icon: "🔔", description: "Notifications and preferences",                     devPort: 3000, prodPort: 7000, schema: "notify",      tier: "core",   visibility: "internal",      category: "kernel" },
-  { name: "usage",       label: "Usage",       icon: "📊", description: "Inference cost ledger — incurred, billed, drift, signed rollup", devPort: 3000, prodPort: 7000, schema: "usage",       tier: "core",   visibility: "authenticated", category: "kernel" },
-  { name: "calendar",    label: "Calendar",    icon: "📅", description: "Temporal entries — availability, meetings, events, and reminders", devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "usage",       label: "Usage",       icon: "📊", description: "Inference cost ledger — incurred, billed, drift, signed rollup", devPort: 3000, prodPort: 7000, schema: "usage",       tier: "core",   visibility: "internal",      category: "kernel" },
+  { name: "calendar",    label: "Calendar",    icon: "📅", description: "Temporal entries — availability, meetings, events, and reminders", devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "internal",      category: "kernel" },
   { name: "jin",         label: "Jin",         icon: "🧭", description: "Operator dashboard — signed approvals, proposals, and usage feed",  devPort: 3000, prodPort: 7000, schema: "operator",    tier: "core",   visibility: "internal",      category: "kernel" },
-  { name: "google",      label: "Google Workspace", icon: "📨", description: "Gmail/Calendar/Drive/Meet connector — OAuth2 auth-code, sealed refresh token", devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "authenticated", category: "kernel" },
+  { name: "google",      label: "Google Workspace", icon: "📨", description: "Gmail/Calendar/Drive/Meet connector — OAuth2 auth-code, sealed refresh token", devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "internal",      category: "kernel" },
   { name: "vault",       label: "Vault",       icon: "🔐", description: "Sealed secrets, delegation grants, and vault-minted service credentials", devPort: 3000, prodPort: 7000, schema: null,          tier: "core",   visibility: "internal",      category: "kernel" },
 
-  // Core apps — separate processes
+  // Standalone URL/port contracts for non-nav callers (health probes,
+  // buildPublicUrlAbsolute, check-env). Registry placements decide nav.
   { name: "events",      label: "Events",      icon: "🎫", description: "Event creation, ticketing, and management",         devPort: 3006, prodPort: 7006, schema: "events",      tier: "core",   visibility: "public",        category: "core" },
 
-  // Imajin apps
-  { name: "coffee",      label: "Coffee",      icon: "☕", description: "Tipping and creator support pages",                 devPort: 3100, prodPort: 7100, schema: "coffee",      tier: "imajin", visibility: "creator",       category: "creator" },
-  { name: "dykil",       label: "Surveys",     icon: "📋", description: "Surveys and do-you-know-if-I-like polls",           devPort: 3101, prodPort: 7101, schema: "dykil",       tier: "imajin", visibility: "creator",       category: "creator" },
-  { name: "links",       label: "Links",       icon: "🔗", description: "Link-in-bio pages and click tracking",              devPort: 3102, prodPort: 7102, schema: "links",       tier: "imajin", visibility: "creator",       category: "creator" },
   { name: "learn",       label: "Learn",       icon: "📚", description: "Courses, lessons, and learning progress",           devPort: 3103, prodPort: 7103, schema: "learn",       tier: "imajin", visibility: "public",        category: "core" },
   { name: "market",      label: "Market",      icon: "🏪", description: "Local commerce — buy and sell with trust",          devPort: 3104, prodPort: 7104, schema: "market",      tier: "imajin", visibility: "public",        category: "core" },
 
