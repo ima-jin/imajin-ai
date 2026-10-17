@@ -6,6 +6,9 @@ import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 const inputClass = 'w-full border border-zinc-700 bg-transparent px-3 py-2 font-mono text-sm focus:border-violet-500';
 const buttonClass = 'border border-zinc-700 px-3 py-2 font-mono text-sm hover:border-violet-500 disabled:opacity-40';
+function usesDnsProof(binding: DomainBinding): boolean {
+  return binding.method === 'dns-txt' || binding.method === 'legacy';
+}
 
 async function domainRequest(url: string, init?: RequestInit) {
   const response = await fetch(url, { credentials: 'include', ...init });
@@ -26,7 +29,7 @@ function DomainControls({ binding, did, busy, removing, setRemoving, mutate }: R
   if (binding.status === 'revoked') return <p className="text-xs text-zinc-500">Re-add this domain above before verifying again.</p>;
   return (
     <div className="flex flex-wrap gap-2">
-      {binding.method === 'dns-txt' && (
+      {usesDnsProof(binding) && (
         <button type="button" disabled={busy} className={buttonClass}
           onClick={() => fireAndForget(mutate(`/${encodeURIComponent(binding.domain)}/verify`, 'POST'), 'domains:verify')}>Verify DNS</button>
       )}
@@ -128,7 +131,7 @@ export default function DomainsSection({ did }: Readonly<{ did: string }>) {
             </div>
             <p className="text-xs break-all text-zinc-400">Zone owner: {binding.zoneOwner}</p>
             <p className="text-xs break-all text-zinc-400">Site owner: {binding.siteOwner}</p>
-            {binding.method === 'dns-txt' && (
+            {binding.zoneOwner === did && usesDnsProof(binding) && (
               <div className="text-sm space-y-1">
                 <p>Add this TXT record at your DNS provider, wait for propagation, then verify:</p>
                 <p className="font-mono break-all">Name: _imajin.{binding.domain}</p>
