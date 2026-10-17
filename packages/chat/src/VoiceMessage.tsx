@@ -26,12 +26,14 @@ function formatCaptionTimestamp(ms: number): string {
   return `${hours}:${minutes}:${seconds}.${milliseconds}`;
 }
 
-function buildCaptionSource(transcript: string, durationMs: number): string | undefined {
+function buildCaptionSource(transcript: string, durationMs: number): string {
   // A blank cue line terminates a WebVTT cue; keep the whole transcript in one
   // cue even when the source contains paragraphs or Windows line endings.
   const text = transcript.replaceAll(/\r\n?/g, '\n')
     .split('\n').map(line => line.trim()).filter(Boolean).join('\n');
-  if (text.length === 0) return undefined;
+  // Keep a valid, cue-free document until a transcript arrives. Updating src
+  // then populates the existing native text track without fabricating captions.
+  if (text.length === 0) return `data:text/vtt;charset=utf-8,${encodeURIComponent('WEBVTT\n\n')}`;
 
   const escapedText = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
   // WebVTT requires the end to be strictly after the start, including when
@@ -125,9 +127,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
   return (
     <div className="min-w-[200px] max-w-[280px]">
       <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message">
-        {captionSrc && (
-          <track kind="captions" src={captionSrc} srcLang="und" label="Transcript" default />
-        )}
+        <track kind="captions" src={captionSrc} srcLang="und" label="Transcript" default={transcript.trim().length > 0} />
       </audio>
 
       {/* Player row */}

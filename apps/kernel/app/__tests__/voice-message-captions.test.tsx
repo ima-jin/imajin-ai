@@ -20,9 +20,10 @@ function readCaptionData(container: HTMLElement): string {
 }
 
 describe('voice-message transcript captions (#2862)', () => {
-  it.each(['', ' \t\r\n \n'])('omits a dummy track for absent transcript %j', transcript => {
+  it.each(['', ' \t\r\n \n'])('offers zero cues without fabricated text for absent transcript %j', transcript => {
     const { container } = renderVoice(transcript);
-    expect(container.querySelector('audio > track')).toBeNull();
+    expect(readCaptionData(container)).toBe('WEBVTT\n\n');
+    expect(container.querySelector('audio > track')?.hasAttribute('default')).toBe(false);
     expect(screen.getByRole('button', { name: 'Play' })).toBeDefined();
   });
 
@@ -64,14 +65,20 @@ describe('voice-message transcript captions (#2862)', () => {
   });
 
   it('updates captions when the transcript or duration metadata changes', () => {
-    const { container, rerender } = renderVoice('Initial transcript');
+    const { container, rerender } = renderVoice('');
+    const track = container.querySelector('audio > track');
+    expect(readCaptionData(container)).toBe('WEBVTT\n\n');
     rerender(
       <VoiceMessage assetId="voice-1" transcript="Updated transcript" durationMs={9000} isOwn={false} />,
     );
+    expect(container.querySelector('audio > track')).toBe(track);
+    expect(track?.hasAttribute('default')).toBe(true);
     expect(readCaptionData(container)).toContain('00:00:09.000\nUpdated transcript');
     rerender(
       <VoiceMessage assetId="voice-1" transcript="" durationMs={9000} isOwn={false} />,
     );
-    expect(container.querySelector('audio > track')).toBeNull();
+    expect(container.querySelector('audio > track')).toBe(track);
+    expect(track?.hasAttribute('default')).toBe(false);
+    expect(readCaptionData(container)).toBe('WEBVTT\n\n');
   });
 });
