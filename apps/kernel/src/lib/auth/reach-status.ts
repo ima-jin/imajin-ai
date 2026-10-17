@@ -1,6 +1,7 @@
 import { getClient } from '@imajin/db';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import type { SignedReachReplyEvent } from './reach-reply-wire';
+import { findForeignAgentStub } from './foreign-agent-stub';
 
 export interface ReachStatus {
   reachId: string;
@@ -30,7 +31,10 @@ export async function reachStatus(params: {
     WHERE e.principal_did = $1 AND e.requester_did = $2 AND e.reach_id = $3
   `, [params.principalDid, params.requesterDid, params.reachId]);
   if (!row) return null;
-  if (row.blocked) return { reachId: params.reachId, state: 'blocked', reply: null };
+  // Revocation removes send authority, not the sender's ability to learn it
+  // was blocked. Resolve aliases only for block state, never for receipt access.
+  const blocked = row.blocked || (await findForeignAgentStub(params.requesterDid, params.principalDid))?.revokedAt;
+  if (blocked) return { reachId: params.reachId, state: 'blocked', reply: null };
   const reply = row.envelope.reply ?? null;
   return { reachId: params.reachId, state: reply ? 'replied' : 'delivered', reply };
 }
