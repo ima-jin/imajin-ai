@@ -33,6 +33,7 @@ describe('events extraction regression guard (#2517)', () => {
     ['pnpm-lock.yaml', '  apps/events:\n'],
     ['pnpm-workspace.yaml', "  - 'apps/events'\n"],
     ['turbo.json', '{"tasks":{"@imajin/events#build":{}}}\n'],
+    ['eslint.config.mjs', 'export default [{ ignores: ["apps/events/**"] }];\n'],
     ['package.json', '{"scripts":{"dev:events":"pnpm --filter @imajin/events dev"}}\n'],
     ['.github/workflows/build.yml', 'paths: [apps/events/**]\n'],
     ['deploy/ecosystem.dev.config.js', 'const app = { cwd: "/repo/apps/events" };\n'],

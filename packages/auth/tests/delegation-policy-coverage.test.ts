@@ -63,7 +63,12 @@ const entries = Object.entries(DELEGATION_ROUTES);
 
 describe('delegation policy coverage (#2360)', () => {
   it('finds call sites at all (guards the scan itself)', () => {
-    expect(callSites.size).toBeGreaterThan(30);
+    expect(callSites.get('media.asset.delete')).toHaveLength(1);
+    expect(callSites.get('pay.balance.transfer')).toHaveLength(1);
+  });
+
+  it('does not register handlers owned by the extracted events app (#2517)', () => {
+    expect(entries.some(([, entry]) => entry.app === 'events')).toBe(false);
   });
 
   it.each(entries)('%s is enforced by exactly one handler (reversible: at most one)', (key, entry) => {

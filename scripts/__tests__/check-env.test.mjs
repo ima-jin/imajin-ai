@@ -59,7 +59,7 @@ describe('signed kernel callback configuration (#2798)', () => {
       expect(removalNote).toContain(migration);
     }
     expect(removalNote).toContain('migrations have merged and deployed');
-    expect(document).toContain('events#38 must merge and deploy before the #2529');
+    expect(document).toContain('The events#38 prerequisite and patched #2798 monorepo receiver describe the completed cutover');
   });
 });
 describe('retired Stripe Connect configuration (#2791)', () => {

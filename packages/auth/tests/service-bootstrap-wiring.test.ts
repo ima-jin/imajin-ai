@@ -54,11 +54,12 @@ beforeEach(() => {
   vi.stubEnv('NEXT_RUNTIME', 'nodejs');
 });
 
-it('discovers at least the services that remain after the apps/links, apps/learn, apps/coffee, apps/market and apps/dykil prunes (#2422, #2503, #2500, #2512, #2523)', () => {
-  // Floor guard: an empty or shrunken scan would make every case below vacuously pass.
-  // `links`, `learn`, `coffee`, `market` and `dykil` are deliberately absent — all run from their own
-  // repos now (they bootstrap their own identity), so they are covered only if present.
-  expect(SERVICES).toEqual(expect.arrayContaining(['events']));
+it('has no in-monorepo userspace instrumentation after the events prune (#2517)', () => {
+  // All verticals bootstrap from their own repos. Corpus keeps its separate
+  // src/lib/attestation-key.ts implementation; the kernel hosts the vault.
+  expect(SERVICES).toEqual([]);
+  expect(existsSync(resolve(APPS_DIR, 'kernel', 'instrumentation.ts'))).toBe(true);
+  expect(existsSync(resolve(APPS_DIR, 'corpus', 'src/lib/attestation-key.ts'))).toBe(true);
 });
 
 describe.each(SERVICES)('%s', (service) => {

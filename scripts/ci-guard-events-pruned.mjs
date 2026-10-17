@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -24,18 +24,19 @@ export function eventsWorkspaceReferences(root) {
   const failures = [];
   if (existsSync(join(root, 'apps/events'))) failures.push('apps/events still exists');
   const files = [
-    ...['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'turbo.json', 'vitest.config.ts']
-      .map((file) => join(root, file)),
+    ...readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && CONFIG_EXTENSIONS.test(entry.name))
+      .map((entry) => join(root, entry.name)),
     ...['.github/workflows', 'deploy', 'scripts'].flatMap((dir) => filesUnder(join(root, dir))),
     ...['apps', 'packages'].flatMap((dir) => filesUnder(join(root, dir)))
-      .filter((file) => file.endsWith('/package.json') || /config\.[cm]?[jt]s$/.test(file)),
+      .filter((file) => basename(file) === 'package.json' || /config\.[cm]?[jt]s$/.test(file)),
   ];
   for (const file of files) {
-    if (!existsSync(file) || file.endsWith('/ci-guard-events-pruned.mjs')) continue;
+    if (!existsSync(file) || basename(file) === 'ci-guard-events-pruned.mjs') continue;
     const lines = readFileSync(file, 'utf8').split('\n');
     lines.forEach((line, index) => {
       if (/^\s*(?:#|\/\/|\*|\/\*)/.test(line)) return;
-      if (LEGACY_REFERENCE.test(line)) failures.push(`${relative(root, file)}:${index + 1}`);
+      if (LEGACY_REFERENCE.test(line)) failures.push(`${relative(root, file).replaceAll('\\', '/')}:${index + 1}`);
     });
   }
   return failures;
