@@ -259,6 +259,60 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/agents/{did}/reach/{reachId}/status:
+    post:
+      tags: [auth]
+      operationId: reachStatusSigned
+      summary: Read your own reach receipt and principal-signed reply
+      description: |
+        Signed transport for reach_status (#2589). Sign canonical JSON of
+        {type:"reach_status",principalDid:did,reachId,requesterDid,issuedAt}
+        with the requester's current registered Ed25519 key. Freshness uses
+        the standard signed-message clock window. A reachId alone grants nothing.
+        OAuth and static-header callers use the same reach_status reader through
+        the existing /mcp transport: arguments {principalDid,reachId}, identity
+        from the verified token subject, not an argument or acting-as header.
+        Per-handle C6/C8 transports and A2A C7 reuse this reader; they are not
+        implemented by this endpoint.
+      parameters:
+        - { name: did, in: path, required: true, schema: { type: string } }
+        - { name: reachId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requesterDid, issuedAt, signature]
+              properties:
+                requesterDid: { type: string }
+                issuedAt: { type: string, format: date-time }
+                signature: { type: string, pattern: "^[0-9a-fA-F]{128}$" }
+      responses:
+        "200":
+          description: Requester-scoped receipt; blocked senders receive no reply content
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reachId, state, reply]
+                properties:
+                  reachId: { type: string }
+                  state: { type: string, enum: [delivered, replied, blocked] }
+                  reply:
+                    type: [object, "null"]
+                    description: |
+                      Exact principal-signed agent.reach.replied event. Issuer and
+                      subject are the principal DID, scope is agent. Payload binds
+                      reachId, principalDid, requesterDid, transcriptHash, message,
+                      issuedAt, state=replied, context_id=reachId and
+                      context_type=agent.reach. payload.signature is
+                      {keyId,alg:ed25519,sig}, covering canonical JSON of
+                      {type,issuer,subject,scope,payload} without signature itself.
+                      The private delivery envelope and replyHandle are never returned.
+        "400": { description: Invalid JSON or malformed signed status request }
+        "401": { description: Unknown key, invalid signature or stale request }
+        "404": { description: Unknown receipt or a receipt belonging to another caller }
   /api/health:
     get:
       tags: [auth]

@@ -508,6 +508,79 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/reach:
+    get:
+      tags: [jin]
+      operationId: listReachInbox
+      summary: List the signed-in principal's Reach Inbox
+      description: |
+        Direct human session only; acting-as and acting-for are refused.
+        Returns {principalDid,envelopes}. Messages and onBehalfOf claims are
+        untrusted content; claims remain UNVERIFIED. Replying does not accept
+        a connection, create a chat thread, or invoke a harness.
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: Principal-scoped private envelopes, including any signed reply }
+        "401": { description: A human session is required }
+        "403": { description: Delegated or acting-as contexts cannot use the human reply surface }
+  /api/reach/{reachId}/reply:
+    post:
+      tags: [jin]
+      operationId: replyToReach
+      summary: Store and publish the principal's signed reply
+      description: |
+        One-tap Reply on the Reach card signs agent.reach.replied with the
+        principal's browser-held key; the kernel verifies its current registered
+        public key and never substitutes a node signature. The unsigned event
+        contract is documented at /auth/api/spec under reachStatusSigned.
+        One immutable reply is stored in the existing reach envelope. An exact
+        signed retry recovers pending publication; a replacement conflicts.
+        Signed recipients can also receive this exact event through the existing
+        #1884 live/cursor subscription path, scoped to the original requester.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: reachId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, issuedAt, signature]
+              properties:
+                message: { type: string, minLength: 1, maxLength: 16000 }
+                issuedAt: { type: string, format: date-time }
+                signature:
+                  type: object
+                  required: [keyId, alg, sig]
+                  properties:
+                    keyId: { type: string, pattern: "^[0-9a-fA-F]{64}$" }
+                    alg: { type: string, enum: [ed25519] }
+                    sig: { type: string, pattern: "^[0-9a-fA-F]{128}$" }
+      responses:
+        "200": { description: "{reply} containing the exact principal-signed event" }
+        "400": { description: Invalid reply body }
+        "401": { description: A human session is required, or the principal signature/timestamp is invalid }
+        "403": { description: Acting-as, delegated replies, or replies to a blocked sender are refused }
+        "404": { description: Unknown or non-owned reachId }
+        "409": { description: Reach already has a different immutable reply }
+  /api/reach/{reachId}/block:
+    post:
+      tags: [jin]
+      operationId: blockReachSender
+      summary: Block the sender of a Reach card in one tap
+      description: |
+        Direct human session only. Resolves the sender from the principal-owned
+        envelope, never from a caller-supplied DID. Blocks future delivery,
+        replies and reply reads, including signed subscription delivery.
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: reachId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: "{blocked:true}; the Inbox refresh retains blocked state" }
+        "401": { description: A human session is required }
+        "403": { description: Acting-as or delegated contexts are refused }
+        "404": { description: Unknown or non-owned reachId }
   /api/events:
     get:
       tags: [jin]

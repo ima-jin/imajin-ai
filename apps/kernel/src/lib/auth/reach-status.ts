@@ -1,10 +1,11 @@
 import { getClient } from '@imajin/db';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
+import type { SignedReachReplyEvent } from './reach-reply-wire';
 
 export interface ReachStatus {
   reachId: string;
   state: 'delivered' | 'replied' | 'blocked';
-  reply: Record<string, unknown> | null;
+  reply: SignedReachReplyEvent | null;
 }
 
 /**
@@ -18,7 +19,7 @@ export async function reachStatus(params: {
   reachId: string;
 }): Promise<ReachStatus | null> {
   const [row] = await getClient().unsafe<{
-    envelope: ReachEnvelope & { reply?: Record<string, unknown> };
+    envelope: ReachEnvelope;
     blocked: boolean;
   }[]>(`
     SELECT e.envelope, EXISTS (
