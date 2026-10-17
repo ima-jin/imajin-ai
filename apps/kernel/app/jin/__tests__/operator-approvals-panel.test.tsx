@@ -45,6 +45,24 @@ describe('shared native approval command controller', () => {
   const binding = { loopId: 'loop_native', principalDid: 'did:imajin:principal', agentDid: 'did:imajin:agent', approvalId: 'native_1' };
   const command = { type: 'session.approve', commandId: 'command_1', countersignature: { sig: 'full-wish' } };
   const nativeCard = () => gatewayExecApproval({ sessionBinding: binding });
+  it('uses 44px minimum touch targets on shared native decision buttons and legacy Withdraw', async () => {
+    installFetch([{ isOperator: true, approvals: [nativeCard(), approval({ status: 'approved' })] }]);
+    render(<OperatorApprovalsPanel />);
+    const allow = await screen.findByRole('button', { name: 'Allow once' });
+    for (const button of [allow, screen.getByRole('button', { name: 'Deny' }), screen.getByRole('button', { name: 'Withdraw' })]) {
+      expect(button.classList.contains('min-h-11')).toBe(true);
+    }
+  });
+
+  it.each(['approved', 'denied', 'applied'] as const)('shows a bound %s decision as awaiting a signed outcome until attested', async (status) => {
+    installFetch([{ isOperator: true, approvals: [gatewayExecApproval({ sessionBinding: binding, status })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('Awaiting signed agent outcome')).toBeDefined();
+    expect(screen.queryByText('approved — pending apply')).toBeNull();
+    expect(screen.queryByText('denied')).toBeNull();
+    expect(screen.queryByText('applied')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+  });
   it('accepts a fixture preparer while retaining the identical decision controller and endpoint', async () => {
     const prepare = vi.fn().mockResolvedValue(command);
     const defaultCalls = commandClient.prepare.mock.calls.length;

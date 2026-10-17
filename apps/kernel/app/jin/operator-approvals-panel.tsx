@@ -85,7 +85,7 @@ function approvalStatusBadge(approval: OperatorApprovalCard): ReactNode {
     return <span className="text-xs text-amber-300">{label}</span>;
   }
   if (approval.sessionBinding && ['approved', 'denied', 'applied'].includes(approval.status)) {
-    return <span className="text-xs text-amber-300">Decision recorded — awaiting signed agent attestation</span>;
+    return <span className="text-xs text-amber-300">Awaiting signed agent outcome</span>;
   }
   return statusBadge(approval.status);
 }
@@ -1139,7 +1139,7 @@ function CardActions({
         type="button"
         onClick={() => onDecide(approval, 'reject', renderer.decisionModes?.reject)}
         disabled={busy}
-        className="px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        className="min-h-11 px-3 py-1.5 rounded text-xs font-medium bg-red-900/40 text-red-300 hover:bg-red-800/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
       >
         {decisionLabels.reject}
       </button>
@@ -1148,7 +1148,7 @@ function CardActions({
         onClick={() => onDecide(approval, 'approve', renderer.decisionModes?.approve)}
         disabled={busy}
         ref={autoFocusRef}
-        className="px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
+        className="min-h-11 px-3 py-1.5 rounded text-xs font-medium bg-green-700/70 text-green-100 hover:bg-green-600/70 disabled:opacity-40 disabled:cursor-not-allowed transition-colors ring-1 ring-green-500/50"
       >
         {busy ? '…' : decisionLabels.approve}
       </button>
