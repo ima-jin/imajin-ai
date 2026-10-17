@@ -6,9 +6,9 @@
  * This module composes five existing, unmodified primitives rather than
  * inventing new ones (see the #2251 Phase 1 seam-proposal comment for the
  * full reasoning):
- *   1. Delegation grants (#1882, ./grants.ts) — `introspectGrant()` decides
- *      whether the requesting agent DID may reach this principal at all.
- *      Fails closed: a revoked grant makes the very next call deny.
+ *   1. Reach authority (#2590, ./reach-authority.ts) — an explicit grant or
+ *      the principal's tier gate admits a verified caller. Sender blocks
+ *      revoke scoped stub credentials on the very next call.
  *   2. The foreign-principal stub (#2251, ./foreign-principal-stub.ts) — a
  *      generalization of the email-keyed claimable-stub primitive (#1834)
  *      for the human the foreign agent claims to act for.
@@ -29,10 +29,9 @@ import { broker, publish, isBrokerRelease } from '@imajin/bus';
 import type { BrokerPredicateClaim } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { verifySignature } from './crypto';
-import { introspectGrant } from './grants';
+import { resolveReachRequester, authorizeReachRequester } from './reach-authority';
 import { resolveOrMintForeignPrincipalStub } from './foreign-principal-stub';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
-import { isTierAdmitted } from '@/src/lib/jin/front-door';
 import { generateId } from '@/src/lib/kernel/id';
 import type { ReachDeliveryInput } from './reach-delivery-input';
 import { parseReachDelivery } from './reach-delivery-input';
@@ -55,6 +54,8 @@ export interface ReachOnBehalfOf {
 
 export interface ReachRequestInput extends Partial<ReachDeliveryInput> {
   requesterDid: string;
+  /** did:web callers supply the key that must be verified against their DID document. */
+  publicKey?: string;
   onBehalfOf: ReachOnBehalfOf;
   purpose: string;
   field: string;
@@ -250,8 +251,8 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
 /**
  * Evaluate one reach request against `principalDid`'s gate. Fails closed at
  * every step: an unknown principal, an unknown/unsigned-for requester, a
- * stale/future/invalid signature, or a missing/revoked `agent:reach` grant
- * all deny before the gate is ever evaluated — and every one of those
+ * stale/future/invalid signature, a sender block, or neither a valid grant
+ * nor an admitted credential tier deny before the broker is evaluated. Those
  * denials, like every answered exchange, mints exactly one `agent.reach`
  * attestation (see {@link emitReachAttestation}). A gate with no configured
  * `consent_grants` row also denies (via the broker's own fail-closed
@@ -276,11 +277,7 @@ export async function reachPrincipal(
     return denial('principal_not_found', 404);
   }
 
-  const [requester] = await db
-    .select({ id: identities.id, publicKey: identities.publicKey, tier: identities.tier })
-    .from(identities)
-    .where(eq(identities.id, input.requesterDid))
-    .limit(1);
+  const requester = await resolveReachRequester(input.requesterDid, input.publicKey);
   if (!requester) {
     await denyReach({ principalDid, input, transcriptHash, reason: 'requester_unknown', signatureVerified: false });
     return denial('requester_unknown', 401);
@@ -297,24 +294,16 @@ export async function reachPrincipal(
     return denial('invalid_signature', 401);
   }
 
-  const introspection = await introspectGrant({
-    agentDid: input.requesterDid,
-    capability: AGENT_REACH_CAPABILITY,
-    targetDid: principalDid,
-    delegatorDid: principalDid,
+  const introspection = await authorizeReachRequester({
+    requesterDid: input.requesterDid,
+    principalDid,
+    metadata: principal.metadata,
+    tier: requester.tier,
+    publicKey: requester.publicKey,
+    purpose: input.purpose,
+    field: input.field,
   });
-  if (!introspection.authorized || !introspection.grantId) {
-    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
-    return denial('unauthorized', 403);
-  }
-
-  // #2598 — the operator-authored tier gate. The requester's tier comes from
-  // `auth.identities.tier`, never from anything the requester claims. A tier
-  // the principal has not admitted is folded into the same `unauthorized` /
-  // 403 as a missing grant (reach refused outright) — it never reaches the
-  // broker, so it cannot be told apart from "no grant" by the response, and
-  // the principal's topic gate is not consulted.
-  if (!isTierAdmitted(principal.metadata, requester.tier)) {
+  if (!introspection.authorized) {
     await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
     return denial('unauthorized', 403);
   }
@@ -349,8 +338,8 @@ export async function reachPrincipal(
   if (delivery.delivery) {
     const result = await completeDelivery({
       principalDid, input: { ...input, ...delivery.delivery }, metadata: principal.metadata,
-      requesterTier: requester.tier ?? 'unknown', onBehalfOfStubDid: stub.did,
-      grantId: introspection.grantId, transcriptHash, admitted: answer,
+      requesterTier: typeof requester.tier === 'string' ? requester.tier : 'unknown', onBehalfOfStubDid: stub.did,
+      grantId: introspection.grantId ?? null, transcriptHash, admitted: answer,
     });
     if (result) return result;
     answer = false;
@@ -378,7 +367,7 @@ export async function reachPrincipal(
       purpose: input.purpose,
       field: input.field,
       answer,
-      grantId: introspection.grantId,
+      grantId: introspection.grantId ?? null,
       context_id: input.requesterDid,
       context_type: 'agent.reach',
     },
@@ -392,8 +381,9 @@ export async function reachPrincipal(
  * principal"): merges `topics` into the principal's own
  * `identities.metadata.agentReachTopics` (the raw, never-disclosed gate
  * value) and ensures exactly one `kernel.consent_grants` row exists opening
- * the `agent.reach` / `contact_topics` gate to any requester holding a valid
- * `agent:reach` grant (`grantedToClass: 'strangers'` — #1189's "any
+ * the `agent.reach` / `contact_topics` broker gate. This legacy seed still
+ * needs an explicit grant; operator-authored tier admission comes from the
+ * front door (`grantedToClass: 'strangers'` — #1189's "any
  * requester, no ring check" class).
  *
  * Not wired into a SQL migration deliberately: the principal's DID is a

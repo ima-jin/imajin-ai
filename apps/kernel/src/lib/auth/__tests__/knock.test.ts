@@ -180,6 +180,8 @@ vi.mock('@/src/lib/auth/crypto', () => ({
 }));
 
 const getNodeDidMock = vi.fn();
+const promoteForeignAgentStubMock = vi.fn().mockResolvedValue(undefined);
+vi.mock('../foreign-agent-stub', () => ({ promoteForeignAgentStub: (...args: unknown[]) => promoteForeignAgentStubMock(...args) }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: () => getNodeDidMock() }));
 
 const busPublishMock = vi.fn().mockResolvedValue(undefined);
@@ -225,6 +227,7 @@ beforeEach(() => {
   connectionsStore.clear();
   attestationsStore.clear();
   busPublishMock.mockClear();
+  promoteForeignAgentStubMock.mockClear();
   getNodeDidMock.mockReset().mockResolvedValue('did:imajin:platform-node');
   delete process.env.AUTH_PRIVATE_KEY;
   seedTargetIdentity();
@@ -485,6 +488,15 @@ describe('declineKnock', () => {
 });
 
 describe('acceptKnock — mint-on-accept, zero grants', () => {
+  it('links a reach stub only on the declared principal human accept, never on submission or another principal accept', async () => {
+    const submitted = await submitKnock(VALID_INPUT);
+    if (!('knock' in submitted)) throw new Error('expected knock');
+    expect(promoteForeignAgentStubMock).not.toHaveBeenCalled();
+    await acceptKnock({ knockId: submitted.knock.knockId, requestedBy: 'did:imajin:other' });
+    expect(promoteForeignAgentStubMock).not.toHaveBeenCalled();
+    await acceptKnock({ knockId: submitted.knock.knockId, requestedBy: TARGET_DID });
+    expect(promoteForeignAgentStubMock).toHaveBeenCalledWith(submitted.knock.agentDid, TARGET_DID, submitted.knock.agentDid, PUBLIC_KEY);
+  });
   it('mints a new preliminary-tier agent identity and marks the knock accepted', async () => {
     const submitted = await submitKnock(VALID_INPUT);
     if (!('knock' in submitted)) throw new Error('expected knock');

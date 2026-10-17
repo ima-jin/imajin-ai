@@ -1,8 +1,7 @@
 /**
  * POST /auth/api/agents/:did/reach — per-principal agent-reach endpoint (#2251).
  *
- * A foreign agent (already holding a did:imajin identity minted via the
- * existing, unmodified knock -> accept flow, #1883) asks whether `:did` — a
+ * A signed foreign agent (did:imajin or verified did:web) asks whether `:did` — a
  * specific principal, e.g. Ryan — is open to being contacted about a
  * declared topic, on behalf of its own principal (e.g. Alice). Boolean-only
  * asks remain unchanged. A delivery bundle stores the full message only for
@@ -56,10 +55,13 @@ function parseBody(body: Record<string, unknown>): { ok: true; input: ReachReque
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
     return { ok: false, error: 'body must be an object' };
   }
-  const { requesterDid, onBehalfOf, purpose, field, predicate, arg, issuedAt, signature } = body;
+  const { requesterDid, publicKey, onBehalfOf, purpose, field, predicate, arg, issuedAt, signature } = body;
 
-  if (typeof requesterDid !== 'string' || !requesterDid.startsWith('did:imajin:')) {
-    return { ok: false, error: 'requesterDid must be a did:imajin DID' };
+  if (typeof requesterDid !== 'string' || !/^(did:imajin:|did:web:).+/.test(requesterDid)) {
+    return { ok: false, error: 'requesterDid must be a did:imajin or verified did:web DID' };
+  }
+  if (publicKey !== undefined && (typeof publicKey !== 'string' || !/^[0-9a-f]{64}$/i.test(publicKey))) {
+    return { ok: false, error: 'publicKey must be a 64-character hex Ed25519 key' };
   }
   if (!isReachOnBehalfOf(onBehalfOf)) {
     return { ok: false, error: 'onBehalfOf must be { platform: string, externalRef: string, selfDescription?: string }' };
@@ -86,6 +88,7 @@ function parseBody(body: Record<string, unknown>): { ok: true; input: ReachReque
     ok: true,
     input: {
       requesterDid,
+      ...(typeof publicKey === 'string' ? { publicKey } : {}),
       onBehalfOf,
       purpose,
       field,

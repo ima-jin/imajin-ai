@@ -926,7 +926,8 @@ export interface BusEventMap {
     purpose: string;
     field: string;
     answer: boolean;
-    grantId: string;
+    /** Null when the principal's tier gate, not a per-agent delegation grant, supplies authority (#2590). */
+    grantId: string | null;
     context_id: string;
     context_type: 'agent.reach';
   };
@@ -952,7 +953,8 @@ export interface BusEventMap {
     transcriptHash: string;
     requesterSignature: string;
     requesterTier: string;
-    grantId: string;
+    /** Null when the principal's gate supplies reach authority (#2590). */
+    grantId: string | null;
     /** Delivery server's ISO timestamp, distinct from the caller's request timestamp. */
     issuedAt: string;
     requestIssuedAt: string;

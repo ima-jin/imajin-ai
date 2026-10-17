@@ -58,9 +58,10 @@ const PAYLOAD: BusEventMap['agent.reach.delivered'] = {
 beforeEach(() => vi.clearAllMocks());
 
 describe('Reach delivery chain (#2588)', () => {
-  it('publishes to emit and real notify for the principal, never creating a second attestation', async () => {
+  it.each([null, 'grant_example'])('publishes only allowlisted metadata to emit with grantId %s, never creating a second attestation', async (grantId) => {
+    const payload = { ...PAYLOAD, grantId };
     await publish('agent.reach.delivered', {
-      issuer: NODE, subject: PRINCIPAL, scope: 'agent', payload: PAYLOAD,
+      issuer: NODE, subject: PRINCIPAL, scope: 'agent', payload,
     });
     await Promise.resolve();
 
@@ -89,7 +90,7 @@ describe('Reach delivery chain (#2588)', () => {
       title: 'New Reach message',
       body: `Reach message about collaboration from ${REQUESTER}`,
       data: {
-        ...PAYLOAD,
+        ...payload,
         eventType: 'agent.reach.delivered',
         issuer: NODE,
         subject: PRINCIPAL,

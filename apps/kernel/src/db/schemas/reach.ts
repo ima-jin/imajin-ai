@@ -16,7 +16,8 @@ export interface ReachEnvelope {
   transcriptHash: string;
   requesterSignature: string;
   requesterTier: string;
-  grantId: string;
+  /** Null for a tier-admitted caller authorized by the principal's gate. */
+  grantId: string | null;
   /** Delivery server timestamp, distinct from the caller-signed timestamp. */
   issuedAt: string;
   requestIssuedAt: string;

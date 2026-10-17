@@ -96,6 +96,12 @@
       "firstMigration": "0001_seed.sql",
       "notes": ""
     },
+    "auth.foreign_agent_stubs": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0198_foreign_agent_stubs.sql",
+      "notes": "Reach-only, single-principal foreign-agent credentials (#2590)."
+    },
     "auth.foreign_principal_stubs": {
       "owner": "kernel",
       "schema": "auth",

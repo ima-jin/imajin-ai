@@ -52,6 +52,11 @@ vi.mock('@imajin/bus', () => ({
   isBrokerRelease: (result: { status: string }) => result.status === 'released',
 }));
 vi.mock('@/src/lib/auth/grants', () => ({ introspectGrant: (...args: unknown[]) => mocks.grant(...args) }));
+vi.mock('@/src/lib/auth/foreign-agent-stub', () => ({
+  FOREIGN_AGENT_STUB_SUBTYPE: 'foreign_agent_stub',
+  findForeignAgentStub: vi.fn().mockResolvedValue(null),
+  resolveOrMintForeignAgentStub: vi.fn().mockResolvedValue({ stubDid: 'did:imajin:foreign-agent-stub', revokedAt: null }),
+}));
 vi.mock('@/src/lib/auth/foreign-principal-stub', () => ({
   resolveOrMintForeignPrincipalStub: async () => ({ did: 'did:imajin:foreign-human-stub' }),
 }));
@@ -115,6 +120,22 @@ beforeEach(() => {
 });
 
 describe('signed reach delivery through POST', () => {
+  it('does not accept anonymous delivery even when the principal admits credentialed tiers', async () => {
+    const response = await post({ ...signedBody(), signature: '' });
+    expect(response.status).toBe(400);
+    expect(mocks.persist).not.toHaveBeenCalled();
+    expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it('delivers via tier policy without inventing a per-agent grant', async () => {
+    mocks.grant.mockResolvedValue({ authorized: false });
+    const response = await post(signedBody());
+    expect(response.body).toMatchObject({ delivered: true });
+    expect(mocks.persist).toHaveBeenCalledWith(expect.objectContaining({ grantId: null }));
+    expect(mocks.publish).toHaveBeenCalledWith('agent.reach.delivered', expect.objectContaining({
+      payload: expect.objectContaining({ grantId: null }),
+    }));
+  });
   it('stores full body, publishes a verifiable principal-addressed event, and attests only once', async () => {
     const input = signedBody();
     const response = await post(input);
