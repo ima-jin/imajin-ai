@@ -50,6 +50,16 @@ overlap by both kid and public key, and accepts currently published non-expired
 keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
 or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
 
+S3 also covers DNS domain evidence (#2902):
+`apps/kernel/src/lib/domains/signing.ts` verifies the configured node DID's
+registered public key before using `AUTH_PRIVATE_KEY` for DNS verification
+and revocation attestations. Historical domain evidence needs the same
+verified `key.rotated` history as other S3 records; DNS rechecks preserve the
+original signed verification record rather than silently re-signing it.
+Imajin-issued subdomain evidence instead uses the pinned organization's own
+vault-granted key, never the node key. Node rotation still requires preserving
+that vault grant through the custody steps below.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |
@@ -506,6 +516,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts` — S2
 - `apps/corpus/src/middleware/access-claim.ts` — S2 (verifier; public keys only)
 - `apps/kernel/src/lib/auth/emit-mechanical-attestation.ts` — S3
+- `apps/kernel/src/lib/domains/signing.ts` — S3 (DNS domain verification/revocation; organization issuance uses its own vault-granted key)
 - `apps/kernel/src/lib/auth/emit-recovery-attestation.ts` — S3
 - `apps/kernel/src/lib/pay/payment-requests/attestations.ts` — S3
 - `apps/kernel/src/lib/auth/knock.ts` — S3
