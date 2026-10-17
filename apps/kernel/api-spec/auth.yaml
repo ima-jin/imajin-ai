@@ -54,6 +54,33 @@ components:
       name: x-internal-key
       description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    DomainBinding:
+      type: object
+      required: [domain, zoneOwner, siteOwner, appDid, method, status, attestation, verifiedAt, checkedAt]
+      properties:
+        domain: { type: string, description: Normalized ASCII DNS hostname }
+        zoneOwner: { type: string, description: DID proven by the exact public TXT value at _imajin.domain }
+        siteOwner: { type: string, description: "Authoritative registry.apps.ownerDid for appDid; zoneOwner when no app is bound. Never supplied by a domain API caller." }
+        appDid: { type: [string, "null"] }
+        method: { type: string, enum: [dns-txt, imajin-issued, legacy] }
+        status: { type: string, enum: [pending, verified, revoked, legacy] }
+        attestation:
+          type: [object, "null"]
+          description: "Public signed domain.verified or domain.revoked evidence persisted in auth.attestations. No tokens, grants or secrets."
+        verifiedAt: { type: [string, "null"], format: date-time }
+        checkedAt: { type: [string, "null"], format: date-time }
+    DomainList:
+      type: object
+      required: [domains]
+      properties:
+        domains:
+          type: array
+          items: { $ref: "#/components/schemas/DomainBinding" }
+    DomainResult:
+      type: object
+      required: [domain]
+      properties:
+        domain: { $ref: "#/components/schemas/DomainBinding" }
     PendingOwnerTransfer:
       type: object
       required: [id, from, to, by, policy, createdAt]
@@ -456,6 +483,207 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/identities/{did}/domains:
+    parameters:
+      - { name: did, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [auth]
+      operationId: listIdentityDomains
+      summary: List domain bindings for an identity owner or active admin
+      description: |
+        Individuals may access their own identity. Collective identities require a
+        persisted, active owner/admin membership for the authenticated caller DID.
+        actingAs is context only; actingAsRole is never accepted as authority.
+        actingFor does not turn a delegate into the owner. Includes pending,
+        revoked and routing-only legacy bindings; response is private/no-store.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Identity domain bindings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DomainList" }
+        "401": { description: Authentication required }
+        "403": { description: Active owner/admin access required or conflicting identity context }
+        "500": { description: Redacted domain operation failure }
+    post:
+      tags: [auth]
+      operationId: addIdentityDomain
+      summary: Add a pending DNS ownership binding
+      description: |
+        Same persisted owner/admin gate as GET, plus shared #2360 value-moving
+        delegation policy: delegated agents cannot execute ownership mutations
+        (403 AGENT_APPROVAL_REQUIRED). The service resolves appDid ownership
+        from the active registry.apps.ownerDid, which may differ from zoneOwner.
+        zoneOwner is the path DID, never a body
+        claim; arbitrary zoneOwner/siteOwner/other body fields are rejected.
+        TXT proof is the exact zoneOwner DID at _imajin.<normalized-domain>.
+        Imajin subdomains are issued only by the actual Imajin organization
+        identity during provisioning, not self-asserted by the node.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domain]
+              additionalProperties: false
+              properties:
+                domain: { type: string, minLength: 1, maxLength: 253 }
+                appDid: { type: [string, "null"], maxLength: 256, pattern: "^did:imajin:" }
+      responses:
+        "201":
+          description: Pending domain binding
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DomainResult" }
+        "400": { description: Invalid JSON/domain/appDid or prohibited ownership fields }
+        "401": { description: Authentication required }
+        "403": { description: Owner/admin required, reserved Imajin domain, or agent countersign required }
+        "404": { description: Active registered app or identity not found }
+        "409": { description: Conflicting domain binding }
+        "500": { description: Redacted domain operation failure }
+  /api/identities/{did}/domains/{domain}/verify:
+    parameters:
+      - { name: did, in: path, required: true, schema: { type: string } }
+      - { name: domain, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [auth]
+      operationId: verifyIdentityDomain
+      summary: Check public TXT proof and persist signed domain verification
+      description: |
+        Active owner/admin only; shared #2360 value-moving delegation policy
+        requires the owner to execute, never their delegated agent. Public
+        TXT chunks are joined and must equal the zoneOwner DID exactly.
+        Signed domain.verified evidence is persisted in attestations.
+        Periodic checks revoke proof when DNS no longer matches.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Checked binding and its current signed evidence
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DomainResult" }
+        "400": { description: Invalid domain }
+        "401": { description: Authentication required }
+        "403": { description: Owner/admin required or AGENT_APPROVAL_REQUIRED }
+        "404": { description: No binding for the requested zone owner }
+        "409": { description: TXT proof absent/mismatched, revoked claim, ownership change or conflicting binding }
+        "503": { description: DNS or signing service unavailable }
+        "500": { description: Redacted domain operation failure }
+  /api/identities/{did}/domains/{domain}:
+    parameters:
+      - { name: did, in: path, required: true, schema: { type: string } }
+      - { name: domain, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [auth]
+      operationId: removeIdentityDomain
+      summary: Revoke and remove a domain binding
+      description: |
+        Active owner/admin only. Shared #2360 irreversible delegation policy
+        refuses execution by delegated agents. Retains signed domain.revoked
+        attestation history; does not expose any vault credential.
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "204": { description: Binding revoked and retained for audit; no response body }
+        "400": { description: Invalid domain }
+        "401": { description: Authentication required }
+        "403": { description: Owner/admin required or AGENT_APPROVAL_REQUIRED }
+        "404": { description: No binding for the requested zone owner }
+        "500": { description: Redacted domain operation failure }
+  /api/identities/{did}/domains/public:
+    parameters:
+      - { name: did, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [auth]
+      operationId: listPublicIdentityDomainEvidence
+      summary: Public verified domains and signed ownership evidence for profiles
+      description: |
+        Unauthenticated, no-store. Calls listDomains(did, true). Only verified
+        bindings with a signed attestation are returned. Pending, revoked,
+        legacy and unsigned bindings are never public ownership evidence.
+        Signed evidence is public data only; no credential or grant material.
+      security: []
+      parameters:
+        - name: domain
+          in: query
+          description: Optional normalized hostname filter for a signed-evidence link
+          schema: { type: string }
+      responses:
+        "200":
+          description: Verified signed bindings, or an empty list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DomainList" }
+        "400": { description: Invalid domain filter }
+        "500": { description: Redacted domain operation failure }
+  /.well-known/imajin.json:
+    servers:
+      - url: /
+    get:
+      tags: [auth]
+      operationId: getHostDomainEvidence
+      summary: Discover the current host's verified ownership
+      description: |
+        Host-scoped public evidence, no-store, Access-Control-Allow-Origin *.
+        Only a verified signed domain binding is accepted. Never promotes a
+        pending/revoked or grandfathered routing-only domain to ownership.
+        siteOwner is authoritative registry app ownership, distinct from DNS
+        zoneOwner. No secrets or vault/grant material are returned.
+      security: []
+      responses:
+        "200":
+          description: Current host ownership and signed domain evidence
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [siteOwner, zoneOwner, appDid, attestation]
+                properties:
+                  siteOwner: { type: string }
+                  zoneOwner: { type: string }
+                  appDid: { type: [string, "null"] }
+                  attestation: { type: object }
+        "400": { description: Invalid Host header }
+        "404": { description: No verified domain binding }
+  /api/domain-check:
+    servers:
+      - url: /
+    get:
+      tags: [auth]
+      operationId: checkRoutableDomain
+      summary: On-demand TLS/routing authorization check
+      description: |
+        A verified domain is allowed. An explicitly grandfathered legacy
+        mapping may be allowed for routing only with a logged warning and
+        verified:false. Legacy mappings never authorize credentials or public
+        ownership claims. Pending and revoked mappings are refused.
+      security: []
+      parameters:
+        - { name: domain, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Routing allowed; verified distinguishes signed ownership from legacy routing only
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed, verified]
+                properties:
+                  allowed: { type: boolean, const: true }
+                  verified: { type: boolean }
+        "400": { description: Missing or invalid domain }
+        "404":
+          description: Domain is not routable
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed, verified]
+                properties:
+                  allowed: { type: boolean, const: false }
+                  verified: { type: boolean, const: false }
   /api/groups/{groupDid}/transfer-owner:
     parameters:
       - { name: groupDid, in: path, required: true, schema: { type: string } }
