@@ -51,7 +51,7 @@ function delegationAllowed(actor: Actor): boolean {
 async function humanActor(tx: Transaction, did: string): Promise<void> {
   const [identity] = await tx.select({ scope: identities.scope, subtype: identities.subtype, suspended: identities.suspendedAt })
     .from(identities).where(eq(identities.id, did)).for('share');
-  if (!identity || identity.scope !== 'actor' || identity.subtype !== 'human' || identity.suspended) {
+  if (identity?.scope !== 'actor' || identity.subtype !== 'human' || identity.suspended) {
     throw new OwnershipError('Owner must be an active human actor', 400);
   }
 }
@@ -141,7 +141,7 @@ async function accept(tx: Transaction, state: State, actor: Actor, transferId?: 
 }
 
 /** All transitions serialize on the identity row, including the DID-bound invitation acceptance. */
-export async function ownershipTransfer(
+export function ownershipTransfer(
   groupDid: string, actor: Actor, operation: Operation, input: TransferInput = {},
   registry?: OwnershipPolicyRegistry,
 ) {

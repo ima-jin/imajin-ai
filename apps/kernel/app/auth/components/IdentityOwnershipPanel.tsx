@@ -106,7 +106,7 @@ export default function IdentityOwnershipPanel({ groupDid }: Readonly<{ groupDid
     <section aria-labelledby="ownership-heading" className="border border-zinc-800 bg-zinc-900 p-6 space-y-4">
       <h2 id="ownership-heading" className="font-mono text-lg font-semibold text-white">Ownership</h2>
       {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
-      {message && <p role="status" className="text-sm text-green-400">{message}</p>}
+      {message && <output className="block text-sm text-green-400">{message}</output>}
       {!state && !error && <p className="text-sm text-zinc-400">Loading ownership…</p>}
       {state && (
         <>
