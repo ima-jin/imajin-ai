@@ -32,6 +32,13 @@
  * onto history is not this guard's job. Files the PR does not change at all
  * are never inspected.
  *
+ * After kernel-baseline.json activates the squash, every active root SQL
+ * file is kernel-only (including events/links exclusion), even if unchanged
+ * or shared-allowlisted. Archive SQL is exempt from SQL ownership scanning
+ * only as a byte-identical same-name move from root history at merge-base.
+ * Once baselined, archive additions, modifications and deletions fail.
+ * Manifest checksums cross-check inventory, but cannot authorize new history.
+ *
  * ## Shared-schema check (#1991 phase 2a)
  *
  * Separately from the per-table checks above, a NEW migration file whose
@@ -72,11 +79,12 @@
  *   - `GIT_BIN`                      — absolute path to the git binary
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND, stripSqlComments } from './lib/migration-ownership-parser.mjs';
+import { parseStatements, ALL_OWNERS, APP_SCHEMAS, BUCKET_FOR_KIND, stripSqlComments } from './lib/migration-ownership-parser.mjs';
 import { detectTouchedOwners, detectTouchedSchemas, maskForSchemaScan } from './lib/migration-schema-scan.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
@@ -85,6 +93,9 @@ const ROOT = process.env.CI_GUARD_WORKDIR
 const BASE_REF = process.env.MIGRATION_OWNERSHIP_BASE_REF || 'origin/main';
 const MIGRATIONS_DIR = join(ROOT, 'migrations');
 const OWNERSHIP_PATH = join(MIGRATIONS_DIR, 'ownership.json');
+const BASELINE_PATH = join(MIGRATIONS_DIR, 'kernel-baseline.json');
+const BASELINE_FILE = '0001_kernel_baseline.sql';
+const ARCHIVE_DIR = 'archive/pre-kernel-baseline';
 
 const OWNER_HEADER_RE = /^--\s*owner:\s*([a-z0-9_-]+)\s*$/im;
 
@@ -114,7 +125,8 @@ function ensureSafeDirectory(gitBin, root) {
 }
 
 function diffNameStatus(gitBin, root, baseRef) {
-  const args = ['diff', '--no-color', '--name-status', `${baseRef}...HEAD`, '--', 'migrations'];
+  // A move is a deletion + addition; rename similarity cannot grandfather new SQL.
+  const args = ['diff', '--no-color', '--no-renames', '--name-status', `${baseRef}...HEAD`, '--', 'migrations'];
   return execFileSync(gitBin, args, { cwd: root, encoding: 'utf8' });
 }
 
@@ -345,13 +357,22 @@ function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
   return violations;
 }
 
-function checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist) {
+function checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist, kernelOnly = false) {
   const sql = readFileSync(join(ROOT, filePath), 'utf8');
-  const isNew = status === 'A';
+  const isNew = status === 'A' || kernelOnly;
 
   const sharedViolation = checkSharedSchemaViolation(filePath, sql, isNew, sharedMigrationAllowlist);
-  const externalViolations = checkExternalSchemas(filePath, sql, isNew, ownershipMap.externalSchemas);
+  const externalSchemas = { ...ownershipMap.externalSchemas };
+  if (kernelOnly) {
+    for (const schema of APP_SCHEMAS) {
+      externalSchemas[schema] ??= { repository: `ima-jin/${schema}` };
+    }
+  }
+  const externalViolations = checkExternalSchemas(filePath, sql, isNew, externalSchemas);
   const schemaViolations = [sharedViolation, ...externalViolations].filter(Boolean);
+  if (kernelOnly && extractDeclaredOwner(sql) !== 'kernel') {
+    schemaViolations.push(`${filePath}: active root migrations must declare "-- owner: kernel".`);
+  }
 
   const { declaredOwner, violation: headerViolation } = resolveDeclaredOwner(filePath, sql, isNew);
   if (headerViolation) return [...schemaViolations, headerViolation];
@@ -363,6 +384,72 @@ function checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist) {
   const touches = collectTouches(parseStatements(sql));
   const touchViolations = touches.map((touch) => checkTouch(filePath, touch, ownershipMap, declaredOwner)).filter(Boolean);
   return [...schemaViolations, ...touchViolations];
+}
+
+function sha256(bytes) {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+/** Git history, not an editable manifest, is the authority for archive moves. */
+function checkArchiveHistory(changedFiles) {
+  const gitBin = resolveGitBinary();
+  const base = execFileSync(gitBin, ['merge-base', BASE_REF, 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+  const paths = new Set(execFileSync(gitBin, ['ls-tree', '-r', '--name-only', base, '--', 'migrations'], {
+    cwd: ROOT, encoding: 'utf8',
+  }).trim().split('\n'));
+  const violations = [];
+  const movedSources = new Set();
+  const alreadyBaselined = paths.has('migrations/kernel-baseline.json');
+  if (alreadyBaselined && !existsSync(BASELINE_PATH)) {
+    violations.push('migrations/kernel-baseline.json: removing the baseline manifest cannot disable kernel-only migration policy.');
+  }
+  const deleted = new Set(changedFiles.filter(({ status }) => status === 'D').map(({ filePath }) => filePath));
+  for (const { status, filePath } of changedFiles) {
+    if (!filePath.startsWith('migrations/archive/')) continue;
+    const source = `migrations/${basename(filePath)}`;
+    const isMove = !alreadyBaselined && status === 'A'
+      && filePath === `migrations/${ARCHIVE_DIR}/${basename(filePath)}`
+      && paths.has(source) && deleted.has(source);
+    if (isMove) {
+      const original = execFileSync(gitBin, ['show', `${base}:${source}`], { cwd: ROOT });
+      if (original.equals(readFileSync(join(ROOT, filePath)))) {
+        movedSources.add(source);
+        continue;
+      }
+    }
+    violations.push(`${filePath}: archive history is immutable; only byte-identical same-name moves of existing root SQL are permitted.`);
+  }
+  return { violations, movedSources, alreadyBaselined };
+}
+
+function checkBaselineManifest() {
+  if (!existsSync(BASELINE_PATH)) return [];
+  const manifest = JSON.parse(readFileSync(BASELINE_PATH, 'utf8'));
+  if (manifest.filename !== BASELINE_FILE || manifest.archive !== ARCHIVE_DIR || !Array.isArray(manifest.migrations)) {
+    throw new Error('Invalid kernel-baseline.json filename, archive, or migrations.');
+  }
+  const violations = [];
+  const filenames = new Set();
+  for (const entry of manifest.migrations) {
+    if (!/^\d{4}_[^/\\]+\.sql$/.test(entry.filename) || filenames.has(entry.filename)) {
+      throw new Error('Invalid or duplicate archived migration filename in kernel-baseline.json.');
+    }
+    filenames.add(entry.filename);
+    const path = join(MIGRATIONS_DIR, ARCHIVE_DIR, entry.filename);
+    if (!existsSync(path) || sha256(readFileSync(path)) !== entry.checksum) {
+      violations.push(`${entry.filename}: archived migration checksum does not match kernel-baseline.json.`);
+    }
+  }
+  const archivePath = join(MIGRATIONS_DIR, ARCHIVE_DIR);
+  if (existsSync(archivePath)) {
+    for (const name of readdirSync(archivePath).filter((name) => name.endsWith('.sql'))) {
+      if (!filenames.has(name)) violations.push(`${name}: archived migration is missing from kernel-baseline.json.`);
+    }
+  }
+  if (!existsSync(join(MIGRATIONS_DIR, BASELINE_FILE))) {
+    violations.push(`${BASELINE_FILE}: active kernel baseline is missing.`);
+  }
+  return violations;
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────
@@ -383,9 +470,13 @@ function reportAndExit(violations) {
 function main() {
   let ownershipMap;
   let changedFiles;
+  let archive;
+  let manifestViolations;
   try {
     ownershipMap = loadOwnershipMap();
     changedFiles = getChangedMigrationFiles(ROOT, BASE_REF);
+    archive = checkArchiveHistory(changedFiles);
+    manifestViolations = checkBaselineManifest();
   } catch (err) {
     console.error(`check-migration-ownership: ${err.message}`);
     process.exit(1);
@@ -394,9 +485,23 @@ function main() {
 
   const sharedMigrationAllowlist = loadSharedMigrationAllowlist(ownershipMap);
 
-  const violations = changedFiles
-    .filter(({ status }) => status !== 'D') // deleted files have nothing left to parse
-    .flatMap(({ status, filePath }) => checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist));
+  const kernelOnly = existsSync(BASELINE_PATH) || archive.alreadyBaselined
+    || existsSync(join(MIGRATIONS_DIR, BASELINE_FILE));
+  // Scan all active SQL, even on manifest-only changes. Old status and shared
+  // allowlists must not grandfather app SQL into the new kernel baseline.
+  const activeFiles = kernelOnly
+    ? readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith('.sql'))
+      .map((name) => ({ status: 'A', filePath: `migrations/${name}` }))
+    : changedFiles.filter(({ status, filePath }) => status !== 'D' && !filePath.startsWith('migrations/archive/'));
+  const violations = [...archive.violations, ...manifestViolations,
+    ...activeFiles.flatMap(({ status, filePath }) => checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist, kernelOnly))];
+  if (kernelOnly) {
+    for (const { status, filePath } of changedFiles) {
+      if (status === 'D' && dirname(filePath) === 'migrations' && !archive.movedSources.has(filePath)) {
+        violations.push(`${filePath}: historical root SQL may only be deleted as a byte-identical archive move.`);
+      }
+    }
+  }
 
   reportAndExit(violations);
 }
