@@ -28,6 +28,11 @@ interface InlineRef {
   refStart: number;
   refEnd: number;
 }
+interface RefBoundaries {
+  urlEnds: Uint32Array;
+  nonWhitespace: Uint32Array;
+  quotes: Uint32Array;
+}
 
 /** Recognize the existing optional quoted-title syntax without any backtracking. */
 function referenceEnd(
@@ -42,31 +47,42 @@ function referenceEnd(
   const titleEnd = quotes[titleStart + 1];
   return text[titleEnd + 1] === ')' ? titleEnd + 2 : null;
 }
+function inlineRefAt(
+  text: string,
+  opening: number,
+  labelEnd: number,
+  boundaries: RefBoundaries,
+): InlineRef | null {
+  if (opening < 0 || text[labelEnd + 1] !== '(') return null;
+  const refStart = labelEnd + 2;
+  const refEnd = boundaries.urlEnds[refStart];
+  if (refEnd === undefined || refEnd === refStart) return null;
+  const end = referenceEnd(text, refEnd, boundaries.nonWhitespace, boundaries.quotes);
+  if (end === null) return null;
+  const start = text[opening - 1] === '!' ? opening - 1 : opening;
+  return { start, end, labelEnd, refStart, refEnd };
+}
 
 /**
  * Scan `[text](ref)` / `![alt](ref)` in linear time, including malformed input.
  * Cached boundaries prevent repeated `[` or `](` from rescanning a shared tail.
  */
 function* inlineRefs(text: string): Generator<InlineRef> {
-  const urlEnds = nextPositions(text, (character) => /[)\s"]/.test(character));
-  const nonWhitespace = nextPositions(text, (character) => !/\s/.test(character));
-  const quotes = nextPositions(text, (character) => character === '"');
+  const boundaries: RefBoundaries = {
+    urlEnds: nextPositions(text, (character) => /[)\s"]/.test(character)),
+    nonWhitespace: nextPositions(text, (character) => !/\s/.test(character)),
+    quotes: nextPositions(text, (character) => character === '"'),
+  };
   let labelStart = -1;
 
   for (let index = 0; index < text.length; index++) {
     if (text[index] === '[' && labelStart < 0) labelStart = index;
     if (text[index] !== ']') continue;
-    const opening = labelStart;
+    const match = inlineRefAt(text, labelStart, index, boundaries);
     labelStart = -1;
-    if (opening < 0 || text[index + 1] !== '(') continue;
-    const refStart = index + 2;
-    const refEnd = urlEnds[refStart];
-    if (refEnd === undefined || refEnd === refStart) continue;
-    const end = referenceEnd(text, refEnd, nonWhitespace, quotes);
-    if (end === null) continue;
-    const start = text[opening - 1] === '!' ? opening - 1 : opening;
-    yield { start, end, labelEnd: index, refStart, refEnd };
-    index = end - 1;
+    if (match === null) continue;
+    yield match;
+    index = match.end - 1;
   }
 }
 
