@@ -17,6 +17,7 @@ const staticEntry = (name: string, label: string, visibility = 'authenticated') 
 const publicServices = [
   staticEntry('kernel', 'Home', 'public'), staticEntry('pay', 'Wallet'), staticEntry('media', 'Media'),
   staticEntry('usage', 'Usage', 'internal'),
+  staticEntry('calendar', 'Calendar', 'internal'), staticEntry('google', 'Google Workspace', 'internal'),
   { ...staticEntry('coffee', 'Coffee', 'public'), category: 'creator', source: 'registry' },
   { ...staticEntry('not-added', 'Not added', 'public'), category: 'core', source: 'registry' },
 ];
@@ -41,9 +42,23 @@ describe('AppLauncher registry navigation', () => {
     expect(screen.queryByText('Not added')).toBeNull();
     expect(screen.queryByText('Creator Tools')).toBeNull();
     expect(screen.queryByText('Usage')).toBeNull();
+    expect(screen.queryByText('Calendar')).toBeNull();
+    expect(screen.queryByText('Google Workspace')).toBeNull();
     expect(screen.getByText('Wallet').closest('a')?.getAttribute('href')).toBe('/pay');
     expect(screen.getByText('Media').closest('a')?.getAttribute('href')).toBe('/media');
+    expect(screen.getByText('See all apps →').getAttribute('href')).toBe('/kernel');
     expect(request.mock.calls.some(([url]) => String(url).includes('/api/specs'))).toBe(false);
+  });
+
+  it.each(['', '/', 'https://node.test/'])('keeps home destination %j intact', async (url) => {
+    request.mockImplementation(async (input: string) => ({
+      ok: true, json: async () => input.includes('/api/launcher')
+        ? { services: publicServices.map((entry) => entry.name === 'kernel' ? { ...entry, url } : entry) }
+        : { apps },
+    }));
+    render(<AppLauncher {...props} />);
+    await screen.findByText('Coffee');
+    expect(screen.getByText('See all apps →').getAttribute('href')).toBe(url || '/');
   });
 
   it('anonymous viewers use only public discovery, without authenticated kernel pages', async () => {
