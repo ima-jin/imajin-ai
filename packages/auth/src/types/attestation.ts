@@ -19,6 +19,7 @@ export const ATTESTATION_TYPES = [
   'session.created',
   'learn.enrolled',
   'learn.completed',
+  'media.uploaded',
   'pod.member.added',
   'pod.member.removed',
   'pod.role.changed',
@@ -286,6 +287,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
   'session.created',
+  'media.uploaded',
   'agent.turn.usage',
   'agent.external_identity',
   // #1147/#1148 attestationClass: 'system' facts — see ATTESTATION_TYPES above.
