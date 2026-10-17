@@ -20,7 +20,7 @@ export async function getImajinOrganization(): Promise<{ id: string; publicKey: 
   const [org] = await db.select({ id: identities.id, publicKey: identities.publicKey }).from(identities)
     .where(and(eq(identities.id, platformDid), eq(identities.handle, 'imajin'), eq(identities.scope, 'business'),
       inArray(identities.tier, ['established', 'steward', 'operator']), isNull(identities.suspendedAt))).limit(1);
-  if (!org || org.id !== platformDid) throw new DomainError('issuer_unavailable', 'Imajin organization identity is unavailable', 503);
+  if (org?.id !== platformDid) throw new DomainError('issuer_unavailable', 'Imajin organization identity is unavailable', 503);
   return org;
 }
 
