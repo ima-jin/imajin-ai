@@ -18,6 +18,11 @@ function navApp(slug: string): NavApp {
 }
 
 describe('resolveRegistryAppUrl (#2434)', () => {
+  it('disables API-backed widgets for arbitrary deep/query/hash entry destinations', () => {
+    for (const entryUrl of ['/events/list', '/events?view=calendar', 'https://app.test/events#next']) {
+      expect(resolveRegistryAppUrl([{ ...navApp('events'), entryUrl }], 'events')).toBeNull();
+    }
+  });
   it('returns the registry entry URL for an app that has a registry row', () => {
     expect(resolveRegistryAppUrl([navApp('events'), navApp('market')], 'events')).toBe('/events');
   });

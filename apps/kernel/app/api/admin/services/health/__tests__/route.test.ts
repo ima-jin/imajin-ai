@@ -17,7 +17,8 @@ beforeEach(() => {
   vi.resetModules();
   mocks.requireAdmin.mockResolvedValue({ did: 'did:admin' });
   mocks.where.mockResolvedValue([
-    { slug: 'new-app', name: 'New App', entryUrl: 'https://app.test/new' },
+    { slug: 'new-app', name: 'New App', entryUrl: 'https://app.test/new-app' },
+    { slug: 'deep-app', name: 'Deep App', entryUrl: 'https://app.test/deep-app/start?launch=1#buy' },
     { slug: 'links', name: 'Links', entryUrl: '/links' },
     { slug: null, name: 'No slug', entryUrl: 'https://not.test' },
   ]);
@@ -37,7 +38,8 @@ describe('admin registry service health', () => {
     const body = await response.json();
     expect(body.services.filter((service: { group: string }) => service.group === 'userspace'))
       .toMatchObject([{ name: 'new-app', label: 'New App' }]);
-    expect(fetch).toHaveBeenCalledWith('https://app.test/new/api/health', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://app.test/new-app/api/health', expect.any(Object));
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('deep-app'))).toBe(false);
   });
 
   it('supports an explicit extracted-app endpoint instead of a deleted port default', async () => {

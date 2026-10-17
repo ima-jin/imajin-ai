@@ -27,7 +27,7 @@ function navApp(overrides: Partial<NavApp>): NavApp {
     slug: 'coffee',
     name: 'Coffee',
     icon: '☕',
-    entryUrl: null,
+    entryUrl: `/${overrides.slug ?? 'coffee'}`,
     placements: ['launcher', 'home', 'auth-submenu'],
     requiredScope: null,
     tier: 'first_party',
@@ -39,7 +39,13 @@ describe('ServiceLinks (#2425 — registry apps ∩ resolveEnabledApps, no liter
   it('uses the standalone registry destination, not a removed port hint', () => {
     render(<ServiceLinks profile={makeProfile()} viewerDid={null}
       apps={[navApp({ entryUrl: 'https://apps.example/support', name: 'Support' })]} />);
-    expect(screen.getByRole('link').getAttribute('href')).toBe('https://apps.example/support/ryan');
+    expect(screen.getByRole('link').getAttribute('href')).toBe('https://apps.example/support');
+  });
+
+  it('keeps query/hash entry destinations intact rather than appending a profile handle', () => {
+    render(<ServiceLinks profile={makeProfile()} viewerDid={null}
+      apps={[navApp({ entryUrl: 'https://apps.example/coffee/start?launch=1#buy' })]} />);
+    expect(screen.getByRole('link').getAttribute('href')).toBe('https://apps.example/coffee/start?launch=1#buy');
   });
   it('shows no service buttons when apps is empty', () => {
     render(<ServiceLinks profile={makeProfile()} viewerDid={null} apps={[]} />);

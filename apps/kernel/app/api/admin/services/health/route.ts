@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
+import { registryAppBaseUrl } from '@/src/lib/apps/public-url';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
 
@@ -41,10 +41,10 @@ async function userspaceServices(): Promise<UserspaceService[]> {
   return apps.flatMap((app) => {
     if (!app.slug) return [];
     const url = process.env[`${app.slug.toUpperCase()}_URL`]
-      ?? registryAppPublicUrl({ slug: app.slug, entryUrl: app.entryUrl });
+      ?? registryAppBaseUrl({ slug: app.slug, entryUrl: app.entryUrl });
     // Relative single-node paths have no separate origin to probe. Never
     // substitute the kernel port for a standalone app whose port was removed.
-    return /^https?:\/\//.test(url) ? [{ name: app.slug, label: app.name, url }] : [];
+    return url && /^https?:\/\//.test(url) ? [{ name: app.slug, label: app.name, url }] : [];
   });
 }
 
