@@ -802,7 +802,7 @@
       "owner": "kernel",
       "schema": "registry",
       "firstMigration": "0007_registry_apps.sql",
-      "notes": ""
+      "notes": "#2871 — 0203_registry_apps_featured.sql adds the operator-curated featured flag; no install table or grant changes."
     },
     "registry.bump_events": {
       "owner": "kernel",

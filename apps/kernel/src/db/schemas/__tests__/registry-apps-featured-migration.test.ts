@@ -4,12 +4,12 @@ import { PGlite } from '@electric-sql/pglite';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const migration = readFileSync(
-  new URL('../../../../../../migrations/0202_registry_apps_featured.sql', import.meta.url), 'utf8',
+  new URL('../../../../../../migrations/0203_registry_apps_featured.sql', import.meta.url), 'utf8',
 );
 let client: PGlite;
 afterEach(async () => { await client?.close(); });
 
-describe('0202 registry.apps.featured', () => {
+describe('0203 registry.apps.featured', () => {
   it('defaults old and new rows to false, rejects null, and reruns without clobbering curation', async () => {
     client = new PGlite();
     await client.exec(`
