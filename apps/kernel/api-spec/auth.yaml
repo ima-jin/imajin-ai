@@ -332,9 +332,8 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GroupOwnership" }
         "401": { description: Authentication required }
-        "403": { description: Not an active member or the named recipient }
+        "403": { description: Not an active member or the named recipient, or OWNERSHIP_POLICY_UNKNOWN }
         "404": { description: Group identity not found }
-        "503": { description: Configured ownership policy is unavailable; fails closed }
     post:
       tags: [auth]
       operationId: proposeGroupOwnerTransfer
@@ -375,10 +374,9 @@ paths:
               schema: { $ref: "#/components/schemas/GroupOwnership" }
         "400": { description: Invalid JSON, invalid recipient, or transfer to self }
         "401": { description: Authentication required }
-        "403": { description: Ownership policy denied or AGENT_APPROVAL_REQUIRED }
+        "403": { description: Ownership policy denied, OWNERSHIP_POLICY_UNKNOWN, or AGENT_APPROVAL_REQUIRED }
         "404": { description: Group or recipient not found }
         "409": { description: A pending transfer already exists or ownership is inconsistent }
-        "503": { description: Configured ownership policy is unavailable; fails closed }
     delete:
       tags: [auth]
       operationId: cancelGroupOwnerTransfer
@@ -399,10 +397,9 @@ paths:
         "200": { description: Pending transfer cancelled; owner unchanged }
         "400": { description: Invalid JSON or missing transferId }
         "401": { description: Authentication required }
-        "403": { description: Ownership policy denied or AGENT_APPROVAL_REQUIRED }
+        "403": { description: Ownership policy denied, OWNERSHIP_POLICY_UNKNOWN, or AGENT_APPROVAL_REQUIRED }
         "404": { description: Group not found }
         "409": { description: Proposal no longer pending or transferId is stale }
-        "503": { description: Configured ownership policy is unavailable; fails closed }
   /api/groups/{groupDid}/transfer-owner/accept:
     parameters:
       - { name: groupDid, in: path, required: true, schema: { type: string } }
@@ -451,11 +448,10 @@ paths:
                   attestationId: { type: string }
         "400": { description: Invalid JSON or missing transferId }
         "401": { description: Authentication required }
-        "403": { description: Not the named human recipient, ownership policy denied, or AGENT_APPROVAL_REQUIRED }
+        "403": { description: Not the named human recipient, ownership policy denied, OWNERSHIP_POLICY_UNKNOWN, or AGENT_APPROVAL_REQUIRED }
         "404": { description: Group or recipient not found }
         "409": { description: Stale, cancelled, accepted or otherwise invalid proposal }
         "500": { description: Transfer or attestation could not be committed; no ownership change }
-        "503": { description: Configured ownership policy is unavailable; fails closed }
   /api/agents/{did}/reach/{reachId}/status:
     post:
       tags: [auth]
