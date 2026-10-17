@@ -13,6 +13,9 @@ const STEP_TYPES = new Set([
 function nonemptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
+function observedAt(event: BusEvent): string {
+  return typeof event.payload?.at === 'string' ? event.payload.at : (event.timestamp ?? new Date().toISOString());
+}
 
 /** The kernel owns step semantics; this boundary only validates persistence prerequisites. */
 function validateStepObservation(event: BusEvent, payload: Record<string, unknown>): void {
@@ -84,7 +87,7 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
 
   const parentLoopId = typeof payload.parentLoopId === 'string' ? payload.parentLoopId : null;
   const refs = (payload.refs && typeof payload.refs === 'object') ? payload.refs : {};
-  const at = typeof payload.at === 'string' ? payload.at : (event.timestamp ?? new Date().toISOString());
+  const at = observedAt(event);
   const finishedAt = event.type === 'loop.finished' ? at : null;
   const initialObservation = payload.initialObservation === true;
   const signedCompletion = event.type === 'loop.finished' && Boolean(event.id);
