@@ -734,6 +734,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'loop.progress': loopLifecycleChain(),
   'loop.blocked': loopLifecycleChain(),
   'loop.finished': loopLifecycleChain(),
+  'surface.acquired': [{ type: 'emit', config: {}, enabled: true }],
+  'surface.released': [{ type: 'emit', config: {}, enabled: true }],
+  'surface.conflicted': [{ type: 'emit', config: {}, enabled: true }],
   // #1510 — data-driven notify templates. `notify-template-hot-reload`
   // (apps/kernel/src/lib/notify/template-store.ts) drops the affected
   // scope's cache entry immediately rather than waiting out its TTL, same

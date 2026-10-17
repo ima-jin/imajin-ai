@@ -502,6 +502,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/usage/billed/receipt.ts` — S5
 - `apps/kernel/src/lib/loops/cycle.ts` — S5
 - `apps/kernel/src/lib/loops/emit.ts` — S5 (signed native loop lifecycle observations)
+- `apps/kernel/src/lib/loops/surface-conflict.ts` — S5 (node-witness-signed advisory collision observations, #2405)
 - `apps/kernel/src/lib/loops/authorize-publisher.ts` — S5
 - `apps/kernel/src/lib/loops/verify-publisher-signature.ts` — S5
 - `apps/kernel/src/lib/warp/loop-emit.ts` — S5
