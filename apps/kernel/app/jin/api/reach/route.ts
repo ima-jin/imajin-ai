@@ -4,6 +4,8 @@ import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { listReachInbox } from '@/src/lib/auth/reach-reply-store';
 import { isReachPrincipal } from '@/src/lib/auth/reach-reply-service';
+import { listReachBearerKnocks } from '@/src/lib/access/reach-bearer';
+import { reachBearerKnockMetadata } from '@/src/lib/access/reach-bearer-wire';
 
 const log = createLogger('kernel:reach');
 export const dynamic = 'force-dynamic';
@@ -16,8 +18,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'A direct human session is required' }, { status: 403, headers });
   }
   try {
-    const envelopes = await listReachInbox({ principalDid: auth.identity.id });
-    return NextResponse.json({ principalDid: auth.identity.id, envelopes }, { headers });
+    const [envelopes, knocks] = await Promise.all([
+      listReachInbox({ principalDid: auth.identity.id }),
+      listReachBearerKnocks(auth.identity.id),
+    ]);
+    return NextResponse.json({
+      principalDid: auth.identity.id,
+      envelopes,
+      knocks: knocks.map(reachBearerKnockMetadata),
+    }, { headers });
   } catch (error) {
     log.error({ err: String(error) }, 'Reach inbox read failed');
     return NextResponse.json({ error: 'Unable to load reach inbox' }, { status: 500, headers });

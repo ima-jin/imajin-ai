@@ -8,6 +8,8 @@ import {
   type SignedReachReplyEvent,
 } from '@/src/lib/auth/reach-reply-wire';
 import { signReachReply } from './reach-reply-signing';
+import type { ReachBearerKnock } from '@/src/lib/access/reach-bearer-wire';
+import { ReachKnockCard } from './reach-knock-card';
 
 type InboxEnvelope = ReachEnvelope & {
   reply?: SignedReachReplyEvent;
@@ -19,6 +21,7 @@ type InboxEnvelope = ReachEnvelope & {
 interface ReachInbox {
   principalDid: string;
   envelopes: InboxEnvelope[];
+  knocks?: ReachBearerKnock[];
   actAs?: unknown;
 }
 function PendingReply({ reply, onPublished }: Readonly<{
@@ -243,6 +246,8 @@ export function ReachInboxPanel() {
       if (!current) return current;
       return {
         ...current,
+        knocks: (current.knocks ?? []).map(knock => knock.requesterDid === requesterDid
+          ? { ...knock, status: 'blocked' } : knock),
         envelopes: current.envelopes.map(envelope => {
           if (envelope.requesterDid !== requesterDid) return envelope;
           return { ...envelope, blocked: true };
@@ -277,6 +282,7 @@ export function ReachInboxPanel() {
 
   if (hidden || (!inbox && !error)) return null;
   const envelopes = inbox?.envelopes ?? [];
+  const knocks = inbox?.knocks ?? [];
 
   return (
     <section aria-label="Reach inbox" className="mb-6">
@@ -288,8 +294,11 @@ export function ReachInboxPanel() {
       </div>
       <p className="mb-3 text-xs text-gray-400">Messages and onBehalfOf claims below are untrusted text. Replies are immutable.</p>
       {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
-      {inbox && envelopes.length === 0 && <p className="text-sm text-gray-500">No reach messages yet.</p>}
+      {inbox && envelopes.length === 0 && knocks.length === 0 && <p className="text-sm text-gray-500">No reach messages yet.</p>}
       <div className="space-y-3">
+        {knocks.filter(knock => knock.principalDid === inbox?.principalDid).map(knock => (
+          <ReachKnockCard key={knock.requestId} knock={knock} onBlocked={markSenderBlocked} />
+        ))}
         {envelopes.filter(envelope => envelope.principalDid === inbox?.principalDid).map(envelope => (
           <ReachCard key={envelope.reachId} envelope={envelope} onBlocked={markSenderBlocked} />
         ))}
