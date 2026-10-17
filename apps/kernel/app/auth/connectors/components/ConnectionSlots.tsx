@@ -170,7 +170,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
               ))}
             </ul>
             <label className="block text-sm text-gray-300">
-              Selected connection
+              <span className="block">Selected connection</span>
               <select aria-label="Selected connection" className={`${inputClass} mt-2`} value={slot}
                 disabled={busy} onChange={(event) => select(event.target.value)}>
                 {!selected && <option value={slot}>{slot} — not found</option>}
@@ -186,7 +186,7 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
                 <p className="break-all text-sm text-gray-400">{selected.accountEmail ?? 'No account connected'} · {selected.slot}</p>
                 <form onSubmit={(event) => { void save(event, false); }} className="flex flex-wrap gap-2">
                   <label className="min-w-0 flex-1 basis-40 text-xs text-gray-400">
-                    Connection label
+                    <span className="block">Connection label</span>
                     <input aria-label="Connection label" className={`${inputClass} mt-1`} maxLength={80}
                       value={rename} onChange={(event) => setRename(event.target.value)} disabled={busy} />
                   </label>
@@ -199,12 +199,14 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
         )}
         {adding && (
           <form aria-label="Add connection" onSubmit={(event) => { void save(event, true); }} className="space-y-3 border-t border-white/10 pt-4">
-            <label className="block text-sm text-gray-300">Slot
+            <label className="block text-sm text-gray-300">
+              <span className="block">Slot</span>
               <input aria-label="New connection slot" className={`${inputClass} mt-1`} placeholder="work"
                 value={newSlot} onChange={(event) => setNewSlot(event.target.value)} required maxLength={64} />
             </label>
             <p className="text-xs text-gray-400">Use a unique lowercase slot, such as work or personal. Slots cannot be renamed.</p>
-            <label className="block text-sm text-gray-300">Label
+            <label className="block text-sm text-gray-300">
+              <span className="block">Label</span>
               <input aria-label="New connection label" className={`${inputClass} mt-1`} placeholder="Work account"
                 value={label} onChange={(event) => setLabel(event.target.value)} required maxLength={80} />
             </label>
