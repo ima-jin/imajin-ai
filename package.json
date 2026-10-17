@@ -43,6 +43,7 @@
     "jsdom": "^30.0.1",
     "next": "^15.5.24",
     "postgres": "^3.4.5",
+    "tough-cookie": "^6.0.0",
     "tsx": "^4.21.0",
     "turbo": "^2.5.0",
     "typescript-eslint": "^8.0.0",

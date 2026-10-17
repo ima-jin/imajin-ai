@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 export const dynamic = "force-dynamic";
 /**
  * GET /api/onboard/verify?token=xxx
@@ -15,6 +16,7 @@ import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
+import { publicOrigin } from '@/src/lib/http/public-origin';
 import {
   addScopeMembership,
   handleExpiredOrUsedToken,
@@ -67,7 +69,7 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!record) {
-      const DEFAULT_REDIRECT = 'https://events.imajin.ai';
+      const DEFAULT_REDIRECT = `${publicOrigin(request)}/events`;
       const graceResponse = await handleExpiredOrUsedToken(
         token, existingSession, getSessionCookieOptions(), DEFAULT_REDIRECT,
       );
@@ -185,11 +187,10 @@ export async function GET(request: NextRequest) {
       defaultRedirectUrl: record.redirectUrl || '/',
     });
     const response = NextResponse.redirect(redirectUrl);
-    response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
     if (record.scopeDid) {
       response.cookies.set('x-acting-as', record.scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
-    return response;
+    return withSessionCookie(response, sessionToken, cookieOptions);
 
   } catch (error) {
     log.error({ err: String(error) }, 'Onboard verify error');

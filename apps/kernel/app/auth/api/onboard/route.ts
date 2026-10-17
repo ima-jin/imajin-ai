@@ -13,10 +13,9 @@ import { sendEmail } from '@imajin/email';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
-import { corsHeaders, rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-
-const AUTH_URL = buildPublicUrlAbsolute('auth');
+import { publicOrigin } from '@/src/lib/http/public-origin';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -98,7 +97,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     });
 
     // Build verification link
-    const verifyUrl = `${AUTH_URL}/api/onboard/verify?token=${token}`;
+    const verifyUrl = `${publicOrigin(request)}/auth/api/onboard/verify?token=${token}`;
 
     // Send verification email
     const contextText = context ? ` to ${context}` : '';

@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 /**
  * POST /api/onboard/generate
  *
@@ -100,7 +101,6 @@ export async function POST(request: NextRequest) {
       { status: created ? 201 : 200, headers: cors }
     );
 
-    response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
 
     // If scoped to a forest, add as member and set active forest cookie
     if (scopeDid && typeof scopeDid === 'string') {
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return response;
+    return withSessionCookie(response, sessionToken, cookieOptions);
 
   } catch (error) {
     log.error({ err: String(error) }, '[onboard/generate] Error');
