@@ -281,6 +281,12 @@ export async function executeVaultApproval(card: OperatorApprovalCard): Promise<
   }
 
   try {
+    if (card.kind === 'vault:import') {
+      // This executor sanitizes every provider exception before it reaches the
+      // generic bridge's historical diagnostic logging.
+      const { executeImportApproval } = await import('./import');
+      return await executeImportApproval(card);
+    }
     const nodeDid = getNodeSigningIdentity().senderDid;
     switch (card.kind) {
       case 'vault:mint':
