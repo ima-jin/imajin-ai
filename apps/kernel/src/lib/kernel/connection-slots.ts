@@ -12,6 +12,6 @@ export function connectionSlot(value?: string | null): string {
 /** Keep legacy primary vault grants resolving without moving or re-sealing secrets. */
 export function connectionVaultField(prefix: string, ownerDid: string, slot?: string): string {
   const selected = connectionSlot(slot);
-  const suffix = selected === PRIMARY_CONNECTION ? '' : ':' + selected;
+  const suffix = selected === PRIMARY_CONNECTION ? '' : `:${selected}`;
   return `${prefix}:${ownerDid}${suffix}`;
 }
