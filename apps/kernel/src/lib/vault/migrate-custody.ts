@@ -47,6 +47,7 @@ import { db, vaultGrantRequests } from '@/src/db';
 import { isVaultTier1 } from './sealing';
 import { VaultDelegationError } from './errors';
 import { loadAndUnseal, sealAndStoreV2, vaultService } from './index';
+import { isAppSecretStagingField } from './field-grammar';
 
 const log = createLogger('kernel');
 
@@ -204,7 +205,7 @@ export async function selectLiveV1Fields(): Promise<LiveV1Field[]> {
 
   const live: LiveV1Field[] = [];
   for (const entry of latestByField.values()) {
-    if (entry.deleted === true) {
+    if (entry.deleted === true || isAppSecretStagingField(entry.field)) {
       continue;
     }
     if ((entry.custodyScheme ?? 'node-sealed') !== 'node-sealed') {

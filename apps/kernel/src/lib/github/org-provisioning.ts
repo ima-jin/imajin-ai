@@ -45,7 +45,7 @@ import { createPrivateKey } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { loadAndUnseal } from '@/src/lib/vault';
-import { validateSecrets } from '@/src/lib/apps/secret-declarations';
+import { validateSecrets, type AppSecretDeclaration } from '@/src/lib/apps/secret-declarations';
 
 const log = createLogger('kernel:github:org-provisioning');
 
@@ -458,7 +458,7 @@ export async function ensureRepoFromTemplate(
 /** Nav metadata (#2425) an app can publish about itself via `imajin.app.json` at its repo root. */
 export interface AppManifest {
   /** Recipes only; validated before approval and issuance. */
-  secrets?: Array<{ name: string; kind: 'random-32B' | 'random-64B' }>;
+  secrets?: AppSecretDeclaration[];
   name?: string;
   icon?: string;
   entryUrl?: string;

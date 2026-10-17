@@ -34,6 +34,16 @@ beforeEach(() => {
   fetchSecret.mockResolvedValue({ value: 'FAKE_TEST_SECRET', grantId: 'test-grant', field: 'test-field' });
 });
 describe('sealed app-secret route', () => {
+  it('delivers an operator-supplied declaration only through the encrypted recipient envelope', async () => {
+    listSecrets.mockResolvedValue([{ name: 'DATABASE_URL', kind: 'operator-supplied', status: 'active' }]);
+    fetchSecret.mockResolvedValue({ value: 'OBVIOUSLY_FAKE_DATABASE_INPUT', grantId: 'fake-grant', field: 'fake-field' });
+    const body = signed({ keys: ['DATABASE_URL'] });
+    const response = await POST(request(body));
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toContain('OBVIOUSLY_FAKE_DATABASE_INPUT');
+    expect(openAppSecretEnvelope(JSON.parse(text), recipient.privateKey, body).values.DATABASE_URL).toBe('OBVIOUSLY_FAKE_DATABASE_INPUT');
+  });
   it('returns only ciphertext decryptable by the bootstrap recipient', async () => {
     const body = signed();
     const response = await POST(request(body));

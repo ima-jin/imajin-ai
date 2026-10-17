@@ -70,13 +70,13 @@ describe('loadAppSigningKey — first boot (no keystore)', () => {
       .rejects.toThrow(/no keystore found.*no claim code provided/);
   });
 
-  it('throws with the kernel\'s message on a claim-code-reused (410) response', async () => {
+  it('does not reflect the kernel message on a claim-code-reused (410) response', async () => {
     global.fetch = vi.fn(async () =>
-      new Response(JSON.stringify({ error: 'This claim code has already been redeemed' }), { status: 410 }),
+      new Response(JSON.stringify({ error: 'FAKE_TEST_SECRET_DO_NOT_ECHO' }), { status: 410 }),
     ) as unknown as typeof fetch;
 
     await expect(loadAppSigningKey({ kernelUrl: KERNEL_URL, claimCode: 'claim_test', keystorePath }))
-      .rejects.toThrow(/already been redeemed/);
+      .rejects.toThrow(/^loadAppSigningKey: claim exchange failed$/);
   });
 });
 
@@ -136,7 +136,7 @@ describe('loadAppSigningKey — every later boot (keystore present)', () => {
     ) as unknown as typeof fetch;
 
     await expect(loadAppSigningKey({ kernelUrl: KERNEL_URL, appDid: 'did:imajin:abc123', keystorePath }))
-      .rejects.toThrow(/Invalid bootstrap key signature/);
+      .rejects.toThrow(/^loadAppSigningKey: bootstrap-key fetch failed$/);
   });
 });
 
@@ -163,11 +163,11 @@ describe('loadAppSigningKey — general failure modes', () => {
 
   it('throws when the kernel is unreachable', async () => {
     global.fetch = vi.fn(async () => {
-      throw new Error('network down');
+      throw new Error('FAKE_TEST_SECRET_DO_NOT_ECHO');
     }) as unknown as typeof fetch;
 
     await expect(loadAppSigningKey({ kernelUrl: KERNEL_URL, claimCode: 'claim_test', keystorePath }))
-      .rejects.toThrow(/could not reach the kernel/);
+      .rejects.toThrow(/^loadAppSigningKey: could not reach the kernel$/);
   });
 
   it('throws when the response is malformed', async () => {

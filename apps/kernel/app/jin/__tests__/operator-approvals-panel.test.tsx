@@ -1095,10 +1095,14 @@ describe('per-source renderer registry — github', () => {
 // alongside the app's own `/claim` page URL (#2427) so the operator can
 // paste the code there instead of ssh-ing in to edit an env file.
 describe('per-source renderer registry — apps', () => {
-  it.each(['sync', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
+  it.each(['sync', 'set', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
     const secretCard = appsApproval({
       kind: `apps:secrets-${action}`, summary: 'Change fake-app secrets',
-      detail: { appDid: 'did:imajin:fake-app', name: 'SESSION_SECRET', secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }] },
+      detail: {
+        appDid: 'did:imajin:fake-app', name: 'SESSION_SECRET',
+        stagingRef: 'obvious-fake-staging-ref',
+        secrets: [{ name: 'SESSION_SECRET', kind: 'operator-supplied' }],
+      },
     });
     installFetch([{ isOperator: true, approvals: [secretCard] }], {
       ok: true, body: { data: { claimCode: 'obvious-fake-placeholder', bearer: 'obvious-fake-placeholder' } },
@@ -1110,6 +1114,7 @@ describe('per-source renderer registry — apps', () => {
     expect(screen.queryByTestId('revealed-claim-code')).toBeNull();
     expect(screen.queryByTestId('revealed-bearer')).toBeNull();
     expect(document.body.textContent).not.toContain('obvious-fake-placeholder');
+    expect(document.body.textContent).not.toContain('obvious-fake-staging-ref');
     expect(screen.getAllByText(/SESSION_SECRET/).length).toBeGreaterThan(0);
   });
   it('renders the provisioning detail and Approve & provision / Deny controls', async () => {

@@ -207,6 +207,14 @@ Plaintext secrets are in `$EXPORT`: keep it in that shell variable only, never i
 file. The route aborts (500) if any field cannot be unsealed, so a short count means
 stop and investigate. Roles covered: D1 (v2 only), D2, D3, and the `internal-secret:*`
 fields.
+**App-secret exclusion (#2821).** The plaintext sweep deliberately excludes
+`internal-secret:app-self:*`, including pending operator input, and refuses those
+fields on reimport. It must never become a reveal/export path for app credentials.
+The count above therefore does **not** prove app-secret custody has been carried
+forward. Do not destroy the old node key until app-secret custody has been
+preserved through separately approved, non-plaintext tool steps; this legacy
+sweep is not an app-secret migration tool. Pending inputs can be submitted again
+through `/jin` after the identity change.
 
 **Rollback boundary.** Until step 6 completes, rolling back is "restore the old key and
 restart": the old vault entries, grants and provisions rows (all keyed by the old node
@@ -527,6 +535,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/vault-path.ts` — D2 (mention only)
 - `apps/kernel/src/lib/apps/provision.ts` — D2
 - `apps/kernel/src/lib/apps/self-secrets.ts` — D2/S3 (app-scoped custody and node-signed lifecycle facts)
+- `apps/kernel/src/lib/apps/secret-staging.ts` — D1 (node-sealed pending operator input; node DID binds the single-use marker, with no delegation grant before countersign)
 - `apps/kernel/app/api/apps/claim/route.ts` — D2
 - `apps/kernel/app/api/apps/signing-key/fetch/route.ts` — D2
 - `apps/kernel/app/api/cron/vault-grant-expiry/route.ts` — D2

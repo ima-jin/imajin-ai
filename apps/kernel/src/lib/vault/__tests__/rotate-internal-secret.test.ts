@@ -1016,6 +1016,20 @@ describe('rotate is all-or-nothing (#2451)', () => {
     return { ...booted, original, corpusGrantId: String(corpusGrant!.id), publish: bus.publish as ReturnType<typeof vi.fn> };
   }
 
+  it('never logs or rethrows provider text containing supplied operator input', async () => {
+    const ctx = await bootWithCorpusGrant();
+    const before = await stateOfRotatedField(ctx.vault);
+    ctx.publish.mockClear();
+    logSpies.error.mockClear();
+    const value = 'OBVIOUSLY_FAKE_OPERATOR_REPLACEMENT';
+    vi.spyOn(ctx.vault.vaultService, 'set').mockRejectedValueOnce(new Error(`OBVIOUSLY_FAKE_PROVIDER_FAILURE: ${value}`));
+    await expect(ctx.vault.rotateAndStore(FIELD, value)).rejects.toThrow('Vault internal-secret rotation failed');
+    expect(JSON.stringify(logSpies.error.mock.calls)).not.toContain(value);
+    expect(JSON.stringify(logSpies.error.mock.calls)).not.toContain('OBVIOUSLY_FAKE_PROVIDER_FAILURE');
+    expect(JSON.stringify(ctx.publish.mock.calls)).not.toContain(value);
+    expect(await stateOfRotatedField(ctx.vault)).toEqual(before);
+  });
+
   async function expectNothingChanged(
     ctx: Awaited<ReturnType<typeof bootWithCorpusGrant>>,
     before: Awaited<ReturnType<typeof stateOfRotatedField>>,

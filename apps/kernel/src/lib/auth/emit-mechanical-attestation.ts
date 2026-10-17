@@ -105,8 +105,8 @@ export async function emitMechanicalAttestation(params: MechanicalAttestationPar
     const row = await prepareMechanicalAttestation(params);
     await db.insert(attestations).values(row);
     return row.id;
-  } catch (err) {
-    log.error({ err: String(err), type: params.type }, 'mechanical attestation error');
+  } catch {
+    log.error({ type: params.type }, 'mechanical attestation error');
     return null;
   }
 }

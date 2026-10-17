@@ -13,6 +13,39 @@ interface AppSecretCard {
   claimed: boolean;
   secrets: AppDeclaredSecretStatus[];
 }
+
+function OperatorSecretEntry({ name, active, busy, submit }: Readonly<{
+  name: string;
+  active: boolean;
+  busy: boolean;
+  submit: (value: string) => Promise<void>;
+}>) {
+  return (
+    <form className="flex gap-3" onSubmit={(event) => {
+      event.preventDefault();
+      const input = event.currentTarget.elements.namedItem('secret-value') as HTMLInputElement;
+      const value = input.value;
+      input.value = '';
+      if (value) void submit(value);
+    }}>
+      <input type="password" name="secret-value" aria-label={`New value for ${name}`}
+        autoComplete="off" autoCapitalize="none" spellCheck={false} required disabled={busy}
+        className="min-w-0 rounded border border-gray-700 bg-gray-950 px-2 py-1 text-xs text-gray-100"
+        placeholder="Enter value — never revealed" />
+      <button type="submit" disabled={busy} className="text-xs text-amber-300 disabled:opacity-40">
+        {active ? 'Rotate' : 'Set'}
+      </button>
+    </form>
+  );
+}
+
+function SecretStatus({ secret }: Readonly<{ secret: AppDeclaredSecretStatus }>) {
+  if (secret.kind !== 'operator-supplied') return secret.status;
+  const rotated = secret.timeline.findLast((entry) => entry.phase === 'rotated');
+  return <>{secret.status === 'active' ? 'set' : 'not set'}{rotated && (
+    <> · last rotated <time dateTime={rotated.at}>{rotated.at}</time></>
+  )}</>;
+}
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -24,7 +57,7 @@ function isTimelineEntry(value: unknown): boolean {
 }
 function isSecretMetadata(value: unknown): boolean {
   if (!isRecord(value)) return false;
-  return typeof value.name === 'string' && (value.kind === 'random-32B' || value.kind === 'random-64B')
+  return typeof value.name === 'string' && ['random-32B', 'random-64B', 'operator-supplied'].includes(value.kind as string)
     && typeof value.status === 'string' && ['missing', 'active', 'revoked'].includes(value.status)
     && Array.isArray(value.timeline) && value.timeline.every(isTimelineEntry);
 }
@@ -36,7 +69,7 @@ function isAppSecretCard(value: unknown): value is AppSecretCard {
     && Array.isArray(value.secrets) && value.secrets.every(isSecretMetadata);
 }
 
-/** Metadata only. The sole write affordance stages a countersign proposal. */
+/** No reveal. Submitted values leave the field immediately and never enter React state. */
 export function AppSecretsPanel() {
   const [apps, setApps] = useState<AppSecretCard[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -62,17 +95,17 @@ export function AppSecretsPanel() {
     return () => clearInterval(timer);
   }, [load]);
 
-  const propose = async (appDid: string, action: AppSecretAction, name?: string) => {
+  const propose = async (appDid: string, action: AppSecretAction, name?: string, value?: string) => {
     setBusy(true);
     setProposalId('');
     try {
       const response = await fetch('/jin/api/app-secrets', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ appDid, action, ...(name ? { name } : {}) }),
+        body: JSON.stringify({ appDid, action, ...(name ? { name } : {}), ...(value === undefined ? {} : { value }) }),
       });
       const body = await response.json() as { proposalId?: string; error?: string };
       if (!response.ok || !body.proposalId) {
-        setNotice(body.error ?? 'App-secret proposal failed.');
+        setNotice(value === undefined ? body.error ?? 'App-secret proposal failed.' : 'App-secret proposal failed.');
         return;
       }
       setNotice('Proposal pending — nothing changes until you countersign in Operator approvals.');
@@ -86,7 +119,8 @@ export function AppSecretsPanel() {
     <section className="mt-8 space-y-3" data-testid="app-secrets-panel">
       <h2 className="text-base font-semibold text-gray-100">App secrets</h2>
       <p className="text-xs text-gray-500">
-        Names, recipes and signed lifecycle only — no reveal. Sync reads the app manifest; all changes require your signature.
+        Names and status only — no reveal. Sync reads the app manifest; all changes require your signature.
+        Enter operator-supplied values here once; they are sealed pending your countersignature.
         Rotation takes effect on the app&apos;s next boot. Rotating SESSION_SECRET signs users out when the app restarts.
       </p>
       {notice && <output className="block text-xs text-amber-300">{notice}{proposalId && (
@@ -105,8 +139,8 @@ export function AppSecretsPanel() {
           {app.secrets.length === 0 && <p className="text-xs text-gray-500">No registered self-secret declarations.</p>}
           {app.secrets.map((secret) => (
             <div key={secret.name} className="border-t border-gray-800 pt-2 space-y-1">
-              <p className="text-xs"><span className="font-mono">{secret.name}</span> · {secret.kind} · {secret.status}</p>
-              <ol className="text-xs text-gray-500 space-y-1">
+              <p className="text-xs"><span className="font-mono">{secret.name}</span> · {secret.kind} · <SecretStatus secret={secret} /></p>
+              {secret.kind !== 'operator-supplied' && <ol className="text-xs text-gray-500 space-y-1">
                 {secret.timeline.map((entry, index) => (
                   <li key={`${entry.phase}:${entry.at}:${index}`}>
                     {entry.phase} · <time dateTime={entry.at}>{entry.at}</time>
@@ -114,11 +148,15 @@ export function AppSecretsPanel() {
                     {entry.via && <> · via <span className="font-mono">{entry.via}</span></>}
                   </li>
                 ))}
-              </ol>
+              </ol>}
+              {app.active && app.claimed && app.appDid && secret.kind === 'operator-supplied' && (
+                <OperatorSecretEntry name={secret.name} active={secret.status === 'active'} busy={busy}
+                  submit={(value) => propose(app.appDid!, secret.status === 'active' ? 'rotate' : 'set', secret.name, value)} />
+              )}
               {app.active && app.claimed && app.appDid && secret.status === 'active' && (
                 <div className="flex gap-3">
-                  <button type="button" disabled={busy} className="text-xs text-amber-300 disabled:opacity-40"
-                    onClick={() => void propose(app.appDid!, 'rotate', secret.name)}>Rotate</button>
+                  {secret.kind !== 'operator-supplied' && <button type="button" disabled={busy} className="text-xs text-amber-300 disabled:opacity-40"
+                    onClick={() => void propose(app.appDid!, 'rotate', secret.name)}>Rotate</button>}
                   <button type="button" disabled={busy} className="text-xs text-red-300 disabled:opacity-40"
                     onClick={() => void propose(app.appDid!, 'revoke', secret.name)}>Revoke</button>
                 </div>

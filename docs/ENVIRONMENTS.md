@@ -146,11 +146,11 @@ kernel and corpus are colocated on the same host; point it at gx10 in prod.
 
 ## Environment Variables
 
-Each service has a `.env.local` file. Common variables:
+Each service has a `.env.local` file for its current bootstrap/non-secret configuration and any not-yet-migrated credentials. App-declared vault credentials are held in memory after approved provisioning, not written back into this file. Common variables in existing deployments:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `DATABASE_URL` | Postgres connection string | `postgresql://imajin_dev:pass@localhost:5432/imajin_dev` |
+| `DATABASE_URL` | Postgres connection string (app vault adoption is follow-up work) | `FAKE_DATABASE_URL_NOT_A_CONNECTION_STRING` |
 | `AUTH_SERVICE_URL` | Auth service base URL | `http://localhost:3001` |
 | `PAY_SERVICE_URL` | Pay service base URL | `http://localhost:3004` |
 | `CONNECTIONS_SERVICE_URL` | Connections service URL | `http://localhost:3003` |
@@ -163,6 +163,15 @@ Each service has a `.env.local` file. Common variables:
 **⚠️ Service-to-service URLs must come from env vars — never hardcode URLs.**
 
 Every app that uses env vars should have a matching `.env.example` file.
+### Operator-supplied app secrets (#2821)
+Registered apps can declare `{"name":"DATABASE_URL","kind":"operator-supplied"}` in `imajin.app.json`, with names/kinds only and no values. An operator enters a value through the masked `/jin` App secrets control, then countersigns its pending set/rotate proposal. Staging seals the input; pending/rejected/expired values are not app grants. Cards, metadata, audit and error surfaces never echo the input. Manifest sync alone cannot generate an operator value or make the app ready to boot.
+The app must adopt the SDK's `createVaultBoot` boundary: load vault credentials, install typed server-only in-memory config, then dynamically import/start the application. DB modules that read `DATABASE_URL` at module initialization must use `boot.getConfig().DATABASE_URL`, not `process.env`. A static DB/server import before the fetch is not safe. See the [author boot example](app-self-secrets-author.md#pre-import-boot-boundary-for-database-consumers) and [operator approval/restart guide](app-self-secrets-operator.md).
+Adoption order, with a separate reviewed change and coordinated restart per app/environment:
+1. events, coffee, learn, market, links: **`DATABASE_URL` first**.
+2. events: `WEBHOOK_SECRET`, `SMTP_PASSWORD`; fixready/karaoke/scorecard: `SESSION_SECRET`; xprize: `APP_PRIVATE_KEY`, `SESSION_SECRET`, legacy `PAY_SERVICE_API_KEY`; dykil: `LEGACY_DATABASE_URL`.
+3. Development coffee/learn/market: `SESSION_SECRET`; development learn/market: `WEBHOOK_SECRET`. Coffee's `WEBHOOK_SECRET` is vestigial and explicitly excluded.
+The xprize pay-key inventory does not restore the kernel's retired shared pay key; inspect the standalone legacy consumer and prefer current scoped app-service tokens (below). Rotation/import must be coordinated with external providers; a vault change does not modify a database account. Running processes keep their loaded values until restart; rotating session signing material signs users out after restart.
+This is the supported rail and follow-up inventory, not a claim that current env files or apps have migrated. No server, env file, deploy or standalone repository is changed by #2821. Do not remove a required env value until that app has the released SDK, a refactored import graph, approved usable vault material and a verified restart. SDK/package versions are changed only by the normal reviewed Release workflow, never by the feature PR; #2260 remains separate.
 ### Scoped pay callers (#2735)
 
 Pay has no shared service API key. Remove the retired pay-key entry from existing kernel and

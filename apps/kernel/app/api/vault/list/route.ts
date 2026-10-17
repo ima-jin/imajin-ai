@@ -6,6 +6,7 @@ import { vaultService } from '@/src/lib/vault';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
+import { isAppSecretStagingField } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -34,7 +35,7 @@ export async function GET() {
 
     const grantByField = new Map(activeGrants.map((g) => [g.field, g]));
 
-    const results = entries.map((entry) => {
+    const results = entries.filter((entry) => !isAppSecretStagingField(entry.field)).map((entry) => {
       const custodyScheme = entry.custodyScheme ?? 'node-sealed';
       const grant = custodyScheme === 'delegation-grant' ? grantByField.get(entry.field) : undefined;
 

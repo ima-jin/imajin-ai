@@ -3,12 +3,15 @@ import { validateSecrets } from '../secret-declarations';
 import { parseManifestDeclarations, sameDeclarations } from '../declarations-approval';
 
 describe('app secret recipes', () => {
-  it('accepts only names and a small CSPRNG kind vocabulary', () => {
+  it('accepts only names and a small generated/operator-input kind vocabulary', () => {
     expect(validateSecrets([{ name: 'SESSION_SECRET', kind: 'random-32B' }])).toEqual({
       ok: [{ name: 'SESSION_SECRET', kind: 'random-32B' }],
     });
     expect(validateSecrets(undefined)).toEqual({ ok: [] });
     expect(validateSecrets([{ name: 'TICKET_QR_SECRET', kind: 'random-64B' }])).toHaveProperty('ok');
+    expect(validateSecrets([{ name: 'DATABASE_URL', kind: 'operator-supplied' }])).toEqual({
+      ok: [{ name: 'DATABASE_URL', kind: 'operator-supplied' }],
+    });
   });
 
   it.each([
@@ -16,6 +19,8 @@ describe('app secret recipes', () => {
     [{ name: 'bad:name', kind: 'random-32B' }],
     [{ name: 'SESSION_SECRET', kind: 'arbitrary' }],
     [{ name: 'SESSION_SECRET', kind: 'random-32B', value: 'obviously-fake-placeholder' }],
+    [{ name: 'DATABASE_URL', kind: 'operator-supplied', value: 'obviously-fake-placeholder' }],
+    [{ name: 'DATABASE_URL', kind: 'operator-supplied', valueHash: 'obviously-fake-placeholder' }],
     [{ name: 'SESSION_SECRET', kind: 'random-32B' }, { name: 'SESSION_SECRET', kind: 'random-32B' }],
     [{ name: 'A'.repeat(65), kind: 'random-32B' }],
     Array.from({ length: 33 }, (_, i) => ({ name: `SECRET_${i}`, kind: 'random-32B' })),
