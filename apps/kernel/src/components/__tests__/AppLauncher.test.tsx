@@ -36,6 +36,35 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('AppLauncher registry navigation', () => {
+  it('offers Add app to signed-in soft identities without enabling identity switching', async () => {
+    render(<AppLauncher {...props} tier="soft" />);
+    await screen.findByText('Coffee');
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
+    expect(screen.queryByText('Switch To')).toBeNull();
+  });
+
+  it.each(['soft', 'hard', 'creator'] as const)('keeps Add app reachable while %s flyout is loading and empty', async (tier) => {
+    let resolveRegistry: (value: Response) => void = () => undefined;
+    request.mockImplementationOnce(() => new Promise((resolve) => { resolveRegistry = resolve; }))
+      .mockResolvedValueOnce(Response.json({ apps: [] }));
+    render(<AppLauncher {...props} tier={tier} inline={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /Launcher/ }));
+    expect(screen.getByText('Loading...')).toBeDefined();
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
+    await act(async () => { resolveRegistry(Response.json({ services: [] })); });
+    await screen.findByText('No apps to show.');
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
+    expect(screen.queryByText('Coffee')).toBeNull();
+  });
+
+  it('keeps Add app reachable when launcher discovery fails', async () => {
+    request.mockResolvedValue(Response.json({}, { status: 503 }));
+    render(<AppLauncher {...props} inline={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /Launcher/ }));
+    await screen.findByText('No apps to show.');
+    expect(screen.getByRole('link', { name: 'Add app' })).toBeDefined();
+    expect(screen.queryByText('Coffee')).toBeNull();
+  });
   it.each(['grid', 'list'] as const)('shows only added apps and kernel pages in %s mode without Creator Tools', async (variant) => {
     render(<AppLauncher {...props} variant={variant} />);
     await screen.findByText('Coffee');
