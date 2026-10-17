@@ -331,8 +331,9 @@ function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
       'i',
     );
     const quotedSearchPath = statements.some((statement) => {
-      const setting = /^\s*SET\s+(?:(?:LOCAL|SESSION)\s+)?"?search_path"?\s*(?:=|TO)\s*(.+)$/i.exec(statement);
-      return setting?.[1].split(',').some((value) => value.trim().replaceAll(/['"]/g, '') === schema);
+      const setting = /^\s*SET\s+(?:(?:LOCAL|SESSION)\s+)?"?search_path"?\s*(?:=|TO)/i.exec(statement);
+      return setting !== null && statement.slice(setting[0].length).split(',')
+        .some((value) => value.trim().replaceAll(/['"]/g, '') === schema);
     });
     if (touched.has(schema) || schemaDDL.test(masked) || searchPath.test(masked) || quotedSearchPath) {
       violations.push(
