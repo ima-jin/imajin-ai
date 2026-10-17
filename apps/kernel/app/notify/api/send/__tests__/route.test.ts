@@ -18,6 +18,60 @@ const { mockInsertValues, mockSelectLimit, mockUpdateWhere, mockDbUpdate } = vi.
   const mockDbUpdate = vi.fn(() => ({ set: vi.fn(() => ({ where: mockUpdateWhere })) }));
   return { mockInsertValues, mockSelectLimit, mockUpdateWhere, mockDbUpdate };
 });
+describe('Reach principal in-app and phone delivery (#2588)', () => {
+  function reachBody() {
+    return {
+      to: RECIPIENT,
+      scope: 'agent.reach.delivered',
+      title: 'Untrusted supplied title',
+      body: 'PRIVATE supplied body',
+      data: {
+        reachId: 'reach_123&injected=true',
+        requesterDid: 'did:imajin:foreign-agent',
+        message: 'PRIVATE message',
+        replyHandle: 'PRIVATE handle',
+        onBehalfOf: { platform: 'foreign', externalRef: 'opaque', selfDescription: 'Unverified' },
+        signature: { keyId: 'pub', alg: 'ed25519', sig: 'sig' },
+        url: 'https://untrusted.example',
+      },
+    };
+  }
+
+  it('defaults on without a new preference row and preserves full data in-app only', async () => {
+    const body = reachBody();
+    const res = await POST(makeReq(body));
+    expect(res.status).toBe(200);
+    expect(insertedRow()).toMatchObject({ recipientDid: RECIPIENT, data: body.data });
+    expect(mockPush).toHaveBeenCalledWith(RECIPIENT, expect.objectContaining({ data: body.data }));
+    expect(mockPhonePush).toHaveBeenCalledTimes(1);
+    expect(mockPhonePush).toHaveBeenCalledWith(RECIPIENT, {
+      title: 'New Reach message',
+      body: 'A Reach sender sent you a message.',
+      url: '/jin?lane=inbox&reachId=reach_123%26injected%3Dtrue',
+    });
+    expect(JSON.stringify(mockPhonePush.mock.calls[0])).not.toContain('PRIVATE');
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+  });
+
+  it('respects disabled in-app preference for both phone and WS without losing the row', async () => {
+    mockSelectLimit.mockResolvedValueOnce([{ email: false, inapp: false }]);
+    await POST(makeReq(reachBody()));
+    expect(mockInsertValues).toHaveBeenCalledOnce();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(mockPhonePush).not.toHaveBeenCalled();
+  });
+
+  it('does not phone-push legacy events', async () => {
+    await POST(makeReq(warpCompletionBody()));
+    expect(mockPhonePush).not.toHaveBeenCalled();
+  });
+
+  it.each([undefined, '', 12])('does not phone-push a missing or invalid reachId (%s)', async (reachId) => {
+    const body = reachBody();
+    await POST(makeReq({ ...body, data: { ...body.data, reachId } }));
+    expect(mockPhonePush).not.toHaveBeenCalled();
+  });
+});
 
 vi.mock('@/src/db', () => ({
   db: {
@@ -83,6 +137,11 @@ vi.mock('@/src/lib/notify/operator-approvals-service', () => ({
 }));
 
 const { mockPush } = vi.hoisted(() => ({ mockPush: vi.fn() }));
+const { mockPhonePush } = vi.hoisted(() => ({ mockPhonePush: vi.fn().mockResolvedValue(undefined) }));
+
+vi.mock('@/src/lib/notify/web-push', () => ({
+  pushWebNotificationToOperator: mockPhonePush,
+}));
 
 vi.mock('@/src/lib/notify/ws-push', async () => {
   // The frame builder is a pure projection, so the real one is used — that keeps

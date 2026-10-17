@@ -28,9 +28,9 @@ function payStripeChain(): ReactorConfig[] {
  * keeps two new, structurally-identical additions, `warp.run.resumed` and
  * `warp.run.still_running`, from flagging as code duplication).
  */
-function emitAndNotify(title: string, body: string): ReactorConfig[] {
+function emitAndNotify(title: string, body: string, fields?: string[]): ReactorConfig[] {
   return [
-    { type: 'emit', config: {}, enabled: true },
+    { type: 'emit', config: fields ? { fields } : {}, enabled: true },
     { type: 'notify', config: { title, body }, enabled: true },
   ];
 }
@@ -424,6 +424,15 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
   ],
+  // #2588 / migration 0196 — the service persists the signed envelope and
+  // mints exactly one attestation. This chain only emits and notifies the
+  // principal; raw message/reply details belong only in principal-scoped notify
+  // data, never in node-wide emitted events or notification previews.
+  'agent.reach.delivered': emitAndNotify(
+    'New Reach message',
+    'Reach message about {{topic}} from {{requesterDid}}',
+    ['reachId', 'principalDid', 'requesterDid', 'topic', 'requesterTier', 'transcriptHash', 'issuedAt'],
+  ),
   // #2252 — delegate-grant bearer credential for static-header foreign
   // clients (knock -> approve -> scoped bearer). `audit-log` persists every
   // knock/issue/use/deny/revoke, mirroring agent.reach's #2251 pattern

@@ -35,7 +35,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }),
 }));
 
-import { emitMechanicalAttestation } from '../emit-mechanical-attestation';
+import { emitMechanicalAttestation, prepareMechanicalAttestation } from '../emit-mechanical-attestation';
 
 const PLATFORM_DID = 'did:imajin:6Y6fwZeqe1wME3heZ2vy1cV3x9zwq4Gphqm6yKC95dBg';
 const SUBJECT_DID = 'did:imajin:veteze';
@@ -58,6 +58,35 @@ beforeEach(() => {
 });
 
 describe('emitMechanicalAttestation', () => {
+  it('prepares a deterministic signed row without inserting, using the existing canonical signature shape', async () => {
+    const row = await prepareMechanicalAttestation(BASE_PARAMS, 'att_reach_reach_test');
+    expect(row).toMatchObject({
+      id: 'att_reach_reach_test', issuerDid: PLATFORM_DID, subjectDid: SUBJECT_DID,
+      signature: 'sig', cid: 'bafy-test', attestationStatus: null,
+    });
+    expect(mocks.insertValuesMock).not.toHaveBeenCalled();
+    expect(mocks.signSyncMock).toHaveBeenCalledWith(JSON.stringify({
+      subject_did: SUBJECT_DID, type: BASE_PARAMS.type, context_id: null, context_type: 'auth',
+      payload: BASE_PARAMS.payload, issued_at: row.issuedAt.getTime(),
+    }), 'test-private-key');
+  });
+
+  it('throws when preparation has no signing key', async () => {
+    delete process.env.AUTH_PRIVATE_KEY;
+    await expect(prepareMechanicalAttestation(BASE_PARAMS)).rejects.toThrow('AUTH_PRIVATE_KEY');
+    expect(mocks.insertValuesMock).not.toHaveBeenCalled();
+  });
+
+  it('throws when preparation has no node DID', async () => {
+    mocks.getNodeDidMock.mockResolvedValue(null);
+    await expect(prepareMechanicalAttestation(BASE_PARAMS)).rejects.toThrow('node DID');
+  });
+
+  it('throws on prepare signing failure while emit remains nonfatal', async () => {
+    mocks.signSyncMock.mockImplementation(() => { throw new Error('signing failed'); });
+    await expect(prepareMechanicalAttestation(BASE_PARAMS)).rejects.toThrow('signing failed');
+    await expect(emitMechanicalAttestation(BASE_PARAMS)).resolves.toBeNull();
+  });
   it('inserts an attestation with attestationStatus explicitly null', async () => {
     await emitMechanicalAttestation(BASE_PARAMS);
 

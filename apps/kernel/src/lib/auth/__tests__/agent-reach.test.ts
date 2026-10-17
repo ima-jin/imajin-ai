@@ -125,6 +125,10 @@ vi.mock('@imajin/auth', async (importOriginal) => {
 });
 
 const brokerMock = vi.fn();
+// Delivery has its own real-signature route tests; keep the legacy gate unit
+// suite independent of persistence and the node signing identity.
+vi.mock('../reach-delivery', () => ({ deliverReach: vi.fn() }));
+vi.mock('../reach-envelope-store', () => ({ markReachPublished: vi.fn() }));
 const publishMock = vi.fn().mockResolvedValue(undefined);
 vi.mock('@imajin/bus', () => ({
   broker: (...args: unknown[]) => brokerMock(...args),

@@ -31,6 +31,57 @@ export interface MechanicalAttestationParams {
   contextType: string | null;
   payload: Record<string, unknown>;
 }
+export interface PreparedMechanicalAttestation {
+  id: string;
+  issuerDid: string;
+  subjectDid: string;
+  type: AttestationType;
+  contextId: string | null;
+  contextType: string | null;
+  payload: Record<string, unknown>;
+  signature: string;
+  cid: string | null;
+  attestationStatus: null;
+  issuedAt: Date;
+}
+
+/** Sign using the canonical mechanical shape without writing; failures throw. */
+export async function prepareMechanicalAttestation(
+  params: MechanicalAttestationParams,
+  id = genId("att"),
+): Promise<PreparedMechanicalAttestation> {
+  const privateKey = process.env.AUTH_PRIVATE_KEY;
+  if (!privateKey) throw new Error('AUTH_PRIVATE_KEY not set');
+  const platformDid = await getNodeDid();
+  if (!platformDid) throw new Error('node DID not set');
+  const issuedAtMs = Date.now();
+  const canonicalPayload = canonicalize({
+    subject_did: params.subjectDid,
+    type: params.type,
+    context_id: params.contextId,
+    context_type: params.contextType,
+    payload: params.payload,
+    issued_at: issuedAtMs,
+  });
+  const signature = authCrypto.signSync(canonicalPayload, privateKey);
+  let cid: string | null = null;
+  try {
+    cid = await computeCid({
+      issuerDid: platformDid,
+      subjectDid: params.subjectDid,
+      type: params.type,
+      contextId: params.contextId,
+      contextType: params.contextType,
+      payload: params.payload,
+      issuedAt: issuedAtMs,
+    });
+  } catch { /* non-fatal */ }
+  return {
+    id, issuerDid: platformDid, subjectDid: params.subjectDid, type: params.type,
+    contextId: params.contextId, contextType: params.contextType, payload: params.payload,
+    signature, cid, attestationStatus: null, issuedAt: new Date(issuedAtMs),
+  };
+}
 
 /**
  * Non-fatal by design: a missing `AUTH_PRIVATE_KEY`/node DID, a signing
@@ -50,53 +101,10 @@ export async function emitMechanicalAttestation(params: MechanicalAttestationPar
     return null;
   }
 
-  const platformDid = await getNodeDid();
-  if (!platformDid) {
-    log.warn({ type: params.type }, 'mechanical attestation skipped: node DID not set');
-    return null;
-  }
-
-  const issuedAtMs = Date.now();
-  const canonicalPayload = canonicalize({
-    subject_did: params.subjectDid,
-    type: params.type,
-    context_id: params.contextId,
-    context_type: params.contextType,
-    payload: params.payload,
-    issued_at: issuedAtMs,
-  });
-
-  const id = genId("att");
   try {
-    const signature = authCrypto.signSync(canonicalPayload, privateKey);
-
-    let cid: string | null = null;
-    try {
-      cid = await computeCid({
-        issuerDid: platformDid,
-        subjectDid: params.subjectDid,
-        type: params.type,
-        contextId: params.contextId,
-        contextType: params.contextType,
-        payload: params.payload,
-        issuedAt: issuedAtMs,
-      });
-    } catch { /* non-fatal */ }
-
-    await db.insert(attestations).values({
-      id,
-      issuerDid: platformDid,
-      subjectDid: params.subjectDid,
-      type: params.type,
-      contextId: params.contextId,
-      contextType: params.contextType,
-      payload: params.payload,
-      signature,
-      cid,
-      attestationStatus: null,
-      issuedAt: new Date(issuedAtMs),
-    });
-    return id;
+    const row = await prepareMechanicalAttestation(params);
+    await db.insert(attestations).values(row);
+    return row.id;
   } catch (err) {
     log.error({ err: String(err), type: params.type }, 'mechanical attestation error');
     return null;
