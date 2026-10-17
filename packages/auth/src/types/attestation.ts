@@ -29,6 +29,7 @@ export const ATTESTATION_TYPES = [
   'group.member.left',
   'scope.onboard',
   'identity.created',
+  'identity.owner.transferred',
   'identity.verified.preliminary',
   'identity.verified.hard',
   'identity.verified.steward',
@@ -286,6 +287,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'identity.owner.transferred',
   'session.created',
   'media.uploaded',
   'agent.turn.usage',
