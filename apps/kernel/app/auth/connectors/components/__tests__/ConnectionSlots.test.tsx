@@ -150,6 +150,18 @@ describe('labelled OAuth connections', () => {
     expect(await screen.findByRole('option', { name: /New company name/ })).toBeDefined();
   });
 
+  it('makes Google disconnect confirmation specific to the selected slot', async () => {
+    navigation.query = 'slot=work';
+    const { fetch } = setup();
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect Google Workspace' }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Other connections are not affected.'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Connection slot: work.'));
+    expect(confirm).not.toHaveBeenCalledWith(expect.stringContaining('stops every google_* tool'));
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith('/google/api/disconnect?slot=work', { method: 'POST' }));
+  });
+
   it('keeps the previous selection and label when a write fails', async () => {
     const { endpoint, fetch } = setup('google', { failWrite: true });
     const label = await screen.findByRole('textbox', { name: 'Connection label' });

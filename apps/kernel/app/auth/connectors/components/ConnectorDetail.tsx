@@ -1779,8 +1779,8 @@ interface OAuthConnectorCardOptions<TExtra = undefined> {
   configureRoute: string;
   /** Callback path appended to `window.location.origin` to prefill the default redirect URI. */
   callbackPath: string;
-  /** Scope name whose presence (alongside both credential booleans) marks the card "connected". */
-  readyScope: string;
+  /** Optional required scope; otherwise any declared granted scope marks the card connected. */
+  readyScope?: string;
   copy: OAuthConnectorCardCopy;
   extra?: OAuthConnectorCardExtraField<TExtra>;
 }
@@ -1835,7 +1835,7 @@ function createOAuthConnectorCard<TExtra = undefined>(
 
     const { disconnecting, disconnectError, handleDisconnect } = useDisconnect(
       entry.disconnectRoute!,
-      opts.copy.disconnectConfirmMessage,
+      `${opts.copy.disconnectConfirmMessage}\nConnection slot: ${slot}.`,
       () => { void fetchStatus(); refreshConnections(); },
     );
 
@@ -1846,7 +1846,10 @@ function createOAuthConnectorCard<TExtra = undefined>(
     );
 
     const activeSet = new Set(status?.activeScopes ?? []);
-    const readyForRead = status !== null && status.configSealed && status.tokenSealed && activeSet.has(opts.readyScope);
+    const scopesReady = opts.readyScope
+      ? activeSet.has(opts.readyScope)
+      : entry.scopes.some((scope) => activeSet.has(scope.name));
+    const readyForRead = status !== null && status.configSealed && status.tokenSealed && scopesReady;
 
     async function handleConfigure(e: React.FormEvent) {
       e.preventDefault(); setConfiguring(true); setConfigError(null);
@@ -2028,7 +2031,6 @@ const QuickBooksConnectorCard = createOAuthConnectorCard<{ environment: 'sandbox
 const GoogleConnectorCard = createOAuthConnectorCard({
   configureRoute: '/google/api/configure',
   callbackPath: '/google/api/callback',
-  readyScope: 'google:gmail:read',
   copy: {
     configStepLabel: 'OAuth Client (Google Cloud Console)',
     configSealedLabel: 'OAuth client config sealed',
@@ -2036,8 +2038,9 @@ const GoogleConnectorCard = createOAuthConnectorCard({
     connectLabel: 'Connect Google Account →',
     disconnectLabel: 'Disconnect Google Workspace',
     disconnectConfirmMessage:
-      'Disconnect Google Workspace? This revokes the grant at Google, deletes the sealed refresh token, ' +
-      'and stops every google_* tool from acting on your behalf.',
+      'Disconnect this Google Workspace connection? This revokes its grant at Google, ' +
+      'deletes its sealed refresh token, and stops google_* tools from using this connection. ' +
+      'Other connections are not affected.',
   },
 });
 

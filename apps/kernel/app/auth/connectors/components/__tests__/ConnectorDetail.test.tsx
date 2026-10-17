@@ -1250,6 +1250,28 @@ describe('Google Workspace connector card (createOAuthConnectorCard, #2144)', ()
     expect(await screen.findByText(entryFor('google').custodyNotice!)).toBeDefined();
   });
 
+  it.each(['google:drive:read', 'google:calendar:read', 'google:meet:records', 'google:gmail:send'])(
+    'shows a connected badge when only %s is granted',
+    async (scope) => {
+      installFetch({
+        [STATUS]: googleStatus({ configSealed: true, tokenSealed: true, activeScopes: [scope] }),
+      });
+      render(<ConnectorDetail entry={entryFor('google')} />);
+      expect(await screen.findByText('Account connected')).toBeDefined();
+      expect(screen.getByText('● Connected')).toBeDefined();
+      expect(screen.queryByText('○ Not configured')).toBeNull();
+    },
+  );
+
+  it('does not mark a Drive grant connected without this connection token', async () => {
+    installFetch({
+      [STATUS]: googleStatus({ configSealed: true, tokenSealed: false, activeScopes: ['google:drive:read'] }),
+    });
+    render(<ConnectorDetail entry={entryFor('google')} />);
+    await screen.findByRole('link', { name: 'Connect Google Account →' });
+    expect(screen.queryByText('● Connected')).toBeNull();
+  });
+
   it('posts clientId/clientSecret/redirectUri with no extra fields', async () => {
     const spy = installFetch({ [STATUS]: googleStatus() });
 
