@@ -1,4 +1,4 @@
-import { exchangeCodeAndStore, captureGoogleAccountEmail } from '@/src/lib/google/connector';
+import { exchangeCodeAndStore, resetGoogleConnectionState, captureGoogleAccountEmail } from '@/src/lib/google/connector';
 import { verifyState } from '@/src/lib/google/oauth-state';
 import { createCallbackHandler } from '@/src/lib/kernel/connector-oauth-routes';
 
@@ -9,6 +9,7 @@ export const GET = createCallbackHandler({
   connectorId: 'google',
   exchange: async (ownerDid, code, _params, configDid, slot) => {
     await exchangeCodeAndStore(ownerDid, code, {}, configDid, slot);
+    await resetGoogleConnectionState(ownerDid, slot);
     await captureGoogleAccountEmail(ownerDid, slot);
   },
 });

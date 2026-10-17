@@ -30,6 +30,7 @@ vi.mock('@/src/db', () => {
       }),
     },
     channelLinks,
+    googleWorkspaceState: { ownerDid: 'ownerDid', slot: 'slot' },
   };
 });
 
@@ -49,6 +50,7 @@ import {
   listActiveGrantOwners,
   listActiveGrantConnections,
   captureGoogleAccountEmail,
+  resetGoogleConnectionState,
   storeConfig,
   configField,
   oauthVaultField,
@@ -84,6 +86,7 @@ function sealedTokens(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  vi.mocked(recordConnectorRegistration).mockClear();
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
   whereMock.mockReset();
@@ -364,6 +367,52 @@ describe('identity constants', () => {
 });
 
 describe('Google connection slot isolation (#2365)', () => {
+  it('resets only selected owner/slot operational state and clears its old account identity', async () => {
+    const states = [
+      { ownerDid: OWNER, slot: 'primary', gmailEmailAddress: 'home@example.test', drivePageToken: 'home-cursor' },
+      { ownerDid: OWNER, slot: 'work', gmailEmailAddress: 'old-work@example.test', drivePageToken: 'work-cursor' },
+      { ownerDid: 'did:imajin:other', slot: 'work', gmailEmailAddress: 'other@example.test', drivePageToken: 'other-cursor' },
+    ];
+    updateWhereMock.mockImplementation(async (conditions: Array<{ col: string; val: string }>) => {
+      for (const state of states) {
+        if (conditions.every(({ col, val }) => state[col as 'ownerDid' | 'slot'] === val)) {
+          Object.assign(state, updateSetMock.mock.calls.at(-1)?.[0]);
+        }
+      }
+    });
+    await withConnectorConnection('google', OWNER, 'work', () => resetGoogleConnectionState(OWNER));
+    expect(states[0]).toMatchObject({ gmailEmailAddress: 'home@example.test', drivePageToken: 'home-cursor' });
+    expect(states[1]).toMatchObject({
+      gmailEmailAddress: null, gmailHistoryId: null, gmailWatchExpiration: null, drivePageToken: null,
+    });
+    expect(states[2]).toMatchObject({ gmailEmailAddress: 'other@example.test', drivePageToken: 'other-cursor' });
+    expect(recordConnectorRegistration).toHaveBeenCalledWith({
+      ownerDid: OWNER, provider: 'google', slot: 'work', accountEmail: null,
+    });
+  });
+
+  it('keeps account identity cleared if reconnect profile lookup fails', async () => {
+    await resetGoogleConnectionState(OWNER, 'work');
+    tokensResponse = JSON.stringify({ accessToken: 'new-work', expiresAt: Date.now() + 3_600_000 });
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('profile unavailable'));
+    await captureGoogleAccountEmail(OWNER, 'work');
+    expect(recordConnectorRegistration).toHaveBeenCalledTimes(1);
+    expect(recordConnectorRegistration).toHaveBeenCalledWith({
+      ownerDid: OWNER, provider: 'google', slot: 'work', accountEmail: null,
+    });
+  });
+
+  it('refreshes tokens without resetting cursors or clearing known account identity', async () => {
+    grant(['google:gmail:read']);
+    setConfig();
+    sealedTokens({ expiresAt: 0 });
+    (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true, json: async () => ({ access_token: 'renewed', expires_in: 3600 }),
+    });
+    await expect(requireGrantAndToken(OWNER, 'google:gmail:read')).resolves.toBe('renewed');
+    expect(updateSetMock).not.toHaveBeenCalled();
+    expect(recordConnectorRegistration).not.toHaveBeenCalledWith(expect.objectContaining({ accountEmail: null }));
+  });
   function credentials() {
     const values = new Map([
       [`google-config:${OWNER}`, JSON.stringify(CONFIG)],

@@ -39,7 +39,7 @@
 import { and, eq } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
-import { db, channelLinks } from '@/src/db';
+import { db, channelLinks, googleWorkspaceState } from '@/src/db';
 import { recordConnectorRegistration, revokeConnectorRegistration } from '../kernel/connector-registry-store';
 import { currentConnectionSlot } from '../kernel/connector-connection-context';
 import { connectionSlot } from '../kernel/connection-slots';
@@ -205,6 +205,21 @@ export const storeConfig = google.storeConfig;
 export const buildAuthorizeUrl = google.buildAuthorizeUrl;
 export const exchangeCodeAndStore = google.exchangeCodeAndStore;
 export const resolveActiveGrant = google.resolveActiveGrant;
+
+/** A fresh authorization may replace the account in this slot; refresh must never call this. */
+export async function resetGoogleConnectionState(ownerDid: string, slot = currentConnectionSlot('google', ownerDid)): Promise<void> {
+  const selected = connectionSlot(slot);
+  await db.update(googleWorkspaceState)
+    .set({
+      gmailHistoryId: null,
+      gmailWatchExpiration: null,
+      gmailEmailAddress: null,
+      drivePageToken: null,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(googleWorkspaceState.ownerDid, ownerDid), eq(googleWorkspaceState.slot, selected)));
+  await recordConnectorRegistration({ ownerDid, provider: 'google', slot: selected, accountEmail: null });
+}
 
 /**
  * Which BYO-app flow the owner's sealed config is for, or null when nothing

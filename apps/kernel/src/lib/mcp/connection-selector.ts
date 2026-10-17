@@ -28,9 +28,7 @@ export async function resolveToolConnection(
 
 /** Bind the selected connection once; all nested action/token/grant calls inherit it. */
 export function withToolConnection(tool: McpTool): McpTool {
-  const provider = tool.name.startsWith('google_') ? 'google'
-    : tool.name.startsWith('github_') ? 'github'
-      : tool.name.startsWith('quickbooks_') ? 'quickbooks' : undefined;
+  const provider = ['google', 'github', 'quickbooks'].find((name) => tool.name.startsWith(`${name}_`));
   if (!provider) return tool;
   return {
     ...tool,
