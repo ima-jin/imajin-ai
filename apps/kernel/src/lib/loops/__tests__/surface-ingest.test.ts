@@ -46,7 +46,13 @@ describe('surface signed ingest contract', () => {
     if (!parsed.ok) throw new Error(parsed.error);
     expect(await ingestLoopEvent(parsed.value)).toEqual({ ok: true });
     expect(project).toHaveBeenCalledWith(request);
-    expect(publish).toHaveBeenCalledWith(type, expect.objectContaining({ issuer: request.publisherDid, subject: request.payload.principal, payload: request.payload }));
+    expect(publish).toHaveBeenCalledWith(type, expect.objectContaining({
+      issuer: request.publisherDid,
+      subject: request.payload.principal,
+      payload: { ...request.payload, publisherProof: request },
+    }));
+    expect(parsed.value.payload).toEqual(request.payload);
+    expect(request.payload).not.toHaveProperty('publisherProof');
   });
 
   it('retries a failed acquisition publication and then emits the recovered conflict', async () => {
