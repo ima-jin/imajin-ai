@@ -123,6 +123,19 @@ function respondJson(body: unknown, status = 200): void {
 // ── loop.started: dispatch ───────────────────────────────────────────────────
 
 describe('dispatchAgentRun bridges loop.started', () => {
+  it('passes explicit metadata refs without deriving issue numbers from the prompt', async () => {
+    respondJson({
+      run_id: RUN_ID, state: 'QUEUED', session_id: 'session',
+      trigger_url: 'https://github.com/o/r/issues/1',
+      artifacts: [{ artifact_type: 'PULL_REQUEST', data: { url: 'https://github.com/o/r/pull/2' } }],
+    });
+    await dispatchAgentRun(PRINCIPAL, { prompt: 'Untrusted prose: issue #999' });
+    await vi.waitFor(() => expect(emitWarpRunLoopEventMock).toHaveBeenCalled());
+    expect(emitWarpRunLoopEventMock.mock.calls[0][0].refs).toEqual({
+      runId: RUN_ID, sessionKey: 'session', issue: 'https://github.com/o/r/issues/1', pr: 'https://github.com/o/r/pull/2',
+    });
+    expect(emitWarpRunLoopEventMock.mock.calls[0][0].prArtifacts).toEqual(['https://github.com/o/r/pull/2']);
+  });
   it('emits loop.started with loopId = runId, state = queued, and the Warp-confirmed parent lineage', async () => {
     respondJson({ run_id: RUN_ID, state: 'QUEUED', parent_run_id: 'run-parent-1' });
 
@@ -159,6 +172,12 @@ describe('dispatchAgentRun bridges loop.started', () => {
 // ── loop.started (new segment): resume case ──────────────────────────────────
 
 describe('sendFollowup resume bridges a fresh loop.started segment', () => {
+  it('uses only a confirmed new session id on resume', async () => {
+    respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', session_id: 'old-session' });
+    respondJson({ session_id: 'new-session' });
+    await sendFollowup(PRINCIPAL, RUN_ID, { message: 'continue', resume: true });
+    expect(emitWarpRunLoopEventMock.mock.calls[0][0].refs).toEqual({ sessionKey: 'new-session' });
+  });
   it('emits loop.started (not loop.progress/finished) for a resumed terminal run, carrying its lineage', async () => {
     respondJson({ run_id: RUN_ID, state: 'SUCCEEDED', parent_run_id: 'run-parent-1' });
     respondJson({});

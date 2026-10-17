@@ -123,6 +123,29 @@ describe('startCycle', () => {
 });
 
 describe('cyclePhase', () => {
+  it.each([
+    ['started', 'loop.started'],
+    ['blocked', 'loop.blocked'],
+    ['completed', 'loop.finished'],
+    ['skipped', 'loop.finished'],
+  ] as const)('publishes a witnessed review child on actual review phase %s', async (status, type) => {
+    resolveWithLoopRow();
+    getLoopWithHistoryMock.mockResolvedValueOnce({ loop: {}, events: [] });
+    await cyclePhase(CORRELATION_ID, 'review', status);
+    expect(ingestLoopEventMock).toHaveBeenCalledTimes(2);
+    expect(ingestLoopEventMock.mock.calls[1][0]).toMatchObject({
+      type, publisherDid: NODE_IDENTITY.senderDid,
+      payload: { loopId: `${CORRELATION_ID}:review`, kind: 'review', principal: PRINCIPAL, parentLoopId: CORRELATION_ID, state: status },
+    });
+  });
+
+  it('does not publish a review child when the real phase transition fails', async () => {
+    resolveWithLoopRow();
+    getLoopWithHistoryMock.mockResolvedValueOnce({ loop: {}, events: [] });
+    ingestLoopEventMock.mockResolvedValueOnce({ ok: false, error: 'offline' });
+    await cyclePhase(CORRELATION_ID, 'review', 'started');
+    expect(ingestLoopEventMock).toHaveBeenCalledTimes(1);
+  });
   it('fails closed on an unknown correlationId without publishing anything', async () => {
     fakeSql.resolveWith([]); // no kernel.loops row for this loopId
 

@@ -57,7 +57,12 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
       issuer: publisherDid,
       subject: payload.principal,
       scope: 'loop',
-      payload,
+      payload: {
+        ...payload,
+        // Persist the exact signed envelope separately from projection metadata.
+        // Never mutate payload: signature verification covers { type, payload }.
+        publisherProof: { type, payload, publisherDid, signature },
+      },
       correlationId: payload.loopId,
     });
   } catch (err) {

@@ -25,6 +25,17 @@ export interface ListLoopsFilters {
   since?: string | null;
   ancestor?: string | null;
   limit?: number;
+  runId?: string | null;
+  issue?: string | null;
+  pr?: string | null;
+  sessionKey?: string | null;
+}
+function refsFilter(filters: ListLoopsFilters): string {
+  return JSON.stringify(Object.fromEntries(
+    ['runId', 'issue', 'pr', 'sessionKey']
+      .map((key) => [key, filters[key as keyof ListLoopsFilters]])
+      .filter(([, value]) => typeof value === 'string' && value.length > 0),
+  ));
 }
 
 const DEFAULT_LIMIT = 50;
@@ -41,12 +52,13 @@ async function listLoopLineage(
   principal: string,
   state: string | null,
   kind: string | null,
+  filters: ListLoopsFilters,
 ): Promise<LoopJson[]> {
   const sql = getClient();
   const rows = (await sql`
     WITH RECURSIVE lineage AS (
       SELECT * FROM kernel.loops WHERE loop_id = ${ancestor} AND principal = ${principal}
-      UNION ALL
+      UNION
       SELECT l.* FROM kernel.loops l
       JOIN lineage ON l.parent_loop_id = lineage.loop_id
       WHERE l.principal = ${principal}
@@ -54,6 +66,8 @@ async function listLoopLineage(
     SELECT * FROM lineage
     WHERE (${state}::text IS NULL OR state = ${state})
       AND (${kind}::text IS NULL OR kind = ${kind})
+      AND refs @> ${refsFilter(filters)}::jsonb
+      AND (${filters.since ?? null}::timestamptz IS NULL OR last_seen_at >= ${filters.since ?? null}::timestamptz)
     ORDER BY started_at ASC
   `) as unknown as RawLoopRow[];
 
@@ -67,6 +81,7 @@ async function listLoopsForPrincipal(filters: ListLoopsFilters): Promise<LoopJso
   const rows = (await sql`
     SELECT * FROM kernel.loops
     WHERE principal = ${filters.principal}
+      AND refs @> ${refsFilter(filters)}::jsonb
       AND (${filters.state ?? null}::text IS NULL OR state = ${filters.state ?? null})
       AND (${filters.kind ?? null}::text IS NULL OR kind = ${filters.kind ?? null})
       AND (${filters.since ?? null}::timestamptz IS NULL OR last_seen_at >= ${filters.since ?? null}::timestamptz)
@@ -79,7 +94,7 @@ async function listLoopsForPrincipal(filters: ListLoopsFilters): Promise<LoopJso
 
 export async function listLoops(filters: ListLoopsFilters): Promise<LoopJson[]> {
   if (filters.ancestor) {
-    return listLoopLineage(filters.ancestor, filters.principal, filters.state ?? null, filters.kind ?? null);
+    return listLoopLineage(filters.ancestor, filters.principal, filters.state ?? null, filters.kind ?? null, filters);
   }
   return listLoopsForPrincipal(filters);
 }
@@ -146,6 +161,7 @@ async function listLoopsForPrincipalPage(filters: ListLoopsPageFilters): Promise
   const rows = (await sql`
     SELECT * FROM kernel.loops
     WHERE principal = ${filters.principal}
+      AND refs @> ${refsFilter(filters)}::jsonb
       AND (${filters.state ?? null}::text IS NULL OR state = ${filters.state ?? null})
       AND (${filters.kind ?? null}::text IS NULL OR kind = ${filters.kind ?? null})
       AND (${filters.since ?? null}::timestamptz IS NULL OR last_seen_at >= ${filters.since ?? null}::timestamptz)
@@ -174,7 +190,7 @@ async function listLoopsForPrincipalPage(filters: ListLoopsPageFilters): Promise
  */
 export async function listLoopsPage(filters: ListLoopsPageFilters): Promise<LoopsPage> {
   if (filters.ancestor) {
-    const loops = await listLoopLineage(filters.ancestor, filters.principal, filters.state ?? null, filters.kind ?? null);
+    const loops = await listLoopLineage(filters.ancestor, filters.principal, filters.state ?? null, filters.kind ?? null, filters);
     return { loops, hasNextPage: false, nextCursor: null };
   }
   return listLoopsForPrincipalPage(filters);
@@ -203,7 +219,7 @@ export async function getLoopWithHistory(loopId: string, principal: string): Pro
   if (!loopRow) return null;
 
   const eventRows = (await sql`
-    SELECT * FROM kernel.loop_events WHERE loop_id = ${loopId} ORDER BY occurred_at ASC
+    SELECT * FROM kernel.loop_events WHERE loop_id = ${loopId} AND principal = ${principal} ORDER BY occurred_at ASC
   `) as unknown as RawLoopEventRow[];
 
   return {

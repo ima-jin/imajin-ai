@@ -3,8 +3,8 @@
 /**
  * Spend lane on `/jin` (#2725, epic #2288) — what the agents cost, readable on
  * a phone: today's cost per provider, each provider's current-period spend
- * next to its cap (near/over flagged), the 7-day trend, and — labelled
- * INTERIM — the cost of recent Warp runs and the cost per closed issue this
+ * next to its cap (near/over flagged), the 7-day trend, and registry-first
+ * cost of recent runs and cost per closed issue this
  * month.
  *
  * Data sources (all read-only, no new tables):
@@ -12,8 +12,8 @@
  *   - `GET /jin/api/spend/runs`  → Warp run `requestUsage` ("Warp-reported",
  *     Warp's own units, never converted) + `usage.incurred` joined by
  *     `session_id` ("metered", USD) + GitHub issue state. The derivation is
- *     the stopgap in `src/lib/jin/spend-interim-join.ts`, replaced by the loop
- *     registry (#2290).
+ *     registry-first reader in `src/lib/jin/spend-registry.ts`; only runs
+ *     without loop records retain the interim derivation (#2290).
  *
  * Same operator gate as the other /jin lanes: renders nothing (not even a
  * header) until the server says `isOperator: true`, so a non-operator never

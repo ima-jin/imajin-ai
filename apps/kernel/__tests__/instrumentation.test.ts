@@ -12,6 +12,10 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@imajin/logger/db', () => ({}));
 const mockEnsureWebhookSigner = vi.hoisted(() => vi.fn());
+const mockEnsureChainObserver = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/loops/bus-chain', () => ({
+  ensureBusChainObserverRegistered: mockEnsureChainObserver,
+}));
 vi.mock('@/src/lib/auth/register-webhook-signer', () => ({
   ensureWebhookSignerRegistered: mockEnsureWebhookSigner,
 }));
@@ -55,9 +59,15 @@ afterEach(() => {
   mockEnsureSettleExecutor.mockClear();
   mockEnsureEmissionExecutor.mockClear();
   mockEnsureWebhookSigner.mockClear();
+  mockEnsureChainObserver.mockClear();
 });
 
 describe('kernel instrumentation register()', () => {
+  it('registers the signed loop chain observer at server boot', async () => {
+    setRuntime('nodejs');
+    await register();
+    expect(mockEnsureChainObserver).toHaveBeenCalledTimes(1);
+  });
   it('registers the shared kernel webhook signer at server boot', async () => {
     setRuntime('nodejs');
     await register();
@@ -131,5 +141,6 @@ describe('kernel instrumentation register()', () => {
     expect(mockProvideVaultInternalApiKey).not.toHaveBeenCalled();
     expect(mockEnsureEmissionExecutor).not.toHaveBeenCalled();
     expect(mockEnsureWebhookSigner).not.toHaveBeenCalled();
+    expect(mockEnsureChainObserver).not.toHaveBeenCalled();
   });
 });

@@ -151,7 +151,7 @@ describe('GET /api/loops (per-principal list)', () => {
     mockListLoops.mockResolvedValueOnce([]);
 
     await GET(
-      makeGetReq('?state=blocked&kind=review&since=2026-09-01T00:00:00.000Z&ancestor=loop_root&limit=10') as Parameters<typeof GET>[0],
+      makeGetReq('?state=blocked&kind=review&since=2026-09-01T00:00:00.000Z&ancestor=loop_root&limit=10&runId=run1&issue=o/r%231&pr=o/r%232&sessionKey=session1') as Parameters<typeof GET>[0],
     );
 
     expect(mockListLoops).toHaveBeenCalledWith({
@@ -161,6 +161,10 @@ describe('GET /api/loops (per-principal list)', () => {
       since: '2026-09-01T00:00:00.000Z',
       ancestor: 'loop_root',
       limit: 10,
+      runId: 'run1',
+      issue: 'o/r#1',
+      pr: 'o/r#2',
+      sessionKey: 'session1',
     });
   });
 

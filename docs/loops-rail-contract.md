@@ -72,6 +72,60 @@ the principal (`delegatorDid`) authorizes a specific external agent DID
 and a bounded TTL. Revoking the grant (or letting it expire) makes the
 very next `POST /api/loops` call from that publisher fail with 403.
 
+
+## Registry refs and spend (#2290)
+
+`refs` are signed publisher data: `runId`, `sessionKey`, `issue`, `pr`.
+`GET /api/loops` and MCP `loops_list` accept exact-match filters with those
+names, including on ancestor reads. GitHub subject refs should be canonical
+`https://github.com/owner/repo/issues/N` / `/pull/N` URLs or `owner/repo#N`;
+unknown strings remain visible as refs but are never guessed into an issue.
+
+`GET /api/loops/spend?window=YYYY-MM` (or the usage API's inclusive date-range
+syntax) returns `{currency, windowFrom, windowTo, runs, issues, prs}` for the
+authenticated effective principal only. Each run includes signed refs, loop
+identity/state, and `metered: {usd, turns} | null`. Issue and PR totals include
+their explicit ref and distinct run count. Both sides of the join are principal
+scoped. USD is summed from non-error `usage.incurred` rows in the half-open
+window: exact `session_id = runId` wins, otherwise an unambiguous
+`session_id = sessionKey` joins. Duplicate loops cannot multiply a usage row;
+shared session aliases stay unattributed. Null cost is unknown, not zero.
+Old loops with usage in the window are included. Session-only loops use their
+stable loopId as the correlation identity, not an invented Warp run id. A run
+with any unpriced usage and a subject with any unknown run cost remain unknown,
+never a misleading partial total.
+
+`/jin/api/spend/runs` uses this registry first. Only Warp runs with no loop
+record (checked independently of pagination/time window) use the old branch
+derivation. Registry-owned sessions are excluded from fallback metering.
+Registry failure fails closed, never silently switches the whole lane back
+to heuristics. Warp failure does not erase registry costs. The legacy
+`interim` response property is retained for panel compatibility; the label
+identifies the actual source and any legacy fallback. GitHub closure state
+still uses the existing principal-authorized connector; unavailable is unknown.
+
+`/jin` Runs uses the same projection through direct-human operator-gated
+adapters, not the Warp or gateway API. Nonoperators see no Runs lane.
+## Native lifecycle observations (#2290)
+
+- Warp publishes authoritative run/session ids, exact GitHub trigger refs and
+  unambiguous typed PR artifact refs; it never infers subjects from prompts or
+  branches. Sparse transitions preserve existing refs.
+- A `bus.chain` is one actual `publish()` invocation, with its own UUID.
+  Completion waits for awaited and fire-and-forget reactors to settle.
+  Correlation ids remain trace metadata, not invented parent loops. The kernel
+  injects the signed observer; the bus never imports kernel code and never
+  observes `loop.*` recursively.
+- `review` follows the cycle's real review-phase transitions. `pr` first
+  appears from a confirmed typed PR artifact, parented to its run. That initial
+  observation cannot overwrite an existing PR projection. Existing authenticated
+  `getPullRequest` observations update open/draft/closed/merged state without
+  any new API call, poller or gateway dependency.
+- New history rows retain server-assigned `publisherProof` containing the exact
+  original signed payload/type, publisher DID and signature for audit. Older
+  history is not backfilled with fabricated proofs. Projection ownership cannot
+  move between principals, and history reads are also principal scoped.
+
 ## Summary table
 
 | Publisher | Principal | Path | Result |

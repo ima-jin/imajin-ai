@@ -52,7 +52,7 @@ export const INTERIM_LABEL = 'interim · derived from Warp runs + branch names (
 
 /** Max runs read for the month, and max GitHub lookups per request. */
 const RUN_LIMIT = 100;
-const MAX_GITHUB_LOOKUPS = 30;
+export const MAX_GITHUB_LOOKUPS = 30;
 const GITHUB_CONCURRENCY = 4;
 /** Max recent runs returned for the compact list. */
 export const RECENT_RUN_COUNT = 8;
@@ -87,7 +87,7 @@ export interface RunLinkage {
   prRepo: string | null;
   prNumber: number | null;
   issue: IssueRef | null;
-  issueVia: 'branch' | 'pr-body' | null;
+  issueVia: 'branch' | 'pr-body' | 'registry' | null;
 }
 
 export interface InterimRunCost {
@@ -115,7 +115,7 @@ export interface ClosedIssueCost {
   unknownCount: number;
   /** Warp-reported units per closed issue; null when no closed issue has a Warp cost. */
   warpPerIssue: number | null;
-  /** Metered USD per closed issue; null when no closed issue has a metered cost. */
+  /** Metered USD per closed issue; null if any closed issue has unknown metered cost. */
   meteredUsdPerIssue: number | null;
 }
 
@@ -229,8 +229,22 @@ export function prHintOf(run: WarpAgentRun): PrHint {
   return hintFromStatusMessage(run);
 }
 
-/** Roll one run's cost: metered `usage.incurred` (USD) next to Warp-reported (units). */
-function costsOf(run: WarpAgentRun, metered: Map<string, MeteredCost>): {
+/** Exact run IDs own their keys; aliases shared by different runs own nothing. */
+function sessionOwners(runs: WarpAgentRun[]): Map<string, string | null> {
+  const owners = new Map<string, string | null>(runs.map((run) => [run.runId, run.runId]));
+  const exactIds = new Set(owners.keys());
+  for (const run of runs) {
+    for (const key of new Set([run.sessionId, run.conversationId])) {
+      if (!key || exactIds.has(key)) continue;
+      const ambiguous = owners.has(key) && owners.get(key) !== run.runId;
+      owners.set(key, ambiguous ? null : run.runId);
+    }
+  }
+  return owners;
+}
+
+/** Roll one run's cost using only session rows unambiguously owned by it. */
+function costsOf(run: WarpAgentRun, metered: Map<string, MeteredCost>, owners: Map<string, string | null>): {
   warp: WarpReportedCost | null;
   metered: MeteredCost | null;
   attribution: RunAttribution;
@@ -238,14 +252,17 @@ function costsOf(run: WarpAgentRun, metered: Map<string, MeteredCost>): {
   const warp = warpCostOf(run.requestUsage);
   const keys = [run.runId, run.sessionId, run.conversationId].filter((k): k is string => !!k);
   let usd: number | null = null;
+  let unknownUsd = false;
   let turns = 0;
   for (const key of new Set(keys)) {
+    if (owners.get(key) !== run.runId) continue;
     const hit = metered.get(key);
     if (!hit) continue;
     turns += hit.turns;
+    unknownUsd ||= hit.usd === null;
     if (hit.usd !== null) usd = (usd ?? 0) + hit.usd;
   }
-  const joined = turns > 0 ? { usd, turns } : null;
+  const joined = turns > 0 ? { usd: unknownUsd ? null : usd, turns } : null;
   if (joined && joined.usd !== null) return { warp, metered: joined, attribution: 'metered' };
   if (warp) return { warp, metered: joined, attribution: 'warp-reported' };
   return { warp, metered: joined, attribution: 'unattributed' };
@@ -292,9 +309,10 @@ function issueKey(ref: IssueRef): string {
   return `${ref.repo}#${ref.number}`;
 }
 
-/** Group runs by linked issue and attach closure state. */
+/** Group runs by linked issue; any unknown run USD keeps the issue total unknown. */
 export function groupByIssue(runs: InterimRunCost[], states: Map<string, IssueState>): InterimIssueCost[] {
   const byIssue = new Map<string, InterimIssueCost>();
+  const unknownUsd = new Set<string>();
   for (const run of runs) {
     const ref = run.linkage.issue;
     if (!ref) continue;
@@ -304,7 +322,9 @@ export function groupByIssue(runs: InterimRunCost[], states: Map<string, IssueSt
       { repo: ref.repo, number: ref.number, state: states.get(key) ?? 'unknown', runCount: 0, warpTotal: null, meteredUsd: null };
     row.runCount += 1;
     row.warpTotal = addNullable(row.warpTotal, run.warp?.total ?? null);
-    row.meteredUsd = addNullable(row.meteredUsd, run.metered?.usd ?? null);
+    const usd = run.metered?.usd ?? null;
+    if (usd === null) unknownUsd.add(key);
+    row.meteredUsd = unknownUsd.has(key) ? null : addNullable(row.meteredUsd, usd);
     byIssue.set(key, row);
   }
   return [...byIssue.values()].sort((a, b) => b.number - a.number);
@@ -315,7 +335,9 @@ export function costPerClosedIssue(issues: InterimIssueCost[]): ClosedIssueCost 
   const closed = issues.filter((i) => i.state === 'closed');
   const unknownCount = issues.filter((i) => i.state === 'unknown').length;
   const warp = closed.reduce<number | null>((sum, i) => addNullable(sum, i.warpTotal), null);
-  const usd = closed.reduce<number | null>((sum, i) => addNullable(sum, i.meteredUsd), null);
+  const usd = closed.every((issue) => issue.meteredUsd !== null)
+    ? closed.reduce<number | null>((sum, i) => addNullable(sum, i.meteredUsd), null)
+    : null;
   return {
     closedCount: closed.length,
     unknownCount,
@@ -350,6 +372,10 @@ export async function deriveInterimSpend(
   principalDid: string,
   deps: InterimDeps,
   now: Date = new Date(),
+  options: {
+    registeredRunIds?: (runIds: string[]) => Promise<Set<string>>;
+    recentLimit?: number;
+  } = {},
 ): Promise<InterimSpend> {
   const windowFrom = monthStartIso(now);
   const base = { label: INTERIM_LABEL, windowFrom };
@@ -369,6 +395,14 @@ export async function deriveInterimSpend(
     };
   }
 
+  // Fail closed if registry membership is unavailable, rather than silently
+  // re-enabling heuristic attribution for runs that already have loop records.
+  if (options.registeredRunIds) {
+    const registered = await options.registeredRunIds(page.runs.map((r) => r.runId));
+    page = { ...page, runs: page.runs.filter((r) => !registered.has(r.runId)) };
+  }
+  page = { ...page, runs: [...new Map(page.runs.map((run) => [run.runId, run])).values()] };
+  const owners = sessionOwners(page.runs);
   const sessionKeys = page.runs.flatMap((r) => [r.runId, r.sessionId, r.conversationId]).filter((k): k is string => !!k);
   const metered = await deps.meteredBySession(principalDid, [...new Set(sessionKeys)]).catch((err) => {
     log.warn({ err: String(err) }, 'spend lane: metered join unavailable');
@@ -381,7 +415,7 @@ export async function deriveInterimSpend(
     title: run.title,
     state: run.state,
     createdAt: run.createdAt,
-    ...costsOf(run, metered),
+    ...costsOf(run, metered, owners),
     linkage: await linkageOf(run, deps, budget),
   }));
 
@@ -392,7 +426,7 @@ export async function deriveInterimSpend(
     runsAvailable: true,
     runsTruncated: page.hasNextPage,
     githubAvailable: [...states.values()].some((s) => s !== 'unknown'),
-    runs: runs.slice(0, RECENT_RUN_COUNT),
+    runs: runs.slice(0, options.recentLimit ?? RECENT_RUN_COUNT),
     issues,
     closedIssueCost: costPerClosedIssue(issues),
   };
@@ -405,7 +439,7 @@ async function meteredBySession(principalDid: string, sessionIds: string[]): Pro
   const rows = await db
     .select({
       sessionId: usageIncurred.sessionId,
-      usd: sql<string | null>`SUM(${usageIncurred.costUsd})`,
+      usd: sql<string | null>`CASE WHEN COUNT(${usageIncurred.costUsd}) < COUNT(*) THEN NULL ELSE SUM(${usageIncurred.costUsd}) END`,
       turns: sql<string>`COUNT(*)`,
     })
     .from(usageIncurred)

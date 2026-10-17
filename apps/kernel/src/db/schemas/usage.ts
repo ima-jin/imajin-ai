@@ -83,6 +83,7 @@ export const usageIncurred = usageSchema.table(
     principalIdx: index('idx_usage_incurred_principal').on(table.principalDid, table.createdAt),
     agentIdx: index('idx_usage_incurred_agent').on(table.agentDid, table.createdAt),
     sessionIdx: index('idx_usage_incurred_session').on(table.sessionId),
+    principalSessionIdx: index('idx_usage_incurred_principal_session').on(table.principalDid, table.sessionId, table.createdAt),
     turnIdx: index('idx_usage_incurred_turn').on(table.turnId),
     connectorIdx: index('idx_usage_incurred_connector').on(table.connectorId, table.createdAt),
     createdIdx: index('idx_usage_incurred_created').on(table.createdAt),

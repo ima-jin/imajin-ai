@@ -108,6 +108,11 @@ describe('loops tool registration', () => {
 // ─── loops_list — happy path ─────────────────────────────────────────────────
 
 describe('loops_list', () => {
+  it('forwards queryable signed refs', async () => {
+    const refs = { runId: 'run1', issue: 'o/r#1', pr: 'o/r#2', sessionKey: 'session1' };
+    await call('loops_list', refs, ctxFor('did:imajin:alice'));
+    expect(mockListLoopsPage).toHaveBeenCalledWith({ principal: 'did:imajin:alice', ...refs });
+  });
   it('resolves the acting DID as principal and forwards filters', async () => {
     mockListLoopsPage.mockResolvedValueOnce({
       loops: [{ loopId: 'loop_1', kind: 'warp.run', state: 'running' }],
