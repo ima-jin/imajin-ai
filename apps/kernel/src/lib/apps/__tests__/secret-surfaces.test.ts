@@ -32,6 +32,7 @@ import { selectLiveV1Fields } from '../../vault/migrate-custody';
 
 const staging = 'internal-secret:app-self:staging:fake-reference';
 const appSecret = 'internal-secret:app-self:did:imajin:fake-app:DATABASE_URL';
+const importedSecret = 'vault-imported-key:fake-proposal';
 const entry = (field: string) => ({
   field, encrypted: 'OBVIOUSLY_FAKE_CIPHERTEXT', timestamp: '2026-10-17T00:00:00Z',
   senderDid: 'did:imajin:fake-node',
@@ -57,13 +58,13 @@ describe('operator app input has no generic vault escape hatch', () => {
     expect(mocks.read).not.toHaveBeenCalled();
     expect(mocks.seal).not.toHaveBeenCalled();
   });
-  it('never unseals app or staging fields during the admin plaintext export sweep', async () => {
-    mocks.rows.mockResolvedValue([{ field: staging }, { field: appSecret }]);
+  it('never unseals app, staging or imported fields during the admin plaintext export sweep', async () => {
+    mocks.rows.mockResolvedValue([{ field: staging }, { field: appSecret }, { field: importedSecret }]);
     const response = await sweep(request({ phase: 'export' }));
     expect(await response.json()).toEqual({ fields: [] });
     expect(mocks.read).not.toHaveBeenCalled();
   });
-  it.each([staging, appSecret])('refuses generic reimport of %s before any mutation', async (field) => {
+  it.each([staging, appSecret, importedSecret])('refuses generic reimport of %s before any mutation', async (field) => {
     const response = await sweep(request({ phase: 'reimport', fields: [
       { field: 'FAKE_UNRELATED_FIELD', plaintext: 'OBVIOUSLY_FAKE_INPUT' },
       { field, plaintext: 'OBVIOUSLY_FAKE_INPUT' },

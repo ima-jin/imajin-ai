@@ -189,6 +189,7 @@ export const ATTESTATION_TYPES = [
   // #2242 — minted mechanically when a vault keypair is born in-vault or a
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
+  'vault.key.imported',
   'vault.key.revoked',
   // #2251 — per-principal agent-reach exchange. Minted mechanically (kernel
   // node key) on every reach attempt, answered or denied: binds the foreign
@@ -328,6 +329,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2242 — minted mechanically when a vault keypair is born in-vault or a
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
+  'vault.key.imported',
   'vault.key.revoked',
   // #2251 — minted mechanically by the kernel node key on every reach
   // attempt (answered or denied). See ATTESTATION_TYPES above.
