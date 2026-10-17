@@ -46,6 +46,7 @@ interface ApprovalFixture {
   decision: { decidedBy: string; decidedAt: string; mode?: string } | null;
   outcome: null;
   appliedAt: string | null;
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -274,6 +275,7 @@ describe('decision card — decided states', () => {
     ]);
     render(<OperatorApprovalsPanel />);
 
+    fireEvent.click(await screen.findByRole('button', { name: /Reveal decided/ }));
     const chosen = await screen.findByTestId('decision-chosen');
     expect(chosen.textContent).toContain('b');
     expect(chosen.textContent).toContain('Fix the Sonar warning first');
@@ -287,12 +289,149 @@ describe('decision card — decided states', () => {
     ]);
     render(<OperatorApprovalsPanel />);
 
+    fireEvent.click(await screen.findByRole('button', { name: /Reveal decided/ }));
     await screen.findByText('Merge #2323 now?');
     expect(screen.queryByTestId('decision-chosen')).toBeNull();
     expect(screen.queryByRole('button', { name: 'None of these' })).toBeNull();
   });
 });
 
+describe('decision card — interim Inbox (#2694)', () => {
+  function decided(overrides: Partial<ApprovalFixture> = {}) {
+    return decisionApproval({
+      status: 'approved',
+      decision: { decidedBy: 'did:imajin:operator', decidedAt: '2026-10-16T19:25:00Z', mode: 'b' },
+      ...overrides,
+    });
+  }
+
+  async function reveal() {
+    const toggle = await screen.findByRole('button', { name: /Reveal decided/ });
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+  }
+
+  it('keeps pending cards active and approved/rejected cards collapsed with a count', async () => {
+    installFetch([
+      decisionApproval({ proposalId: 'pending', summary: 'Active decision', detail: null }),
+      decided(),
+      decided({ proposalId: 'rejected', status: 'denied', detail: null, summary: 'Rejected decision' }),
+      decisionApproval({ proposalId: 'github', source: 'unknown', kind: 'github:write', status: 'approved', detail: null, summary: 'Other source stays active' }),
+    ]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByText('Active decision');
+    expect(screen.getByText('Other source stays active')).toBeDefined();
+    expect(screen.getByText('Decided (2)')).toBeDefined();
+    expect(screen.queryByText('Merge #2323 now?')).toBeNull();
+    expect(screen.queryByText('Rejected decision')).toBeNull();
+    await reveal();
+    expect(screen.getByText('Merge #2323 now?')).toBeDefined();
+    expect(screen.getByText('Rejected decision')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /Hide decided/ }));
+    expect(screen.queryByText('Rejected decision')).toBeNull();
+  });
+
+  it('archives via the server, hides the card, and can reveal it after remount with Withdraw intact', async () => {
+    const row = decided();
+    const originalDecision = structuredClone(row.decision);
+    const spy = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/archive')) {
+        row.archivedAt = '2026-10-16T23:00:00Z';
+        return { ok: true, json: async () => ({ ok: true }) };
+      }
+      if (url.endsWith('/decision')) {
+        expect(JSON.parse(String(init?.body))).toEqual({ decision: 'withdrawn' });
+        row.status = 'withdrawn';
+        return { ok: true, json: async () => ({ approval: row }) };
+      }
+      return { ok: true, json: async () => ({ isOperator: true, approvals: [row] }) };
+    });
+    vi.stubGlobal('fetch', spy);
+    const mounted = render(<OperatorApprovalsPanel />);
+    await reveal();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    await screen.findByText('All decided cards are archived.');
+    expect(screen.queryByText('Merge #2323 now?')).toBeNull();
+    expect(row.decision).toEqual(originalDecision);
+    expect(spy).toHaveBeenCalledWith('/jin/api/operator-approvals/dcard_1/archive', { method: 'POST', credentials: 'include' });
+    mounted.unmount();
+    render(<OperatorApprovalsPanel />);
+    await reveal();
+    expect(screen.queryByText('Merge #2323 now?')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show archived (1)' }));
+    expect(screen.getByText('Merge #2323 now?')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await screen.findByText('Proposal withdrawn.');
+    expect(screen.getByText('withdrawn')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Hide archived (1)' }));
+    expect(screen.queryByText('Merge #2323 now?')).toBeNull();
+  });
+
+  it.each(['approved', 'denied', 'withdrawn', 'applied', 'expired'] as const)('keeps %s decision cards out of active Inbox', async (status) => {
+    installFetch([decided({ status })]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByText('Decided (1)');
+    expect(screen.getByText('No active approvals.')).toBeDefined();
+    expect(screen.queryByText('Merge #2323 now?')).toBeNull();
+    await reveal();
+    expect(screen.getByRole('button', { name: 'Archive' })).toBeDefined();
+  });
+
+  it.each([
+    { status: 403, json: async () => ({ error: 'Not your Inbox' }), message: 'Not your Inbox' },
+    { status: 500, json: async () => { throw new Error('bad JSON'); }, message: 'Archive failed (500)' },
+  ])('does not hide the card on archive HTTP $status', async ({ status, json, message }) => {
+    const row = decided();
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/archive')
+      ? { ok: false, status, json }
+      : { ok: true, json: async () => ({ isOperator: true, approvals: [row] }) }));
+    render(<OperatorApprovalsPanel />);
+    await reveal();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    await screen.findByText(message);
+    expect(screen.getByText('Merge #2323 now?')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Archive' }).hasAttribute('disabled')).toBe(false);
+  });
+
+  it('shows a retryable network failure without hiding the card', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/archive')) throw new Error('offline');
+      return { ok: true, json: async () => ({ isOperator: true, approvals: [decided()] }) };
+    }));
+    render(<OperatorApprovalsPanel />);
+    await reveal();
+    fireEvent.click(screen.getByRole('button', { name: 'Archive' }));
+    await screen.findByText('Network error — could not archive the card. Try again.');
+    expect(screen.getByText('Merge #2323 now?')).toBeDefined();
+  });
+
+  it('does not offer Archive or Withdraw under act-as', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ isOperator: true, approvals: [decided()], actAs: { sessionDid: 'did:self', actingDid: 'did:group' } }),
+    })));
+    render(<OperatorApprovalsPanel />);
+    await reveal();
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+  });
+
+  it('reveals and scrolls to an archived deep-linked card once', async () => {
+    const scroll = vi.fn();
+    Element.prototype.scrollIntoView = scroll;
+    searchParamsMock.current = new URLSearchParams('proposalId=dcard_1');
+    installFetch([decided({ archivedAt: '2026-10-16T23:00:00Z' })]);
+    render(<OperatorApprovalsPanel />);
+    await screen.findByText('Merge #2323 now?');
+    await waitFor(() => expect(scroll).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: /Hide decided/ }).getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('button', { name: 'Hide archived (1)' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: /Hide decided/ }));
+    expect(screen.queryByText('Merge #2323 now?')).toBeNull();
+  });
+});
 describe('decision card — round-trip from the #2315 emitter fixture', () => {
   const OPERATOR_DID = 'did:imajin:operator';
 

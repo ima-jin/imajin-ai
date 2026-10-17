@@ -59,6 +59,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } fr
 import { useCancellableTimeout } from './use-cancellable-timeout';
 import { useFlashNotice } from './use-flash-notice';
 import { approvalCardAnchorId, APPROVALS_REFRESH_EVENT } from './approval-anchor';
+import { ApprovalInbox, isDecidedCard } from './approval-inbox';
 import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
 import { proposeClaimReissue } from './provision-reissue';
 import { DecisionCardDetail, DecisionCardOptions } from './decision-card-detail';
@@ -170,6 +171,7 @@ interface OperatorApprovalCard {
   /** Post-exec outcome follow-up (#2221 exec.command exitCode/durationMs/outputHash; #2293 github approvedUntil/ownerAuthorization) — null until decided. */
   outcome: Record<string, unknown> | null;
   appliedAt: string | null;
+  archivedAt?: string | null;
   createdAt: string;
 }
 
@@ -1052,7 +1054,7 @@ function CardActions({
           type="button"
           onClick={() => onDecide(approval, 'withdrawn')}
           disabled={busy}
-          className="px-3 py-1.5 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="min-h-11 px-3 py-2 rounded text-xs font-medium bg-gray-700 text-gray-200 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {busy ? '…' : 'Withdraw'}
         </button>
@@ -1095,6 +1097,7 @@ function ApprovalCardRow({
   busy,
   highlighted,
   decisionsLocked,
+  onArchive,
 }: Readonly<{
   approval: OperatorApprovalCard;
   onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
@@ -1103,14 +1106,16 @@ function ApprovalCardRow({
   highlighted: boolean;
   /** True while the session is under act-as (#2359). */
   decisionsLocked: boolean;
+  onArchive: (approval: OperatorApprovalCard) => void;
 }>) {
   const renderer = rendererFor(approval.source);
   const highlightClass = highlighted ? ' ring-2 ring-amber-500/70' : '';
   return (
-    <div id={approvalCardAnchorId(approval.proposalId)} className={`rounded-lg border border-gray-800 p-4 space-y-2${highlightClass}`}>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+    <div id={approvalCardAnchorId(approval.proposalId)} className={`min-w-0 break-words rounded-lg border border-gray-800 p-4 space-y-2${highlightClass}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
           {statusBadge(approval.status)}
+          {approval.archivedAt && <span className="text-xs text-gray-400">Archived</span>}
           <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-orange-900/50 text-orange-300">
             {approval.kind}
           </span>
@@ -1119,6 +1124,16 @@ function ApprovalCardRow({
       </div>
       {renderer.renderDetail(approval)}
       <CardActions approval={approval} onDecide={onDecide} busy={busy} decisionsLocked={decisionsLocked} />
+      {isDecidedCard(approval) && !approval.archivedAt && !decisionsLocked && (
+        <button
+          type="button"
+          onClick={() => onArchive(approval)}
+          disabled={busy}
+          className="min-h-11 px-3 py-2 rounded text-xs font-medium bg-gray-800 text-gray-200 hover:bg-gray-700 disabled:opacity-40"
+        >
+          {busy ? '…' : 'Archive'}
+        </button>
+      )}
     </div>
   );
 }
@@ -1150,6 +1165,7 @@ function renderPanelBody(
   busyId: string,
   deepLinkedProposalId: string | null,
   decisionsLocked: boolean,
+  onArchive: (approval: OperatorApprovalCard) => void,
 ) {
   if (loading) {
     return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
@@ -1174,6 +1190,7 @@ function renderPanelBody(
           busy={busyId === approval.proposalId}
           highlighted={deepLinkedProposalId === approval.proposalId}
           decisionsLocked={decisionsLocked}
+          onArchive={onArchive}
         />
       ))}
     </div>
@@ -1186,7 +1203,6 @@ function OperatorApprovalsPanelInner() {
   // never rewrites the URL itself.
   const searchParams = useSearchParams();
   const deepLinkedProposalId = searchParams.get('proposalId');
-  const hasScrolledToDeepLink = useRef(false);
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
@@ -1239,17 +1255,26 @@ function OperatorApprovalsPanelInner() {
     return () => globalThis.removeEventListener(APPROVALS_REFRESH_EVENT, refresh);
   }, [load]);
 
-  // #2291: once the deep-linked proposal has actually loaded, scroll its
-  // card into view exactly once — not on every silent poll refresh.
-  useEffect(() => {
-    if (!deepLinkedProposalId || hasScrolledToDeepLink.current) return;
-    if (!approvals.some((approval) => approval.proposalId === deepLinkedProposalId)) return;
-    const el = globalThis.document.getElementById(approvalCardAnchorId(deepLinkedProposalId));
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      hasScrolledToDeepLink.current = true;
+  const handleArchive = useCallback(async (approval: OperatorApprovalCard) => {
+    setBusyId(approval.proposalId);
+    try {
+      const response = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(approval.proposalId)}/archive`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: string };
+        notify('err', body.error ?? `Archive failed (${response.status})`);
+        return;
+      }
+      notify('ok', 'Card archived. The signed decision stays on record.');
+      await load(true);
+    } catch {
+      notify('err', 'Network error — could not archive the card. Try again.');
+    } finally {
+      setBusyId('');
     }
-  }, [approvals, deepLinkedProposalId]);
+  }, [load, notify]);
 
   const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => {
     const { proposalId } = approval;
@@ -1397,7 +1422,11 @@ function OperatorApprovalsPanelInner() {
 
       {actAs && <ActAsReadOnlyNotice actAs={actAs} />}
 
-      {renderPanelBody(loading, approvals, handleDecide, busyId, deepLinkedProposalId, actAs !== null)}
+      <ApprovalInbox
+        approvals={approvals}
+        deepLinkedProposalId={deepLinkedProposalId}
+        renderCards={(cards) => renderPanelBody(loading, cards, handleDecide, busyId, deepLinkedProposalId, actAs !== null, handleArchive)}
+      />
     </section>
   );
 }
