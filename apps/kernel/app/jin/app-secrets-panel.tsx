@@ -14,12 +14,12 @@ interface AppSecretCard {
   secrets: AppDeclaredSecretStatus[];
 }
 
-function OperatorSecretEntry({ name, active, busy, submit }: {
+function OperatorSecretEntry({ name, active, busy, submit }: Readonly<{
   name: string;
   active: boolean;
   busy: boolean;
   submit: (value: string) => Promise<void>;
-}) {
+}>) {
   return (
     <form className="flex gap-3" onSubmit={(event) => {
       event.preventDefault();
@@ -39,7 +39,7 @@ function OperatorSecretEntry({ name, active, busy, submit }: {
   );
 }
 
-function SecretStatus({ secret }: { secret: AppDeclaredSecretStatus }) {
+function SecretStatus({ secret }: Readonly<{ secret: AppDeclaredSecretStatus }>) {
   if (secret.kind !== 'operator-supplied') return secret.status;
   const rotated = secret.timeline.filter((entry) => entry.phase === 'rotated').at(-1);
   return <>{secret.status === 'active' ? 'set' : 'not set'}{rotated && (
