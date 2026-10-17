@@ -219,6 +219,8 @@ contributed to the transaction happening.
 > [builder](https://github.com/ima-jin/imajin-ai/blob/main/packages/fair/src/buildManifest.ts) also deduct a 1% platform fee:
 > 1% protocol + 1% platform + 0.5% node + 0.25% buyer = 2.75%, before optional scope and
 > processor fees. The stated 2%/98% and buyer-credit unit need explicit reconciliation.
+> This is the manifest-builder path, not a universal checkout fee: seller-owned BYO Stripe
+> settlement does not distribute a platform-held `.fair` chain or collect that platform fee.
 
 Settlement validates the manifest's chain and totals. Non-funded settlement verifies a
 signature when supplied but currently allows a missing signature with a warning; funded
@@ -234,7 +236,12 @@ fees, splits the payment,
 and emits a `transaction.settled` attestation. No human intervention. No invoice. No accounts
 receivable in that automated path. Signature exceptions above still apply.
 
-**Live:** Stripe (Connect for multi-seller payouts). Interac e-Transfer for CAD on-ramp.
+**Implemented rails (not deployment verification):** Stripe checkout uses the seller's
+own BYO connector account; Stripe Connect and its platform-held fallback were removed
+([#2766](https://github.com/ima-jin/imajin-ai/pull/2766), merged 2026-10-09).
+CAD Interac e-Transfer pay-in for payment requests provides instructions and requires
+manual receiver confirmation, not an automatic bank feed
+([#2667](https://github.com/ima-jin/imajin-ai/pull/2667), merged 2026-10-06).
 
 **MJN / MJNx ledger:** Two units, one ledger, provenance forever (ruled 2026-09-04, shipped
 in the #2016 ledger split). **MJN** is receipt-backed money — minted only against a rail
