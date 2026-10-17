@@ -1,6 +1,7 @@
 import type { McpTool } from '../types';
 import { withToolConnection } from '../connection-selector';
 import { pingTool } from './ping';
+import { reachStatusTool } from './reach';
 import { mediaTools } from './media';
 import { mediaWriteTools } from './media-write';
 import { connectionTools } from './connections';
@@ -54,6 +55,7 @@ import { meetTools as googleMeetTools } from './google-meet';
  */
 export const ALL_TOOLS: McpTool[] = [
   pingTool,
+  reachStatusTool,
   ...mediaTools,
   ...mediaWriteTools,
   ...connectionTools,
