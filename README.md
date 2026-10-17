@@ -1,4 +1,5 @@
 # Imajin
+<!-- #2541: registered-app profile email scope and contact backfill. -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
