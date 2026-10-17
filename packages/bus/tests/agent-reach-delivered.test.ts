@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { canonicalize } from '@imajin/auth';
 
 const { mockSend, mockEmit, mockAttestation } = vi.hoisted(() => ({
   mockSend: vi.fn().mockResolvedValue(undefined),
@@ -102,6 +103,11 @@ describe('Reach delivery chain (#2588)', () => {
     expect(notification.body).not.toContain(PAYLOAD.message);
     expect(notification.body).not.toContain(PAYLOAD.replyHandle);
     expect(notification.body).not.toContain(PAYLOAD.onBehalfOf.selfDescription);
+    const { eventType, issuer, subject, correlationId, template, ...reconstructedPayload } = notification.data;
+    expect({ correlationId, template }).toEqual({ correlationId: undefined, template: undefined });
+    expect(canonicalize({ type: eventType, issuer, subject, scope: 'agent', payload: reconstructedPayload })).toBe(
+      canonicalize({ type: 'agent.reach.delivered', issuer: NODE, subject: PRINCIPAL, scope: 'agent', payload }),
+    );
   });
 
   it('keeps actual SQL-seeded reactors identical to fallback DEFAULTS', async () => {

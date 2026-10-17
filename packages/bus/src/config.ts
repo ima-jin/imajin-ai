@@ -433,15 +433,14 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     'Reach message about {{topic}} from {{requesterDid}}',
     ['reachId', 'principalDid', 'requesterDid', 'topic', 'requesterTier', 'transcriptHash', 'issuedAt'],
   ),
-  // #2589 / migration 0197 — private reply content travels only over the
-  // requester-authorized subscription rail, never node-wide audit/notify.
-  'agent.reach.replied': [
-    {
-      type: 'emit',
-      config: { fields: ['reachId', 'principalDid', 'requesterDid', 'transcriptHash', 'issuedAt', 'state', 'context_id', 'context_type'] },
-      enabled: true,
-    },
-  ],
+  // #2859 / migration 0200 — the principal also receives the original signed
+  // reply through private notify data. Requester subscription entitlement is
+  // unchanged; node-wide emit and notification previews remain content-free.
+  'agent.reach.replied': emitAndNotify(
+    'Reach reply sent',
+    'Your signed Reach reply is available',
+    ['reachId', 'principalDid', 'requesterDid', 'transcriptHash', 'issuedAt', 'state', 'context_id', 'context_type'],
+  ),
   // #2252 — delegate-grant bearer credential for static-header foreign
   // clients (knock -> approve -> scoped bearer). `audit-log` persists every
   // knock/issue/use/deny/revoke, mirroring agent.reach's #2251 pattern
