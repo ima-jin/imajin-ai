@@ -30,14 +30,14 @@ import type { BrokerPredicateClaim } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { verifySignature } from './crypto';
 import { resolveReachRequester, authorizeReachRequester } from './reach-authority';
-import { resolveOrMintForeignPrincipalStub } from './foreign-principal-stub';
+import { resolveOrMintForeignPrincipalStub, type ForeignPrincipalStubResult } from './foreign-principal-stub';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { generateId } from '@/src/lib/kernel/id';
 import type { ReachDeliveryInput } from './reach-delivery-input';
 import { parseReachDelivery } from './reach-delivery-input';
 import { deliverReach } from './reach-delivery';
 import { markReachPublished } from './reach-envelope-store';
-import { auditReachThrottle, guardReachRequester, reachInputTooLarge } from './reach-abuse-guard';
+import { auditReachThrottle, guardReachRequester, reachDailyRetryAfter, reachInputTooLarge } from './reach-abuse-guard';
 import { isReachSenderBlocked } from './reach-block';
 
 const log = createLogger('kernel');
@@ -240,8 +240,9 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
   if (result.outcome !== 'delivered') {
     const reason = result.outcome === 'blocked' ? 'unauthorized' : 'rate_limited';
     if (reason === 'rate_limited') {
-      await auditReachThrottle({ principalDid, requesterDid: input.requesterDid }, 'daily', principalDid, 60);
-      return { ...denial(reason, 429), retryAfter: 60 };
+      const retryAfter = reachDailyRetryAfter();
+      await auditReachThrottle({ principalDid, requesterDid: input.requesterDid }, 'daily', principalDid, retryAfter);
+      return { ...denial(reason, 429), retryAfter };
     }
     await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: true });
     return denial(reason, result.outcome === 'blocked' ? 403 : 429);
@@ -254,21 +255,26 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
   }
   return { delivered: true, reachId: result.reachId };
 }
-async function checkReachAbuse(params: {
+async function prepareReachClaim(params: {
   principalDid: string; input: ReachRequestInput; publicKey: string;
-  agentStubDid: string; onBehalfOfStubDid: string; tier: unknown; transcriptHash: string;
-}): Promise<ReachDenied | null> {
+  agentStubDid: string; tier: unknown; transcriptHash: string;
+}): Promise<ReachDenied | ForeignPrincipalStubResult> {
   const { principalDid, input, transcriptHash } = params;
+  const throttled = await guardReachRequester({
+    principalDid, requesterDid: input.requesterDid, agentStubDid: params.agentStubDid,
+    onBehalfOf: input.onBehalfOf, tier: params.tier,
+  });
+  if (throttled) return throttled;
+  const stub = await resolveOrMintForeignPrincipalStub({
+    platform: input.onBehalfOf.platform, externalRef: input.onBehalfOf.externalRef,
+  });
   if (await isReachSenderBlocked({
-    principalDid, requesterDid: input.requesterDid, publicKey: params.publicKey, onBehalfOfStubDid: params.onBehalfOfStubDid,
+    principalDid, requesterDid: input.requesterDid, publicKey: params.publicKey, onBehalfOfStubDid: stub.did,
   })) {
     await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
     return denial('unauthorized', 403);
   }
-  return guardReachRequester({
-    principalDid, requesterDid: input.requesterDid, agentStubDid: params.agentStubDid,
-    onBehalfOfStubDid: params.onBehalfOfStubDid, tier: params.tier,
-  });
+  return stub;
 }
 
 /**
@@ -332,17 +338,12 @@ export async function reachPrincipal(
     return denial('unauthorized', 403);
   }
 
-  const stub = await resolveOrMintForeignPrincipalStub({
-    // An unverified human claim, not a grant or an authenticated sender.
-    platform: input.onBehalfOf.platform,
-    externalRef: input.onBehalfOf.externalRef,
-  });
-  const throttled = await checkReachAbuse({
+  const stub = await prepareReachClaim({
     principalDid, input, publicKey: requester.publicKey, transcriptHash,
     agentStubDid: introspection.stubDid ?? requester.publicKey,
-    onBehalfOfStubDid: stub.did, tier: requester.tier,
+    tier: requester.tier,
   });
-  if (throttled) return throttled;
+  if ('denied' in stub) return stub;
 
   const metadata = (principal.metadata ?? {}) as Record<string, unknown>;
   const rawGateValue = Array.isArray(metadata.agentReachTopics) ? metadata.agentReachTopics : [];

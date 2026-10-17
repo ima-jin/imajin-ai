@@ -4,9 +4,11 @@ import { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   tier: 'soft',
   blocked: false,
+  dailyLimited: false,
   deliveries: 0,
   publish: vi.fn(),
   broker: vi.fn(),
+  mint: vi.fn(),
 }));
 function selectPrincipal() {
   return { from: () => ({ where: principalWhere }) };
@@ -26,14 +28,13 @@ vi.mock('../reach-authority', () => ({
   }),
 }));
 vi.mock('../foreign-principal-stub', () => ({
-  resolveOrMintForeignPrincipalStub: async (params: { platform: string; externalRef: string }) => ({
-    did: `${params.platform}:${params.externalRef}`,
-  }),
+  resolveOrMintForeignPrincipalStub: (...args: unknown[]) => mocks.mint(...args),
 }));
 vi.mock('../reach-block', () => ({ isReachSenderBlocked: async () => mocks.blocked }));
 vi.mock('../reach-envelope-store', () => ({ markReachPublished: async () => undefined }));
 vi.mock('../reach-delivery', () => ({
   deliverReach: async () => {
+    if (mocks.dailyLimited) return { outcome: 'rate_limited' };
     mocks.deliveries++;
     return { outcome: 'delivered', reachId: `reach_${mocks.deliveries}`, published: true };
   },
@@ -52,6 +53,7 @@ vi.mock('@/src/lib/http/node-url', () => ({ agentCardUrl: () => 'https://imajin.
 import {
   guardReachRequester, guardReachIP, readReachBody, reachInputTooLarge,
   REACH_ABUSE_LIMITS as limits, ReachBodyTooLarge,
+  reachDailyRetryAfter,
 } from '../reach-abuse-guard';
 import { reachPrincipal, type ReachRequestInput } from '../agent-reach';
 import { POST } from '@/app/auth/api/agents/[did]/reach/route';
@@ -64,9 +66,13 @@ beforeEach(() => {
   principalDid = `did:imajin:guard-test-${sequence++}`;
   mocks.tier = 'soft';
   mocks.blocked = false;
+  mocks.dailyLimited = false;
   mocks.deliveries = 0;
   mocks.publish.mockReset().mockResolvedValue({});
   mocks.broker.mockReset().mockResolvedValue({ data: { contact_topics: { result: true } } });
+  mocks.mint.mockReset().mockImplementation(async (params: { platform: string; externalRef: string }) => ({
+    did: `${params.platform}:${params.externalRef}`, isNewStub: false,
+  }));
 });
 afterEach(() => vi.useRealTimers());
 
@@ -100,6 +106,33 @@ describe('reach abuse budgets with the existing real sliding-window limiter', ()
     expect(mocks.broker).toHaveBeenCalledTimes(limits.stub);
   });
 
+  it('does not mint persistent claimed-principal rows for an exhausted agent rotating account references', async () => {
+    for (let n = 0; n < limits.stub + 20; n++) {
+      await reachPrincipal(principalDid, input('same-agent', `rotating-account-${n}`));
+    }
+    expect(mocks.mint).toHaveBeenCalledTimes(limits.stub);
+    expect(mocks.deliveries).toBe(limits.stub);
+    expect(throttles()).toHaveLength(1);
+  });
+
+  it('reports the UTC daily reset, including sub-second rounding at midnight', () => {
+    expect(reachDailyRetryAfter()).toBe(12 * 60 * 60);
+    expect(reachDailyRetryAfter(Date.parse('2026-10-17T23:59:59.500Z'))).toBe(1);
+    expect(reachDailyRetryAfter(Date.parse('2026-10-18T00:00:00Z'))).toBe(24 * 60 * 60);
+  });
+
+  it('returns the daily reset in both Retry-After and the single throttled audit', async () => {
+    mocks.dailyLimited = true;
+    const response = await POST(new NextRequest('https://imajin.ai/reach', {
+      method: 'POST', body: JSON.stringify(input()), headers: { 'x-forwarded-for': `daily-${principalDid}` },
+    }), { params: Promise.resolve({ did: principalDid }) });
+    expect(response.status).toBe(429);
+    expect(response.headers.get('retry-after')).toBe('43200');
+    expect(throttles()).toHaveLength(1);
+    expect(throttles()[0][1].payload).toMatchObject({ dimension: 'daily', retryAfter: 43200 });
+    expect(mocks.deliveries).toBe(0);
+  });
+
   it('caps a platform account across fresh signing identities', async () => {
     const results = await Promise.all(Array.from({ length: limits.principal + 12 }, (_, n) =>
       reachPrincipal(principalDid, input(`agent-${n}`, 'one-platform-account'))));
@@ -117,7 +150,7 @@ describe('reach abuse budgets with the existing real sliding-window limiter', ()
   });
 
   it('shares steward/operator budgets with established and uses conservative unknown-tier limits', async () => {
-    const params = { principalDid, requesterDid: 'did:imajin:a', agentStubDid: 'stub-a', onBehalfOfStubDid: 'human-a' };
+    const params = { principalDid, requesterDid: 'did:imajin:a', agentStubDid: 'stub-a', onBehalfOf: { platform: 'muse', externalRef: 'human-a' } };
     for (const tier of ['steward', 'operator', 'unrecognized']) {
       expect(await guardReachRequester({ ...params, tier })).toBeNull();
     }

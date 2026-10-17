@@ -73,16 +73,24 @@ export async function guardReachRequester(params: {
   principalDid: string;
   requesterDid: string;
   agentStubDid: string;
-  onBehalfOfStubDid: string;
+  onBehalfOf: { platform: string; externalRef: string };
   tier: unknown;
 }): Promise<ReachThrottle | null> {
-  const { principalDid, requesterDid, agentStubDid, onBehalfOfStubDid } = params;
+  const { principalDid, requesterDid, agentStubDid, onBehalfOf } = params;
   const tier = gateTierForIdentityTier(params.tier) ?? 'soft';
   const context = { principalDid, requesterDid };
   // Claimed platform accounts share a budget across agents and signing keys.
+  // Match the foreign-principal HMAC's input domain, without provisioning or
+  // minting a persistent stub just to discover that a flood is over budget.
   return await consume(context, 'stub', [principalDid, agentStubDid], REACH_ABUSE_LIMITS.stub)
-    ?? await consume(context, 'principal', [principalDid, onBehalfOfStubDid], REACH_ABUSE_LIMITS.principal)
+    ?? await consume(context, 'principal', [principalDid, `${onBehalfOf.platform}:${onBehalfOf.externalRef}`], REACH_ABUSE_LIMITS.principal)
     ?? await consume(context, 'tier', [principalDid, tier], REACH_ABUSE_LIMITS.tier[tier], tier);
+}
+
+export function reachDailyRetryAfter(now = Date.now()): number {
+  const reset = new Date(now);
+  reset.setUTCHours(24, 0, 0, 0);
+  return Math.max(1, Math.ceil((reset.getTime() - now) / 1000));
 }
 
 export function reachInputTooLarge(input: unknown): boolean {
