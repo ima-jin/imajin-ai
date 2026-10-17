@@ -211,8 +211,8 @@ async function ensureSelfGrantNeverExpires(purpose: string, grantId: string): Pr
         "getInternalSecret: the node's own grant expires and the node cannot re-sign it itself — rotate it from /admin/vault before that date or the kernel falls back to env (#2451)",
       );
     }
-  } catch (err) {
-    log.error({ err: String(err), purpose, grantId }, 'getInternalSecret: could not clear the self-grant expiry (non-fatal) (#2451)');
+  } catch {
+    log.error({ purpose, grantId }, 'getInternalSecret: could not clear the self-grant expiry (non-fatal) (#2451)');
   }
 }
 
@@ -227,8 +227,8 @@ async function fetchAndAck(ownerDid: string, grantId: string, purpose: string): 
 
   // Non-fatal: the ack is bookkeeping layered on top of an already-successful
   // fetch — never block the caller's use of a secret it has already obtained.
-  await ackGrant({ grantId, granteeDid: ownerDid, outcome: 'used' }).catch((err: unknown) => {
-    log.error({ err: String(err), grantId, purpose }, 'getInternalSecret: ack failed (non-fatal)');
+  await ackGrant({ grantId, granteeDid: ownerDid, outcome: 'used' }).catch(() => {
+    log.error({ grantId, purpose }, 'getInternalSecret: ack failed (non-fatal)');
   });
 
   return outcome.value;

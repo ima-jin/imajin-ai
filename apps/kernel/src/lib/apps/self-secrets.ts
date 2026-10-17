@@ -4,10 +4,10 @@
  * and crypto-erasure all delegate to the internal-secret primitives.
  */
 import { randomBytes } from 'node:crypto';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { db, registryApps, vaultDelegationGrants, attestations } from '@/src/db';
 import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
-import { getOrGenerateInternalSecret, internalSecretField } from '@/src/lib/vault/internal-secret';
+import { getOrGenerateInternalSecret, internalSecretField, sealAndRecordInternalSecret, invalidateInternalSecret } from '@/src/lib/vault/internal-secret';
 import { grantInternalSecretTo } from '@/src/lib/vault/shared-internal-secret';
 import { rotateInternalSecret } from '@/src/lib/vault/internal-secret-rotate';
 import { revokeInternalSecret } from '@/src/lib/vault/internal-secret-revoke';
@@ -22,6 +22,40 @@ export interface AppSecretTimelineEntry {
   operatorDid?: string;
   via?: string;
   grantId?: string;
+}
+/** The caller consumed a bound, countersigned staging reference; never hash input. */
+export async function setAppDeclaredSecret(
+  appDid: string, name: string, action: 'set' | 'rotate', value: string, authorizedBy: VaultAuthorization,
+): Promise<void> {
+  return withAppSecretMutation(appDid, name, () => applySuppliedSecret(appDid, name, action, value, authorizedBy));
+}
+
+/** Lock lifetime is the transaction: a crashed executor cannot strand a lease. */
+async function withAppSecretMutation(appDid: string, name: string, mutate: () => Promise<void>): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${appSecretPurpose(appDid, name)}, 0))`);
+    await mutate();
+  });
+}
+
+async function applySuppliedSecret(
+  appDid: string, name: string, action: 'set' | 'rotate', value: string, authorizedBy: VaultAuthorization,
+): Promise<void> {
+  const declaration = await requireDeclaration(appDid, name);
+  if (declaration.kind !== 'operator-supplied') throw new Error('Operator input not accepted');
+  requireSupportedCustody();
+  const active = (await grantsForSecret(appDid, name)).some((grant) => grant.status === 'active');
+  if ((action === 'rotate') !== active) throw new Error('App-secret state changed; propose again');
+  const purpose = appSecretPurpose(appDid, name);
+  if (active) {
+    await rotateInternalSecret(internalSecretField(purpose), value);
+  } else {
+    await sealAndRecordInternalSecret(getNodeSigningIdentity().senderDid, purpose, value);
+    invalidateInternalSecret(purpose);
+  }
+  const grantId = await ensureAppGrant(appDid, name);
+  await recordIssuance(appDid, name, grantId, authorizedBy);
+  if (action === 'rotate') await recordPhase(appDid, name, 'rotated', grantId, authorizedBy);
 }
 
 function secretStatus(grants: Array<{ status: string }>): AppDeclaredSecretStatus['status'] {
@@ -129,6 +163,8 @@ export async function ensureAppDeclaredSecrets(appDid: string, authorizedBy?: Va
 }
 
 async function issueOneAppSecret(appDid: string, secret: AppSecretDeclaration, authorizedBy?: VaultAuthorization): Promise<void> {
+  // An operator value can only enter custody through a countersigned set/rotate.
+  if (secret.kind === 'operator-supplied') return;
   const grants = await grantsForSecret(appDid, secret.name);
   const active = grants.find((grant) => grant.status === 'active');
   if (active) {
@@ -137,7 +173,8 @@ async function issueOneAppSecret(appDid: string, secret: AppSecretDeclaration, a
   }
   if (grants.some((grant) => grant.status === 'revoked')) return;
   const purpose = appSecretPurpose(appDid, secret.name);
-  await getOrGenerateInternalSecret(purpose, () => randomBytes(APP_SECRET_KINDS[secret.kind]).toString('hex'));
+  const size = APP_SECRET_KINDS[secret.kind];
+  await getOrGenerateInternalSecret(purpose, () => randomBytes(size).toString('hex'));
   const grantId = await ensureAppGrant(appDid, secret.name);
   await recordIssuance(appDid, secret.name, grantId, authorizedBy);
 }
@@ -154,7 +191,12 @@ export async function fetchAppDeclaredSecret(appDid: string, name: string): Prom
 }
 
 export async function rotateAppDeclaredSecret(appDid: string, name: string, authorizedBy: VaultAuthorization): Promise<void> {
+  return withAppSecretMutation(appDid, name, () => rotateGeneratedSecret(appDid, name, authorizedBy));
+}
+
+async function rotateGeneratedSecret(appDid: string, name: string, authorizedBy: VaultAuthorization): Promise<void> {
   const declaration = await requireDeclaration(appDid, name);
+  if (declaration.kind === 'operator-supplied') throw new Error('Operator input required');
   requireSupportedCustody();
   if (!(await grantsForSecret(appDid, name)).some((grant) => grant.status === 'active')) {
     throw new Error('App secret is not active');
@@ -169,6 +211,10 @@ export async function rotateAppDeclaredSecret(appDid: string, name: string, auth
 }
 
 export async function revokeAppDeclaredSecret(appDid: string, name: string, authorizedBy: VaultAuthorization): Promise<void> {
+  return withAppSecretMutation(appDid, name, () => revokeDeclaredSecret(appDid, name, authorizedBy));
+}
+
+async function revokeDeclaredSecret(appDid: string, name: string, authorizedBy: VaultAuthorization): Promise<void> {
   await requireDeclaration(appDid, name);
   requireSupportedCustody();
   await revokeInternalSecret(appSecretPurpose(appDid, name), { revokeExternal: true });

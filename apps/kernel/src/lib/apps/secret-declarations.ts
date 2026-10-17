@@ -1,5 +1,5 @@
 /** Names and generation recipes only. Values never belong in a manifest. */
-export const APP_SECRET_KINDS = { 'random-32B': 32, 'random-64B': 64 } as const;
+export const APP_SECRET_KINDS = { 'random-32B': 32, 'random-64B': 64, 'operator-supplied': null } as const;
 export interface AppSecretDeclaration {
   name: string;
   kind: keyof typeof APP_SECRET_KINDS;
@@ -19,7 +19,7 @@ export function validateSecrets(input: unknown): { ok: AppSecretDeclaration[] } 
     if (!/^[A-Z][A-Z0-9_]{0,63}$/.test(record.name) || seen.has(record.name)) {
       return { error: 'secret names must be unique uppercase identifiers of at most 64 characters' };
     }
-    if (!Object.hasOwn(APP_SECRET_KINDS, record.kind)) return { error: 'secret kind must be random-32B or random-64B' };
+    if (!Object.hasOwn(APP_SECRET_KINDS, record.kind)) return { error: 'secret kind must be random-32B, random-64B or operator-supplied' };
     seen.add(record.name);
     declarations.push({ name: record.name, kind: record.kind as AppSecretDeclaration['kind'] });
   }

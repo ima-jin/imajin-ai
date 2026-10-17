@@ -13,7 +13,7 @@
 import { desc, eq, inArray } from 'drizzle-orm';
 import { db, vaultDelegationGrants, vaultMintedKeys, type VaultMintedKey, type VaultDelegationGrant } from '@/src/db';
 import { vaultService, listActiveGrantsForField } from './index';
-import { isMintedKeyField } from './field-grammar';
+import { isMintedKeyField, isAppSecretStagingField } from './field-grammar';
 
 export type VaultKeyTimelineEventType = 'minted' | 'granted' | 'fetched' | 'acked' | 'rotated' | 'revoked';
 
@@ -220,7 +220,7 @@ export interface HandProvisionedField {
 export async function listHandProvisionedFields(): Promise<HandProvisionedField[]> {
   const entries = await vaultService.list();
   return entries
-    .filter((entry) => !isMintedKeyField(entry.field))
+    .filter((entry) => !isMintedKeyField(entry.field) && !isAppSecretStagingField(entry.field))
     .map((entry) => ({
       field: entry.field,
       senderDid: entry.senderDid,
