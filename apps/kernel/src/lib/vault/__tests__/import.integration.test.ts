@@ -226,9 +226,34 @@ describe('vault import acceptance — real SQL, signatures, encryption and grant
     expect(await listImportedKeyCards([STRANGER])).toEqual([]);
   });
 
-  it('permits delegated proposal composition, not standalone-agent or arbitrary node ownership', async () => {
+  it('rejects unrelated coarse delegation on both GET metadata and POST staging', async () => {
+    const original = await imported(randomBytes(20).toString('hex'));
+    const existingVault = structuredClone(h.vault);
+    const proposalsBefore = await db.select().from(operatorApprovals);
+    // requireAuth has accepted this coarse X-Acting-For context, as it does
+    // for any unrelated active capability. That is not vault authority.
     h.identity = { id: AGENT, scope: 'actor', subtype: 'agent', actingFor: HUMAN };
-    await propose(randomBytes(20).toString('hex'));
+    const metadata = await GET(new NextRequest('https://kernel.test/api/vault/import'));
+    expect(metadata.status).toBe(403);
+    const response = await metadata.json();
+    expect(response.code).toBe('AGENT_APPROVAL_REQUIRED');
+    expect(response).not.toHaveProperty('owners');
+    expect(response).not.toHaveProperty('cards');
+    expect(JSON.stringify(response)).not.toContain(original.proposal.fingerprint);
+    const secret = randomBytes(20).toString('hex');
+    const staged = await POST(request({ ownerDid: ORG, purpose: 'provider-call', consumerDid: AGENT, secret }));
+    expect(staged.status).toBe(403);
+    expect(await staged.json()).toMatchObject({ code: 'AGENT_APPROVAL_REQUIRED' });
+    expect(h.vault).toEqual(existingVault);
+    expect(await db.select().from(operatorApprovals)).toEqual(proposalsBefore);
+    expect(await db.select().from(internalSecretProvisions)).toEqual([]);
+    expect(JSON.stringify(h.log.mock.calls)).not.toContain(secret);
+  });
+
+  it('rejects self-delegation overlays, standalone agents and arbitrary node ownership', async () => {
+    h.identity = { id: HUMAN, scope: 'actor', subtype: 'human', actingFor: HUMAN };
+    expect((await GET(new NextRequest('https://kernel.test/api/vault/import'))).status).toBe(403);
+    expect((await POST(request({}))).status).toBe(403);
     h.identity = { id: AGENT, scope: 'actor', subtype: 'agent' };
     expect((await POST(request({}))).status).toBe(403);
     h.identity = { id: getNodeSigningIdentity().senderDid, scope: 'actor', subtype: 'agent' };

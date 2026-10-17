@@ -39,9 +39,10 @@ export async function isImportHuman(did: string, executor: DbExecutor = db): Pro
   return !!person;
 }
 
-/** Agents may propose for their authenticated delegator, but can never countersign. */
+/** Coarse agent delegation is not vault authority; only a real human or the direct node may propose/read. */
 export async function importProposer(identity: Identity): Promise<{ personDid: string; approverDid: string } | null> {
-  const personDid = identity.actingFor ?? identity.id;
+  if (identity.actingFor) return null;
+  const personDid = identity.id;
   if (await isImportHuman(personDid)) return { personDid, approverDid: personDid };
   if (personDid !== getNodeSigningIdentity().senderDid) return null;
   const operatorDid = await getOperatorDid();

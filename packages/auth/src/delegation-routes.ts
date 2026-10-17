@@ -34,9 +34,9 @@ export interface DelegationRouteEntry {
 
 export const DELEGATION_ROUTES = {
   "kernel.vault.import": {
-    class: "reversible", action: "import-proposal", app: "kernel", method: "POST",
+    class: "irreversible", action: "import", app: "kernel", method: "POST",
     path: "/api/vault/import",
-    why: "stages sealed input and a human-addressed proposal only; no consumer grant exists until a real human countersigns",
+    why: "credential custody/disclosure rail: coarse agent delegation cannot enumerate vault metadata or stage input; a real human controls and countersigns import",
   },
   "media.asset.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",

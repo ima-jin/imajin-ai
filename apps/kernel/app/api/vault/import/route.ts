@@ -1,6 +1,7 @@
 /** Paste once; all responses and approval records contain metadata only. */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
+import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { generateId } from '@/src/lib/kernel/id';
 import { computeApprovalContentHash } from '@/src/lib/notify/operator-approvals';
@@ -18,6 +19,8 @@ async function authorize(request: NextRequest) {
   const fail = (error: string, status: number) => NextResponse.json({ error }, { status, headers });
   const auth = await requireAuth(request);
   if ('error' in auth) return { response: fail('Authentication required', auth.status) };
+  const delegationRefusal = enforceRoutePolicy(auth.identity, 'kernel.vault.import', { headers });
+  if (delegationRefusal) return { response: delegationRefusal };
   try {
     const proposer = await importProposer(auth.identity);
     if (!proposer) return { response: fail('A human approver is required', 403) };
