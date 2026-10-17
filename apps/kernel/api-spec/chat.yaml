@@ -1,4 +1,5 @@
 openapi: "3.1.0"
+# Registered-app conversation metadata is part of the kernel chat contract (#2539).
 info:
   title: imajin chat
   version: "2.0.0"
@@ -662,6 +663,80 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/d/{did}:
+    put:
+      tags: [chat]
+      operationId: putAppEventConversation
+      summary: Create or rename a registered app's event conversation
+      description: |
+        Requires an app-service Bearer JWT with chat:write, an active app
+        registration, and live operator approval of chat:write through the
+        apps:service-scopes countersign flow. Self-requesting chat:write is
+        insufficient. Session-only and delegated app tokens are not accepted
+        as the service credential.
+
+        On initial creation, createdBy must be the verified app DID, or match the verified acting
+        identity of an additional forwarded imajin_session Cookie (including
+        validated X-Acting-As / X-Acting-For delegation for the chat service).
+        The app token alone never authorizes new attribution to a human.
+        Renames need no human session: createdBy must match the immutable
+        creator already bound to that app's conversation.
+
+        The DID must identify an active registered event. Call this BEFORE
+        syncing members so creation atomically records the name, creator and
+        app binding. Repeated calls can only rename the same app/creator's
+        conversation; neither owner can be transferred. Unbound legacy rooms
+        and other apps' or creators' rooms return 403 without changes.
+        Membership, context, messages and unrelated metadata are untouched.
+      security:
+        - bearerAuth: []
+          cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          description: URL-encoded registered event DID
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, createdBy]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 200, description: Trimmed conversation name }
+                createdBy: { type: string, description: Verified app DID or authenticated acting creator DID }
+      responses:
+        "200":
+          description: Conversation created or renamed (safe to retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [conversation]
+                properties:
+                  conversation:
+                    type: object
+                    required: [did, name, createdBy, appDid]
+                    properties:
+                      did: { type: string }
+                      name: { type: string }
+                      createdBy: { type: string }
+                      appDid: { type: string }
+        "400":
+          description: Invalid JSON, DID, name, creator or extra fields
+        "401":
+          description: Missing/invalid app-service token or required creator session
+        "403":
+          description: Missing/revoked scope or registration, spoofed creator, or app/owner mismatch (including legacy rows)
+        "404":
+          description: No active event identity for this DID
+        "500":
+          description: Metadata update failed (no internal details returned)
 
   /api/d/{did}/messages:
     get:

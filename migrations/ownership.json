@@ -226,7 +226,7 @@
       "owner": "kernel",
       "schema": "chat",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "#2539: 0209_chat_conversations_app_binding.sql adds nullable app_did provenance; legacy conversations remain unbound."
     },
     "chat.invites": {
       "owner": "kernel",
