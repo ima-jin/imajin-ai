@@ -35,7 +35,7 @@ describe('registry template lineage migration', () => {
       template_ref: null, template_synced_at: null, joined: joined.includes(slug),
     })).concat([{
       id: 'app_first_party_dykil', source_repo: 'ima-jin/dykil', template: 'ima-jin/imajin-app-template',
-      template_ref: null, template_synced_at: null, joined: true,
+      template_ref: null, template_synced_at: null, joined: false,
     }]).sort((a, b) => a.id.localeCompare(b.id)));
     const untouched = await client.query("SELECT source_repo, joined FROM registry.apps WHERE id IN ('unrelated', 'app_first_party_coffee')");
     expect(untouched.rows).toEqual([{ source_repo: null, joined: false }, { source_repo: null, joined: false }]);

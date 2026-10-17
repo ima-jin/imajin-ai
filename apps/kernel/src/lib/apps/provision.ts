@@ -576,7 +576,10 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // ── Step 1: repo ──────────────────────────────────────────────────────
   let repo: EnsureRepoResult;
   try {
-    repo = await ensureRepoFromTemplate(slug, template);
+    const ensured = await ensureRepoFromTemplate(slug, template);
+    // A prior attempt may have created the repo before failing mint/register.
+    // Finding it on retry must not erase durable template-creation provenance.
+    repo = { ...ensured, created: ensured.created || existingRun?.repoCreated === true };
     await upsertProvisionRow(slug, { repoUrl: repo.repoUrl, repoCreated: repo.created });
   } catch (err) {
     return markFailed(nodeDid, slug, 'repo', err);

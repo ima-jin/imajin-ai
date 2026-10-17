@@ -603,6 +603,15 @@ describe('runAppProvision — #2746 callbackUrl derives from the node public URL
 });
 
 describe('runAppProvision — happy path', () => {
+  it('preserves template creation provenance after a create-then-mint-failure retry', async () => {
+    mintKeypairMock.mockRejectedValueOnce(new Error('mint temporarily unavailable'));
+    expect((await runAppProvision({ slug: 'dykil', displayName: 'Dykil' })).status).toBe('failed');
+    expect(appProvisionsStore.get('dykil')?.repoCreated).toBe(true);
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
+    expect((await runAppProvision({ slug: 'dykil', displayName: 'Dykil' })).status).toBe('succeeded');
+    expect(appProvisionsStore.get('dykil')?.repoCreated).toBe(true);
+    expect([...registryAppsStore.values()][0]).toMatchObject({ sourceRepo: 'ima-jin/dykil', joined: true });
+  });
   it('records reused repos as pending adoption, not proven joined', async () => {
     ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
     expect((await runAppProvision({ slug: 'dykil', displayName: 'Dykil' })).status).toBe('succeeded');

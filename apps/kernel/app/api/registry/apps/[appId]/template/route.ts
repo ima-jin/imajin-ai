@@ -30,8 +30,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   if ('error' in report) return NextResponse.json({ error: report.error }, { status: 400 });
   const [updated] = await db.update(registryApps)
     .set({ ...report.ok, updatedAt: new Date() })
-    .where(and(eq(registryApps.id, appId), eq(registryApps.appDid, caller.appDid), eq(registryApps.status, 'active')))
+    .where(and(
+      eq(registryApps.id, appId),
+      eq(registryApps.appDid, caller.appDid),
+      eq(registryApps.status, 'active'),
+      eq(registryApps.joined, true),
+      eq(registryApps.template, app.template),
+    ))
     .returning({ appId: registryApps.id, templateRef: registryApps.templateRef, templateSyncedAt: registryApps.templateSyncedAt });
-  if (!updated) return NextResponse.json({ error: 'App is no longer active' }, { status: 409 });
+  if (!updated) return NextResponse.json({ error: 'App status or template lineage changed; retry the report' }, { status: 409 });
   return NextResponse.json(updated);
 }

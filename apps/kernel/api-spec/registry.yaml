@@ -160,6 +160,100 @@ components:
         error: { type: string }
 
 paths:
+  /api/registry/apps:
+    servers:
+      - url: https://{node}.imajin.ai
+        variables:
+          node: { default: jin }
+      - url: http://localhost:3000
+    get:
+      tags: [registry]
+      operationId: listRegisteredApps
+      summary: List registry apps with template lineage
+      description: Public directory or authenticated owner=me view. Use by-template for privileged unpaginated automation.
+      responses:
+        "200":
+          description: Paginated registry apps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps: { type: array, items: { $ref: "#/components/schemas/AppLineage" } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+    post:
+      tags: [registry]
+      operationId: registerApp
+      summary: Register a third-party app, optionally with template lineage
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - { $ref: "#/components/schemas/AppLineage" }
+                - type: object
+                  required: [name, callbackUrl]
+                  properties:
+                    name: { type: string }
+                    callbackUrl: { type: string, format: uri }
+      responses:
+        "201":
+          description: Registered app, including stored lineage
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppLineage" }
+        "400": { description: Invalid app registration or lineage }
+        "401": { description: Unauthorized }
+
+  /api/registry/apps/{appId}:
+    servers:
+      - url: https://{node}.imajin.ai
+        variables:
+          node: { default: jin }
+      - url: http://localhost:3000
+    parameters:
+      - name: appId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [registry]
+      operationId: getRegisteredApp
+      summary: Read a registry app, including template lineage
+      responses:
+        "200":
+          description: Registry app
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppLineage" }
+        "404": { description: Not found }
+    patch:
+      tags: [registry]
+      operationId: updateRegisteredApp
+      summary: Owner updates app metadata, including template lineage and join state
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppLineage" }
+      responses:
+        "200":
+          description: Updated registry app
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppLineage" }
+        "400": { description: Invalid metadata }
+        "401": { description: Unauthorized }
+        "403": { description: Caller does not own this app }
+        "404": { description: Not found }
   /api/registry/apps/by-template:
     servers:
       - url: https://{node}.imajin.ai
@@ -242,12 +336,12 @@ paths:
           content:
             application/json:
               schema:
-                allOf:
-                  - { $ref: "#/components/schemas/TemplateSyncReport" }
-                  - type: object
-                    required: [appId]
-                    properties:
-                      appId: { type: string }
+                type: object
+                required: [appId, templateRef, templateSyncedAt]
+                properties:
+                  appId: { type: string }
+                  templateRef: { type: string }
+                  templateSyncedAt: { type: string, format: date-time }
         "400":
           description: Invalid JSON, unknown fields, empty ref or invalid timestamp
         "401":
@@ -257,7 +351,7 @@ paths:
         "404":
           description: App not found
         "409":
-          description: App has not joined a template or was revoked during the request
+          description: App has not joined a template, or status/template lineage changed during the request
   /api/health:
     get:
       tags: [registry]

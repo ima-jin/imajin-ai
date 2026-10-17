@@ -11,12 +11,18 @@ CREATE INDEX IF NOT EXISTS idx_registry_apps_template ON registry.apps (template
 
 -- Extractions are third_party identities, not the retired first_party seeds.
 -- Bind their repo through the provisioning ledger, never through a third-party
--- slug alone. A node without the extraction keeps its active legacy seed.
+-- slug alone. A node without the extraction keeps its active legacy seed as
+-- a pending candidate, not a falsely joined repository.
 -- Unknown last-synced refs/times remain NULL until an app reports them.
 UPDATE registry.apps AS app
 SET source_repo = 'ima-jin/' || derived.slug,
     template = 'ima-jin/imajin-app-template',
-    joined = true
+    joined = EXISTS (
+      SELECT 1 FROM kernel.app_provisions provision
+      WHERE provision.app_did = app.app_did
+        AND provision.slug = derived.slug
+        AND provision.repo_url = 'https://github.com/ima-jin/' || derived.slug
+    )
 FROM (VALUES ('coffee'), ('dykil'), ('events'), ('learn'), ('links'), ('market')) AS derived(slug)
 WHERE app.status = 'active'
   AND (
