@@ -364,6 +364,8 @@ export const registryApps = registrySchema.table('apps', {
   entryUrl: text('entry_url'),
   placements: text('placements').array().notNull().default(sql`'{}'::text[]`),
   requiredScope: text('required_scope'),
+  /** Directory curation only; changed through countersigned apps:featured proposals, never an install or grant. */
+  featured: boolean('featured').notNull().default(false),
   /**
    * Scopes this app defines and enforces itself (#2663,
    * 0176_registry_apps_provides_scopes_depends_on.sql) — e.g. `dykil:read`.

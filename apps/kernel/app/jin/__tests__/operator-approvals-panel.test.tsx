@@ -1095,6 +1095,19 @@ describe('per-source renderer registry — github', () => {
 // alongside the app's own `/claim` page URL (#2427) so the operator can
 // paste the code there instead of ssh-ing in to edit an env file.
 describe('per-source renderer registry — apps', () => {
+  it.each([true, false])('renders featured=%s as directory curation, never provisioning', async (featured) => {
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      kind: 'apps:featured',
+      summary: `${featured ? 'Feature' : 'Unfeature'} Dykil in the directory`,
+      detail: { appDid: 'did:imajin:dykil-app', featured },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByRole('button', { name: 'Sign directory change' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined();
+    expect(screen.getByText(/Does not add apps to anyone/)).toBeDefined();
+    expect(screen.getByText('did:imajin:dykil-app')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve & provision' })).toBeNull();
+  });
   it.each(['sync', 'set', 'rotate', 'revoke'])('renders secret %s approval with a sign control, no provisioning/reveal', async (action) => {
     const secretCard = appsApproval({
       kind: `apps:secrets-${action}`, summary: 'Change fake-app secrets',
