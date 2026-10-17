@@ -27,7 +27,7 @@ function readKeypair(): { privateKey: string; publicKey: string } {
   if (!parsed || typeof parsed !== 'object') throw new Error(INVALID_KEY);
   const pair = parsed as Record<string, unknown>;
   if (typeof pair.privateKey !== 'string' || typeof pair.publicKey !== 'string') {
-    throw new Error(INVALID_KEY);
+    throw new TypeError(INVALID_KEY);
   }
   const privateKey = pair.privateKey.toLowerCase().trim();
   const publicKey = pair.publicKey.toLowerCase().trim();

@@ -48,8 +48,9 @@ export function reachReplyEvent(
 function canonicalJson(value: unknown): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value);
   const record = value as Record<string, unknown>;
-  return `{${Object.keys(record).sort((a, b) => a.localeCompare(b))
-    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(',')}}`;
+  const pairs = Object.keys(record).sort((a, b) => a.localeCompare(b))
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`);
+  return `{${pairs.join(',')}}`;
 }
 
 export function canonicalReachReply(event: ReachReplyEvent): string {

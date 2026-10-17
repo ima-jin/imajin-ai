@@ -47,8 +47,9 @@ function fresh(issuedAt: string): boolean {
 async function signatureValid(principalDid: string, reply: SignedReachReplyEvent): Promise<boolean> {
   const resolved = await createDbResolver(db, identities)(principalDid);
   const { signature, ...payload } = reply.payload;
-  if (!resolved?.publicKey || resolved.publicKey.toLowerCase() !== signature.keyId) return false;
-  return authCrypto.verifySync(signature.sig, canonicalReachReply({ ...reply, payload }), resolved.publicKey);
+  const publicKey = resolved?.publicKey;
+  if (publicKey?.toLowerCase() !== signature.keyId) return false;
+  return authCrypto.verifySync(signature.sig, canonicalReachReply({ ...reply, payload }), publicKey);
 }
 
 /** Direct human session only; commits first, publishes original bytes, then acks. */
