@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import { db, identities, profiles } from '@/src/db';
 
 /** Independent NULL guards; a retry never replaces either stored address. */
-export async function backfillContact(did: string, email: string) {
+export function backfillContact(did: string, email: string) {
   return db.transaction(async (tx) => {
     const [updated] = await tx.update(identities)
       .set({ contactEmail: email })
