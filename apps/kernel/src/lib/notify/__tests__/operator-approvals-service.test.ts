@@ -5,6 +5,7 @@
  * bus publish.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ZodError } from 'zod';
 import {
   AGENT_DID,
   CONNECTOR_OWNER_DID,
@@ -109,6 +110,24 @@ describe('verified native approvals: one command execution rail', () => {
     native.verify.mockResolvedValue(frame);
     mockSelectLimit.mockResolvedValue([execCommandRow()]);
   });
+  it.each([null, { commandId: frame.commandId, outcome: 'completed', at: frame.issuedAt }])('projects native receipts without legacy applied claims after binding revocation: %j', async (sessionOutcome) => {
+    const { db } = await import('@/src/db');
+    native.binding.mockResolvedValue(null);
+    native.hasBinding.mockResolvedValue(true);
+    native.outcome.mockResolvedValue(sessionOutcome);
+    const nativeRow = execCommandRow({
+      status: 'applied', appliedAt: new Date(), outcome: { exitCode: 0, durationMs: 1, outputHash: 'old' },
+      decision: { payload: { decision: 'approve' }, sessionCommand: frame },
+    });
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([nativeRow]) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+    const [card] = await listApprovalsForOperator(OPERATOR_DID);
+    expect(card.outcome).toBeNull();
+    expect(card.appliedAt).toBeNull();
+    expect(card.sessionOutcome).toEqual(sessionOutcome ?? undefined);
+    expect(native.outcome).toHaveBeenCalledWith(OPERATOR_DID, binding.approvalId, 'approve', frame);
+  });
   it('rejects a missing wish after binding authority is revoked rather than falling back to legacy', async () => {
     native.binding.mockResolvedValue(null);
     native.hasBinding.mockResolvedValue(true);
@@ -176,6 +195,12 @@ describe('verified native approvals: one command execution rail', () => {
   it('propagates unexpected verifier failures without selecting legacy', async () => {
     native.verify.mockRejectedValueOnce(new Error('unavailable'));
     await expect(decideOperatorApproval(params)).rejects.toThrow('unavailable');
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+  it('refuses malformed full wishes with a client error and no fallback', async () => {
+    native.verify.mockRejectedValueOnce(new ZodError([]));
+    expect(await decideOperatorApproval(params)).toMatchObject({ ok: false, status: 400 });
+    expect(native.transaction).not.toHaveBeenCalled();
     expect(mockPublish).not.toHaveBeenCalled();
   });
 

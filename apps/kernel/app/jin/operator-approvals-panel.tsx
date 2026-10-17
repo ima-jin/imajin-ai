@@ -84,7 +84,7 @@ function approvalStatusBadge(approval: OperatorApprovalCard): ReactNode {
       ? 'Approval resolved — agent attested' : 'Approval resolution failed — agent attested';
     return <span className="text-xs text-amber-300">{label}</span>;
   }
-  if (approval.sessionBinding && ['approved', 'denied'].includes(approval.status)) {
+  if (approval.sessionBinding && ['approved', 'denied', 'applied'].includes(approval.status)) {
     return <span className="text-xs text-amber-300">Decision recorded — awaiting signed agent attestation</span>;
   }
   return statusBadge(approval.status);
@@ -114,11 +114,15 @@ export function ApprovalControllerNotices({ controller }: Readonly<{ controller:
   );
 }
 
-async function commandForDecision(approval: OperatorApprovalCard, decision: DecisionAction): Promise<SessionCommandFrame | undefined> {
+async function commandForDecision(
+  approval: OperatorApprovalCard,
+  decision: DecisionAction,
+  prepareCommand: typeof prepareSignedSessionCommand,
+): Promise<SessionCommandFrame | undefined> {
   if (!approval.sessionBinding) return undefined;
   if (decision === 'withdrawn') throw new Error('A submitted native decision cannot be withdrawn');
   const { loopId, approvalId } = approval.sessionBinding;
-  return prepareSignedSessionCommand(loopId, decision === 'approve' ? 'session.approve' : 'session.deny', {
+  return prepareCommand(loopId, decision === 'approve' ? 'session.approve' : 'session.deny', {
     loopId, approvalId, kind: 'exec',
   });
 }
@@ -1262,7 +1266,7 @@ function renderPanelBody(
   );
 }
 
-export function useRunApprovals() {
+export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
@@ -1364,7 +1368,7 @@ export function useRunApprovals() {
 
       let res: Response;
       try {
-        const sessionCommand = await commandForDecision(approval, decision);
+        const sessionCommand = await commandForDecision(approval, decision, prepareCommand);
         res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
           method: 'POST',
           credentials: 'include',
@@ -1418,7 +1422,7 @@ export function useRunApprovals() {
     } finally {
       setBusyId('');
     }
-  }, [load, notify, applyReveals]);
+  }, [load, notify, applyReveals, prepareCommand]);
 
   // #2707: one-click recovery from the "no claim code" notice — raises the existing
   // `reissueClaim: true` proposal; approving it shows the same amber box.

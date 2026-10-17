@@ -10,6 +10,7 @@
  * witnessing the operator's explicit tap.
  */
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { ZodError } from 'zod';
 import { createLogger } from '@imajin/logger';
 import { canonicalize, crypto as authCrypto, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import * as bus from '@imajin/bus';
@@ -84,7 +85,13 @@ async function boundCard(row: OperatorApprovalRow, archivedAt: string | null = n
   const record = row.decision as { sessionCommand?: unknown; payload?: { decision?: string } } | null;
   const { readApprovalSessionOutcome } = await import('./operator-approval-session-outcome');
   const sessionOutcome = await readApprovalSessionOutcome(row.operatorDid, approvalId, record?.payload?.decision, record?.sessionCommand);
-  return { ...card, ...(sessionBinding ? { sessionBinding } : {}), ...(sessionOutcome ? { sessionOutcome } : {}) };
+  const nativeRail = sessionBinding !== null || await usesNativeRail(row);
+  return {
+    ...card,
+    ...(nativeRail ? { outcome: null, appliedAt: null } : {}),
+    ...(sessionBinding ? { sessionBinding } : {}),
+    ...(sessionOutcome ? { sessionOutcome } : {}),
+  };
 }
 
 export interface OperatorApprovalCard {
@@ -533,6 +540,7 @@ async function resolveApprovalCommand(
     frame = await verifySessionCommand(binding.loopId, params.operatorDid, params.sessionCommand, { approvalId: binding.approvalId });
   } catch (error) {
     if (error instanceof SessionCommandError) return { ok: false, error: error.message, status: error.status };
+    if (error instanceof ZodError) return { ok: false, error: 'Malformed session command wish', status: 400 };
     throw error;
   }
   const expectedType = params.decision === 'approve' ? 'session.approve' : 'session.deny';
@@ -681,7 +689,7 @@ export async function decideOperatorApproval(
   // Consult persisted state: a concurrent approval must never lose its input.
   if (fresh) await cleanupAppSecretStaging(fresh);
   const card = toCard(fresh ?? { ...row, status: nextStatus, decision: signedDecision, updatedAt: now });
-  return { ok: true, card: command.binding ? { ...card, sessionBinding: command.binding } : card };
+  return { ok: true, card: command.binding ? { ...card, outcome: null, appliedAt: null, sessionBinding: command.binding } : card };
 }
 
 /**
@@ -694,8 +702,8 @@ export async function decideOperatorApproval(
 export async function markApplied(proposalId: string): Promise<{ ok: boolean }> {
   const row = await loadApproval(proposalId);
   if (!row) return { ok: false };
-  if (row.status === 'applied') return { ok: true };
   if (await usesNativeRail(row)) return { ok: false };
+  if (row.status === 'applied') return { ok: true };
   if (row.status !== 'approved') return { ok: false };
 
   await db

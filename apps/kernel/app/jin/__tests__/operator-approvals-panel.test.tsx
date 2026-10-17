@@ -7,7 +7,7 @@
  * per-source renderer registry (default vs. skill-workshop).
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, renderHook, act, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { crypto as authCrypto, canonicalize } from '@imajin/auth';
 import { installIntervalSpy } from './panel-test-support';
 import { requestApprovalsRefresh } from '../approval-anchor';
@@ -20,7 +20,7 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock.current,
 }));
 
-import { OperatorApprovalsPanel, ApprovalCardRow, canonicalizeCountersignFields } from '../operator-approvals-panel';
+import { OperatorApprovalsPanel, ApprovalCardRow, useRunApprovals, canonicalizeCountersignFields } from '../operator-approvals-panel';
 const commandClient = vi.hoisted(() => ({ prepare: vi.fn() }));
 vi.mock('../session-command-client', () => ({ prepareSignedSessionCommand: commandClient.prepare }));
 
@@ -45,6 +45,18 @@ describe('shared native approval command controller', () => {
   const binding = { loopId: 'loop_native', principalDid: 'did:imajin:principal', agentDid: 'did:imajin:agent', approvalId: 'native_1' };
   const command = { type: 'session.approve', commandId: 'command_1', countersignature: { sig: 'full-wish' } };
   const nativeCard = () => gatewayExecApproval({ sessionBinding: binding });
+  it('accepts a fixture preparer while retaining the identical decision controller and endpoint', async () => {
+    const prepare = vi.fn().mockResolvedValue(command);
+    const defaultCalls = commandClient.prepare.mock.calls.length;
+    const fetchSpy = installFetch([{ isOperator: true, approvals: [nativeCard()] }]);
+    const { result } = renderHook(() => useRunApprovals(prepare));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(() => result.current.handleDecide(result.current.approvals[0], 'approve', 'allow-once'));
+    expect(prepare).toHaveBeenCalledWith(binding.loopId, 'session.approve', { loopId: binding.loopId, approvalId: binding.approvalId, kind: 'exec' });
+    expect(commandClient.prepare.mock.calls).toHaveLength(defaultCalls);
+    const sent = fetchSpy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(sent?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'approve', mode: 'allow-once', sessionCommand: command }) });
+  });
 
   it.each([
     ['Allow once', 'approve', 'session.approve', 'allow-once'],
