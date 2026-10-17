@@ -37,6 +37,13 @@ export const INTERNAL_SECRET_FIELD_PREFIX = `${INTERNAL_SECRET_NAMESPACE}${SEPAR
 /** Namespace of a #2242-minted keypair's sealed private key: `vault-minted-key:<did>`. */
 export const MINTED_KEY_NAMESPACE = 'vault-minted-key';
 
+/** Imported third-party credentials have immutable proposal-derived fields. */
+export const IMPORTED_KEY_NAMESPACE = 'vault-imported-key';
+
+export function isImportedKeyField(field: string): boolean {
+  return vaultFieldNamespace(field) === IMPORTED_KEY_NAMESPACE;
+}
+
 /** Human-readable rule, for UI hints and 400 messages. */
 export const VAULT_FIELD_NAME_RULE =
   'letters, digits, and . _ - only, optionally namespaced as <namespace>:<name> with no empty parts (e.g. GH_TOKEN, github-org-provisioning, internal-secret:<purpose>)';

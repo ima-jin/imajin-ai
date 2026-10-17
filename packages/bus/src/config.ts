@@ -392,6 +392,13 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // metadata (never key material) into kernel.audit_log, mirroring
   // vault.delegation.fetched's #2231 pattern above. Kept in sync with
   // migration 0150.
+  'vault.key.imported': [
+    {
+      type: 'audit-log',
+      config: { fields: ['field', 'ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'grantId', 'authorizedBy', 'replacesField'] },
+      enabled: true,
+    },
+  ],
   'vault.key.minted': [
     {
       type: 'audit-log',

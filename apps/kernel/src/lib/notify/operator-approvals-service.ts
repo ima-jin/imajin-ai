@@ -37,6 +37,11 @@ import {
 
 const log = createLogger('kernel:operator-approvals');
 async function cleanupAppSecretStaging(row: OperatorApprovalRow): Promise<void> {
+  if (row.source === 'vault' && row.kind === 'vault:import' && ['denied', 'withdrawn', 'expired'].includes(row.status)) {
+    const { discardImportForProposal } = await import('@/src/lib/vault/import-staging');
+    await discardImportForProposal(row);
+    return;
+  }
   if (row.source !== 'apps' || !['denied', 'withdrawn', 'expired'].includes(row.status)) return;
   const { discardAppSecretForProposal } = await import('@/src/lib/apps/secret-staging');
   await discardAppSecretForProposal(row);
