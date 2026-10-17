@@ -17,6 +17,8 @@ import { db, channelLinks } from '@/src/db';
 import { createConnectorOAuth, type BaseOAuthConfig, type OAuthTokenResponse } from '../kernel/connector-oauth';
 import { getPlatformDid } from '../kernel/connector-platform-did';
 import { upsertRealmIndex } from './realm-index';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
+import { connectionSlot } from '../kernel/connection-slots';
 
 /** Connector app DID — the selectable "QuickBooks" connector identity. */
 export const QUICKBOOKS_CONNECTOR_DID = 'did:imajin:quickbooks-connector';
@@ -102,9 +104,10 @@ export async function buildAuthorizeUrl(
   ownerDid: string,
   state: string,
   configDid?: string,
+  slot?: string,
 ): Promise<string> {
   try {
-    return await qb.buildAuthorizeUrl(ownerDid, state, configDid);
+    return await qb.buildAuthorizeUrl(ownerDid, state, configDid, slot);
   } catch (err) {
     throw translateNoConfigError(err);
   }
@@ -149,6 +152,23 @@ export async function listActiveGrantOwners(requiredScope: string): Promise<stri
   return [...owners];
 }
 
+/** Enumerate granted installations rather than collapsing named slots into primary. */
+export async function listActiveGrantConnections(requiredScope: string): Promise<Array<{ ownerDid: string; slot: string }>> {
+  const rows = await db.select({ did: channelLinks.did, slot: channelLinks.slot, scopes: channelLinks.scopes })
+    .from(channelLinks).where(and(
+      eq(channelLinks.channel, 'quickbooks'),
+      eq(channelLinks.appDid, QUICKBOOKS_CONNECTOR_DID),
+      eq(channelLinks.status, 'active'),
+    ));
+  const installations = new Map<string, { ownerDid: string; slot: string }>();
+  for (const row of rows) {
+    if (!Array.isArray(row.scopes) || !row.scopes.includes(requiredScope)) continue;
+    const slot = connectionSlot(row.slot);
+    installations.set(`${row.did}|${slot}`, { ownerDid: row.did, slot });
+  }
+  return [...installations.values()];
+}
+
 /**
  * Exchange an authorization code for tokens and seal them under ownerDid.
  * `realmId` is supplied by Intuit as a callback query param (not in the token body).
@@ -164,14 +184,15 @@ export async function exchangeCodeAndStore(
   code: string,
   realmId: string,
   configDid?: string,
+  slot?: string,
 ): Promise<void> {
-  await qb.exchangeCodeAndStore(ownerDid, code, { realmId }, configDid);
+  await qb.exchangeCodeAndStore(ownerDid, code, { realmId }, configDid, slot);
   // realmId -> { ownerDid, appDid } reverse index (xprize #35): the webhook
   // handler only ever learns realmId from Intuit, so this is the only place
   // both halves of that mapping are in hand together. `configDid` mirrors the
   // app whose config now owns this connection; falls back to `ownerDid` for
   // the BYO-app model where the owner configures their own app.
-  await upsertRealmIndex(realmId, ownerDid, configDid ?? ownerDid);
+  await upsertRealmIndex(realmId, ownerDid, configDid ?? ownerDid, slot);
 }
 
 /**
@@ -181,8 +202,8 @@ export async function exchangeCodeAndStore(
  * used for a refresh are loaded from, while the refreshed bundle is still
  * sealed at `ownerDid`. Omit it for the BYO-app model.
  */
-export async function refreshTokens(ownerDid: string, configDid?: string): Promise<QuickBooksTokens | undefined> {
-  return qb.loadAndRefreshTokens(ownerDid, configDid);
+export async function refreshTokens(ownerDid: string, configDid?: string, slot?: string): Promise<QuickBooksTokens | undefined> {
+  return qb.loadAndRefreshTokens(ownerDid, configDid, slot);
 }
 
 // ── QuickBooks-specific: grant gate ─────────────────────────────────────────────
@@ -211,18 +232,19 @@ async function requireGrantAndTokens(
   ownerDid: string,
   scope: string,
   configDid?: string,
+  slot?: string,
 ): Promise<{ tokens: QuickBooksTokens; config: QuickBooksConfig }> {
-  const hasGrant = await qb.resolveActiveGrant(ownerDid, scope);
+  slot = connectionSlot(slot ?? currentConnectionSlot('quickbooks', ownerDid));
+  const hasGrant = await qb.resolveActiveGrant(ownerDid, scope, slot);
   if (!hasGrant) {
     throw new Error(
       `quickbooks_no_grant: DID ${ownerDid} has no active '${scope}' grant — ` +
       `enable the connector scope in the scope-manifest`,
     );
   }
-  const [config, tokens] = await Promise.all([
-    qb.loadConfig(configDid ?? ownerDid),
-    qb.loadAndRefreshTokens(ownerDid, configDid),
-  ]);
+  const tokens = await qb.loadAndRefreshTokens(ownerDid, configDid, slot) as (QuickBooksTokens & { configDid?: string }) | undefined;
+  const effectiveConfigDid = tokens?.configDid ?? configDid;
+  const config = await qb.loadConfig(effectiveConfigDid ?? ownerDid, effectiveConfigDid ? 'primary' : slot);
   if (tokens === undefined) {
     throw new Error(
       `quickbooks_no_tokens: no QuickBooks tokens sealed for DID ${ownerDid} — connect the account first`,
@@ -289,8 +311,9 @@ export async function readInvoices(
   ownerDid: string,
   sinceIsoDate?: string,
   configDid?: string,
+  slot?: string,
 ): Promise<QuickBooksInvoice[]> {
-  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:read', configDid);
+  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:read', configDid, slot);
 
   const where = sinceIsoDate ? ` WHERE TxnDate >= '${sinceIsoDate}'` : '';
   const query = `SELECT * FROM Invoice${where} ORDERBY TxnDate DESC MAXRESULTS 50`;
@@ -342,8 +365,9 @@ export async function createInvoice(
   ownerDid: string,
   params: CreateInvoiceParams,
   configDid?: string,
+  slot?: string,
 ): Promise<QuickBooksInvoice> {
-  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:write', configDid);
+  const { tokens, config } = await requireGrantAndTokens(ownerDid, 'quickbooks:write', configDid, slot);
 
   const body = {
     CustomerRef: { value: params.customerRef },

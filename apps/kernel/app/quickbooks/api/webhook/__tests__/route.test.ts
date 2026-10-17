@@ -30,6 +30,7 @@ vi.mock('next/server', () => ({
 }));
 
 import { POST } from '../route';
+import { currentConnectionSlot } from '@/src/lib/kernel/connector-connection-context';
 
 const OWNER = 'did:imajin:scott';
 const APP = 'did:imajin:agrifortress';
@@ -64,6 +65,20 @@ beforeEach(() => {
 });
 
 describe('POST /quickbooks/api/webhook (xprize #35)', () => {
+  it('loads named BYO config and settles in the webhook realm slot', async () => {
+    mockResolveRealmOwner.mockResolvedValue({ ownerDid: OWNER, appDid: OWNER, slot: 'work' });
+    let observedSlot: string | undefined;
+    mockSettle.mockImplementation(async () => {
+      observedSlot = currentConnectionSlot('quickbooks', OWNER);
+      return { settled: [], skipped: [] };
+    });
+    expect((await POST(makeRequest(payload(), { 'intuit-signature': 'good-sig' }))).status).toBe(200);
+    expect(mockLoadConfig).toHaveBeenCalledWith(OWNER, 'work');
+    await afterCallbacks[0]();
+    expect(observedSlot).toBe('work');
+    expect(mockSettle).toHaveBeenCalledWith(OWNER, undefined);
+    expect(currentConnectionSlot('quickbooks', OWNER)).toBe('primary');
+  });
   it('rejects a request with no intuit-signature header', async () => {
     const res = await POST(makeRequest(payload()));
     expect(res.status).toBe(400);

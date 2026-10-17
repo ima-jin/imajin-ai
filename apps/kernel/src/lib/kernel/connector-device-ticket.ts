@@ -19,6 +19,7 @@
  *   const { signDeviceTicket, verifyDeviceTicket } = createDeviceTicketHelpers('github_device');
  */
 import { createSignedPayloadCodec } from './connector-signed-payload';
+import { connectionSlot } from './connection-slots';
 
 /**
  * Ticket lifetime. Slightly longer than GitHub's 900s device-code expiry so the
@@ -28,6 +29,7 @@ import { createSignedPayloadCodec } from './connector-signed-payload';
 const DEVICE_TICKET_TTL_MS = 16 * 60 * 1000;
 
 interface DeviceTicketPayload {
+  slot?: string;
   /** Owner DID the device flow was started for. */
   did: string;
   /** The provider's `device_code` for this pending authorization. */
@@ -36,13 +38,14 @@ interface DeviceTicketPayload {
 
 /** Result of a successful {@link DeviceTicketHelpers.verifyDeviceTicket}. */
 export interface VerifiedDeviceTicket {
+  slot?: string;
   did: string;
   deviceCode: string;
 }
 
 export interface DeviceTicketHelpers {
   /** Mint a ticket binding `ownerDid` to a pending `deviceCode`. */
-  signDeviceTicket(ownerDid: string, deviceCode: string): string;
+  signDeviceTicket(ownerDid: string, deviceCode: string, slot?: string): string;
   /** Verify a ticket's signature + TTL. Throws on tamper/expiry. */
   verifyDeviceTicket(ticket: string): VerifiedDeviceTicket;
 }
@@ -56,10 +59,14 @@ export function createDeviceTicketHelpers(errorPrefix: string): DeviceTicketHelp
   const codec = createSignedPayloadCodec<DeviceTicketPayload>(errorPrefix, DEVICE_TICKET_TTL_MS);
 
   return {
-    signDeviceTicket: (ownerDid, deviceCode) => codec.sign({ did: ownerDid, deviceCode }),
+    signDeviceTicket: (ownerDid, deviceCode, slot) => {
+      const selected = connectionSlot(slot);
+      return codec.sign({ did: ownerDid, deviceCode, ...(selected !== 'primary' ? { slot: selected } : {}) });
+    },
     verifyDeviceTicket: (ticket) => {
       const payload = codec.verify(ticket);
-      return { did: payload.did, deviceCode: payload.deviceCode };
+      const slot = connectionSlot(payload.slot);
+      return { did: payload.did, deviceCode: payload.deviceCode, ...(slot !== 'primary' ? { slot } : {}) };
     },
   };
 }

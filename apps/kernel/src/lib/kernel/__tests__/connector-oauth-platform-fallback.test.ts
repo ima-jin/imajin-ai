@@ -107,6 +107,25 @@ describe('resolveConfigDidWithPlatformFallback — app-auth takes precedence', (
 });
 
 describe('resolveConfigDidWithPlatformFallback — no app-auth headers (plain session)', () => {
+  it('checks selected BYO config before shared platform config', async () => {
+    process.env.PLATFORM_DID = PLATFORM;
+    vaultFieldExistsMock.mockImplementation(async (field: string) =>
+      field === `${CONFIG_PREFIX}:${OWNER}:work` || field === `${CONFIG_PREFIX}:${PLATFORM}`);
+    const request = makeRequest();
+    Object.assign(request, { url: `${request.url}?slot=work` });
+    expect(await resolveConfigDidWithPlatformFallback(request, OWNER, CONFIG_PREFIX)).toBeUndefined();
+    expect(vaultFieldExistsMock).toHaveBeenCalledWith(`${CONFIG_PREFIX}:${OWNER}:work`);
+    expect(vaultFieldExistsMock).not.toHaveBeenCalledWith(`${CONFIG_PREFIX}:${OWNER}`);
+  });
+
+  it('never borrows primary BYO config for a new named slot', async () => {
+    process.env.PLATFORM_DID = PLATFORM;
+    vaultFieldExistsMock.mockImplementation(async (field: string) =>
+      field === `${CONFIG_PREFIX}:${OWNER}` || field === `${CONFIG_PREFIX}:${PLATFORM}`);
+    const request = makeRequest();
+    Object.assign(request, { url: `${request.url}?slot=work` });
+    expect(await resolveConfigDidWithPlatformFallback(request, OWNER, CONFIG_PREFIX)).toBe(PLATFORM);
+  });
   it('returns undefined (BYO-app, unchanged) when the owner already has their own config sealed', async () => {
     process.env.PLATFORM_DID = PLATFORM;
     vaultFieldExistsMock.mockImplementation(async (field: string) => field === `${CONFIG_PREFIX}:${OWNER}`);

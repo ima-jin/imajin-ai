@@ -36,6 +36,17 @@ import {
 } from './connector-oauth';
 import type { VerifiedState } from './connector-oauth-state';
 import type { DeviceTicketHelpers } from './connector-device-ticket';
+import { connectionSlot, connectionVaultField } from './connection-slots';
+import { revokeConnectorRegistration } from './connector-registry-store';
+
+/** Request selectors are validated before any provider or vault side effect. */
+export function requestConnectionSlot(request: NextRequest): string {
+  return connectionSlot(new URL(request.url).searchParams.get('slot'));
+}
+
+function invalidSlot(err: unknown) {
+  return NextResponse.json({ error: err instanceof Error ? err.message : 'Invalid connection slot' }, { status: 400 });
+}
 
 const log = createLogger('kernel');
 
@@ -70,11 +81,13 @@ const log = createLogger('kernel');
  * diagnosable body, indistinguishable from the kernel not answering at all.
  */
 export function createConnectHandler(
-  buildAuthorizeUrl: (ownerDid: string, state: string, configDid?: string) => Promise<string>,
-  signState: (ownerDid: string, returnTo?: string, appDid?: string) => string,
+  buildAuthorizeUrl: (ownerDid: string, state: string, configDid?: string, slot?: string) => Promise<string>,
+  signState: (ownerDid: string, returnTo?: string, appDid?: string, slot?: string) => string,
   resolveConfigDid?: (request: NextRequest, ownerDid: string) => Promise<string | undefined>,
 ) {
   return async function GET(request: NextRequest) {
+    let slot: string;
+    try { slot = requestConnectionSlot(request); } catch (err) { return invalidSlot(err); }
     // Try session auth first (direct browser navigation with kernel cookie).
     // Fall back to app-auth Bearer (#1705: server-to-server from the app's
     // own connect wrapper, which can't carry the kernel session cookie).
@@ -108,11 +121,15 @@ export function createConnectHandler(
 
     const { searchParams } = new URL(request.url);
     const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
-    const state = configDid
+    const state = slot !== 'primary'
+      ? signState(ownerDid, returnTo ?? undefined, configDid, slot)
+      : configDid
       ? signState(ownerDid, returnTo ?? undefined, configDid)
       : signState(ownerDid, returnTo ?? undefined);
     try {
-      return NextResponse.redirect(await buildAuthorizeUrl(ownerDid, state, configDid));
+      return NextResponse.redirect(await (slot === 'primary'
+        ? buildAuthorizeUrl(ownerDid, state, configDid)
+        : buildAuthorizeUrl(ownerDid, state, configDid, slot)));
     } catch (err) {
       return buildAuthorizeUrlFailure(err, ownerDid, configDid);
     }
@@ -250,7 +267,7 @@ export async function resolveConfigDidWithPlatformFallback(
   const appAuthConfigDid = await resolveConfigDidFromAppAuth(request, configPrefix);
   if (appAuthConfigDid !== undefined) return appAuthConfigDid;
 
-  if (await vaultFieldExists(`${configPrefix}:${ownerDid}`)) {
+  if (await vaultFieldExists(connectionVaultField(configPrefix, ownerDid, requestConnectionSlot(request)))) {
     // BYO-app: the session owner already has their own config sealed.
     return undefined;
   }
@@ -336,7 +353,7 @@ function landing(request: NextRequest, path: string, key: string, value: string)
 
 export function createCallbackHandler(opts: {
   verifyState(state: string): VerifiedState;
-  exchange(ownerDid: string, code: string, searchParams: URLSearchParams, configDid?: string): Promise<void>;
+  exchange(ownerDid: string, code: string, searchParams: URLSearchParams, configDid?: string, slot?: string): Promise<void>;
   connectorName: string;
   /** Registry id (e.g. `'quickbooks'`) — drives the default landing page. */
   connectorId: string;
@@ -361,6 +378,7 @@ export function createCallbackHandler(opts: {
     let verified: VerifiedState;
     try {
       verified = opts.verifyState(state);
+      connectionSlot(verified.slot);
     } catch (err) {
       // A bad state means `returnTo` is unrecoverable (and untrustworthy), so
       // this branch can only ever land on the default page.
@@ -375,7 +393,11 @@ export function createCallbackHandler(opts: {
     const dest = sanitizeReturnTo(verified.returnTo) ?? fallback;
 
     try {
-      await opts.exchange(ownerDid, code, searchParams, verified.appDid);
+      if (verified.slot && verified.slot !== 'primary') {
+        await opts.exchange(ownerDid, code, searchParams, verified.appDid, connectionSlot(verified.slot));
+      } else {
+        await opts.exchange(ownerDid, code, searchParams, verified.appDid);
+      }
     } catch (err) {
       if (err instanceof MissingCallbackParamError) {
         return fail(request, dest, 'missing_param');
@@ -422,6 +444,8 @@ export function createDisconnectHandler(opts: {
   connectorName: string;
 }) {
   return async function POST(request: NextRequest) {
+    let slot: string;
+    try { slot = requestConnectionSlot(request); } catch (err) { return invalidSlot(err); }
     const auth = await requireAuth(request);
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -430,7 +454,7 @@ export function createDisconnectHandler(opts: {
 
     // Tombstone all sealed vault fields (idempotent — absent fields are a no-op).
     await Promise.all(
-      opts.vaultPrefixes.map((prefix) => deleteFromVault(`${prefix}:${ownerDid}`)),
+      opts.vaultPrefixes.map((prefix) => deleteFromVault(connectionVaultField(prefix, ownerDid, slot))),
     );
 
     // Revoke the active channel_links grant row (no-op when already revoked).
@@ -443,8 +467,11 @@ export function createDisconnectHandler(opts: {
           eq(channelLinks.did, ownerDid),
           eq(channelLinks.appDid, opts.connectorDid),
           eq(channelLinks.status, 'active'),
+          eq(channelLinks.slot, slot),
         ),
       );
+
+    await revokeConnectorRegistration(ownerDid, opts.connectorName, slot);
 
     // Publish bus event for audit trail (non-fatal).
     publish('connector.disconnected', {
@@ -454,6 +481,7 @@ export function createDisconnectHandler(opts: {
       payload: {
         ownerDid,
         connector: opts.connectorName,
+        slot,
         context_id: ownerDid,
         context_type: opts.connectorName,
       },
@@ -552,7 +580,7 @@ function parseConfigureBody(
  */
 export function createConfigureHandler<TConfig extends BaseOAuthConfig>(opts: {
   buildConfig(base: BaseOAuthConfig, body: Record<string, unknown>): TConfig;
-  storeConfig(ownerDid: string, config: TConfig): Promise<void>;
+  storeConfig(ownerDid: string, config: TConfig, slot?: string): Promise<void>;
   /**
    * Accept clientId-only device-mode configs. Defaults to false so connectors
    * whose provider has no RFC 8628 endpoint cannot seal a config their connect
@@ -565,6 +593,8 @@ export function createConfigureHandler<TConfig extends BaseOAuthConfig>(opts: {
       Promise.resolve(new NextResponse(null, { status: 204, headers: corsHeaders(request) })),
 
     POST: async (request: NextRequest) => {
+      let slot: string;
+      try { slot = requestConnectionSlot(request); } catch (err) { return invalidSlot(err); }
       const cors = corsHeaders(request);
 
       const auth = await requireAuth(request);
@@ -586,7 +616,8 @@ export function createConfigureHandler<TConfig extends BaseOAuthConfig>(opts: {
       }
 
       const config = opts.buildConfig(parsed.base, body);
-      await opts.storeConfig(ownerDid, config);
+      if (slot === 'primary') await opts.storeConfig(ownerDid, config);
+      else await opts.storeConfig(ownerDid, config, slot);
       return NextResponse.json(
         { configured: true, flow: parsed.base.flow },
         { status: 201, headers: cors },
@@ -648,12 +679,14 @@ function deviceFailure(connectorName: string, err: unknown, phase: string) {
  * `ticket` the client hands back to the poll route.
  */
 export function createDeviceStartHandler(opts: {
-  requestDeviceCode(ownerDid: string): Promise<DeviceAuthorization>;
+  requestDeviceCode(ownerDid: string, slot?: string): Promise<DeviceAuthorization>;
   signDeviceTicket: DeviceTicketHelpers['signDeviceTicket'];
   /** Short connector name for log messages, e.g. `'github'`. */
   connectorName: string;
 }) {
   return async function POST(request: NextRequest) {
+    let slot: string;
+    try { slot = requestConnectionSlot(request); } catch (err) { return invalidSlot(err); }
     const auth = await requireAuth(request);
     if ('error' in auth) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -661,9 +694,9 @@ export function createDeviceStartHandler(opts: {
     const ownerDid = resolveActingDid(auth.identity);
 
     try {
-      const grant = await opts.requestDeviceCode(ownerDid);
+      const grant = await (slot === 'primary' ? opts.requestDeviceCode(ownerDid) : opts.requestDeviceCode(ownerDid, slot));
       const payload: DeviceStartResponse = {
-        ticket: opts.signDeviceTicket(ownerDid, grant.deviceCode),
+        ticket: slot === 'primary' ? opts.signDeviceTicket(ownerDid, grant.deviceCode) : opts.signDeviceTicket(ownerDid, grant.deviceCode, slot),
         userCode: grant.userCode,
         verificationUri: grant.verificationUri,
         verificationUriComplete: grant.verificationUriComplete,
@@ -693,7 +726,7 @@ export interface DevicePollResponse {
  * ticket minted for one owner being redeemed into another owner's vault.
  */
 export function createDevicePollHandler(opts: {
-  pollDeviceTokenOnce(ownerDid: string, deviceCode: string): Promise<DevicePollStatus>;
+  pollDeviceTokenOnce(ownerDid: string, deviceCode: string, slot?: string): Promise<DevicePollStatus>;
   verifyDeviceTicket: DeviceTicketHelpers['verifyDeviceTicket'];
   connectorName: string;
 }) {
@@ -717,6 +750,7 @@ export function createDevicePollHandler(opts: {
     }
 
     let deviceCode: string;
+    let slot: string;
     try {
       const verified = opts.verifyDeviceTicket(ticket);
       if (verified.did !== ownerDid) {
@@ -725,6 +759,11 @@ export function createDevicePollHandler(opts: {
         return NextResponse.json({ error: 'ticket does not belong to this identity' }, { status: 403 });
       }
       deviceCode = verified.deviceCode;
+      slot = connectionSlot(verified.slot);
+      // A selector is optional on poll, but cannot override the signed ticket.
+      if (new URL(request.url).searchParams.has('slot') && requestConnectionSlot(request) !== slot) {
+        return NextResponse.json({ error: 'ticket does not belong to this connection slot' }, { status: 403 });
+      }
     } catch (err) {
       log.warn(
         { err: String(err), connector: opts.connectorName },
@@ -734,7 +773,7 @@ export function createDevicePollHandler(opts: {
     }
 
     try {
-      const status = await opts.pollDeviceTokenOnce(ownerDid, deviceCode);
+      const status = await (slot === 'primary' ? opts.pollDeviceTokenOnce(ownerDid, deviceCode) : opts.pollDeviceTokenOnce(ownerDid, deviceCode, slot));
       const payload: DevicePollResponse = { status };
       return NextResponse.json(payload);
     } catch (err) {

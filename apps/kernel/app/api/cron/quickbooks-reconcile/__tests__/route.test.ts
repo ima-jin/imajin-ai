@@ -10,12 +10,13 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
 
-vi.mock('@/src/lib/quickbooks/connector', () => ({ listActiveGrantOwners: mockListActiveGrantOwners }));
+vi.mock('@/src/lib/quickbooks/connector', () => ({ listActiveGrantConnections: mockListActiveGrantOwners }));
 vi.mock('@/src/lib/quickbooks/realm-index', () => ({ resolveAppDidForOwner: mockResolveAppDidForOwner }));
 vi.mock('@/src/lib/quickbooks/settlement', () => ({ settlePaidInvoices: mockSettlePaidInvoices }));
 
 import { GET } from '../route.js';
 import { _setCronSecretForTests, _resetCronSecretForTests } from '@/src/cron/secret';
+import { currentConnectionSlot } from '@/src/lib/kernel/connector-connection-context';
 
 const SCOTT = 'did:imajin:scott';
 const DAVID = 'did:imajin:david-farms';
@@ -28,6 +29,23 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
+  it('reconciles two slots of the same owner in independent contexts', async () => {
+    _setCronSecretForTests('test-secret');
+    mockListActiveGrantOwners.mockResolvedValue([
+      { ownerDid: SCOTT, slot: 'primary' },
+      { ownerDid: SCOTT, slot: 'work' },
+    ]);
+    const observed: string[] = [];
+    mockSettlePaidInvoices.mockImplementation(async (ownerDid: string) => {
+      observed.push(currentConnectionSlot('quickbooks', ownerDid));
+      return { settled: [], skipped: [] };
+    });
+    const response = await GET(makeRequest(CRON_AUTH) as never);
+    expect(response.status).toBe(200);
+    expect(observed).toEqual(['primary', 'work']);
+    expect(mockResolveAppDidForOwner).toHaveBeenCalledWith(SCOTT, 'work');
+    mockSettlePaidInvoices.mockReset();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mockResolveAppDidForOwner.mockResolvedValue(APP);
@@ -66,7 +84,7 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
 
   it('settles every owner with an active quickbooks:read grant', async () => {
     _setCronSecretForTests('test-secret');
-    mockListActiveGrantOwners.mockResolvedValue([SCOTT, DAVID]);
+    mockListActiveGrantOwners.mockResolvedValue([{ ownerDid: SCOTT, slot: 'primary' }, { ownerDid: DAVID, slot: 'primary' }]);
     mockSettlePaidInvoices
       .mockResolvedValueOnce({ settled: ['inv1'], skipped: [] })
       .mockResolvedValueOnce({ settled: [], skipped: ['inv2'] });
@@ -100,7 +118,7 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
 
   it('collects a per-owner failure without aborting the rest of the sweep', async () => {
     _setCronSecretForTests('test-secret');
-    mockListActiveGrantOwners.mockResolvedValue([SCOTT, DAVID]);
+    mockListActiveGrantOwners.mockResolvedValue([{ ownerDid: SCOTT, slot: 'primary' }, { ownerDid: DAVID, slot: 'primary' }]);
     mockSettlePaidInvoices
       .mockRejectedValueOnce(new Error('quickbooks_no_tokens'))
       .mockResolvedValueOnce({ settled: ['inv2'], skipped: [] });
@@ -111,7 +129,7 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
     expect(response.status).toBe(200);
     expect(body.owners).toBe(2);
     expect(body.settled).toBe(1);
-    expect(body.failures).toEqual([{ ownerDid: SCOTT, error: 'Error: quickbooks_no_tokens' }]);
+    expect(body.failures).toEqual([{ ownerDid: SCOTT, slot: 'primary', error: 'Error: quickbooks_no_tokens' }]);
   });
 
   // ── Error handling ────────────────────────────────────────────────────────

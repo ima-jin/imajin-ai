@@ -42,6 +42,9 @@ vi.mock('@/src/db', () => ({
 }));
 
 vi.mock('@/src/lib/vault', () => ({ deleteFromVault: vi.fn() }));
+vi.mock('../connector-registry-store', () => ({
+  revokeConnectorRegistration: vi.fn(),
+}));
 vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}) }));
 
 vi.mock('next/server', () => ({
@@ -73,6 +76,72 @@ const { FakeConnectorCredentialPendingError } = vi.hoisted(() => {
   }
   return { FakeConnectorCredentialPendingError };
 });
+
+describe('connection slot routes', () => {
+  it('signs and authorizes the requested slot', async () => {
+    const build = vi.fn().mockResolvedValue('https://provider.test/authorize');
+    const sign = vi.fn().mockReturnValue('signed-work');
+    const handler = createConnectHandler(build, sign);
+    await handler(makeRequest('https://kernel.test/connect?slot=work'));
+    expect(sign).toHaveBeenCalledWith('did:imajin:owner', undefined, undefined, 'work');
+    expect(build).toHaveBeenCalledWith('did:imajin:owner', 'signed-work', undefined, 'work');
+  });
+
+  it('rejects invalid selectors before invoking the provider', async () => {
+    const build = vi.fn();
+    const handler = createConnectHandler(build, vi.fn());
+    expect((await handler(makeRequest('https://kernel.test/connect?slot=../primary'))).status).toBe(400);
+    expect(build).not.toHaveBeenCalled();
+  });
+
+  it('uses the signed callback slot, never the callback query selector', async () => {
+    const exchange = vi.fn();
+    const handler = createCallbackHandler({
+      verifyState: () => ({ did: 'did:imajin:owner', slot: 'work', appDid: 'did:imajin:app' }),
+      exchange, connectorId: 'testly', connectorName: 'Testly',
+    });
+    await handler(makeRequest('https://kernel.test/callback?code=c&state=s&slot=primary'));
+    expect(exchange).toHaveBeenCalledWith('did:imajin:owner', 'c', expect.any(URLSearchParams), 'did:imajin:app', 'work');
+  });
+
+  it('seals configure requests into the selected slot', async () => {
+    const storeConfig = vi.fn();
+    const { POST } = createConfigureHandler({ buildConfig: (base) => base, storeConfig, supportsDeviceFlow: true });
+    await POST(makeJsonRequest({ clientId: 'cid' }, 'https://kernel.test/configure?slot=work'));
+    expect(storeConfig).toHaveBeenCalledWith('did:imajin:owner', { clientId: 'cid', flow: 'device' }, 'work');
+  });
+
+  it('binds device start and poll to the signed slot and rejects mismatches', async () => {
+    const requestDeviceCode = vi.fn().mockResolvedValue({ deviceCode: 'dc', userCode: 'uc', verificationUri: 'https://provider.test', expiresIn: 600, interval: 5 });
+    const signDeviceTicket = vi.fn().mockReturnValue('ticket');
+    await createDeviceStartHandler({ requestDeviceCode, signDeviceTicket, connectorName: 'testly' })(makeJsonRequest({}, 'https://kernel.test/device?slot=work'));
+    expect(requestDeviceCode).toHaveBeenCalledWith('did:imajin:owner', 'work');
+    expect(signDeviceTicket).toHaveBeenCalledWith('did:imajin:owner', 'dc', 'work');
+    const pollDeviceTokenOnce = vi.fn().mockResolvedValue('authorized');
+    const poll = createDevicePollHandler({
+      pollDeviceTokenOnce,
+      verifyDeviceTicket: () => ({ did: 'did:imajin:owner', deviceCode: 'dc', slot: 'work' }),
+      connectorName: 'testly',
+    });
+    expect((await poll(makeJsonRequest({ ticket: 'ticket' }, 'https://kernel.test/poll?slot=primary'))).status).toBe(403);
+    expect(pollDeviceTokenOnce).not.toHaveBeenCalled();
+    await poll(makeJsonRequest({ ticket: 'ticket' }));
+    expect(pollDeviceTokenOnce).toHaveBeenCalledWith('did:imajin:owner', 'dc', 'work');
+  });
+
+  it('disconnect tombstones only selected vault fields and registry installation', async () => {
+    vi.mocked(deleteFromVault).mockClear();
+    const disconnect = createDisconnectHandler({
+      vaultPrefixes: ['testly-oauth', 'testly-config'], channel: 'testly',
+      connectorDid: 'did:imajin:testly-connector', connectorName: 'testly',
+    });
+    await disconnect(makeJsonRequest({}, 'https://kernel.test/disconnect?slot=work'));
+    expect(deleteFromVault).toHaveBeenCalledTimes(2);
+    expect(deleteFromVault).toHaveBeenCalledWith('testly-oauth:did:imajin:owner:work');
+    expect(deleteFromVault).toHaveBeenCalledWith('testly-config:did:imajin:owner:work');
+    expect(revokeConnectorRegistration).toHaveBeenCalledWith('did:imajin:owner', 'testly', 'work');
+  });
+});
 vi.mock('../connector-oauth', () => ({ ConnectorCredentialPendingError: FakeConnectorCredentialPendingError }));
 
 import {
@@ -81,10 +150,13 @@ import {
   createConfigureHandler,
   createDeviceStartHandler,
   createDevicePollHandler,
+  createDisconnectHandler,
   resolveConfigDidFromAppAuth,
   MissingCallbackParamError,
 } from '../connector-oauth-routes';
 import type { BaseOAuthConfig } from '../connector-oauth';
+import { deleteFromVault } from '@/src/lib/vault';
+import { revokeConnectorRegistration } from '../connector-registry-store';
 
 /** A request whose `json()` resolves to `body` (or throws when omitted). */
 function makeJsonRequest(body: unknown, url = 'https://kernel.test/api') {

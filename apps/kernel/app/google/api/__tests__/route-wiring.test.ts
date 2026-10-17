@@ -60,6 +60,7 @@ vi.mock('@/src/lib/google/connector', () => ({
   exchangeCodeAndStore: exchangeCodeAndStoreMock,
   storeConfig: storeConfigMock,
   revokeAtGoogle: revokeAtGoogleMock,
+  captureGoogleAccountEmail: vi.fn().mockResolvedValue(undefined),
   readConfigFlow: readConfigFlowMock,
   configField: (did: string) => `google-config:${did}`,
   oauthVaultField: (did: string) => `google-oauth:${did}`,
@@ -132,6 +133,11 @@ vi.mock('@/src/lib/kernel/connector-oauth-routes', () => ({
     },
   }),
   createDisconnectHandler: createDisconnectHandlerMock,
+  requestConnectionSlot: (request: { url: string }) => {
+    const slot = new URL(request.url).searchParams.get('slot') ?? 'primary';
+    if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(slot)) throw new Error('invalid_connection');
+    return slot;
+  },
 }));
 
 vi.mock('next/server', () => nextServerMockFactory());
@@ -172,7 +178,7 @@ describe('GET /google/api/callback', () => {
 
     await GET(makeRequest('https://kernel.test/google/api/callback?code=abc&state=xyz'));
 
-    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc');
+    expect(exchangeCodeAndStoreMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', {}, undefined, undefined);
   });
 });
 
@@ -231,7 +237,7 @@ describe('POST /google/api/disconnect (#2144 — revoke both directions)', () =>
     const { POST } = await import('../disconnect/route');
     await POST(makeRequest('https://kernel.test/google/api/disconnect'));
 
-    expect(revokeAtGoogleMock).toHaveBeenCalledWith('did:imajin:owner');
+    expect(revokeAtGoogleMock).toHaveBeenCalledWith('did:imajin:owner', 'primary');
     expect(sharedDisconnectPostMock).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(['revokeAtGoogle', 'sharedDisconnect']);
   });
