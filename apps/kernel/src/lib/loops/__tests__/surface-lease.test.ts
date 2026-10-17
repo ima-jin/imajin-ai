@@ -3,10 +3,28 @@ import { resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LoopIngestRequest, LoopRailType } from '../types';
+import type { LoopEventPayload } from '@imajin/bus';
+import { loopProjectionReactor } from '../../../../../../packages/bus/src/reactors/loop-projection';
 
 const { database } = vi.hoisted(() => ({ database: { sql: null as unknown } }));
 vi.mock('@imajin/db', () => ({ getClient: () => database.sql }));
-import { projectSurfaceLease, SURFACE_LEASE_TTL_MS } from '../surface-lease';
+import { projectSurfaceLease as projectLeaseObservation, loopObservationId, SURFACE_LEASE_TTL_MS } from '../surface-lease';
+
+/** Exercise the merged completion transaction, not a pre-publish history write. */
+async function projectSurfaceLease(
+  observation: LoopIngestRequest,
+  prepared: LoopEventPayload = observation.payload,
+  canKeepProof = true,
+) {
+  const conflict = await projectLeaseObservation(observation, prepared, canKeepProof);
+  if (observation.type === 'loop.finished') {
+    await loopProjectionReactor({
+      id: loopObservationId(observation), type: observation.type, payload: prepared,
+      issuer: observation.publisherDid, subject: observation.payload.principal, scope: 'loop',
+    }, {});
+  }
+  return conflict;
+}
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 let client: PGlite;
@@ -43,6 +61,7 @@ beforeAll(async () => {
       id text PRIMARY KEY, loop_id text, type text, issuer text, principal text, payload jsonb, occurred_at timestamptz
     );
   `);
+  await client.exec(readFileSync(resolve(process.cwd(), 'migrations/0157_loops_rail.sql'), 'utf8'));
   const migration = readFileSync(resolve(process.cwd(), 'migrations/0194_surface_lease.sql'), 'utf8');
   await client.exec(migration);
   await client.exec(migration);
@@ -62,11 +81,67 @@ beforeAll(async () => {
 });
 beforeEach(async () => {
   queries.length = 0;
-  await client.exec('TRUNCATE kernel.surface_lease, kernel.loop_events');
+  await client.exec('TRUNCATE kernel.surface_lease, kernel.loop_events, kernel.loops');
 });
 afterAll(async () => { await client?.close(); });
 
 describe('signed surface lease projection', () => {
+  it('never restores redacted content through lease or history proof fields', async () => {
+    const original = request();
+    original.payload.summary = 'Bearer original-secret';
+    const prepared = { ...original.payload, summary: 'Bearer [REDACTED]' };
+    await projectSurfaceLease(original, prepared, false);
+    expect((await lease()).signed_payload).toEqual(prepared);
+    const events = await client.query<{ payload: Record<string, unknown> }>('SELECT payload FROM kernel.loop_events');
+    expect(events.rows[0].payload.evidence).toMatchObject({ redacted: true });
+    expect(events.rows[0].payload.evidence).not.toHaveProperty('signedPayload');
+    expect(JSON.stringify(events.rows)).not.toContain('original-secret');
+    expect(JSON.stringify(await lease())).not.toContain('original-secret');
+  });
+
+  it('retains prepared completion history exactly for the transactional output projection', async () => {
+    const original = transition('loop.finished', 1000);
+    const prepared = { ...original.payload, output: { kind: 'text' as const, text: '[REDACTED]' } };
+    await projectSurfaceLease(original, prepared, false);
+    const events = await client.query<{ payload: unknown }>('SELECT payload FROM kernel.loop_events');
+    expect(events.rows[0].payload).toEqual(prepared);
+  });
+
+  it('rolls back completion state and lease release when output history persistence fails', async () => {
+    const original = request();
+    await projectSurfaceLease(original);
+    await loopProjectionReactor({
+      type: 'loop.started', payload: original.payload,
+      issuer: original.publisherDid, subject: original.payload.principal, scope: 'loop',
+    }, {});
+    const beforeLease = await lease();
+    const beforeLoop = (await client.query('SELECT * FROM kernel.loops')).rows;
+    await client.exec(`
+      CREATE FUNCTION kernel.reject_completion_history() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.type = 'loop.finished' THEN RAISE EXCEPTION 'history unavailable'; END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      CREATE TRIGGER reject_completion_history BEFORE INSERT ON kernel.loop_events
+        FOR EACH ROW EXECUTE FUNCTION kernel.reject_completion_history();
+    `);
+    try {
+      await expect(projectSurfaceLease(transition('loop.finished', 1000))).rejects.toThrow('history unavailable');
+      expect(await lease()).toEqual(beforeLease);
+      expect((await client.query('SELECT * FROM kernel.loops')).rows).toEqual(beforeLoop);
+      expect((await client.query("SELECT * FROM kernel.loop_events WHERE type = 'loop.finished'")).rows).toHaveLength(0);
+    } finally {
+      await client.exec('DROP TRIGGER reject_completion_history ON kernel.loop_events; DROP FUNCTION kernel.reject_completion_history();');
+    }
+  });
+
+  it('does not release a lease when the same-principal completion has another issuer', async () => {
+    await projectSurfaceLease(request());
+    const before = await lease();
+    await projectSurfaceLease({ ...transition('loop.finished', 1000), publisherDid: 'did:imajin:other' });
+    expect(await lease()).toEqual(before);
+  });
   it.each(['surface.acquired', 'surface.released', 'surface.conflicted'] as const)('never trusts publisher-supplied projection metadata on %s or retry', async (type) => {
     const forgedMetadata = transition(type, 0, { observedConflictingLoopId: 'injected-loop' });
     expect(await projectSurfaceLease(forgedMetadata)).toBeNull();
@@ -147,7 +222,7 @@ describe('signed surface lease projection', () => {
     expect(new Date((await lease()).expires_at as string).getTime()).toBeLessThan(now);
   });
 
-  it.each(['surface.released', 'loop.progress', 'loop.finished'] as const)('ignores wrong loop/principal/issuer for %s', async (type) => {
+  it.each(['surface.released', 'loop.progress'] as const)('ignores wrong loop/principal/issuer for %s', async (type) => {
     await projectSurfaceLease(request());
     const before = await lease();
     await projectSurfaceLease(transition(type, 1000, { principal: 'did:imajin:bob' }));

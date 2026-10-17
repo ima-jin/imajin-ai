@@ -91,13 +91,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
       correlationId: sanitized.loopId,
     });
     if (conflictingLoopId) {
-      // A collision is data, never a 409, dispatch denial, or harness call.
-      try {
-        const conflict = await ingestLoopEvent(signSurfaceConflict(request, conflictingLoopId));
-        if (!conflict.ok) log.warn({ loopId: payload.loopId }, 'surface conflict observation rejected');
-      } catch {
-        log.warn({ loopId: payload.loopId }, 'surface conflict observation failed (warning only)');
-      }
+      await observeSurfaceConflict(request, conflictingLoopId);
     }
   } catch (err) {
     if (isOwnershipConflict(err)) {
@@ -112,12 +106,21 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   return { ok: true };
 }
 
+/** A collision is data, never a dispatch denial or harness call. */
+async function observeSurfaceConflict(request: LoopIngestRequest, conflictingLoopId: string): Promise<void> {
+  try {
+    const conflict = await ingestLoopEvent(signSurfaceConflict(request, conflictingLoopId));
+    if (!conflict.ok) log.warn({ loopId: request.payload.loopId }, 'surface conflict observation rejected');
+  } catch {
+    log.warn({ loopId: request.payload.loopId }, 'surface conflict observation failed (warning only)');
+  }
+}
 function isOwnershipConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'loop_owner_conflict';
 }
 
 function hasStableLoopIdentity(request: LoopIngestRequest, sanitized: LoopIngestRequest['payload']): boolean {
-  const bindings = ['loopId', 'principal', 'parentLoopId'] as const;
+  const bindings = ['loopId', 'principal', 'parentLoopId', 'surface'] as const;
   return bindings.every(field => sanitized[field] === request.payload[field])
     && redactLoopText(request.publisherDid) === request.publisherDid;
 }

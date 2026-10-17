@@ -1,27 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
-import type { LoopIngestRequest, SurfaceEventType } from '../types';
+import type { LoopEnvelope, LoopIngestRequest, SurfaceEventType } from '../types';
 
 const { nodeIdentity, project, publish, authorize } = vi.hoisted(() => ({
   nodeIdentity: vi.fn(), project: vi.fn(), publish: vi.fn(), authorize: vi.fn(),
+}));
+vi.mock('../artifact-store', () => ({
+  putLoopOutputArtifact: vi.fn().mockResolvedValue({
+    id: 'artifact_1', sha256: 'a'.repeat(64), byteLength: 20000, mediaType: 'application/json',
+  }),
 }));
 vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: nodeIdentity }));
 vi.mock('@/src/db', () => ({ db: {}, identities: {} }));
 vi.mock('../authorize-publisher', () => ({ authorizeLoopPublisher: authorize }));
 vi.mock('../surface-lease', () => ({ projectSurfaceLease: project, loopObservationId: () => 'signed-finish' }));
 vi.mock('@imajin/bus', () => ({ publish }));
+vi.mock('../prepare-output', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../prepare-output')>(),
+  reserveLoopOwnership: vi.fn().mockResolvedValue(true),
+}));
 
 import { ingestLoopEvent } from '../ingest';
 import { parseLoopIngestRequest, isSurfaceUri } from '../types';
 import { signSurfaceConflict } from '../surface-conflict';
 
-function signed(type: SurfaceEventType = 'surface.acquired'): LoopIngestRequest {
+function signed(type: SurfaceEventType = 'surface.acquired', overrides: Partial<LoopEnvelope> = {}): LoopIngestRequest {
   const identity = nodeIdentity();
   const payload = {
     loopId: 'loop-b', kind: 'review', principal: 'did:imajin:alice',
     state: 'running', summary: 'Working', at: new Date().toISOString(),
     surface: 'repo:ima-jin/imajin-ai#branch:main',
     ...(type === 'surface.conflicted' ? { refs: { conflictingLoopId: 'loop-a' } } : {}),
+    ...overrides,
   };
   return {
     type, payload, publisherDid: identity.senderDid,
@@ -39,13 +49,40 @@ beforeEach(() => {
 });
 
 describe('surface signed ingest contract', () => {
+  it('rejects credential-bearing surface identities instead of storing a redacted non-URI key', async () => {
+    const request = signed('surface.acquired', { surface: 'device:sk-secretcredential' });
+    expect(await ingestLoopEvent(request)).toMatchObject({ ok: false, status: 400 });
+    expect(project).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+  it('passes only redacted prepared data to surface evidence after verifying the original', async () => {
+    const request = signed('surface.acquired', { summary: 'Bearer original-secret', metadata: { apiKey: 'private-value' } });
+    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
+    expect(project.mock.calls[0][0]).toBe(request);
+    expect(project.mock.calls[0][2]).toBe(false);
+    const prepared = project.mock.calls[0][1];
+    expect(prepared.summary).toBe('Bearer [REDACTED]');
+    expect(JSON.stringify(prepared)).not.toContain('private-value');
+    expect(prepared).not.toHaveProperty('publisherProof');
+    expect(publish.mock.calls[0][1].payload).toEqual(prepared);
+  });
+
+  it('keeps spilled output behind the artifact ref rather than copying it into surface evidence', async () => {
+    const request = signed('surface.acquired', { output: { kind: 'text', text: 'x'.repeat(20000) } });
+    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
+    const prepared = project.mock.calls[0][1];
+    expect(prepared.output).toMatchObject({ truncated: true, artifactRef: { id: 'artifact_1' } });
+    expect(prepared).not.toHaveProperty('publisherProof');
+    expect(project.mock.calls[0][2]).toBe(false);
+    expect(JSON.stringify(prepared)).not.toContain('x'.repeat(20000));
+  });
   it.each(['surface.acquired', 'surface.released', 'surface.conflicted'] as const)('parses and verifies %s without changing the signed payload', async (type) => {
     const request = signed(type);
     const parsed = parseLoopIngestRequest(request);
     expect(parsed).toEqual({ ok: true, value: request });
     if (!parsed.ok) throw new Error(parsed.error);
     expect(await ingestLoopEvent(parsed.value)).toEqual({ ok: true });
-    expect(project).toHaveBeenCalledWith(request);
+    expect(project).toHaveBeenCalledWith(request, { ...request.payload, publisherProof: request }, true);
     expect(publish).toHaveBeenCalledWith(type, expect.objectContaining({
       issuer: request.publisherDid,
       subject: request.payload.principal,

@@ -35,9 +35,14 @@ Acquisition evidence is retained as `issuer`, `signature`, and `signed_payload`
 on the lease row. Surface observations are also in `kernel.loop_events`;
 their payload retains `evidence: {publisherDid, signature, signedPayload}`.
 Verify that signature against `canonicalize({type, payload: evidence.signedPayload})`,
-not the augmented history payload. A stored `observedConflictingLoopId` is
-projection metadata outside the signed payload, retaining the original
-collision outcome across retries. History deduplicates exact signed observations;
+not the augmented history payload. When #2406 redaction or
+artifact spilling changes an envelope, surface history and lease rows retain
+only the prepared, redacted payload; history evidence has `redacted: true`
+instead of an exact `signedPayload`. As with `publisherProof`, original
+credentials and overflow output must never be reintroduced through evidence.
+A stored `observedConflictingLoopId` is projection metadata outside the
+signed payload, retaining the original collision outcome across retries.
+History deduplicates exact signed observations;
 retries can re-emit the same warning but never renew an old lease.
 Surface events never change `kernel.loops` lifecycle state.
 

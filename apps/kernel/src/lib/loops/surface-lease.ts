@@ -22,7 +22,7 @@ export async function projectSurfaceLease(
   canKeepProof = true,
 ): Promise<string | null> {
   const { type, publisherDid, signature } = request;
-  if (type === 'loop.started' || type === 'loop.blocked') return null;
+  if (type === 'loop.started' || type === 'loop.blocked' || type === 'loop.finished') return null;
   const sql = getClient();
   const id = loopObservationId(request);
   const evidence = JSON.stringify(isSurfaceEventType(type) ? {
@@ -41,24 +41,6 @@ export async function projectSurfaceLease(
           AND released_at IS NULL AND expires_at > now()
           AND heartbeat_at < ${payload.at}::timestamptz
       `;
-    } else if (type === 'loop.finished') {
-      await sql.begin(async (tx) => {
-        await tx`SELECT pg_advisory_xact_lock(hashtextextended(${loopLock}, 2406))`;
-        // Completion history and lease release are atomic with acquisitions,
-        // even if completion arrives before any surface row exists. The bus
-        // projection reuses this id rather than recording completion twice.
-        await tx`
-          INSERT INTO kernel.loop_events (id, loop_id, type, issuer, principal, payload, occurred_at)
-          VALUES (${id}, ${payload.loopId}, ${type}, ${publisherDid}, ${payload.principal},
-                  ${evidence}::jsonb, ${payload.at}::timestamptz)
-          ON CONFLICT (id) DO NOTHING
-        `;
-        await tx`
-          UPDATE kernel.surface_lease SET released_at = ${payload.at}::timestamptz, updated_at = now()
-          WHERE loop_id = ${payload.loopId} AND principal = ${payload.principal} AND issuer = ${publisherDid}
-            AND released_at IS NULL AND heartbeat_at <= ${payload.at}::timestamptz
-        `;
-      });
     }
     return null;
   }
