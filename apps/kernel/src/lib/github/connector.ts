@@ -75,6 +75,8 @@ import {
 import { readReadAllowlist, filterOrgs, filterRepos, isRepoAllowed } from './allowlist';
 import { GITHUB_CONNECTOR_DID } from './constants';
 import { pendingApprovalMessage } from './pending-message';
+import { connectionVaultField } from '../kernel/connection-slots';
+import { currentConnectionSlot } from '../kernel/connector-connection-context';
 import {
   isPullRequest,
   normalizeLimit,
@@ -190,8 +192,8 @@ const gh = createConnectorOAuth<GitHubConfig, GitHubTokens>({
 // ── Public exports (shared interface unchanged) ─────────────────────────────────
 
 /** Per-DID vault field for a GitHub PAT (separate from the OAuth bundle). */
-export function vaultField(ownerDid: string): string {
-  return `github-pat:${ownerDid}`;
+export function vaultField(ownerDid: string, slot = currentConnectionSlot('github', ownerDid)): string {
+  return connectionVaultField('github-pat', ownerDid, slot);
 }
 
 export const configField = gh.configField;
@@ -231,8 +233,12 @@ export async function readConfigFlow(ownerDid: string): Promise<OAuthFlow | null
  * Seal and store a GitHub PAT for the given DID. The PAT is never logged or
  * returned; the only observable output is the sealed VaultEntry.
  */
-export async function sealPat(ownerDid: string, pat: string): Promise<void> {
-  await sealAndStoreV2(vaultField(ownerDid), pat);
+export async function sealPat(
+  ownerDid: string,
+  pat: string,
+  slot = currentConnectionSlot('github', ownerDid),
+): Promise<void> {
+  await sealAndStoreV2(vaultField(ownerDid, slot), pat);
 }
 
 // ── Rate-limit constants (ruled by Ryan 2026-09-24, Refs #2310; supersedes #1371 placeholders) ──

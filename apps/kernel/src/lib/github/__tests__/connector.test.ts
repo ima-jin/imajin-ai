@@ -170,6 +170,7 @@ vi.mock('../allowlist', () => ({
 }));
 
 import { VaultDelegationError } from '@/src/lib/vault/errors';
+import { withConnectorConnection } from '@/src/lib/kernel/connector-connection-context';
 import {
   resolveActiveGrant,
   sealPat,
@@ -360,6 +361,27 @@ function fetchUrls(): string[] {
 
 describe('vaultField', () => {
   it('encodes the ownerDid in the field name for per-DID isolation', () => {
+    expect(vaultField(OWNER)).toBe(`github-pat:${OWNER}`);
+  });
+
+  it('isolates PAT fallback by selected slot without borrowing primary', async () => {
+    grant(['github:read']);
+    loadMock.mockImplementation(async (field: string) =>
+      field === `github-pat:${OWNER}` ? PAT : undefined,
+    );
+    await expect(withConnectorConnection('github', OWNER, 'artifact', () =>
+      getIssue(OWNER, REPO, 42),
+    )).rejects.toThrow('github_no_credential');
+    expect(loadMock).toHaveBeenCalledWith(`github-pat:${OWNER}:artifact`);
+    expect(loadMock).not.toHaveBeenCalledWith(`github-pat:${OWNER}`);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('seals PATs into explicit and contextual slots', async () => {
+    await sealPat(OWNER, PAT, 'artifact');
+    expect(sealMock).toHaveBeenLastCalledWith(`github-pat:${OWNER}:artifact`, PAT);
+    await withConnectorConnection('github', OWNER, 'personal', () => sealPat(OWNER, PAT));
+    expect(sealMock).toHaveBeenLastCalledWith(`github-pat:${OWNER}:personal`, PAT);
     expect(vaultField(OWNER)).toBe(`github-pat:${OWNER}`);
   });
 });
