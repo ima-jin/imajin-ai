@@ -37,6 +37,7 @@ export function GoogleSetupChecklist({ slot, revision, onChange }: Readonly<{
 
   useEffect(() => {
     let cancelled = false;
+    onChange(null);
     void fetch(endpoint, { cache: 'no-store' }).then(readResponse).then((data) => {
       if (cancelled) return;
       setView(data); setCaseUrl(data.steps['business-access'].caseUrl ?? '');

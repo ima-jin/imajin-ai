@@ -44,7 +44,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Google guided admin UI', () => {
   it('renders all six data-driven steps, five states, links, and credential-free instructions', async () => {
     render(<GoogleSetupChecklist slot="work" revision="0" onChange={onChange} />);
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ version: 1 })));
     for (const step of GOOGLE_SETUP_STEPS) {
       expect(screen.getByRole('heading', { name: `${GOOGLE_SETUP_STEPS.indexOf(step) + 1}. ${step.title}` })).toBeDefined();
       expect((screen.getByRole('combobox', { name: `${step.title} status` }) as HTMLSelectElement).options).toHaveLength(5);
@@ -70,7 +70,7 @@ describe('Google guided admin UI', () => {
 
   it('saves the Google case URL without arbitrary notes and does not optimistically approve failed writes', async () => {
     render(<GoogleSetupChecklist slot="work" revision="0" onChange={onChange} />);
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ version: 1 })));
     const input = screen.getByRole('textbox', { name: 'Google Business Profile support case URL' });
     fireEvent.change(input, { target: { value: 'https://support.google.com/business/thread/123' } });
     fireEvent.submit(input.closest('form')!);
@@ -96,7 +96,7 @@ describe('Google guided admin UI', () => {
 
   it('performs a live check without changing admin-reported Google approval', async () => {
     render(<GoogleSetupChecklist slot="work" revision="0" onChange={onChange} />);
-    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ version: 1 })));
     fireEvent.click(screen.getByRole('button', { name: 'Check connection' }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/google/api/setup?slot=work', { method: 'POST', cache: 'no-store' }));
     expect(saved.steps['business-access'].status).toBe('not_started');
@@ -127,5 +127,34 @@ describe('Google guided admin UI', () => {
     render(<ConnectorDetail entry={googleEntry()} />);
     const business = await screen.findByRole('checkbox', { name: 'Read Business Profile' }) as HTMLInputElement;
     await waitFor(() => expect(business.disabled).toBe(false));
+  });
+
+  it('refreshes approval after client import even when vault sealed flags have not changed', async () => {
+    saved.configSealed = true;
+    saved.businessProfileApproved = true;
+    saved.businessProfileEnabled = true;
+    saved.businessProfileAvailable = true;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes('/connections/api/')) return Response.json({ connections: [{ slot: 'primary', label: 'Primary', connected: false, accountEmail: null }] });
+      if (url.includes('/scope-manifest')) return Response.json({ manifestAssetId: null, activeScopes: [], validScopes: [], configSealed: true, tokenSealed: false });
+      if (url.includes('/configure') && init?.method === 'POST') {
+        saved.businessProfileApproved = false;
+        saved.businessProfileAvailable = false;
+      }
+      return Response.json(saved);
+    });
+    render(<ConnectorDetail entry={googleEntry()} />);
+    const business = await screen.findByRole('checkbox', { name: 'Read Business Profile' }) as HTMLInputElement;
+    await waitFor(() => expect(business.disabled).toBe(false));
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    const clientId = screen.getByLabelText('OAuth client ID') as HTMLInputElement;
+    const secret = screen.getByLabelText('OAuth client secret') as HTMLInputElement;
+    fireEvent.change(clientId, { target: { value: 'mock-client-id' } });
+    fireEvent.change(secret, { target: { value: 'mock-client-secret' } });
+    fireEvent.submit(clientId.closest('form')!);
+    await waitFor(() => expect(business.disabled).toBe(true));
+    expect(screen.getByText(/Business Profile: disabled/)).toBeDefined();
+    expect(screen.queryByDisplayValue('mock-client-id')).toBeNull();
+    expect(screen.queryByDisplayValue('mock-client-secret')).toBeNull();
   });
 });

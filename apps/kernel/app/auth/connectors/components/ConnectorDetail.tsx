@@ -1817,6 +1817,7 @@ function createOAuthConnectorCard<TExtra = undefined>(
     const [statusLoading, setStatusLoading] = useState(true);
     const [statusError, setStatusError] = useState<string | null>(null);
     const [googleSetup, setGoogleSetup] = useState<GoogleSetupView | null>(null);
+    const [setupRevision, setSetupRevision] = useState(0);
     const setupUi = googleSetupUi(opts.guidedGoogleSetup, googleSetup);
 
     const [showConfigure, setShowConfigure] = useState(false);
@@ -1844,6 +1845,7 @@ function createOAuthConnectorCard<TExtra = undefined>(
         const r = await fetch(entry.statusEndpoint!);
         if (!r.ok) return;
         setStatus(await r.json() as OAuthConnectorStatus);
+        setSetupRevision((current) => current + 1);
         refreshConnections();
         setStatusError(null);
       } catch { /* non-fatal */ }
@@ -1912,7 +1914,7 @@ function createOAuthConnectorCard<TExtra = undefined>(
         <ConnectOutcomeBanner connectorId={entry.id} onConnected={refreshStatus} />
         {opts.guidedGoogleSetup && (
           <GoogleSetupChecklist slot={slot}
-            revision={`${status?.configSealed}:${status?.tokenSealed}`}
+            revision={`${status?.configSealed}:${status?.tokenSealed}:${setupRevision}`}
             onChange={setGoogleSetup} />
         )}
 
