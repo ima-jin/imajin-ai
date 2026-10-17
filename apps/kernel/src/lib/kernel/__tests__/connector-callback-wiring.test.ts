@@ -74,7 +74,7 @@ describe('QuickBooks callback route', () => {
 
   it("forwards Intuit's realmId to the exchange", async () => {
     await quickbooksCallback(makeRequest(url));
-    expect(exchangeQuickBooksMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', '42');
+    expect(exchangeQuickBooksMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', '42', undefined, undefined);
   });
 
   it('redirects with missing_param when realmId is absent', async () => {
@@ -99,6 +99,6 @@ describe('GitHub callback route', () => {
 
   it('does not require a realmId (GitHub has no equivalent)', async () => {
     await githubCallback(makeRequest(url));
-    expect(exchangeGitHubMock).toHaveBeenCalledWith('did:imajin:owner', 'abc');
+    expect(exchangeGitHubMock).toHaveBeenCalledWith('did:imajin:owner', 'abc', {}, undefined, undefined);
   });
 });

@@ -78,6 +78,19 @@ const { FakeConnectorCredentialPendingError } = vi.hoisted(() => {
 });
 
 describe('connection slot routes', () => {
+  it('keeps signed slot on the default success and failure landing, ignoring raw query slot', async () => {
+    const exchange = vi.fn();
+    const handler = createCallbackHandler({
+      verifyState: () => ({ did: 'did:imajin:owner', slot: 'work' }),
+      exchange, connectorId: 'github', connectorName: 'GitHub',
+    });
+    const request = makeRequest('https://kernel.test/callback?code=c&state=s&slot=primary');
+    const success = await handler(request) as { headers: { location: string } };
+    expect(success.headers.location).toBe('https://kernel.test/auth/connectors/github?slot=work&connected=github');
+    exchange.mockRejectedValueOnce(new Error('exchange failed'));
+    const failed = await handler(request) as { headers: { location: string } };
+    expect(failed.headers.location).toBe('https://kernel.test/auth/connectors/github?slot=work&error=exchange_failed&connector=github');
+  });
   it('resolves registrant config for sessionless app-auth before signing a named connection', async () => {
     requireAuthMock.mockResolvedValue({ error: 'no session', status: 401 });
     requireAppAuthMock.mockResolvedValue({

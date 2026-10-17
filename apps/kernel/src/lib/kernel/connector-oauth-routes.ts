@@ -401,7 +401,9 @@ export function createCallbackHandler(opts: {
     // Re-validate after verification: the HMAC already proves we signed this
     // value, but re-checking keeps a leaked signing key from escalating into an
     // open redirect.
-    const dest = sanitizeReturnTo(verified.returnTo) ?? fallback;
+    const signedSlot = connectionSlot(verified.slot);
+    const defaultDest = signedSlot === 'primary' ? fallback : `${fallback}?slot=${encodeURIComponent(signedSlot)}`;
+    const dest = sanitizeReturnTo(verified.returnTo) ?? defaultDest;
 
     try {
       if (verified.slot && verified.slot !== 'primary') {
