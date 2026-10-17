@@ -11,6 +11,9 @@ it isn't available yet — that's a Meta rollout limit, not an Imajin one.
 
 ## Which path applies to you
 
+To contact a person rather than read your own media, use **Reach a person**
+below: the reach-only credential is self-serve, not operator-approved.
+
 Meta ships two different products under the "Muse" name, and they connect
 differently. Read this section before pasting anything.
 
@@ -267,4 +270,3 @@ the sealed grant, not a shared secret, is the thing that has to be revoked.
 - Spike log with the full command transcript: [`spikes/2250-muse-connector/README.md`](../../spikes/2250-muse-connector/README.md)
 - Shipped: [#2252](https://github.com/ima-jin/imajin-ai/issues/2252) (delegate-grant bearer for static-header clients — the knock/approve/paste runbook above)
 - Follow-ups tracked: [#2253](https://github.com/ima-jin/imajin-ai/issues/2253) (aggregate OpenAPI spec)
-
