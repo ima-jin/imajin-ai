@@ -33,15 +33,15 @@ function validCap(cap: number): boolean {
  * READ COMMITTED each subsequent statement sees the last lock holder's commit.
  * These tables contain deliveries only, so legacy asks never consume caps.
  */
-export async function persistReachEnvelope(params: PersistReachEnvelopeParams): Promise<PersistReachEnvelopeResult> {
+export function persistReachEnvelope(params: PersistReachEnvelopeParams): Promise<PersistReachEnvelopeResult> {
   const { dailyCap, perSenderDailyCap = 25, deliveryAttestation, ...content } = params;
   if ((dailyCap !== null && !validCap(dailyCap)) || !validCap(perSenderDailyCap)) {
-    throw new Error('Reach delivery caps must be non-negative safe integers');
+    return Promise.reject(new Error('Reach delivery caps must be non-negative safe integers'));
   }
   const envelope: ReachEnvelope = { ...content, claimVerified: false };
   if (deliveryAttestation.id !== `att_reach_${params.reachId}`
     || deliveryAttestation.subjectDid !== params.principalDid || deliveryAttestation.type !== 'agent.reach') {
-    throw new Error('Delivery attestation must bind the reach id and principal');
+    return Promise.reject(new Error('Delivery attestation must bind the reach id and principal'));
   }
   return getClient().begin('isolation level read committed', async (tx): Promise<PersistReachEnvelopeResult> => {
     await lockPrincipal(tx, params.principalDid);
