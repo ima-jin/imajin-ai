@@ -38,6 +38,31 @@ components:
       name: x-internal-key
       description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    DirectoryApp:
+      type: object
+      required: [slug, name, icon, description, placements, featured, added, authorized, available]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        icon: { type: [string, "null"] }
+        description: { type: [string, "null"] }
+        entryUrl: { type: [string, "null"] }
+        placements:
+          type: array
+          items: { type: string, enum: [launcher, home, auth-submenu] }
+        requiredScope: { type: [string, "null"] }
+        tier: { type: string }
+        featured: { type: boolean, description: "Operator recommendation only; never enables an app." }
+        added: { type: boolean, description: "Explicit profile enabledApps membership (enabled_services for a group)." }
+        authorized: { type: boolean, description: "A live, unrevoked and unexpired app.authorized from this person to the app DID." }
+        available: { type: boolean, description: "Whether the identity passes the app's scope gate." }
+    AppDirectory:
+      type: object
+      required: [apps]
+      properties:
+        apps:
+          type: array
+          items: { $ref: "#/components/schemas/DirectoryApp" }
     TurnEvidencePayload:
       type: object
       description: |
@@ -1018,6 +1043,114 @@ paths:
                   valid: { type: boolean }
                   identity: { $ref: "#/components/schemas/Identity" }
                   error: { type: string }
+
+  /api/apps:
+    get:
+      tags: [auth]
+      operationId: listIdentityNavApps
+      summary: List apps this identity has added or authorized
+      description: |
+        Active registry apps with a nav placement intersected with explicit
+        enabledApps union live app.authorized grants, then the scope gate.
+        Unconfigured people get no apps. Groups use enabled_services.
+        Wallet and Media are kernel navigation, not registry apps.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: for
+          in: query
+          schema: { type: string }
+          description: Must match the authenticated effective DID; defaults to it.
+        - name: placement
+          in: query
+          schema: { type: string, enum: [launcher, home, auth-submenu] }
+      responses:
+        "200":
+          description: Enabled apps, optionally narrowed to one placement
+        "400":
+          description: Invalid placement
+        "401":
+          description: Authentication required
+        "403":
+          description: Cannot read another identity's navigation
+
+  /api/apps/directory:
+    get:
+      tags: [auth]
+      operationId: listAppDirectory
+      summary: Browse every active app registered on this node with a nav placement
+      description: |
+        Featured apps sort first. Each row distinguishes explicit Added state
+        from live authorization. Featuring never adds anything to navigation.
+        Apps outside this identity's scope are listed as unavailable.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Directory and current identity's membership state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppDirectory" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Cannot read another identity's directory state
+
+  /api/apps/{slug}:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      tags: [auth]
+      operationId: addNavApp
+      summary: Add a registered app to your navigation in one click
+      description: |
+        Writes only the caller's enabledApps. An acting group requires an active
+        admin or owner membership and writes enabled_services instead.
+        No authorization is issued. Unrelated profile settings are preserved.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Updated directory
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppDirectory" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Not permitted to edit this identity or app scope
+        "404":
+          description: Active nav-capable app not found
+    delete:
+      tags: [auth]
+      operationId: removeNavApp
+      summary: Remove explicit membership without revoking app authorization
+      description: |
+        Drops the slug from enabledApps (enabled_services for an authorized group
+        admin). A live app.authorized keeps a person's app in nav after removal;
+        the directory reports Authorized — manage in Grants. Revocation remains
+        in /jin Grants, not this endpoint.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Updated directory, including retained live authorization
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AppDirectory" }
+        "401":
+          description: Authentication required
+        "403":
+          description: Not permitted to edit this identity
+        "404":
+          description: Active nav-capable app not found
 
   /api/apps/token:
     post:
