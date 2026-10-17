@@ -77,8 +77,31 @@ describe('DomainsSection', () => {
     await screen.findByText('Issued by the Imajin organization.');
     expect(screen.getByText('Site owner: did:imajin:site')).toBeDefined();
     expect(screen.getByText('Routing only — not verified ownership.')).toBeDefined();
-    expect(screen.queryByText('Verify DNS')).toBeNull();
+    expect(screen.getByText('Verify DNS')).toBeDefined();
+    expect(screen.getByText('Name: _imajin.legacy.example')).toBeDefined();
     expect(screen.queryByText('Signed evidence')).toBeNull();
+  });
+
+  it('upgrades a zone-owned legacy binding only after the TXT verification action', async () => {
+    const fetch = installFetch([{ ...pending, method: 'legacy', status: 'legacy' }]);
+    render(<DomainsSection did={did} />);
+    await screen.findByText('Routing only — not verified ownership.');
+    expect(screen.getByText('Name: _imajin.example.com')).toBeDefined();
+    expect(screen.getByText(`Value: ${did}`)).toBeDefined();
+    expect(screen.queryByText('Signed evidence')).toBeNull();
+    fireEvent.click(screen.getByText('Verify DNS'));
+    await screen.findByText('verified');
+    expect(fetch).toHaveBeenCalledWith(`${endpoint}/example.com/verify`, expect.objectContaining({ method: 'POST' }));
+    expect(screen.getByText('Signed evidence')).toBeDefined();
+    expect(screen.queryByText('Routing only — not verified ownership.')).toBeNull();
+  });
+
+  it('does not offer TXT verification of another identity’s grandfathered zone', async () => {
+    installFetch([{ ...pending, zoneOwner: 'did:imajin:other', method: 'legacy', status: 'legacy' }]);
+    render(<DomainsSection did={did} />);
+    await screen.findByText('Read-only: managed by the DNS zone owner.');
+    expect(screen.queryByText('Verify DNS')).toBeNull();
+    expect(screen.queryByText('Name: _imajin.example.com')).toBeNull();
   });
 
   it('shows authentication failures instead of an empty successful list', async () => {
