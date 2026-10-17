@@ -18,7 +18,10 @@ vi.mock('@imajin/auth', () => ({
   requireAuth: h.auth,
   resolveActingDid: (identity: { id: string; actingAs?: string }) => identity.actingAs ?? identity.id,
 }));
-vi.mock('@imajin/logger', () => ({ withLogger: (_service: string, handler: unknown) => handler }));
+vi.mock('@imajin/logger', () => ({
+  withLogger: (_service: string, handler: unknown) => handler,
+  createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
+}));
 import { GET } from '../route';
 
 beforeEach(() => {
