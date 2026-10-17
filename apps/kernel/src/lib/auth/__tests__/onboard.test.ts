@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -44,9 +44,6 @@ vi.mock('@/src/lib/auth/claimable-stub', () => ({
   mintOrAccrueClaimableStub: mockMintOrAccrueClaimableStub,
 }));
 
-vi.mock('@imajin/config', () => ({
-  buildPublicUrlAbsolute: (service: string) => `https://${service}.example`,
-}));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
@@ -86,9 +83,11 @@ function insertChain(returning: unknown[] = []) {
 }
 
 beforeEach(() => {
+  vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
   vi.clearAllMocks();
   mockDbInsert.mockImplementation(() => insertChain());
 });
+afterEach(() => vi.unstubAllEnvs());
 
 // ─── resolveOnboardIdentity ────────────────────────────────────────────────────
 
@@ -194,7 +193,9 @@ describe('resolveOnboardRedirect', () => {
     expect(url).toBe(DEFAULT_URL);
   });
 
-  it('routes to the attestations dashboard when the ratchet closed for an invite with a pending attestation', async () => {
+  it.each(['jin.imajin.ai', 'dev-jin.imajin.ai'])('routes pending attestations to the same kernel host %s', async (host) => {
+    vi.stubEnv('APP_URL', `https://${host}`);
+    vi.stubEnv('NEXT_PUBLIC_AUTH_URL', 'https://auth.imajin.ai');
     queueSelect([{ pendingAttestationId: 'att_123' }]);
 
     const url = await resolveOnboardRedirect({
@@ -203,6 +204,6 @@ describe('resolveOnboardRedirect', () => {
       defaultRedirectUrl: DEFAULT_URL,
     });
 
-    expect(url).toBe('https://auth.example/attestations?role=subject');
+    expect(url).toBe(`https://${host}/auth/attestations?role=subject`);
   });
 });
