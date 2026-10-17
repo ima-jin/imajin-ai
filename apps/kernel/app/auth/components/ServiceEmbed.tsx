@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useToast } from '@imajin/ui';
-import { buildEmbedSrc, isKernelNativeService } from '../lib/service-registry';
+import { buildEmbedSrc } from '../lib/service-registry';
 import {
   isAppToKernelMessage,
   normalizeToastLevel,
@@ -14,14 +14,8 @@ import { setServiceBadge } from '../lib/service-badge-bus';
 interface Props {
   service: string;
   did: string;
-  /**
-   * Registry-resolved base origin for this service (#2425). Overrides
-   * `service-registry.ts`'s static, 6-name-only `SERVICE_URLS` map so an
-   * app that only exists as a `registry.apps` row still gets a working
-   * embed. Ignored for kernel-native services (pay/media always embed
-   * same-origin).
-   */
-  baseUrl?: string;
+  /** Registry-resolved origin or single-node path for this app. */
+  baseUrl: string;
 }
 
 type EmbedPhase = 'checking' | 'loading' | 'ready' | 'error';
@@ -54,11 +48,8 @@ const ERROR_COPY: Record<ErrorReason, string> = {
  * from the SAME origin as the kernel in that mode (that's what "relative"
  * means here), so the kernel's own origin IS the correct expected origin.
  */
-function resolveExpectedOrigin(service: string, baseUrl?: string): string | null {
+function resolveExpectedOrigin(baseUrl: string): string | null {
   const kernelOrigin = globalThis.location === undefined ? undefined : globalThis.location.origin;
-  if (isKernelNativeService(service)) {
-    return kernelOrigin ?? null;
-  }
   if (!baseUrl) return null;
   try {
     return new URL(baseUrl, kernelOrigin).origin;
@@ -79,8 +70,8 @@ export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>)
   const targetWindowRef = useRef<Window | null>(null);
   const { toast } = useToast();
 
-  const src = buildEmbedSrc(service, did, baseUrl);
-  const expectedOrigin = resolveExpectedOrigin(service, baseUrl);
+  const src = buildEmbedSrc(did, baseUrl);
+  const expectedOrigin = resolveExpectedOrigin(baseUrl);
 
   const clearHandshakeTimeout = useCallback(() => {
     if (timeoutRef.current) {
@@ -170,7 +161,7 @@ export default function ServiceEmbed({ service, did, baseUrl }: Readonly<Props>)
     const isDark = typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
     sendToApp({ type: 'theme', mode: isDark ? 'dark' : 'light' });
 
-    if (isKernelNativeService(service) || !expectedOrigin) return undefined;
+    if (!expectedOrigin) return undefined;
 
     let cancelled = false;
     const host = new URL(expectedOrigin).host;
