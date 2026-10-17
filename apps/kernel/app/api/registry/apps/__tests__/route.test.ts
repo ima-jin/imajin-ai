@@ -113,6 +113,18 @@ beforeEach(() => {
 });
 
 describe('POST /api/registry/apps (#1739)', () => {
+  it('registers cross-org template lineage without changing the app tier', async () => {
+    const lineage = { sourceRepo: 'gbscontracting/website', template: 'ima-jin/imajin-app-template', templateRef: 'v1', joined: true };
+    const res = await POST(makeRequest({ name: 'Website', callbackUrl: 'https://example.com/cb', ...lineage }) as never);
+    expect(res.status).toBe(201);
+    expect(mockDbInsertValues).toHaveBeenCalledWith(expect.objectContaining({ ...lineage, tier: 'third_party' }));
+  });
+
+  it('rejects invalid lineage before registration', async () => {
+    const res = await POST(makeRequest({ name: 'Website', callbackUrl: 'https://example.com/cb', sourceRepo: 'https://github.com/org/repo' }) as never);
+    expect(res.status).toBe(400);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
   it('inserts only into registry.apps — never auth.identities', async () => {
     const res = await POST(
       makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback' }) as never,
