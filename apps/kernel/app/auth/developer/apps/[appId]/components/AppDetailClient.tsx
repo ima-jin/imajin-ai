@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SCOPES } from '@imajin/auth/scope-vocabulary';
+import { APP_VISIBILITY_DESCRIPTIONS, type AppVisibility } from '@/src/lib/apps/visibility';
+import VisibilitySelect from '../../components/VisibilitySelect';
 
 interface App {
   id: string;
@@ -15,6 +17,7 @@ interface App {
   logoUrl: string | null;
   requestedScopes: string[] | null;
   status: string;
+  visibility: AppVisibility;
   createdAt: Date | string | null;
   updatedAt: Date | string | null;
 }
@@ -62,6 +65,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
   const [editHomepageUrl, setEditHomepageUrl] = useState(app.homepageUrl ?? '');
   const [editLogoUrl, setEditLogoUrl] = useState(app.logoUrl ?? '');
   const [editScopes, setEditScopes] = useState<string[]>(app.requestedScopes ?? []);
+  const [editVisibility, setEditVisibility] = useState<AppVisibility>(app.visibility);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
 
@@ -81,6 +85,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
     setEditHomepageUrl(app.homepageUrl ?? '');
     setEditLogoUrl(app.logoUrl ?? '');
     setEditScopes(app.requestedScopes ?? []);
+    setEditVisibility(app.visibility);
     setSaveError('');
     setEditing(true);
   }
@@ -100,6 +105,7 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
           homepageUrl: editHomepageUrl.trim() || null,
           logoUrl: editLogoUrl.trim() || null,
           requestedScopes: editScopes,
+          visibility: editVisibility,
         }),
       });
       const data = await res.json();
@@ -229,6 +235,12 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
             />
           </div>
 
+          <VisibilitySelect id="edit-app-visibility" value={editVisibility} onChange={setEditVisibility} />
+          <p className="text-xs text-zinc-400">
+            Widening visibility discloses your app to more people and requires the owner to confirm directly.
+            Delegates with an active grant can narrow visibility.
+          </p>
+
           {/* Scopes */}
           <div>
             <span className="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-2">
@@ -312,6 +324,11 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
         </div>
 
         <div className="grid gap-3 pt-2 border-t border-zinc-800">
+          <Field label="App visibility">
+            <p className="text-sm text-zinc-300">{app.visibility} — {APP_VISIBILITY_DESCRIPTIONS[app.visibility]}</p>
+            <p className="mt-1 text-xs text-zinc-400">Public web pages remain public.</p>
+          </Field>
+
           <Field label="App ID">
             <div className="flex items-center gap-2">
               <span className="text-sm font-mono text-zinc-300">{app.id}</span>

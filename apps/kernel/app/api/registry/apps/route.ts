@@ -7,6 +7,12 @@ import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
 import { withLogger } from '@imajin/logger';
+import { isAppVisibility, APP_VISIBILITY_ERROR, type AppVisibility } from '@/src/lib/apps/visibility';
+
+function registrationVisibility(value: unknown): AppVisibility | null {
+  if (value === undefined) return 'public';
+  return isAppVisibility(value) ? value : null;
+}
 
 /** `[origin]` of an absolute URL, or `null` when it isn't one. */
 function originOf(url: string): string[] | null {
@@ -48,6 +54,13 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
+  }
+  const visibility = registrationVisibility(body.visibility);
+  if (!visibility) {
+    return NextResponse.json({ error: APP_VISIBILITY_ERROR }, { status: 400 });
   }
 
   // #2663: `dependsOn` grants an app's tokens another service's audience (e.g.
@@ -109,6 +122,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   const [app] = await db.insert(registryApps).values({
     id: `app_${nanoid(16)}`,
     ownerDid: resolveActingDid(identity),
+    visibility,
     name: name.trim(),
     description: typeof description === 'string' ? description.trim() || null : null,
     appDid,
@@ -161,6 +175,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
     .select({
       id: registryApps.id,
       ownerDid: registryApps.ownerDid,
+      visibility: registryApps.visibility,
       name: registryApps.name,
       description: registryApps.description,
       appDid: registryApps.appDid,

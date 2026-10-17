@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, registryApps } from '@/src/db';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid, approvedScopeCeiling, type AppDependency } from '@imajin/auth';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
-import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
+import { enforceRoutePolicy, type IdentitySource } from '@imajin/auth/delegation-policy';
+import { isAppVisibility, isVisibilityWidening, APP_VISIBILITY_ERROR, type AppVisibility } from '@/src/lib/apps/visibility';
 import { canAccessAppListing, resolveAppOwnerDids } from '@/src/lib/kernel/app-visibility';
 
 // GET /api/registry/apps/:appId — app detail (public)
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ appId
       id: registryApps.id,
       ownerDid: registryApps.ownerDid,
       name: registryApps.name,
+      visibility: registryApps.visibility,
       description: registryApps.description,
       appDid: registryApps.appDid,
       publicKey: registryApps.publicKey,
@@ -28,7 +30,6 @@ export async function GET(request: NextRequest, props: { params: Promise<{ appId
       status: registryApps.status,
       createdAt: registryApps.createdAt,
       updatedAt: registryApps.updatedAt,
-      visibility: registryApps.visibility,
     })
     .from(registryApps)
     .where(eq(registryApps.id, params.appId));
@@ -120,6 +121,12 @@ function checkRequestedScopesCeiling(
   return over.length > 0 ? `requestedScopes beyond the approved list (it can be narrowed, not widened): ${over.join(', ')}` : null;
 }
 
+/** Reversible metadata/narrowing is allowed under requireAuth's active grant. */
+function enforceVisibilityPolicy(identity: IdentitySource, previous: AppVisibility, requested: unknown, appId: string): Response | null {
+  if (!isAppVisibility(requested) || !isVisibilityWidening(previous, requested)) return null;
+  return enforceRoutePolicy(identity, 'kernel.registry-app.visibility-widen', { resourceId: appId });
+}
+
 // PATCH /api/registry/apps/:appId — update (owner only)
 export async function PATCH(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
   const params = await props.params;
@@ -134,6 +141,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
       id: registryApps.id,
       ownerDid: registryApps.ownerDid,
       slug: registryApps.slug,
+      visibility: registryApps.visibility,
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
@@ -154,6 +162,16 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
+  }
+  if (body.visibility !== undefined && !isAppVisibility(body.visibility)) {
+    return NextResponse.json({ error: APP_VISIBILITY_ERROR }, { status: 400 });
+  }
+  // requireAuth establishes the active actingFor grant. Disclosure needs the
+  // owner's own session/countersign; metadata/narrowing remains delegable.
+  const delegationDenied = enforceVisibilityPolicy(identity, existing.visibility, body.visibility, params.appId);
+  if (delegationDenied) return delegationDenied;
 
   // #2663: `dependsOn` grants an app's tokens another service's audience (e.g.
   // kernel media), so an app owner may not self-assign it — only an operator
@@ -172,6 +190,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   }
 
   const updates = buildFieldUpdates(body);
+  if (isAppVisibility(body.visibility)) updates.visibility = body.visibility;
 
   // #2663: the app's own scopes — same assignment model as requestedScopes,
   // validated the same way the register route validates them (#2674: and capped
@@ -185,9 +204,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   const [updated] = await db
     .update(registryApps)
     .set(updates)
-    .where(eq(registryApps.id, params.appId))
+    // Compare-and-set prevents concurrent owner narrowing from turning a
+    // delegate's stale narrowing decision into a widening disclosure.
+    .where(and(
+      eq(registryApps.id, params.appId),
+      eq(registryApps.ownerDid, existing.ownerDid),
+      ...(updates.visibility === undefined ? [] : [eq(registryApps.visibility, existing.visibility)]),
+    ))
     .returning();
 
+  if (!updated) {
+    return NextResponse.json({ error: 'App changed; reload before saving visibility' }, { status: 409 });
+  }
   return NextResponse.json(updated);
 }
 
