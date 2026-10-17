@@ -210,7 +210,7 @@ export interface LoopWithHistory {
  * whether a loopId exists to a caller who isn't allowed to see it, same
  * posture as `GET /api/operator-approvals`).
  */
-export async function getLoopWithHistory(loopId: string, principal: string): Promise<LoopWithHistory | null> {
+export async function getLoopWithHistory(loopId: string, principal: string, includeExited = false): Promise<LoopWithHistory | null> {
   const sql = getClient();
 
   const loopRows = (await sql`
@@ -230,6 +230,6 @@ export async function getLoopWithHistory(loopId: string, principal: string): Pro
   return {
     loop: serializeLoop(loopRow),
     events,
-    horizon: projectHorizon(events, loopId, principal),
+    horizon: projectHorizon(events, loopId, principal, Date.now(), includeExited),
   };
 }

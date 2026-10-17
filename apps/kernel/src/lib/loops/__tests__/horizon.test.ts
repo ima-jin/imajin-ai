@@ -25,6 +25,10 @@ describe('signed horizon projection', () => {
     expect(project(events).steps[0]).toMatchObject({ zone: 'past', openExitConditions: ['prod'] });
     events.push(deployedStep());
     expect(project(events)).toEqual({ steps: [], depth: 0, targetDepth: 12 });
+    const audit = projectHorizon(events, 'cycle', STEP_PRINCIPAL, STEP_NOW, true);
+    expect(audit.depth).toBe(0);
+    expect(audit.steps[0]).toMatchObject({ state: 'exited', zone: 'done', openExitConditions: [] });
+    expect(audit.steps[0].conditions.every(condition => condition.satisfied && condition.evidence)).toBe(true);
     expect(events).toHaveLength(9); // audit history survives invisibility
   });
 

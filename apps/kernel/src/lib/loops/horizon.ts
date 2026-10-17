@@ -35,15 +35,16 @@ interface ReplayStep {
 }
 
 /** Smaller rank is closer to the head. History remains immutable, including done steps. */
-export function projectHorizon(events: LoopEventJson[], loopId: string, principal: string, now = Date.now()): Horizon {
+export function projectHorizon(events: LoopEventJson[], loopId: string, principal: string, now = Date.now(), includeExited = false): Horizon {
   const steps = new Map<string, ReplayStep>();
   const ordered = events.filter(event => event.loopId === loopId && event.principal === principal)
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id));
   for (const event of ordered) replayEvent(steps, event);
-  const visible = [...steps.values()].map(step => projectStep(step, now))
-    .filter(step => step.zone !== 'done')
+  const projected = [...steps.values()].map(step => projectStep(step, now));
+  const visible = projected.filter(step => includeExited || step.zone !== 'done')
     .sort((a, b) => a.rank - b.rank || a.stepId.localeCompare(b.stepId));
-  return { steps: visible, depth: visible.length, targetDepth: 12 };
+  const depth = projected.filter(step => step.zone !== 'done').length;
+  return { steps: visible, depth, targetDepth: 12 };
 }
 
 const lifecycle = {

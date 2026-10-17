@@ -30,7 +30,8 @@ export async function GET(request: NextRequest, props: { params: Promise<{ loopI
     return NextResponse.json({ error: 'loopId is required' }, { status: 400, headers: cors });
   }
 
-  const result = await getLoopWithHistory(loopId, effectiveDid);
+  const includeExited = new URL(request.url).searchParams.get('includeExited') === 'true';
+  const result = await getLoopWithHistory(loopId, effectiveDid, includeExited);
   if (!result) {
     return NextResponse.json({ error: 'Not found' }, { status: 404, headers: cors });
   }
