@@ -65,6 +65,12 @@ describe('resolveHandleForDid', () => {
 
 describe('registerAttestationType', () => {
   const base = { registeredByDid: 'did:imajin:acme-agent', handle: 'acme', localName: 'referral_made' };
+  it.each(['domain.verified', 'domain.revoked'])('keeps %s namespaced, never registering the ceremony type itself', async (localName) => {
+    h.selectLimit.mockResolvedValue([]);
+    h.insertReturning.mockResolvedValue([{ typeName: `acme/${localName}`, namespace: 'acme' }]);
+    const result = await registerAttestationType({ ...base, localName });
+    expect(result).toMatchObject({ ok: true, entry: { typeName: `acme/${localName}` } });
+  });
 
   it('rejects the reserved platform namespace', async () => {
     const result = await registerAttestationType({ ...base, handle: 'platform' });
