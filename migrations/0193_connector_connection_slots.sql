@@ -1,4 +1,5 @@
 -- #2365: installations, grants, and Google operational cursors are per connection.
+-- owner: kernel
 -- Existing rows become primary in place. IDs, channel UIDs and vault field
 -- references are deliberately untouched: no credential re-seal is required.
 ALTER TABLE kernel.connectors ADD COLUMN IF NOT EXISTS slot text NOT NULL DEFAULT 'primary';
