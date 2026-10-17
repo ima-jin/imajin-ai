@@ -111,7 +111,7 @@ describe('Reach delivery chain (#2588)', () => {
   });
 
   it('keeps actual SQL-seeded reactors identical to fallback DEFAULTS', async () => {
-    const sql = readFileSync(new URL('../../../migrations/0196_seed_agent_reach_delivered_chain.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../migrations/archive/pre-kernel-baseline/0196_seed_agent_reach_delivered_chain.sql', import.meta.url), 'utf8');
     const literal = sql.match(/'(\[[^\n]+\])'::jsonb/)?.[1];
     expect(literal).toBeDefined();
     const cfg = await getChainConfig('agent.reach.delivered', 'agent');
