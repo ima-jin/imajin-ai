@@ -160,8 +160,19 @@ describe('GET /profile/api/profile/:id — the email is owner-only (#2665)', () 
     mockSession.mockResolvedValue(session);
     mockPublicAppToggles.mockResolvedValue({ enabledApps: ['public-app'], links: null });
     const body = await (await GET(getRequest(), params())).json();
-    expect(mockPublicAppToggles).toHaveBeenCalledWith(featureToggles);
+    expect(mockPublicAppToggles).toHaveBeenCalledWith(featureToggles, { ownerDid: BUSINESS_DID, viewerDid: session?.did ?? null });
     expect(body.featureToggles).toEqual({ enabledApps: ['public-app'], links: null });
+  });
+  it('supplies the authenticated person rather than trusting a caller-selected acting-as header (#2897)', async () => {
+    const featureToggles = { enabledApps: ['private-app'] };
+    mockFindFirst.mockResolvedValue({ did: BUSINESS_DID, featureToggles });
+    mockSession.mockResolvedValue({ did: OTHER_DID });
+    const request = getRequest();
+    request.headers.set('X-Acting-As', BUSINESS_DID);
+    await GET(request, params());
+    expect(mockPublicAppToggles).toHaveBeenCalledWith(featureToggles, {
+      ownerDid: BUSINESS_DID, viewerDid: OTHER_DID,
+    });
   });
   it('is withheld from an anonymous reader', async () => {
     const res = await GET(getRequest(), params());

@@ -488,7 +488,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Per-field metadata visibility (#1003): non-owners get broker-filtered metadata.
     if (viewerDid !== profile.did) {
-      result.featureToggles = await projectPublicAppToggles(profile.featureToggles);
+      result.featureToggles = await projectPublicAppToggles(profile.featureToggles, { ownerDid: profile.did, viewerDid });
       result.metadata = await filterProfileFields(
         profile.metadata as Record<string, unknown> | null,
         profile.fieldVisibility,
