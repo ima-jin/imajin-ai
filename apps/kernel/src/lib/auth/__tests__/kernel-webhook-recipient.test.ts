@@ -80,6 +80,24 @@ describe('trusted kernel webhook recipient registry', () => {
     await expect(resolveKernelWebhookAudience('https://market.test/api/webhook', { appSlug: 'events' }))
       .rejects.toThrow('does not match');
   });
+  it('delivers a signed webhook to a registry-only third-party app', async () => {
+    vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
+    mocks.limit.mockResolvedValue([{
+      ...app, slug: 'fixture-studio', tier: 'third_party',
+      appDid: 'did:imajin:fixture-studio', entryUrl: 'https://studio.example.test',
+    }]);
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await postKernelWebhook('https://studio.example.test/api/webhook', { type: 'test.completed' }, 'fixture-studio');
+    expect(fetchMock).toHaveBeenCalledWith('https://studio.example.test/api/webhook', expect.objectContaining({
+      redirect: 'error',
+      headers: expect.objectContaining({
+        'x-kernel-audience': 'did:imajin:fixture-studio',
+        'x-kernel-signature': expect.stringMatching(/^[a-f0-9]{128}$/),
+      }),
+    }));
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');
+  });
   it('trusts a third-party entry origin without any app-specific env settings', async () => {
     const thirdParty = {
       ...app, slug: 'fixture-studio', tier: 'third_party', appDid: 'did:imajin:fixture-studio',

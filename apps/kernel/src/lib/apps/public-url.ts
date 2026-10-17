@@ -14,5 +14,6 @@ export function registryAppBaseUrl(app: { slug: string; entryUrl: string | null 
   const entry = app.entryUrl;
   if (!entry || !validateEntryUrl(entry).ok || entry.includes('?') || entry.includes('#')) return null;
   const parsed = new URL(entry, 'https://registry.invalid');
-  return parsed.pathname === '/' || parsed.pathname === `/${encodeURIComponent(app.slug)}` ? entry : null;
+  const pathname = parsed.pathname.replace(/\/$/, '');
+  return pathname === '' || pathname === `/${encodeURIComponent(app.slug)}` ? entry : null;
 }

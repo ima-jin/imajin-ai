@@ -16,7 +16,7 @@ describe('registryAppPublicUrl', () => {
     expect(registryAppBaseUrl(app)).toBeNull();
   });
 
-  it.each(['/', '/coffee', 'https://app.test', 'https://app.test/', 'https://app.test/coffee'])(
+  it.each(['/', '/coffee', '/coffee/', 'https://app.test', 'https://app.test/', 'https://app.test/coffee', 'https://app.test/coffee/'])(
     'recognizes only root or slug-base entry URL %s', (entryUrl) => {
       expect(registryAppBaseUrl({ slug: 'coffee', entryUrl })).toBe(entryUrl);
     },
