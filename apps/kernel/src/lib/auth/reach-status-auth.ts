@@ -9,7 +9,7 @@ export interface SignedReachStatusRequest {
   signature: string;
 }
 
-/** Bind the signature to the operation, principal and exact receipt. */
+/** Bind the signature to the operation, principal and exact receipt; status remains requester-private. */
 export function reachStatusTranscript(
   principalDid: string,
   reachId: string,
