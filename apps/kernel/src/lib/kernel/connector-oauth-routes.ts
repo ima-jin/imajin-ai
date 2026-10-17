@@ -116,7 +116,18 @@ export function createConnectHandler(
       configDid = appResult.appAuth.appDid;
     } else {
       ownerDid = resolveActingDid(auth.identity);
-      configDid = resolveConfigDid ? await resolveConfigDid(request, ownerDid) : undefined;
+    }
+
+    // Both authentication paths must use the same config ownership resolver.
+    // An app DID may delegate an OAuth registration sealed at its registrant;
+    // skipping this walk for sessionless app-auth chose a different client at
+    // connect time than the session-authenticated path did.
+    if (resolveConfigDid) {
+      try {
+        configDid = (await resolveConfigDid(request, ownerDid)) ?? configDid;
+      } catch (err) {
+        return buildAuthorizeUrlFailure(err, ownerDid, configDid);
+      }
     }
 
     const { searchParams } = new URL(request.url);

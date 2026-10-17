@@ -78,6 +78,27 @@ const { FakeConnectorCredentialPendingError } = vi.hoisted(() => {
 });
 
 describe('connection slot routes', () => {
+  it('resolves registrant config for sessionless app-auth before signing a named connection', async () => {
+    requireAuthMock.mockResolvedValue({ error: 'no session', status: 401 });
+    requireAppAuthMock.mockResolvedValue({
+      appAuth: { appDid: 'did:imajin:app', userDid: 'did:imajin:owner' },
+    });
+    const build = vi.fn().mockResolvedValue('https://provider.test/authorize');
+    const sign = vi.fn().mockReturnValue('signed-work');
+    const resolveConfig = vi.fn().mockResolvedValue('did:imajin:registrant');
+    const request = makeRequest('https://kernel.test/connect?slot=work');
+    await createConnectHandler(build, sign, resolveConfig)(request);
+    expect(resolveConfig).toHaveBeenCalledWith(request, 'did:imajin:owner');
+    expect(sign).toHaveBeenCalledWith('did:imajin:owner', undefined, 'did:imajin:registrant', 'work');
+    expect(build).toHaveBeenCalledWith('did:imajin:owner', 'signed-work', 'did:imajin:registrant', 'work');
+  });
+
+  it('maps config resolver failures rather than throwing out of the connect route', async () => {
+    const build = vi.fn();
+    const handler = createConnectHandler(build, vi.fn(), async () => { throw new Error('database unavailable'); });
+    expect((await handler(makeRequest('https://kernel.test/connect'))).status).toBe(500);
+    expect(build).not.toHaveBeenCalled();
+  });
   it('signs and authorizes the requested slot', async () => {
     const build = vi.fn().mockResolvedValue('https://provider.test/authorize');
     const sign = vi.fn().mockReturnValue('signed-work');
