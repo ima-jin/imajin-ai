@@ -15,12 +15,20 @@
  *   submit     POST that payload to the kernel's admin endpoint
  *   verify     GET the kernel's key-history verdict; exit 1 when it fails
  *
- * Private keys are only ever read from the environment, handed to the crypto
- * module, and never printed. `sign` writes public material and signatures only.
+ * `generate` mints a seed in-process and installs it without shell/env transport.
+ * Private keys and filesystem/crypto exception text are never printed by it.
+ * `sign` writes public material and signatures only.
  */
+import * as fs from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { parseEnv } from 'node:util';
 
 const USAGE = [
-  'Usage: node scripts/key-rotation.mjs <preflight|sign|submit|verify> [options]',
+  'Usage: node scripts/key-rotation.mjs <generate|destroy|preflight|sign|submit|verify> [options]',
+  '  generate   --env-file <file> [--grace-hours N]  mint and install; exclusive <file>.key-rotation.bak rollback backup',
+  '  destroy    --env-file <file>            remove the rotation backup after verification',
   '  preflight  [--grace-hours N]            needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY',
   '  sign       --effective-at ISO-8601      the instant the new key began signing; needs OLD_AUTH_PRIVATE_KEY, NEW_AUTH_PRIVATE_KEY; payload JSON on stdout',
   '  submit     --payload <file>             needs KERNEL_ADMIN_COOKIE; KERNEL_BASE_URL (default http://localhost:3000)',
@@ -30,11 +38,163 @@ const USAGE = [
 const DEFAULT_BASE_URL = 'http://localhost:3000';
 const ROTATION_PATH = '/api/admin/keys/rotation';
 const FLAGS_BY_COMMAND = {
+  generate: ['env-file', 'grace-hours'],
+  destroy: ['env-file'],
   preflight: ['grace-hours'],
   sign: ['effective-at'],
   submit: ['payload'],
   verify: ['anchor'],
 };
+const PRIVATE_KEY_NAME = 'AUTH_PRIVATE_KEY';
+const ROTATION_ENV_NAMES = [
+  PRIVATE_KEY_NAME,
+  'AUTH_PREVIOUS_PUBLIC_KEY',
+  'AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM',
+  'AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL',
+];
+const BACKUP_SUFFIX = '.key-rotation.bak';
+
+/** Identify whole assignments, not apparent assignments inside multiline values. */
+function envAssignments(text) {
+  const lines = text.split(/(?<=\n)/);
+  const assignments = new Map();
+  for (let i = 0; i < lines.length; i += 1) {
+    const match = /^[ \t]*(?:export[ \t]+)?([A-Za-z_]\w*)[ \t]*=[ \t]*(.*)/.exec(lines[i]);
+    if (!match) continue;
+    const start = i;
+    const value = match[2].trimStart();
+    const quote = value[0];
+    if (['"', "'", '`'].includes(quote) && !value.slice(1).includes(quote)) {
+      do { i += 1; } while (i < lines.length && !lines[i].includes(quote));
+      if (i === lines.length) throw new Error('Unterminated env value');
+    }
+    const name = match[1];
+    if (!ROTATION_ENV_NAMES.includes(name)) continue;
+    if (assignments.has(name)) throw new Error('Duplicate rotation assignment');
+    assignments.set(name, { start, end: i });
+  }
+  return { lines, assignments };
+}
+
+function rewriteRotationEnv(text, values) {
+  const { lines, assignments } = envAssignments(text);
+  const newline = text.includes('\r\n') ? '\r\n' : '\n';
+  for (const [name, value] of Object.entries(values)) {
+    const entry = assignments.get(name);
+    if (entry) {
+      const ending = lines[entry.end].endsWith('\n') ? newline : '';
+      lines[entry.start] = `${name}=${value}${ending}`;
+      for (let i = entry.start + 1; i <= entry.end; i += 1) lines[i] = '';
+    }
+  }
+  let rewritten = lines.join('');
+  for (const [name, value] of Object.entries(values)) {
+    if (assignments.has(name)) continue;
+    if (rewritten && !rewritten.endsWith('\n')) rewritten += newline;
+    rewritten += `${name}=${value}${newline}`;
+  }
+  return rewritten;
+}
+
+/** No symlink following, devices, directories or unreadable files, even as root. */
+async function readRegularEnv(fileSystem, filename) {
+  const handle = await fileSystem.open(filename, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o444) === 0) throw new Error('Not a readable regular env file');
+    const bytes = await handle.readFile();
+    const text = bytes.toString('utf8');
+    if (!Buffer.from(text).equals(bytes)) throw new Error('Env file is not UTF-8');
+    return { text, stat };
+  } finally {
+    await handle.close();
+  }
+}
+
+async function writePrivateFile(handle, text) {
+  try {
+    // chmod also defeats a restrictive umask: both files must be exactly 0600.
+    await handle.chmod(0o600);
+    await handle.writeFile(text, 'utf8');
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
+async function installRotationEnv(fileSystem, filename, original, rewritten) {
+  const backup = `${filename}${BACKUP_SUFFIX}`;
+  // Exclusive creation is the rotation lock: never overwrite an earlier rollback.
+  const backupHandle = await fileSystem.open(backup, 'wx', 0o600);
+  await writePrivateFile(backupHandle, original.text);
+  const temporary = path.join(path.dirname(filename), `.key-rotation-${randomUUID()}.tmp`);
+  const temporaryHandle = await fileSystem.open(temporary, 'wx', 0o600);
+  try {
+    await writePrivateFile(temporaryHandle, rewritten);
+    const current = await readRegularEnv(fileSystem, filename);
+    if (current.stat.ino !== original.stat.ino || current.stat.dev !== original.stat.dev || current.text !== original.text) {
+      throw new Error('Env changed during rotation');
+    }
+    await fileSystem.rename(temporary, filename);
+  } finally {
+    // After rename this path no longer exists. Other cleanup failures go
+    // through generate's fixed-message boundary, never printed verbatim.
+    await fileSystem.rm(temporary, { force: true });
+  }
+}
+
+async function generate({ keyRotation, out, fileSystem = fs, generatePrivateKey = () => randomBytes(32).toString('hex') }, flags) {
+  if (!flags['env-file']) {
+    out.error('--env-file <file> is required');
+    return 2;
+  }
+  try {
+    const filename = path.resolve(flags['env-file']);
+    const original = await readRegularEnv(fileSystem, filename);
+    const { assignments } = envAssignments(original.text);
+    if (!assignments.has(PRIVATE_KEY_NAME)) throw new Error('Missing current key assignment');
+    const newPrivateKey = generatePrivateKey();
+    const check = keyRotation.evaluateKeyRotationPreflight({
+      oldPrivateKey: parseEnv(original.text)[PRIVATE_KEY_NAME],
+      newPrivateKey,
+      graceHours: flags['grace-hours'] === undefined ? keyRotation.DEFAULT_GRACE_HOURS : Number(flags['grace-hours']),
+    });
+    if (!check.ok) {
+      out.error('FAIL: rotation preflight rejected the current key or grace window; env unchanged');
+      return 1;
+    }
+    const rewritten = rewriteRotationEnv(original.text, { [PRIVATE_KEY_NAME]: newPrivateKey, ...check.previousKeyEnv });
+    await installRotationEnv(fileSystem, filename, original, rewritten);
+    out.log(`old key: ${check.oldKey.kid}  public ${check.oldKey.publicKey}`);
+    out.log(`new key: ${check.newKey.kid}  public ${check.newKey.publicKey}`);
+    for (const warning of check.warnings) out.log(`WARNING: ${warning}`);
+    out.log('OK: env installed atomically; rollback backup retained with suffix .key-rotation.bak (0600)');
+    return 0;
+  } catch {
+    // Never interpolate input, env content, or exceptions: even a filesystem
+    // error may contain secret-bearing input. A backup is retained on failure.
+    out.error('FAIL: could not generate/install rotation; check env access, format and existing .key-rotation.bak backup before retrying');
+    return 1;
+  }
+}
+
+async function destroy({ out, fileSystem = fs }, flags) {
+  if (!flags['env-file']) {
+    out.error('--env-file <file> is required');
+    return 2;
+  }
+  try {
+    const backup = `${path.resolve(flags['env-file'])}${BACKUP_SUFFIX}`;
+    const stat = await fileSystem.lstat(backup);
+    if (!stat.isFile() || stat.nlink !== 1) throw new Error('Not a regular backup');
+    await fileSystem.unlink(backup);
+    out.log('OK: rotation backup removed; storage snapshots and external copies require separate retirement');
+    return 0;
+  } catch {
+    out.error('FAIL: could not destroy rotation backup; check that a regular .key-rotation.bak file exists and is removable');
+    return 1;
+  }
+}
 
 /** Strip control characters before logging response-derived values (log injection, S5145). */
 function sanitizeForLog(value) {
@@ -52,7 +212,9 @@ function parseFlags(command, args) {
     i += 1;
     const equals = arg.indexOf('=');
     const name = (equals === -1 ? arg : arg.slice(0, equals)).replace(/^--/, '');
-    if (!arg.startsWith('--') || !allowed.includes(name)) return { error: `Unexpected argument '${sanitizeForLog(arg)}'` };
+    if (!arg.startsWith('--') || !allowed.includes(name)) {
+      return { error: ['generate', 'destroy'].includes(command) ? 'Unexpected argument' : `Unexpected argument '${sanitizeForLog(arg)}'` };
+    }
     let value = arg.slice(equals + 1);
     if (equals === -1) {
       value = args[i];
@@ -200,7 +362,7 @@ async function verify({ env, fetchImpl, out }, flags) {
   return report.ok ? 0 : 1;
 }
 
-const COMMANDS = { preflight, sign, submit, verify };
+const COMMANDS = { generate, destroy, preflight, sign, submit, verify };
 
 /**
  * Run the CLI. Returns the process exit code: 0 ok, 1 a check failed, 2 bad usage.
