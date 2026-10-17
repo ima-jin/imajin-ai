@@ -49,7 +49,7 @@ beforeAll(async () => {
   await pg.exec(`
     CREATE SCHEMA auth; CREATE SCHEMA registry; CREATE SCHEMA profile;
     CREATE TABLE auth.identities (id text PRIMARY KEY, public_key text, suspended_at timestamptz);
-    CREATE TABLE registry.apps (app_did text PRIMARY KEY, owner_did text, status text);
+    CREATE TABLE registry.apps (app_did text PRIMARY KEY, owner_did text, status text, entry_url text, callback_url text, homepage_url text);
     CREATE TABLE registry.nodes (id text PRIMARY KEY, subdomain text);
     CREATE TABLE auth.attestations (
       id text PRIMARY KEY, issuer_did text, subject_did text, type text,
@@ -74,7 +74,9 @@ beforeEach(async () => {
   await pg.exec(`
     TRUNCATE auth.domain_bindings, auth.attestations, auth.identities, registry.apps, registry.nodes, profile.forest_config;
     INSERT INTO auth.identities VALUES ('did:owner','pub',NULL),('did:other','other',NULL),('did:site','site',NULL),('did:org','org',NULL);
-    INSERT INTO registry.apps VALUES ('did:app','did:site','active'),('did:other-app','did:other','active');
+    INSERT INTO registry.apps VALUES
+      ('did:app','did:site','active','https://example.com/app','https://example.com/callback',NULL),
+      ('did:other-app','did:other','active',NULL,NULL,NULL);
   `);
 });
 
@@ -203,6 +205,69 @@ describe('domain binding lifecycle with actual database constraints', () => {
     state.txt.mockResolvedValueOnce([]).mockRejectedValueOnce({ code: 'ESERVFAIL' }).mockResolvedValueOnce([['did:owner']]);
     expect(await recheckDomains()).toEqual({ checked: 3, revoked: 2, failed: 0 });
     expect(await listDomains('did:owner', true)).toHaveLength(1);
+  });
+});
+
+describe('site owner authorization for two-party custom domains', () => {
+  it('rejects a DNS owner pointing an unadvertised hostname at a victim app', async () => {
+    await expect(addDomain({ domain: 'evil.example', zoneOwner: 'did:owner', appDid: 'did:app' }))
+      .rejects.toMatchObject({ code: 'app_domain_not_authorized', status: 403 });
+    expect(await listDomains('did:site')).toEqual([]);
+    expect(await countAttestations()).toBe(0);
+    expect(state.txt).not.toHaveBeenCalled();
+  });
+
+  it.each(['entry_url', 'callback_url', 'homepage_url'])('accepts distinct owners only when %s explicitly advertises the host', async (column) => {
+    await pg.exec(`UPDATE registry.apps SET entry_url = NULL, callback_url = NULL, homepage_url = NULL`);
+    await pg.exec(`UPDATE registry.apps SET ${column} = 'https://EXAMPLE.com./registered/path' WHERE app_did = 'did:app'`);
+    await addDomain({ domain: 'example.com', zoneOwner: 'did:owner', appDid: 'did:app' });
+    expect(await verifyDomain('example.com', 'did:owner')).toMatchObject({ zoneOwner: 'did:owner', siteOwner: 'did:site', status: 'verified' });
+    expect(await listDomains('did:site', true)).toHaveLength(1);
+  });
+
+  it.each([
+    'https://example.com.evil.test', 'https://example.com@evil.test', 'https://evil.test/example.com',
+    '/example.com', 'ftp://example.com', 'https://user:pass@example.com', 'not-a-url',
+  ])('never treats %s as an on-record host authorization', async (url) => {
+    await pg.exec(`UPDATE registry.apps SET entry_url = NULL, callback_url = NULL, homepage_url = '${url}'`);
+    await expect(addDomain({ domain: 'example.com', zoneOwner: 'did:owner', appDid: 'did:app' }))
+      .rejects.toMatchObject({ code: 'app_domain_not_authorized' });
+  });
+
+  it('allows same-owner DNS app bindings without requiring registry URL changes', async () => {
+    await pg.exec(`UPDATE registry.apps SET owner_did = 'did:owner', entry_url = NULL, callback_url = NULL, homepage_url = NULL`);
+    await addDomain({ domain: 'new.example', zoneOwner: 'did:owner', appDid: 'did:app' });
+    expect(await verifyDomain('new.example', 'did:owner')).toMatchObject({ siteOwner: 'did:owner', status: 'verified' });
+  });
+
+  it('blocks stale or forged pending app pointers at verify, before any attestation is signed', async () => {
+    await pg.exec(`INSERT INTO auth.domain_bindings (id,domain,zone_owner,site_owner,app_did,method,status)
+      VALUES ('forged','evil.example','did:owner','did:site','did:app','dns-txt','pending')`);
+    await expect(verifyDomain('evil.example', 'did:owner')).rejects.toMatchObject({ code: 'app_domain_not_authorized' });
+    expect(await countAttestations()).toBe(0);
+    expect(state.signer).not.toHaveBeenCalled();
+    expect(state.txt).not.toHaveBeenCalled();
+  });
+
+  it('hides revoked site authorization immediately and signs revocation on periodic recheck', async () => {
+    await addDomain({ domain: 'example.com', zoneOwner: 'did:owner', appDid: 'did:app' });
+    await verifyDomain('example.com', 'did:owner');
+    await pg.exec(`UPDATE registry.apps SET entry_url = NULL, callback_url = NULL, homepage_url = NULL;
+      UPDATE auth.domain_bindings SET checked_at = now() - interval '25 hours'`);
+    expect(await resolveVerifiedDomain('example.com')).toBeNull();
+    expect(await resolveRoutableDomain('example.com')).toBeNull();
+    expect(await listDomains('did:site', true)).toEqual([]);
+    expect(await recheckDomains()).toEqual({ checked: 1, revoked: 1, failed: 0 });
+    expect(await listDomains('did:owner')).toMatchObject([{ status: 'revoked', attestation: { type: 'domain.revoked' } }]);
+  });
+
+  it('hides and revokes malicious preexisting verified app pointers without trusting DNS alone', async () => {
+    await addDomain({ domain: 'example.com', zoneOwner: 'did:owner', appDid: 'did:app' });
+    await verifyDomain('example.com', 'did:owner');
+    await pg.exec(`UPDATE auth.domain_bindings SET domain = 'evil.example'`);
+    expect(await resolveVerifiedDomain('evil.example')).toBeNull();
+    expect(await listDomains('did:site', true)).toEqual([]);
+    expect(await verifyDomain('evil.example', 'did:owner')).toMatchObject({ status: 'revoked' });
   });
 });
 
