@@ -3,6 +3,7 @@ export { standaloneDashboardMiddleware } from "./dashboard-redirect-middleware";
 export type { StandaloneDashboardMiddlewareOptions } from "./dashboard-redirect-middleware";
 export { tier1Headers, tier2Headers, tier3Headers } from './security-headers';
 export { APP_DISPLAY_NAME } from './brand';
+export { IDENTITY_CATEGORIES } from './identity-categories';
 
 export {
   SERVICES,

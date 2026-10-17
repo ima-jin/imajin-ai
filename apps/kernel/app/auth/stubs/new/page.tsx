@@ -2,10 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { normalizeHandleInput, profilePath } from '@imajin/config';
+import { normalizeHandleInput, profilePath, IDENTITY_CATEGORIES } from '@imajin/config';
 import { DeviceLocationStatus } from '../../lib/device-location-status';
 
-const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 
 // Nominatim (OpenStreetMap) — no API key, 1 req/sec rate limit
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
@@ -225,7 +224,7 @@ export default function NewStubPage() {
               Category
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
-              {CATEGORY_PRESETS.map((preset) => (
+              {IDENTITY_CATEGORIES.map((preset) => (
                 <button
                   key={preset}
                   type="button"
