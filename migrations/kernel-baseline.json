@@ -822,6 +822,10 @@
       "checksum": "65ee786b514d9f5fa5812cd72c6cc5ebe8711a3958b4e6277d068b6f947cdd94"
     },
     {
+      "filename": "0202_principal_reach_reply_notify.sql",
+      "checksum": "9bea54707357d2bfc52432059a855b6f7e880d264217bc66b2d767f17e35c828"
+    },
+    {
       "filename": "0203_registry_apps_featured.sql",
       "checksum": "c43c7d65a96de72dcb3c9e3b1b42732c8d641676b9591dbe3fc38a03f508a3e4"
     }
