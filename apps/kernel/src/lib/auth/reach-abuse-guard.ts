@@ -107,23 +107,14 @@ export class ReachBodyTooLarge extends Error {
 export async function readReachBody(request: Request): Promise<Record<string, unknown>> {
   const declared = Number(request.headers.get('content-length'));
   if (declared > REACH_ABUSE_LIMITS.bodyBytes) throw new ReachBodyTooLarge();
-  const reader = request.body?.getReader();
-  if (!reader) throw new SyntaxError('Missing reach body');
-  const chunks: Uint8Array[] = [];
+  if (!request.body) throw new SyntaxError('Missing reach body');
   let bytes = 0;
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      bytes += value.byteLength;
-      if (bytes > REACH_ABUSE_LIMITS.bodyBytes) {
-        await reader.cancel();
-        throw new ReachBodyTooLarge();
-      }
-      chunks.push(value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return JSON.parse(Buffer.concat(chunks).toString('utf8')) as Record<string, unknown>;
+  const bounded = request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      bytes += chunk.byteLength;
+      if (bytes > REACH_ABUSE_LIMITS.bodyBytes) throw new ReachBodyTooLarge();
+      controller.enqueue(chunk);
+    },
+  }));
+  return new Response(bounded).json() as Promise<Record<string, unknown>>;
 }
