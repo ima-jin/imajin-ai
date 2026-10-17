@@ -129,7 +129,7 @@ export async function executeImportApproval(card: OperatorApprovalCard): Promise
       // Serializes executor retries and withdrawals on the proposal's existing row.
       const [stored] = await tx.select({ status: operatorApprovals.status, contentHash: operatorApprovals.contentHash })
         .from(operatorApprovals).where(eq(operatorApprovals.proposalId, card.proposalId)).for('update');
-      if (!stored || stored.status !== 'approved' || stored.contentHash !== expectedHash) throw new Error('Unavailable');
+      if (stored?.status !== 'approved' || stored.contentHash !== expectedHash) throw new Error('Unavailable');
       if (!(await canExecuteImport(card.operatorDid, detail.ownerDid, tx))) throw new Error('Unavailable');
       await requireImportRotationTarget(detail, tx);
       const sealed = await sealAndGrantStaticSecret(field, value, {
@@ -193,11 +193,12 @@ export async function listImportedKeyCards(ownerDids: string[]): Promise<Importe
       if (grant.revokedAt) timeline.push({ type: 'revoked', at: grant.revokedAt.toISOString() });
     }
     const status = grant?.status === 'active' && grant.expiresAt && grant.expiresAt <= new Date() ? 'expired' : grant?.status ?? 'unavailable';
+    timeline.sort((a, b) => a.at.localeCompare(b.at));
     return [{
       field, ownerDid: detail.ownerDid, consumerDid: detail.consumerDid, purpose: detail.purpose,
       ...(detail.label ? { label: detail.label } : {}), fingerprint: detail.fingerprint,
       grantId: grant?.id ?? null, provenance: 'imported' as const, status,
-      timeline: timeline.sort((a, b) => a.at.localeCompare(b.at)),
+      timeline,
     }];
   });
 }

@@ -139,7 +139,8 @@ export function VaultImportPanel() {
     setBusy(true);
     try {
       const values = new FormData(form);
-      const expiry = String(values.get('expiresAt') ?? '');
+      const rawExpiry = values.get('expiresAt');
+      const expiry = typeof rawExpiry === 'string' ? rawExpiry : '';
       const response = await fetch('/api/vault/import', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -167,6 +168,7 @@ export function VaultImportPanel() {
 
   if (!metadata) return null;
   const owner = metadata.owners.find((entry) => entry.did === ownerDid);
+  const submitLabel = replacement ? 'Seal replacement and propose rotation' : 'Seal and propose import';
   return (
     <section className="mt-8 min-w-0 space-y-3" data-testid="vault-import-panel">
       <h2 className="text-base font-semibold text-gray-100">Import credential</h2>
@@ -174,12 +176,12 @@ export function VaultImportPanel() {
         Paste a third-party credential once. It is sealed in this identity&apos;s vault, never revealed or copied.
         Approval issues a purpose-bound grant to the agent or service DID below.
       </p>
-      {notice && <output className="block text-xs text-amber-300" role="status">{notice}{proposalId && (
+      {notice && <output className="block text-xs text-amber-300">{notice}{proposalId && (
         <> <a className="underline" href={`#${approvalCardAnchorId(proposalId)}`}>Review import proposal</a></>
       )}</output>}
       <form ref={formRef} onSubmit={(event) => void submit(event)}
         className="min-w-0 rounded-lg border border-gray-800 p-3 space-y-3">
-        <label className="block text-xs text-gray-300">Owning identity
+        <label className="block text-xs text-gray-300"><span>Owning identity</span>
           <select aria-label="Owning identity" value={ownerDid} disabled={busy || replacement !== null}
             onChange={(event) => {
               setOwnerDid(event.target.value);
@@ -200,28 +202,28 @@ export function VaultImportPanel() {
             if (input) input.value = '';
           }} className="ml-2 underline min-h-11">Cancel rotation</button>
         </div>}
-        <label className="block text-xs text-gray-300">Purpose
+        <label className="block text-xs text-gray-300"><span>Purpose</span>
           <input name="purpose" aria-label="Purpose" required maxLength={200} disabled={busy}
             placeholder="e.g. SonarCloud analysis" className={`${inputClass} mt-1`} />
         </label>
-        <label className="block text-xs text-gray-300">Consumer agent or service DID
+        <label className="block text-xs text-gray-300"><span>Consumer agent or service DID</span>
           <input name="consumerDid" aria-label="Consumer agent or service DID" required disabled={busy}
             placeholder="did:imajin:…" autoCapitalize="none" spellCheck={false} className={`${inputClass} mt-1`} />
         </label>
-        <label className="block text-xs text-gray-300">Label (optional)
+        <label className="block text-xs text-gray-300"><span>Label (optional)</span>
           <input name="label" aria-label="Label (optional)" maxLength={200} disabled={busy} className={`${inputClass} mt-1`} />
         </label>
-        <label className="block text-xs text-gray-300">Grant expiry (optional)
+        <label className="block text-xs text-gray-300"><span>Grant expiry (optional)</span>
           <input type="datetime-local" name="expiresAt" aria-label="Grant expiry (optional)" disabled={busy}
             className={`${inputClass} mt-1`} />
         </label>
-        <label className="block text-xs text-gray-300">Credential
+        <label className="block text-xs text-gray-300"><span>Credential</span>
           <input type="password" name="secret" aria-label="Credential" required disabled={busy} autoComplete="off"
             autoCapitalize="none" spellCheck={false} placeholder="Paste once — no reveal"
             className={`${inputClass} mt-1`} />
         </label>
         <button type="submit" disabled={busy} className="min-h-11 rounded bg-amber-700 px-3 py-2 text-sm text-white disabled:opacity-40">
-          {busy ? 'Sealing…' : replacement ? 'Seal replacement and propose rotation' : 'Seal and propose import'}
+          {busy ? 'Sealing…' : submitLabel}
         </button>
       </form>
       <p className="text-xs text-gray-500">Consumer boot: use loadFromVault with this purpose and acknowledge use. Remove the old .env.local credential line after migration; never paste it into a shell.</p>
