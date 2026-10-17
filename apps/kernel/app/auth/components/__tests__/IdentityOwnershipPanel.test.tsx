@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import IdentityOwnershipPanel, { type OwnershipState } from '../IdentityOwnershipPanel';
 
-const { refresh, push, setActingAs } = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn(), setActingAs: vi.fn() }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }));
+const { refresh, navigate, setActingAs } = vi.hoisted(() => ({ refresh: vi.fn(), navigate: vi.fn(), setActingAs: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }));
 vi.mock('@imajin/ui/server', () => ({ setActingAs }));
 
 const GROUP = 'did:imajin:business';
@@ -28,6 +28,7 @@ beforeEach(() => {
   };
   fetchMock = vi.fn(() => reply(state));
   vi.stubGlobal('fetch', fetchMock);
+  vi.stubGlobal('location', { assign: navigate });
 });
 
 afterEach(() => {
@@ -104,7 +105,7 @@ describe('ownership settings', () => {
     await mount();
     expect(screen.queryByLabelText('New owner DID')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Leave identity' }));
-    await waitFor(() => expect(push).toHaveBeenCalledWith('/auth'));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith('/auth'));
     expect(setActingAs).toHaveBeenCalledWith(null);
     expect(fetchMock).toHaveBeenCalledWith(
       `/auth/api/groups/${encodeURIComponent(GROUP)}/controllers/${encodeURIComponent(OWNER)}`,
@@ -153,7 +154,7 @@ describe('ownership settings', () => {
     fetchMock.mockRejectedValue(new Error('Still offline'));
     fireEvent.click(screen.getByRole('button', { name: 'Leave identity' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Still offline'));
-    expect(push).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
     expect(setActingAs).not.toHaveBeenCalled();
   });
 });

@@ -93,8 +93,7 @@ export default function IdentityOwnershipPanel({ groupDid }: Readonly<{ groupDid
         { method: 'DELETE', credentials: 'include' },
       ));
       setActingAs(null);
-      router.push('/auth');
-      router.refresh();
+      globalThis.location.assign('/auth');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to leave identity.');
     } finally {
