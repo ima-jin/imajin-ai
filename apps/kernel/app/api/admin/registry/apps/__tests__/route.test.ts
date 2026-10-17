@@ -135,6 +135,15 @@ describe('POST /api/admin/registry/apps (#1990)', () => {
     expect(row).not.toHaveProperty('enabledApps');
     expect(row).not.toHaveProperty('featured');
   });
+  it.each([null, undefined])('rejects a widget without an addressable slug (%j)', async (slug) => {
+    const response = await POST(makePostRequest({
+      name: 'Fixture Studio', ownerDid: 'did:imajin:developer', callbackUrl: 'https://studio.example.test/callback',
+      entryUrl: 'https://studio.example.test', profileWidget: { path: '/profile', label: 'Studio' }, slug,
+    }) as never);
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain('registered slug');
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
 
   it.each([
     { path: '//evil.test', label: 'Studio' }, { path: '/profile', label: '' }, { path: '/profile', label: 'Studio', html: '<script />' },

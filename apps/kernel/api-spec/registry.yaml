@@ -65,7 +65,8 @@ components:
       description: >-
         Optional link-only profile contribution, also accepted in imajin.app.json.
         Path is root-relative on the validated registered entryUrl origin (node
-        origin for a relative entryUrl). No independent origin, HTML, scripts,
+        origin for a relative entryUrl). A registered slug is required so the
+        profile owner can explicitly enable the app. No independent origin, HTML, scripts,
         or iframe content. Protocol-relative URLs, backslashes, encoded
         separators and controls are rejected. The link receives URL-encoded did
         and optional handle query parameters naming the profile owner.

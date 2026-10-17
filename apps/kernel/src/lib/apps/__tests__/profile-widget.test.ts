@@ -39,10 +39,10 @@ describe('profileWidget declaration', () => {
 describe('operator registry presentation', () => {
   it('has inert defaults and permits a widget with no nav placements', () => {
     expect(validateRegistryPresentation({})).toEqual({ ok: { entryUrl: null, profileWidget: null, placements: [], requiredScope: null, icon: null } });
-    expect(validateRegistryPresentation({ entryUrl: 'https://studio.example.test', profileWidget: widget })).toHaveProperty('ok.profileWidget', widget);
+    expect(validateRegistryPresentation({ slug: 'fixture-studio', entryUrl: 'https://studio.example.test', profileWidget: widget })).toHaveProperty('ok.profileWidget', widget);
   });
   it.each([
-    { profileWidget: widget }, { entryUrl: '//evil.test' }, { entryUrl: 7 },
+    { profileWidget: widget }, { slug: 'fixture-studio', profileWidget: widget }, { entryUrl: '//evil.test' }, { entryUrl: 7 },
     { placements: ['unsupported'] }, { placements: 'launcher' }, { icon: 42 }, { icon: 'x'.repeat(33) },
     { requiredScope: 'creator' }, { profileWidget: {} },
   ])('rejects invalid presentation %j', (value) => {

@@ -57,7 +57,7 @@ function patch(body: unknown): Promise<Response> {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAdminSessionMock.mockResolvedValue({ session: { actingAs: OPERATOR_DID } });
-  mocks.limitMock.mockResolvedValue([{ id: APP_ID, appDid: APP_DID, emittableEvents: ['tip.sent'] }]);
+  mocks.limitMock.mockResolvedValue([{ id: APP_ID, slug: 'coffee', appDid: APP_DID, emittableEvents: ['tip.sent'] }]);
   mocks.returningMock.mockResolvedValue([{ id: APP_ID, appDid: APP_DID, emittableEvents: ['tip.granted', 'tip.sent'] }]);
 });
 
@@ -138,13 +138,20 @@ describe('PATCH /api/admin/registry/apps/:appId — refusals', () => {
     expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ profileWidget: null }));
   });
   it('preserves existing presentation fields on a partial widget update', async () => {
-    mocks.limitMock.mockResolvedValue([{ id: APP_ID, appDid: APP_DID, entryUrl: 'https://studio.example.test', placements: ['launcher'], icon: 'S' }]);
+    mocks.limitMock.mockResolvedValue([{ id: APP_ID, slug: 'coffee', appDid: APP_DID, entryUrl: 'https://studio.example.test', placements: ['launcher'], icon: 'S' }]);
     expect((await patch({ profileWidget: { path: '/profile', label: 'Studio' } })).status).toBe(200);
     expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ entryUrl: 'https://studio.example.test', placements: ['launcher'], icon: 'S' }));
   });
   it('returns 404 for a presentation update to an absent app', async () => {
     mocks.limitMock.mockResolvedValue([]);
     expect((await patch({ profileWidget: null })).status).toBe(404);
+    expect(mocks.setMock).not.toHaveBeenCalled();
+  });
+  it('rejects a widget for a slug-less existing app without writing metadata', async () => {
+    mocks.limitMock.mockResolvedValue([{ id: APP_ID, slug: null, appDid: APP_DID, entryUrl: 'https://studio.example.test' }]);
+    const response = await patch({ profileWidget: { path: '/profile', label: 'Studio' } });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toContain('registered slug');
     expect(mocks.setMock).not.toHaveBeenCalled();
   });
   it.each([

@@ -8,6 +8,7 @@ const SCOPES = ['actor', 'business', 'community', 'family'];
 export function validateRegistryPresentation(body: Record<string, unknown>) {
   const widget = validateProfileWidget(body.profileWidget);
   if ('error' in widget) return widget;
+  if (widget.ok && !body.slug) return { error: 'profileWidget requires a registered slug' } as const;
   const entryUrl = body.entryUrl ?? null;
   if (entryUrl !== null && (typeof entryUrl !== 'string' || !validateEntryUrl(entryUrl).ok)) {
     return { error: 'entryUrl must be a root-relative path or HTTPS URL' } as const;
