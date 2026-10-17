@@ -1,4 +1,5 @@
 # Imajin
+<!-- Kernel app-auth pod membership contract tracked in #2538. -->
 
 **You compose. Imajin orchestrates. Signed. Legible.**
 
