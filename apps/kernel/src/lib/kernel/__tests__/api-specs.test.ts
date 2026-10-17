@@ -94,6 +94,103 @@ describe('auth.yaml identity search contract (#2780)', () => {
   });
 });
 
+describe('jin.yaml loop spend contract (#2839)', () => {
+  const jin = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/jin.yaml'), 'utf-8'));
+  const spend = jin.paths['/api/loops/spend']?.get;
+  const schemas = jin.components.schemas;
+
+  it.each([
+    ['/api/loops', 'app/api/loops/route.ts'],
+    ['/api/loops/spend', 'app/api/loops/spend/route.ts'],
+    ['/api/loops/{loopId}', 'app/api/loops/[loopId]/route.ts'],
+  ])('%s has a live route and appears in discovery', (path, routeFile) => {
+    pinCwdToKernel();
+    expect(existsSync(join(KERNEL_ROOT, routeFile))).toBe(true);
+    expect(listApiSpecs().find((s) => s.service === 'jin')?.paths).toContain(path);
+  });
+
+  it('serves the spend path through the real jin spec handler', async () => {
+    pinCwdToKernel();
+    const { GET } = await import('../../../../app/jin/api/spec/route');
+    const res = GET();
+    expect(res.headers.get('Content-Type')).toBe('text/yaml');
+    const served = parse(await res.text());
+    expect(served.paths['/api/loops/spend'].get).toEqual(spend);
+    expect(readApiSpec('jin')?.content).toContain('/api/loops/spend:');
+  });
+
+  it('documents root routing, cookie or Bearer auth, and only the parsed query parameters', () => {
+    expect(spend.servers.map((server: { url: string }) => server.url)).toEqual([
+      'https://{node}.imajin.ai', 'http://localhost:3000',
+    ]);
+    expect(spend.security).toEqual([{ cookieAuth: [] }, { bearerAuth: [] }]);
+    expect(jin.components.securitySchemes.bearerAuth).toEqual({ type: 'http', scheme: 'bearer' });
+    expect(spend.description).toContain('requireAuth');
+    expect(spend.description).toContain('resolveActingDid');
+    expect(spend.parameters).toEqual([
+      expect.objectContaining({ name: 'principal', in: 'query', required: false, schema: { type: 'string' } }),
+      expect.objectContaining({
+        name: 'window', in: 'query', required: false,
+        schema: { type: 'string', pattern: expect.any(String), example: '2026-10' },
+      }),
+    ]);
+    expect(spend.parameters[0].description).toContain('must equal it or returns 403');
+    expect(spend.parameters[1].description).toContain('current UTC calendar month');
+    expect(spend.parameters[1].description).toContain('inclusive end date');
+    expect(spend.parameters[1].description).toContain('No maximum range length');
+  });
+
+  it.each([
+    ['RegistrySpend', ['currency', 'windowFrom', 'windowTo', 'runs', 'issues', 'prs']],
+    ['RegistryRunCost', ['runId', 'loopId', 'refs', 'summary', 'state', 'startedAt', 'lastSeenAt', 'metered']],
+    ['RegistrySubjectCost', ['ref', 'runCount', 'meteredUsd']],
+  ])('pins every returned field in %s', (name, fields) => {
+    expect(schemas[name].required).toEqual(fields);
+    expect(Object.keys(schemas[name].properties)).toEqual(fields);
+    expect(schemas[name].additionalProperties).toBe(false);
+  });
+
+  it('preserves the run/subject structure and distinguishes absent metering, unknown USD and zero', () => {
+    expect(spend.responses['200'].content['application/json'].schema).toEqual({
+      $ref: '#/components/schemas/RegistrySpend',
+    });
+    expect(schemas.RegistrySpend.properties.currency).toEqual({ type: 'string', enum: ['USD'] });
+    expect(schemas.RegistrySpend.properties.runs.items).toEqual({ $ref: '#/components/schemas/RegistryRunCost' });
+    for (const field of ['issues', 'prs']) {
+      expect(schemas.RegistrySpend.properties[field].items).toEqual({ $ref: '#/components/schemas/RegistrySubjectCost' });
+    }
+    expect(schemas.RegistryRunCost.properties.refs.additionalProperties).toBe(true);
+    const metered = schemas.RegistryRunCost.properties.metered;
+    expect(metered.type).toEqual(['object', 'null']);
+    expect(metered.required).toEqual(['usd', 'turns']);
+    expect(Object.keys(metered.properties)).toEqual(['usd', 'turns']);
+    expect(metered.properties.usd.type).toEqual(['number', 'null']);
+    expect(metered.properties.turns).toMatchObject({ type: 'integer', minimum: 1 });
+    expect(schemas.RegistrySubjectCost.properties.meteredUsd.type).toEqual(['number', 'null']);
+    expect(metered.description).toContain('a known zero remains 0');
+    for (const field of ['windowFrom', 'windowTo']) {
+      expect(schemas.RegistrySpend.properties[field]).toMatchObject({ type: 'string', format: 'date-time' });
+    }
+    for (const field of ['startedAt', 'lastSeenAt']) {
+      expect(schemas.RegistryRunCost.properties[field]).toMatchObject({ type: 'string', format: 'date-time' });
+    }
+  });
+
+  it('documents all emitted errors, including auth failures, without inventing an error envelope', () => {
+    expect(Object.keys(spend.responses)).toEqual(['200', '400', '401', '403', '500', '503']);
+    for (const status of ['400', '401', '403', '500', '503']) {
+      expect(spend.responses[status].content['application/json'].schema).toEqual({
+        $ref: '#/components/schemas/Error',
+      });
+    }
+    expect(spend.responses['400'].description).toContain('window must be YYYY-MM or YYYY-MM-DD..YYYY-MM-DD');
+    expect(spend.responses['403'].description).toContain('principal must match the authenticated caller');
+    expect(spend.responses['500'].description).toContain('Registry spend unavailable');
+    expect(spend.responses['503'].description).toContain('Auth service unavailable');
+    expect(spend.responses['200'].headers['Cache-Control'].schema.enum).toEqual(['no-store']);
+  });
+});
+
 describe('specDirectory / specEndpoint', () => {
   it('resolves the api-spec directory under the working directory', () => {
     pinCwdToKernel();
