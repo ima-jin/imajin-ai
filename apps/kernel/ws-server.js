@@ -577,7 +577,7 @@ async function sendPrivateToDid(did, payload) {
     sockets ?? [],
     (ws) => privateNotifications.send(ws, did, payload),
   ));
-  return deliveries.some((delivered) => delivered);
+  return deliveries.some(Boolean);
 }
 
 /**
