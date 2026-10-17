@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
+import { setActingAs } from '@imajin/ui';
 
 interface PendingTransfer {
   id: string;
@@ -91,6 +92,7 @@ export default function IdentityOwnershipPanel({ groupDid }: Readonly<{ groupDid
         `/auth/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(state!.viewerDid)}`,
         { method: 'DELETE', credentials: 'include' },
       ));
+      setActingAs(null);
       router.push('/auth');
       router.refresh();
     } catch (err) {

@@ -3,8 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import IdentityOwnershipPanel, { type OwnershipState } from '../IdentityOwnershipPanel';
 
-const { refresh, push } = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn() }));
+const { refresh, push, setActingAs } = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn(), setActingAs: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }));
+vi.mock('@imajin/ui', () => ({ setActingAs }));
 
 const GROUP = 'did:imajin:business';
 const OWNER = 'did:imajin:alice';
@@ -104,6 +105,7 @@ describe('ownership settings', () => {
     expect(screen.queryByLabelText('New owner DID')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Leave identity' }));
     await waitFor(() => expect(push).toHaveBeenCalledWith('/auth'));
+    expect(setActingAs).toHaveBeenCalledWith(null);
     expect(fetchMock).toHaveBeenCalledWith(
       `/auth/api/groups/${encodeURIComponent(GROUP)}/controllers/${encodeURIComponent(OWNER)}`,
       { method: 'DELETE', credentials: 'include' },
@@ -152,5 +154,6 @@ describe('ownership settings', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Leave identity' }));
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('Still offline'));
     expect(push).not.toHaveBeenCalled();
+    expect(setActingAs).not.toHaveBeenCalled();
   });
 });
