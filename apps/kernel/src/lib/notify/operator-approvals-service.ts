@@ -36,6 +36,11 @@ import {
 } from './exec-command-approvals';
 
 const log = createLogger('kernel:operator-approvals');
+async function cleanupAppSecretStaging(row: OperatorApprovalRow): Promise<void> {
+  if (row.source !== 'apps' || !['denied', 'withdrawn', 'expired'].includes(row.status)) return;
+  const { discardAppSecretForProposal } = await import('@/src/lib/apps/secret-staging');
+  await discardAppSecretForProposal(row);
+}
 
 export interface OperatorApprovalCard {
   proposalId: string;
@@ -476,6 +481,7 @@ export async function decideOperatorApproval(
   if (resolveApprovalAddressee(row, row.operatorDid) !== operatorDid) {
     return { ok: false, error: 'This proposal is not addressed to you', status: 403 };
   }
+  await cleanupAppSecretStaging(row);
 
   const requiredStatus = requiredStatusFor(decision);
   if (row.status !== requiredStatus) {
@@ -546,6 +552,8 @@ export async function decideOperatorApproval(
   log.info({ proposalId, operatorDid, signerDid: row.signerDid, decision }, 'operator approval decided');
 
   const fresh = await loadApproval(proposalId);
+  // Consult persisted state: a concurrent approval must never lose its input.
+  if (fresh) await cleanupAppSecretStaging(fresh);
   return { ok: true, card: toCard(fresh ?? { ...row, status: nextStatus, decision: signedDecision, updatedAt: now }) };
 }
 

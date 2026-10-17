@@ -43,6 +43,8 @@ const { mockEraseKeyMaterial } = vi.hoisted(() => ({
 vi.mock('@/src/lib/vault', () => ({
   eraseInactiveGrantKeyMaterial: mockEraseKeyMaterial,
 }));
+const { mockSweepStaging } = vi.hoisted(() => ({ mockSweepStaging: vi.fn() }));
+vi.mock('@/src/lib/apps/secret-staging', () => ({ sweepExpiredAppSecretStaging: mockSweepStaging }));
 
 // ── Mock: sealing identity ────────────────────────────────────────────────────
 
@@ -113,6 +115,7 @@ const CRON_AUTH = { authorization: 'Bearer test-secret' };
 describe('GET /api/cron/vault-grant-expiry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSweepStaging.mockResolvedValue(0);
   });
 
   afterEach(() => {
@@ -225,6 +228,24 @@ describe('GET /api/cron/vault-grant-expiry', () => {
   });
 
   // ── Error handling ──────────────────────────────────────────────────────────
+  it('reports expired staging cleanup through the existing authenticated cron', async () => {
+    _setCronSecretForTests('test-secret');
+    mockReturning.mockResolvedValue([]);
+    mockSweepStaging.mockResolvedValue(2);
+    const response = await GET(makeRequest(CRON_AUTH) as never);
+    expect(await response.json()).toMatchObject({ ok: true, appSecretStagingSwept: 2 });
+    expect(mockSweepStaging).toHaveBeenCalledOnce();
+  });
+
+  it('returns only a generic error when staging cleanup fails', async () => {
+    _setCronSecretForTests('test-secret');
+    mockReturning.mockResolvedValue([makeGrant()]);
+    mockSweepStaging.mockRejectedValue(new Error('OBVIOUSLY_FAKE_INPUT'));
+    const response = await GET(makeRequest(CRON_AUTH) as never);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Internal server error' });
+    expect(mockPublish).toHaveBeenCalledOnce();
+  });
 
   it('returns 500 when the DB update throws', async () => {
     _setCronSecretForTests('test-secret');

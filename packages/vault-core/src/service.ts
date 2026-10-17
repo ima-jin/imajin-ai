@@ -116,6 +116,25 @@ export class VaultEntryService {
     }
 
     /**
+     * Irreversibly remove every generation of a field, not just its latest value.
+     * Callers must authorize destruction; ordinary revocation uses a tombstone.
+     */
+    public async purge(field: string): Promise<void> {
+        const release = await this.lock?.acquire(field);
+        try {
+            await this.runExclusiveWrite(async () => {
+                const vault = await this.repository.load();
+                await this.repository.save({
+                    ...vault,
+                    entries: vault.entries.filter(entry => entry.field !== field)
+                });
+            });
+        } finally {
+            await release?.();
+        }
+    }
+
+    /**
      * Persist an entry, appending it to the vault file.
      *
      * The caller's `previousCid` is authoritative and is NEVER overwritten:

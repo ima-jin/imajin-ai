@@ -6,6 +6,7 @@ import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { requireCronAuth } from '@/src/cron/auth';
+import { sweepExpiredAppSecretStaging } from '@/src/lib/apps/secret-staging';
 
 const log = createLogger('kernel');
 
@@ -83,6 +84,10 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Publish grant revocations before staging housekeeping can fail.
+    // Reuse the existing hourly vault job; no second scheduler.
+    const appSecretStagingSwept = await sweepExpiredAppSecretStaging();
+
     log.info(
       { swept: swept.length, keyMaterialErased: erasedGrantIds.length },
       'Vault grant expiry sweep complete',
@@ -92,10 +97,12 @@ export async function GET(request: NextRequest) {
       ok: true,
       swept: swept.length,
       keyMaterialErasedCount: erasedGrantIds.length,
+      appSecretStagingSwept,
       grantIds: swept.map((g) => g.id),
     });
-  } catch (error) {
-    log.error({ err: String(error) }, 'Vault grant expiry sweep failed');
+  } catch {
+    // Staging provider errors may contain operator input.
+    log.error({}, 'Vault grant expiry sweep failed');
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
