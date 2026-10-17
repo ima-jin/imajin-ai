@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 const identifier = z.string().min(1).max(512).regex(/^\S+$/)
-  .refine(value => Array.from(value).every(char => char.charCodeAt(0) > 31 && char.charCodeAt(0) !== 127));
+  .refine(value => Array.from(value).every(char => (char.codePointAt(0) ?? 0) > 31 && char.codePointAt(0) !== 127));
 const did = identifier.refine(value => value.startsWith('did:'));
 const text = z.string().min(1).max(16_000);
 const approval = { approvalId: identifier.optional() };

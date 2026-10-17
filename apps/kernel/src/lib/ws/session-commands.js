@@ -41,7 +41,7 @@ function handleSessionCommandRequest(req, res, didSockets, socketMeta, key) {
     if (oversized) return reply(res, 413, { error: 'Frame too large' });
     try {
       const { targetDid, command } = JSON.parse(body);
-      if (typeof targetDid !== 'string' || !command || command.to !== targetDid) {
+      if (typeof targetDid !== 'string' || command?.to !== targetDid) {
         reply(res, 400, { error: 'Invalid command target' });
         return;
       }

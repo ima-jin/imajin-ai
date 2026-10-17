@@ -25,8 +25,9 @@ export async function POST(request: NextRequest) {
     const body = input.parse(JSON.parse(raw));
     return NextResponse.json(await ingestSessionCommandFrame(body.socketDid, body.frame), { headers });
   } catch (error) {
-    const status = error instanceof SessionCommandError ? error.status
-      : error instanceof ZodError || error instanceof SyntaxError ? 400 : 503;
+    let status = 503;
+    if (error instanceof SessionCommandError) status = error.status;
+    else if (error instanceof ZodError || error instanceof SyntaxError) status = 400;
     return NextResponse.json({ error: 'Session event rejected' }, { status, headers });
   }
 }

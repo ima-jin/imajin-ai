@@ -100,7 +100,7 @@ export async function verifySessionCommand(
   }
   const principalKey = await currentIdentityPublicKey(principal);
   const wish = frame.countersignature;
-  if (!wish || wish.keyId !== principalKey || !authCrypto.verifySync(wish.sig, canonical, principalKey)) {
+  if (wish?.keyId !== principalKey || !authCrypto.verifySync(wish.sig, canonical, principalKey)) {
     throw new SessionCommandError('Invalid full principal wish signature', 403);
   }
   await requireApprovalBinding(loopId, principal, target, frame.payload);

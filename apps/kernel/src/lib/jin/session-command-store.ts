@@ -77,7 +77,7 @@ export async function readLoopCommandProof(loopId: string, principal: string) {
   return { loop: loops[0], proofs };
 }
 
-export async function readBindingEvents(principal: string, approvalId: string) {
+export function readBindingEvents(principal: string, approvalId: string) {
   const client = getClient();
   return client`
     SELECT payload FROM kernel.loop_events
@@ -88,7 +88,7 @@ export async function readBindingEvents(principal: string, approvalId: string) {
 }
 
 /** A unique result claim and any child projection commit together, never two conflicting children. */
-export async function persistSessionOutcome(
+export function persistSessionOutcome(
   command: SessionCommandFrame, attestation: SessionAttestation, outcome: SessionOutcome, parentLoopId: string,
 ): Promise<boolean> {
   const client = getClient();

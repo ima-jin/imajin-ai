@@ -33,7 +33,7 @@ describe('run command route', () => {
     mocks.gate.mockResolvedValue({ response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) });
     const before = mocks.prepare.mock.calls.length;
     expect((await POST(request(valid), params)).status).toBe(401);
-    expect(mocks.prepare.mock.calls.length).toBe(before);
+    expect(mocks.prepare.mock.calls).toHaveLength(before);
   });
   it.each(['{', JSON.stringify({ ...valid, targetDid: 'did:imajin:attacker' }), JSON.stringify({ action: 'other' })])('rejects malformed/extra action data', async body => {
     expect((await POST(request(body, true), params)).status).toBe(400);
