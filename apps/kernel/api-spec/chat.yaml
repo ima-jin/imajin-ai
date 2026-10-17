@@ -1,4 +1,5 @@
 openapi: "3.1.0"
+# Registered-app conversation metadata is part of the kernel chat contract (#2539).
 info:
   title: imajin chat
   version: "2.0.0"
