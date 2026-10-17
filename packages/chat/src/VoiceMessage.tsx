@@ -111,12 +111,12 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isPlaying ? (
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
               <rect x="6" y="4" width="4" height="16" />
               <rect x="14" y="4" width="4" height="16" />
             </svg>
           ) : (
-            <svg className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className="w-3 h-3 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path d="M8 5v14l11-7z" />
             </svg>
           )}
@@ -182,7 +182,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
             onClick={() => setShowTranscript(!showTranscript)}
             className={`text-xs ${transcriptBtnColor} transition flex items-center gap-1`}
           >
-            <svg className={`w-3 h-3 transition-transform ${showTranscript ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg aria-hidden="true" className={`w-3 h-3 transition-transform ${showTranscript ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
             Transcript
