@@ -1164,7 +1164,9 @@ paths:
       summary: Read the caller's registry-attributed spend in USD
       description: >-
         Kernel-root route (no /jin prefix). Uses `requireAuth`: session cookie
-        first, otherwise Bearer token. Scoped to `resolveActingDid` with
+        first, otherwise Bearer token. The cookie is imajin_session in
+        production, or imajin_session_dev when IMAJIN_ENV=dev or
+        NODE_ENV=development. Scoped to `resolveActingDid` with
         precedence actingFor, actingAs, then the authenticated identity's DID;
         delegation must be authorized. An optional principal must match that
         effective DID, never broaden the lookup. Both registry and usage

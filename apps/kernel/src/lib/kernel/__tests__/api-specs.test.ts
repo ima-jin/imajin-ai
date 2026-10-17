@@ -127,6 +127,7 @@ describe('jin.yaml loop spend contract (#2839)', () => {
     expect(jin.components.securitySchemes.bearerAuth).toEqual({ type: 'http', scheme: 'bearer' });
     expect(spend.description).toContain('requireAuth');
     expect(spend.description).toContain('resolveActingDid');
+    expect(spend.description).toContain('imajin_session_dev when IMAJIN_ENV=dev');
     expect(spend.parameters).toEqual([
       expect.objectContaining({ name: 'principal', in: 'query', required: false, schema: { type: 'string' } }),
       expect.objectContaining({
