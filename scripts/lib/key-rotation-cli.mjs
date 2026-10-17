@@ -46,12 +46,12 @@ const FLAGS_BY_COMMAND = {
   verify: ['anchor'],
 };
 const PRIVATE_KEY_NAME = 'AUTH_PRIVATE_KEY';
-const ROTATION_ENV_NAMES = [
+const ROTATION_ENV_NAMES = new Set([
   PRIVATE_KEY_NAME,
   'AUTH_PREVIOUS_PUBLIC_KEY',
   'AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM',
   'AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL',
-];
+]);
 const BACKUP_SUFFIX = '.key-rotation.bak';
 function assignmentEnd(lines, start, value) {
   const quote = value.trimStart()[0];
@@ -66,15 +66,18 @@ function assignmentEnd(lines, start, value) {
 function envAssignments(text) {
   const lines = text.split(/(?<=\n)/);
   const assignments = new Map();
-  for (let i = 0; i < lines.length; i += 1) {
-    const match = /^[ \t]*(?:export[ \t]+)?([A-Za-z_]\w*)[ \t]*=[ \t]*(.*)/.exec(lines[i]);
+  let cursor = 0;
+  while (cursor < lines.length) {
+    const start = cursor;
+    const match = /^[ \t]*(?:export[ \t]+)?([A-Za-z_]\w*)[ \t]*=[ \t]*(.*)/.exec(lines[cursor]);
+    cursor += 1;
     if (!match) continue;
-    const start = i;
-    i = assignmentEnd(lines, start, match[2]);
+    const end = assignmentEnd(lines, start, match[2]);
+    cursor = end + 1;
     const name = match[1];
-    if (!ROTATION_ENV_NAMES.includes(name)) continue;
+    if (!ROTATION_ENV_NAMES.has(name)) continue;
     if (assignments.has(name)) throw new Error('Duplicate rotation assignment');
-    assignments.set(name, { start, end: i });
+    assignments.set(name, { start, end });
   }
   return { lines, assignments };
 }
