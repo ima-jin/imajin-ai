@@ -43,7 +43,9 @@ and `<slug>.imajin.ai` as host. The proposal displays the owner and host before
 approval. Reissuing a signing-key claim cannot transfer ownership.
 
 Issuance uses the existing unique `@imajin` business identity, not an arbitrary
-node claiming to be Imajin. Bootstrap that organization's signing key through
+node claiming to be Imajin. Its DID must also match the existing public
+`PLATFORM_DID` organization configuration; the handle alone is not authority.
+This is an identity reference, not a credential. Bootstrap its signing key through
 the vault, with an active reusable `domain.issue` purpose grant to the configured node
 DID. The kernel checks the fetched key against the organization's registered
 public key before signing. Missing organization identity, missing grant, or a
@@ -70,6 +72,16 @@ payload, issuance time and signature. Visitors can compare it with the
 identity's public evidence and verify its canonical signature against the
 issuer's public key. Unverified, revoked and grandfathered domains return
 404, and responses are not cached.
+
+Resolve the issuer through `/auth/api/identity/:did` (public key) or its
+chain-verified `/auth/api/identity/:did/did.json` document where available.
+The canonical signed object uses `subject_did`, `type`, `context_id`,
+`context_type`, `payload` and `issued_at` (epoch milliseconds), reconstructed
+from the attestation's camel-case fields and ISO `issuedAt`. Use
+`canonicalize` and Ed25519 verification from the auth library. Also compare
+the domain, app and both owners with the current public evidence endpoint;
+a valid historical signature alone does not establish a currently active
+binding.
 
 When an edge routes a standalone app host directly to that app, route the
 exact `/.well-known/imajin.json` path to the kernel **with the original Host
