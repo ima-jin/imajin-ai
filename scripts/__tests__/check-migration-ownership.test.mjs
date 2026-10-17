@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync, renameSync, unlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -101,6 +102,185 @@ function expectFail(result, ...expectedSubstrings) {
   }
 }
 
+const ARCHIVE = 'archive/pre-kernel-baseline';
+const BASELINE = '0001_kernel_baseline.sql';
+
+function writeBaselineManifest(dir) {
+  const filename = '0001_seed.sql';
+  const checksum = createHash('sha256').update(readFileSync(join(dir, 'migrations', ARCHIVE, filename))).digest('hex');
+  writeMigration(dir, 'kernel-baseline.json', JSON.stringify({
+    filename: BASELINE, archive: ARCHIVE,
+    migrations: [{ filename, checksum }], schemas: ['auth'], seeds: [],
+  }));
+}
+
+function activateBaseline(dir, sql = '-- owner: kernel\nCREATE TABLE auth.identities (did TEXT PRIMARY KEY);\n') {
+  mkdirSync(join(dir, 'migrations', ARCHIVE), { recursive: true });
+  renameSync(join(dir, 'migrations', '0001_seed.sql'), join(dir, 'migrations', ARCHIVE, '0001_seed.sql'));
+  writeMigration(dir, BASELINE, sql);
+  writeBaselineManifest(dir);
+  commitAll(dir, 'activate kernel baseline');
+}
+
+describe('kernel baseline ownership boundary', () => {
+  it('permits byte-identical history moves, despite app SQL and missing headers in that history', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    activateBaseline(dir);
+    expectPass(runGuard(dir, baseRef));
+  });
+
+  it.each([
+    'SELECT * FROM events.events;',
+    'SELECT * FROM "links" . "clicks";',
+    'CREATE SCHEMA IF NOT EXISTS events;',
+    'DROP SCHEMA links CASCADE;',
+    "SET search_path TO 'events'; SELECT * FROM events;",
+    'ALTER TABLE auth.identities SET SCHEMA links;',
+    'DO $$ BEGIN DELETE FROM events.events; END $$;',
+  ])('rejects baseline app schema leakage: %s', (statement) => {
+    const { dir, baseRef } = makeBaseRepo();
+    activateBaseline(dir, `-- owner: kernel\n${statement}\n`);
+    expectFail(runGuard(dir, baseRef), 'externally owned');
+  });
+
+  it.each(['', '-- owner: events\n'])('requires kernel ownership even on the baseline: %s', (header) => {
+    const { dir, baseRef } = makeBaseRepo();
+    activateBaseline(dir, `${header}SELECT 1;\n`);
+    expectFail(runGuard(dir, baseRef), 'must declare "-- owner: kernel"');
+  });
+
+  it('rejects altered history even when its manifest checksum is updated to match', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    activateBaseline(dir);
+    writeMigration(dir, `${ARCHIVE}/0001_seed.sql`, 'SELECT 1;\n');
+    writeBaselineManifest(dir);
+    commitAll(dir, 'tamper with archive and manifest');
+    expectFail(runGuard(dir, baseRef), 'archive history is immutable');
+  });
+
+  it('rejects archive copies when the original root SQL is not removed', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    activateBaseline(dir);
+    writeMigration(dir, '0001_seed.sql', readFileSync(join(dir, 'migrations', ARCHIVE, '0001_seed.sql'), 'utf8'));
+    commitAll(dir, 'restore original instead of moving it');
+    expectFail(runGuard(dir, baseRef), 'archive history is immutable');
+  });
+
+  it.each(['edit', 'delete', 'add'])('rejects subsequent archive %s even with an edited manifest', (operation) => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    const baseRef = git(dir, ['rev-parse', 'HEAD']).trim();
+    const archiveFile = join(dir, 'migrations', ARCHIVE, '0001_seed.sql');
+    if (operation === 'delete') unlinkSync(archiveFile);
+    if (operation === 'edit') {
+      writeMigration(dir, `${ARCHIVE}/0001_seed.sql`, 'SELECT 1;\n');
+      writeBaselineManifest(dir);
+    }
+    if (operation === 'add') {
+      writeMigration(dir, `${ARCHIVE}/9999_new.sql`, 'SELECT 1;\n');
+      const path = join(dir, 'migrations', 'kernel-baseline.json');
+      const manifest = JSON.parse(readFileSync(path, 'utf8'));
+      manifest.migrations.push({ filename: '9999_new.sql', checksum: createHash('sha256').update('SELECT 1;\n').digest('hex') });
+      writeFileSync(path, JSON.stringify(manifest));
+    }
+    commitAll(dir, `archive ${operation}`);
+    expectFail(runGuard(dir, baseRef), 'archive history is immutable');
+  });
+
+  it('checks archive checksums even on manifest-only changes', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    const baseRef = git(dir, ['rev-parse', 'HEAD']).trim();
+    const path = join(dir, 'migrations', 'kernel-baseline.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest.migrations[0].checksum = '0'.repeat(64);
+    writeFileSync(path, JSON.stringify(manifest));
+    commitAll(dir, 'wrong checksum');
+    expectFail(runGuard(dir, baseRef), 'checksum does not match');
+  });
+
+  it('cannot reopen the archive by moving a future root migration and updating the manifest', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    addMigration(dir, '0202_future.sql', '-- owner: kernel\nSELECT 1;\n');
+    const baseRef = git(dir, ['rev-parse', 'HEAD']).trim();
+    renameSync(join(dir, 'migrations', '0202_future.sql'), join(dir, 'migrations', ARCHIVE, '0202_future.sql'));
+    commitAll(dir, 'move future SQL to archive');
+    expectFail(runGuard(dir, baseRef), 'archive history is immutable');
+  });
+
+  it('cannot disable kernel-only checks by removing the manifest', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    const baseRef = git(dir, ['rev-parse', 'HEAD']).trim();
+    unlinkSync(join(dir, 'migrations', 'kernel-baseline.json'));
+    addMigration(dir, '0202_future.sql', '-- owner: events\nSELECT * FROM events.events;\n');
+    expectFail(runGuard(dir, baseRef), 'removing the baseline manifest', 'externally owned');
+  });
+
+  it('keeps future root SQL kernel-only even when shared-allowlisted', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    const baseRef = git(dir, ['rev-parse', 'HEAD']).trim();
+    writeOwnership(dir, { ...BASE_OWNERSHIP, sharedMigrationAllowlist: ['0202_future.sql'] });
+    addMigration(dir, '0202_future.sql', '-- owner: kernel\nSELECT * FROM events.events JOIN links.links ON true;\n');
+    expectFail(runGuard(dir, baseRef), 'externally owned', 'events', 'links');
+  });
+
+  it('rejects app references added to an already-applied baseline', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    const baseRef = git(dir, ['rev-parse', 'HEAD']).trim();
+    addMigration(dir, BASELINE, '-- owner: kernel\nSELECT * FROM links.links;\n');
+    expectFail(runGuard(dir, baseRef), 'externally owned', 'links');
+  });
+
+  it('passes future kernel-only SQL and ignores app names in data and comments', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    activateBaseline(dir);
+    addMigration(dir, '0202_future.sql', "-- owner: kernel\n-- DROP SCHEMA events;\nSELECT 'links.links';\n");
+    expectPass(runGuard(dir, baseRef));
+  });
+});
+
+describe('baseline folder consistency', () => {
+  function setHistoricalMaximum(dir) {
+    const path = join(dir, 'migrations', 'kernel-baseline.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest.migrations.push({ filename: '0201_final_history.sql', checksum: '0'.repeat(64) });
+    writeFileSync(path, JSON.stringify(manifest));
+  }
+  function checkFolder(dir) {
+    mkdirSync(join(dir, 'scripts'), { recursive: true });
+    mkdirSync(join(dir, 'apps'), { recursive: true });
+    const source = fileURLToPath(new URL('../check-migrations.sh', import.meta.url));
+    const target = join(dir, 'scripts', 'check-migrations.sh');
+    writeFileSync(target, readFileSync(source));
+    try {
+      return { status: 0, output: execFileSync('/bin/bash', [target], { encoding: 'utf8' }) };
+    } catch (error) {
+      return { status: error.status, output: error.stdout.toString() };
+    }
+  }
+
+  it('accepts baseline followed by the first number beyond history, without a gap warning', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    setHistoricalMaximum(dir);
+    writeMigration(dir, '0202_future.sql', '-- owner: kernel\nSELECT 1;\n');
+    const result = checkFolder(dir);
+    expect(result.status).toBe(0);
+    expect(result.output).not.toContain('gap in numbering');
+  });
+
+  it('rejects active reuse of archived migration numbers', () => {
+    const { dir } = makeBaseRepo();
+    activateBaseline(dir);
+    setHistoricalMaximum(dir);
+    writeMigration(dir, '0002_reuse.sql', 'SELECT 1;\n');
+    expect(checkFolder(dir).status).toBe(1);
+  });
+});
 describe('check-migration-ownership', () => {
   const externalSchemas = {
     dykil: { owner: 'dykil', repository: 'ima-jin/dykil' },
