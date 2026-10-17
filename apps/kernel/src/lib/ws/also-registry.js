@@ -49,6 +49,18 @@ function createAlsoRegistry(options = {}) {
   const inFlight = new Map();
   /** Sockets whose close already ran, so a late verification cannot resurrect them. */
   const closedSockets = new WeakSet();
+  // One counter per socket, not a client-keyed DID map: arbitrary unregister
+  // frames cannot grow state beyond the registration cap. Any unregister
+  // conservatively cancels pending work, including unregister/register ABA.
+  const versions = new WeakMap();
+
+  function versionFor(ws) {
+    return versions.get(ws) ?? 0;
+  }
+
+  function invalidate(ws) {
+    versions.set(ws, versionFor(ws) + 1);
+  }
 
   function attach(did, ws) {
     let sockets = alsoDidSockets.get(did);
@@ -115,6 +127,7 @@ function createAlsoRegistry(options = {}) {
     const rejection = rejectRegister(ws, meta, alsoDid);
     if (rejection) return rejection;
 
+    const version = versionFor(ws);
     reserve(ws, alsoDid);
     let allowed = false;
     try {
@@ -125,7 +138,7 @@ function createAlsoRegistry(options = {}) {
       release(ws, alsoDid);
     }
 
-    if (closedSockets.has(ws)) {
+    if (closedSockets.has(ws) || ws.readyState !== 1 || versionFor(ws) !== version) {
       // Closed while the check was out. Registering now would leak the socket
       // into the map: its close handler has already run.
       log(`register_also raced a close for ${meta.did} -> ${alsoDid}`);
@@ -150,6 +163,7 @@ function createAlsoRegistry(options = {}) {
    */
   function unregister(ws, meta, alsoDid) {
     if (!isNonEmptyString(alsoDid)) return errorFrame('unregister_also requires a DID');
+    invalidate(ws);
     meta.alsoDids.delete(alsoDid);
     detach(alsoDid, ws);
     return { type: 'unregistered_also', did: alsoDid };
@@ -188,7 +202,7 @@ function createAlsoRegistry(options = {}) {
     return new Set([...ownSockets, ...delegates]);
   }
 
-  return { handle, cleanup, recipientsFor, maxAlsoDids };
+  return { handle, cleanup, recipientsFor, versionFor, maxAlsoDids };
 }
 
 module.exports = { createAlsoRegistry, MAX_ALSO_DIDS };

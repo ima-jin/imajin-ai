@@ -36,6 +36,7 @@
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { db, identityMembers, delegationGrants } from '@/src/db';
 import { createLogger } from '@imajin/logger';
+import { introspectGrant } from './grants';
 
 const log = createLogger('kernel');
 
@@ -126,4 +127,29 @@ export async function resolveAgentAuthority(agentDid: string, principalDid: stri
   }
 
   return { allowed: false, via: 'none' };
+}
+
+/**
+ * Private Inbox content is not the coarse act-as bootstrap or the requester's
+ * agent:reach reply entitlement. Require messages:read for this principal.
+ * Legacy role:agent membership is usable only before this pair enters the
+ * grant lifecycle; revoked, expired, or unrelated grants never downgrade to
+ * membership. The coarse resolver and its rollback flag remain unchanged.
+ */
+export async function resolvePrivateReachAuthority(agentDid: string, principalDid: string): Promise<boolean> {
+  const [history] = await db
+    .select({ id: delegationGrants.id })
+    .from(delegationGrants)
+    .where(and(
+      eq(delegationGrants.agentDid, agentDid),
+      eq(delegationGrants.delegatorDid, principalDid),
+    ))
+    .limit(1);
+  if (history) {
+    const result = await introspectGrant({
+      agentDid, delegatorDid: principalDid, targetDid: principalDid, capability: 'messages:read',
+    });
+    return result.authorized === true;
+  }
+  return hasActiveMembership(agentDid, principalDid);
 }

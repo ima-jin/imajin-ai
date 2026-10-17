@@ -22,7 +22,7 @@
  */
 import { createLogger } from '@imajin/logger';
 import { db, notifications } from '@/src/db';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { buildNotificationFrame, type NotificationWsFrame } from './ws-push';
 import { claimNotificationForWsSend, WS_MAX_ATTEMPTS } from './delivery';
 import { forEachSequential } from '../async/sequential';
@@ -52,7 +52,10 @@ export interface NotificationBacklog {
  * decide how to handle a thrown DB error — the internal route this backs
  * (`/notify/api/internal/backlog`) treats it as "nothing to replay this time".
  */
-export async function getNotificationBacklog(recipientDid: string): Promise<NotificationBacklog> {
+export async function getNotificationBacklog(
+  recipientDid: string,
+  privateReachOnly = false,
+): Promise<NotificationBacklog> {
   // One extra row beyond the cap tells us whether more are waiting, without
   // a separate COUNT query.
   const candidates = await db
@@ -62,6 +65,9 @@ export async function getNotificationBacklog(recipientDid: string): Promise<Noti
       eq(notifications.recipientDid, recipientDid),
       isNull(notifications.deliveredAt),
       eq(notifications.read, false),
+      // Filter before claiming, so delegated replay cannot consume or expose
+      // the principal's unrelated notification backlog.
+      ...(privateReachOnly ? [inArray(notifications.scope, ['agent.reach.delivered', 'agent.reach.replied'])] : []),
     ))
     .orderBy(asc(notifications.createdAt))
     .limit(BACKLOG_LIMIT + 1);

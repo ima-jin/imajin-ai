@@ -42,6 +42,15 @@ beforeEach(() => {
 });
 
 describe('replay', () => {
+  it('records each recipient only after its frame is sent', async () => {
+    const onSent = vi.fn();
+    fetchBacklog.mockResolvedValue({ frames: [frame('ntf_observed')] });
+    const ws = makeSocket();
+    const replayer = makeReplayer({ onSent });
+    await replayer.replay(ws, DID);
+    expect(onSent).toHaveBeenCalledWith(ws, DID, frame('ntf_observed'));
+    expect(vi.mocked(ws.send).mock.invocationCallOrder[0]).toBeLessThan(onSent.mock.invocationCallOrder[0]);
+  });
   it('sends every returned frame down the socket, in order', async () => {
     fetchBacklog.mockResolvedValue({ frames: [frame('ntf_1'), frame('ntf_2')], truncated: false });
     const replayer = makeReplayer();

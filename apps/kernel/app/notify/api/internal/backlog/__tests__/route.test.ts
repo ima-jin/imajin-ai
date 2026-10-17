@@ -101,6 +101,11 @@ describe('POST /notify/api/internal/backlog — request body', () => {
 });
 
 describe('POST /notify/api/internal/backlog — delegates to getNotificationBacklog', () => {
+  it('passes the explicit private Reach filter to the backlog query', async () => {
+    const res = await fetchBacklog({ did: DID, privateReachOnly: true });
+    expect(res.status).toBe(200);
+    expect(getNotificationBacklogMock).toHaveBeenCalledWith(DID, true);
+  });
   it('returns the frames and truncated flag verbatim', async () => {
     const frames = [{ type: 'notification', id: 'ntf_1' }];
     getNotificationBacklogMock.mockResolvedValue({ frames, truncated: false });

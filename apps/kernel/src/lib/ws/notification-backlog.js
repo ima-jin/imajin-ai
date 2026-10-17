@@ -21,10 +21,13 @@
  * @param {(did: string) => Promise<{ frames: object[], truncated: boolean }>} options.fetchBacklog
  *   Resolves the DID's already-claimed backlog frames.
  * @param {(message: string) => void} [options.log]
+ * @param {(ws: object, did: string, frame: object) => void} [options.onSent]
+ *   Records a server-observed notification recipient for subsequent ACKs.
  */
 function createNotificationBacklogReplayer(options = {}) {
   const { fetchBacklog } = options;
   const log = options.log ?? (() => {});
+  const onSent = options.onSent ?? (() => {});
 
   /**
    * Replay `did`'s undelivered backlog down `ws`. Never throws: a failed
@@ -48,6 +51,7 @@ function createNotificationBacklogReplayer(options = {}) {
       if (ws.readyState !== 1) break; // WebSocket.OPEN — socket closed mid-replay
       try {
         ws.send(JSON.stringify(frame));
+        onSent(ws, did, frame);
       } catch (err) {
         log(`notification backlog send failed for ${did}: ${err.message}`);
         break;
