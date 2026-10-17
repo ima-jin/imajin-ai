@@ -33,18 +33,18 @@ export interface DelegationRouteEntry {
 }
 
 export const DELEGATION_ROUTES = {
-  "identity.owner.propose": {
-    class: "value-moving", action: "transfer-owner", app: "kernel", method: "POST",
+  "kernel.identity.owner.propose": {
+    class: "value-moving", action: "propose", app: "kernel", method: "POST",
     path: "/auth/api/groups/[groupDid]/transfer-owner",
     why: "proposes reassignment of group ownership",
   },
-  "identity.owner.cancel": {
-    class: "value-moving", action: "cancel-owner-transfer", app: "kernel", method: "DELETE",
+  "kernel.identity.owner.cancel": {
+    class: "value-moving", action: "cancel", app: "kernel", method: "DELETE",
     path: "/auth/api/groups/[groupDid]/transfer-owner",
     why: "withdraws the pending ownership invitation",
   },
-  "identity.owner.accept": {
-    class: "value-moving", action: "accept-owner-transfer", app: "kernel", method: "POST",
+  "kernel.identity.owner.accept": {
+    class: "value-moving", action: "accept", app: "kernel", method: "POST",
     path: "/auth/api/groups/[groupDid]/transfer-owner/accept",
     why: "accepts ownership and demotes the former owner",
   },

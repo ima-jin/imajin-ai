@@ -10,12 +10,12 @@ export function GET(request: NextRequest, params: OwnershipParams) {
 
 export async function POST(request: NextRequest, params: OwnershipParams) {
   return handleOwnershipRoute(request, params, 'propose', (identity, resourceId, headers) =>
-    enforceRoutePolicy(identity, 'identity.owner.propose', { resourceId, headers }));
+    enforceRoutePolicy(identity, 'kernel.identity.owner.propose', { resourceId, headers }));
 }
 
 export async function DELETE(request: NextRequest, params: OwnershipParams) {
   return handleOwnershipRoute(request, params, 'cancel', (identity, resourceId, headers) =>
-    enforceRoutePolicy(identity, 'identity.owner.cancel', { resourceId, headers }));
+    enforceRoutePolicy(identity, 'kernel.identity.owner.cancel', { resourceId, headers }));
 }
 
 export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

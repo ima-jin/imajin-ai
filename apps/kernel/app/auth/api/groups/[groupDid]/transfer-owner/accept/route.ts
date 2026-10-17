@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest, params: OwnershipParams) {
   return handleOwnershipRoute(request, params, 'accept', (identity, resourceId, headers) =>
-    enforceRoutePolicy(identity, 'identity.owner.accept', { resourceId, headers }));
+    enforceRoutePolicy(identity, 'kernel.identity.owner.accept', { resourceId, headers }));
 }
 
 export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
