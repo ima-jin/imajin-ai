@@ -295,9 +295,9 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
         <div className={`absolute left-0 mt-2 ${variant === 'grid' ? 'w-72' : 'w-56'} bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-xl py-2 z-50`}>
           {visible.length === 0 ? (
             <>
-              <div role="status" className="px-4 py-3 text-sm text-gray-400">
+              <output className="block px-4 py-3 text-sm text-gray-400">
                 {emptyMessage}
-              </div>
+              </output>
               {footer}
             </>
           ) : (

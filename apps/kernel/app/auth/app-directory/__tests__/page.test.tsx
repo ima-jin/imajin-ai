@@ -125,7 +125,7 @@ describe('App directory', () => {
     await screen.findByRole('button', { name: 'Add New App' });
     request.mockRejectedValueOnce('offline');
     fireEvent.click(screen.getByRole('button', { name: 'Add New App' }));
-    await screen.findByText('Unable to update apps.');
+    expect(await screen.findByText('Unable to update apps.')).toBeDefined();
   });
 
   it('aborts mutation updates when switching identities', async () => {

@@ -12,8 +12,9 @@ export function updateAppSlugs(current: readonly string[], slug: string, added: 
 
 /** Shared by consent and directory writes so parallel app additions cannot overwrite each other. */
 export async function setPersonAppMembership(did: string, slug: string, added: boolean): Promise<void> {
+  const lockKey = `app-membership:${did}`;
   await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`app-membership:${did}`}))`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`);
     const [profile] = await tx.select({ featureToggles: profiles.featureToggles })
       .from(profiles).where(eq(profiles.did, did)).limit(1).for('update');
     const featureToggles = {
@@ -50,8 +51,9 @@ export async function canManageGroupApps(groupDid: string, callerDid: string): P
 
 /** Groups keep their existing explicit forest_config storage, including unrelated services. */
 export async function setGroupAppMembership(did: string, slug: string, added: boolean): Promise<void> {
+  const lockKey = `app-membership:${did}`;
   await db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`app-membership:${did}`}))`);
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${lockKey}))`);
     const [config] = await tx.select({
       enabledServices: forestConfig.enabledServices,
       landingService: forestConfig.landingService,

@@ -136,7 +136,7 @@ export default function AppDirectoryPage() {
         <h1 className="text-2xl font-semibold text-zinc-100">App directory</h1>
         <p className="text-sm text-zinc-400">Choose apps for this identity. Removing an app never revokes its authorization.</p>
       </header>
-      {loading && <p role="status" className="text-zinc-400">Loading apps…</p>}
+      {loading && <output className="block text-zinc-400">Loading apps…</output>}
       {error && (
         <div role="alert" className="space-y-2 text-red-400">
           <p>{error}</p>
@@ -145,7 +145,7 @@ export default function AppDirectoryPage() {
           </button>
         </div>
       )}
-      <p role="status" aria-live="polite" className="text-sm text-zinc-400">{notice}</p>
+      <output aria-live="polite" className="block text-sm text-zinc-400">{notice}</output>
       {!loading && !error && apps.length === 0 && <p className="text-zinc-400">No apps are registered yet.</p>}
       <ul className="space-y-4" aria-label="Registered apps">
         {apps.map((app) => (
