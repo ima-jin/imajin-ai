@@ -179,118 +179,6 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
-  apps/events:
-    dependencies:
-      '@imajin/auth':
-        specifier: workspace:*
-        version: link:../../packages/auth
-      '@imajin/auth-client':
-        specifier: workspace:*
-        version: link:../../packages/auth-client
-      '@imajin/bus':
-        specifier: workspace:*
-        version: link:../../packages/bus
-      '@imajin/chat':
-        specifier: workspace:*
-        version: link:../../packages/chat
-      '@imajin/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      '@imajin/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@imajin/email':
-        specifier: workspace:*
-        version: link:../../packages/email
-      '@imajin/emit':
-        specifier: workspace:*
-        version: link:../../packages/emit
-      '@imajin/fair':
-        specifier: workspace:*
-        version: link:../../packages/fair
-      '@imajin/input':
-        specifier: workspace:*
-        version: link:../../packages/input
-      '@imajin/logger':
-        specifier: workspace:*
-        version: link:../../packages/logger
-      '@imajin/notify':
-        specifier: workspace:*
-        version: link:../../packages/notify
-      '@imajin/onboard':
-        specifier: workspace:*
-        version: link:../../packages/onboard
-      '@imajin/ui':
-        specifier: workspace:*
-        version: link:../../packages/ui
-      '@noble/ed25519':
-        specifier: ^3.0.0
-        version: 3.0.1
-      '@noble/hashes':
-        specifier: ^2.0.1
-        version: 2.2.0
-      '@stripe/stripe-js':
-        specifier: ^4.10.0
-        version: 4.10.0
-      drizzle-orm:
-        specifier: ^0.45.1
-        version: 0.45.2(@electric-sql/pglite@0.5.8)(@opentelemetry/api@1.9.0)(@types/better-sqlite3@7.6.13)(@types/pg@8.11.6)(better-sqlite3@12.11.1)(postgres@3.4.9)
-      html5-qrcode:
-        specifier: ^2.3.8
-        version: 2.3.8
-      next:
-        specifier: ^15.5.24
-        version: 15.5.25(@babel/core@7.25.2)(@opentelemetry/api@1.9.0)(@types/node@20.19.39)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      react:
-        specifier: ^18
-        version: 18.3.1
-      react-dom:
-        specifier: ^18
-        version: 18.3.1(react@18.3.1)
-      react-markdown:
-        specifier: ^10.1.0
-        version: 10.1.0(@types/react@18.3.28)(react@18.3.1)
-    devDependencies:
-      '@tailwindcss/typography':
-        specifier: ^0.5.19
-        version: 0.5.19(tailwindcss@3.4.19(tsx@4.21.0)(yaml@2.8.3))
-      '@testing-library/dom':
-        specifier: ^10.4.1
-        version: 10.4.1
-      '@testing-library/react':
-        specifier: ^16.3.2
-        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      '@types/node':
-        specifier: ^20
-        version: 20.19.39
-      '@types/qrcode':
-        specifier: ^1.5.5
-        version: 1.5.6
-      '@types/react':
-        specifier: ^18
-        version: 18.3.28
-      '@types/react-dom':
-        specifier: ^18
-        version: 18.3.7(@types/react@18.3.28)
-      autoprefixer:
-        specifier: ^10.4.24
-        version: 10.4.27(postcss@8.5.25)
-      drizzle-kit:
-        specifier: ^0.31.9
-        version: 0.31.10
-      postcss:
-        specifier: ^8.5.18
-        version: 8.5.25
-      qrcode:
-        specifier: ^1.5.4
-        version: 1.5.4
-      tailwindcss:
-        specifier: ^3.4.1
-        version: 3.4.19(tsx@4.21.0)(yaml@2.8.3)
-      typescript:
-        specifier: ^5
-        version: 5.9.3
-
   apps/kernel:
     dependencies:
       '@ai-sdk/react':
@@ -4084,10 +3972,6 @@ packages:
   '@stitches/core@1.2.8':
     resolution: {integrity: sha512-Gfkvwk9o9kE9r9XNBmJRfV8zONvXThnm1tcuojL04Uy5uRyqg93DC83lDebl0rocZCfKSjUv+fWYtMQmEDJldg==}
 
-  '@stripe/stripe-js@4.10.0':
-    resolution: {integrity: sha512-KrMOL+sH69htCIXCaZ4JluJ35bchuCCznyPyrbN8JXSGQfwBI1SuIEMZNwvy8L8ykj29t6sa5BAAiL7fNoLZ8A==}
-    engines: {node: '>=12.16'}
-
   '@swc/helpers@0.5.15':
     resolution: {integrity: sha512-JQ5TuMi45Owi4/BIMAJBoSQoOJu12oOk/gADqlcUL9JEdHB8vyjUSsxqeNXnmXHjYKMi2WcYtezGEEhqUI/E2g==}
 
@@ -6053,9 +5937,6 @@ packages:
 
   html-void-elements@3.0.0:
     resolution: {integrity: sha512-bEqo66MRXsUGxWHV5IP0PUiAWwoEjba4VCzg0LjFJBpchPaTfyfCKTG6bc5F8ucKec3q5y6qOdGyYTSBEvhCrg==}
-
-  html5-qrcode@2.3.8:
-    resolution: {integrity: sha512-jsr4vafJhwoLVEDW3n1KvPnCCXWaQfRng0/EEYk1vNcQGcG/htAdhJX0be8YyqMoSz7+hZvOZSTAepsabiuhiQ==}
 
   htmlparser2@8.0.2:
     resolution: {integrity: sha512-GYdjWKDkbRLkZ5geuHs5NY1puJ+PXwP7+fHPRz06Eirsb9ugf6d8kkXav6ADhcODhFFPMIXyxkxSuMf3D6NCFA==}
@@ -11635,8 +11516,6 @@ snapshots:
 
   '@stitches/core@1.2.8': {}
 
-  '@stripe/stripe-js@4.10.0': {}
-
   '@swc/helpers@0.5.15':
     dependencies:
       tslib: 2.8.1
@@ -13395,7 +13274,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.6.2))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@1.21.7)):
+  eslint-module-utils@2.12.1(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.6.2))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@1.21.7)))(eslint@9.39.5(jiti@1.21.7)):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -13417,7 +13296,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.39.5(jiti@1.21.7)
       eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.6.2))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@1.21.7))
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.6.2))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@1.21.7)))(eslint@9.39.5(jiti@1.21.7))
       hasown: 2.0.4
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -13445,7 +13324,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 9.39.5(jiti@1.21.7)
       eslint-import-resolver-node: 0.3.10
-      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.6.2))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1)(eslint@9.39.5(jiti@1.21.7))
+      eslint-module-utils: 2.12.1(@typescript-eslint/parser@8.65.0(eslint@9.39.5(jiti@1.21.7))(typescript@5.6.2))(eslint-import-resolver-node@0.3.10)(eslint-import-resolver-typescript@3.10.1(eslint-plugin-import@2.32.0)(eslint@9.39.5(jiti@1.21.7)))(eslint@9.39.5(jiti@1.21.7))
       hasown: 2.0.4
       is-core-module: 2.16.1
       is-glob: 4.0.3
@@ -14118,8 +13997,6 @@ snapshots:
   html-url-attributes@3.0.1: {}
 
   html-void-elements@3.0.0: {}
-
-  html5-qrcode@2.3.8: {}
 
   htmlparser2@8.0.2:
     dependencies:
