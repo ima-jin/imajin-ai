@@ -21,7 +21,10 @@ const h = vi.hoisted(() => ({
   insertedCodes: [] as Row[],
   projectCalls: [] as Row[],
   projectShouldThrow: false,
+  membership: vi.fn(),
 }));
+
+vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: h.membership }));
 
 vi.mock('next/server', () => ({
   NextResponse: {
@@ -54,13 +57,11 @@ const OAUTH_CODES = { __table: 'oauthAuthorizationCodes' };
 
 vi.mock('@/src/db', () => {
   const selectFrom = (table: Row) => ({
-    where: () => ({
-      limit: async () => {
-        if (table === REGISTRY_APPS) return h.clientRow ? [h.clientRow] : [];
-        if (table === ATTESTATIONS) return h.existingAttestation ? [h.existingAttestation] : [];
-        return [];
-      },
-    }),
+    where: () => {
+      const rows = table === REGISTRY_APPS ? (h.clientRow ? [h.clientRow] : [])
+        : table === ATTESTATIONS && h.existingAttestation ? [h.existingAttestation] : [];
+      return Object.assign(Promise.resolve(rows), { limit: async () => rows });
+    },
   });
   return {
     db: {
@@ -145,6 +146,7 @@ beforeEach(() => {
   h.projectShouldThrow = false;
   h.clientRow = {
     id: 'app_test',
+    slug: 'coffee',
     appDid: CLIENT_APP_DID,
     publicKey: 'pk',
     callbackUrl: CALLBACK,
@@ -155,6 +157,7 @@ beforeEach(() => {
   };
   process.env.AUTH_PRIVATE_KEY = 'test-key';
   vi.mocked(projectConsentedScopes).mockClear();
+  h.membership.mockClear();
 });
 
 describe('POST /oauth/authorize — consent commit auto-publishes granted scopes (#1804)', () => {
@@ -163,6 +166,7 @@ describe('POST /oauth/authorize — consent commit auto-publishes granted scopes
     expect(res.status).toBe(200);
 
     expect(projectConsentedScopes).toHaveBeenCalledOnce();
+    expect(h.membership).toHaveBeenCalledWith(OWNER, 'coffee');
     expect(h.projectCalls[0]).toMatchObject({
       ownerDid: OWNER,
       appDid: CLIENT_APP_DID,
@@ -183,6 +187,14 @@ describe('POST /oauth/authorize — consent commit auto-publishes granted scopes
     const res = await callPost(consentBody());
     expect(res.status).toBe(200);
     expect(projectConsentedScopes).toHaveBeenCalledOnce();
+    expect(h.membership).toHaveBeenCalledWith(OWNER, 'coffee');
+  });
+
+  it('renews expired consent instead of reusing the expired grant', async () => {
+    h.existingAttestation = { id: 'att_expired', expiresAt: new Date(0) };
+    expect((await callPost(consentBody())).status).toBe(200);
+    expect(h.insertedCodes[0].attestationId).not.toBe('att_expired');
+    expect(h.membership).toHaveBeenCalledWith(OWNER, 'coffee');
   });
 
   it('is non-fatal: a projection failure still returns a successful consent commit', async () => {

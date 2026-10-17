@@ -101,6 +101,7 @@ describe('IdentityTabBar — registry-driven service tabs (#2425)', () => {
     expect(screen.queryByText('Coffee')).toBeNull();
     expect(screen.queryByText('Pay')).toBeNull();
     expect(screen.queryByText('Media')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Add app' }).getAttribute('href')).toBe('/auth/app-directory');
   });
 
 

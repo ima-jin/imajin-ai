@@ -303,7 +303,7 @@ export function GrantsPanel() {
   const visible = showRevoked ? grants : grants.filter((g) => g.status !== 'revoked');
 
   return (
-    <section className="mt-8" data-testid="grants-panel">
+    <section id="grants" className="mt-8" data-testid="grants-panel">
       <div className="flex items-center justify-between mb-3">
         <div>
           <h2 className="text-base font-semibold text-gray-100">Grants</h2>

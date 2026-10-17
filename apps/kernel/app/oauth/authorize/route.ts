@@ -20,6 +20,8 @@ import { anchorToOrigin } from '@/src/lib/mcp/oauth-redirect';
 import { promoteActorOnGrant } from '@/src/lib/auth/promote-actor';
 import { toOrigin } from '@/src/lib/http/public-origin';
 import { projectConsentedScopes } from '@/src/lib/kernel/consent-scope-projection';
+import { addConsentedApp } from '@/src/lib/kernel/app-membership';
+import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -211,6 +213,7 @@ export async function GET(request: NextRequest) {
  */
 type ConsentClient = {
   id: string;
+  slug: string | null;
   appDid: string;
   publicKey: string;
   callbackUrl: string;
@@ -266,6 +269,7 @@ async function validateConsentRequest(
       id: registryApps.id,
       appDid: registryApps.appDid,
       publicKey: registryApps.publicKey,
+      slug: registryApps.slug,
       callbackUrl: registryApps.callbackUrl,
       requestedScopes: registryApps.requestedScopes,
       name: registryApps.name,
@@ -333,17 +337,17 @@ export async function POST(request: NextRequest) {
 
   // Consent → app.authorized attestation (reuse an active grant if present).
   let attestationId: string;
-  const [existing] = await db
-    .select({ id: attestations.id, revokedAt: attestations.revokedAt })
+  const existingGrants = await db
+    .select({ id: attestations.id, revokedAt: attestations.revokedAt, expiresAt: attestations.expiresAt })
     .from(attestations)
     .where(and(
       eq(attestations.issuerDid, sessionDid),
       eq(attestations.subjectDid, client.appDid),
       eq(attestations.type, 'app.authorized'),
-    ))
-    .limit(1);
+    ));
 
-  if (existing && !existing.revokedAt) {
+  const existing = existingGrants.find((grant) => isLiveAppAuthorization(grant));
+  if (existing) {
     attestationId = existing.id;
   } else {
     const issuedAtMs = Date.now();
@@ -372,6 +376,7 @@ export async function POST(request: NextRequest) {
       issuedAt: new Date(issuedAtMs),
     });
   }
+  await addConsentedApp(sessionDid, client.slug);
 
   // Promote the client into a first-class actor identity (#1170), storing its
   // real Ed25519 public key and linking it to the granting DID via

@@ -23,7 +23,7 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval, mockExecuteAppsServiceScopesApproval, mockExecuteAppSecretsApproval } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApproval, mockExecuteAccessApproval, mockExecuteGithubApproval, mockExecuteAppsServiceScopesApproval, mockExecuteAppSecretsApproval, mockExecuteAppsFeaturedApproval } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockDecide: vi.fn(),
@@ -32,6 +32,7 @@ const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockExecuteVaultApprova
   mockExecuteGithubApproval: vi.fn(),
   mockExecuteAppsServiceScopesApproval: vi.fn(),
   mockExecuteAppSecretsApproval: vi.fn(),
+  mockExecuteAppsFeaturedApproval: vi.fn(),
 }));
 
 // #2359: `act-as-guard.ts` calls the real `isUnderActAs`/`resolveActingDid`,
@@ -77,6 +78,9 @@ vi.mock('@/src/lib/access/approvals-execution', () => ({
 
 vi.mock('@/src/lib/apps/service-scopes', () => ({
   executeAppsServiceScopesApproval: mockExecuteAppsServiceScopesApproval,
+}));
+vi.mock('@/src/lib/apps/featured', () => ({
+  executeAppsFeaturedApproval: mockExecuteAppsFeaturedApproval,
 }));
 vi.mock('@/src/lib/apps/secrets-operator', () => ({
   executeAppSecretsApproval: mockExecuteAppSecretsApproval,
@@ -143,6 +147,36 @@ beforeEach(() => {
   mockExecuteGithubApproval.mockResolvedValue({ ok: true });
   mockExecuteAppsServiceScopesApproval.mockResolvedValue({ ok: true, data: { appDid: 'did:imajin:app', action: 'grant', approvedServiceScopes: ['identity:write'] } });
   mockExecuteAppSecretsApproval.mockResolvedValue({ ok: true, data: { appDid: 'did:imajin:fake-app', action: 'sync', names: ['SESSION_SECRET'] } });
+  mockExecuteAppsFeaturedApproval.mockResolvedValue({ ok: true, data: { appDid: 'did:imajin:app', featured: true } });
+});
+
+describe('apps:featured execution bridge', () => {
+  it.each(['reject', 'withdrawn'])('never executes for %s decisions', async (decision) => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ source: 'apps', kind: 'apps:featured' }) });
+    await POST(makeReq({ decision }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(mockExecuteAppsFeaturedApproval).not.toHaveBeenCalled();
+  });
+  it('dispatches only approved featured proposals and returns metadata, not provisioning', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'approved', source: 'apps', kind: 'apps:featured' }) });
+    const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(mockExecuteAppsFeaturedApproval).toHaveBeenCalledTimes(1);
+    expect(mockExecuteAppsServiceScopesApproval).not.toHaveBeenCalled();
+    expect(await res.json()).toMatchObject({ data: { appDid: 'did:imajin:app', featured: true } });
+  });
+  it('surfaces a missing countersignature as executionError with no data', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: true, card: pendingApprovalCard({ status: 'approved', source: 'apps', kind: 'apps:featured' }) });
+    mockExecuteAppsFeaturedApproval.mockResolvedValueOnce({ ok: false, error: 'Countersignature required' });
+    const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    const body = await res.json();
+    expect(body.executionError).toBe('Countersignature required');
+    expect(body.data).toBeUndefined();
+  });
+  it('does not execute when the approval service rejects the caller or signature', async () => {
+    mockDecide.mockResolvedValueOnce({ ok: false, error: 'Invalid countersignature', status: 400 });
+    const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(res.status).toBe(400);
+    expect(mockExecuteAppsFeaturedApproval).not.toHaveBeenCalled();
+  });
 });
 
 describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {

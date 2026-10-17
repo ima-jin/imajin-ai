@@ -75,6 +75,12 @@ describe('ProfilePage links check (#2434)', () => {
     expect(props.links).toEqual([]);
   });
 
+  it('does not resurrect removed links from a retained legacy handle', async () => {
+    const props = await renderProps({ links: 'legacy-handle', enabledApps: [] });
+    expect(mocks.getLinks).not.toHaveBeenCalled();
+    expect(props.links).toEqual([]);
+  });
+
   it('does not load links when the legacy field is explicitly null and enabledApps lacks it', async () => {
     await renderProps({ links: null });
 
@@ -85,7 +91,7 @@ describe('ProfilePage links check (#2434)', () => {
     await renderProps({ coffee: 'ryan', enabledApps: ['learn'] });
 
     const slugs = mocks.resolveRegistryAppsBySlug.mock.calls[0][0] as string[];
-    expect([...slugs].sort()).toEqual(['coffee', 'events', 'learn', 'market']);
+    expect([...slugs].sort()).toEqual(['events', 'learn', 'market']);
   });
 
   it('passes only owner-enabled registry apps as serviceApps, while registryApps keeps the widget apps', async () => {

@@ -142,6 +142,13 @@ describe('POST /api/registry/apps (#1739)', () => {
 });
 
 describe('POST /api/registry/apps — registry fields (#1990)', () => {
+  it('ignores self-service featured metadata and leaves the false database default (#2871)', async () => {
+    const res = await POST(makeRequest({
+      name: 'Test App', callbackUrl: 'https://example.com/callback', featured: true,
+    }) as never);
+    expect(res.status).toBe(201);
+    expect(mockDbInsertValues.mock.calls[0][0]).not.toHaveProperty('featured');
+  });
   it('always registers as tier: third_party, regardless of request body', async () => {
     const res = await POST(
       makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', tier: 'first_party' }) as never,

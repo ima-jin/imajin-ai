@@ -14,6 +14,8 @@ vi.mock('next/server', () => ({
 }));
 
 vi.mock('nanoid', () => ({ nanoid: () => 'testid0000000000' }));
+const membership = vi.hoisted(() => vi.fn());
+vi.mock('@/src/lib/kernel/app-membership', () => ({ addConsentedApp: membership }));
 
 const {
   mockAppSelectWhere,
@@ -138,6 +140,7 @@ const APP_PUBLIC_KEY = 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c
 
 const APP_ROW = {
   id: 'app_4MbCYrndTWiJjMPe',
+  slug: 'coffee',
   appDid: 'did:imajin:wjLjV7nSWNZLTUqnhKRUiBrnGG8mKK7q9WXpNEnV2SM',
   publicKey: APP_PUBLIC_KEY,
   status: 'active',
@@ -168,6 +171,16 @@ beforeEach(() => {
 });
 
 describe('POST /api/auth/authorize (#1735)', () => {
+  it('restores membership on repeat consent and renews expired grants', async () => {
+    mockAttestationSelectWhere.mockResolvedValue([{ id: 'existing', payload: { scopes: ['profile:read'] } }]);
+    const repeated = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
+    expect((await repeated.json()).attestationId).toBe('existing');
+    expect(membership).toHaveBeenCalledWith(PERSONAL_DID, 'coffee');
+    mockAttestationSelectWhere.mockResolvedValue([{ id: 'expired', expiresAt: new Date(0), payload: { scopes: ['profile:read'] } }]);
+    const fresh = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
+    expect((await fresh.json()).attestationId).not.toBe('expired');
+    expect(membership).toHaveBeenCalledTimes(2);
+  });
   it('promotes the app with its real Ed25519 public key, not a label/sentinel', async () => {
     const res = await POST(makeRequest({ appId: APP_ROW.id, scopes: ['profile:read'] }) as never);
 
@@ -176,6 +189,7 @@ describe('POST /api/auth/authorize (#1735)', () => {
     const input = mockPromoteActorOnGrant.mock.calls[0][0] as Record<string, unknown>;
     expect(input.publicKey).toBe(APP_PUBLIC_KEY);
     expect(input.publicKey).not.toMatch(/^agent_/);
+    expect(membership).toHaveBeenCalledWith(PERSONAL_DID, 'coffee');
   });
 
   it('owns the promoted actor under the acting-for (business) DID, not the caller personal DID', async () => {

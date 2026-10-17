@@ -4,9 +4,10 @@
  * apps + static kernel/project tiles), narrowed per signed-in identity.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, act } from '@testing-library/react';
 
 vi.mock('@imajin/config', () => ({ buildPublicUrl: (slug: string) => `https://node.test/${slug}` }));
+vi.mock('@imajin/ui/server', () => ({ getActingAsHeaders: () => ({}) }));
 
 import { LandingGrid } from '../LandingGrid';
 
@@ -51,6 +52,7 @@ function stubFetch(options: { tier?: string; identityApps?: string[] | 'fail' })
     }
     return new Response(null, { status: 404 });
   });
+
   vi.stubGlobal('fetch', fetchMock);
   return calls;
 }
@@ -65,6 +67,32 @@ afterEach(() => {
 });
 
 describe('LandingGrid (#2434)', () => {
+  it('ignores a previous identity response after acting-as changes', async () => {
+    let finish: (value: Response) => void = () => undefined;
+    const request = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/launcher')) return Response.json({ services: LAUNCHER_TILES });
+      if (url.endsWith('/api/session')) return Response.json({ tier: 'established' });
+      return new Promise<Response>((resolve) => { finish = resolve; });
+    });
+    vi.stubGlobal('fetch', request);
+    render(<LandingGrid />);
+    await waitFor(() => expect(request.mock.calls.some(([url]) => url.includes('/api/apps'))).toBe(true));
+    stubFetch({ tier: 'established', identityApps: [] });
+    act(() => { globalThis.dispatchEvent(new Event('imajin:acting-as-changed')); });
+    await screen.findByText('Wallet');
+    await act(async () => { finish(Response.json({ apps: [{ slug: 'coffee' }] })); });
+    expect(screen.queryByText('Coffee')).toBeNull();
+  });
+  it.each(['imajin:apps-changed', 'imajin:session-changed', 'imajin:acting-as-changed'])('reloads identity apps on %s', async (event) => {
+    stubFetch({ tier: 'established', identityApps: ['coffee'] });
+    render(<LandingGrid />);
+    await screen.findByText('Coffee');
+    const calls = stubFetch({ tier: 'established', identityApps: [] });
+    act(() => { globalThis.dispatchEvent(new Event(event)); });
+    await screen.findByText('Wallet');
+    expect(screen.queryByText('Coffee')).toBeNull();
+    expect(calls.some((url) => url.includes('/api/apps'))).toBe(true);
+  });
   it('lists a registry-only app from the launcher endpoint, not services.ts', async () => {
     const calls = stubFetch({});
 
@@ -88,12 +116,13 @@ describe('LandingGrid (#2434)', () => {
     expect(screen.getByText('Wallet')).toBeTruthy();
   });
 
-  it('shows the full public list when the identity lookup fails', async () => {
+  it('keeps static tiles but hides registry apps when the authenticated identity lookup fails', async () => {
     stubFetch({ tier: 'established', identityApps: 'fail' });
 
     render(<LandingGrid />);
 
-    expect(await screen.findByText('Coffee')).toBeTruthy();
-    expect(screen.getByText('Registry Only')).toBeTruthy();
+    expect(await screen.findByText('Wallet')).toBeTruthy();
+    expect(screen.queryByText('Coffee')).toBeNull();
+    expect(screen.queryByText('Registry Only')).toBeNull();
   });
 });

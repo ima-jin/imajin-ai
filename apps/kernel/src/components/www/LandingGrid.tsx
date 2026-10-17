@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { buildPublicUrl } from '@imajin/config';
+import { getActingAsHeaders } from '@imajin/ui/server';
 
 interface ServiceEntry {
   name: string;
@@ -77,17 +78,19 @@ function TileGroup({ label, services, onAuthRequired }: Readonly<{ label?: strin
 /**
  * Slugs of the registry apps the signed-in identity may see on the launcher
  * (#2434) — `GET /auth/api/apps?placement=launcher` is the same resolver the
- * `/auth` hub uses (so an actor's feature toggles apply). `null` when the
- * identity can't be resolved: the public list is shown un-narrowed.
+ * `/auth` hub uses (so an actor's feature toggles apply). Signed-in requests
+ * fail closed when the identity's apps cannot be resolved.
  */
-async function fetchIdentityAppSlugs(authUrl: string): Promise<Set<string> | null> {
+async function fetchIdentityAppSlugs(authUrl: string): Promise<Set<string>> {
   try {
-    const res = await fetch(`${authUrl}/api/apps?placement=launcher`, { credentials: 'include' });
-    if (!res.ok) return null;
+    const res = await fetch(`${authUrl}/api/apps?placement=launcher`, {
+      credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(),
+    });
+    if (!res.ok) return new Set();
     const data = (await res.json()) as { apps?: Array<{ slug: string }> };
     return new Set((data.apps ?? []).map((app) => app.slug));
   } catch {
-    return null;
+    return new Set();
   }
 }
 
@@ -104,8 +107,21 @@ export function LandingGrid() {
   const [loading, setLoading] = useState(true);
   const [scopeEnabledServices, setScopeEnabledServices] = useState<string[] | null>(null);
   const [identityAppSlugs, setIdentityAppSlugs] = useState<Set<string> | null>(null);
+  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
+    const refresh = () => {
+      setLoading(true);
+      setIdentityAppSlugs(new Set());
+      setRevision((value) => value + 1);
+    };
+    const events = ['imajin:apps-changed', 'imajin:session-changed', 'imajin:acting-as-changed'];
+    events.forEach((event) => globalThis.addEventListener(event, refresh));
+    return () => events.forEach((event) => globalThis.removeEventListener(event, refresh));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     const registryUrl = buildPublicUrl('registry');
     const authUrl = buildPublicUrl('auth');
     const actingAs = typeof localStorage === 'undefined'  ? null : localStorage.getItem('imajin:acting-as');
@@ -125,22 +141,21 @@ export function LandingGrid() {
     }
 
     Promise.all(requests).then(async ([specData, session, scopeConfig]) => {
+      const tier = (session as { tier?: string } | null)?.tier;
+      const isAuthed = tier === 'preliminary' || tier === 'established' || tier === 'creator';
+      const slugs = isAuthed ? await fetchIdentityAppSlugs(authUrl) : null;
+      if (cancelled) return;
       if ((specData as { services?: ServiceEntry[] } | null)?.services) {
         setServices((specData as { services: ServiceEntry[] }).services.filter((s) => s.visibility !== 'internal'));
       }
-      const tier = (session as { tier?: string } | null)?.tier;
-      const isAuthed = tier === 'preliminary' || tier === 'established' || tier === 'creator';
       setAuthed(isAuthed);
-      if (isAuthed) {
-        setIdentityAppSlugs(await fetchIdentityAppSlugs(authUrl));
-      }
-      if (scopeConfig) {
-        const cfg = scopeConfig as { enabledServices?: string[] };
-        setScopeEnabledServices(cfg.enabledServices ?? null);
-      }
+      setIdentityAppSlugs(slugs);
+      const cfg = scopeConfig as { enabledServices?: string[] } | null;
+      setScopeEnabledServices(cfg?.enabledServices ?? null);
       setLoading(false);
-    }).catch(() => setLoading(false));
-  }, []);
+    }).catch(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [revision]);
 
   if (loading) {
     return (

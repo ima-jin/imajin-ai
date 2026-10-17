@@ -67,6 +67,7 @@ import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decis
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
 import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
+import { APPS_FEATURED_KIND } from '@/src/lib/apps/featured-kind';
 import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 
@@ -595,6 +596,7 @@ function renderAppsServiceScopesDetail(approval: OperatorApprovalCard): ReactNod
 
 function appsDecisionLabels(approval: OperatorApprovalCard): DecisionLabels {
   if (isAppSecretsKind(approval.kind)) return { approve: 'Sign secret change', reject: 'Cancel' };
+  if (approval.kind === APPS_FEATURED_KIND) return { approve: 'Sign directory change', reject: 'Cancel' };
   if (approval.kind !== APPS_SERVICE_SCOPES_KIND) {
     return { approve: isClaimReissue(approval) ? 'Approve & reissue' : 'Approve & provision', reject: 'Deny' };
   }
@@ -607,6 +609,15 @@ const APPS_RENDERER: SourceRenderer = {
   decisionLabels: appsDecisionLabels,
   renderDetail: (approval) => {
     if (isAppSecretsKind(approval.kind)) return renderAppSecretsDetail(approval);
+    if (approval.kind === APPS_FEATURED_KIND) {
+      return (
+        <div className="space-y-1 text-sm text-gray-200">
+          <p>{approval.summary}</p>
+          <p className="font-mono text-xs">{detailString(approval.detail, 'appDid', '—')}</p>
+          <p className="text-xs text-gray-500">Directory curation only. Does not add apps to anyone&apos;s navigation or authorize access.</p>
+        </div>
+      );
+    }
     return approval.kind === APPS_SERVICE_SCOPES_KIND ? renderAppsServiceScopesDetail(approval) : renderAppsProvisionDetail(approval);
   },
 };

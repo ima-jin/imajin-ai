@@ -89,6 +89,7 @@ describe('operator gate', () => {
     render(<GrantsPanel />);
 
     expect(await screen.findByText('Grants')).toBeDefined();
+    expect(screen.getByTestId('grants-panel').id).toBe('grants');
   });
 });
 
