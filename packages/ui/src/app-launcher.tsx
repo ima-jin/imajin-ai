@@ -65,9 +65,11 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
     const refresh = () => { setServices([]); setRevision((value) => value + 1); };
     globalThis.addEventListener('imajin:session-changed', refresh);
     globalThis.addEventListener('imajin:acting-as-changed', refresh);
+    globalThis.addEventListener('imajin:apps-changed', refresh);
     return () => {
       globalThis.removeEventListener('imajin:session-changed', refresh);
       globalThis.removeEventListener('imajin:acting-as-changed', refresh);
+      globalThis.removeEventListener('imajin:apps-changed', refresh);
     };
   }, []);
 
@@ -101,6 +103,9 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const { kernel, core, developer, meta } = groupByCategory(visible);
 
   const wwwUrl = services.find((s) => s.name === 'kernel')?.url ?? services.find((s) => s.name === 'www')?.url ?? '/';
+  const directoryUrl = authUrl
+    ? `${authUrl.replace(/\/$/, '')}/app-directory`
+    : `${registryUrl.replace(/\/?registry\/?$/, '/auth')}/app-directory`;
 
   function renderTile(service: LauncherService) {
     const isCurrent = service.name === currentService;
@@ -168,6 +173,14 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
 
   const footer = (
     <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
+      {showIdentities && (
+        <a
+          href={directoryUrl}
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
+        >
+          Add app
+        </a>
+      )}
       <a
         href={wwwUrl || '/'}
         className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
