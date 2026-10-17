@@ -9,18 +9,66 @@
  * the parsing logic has one owner and one test surface.
  */
 
+/** Next matching character at each offset, built once rather than rescanning malformed links. */
+function nextPositions(text: string, matches: (character: string) => boolean): Uint32Array {
+  const positions = new Uint32Array(text.length + 1);
+  let next = text.length;
+  positions[text.length] = next;
+  for (let index = text.length - 1; index >= 0; index--) {
+    if (matches(text[index])) next = index;
+    positions[index] = next;
+  }
+  return positions;
+}
+
+interface InlineRef {
+  start: number;
+  end: number;
+  labelEnd: number;
+  refStart: number;
+  refEnd: number;
+}
+
+/** Recognize the existing optional quoted-title syntax without any backtracking. */
+function referenceEnd(
+  text: string,
+  refEnd: number,
+  nonWhitespace: Uint32Array,
+  quotes: Uint32Array,
+): number | null {
+  if (text[refEnd] === ')') return refEnd + 1;
+  const titleStart = nonWhitespace[refEnd];
+  if (titleStart === refEnd || text[titleStart] !== '"') return null;
+  const titleEnd = quotes[titleStart + 1];
+  return text[titleEnd + 1] === ')' ? titleEnd + 2 : null;
+}
+
 /**
- * Matches inline markdown links and images: `[text](ref)` / `![alt](ref)`.
- *
- * The URL group excludes `"` (not just `)` and whitespace) so its character
- * class can never overlap with the optional title group's `[^"]*`. Without
- * that exclusion the two adjacent unbounded quantifiers could both claim the
- * same run of quote characters, giving the engine a polynomial number of ways
- * to split a non-matching tail on crafted input (Sonar S8786). Excluding `"`
- * from the URL class makes the split point between the two groups unique, so
- * there is nothing left to backtrack over.
+ * Scan `[text](ref)` / `![alt](ref)` in linear time, including malformed input.
+ * Cached boundaries prevent repeated `[` or `](` from rescanning a shared tail.
  */
-const MD_REF_RE = /(!?)\[([^\]]*)\]\(([^)\s"]+)(?:\s+"[^"]*")?\)/g;
+function* inlineRefs(text: string): Generator<InlineRef> {
+  const urlEnds = nextPositions(text, (character) => /[)\s"]/.test(character));
+  const nonWhitespace = nextPositions(text, (character) => !/\s/.test(character));
+  const quotes = nextPositions(text, (character) => character === '"');
+  let labelStart = -1;
+
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] === '[' && labelStart < 0) labelStart = index;
+    if (text[index] !== ']') continue;
+    const opening = labelStart;
+    labelStart = -1;
+    if (opening < 0 || text[index + 1] !== '(') continue;
+    const refStart = index + 2;
+    const refEnd = urlEnds[refStart];
+    if (refEnd === undefined || refEnd === refStart) continue;
+    const end = referenceEnd(text, refEnd, nonWhitespace, quotes);
+    if (end === null) continue;
+    const start = text[opening - 1] === '!' ? opening - 1 : opening;
+    yield { start, end, labelEnd: index, refStart, refEnd };
+    index = end - 1;
+  }
+}
 
 /** A ref that was resolved to a materialized asset URL. */
 export interface MarkdownRefRewrite {
@@ -70,8 +118,11 @@ export function rewriteMarkdownRefs(
   const unresolved: string[] = [];
   const seenUnresolved = new Set<string>();
 
-  const content = markdown.replaceAll(MD_REF_RE, (match: string, bang: string, label: string, ref: string) => {
-    if (isExternalRef(ref)) return match;
+  const parts: string[] = [];
+  let previousEnd = 0;
+  for (const match of inlineRefs(markdown)) {
+    const ref = markdown.slice(match.refStart, match.refEnd);
+    if (isExternalRef(ref)) continue;
 
     const resolvedUrl = resolve(normalizeLocalPath(ref));
     if (!resolvedUrl) {
@@ -79,12 +130,16 @@ export function rewriteMarkdownRefs(
         seenUnresolved.add(ref);
         unresolved.push(ref);
       }
-      return match;
+      continue;
     }
 
     rewritten.push({ from: ref, to: resolvedUrl });
-    return `${bang}[${label}](${resolvedUrl})`;
-  });
+    parts.push(markdown.slice(previousEnd, match.start));
+    parts.push(`${markdown.slice(match.start, match.labelEnd + 1)}(${resolvedUrl})`);
+    previousEnd = match.end;
+  }
+  parts.push(markdown.slice(previousEnd));
+  const content = parts.join('');
 
   return { content, rewritten, unresolved };
 }
