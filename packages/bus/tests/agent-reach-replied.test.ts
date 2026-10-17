@@ -63,7 +63,7 @@ describe('Reach reply bus contract', () => {
   });
 
   it('seeds the identical emit and private notify fallback and synchronizes agent overrides', async () => {
-    const sql = readFileSync(new URL('../../../migrations/0200_principal_reach_reply_notify.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../migrations/0202_principal_reach_reply_notify.sql', import.meta.url), 'utf8');
     const literal = sql.match(/'(\[[^\n]+\])'::jsonb/)?.[1];
     expect(literal).toBeDefined();
     const config = await getChainConfig('agent.reach.replied', 'agent');

@@ -433,7 +433,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
     'Reach message about {{topic}} from {{requesterDid}}',
     ['reachId', 'principalDid', 'requesterDid', 'topic', 'requesterTier', 'transcriptHash', 'issuedAt'],
   ),
-  // #2859 / migration 0200 — the principal also receives the original signed
+  // #2859 / migration 0202 — the principal also receives the original signed
   // reply through private notify data. Requester subscription entitlement is
   // unchanged; node-wide emit and notification previews remain content-free.
   'agent.reach.replied': emitAndNotify(

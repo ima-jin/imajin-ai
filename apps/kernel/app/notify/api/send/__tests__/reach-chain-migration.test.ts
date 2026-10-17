@@ -13,7 +13,7 @@ function migration(name: string): string {
 describe('Reach chain migration parity (#2588)', () => {
   it.each([
     ['agent.reach.delivered', '0196_seed_agent_reach_delivered_chain.sql'],
-    ['agent.reach.replied', '0200_principal_reach_reply_notify.sql'],
+    ['agent.reach.replied', '0202_principal_reach_reply_notify.sql'],
   ])('idempotently seeds %s and replaces stale agent overrides with the code-default reactors', async (eventType, migrationName) => {
     const db = new PGlite();
     try {
