@@ -5,6 +5,13 @@ Domain ownership has two distinct parties: the DNS **zone owner** and the
 make Imajin its owner. A custom domain can have a different zone owner from
 its app's site owner.
 
+DNS control cannot be used to claim someone else's app. When the two owners
+differ on a custom domain, the app's authoritative registry `entryUrl`,
+`callbackUrl` or `homepageUrl` must already advertise that exact hostname.
+The kernel checks this site-owner authorization when adding and verifying
+the claim and on public/routing/credential reads. Withdrawing the registered
+hostname hides the binding immediately and revokes it on recheck.
+
 ## Custom domains
 
 An identity owner or active organization owner/admin uses the Domains section
