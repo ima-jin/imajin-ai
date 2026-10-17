@@ -12,6 +12,26 @@ const encoder = new TextEncoder();
 const encode = (value: unknown) => encoder.encode(canonicalCommandJson(value));
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } });
 
+function fixtureUrl(input: RequestInfo | URL): URL {
+  if (typeof input === 'string') return new URL(input, 'https://fixture.local');
+  if (input instanceof URL) return input;
+  return new URL(input.url);
+}
+
+async function fixtureBody(input: RequestInfo | URL, options?: RequestInit): Promise<Record<string, unknown>> {
+  let raw: unknown;
+  if (options?.body !== undefined && options.body !== null) {
+    if (typeof options.body !== 'string') throw new TypeError('Fixture requests require JSON text');
+    raw = JSON.parse(options.body);
+  } else if (input instanceof Request) {
+    raw = await input.json();
+  } else {
+    throw new TypeError('Fixture request body is required');
+  }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) throw new TypeError('Fixture request body must be a JSON object');
+  return raw as Record<string, unknown>;
+}
+
 function fixtureLoop(loopId: string, kind: string, parentLoopId: string | null = null): LoopJson {
   const at = new Date().toISOString();
   return { loopId, kind, principal, parentLoopId, refs: { issue: 'ima-jin/imajin-ai#2404' },
@@ -123,7 +143,7 @@ export async function createRunsPreviewTransport() {
     if (!card) return json({ error: 'Not found' }, 404);
     const command = data.sessionCommand as SessionCommandFrame | undefined;
     const expectedType = data.decision === 'approve' ? 'session.approve' : 'session.deny';
-    if (!command || command.type !== expectedType || command.payload.approvalId !== card.sessionBinding?.approvalId) {
+    if (command?.type !== expectedType || command.payload.approvalId !== card.sessionBinding?.approvalId) {
       return json({ error: 'Complete bound wish required' }, 400);
     }
     const result = await commandRequest('fixture-session', { action: 'dispatch', command }, true);
@@ -132,10 +152,10 @@ export async function createRunsPreviewTransport() {
     return json({ approval: card, sessionCommand: await result.json() });
   }
   const fetcher = async (input: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
-    const url = new URL(String(input), 'http://fixture.local');
+    const url = fixtureUrl(input);
     if (url.pathname === '/jin/api/operator-approvals') return json({ isOperator: true, approvals });
     const decision = /^\/jin\/api\/operator-approvals\/([^/]+)\/decision$/.exec(url.pathname);
-    if (decision) return approvalDecision(decodeURIComponent(decision[1]), JSON.parse(String(options?.body)) as Record<string, unknown>);
+    if (decision) return approvalDecision(decodeURIComponent(decision[1]), await fixtureBody(input, options));
     if (url.pathname === '/api/loops/surfaces') return json({ leases: [], warnOnly: true, conflicts: [{
       id: 'fixture-conflict', loopId: 'fixture-session', type: 'surface.conflicted', payload: {
         loopId: 'fixture-session', surface: 'issue:#2404', refs: { conflictingLoopId: 'fixture-warp' },
@@ -145,14 +165,19 @@ export async function createRunsPreviewTransport() {
     const match = /^\/jin\/api\/runs\/([^/]+)(\/commands)?$/.exec(url.pathname);
     if (!match) return json({ error: 'Fixture has no external transport' }, 404);
     const loopId = decodeURIComponent(match[1]);
-    if (match[2]) return commandRequest(loopId, JSON.parse(String(options?.body)) as Record<string, unknown>);
+    if (match[2]) return commandRequest(loopId, await fixtureBody(input, options));
     const loop = loops.find((item) => item.loopId === loopId);
     if (!loop) return json({ error: 'Not found' }, 404);
     return json({ isOperator: true, detail: { loop, events: events.filter((event) => event.loopId === loopId) },
       commandTarget: { available: loop.kind !== 'warp.run', agentDid: agent } });
   };
   return { fetcher, proofs, bindingProofs, agentPublicKey: ed.etc.bytesToHex(agentPublic),
-    dispose: () => { for (const timer of timers) clearTimeout(timer); timers.clear(); },
+    dispose: () => {
+      for (const timer of timers) {
+        clearTimeout(timer);
+      }
+      timers.clear();
+    },
     keypair: { privateKey: ed.etc.bytesToHex(principalKey), publicKey: ed.etc.bytesToHex(principalPublic) } };
 }
 

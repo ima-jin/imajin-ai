@@ -66,7 +66,7 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied, client }: Readonly
 
   useEffect(() => { setDetail(null); setLineage(null); setCommandAvailable(false); }, [loopId]);
 
-  if (!detail || detail.loop.loopId !== loopId) return error
+  if (detail?.loop.loopId !== loopId) return error
     ? <p role="alert" className="text-sm text-red-300">{error}</p>
     : <output className="text-xs text-gray-400">Loading history…</output>;
 

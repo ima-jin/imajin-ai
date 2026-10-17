@@ -2,15 +2,40 @@
 import { webcrypto } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRunsPreviewTransport, installRunsPreview } from '../transport';
-import { dispatchSessionCommand, prepareSignedSessionCommand } from '@/app/jin/session-command-client';
+import { canonicalCommandJson, dispatchSessionCommand, prepareSignedSessionCommand } from '@/app/jin/session-command-client';
 import type { SessionCommandType } from '@/src/lib/jin/session-command-contract';
 import * as ed from '@noble/ed25519';
-import { canonicalCommandJson } from '@/app/jin/session-command-client';
 
 beforeEach(() => { vi.stubEnv('NODE_ENV', 'development'); vi.stubGlobal('crypto', webcrypto); });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('development-only Runs transport', () => {
+  it('accepts URL and Request inputs, and reads Request JSON bodies without object stringification', async () => {
+    const fixture = await createRunsPreviewTransport();
+    expect((await fixture.fetcher(new URL('https://fixture.local/jin/api/runs'))).status).toBe(200);
+    expect((await fixture.fetcher(new Request('https://fixture.local/jin/api/runs'))).status).toBe(200);
+    const request = new Request('https://fixture.local/jin/api/runs/fixture-session/commands', {
+      method: 'POST', body: JSON.stringify({ action: 'prepare', type: 'session.abort', payload: { loopId: 'fixture-session' } }),
+    });
+    const prepared = await (await fixture.fetcher(request)).json();
+    expect(prepared.command.type).toBe('session.abort');
+    const decision = new Request('https://fixture.local/jin/api/operator-approvals/fixture-allow/decision', {
+      method: 'POST', body: JSON.stringify({}),
+    });
+    expect((await fixture.fetcher(decision)).status).toBe(400);
+  });
+
+  it('rejects non-text, missing and non-object fixture bodies explicitly', async () => {
+    const fixture = await createRunsPreviewTransport();
+    const path = '/jin/api/runs/fixture-session/commands';
+    await expect(fixture.fetcher(path, { body: new Blob(['{}']) })).rejects.toThrow('JSON text');
+    await expect(fixture.fetcher(path)).rejects.toThrow('body is required');
+    await expect(fixture.fetcher(path, { body: null })).rejects.toThrow('body is required');
+    for (const value of [null, [], true, 'text', 1]) {
+      await expect(fixture.fetcher(path, { body: JSON.stringify(value) })).rejects.toThrow('JSON object');
+    }
+    await expect(fixture.fetcher(path, { body: '{' })).rejects.toThrow(SyntaxError);
+  });
   it('refuses production initialization', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     await expect(createRunsPreviewTransport()).rejects.toThrow('Development fixture only');

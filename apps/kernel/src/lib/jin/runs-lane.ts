@@ -1,5 +1,4 @@
-import type { LoopJson } from '@/src/lib/loops/serialize';
-import type { LoopEventJson } from '@/src/lib/loops/serialize';
+import type { LoopJson, LoopEventJson } from '@/src/lib/loops/serialize';
 
 export function isBlockedLoop(loop: LoopJson): boolean {
   return !loop.finishedAt && (loop.lastEventType === 'loop.blocked' || loop.state.toLowerCase() === 'blocked');

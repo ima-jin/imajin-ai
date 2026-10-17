@@ -1,10 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { LoopJson } from '@/src/lib/loops/serialize';
+import type { LoopJson, LoopEventJson } from '@/src/lib/loops/serialize';
 import type { LoopsPage } from '@/src/lib/loops/query';
 import { conflictsForLoop, isBlockedLoop, mergeRuns, runTree, visibleRuns } from '@/src/lib/jin/runs-lane';
-import type { LoopEventJson } from '@/src/lib/loops/serialize';
 import { RunsPanelDetail } from './runs-panel-detail';
 import { ApprovalControllerNotices, useRunApprovals } from './operator-approvals-panel';
 import type { SessionCommandClient } from './session-command-client';

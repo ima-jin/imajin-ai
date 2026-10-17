@@ -6,8 +6,9 @@ export function canonicalCommandJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalCommandJson).join(',')}]`;
   if (value !== null && typeof value === 'object') {
     const record = value as Record<string, unknown>;
-    return `{${Object.keys(record).sort((a, b) => a.localeCompare(b)).map((key) =>
-      `${JSON.stringify(key)}:${canonicalCommandJson(record[key])}`).join(',')}}`;
+    const entries = Object.keys(record).sort((a, b) => a.localeCompare(b)).map((key) =>
+      `${JSON.stringify(key)}:${canonicalCommandJson(record[key])}`);
+    return `{${entries.join(',')}}`;
   }
   return JSON.stringify(value);
 }

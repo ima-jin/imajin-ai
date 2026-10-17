@@ -13,10 +13,10 @@ export function commandOutcome(commandId: string, events: LoopEventJson[]): 'com
 }
 
 export function storedCommandReceipt(events: LoopEventJson[]): { commandId: string; delivered: boolean | null } | null {
-  const queued = events.filter((event) => event.type === 'loop.command.queued' && typeof event.payload.commandId === 'string').at(-1);
+  const queued = events.findLast((event) => event.type === 'loop.command.queued' && typeof event.payload.commandId === 'string');
   if (!queued) return null;
   const commandId = queued.payload.commandId as string;
-  const transport = events.filter((event) => event.type === 'loop.command.transport' && event.payload.commandId === commandId).at(-1);
+  const transport = events.findLast((event) => event.type === 'loop.command.transport' && event.payload.commandId === commandId);
   return { commandId, delivered: typeof transport?.payload.delivered === 'boolean' ? transport.payload.delivered : null };
 }
 
@@ -54,7 +54,7 @@ export function RunComposer({ loopId, events, disabled, onDispatched, client = b
   return <div className="min-w-0 space-y-3 rounded border border-gray-700 p-3" data-testid="run-composer">
     <h4 className="text-sm text-gray-100">Drive this thread</h4>
     {disabled && <p>Commands unavailable: no verified serving agent or the loop has ended.</p>}
-    <label className="block">Message
+    <label className="block"><span>Message</span>
       <textarea aria-label="Message" value={message} onChange={(event) => setMessage(event.target.value)} className="block min-h-11 w-full min-w-0 rounded bg-gray-900 p-2" />
     </label>
     <div className="flex flex-wrap gap-2">
@@ -71,8 +71,8 @@ export function RunComposer({ loopId, events, disabled, onDispatched, client = b
         })}>Sign & spawn</button>
       </div>
     </details>
-    {busy && <p role="status">Preparing your signed wish…</p>}
-    {currentReceipt && <p role="status">{receiptLabel(currentReceipt, outcome)}</p>}
+    {busy && <output className="block">Preparing your signed wish…</output>}
+    {currentReceipt && <output className="block">{receiptLabel(currentReceipt, outcome)}</output>}
     {error && <p role="alert" className="break-words text-red-300">{error}</p>}
   </div>;
 }
