@@ -181,7 +181,7 @@ describe('ownership transfer real database lifecycle (#2892)', () => {
 
   it('serializes duplicate proposals, concurrent accept/replay and cancel/accept races', async () => {
     const proposals = await Promise.all([call(POST, { newOwnerDid: recipient }), call(POST, { newOwnerDid: stranger })]);
-    expect(proposals.map((result) => result.response.status).sort()).toEqual([201, 409]);
+    expect(proposals.map((result) => result.response.status).sort((a, b) => a - b)).toEqual([201, 409]);
     const pending = proposals.find((result) => result.response.status === 201)!.body.pendingTransfer;
     const outcomes = await Promise.allSettled([
       ownershipTransfer(groupDid, { id: pending.to }, 'accept', { transferId: pending.id }),
