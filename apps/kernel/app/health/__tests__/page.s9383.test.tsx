@@ -36,7 +36,7 @@ describe('health check on mount', () => {
       json: async () => ({
         status: 'operational',
         timestamp: '2024-01-01T00:00:00Z',
-        services: [{ name: 'auth', url: 'https://auth.example', status: 'up', responseTime: 12, statusCode: 200 }],
+        services: [{ name: 'auth', kind: 'core', url: 'https://auth.example', status: 'up', responseTime: 12, statusCode: 200 }],
       }),
     }) as unknown as Response);
     vi.stubGlobal('fetch', fetchSpy);
@@ -56,5 +56,25 @@ describe('health check on mount', () => {
 
     expect(await screen.findByText(/Failed to fetch health status/)).toBeDefined();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('groups third-party services using server kind and shows the registered external URL', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: 'degraded',
+        services: [
+          { name: 'auth', kind: 'core', url: 'https://node.example.test/auth', status: 'up', responseTime: 1 },
+          { name: 'fixture-studio', label: 'Fixture Studio', kind: 'app', url: 'https://studio.example.test/', status: 'up', responseTime: 2 },
+        ],
+      }),
+    }));
+    render(<HealthPage />);
+    const studio = await screen.findByRole('link', { name: 'Fixture Studio' });
+    expect(studio.getAttribute('href')).toBe('https://studio.example.test/');
+    expect(studio.closest('.space-y-3')?.textContent).toContain('Applications');
+    expect(screen.getByText('https://studio.example.test/')).toBeDefined();
+    expect(screen.queryByText('fixture-studio.imajin.ai')).toBeNull();
+    expect(screen.getByText('Some Systems Degraded')).toBeDefined();
   });
 });

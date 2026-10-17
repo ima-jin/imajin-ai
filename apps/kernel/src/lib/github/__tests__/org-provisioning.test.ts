@@ -351,6 +351,8 @@ describe('fetchAppManifest (#2813)', () => {
     it.each([
       null, [], 'not-an-object', 7,
       { name: 7 }, { icon: 7 }, { entryUrl: 7 }, { requiredScope: 7 },
+      { profileWidget: {} }, { profileWidget: { path: '//evil.test', label: 'Evil' } },
+      { profileWidget: { path: '/profile', label: 'Profile', html: '<script />' } },
       { placements: 'launcher' }, { placements: ['unknown'] },
       { providesScopes: 'dykil:read' }, { providesScopes: [7] },
       { dependsOn: 'jin.imajin.ai' }, { dependsOn: ['jin.imajin.ai'] }, { dependsOn: [null] },

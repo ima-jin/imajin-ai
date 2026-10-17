@@ -44,10 +44,10 @@ describe('registryAppEmbedUrl', () => {
     expect(params.getAll('did')).toEqual(['did:imajin:group']);
   });
 
-  it('retains dashboard convention for an explicit environment base override', () => {
+  it('ignores stale app env overrides and preserves the registry destination', () => {
     vi.stubEnv('NEXT_PUBLIC_EXACT-APP_URL', 'https://override.example/base/');
     expect(registryAppEmbedUrl({ slug: 'exact-app', entryUrl: '/app/home?x=1' }, 'group')).toBe(
-      'https://override.example/base/dashboard?embed=hub&did=group',
+      '/app/home?x=1&embed=hub&did=group',
     );
   });
 

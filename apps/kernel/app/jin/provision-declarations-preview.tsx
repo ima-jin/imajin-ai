@@ -44,9 +44,9 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
     );
   }
 
-  const { providesScopes, dependsOn, emittableEvents } = declarations;
+  const { providesScopes, dependsOn, emittableEvents, profileWidget } = declarations;
   const secrets = 'ok' in secretDeclarations ? secretDeclarations.ok : [];
-  const isEmpty = providesScopes.length === 0 && dependsOn.length === 0 && emittableEvents.length === 0 && secrets.length === 0;
+  const isEmpty = providesScopes.length === 0 && dependsOn.length === 0 && emittableEvents.length === 0 && secrets.length === 0 && !profileWidget;
 
   return (
     <div
@@ -58,6 +58,7 @@ export function ProvisionDeclarationsPreview({ detail }: Readonly<{ detail: Reco
         App scopes and dependencies, read from <span className="font-mono">imajin.app.json</span> — approving registers
         exactly this list, nothing beyond it.
       </p>
+      {profileWidget && <Row label="Profile widget (owner opt-in required)">{profileWidget.label} — {profileWidget.path}</Row>}
       <Row label="Self secrets (names and recipes only)">
         <span className="font-mono" data-testid="provision-declarations-secrets">
           {'error' in secretDeclarations ? 'Invalid secret declarations — execution will be refused' : secrets.map((secret) => `${secret.name} (${secret.kind})`).join(', ') || '\u2014'}
