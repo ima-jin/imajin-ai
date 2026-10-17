@@ -6,8 +6,20 @@ import type { LoopsPage } from '@/src/lib/loops/query';
 import { conflictsForLoop, isBlockedLoop, mergeRuns, runTree, visibleRuns } from '@/src/lib/jin/runs-lane';
 import type { LoopEventJson } from '@/src/lib/loops/serialize';
 import { RunsPanelDetail } from './runs-panel-detail';
-import { ApprovalCardRow, ApprovalControllerNotices, useRunApprovals } from './operator-approvals-panel';
+import { ApprovalControllerNotices, useRunApprovals } from './operator-approvals-panel';
 import type { SessionCommandClient } from './session-command-client';
+import { RunApprovalRows } from './runs-approval-rows';
+
+async function loadSurfaceWarnings(
+  signal: AbortSignal, onDenied: () => void, onData: (events: LoopEventJson[]) => void,
+) {
+  const surfaces = await fetch('/api/loops/surfaces', { credentials: 'include', signal });
+  if (signal.aborted) return;
+  if (surfaces.status === 401 || surfaces.status === 403) { onDenied(); return; }
+  if (!surfaces.ok) return;
+  const observations = await surfaces.json() as { conflicts: LoopEventJson[] };
+  if (!signal.aborted) onData(observations.conflicts ?? []);
+}
 
 export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }> = {}) {
   const [isOperator, setIsOperator] = useState(false);
@@ -18,7 +30,7 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
   const [loading, setLoading] = useState(false);
   const controllerRef = useRef<AbortController | null>(null);
   const [conflicts, setConflicts] = useState<LoopEventJson[]>([]);
-  const approvals = useRunApprovals();
+  const approvals = useRunApprovals(client?.prepare);
 
   const hide = useCallback(() => {
     setIsOperator(false);
@@ -28,11 +40,12 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
     setConflicts([]);
   }, []);
 
-  const load = useCallback(async (cursor?: string) => {
+  const load = useCallback(async (cursor?: string, silent = false) => {
+    if (silent && controllerRef.current) return;
     controllerRef.current?.abort();
     const controller = new AbortController();
     controllerRef.current = controller;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const suffix = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
       const response = await fetch(`/jin/api/runs${suffix}`, { credentials: 'include', signal: controller.signal });
@@ -50,26 +63,22 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
       }
       const page = data.page;
       setIsOperator(true);
-      setLoops((previous) => mergeRuns(cursor ? previous : [], page.loops));
-      setNextCursor(page.nextCursor);
+      setLoops((previous) => mergeRuns(cursor || silent ? previous : [], page.loops));
+      if (!silent) setNextCursor(page.nextCursor);
       setError(null);
-      const surfaces = await fetch('/api/loops/surfaces', { credentials: 'include', signal: controller.signal });
-      if (controller.signal.aborted) return;
-      if (surfaces.status === 401 || surfaces.status === 403) { hide(); return; }
-      if (surfaces.ok) {
-        const observations = await surfaces.json() as { conflicts: LoopEventJson[] };
-        if (!controller.signal.aborted) setConflicts(observations.conflicts ?? []);
-      }
+      await loadSurfaceWarnings(controller.signal, hide, setConflicts);
     } catch {
       if (!controller.signal.aborted) setError('Runs unavailable. Try refreshing.');
     } finally {
       if (!controller.signal.aborted) setLoading(false);
+      if (controllerRef.current === controller) controllerRef.current = null;
     }
   }, [hide]);
 
   useEffect(() => {
     void load();
-    return () => controllerRef.current?.abort();
+    const timer = setInterval(() => void load(undefined, true), 5000);
+    return () => { controllerRef.current?.abort(); clearInterval(timer); };
   }, [load]);
 
   if (!isOperator) return null;
@@ -86,18 +95,20 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
           Refresh runs
         </button>
       </div>
+      {approvals.approvals.some((card) => card.sessionBinding && card.status !== 'pending') && <div className="mb-4 min-w-0">
+        <h3 className="text-sm font-semibold">Recent approval decisions</h3>
+        <RunApprovalRows cards={approvals.approvals.filter((card) => !!card.sessionBinding && card.status !== 'pending')} controller={approvals} />
+      </div>}
       {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
       <div className="mb-4 min-w-0 space-y-2" data-testid="blocked-on-you">
         <h3 className="text-sm font-semibold text-amber-200">Blocked on you</h3>
         <ApprovalControllerNotices controller={approvals} />
         {loops.filter(isBlockedLoop).map((loop) => <button key={loop.loopId} type="button" className="block min-h-11 w-full min-w-0 break-words rounded border border-amber-900 p-3 text-left text-sm" onClick={() => setSelected(loop.loopId)}>{loop.summary} · Needs attention</button>)}
         {approvals.error && <p role="alert">{approvals.error}</p>}
-        {approvals.approvals.filter((card) => card.status === 'pending').map((card) => <div key={card.proposalId} className="min-w-0">
-          <p className="break-all text-xs text-gray-400">{card.sessionBinding ? `Bound to loop ${card.sessionBinding.loopId}` : 'No verified loop binding · pending approval'}</p>
-          <ApprovalCardRow approval={card} onDecide={approvals.handleDecide} busy={approvals.busyId === card.proposalId} highlighted={false} decisionsLocked={approvals.decisionsLocked} onArchive={approvals.handleArchive} anchor={false} />
-        </div>)}
+        <RunApprovalRows cards={approvals.approvals.filter((card) => card.status === 'pending')} controller={approvals} />
         {!loops.some(isBlockedLoop) && !approvals.approvals.some((card) => card.status === 'pending') && <p className="text-xs text-gray-500">Nothing blocked in loaded runs or pending approvals.</p>}
       </div>
+      <h3 className="mb-2 text-sm font-semibold">Threads</h3>
       {threads.length === 0 && <p className="text-sm text-gray-500">No loops recorded.</p>}
       <ul className="space-y-2">
         {runTree(threads).map(({ loop, depth, orphan }) => (
@@ -122,7 +133,10 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
               <p className="break-all pb-3">{conflict.surface} · {conflict.loopId} ↔ {conflict.otherLoopId}. Observation only; neither thread is stopped.</p>
             </details>)}
             {selected === loop.loopId && (
-              <div className="px-3 pb-3"><RunsPanelDetail loopId={selected} onSelect={setSelected} onDenied={hide} client={client} /></div>
+              <div className="px-3 pb-3">
+                <RunsPanelDetail loopId={selected} onSelect={setSelected} onDenied={hide} client={client} />
+                <RunApprovalRows cards={approvals.approvals.filter((card) => card.sessionBinding?.loopId === selected)} controller={approvals} />
+              </div>
             )}
           </li>
         ))}
@@ -131,6 +145,7 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
         <div className="mt-3 rounded-lg border border-gray-800 p-3">
           <button type="button" className="min-h-11 text-xs text-gray-400" onClick={() => setSelected(null)}>Close run history</button>
           <RunsPanelDetail loopId={selected} onSelect={setSelected} onDenied={hide} client={client} />
+          <RunApprovalRows cards={approvals.approvals.filter((card) => card.sessionBinding?.loopId === selected)} controller={approvals} />
         </div>
       )}
       {nextCursor && (

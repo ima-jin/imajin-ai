@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { RunsPanel } from '../runs-panel';
 import { RunsPanelDetail } from '../runs-panel-detail';
 import { runLoop } from '@/src/lib/jin/__tests__/runs-fixture';
@@ -105,5 +105,46 @@ describe('interactive Runs integration', () => {
       ? response({}, 403) : response(page()))));
     render(<RunsPanel />);
     await waitFor(() => expect(screen.queryByTestId('runs-lane')).toBeNull());
+  });
+
+  it('renders a verified bound shared row inline under its thread with the exact same controller', async () => {
+    shared.cards = [{ proposalId: 'bound', status: 'pending', sessionBinding: { loopId: 'loop-1' } }];
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
+      ? { conflicts: [] } : url.endsWith('/loop-1') ? history() : page()))));
+    render(<RunsPanel />);
+    const card = (await screen.findAllByTestId('run-card'))[0];
+    fireEvent.click(within(card).getByRole('button'));
+    expect(await within(card).findByText('bound')).toBeDefined();
+    expect(within(screen.getByTestId('blocked-on-you')).getByText('bound')).toBeDefined();
+    expect(shared.row.mock.calls.every(([props]) => props.onDecide === shared.decide && props.anchor === false)).toBe(true);
+    expect(screen.getByRole('heading', { name: 'Threads' })).toBeDefined();
+  });
+
+  it('silently merges an attested child into the main tree without losing loaded pages, cursor or draft', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let updated = false;
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/loops/surfaces') return Promise.resolve(response({ conflicts: [] }));
+      if (url.endsWith('/loop-1')) return Promise.resolve(response(history()));
+      if (url.includes('ancestor=')) return Promise.resolve(response(page()));
+      if (url.includes('cursor=')) return Promise.resolve(response({ ...page([runLoop({ loopId: 'older', summary: 'Older loaded page' })]), page: {
+        loops: [runLoop({ loopId: 'older', summary: 'Older loaded page' })], nextCursor: 'second-page', hasNextPage: true,
+      } }));
+      const loops = [runLoop(), ...(updated ? [runLoop({ loopId: 'child', parentLoopId: 'loop-1', kind: 'openclaw.subagent', summary: 'Attested child' })] : [])];
+      return Promise.resolve(response({ ...page(loops), page: { loops, nextCursor: updated ? null : 'first-page', hasNextPage: !updated } }));
+    }));
+    render(<RunsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Load more runs' }));
+    await screen.findByText('Older loaded page');
+    const parent = screen.getAllByTestId('run-card').find((card) => card.textContent?.includes('Implement registry'))!;
+    fireEvent.click(within(parent).getByRole('button'));
+    fireEvent.change(await screen.findByLabelText('Message'), { target: { value: 'keep through tree refresh' } });
+    updated = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.getAllByTestId('run-card')).toHaveLength(3);
+    expect(screen.getByText('Older loaded page')).toBeDefined();
+    expect(screen.getByText('Attested child')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Load more runs' })).toBeDefined();
+    expect((screen.getByLabelText('Message') as HTMLTextAreaElement).value).toBe('keep through tree refresh');
   });
 });

@@ -1,6 +1,8 @@
 import * as ed from '@noble/ed25519';
 import type { LoopJson, LoopEventJson } from '@/src/lib/loops/serialize';
 import type { SessionCommandBody, SessionCommandFrame } from '@/src/lib/jin/session-command-contract';
+import type { OperatorApprovalCard } from '@/app/jin/operator-approvals-panel';
+import type { LoopOutput, StoredLoopOutput } from '@imajin/bus';
 import { canonicalCommandJson, prepareSignedSessionCommand, dispatchSessionCommand, type SessionCommandClient } from '@/app/jin/session-command-client';
 
 const principal = 'did:imajin:fixture-principal';
@@ -23,6 +25,28 @@ function commandBody(command: SessionCommandBody): SessionCommandBody {
   return { type, commandId, to, principal: owner, issuer: grantIssuer, issuedAt, expiresAt, payload };
 }
 
+function fixtureOutputs(): (LoopOutput | StoredLoopOutput)[] {
+  return [
+    { kind: 'text', text: 'Signed loop progress · no transcript lookup' },
+    { kind: 'tool_call', callId: 'call-1', name: 'inspect', args: { scope: 'fixture' } },
+    { kind: 'tool_result', callId: 'call-1', result: { passed: true } },
+    { kind: 'artifact', ref: 'artifact:fixture-report', name: 'Fixture report', mediaType: 'text/plain' },
+    { kind: 'decision', decision: 'continue', reason: 'Awaiting operator wish' },
+    { kind: 'approval_request', approvalId: 'native-allow', action: 'Run fixture tests', details: { command: 'pnpm test' } },
+    { kind: 'spawn', loopId: 'fixture-example-child' },
+    { kind: 'model_change', model: 'fixture-model', previousModel: 'fixture-previous' },
+    { kind: 'text', artifactRef: { id: 'fixture-stored', sha256: 'f'.repeat(64), byteLength: 24000, mediaType: 'application/json' },
+      preview: 'Stored redacted output preview', truncated: true },
+  ];
+}
+
+function fixtureApproval(proposalId: string, approvalId: string): OperatorApprovalCard {
+  return { proposalId, source: 'gateway-exec', kind: 'gateway-exec:command', summary: `Fixture native approval ${approvalId}`,
+    keysTouched: [], detail: { command: 'pnpm test', host: 'fixture', cwd: '/fixture', approvalId },
+    contentHash: 'f'.repeat(64), status: 'pending', decision: null, outcome: null, appliedAt: null,
+    createdAt: new Date().toISOString(), sessionBinding: { loopId: 'fixture-session', principalDid: principal, agentDid: agent, approvalId } };
+}
+
 /** Local fixture only. All API calls are intercepted; production code and auth are unchanged. */
 export async function createRunsPreviewTransport() {
   if (process.env.NODE_ENV !== 'development') throw new Error('Development fixture only');
@@ -35,7 +59,17 @@ export async function createRunsPreviewTransport() {
   const loops = [fixtureLoop('fixture-session', 'openclaw.session'), fixtureLoop('fixture-warp', 'warp.run')];
   loops[0].state = 'blocked';
   loops[0].lastEventType = 'loop.blocked';
-  const events: LoopEventJson[] = [];
+  const events: LoopEventJson[] = fixtureOutputs().map((output, index) => ({
+    id: `fixture-output-${index}`, loopId: 'fixture-session', type: 'loop.progress', issuer: agent, principal,
+    payload: { output }, occurredAt: new Date().toISOString(), createdAt: new Date().toISOString(),
+  }));
+  const approvals = [fixtureApproval('fixture-allow', 'native-allow'), fixtureApproval('fixture-deny', 'native-deny')];
+  const bindingProofs = await Promise.all(approvals.map(async (card) => {
+    const unsigned = { from: agent, type: 'agent', timestamp: Date.now(), payload: card.sessionBinding };
+    return { type: 'loop.approval.bound', attestation: {
+      ...unsigned, signature: ed.etc.bytesToHex(await ed.signAsync(encode(unsigned), agentKey)),
+    } };
+  }));
   const proofs: Record<string, unknown>[] = [];
   const prepared = new Map<string, SessionCommandFrame>();
   const used = new Set<string>();
@@ -44,12 +78,14 @@ export async function createRunsPreviewTransport() {
   });
   async function outcome(command: SessionCommandFrame, parent: string) {
     const spawn = command.type === 'session.spawn';
-    const loopId = spawn ? `fixture-child-${used.size}` : parent;
+    const loopId = spawn ? `fixture-child-${command.commandId}` : parent;
     const eventType = `loop.${command.type}.completed`;
     const payloadHash = ed.etc.bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', encode(command.payload))));
     const payload = { eventType, commandId: command.commandId, command: command.type, outcome: 'completed',
       principal, issuer, agentDid: agent, payloadHash, at: new Date().toISOString(), loopId,
       parentLoopId: spawn ? parent : null, ...(spawn ? { childLoopId: loopId } : {}) };
+    const native = approvals.find((card) => card.sessionBinding?.approvalId === command.payload.approvalId);
+    if (native) Object.assign(payload, { approvalId: native.sessionBinding!.approvalId, approvalKind: 'exec' });
     const unsigned = { from: agent, type: 'agent', timestamp: Date.now(), payload };
     const attestation = { ...unsigned, signature: ed.etc.bytesToHex(await ed.signAsync(encode(unsigned), agentKey)) };
     if (!await ed.verifyAsync(ed.etc.hexToBytes(attestation.signature), encode(unsigned), agentPublic)) throw new Error('Invalid fixture proof');
@@ -57,8 +93,9 @@ export async function createRunsPreviewTransport() {
     events.push({ id: `outcome-${command.commandId}`, loopId: parent, type: eventType, issuer: agent, principal, payload,
       occurredAt: payload.at, createdAt: payload.at });
     if (spawn) loops.push(fixtureLoop(loopId, 'openclaw.subagent', parent));
+    if (native) native.sessionOutcome = { commandId: command.commandId, outcome: 'completed', at: payload.at };
   }
-  async function commandRequest(loopId: string, data: Record<string, unknown>) {
+  async function commandRequest(loopId: string, data: Record<string, unknown>, approvalRail = false) {
     if (data.action === 'prepare') {
       const body: SessionCommandBody = { type: data.type as SessionCommandBody['type'], payload: data.payload as Record<string, string>,
         commandId: crypto.randomUUID(), to: agent, principal, issuer, issuedAt: new Date().toISOString(),
@@ -68,6 +105,7 @@ export async function createRunsPreviewTransport() {
       return json({ command });
     }
     const command = data.command as SessionCommandFrame;
+    if (command.payload.approvalId && !approvalRail) return json({ error: 'Use existing approval decision endpoint' }, 403);
     const expected = prepared.get(command.commandId);
     if (!expected || used.has(command.commandId) || !command.countersignature) return json({ error: 'Unprepared or replayed command' }, 409);
     const validWish = await ed.verifyAsync(ed.etc.hexToBytes(command.countersignature.sig), encode(commandBody(command)), principalPublic);
@@ -78,9 +116,24 @@ export async function createRunsPreviewTransport() {
     setTimeout(() => { void outcome(command, loopId); }, 500);
     return json({ commandId: command.commandId, delivered: true });
   }
+  async function approvalDecision(proposalId: string, data: Record<string, unknown>) {
+    const card = approvals.find((item) => item.proposalId === proposalId);
+    if (!card) return json({ error: 'Not found' }, 404);
+    const command = data.sessionCommand as SessionCommandFrame | undefined;
+    const expectedType = data.decision === 'approve' ? 'session.approve' : 'session.deny';
+    if (!command || command.type !== expectedType || command.payload.approvalId !== card.sessionBinding?.approvalId) {
+      return json({ error: 'Complete bound wish required' }, 400);
+    }
+    const result = await commandRequest('fixture-session', { action: 'dispatch', command }, true);
+    if (!result.ok) return result;
+    card.status = data.decision === 'approve' ? 'approved' : 'denied';
+    return json({ approval: card, sessionCommand: await result.json() });
+  }
   const fetcher = async (input: RequestInfo | URL, options?: RequestInit): Promise<Response> => {
     const url = new URL(String(input), 'http://fixture.local');
-    if (url.pathname === '/jin/api/operator-approvals') return json({ isOperator: true, approvals: [] });
+    if (url.pathname === '/jin/api/operator-approvals') return json({ isOperator: true, approvals });
+    const decision = /^\/jin\/api\/operator-approvals\/([^/]+)\/decision$/.exec(url.pathname);
+    if (decision) return approvalDecision(decodeURIComponent(decision[1]), JSON.parse(String(options?.body)) as Record<string, unknown>);
     if (url.pathname === '/api/loops/surfaces') return json({ leases: [], warnOnly: true, conflicts: [{
       id: 'fixture-conflict', loopId: 'fixture-session', type: 'surface.conflicted', payload: {
         loopId: 'fixture-session', surface: 'issue:#2404', refs: { conflictingLoopId: 'fixture-warp' },
@@ -96,7 +149,8 @@ export async function createRunsPreviewTransport() {
     return json({ isOperator: true, detail: { loop, events: events.filter((event) => event.loopId === loopId) },
       commandTarget: { available: loop.kind !== 'warp.run', agentDid: agent } });
   };
-  return { fetcher, proofs, keypair: { privateKey: ed.etc.bytesToHex(principalKey), publicKey: ed.etc.bytesToHex(principalPublic) } };
+  return { fetcher, proofs, bindingProofs, agentPublicKey: ed.etc.bytesToHex(agentPublic),
+    keypair: { privateKey: ed.etc.bytesToHex(principalKey), publicKey: ed.etc.bytesToHex(principalPublic) } };
 }
 
 export async function installRunsPreview() {
