@@ -27,7 +27,7 @@ beforeAll(async () => {
   // The shared balance harness omits the later emission provenance migration;
   // replay only its existing transaction-column DDL, not its unrelated bus seed.
   const emissionMigration = readFileSync(
-    new URL('../../../../../../migrations/0170_emission_config.sql', import.meta.url), 'utf8',
+    new URL('../../../../../../migrations/archive/pre-kernel-baseline/0170_emission_config.sql', import.meta.url), 'utf8',
   );
   const transactionColumns = emissionMigration.match(/ALTER TABLE pay\.transactions[\s\S]*?;/)?.[0];
   if (!transactionColumns) throw new Error('Existing transaction-column migration was not found');

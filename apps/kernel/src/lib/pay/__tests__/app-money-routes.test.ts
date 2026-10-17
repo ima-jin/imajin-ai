@@ -86,7 +86,7 @@ async function payment(appDid: string | null = APP, type = 'checkout') {
 }
 beforeAll(async () => {
   harness = await createPgliteLedgerHarness();
-  const dir = join(__dirname, '../../../../../../migrations');
+  const dir = join(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline');
   await harness.client.exec(readFileSync(join(dir, '0007_registry_apps.sql'), 'utf8'));
   await harness.client.exec(readFileSync(join(dir, '0179_registry_apps_approved_service_scopes.sql'), 'utf8'));
   await harness.client.exec(`ALTER TABLE pay.transactions ADD COLUMN idempotency_key TEXT,

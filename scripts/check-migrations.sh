@@ -1,6 +1,6 @@
 #!/bin/bash
 # Verify migration file consistency:
-# - All files in migrations/ are sequentially numbered
+# - Active files are uniquely numbered; baseline successors exceed archived history
 # - All files are valid SQL (non-empty)
 # - No gaps in numbering
 #
@@ -34,7 +34,7 @@ fi
 FILES=($(ls "$MIGRATIONS_DIR"/*.sql 2>/dev/null | sort))
 COUNT=${#FILES[@]}
 
-if [[ "$COUNT" -eq 0 ]]; then
+if [[ "$COUNT" -eq 0 ]] && [[ ! -f "$MIGRATIONS_DIR/kernel-baseline.json" ]]; then
   echo "⚠️  No migration files found"
   exit 0
 fi
@@ -42,6 +42,25 @@ fi
 echo "Checking $COUNT migration file(s)..."
 
 PREV_NUM=-1
+HISTORICAL_MAX=-1
+if [[ -f "$MIGRATIONS_DIR/kernel-baseline.json" ]]; then
+  # Read metadata only: no connection, environment files, or database access.
+  HISTORICAL_MAX=$(node -e '
+    const fs = require("node:fs");
+    const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    if (manifest.filename !== "0001_kernel_baseline.sql" ||
+        manifest.archive !== "archive/pre-kernel-baseline" ||
+        !Array.isArray(manifest.migrations) || manifest.migrations.length === 0 ||
+        manifest.migrations.some(m => !/^\d{4}_[^/\\]+\.sql$/.test(m.filename))) {
+      throw new Error("Invalid kernel baseline manifest");
+    }
+    console.log(Math.max(...manifest.migrations.map(m => Number(m.filename.slice(0, 4)))));
+  ' "$MIGRATIONS_DIR/kernel-baseline.json")
+  if [[ ! -s "$MIGRATIONS_DIR/0001_kernel_baseline.sql" ]]; then
+    echo "❌ Missing or empty 0001_kernel_baseline.sql"
+    exit 1
+  fi
+fi
 for file in "${FILES[@]}"; do
   basename="$(basename "$file")"
 
@@ -55,6 +74,10 @@ for file in "${FILES[@]}"; do
   # Extract number
   NUM=$(echo "$basename" | grep -oP '^\d+' | sed 's/^0*//' )
   [[ -z "$NUM" ]] && NUM=0
+  if [[ "$HISTORICAL_MAX" -ge 0 ]] && [[ "$basename" != "0001_kernel_baseline.sql" ]] && [[ "$NUM" -le "$HISTORICAL_MAX" ]]; then
+    echo "❌ $basename: active migrations after baseline must exceed historical maximum $(printf '%04d' "$HISTORICAL_MAX")"
+    FAILED=1
+  fi
 
   # Check for duplicate numbers — HARD FAIL. Two files sharing a number is
   # never intentional and sort order decides apply order (see the 0068
@@ -69,6 +92,9 @@ for file in "${FILES[@]}"; do
 
   # Check for gaps
   EXPECTED=$((PREV_NUM + 1))
+  if [[ "$HISTORICAL_MAX" -ge 0 ]] && [[ "$PREV_NUM" -eq 1 ]]; then
+    EXPECTED=$((HISTORICAL_MAX + 1))
+  fi
   if [[ "$PREV_NUM" -ge 0 ]] && [[ "$NUM" -ne "$EXPECTED" ]]; then
     echo "⚠️  $basename: gap in numbering (expected $(printf '%04d' $EXPECTED))"
   fi

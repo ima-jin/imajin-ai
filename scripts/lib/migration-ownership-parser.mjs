@@ -16,8 +16,8 @@
  * rather than silently ignored.
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 /** Schemas that map 1:1 onto an app that owns tables in this repo today. */
 export const APP_SCHEMAS = new Set(['coffee', 'dykil', 'events', 'learn', 'links', 'market']);
@@ -283,6 +283,20 @@ export function listMigrationFiles(dir) {
     .sort();
 }
 
+/** Audit source history, not the generated kernel-only runtime snapshot. */
+function listOwnershipMigrationFiles(migrationsDir) {
+  const manifestPath = join(migrationsDir, 'kernel-baseline.json');
+  const active = listMigrationFiles(migrationsDir);
+  if (!existsSync(manifestPath)) return active;
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (manifest.filename !== '0001_kernel_baseline.sql' || manifest.archive !== 'archive/pre-kernel-baseline') {
+    throw new Error('Invalid kernel baseline audit source layout.');
+  }
+  const historical = listMigrationFiles(join(migrationsDir, manifest.archive))
+    .map((filename) => join(manifest.archive, filename));
+  return [...historical, ...active.filter((filename) => filename !== manifest.filename)];
+}
+
 /** Builds the `${kind}:${schema}.${name}` key an entry is stored under (kind-prefixed so a table and a same-named function never collide). */
 function keyFor(kind, schema, name) {
   return `${kind}:${schema}.${name}`;
@@ -327,16 +341,19 @@ function applyStatement(entries, stmt, filename) {
 function applyMigrationFile(entries, migrationsDir, filename) {
   const sql = readFileSync(join(migrationsDir, filename), 'utf8');
   for (const stmt of parseStatements(sql)) {
-    applyStatement(entries, stmt, filename);
+    applyStatement(entries, stmt, basename(filename));
   }
 }
 
 /**
- * Build the full ownership map by replaying every migration file in order.
+ * Build the full ownership map by replaying archived history, then active
+ * post-cut migrations (or root SQL alone before baseline activation).
+ * The generated baseline is not source history: auditing it would erase app
+ * ownership and replace original firstMigration values with the snapshot.
  * Returns a Map keyed by `${kind}:${schema}.${name}` (kind-prefixed so a
  * table and a same-named function never collide).
  */
-export function buildOwnershipMap(migrationsDir, files = listMigrationFiles(migrationsDir)) {
+export function buildOwnershipMap(migrationsDir, files = listOwnershipMigrationFiles(migrationsDir)) {
   const entries = new Map();
 
   for (const filename of files) {

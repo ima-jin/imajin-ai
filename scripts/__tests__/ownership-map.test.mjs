@@ -16,6 +16,17 @@ const ownership = readJson('ownership.json');
 const gapsFile = readJson('ownership-gaps.json');
 const allowlist = readJson('cross-schema-allowlist.json');
 
+function sourcePath(file) {
+  const rootPath = join(ROOT, file);
+  if (existsSync(rootPath)) return rootPath;
+  // Only exact historical root migration references have an archive fallback.
+  // All other missing sources still fail, including unknown archive SQL.
+  const historical = /^migrations\/(\d{4}_[^/\\]+\.sql)$/.exec(file);
+  return historical
+    ? join(MIGRATIONS, 'archive/pre-kernel-baseline', historical[1])
+    : rootPath;
+}
+
 describe('migrations/ownership.json', () => {
   it('records extracted schema repositories without rewriting table origins', () => {
     for (const schema of ['coffee', 'dykil', 'learn', 'market']) {
@@ -62,12 +73,21 @@ describe('migrations/ownership.json', () => {
     for (const e of fresh.values()) {
       if (e.kind !== 'table') continue;
       expect(ownership.tables[`${e.schema}.${e.name}`].owner).toBe(e.owner);
+      expect(ownership.tables[`${e.schema}.${e.name}`].firstMigration).toBe(e.firstMigration);
     }
   });
 
   it('only grandfathers shared migrations that exist on disk', () => {
     for (const file of ownership.sharedMigrationAllowlist) {
-      expect(() => readFileSync(join(MIGRATIONS, file), 'utf8'), file).not.toThrow();
+      expect(() => readFileSync(sourcePath(`migrations/${file}`), 'utf8'), file).not.toThrow();
+    }
+  });
+
+  it('retains a real source file for every recorded first migration', () => {
+    for (const bucket of ['tables', 'views', 'types', 'functions']) {
+      for (const [name, entry] of Object.entries(ownership[bucket])) {
+        expect(() => readFileSync(sourcePath(`migrations/${entry.firstMigration}`), 'utf8'), name).not.toThrow();
+      }
     }
   });
 });
@@ -108,7 +128,7 @@ describe('migrations/ownership-gaps.json', () => {
         // #1991/#2844 own these historical artifacts. Retiring source is not
         // a reason to rewrite migration history or its recorded audit gaps.
         if (f.startsWith('apps/events/') && !existsSync(join(ROOT, 'apps/events/package.json'))) continue;
-        expect(() => readFileSync(join(ROOT, f), 'utf8'), `${g.id}: ${f}`).not.toThrow();
+        expect(() => readFileSync(sourcePath(f), 'utf8'), `${g.id}: ${f}`).not.toThrow();
       }
     }
   });

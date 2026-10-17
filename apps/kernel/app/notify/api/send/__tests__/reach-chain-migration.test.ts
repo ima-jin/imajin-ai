@@ -7,7 +7,7 @@ vi.mock('@imajin/db', () => ({ getClient: () => () => Promise.resolve([]) }));
 import { getChainConfig } from '../../../../../../../packages/bus/src/config';
 
 function migration(name: string): string {
-  return readFileSync(new URL(`../../../../../../../migrations/${name}`, import.meta.url), 'utf8');
+  return readFileSync(new URL(`../../../../../../../migrations/archive/pre-kernel-baseline/${name}`, import.meta.url), 'utf8');
 }
 
 describe('Reach chain migration parity (#2588)', () => {

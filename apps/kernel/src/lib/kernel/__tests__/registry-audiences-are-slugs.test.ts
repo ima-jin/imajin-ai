@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { isAppAudienceSlug } from '@imajin/auth';
 
-const MIGRATIONS_DIR = resolve(__dirname, '../../../../../../migrations');
+const MIGRATIONS_DIR = resolve(__dirname, '../../../../../../migrations/archive/pre-kernel-baseline');
 
 /** Every quoted element of every `ARRAY['…', …]` literal in a SQL file. */
 function arrayLiterals(sql: string): string[] {

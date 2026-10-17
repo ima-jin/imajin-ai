@@ -120,7 +120,7 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeAll(async () => {
   harness = await createPgliteLedgerHarness();
-  const migrationsDir = join(__dirname, '../../../../../../../migrations');
+  const migrationsDir = join(__dirname, '../../../../../../../migrations/archive/pre-kernel-baseline');
   await harness.client.exec(readFileSync(join(migrationsDir, '0007_registry_apps.sql'), 'utf-8'));
   await harness.client.exec(readFileSync(join(migrationsDir, '0179_registry_apps_approved_service_scopes.sql'), 'utf-8'));
   // The drizzle `transactions` table also selects the #2017 emission columns (migration 0170 seeds unrelated kernel tables too, so only its pay DDL is inlined).

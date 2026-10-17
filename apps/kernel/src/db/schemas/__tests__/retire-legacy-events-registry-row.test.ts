@@ -11,7 +11,7 @@ vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 function readMigration(filename: string): string {
   return readFileSync(
-    fileURLToPath(new URL(`../../../../../../migrations/${filename}`, import.meta.url)),
+    fileURLToPath(new URL(`../../../../../../migrations/archive/pre-kernel-baseline/${filename}`, import.meta.url)),
     'utf-8',
   );
 }

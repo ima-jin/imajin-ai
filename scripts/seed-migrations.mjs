@@ -6,7 +6,7 @@
  * Usage: node scripts/seed-migrations.mjs [--dry-run]
  */
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
@@ -17,6 +17,10 @@ import { mapSequentially } from './lib/sequential.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const baseDir = resolve(__dirname, '..');
 const migrationsDir = resolve(baseDir, 'migrations');
+if (existsSync(resolve(migrationsDir, 'kernel-baseline.json'))) {
+  console.error('Baseline layout: use node scripts/migrate.mjs for verified adoption. Blind ledger seeding is disabled.');
+  process.exit(1);
+}
 
 const dryRun = process.argv.includes('--dry-run');
 

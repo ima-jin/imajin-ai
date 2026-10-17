@@ -79,7 +79,7 @@ beforeAll(async () => {
   database = new PGlite();
   await database.waitReady;
   const migration = readFileSync(fileURLToPath(new URL(
-    '../../../../../../migrations/0195_reach_envelopes.sql', import.meta.url,
+    '../../../../../../migrations/archive/pre-kernel-baseline/0195_reach_envelopes.sql', import.meta.url,
   )), 'utf8');
   await database.exec(migration);
 });

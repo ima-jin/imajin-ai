@@ -26,7 +26,7 @@ beforeAll(async () => {
     );
     CREATE TABLE kernel.loop_events (loop_id text, principal text, payload jsonb);
   `);
-  const migration = readFileSync('migrations/0192_loop_refs_spend.sql', 'utf8');
+  const migration = readFileSync('migrations/archive/pre-kernel-baseline/0192_loop_refs_spend.sql', 'utf8');
   await pg.exec(migration);
   await pg.exec(migration);
   sql.mockImplementation(async (strings: TemplateStringsArray, ...values: unknown[]) => {
