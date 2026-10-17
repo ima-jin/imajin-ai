@@ -217,3 +217,4 @@ the sealed grant, not a shared secret, is the thing that has to be revoked.
 - Spike log with the full command transcript: [`spikes/2250-muse-connector/README.md`](../../spikes/2250-muse-connector/README.md)
 - Shipped: [#2252](https://github.com/ima-jin/imajin-ai/issues/2252) (delegate-grant bearer for static-header clients — the knock/approve/paste runbook above)
 - Follow-ups tracked: [#2253](https://github.com/ima-jin/imajin-ai/issues/2253) (aggregate OpenAPI spec)
+
