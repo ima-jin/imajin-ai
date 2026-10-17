@@ -18,6 +18,29 @@ function formatDuration(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+function formatCaptionTimestamp(ms: number): string {
+  const hours = Math.floor(ms / 3600000).toString().padStart(2, '0');
+  const minutes = Math.floor((ms % 3600000) / 60000).toString().padStart(2, '0');
+  const seconds = Math.floor((ms % 60000) / 1000).toString().padStart(2, '0');
+  const milliseconds = (ms % 1000).toString().padStart(3, '0');
+  return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+}
+
+function buildCaptionSource(transcript: string, durationMs: number): string | undefined {
+  // A blank cue line terminates a WebVTT cue; keep the whole transcript in one
+  // cue even when the source contains paragraphs or Windows line endings.
+  const text = transcript.replaceAll(/\r\n?/g, '\n')
+    .split('\n').map(line => line.trim()).filter(Boolean).join('\n');
+  if (text.length === 0) return undefined;
+
+  const escapedText = text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+  // WebVTT requires the end to be strictly after the start, including when
+  // duration metadata is missing/zero. Round up to cover fractional milliseconds.
+  const endMs = Number.isFinite(durationMs) ? Math.max(1, Math.ceil(durationMs)) : 1;
+  const vtt = `WEBVTT\n\n00:00:00.000 --> ${formatCaptionTimestamp(endMs)}\n${escapedText}\n`;
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
+}
+
 export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn, mediaUrl = '' }: Readonly<VoiceMessageProps>) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -28,6 +51,7 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   const audioSrc = `${mediaUrl}/api/assets/${assetId}`;
   const totalDuration = durationMs / 1000;
+  const captionSrc = useMemo(() => buildCaptionSource(transcript, durationMs), [transcript, durationMs]);
 
   // Stable per-bar ids (S6479): the waveform prop is fixed data for this
   // message, so ids are generated once per `waveform` reference rather than
@@ -100,8 +124,11 @@ export function VoiceMessage({ assetId, transcript, durationMs, waveform, isOwn,
 
   return (
     <div className="min-w-[200px] max-w-[280px]">
-      {/* Voice messages use the visible transcript below. */}
-      <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message" />
+      <audio ref={audioRef} onEnded={handleEnded} preload="metadata" aria-label="Voice message">
+        {captionSrc && (
+          <track kind="captions" src={captionSrc} srcLang="und" label="Transcript" default />
+        )}
+      </audio>
 
       {/* Player row */}
       <div className="flex items-center gap-2">
