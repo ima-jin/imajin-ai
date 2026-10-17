@@ -16,6 +16,7 @@ describe('kernel baseline adoption', () => {
   it('adopts only a complete matching historical ledger with kernel schemas', () => {
     expect(baselineAction(manifest, full(), 'hash', true)).toBe('adopt');
     expect(() => baselineAction(manifest, full(), 'hash', false)).toThrow('without kernel');
+    expect(() => baselineAction(manifest, full(), 'hash', true, false)).toThrow('incomplete adoption');
     expect(() => baselineAction(manifest, new Map([['0001_seed.sql', 'a']]), 'hash', true)).toThrow('Incomplete');
     const changed = full();
     changed.set('0201_reconcile.sql', 'wrong');
