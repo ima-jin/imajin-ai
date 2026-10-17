@@ -550,10 +550,9 @@ function setupWebSocket(server) {
 
 /**
  * Send a JSON payload to all sockets for a given DID (user may have multiple tabs/devices open).
- * Returns true if at least one socket received the message, asynchronously
- * for private Reach frames and synchronously for other existing frames.
+ * Resolves true if at least one socket received the message.
  */
-function sendToDid(did, payload) {
+async function sendToDid(did, payload) {
   // Await private fan-out before reporting delivery. The upstream bus still
   // decides requester entitlement; only its extra delegate recipients need
   // current private read authority for the target DID, never payload.subject.
@@ -574,12 +573,11 @@ function sendToDid(did, payload) {
 }
 async function sendPrivateToDid(did, payload) {
   const sockets = alsoRegistry.recipientsFor(did, didSockets.get(did));
-  let sent = false;
-  for (const ws of [...(sockets ?? [])]) {
-    const delivered = await privateNotifications.send(ws, did, payload);
-    if (delivered) sent = true;
-  }
-  return sent;
+  const deliveries = await Promise.all(Array.from(
+    sockets ?? [],
+    (ws) => privateNotifications.send(ws, did, payload),
+  ));
+  return deliveries.some((delivered) => delivered);
 }
 
 /**

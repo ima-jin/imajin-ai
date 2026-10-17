@@ -126,6 +126,22 @@ afterEach(async () => {
 });
 
 describe('ws-server principal private notification integration', () => {
+  it('keeps ordinary notification fanout and reports an awaited boolean response', async () => {
+    const principal = await connect(PRINCIPAL);
+    const delegate = await connect(AGENT);
+    await register(delegate);
+    calls = [];
+    const event = {
+      type: 'notification', id: 'ntf_ordinary', scope: 'warp.run.completed',
+      data: { eventType: 'warp.run.completed' },
+    };
+    expect(await (await push(event)).json()).toEqual({ delivered: true });
+    await vi.waitFor(() => {
+      expect(principal.frames).toContainEqual(event);
+      expect(delegate.frames).toContainEqual(event);
+    });
+    expect(calls.some((call) => call.body.purpose === 'private-reach')).toBe(false);
+  });
   it('preserves own requester bus delivery but denies stale delegates, authorizing the target not event subject', async () => {
     // Here the push target PRINCIPAL represents the already-entitled requester,
     // while subject is the unrelated replying principal.
