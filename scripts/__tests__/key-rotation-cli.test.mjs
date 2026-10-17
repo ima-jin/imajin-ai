@@ -1,6 +1,10 @@
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import { createPrivateKey } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { parseEnv } from 'node:util';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as keyRotation from '../../packages/auth/src/key-rotation.ts';
@@ -32,6 +36,291 @@ function makeDeps({ env = {}, fetchImpl, readFile } = {}) {
 function jsonResponse(status, body) {
   return { status, json: async () => body };
 }
+const temporaryDirectories = [];
+afterEach(async () => {
+  for (const directory of temporaryDirectories.splice(0)) await fs.rm(directory, { recursive: true, force: true });
+});
+
+async function rotationFixture() {
+  const directory = await fs.mkdtemp(join(tmpdir(), 'rotation-test-'));
+  temporaryDirectories.push(directory);
+  const filename = join(directory, '.env.local');
+  const oldKey = newKeypair();
+  const newKey = newKeypair();
+  const original = `# retain this comment\nOTHER="keep # spaces"\nAUTH_PRIVATE_KEY=${oldKey.privateKey}\nTAIL=untouched\n`;
+  await fs.writeFile(filename, original, { mode: 0o600 });
+  const capture = makeDeps();
+  capture.deps.generatePrivateKey = () => newKey.privateKey;
+  return {
+    ...capture, directory, filename, oldKey, newKey, original,
+    backup: `${filename}.key-rotation.bak`,
+    argv: ['generate', '--env-file', filename],
+  };
+}
+
+/** Boolean assertions ensure even a failing security test cannot print its secrets. */
+function expectNoPrivateMaterial(output, ...keys) {
+  for (const key of keys) {
+    const seed = Buffer.from(authCrypto.extractPrivateKeySeed(key), 'hex');
+    const der = Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), seed]);
+    const privateObject = createPrivateKey({ key: der, format: 'der', type: 'pkcs8' });
+    const pem = privateObject.export({ format: 'pem', type: 'pkcs8' }).toString();
+    const jwk = privateObject.export({ format: 'jwk' });
+    const forms = [key, pem, ...pem.trim().split('\n').slice(1, -1), jwk.d];
+    for (const bytes of [seed, der, Buffer.from(key)]) {
+      forms.push(bytes.toString('hex'), bytes.toString('hex').toUpperCase(), bytes.toString('base64'), bytes.toString('base64url'), bytes.toString('latin1'));
+    }
+    for (const secret of forms) expect(output.includes(secret)).toBe(false);
+  }
+  expect(output.includes('PRIVATE KEY-----')).toBe(false);
+  expect(output.includes('"d":')).toBe(false);
+}
+
+function expectSafeCapture(fixture) {
+  expectNoPrivateMaterial(fixture.stdout() + fixture.stderr(), fixture.oldKey.privateKey, fixture.newKey.privateKey);
+}
+
+function overrideHandle(handle, overrides) {
+  return new Proxy(handle, {
+    get(target, name) {
+      if (Object.hasOwn(overrides, name)) return overrides[name];
+      const value = Reflect.get(target, name);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+describe('generate', () => {
+  it('uses the shared preflight, installs atomically and preserves the private rollback file byte-for-byte', async () => {
+    const f = await rotationFixture();
+    await fs.chmod(f.filename, 0o644);
+    const now = new Date('2026-10-17T12:00:00Z');
+    const evaluate = vi.fn((input) => keyRotation.evaluateKeyRotationPreflight({ ...input, now }));
+    f.deps.keyRotation = { ...keyRotation, evaluateKeyRotationPreflight: evaluate };
+    let observedRename = false;
+    f.deps.fileSystem = {
+      ...fs,
+      rename: async (source, target) => {
+        observedRename = true;
+        expect(dirname(source)).toBe(dirname(target));
+        expect(target).toBe(f.filename);
+        expect((await fs.readFile(target, 'utf8')) === f.original).toBe(true);
+        expect((await fs.readFile(f.backup, 'utf8')) === f.original).toBe(true);
+        expect((await fs.stat(source)).mode & 0o777).toBe(0o600);
+        expect((await fs.stat(f.backup)).mode & 0o777).toBe(0o600);
+        expect(parseEnv(await fs.readFile(source, 'utf8')).AUTH_PRIVATE_KEY === f.newKey.privateKey).toBe(true);
+        await fs.rename(source, target);
+      },
+    };
+
+    expect(await runKeyRotationCli([...f.argv, '--grace-hours', '72'], f.deps)).toBe(0);
+    expect(observedRename).toBe(true);
+    expect(evaluate).toHaveBeenCalledTimes(1);
+    const text = await fs.readFile(f.filename, 'utf8');
+    const env = parseEnv(text);
+    expect(env.AUTH_PRIVATE_KEY === f.newKey.privateKey).toBe(true);
+    expect(env.AUTH_PREVIOUS_PUBLIC_KEY).toBe(f.oldKey.publicKey);
+    expect(env.AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM).toBe(now.toISOString());
+    expect(env.AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL).toBe('2026-10-20T12:00:00.000Z');
+    expect(text.includes('# retain this comment\nOTHER="keep # spaces"\n')).toBe(true);
+    expect(text.includes('TAIL=untouched\n')).toBe(true);
+    expect(text.includes(f.oldKey.privateKey)).toBe(false);
+    expect((await fs.stat(f.filename)).mode & 0o777).toBe(0o600);
+    expect((await fs.stat(f.backup)).mode & 0o777).toBe(0o600);
+    expect((await fs.readFile(f.backup, 'utf8')) === f.original).toBe(true);
+    expect((await fs.readdir(f.directory)).length).toBe(2);
+    expect(f.stdout()).toContain(`old key: ${keyRotation.computeKeyKid(f.oldKey.publicKey)}  public ${f.oldKey.publicKey}`);
+    expect(f.stdout()).toContain(`new key: ${keyRotation.computeKeyKid(f.newKey.publicKey)}  public ${f.newKey.publicKey}`);
+    expect(f.stderr()).toBe('');
+    expectSafeCapture(f);
+  });
+
+  it.each(['\n', '\r\n'])('preserves unrelated multiline values, comments and %j endings; replaces prior window values', async (newline) => {
+    const f = await rotationFixture();
+    const prefix = ['# comment', 'MULTI="first', 'AUTH_PRIVATE_KEY=not-an-assignment', 'last"', '', 'BLANK=', 'UNCHANGED=one # comment'].join(newline) + newline;
+    const key = `  export AUTH_PRIVATE_KEY = '${f.oldKey.privateKey}' # private`;
+    const window = ['AUTH_PREVIOUS_PUBLIC_KEY="old"', "AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM='", "stale'", 'AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL=stale'];
+    const original = prefix + [key, ...window].join(newline);
+    await fs.writeFile(f.filename, original);
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(0);
+    const result = await fs.readFile(f.filename, 'utf8');
+    expect(result.startsWith(prefix)).toBe(true);
+    expect(result.endsWith('\n')).toBe(false);
+    expect((await fs.readFile(f.backup, 'utf8')) === original).toBe(true);
+    expect(parseEnv(result).AUTH_PRIVATE_KEY === f.newKey.privateKey).toBe(true);
+    expect(parseEnv(result).AUTH_PREVIOUS_PUBLIC_KEY).toBe(f.oldKey.publicKey);
+    const env = parseEnv(result);
+    expect(Date.parse(env.AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL) - Date.parse(env.AUTH_PREVIOUS_PUBLIC_KEY_VALID_FROM)).toBe(48 * 3_600_000);
+    expectSafeCapture(f);
+  });
+
+  it('accepts PKCS#8 old keys and refuses noncanonical multiline keys without printing either encoding', async () => {
+    const f = await rotationFixture();
+    const pkcs8 = '302e020100300506032b657004220420' + f.oldKey.privateKey;
+    await fs.writeFile(f.filename, `AUTH_PRIVATE_KEY="\n${pkcs8}\n"\nOTHER=keep`);
+    // The auth primitive accepts canonical hex, not embedded newlines: refuse
+    // rather than reinterpret the old key or overwrite it.
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    await fs.writeFile(f.filename, `AUTH_PRIVATE_KEY='${pkcs8}'\nOTHER=keep`);
+    expect(await runKeyRotationCli([...f.argv, '--grace-hours=12'], f.deps)).toBe(0);
+    expect(f.stdout()).toContain('WARNING: grace window of 12h');
+    expect((await fs.readFile(f.filename, 'utf8')).includes('OTHER=keep\n')).toBe(true);
+    expectSafeCapture(f);
+  });
+
+  it.each([
+    ['missing', async (f) => fs.unlink(f.filename)],
+    ['unreadable', async (f) => fs.chmod(f.filename, 0o000)],
+    ['directory', async (f) => { await fs.unlink(f.filename); await fs.mkdir(f.filename); }],
+    ['symlink', async (f) => { await fs.rename(f.filename, join(f.directory, 'real')); await fs.symlink(join(f.directory, 'real'), f.filename); }],
+    ['hardlink', async (f) => fs.link(f.filename, join(f.directory, 'alias'))],
+    ['invalid UTF-8', async (f) => fs.writeFile(f.filename, Buffer.from([0xff]))],
+    ['missing key', async (f) => fs.writeFile(f.filename, 'OTHER=keep\n')],
+    ['invalid key', async (f) => fs.writeFile(f.filename, `AUTH_PRIVATE_KEY=bad-${f.oldKey.privateKey}\n`)],
+    ['unterminated quote', async (f) => fs.writeFile(f.filename, `OTHER="never closes\nAUTH_PRIVATE_KEY=${f.oldKey.privateKey}\n`)],
+    ['duplicate private key', async (f) => fs.appendFile(f.filename, `export AUTH_PRIVATE_KEY=${f.oldKey.privateKey}\n`)],
+    ['duplicate window', async (f) => fs.appendFile(f.filename, 'AUTH_PREVIOUS_PUBLIC_KEY=a\nAUTH_PREVIOUS_PUBLIC_KEY=b\n')],
+    ['existing backup', async (f) => fs.writeFile(f.backup, f.original, { mode: 0o600 })],
+    ['symlink backup', async (f) => fs.symlink(f.filename, f.backup)],
+    ['directory backup', async (f) => fs.mkdir(f.backup)],
+  ])('fails safely for %s', async (_name, prepare) => {
+    const f = await rotationFixture();
+    await prepare(f);
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect(f.stdout()).toBe('');
+    expect(f.stderr()).toMatch(/^FAIL: /);
+    expectSafeCapture(f);
+  });
+
+  it.each(['0', '-1', 'NaN', 'Infinity', '1e300'])('rejects grace-hours %s without installing anything', async (grace) => {
+    const f = await rotationFixture();
+    expect(await runKeyRotationCli([...f.argv, '--grace-hours', grace], f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
+    expect(existsSync(f.backup)).toBe(false);
+    expectSafeCapture(f);
+  });
+
+  it('refuses identical generated keys and catches generation/crypto exceptions', async () => {
+    const f = await rotationFixture();
+    f.deps.generatePrivateKey = () => f.oldKey.privateKey;
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    f.deps.generatePrivateKey = () => { throw new Error('random source failed'); };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    f.deps.generatePrivateKey = () => f.newKey.privateKey;
+    f.deps.keyRotation = { ...keyRotation, evaluateKeyRotationPreflight: () => { throw new Error('crypto failed'); } };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
+    expect(existsSync(f.backup)).toBe(false);
+    expectSafeCapture(f);
+  });
+
+  it.each(['backup-open', 'backup-chmod', 'backup-write', 'backup-sync', 'backup-close', 'temp-open', 'temp-chmod', 'temp-write', 'temp-sync', 'temp-close', 'rename'])('keeps the env unchanged on %s failure and never prints secrets', async (failure) => {
+    const f = await rotationFixture();
+    const fail = () => { throw new Error('simulated filesystem failure'); };
+    f.deps.fileSystem = {
+      ...fs,
+      rename: failure === 'rename' ? fail : fs.rename,
+      open: async (filename, flags, mode) => {
+        const kind = filename === f.backup ? 'backup' : 'temp';
+        if (flags !== 'wx') return fs.open(filename, flags, mode);
+        if (failure === `${kind}-open`) return fail();
+        const handle = await fs.open(filename, flags, mode);
+        const overrides = {};
+        for (const method of ['chmod', 'writeFile', 'sync', 'close']) {
+          const label = method === 'writeFile' ? 'write' : method;
+          if (failure === `${kind}-${label}`) {
+            overrides[method] = async () => {
+              if (method === 'close') await handle.close();
+              return fail();
+            };
+          }
+        }
+        return overrideHandle(handle, overrides);
+      },
+    };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
+    expect((await fs.readdir(f.directory)).some((name) => name.endsWith('.tmp'))).toBe(false);
+    expectSafeCapture(f);
+  });
+
+  it('refuses a concurrent env change without overwriting it', async () => {
+    const f = await rotationFixture();
+    f.deps.fileSystem = {
+      ...fs,
+      open: async (filename, flags, mode) => {
+        if (flags === 'wx' && filename !== f.backup) await fs.appendFile(f.filename, '# concurrent edit\n');
+        return fs.open(filename, flags, mode);
+      },
+    };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original + '# concurrent edit\n').toBe(true);
+    expect((await fs.readFile(f.backup, 'utf8')) === f.original).toBe(true);
+    expectSafeCapture(f);
+  });
+
+  it('does not overwrite an existing backup, including on a second generation', async () => {
+    const f = await rotationFixture();
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(0);
+    const installed = await fs.readFile(f.filename, 'utf8');
+    f.deps.generatePrivateKey = () => newKeypair().privateKey;
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === installed).toBe(true);
+    expect((await fs.readFile(f.backup, 'utf8')) === f.original).toBe(true);
+    expectSafeCapture(f);
+  });
+
+  it('catches read and cleanup failures without propagating exception text', async () => {
+    const f = await rotationFixture();
+    f.deps.fileSystem = { ...fs, open: async () => { throw new Error('read unavailable'); } };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    f.deps.fileSystem = {
+      ...fs,
+      rename: async () => { throw new Error('rename unavailable'); },
+      rm: async () => { throw new Error('cleanup unavailable'); },
+    };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect(f.stderr()).not.toMatch(/unavailable/);
+    expectSafeCapture(f);
+  });
+
+  it.each(['generate', 'destroy'])('rejects missing paths and unexpected arguments for %s without reflecting input', async (command) => {
+    const f = await rotationFixture();
+    for (const argv of [[command], [command, '--env-file'], [command, f.oldKey.privateKey], [command, '--bogus=' + f.newKey.privateKey]]) {
+      expect(await runKeyRotationCli(argv, f.deps)).toBe(2);
+    }
+    expectSafeCapture(f);
+  });
+});
+
+describe('destroy', () => {
+  it('unlinks only the regular backup without reading it or changing the current env', async () => {
+    const f = await rotationFixture();
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(0);
+    const installed = await fs.readFile(f.filename, 'utf8');
+    f.deps.fileSystem = { ...fs, readFile: vi.fn(), open: vi.fn() };
+    expect(await runKeyRotationCli(['destroy', '--env-file', f.filename], f.deps)).toBe(0);
+    expect(f.deps.fileSystem.readFile).not.toHaveBeenCalled();
+    expect(f.deps.fileSystem.open).not.toHaveBeenCalled();
+    expect(existsSync(f.backup)).toBe(false);
+    expect((await fs.readFile(f.filename, 'utf8')) === installed).toBe(true);
+    expectSafeCapture(f);
+  });
+
+  it.each(['missing', 'symlink', 'directory', 'hardlink', 'unlink failure'])('refuses %s backups safely', async (kind) => {
+    const f = await rotationFixture();
+    if (kind === 'symlink') await fs.symlink(f.filename, f.backup);
+    if (kind === 'directory') await fs.mkdir(f.backup);
+    if (kind === 'hardlink') await fs.link(f.filename, f.backup);
+    if (kind === 'unlink failure') {
+      await fs.writeFile(f.backup, f.original, { mode: 0o600 });
+      f.deps.fileSystem = { ...fs, unlink: async () => { throw new Error('unlink unavailable'); } };
+    }
+    expect(await runKeyRotationCli(['destroy', '--env-file', f.filename], f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
+    expectSafeCapture(f);
+  });
+});
 
 describe('usage', () => {
   it.each([
@@ -359,19 +648,42 @@ const entrypoint = join(repoRoot, 'scripts', 'key-rotation.mjs');
 const built = existsSync(join(repoRoot, 'packages', 'auth', 'dist', 'key-rotation.js'));
 
 describe.skipIf(!built)('key-rotation.mjs entrypoint', () => {
-  it('runs the full offline sign -> payload round trip as a real process', () => {
-    const oldKey = newKeypair();
-    const newKey = newKeypair();
-    const result = spawnSync(process.execPath, [entrypoint, 'sign', '--effective-at', '2026-10-06T12:00:00Z'], {
+  it('generates in a real process with only paths in argv, no keys in child env, and captures both streams', async () => {
+    const f = await rotationFixture();
+    const run = (command, filename = f.filename) => spawnSync(process.execPath, [entrypoint, command, '--env-file', filename], {
       cwd: repoRoot,
       encoding: 'utf8',
-      env: { ...process.env, OLD_AUTH_PRIVATE_KEY: oldKey.privateKey, NEW_AUTH_PRIVATE_KEY: newKey.privateKey },
+      env: {},
     });
+    const result = run('generate');
 
     expect(result.status).toBe(0);
-    expect(keyRotation.verifyKeyRotatedPayload(JSON.parse(result.stdout)).ok).toBe(true);
-    expect(result.stdout + result.stderr).not.toContain(oldKey.privateKey);
-    expect(result.stdout + result.stderr).not.toContain(newKey.privateKey);
+    const generated = parseEnv(await fs.readFile(f.filename, 'utf8')).AUTH_PRIVATE_KEY;
+    const generatedPublic = authCrypto.getPublicKey(generated);
+    expect(result.stdout).toContain(generatedPublic);
+    expectNoPrivateMaterial(result.stdout + result.stderr, f.oldKey.privateKey, generated);
+    for (const filename of [f.filename, join(f.directory, 'missing')]) {
+      const failure = run('generate', filename);
+      // Some Node versions consume --env-file before the script, returning 9
+      // for a missing file. Either path must remain free of private material.
+      expect(failure.status).not.toBe(0);
+      expectNoPrivateMaterial(failure.stdout + failure.stderr, f.oldKey.privateKey, generated);
+    }
+    const guarded = spawnSync(process.execPath, ['--', entrypoint, 'generate', '--env-file', join(f.directory, 'missing')], {
+      cwd: repoRoot, encoding: 'utf8', env: {},
+    });
+    expect(guarded.status).toBe(1);
+    expectNoPrivateMaterial(guarded.stdout + guarded.stderr, f.oldKey.privateKey, generated);
+    await fs.chmod(f.filename, 0o000);
+    const unreadable = spawnSync(process.execPath, ['--', entrypoint, 'generate', '--env-file', f.filename], {
+      cwd: repoRoot, encoding: 'utf8', env: {},
+    });
+    expect(unreadable.status).toBe(1);
+    expectNoPrivateMaterial(unreadable.stdout + unreadable.stderr, f.oldKey.privateKey, generated);
+    await fs.chmod(f.filename, 0o600);
+    const destroyed = run('destroy');
+    expect(destroyed.status).toBe(0);
+    expectNoPrivateMaterial(destroyed.stdout + destroyed.stderr, f.oldKey.privateKey, generated);
   });
 
   it('exits 2 with usage for an unknown subcommand', () => {

@@ -225,10 +225,11 @@ DID) are untouched by anything the new key does in steps 4-5.
 On the node host, with workspace packages built, run:
 
 ```bash
-node scripts/key-rotation.mjs generate --env-file apps/kernel/.env.local --grace-hours 48
+node -- scripts/key-rotation.mjs generate --env-file apps/kernel/.env.local --grace-hours 48
 ```
 
-The tool generates the Ed25519 key **in-process**: do not hand-generate, paste,
+The `--` ends Node's own options so it does not auto-load `--env-file` before the
+script can validate it. The tool generates the Ed25519 key **in-process**: do not hand-generate, paste,
 echo or pass private material through shell commands, child-process environments
 or an agent transcript. It reads the current key directly from the file and runs
 the shared preflight to set `AUTH_PREVIOUS_PUBLIC_KEY`, `_VALID_FROM` and
@@ -386,7 +387,7 @@ ends at the loaded key, that the node DID source is `relay_config`, and that
 Only after the rotation, custody checks and handover verification have passed:
 
 ```bash
-node scripts/key-rotation.mjs destroy --env-file apps/kernel/.env.local
+node -- scripts/key-rotation.mjs destroy --env-file apps/kernel/.env.local
 ```
 
 This removes `apps/kernel/.env.local.key-rotation.bak` without reading or printing

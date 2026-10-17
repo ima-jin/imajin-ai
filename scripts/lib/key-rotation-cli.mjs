@@ -53,6 +53,14 @@ const ROTATION_ENV_NAMES = [
   'AUTH_PREVIOUS_PUBLIC_KEY_VALID_UNTIL',
 ];
 const BACKUP_SUFFIX = '.key-rotation.bak';
+function assignmentEnd(lines, start, value) {
+  const quote = value.trimStart()[0];
+  if (!['"', "'", '`'].includes(quote) || value.trimStart().slice(1).includes(quote)) return start;
+  let end = start + 1;
+  while (end < lines.length && !lines[end].includes(quote)) end += 1;
+  if (end === lines.length) throw new Error('Unterminated env value');
+  return end;
+}
 
 /** Identify whole assignments, not apparent assignments inside multiline values. */
 function envAssignments(text) {
@@ -62,12 +70,7 @@ function envAssignments(text) {
     const match = /^[ \t]*(?:export[ \t]+)?([A-Za-z_]\w*)[ \t]*=[ \t]*(.*)/.exec(lines[i]);
     if (!match) continue;
     const start = i;
-    const value = match[2].trimStart();
-    const quote = value[0];
-    if (['"', "'", '`'].includes(quote) && !value.slice(1).includes(quote)) {
-      do { i += 1; } while (i < lines.length && !lines[i].includes(quote));
-      if (i === lines.length) throw new Error('Unterminated env value');
-    }
+    i = assignmentEnd(lines, start, match[2]);
     const name = match[1];
     if (!ROTATION_ENV_NAMES.includes(name)) continue;
     if (assignments.has(name)) throw new Error('Duplicate rotation assignment');
