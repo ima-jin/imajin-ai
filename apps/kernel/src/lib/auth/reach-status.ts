@@ -1,6 +1,7 @@
 import { getClient } from '@imajin/db';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import type { SignedReachReplyEvent } from './reach-reply-wire';
+import { isReachSenderBlocked } from './reach-block';
 
 export interface ReachStatus {
   reachId: string;
@@ -30,7 +31,9 @@ export async function reachStatus(params: {
     WHERE e.principal_did = $1 AND e.requester_did = $2 AND e.reach_id = $3
   `, [params.principalDid, params.requesterDid, params.reachId]);
   if (!row) return null;
-  if (row.blocked) return { reachId: params.reachId, state: 'blocked', reply: null };
+  if (row.blocked || await isReachSenderBlocked({
+    ...params, onBehalfOfStubDid: row.envelope.onBehalfOfStubDid,
+  })) return { reachId: params.reachId, state: 'blocked', reply: null };
   const reply = row.envelope.reply ?? null;
   return { reachId: params.reachId, state: reply ? 'replied' : 'delivered', reply };
 }

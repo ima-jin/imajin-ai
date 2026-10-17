@@ -1,6 +1,7 @@
 import { getClient } from '@imajin/db';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import type { PreparedMechanicalAttestation } from './emit-mechanical-attestation';
+import { isReachSenderBlockedInTransaction, reachSenderGroup, REACH_SENDER_DAILY_CAP } from './reach-block';
 
 export type { ReachEnvelope } from '@/src/db/schemas/reach';
 
@@ -34,7 +35,7 @@ function validCap(cap: number): boolean {
  * These tables contain deliveries only, so legacy asks never consume caps.
  */
 export function persistReachEnvelope(params: PersistReachEnvelopeParams): Promise<PersistReachEnvelopeResult> {
-  const { dailyCap, perSenderDailyCap = 25, deliveryAttestation, ...content } = params;
+  const { dailyCap, perSenderDailyCap = REACH_SENDER_DAILY_CAP, deliveryAttestation, ...content } = params;
   if ((dailyCap !== null && !validCap(dailyCap)) || !validCap(perSenderDailyCap)) {
     return Promise.reject(new Error('Reach delivery caps must be non-negative safe integers'));
   }
@@ -45,11 +46,7 @@ export function persistReachEnvelope(params: PersistReachEnvelopeParams): Promis
   }
   return getClient().begin('isolation level read committed', async (tx): Promise<PersistReachEnvelopeResult> => {
     await lockPrincipal(tx, params.principalDid);
-    const blocked = await tx.unsafe(
-      'SELECT 1 FROM auth.reach_sender_blocks WHERE principal_did = $1 AND requester_did = $2',
-      [params.principalDid, params.requesterDid],
-    );
-    if (blocked.length) return { stored: false, reason: 'blocked' };
+    if (await isReachSenderBlockedInTransaction(tx, params)) return { stored: false, reason: 'blocked' };
 
     const existing = await tx.unsafe<{ reach_id: string; envelope: ReachEnvelope; published_at: Date | null }[]>(
       'SELECT reach_id, envelope, published_at FROM auth.reach_envelopes WHERE principal_did = $1 AND requester_did = $2 AND transcript_hash = $3',
@@ -62,14 +59,19 @@ export function persistReachEnvelope(params: PersistReachEnvelopeParams): Promis
 
     // UTC calendar-day quotas are independent of session timezone and of
     // request-issued time. Use statement time after acquiring the lock.
+    // Both a verified agent group and its claimed human consume this quota;
+    // switching signing agents must not reset an account's durable allowance.
+    const senderGroup = await reachSenderGroup(tx, params);
     const [counts] = await tx.unsafe<{ principal_count: string; sender_count: string }[]>(`
       SELECT count(*) AS principal_count,
-             count(*) FILTER (WHERE requester_did = $2) AS sender_count
+             count(*) FILTER (
+               WHERE $3::jsonb ? requester_did OR envelope->>'onBehalfOfStubDid' = $2
+             ) AS sender_count
       FROM auth.reach_envelopes
       WHERE principal_did = $1
         AND created_at >= date_trunc('day', statement_timestamp() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'
         AND created_at < (date_trunc('day', statement_timestamp() AT TIME ZONE 'UTC') + interval '1 day') AT TIME ZONE 'UTC'
-    `, [params.principalDid, params.requesterDid]);
+    `, [params.principalDid, params.onBehalfOfStubDid, JSON.stringify(senderGroup.identities)]);
     if ((dailyCap !== null && Number(counts.principal_count) >= dailyCap) || Number(counts.sender_count) >= perSenderDailyCap) {
       return { stored: false, reason: 'rate_limited' };
     }
@@ -129,9 +131,25 @@ export async function listReachEnvelopes(params: {
 export async function blockReachSender(params: { principalDid: string; requesterDid: string }): Promise<void> {
   await getClient().begin('isolation level read committed', async (tx) => {
     await lockPrincipal(tx, params.principalDid);
+    // Foreign credential mint/rotation uses this row lock. Taking it after the
+    // delivery lock serializes both writers without reversing their lock order.
+    await tx.unsafe('SELECT id FROM auth.identities WHERE id = $1 FOR UPDATE', [params.principalDid]);
+    const group = await reachSenderGroup(tx, params);
+    const claims = await tx.unsafe<{ stub_did: string }[]>(`
+      SELECT DISTINCT envelope->>'onBehalfOfStubDid' AS stub_did
+      FROM auth.reach_envelopes
+      WHERE principal_did = $1 AND $2::jsonb ? requester_did
+        AND NULLIF(envelope->>'onBehalfOfStubDid', '') IS NOT NULL
+    `, [params.principalDid, JSON.stringify(group.identities)]);
+    const blockedIdentities = [...new Set([...group.identities, ...claims.map((claim) => claim.stub_did)])];
     await tx.unsafe(`
       INSERT INTO auth.reach_sender_blocks (principal_did, requester_did)
-      VALUES ($1, $2) ON CONFLICT (principal_did, requester_did) DO NOTHING
-    `, [params.principalDid, params.requesterDid]);
+      SELECT $1, value FROM jsonb_array_elements_text($2::jsonb)
+      ON CONFLICT (principal_did, requester_did) DO NOTHING
+    `, [params.principalDid, JSON.stringify(blockedIdentities)]);
+    await tx.unsafe(`
+      UPDATE auth.foreign_agent_stubs SET revoked_at = COALESCE(revoked_at, statement_timestamp())
+      WHERE principal_did = $1 AND $2::jsonb ? stub_did
+    `, [params.principalDid, JSON.stringify(group.stubDids)]);
   });
 }

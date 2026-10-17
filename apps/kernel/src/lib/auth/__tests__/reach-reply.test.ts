@@ -80,10 +80,14 @@ beforeAll(async () => {
     '../../../../../../migrations/0195_reach_envelopes.sql', import.meta.url,
   )), 'utf8');
   await database.exec(migration);
+  await database.exec('CREATE TABLE auth.identities (id text PRIMARY KEY)');
+  await database.exec(readFileSync(new URL(
+    '../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url,
+  ), 'utf8'));
 });
 afterAll(async () => { await database?.close(); });
 beforeEach(async () => {
-  await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks');
+  await database.exec('TRUNCATE auth.reach_envelopes, auth.reach_sender_blocks, auth.foreign_agent_stubs, auth.identities');
   await database.query(`INSERT INTO auth.reach_envelopes
     (reach_id, principal_did, requester_did, transcript_hash, envelope)
     VALUES ($1, $2, $3, $4, $5::jsonb)`,
@@ -345,7 +349,10 @@ describe('owner-only reach sender block', () => {
     const refreshed = await GET(new NextRequest('https://example.test/jin/api/reach'));
     expect(await refreshed.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: true }] });
     expect((await database.query('SELECT * FROM auth.reach_sender_blocks')).rows)
-      .toMatchObject([{ principal_did: identity.id, requester_did: envelope.requesterDid }]);
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ principal_did: identity.id, requester_did: envelope.requesterDid }),
+        expect.objectContaining({ principal_did: identity.id, requester_did: envelope.onBehalfOfStubDid }),
+      ]));
     expect(await replyToReach({ identity, reachId: envelope.reachId, input: signedInput() }))
       .toMatchObject({ ok: false, status: 403 });
   });
