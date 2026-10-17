@@ -82,6 +82,11 @@ function settlementWebhookUrl(): string {
 // (no `mjn` reactor) is unaffected and keeps firing `attestation`
 // fire-and-forget.
 const DEFAULTS: Record<string, ReactorConfig[]> = {
+  // Reader provenance is signed and persisted; never includes provider results.
+  'google.data.read': [
+    { type: 'attestation', config: { attestationType: 'google.data.read' }, await: true, enabled: true },
+    { type: 'audit-log', config: {}, await: true, enabled: true },
+  ],
   'identity.created': [
     { type: 'attestation', config: { attestationType: 'identity.created' }, await: true, enabled: true },
     mjnEmission('identity.created'),
