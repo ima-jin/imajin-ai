@@ -207,7 +207,18 @@ const google = createConnectorOAuth<GoogleConfig, GoogleTokens>({
 
 export const configField = google.configField;
 export const oauthVaultField = google.tokenField;
-export const storeConfig = google.storeConfig;
+export async function storeConfig(
+  ownerDid: string,
+  config: GoogleConfig,
+  slot = currentConnectionSlot('google', ownerDid),
+): Promise<void> {
+  slot = connectionSlot(slot);
+  // Approval belongs to the configured Google project, not indefinitely to a
+  // reusable connection slot. Reimporting any client requires reconfirmation.
+  const { resetBusinessProfileApproval } = await import('./setup');
+  await resetBusinessProfileApproval(ownerDid, slot);
+  await google.storeConfig(ownerDid, config, slot);
+}
 export async function buildAuthorizeUrl(
   ownerDid: string,
   state: string,
@@ -216,7 +227,7 @@ export async function buildAuthorizeUrl(
 ): Promise<string> {
   slot = connectionSlot(slot);
   const selected = await readActiveGoogleScopes(ownerDid, slot);
-  const scopes = [...new Set(selected
+  let scopes = [...new Set(selected
     .filter((scope) => scope !== BUSINESS_PROFILE_SCOPE || isBusinessProfileEnabled())
     .filter((scope) => Object.hasOwn(GOOGLE_OAUTH_SCOPES, scope))
     .map((scope) => GOOGLE_OAUTH_SCOPES[scope]))];
@@ -225,7 +236,16 @@ export async function buildAuthorizeUrl(
   }
   if (selected.includes(BUSINESS_PROFILE_SCOPE) && isBusinessProfileEnabled()) {
     const { requireBusinessProfileApproval } = await import('./setup');
-    await requireBusinessProfileApproval(ownerDid, slot);
+    try {
+      await requireBusinessProfileApproval(ownerDid, slot);
+    } catch (err) {
+      // Pending Business approval must not hold unrelated selected capabilities
+      // hostage. Storage failures still reject the entire consent attempt.
+      if (!(err instanceof Error) || err.message !== 'google_business_profile_approval_pending' || scopes.length === 1) {
+        throw err;
+      }
+      scopes = scopes.filter((scope) => scope !== GOOGLE_OAUTH_SCOPES[BUSINESS_PROFILE_SCOPE]);
+    }
   }
   const url = new URL(await google.buildAuthorizeUrl(ownerDid, state, configDid, slot));
   url.searchParams.set('scope', scopes.join(' '));
