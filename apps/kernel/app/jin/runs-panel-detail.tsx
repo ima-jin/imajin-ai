@@ -48,7 +48,7 @@ export function RunsPanelDetail({ loopId, onSelect, onDenied }: Readonly<DetailP
   }, [loopId, onDenied]);
 
   if (error) return <p role="alert" className="text-sm text-red-300">{error}</p>;
-  if (!detail) return <p role="status" className="text-xs text-gray-400">Loading history…</p>;
+  if (!detail) return <output className="text-xs text-gray-400">Loading history…</output>;
 
   return (
     <div className="min-w-0 space-y-3 text-xs text-gray-400" data-testid="run-detail">

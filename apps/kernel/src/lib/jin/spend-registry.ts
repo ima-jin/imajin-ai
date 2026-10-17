@@ -13,7 +13,7 @@ import { mapWithConcurrency } from '@/src/lib/async/sequential';
 export function githubSubject(ref: unknown, kind: 'issue' | 'pr'): IssueRef | null {
   if (typeof ref !== 'string') return null;
   const path = kind === 'issue' ? 'issues' : 'pull';
-  const url = new RegExp(`^https://github\\.com/([\\w.-]+/[\\w.-]+)/${path}/(\\d+)/?$`).exec(ref);
+  const url = new RegExp(String.raw`^https://github\.com/([\w.-]+/[\w.-]+)/${path}/(\d+)/?$`).exec(ref);
   const qualified = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(ref);
   const match = url ?? qualified;
   if (!match) return null;

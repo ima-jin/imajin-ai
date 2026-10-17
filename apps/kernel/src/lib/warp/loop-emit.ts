@@ -46,6 +46,7 @@ import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { ingestLoopEvent } from '@/src/lib/loops/ingest';
 import type { LoopEnvelope, LoopLifecycleType, LoopRefs } from '@/src/lib/loops/types';
 import { observeWarpPullRequestArtifact } from '@/src/lib/github/loop-observe';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:warp-loop-emit');
 
@@ -120,9 +121,8 @@ export async function emitWarpRunLoopEvent(transition: WarpRunLoopTransition): P
       );
       return;
     }
-    for (const pr of transition.prArtifacts ?? []) {
-      await observeWarpPullRequestArtifact(transition.principalDid, pr, transition.runId, transition.at);
-    }
+    await forEachSequential(transition.prArtifacts ?? [], (pr) =>
+      observeWarpPullRequestArtifact(transition.principalDid, pr, transition.runId, transition.at));
   } catch (err) {
     log.error(
       { err: String(err), type: transition.type, runId: transition.runId },
