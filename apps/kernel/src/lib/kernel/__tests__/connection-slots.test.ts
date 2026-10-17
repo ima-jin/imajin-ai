@@ -16,6 +16,11 @@ describe('connection slots', () => {
     (value) => expect(() => connectionSlot(value)).toThrow('invalid_connection'),
   );
 
+  it('does not coerce malformed runtime payloads to slots', () => {
+    expect(() => connectionSlot(42 as unknown as string)).toThrow('invalid_connection');
+    expect(() => connectionSlot({} as string)).toThrow('invalid_connection');
+  });
+
   it.each(['primary', 'artifact', 'personal-gmail', 'work_2', 'x'.repeat(64)])(
     'accepts the validated slot %s',
     (value) => expect(connectionSlot(value)).toBe(value),
