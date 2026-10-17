@@ -1,5 +1,5 @@
 import { AskButton } from './AskButton';
-import { buildPublicUrl } from '@imajin/config';
+import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
 import type { ProfileData } from '../lib/types';
 import type { NavApp } from '@/src/lib/kernel/app-nav';
 
@@ -34,7 +34,7 @@ export function ServiceLinks({ profile, viewerDid, apps }: Readonly<ServiceLinks
           // The destination path segment was always the profile's own
           // `handle` (see `apps/kernel/app/profile/edit/page.tsx`'s write
           // path) — never a distinct per-app value.
-          href={`${buildPublicUrl(app.slug)}/${profile.handle}`}
+          href={`${registryAppPublicUrl(app).replace(/\/$/, '')}/${encodeURIComponent(profile.handle ?? '')}`}
           className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
         >
           {app.icon} {app.name}

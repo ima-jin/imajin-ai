@@ -27,7 +27,7 @@ function navApp(overrides: Partial<NavApp>): NavApp {
     slug: 'coffee',
     name: 'Coffee',
     icon: '☕',
-    entryUrl: '/coffee',
+    entryUrl: null,
     placements: ['launcher', 'home', 'auth-submenu'],
     requiredScope: null,
     tier: 'first_party',
@@ -36,6 +36,11 @@ function navApp(overrides: Partial<NavApp>): NavApp {
 }
 
 describe('ServiceLinks (#2425 — registry apps ∩ resolveEnabledApps, no literal app names)', () => {
+  it('uses the standalone registry destination, not a removed port hint', () => {
+    render(<ServiceLinks profile={makeProfile()} viewerDid={null}
+      apps={[navApp({ entryUrl: 'https://apps.example/support', name: 'Support' })]} />);
+    expect(screen.getByRole('link').getAttribute('href')).toBe('https://apps.example/support/ryan');
+  });
   it('shows no service buttons when apps is empty', () => {
     render(<ServiceLinks profile={makeProfile()} viewerDid={null} apps={[]} />);
     expect(screen.queryByRole('link')).toBeNull();

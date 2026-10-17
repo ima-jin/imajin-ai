@@ -18,8 +18,8 @@ function navApp(slug: string): NavApp {
 }
 
 describe('resolveRegistryAppUrl (#2434)', () => {
-  it('returns the env-aware public URL for an app that has a registry row', () => {
-    expect(resolveRegistryAppUrl([navApp('events'), navApp('market')], 'events')).toBe('https://node.test/events');
+  it('returns the registry entry URL for an app that has a registry row', () => {
+    expect(resolveRegistryAppUrl([navApp('events'), navApp('market')], 'events')).toBe('/events');
   });
 
   it('returns null once the app is gone from the registry (pruned)', () => {

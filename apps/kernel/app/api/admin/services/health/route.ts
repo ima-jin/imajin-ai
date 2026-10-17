@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { getClient } from '@imajin/db';
-import { buildPublicUrl } from '@imajin/config';
+import { db, registryApps } from '@/src/db';
+import { eq } from 'drizzle-orm';
+import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
 
-const sql = getClient();
 
 interface ServiceHealth {
   name: string;
@@ -29,14 +29,24 @@ const KERNEL_SERVICES = [
   { name: 'www', label: 'WWW', path: '/api/health' },
 ];
 
-const USERSPACE_SERVICES = [
-  { name: 'events', label: 'Events' },
-  { name: 'market', label: 'Market' },
-  { name: 'coffee', label: 'Coffee' },
-  { name: 'learn', label: 'Learn' },
-  { name: 'links', label: 'Links' },
-  { name: 'dykil', label: 'Surveys' },
-];
+interface UserspaceService {
+  name: string;
+  label: string;
+  url: string;
+}
+
+async function userspaceServices(): Promise<UserspaceService[]> {
+  const apps = await db.select({ slug: registryApps.slug, name: registryApps.name, entryUrl: registryApps.entryUrl })
+    .from(registryApps).where(eq(registryApps.status, 'active'));
+  return apps.flatMap((app) => {
+    if (!app.slug) return [];
+    const url = process.env[`${app.slug.toUpperCase()}_URL`]
+      ?? registryAppPublicUrl({ slug: app.slug, entryUrl: app.entryUrl });
+    // Relative single-node paths have no separate origin to probe. Never
+    // substitute the kernel port for a standalone app whose port was removed.
+    return /^https?:\/\//.test(url) ? [{ name: app.slug, label: app.name, url }] : [];
+  });
+}
 
 interface CacheEntry {
   data: { services: ServiceHealth[]; checkedAt: string };
@@ -88,10 +98,9 @@ async function checkKernelService(
 }
 
 async function checkUserspaceService(
-  svc: (typeof USERSPACE_SERVICES)[number]
+  svc: UserspaceService
 ): Promise<ServiceHealth> {
-  const envKey = `${svc.name.toUpperCase()}_URL`;
-  const url = (process.env[envKey] ?? buildPublicUrl(svc.name)) + '/api/health';
+  const url = svc.url.replace(/\/$/, '') + '/api/health';
   const checkedAt = new Date().toISOString();
   const start = Date.now();
 
@@ -143,7 +152,7 @@ export const GET = withLogger('kernel', async (_req, { log }) => {
 
   const [kernelResults, userspaceResults] = await Promise.all([
     Promise.all(KERNEL_SERVICES.map(checkKernelService)),
-    Promise.all(USERSPACE_SERVICES.map(checkUserspaceService)),
+    userspaceServices().then((services) => Promise.all(services.map(checkUserspaceService))),
   ]);
 
   const services = [...kernelResults, ...userspaceResults];

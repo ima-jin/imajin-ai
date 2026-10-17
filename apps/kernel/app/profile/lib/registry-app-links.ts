@@ -8,10 +8,10 @@
  * pointing at an app that no longer exists. These helpers make the registry
  * (`registry.apps`, via `resolveRegistryAppsBySlug`) the authority — an app
  * is linkable only while it has an active registry row, and its URL comes
- * from the same env-aware `buildPublicUrl(slug)` every other registry-driven
- * surface uses (see `ServiceLinks.tsx`, `/auth/[app]`).
+ * from its own entryUrl (with an explicit env override for local servers),
+ * never a historical static port hint.
  */
-import { buildPublicUrl } from '@imajin/config';
+import { registryAppPublicUrl } from '@/src/lib/apps/public-url';
 import type { NavApp } from '@/src/lib/kernel/app-nav';
 import type { FeatureToggles } from './types';
 import type { CommunityTab } from '../components/CommunityTabs';
@@ -21,7 +21,8 @@ export const PROFILE_WIDGET_APP_SLUGS = ['events', 'market'] as const;
 
 /** Public base URL of a registry app, or `null` when no (active, nav-capable) registry row exists for `slug`. */
 export function resolveRegistryAppUrl(apps: readonly NavApp[], slug: string): string | null {
-  return apps.some((app) => app.slug === slug) ? buildPublicUrl(slug) : null;
+  const app = apps.find((app) => app.slug === slug);
+  return app ? registryAppPublicUrl(app) : null;
 }
 
 export interface CommunityTabInputs {

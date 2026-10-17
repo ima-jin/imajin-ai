@@ -237,9 +237,9 @@ for app in "${APPS[@]}"; do
     set_env "$local_env" "NEXT_PUBLIC_MEDIA_URL"         "${KERNEL_URL}/media"
     set_env "$local_env" "NEXT_PUBLIC_NOTIFY_URL"        "${KERNEL_URL}/notify"
     set_env "$local_env" "NEXT_PUBLIC_EVENTS_URL"        "http://localhost:3006"
-    set_env "$local_env" "NEXT_PUBLIC_COFFEE_URL"        "http://localhost:3100"
-    set_env "$local_env" "NEXT_PUBLIC_DYKIL_URL"         "http://localhost:3101"
-    set_env "$local_env" "NEXT_PUBLIC_LINKS_URL"         "http://localhost:3102"
+    # Extracted apps publish their entryUrl through registry.apps. Developers
+    # may set explicit NEXT_PUBLIC_{SLUG}_URL overrides for local app servers;
+    # kernel setup must not invent ports for apps outside this repository.
     set_env "$local_env" "NEXT_PUBLIC_LEARN_URL"         "http://localhost:3103"
     set_env "$local_env" "NEXT_PUBLIC_MARKET_URL"        "http://localhost:3104"
 

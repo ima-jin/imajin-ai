@@ -16,6 +16,29 @@ function form(overrides: Partial<FeatureTogglesFormState> = {}): FeatureTogglesF
 }
 
 describe('mergeFeatureToggles (#2434)', () => {
+  it('persists registry-only choices and preserves selections absent from the form', () => {
+    const merged = mergeFeatureToggles(
+      { coffee: 'ryan', enabledApps: ['unlisted-app', 'old-app'] },
+      form({ serviceToggles: { 'new-app': true, 'old-app': false } }),
+    );
+    expect(merged.enabledApps).toEqual(['unlisted-app', 'new-app']);
+    expect(merged.coffee).toBe('ryan');
+  });
+
+  it('writes enabledApps for a registry-only app without legacy fields', () => {
+    const merged = mergeFeatureToggles({}, form({ serviceToggles: { 'new-app': true } }));
+    expect(merged.enabledApps).toEqual(['new-app']);
+    expect(merged).not.toHaveProperty('coffee');
+  });
+
+  it('does not clear selections when registry choices are unavailable', () => {
+    const merged = mergeFeatureToggles(
+      { coffee: 'ryan', enabledApps: ['new-app'] },
+      form({ serviceToggles: { inference: false } }),
+    );
+    expect(merged.coffee).toBe('ryan');
+    expect(merged.enabledApps).toEqual(['new-app']);
+  });
   it('preserves enabledApps when the form does not touch those slugs', () => {
     const merged = mergeFeatureToggles(
       { enabledApps: ['events', 'market', 'some-new-app'] },
