@@ -14,6 +14,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   process.argv = ORIGINAL_ARGV;
   process.env = { ...ORIGINAL_ENV };
 });
@@ -94,6 +95,17 @@ describe('main', () => {
       dryRun: true,
     }));
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('[dry-run]'));
+    expect(JSON.parse(logSpy.mock.calls[0][0])).toEqual({
+      event: 'provision-written',
+      provisionId: 'prov_1',
+      placement: 'local',
+      fileCount: 1,
+      outDir: '/tmp/out',
+    });
+    expect(JSON.parse(logSpy.mock.calls[2][0])).toEqual({
+      event: 'provision-file',
+      path: '/tmp/out/envelope/SOUL.md',
+    });
   });
 
   it('reports compose/callback status for a non-dry-run hosted run', async () => {
@@ -114,6 +126,54 @@ describe('main', () => {
 
     await main();
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('compose ran: true, callback sent: true'));
+    expect(JSON.parse(logSpy.mock.calls[1][0])).toEqual({
+      event: 'provision-status',
+      composeRan: true,
+      callbackSent: true,
+    });
+  });
+
+  it.each([
+    ['carriage return', '\r'],
+    ['line feed', '\n'],
+    ['escape', '\u001b'],
+    ['next line', '\u0085'],
+    ['line separator', '\u2028'],
+    ['paragraph separator', '\u2029'],
+  ])('escapes %s in every untrusted log field without losing information', async (_label, control) => {
+    const provisionId = `prov_${control}forged`;
+    const placement = `local${control}forged`;
+    const outDir = `/tmp/${control}out`;
+    const path = `${outDir}/SOUL${control}.md`;
+    process.argv = [
+      'node', 'cli.js',
+      '--provision-id', provisionId,
+      '--kernel-url', 'https://kernel.test',
+      '--operator-token', 'owner-token',
+      '--out-dir', outDir,
+      '--dry-run',
+    ];
+    runProvisionMock.mockResolvedValue({
+      provision: { id: provisionId, placement },
+      outDir,
+      filesWritten: [path],
+      composeRan: false,
+      callbackSent: false,
+    });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    await main();
+
+    for (const [line] of logSpy.mock.calls) {
+      expect(line).not.toContain(control);
+    }
+    expect(JSON.parse(logSpy.mock.calls[0][0])).toEqual({
+      event: 'provision-written',
+      provisionId,
+      placement,
+      fileCount: 1,
+      outDir,
+    });
+    expect(JSON.parse(logSpy.mock.calls[2][0])).toEqual({ event: 'provision-file', path });
   });
 });
