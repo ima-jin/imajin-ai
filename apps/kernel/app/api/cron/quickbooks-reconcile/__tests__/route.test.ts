@@ -29,6 +29,14 @@ function makeRequest(headers: Record<string, string> = {}): Request {
 const CRON_AUTH = { authorization: 'Bearer test-secret' };
 
 describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockResolveAppDidForOwner.mockResolvedValue(APP);
+  });
+
+  afterEach(() => {
+    _resetCronSecretForTests();
+  });
   it('reconciles two slots of the same owner in independent contexts', async () => {
     _setCronSecretForTests('test-secret');
     mockListActiveGrantOwners.mockResolvedValue([
@@ -45,14 +53,6 @@ describe('GET /api/cron/quickbooks-reconcile (xprize #35)', () => {
     expect(observed).toEqual(['primary', 'work']);
     expect(mockResolveAppDidForOwner).toHaveBeenCalledWith(SCOTT, 'work');
     mockSettlePaidInvoices.mockReset();
-  });
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockResolveAppDidForOwner.mockResolvedValue(APP);
-  });
-
-  afterEach(() => {
-    _resetCronSecretForTests();
   });
 
   // ── Auth ──────────────────────────────────────────────────────────────────
