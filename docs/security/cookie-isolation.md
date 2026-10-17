@@ -1,122 +1,112 @@
-# Cookie isolation & scoped app tokens (#1069 Phase 1)
+# Cookie isolation & scoped app tokens (#1069 Phase 2)
 
-**Historical phase/audit context:** rollout language below records #1069 Phase 1,
-not current app deployment status. Events now runs standalone from
-[ima-jin/events](https://github.com/ima-jin/events) in dev and prod; its kernel
-copy was pruned in #2517. It is userspace, not a kernel component; the historical
-3006/7006 port assignment and `/events` prefix do not confer kernel trust.
-Current app authentication behavior must be checked in the app's own repository.
+Status: **Phase 2 — host-only deployed default.** Phase 1 (#1974) shipped
+scoped-token primitives; standalone coffee, dykil, links, learn, market,
+events and the app template now use `requireSessionOrAppToken`. This phase
+narrows the kernel browser session cookie, without changing token semantics
+or removing the cookie fallback. Refs #1069; phases 3 and 4 remain open.
 
-Status: **Phase 1 — primitives only.** Everything in this document is
-opt-in and off by default. No app's default authentication behavior changes
-as a result of the code that ships alongside this doc. Flipping any of the
-flags described here is a separate, later, human-run phase — see
-[Staged rollout](#staged-rollout).
+## Trust boundary
 
-## Problem recap
+The session cookie is `imajin_session` in prod and `imajin_session_dev` in
+dev, with a 24-hour TTL. In deployed mode the active cookie has **no Domain
+attribute**, `Path=/`, `HttpOnly`, `Secure`, and the existing `SameSite=None`.
+Omitting Domain (not setting it to a hostname) makes it host-only.
 
-`getSessionCookieOptions()` (`packages/config/src/session.ts`) sets
-`domain: ".imajin.ai"` on the deployed session cookie. A cookie with a
-leading-dot domain is sent by the browser to **every** host under
-`*.imajin.ai` — not just the kernel. Any service that can read the incoming
-`Cookie` header (whether because it lives on a real `*.imajin.ai` subdomain,
-or because it's reverse-proxied onto the same origin as the kernel) receives
-the same session credential the kernel itself trusts, with no scoping. See
-issue #1069 for the full background and prior audit findings (#1248, #1800
-class of findings).
+- **Inside:** the exact kernel browser host for that environment:
+  `jin.imajin.ai` (prod) or `dev-jin.imajin.ai` (dev), with kernel services
+  path-prefixed under `/auth`, `/profile`, `/pay`, `/connections`, `/registry`,
+  `/chat`, `/media`, `/notify`, etc.
+- **Outside:** every other host, including the opposite environment,
+  `fixready.imajin.ai`, `karaoke.imajin.ai`, scorecard, preview/forgotten
+  subdomains, and the apex. Browsers do not send the newly written active
+  session cookie there. HttpOnly prevents JavaScript reads, but did not stop
+  a parent-domain cookie reaching other subdomains' servers.
+- **Not isolated yet:** userspace processes reverse-proxied onto the SAME
+  origin, e.g. `jin.imajin.ai/coffee` or `/events`. Host-only cookies still
+  reach those routes through Caddy. A scoped-token adapter does not prevent
+  the proxy from forwarding the raw Cookie header. **Phase 3 must strip
+  Cookie on app routes in Caddy or design a suitable cookie Path boundary.**
 
-## Two existing auth paths
+### Repository hostname audit
 
-- **Path A — session cookie (first-party).** `imajin_session` JWT, currently
-  `domain=.imajin.ai`, 24h TTL, full-account. This is the path this document
-  is about narrowing.
-- **Path B — app DID auth (third-party).** `requireAppAuth()` /
-  `POST /auth/api/apps/token` — an app with a user's `app.authorized`
-  attestation mints a short-lived, scoped JWT (`apps/kernel/src/lib/auth/jwt.ts`:
-  `createAppToken` / `verifyAppToken`). This already exists (#1071, merged) and
-  is unaffected by this phase.
+`apps/kernel/.env.example` defines one public origin (`APP_URL`,
+`NEXT_PUBLIC_BASE_URL`), a full-origin `NEXT_PUBLIC_SERVICE_PREFIX`, and
+same-host `NEXT_PUBLIC_*_URL` paths. Operators replace `your-node.imajin.ai`
+with `jin.imajin.ai` or `dev-jin.imajin.ai` consistently, not `auth.imajin.ai`.
+Core login/session UI uses relative `/auth` paths. Email verification and
+its default events landing use the trusted runtime public origin; post-claim
+attestations use the node origin. JWT issuer `auth.imajin.ai` is an identifier,
+not a browser redirect, and is unchanged.
 
-This phase adds the missing **first-party** counterpart to Path B — see
-[Scoped app token primitive](#scoped-app-token-primitive) — so first-party
-apps have somewhere to go once the shared cookie is narrowed.
+`deploy/ecosystem.dev.config.js` owns `dev-jin:3000`;
+`deploy/ecosystem.prod.config.js` owns `prod-jin:7000`. Its old split-service
+entries are documented drift, not proof those vhosts are required:
+`deploy/README.md` ("Known drift captured on 2026-07-16") documents one kernel process
+behind path routing. `docs/ENVIRONMENTS.md` now records the same boundary.
+The separate MCP discovery host does not need the session: `/oauth/authorize`
+anchors browser login/consent to the configured kernel origin, and callbacks
+carry OAuth code/state. Internal service URLs and explicit server-to-server
+Cookie forwarding are not browser cross-host cookie dependencies.
 
-## Subdomain / host audit
+No required kernel flow was found relying on browser cookies reaching a
+different host under this configured topology. Keep APP_URL and client public
+URLs consistent: shared navbar/builders retain legacy subdomain fallbacks if
+required public env settings are missing. Live `.env.local`, DNS, registry
+entries and `/etc/caddy/Caddyfile` are outside this repo and were not inspected.
 
-This repo does not contain the live Caddy config (`/etc/caddy/Caddyfile`
-lives on the ops server, per `docs/ENVIRONMENTS.md`), so the exact live
-routing topology **cannot be fully verified from this repo alone** — see
-the honest-unknowns callout below. The table is built from
-`deploy/ecosystem.prod.config.js` (what actually runs as separate
-processes), `docs/ENVIRONMENTS.md`, and `docs/developer-guide.md`.
+## Host / path audit
 
-| Host / path | Backing process (port) | Classification | Notes |
-|---|---|---|---|
-| `jin.imajin.ai` (`auth`, `pay`, `profile`, `connections`, `registry`, `chat`, `media`, `notify` — via subdomains per ENVIRONMENTS.md, or paths per developer-guide.md) | `prod-jin` (7000) | Kernel-authenticated | One Next.js process (RFC-19). This is the trusted core the session cookie exists to authenticate. |
-| `jin.imajin.ai/events` | `prod-events` (7006) | Userspace app | Standalone [ima-jin/events](https://github.com/ima-jin/events) (#2517); historical core-range port, unchanged `/events` route. Not part of the kernel ecosystem. |
-| `jin.imajin.ai/coffee` | `prod-coffee` (7100) | Userspace app | Tipping/support pages. Chosen as the Phase 1 reference app (low risk, small surface). Now a standalone app from [ima-jin/coffee](https://github.com/ima-jin/coffee) (#2500). |
-| `jin.imajin.ai/dykil` | `prod-dykil` (7101) | Userspace app | Community spending surveys. |
-| `jin.imajin.ai/links` | `prod-links` (7102) | Userspace app | Link-in-bio pages. |
-| `jin.imajin.ai/learn` | `prod-learn` (7103) | Userspace app | Courses/enrollment. |
-| `jin.imajin.ai/market` | `prod-market` (7104) | Userspace app | Local commerce. |
-| `fixready.imajin.ai` | `prod-fixready` (7400) | **Unknown** | Separate repo (`imajin-fixready`), not in this monorepo — cannot audit its auth code from here. Has its own database, per `ENVIRONMENTS.md`. |
-| `karaoke.imajin.ai` | `prod-karaoke` (7401) | **Unknown** | Same as fixready — separate repo (`imajin-karaoke`), own database, not auditable from this repo. |
-| `scorecard...` (`prod-scorecard`, port 7402) | `prod-scorecard` | **Unknown / undocumented** | Present in `ecosystem.prod.config.js` but absent from `ENVIRONMENTS.md`'s service table and `developer-guide.md`'s service list entirely. No hostname or trust classification documented anywhere in this repo. |
-| `www` / `imajin.ai` (root) | — | Kernel-adjacent (public, unauthenticated) | Landing page — `developer-guide.md` lists it at the bare root domain, not under `jin.`. Not itself a cookie consumer as far as this audit can tell, but shares the root domain the wildcard cookie's `.imajin.ai` scope also covers. |
-| Any other/forgotten/preview subdomain | — | **Unknown** | No inventory of live DNS records or Caddy vhosts exists in this repo. This is exactly the "forgotten/preview subdomain" risk #1069 calls out, and it cannot be closed by a code change alone — it requires an operator-side DNS/Caddy inventory pass, tracked as a follow-up (see [Open follow-ups](#open-follow-ups)). |
+| Host / path | Process | Boundary / follow-up |
+|---|---|---|
+| `jin.imajin.ai`, kernel paths | `prod-jin` (7000) | Host-only prod session |
+| `dev-jin.imajin.ai`, kernel paths | `dev-jin` (3000) | Independent host-only dev session |
+| `/coffee`, `/dykil`, `/links`, `/learn`, `/market`, `/events` on either kernel origin | Standalone userspace repos/processes | SAME host: still receives Cookie until phase 3; events' historical 3006/7006 port does not confer kernel trust |
+| `fixready.imajin.ai` | Separate repo, 3400/7400 | Outside new cookie scope; app auth audit remains external |
+| `karaoke.imajin.ai` | Separate repo, 3401/7401 | Outside new cookie scope; app auth audit remains external |
+| scorecard | Separate repo, prod 7402 | Host inventory undocumented; outside cookie scope if a different host |
+| `www`, apex, other/preview/forgotten subdomains | Not fully inventoried here | Outside new cookie scope; live DNS/Caddy inventory remains ops work |
 
-### Honest unknowns
+## `SESSION_COOKIE_SCOPE` and rollback
 
-1. **Routing topology conflict, tentatively resolved in favor of
-   path-based.** `docs/ENVIRONMENTS.md`'s "Domain" column describes
-   kernel-only real subdomains (`auth.imajin.ai`, `pay.imajin.ai`, etc.)
-   alongside **path**-based routing for the imajin-tier apps
-   (`jin.imajin.ai/coffee`) — an internally inconsistent split. But
-   `apps/kernel/.env.example`'s own `NEXT_PUBLIC_*` conventions
-   (`NEXT_PUBLIC_AUTH_URL=https://your-node.imajin.ai/auth`,
-   `NEXT_PUBLIC_COFFEE_URL=https://your-node.imajin.ai/coffee`, etc. — every
-   one of them a path on the *same* `your-node.imajin.ai` host, never a
-   distinct subdomain) line up with `docs/developer-guide.md` and
-   `docs/rfcs/RFC-19-kernel-userspace-architecture.md` (status: **Draft**):
-   one origin, everything else a path. That is stronger, code-level
-   evidence than either doc alone, so treat path-based-under-one-origin as
-   the more likely live model — but it is still not a substitute for
-   reading the actual Caddyfile on the ops server, which this repo does not
-   contain, so it cannot be fully confirmed here.
-2. **It doesn't change the conclusion either way.** If the imajin-tier apps
-   (`coffee`, `dykil`, `links`, `learn`, `market`, `events`) are reached via
-   real subdomains, the wildcard `.imajin.ai` cookie is directly readable by
-   their backend process. If instead they're reverse-proxied as **paths** on
-   the same origin as the kernel, the cookie is same-origin and the browser
-   sends it regardless of the `domain` attribute — a compromised app
-   process still receives the raw session cookie on every request Caddy
-   proxies to it. Either way, a compromised or vulnerable app backend gets
-   the same full-trust credential the kernel uses for itself. This is why
-   the fix is a token primitive the app must actively request and that is
-   bound to its own audience, not just a narrower cookie `domain` attribute.
-3. **Events classification resolved by extraction (#2517):** it is a standalone
-   userspace app. Live routing and cookie exposure still require operator
-   verification; classification alone does not provide isolation.
-4. **`fixready`, `karaoke`, and the undocumented `scorecard` app** live
-   outside this monorepo or are simply undocumented; their cookie handling
-   cannot be audited here and must be checked directly against their own
-   repos/configs before they're assumed either safe or unsafe.
+`packages/config/src/session.ts` is the options source of truth:
 
-## `SESSION_COOKIE_SCOPE` flag
+- **Unset (default)**, `host` (accepted compatibility alias), or an unknown
+  value: host-only deployed cookie, no Domain attribute.
+- **`SESSION_COOKIE_SCOPE=domain`**: restores legacy `Domain=.imajin.ai`
+  options and active-cookie serialization byte-for-byte. This deliberately
+  reopens cross-subdomain exposure; use only as the reversible rollback.
+- Localhost detection/attributes are unchanged: no Domain, not Secure,
+  `SameSite=Lax`, `HttpOnly`, `Path=/`, same names and TTL.
 
-`packages/config/src/session.ts` — `getSessionCookieOptions()`:
+The rollback setting belongs on the **kernel process**, not every app.
+Set it in the kernel process environment and restart/redeploy through the
+normal approved workflow (prod-jin or dev-jin); no database migration or
+signing-key rotation. The next session write issues a domain cookie and
+expires a leftover host-only cookie, so rollback does not leave ambiguous
+same-name credentials. Unset it to return to the secure default.
 
-- Unset, or any value other than `"host"` (**default**): unchanged —
-  `domain: ".imajin.ai"` in deployed mode, exactly as today.
-- `SESSION_COOKIE_SCOPE=host`: the deployed cookie omits `domain` entirely,
-  making it host-only. It is then only ever sent back to the exact host
-  that set it — no `*.imajin.ai` subdomain, and no path-proxied app on a
-  different backend process, can read it.
+## Deploy / legacy-cookie coexistence
 
-This is a per-process env var. Because most services in the current
-topology are separate pm2 processes with independent `.env.local` files
-(see the audit table above), flipping it is **not** a single global switch —
-each app that reads `SESSION_COOKIE_SCOPE` for its own opt-in behavior
-(see the reference adoption below) needs it set in its own environment too.
+**No mass logout.** Deploy changes issuance, not verification or JWT keys.
+A browser holding only the legacy Domain cookie still sends it to the kernel
+host and remains authenticated. Read-only session requests do not reissue or
+invalidate it. On the next login, refresh/reissue, registration, onboard claim
+or other session write, the kernel writes a host-only cookie and expires the
+legacy `Domain=.imajin.ai; Path=/` cookie with the same environment-specific
+name. Existing host-only + legacy duplicates converge to exactly one cookie.
+Until that write (or the legacy cookie's normal expiry), the browser's old
+parent-domain cookie can still reach other subdomains; this is staged migration,
+not a claim that already-stored credentials vanish at deploy time.
+
+All kernel session writes/clears use
+`apps/kernel/src/lib/auth/session-cookie.ts` (`withSessionCookie`). It emits
+separate Set-Cookie headers because Next.js's name-keyed response cookie map
+cannot represent both domains. It finalizes the response **after all other
+cookie mutations**, preserving e.g. `x-acting-as`. Logout (auth, connections,
+and profile aliases) and invalid/missing-identity session responses expire
+both scopes, so the old cookie cannot silently restore the session. Localhost
+emits only its original local cookie. No JWT revocation semantics are changed.
 
 ## Scoped app token primitive
 
@@ -186,72 +176,36 @@ accepts **either** credential:
 This lets an app move call sites to tokens one at a time, without a
 synchronized flag day across every app and the kernel.
 
-### Reference adoption: `coffee`
-
-coffee's `app/api/pages/mine/route.ts` (the app was pruned from this repo in
-#2500; coffee now lives in ima-jin/coffee) was the one app converted in this
-PR, gated by the same `SESSION_COOKIE_SCOPE` flag:
-
-- Flag unset (default): calls `requireAuth()` exactly as before. Zero
-  behavior change.
-- `SESSION_COOKIE_SCOPE=host` (in coffee's own environment): calls
-  `requireSessionOrAppToken(request, { slug: 'coffee' })` instead.
-
-No other app was touched. Every other app importing `@imajin/auth` keeps
-calling `requireAuth()` / `getSession()` exactly as it does today — this PR
-adds new exports, it does not change the behavior of existing ones.
-
 ## Staged rollout
 
-Mirrors the design sketch on #1069. Each stage is independently reversible
-by unsetting the env var(s) it introduces — no stage depends on a database
-migration.
-
-1. **Phase 1 (this PR).** Ship the mint/verify endpoints, the
-   `SESSION_COOKIE_SCOPE` flag (default off), the adapter, and one reference
-   app conversion (flag-gated, off by default). No app's default behavior
-   changes. **Rollback:** revert the PR, or simply never set
-   `SESSION_COOKIE_SCOPE`.
-2. **Phase 2 — apps adopt the adapter.** Each userspace app converts its
-   `requireAuth()` call sites to `requireSessionOrAppToken()`, still with
-   `SESSION_COOKIE_SCOPE` unset (so the cookie fallback keeps working
-   unchanged). Ship and verify one app at a time. **Rollback:** revert that
-   app's call sites; the cookie was never narrowed, so there is no session
-   impact.
-3. **Phase 3 — flip the cookie scope.** Set `SESSION_COOKIE_SCOPE=host` on
-   the kernel first, then on each app that has completed Phase 2, in the
-   order the audit table above orders them by confidence (kernel's own
-   domains → coffee/dykil/links/learn/market/events →
-   fixready/karaoke/scorecard, once audited).
-   Expect a brief forced re-login window for any user whose browser had
-   only ever held the old wildcard cookie the moment their next request
-   lands on a host that no longer receives it. **Rollback:** unset
-   `SESSION_COOKIE_SCOPE` on the affected process(es) — the cookie
-   immediately reverts to `.imajin.ai` scope on that process's next
-   response, no data loss, no migration to undo.
-4. **Phase 4 — remove the legacy path.** Once every app is confirmed on the
-   token path and the cookie is host-scoped everywhere, remove the cookie
-   fallback from `requireSessionOrAppToken` (or delete it in favor of calling
-   `verifyAppToken` directly) and delete this doc's "default off" caveats.
-   **Rollback:** effectively none needed — this stage is deleting dead code,
-   not changing runtime behavior, so it can be delayed indefinitely without
-   risk.
+1. **Phase 1 — merged:** mint/verify endpoints and migration adapter (#1974),
+   followed by standalone app adoption. Token path remains authoritative;
+   invalid bearer tokens never fall back to cookies.
+2. **Phase 2 — this change:** deploy the host-only default on the kernel;
+   remove any `SESSION_COOKIE_SCOPE=domain` override when ready. Operators
+   see uninterrupted legacy kernel sessions and dual Set-Cookie headers on
+   the next session write: one live host-only credential, one expired domain
+   credential. Verify prod and dev independently. Roll back with
+   `SESSION_COOKIE_SCOPE=domain` on the kernel process as above. Do not rotate
+   keys or force everyone to re-login. Apps on different hosts need scoped
+   tokens; a legacy cookie is no longer an app authentication contract.
+3. **Phase 3 — pending ops/Caddy or Path work:** isolate userspace apps
+   proxied onto the kernel origin. This phase is NOT implemented here.
+4. **Phase 4 — pending:** remove `requireSessionOrAppToken`'s cookie fallback
+   only after all consumers and same-origin isolation are verified. Not part
+   of this PR; #1069 remains open.
 
 ## Open follow-ups
 
-Explicitly out of scope for this PR, tracked here rather than lost:
-
-- Live DNS/Caddy vhost inventory to close the "forgotten/preview subdomain"
-  unknown (needs ops-server access, not just this repo).
-- Events is now explicitly standalone userspace (#2517); verify its actual
-  cookie/token behavior in ima-jin/events rather than inferring trust from its port.
-- Auditing `fixready`, `karaoke`, and `scorecard` (separate repos / entirely
-  undocumented) for how they consume the session cookie today.
-- Moving `verifyAppToken` fully in-process (kernel public key published via
-  JWKS, verified with `jose` directly in `@imajin/auth`) to drop the verify
-  round-trip — same follow-up already noted against the third-party path in
-  PR #1071.
-- Proof-of-possession / nonce single-use enforcement, if the session-app
-  token mint ever grows a PoP step (it doesn't need one today: it's minted
-  from an already-authenticated session, not a bearer credential presented
-  by an untrusted party).
+- **Phase 3: same-origin path-app exposure.** Caddy stripping `Cookie` on app
+  routes or a cookie Path design requires ops/Caddy work outside this repo.
+- **Phase 4:** remove the legacy cookie fallback once adoption/isolation are
+  complete; no token-path semantics are changed here.
+- Live DNS/Caddy vhost inventory, including preview/forgotten subdomains;
+  verify actual env origins and registered cross-host embed token handoffs.
+- Audit fixready/karaoke/scorecard authentication in their own repositories.
+- Production ecosystem obsolete split-service entries and public AssetDetail
+  legacy profile-host fallback are routing/config debt, not evidence of a
+  required cross-host kernel sign-in ceremony; coordinate cleanup separately.
+- In-process JWKS verification and proof-of-possession nonce single-use remain
+  separate work. No schema, ops config, app repos or signing keys changed.

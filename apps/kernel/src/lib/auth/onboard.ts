@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 /**
  * Helper functions extracted from onboard route handlers to reduce cognitive complexity.
  */
@@ -9,7 +10,7 @@ import { nanoid } from 'nanoid';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { mintOrAccrueClaimableStub, findClaimableStubDid, verifyClaimantEmail } from '@/src/lib/auth/claimable-stub';
 import { createLogger } from '@imajin/logger';
-import { buildPublicUrlAbsolute } from '@imajin/config';
+import { nodeUrl } from '@/src/lib/http/node-url';
 
 const log = createLogger('kernel');
 
@@ -90,8 +91,7 @@ export async function handleExpiredOrUsedToken(
 
   const redirectUrl = usedRecord.redirectUrl ?? defaultRedirectUrl;
   const response = NextResponse.redirect(redirectUrl);
-  response.cookies.set(cookieConfig.name, sessionToken, cookieConfig.options);
-  return response;
+  return withSessionCookie(response, sessionToken, cookieConfig);
 }
 
 /**
@@ -294,7 +294,7 @@ export async function resolveOnboardRedirect(opts: {
 
   if (!invite?.pendingAttestationId) return defaultRedirectUrl;
 
-  return `${buildPublicUrlAbsolute('auth')}/attestations?role=subject`;
+  return `${nodeUrl()}/auth/attestations?role=subject`;
 }
 
 /**

@@ -28,37 +28,27 @@ function isLocalhost(): boolean {
 }
 
 /**
- * Cookie domain scope (#1069 Phase 1).
+ * Cookie domain scope (#1069 Phase 2).
  *
  * `SESSION_COOKIE_SCOPE` controls whether the deployed session cookie is a
  * shared parent-domain cookie or a host-only cookie:
- *   - unset / "domain" (default): current behavior — `domain: ".imajin.ai"`,
- *     readable by every `*.imajin.ai` subdomain. Nothing changes unless this
- *     is explicitly set.
- *   - "host": omit the `domain` attribute entirely, so the cookie is scoped
- *     to the exact host that set it and is NOT sent to other subdomains.
- *     Apps that relied on reading the shared cookie must adopt scoped app
- *     tokens first (see `requireSessionOrAppToken` in `@imajin/auth` and
- *     `docs/security/cookie-isolation.md`) before this is flipped for real.
- *
- * This flag is a primitive for the staged rollout described in
- * `docs/security/cookie-isolation.md` — flipping it is a separate, later
- * phase, not part of shipping the primitive itself.
+ *   - unset / "host" (default): omit Domain; only the setting host receives it.
+ *   - "domain": restore the legacy `.imajin.ai` scope for rollback.
+ * Unknown values fail narrow. Same-origin path-proxied apps still receive
+ * the cookie; see `docs/security/cookie-isolation.md` for the phase 3 gap.
  */
 function isHostScoped(): boolean {
-  if (typeof process === "undefined") return false;
-  return process.env.SESSION_COOKIE_SCOPE === "host";
+  return typeof process === "undefined" || process.env.SESSION_COOKIE_SCOPE !== "domain";
 }
 
-/** Cookie options for cross-subdomain sessions.
+/** Cookie options for host-only sessions (with explicit domain rollback).
  *  When called with no argument, auto-detects from IMAJIN_ENV (same logic as getSessionCookieName).
  *  Accepts optional "dev" | "prod" override for explicit control.
  *
  *  Localhost-aware: when SERVICE_PREFIX contains "localhost", uses
  *  settings compatible with HTTP on localhost (no domain, not secure, lax sameSite).
  *
- *  See {@link isHostScoped} for the `SESSION_COOKIE_SCOPE=host` opt-in that
- *  narrows the deployed cookie to host-only instead of `.imajin.ai`.
+ *  `SESSION_COOKIE_SCOPE=domain` restores the deployed parent-domain cookie.
  */
 export function getSessionCookieOptions(env?: "dev" | "prod") {
   const local = isLocalhost();
