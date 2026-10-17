@@ -113,7 +113,7 @@ function EditProfileContent() {
     try {
       // Registry unavailability must not prevent editing the profile or clear
       // existing app selections on save. Absent options are left untouched.
-      const apps = await loadRegistryAppOptions().catch(() => []);
+      const apps = await loadRegistryAppOptions(did).catch(() => []);
       setAppOptions(apps);
       const response = await fetch(`/profile/api/profile/${did}`);
       if (response.status === 404) {

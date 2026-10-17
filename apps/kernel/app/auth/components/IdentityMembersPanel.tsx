@@ -173,7 +173,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
         const data = await res.json();
         setControllers(data.controllers ?? []);
       }
-      setAppServices(await loadRegistryAppOptions());
+      setAppServices(await loadRegistryAppOptions(groupDid));
     } catch (err) {
       console.error('Failed to load members:', err);
     } finally {
