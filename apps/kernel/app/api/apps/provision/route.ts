@@ -56,6 +56,8 @@ const MAX_TEMPLATE_LENGTH = 200;
 const MAX_ATTESTATION_TYPES = 20;
 
 interface ProvisionRequestBody {
+  siteOwnerDid?: unknown;
+  domain?: unknown;
   slug?: unknown;
   displayName?: unknown;
   template?: unknown;
@@ -104,6 +106,30 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
   };
 }
 
+function validateDomainChoice(body: ProvisionRequestBody): string | null {
+  if (body.siteOwnerDid !== undefined && (
+    typeof body.siteOwnerDid !== 'string' || !/^did:[a-z0-9]+:[A-Za-z0-9:._-]{1,200}$/.test(body.siteOwnerDid)
+  )) return 'siteOwnerDid must be a DID';
+  if (body.domain !== undefined && (
+    typeof body.domain !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.imajin\.ai$/.test(body.domain)
+  )) return 'domain must be a direct imajin.ai subdomain; custom domains require TXT verification';
+  if (body.reissueClaim === true && (body.siteOwnerDid !== undefined || body.domain !== undefined)) {
+    return 'Reissuing a claim cannot change ownership or domain';
+  }
+  return null;
+}
+
+function provisionDetail(
+  body: ProvisionRequestBody,
+  base: Record<string, unknown>,
+  reissueClaim: boolean,
+): Record<string, unknown> {
+  const detail = { ...base };
+  if (body.siteOwnerDid) detail.siteOwnerDid = body.siteOwnerDid;
+  if (body.domain) detail.domain = body.domain;
+  if (reissueClaim) detail.reissueClaim = true;
+  return detail;
+}
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -119,8 +145,13 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return NextResponse.json({ error: 'Body must be an object' }, { status: 400, headers: cors });
+  }
 
   const validation = validateBody(body);
+  const domainChoiceError = validateDomainChoice(body);
+  if (domainChoiceError) return NextResponse.json({ error: domainChoiceError }, { status: 400, headers: cors });
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
   }
@@ -185,9 +216,8 @@ export async function POST(request: NextRequest) {
   // when true — an ordinary provision proposal carries the retirement notice instead.
   const summary = reissueClaim
     ? `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`
-    : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
-  const detail: Record<string, unknown> = { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok };
-  if (reissueClaim) detail.reissueClaim = true;
+    : `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Site owner: ${body.siteOwnerDid ?? operatorDid}; issue ${body.domain ?? `${slug}.imajin.ai`} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+  const detail = provisionDetail(body, { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok }, reissueClaim);
   const contentHash = computeApprovalContentHash({
     proposalId,
     source: APPS_SOURCE,

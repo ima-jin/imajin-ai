@@ -73,6 +73,13 @@ const {
 // here it passes manifest declarations through unless a test overrides it.
 const { validateAppDeclarationsMock } = vi.hoisted(() => ({ validateAppDeclarationsMock: vi.fn() }));
 const { ensureAppDeclaredSecretsMock } = vi.hoisted(() => ({ ensureAppDeclaredSecretsMock: vi.fn().mockResolvedValue(undefined) }));
+const { provisionAppDomainMock, validateProvisionOwnerMock } = vi.hoisted(() => ({
+  provisionAppDomainMock: vi.fn().mockResolvedValue(undefined),
+  validateProvisionOwnerMock: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../provision-domain', () => ({
+  provisionAppDomain: provisionAppDomainMock, validateProvisionOwner: validateProvisionOwnerMock,
+}));
 vi.mock('../self-secrets', () => ({ ensureAppDeclaredSecrets: ensureAppDeclaredSecretsMock }));
 vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: validateAppDeclarationsMock }));
 
@@ -275,6 +282,8 @@ function legacyDykilRow(): Record<string, unknown> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  provisionAppDomainMock.mockResolvedValue(undefined);
+  validateProvisionOwnerMock.mockResolvedValue(undefined);
   resetStores();
   // #2746: provisioning registers `<node public origin>/<slug>` and fails closed without one.
   vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
@@ -300,6 +309,37 @@ beforeEach(() => {
   validateAppDeclarationsMock.mockImplementation(async (input: { providesScopes?: string[]; dependsOn?: unknown[] }) => ({
     ok: { providesScopes: input.providesScopes ?? [], dependsOn: input.dependsOn ?? [], requestedScopes: [] },
   }));
+});
+
+describe('runAppProvision — verified domain issuance', () => {
+  it('records the countersigned GBS owner and issues its dev host before the claim code', async () => {
+    const outcome = await runAppProvision({
+      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai',
+    });
+    expect(outcome.status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0].ownerDid).toBe('did:imajin:gbs');
+    expect(provisionAppDomainMock).toHaveBeenCalledWith(MINTED_DID, 'dev-gbs', 'dev-gbs.imajin.ai', 'did:imajin:gbs');
+    expect(provisionAppDomainMock.mock.invocationCallOrder[0]).toBeLessThan(issueSigningKeyClaimMock.mock.invocationCallOrder[0]);
+  });
+  it('fails before creating a repository if the requested site owner is unavailable', async () => {
+    validateProvisionOwnerMock.mockRejectedValueOnce(new Error('Site owner identity does not exist'));
+    const outcome = await runAppProvision({ slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:missing' });
+    expect(outcome).toMatchObject({ status: 'failed', failedStep: 'config' });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+  });
+  it('does not report provisioning success or reveal a claim without signed domain evidence', async () => {
+    provisionAppDomainMock.mockRejectedValueOnce(new Error('Organization grant unavailable'));
+    const outcome = await runAppProvision({ slug: 'dev-gbs', displayName: 'GBS' });
+    expect(outcome).toMatchObject({ status: 'failed', failedStep: 'domain' });
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+    expect(appProvisionsStore.get('dev-gbs')?.status).toBe('failed');
+  });
+  it.each([new Error('Organization grant unavailable'), 'unavailable'])('fails closed on an idempotent retry when issuance is unavailable', async (error) => {
+    appProvisionsStore.set('dev-gbs', { slug: 'dev-gbs', status: 'succeeded', appDid: MINTED_DID, attestationTypes: [], secretsSet: [] });
+    provisionAppDomainMock.mockRejectedValueOnce(error);
+    expect(await runAppProvision({ slug: 'dev-gbs', displayName: 'GBS' })).toMatchObject({ status: 'failed', failedStep: 'domain' });
+    expect(issueSigningKeyClaimMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('runAppProvision — #2663 scope declarations: exactly what the operator approved', () => {
