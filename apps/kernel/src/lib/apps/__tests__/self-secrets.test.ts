@@ -28,13 +28,25 @@ function testSelect(projection?: Record<string, unknown>) {
 function testWhere(projection?: Record<string, unknown>) {
   return { where: (conditions: Array<{ column: string; value: unknown }>) => testQuery(projection, conditions) };
 }
+let mutationTail = Promise.resolve();
+async function testMutationTransaction(run: (tx: { execute: typeof state.lock }) => Promise<void>) {
+  const previous = mutationTail;
+  let release!: () => void;
+  mutationTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
+  try {
+    return await run({ execute: state.lock });
+  } finally {
+    release();
+  }
+}
 vi.mock('@/src/db', () => {
   const columns = new Proxy({}, { get: (_target, key) => key });
   return {
     registryApps: columns, vaultDelegationGrants: columns, attestations: columns,
     db: {
       select: testSelect,
-      transaction: async (run: (tx: { execute: typeof state.lock }) => Promise<void>) => run({ execute: state.lock }),
+      transaction: testMutationTransaction,
     },
   };
 });
@@ -64,15 +76,52 @@ function grantRow(status = 'active', appDid = APP) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mutationTail = Promise.resolve();
   state.app = { status: 'active', secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }] };
   state.grants = []; state.facts = []; state.tier1 = false;
   state.attest.mockResolvedValue('att_test');
+  state.lock.mockResolvedValue([{ locked: true }]);
   state.generate.mockImplementation(async (_purpose, generate: () => string) => generate());
   state.grant.mockResolvedValue({ status: 'ok', grantId: 'grant_test' });
   state.fetch.mockResolvedValue({ status: 'ok', value: 'obviously-fake-session-placeholder' });
 });
 
 describe('app-scoped existing-vault lifecycle', () => {
+  it('serializes two approved sets and refuses the second instead of overwriting the first', async () => {
+    state.app.secrets[0].kind = 'operator-supplied';
+    state.grant.mockImplementation(async () => {
+      state.grants = [grantRow()];
+      return { status: 'ok', grantId: 'grant_test' };
+    });
+    const results = await Promise.allSettled([
+      setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'OBVIOUSLY_FAKE_FIRST_INPUT', AUTH),
+      setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'OBVIOUSLY_FAKE_SECOND_INPUT', AUTH),
+    ]);
+    expect(results[0].status).toBe('fulfilled');
+    expect(results[1].status).toBe('rejected');
+    expect(state.seal).toHaveBeenCalledTimes(1);
+    expect(state.seal.mock.calls[0][2]).toBe('OBVIOUSLY_FAKE_FIRST_INPUT');
+    expect(state.lock).toHaveBeenCalledTimes(2);
+    expect(state.lock.mock.calls[0][0]).toEqual({
+      parts: ['SELECT pg_try_advisory_xact_lock(hashtextextended(', ', 0)) AS locked'],
+      values: [appSecretPurpose(APP, 'SESSION_SECRET')],
+    });
+    expect(state.lock.mock.invocationCallOrder[0]).toBeLessThan(state.seal.mock.invocationCallOrder[0]);
+  });
+  it('does not enter custody when the mutation lock fails', async () => {
+    state.lock.mockRejectedValueOnce(new Error('OBVIOUSLY_FAKE_LOCK_FAILURE'));
+    state.app.secrets[0].kind = 'operator-supplied';
+    await expect(setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'OBVIOUSLY_FAKE_INPUT', AUTH)).rejects.toThrow();
+    expect(state.seal).not.toHaveBeenCalled();
+    expect(state.grant).not.toHaveBeenCalled();
+  });
+  it('refuses a concurrent mutation without waiting or touching custody', async () => {
+    state.lock.mockResolvedValueOnce([{ locked: false }]);
+    state.app.secrets[0].kind = 'operator-supplied';
+    await expect(setAppDeclaredSecret(APP, 'SESSION_SECRET', 'set', 'OBVIOUSLY_FAKE_INPUT', AUTH)).rejects.toThrow('busy');
+    expect(state.seal).not.toHaveBeenCalled();
+    expect(state.grant).not.toHaveBeenCalled();
+  });
   it('leaves operator declarations missing on sync/claim and rejects generated rotation', async () => {
     state.app.secrets[0].kind = 'operator-supplied';
     await ensureAppDeclaredSecrets(APP, AUTH);

@@ -33,7 +33,12 @@ export async function setAppDeclaredSecret(
 /** Lock lifetime is the transaction: a crashed executor cannot strand a lease. */
 async function withAppSecretMutation(appDid: string, name: string, mutate: () => Promise<void>): Promise<void> {
   await db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${appSecretPurpose(appDid, name)}, 0))`);
+    // Waiting transactions could occupy connections needed by the existing
+    // custody primitive's own atomic transaction. Contenders must retry.
+    const [lock] = await tx.execute<{ locked: boolean }>(
+      sql`SELECT pg_try_advisory_xact_lock(hashtextextended(${appSecretPurpose(appDid, name)}, 0)) AS locked`,
+    );
+    if (!lock?.locked) throw new Error('App-secret mutation busy; propose again');
     await mutate();
   });
 }

@@ -100,6 +100,30 @@ async function executeSync(
   return { ok: true, data: { appDid, action: 'sync', names: approved.ok.map((secret) => secret.name) } };
 }
 
+async function executeNamedSecret(
+  card: OperatorApprovalCard, appDid: string, declarations: AppSecretDeclaration[], authorizedBy: VaultAuthorization,
+): Promise<AppSecretsExecutionResult> {
+  const name = card.detail?.name;
+  const declaration = declarations.find((secret) => secret.name === name);
+  if (typeof name !== 'string' || !declaration) return { ok: false, error: 'Secret is not declared for this app' };
+  const action = card.kind === appSecretsKind('set') ? 'set' : 'rotate';
+  if (card.kind === appSecretsKind('set') || (card.kind === appSecretsKind('rotate') && declaration.kind === 'operator-supplied')) {
+    if (declaration.kind !== 'operator-supplied' || typeof card.detail?.stagingRef !== 'string'
+      || authorizedBy.operatorDid !== await getOperatorDid()) {
+      return { ok: false, error: 'App-secret operator input unavailable' };
+    }
+    const value = await consumeAppSecret(card.detail.stagingRef, {
+      proposalId: authorizedBy.approvalId, operatorDid: authorizedBy.operatorDid, appDid, name, action,
+    });
+    await setAppDeclaredSecret(appDid, name, action, value, authorizedBy);
+  } else if (card.kind === appSecretsKind('rotate')) {
+    await rotateAppDeclaredSecret(appDid, name, authorizedBy);
+  } else {
+    await revokeAppDeclaredSecret(appDid, name, authorizedBy);
+  }
+  return { ok: true, data: { appDid, action: card.kind === appSecretsKind('revoke') ? 'revoke' : action, names: [name] } };
+}
+
 export async function executeAppSecretsApproval(card: OperatorApprovalCard): Promise<AppSecretsExecutionResult> {
   const authorizedBy = resolveVaultAuthorization(card);
   if (!authorizedBy) return { ok: false, error: `${card.kind} requires a countersigned operator decision` };
@@ -121,27 +145,7 @@ export async function executeAppSecretsApproval(card: OperatorApprovalCard): Pro
     if (card.kind === appSecretsKind('sync')) {
       return await executeSync(appDid, app, current.ok, card.detail, authorizedBy);
     }
-    const name = card.detail?.name;
-    if (typeof name !== 'string' || !current.ok.some((secret) => secret.name === name)) {
-      return { ok: false, error: 'Secret is not declared for this app' };
-    }
-    const declaration = current.ok.find((secret) => secret.name === name)!;
-    const suppliedAction = card.kind === appSecretsKind('set') ? 'set' : 'rotate';
-    if (card.kind === appSecretsKind('set') || (card.kind === appSecretsKind('rotate') && declaration.kind === 'operator-supplied')) {
-      if (declaration.kind !== 'operator-supplied' || typeof card.detail?.stagingRef !== 'string'
-        || authorizedBy.operatorDid !== await getOperatorDid()) {
-        return { ok: false, error: 'App-secret operator input unavailable' };
-      }
-      const value = await consumeAppSecret(card.detail.stagingRef, {
-        proposalId: authorizedBy.approvalId, operatorDid: authorizedBy.operatorDid, appDid, name, action: suppliedAction,
-      });
-      await setAppDeclaredSecret(appDid, name, suppliedAction, value, authorizedBy);
-    } else if (card.kind === appSecretsKind('rotate')) {
-      await rotateAppDeclaredSecret(appDid, name, authorizedBy);
-    } else {
-      await revokeAppDeclaredSecret(appDid, name, authorizedBy);
-    }
-    return { ok: true, data: { appDid, action: card.kind === appSecretsKind('set') ? 'set' : card.kind === appSecretsKind('rotate') ? 'rotate' : 'revoke', names: [name] } };
+    return await executeNamedSecret(card, appDid, current.ok, authorizedBy);
   } catch {
     // Provider errors may contain credential material; never log or surface them.
     return { ok: false, error: 'App-secret execution failed' };
