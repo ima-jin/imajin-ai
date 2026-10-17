@@ -499,6 +499,7 @@ export const foreignAgentStubs = authSchema.table('foreign_agent_stubs', {
   requesterDid: text('requester_did').notNull(),
   signerKey: text('signer_key').notNull(),
   requesterAliases: jsonb('requester_aliases').notNull().default([]).$type<string[]>(),
+  signerAliases: jsonb('signer_aliases').notNull().default([]).$type<string[]>(),
   principalDid: text('principal_did').notNull().references(() => identities.id),
   capability: text('capability').notNull().default('reach'),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),

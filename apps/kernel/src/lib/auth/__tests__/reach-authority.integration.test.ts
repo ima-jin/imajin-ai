@@ -40,14 +40,17 @@ const otherPrincipal = 'did:imajin:other';
 const keys = generateKeyPairSync('ed25519');
 const publicKey = keys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('hex');
 const requesterDid = didFromPublicKey(publicKey);
+const rotatedKeys = generateKeyPairSync('ed25519');
+const rotatedKey = rotatedKeys.publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('hex');
+const rotatedDid = didFromPublicKey(rotatedKey);
 
-function signedInput(overrides: Partial<ReachRequestInput> = {}): ReachRequestInput {
+function signedInput(overrides: Partial<ReachRequestInput> = {}, signingKey = keys.privateKey): ReachRequestInput {
   const input: ReachRequestInput = {
     requesterDid, onBehalfOf: { platform: 'foreign', externalRef: 'someone' },
     purpose: 'agent.reach', field: 'contact_topics', predicate: 'contains', arg: 'business_development',
     issuedAt: new Date().toISOString(), signature: '', ...overrides,
   };
-  input.signature = sign(null, Buffer.from(reachTranscript(principalDid, input)), keys.privateKey).toString('hex');
+  input.signature = sign(null, Buffer.from(reachTranscript(principalDid, input)), signingKey).toString('hex');
   return input;
 }
 
@@ -77,7 +80,7 @@ beforeEach(async () => {
   ]);
   state.grant.mockReset().mockResolvedValue({ authorized: false });
   vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(JSON.stringify({
-    verificationMethod: [{ publicKeyHex: publicKey }],
+    verificationMethod: [{ publicKeyHex: publicKey }, { publicKeyHex: rotatedKey }],
   }), { status: 200 })));
 });
 afterEach(() => { vi.unstubAllGlobals(); });
@@ -192,6 +195,41 @@ describe('gate authority and foreign-agent stubs (#2590)', () => {
   it('refuses suspended identities and does not trust a caller-provided signing key over a registered key', async () => {
     await database.insert(schema.identities).values({ id: requesterDid, scope: 'actor', publicKey, suspendedAt: new Date() });
     expect(await resolveReachRequester(requesterDid, 'b'.repeat(64))).toBeNull();
+  });
+
+  it('accrues rotated signing keys, joins prior credentials, and blocks the whole group even by an old stub ID', async () => {
+    const webDid = 'did:web:rotating.example';
+    expect(await reachPrincipal(principalDid, signedInput({ requesterDid: rotatedDid }, rotatedKeys.privateKey))).toMatchObject({ answer: true });
+    expect(await reachPrincipal(principalDid, signedInput({ requesterDid: webDid, publicKey }))).toMatchObject({ answer: true });
+    const original = await findForeignAgentStub(webDid, principalDid);
+    expect(await reachPrincipal(principalDid, signedInput({ requesterDid: webDid, publicKey: rotatedKey }, rotatedKeys.privateKey))).toMatchObject({ answer: true });
+    const rotated = await findForeignAgentStub(rotatedDid, principalDid);
+    expect(rotated?.signerAliases).toEqual(expect.arrayContaining([publicKey, rotatedKey]));
+    expect(await blockForeignAgentStub(original!.stubDid, principalDid)).toBe(true);
+    expect(await introspectForeignAgentStub(rotated!.stubDid, principalDid, 'reach')).toBe(false);
+    expect(await reachPrincipal(principalDid, signedInput({ requesterDid: rotatedDid }, rotatedKeys.privateKey))).toMatchObject({ denied: true });
+  });
+
+  it('always chooses a matching tombstone over another active credential during rotation', async () => {
+    await resolveOrMintForeignAgentStub(rotatedDid, principalDid, rotatedKey);
+    await resolveOrMintForeignAgentStub('did:web:blocked.example', principalDid, publicKey);
+    await blockForeignAgentStub('did:web:blocked.example', principalDid);
+    expect(await reachPrincipal(principalDid, signedInput({
+      requesterDid: 'did:web:blocked.example', publicKey: rotatedKey,
+    }, rotatedKeys.privateKey))).toMatchObject({ denied: true, reason: 'unauthorized' });
+  });
+
+  it('serializes simultaneous first calls from two verified keys of the same web DID without orphan identities', async () => {
+    const webDid = 'did:web:concurrent.example';
+    const stubs = await Promise.all([
+      resolveOrMintForeignAgentStub(webDid, principalDid, publicKey),
+      resolveOrMintForeignAgentStub(webDid, principalDid, rotatedKey),
+    ]);
+    expect(stubs[0]?.stubDid).toBe(stubs[1]?.stubDid);
+    expect((await findForeignAgentStub(rotatedDid, principalDid, rotatedKey))?.signerAliases).toEqual(expect.arrayContaining([publicKey, rotatedKey]));
+    expect((await pg.query("SELECT * FROM auth.identities WHERE subtype = 'foreign_agent_stub'")).rows).toHaveLength(1);
+    expect(await blockForeignAgentStub(webDid, principalDid)).toBe(true);
+    expect(await reachPrincipal(principalDid, signedInput({ requesterDid: rotatedDid }, rotatedKeys.privateKey))).toMatchObject({ denied: true });
   });
 
   it('fails closed without an authored tier gate, for unadmitted tiers and non-reach resources', async () => {

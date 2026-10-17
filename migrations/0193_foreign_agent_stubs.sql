@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS auth.foreign_agent_stubs (
   requester_did TEXT NOT NULL,
   signer_key TEXT NOT NULL,
   requester_aliases JSONB NOT NULL DEFAULT '[]'::jsonb,
+  signer_aliases JSONB NOT NULL DEFAULT '[]'::jsonb,
   principal_did TEXT NOT NULL REFERENCES auth.identities(id),
   capability TEXT NOT NULL DEFAULT 'reach' CHECK (capability = 'reach'),
   revoked_at TIMESTAMPTZ,
