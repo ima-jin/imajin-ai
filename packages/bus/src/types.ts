@@ -2270,6 +2270,16 @@ export interface BusEventMap {
   'loop.progress': LoopEventPayload;
   'loop.blocked': LoopEventPayload;
   'loop.finished': LoopEventPayload;
+  /** Step observations (#2878); the kernel refines and validates the step-specific shape. */
+  'step.queued': LoopEventPayload;
+  'step.updated': LoopEventPayload;
+  'step.claimed': LoopEventPayload;
+  'step.started': LoopEventPayload;
+  'step.progress': LoopEventPayload;
+  'step.blocked': LoopEventPayload;
+  'step.finished': LoopEventPayload;
+  'step.observed': LoopEventPayload;
+  'step.attested': LoopEventPayload;
   /** Signed advisory observations on the loops rail (#2405), never dispatch gates. */
   'surface.acquired': LoopEventPayload;
   'surface.released': LoopEventPayload;

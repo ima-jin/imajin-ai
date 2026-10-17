@@ -382,6 +382,171 @@ components:
         artifactRef: { $ref: "#/components/schemas/LoopOutputArtifactRef" }
         preview: { type: string }
         truncated: { const: true }
+    StepExitCondition:
+      oneOf:
+        - type: object
+          required: [id, kind]
+          additionalProperties: false
+          properties:
+            id: { type: string, minLength: 1, maxLength: 2000 }
+            kind: { type: string, enum: [issue_closed, release_contains, deployed] }
+        - type: object
+          required: [id, kind, attestorDid]
+          additionalProperties: false
+          properties:
+            id: { type: string, minLength: 1, maxLength: 2000 }
+            kind: { const: attestation }
+            attestorDid: { type: string, pattern: '^did:[^\s:]+:\S+$', maxLength: 512 }
+    StepDeclaration:
+      type: object
+      required: [stepKind, intention, rank, exitConditions]
+      additionalProperties: false
+      description: >-
+        Immutable earliest queued declaration. Code requires repository and exactly one
+        issue_closed, release_contains and deployed condition. Human/ops requires exactly
+        one attestation condition naming the completing DID. Condition ids are distinct.
+      properties:
+        stepKind: { type: string, enum: [code, human, ops] }
+        intention: { type: string, minLength: 1, maxLength: 2000 }
+        rank: { type: number, description: "Finite, lower first; ties use stepId. Zero and negative ranks are valid." }
+        repository: { type: string, pattern: '^[\w.-]+/[\w.-]+$', maxLength: 256 }
+        exitConditions:
+          type: array
+          minItems: 1
+          maxItems: 16
+          items: { $ref: "#/components/schemas/StepExitCondition" }
+    StepUpdate:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        rank: { type: number }
+        intention: { type: string, minLength: 1, maxLength: 2000 }
+        issue:
+          type: object
+          required: [ref, outcome]
+          additionalProperties: false
+          properties:
+            ref: { type: string, minLength: 1, maxLength: 2000 }
+            outcome: { type: string, pattern: '^OUTCOME\b', maxLength: 2000 }
+        briefRef: { type: string, minLength: 1, maxLength: 2000 }
+        provisionRef: { type: string, minLength: 1, maxLength: 2000 }
+        designRef: { type: string, minLength: 1, maxLength: 2000 }
+    StepClaim:
+      type: object
+      required: [leaseId, holderDid, expiresAt]
+      additionalProperties: false
+      description: "Signed claim reference only, not lease acquisition/validation (#2879). holderDid must equal publisherDid."
+      properties:
+        leaseId: { type: string, minLength: 1, maxLength: 2000 }
+        holderDid: { type: string, pattern: '^did:[^\s:]+:\S+$', maxLength: 512 }
+        expiresAt: { type: string, format: date-time }
+    StepEvidence:
+      oneOf:
+        - type: object
+          required: [kind, issue]
+          additionalProperties: false
+          properties:
+            kind: { const: issue_closed }
+            issue: { type: string, minLength: 1, maxLength: 2000 }
+        - type: object
+          required: [kind, repository, issue, mergeCommit, tag]
+          additionalProperties: false
+          properties:
+            kind: { const: release_contains }
+            repository: { type: string, pattern: '^[\w.-]+/[\w.-]+$', maxLength: 256 }
+            issue: { type: string, minLength: 1, maxLength: 2000 }
+            mergeCommit: { type: string, pattern: '^[0-9a-fA-F]{40}$' }
+            tag: { type: string, minLength: 1, maxLength: 2000 }
+        - type: object
+          required: [kind, repository, tag, environment]
+          additionalProperties: false
+          properties:
+            kind: { const: deployed }
+            repository: { type: string, pattern: '^[\w.-]+/[\w.-]+$', maxLength: 256 }
+            tag: { type: string, minLength: 1, maxLength: 2000 }
+            environment: { const: prod }
+    StepAttestation:
+      type: object
+      required: [conditionId, did, statement]
+      additionalProperties: false
+      description: "Must be signed by did, which must also match the declaration's attestorDid to exit."
+      properties:
+        conditionId: { type: string, minLength: 1, maxLength: 2000 }
+        did: { type: string, pattern: '^did:[^\s:]+:\S+$', maxLength: 512 }
+        statement: { type: string, minLength: 1, maxLength: 2000 }
+    StepEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/LoopEnvelope"
+        - type: object
+          required: [stepId]
+          description: >-
+            Exactly the block appropriate to the outer event type is allowed:
+            queued=step (state queued), updated=update, claimed=claim,
+            observed=observation, attested=attestation. started/progress/blocked/finished
+            have none of these blocks. Zone/depth/output and state exited are forbidden.
+            All text is nonblank. Step observations must remain inline and credential-free
+            so their exact publisherProof can be retained.
+          properties:
+            stepId: { type: string, minLength: 1, maxLength: 2000 }
+            step: { $ref: "#/components/schemas/StepDeclaration" }
+            update: { $ref: "#/components/schemas/StepUpdate" }
+            claim: { $ref: "#/components/schemas/StepClaim" }
+            observation:
+              type: object
+              required: [conditionId, evidence]
+              additionalProperties: false
+              properties:
+                conditionId: { type: string, minLength: 1, maxLength: 2000 }
+                evidence: { $ref: "#/components/schemas/StepEvidence" }
+            attestation: { $ref: "#/components/schemas/StepAttestation" }
+    HorizonStep:
+      allOf:
+        - type: object
+          required: [stepId, stepKind, intention, rank, exitConditions, state, zone, conditions, openExitConditions]
+          properties:
+            stepId: { type: string }
+            stepKind: { type: string, enum: [code, human, ops] }
+            intention: { type: string }
+            rank: { type: number }
+            repository: { type: string }
+            exitConditions: { type: array, items: { $ref: "#/components/schemas/StepExitCondition" } }
+            state: { type: string, enum: [queued, claimed, running, blocked, finished, exited], readOnly: true }
+            zone: { type: string, enum: [tail, middle, near, head, past, done], readOnly: true }
+            issue: { type: object, properties: { ref: { type: string }, outcome: { type: string } } }
+            briefRef: { type: string }
+            provisionRef: { type: string }
+            designRef: { type: string }
+            claim: { $ref: "#/components/schemas/StepClaim" }
+            conditions:
+              type: array
+              items:
+                type: object
+                required: [declaration, satisfied, evidence]
+                properties:
+                  declaration: { $ref: "#/components/schemas/StepExitCondition" }
+                  satisfied: { type: boolean, readOnly: true }
+                  evidence:
+                    type: [object, "null"]
+                    properties:
+                      eventId: { type: string }
+                      issuer: { type: string }
+                      at: { type: string, format: date-time }
+                      fact:
+                        oneOf:
+                          - $ref: "#/components/schemas/StepEvidence"
+                          - $ref: "#/components/schemas/StepAttestation"
+            openExitConditions: { type: array, items: { type: string }, readOnly: true }
+    Horizon:
+      type: object
+      required: [steps, depth, targetDepth]
+      properties:
+        steps:
+          type: array
+          description: "Rank-ordered non-done steps by default. includeExited=true opts into done/exited audit projections."
+          items: { $ref: "#/components/schemas/HorizonStep" }
+        depth: { type: integer, minimum: 0, readOnly: true, description: "All non-done items, not truncated to 12." }
+        targetDepth: { const: 12, readOnly: true }
     LoopEnvelope:
       type: object
       description: >-
@@ -452,7 +617,7 @@ components:
       properties:
         id: { type: string }
         loopId: { type: string }
-        type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished] }
+        type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished, surface.acquired, surface.released, surface.conflicted, step.queued, step.updated, step.claimed, step.started, step.progress, step.blocked, step.finished, step.observed, step.attested] }
         issuer: { type: string, description: "The verified publisher DID." }
         principal: { type: string }
         payload: { $ref: "#/components/schemas/StoredLoopEnvelope" }
@@ -1456,7 +1621,7 @@ paths:
     post:
       tags: [loops]
       operationId: ingestLoopEvent
-      summary: Signed ingest for a loop.* lifecycle transition
+      summary: Signed ingest for loop lifecycle, surface and horizon step observations
       description: >-
         Any publisher (Warp's own dispatch loop, the OpenClaw plugin
         translating gateway-side lifecycle hooks, a review sub-agent) posts
@@ -1472,6 +1637,13 @@ paths:
         or artifact persistence. Output above 16384 UTF-8 JSON bytes is
         replaced by an artifact reference and truncated preview.
         Maximum complete HTTP request size is 1048576 bytes.
+        Horizon step.* facts share this authorization/signature boundary and add
+        stepId plus type-specific data (StepEnvelope). The owning loop must already
+        exist under this principal. Step facts append history without changing the
+        loop lifecycle. Exact signed retries deduplicate. Code exit evidence must
+        match the item's issue/repository and the same production release tag;
+        manual attestations must come from the declared completing DID.
+        See docs/loops-rail-contract.md for the complete type-to-block contract.
       security: []
       requestBody:
         required: true
@@ -1481,8 +1653,11 @@ paths:
               type: object
               required: [type, payload, publisherDid, signature]
               properties:
-                type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished] }
-                payload: { $ref: "#/components/schemas/LoopEnvelope" }
+                type: { type: string, enum: [loop.started, loop.progress, loop.blocked, loop.finished, surface.acquired, surface.released, surface.conflicted, step.queued, step.updated, step.claimed, step.started, step.progress, step.blocked, step.finished, step.observed, step.attested] }
+                payload:
+                  anyOf:
+                    - $ref: "#/components/schemas/LoopEnvelope"
+                    - $ref: "#/components/schemas/StepEnvelope"
                 publisherDid: { type: string, description: "The signing agent's own DID." }
                 signature: { $ref: "#/components/schemas/LoopPublisherSignature" }
       responses:
@@ -1509,7 +1684,7 @@ paths:
         "403":
           description: Publisher has no loops:publish authority for the principal
         "409":
-          description: Loop id is already owned by a different principal
+          description: Loop id is already owned by a different principal, or a step's owning loop does not exist
         "413":
           description: Complete request exceeds 1048576 bytes
 
@@ -1660,7 +1835,7 @@ paths:
     get:
       tags: [loops]
       operationId: getLoop
-      summary: One loop's current-state projection plus its ordered event history
+      summary: One loop's lifecycle, ordered history and derived horizon
       description: >-
         Same per-principal scoping as `GET /api/loops`: a loop that exists
         but belongs to a different principal is reported as 404, identical
@@ -1669,9 +1844,20 @@ paths:
         Events are ordered by occurredAt then id ascending. Each event's
         payload.output is a typed inline output or StoredLoopOutput.
         Responses are private and no-store.
+        horizon derives zones and checks declared exit conditions from signed step
+        observations, with no harness lookups. Done/exited items disappear only
+        from horizon.steps by default; their signed events remain. includeExited=true
+        opts into completed-step audit projections with state exited and zone done.
+        Depth always counts only non-done entries and targetDepth is 12.
+        Claim references are not lease enforcement.
       security:
         - cookieAuth: []
       parameters:
+        - name: includeExited
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: "Only literal true includes exited audit projections; does not change depth or principal scope."
         - name: loopId
           in: path
           required: true
@@ -1683,8 +1869,10 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [loop, events, horizon]
                 properties:
                   loop: { $ref: "#/components/schemas/LoopRecord" }
+                  horizon: { $ref: "#/components/schemas/Horizon" }
                   events:
                     type: array
                     items: { $ref: "#/components/schemas/LoopEventRecord" }
