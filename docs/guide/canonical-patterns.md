@@ -32,6 +32,17 @@
 
 ### App-owned checkout patterns
 
+For onboarding email after an app-owned hosted checkout, call
+`POST /auth/api/onboard/send` with `{ transactionId }` and the app's own
+operator-approved `onboard:send` service token (#2537). The kernel enforces
+app binding plus the recorded seller's ownership/live authorization, resolves
+the buyer from kernel credentials or the seller's recorded Stripe session,
+and emails the existing magic link privately. Only send status leaves the
+kernel; apps must never mint, receive, embed, log or redeem its verification
+bearer. A node-signed `onboard.link.sent` record binds the app and order.
+Free/EMT resources without a kernel-bound transaction fail closed; see the
+auth API spec for the supported hosted-checkout contract and failure semantics.
+
 The former events checkout-identity, ticket reconciliation, contact-email and
 order-creation helpers are no longer kernel primitives or import targets.
 `apps/events` was pruned in #2517; consult [ima-jin/events](https://github.com/ima-jin/events)

@@ -118,7 +118,7 @@ async function rejectUnsubmittableType(type: string): Promise<NextResponse | nul
       { status: 400 }
     );
   }
-  if (type === KEY_ROTATED_ATTESTATION_TYPE || type === 'onboard.link.sent') {
+  if (type === KEY_ROTATED_ATTESTATION_TYPE || type === 'onboard.link.sent' || type === 'onboard.link.requested') {
     return NextResponse.json({ error: `Attestation type "${type}" is node-issued only` }, { status: 403 });
   }
   return null;

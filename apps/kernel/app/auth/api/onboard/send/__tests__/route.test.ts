@@ -89,21 +89,23 @@ describe('kernel-private order onboarding', () => {
       html: expect.stringContaining('/auth/api/onboard/verify?token=test-fixture-48'),
     }));
     expect(mocks.email.mock.calls[0][0].html).toContain('Owner &lt;Org&gt; &amp; &quot;Team&quot;&#39;');
-    expect(mocks.values).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    expect(mocks.values).toHaveBeenNthCalledWith(2, expect.objectContaining({
       email: 'buyer@example.com', token: 'test-fixture-48',
       pollHandle: null, scopeDid: null, inviteCode: null,
       redirectUrl: 'https://kernel.example/auth',
       expiresAt: expect.any(Date),
     }));
-    expect(mocks.insert).toHaveBeenNthCalledWith(1, onboardTokens);
+    expect(mocks.insert).toHaveBeenNthCalledWith(1, attestations);
+    expect(mocks.insert).toHaveBeenNthCalledWith(2, onboardTokens);
     expect(mocks.prepare).toHaveBeenCalledWith({
       subjectDid: appDid, type: 'onboard.link.sent', contextId: order.id, contextType: 'order',
-      payload: { onBehalfOf: appDid, ownerDid, transactionId: order.id, delivery: 'email' },
+      payload: { onBehalfOf: appDid, ownerDid, transactionId: order.id, delivery: 'email', requestId: signedRecord.id },
     });
-    expect(mocks.insert).toHaveBeenNthCalledWith(2, attestations);
+    expect(mocks.insert).toHaveBeenNthCalledWith(3, attestations);
     expect(mocks.values).toHaveBeenLastCalledWith(signedRecord);
     expect(mocks.prepare.mock.invocationCallOrder[0]).toBeLessThan(mocks.email.mock.invocationCallOrder[0]);
-    expect(mocks.email.mock.invocationCallOrder[0]).toBeLessThan(mocks.insert.mock.invocationCallOrder[1]);
+    expect(mocks.insert.mock.invocationCallOrder[0]).toBeLessThan(mocks.email.mock.invocationCallOrder[0]);
+    expect(mocks.email.mock.invocationCallOrder[0]).toBeLessThan(mocks.insert.mock.invocationCallOrder[2]);
     expect(mocks.customer).not.toHaveBeenCalled();
 
     const dialect = new PgDialect();
@@ -227,16 +229,19 @@ describe('kernel-private order onboarding', () => {
   it('does not record a sent event when the mail provider refuses delivery', async () => {
     mocks.email.mockResolvedValue({ success: false, error: 'sensitive provider details' });
     expect((await POST(request())).status).toBe(502);
-    expect(mocks.insert).toHaveBeenCalledTimes(1);
+    expect(mocks.insert).toHaveBeenCalledTimes(2);
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
-  it.each(['registry', 'signer', 'provider', 'audit', 'rail', 'owner grant'])('redacts %s failures', async (stage) => {
+  it.each(['registry', 'signer', 'intent', 'provider', 'audit', 'rail', 'owner grant'])('redacts %s failures', async (stage) => {
     const failure = new Error('private email / bearer / verify URL');
     if (stage === 'registry') mocks.select.mockReset().mockImplementationOnce(() => { throw failure; });
     if (stage === 'signer') mocks.prepare.mockRejectedValue(failure);
     if (stage === 'provider') mocks.email.mockRejectedValue(failure);
-    if (stage === 'audit') mocks.values.mockResolvedValueOnce(undefined).mockRejectedValueOnce(failure);
+    if (stage === 'intent') mocks.values.mockRejectedValueOnce(failure);
+    if (stage === 'audit') {
+      mocks.values.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined).mockRejectedValueOnce(failure);
+    }
     if (stage === 'rail') {
       setupOrder({ ...order, fromDid: null });
       mocks.customer.mockRejectedValue(failure);
@@ -249,6 +254,6 @@ describe('kernel-private order onboarding', () => {
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: 'Onboarding delivery unavailable' });
     expect(mocks.error).toHaveBeenCalledWith({}, 'Order onboarding delivery unavailable');
-    if (stage === 'signer') expect(mocks.email).not.toHaveBeenCalled();
+    if (stage === 'signer' || stage === 'intent') expect(mocks.email).not.toHaveBeenCalled();
   });
 });

@@ -79,10 +79,18 @@ export async function sendOrderOnboard(app: App, transactionId: string): Promise
   const emailLimit = throttle(`onboard-email:${parsedEmail.data}`, 3, 3_600_000);
   if (emailLimit) return emailLimit;
 
-  // Prepare before sending: a missing node signer must fail closed, never send without audit capability.
+  // Durable intent survives a crash or a failed final audit write without falsely claiming delivery.
+  const intent = await prepareMechanicalAttestation({
+    subjectDid: app.appDid, type: 'onboard.link.requested', contextId: order.id, contextType: 'order',
+    payload: { onBehalfOf: app.appDid, ownerDid: order.toDid, transactionId: order.id, delivery: 'email' },
+  });
+  await db.insert(attestations).values(intent);
   const record = await prepareMechanicalAttestation({
     subjectDid: app.appDid, type: 'onboard.link.sent', contextId: order.id, contextType: 'order',
-    payload: { onBehalfOf: app.appDid, ownerDid: order.toDid, transactionId: order.id, delivery: 'email' },
+    payload: {
+      onBehalfOf: app.appDid, ownerDid: order.toDid, transactionId: order.id,
+      delivery: 'email', requestId: intent.id,
+    },
   });
   const delivery = await deliverOnboardEmail({
     email: parsedEmail.data, redirectUrl: buildPublicUrlAbsolute('auth'),

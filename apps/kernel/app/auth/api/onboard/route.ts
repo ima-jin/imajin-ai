@@ -99,8 +99,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       { headers: cors }
     );
 
-  } catch (error) {
-    log.error({ err: String(error) }, 'Onboard start error');
+  } catch {
+    log.error({}, 'Onboard start error');
     return NextResponse.json(
       { error: 'Failed to initiate onboarding' },
       { status: 500, headers: cors }

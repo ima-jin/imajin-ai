@@ -32,6 +32,7 @@ export async function deliverOnboardEmail(input: DeliveryInput): Promise<{
   const verifyUrl = `${buildPublicUrlAbsolute('auth')}/api/onboard/verify?token=${token}`;
   const result = await sendEmail({
     to: input.email,
+    sensitive: true,
     subject: `Verify your email${input.context ? ` to ${input.context}` : ''} — Imajin`,
     html: onboardEmail({
       verifyUrl, context: input.context ?? undefined, name: input.name ?? undefined,
