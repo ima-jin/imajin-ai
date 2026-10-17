@@ -23,7 +23,7 @@ import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { parseEnv } from 'node:util';
+import { isDeepStrictEqual, parseEnv } from 'node:util';
 
 const USAGE = [
   'Usage: node scripts/key-rotation.mjs <generate|destroy|preflight|sign|submit|verify> [options]',
@@ -79,9 +79,7 @@ function envAssignments(text) {
   return { lines, assignments };
 }
 
-function rewriteRotationEnv(text, values) {
-  const { lines, assignments } = envAssignments(text);
-  const newline = text.includes('\r\n') ? '\r\n' : '\n';
+function replaceAssignments(lines, assignments, values, newline) {
   for (const [name, value] of Object.entries(values)) {
     const entry = assignments.get(name);
     if (entry) {
@@ -90,11 +88,25 @@ function rewriteRotationEnv(text, values) {
       for (let i = entry.start + 1; i <= entry.end; i += 1) lines[i] = '';
     }
   }
+}
+
+function rewriteRotationEnv(text, values) {
+  const { lines, assignments } = envAssignments(text);
+  const newline = text.includes('\r\n') ? '\r\n' : '\n';
+  replaceAssignments(lines, assignments, values, newline);
   let rewritten = lines.join('');
   for (const [name, value] of Object.entries(values)) {
     if (assignments.has(name)) continue;
     if (rewritten && !rewritten.endsWith('\n')) rewritten += newline;
     rewritten += `${name}=${value}${newline}`;
+  }
+  // Node's parser is the authority. Refuse unusual syntax rather than silently
+  // changing an unrelated multiline value or installing an ineffective key.
+  const before = parseEnv(text);
+  const after = parseEnv(rewritten);
+  const expected = { ...before, ...values };
+  if (!isDeepStrictEqual(after, expected)) {
+    throw new Error('Env rewrite changed assignment semantics');
   }
   return rewritten;
 }
@@ -129,7 +141,14 @@ async function installRotationEnv(fileSystem, filename, original, rewritten) {
   const backup = `${filename}${BACKUP_SUFFIX}`;
   // Exclusive creation is the rotation lock: never overwrite an earlier rollback.
   const backupHandle = await fileSystem.open(backup, 'wx', 0o600);
-  await writePrivateFile(backupHandle, original.text);
+  try {
+    await writePrivateFile(backupHandle, original.text);
+  } catch {
+    // We own this exclusive pathname and have not touched the env. Do not
+    // leave a partial write masquerading as a usable rollback backup.
+    await fileSystem.unlink(backup);
+    throw new Error('Could not complete rollback backup');
+  }
   const temporary = path.join(path.dirname(filename), `.key-rotation-${randomUUID()}.tmp`);
   const temporaryHandle = await fileSystem.open(temporary, 'wx', 0o600);
   try {
@@ -139,10 +158,11 @@ async function installRotationEnv(fileSystem, filename, original, rewritten) {
       throw new Error('Env changed during rotation');
     }
     await fileSystem.rename(temporary, filename);
-  } finally {
-    // After rename this path no longer exists. Other cleanup failures go
-    // through generate's fixed-message boundary, never printed verbatim.
+  } catch {
+    // No cleanup after a successful commit: a cleanup error must not report
+    // installation failure after the env was already replaced.
     await fileSystem.rm(temporary, { force: true });
+    throw new Error('Atomic env installation failed');
   }
 }
 

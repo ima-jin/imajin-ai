@@ -91,6 +91,16 @@ function overrideHandle(handle, overrides) {
 }
 
 describe('generate', () => {
+  it('mints a fresh Ed25519 seed in-process with the production random source', async () => {
+    const f = await rotationFixture();
+    delete f.deps.generatePrivateKey;
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(0);
+    const generated = parseEnv(await fs.readFile(f.filename, 'utf8')).AUTH_PRIVATE_KEY;
+    expect(authCrypto.isValidPrivateKey(generated)).toBe(true);
+    expect(generated === f.oldKey.privateKey).toBe(false);
+    expect(f.stdout()).toContain(authCrypto.getPublicKey(generated));
+    expectNoPrivateMaterial(f.stdout() + f.stderr(), f.oldKey.privateKey, generated);
+  });
   it('uses the shared preflight, installs atomically and preserves the private rollback file byte-for-byte', async () => {
     const f = await rotationFixture();
     await fs.chmod(f.filename, 0o644);
@@ -132,6 +142,27 @@ describe('generate', () => {
     expect(f.stdout()).toContain(`old key: ${keyRotation.computeKeyKid(f.oldKey.publicKey)}  public ${f.oldKey.publicKey}`);
     expect(f.stdout()).toContain(`new key: ${keyRotation.computeKeyKid(f.newKey.publicKey)}  public ${f.newKey.publicKey}`);
     expect(f.stderr()).toBe('');
+    expectSafeCapture(f);
+  });
+  it.each([false, true])('handles a partial backup write, including cleanup failure=%s, without touching the env', async (cleanupFails) => {
+    const f = await rotationFixture();
+    f.deps.fileSystem = {
+      ...fs,
+      unlink: cleanupFails ? async () => { throw new Error('backup cleanup unavailable'); } : fs.unlink,
+      open: async (filename, flags, mode) => {
+        const handle = await fs.open(filename, flags, mode);
+        if (filename !== f.backup) return handle;
+        return overrideHandle(handle, {
+          writeFile: async (text) => {
+            await handle.writeFile(text.slice(0, 30), 'utf8');
+            throw new Error('partial backup write');
+          },
+        });
+      },
+    };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
+    expect(existsSync(f.backup)).toBe(cleanupFails);
     expectSafeCapture(f);
   });
 
@@ -241,6 +272,47 @@ describe('generate', () => {
     expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
     expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
     expect((await fs.readdir(f.directory)).some((name) => name.endsWith('.tmp'))).toBe(false);
+    if (failure.startsWith('backup-')) {
+      expect(existsSync(f.backup)).toBe(false);
+    } else {
+      expect((await fs.readFile(f.backup, 'utf8')) === f.original).toBe(true);
+      expect((await fs.stat(f.backup)).mode & 0o777).toBe(0o600);
+    }
+    expectSafeCapture(f);
+  });
+
+  it('fails closed when unusual dotenv grammar would change unrelated assignment semantics', async () => {
+    const f = await rotationFixture();
+    const original = `ODD-NAME="first\nAUTH_PREVIOUS_PUBLIC_KEY=inside the multiline value\nlast"\nAUTH_PRIVATE_KEY=${f.oldKey.privateKey}\n`;
+    await fs.writeFile(f.filename, original);
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === original).toBe(true);
+    expect(existsSync(f.backup)).toBe(false);
+    expectSafeCapture(f);
+  });
+
+  it('refuses replacement of the env inode, even with identical contents', async () => {
+    const f = await rotationFixture();
+    f.deps.fileSystem = {
+      ...fs,
+      open: async (filename, flags, mode) => {
+        if (flags === 'wx' && filename !== f.backup) {
+          await fs.rename(f.filename, join(f.directory, 'concurrent-original'));
+          await fs.writeFile(f.filename, f.original, { mode: 0o600 });
+        }
+        return fs.open(filename, flags, mode);
+      },
+    };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(1);
+    expect((await fs.readFile(f.filename, 'utf8')) === f.original).toBe(true);
+    expectSafeCapture(f);
+  });
+
+  it('does not perform fallible cleanup after the rename has committed', async () => {
+    const f = await rotationFixture();
+    f.deps.fileSystem = { ...fs, rm: vi.fn().mockRejectedValue(new Error('cleanup unavailable')) };
+    expect(await runKeyRotationCli(f.argv, f.deps)).toBe(0);
+    expect(f.deps.fileSystem.rm).not.toHaveBeenCalled();
     expectSafeCapture(f);
   });
 

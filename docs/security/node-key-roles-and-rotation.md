@@ -244,6 +244,8 @@ every unrelated line. Run only in an operator-controlled directory. Duplicate
 rotation assignments, symlinks, nonregular files, missing/invalid current keys
 and existing backups fail closed. On failure inspect file **status**, never dump
 contents: a backup may already exist, and must not be blindly overwritten.
+Failed backup writes are removed before installation; if storage errors also
+prevent cleanup, the leftover backup may be incomplete and is not safe rollback.
 Before step 6, rollback is restoring this backup as `.env.local` and restarting
 per the restart rule; neither key needs to enter a shell variable. Retain the
 backup until the handover has been signed and all destruction gates in step 12
