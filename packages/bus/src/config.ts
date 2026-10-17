@@ -730,8 +730,8 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   // deliveries as these types and the kernel's `pay-stripe` reactor (awaited:
   // the ingress answers 500 for Stripe to retry when it fails) runs the
   // handlers that used to live inline in the routes. The BYO connector
-  // publishes payment_intent.succeeded / invoice.paid / payout.paid too; the
-  // reactor ignores those (no `relayId`). No DB row is seeded: no schema
+  // publishes its eight supported event types with owner-bound relay entries;
+  // the reactor keeps those off the historical platform handlers. No DB row is seeded: no schema
   // change — getChainConfig falls back to these entries.
   'stripe.payment_intent.succeeded': payStripeChain(),
   'stripe.payment_intent.payment_failed': payStripeChain(),

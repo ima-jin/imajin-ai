@@ -3,15 +3,19 @@
  * Owners configure their endpoint in Stripe and paste its signing secret into
  * the same connector as their rk/pk pair. All three fields are vault sealed;
  * routing is resolved from the opaque index before signature verification.
+ * Sealed credentials alone do not enable ingress: the owner must sign consent
+ * for the owner-only stripe:events scope before deliveries can be processed.
  */
 import { createLogger } from '@imajin/logger';
-import { publish } from '@imajin/bus';
 import { sealAndStore, loadAndUnseal, deleteFromVault, vaultFieldStatus } from '@/src/lib/vault';
 import { generateId } from '@/src/lib/kernel/id';
 import { ensurePayStripeReactorRegistered } from '@/src/lib/pay/stripe-bus-consumer';
 import { putRelayEntry, deleteRelayEntry } from '@/src/lib/pay/stripe-relay-store';
 import { stripTrailingSlashes } from '@/src/lib/kernel/utils';
 import { verifyStripeWebhookSignature } from './webhook-verify';
+import { stripeWebhookEvents, isStripeWebhookEventType } from './webhook-events';
+import { isRecord, isStripeWebhookObject } from './webhook-payload';
+import { stripeWebhookHandlers } from './webhook-routing';
 import { assertCheckoutSessionWriteAllowed } from './byo-checkout';
 import { stripe, stripeEventsScope, stripePublishableKeyField, stripeWebhookSecretField } from './connector-core';
 import { StripeCredentialError, validateStripeCredentialPair, validateStripeWebhookSecret } from './credential-pair';
@@ -28,12 +32,7 @@ const log = createLogger('kernel');
 // rail selection can read them without importing this file's bus/pay dependencies — #2754).
 export { stripeConnectorDid, stripeEventsScope, type StripeCredentials } from './connector-core';
 
-/** Stripe events this connector subscribes to and forwards onto the bus. */
-export const stripeWebhookEvents = [
-  'payment_intent.succeeded',
-  'invoice.paid',
-  'payout.paid',
-] as const;
+export { stripeWebhookEvents } from './webhook-events';
 
 const stripeApiBase = 'https://api.stripe.com/v1';
 
@@ -172,47 +171,6 @@ export type StripeWebhookResult =
   | { status: 'connector_unavailable' }
   | { status: 'processing_failed' };
 
-/** String-coerce a Stripe object field for a bus payload, defaulting to ''. */
-function str(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  return value === null || value === undefined ? '' : JSON.stringify(value);
-}
-
-/** Number-coerce a Stripe object field for a bus payload, defaulting to 0. */
-function num(value: unknown): number {
-  return typeof value === 'number' ? value : Number(value ?? 0) || 0;
-}
-
-/** A non-empty string metadata value, or `undefined`. */
-function metadataString(metadata: Record<string, unknown> | null | undefined, key: string): string | undefined {
-  const value = metadata?.[key];
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
-}
-
-/**
- * The two references a checkout written by `byo-checkout.ts` puts on its
- * PaymentIntent metadata, and the ONLY metadata fields lifted onto the durable,
- * subscriber-visible bus payload: `payment_request_id` (#2754, an invoice) and
- * `pay_transaction_id` (#2757, a generic hosted checkout — events, market). The
- * pay reactor settles the named object iff it is owned by `ownerDid`. `{}` for
- * every PaymentIntent that is neither.
- */
-function checkoutReferenceFields(
-  object: Record<string, unknown>,
-): { paymentRequestId?: string; payTransactionId?: string } {
-  const metadata = object.metadata as Record<string, unknown> | null | undefined;
-  const paymentRequestId = metadataString(metadata, 'payment_request_id') ?? metadataString(metadata, 'paymentRequestId');
-  const payTransactionId = metadataString(metadata, 'pay_transaction_id');
-  return {
-    ...(paymentRequestId && { paymentRequestId }),
-    ...(payTransactionId && { payTransactionId }),
-  };
-}
 
 /**
  * Republish one verified Stripe event onto the bus, gated by the owner's own
@@ -222,74 +180,15 @@ function checkoutReferenceFields(
  * so the ingress can request a retry rather than acknowledging a lost payment.
  */
 async function publishStripeEvent(ownerDid: string, event: StripeEventLike): Promise<boolean> {
-  if (!(stripeWebhookEvents as readonly string[]).includes(event.type)) return false;
-
-  const object = event.data?.object ?? {};
-  const envelope = { issuer: ownerDid, subject: ownerDid, scope: 'stripe' } as const;
+  if (!isStripeWebhookEventType(event.type)) return false;
 
   ensurePayStripeReactorRegistered();
   const relayId = generateId('striperelay');
   const entry = putRelayEntry(relayId, 'platform', event, ownerDid);
 
   try {
-    switch (event.type) {
-      case 'payment_intent.succeeded':
-        await publish('stripe.payment_intent.succeeded', {
-          ...envelope,
-          payload: {
-            ownerDid,
-            relayId,
-            eventId: event.id,
-            paymentIntentId: str(object.id),
-            amount: num(object.amount),
-            currency: str(object.currency).toUpperCase(),
-            ...checkoutReferenceFields(object),
-            context_id: event.id,
-            context_type: 'stripe',
-          },
-        });
-        break;
-      case 'invoice.paid':
-        await publish('stripe.invoice.paid', {
-          ...envelope,
-          payload: {
-            ownerDid,
-            relayId,
-            eventId: event.id,
-            invoiceId: str(object.id),
-            amountPaid: num(object.amount_paid),
-            currency: str(object.currency).toUpperCase(),
-            context_id: event.id,
-            context_type: 'stripe',
-          },
-        });
-        break;
-      case 'payout.paid':
-        await publish('stripe.payout.paid', {
-          ...envelope,
-          payload: {
-            ownerDid,
-            relayId,
-            eventId: event.id,
-            payoutId: str(object.id),
-            amount: num(object.amount),
-            currency: str(object.currency).toUpperCase(),
-            arrivalDate: typeof object.arrival_date === 'number'
-              ? new Date(object.arrival_date * 1000).toISOString()
-              : null,
-            context_id: event.id,
-            context_type: 'stripe',
-          },
-        });
-        break;
-      default:
-        log.info(
-          { ownerDid, eventType: event.type },
-          'Stripe webhook: verified event type has no bus mapping — ack only',
-        );
-        return false;
-    }
-    if (entry.error || !entry.handled) throw new Error('Stripe settlement was not handled');
+    await stripeWebhookHandlers[event.type]({ ownerDid, relayId, eventId: event.id, object: event.data?.object ?? {} });
+    if (entry.error || !entry.handled) throw new Error('Stripe delivery was not handled');
     return true;
   } finally {
     deleteRelayEntry(relayId);
@@ -311,23 +210,11 @@ function recordDelivery(key: string): void {
   completedDeliveries.set(key, now);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
 function isStripeEvent(value: unknown): value is StripeEventLike {
   if (!isRecord(value) || typeof value.id !== 'string' || !value.id.trim() ||
       typeof value.type !== 'string' || !value.type.trim() ||
       !isRecord(value.data) || !isRecord(value.data.object)) return false;
-  if (!(stripeWebhookEvents as readonly string[]).includes(value.type)) return true;
-  const object = value.data.object;
-  const amount = value.type === 'invoice.paid' ? object.amount_paid : object.amount;
-  return typeof object.id === 'string' && object.id.length > 0 &&
-    typeof amount === 'number' && Number.isSafeInteger(amount) && amount >= 0 &&
-    typeof object.currency === 'string' && /^[a-z]{3}$/i.test(object.currency) &&
-    (object.metadata === undefined || object.metadata === null || isRecord(object.metadata)) &&
-    (object.arrival_date === undefined || (typeof object.arrival_date === 'number' &&
-      Number.isFinite(object.arrival_date) && !Number.isNaN(new Date(object.arrival_date * 1000).getTime())));
+  return !isStripeWebhookEventType(value.type) || isStripeWebhookObject(value.type, value.data.object);
 }
 
 /**

@@ -38,19 +38,10 @@ import Stripe from 'stripe';
 import { createLogger } from '@imajin/logger';
 import { getStripeClient } from './stripe-client';
 import type { RailEvent } from '../rails/types';
+import { isStripeWebhookEventType, stripeEventAmount } from '@/src/lib/stripe/webhook-events';
 
 const log = createLogger('kernel');
 
-/** Stripe event types this adapter knows how to normalize into a `RailEvent`. */
-const NORMALIZABLE_EVENT_TYPES = new Set([
-  'payment_intent.succeeded',
-  'payment_intent.payment_failed',
-  'checkout.session.completed',
-  'customer.subscription.created',
-  'customer.subscription.updated',
-  'customer.subscription.deleted',
-  'invoice.paid',
-]);
 
 // ---------------------------------------------------------------------------
 // Signature verification + idempotency
@@ -130,16 +121,6 @@ interface StripeEventLike {
   data?: { object?: unknown };
 }
 
-function extractAmount(type: string, object: Record<string, unknown>): number | null {
-  if (type === 'checkout.session.completed') {
-    return typeof object.amount_total === 'number' ? object.amount_total : null;
-  }
-  if (type === 'invoice.paid') {
-    return typeof object.amount_paid === 'number' ? object.amount_paid : null;
-  }
-  return typeof object.amount === 'number' ? object.amount : null;
-}
-
 /**
  * Normalize a verified Stripe event (as returned by `verifyStripeWebhook`)
  * into a rail-neutral `RailEvent`. Returns `null` for an event type this
@@ -154,7 +135,7 @@ export function toRailEvent(event: unknown): RailEvent | null {
   if (!candidate || typeof candidate.type !== 'string' || !object || typeof object !== 'object') {
     return null;
   }
-  if (!NORMALIZABLE_EVENT_TYPES.has(candidate.type)) {
+  if (!isStripeWebhookEventType(candidate.type)) {
     return null;
   }
 
@@ -166,7 +147,7 @@ export function toRailEvent(event: unknown): RailEvent | null {
     rail: 'stripe',
     type: candidate.type,
     externalRef,
-    amount: extractAmount(candidate.type, raw),
+    amount: stripeEventAmount(candidate.type, raw),
     currency,
     raw,
   };

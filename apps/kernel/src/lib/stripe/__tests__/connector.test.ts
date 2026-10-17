@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createHmac } from 'node:crypto';
+import { stripeWebhookEvents } from '../webhook-events';
 
 const {
   sealV2Mock, sealV1Mock, loadMock, deleteFromVaultMock, statusMock, whereMock,
@@ -211,7 +212,7 @@ describe('manual webhook setup', () => {
     expect(await webhookStatus(OWNER, `${BASE_URL}///`)).toEqual({
       webhookSecretSealed: true, routingId: 'stripewh_existing',
       webhookUrl: `${BASE_URL}/pay/api/webhook/did/stripewh_existing`,
-      webhookEvents: ['payment_intent.succeeded', 'invoice.paid', 'payout.paid'],
+      webhookEvents: stripeWebhookEvents,
     });
     expect(loadMock).not.toHaveBeenCalled();
   });

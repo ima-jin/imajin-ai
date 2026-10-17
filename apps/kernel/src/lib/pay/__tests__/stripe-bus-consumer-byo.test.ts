@@ -70,7 +70,7 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe('pay-stripe reactor — BYO payment_intent.succeeded (#2754)', () => {
   it('records a bound delivery outcome without dispatching legacy platform handlers', async () => {
-    const entry = { ownerDid: OWNER, handled: false };
+    const entry = { ownerDid: OWNER, handled: false, stripeEvent: { type: 'payment_intent.succeeded' } };
     h.getRelayEntryMock.mockReturnValue(entry);
     await payStripeReactor(byoEvent({}, { ...PAYLOAD, relayId: 'bound_1' }), {});
     expect(h.settleByoMock).toHaveBeenCalled();
@@ -78,7 +78,7 @@ describe('pay-stripe reactor — BYO payment_intent.succeeded (#2754)', () => {
   });
 
   it('reports a bound delivery failure so ingress can retry, without retaining exception text', async () => {
-    const entry = { ownerDid: OWNER, handled: false, error: undefined };
+    const entry = { ownerDid: OWNER, handled: false, error: undefined, stripeEvent: { type: 'payment_intent.succeeded' } };
     h.getRelayEntryMock.mockReturnValue(entry);
     h.settleByoMock.mockRejectedValue(new Error('private upstream payload'));
     await payStripeReactor(byoEvent({}, { ...PAYLOAD, relayId: 'bound_1' }), {});
