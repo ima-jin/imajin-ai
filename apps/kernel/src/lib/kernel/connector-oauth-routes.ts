@@ -132,11 +132,14 @@ export function createConnectHandler(
 
     const { searchParams } = new URL(request.url);
     const returnTo = sanitizeReturnTo(searchParams.get('returnTo'));
-    const state = slot !== 'primary'
-      ? signState(ownerDid, returnTo ?? undefined, configDid, slot)
-      : configDid
+    let state: string;
+    if (slot !== 'primary') {
+      state = signState(ownerDid, returnTo ?? undefined, configDid, slot);
+    } else {
+      state = configDid
       ? signState(ownerDid, returnTo ?? undefined, configDid)
       : signState(ownerDid, returnTo ?? undefined);
+    }
     try {
       return NextResponse.redirect(await (slot === 'primary'
         ? buildAuthorizeUrl(ownerDid, state, configDid)

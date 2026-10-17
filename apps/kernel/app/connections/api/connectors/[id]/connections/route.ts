@@ -51,9 +51,12 @@ export async function GET(request: NextRequest, context: Context) {
       const field = connector.ingestionPattern === 'oauth'
         ? connectionVaultField(`${connector.id}-oauth`, ownerDid, slot)
         : registration?.sealedKeyField;
-      const status = !field ? 'absent' : connector.ingestionPattern === 'static-secret'
-        ? await vaultFieldStatusForGrantee(field, connector.connectorDid)
-        : await vaultFieldStatus(field);
+      let status = 'absent';
+      if (field) {
+        status = connector.ingestionPattern === 'static-secret'
+          ? await vaultFieldStatusForGrantee(field, connector.connectorDid)
+          : await vaultFieldStatus(field);
+      }
       const configStatus = connector.ingestionPattern === 'oauth'
         ? await vaultFieldStatus(connectionVaultField(`${connector.id}-config`, ownerDid, slot))
         : status;
