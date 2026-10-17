@@ -2,13 +2,14 @@
 /**
  * generate-api-specs.ts
  *
- * Walks route.ts files across all 9 imajin services, detects HTTP method
+ * Walks route.ts files across the in-repo imajin services, detects HTTP method
  * exports, maps file paths to URL paths, and emits one openapi.yaml per
  * service under apps/<service>/api-spec/openapi.yaml.
  *
  * links (#1986 phase 2), coffee (#2500) and dykil (#2523) now run from their own
  * repos (ima-jin/links, ima-jin/coffee, ima-jin/dykil) and are intentionally
  * absent from this list — apps/links, apps/coffee and apps/dykil no longer exist here.
+ * events (#2517) likewise generates its own specs in ima-jin/events.
  *
  * Usage:
  *   pnpm generate:api-specs
@@ -77,15 +78,6 @@ const SERVICES: ServiceConfig[] = [
     prodUrl: 'https://profile.imajin.ai',
     devUrl: 'https://dev-profile.imajin.ai',
     port: 7005,
-    routeRoots: ['app/api'],
-  },
-  {
-    name: 'events',
-    title: 'imajin events',
-    description: 'Event creation, ticketing, ticket tiers, queue management, hold system, .fair manifests, checkout, and payment webhooks.',
-    prodUrl: 'https://events.imajin.ai',
-    devUrl: 'https://dev-events.imajin.ai',
-    port: 7006,
     routeRoots: ['app/api'],
   },
   {

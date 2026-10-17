@@ -179,7 +179,8 @@ step "Writing .env.local files"
 # this same dev DB — it is no longer part of this monorepo's local setup.
 # learn (#2503), coffee (#2500), market (#2512) and dykil (#2523) likewise run from their own
 # repos (ima-jin/learn, ima-jin/coffee, ima-jin/market, ima-jin/dykil).
-APPS=(kernel events)
+# events (#2517) is also standalone (ima-jin/events).
+APPS=(kernel)
 
 for app in "${APPS[@]}"; do
   app_dir="$REPO_ROOT/apps/$app"
@@ -322,8 +323,8 @@ echo "  2. $(cyan "Register your first identity")"
 echo "     Open http://localhost:3000/register in your browser"
 echo "     $(dim "Save your key file — it is the only copy.")"
 echo
-echo "  3. $(cyan "Start verticals as needed")"
-echo "     pnpm --filter @imajin/events dev     $(dim "→ http://localhost:3006")"
+echo "  3. $(cyan "Start standalone apps from their own repositories as needed")"
+echo "     events: ima-jin/events              $(dim "→ http://localhost:3006")"
 echo
 echo "  $(dim "Optional: fill in Stripe, SendGrid, Anthropic, etc. in apps/kernel/.env.local")"
 echo

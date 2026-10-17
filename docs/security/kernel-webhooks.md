@@ -46,7 +46,8 @@ app's registered origin or a trusted, fixed kernel-routed service URL. The
 coffee/events/learn/market mappings apply to provisioned apps regardless of
 registry tier; relative nav paths and bare audience slugs do not grant origins. Existing
 `settlement.completed` configurations without a recipient resolve the registered
-events app, preserving the live monorepo delivery path. Other missing/revoked or
+events app, preserving the registered-app delivery path for standalone
+[ima-jin/events](https://github.com/ima-jin/events). Other missing/revoked or
 ambiguous recipients fail closed; the event payload cannot select the audience.
 
 ## Trust and rotation
@@ -138,15 +139,13 @@ existing configuration until its removal gate is met.
    publishing job; do not publish from a shell or hand-bump a feature version.
 2. Deploy the kernel through its deploy workflow. Callback URLs are non-secret
    config; no new shared webhook credential is provisioned.
-   The same monorepo release migrates the live events payment and settlement
-   receivers while #2516 remains blocked; standalone events#38 does not cover
-   that copy. Events resolves its own app DID through its existing registered
-   identity and uses its boot-loaded vault key for organizer contact/reply-to.
-   **Standalone `ima-jin/events` is not migrated by this PR:** it still uses
-   `x-webhook-secret` for settlement and contact. **events#38 must merge and
-   deploy before the #2529 standalone-events dev cutover.** Keep that cutover
-   blocked until the standalone signed-receiver/vault-Bearer migration is deployed
-   and verified; the patched monorepo copy is already compatible.
+   Events now runs from [ima-jin/events](https://github.com/ima-jin/events)
+   in dev and prod (cutover status recorded on #2517); signed receiver/contact
+   integration is app-owned there. The events#38 prerequisite and patched #2798
+   monorepo receiver describe the completed cutover, not a remaining kernel
+   workspace app. Preserve the public callback/contact contracts. The #2517
+   production release guard still requires #2516 step 8 buy/refund acceptance
+   and Ryan's tap 2; source cleanup is not deployment approval.
 3. Per-app #2241 children deploy verification with durable pins/replay storage and
    exercise a signed payment callback, replay, stale, tampered and unsigned inputs.
 4. Apps call notify using their own claimed app identity and scoped service token.

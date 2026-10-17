@@ -1,5 +1,9 @@
 # Stack Audit: February 14, 2026
 
+Historical planning snapshot, not current workspace/setup instructions. Events
+now lives in [ima-jin/events](https://github.com/ima-jin/events) (#2517); do not
+recreate an events app inside the kernel. Its schema/data remain intact.
+
 **Target: April 1 Launch Party**
 
 ---
@@ -266,7 +270,7 @@ events (
 
 ### Events + Tickets Tables
 ```sql
--- See apps/events/PROJECTS.md for full schema
+-- Current app-owned schema: ima-jin/events/src/db/schema.ts
 -- events, ticket_types, tickets, ticket_transfers
 ```
 

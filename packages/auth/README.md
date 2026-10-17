@@ -83,10 +83,11 @@ fails closed (403) rather than trusting the header.
 The helper below is the signed-verification contract for adopting receivers,
 not the current behavior of every standalone app. Coffee/learn/market remain
 Bearer-only until coffee#13/learn#15/market#15 merge and deploy; keep their
-existing kernel callback Bearers until then. Standalone events' settlement/contact
-still use `x-webhook-secret`; events#38 must merge and deploy before #2529's dev
-cutover. The monorepo `apps/events` copy is already signed + vault-Bearer.
-See `docs/security/kernel-webhooks.md` for the per-app rollout and removal gate.
+existing kernel callback Bearers until then. Events runs standalone in dev and
+prod from [ima-jin/events](https://github.com/ima-jin/events); receiver and contact
+integration now belong there, not to a kernel workspace app (#2517).
+See [the per-app rollout and removal gate](../../docs/security/kernel-webhooks.md);
+source pruning does not authorize removing shared public SDK/API surfaces.
 
 The server-only `@ima-jin/auth/kernel-webhook` entry exports
 `verifyKernelWebhook<T>(request, options)`, which authenticates the **raw request bytes**

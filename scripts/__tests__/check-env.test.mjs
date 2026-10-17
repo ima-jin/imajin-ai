@@ -10,10 +10,6 @@ import { fileURLToPath } from 'node:url';
 const SCRIPT = fileURLToPath(new URL('../check-env.ts', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 describe('signed kernel callback configuration (#2798)', () => {
-  it('does not require shared receiver credentials in the live events template', () => {
-    const example = readFileSync(join(REPO_ROOT, 'apps/events/.env.example'), 'utf8');
-    expect(example).not.toMatch(/^(?:WEBHOOK_SECRET|NOTIFY_WEBHOOK_SECRET)=/m);
-  });
   it.each([
     'apps/kernel/.env.example',
     'packages/config/src/services.ts',
@@ -63,7 +59,7 @@ describe('signed kernel callback configuration (#2798)', () => {
       expect(removalNote).toContain(migration);
     }
     expect(removalNote).toContain('migrations have merged and deployed');
-    expect(document).toContain('events#38 must merge and deploy before the #2529');
+    expect(document).toContain('The events#38 prerequisite and patched #2798 monorepo receiver describe the completed cutover');
   });
 });
 describe('retired Stripe Connect configuration (#2791)', () => {
@@ -78,19 +74,16 @@ describe('retired Stripe Connect configuration (#2791)', () => {
   });
 });
 
-// Real service name from packages/config/src/services.ts — check-env.ts
-// imports that manifest directly (not from CHECK_ENV_ROOT), so every
-// fixture below has to reuse a name it already knows. "events" (devPort
-// 3006, tier "core") is a plain, non-daemon service with no special-cased
-// behaviour, so it's the default stand-in for the key-annotation scenarios;
-// the deploy-target scenarios exercise it against a synthetic ecosystem file.
-const SERVICE = 'events';
+// A local service with no kernel-specific vault behavior. URL contracts for
+// external services remain in the shared manifest, but env discovery is local.
+const SERVICE = 'corpus';
 
 /** A fresh CHECK_ENV_ROOT with apps/<SERVICE>/ and deploy/ ready to populate. */
 function makeRoot() {
   const dir = mkdtempSync(join(tmpdir(), 'check-env-test-'));
   mkdirSync(join(dir, 'apps', SERVICE), { recursive: true });
   mkdirSync(join(dir, 'deploy'), { recursive: true });
+  writeFileSync(join(dir, 'apps', SERVICE, 'package.json'), '{}');
   return dir;
 }
 
@@ -130,6 +123,50 @@ function run(dir, args) {
     };
   }
 }
+
+describe('check-env local workspace discovery (#2517)', () => {
+  it.each(['dev', 'prod'])('does not list absent standalone apps in %s', (env) => {
+    const dir = makeRoot();
+    writeExample(dir, '');
+    writeLocal(dir);
+    const result = run(dir, ['--env', env]);
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('checking 1 service(s)');
+    expect(result.stdout).toContain(SERVICE);
+    expect(result.stdout).not.toContain('events');
+    expect(result.stdout).not.toContain('coffee');
+  });
+
+  it('rejects an explicit external app and keeps it out of valid names', () => {
+    const result = run(makeRoot(), ['events']);
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain('Unknown service(s)');
+    expect(result.stdout).toContain(`Valid names: ${SERVICE}`);
+    expect(result.stdout.split('Valid names:')[1]).not.toContain('events');
+  });
+
+  it('ignores rollback env files without a workspace manifest', () => {
+    const dir = makeRoot();
+    writeExample(dir, '');
+    writeLocal(dir);
+    mkdirSync(join(dir, 'apps/events'));
+    writeFileSync(join(dir, 'apps/events/.env.local'), 'PORT=3006\n');
+    writeFileSync(join(dir, 'apps/events/.env.example'), 'PORT=\n');
+    expect(run(dir, []).stdout).toContain('checking 1 service(s)');
+  });
+
+  it.each([['dev', '3006', 0], ['prod', '7006', 0], ['prod', '3006', 1]])(
+    'still validates shared standalone URL contracts in %s (%s)',
+    (env, port, status) => {
+      const dir = makeRoot();
+      writeExample(dir, 'NEXT_PUBLIC_EVENTS_URL=\nEVENTS_SERVICE_URL=\n');
+      writeLocal(dir, `NEXT_PUBLIC_EVENTS_URL=http://localhost:${port}\nEVENTS_SERVICE_URL=http://localhost:${port}\n`);
+      const result = run(dir, ['--env', env, SERVICE]);
+      expect(result.status).toBe(status);
+      expect(result.stdout.includes('wrong port')).toBe(status !== 0);
+    },
+  );
+});
 
 describe('check-env annotations', () => {
   it('required-missing -> error', () => {
@@ -217,92 +254,6 @@ describe('check-env annotations', () => {
   });
 });
 
-const APP_IDENTITY_KEYS = ['IMAJIN_KERNEL_URL', 'IMAJIN_APP_DID', 'IMAJIN_APP_CLAIM_CODE'];
-const CARVE_OUT_REASON = '#2516 monorepo events has no claimed prod identity until the standalone cutover; checkout/refund/settle and payment webhooks fail closed until set';
-
-describe('check-env prod carve-outs (#2818)', () => {
-  it.each([['prod', 0], ['dev', 1]])('missing identity keys in %s -> exit %i', (env, status) => {
-    const dir = makeRoot();
-    writeExample(dir, APP_IDENTITY_KEYS.map((key) => `# prod-carve-out: ${CARVE_OUT_REASON}\n${key}=\n`).join(''));
-    writeLocal(dir);
-    // Existing local files still require these keys even for a non-target.
-    writeEcosystem(dir, 'dev', ['kernel']);
-    writeEcosystem(dir, 'prod', [SERVICE]);
-    const result = run(dir, ['--env', env, SERVICE]);
-    expect(result.status).toBe(status);
-    for (const key of APP_IDENTITY_KEYS) expect(result.stdout).toContain(key);
-    if (env === 'prod') {
-      expect(result.stdout).toContain('1 warning');
-      expect(result.stdout).toContain('prod-carve-out, not set');
-      expect(result.stdout).toContain(CARVE_OUT_REASON);
-      expect(result.stdout.match(/#2516/g)).toHaveLength(1);
-      expect(result.stdout).not.toContain('error');
-    } else {
-      expect(result.stdout).toContain('3 errors');
-      expect(result.stdout).not.toContain('prod-carve-out, not set');
-    }
-  });
-
-  it.each(['dev', 'prod'])('set carve-out keys are fine in %s', (env) => {
-    const dir = makeRoot();
-    writeExample(dir, APP_IDENTITY_KEYS.map((key) => `# prod-carve-out: ${CARVE_OUT_REASON}\n${key}=\n`).join(''));
-    writeLocal(dir, APP_IDENTITY_KEYS.map((key) => `${key}=fixture\n`).join(''));
-    const result = run(dir, ['--env', env, SERVICE]);
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('all good');
-  });
-
-  it.each([
-    '# prod-carve-out: no issue ref\nREQUIRED_KEY=\n',
-    '# prod-carve-out: #2516 reason\n\nREQUIRED_KEY=\n',
-    '# prod-carve-out: #2516 reason\n# intervening comment\nREQUIRED_KEY=\n',
-  ])('does not relax a key without a valid adjacent annotation: %s', (example) => {
-    const dir = makeRoot();
-    writeExample(dir, example);
-    writeLocal(dir);
-    const result = run(dir, ['--env', 'prod', SERVICE]);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain('missing');
-    expect(result.stdout).toContain('REQUIRED_KEY');
-  });
-
-  it('keeps unrelated keys and wrong ports as errors in prod', () => {
-    const dir = makeRoot();
-    writeExample(dir, `# prod-carve-out: ${CARVE_OUT_REASON}\nIMAJIN_APP_DID=\nREQUIRED_KEY=\nPORT=\n`);
-    writeLocal(dir, 'PORT=3006\n');
-    const result = run(dir, ['--env', 'prod', SERVICE]);
-    expect(result.status).toBe(1);
-    expect(result.stdout).toContain('REQUIRED_KEY');
-    expect(result.stdout).toContain('wrong port');
-    expect(result.stdout).toContain(CARVE_OUT_REASON);
-  });
-
-  it.each(['dev', 'prod'])('preserves existing annotations in %s', (env) => {
-    const dir = makeRoot();
-    writeExample(dir, '# optional\nOPTIONAL_KEY=\n# vault-sourced: boot\nVAULT_KEY=\n# deprecated: legacy\nOLD_KEY=\n');
-    writeLocal(dir);
-    const missing = run(dir, ['--env', env, SERVICE]);
-    expect(missing.status).toBe(0);
-    expect(missing.stdout).toContain('optional, not set');
-    expect(missing.stdout).not.toContain('VAULT_KEY');
-    expect(missing.stdout).not.toContain('OLD_KEY');
-    writeLocal(dir, 'OPTIONAL_KEY=set\nVAULT_KEY=set\nOLD_KEY=set\n');
-    const present = run(dir, ['--env', env, SERVICE]);
-    expect(present.status).toBe(0);
-    expect(present.stdout).not.toContain('optional, not set');
-    expect(present.stdout).toContain('deprecated hand-provisioned value present; remove after rotation');
-    expect(present.stdout).toContain('legacy');
-  });
-
-  it('annotates exactly the three live events identity keys with the agreed reason', () => {
-    const example = readFileSync(join(REPO_ROOT, 'apps/events/.env.example'), 'utf8');
-    expect(example.match(/^# prod-carve-out:/gm)).toHaveLength(3);
-    for (const key of APP_IDENTITY_KEYS) {
-      expect(example).toContain(`# prod-carve-out: ${CARVE_OUT_REASON}\n${key}=`);
-    }
-  });
-});
-
 describe('check-env per-env deploy targets', () => {
   it('service-not-in-target with no .env.local -> ok (warn)', () => {
     const dir = makeRoot();
@@ -341,11 +292,10 @@ describe('check-env per-env deploy targets', () => {
     expect(prodResult.stdout).toContain('not a deploy target for this env');
   });
 
-  it("falls back to today's heuristic when no ecosystem file is present (unreadable manifest)", () => {
+  it("falls back to the port heuristic when no ecosystem file is present", () => {
     const dir = makeRoot();
     writeExample(dir, 'SOME_KEY=\n');
-    // No deploy/ecosystem.*.config.js written at all — "events" has a
-    // non-zero devPort, so the pre-#2246 heuristic treats it as a target.
+    // No ecosystem file: corpus has a nonzero port, so it remains required.
 
     const result = run(dir, ['--env', 'dev', SERVICE]);
     expect(result.status).toBe(1);
@@ -365,6 +315,7 @@ function makeKernelRoot({ vaultPath, extraEnv = {} } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'check-env-vault-test-'));
   mkdirSync(join(dir, 'apps', 'kernel'), { recursive: true });
   mkdirSync(join(dir, 'deploy'), { recursive: true });
+  writeFileSync(join(dir, 'apps', 'kernel', 'package.json'), '{}');
   writeFileSync(join(dir, 'apps', 'kernel', '.env.example'), '', 'utf8');
   writeFileSync(join(dir, 'apps', 'kernel', '.env.local'), '', 'utf8');
 

@@ -54,6 +54,11 @@ function cyan(s: string)   { return `${c.cyan}${s}${c.reset}`; }
 const ROOT =
   process.env.CHECK_ENV_ROOT ??
   path.resolve(import.meta.dirname ?? path.dirname(new URL(import.meta.url).pathname), "..");
+// The manifest also carries URL contracts for standalone apps. Only validate
+// env files for apps still present in this checkout, not those external services.
+const LOCAL_SERVICES = SERVICES.filter((svc) =>
+  fs.existsSync(path.join(ROOT, "apps", svc.name, "package.json"))
+);
 
 function parseEnvFile(filePath: string): Map<string, string> {
   const result = new Map<string, string>();
@@ -81,14 +86,10 @@ function parseEnvFile(filePath: string): Map<string, string> {
 //   # optional                 -> ok if unset locally; warned about once, grouped
 //   # vault-sourced: <reason>  -> fetched at boot; ok if unset, WARNS if hand-set
 //   # deprecated: <reason>     -> WARNS if set locally; fine if unset
-//   # prod-carve-out: <reason> -> missing WARNS in prod, required in dev;
-//                                reason must contain an issue reference (/#\d+/)
-// Interim events carve-outs are removed when apps/events is pruned (#2517)
-// after the standalone cutover (#2516).
 // No annotation on a key = required, exactly like before this feature: a
 // missing value is a hard error.
 
-type AnnotationKind = "optional" | "vault-sourced" | "deprecated" | "prod-carve-out";
+type AnnotationKind = "optional" | "vault-sourced" | "deprecated";
 
 interface KeyAnnotation {
   kind: AnnotationKind;
@@ -99,7 +100,6 @@ interface KeyAnnotation {
 const OPTIONAL_ANNOTATION = /^#\s*optional\s*$/i;
 const VAULT_SOURCED_ANNOTATION = /^#\s*vault-sourced:\s*(\S.*)$/i;
 const DEPRECATED_ANNOTATION = /^#\s*deprecated:\s*(\S.*)$/i;
-const PROD_CARVE_OUT_ANNOTATION = /^#\s*prod-carve-out:\s*(\S.*)$/i;
 
 function parseAnnotationLine(rawLine: string): KeyAnnotation | null {
   const line = rawLine.trim();
@@ -108,10 +108,6 @@ function parseAnnotationLine(rawLine: string): KeyAnnotation | null {
   if (vaultMatch) return { kind: "vault-sourced", reason: vaultMatch[1].trim() };
   const deprecatedMatch = DEPRECATED_ANNOTATION.exec(line);
   if (deprecatedMatch) return { kind: "deprecated", reason: deprecatedMatch[1].trim() };
-  const prodMatch = PROD_CARVE_OUT_ANNOTATION.exec(line);
-  if (prodMatch && /#\d+/.test(prodMatch[1])) {
-    return { kind: "prod-carve-out", reason: prodMatch[1].trim() };
-  }
   return null;
 }
 
@@ -236,8 +232,6 @@ interface ServiceResult {
   extra: string[];
   /** `# optional` keys absent from .env.local — fine, but surfaced as one grouped warning. */
   optionalMissing: string[];
-  /** Issue-linked prod-only exceptions, grouped into one warning per service. */
-  prodCarveOutMissing: { key: string; reason?: string }[];
   /** `# vault-sourced:` keys that ARE set in .env.local — the deprecated hand-provisioned path. */
   vaultSourcedPresent: { key: string; reason?: string }[];
   /** `# deprecated:` keys that ARE set in .env.local. */
@@ -292,30 +286,26 @@ function findWrongPortForKey(
 
 /**
  * Splits `.env.example` keys absent from `.env.local` into hard-missing and
- * optional and prod-carve-out warnings. Carve-outs remain required in dev;
+ * optional warnings;
  * vault-sourced / deprecated missing keys are fine and recorded nowhere.
  */
 function classifyMissingKeys(
   example: Map<string, string>,
   local: Map<string, string>,
   annotations: Map<string, KeyAnnotation>,
-  env: "dev" | "prod",
-): Pick<ServiceResult, "missing" | "optionalMissing" | "prodCarveOutMissing"> {
+): Pick<ServiceResult, "missing" | "optionalMissing"> {
   const missing: string[] = [];
   const optionalMissing: string[] = [];
-  const prodCarveOutMissing: { key: string; reason?: string }[] = [];
   for (const key of example.keys()) {
     if (local.has(key)) continue;
     const annotation = annotations.get(key);
-    if (!annotation || (annotation.kind === "prod-carve-out" && env === "dev")) {
+    if (!annotation) {
       missing.push(key);
     } else if (annotation.kind === "optional") {
       optionalMissing.push(key);
-    } else if (annotation.kind === "prod-carve-out") {
-      prodCarveOutMissing.push({ key, reason: annotation.reason });
     }
   }
-  return { missing, optionalMissing, prodCarveOutMissing };
+  return { missing, optionalMissing };
 }
 
 /**
@@ -380,7 +370,6 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
       wrongPorts: [],
       extra: [],
       optionalMissing: [],
-      prodCarveOutMissing: [],
       vaultSourcedPresent: [],
       deprecatedPresent: [],
       errors: target ? 1 : 0,
@@ -388,7 +377,7 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     };
   }
 
-  const { missing, optionalMissing, prodCarveOutMissing } = classifyMissingKeys(example, local, annotations, env);
+  const { missing, optionalMissing } = classifyMissingKeys(example, local, annotations);
   const { vaultSourcedPresent, deprecatedPresent } = findAnnotatedPresentKeys(annotations, local);
   const wrongPorts = findWrongPorts(local, svc, env);
 
@@ -397,7 +386,7 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
 
   const errors = missing.length + wrongPorts.length;
   const warnings =
-    extra.length + (optionalMissing.length > 0 ? 1 : 0) + (prodCarveOutMissing.length > 0 ? 1 : 0) +
+    extra.length + (optionalMissing.length > 0 ? 1 : 0) +
     vaultSourcedPresent.length + deprecatedPresent.length;
 
   return {
@@ -408,7 +397,6 @@ function checkService(svc: ServiceDefinition, env: "dev" | "prod"): ServiceResul
     wrongPorts,
     extra,
     optionalMissing,
-    prodCarveOutMissing,
     vaultSourcedPresent,
     deprecatedPresent,
     errors,
@@ -428,7 +416,6 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
     wrongPorts,
     extra,
     optionalMissing,
-    prodCarveOutMissing,
     vaultSourcedPresent,
     deprecatedPresent,
     errors,
@@ -461,22 +448,9 @@ function printResult(result: ServiceResult, env: "dev" | "prod"): void {
   console.log(`  ${errors > 0 ? sym.err : sym.warn}  ${label} ${portLabel}  ${summary}`);
 
   printKeyIssues(missing, wrongPorts, optionalMissing);
-  printProdCarveOutIssues(prodCarveOutMissing);
   printAnnotatedIssues(vaultSourcedPresent, deprecatedPresent, extra);
 }
 
-function printProdCarveOutIssues(keys: ServiceResult["prodCarveOutMissing"]): void {
-  const byReason = new Map<string, string[]>();
-  for (const { key, reason } of keys) {
-    const detail = reason ?? "";
-    const grouped = byReason.get(detail) ?? [];
-    grouped.push(cyan(key));
-    byReason.set(detail, grouped);
-  }
-  for (const [reason, grouped] of byReason) {
-    console.log(`       ${sym.arrow}  ${yellow("prod-carve-out, not set")}  ${grouped.join(", ")}  ${dim(reason)}`);
-  }
-}
 
 function printKeyIssues(
   missing: string[],
@@ -633,12 +607,12 @@ function parseArgs(args: string[]): { env: "dev" | "prod"; names: string[] } {
   return { env, names };
 }
 
-/** Print the names of any requested services that aren't in the manifest and exit(1) if any */
+/** Reject unknown or external services; only local workspace apps have env files here. */
 function exitIfUnknownServices(names: string[]): void {
-  const unknown = names.filter((n) => !SERVICES.some((s) => s.name === n));
+  const unknown = names.filter((n) => !LOCAL_SERVICES.some((s) => s.name === n));
   if (unknown.length > 0) {
     console.error(`${sym.err} Unknown service(s): ${unknown.map(n => red(n)).join(", ")}`);
-    console.error(`  Valid names: ${SERVICES.map((s) => s.name).join(", ")}`);
+    console.error(`  Valid names: ${LOCAL_SERVICES.map((s) => s.name).join(", ")}`);
     process.exit(1);
   }
 }
@@ -697,8 +671,8 @@ function main(): void {
   const { env, names } = parseArgs(process.argv.slice(2));
 
   const services = names.length > 0
-    ? SERVICES.filter((s) => names.includes(s.name))
-    : [...SERVICES];
+    ? LOCAL_SERVICES.filter((s) => names.includes(s.name))
+    : [...LOCAL_SERVICES];
 
   exitIfUnknownServices(names);
 

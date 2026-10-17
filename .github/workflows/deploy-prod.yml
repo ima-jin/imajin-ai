@@ -115,9 +115,6 @@ jobs:
         # build-changed.sh walks the pnpm graph and only rebuilds apps affected
         # by the diff since the last successful build (tracked via .last-build-sha).
         # Falls back to all ecosystem-owned in-repo apps if no build stamp.
-        # PROD WINDOW RELEASE (#2784): merge only in Ryan's #2516 window,
-        # after #2529 soak/sign-off and standalone prod-events is running,
-        # healthy on 7006 /events, and persisted with pm2 save.
         # build.sh's migrations are also kernel-scoped here.
         run: ./scripts/build-changed.sh --deploy-env prod
 
@@ -154,9 +151,7 @@ jobs:
           # repos now; their pm2 entries are no longer in the ecosystem file, so if the operator
           # keeps the prod-learn / prod-coffee / prod-market / prod-dykil names pm2 still lists,
           # the name-based restart below bounces them (harmless; this repo no longer builds or migrates them).
-          # events (#2784) is no longer declared. BEFORE this release merges,
-          # the operator must have started it from ~/prod/events in Ryan's #2516
-          # window, verified 7006 /events health and run pm2 save. The name-based
+          # events (#2517) runs standalone from ~/prod/events. The name-based
           # restart preserves that standalone definition, not apps/events.
           # links (#1986 phase 2) runs from its own repo/pm2 process now, so it is no
           # longer among these.

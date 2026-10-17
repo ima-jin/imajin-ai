@@ -82,7 +82,7 @@ describe('discoverServices', () => {
   it('discovers the real repo services declared in apps/*/.env.example', () => {
     const realRoot = join(import.meta.dirname, '..', '..');
     const names = discoverServices(realRoot).map((s) => s.name);
-    expect(names).toEqual(expect.arrayContaining(['events']));
+    expect(names).toEqual(['kernel']);
     // corpus annotates its pair `# optional` (hand-provisioned) — not ours to mint.
     expect(names).not.toContain('corpus');
   });

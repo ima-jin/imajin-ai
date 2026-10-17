@@ -6,6 +6,10 @@ Scope: README.md (root), kernel homepage and pitch surfaces, per-app README cons
 
 Date: 2026-05-10
 
+**Historical audit:** paths, quoted copy and verification items below describe
+the 2026-05-10 review, not the current tree. `apps/events` was pruned in #2517;
+the app's current README lives in [ima-jin/events](https://github.com/ima-jin/events/blob/main/README.md).
+
 ---
 
 ## Tensions addressed

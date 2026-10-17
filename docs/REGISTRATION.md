@@ -312,10 +312,12 @@ This is the integration contract, not a claim that every standalone app has
 already adopted it. Standalone coffee/learn/market remain Bearer-only until
 coffee#13/learn#15/market#15 respectively merge and deploy; retain the existing
 kernel callback Bearers and service URLs until each migration ships.
-Standalone events still uses `x-webhook-secret` for settlement/contact:
-events#38 must merge and deploy before #2529's standalone-events dev cutover.
-The monorepo `apps/events` copy in this PR already verifies signatures and uses
-the vault internal Bearer. See the rollout/removal gate in the linked protocol doc.
+Events now runs from [ima-jin/events](https://github.com/ima-jin/events) in dev
+and prod; its signed callback/contact integration belongs to that repository.
+The events#38 prerequisite and monorepo receiver were cutover-era context;
+the kernel source copy was pruned in #2517. Keep the public signed-callback,
+app-token and contact contracts available to standalone consumers. See the
+rollout/removal gate in the linked protocol doc before removing any legacy bridge.
 
 For direct notifications, approve `notify:send`, `notify:broadcast` and/or
 `notify:interest` through the existing countersigned `apps:service-scopes` tool

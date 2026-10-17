@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { ALL_OWNERS, APP_SCHEMAS, buildOwnershipMap } from '../lib/migration-ownership-parser.mjs';
@@ -90,9 +90,12 @@ describe('migrations/ownership-gaps.json', () => {
     expect(fromGaps).toEqual(fromAllowlist);
   });
 
-  it('cites files that exist', () => {
+  it('cites existing files except frozen history for retired apps/events (#2517)', () => {
     for (const g of gaps) {
       for (const f of g.files) {
+        // #1991/#2844 own these historical artifacts. Retiring source is not
+        // a reason to rewrite migration history or its recorded audit gaps.
+        if (f.startsWith('apps/events/') && !existsSync(join(ROOT, 'apps/events/package.json'))) continue;
         expect(() => readFileSync(join(ROOT, f), 'utf8'), `${g.id}: ${f}`).not.toThrow();
       }
     }

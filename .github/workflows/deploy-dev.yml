@@ -94,9 +94,8 @@ jobs:
         env:
           # build.sh also restarts built apps; preserve stops there too (#2815).
           PM2_DEPLOY_PRESERVE_STOPPED: '1'
-        # DEV ONLY (#2784): merge only after standalone dev-events is running
-        # from ~/dev/events, healthy on 3006 /events and persisted with pm2 save.
-        # Prod keeps its existing build/migration path until Ryan's #2516 window.
+        # Only ecosystem-owned in-repo apps are built; extracted apps deploy
+        # from their own repositories. Migrations stay kernel-scoped.
         run: ./scripts/build-changed.sh --deploy-env dev
 
       - name: Run migrations
@@ -118,9 +117,7 @@ jobs:
           # binary (#2447) and crash-looped. reconcile deletes + starts any app
           # whose stored exec differs from the file (or that pm2 lacks), and
           # restarts the rest. Anything not in the file keeps the name-based
-          # restart. events (#2784) is no longer declared: before merging this
-          # release, the #2529 operator must have re-pointed it to ~/dev/events,
-          # verified health and run pm2 save.
+          # restart. events (#2517) runs standalone from ~/dev/events.
           # Like learn/coffee/market/dykil, it may still be bounced by name;
           # kernel deploys cannot re-point it to apps/events.
           source scripts/lib/pm2-owned.sh

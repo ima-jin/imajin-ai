@@ -444,6 +444,9 @@ jobs:
       - name: Swallowed-assertion guard
         run: node scripts/ci-guard-no-swallowed-assertions.mjs
 
+      - name: Extracted events workspace guard
+        run: pnpm check:events-pruned
+
       # Runtime schema-boundary guard (#2155 item 3): fails when an app under
       # apps/<x> (x != kernel) contains a SQL string or Drizzle pgSchema()
       # reference to a schema it doesn't own per migrations/ownership.json.

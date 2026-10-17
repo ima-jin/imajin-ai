@@ -38,6 +38,12 @@ February 2026.
 
 ## Architecture
 
+The userspace row below is a conceptual layer, not a monorepo file inventory.
+Events is owned by [ima-jin/events](https://github.com/ima-jin/events) and runs
+standalone in dev and prod; its kernel copy was pruned in #2517. External apps
+compose through scoped tokens, published `@ima-jin/*` SDKs and public kernel
+APIs, not kernel-internal workspace imports. See [the registration contract](./REGISTRATION.md).
+
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │  Userspace (disposable, replaceable)                                       │

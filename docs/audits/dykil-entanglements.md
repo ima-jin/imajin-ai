@@ -2,6 +2,12 @@
 
 Refs #2519 (step 1 of 5) · Part of #1985 · Source audit: #1983 · Epic: #1981
 
+**Historical extraction audit:** paths and blocker assessments below describe
+the pre-extraction tree. Dykil was pruned in #2523 and events in #2517; current
+implementations live in [ima-jin/dykil](https://github.com/ima-jin/dykil) and
+[ima-jin/events](https://github.com/ima-jin/events). These former monorepo
+paths are evidence, not current source locations or instructions to restore them.
+
 This document classifies every way `apps/dykil` is entangled with the kernel monorepo.
 Each entanglement is either:
 

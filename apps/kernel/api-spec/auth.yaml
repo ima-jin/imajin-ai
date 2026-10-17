@@ -2551,7 +2551,7 @@ paths:
         sibling of #1999/#2053). Never overwrites an existing value, so
         calling this repeatedly for the same DID is safe — once a
         contact_email is on file, later calls report `backfilled: false`
-        and perform no write. apps/events' checkout and payment-webhook
+        and perform no write. The standalone events checkout and payment-webhook
         flows must call this instead of writing `auth.identities` directly.
 
         Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session
