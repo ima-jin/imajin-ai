@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
 import { ConnectorDetail } from '../ConnectorDetail';
 import { slotRoute } from '../ConnectionSlots';
@@ -57,6 +57,23 @@ afterEach(() => {
 });
 
 describe('labelled OAuth connections', () => {
+  it.each(['google', 'github', 'quickbooks'])('shows both %s account labels and emails without opening the selector', async (id) => {
+    const { fetch, entry } = setup(id);
+    const list = await screen.findByRole('list', { name: 'Connection accounts' });
+    expect(within(list).getByText('Personal')).toBeDefined();
+    expect(within(list).getByText('me@example.com')).toBeDefined();
+    expect(within(list).getByText('Company')).toBeDefined();
+    expect(within(list).getByText('work@example.com')).toBeDefined();
+    const primaryButton = within(list).getByRole('button', { name: /Personal/ });
+    const workButton = within(list).getByRole('button', { name: /Company/ });
+    expect(primaryButton.getAttribute('aria-pressed')).toBe('true');
+    expect(workButton.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(workButton);
+    await waitFor(() => expect(fetch).toHaveBeenCalledWith(`${entry.statusEndpoint}?slot=work`));
+    expect(primaryButton.getAttribute('aria-pressed')).toBe('false');
+    expect(workButton.getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByRole('combobox', { name: 'Selected connection' }) as HTMLSelectElement).value).toBe('work');
+  });
   it.each(['google', 'github', 'quickbooks'])('lists labels and account emails for %s and defaults to primary', async (id) => {
     const { fetch, entry } = setup(id);
     const selector = await screen.findByRole('combobox', { name: 'Selected connection' });

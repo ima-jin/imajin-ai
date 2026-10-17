@@ -145,6 +145,30 @@ export function ConnectionSlots({ connectorId, children }: Readonly<{
         {loading && <p className="text-sm text-gray-400">Loading connections…</p>}
         {!loading && connections.length > 0 && (
           <>
+            <ul aria-label="Connection accounts" className="min-w-0 space-y-2">
+              {connections.map((connection) => (
+                <li key={connection.slot} className="min-w-0">
+                  <button type="button" aria-pressed={connection.slot === slot}
+                    onClick={() => select(connection.slot)} disabled={busy}
+                    className={`w-full min-w-0 rounded-lg border p-3 text-left transition disabled:opacity-50 ${
+                      connection.slot === slot
+                        ? 'border-amber-500/50 bg-amber-500/10'
+                        : 'border-white/10 hover:border-white/30 hover:bg-white/5'
+                    }`}>
+                    <span className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                      <span className="min-w-0 break-all text-sm font-medium text-white">{connection.label}</span>
+                      <span className={`text-xs ${connection.connected ? 'text-green-400' : 'text-gray-400'}`}>
+                        {connection.connected ? 'Connected' : 'Not connected'}
+                      </span>
+                    </span>
+                    <span className="mt-1 block break-all text-sm text-gray-300">
+                      {connection.accountEmail ?? 'No account connected'}
+                    </span>
+                    <span className="mt-1 block break-all font-mono text-xs text-gray-500">{connection.slot}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
             <label className="block text-sm text-gray-300">
               Selected connection
               <select aria-label="Selected connection" className={`${inputClass} mt-2`} value={slot}
