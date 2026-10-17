@@ -1,4 +1,4 @@
--- 0200_reconcile_seed_era_drift.sql
+-- 0201_reconcile_seed_era_drift.sql
 -- owner: kernel
 -- Reconcile only the seed-era catalog differences recorded in #2865.
 --

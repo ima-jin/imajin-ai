@@ -6,7 +6,7 @@ set -euo pipefail
 export LC_ALL=C
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="postgres:16-bookworm@sha256:0ea6700a3b4f0ae6ce746519073558aed4d88a79d8d07622a9a644946c7319c4"
-MIGRATION="$ROOT/migrations/0200_reconcile_seed_era_drift.sql"
+MIGRATION="$ROOT/migrations/0201_reconcile_seed_era_drift.sql"
 TMP="$(mktemp -d)"
 CONTAINER=""
 cleanup() {
@@ -17,7 +17,7 @@ trap cleanup EXIT
 die() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null || die "Docker is required; no external DB fallback is permitted"
 docker info >/dev/null || die "Docker daemon unavailable; no external DB will be used"
-[[ -s "$MIGRATION" ]] || die "Migration 0200 missing"
+[[ -s "$MIGRATION" ]] || die "Reconciliation migration missing"
 
 # Trust authentication is confined to an isolated, disposable container, with no
 # network or published port. Inherited PG*/DATABASE_URL variables never enter it.
@@ -134,7 +134,7 @@ for pass in 1 2; do
   snapshot seed_drift_baseline "repeat$pass"
   same_snapshot fresh "repeat$pass" "fresh migration rerun $pass must be a catalog/OID/data no-op"
 done
-printf 'PASS: %s migrations; fresh 0200 reruns preserve full catalogs including OIDs\n' "$count"
+printf 'PASS: %s migrations; reconciliation reruns preserve full catalogs including OIDs\n' "$count"
 
 # Both membership key orders must disappear regardless of constraint name.
 for order in 'conversation_did, member_did' 'member_did, conversation_did'; do
