@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   attest: vi.fn(), publish: vi.fn(), broker: vi.fn(), grant: vi.fn(),
   persist: vi.fn(), markPublished: vi.fn(), prepareAttestation: vi.fn(), limit: vi.fn(), node: vi.fn(),
 }));
+vi.mock('@/src/lib/auth/reach-block', () => ({ isReachSenderBlocked: vi.fn().mockResolvedValue(false) }));
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({
   prepareMechanicalAttestation: (...args: unknown[]) => mocks.prepareAttestation(...args),
 }));
@@ -85,7 +86,7 @@ function signedBody(patch: Partial<ReachRequestInput> = {}): ReachRequestInput {
 }
 
 async function post(body: unknown) {
-  return POST({ json: async () => body } as never, { params: Promise.resolve({ did: principalDid }) }) as unknown as Promise<{
+  return POST(new Request('https://imajin.ai/reach', { method: 'POST', body: JSON.stringify(body) }) as never, { params: Promise.resolve({ did: principalDid }) }) as unknown as Promise<{
     status: number; body: Record<string, unknown>;
   }>;
 }
@@ -213,13 +214,26 @@ describe('signed reach delivery through POST', () => {
   });
 
   it('applies the canonical per-authenticated-sender burst limiter before persistence', async () => {
-    mocks.limit.mockReturnValue({ limited: true, retryAfter: 60 });
+    mocks.limit.mockImplementation((key: string) => ({ limited: key.startsWith('reach:guard:stub:'), retryAfter: 60 }));
     const response = await post(signedBody());
     expect(response.status).toBe(429);
     expect(response.body.error).toBe('rate_limited');
-    expect(mocks.limit).toHaveBeenCalledWith(`reach:send:${principalDid}:${requesterDid}`, 5, 60_000);
+    expect(mocks.limit).toHaveBeenCalledWith(expect.stringMatching(/^reach:guard:stub:/), 5, 60_000);
     expect(mocks.persist).not.toHaveBeenCalled();
-    expect(mocks.attest).toHaveBeenCalledTimes(1);
+    expect(mocks.attest).not.toHaveBeenCalled();
+    expect(mocks.publish).toHaveBeenCalledWith('agent.reach.throttled', expect.anything());
+  });
+
+  it('delivers at most the stub cap during a real signed HTTP flood and audits the excess once', async () => {
+    const { rateLimit } = await vi.importActual<typeof import('@imajin/config')>('@imajin/config');
+    mocks.limit.mockImplementation(rateLimit);
+    const responses = [];
+    for (let n = 0; n < 25; n++) responses.push(await post(signedBody({ message: `Private message ${n}` })));
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(5);
+    expect(responses.filter((response) => response.status === 429)).toHaveLength(20);
+    expect(mocks.persist).toHaveBeenCalledTimes(5);
+    expect(mocks.publish.mock.calls.filter(([type]) => type === 'agent.reach.throttled')).toHaveLength(1);
+    expect(mocks.publish.mock.calls.filter(([type]) => type === 'agent.reach.delivered')).toHaveLength(5);
   });
 
   it.each(['rate_limited', 'blocked'])('refuses durable store policy %s without delivery', async (reason) => {
@@ -227,7 +241,7 @@ describe('signed reach delivery through POST', () => {
     const response = await post(signedBody());
     expect(response.status).toBe(reason === 'blocked' ? 403 : 429);
     expect(mocks.envelopes.size).toBe(0);
-    expect(mocks.attest).toHaveBeenCalledTimes(1);
+    expect(mocks.attest).toHaveBeenCalledTimes(reason === 'blocked' ? 1 : 0);
     expect(mocks.publish).not.toHaveBeenCalledWith('agent.reach.delivered', expect.anything());
   });
 

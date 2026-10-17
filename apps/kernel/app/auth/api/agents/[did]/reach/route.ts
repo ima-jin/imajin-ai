@@ -39,6 +39,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';
 import { reachPrincipal, type ReachRequestInput } from '@/src/lib/auth/agent-reach';
 import { parseReachDelivery } from '@/src/lib/auth/reach-delivery-input';
+import { guardReachIP, readReachBody, ReachBodyTooLarge } from '@/src/lib/auth/reach-abuse-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,10 +109,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Invalid principal DID' }, { status: 400 });
   }
 
+  const throttled = await guardReachIP(request, principalDid);
+  if (throttled) {
+    return NextResponse.json({ error: throttled.reason }, {
+      status: 429, headers: { 'Retry-After': String(throttled.retryAfter) },
+    });
+  }
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
+    body = await readReachBody(request);
+  } catch (error) {
+    if (error instanceof ReachBodyTooLarge) {
+      return NextResponse.json({ error: 'body_too_large' }, { status: 413 });
+    }
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
@@ -124,7 +134,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   if ('denied' in result) {
     return NextResponse.json(
       { error: result.reason, onboarding: agentCardUrl() },
-      { status: result.status },
+      { status: result.status, headers: result.retryAfter ? { 'Retry-After': String(result.retryAfter) } : undefined },
     );
   }
 

@@ -1,5 +1,4 @@
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
-import { rateLimit } from '@imajin/config';
 import type { BusEventMap } from '@imajin/bus';
 import { resolveFrontDoorConfig } from '@/src/lib/jin/front-door';
 import { generateId } from '@/src/lib/kernel/id';
@@ -35,9 +34,6 @@ export async function deliverReach(params: {
   const topicConfig = config.topics[input.topic];
   if (!params.admitted || !topicConfig?.open || !topicConfig.published || topicConfig.mode !== 'deliver') {
     return { outcome: 'declined' };
-  }
-  if (rateLimit(`reach:send:${principalDid}:${input.requesterDid}`, 5, 60_000).limited) {
-    return { outcome: 'rate_limited' };
   }
 
   const { getNodeSigningIdentity } = await import('@/src/lib/vault/sealing');

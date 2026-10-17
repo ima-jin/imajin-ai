@@ -6,6 +6,11 @@ import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '@/src/db/schemas/auth';
 
 const state = vi.hoisted(() => ({ db: null as unknown, grant: vi.fn(), persist: vi.fn(), node: vi.fn() }));
+vi.mock('../reach-block', () => ({ isReachSenderBlocked: vi.fn().mockResolvedValue(false) }));
+vi.mock('../reach-abuse-guard', async (original) => ({
+  ...await original<typeof import('../reach-abuse-guard')>(),
+  guardReachRequester: vi.fn().mockResolvedValue(null),
+}));
 vi.mock('../reach-envelope-store', () => ({
   persistReachEnvelope: (...args: unknown[]) => state.persist(...args),
   markReachPublished: vi.fn().mockResolvedValue(undefined),

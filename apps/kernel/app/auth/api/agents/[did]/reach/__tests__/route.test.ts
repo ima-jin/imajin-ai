@@ -28,7 +28,7 @@ const { POST } = await import('../route');
 const PRINCIPAL_DID = 'did:imajin:ryan';
 
 function makeRequest(body: unknown) {
-  return { json: () => Promise.resolve(body) } as unknown as Request;
+  return new Request('https://imajin.ai/reach', { method: 'POST', body: JSON.stringify(body) });
 }
 
 function validBody(overrides: Record<string, unknown> = {}) {
@@ -57,7 +57,7 @@ describe('POST /auth/api/agents/:did/reach', () => {
   });
 
   it('rejects invalid JSON with 400', async () => {
-    const request = { json: () => Promise.reject(new Error('bad json')) } as unknown as Request;
+    const request = new Request('https://imajin.ai/reach', { method: 'POST', body: '{bad json' });
     const response = await POST(request as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
     expect((response as { status: number }).status).toBe(400);
   });

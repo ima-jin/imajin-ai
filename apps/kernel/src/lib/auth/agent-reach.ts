@@ -37,6 +37,8 @@ import type { ReachDeliveryInput } from './reach-delivery-input';
 import { parseReachDelivery } from './reach-delivery-input';
 import { deliverReach } from './reach-delivery';
 import { markReachPublished } from './reach-envelope-store';
+import { auditReachThrottle, guardReachRequester, reachInputTooLarge } from './reach-abuse-guard';
+import { isReachSenderBlocked } from './reach-block';
 
 const log = createLogger('kernel');
 
@@ -76,8 +78,9 @@ export interface ReachAnswer {
 
 export interface ReachDenied {
   denied: true;
-  reason: ReachDenialReason;
+  reason: ReachDenialReason | 'body_too_large';
   status: number;
+  retryAfter?: number;
 }
 
 export interface ReachDelivered {
@@ -145,7 +148,7 @@ async function publishDenied(params: { requesterDid: string; principalDid: strin
   }).catch((err: unknown) => log.error({ err: String(err) }, '[agent-reach] agent.reach.denied publish failed'));
 }
 
-function denial(reason: ReachDenialReason, status: number): ReachDenied {
+function denial(reason: ReachDenied['reason'], status: number): ReachDenied {
   return { denied: true, reason, status };
 }
 
@@ -211,7 +214,7 @@ async function emitReachAttestation(params: EmitReachAttestationParams): Promise
   }).catch((err: unknown) => log.error({ err: String(err), outcome: params.outcome }, '[agent-reach] emitAttestation failed'));
 }
 
-/** Attest the denial, then publish `agent.reach.denied` — every fail-closed exit uses this single path. */
+/** Attest credential/policy denials. Floods use the coalesced throttled audit instead. */
 async function denyReach(params: {
   principalDid: string;
   input: ReachRequestInput;
@@ -236,6 +239,10 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
   if (result.outcome === 'declined') return null;
   if (result.outcome !== 'delivered') {
     const reason = result.outcome === 'blocked' ? 'unauthorized' : 'rate_limited';
+    if (reason === 'rate_limited') {
+      await auditReachThrottle({ principalDid, requesterDid: input.requesterDid }, 'daily', principalDid, 60);
+      return { ...denial(reason, 429), retryAfter: 60 };
+    }
     await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: true });
     return denial(reason, result.outcome === 'blocked' ? 403 : 429);
   }
@@ -247,13 +254,29 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
   }
   return { delivered: true, reachId: result.reachId };
 }
+async function checkReachAbuse(params: {
+  principalDid: string; input: ReachRequestInput; publicKey: string;
+  agentStubDid: string; onBehalfOfStubDid: string; tier: unknown; transcriptHash: string;
+}): Promise<ReachDenied | null> {
+  const { principalDid, input, transcriptHash } = params;
+  if (await isReachSenderBlocked({
+    principalDid, requesterDid: input.requesterDid, publicKey: params.publicKey, onBehalfOfStubDid: params.onBehalfOfStubDid,
+  })) {
+    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
+    return denial('unauthorized', 403);
+  }
+  return guardReachRequester({
+    principalDid, requesterDid: input.requesterDid, agentStubDid: params.agentStubDid,
+    onBehalfOfStubDid: params.onBehalfOfStubDid, tier: params.tier,
+  });
+}
 
 /**
  * Evaluate one reach request against `principalDid`'s gate. Fails closed at
  * every step: an unknown principal, an unknown/unsigned-for requester, a
  * stale/future/invalid signature, a sender block, or neither a valid grant
  * nor an admitted credential tier deny before the broker is evaluated. Those
- * denials, like every answered exchange, mints exactly one `agent.reach`
+ * credential/policy denials, like every answered exchange, mint exactly one `agent.reach`
  * attestation (see {@link emitReachAttestation}). A gate with no configured
  * `consent_grants` row also denies (via the broker's own fail-closed
  * default) — collapsed into the same `answer: false` as a gate that
@@ -264,6 +287,7 @@ export async function reachPrincipal(
   principalDid: string,
   input: ReachRequestInput,
 ): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
+  if (reachInputTooLarge(input)) return denial('body_too_large', 413);
   const transcript = reachTranscript(principalDid, input);
   const transcriptHash = hashTranscript(transcript);
 
@@ -313,6 +337,12 @@ export async function reachPrincipal(
     platform: input.onBehalfOf.platform,
     externalRef: input.onBehalfOf.externalRef,
   });
+  const throttled = await checkReachAbuse({
+    principalDid, input, publicKey: requester.publicKey, transcriptHash,
+    agentStubDid: introspection.stubDid ?? requester.publicKey,
+    onBehalfOfStubDid: stub.did, tier: requester.tier,
+  });
+  if (throttled) return throttled;
 
   const metadata = (principal.metadata ?? {}) as Record<string, unknown>;
   const rawGateValue = Array.isArray(metadata.agentReachTopics) ? metadata.agentReachTopics : [];
