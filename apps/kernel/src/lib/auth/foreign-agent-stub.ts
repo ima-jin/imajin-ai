@@ -25,7 +25,7 @@ function requesterMatches(requesterDid: string, principalDid: string, publicKey?
 }
 
 /** Only call after verifying the requester's credential. Idempotent under concurrent first calls. */
-export async function resolveOrMintForeignAgentStub(requesterDid: string, principalDid: string, publicKey: string) {
+export function resolveOrMintForeignAgentStub(requesterDid: string, principalDid: string, publicKey: string) {
   const signerKey = publicKey.toLowerCase();
   return db.transaction(async (tx) => {
     // Serialize mint/rotation/block against the existing principal, not a
@@ -76,7 +76,7 @@ export async function introspectForeignAgentStub(stubDid: string, principalDid: 
 }
 
 /** Caller must authenticate as principalDid. Never clear tombstones on re-mint or promotion. */
-export async function blockForeignAgentStub(requesterDid: string, principalDid: string): Promise<boolean> {
+export function blockForeignAgentStub(requesterDid: string, principalDid: string): Promise<boolean> {
   return db.transaction(async (tx) => {
     await tx.select({ id: identities.id }).from(identities).where(eq(identities.id, principalDid)).for('update');
     const revoked = await tx.update(foreignAgentStubs).set({ revokedAt: new Date() }).where(and(
