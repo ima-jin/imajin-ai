@@ -314,10 +314,28 @@ export async function renameConnectorConnection(
   slot: string,
   label: string,
 ): Promise<ConnectorRow | undefined> {
+  const selected = connectionSlot(slot);
   const [row] = await db.update(connectors).set({ label, updatedAt: new Date() })
     .where(and(
       eq(connectors.ownerDid, ownerDid), eq(connectors.provider, provider),
-      eq(connectors.slot, connectionSlot(slot)),
+      eq(connectors.slot, selected),
     )).returning();
-  return row;
+  if (row || selected !== 'primary') return row;
+
+  // Listing always exposes primary, including legacy installations which
+  // predate the registry. Materialize its label, not a credential or grant.
+  // The conflict update also handles a concurrent connect safely: only the
+  // label changes, preserving the newly recorded field and scope snapshot.
+  const identity = connectorIdentity(provider);
+  if (!identity) throw new Error(`Unknown connector: ${provider}`);
+  const [primary] = await db.insert(connectors).values({
+    id: connectorRegistryId(ownerDid, provider, selected),
+    ownerDid, provider, slot: selected, label,
+    channel: identity.channel, connectorDid: identity.connectorDid,
+    status: 'active',
+  }).onConflictDoUpdate({
+    target: [connectors.ownerDid, connectors.provider, connectors.slot],
+    set: { label, updatedAt: new Date() },
+  }).returning();
+  return primary;
 }

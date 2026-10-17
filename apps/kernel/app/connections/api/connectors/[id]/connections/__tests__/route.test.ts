@@ -128,6 +128,17 @@ describe('connection metadata API', () => {
     expect((await PATCH(request('PATCH', { label: 'Missing' }, '?slot=missing'), context())).status).toBe(404);
   });
 
+  it('renames the visible synthetic primary with an omitted selector', async () => {
+    h.rename.mockResolvedValue({ slot: 'primary', label: 'Personal' });
+    const response = await PATCH(request('PATCH', { label: 'Personal' }), context());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ slot: 'primary', label: 'Personal' });
+    expect(h.rename).toHaveBeenCalledWith('did:owner', 'google', 'primary', 'Personal');
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.scopes).not.toHaveBeenCalled();
+    expect(h.status).not.toHaveBeenCalled();
+  });
+
   it('reports conflicts and fails closed on read/write outages', async () => {
     h.create.mockRejectedValue(new Error('connection_exists'));
     expect((await POST(request('POST', { slot: 'work' }), context())).status).toBe(409);
