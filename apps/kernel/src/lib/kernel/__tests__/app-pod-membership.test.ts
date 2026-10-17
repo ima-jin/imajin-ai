@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
+import { PGlite } from '@electric-sql/pglite';
 
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(),
@@ -230,5 +231,107 @@ describe('failure handling and route contract', () => {
       expect(spec.paths[path].get.responses['503']).toBeDefined();
     }
     expect(spec.paths['/api/apps/pods'].get.parameters[0].required).toBe(true);
+  });
+});
+
+describe('PostgreSQL membership isolation', () => {
+  let client: PGlite;
+  beforeAll(async () => {
+    client = new PGlite();
+    await client.exec(`
+      CREATE SCHEMA registry;
+      CREATE SCHEMA connections;
+      CREATE SCHEMA auth;
+      CREATE TABLE registry.apps (
+        app_did text PRIMARY KEY, owner_did text, status text,
+        approved_service_scopes jsonb
+      );
+      CREATE TABLE connections.pods (id text PRIMARY KEY, owner_did text);
+      CREATE TABLE connections.pod_members (
+        pod_id text, did text, role text, joined_at timestamp DEFAULT now(),
+        removed_at timestamp, PRIMARY KEY (pod_id, did)
+      );
+      CREATE TABLE auth.channel_links (
+        id text PRIMARY KEY, channel text, did text, app_did text, status text,
+        scopes jsonb, revoked_at timestamp
+      );
+    `);
+  }, 30_000);
+  afterAll(async () => { await client?.close(); });
+
+  beforeEach(async () => {
+    await client.exec(`
+      TRUNCATE registry.apps, connections.pods, connections.pod_members, auth.channel_links;
+      INSERT INTO registry.apps VALUES
+        ('did:imajin:events', 'did:imajin:developer', 'active', '["connections:read"]'),
+        ('did:imajin:sibling', 'did:imajin:developer', 'active', '["connections:read"]');
+      INSERT INTO connections.pods VALUES
+        ('pod_event', 'did:imajin:owner-a'), ('pod_other', 'did:imajin:owner-b'),
+        ('pod_empty', 'did:imajin:owner-a'), ('pod_removed', 'did:imajin:owner-a');
+      INSERT INTO connections.pod_members (pod_id, did, role, removed_at) VALUES
+        ('pod_event', 'did:imajin:cohost', 'cohost', null),
+        ('pod_event', 'did:imajin:owner-a', 'owner', null),
+        ('pod_other', 'did:imajin:cohost', 'cohost', null),
+        ('pod_removed', 'did:imajin:cohost', 'cohost', now()),
+        ('pod_event', 'did:imajin:removed', 'cohost', now());
+      INSERT INTO auth.channel_links VALUES
+        ('grant-a', 'app', 'did:imajin:owner-a', 'did:imajin:events', 'active', '["connections:read"]', null),
+        ('grant-b', 'app', 'did:imajin:owner-b', 'did:imajin:sibling', 'active', '["connections:read"]', null);
+    `);
+    mocks.execute.mockImplementation((sql: string, params: unknown[]) =>
+      client.query(sql, params, { rowMode: 'array' }));
+  });
+
+  it('executes both routes and excludes removed memberships and other owners', async () => {
+    const response = await readMembers();
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.members.map((member: { did: string; role: string }) => [member.did, member.role]))
+      .toEqual([[TARGET, 'cohost'], ['did:imajin:owner-a', 'owner']]);
+    expect(await (await list(request(`?did=${TARGET}`))).json()).toEqual({ podIds: [POD] });
+    expect(await (await readMembers(request(), 'pod_empty')).json()).toEqual({
+      podId: 'pod_empty', members: [],
+    });
+  });
+
+  it('cannot read another owner’s pod using its known ID or a spoofed owner hint', async () => {
+    const response = await readMembers(request('?ownerDid=did:imajin:owner-b', {
+      authorization: 'Bearer fixture-token', 'x-acting-for': 'did:imajin:owner-b',
+    }), 'pod_other');
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual(await (await readMembers(request(), 'pod_missing')).json());
+  });
+
+  it('cannot reuse another app’s owner grant even when both apps have the same registry owner', async () => {
+    mocks.verify.mockResolvedValue({ appDid: 'did:imajin:sibling', scopes: ['connections:read'] });
+    expect((await readMembers()).status).toBe(404);
+    expect(await (await list(request(`?did=${TARGET}&appDid=${APP}`))).json())
+      .toEqual({ podIds: ['pod_other'] });
+  });
+
+  it.each([
+    "status = 'revoked'",
+    'revoked_at = now()',
+    "scopes = '[\"profile:read\"]'",
+    "channel = 'telegram'",
+    "did = 'did:imajin:cohost'",
+    "app_did = 'did:imajin:unrelated'",
+  ])('immediately refuses owner grants with %s on both routes', async (change) => {
+    // The successful read precedes revocation, proving no token/cache bypass.
+    expect((await readMembers()).status).toBe(200);
+    await client.exec(`UPDATE auth.channel_links SET ${change} WHERE id = 'grant-a'`);
+    expect((await readMembers()).status).toBe(404);
+    expect(await (await list(request(`?did=${TARGET}`))).json()).toEqual({ podIds: [] });
+  });
+
+  it.each([
+    "status = 'revoked'",
+    "approved_service_scopes = '[]'",
+    "app_did = 'did:imajin:no-longer-registered'",
+  ])('immediately refuses registry changes: %s', async (change) => {
+    expect((await readMembers()).status).toBe(200);
+    await client.exec(`UPDATE registry.apps SET ${change} WHERE app_did = 'did:imajin:events'`);
+    expect((await readMembers()).status).toBe(403);
+    expect((await list(request(`?did=${TARGET}`))).status).toBe(403);
   });
 });
