@@ -16,7 +16,8 @@ vi.mock('../emit-mechanical-attestation', () => ({
 vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: () => state.node() }));
 vi.mock('@/src/db', async () => {
   const tables = await import('@/src/db/schemas/auth');
-  return { ...tables, get db() { return state.db; } };
+  const access = await import('@/src/db/schemas/access');
+  return { ...tables, ...access, get db() { return state.db; } };
 });
 vi.mock('../grants', () => ({ introspectGrant: (...args: unknown[]) => state.grant(...args) }));
 vi.mock('../foreign-principal-stub', () => ({
@@ -75,6 +76,9 @@ beforeAll(async () => {
     );`);
   const migration = await readFile(new URL('../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url), 'utf8');
   await pg.exec(migration);
+  await pg.exec(`CREATE TABLE auth.delegate_grant_bearers (
+    principal_did text, surfaces jsonb, status text, token_hash text, revoked_at timestamptz, revoked_by text
+  )`);
   // Plain-SQL runner migrations must also be safe on a second application.
   await pg.exec(migration);
 });

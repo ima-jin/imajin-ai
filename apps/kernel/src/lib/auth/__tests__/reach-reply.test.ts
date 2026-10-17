@@ -18,6 +18,7 @@ const mocked = vi.hoisted(() => ({
 }));
 vi.mock('@imajin/db', () => ({ getClient: mocked.getClient }));
 vi.mock('@imajin/bus', () => ({ publish: mocked.publish }));
+vi.mock('../foreign-agent-stub', () => ({ blockForeignAgentStub: vi.fn().mockResolvedValue(true) }));
 vi.mock('@/src/lib/access/reach-bearer', () => ({ listReachBearerKnocks: async () => [] }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: mocked.rows }) }) }) },

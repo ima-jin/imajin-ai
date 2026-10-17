@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   rows: new Map<string, Record<string, unknown>>(),
   envelopes: new Map<string, Record<string, unknown>>(),
   attest: vi.fn(), publish: vi.fn(), broker: vi.fn(), grant: vi.fn(),
-  persist: vi.fn(), markPublished: vi.fn(), prepareAttestation: vi.fn(), limit: vi.fn(), node: vi.fn(),
+  persist: vi.fn(), markPublished: vi.fn(), prepareAttestation: vi.fn(), limit: vi.fn(), node: vi.fn(), bearer: vi.fn(),
 }));
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({
   prepareMechanicalAttestation: (...args: unknown[]) => mocks.prepareAttestation(...args),
@@ -65,6 +65,7 @@ vi.mock('@/src/lib/auth/reach-envelope-store', () => ({
   markReachPublished: (...args: unknown[]) => mocks.markPublished(...args),
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
+vi.mock('@/src/lib/access/reach-bearer', () => ({ resolveReachBearer: mocks.bearer }));
 vi.mock('@/src/lib/vault/sealing', () => ({ getNodeSigningIdentity: () => mocks.node() }));
 
 const principalDid = 'did:imajin:ryan';
@@ -84,8 +85,8 @@ function signedBody(patch: Partial<ReachRequestInput> = {}): ReachRequestInput {
   return input;
 }
 
-async function post(body: unknown) {
-  return POST({ json: async () => body } as never, { params: Promise.resolve({ did: principalDid }) }) as unknown as Promise<{
+async function post(body: unknown, authorization?: string) {
+  return POST({ json: async () => body, headers: new Headers(authorization ? { authorization } : {}) } as never, { params: Promise.resolve({ did: principalDid }) }) as unknown as Promise<{
     status: number; body: Record<string, unknown>;
   }>;
 }
@@ -113,9 +114,84 @@ beforeEach(() => {
   mocks.grant.mockResolvedValue({ authorized: true, grantId: 'grant_test' });
   mocks.limit.mockReturnValue({ limited: false, retryAfter: 0 });
   mocks.node.mockReturnValue({ senderDid: nodeDid, senderPubkey: nodeKey.publicKey, privateKeyHex: nodeKey.privateKey });
+  mocks.bearer.mockResolvedValue({ requesterDid, bearerId: 'dgb_1', onBehalfOf: { platform: 'muse', externalRef: 'unverified' } });
   mocks.persist.mockImplementation(async (envelope: Record<string, unknown>) => {
     mocks.envelopes.set(String(envelope.reachId), envelope);
     return { stored: true, reachId: envelope.reachId, published: false, signedEvent: envelope.signedEvent };
+  });
+});
+
+describe('static-header reach shares the signed delivery gate', () => {
+  function enableSoft() {
+    const config = defaultFrontDoorConfig();
+    config.tiers.soft = true;
+    config.topics.business_development = { open: true, published: true, mode: 'deliver' };
+    mocks.rows.set(principalDid, { id: principalDid, metadata: { agentReachGate: config, agentReachTopics: ['business_development'] } });
+  }
+  const body = { topic: 'business_development', message: 'Hello from Muse', replyHandle: 'opaque:thread' };
+  it('delivers using the same broker/envelope pipeline with honest bearer provenance and bound UNVERIFIED claims', async () => {
+    enableSoft();
+    const response = await post({ ...body, onBehalfOf: { platform: 'forged', externalRef: 'someone-else' }, signature: 'not-a-signature' }, 'Bearer synthetic');
+    expect(response.body).toMatchObject({ delivered: true });
+    expect(mocks.bearer).toHaveBeenCalledWith('synthetic', principalDid);
+    expect(mocks.broker).toHaveBeenCalledWith('agent.reach', expect.objectContaining({ requester: requesterDid, subject: principalDid }));
+    expect(mocks.persist).toHaveBeenCalledWith(expect.objectContaining({
+      requesterAuthTier: 'bearer', requesterSignature: '', requesterTier: 'soft', claimVerified: false,
+      onBehalfOf: { platform: 'muse', externalRef: 'unverified' }, grantId: null,
+      deliveryAttestation: expect.objectContaining({ payload: expect.objectContaining({ signatureVerified: false }) }),
+    }));
+  });
+  it('asks boolean-only with a bearer and attests authenticated possession without claiming a signature', async () => {
+    enableSoft();
+    const result = await post({ arg: 'business_development' }, 'Bearer synthetic');
+    expect(result.body).toMatchObject({ answer: true });
+    expect(mocks.attest).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ signatureVerified: false, requesterSignature: '', claimVerified: false }),
+    }));
+    expect(mocks.persist).not.toHaveBeenCalled();
+  });
+  it('rejects unknown, expired, revoked or other-audience bearers before reaching the broker', async () => {
+    enableSoft();
+    mocks.bearer.mockResolvedValue(null);
+    expect((await post(body, 'Bearer wrong')).status).toBe(401);
+    expect(mocks.broker).not.toHaveBeenCalled();
+  });
+  it('re-evaluates soft-tier admission on every request', async () => {
+    expect((await post(body, 'Bearer synthetic')).status).toBe(403);
+    expect(mocks.persist).not.toHaveBeenCalled();
+  });
+  it.each([null, {}, { agentReachGate: {} }])('fails closed for missing or malformed authored gate %j', async metadata => {
+    mocks.rows.set(principalDid, { id: principalDid, metadata });
+    expect((await post(body, 'Bearer synthetic')).status).toBe(403);
+  });
+  it('fails closed if the recipient was removed', async () => {
+    mocks.rows.delete(principalDid);
+    expect((await post(body, 'Bearer synthetic')).status).toBe(403);
+  });
+  it.each([
+    { topic: '' }, { topic: 3 }, { topic: 'x'.repeat(201) }, { purpose: 'vault.read' },
+    { field: 'private_email' }, { predicate: 'eq' }, { arg: 'different-topic' }, { requesterDid: 'did:imajin:ryan' },
+  ])('cannot widen authority through request fields %j', async patch => {
+    enableSoft();
+    expect((await post({ ...body, ...patch }, 'Bearer synthetic')).status).toBe(403);
+    expect(mocks.broker).not.toHaveBeenCalled();
+  });
+  it('rejects incomplete delivery and does not silently turn it into a gate ask', async () => {
+    enableSoft();
+    expect((await post({ topic: body.topic, message: body.message }, 'Bearer synthetic')).status).toBe(400);
+  });
+  it('retains topic publication, daily/sender quotas, blocks and broker denial', async () => {
+    enableSoft();
+    mocks.broker.mockResolvedValueOnce({ status: 'rejected' });
+    expect((await post(body, 'Bearer synthetic')).body.answer).toBe(false);
+    expect(mocks.persist).not.toHaveBeenCalled();
+    mocks.persist.mockResolvedValueOnce({ stored: false, reason: 'blocked' });
+    expect((await post(body, 'Bearer synthetic')).status).toBe(403);
+    expect(mocks.attest).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ signatureVerified: false, outcome: 'denied', claimVerified: false }),
+    }));
+    mocks.persist.mockResolvedValueOnce({ stored: false, reason: 'rate_limited' });
+    expect((await post(body, 'Bearer synthetic')).status).toBe(429);
   });
 });
 
