@@ -18,6 +18,8 @@ import { POST as send } from '@/app/reach/[handle]/route';
 import { POST as reply } from '@/app/jin/api/reach/[reachId]/reply/route';
 import { POST as status } from '@/app/auth/api/agents/[did]/reach/[reachId]/status/route';
 import { getReachEnvelope } from '@/src/lib/auth/reach-envelope-store';
+import { POST as mcp } from '@/app/reach/[handle]/mcp/route';
+import { META_PROTOCOL_VERSION } from '@/src/lib/mcp/protocol';
 import { reachReplyEvent, canonicalReachReply } from '@/src/lib/auth/reach-reply-wire';
 import {
   issueReachBearer, resolveReachBearer, listReachBearerKnocks, blockReachBearerKnock,
@@ -31,6 +33,8 @@ vi.mock('@/src/db', async () => ({
   get db() { return state.db; },
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
+vi.mock('@/src/lib/mcp/tools', () => ({ ALL_TOOLS: [], toolByName: vi.fn() }));
+vi.mock('@/src/lib/mcp/mcp-grant', () => ({ resolveActiveMcpGrant: vi.fn() }));
 vi.mock('@imajin/auth', async (original) => ({
   ...await original<typeof import('@imajin/auth')>(), emitAttestation: vi.fn().mockResolvedValue({}), requireAuth: state.auth,
 }));
@@ -153,6 +157,73 @@ describe('static-header HTTP round trip', () => {
     expect(response.status).toBe(200);
     return (await response.json()).reply;
   }
+
+  function tool(name: string, args: Record<string, unknown>, bearer?: string, handle = 'ryan') {
+    return mcp(new NextRequest(`https://node.test/reach/${handle}/mcp`, {
+      method: 'POST',
+      headers: {
+        ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
+        'MCP-Protocol-Version': '2026-07-28', 'Mcp-Method': 'tools/call', 'Mcp-Name': name,
+      },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call',
+        params: { name, arguments: args, _meta: { [META_PROTOCOL_VERSION]: '2026-07-28' } } }),
+    }), { params: Promise.resolve({ handle }) });
+  }
+
+  async function toolContent(response: Response) {
+    expect(response.status).toBe(200);
+    const rpc = await response.json();
+    expect(rpc.result.isError).toBe(false);
+    return JSON.parse(rpc.result.content[0].text);
+  }
+
+  it('MCP: a stranger reads the card, knocks, asks, sends once and retrieves Ryan’s genuine signed reply', async () => {
+    expect(await toolContent(await tool('reach_card', {}))).toMatchObject({
+      principalDid: owner, topics: ['Business development'],
+    });
+    const knocked = await knock(new NextRequest('https://node.test/reach/ryan/knock', {
+      method: 'POST', body: JSON.stringify(input),
+    }), { params: Promise.resolve({ handle: 'ryan' }) });
+    expect(knocked.status).toBe(201);
+    const credential = await knocked.json();
+    expect(await toolContent(await tool('reach_ask', { topic: 'Business development' }, credential.bearer)))
+      .toMatchObject({ answer: true });
+    const delivered = await toolContent(await tool('reach_send', {
+      topic: 'Business development', message: 'Hello Ryan, from a stranger’s static-header agent',
+    }, credential.bearer));
+    expect(delivered).toMatchObject({ delivered: true, reachId: expect.any(String) });
+    expect(await toolContent(await tool('reach_status', { reachId: delivered.reachId }, credential.bearer)))
+      .toEqual({ reachId: delivered.reachId, state: 'delivered', reply: null });
+    const signedReply = await answer(delivered.reachId);
+    const receipt = await toolContent(await tool('reach_status', { reachId: delivered.reachId }, credential.bearer));
+    expect(receipt).toEqual({ reachId: delivered.reachId, state: 'replied', reply: signedReply });
+    const { signature, ...payload } = receipt.reply.payload;
+    expect(authCrypto.verifySync(signature.sig, canonicalReachReply({ ...receipt.reply, payload }), ownerKeys.publicKey)).toBe(true);
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(1);
+  });
+
+  it.each(['reach_ask', 'reach_send', 'reach_status'])('MCP: %s refuses real wrong-audience and revoked bearers with a scoped 401', async name => {
+    const credential = await issued();
+    const args = name === 'reach_status' ? { reachId: 'unknown' } : {
+      topic: 'business_development', ...(name === 'reach_send' ? { message: 'Hello' } : {}),
+    };
+    const wrongAudience = await tool(name, args, credential.bearer, 'other');
+    expect(wrongAudience.status).toBe(401);
+    expect(wrongAudience.headers.get('www-authenticate')).toContain('/reach/other/mcp');
+    await blockReachBearerKnock({ principalDid: owner, requestId: credential.requestId });
+    const revoked = await tool(name, args, credential.bearer);
+    expect(revoked.status).toBe(401);
+    expect(revoked.headers.get('www-authenticate')).toContain('scope="agent:reach"');
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(0);
+    expect((await tool('reach_card', {}, credential.bearer)).status).toBe(200);
+  });
+
+  it('MCP: receipts remain requester-private even with a valid bearer for the same recipient', async () => {
+    const first = await contact();
+    const second = await issued();
+    await answer(first.reachId);
+    expect((await tool('reach_status', { reachId: first.reachId }, second.bearer)).status).toBe(404);
+  });
 
   it('knocks, sends, receives the principal’s genuine signed reply through bearer-only polling', async () => {
     const credential = await contact();

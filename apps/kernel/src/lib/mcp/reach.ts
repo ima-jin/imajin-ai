@@ -3,6 +3,7 @@ import { reachStatus } from '@/src/lib/auth/reach-status';
 import type { resolveReachBearer } from '@/src/lib/access/reach-bearer';
 import { publishedTopicLabels } from '@/src/lib/jin/front-door';
 import { MAX_REACH_MESSAGE_LENGTH, MAX_REPLY_HANDLE_LENGTH } from '@/src/lib/auth/reach-delivery-input';
+import { normalizeBrokerTerm } from '@imajin/auth/broker-consent-vocabulary';
 import { discoverResult } from './protocol';
 import type { McpSurface } from './server';
 import type { McpTool } from './types';
@@ -14,7 +15,7 @@ interface ReachPrincipal {
   metadata: Record<string, unknown> | null;
 }
 
-const topicSchema = { type: 'string', minLength: 1, maxLength: 200 };
+const topicSchema = { type: 'string', minLength: 1, maxLength: 200, description: 'A published topic label or canonical contact-topic term.' };
 
 function text(args: Record<string, unknown>, key: string, max: number): string {
   const value = args[key];
@@ -105,7 +106,8 @@ export function createReachSurface(
 
 function argumentsFor(name: string, args: Record<string, unknown>): Record<string, unknown> {
   if (name === 'reach_status') return { reachId: text(args, 'reachId', 200) };
-  const topic = text(args, 'topic', 200);
+  const rawTopic = text(args, 'topic', 200);
+  const topic = normalizeBrokerTerm('contact_topic', rawTopic) ?? rawTopic;
   // An ask has no delivery bundle. Passing `topic` alone would correctly fail
   // the canonical all-or-nothing delivery parser.
   if (name === 'reach_ask') return { arg: topic };
