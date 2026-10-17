@@ -424,7 +424,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
   ],
-  // #2599 / migration 0204 — complete the metadata-only audit write before
+  // #2599 / migration 0207 — complete the metadata-only audit write before
   // publish resolves. Limiter keys, IPs, message bodies and signatures stay private.
   'agent.reach.throttled': [
     {

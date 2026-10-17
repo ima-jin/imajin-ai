@@ -94,7 +94,7 @@ Full detail: `migrations/ownership.json`.
 
 ### Reach throttling audit seed (#2599)
 
-`0204_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
+`0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
 `kernel.bus_chain_configs`, including existing `agent`-scoped overrides.
 Its awaited `audit-log` chain writes allowlisted throttling metadata to the
 existing kernel-owned `kernel.audit_log`; it creates no schema objects and
