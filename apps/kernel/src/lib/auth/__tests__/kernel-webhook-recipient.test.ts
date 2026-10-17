@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveKernelWebhookAudience } from '../kernel-webhook-recipient';
 import { postKernelWebhook } from '../kernel-webhook';
 import { crypto as authCrypto } from '@imajin/auth';
+import { fixtureStudio } from '@/src/lib/kernel/__tests__/fixtures/third-party-app';
 
 const mocks = vi.hoisted(() => ({ limit: vi.fn(), where: vi.fn() }));
 vi.mock('@/src/db', () => ({
@@ -83,8 +84,7 @@ describe('trusted kernel webhook recipient registry', () => {
   it('delivers a signed webhook to a registry-only third-party app', async () => {
     vi.stubEnv('AUTH_PRIVATE_KEY', authCrypto.generatePrivateKey());
     mocks.limit.mockResolvedValue([{
-      ...app, slug: 'fixture-studio', tier: 'third_party',
-      appDid: 'did:imajin:fixture-studio', entryUrl: 'https://studio.example.test',
+      ...app, ...fixtureStudio,
     }]);
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetchMock);
@@ -100,8 +100,7 @@ describe('trusted kernel webhook recipient registry', () => {
   });
   it('trusts a third-party entry origin without any app-specific env settings', async () => {
     const thirdParty = {
-      ...app, slug: 'fixture-studio', tier: 'third_party', appDid: 'did:imajin:fixture-studio',
-      callbackUrl: 'https://node.test/callback', entryUrl: 'https://studio.example.test',
+      ...app, ...fixtureStudio,
     };
     mocks.limit.mockResolvedValue([thirdParty]);
     await expect(resolveKernelWebhookAudience('https://studio.example.test/api/webhook', { appSlug: 'fixture-studio' }))

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ProfileViewProps } from '../../../lib/types';
 import type { NavApp } from '@/src/lib/kernel/app-nav';
+import { fixtureStudio } from '@/src/lib/kernel/__tests__/fixtures/third-party-app';
 
 const state = vi.hoisted(() => ({ enabledServices: [] as string[], members: [] as Array<{ did: string; role: string }> }));
 vi.mock('../../../lib/profile-data', () => ({
@@ -35,9 +36,7 @@ import { CommunityProfile } from '../CommunityProfile';
 import { ProfileWidget } from '../../ProfileWidgets';
 
 const fixture: NavApp = {
-  slug: 'fixture-studio', name: 'Fixture Studio', tier: 'third_party', featured: true,
-  entryUrl: 'https://studio.example.test', icon: null, placements: [], requiredScope: null,
-  profileWidget: { path: '/profile/studio', label: 'Studio showcase' },
+  ...fixtureStudio, featured: true,
 };
 function props(scope: ProfileViewProps['identity']['scope'] = 'actor'): ProfileViewProps {
   return {

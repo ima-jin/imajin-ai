@@ -6,7 +6,12 @@ export const fixtureStudio = {
   entryUrl: 'https://studio.example.test',
   status: 'active',
   tier: 'third_party',
+  appDid: 'did:imajin:fixture-studio',
+  callbackUrl: 'https://studio.example.test/auth/callback',
+  icon: null,
+  requiredScope: null,
   placements: [],
+  profileWidget: { path: '/profile/studio', label: 'Studio showcase' },
 };
 
 export const operationalRegistryRows = [
