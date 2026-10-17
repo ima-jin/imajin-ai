@@ -59,6 +59,9 @@ fi
 
 is_build_target() {
   local app="$1"
+  # Historical diffs include deleted/extracted apps. Never build an app that
+  # no longer has a workspace manifest, even if a stale graph lists it.
+  [[ -f "apps/$app/package.json" ]] || return 1
   [[ -z "$DEPLOY_ENV" || $'\n'"$OWNED_APPS"$'\n' == *$'\n'"$app"$'\n'* ]]
 }
 

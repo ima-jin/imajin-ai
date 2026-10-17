@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,21 @@ const require = createRequire(import.meta.url);
 const fixtures = [];
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) rmSync(fixture, { recursive: true, force: true });
+});
+
+describe('standalone events API specification ownership (#2517)', () => {
+  it('does not recreate apps/events when generating monorepo specs', () => {
+    const root = fixture();
+    rmSync(join(root, 'apps/events'), { recursive: true });
+    copyFileSync(join(ROOT, 'scripts/generate-api-specs.ts'), join(root, 'scripts/generate-api-specs.ts'));
+    const output = execFileSync('pnpm', ['exec', 'tsx', join(root, 'scripts/generate-api-specs.ts')], {
+      cwd: ROOT,
+      encoding: 'utf8',
+    });
+    expect(output).toContain('Done.');
+    expect(output).not.toContain('✓ events:');
+    expect(existsSync(join(root, 'apps/events'))).toBe(false);
+  });
 });
 
 function fixture() {
@@ -124,6 +139,39 @@ describe('ecosystem is the positive deploy build boundary (#2784)', () => {
 
   it('keeps non-deploy discovery unchanged', () => {
     expect(run(fixture(), ['--dry-run'])).toContain('corpus events kernel');
+  });
+
+  it('skips deleted apps in historical path and dependency graph changes outside deploy mode', () => {
+    const root = fixture();
+    rmSync(join(root, 'apps/events'), { recursive: true });
+    writeFileSync(join(root, '.last-build-sha'), 'previous');
+    const output = run(root, ['--dry-run'], {
+      GRAPH_CHANGES: '/home/jin/prod/imajin-ai/apps/events',
+      PATH_CHANGES: 'apps/events/app/page.tsx\napps/kernel/app/page.tsx',
+    });
+    expect(output).toContain('1 app(s) to build: kernel');
+    expect(output).not.toContain('events');
+  });
+
+  it('does not invoke build.sh for an incremental prune-only diff', () => {
+    const root = fixture();
+    // Rollback files may remain on disk, but they are not a workspace app.
+    rmSync(join(root, 'apps/events/package.json'));
+    writeFileSync(join(root, '.last-build-sha'), 'previous');
+    expect(run(root, [], {
+      PATH_CHANGES: 'apps/events/package.json',
+    })).toContain('No apps changed');
+    expect(existsSync(join(root, 'build-args'))).toBe(false);
+    expect(readFileSync(join(root, '.last-build-sha'), 'utf8').trim()).toBe('current');
+  });
+
+  it('also excludes deleted ecosystem-owned apps from historical diffs', () => {
+    const root = fixture();
+    rmSync(join(root, 'apps/corpus'), { recursive: true });
+    writeFileSync(join(root, '.last-build-sha'), 'previous');
+    expect(run(root, ['--deploy-env', 'dev', '--dry-run'], {
+      PATH_CHANGES: 'apps/corpus/package.json',
+    })).toContain('No apps changed');
   });
   it('prod-window release bounds full builds and scopes migrations to kernel', () => {
     const root = fixture();
