@@ -175,7 +175,7 @@ paths:
                         podId: { type: string }
                         did: { type: string }
                         role: { type: string, examples: [owner, cohost, member] }
-                        joinedAt: { type: string, format: date-time }
+                        joinedAt: { type: string, description: "Database timestamp string, matching the existing pod membership API." }
         "401":
           description: Missing, invalid, expired, or wrong-type/audience app-service credential
         "403":
