@@ -73,6 +73,24 @@ function rpc(name: string, args: Record<string, unknown>, scopes: string[]) {
 }
 
 describe('Google typed readers', () => {
+  it.each(allCalls.map((call, index) => ({ call, index })))('does not return data when signed provenance is absent ($index)', async ({ call }) => {
+    publishMock.mockResolvedValue({});
+    await expect(call()).rejects.toThrow('google_read_audit_unavailable');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(allCalls.map((call, index) => ({ call, index })))('does not return data when signing rejects ($index)', async ({ call }) => {
+    publishMock.mockRejectedValue(new Error('signer unavailable'));
+    await expect(call()).rejects.toThrow('signer unavailable');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, { attestationId: '' }, { attestationId: ' ' }, { attestationId: 123 }])(
+    'rejects missing or malformed signing confirmation (%j)', async (result) => {
+      publishMock.mockResolvedValue(result);
+      await expect(listSites(OWNER)).rejects.toThrow('google_read_audit_unavailable');
+    },
+  );
   it.each(allCalls.map((call, index) => ({ call, index })))('fails closed on connector grant denial ($index)', async ({ call }) => {
     credential.mockRejectedValue(new Error('google_no_grant'));
     await expect(call()).rejects.toThrow('google_no_grant');

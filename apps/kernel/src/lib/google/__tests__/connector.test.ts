@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, loadMock, publishMock, whereMock, updateSetMock, updateWhereMock, revokeRegistrationMock, readScopesMock, requireApprovalMock } = vi.hoisted(() => ({
+const { sealMock, loadMock, publishMock, whereMock, updateSetMock, updateWhereMock, revokeRegistrationMock, readScopesMock, requireApprovalMock, resetApprovalMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
   publishMock: vi.fn(),
@@ -10,6 +10,7 @@ const { sealMock, loadMock, publishMock, whereMock, updateSetMock, updateWhereMo
   revokeRegistrationMock: vi.fn(),
   readScopesMock: vi.fn(),
   requireApprovalMock: vi.fn(),
+  resetApprovalMock: vi.fn(),
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -19,7 +20,10 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
 vi.mock('../scope-manifest', () => ({ readActiveGoogleScopes: readScopesMock }));
-vi.mock('../setup', () => ({ requireBusinessProfileApproval: requireApprovalMock }));
+vi.mock('../setup', () => ({
+  requireBusinessProfileApproval: requireApprovalMock,
+  resetBusinessProfileApproval: resetApprovalMock,
+}));
 
 vi.mock('@/src/db', () => {
   const channelLinks = { slot: 'slot', channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' };
@@ -95,6 +99,8 @@ beforeEach(() => {
   readScopesMock.mockResolvedValue(['google:gmail:read']);
   requireApprovalMock.mockReset();
   requireApprovalMock.mockResolvedValue(undefined);
+  resetApprovalMock.mockReset();
+  resetApprovalMock.mockResolvedValue(undefined);
   vi.mocked(recordConnectorRegistration).mockClear();
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
@@ -253,6 +259,25 @@ describe('buildAuthorizeUrl (#2144)', () => {
     requireApprovalMock.mockRejectedValue(new Error('google_business_profile_approval_pending'));
     await expect(buildAuthorizeUrl(OWNER, 'state', undefined, 'marketing')).rejects.toThrow('google_business_profile_approval_pending');
     expect(requireApprovalMock).toHaveBeenCalledWith(OWNER, 'marketing');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps Search Console consent available when selected Business approval becomes pending', async () => {
+    vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', 'true');
+    setConfig();
+    readScopesMock.mockResolvedValue(['google:search-console:read', 'google:business-profile:read']);
+    requireApprovalMock.mockRejectedValue(new Error('google_business_profile_approval_pending'));
+    const url = await buildAuthorizeUrl(OWNER, 'state', undefined, 'marketing');
+    expect(new URL(url).searchParams.get('scope')).toBe(GOOGLE_OAUTH_SCOPES['google:search-console:read']);
+    expect(requireApprovalMock).toHaveBeenCalledWith(OWNER, 'marketing');
+  });
+
+  it('does not downgrade a mixed consent request when approval storage fails', async () => {
+    vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', 'true');
+    readScopesMock.mockResolvedValue(['google:search-console:read', 'google:business-profile:read']);
+    requireApprovalMock.mockRejectedValue(new Error('storage unavailable'));
+    await expect(buildAuthorizeUrl(OWNER, 'state')).rejects.toThrow('storage unavailable');
     expect(loadMock).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -453,6 +478,20 @@ describe('revokeAtGoogle (our revoke \u2192 Google, #2144)', () => {
 });
 
 describe('storeConfig / readConfigFlow (#2144)', () => {
+  it('resets organization/named-slot approval before sealing the OAuth client', async () => {
+    const org = 'did:imajin:org';
+    await withConnectorConnection('google', org, 'marketing', () => storeConfig(org, CONFIG));
+    expect(resetApprovalMock).toHaveBeenCalledWith(org, 'marketing');
+    expect(resetApprovalMock.mock.invocationCallOrder[0]).toBeLessThan(sealMock.mock.invocationCallOrder[0]);
+    expect(sealMock).toHaveBeenCalledWith(`google-config:${org}:marketing`, expect.any(String));
+  });
+
+  it('does not replace credentials when resetting project approval fails', async () => {
+    resetApprovalMock.mockRejectedValue(new Error('storage unavailable'));
+    await expect(storeConfig(OWNER, CONFIG, 'marketing')).rejects.toThrow('storage unavailable');
+    expect(resetApprovalMock).toHaveBeenCalledWith(OWNER, 'marketing');
+    expect(sealMock).not.toHaveBeenCalled();
+  });
   it('seals the app config under the per-DID config field', async () => {
     await storeConfig(OWNER, CONFIG);
     expect(sealMock).toHaveBeenCalledTimes(1);
