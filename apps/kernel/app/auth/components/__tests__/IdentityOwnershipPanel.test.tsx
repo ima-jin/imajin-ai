@@ -5,7 +5,7 @@ import IdentityOwnershipPanel, { type OwnershipState } from '../IdentityOwnershi
 
 const { refresh, push, setActingAs } = vi.hoisted(() => ({ refresh: vi.fn(), push: vi.fn(), setActingAs: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh, push }) }));
-vi.mock('@imajin/ui', () => ({ setActingAs }));
+vi.mock('@imajin/ui/server', () => ({ setActingAs }));
 
 const GROUP = 'did:imajin:business';
 const OWNER = 'did:imajin:alice';

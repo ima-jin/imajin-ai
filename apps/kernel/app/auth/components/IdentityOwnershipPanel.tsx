@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
-import { setActingAs } from '@imajin/ui';
+import { setActingAs } from '@imajin/ui/server';
 
 interface PendingTransfer {
   id: string;

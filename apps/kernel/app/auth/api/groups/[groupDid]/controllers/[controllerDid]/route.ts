@@ -9,11 +9,12 @@ import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 import { OwnershipError } from '@/src/lib/auth/ownership-policy';
 
 const log = createLogger('kernel');
+export const dynamic = 'force-dynamic';
 
 /**
  * DELETE /api/groups/[groupDid]/controllers/[controllerDid]
  * Remove a controller (soft delete).
- * Owner can remove anyone (except self). Admin can remove members only.
+ * Owners cannot be removed. Admins may remove members or leave themselves.
  */
 export async function DELETE(
   request: NextRequest,
@@ -37,7 +38,11 @@ export async function DELETE(
       payload: { context_id: groupDid, context_type: 'group' },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
-    return NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true });
+    if (caller.id === controllerDid && request.cookies.get('x-acting-as')?.value === groupDid) {
+      response.cookies.set('x-acting-as', '', { path: '/', maxAge: 0, sameSite: 'lax' });
+    }
+    return response;
   } catch (error) {
     if (error instanceof OwnershipError) {
       return NextResponse.json({ error: error.message }, { status: error.status });

@@ -133,10 +133,14 @@ describe('ownership transfer real database lifecycle (#2892)', () => {
     expect(await details.json()).toMatchObject({ createdBy: recipient });
     as(owner);
     expect((await call(GET, undefined, 'GET')).body).toMatchObject({ viewerRole: 'admin', canTransfer: false, ownerDid: recipient });
-    const leave = await REMOVE(new NextRequest('http://localhost', { method: 'DELETE' }), {
+    const leave = await REMOVE(new NextRequest('http://localhost', {
+      method: 'DELETE', headers: { cookie: `x-acting-as=${groupDid}` },
+    }), {
       params: Promise.resolve({ groupDid, controllerDid: owner }),
     });
     expect(leave.status).toBe(200);
+    expect(leave.headers.get('set-cookie')).toContain('x-acting-as=;');
+    expect(leave.headers.get('set-cookie')).toContain('Max-Age=0');
     expect((await rows()).find((row) => row.memberDid === owner)?.removedAt).toBeInstanceOf(Date);
   });
 

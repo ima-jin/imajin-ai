@@ -311,6 +311,30 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/groups/{groupDid}/controllers/{controllerDid}:
+    parameters:
+      - { name: groupDid, in: path, required: true, schema: { type: string } }
+      - { name: controllerDid, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [auth]
+      operationId: removeGroupController
+      summary: Remove a controller or leave as a former-owner admin
+      description: |
+        Active owners may remove non-owner controllers. Admins may remove members
+        or leave themselves. An active owner can never be removed: transfer
+        ownership first. Removal serializes with ownership acceptance to prevent
+        deleting a newly promoted owner. A successful self-removal expires the
+        matching selected-group x-acting-as cookie.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200": { description: Membership soft-deleted }
+        "400": { description: Cannot remove an active owner }
+        "401": { description: Authentication required }
+        "403": { description: Caller lacks membership-management authority }
+        "404": { description: Group or controller not found }
+        "500": { description: Membership removal failed }
   /api/groups/{groupDid}/transfer-owner:
     parameters:
       - { name: groupDid, in: path, required: true, schema: { type: string } }
@@ -346,8 +370,9 @@ paths:
         keys are preserved. Only one pending proposal is allowed.
 
         Every proposal, cancel and acceptance consults the node's replaceable
-        ownership-policy hook. Configure registry.node_config key
-        identity.ownership.policy to a registered policy id (JSON string);
+        ownership-policy hook. Operators configure registry.node_config key
+        identity.ownership.policy through PUT /api/admin/config with
+        {key:"identity.ownership.policy",value:"owner-only"} (or a registered policy id);
         absent configuration defaults to owner-only. Unknown policies fail closed.
         No quorum, controller consent or cooling-off is implemented.
 

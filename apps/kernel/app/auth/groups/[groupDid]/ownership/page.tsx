@@ -7,7 +7,8 @@ export const dynamic = 'force-dynamic';
 export default async function OwnershipPage({
   params,
 }: Readonly<{ params: Promise<{ groupDid: string }> }>) {
-  const { groupDid } = await params;
+  const { groupDid: routeDid } = await params;
+  const groupDid = decodeURIComponent(routeDid);
   const { sessionDid } = await getEffectiveDid();
   if (!sessionDid) {
     const returnPath = `/auth/groups/${encodeURIComponent(groupDid)}/ownership`;

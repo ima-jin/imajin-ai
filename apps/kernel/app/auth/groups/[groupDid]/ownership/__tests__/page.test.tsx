@@ -12,9 +12,9 @@ import OwnershipPage from '../page';
 afterEach(cleanup);
 
 describe('recipient ownership invitation page', () => {
-  it('allows a signed-in recipient to reach the API-gated panel without act-as membership', async () => {
+  it.each(['did:imajin:group', 'did%3Aimajin%3Agroup'])('normalizes route DID %s for the API-gated panel without act-as membership', async (groupDid) => {
     effective.mockResolvedValue({ sessionDid: 'did:imajin:bob', effectiveDid: 'did:imajin:bob' });
-    render(await OwnershipPage({ params: Promise.resolve({ groupDid: 'did:imajin:group' }) }));
+    render(await OwnershipPage({ params: Promise.resolve({ groupDid }) }));
     expect(screen.getByText('ownership:did:imajin:group')).toBeTruthy();
   });
 
