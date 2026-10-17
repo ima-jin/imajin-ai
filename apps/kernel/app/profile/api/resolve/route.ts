@@ -6,6 +6,9 @@ import { getClient } from '@imajin/db';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { createLogger } from '@imajin/logger';
+import { authenticateContactApp, relatedContactDids } from '@/src/lib/profile/app-contact-auth';
+
+export const dynamic = 'force-dynamic';
 
 const log = createLogger('kernel');
 
@@ -25,6 +28,7 @@ interface ResolveEntry {
 
 type EmailAuth =
   | { mode: 'service' }
+  | { mode: 'app'; appDid: string }
   | { mode: 'self'; did: string }
   | { mode: 'none' };
 
@@ -43,6 +47,8 @@ export function OPTIONS(request: NextRequest) {
  *    is the trust level `packages/auth/src/credentials.ts` and the events
  *    guest/sales export routes already had via direct DB access — moving
  *    them onto HTTP must not shrink or widen that.
+ *  - **registered app**: an operator-approved app-service token carrying
+ *    `profile:email:read`, further restricted per person by kernel evidence.
  *  - **self via session**: a session-authenticated caller may always see
  *    their own email (matches the owner-view branch of
  *    `GET /api/profile/{id}`), but never anyone else's.
@@ -62,6 +68,11 @@ async function resolveEmailAuth(request: NextRequest): Promise<EmailAuth> {
     timingSafeEqual(Buffer.from(bearer), Buffer.from(internalKey))
   ) {
     return { mode: 'service' };
+  }
+  // An attempted app call never falls through to a forwarded human cookie.
+  if (bearer || request.headers.has('x-app-did')) {
+    const app = await authenticateContactApp(request, 'profile:email:read');
+    return 'error' in app ? { mode: 'none' } : { mode: 'app', appDid: app.appDid };
   }
 
   try {
@@ -191,6 +202,9 @@ export async function POST(request: NextRequest) {
     let emailByDid = new Map<string, string>();
     if (emailAuth.mode === 'service') {
       emailByDid = await resolveEmailsForDids(dids);
+    } else if (emailAuth.mode === 'app') {
+      const related = await relatedContactDids(emailAuth.appDid, dids, 'profile:email:read');
+      emailByDid = await resolveEmailsForDids(related);
     } else if (emailAuth.mode === 'self') {
       emailByDid = await resolveEmailsForDids(dids.filter((d) => d === emailAuth.did));
     }

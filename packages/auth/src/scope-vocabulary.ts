@@ -272,6 +272,10 @@ function connectorBillingScope<C extends ConnectorId>(
 export const SCOPE_VOCABULARY = [
   // ── Platform scopes — no owning connector, granted via the OAuth consent screen
   { scope: 'profile:read', connector: null, label: 'Read your profile information' },
+  // Personal email is never self-granted via serviceEligible/requestedScopes.
+  // Service callers require live operator approval AND a per-person relationship.
+  { scope: 'profile:email:read', connector: null, label: 'Read contact email for people related to this app' },
+  { scope: 'profile:contact:backfill', connector: null, label: 'Fill missing contact email for people related to this app' },
   { scope: 'identity:read', connector: null, label: 'Read your identity and DID' },
   { scope: 'identity:write', connector: null, label: 'Resolve or mint soft identities on your behalf (registry get-or-create)' },
   { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },

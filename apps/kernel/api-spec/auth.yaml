@@ -2719,6 +2719,9 @@ paths:
       tags: [auth]
       operationId: getIdentityContact
       summary: Get contact information for an identity
+      description: Internal-only vault Bearer contract. App-service scopes do not authorize this GET; apps use POST /profile/api/resolve.
+      security:
+        - bearerAuth: []
       parameters:
         - name: did
           in: path
@@ -2732,20 +2735,27 @@ paths:
     post:
       tags: [auth]
       operationId: backfillIdentityContactEmail
-      summary: Internal — backfill contact_email for a DID (service-to-service)
+      summary: Backfill missing contact email for a DID
       description: |
-        NULL-guarded backfill of `auth.identities.contact_email` (#2058,
-        sibling of #1999/#2053). Never overwrites an existing value, so
-        calling this repeatedly for the same DID is safe — once a
-        contact_email is on file, later calls report `backfilled: false`
-        and perform no write. The standalone events checkout and payment-webhook
-        flows must call this instead of writing `auth.identities` directly.
+        Atomic, independently NULL-guarded backfill of auth.identities.contact_email
+        and an existing profile.profiles.contact_email. Normalizes by trimming and
+        lowercasing; never overwrites either column, creates a profile, or writes
+        verified credentials. backfilled is true if either column was filled.
+        Repeated calls are safe no-ops when both existing rows already have email.
 
-        Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session
-        cookie — mirrors POST /api/eligibility/evaluate's reasoning: the
-        caller has already established the email itself (a validated
-        session, or a Stripe webhook payload with no end-user session at
-        all) before calling this route.
+        Accepts the existing vault-only ATTESTATION_INTERNAL_API_KEY Bearer, or a
+        registered app's own app-service+jwt (aud imajin:apps, sub=azp) carrying
+        profile:contact:backfill. App calls require an active registration and
+        current operator approval of that scope, plus an active app-authorization
+        grant of profile:contact:backfill from the target person to the exact app,
+        or a completed pay.transactions row bound to that app whose fromDid is
+        the target DID. Anonymous/unbound payments, caller metadata, profile:read
+        and an ordinary app login are not sufficient.
+
+        App responses always return contactEmail: null, even on a no-op, so a
+        write-only scope cannot reveal an existing address. Read email separately
+        through POST /profile/api/resolve with profile:email:read and its per-person
+        relationship gate. GET on this contact route remains internal-only.
 
         Does not emit an attestation: contact_email is an unverified
         billing/notification address, not a verification-state change.
@@ -2774,17 +2784,22 @@ paths:
                 type: object
                 properties:
                   did: { type: string }
-                  contactEmail: { type: string, nullable: true }
+                  contactEmail: { type: string, nullable: true, description: "Always null for registered-app callers; internal callers retain the existing identity contactEmail response." }
                   backfilled:
                     type: boolean
-                    description: True only when this call performed the write (not a prior call).
+                    description: True only when this call filled at least one of the two NULL contact columns.
         "400":
           description: Invalid request (missing/invalid email)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Unauthorized (invalid API key)
+          description: Unauthorized (invalid internal key or app-service token)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: App scope not granted or no relationship to the target person
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
