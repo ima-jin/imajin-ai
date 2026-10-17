@@ -1,4 +1,4 @@
-import { text, timestamp, jsonb, index, boolean, pgSchema, unique, uniqueIndex, real, integer } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, boolean, pgSchema, unique, uniqueIndex, real, integer, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const registrySchema = pgSchema('registry');
@@ -412,6 +412,7 @@ export const registryApps = registrySchema.table('apps', {
   statusIdx: index('idx_registry_apps_status').on(table.status),
   tierIdx: index('idx_registry_apps_tier').on(table.tier),
   slugUniq: uniqueIndex('uniq_registry_apps_slug').on(table.slug).where(sql`${table.slug} IS NOT NULL`),
+  visibilityCheck: check('registry_apps_visibility_check', sql`${table.visibility} IN ('public', 'unlisted', 'private', 'internal')`),
 }));
 
 export type RegistryApp = typeof registryApps.$inferSelect;

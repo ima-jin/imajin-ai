@@ -3,6 +3,7 @@ import { db, forestConfig, identityMembers, registryApps } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
 import { SERVICES } from '@imajin/config';
+import { canAccessAppListing, resolveAppOwnerDids } from '@/src/lib/kernel/app-visibility';
 
 const KERNEL_SERVICE_NAMES = SERVICES
   .filter((s) => s.category === 'kernel' && s.visibility !== 'internal')
@@ -10,13 +11,16 @@ const KERNEL_SERVICE_NAMES = SERVICES
 
 /** Validate enabledServices array and landingService consistency. Returns error string or null. */
 async function validateServiceConfig(
+  groupDid: string,
   enabledServices: string[],
   landingService?: string | null
 ): Promise<string | null> {
   if (!Array.isArray(enabledServices)) return 'enabledServices must be an array';
-  const apps = await db.select({ slug: registryApps.slug })
+  const apps = await db.select({ slug: registryApps.slug, visibility: registryApps.visibility, ownerDid: registryApps.ownerDid })
     .from(registryApps).where(eq(registryApps.status, 'active'));
-  const validNames = new Set([...KERNEL_SERVICE_NAMES, ...apps.map((app) => app.slug)]);
+  const ownerDids = await resolveAppOwnerDids(groupDid);
+  const allowed = apps.filter((app) => canAccessAppListing(app, ownerDids));
+  const validNames = new Set([...KERNEL_SERVICE_NAMES, ...allowed.map((app) => app.slug)]);
   const invalid = enabledServices.filter((n) => typeof n !== 'string' || !validNames.has(n));
   if (invalid.length > 0) return `Unknown services: ${invalid.join(', ')}`;
   if (landingService && !enabledServices.includes(landingService)) return 'landingService must be in enabledServices';
@@ -24,7 +28,7 @@ async function validateServiceConfig(
 }
 
 /** Validate the PATCH body for forest config. Returns error string or null. */
-async function validateForestConfigBody(body: {
+async function validateForestConfigBody(groupDid: string, body: {
   enabledServices?: unknown;
   landingService?: unknown;
   joinVisibility?: unknown;
@@ -33,7 +37,7 @@ async function validateForestConfigBody(body: {
 }): Promise<string | null> {
   const { enabledServices, landingService, joinVisibility, joinNetworkDepth, scopeFeeBps } = body;
   if (enabledServices !== undefined) {
-    const err = await validateServiceConfig(enabledServices as string[], landingService as string | null | undefined);
+    const err = await validateServiceConfig(groupDid, enabledServices as string[], landingService as string | null | undefined);
     if (err) return err;
   }
   if (joinVisibility !== undefined && !['open', 'network', 'invite'].includes(joinVisibility as string)) {
@@ -136,7 +140,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const validationError = await validateForestConfigBody(body);
+  const validationError = await validateForestConfigBody(groupDid, body);
   if (validationError) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }

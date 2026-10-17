@@ -155,7 +155,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
 
   const whereClause = ownerDid
     ? and(eq(registryApps.ownerDid, ownerDid))
-    : eq(registryApps.status, 'active');
+    : and(eq(registryApps.status, 'active'), eq(registryApps.visibility, 'public'));
 
   const apps = await db
     .select({
@@ -181,5 +181,7 @@ export const GET = withLogger('kernel', async (request: NextRequest) => {
     .limit(limit)
     .offset(offset);
 
-  return NextResponse.json({ apps, limit, offset });
+  return NextResponse.json({ apps, limit, offset }, {
+    headers: { 'Cache-Control': 'private, no-store' },
+  });
 });

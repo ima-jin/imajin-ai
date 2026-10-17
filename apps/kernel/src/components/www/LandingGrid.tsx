@@ -81,16 +81,28 @@ function TileGroup({ label, services, onAuthRequired }: Readonly<{ label?: strin
  * `/auth` hub uses (so an actor's feature toggles apply). Signed-in requests
  * fail closed when the identity's apps cannot be resolved.
  */
-async function fetchIdentityAppSlugs(authUrl: string): Promise<Set<string>> {
+async function fetchIdentityApps(authUrl: string, services: ServiceEntry[]): Promise<ServiceEntry[]> {
   try {
     const res = await fetch(`${authUrl}/api/apps?placement=launcher`, {
       credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(),
     });
-    if (!res.ok) return new Set();
-    const data = (await res.json()) as { apps?: Array<{ slug: string }> };
-    return new Set((data.apps ?? []).map((app) => app.slug));
+    if (!res.ok) return [];
+    const data = (await res.json()) as { apps?: Array<{ slug: string; name?: string; icon?: string; entryUrl?: string; description?: string }> };
+    return (data.apps ?? []).map((app) => {
+      const hint = services.find((service) => service.source === 'registry' && service.name === app.slug);
+      return {
+        name: app.slug,
+        label: app.name ?? hint?.label ?? app.slug,
+        icon: app.icon ?? hint?.icon ?? '🧩',
+        description: app.description ?? hint?.description ?? app.name ?? app.slug,
+        category: hint?.category ?? 'core',
+        visibility: hint?.visibility ?? 'public',
+        source: 'registry' as const,
+        url: app.entryUrl || hint?.url || `/${encodeURIComponent(app.slug)}`,
+      };
+    });
   } catch {
-    return new Set();
+    return [];
   }
 }
 
@@ -143,13 +155,15 @@ export function LandingGrid() {
     Promise.all(requests).then(async ([specData, session, scopeConfig]) => {
       const tier = (session as { tier?: string } | null)?.tier;
       const isAuthed = tier === 'preliminary' || tier === 'established' || tier === 'creator';
-      const slugs = isAuthed ? await fetchIdentityAppSlugs(authUrl) : null;
+      const publicServices = (specData as { services?: ServiceEntry[] } | null)?.services ?? [];
+      const apps = isAuthed ? await fetchIdentityApps(authUrl, publicServices) : null;
       if (cancelled) return;
-      if ((specData as { services?: ServiceEntry[] } | null)?.services) {
-        setServices((specData as { services: ServiceEntry[] }).services.filter((s) => s.visibility !== 'internal'));
-      }
+      const visible = apps
+        ? [...publicServices.filter((service) => service.source === 'static'), ...apps]
+        : publicServices;
+      setServices(visible.filter((service) => service.visibility !== 'internal'));
       setAuthed(isAuthed);
-      setIdentityAppSlugs(slugs);
+      setIdentityAppSlugs(apps ? new Set(apps.map((app) => app.name)) : null);
       const cfg = scopeConfig as { enabledServices?: string[] } | null;
       setScopeEnabledServices(cfg?.enabledServices ?? null);
       setLoading(false);
@@ -178,7 +192,7 @@ export function LandingGrid() {
 
   if (scopeEnabledServices && scopeEnabledServices.length > 0) {
     // Kernel services are always visible — only filter userspace by forest config
-    visibleServices = visibleServices.filter((s) => s.category === 'kernel' || scopeEnabledServices.includes(s.name));
+    visibleServices = visibleServices.filter((s) => s.source === 'registry' || s.category === 'kernel' || scopeEnabledServices.includes(s.name));
   }
 
   const { kernel, core, creator, developer, meta } = groupServices(visibleServices);

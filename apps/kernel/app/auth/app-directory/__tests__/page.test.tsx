@@ -16,6 +16,7 @@ const request = vi.fn();
 const response = (apps: ReturnType<typeof app>[]) => Response.json({ apps });
 
 beforeEach(() => {
+  globalThis.history.replaceState({}, '', '/auth/app-directory');
   refresh.mockReset();
   request.mockReset().mockResolvedValue(response([app()]));
   vi.stubGlobal('fetch', request);
@@ -23,6 +24,23 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('App directory', () => {
+  it('loads a direct unlisted app link and adds it through the regular membership endpoint', async () => {
+    globalThis.history.replaceState({}, '', '/auth/app-directory?app=invite-only');
+    request.mockResolvedValueOnce(response([app({ slug: 'invite-only', visibility: 'unlisted' })]))
+      .mockResolvedValueOnce(response([app({ slug: 'invite-only', added: true })]));
+    render(<AppDirectoryPage />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Add New App' }));
+    await screen.findByText('Added');
+    expect(request).toHaveBeenNthCalledWith(1, '/auth/api/apps/invite-only', expect.objectContaining({ method: 'GET' }));
+    expect(request).toHaveBeenLastCalledWith('/auth/api/apps/invite-only', expect.objectContaining({ method: 'PUT' }));
+  });
+  it('explains inherited membership and disables manual removal', async () => {
+    request.mockResolvedValue(response([app({ inherited: true })]));
+    render(<AppDirectoryPage />);
+    const button = await screen.findByText('Included with membership') as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(screen.getByText(/Leaving the owning identity removes/)).toBeDefined();
+  });
   it('loads registry metadata and shows scope, added, featured, and authorization states', async () => {
     request.mockResolvedValue(response([
       app({ featured: true, added: true, authorized: true }),

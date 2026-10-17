@@ -21,6 +21,15 @@ async function validateBodyTarget(request: NextRequest, did: string): Promise<Ne
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 }
+/** The direct link can reveal an unlisted app, but never a non-member's private app. */
+export async function GET(request: NextRequest, context: Context) {
+  const auth = await authenticateAppDirectory(request);
+  if ('error' in auth) return auth.error;
+  const { slug } = await context.params;
+  const apps = await resolveAppDirectoryForIdentity(auth.did, { slug });
+  if (apps.length === 0) return NextResponse.json({ error: 'App not found' }, { status: 404 });
+  return NextResponse.json({ apps }, { headers: { 'Cache-Control': 'private, no-store' } });
+}
 
 async function mutate(request: NextRequest, context: Context, added: boolean) {
   const auth = await authenticateAppDirectory(request);
@@ -35,15 +44,21 @@ async function mutate(request: NextRequest, context: Context, added: boolean) {
   if (!permitted) return NextResponse.json({ error: 'Must be self or group owner/admin' }, { status: 403 });
 
   const { slug } = await context.params;
-  const directory = await resolveAppDirectoryForIdentity(auth.did);
+  const directory = await resolveAppDirectoryForIdentity(auth.did, { slug });
   const app = directory.find((row) => row.slug === slug);
   if (!app) return NextResponse.json({ error: 'App not found' }, { status: 404 });
+  if (app.inherited) {
+    return NextResponse.json({ error: 'This app follows identity membership; leave the owning identity to remove it.' }, { status: 409 });
+  }
   if (added && !app.available) return NextResponse.json({ error: 'App unavailable for this identity scope' }, { status: 403 });
   if (person) await setPersonAppMembership(auth.did, slug, added);
   else await setGroupAppMembership(auth.did, slug, added);
 
   // Removing membership deliberately does not revoke a still-live authorization.
-  return NextResponse.json({ apps: await resolveAppDirectoryForIdentity(auth.did) });
+  const options = app.visibility === 'unlisted' ? { slug } : undefined;
+  return NextResponse.json({ apps: await resolveAppDirectoryForIdentity(auth.did, options) }, {
+    headers: { 'Cache-Control': 'private, no-store' },
+  });
 }
 
 export async function PUT(request: NextRequest, context: Context) {

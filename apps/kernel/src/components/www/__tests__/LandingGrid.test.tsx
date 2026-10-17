@@ -67,6 +67,17 @@ afterEach(() => {
 });
 
 describe('LandingGrid (#2434)', () => {
+  it('renders member-private apps from the identity response even when absent from anonymous discovery', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/launcher')) return Response.json({ services: LAUNCHER_TILES });
+      if (url.endsWith('/api/session')) return Response.json({ tier: 'established' });
+      return Response.json({ apps: [{ slug: 'artifact', name: 'Artifact', entryUrl: '/artifact' }] });
+    }));
+    render(<LandingGrid />);
+    expect((await screen.findByRole('link', { name: /Artifact/ })).getAttribute('href')).toBe('/artifact');
+    expect(screen.queryByText('Coffee')).toBeNull();
+  });
   it('ignores a previous identity response after acting-as changes', async () => {
     let finish: (value: Response) => void = () => undefined;
     const request = vi.fn(async (url: string) => {

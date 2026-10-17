@@ -5,9 +5,10 @@ import { requireAuth, resolveActingDid, approvedScopeCeiling, type AppDependency
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
+import { canAccessAppListing, resolveAppOwnerDids } from '@/src/lib/kernel/app-visibility';
 
 // GET /api/registry/apps/:appId — app detail (public)
-export async function GET(_request: NextRequest, props: { params: Promise<{ appId: string }> }) {
+export async function GET(request: NextRequest, props: { params: Promise<{ appId: string }> }) {
   const params = await props.params;
   const [app] = await db
     .select({
@@ -27,6 +28,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ appI
       status: registryApps.status,
       createdAt: registryApps.createdAt,
       updatedAt: registryApps.updatedAt,
+      visibility: registryApps.visibility,
     })
     .from(registryApps)
     .where(eq(registryApps.id, params.appId));
@@ -34,8 +36,17 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ appI
   if (!app) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
+  if (app.visibility === 'private' || app.visibility === 'internal') {
+    const auth = await requireAuth(request);
+    if ('error' in auth) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    const did = resolveActingDid(auth.identity);
+    const visible = app.visibility === 'internal'
+      ? app.ownerDid === did
+      : canAccessAppListing(app, await resolveAppOwnerDids(did));
+    if (!visible) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
 
-  return NextResponse.json(app);
+  return NextResponse.json(app, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 
 type AppUpdates = Partial<typeof registryApps.$inferInsert>;
