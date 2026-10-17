@@ -250,6 +250,12 @@ def runner_checks(scratch):
     scratch.sql("postgres", "CREATE DATABASE restored")
     scratch.sql("restored", dump)
     verify_adoption(scratch, "restored")
+    run(DOCKER, "exec", scratch.container, "pg_dump", "-U", "postgres",
+        "-d", "history", "--format=custom", "--file=/synthetic.dump")
+    with tempfile.TemporaryDirectory() as temporary:
+        backup = pathlib.Path(temporary) / "synthetic.dump"
+        run(DOCKER, "cp", f"{scratch.container}:/synthetic.dump", str(backup))
+        restore_check(scratch, backup)
     for db, mutation in (
         ("partial", "DELETE FROM public._migrations WHERE filename LIKE '0201_%'"),
         ("tampered", "UPDATE public._migrations SET checksum='bad' WHERE filename LIKE '0201_%'"),
@@ -283,11 +289,11 @@ def runner_checks(scratch):
     print("PASS: actual runner fresh/repeat, dump-restore adoption, OIDs/data/ledger preservation, partial/checksum/untracked refusal, post-cut migration", flush=True)
 def restore_check(scratch, dump):
     install_runner(scratch)
-    scratch.sql("postgres", "CREATE DATABASE restored")
+    scratch.sql("postgres", "CREATE DATABASE supplied_restore")
     run(DOCKER, "cp", str(dump.resolve(strict=True)), f"{scratch.container}:/restore.dump")
     run(DOCKER, "exec", scratch.container, "pg_restore", "-U", "postgres",
-        "-d", "restored", "--no-owner", "--no-privileges", "--exit-on-error", "/restore.dump")
-    verify_adoption(scratch, "restored")
+        "-d", "supplied_restore", "--no-owner", "--no-privileges", "--exit-on-error", "/restore.dump")
+    verify_adoption(scratch, "supplied_restore")
     print("PASS: supplied restore adopted twice; catalog, object IDs, all data and historical ledger preserved", flush=True)
 
 

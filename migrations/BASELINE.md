@@ -48,7 +48,9 @@ migration authority.
 DDL uses dependency-aware `pg_dump` ordering from the pinned image, without
 owners/ACLs, patch-version comments or random psql restrict tokens. All other
 DDL/session settings remain. Baseline-only and full-history kernel catalog
-dumps and normalized static seed content must match.
+dumps and normalized static seed content must match. The required `public.pgcrypto`
+extension is installed explicitly and its version/schema inventory is compared
+separately; the public ledger itself is not baseline-managed DDL.
 
 ### Required seed rows (and only these)
 All populated kernel tables on **empty-history replay** are inventoried;
@@ -80,7 +82,7 @@ a transaction:
 - Complete history: every archived filename/checksum must match, and kernel
   schemas must exist. Insert **only** the baseline ledger row, no DDL/seeds.
   All historical ledger rows remain untouched.
-- Empty untracked kernel: apply baseline and record atomically.
+- Empty untracked database: apply baseline and record atomically.
 - Partial/checksum-mismatched history, unknown ledger state or existing
   untracked kernel: stop; no force-adoption or reconstruction.
 
