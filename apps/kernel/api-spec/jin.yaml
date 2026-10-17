@@ -51,6 +51,10 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
+    internalKeyAuth:
+      type: apiKey
+      in: header
+      name: x-internal-key
   schemas:
     ApprovalStatus:
       type: string
@@ -558,6 +562,52 @@ components:
         errorMessage: { type: string, nullable: true }
 
 paths:
+  /api/internal/session-events:
+    post:
+      tags: [jin, loops]
+      operationId: ingestSessionCommandEvent
+      summary: Internal authenticated-socket handoff for signed plugin observations
+      description: >-
+        Called by the local WebSocket dispatcher only. The internal API key
+        authenticates the handoff; socketDid is taken from the authenticated
+        socket metadata. Independently verifies the current agent signature
+        and principal/loop/command correlation before persisting signed
+        loop.approval.bound or loop.session.*.completed/failed evidence.
+        No unsigned result, unknown command or client-selected destination is
+        accepted. This is not a public approval or command dispatch endpoint.
+      security: [{ internalKeyAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [socketDid, frame]
+              properties:
+                socketDid: { type: string }
+                frame:
+                  type: object
+                  required: [type, attestation]
+                  properties:
+                    type: { type: string }
+                    attestation:
+                      type: object
+                      required: [from, type, timestamp, payload, signature]
+                      properties:
+                        from: { type: string }
+                        type: { type: string, const: agent }
+                        timestamp: { type: integer }
+                        payload: { type: object }
+                        signature: { type: string }
+      responses:
+        "200": { description: Accepted correlated evidence, or an identical duplicate }
+        "400": { description: Invalid or oversized envelope }
+        "401": { description: Internal key required }
+        "403": { description: Publisher, current key, authority or command correlation mismatch }
+        "404": { description: Unknown command or principal-owned loop }
+        "409": { description: Conflicting binding/result, or command not dispatched }
+        "500": { description: Observation unavailable }
   /api/runs/{loopId}/commands:
     post:
       tags: [jin, loops]

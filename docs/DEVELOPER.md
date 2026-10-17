@@ -218,6 +218,14 @@ The UI waits for the correlated agent-signed
 The kernel verifies the authenticated socket DID, current agent key, principal,
 command ID, command type and payload hash before recording an outcome. Spawn
 lineage is accepted only from the signed child/parent attestation.
+The existing outbound plugin WebSocket forwards only authenticated
+`loop.approval.bound` and command-result frames to
+`POST /jin/api/internal/session-events`. Its `socketDid` comes from socket
+authentication, not the frame. The internal API key protects this in-process
+handoff; the agent signature is still independently required. Outbound commands
+use the local `/chat/api/internal/session-command` transport, deliberately
+separate from notification fan-out and its delegated recipients. Neither
+internal endpoint is a harness RPC or a public command bypass.
 
 The wire fixtures follow
 [plugin #77](https://github.com/ima-jin/openclaw-imajin-plugin/issues/77) and
