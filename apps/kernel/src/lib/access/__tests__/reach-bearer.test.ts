@@ -8,6 +8,7 @@ import * as accessSchema from '@/src/db/schemas/access';
 import { defaultFrontDoorConfig } from '@/src/lib/jin/front-door';
 import { emitAttestation, crypto as authCrypto } from '@imajin/auth';
 import { publish } from '@imajin/bus';
+import { rateLimit } from '@imajin/config';
 import { hashToken } from '@/src/lib/mcp/oauth-config';
 import { blockForeignAgentStub, introspectForeignAgentStub } from '@/src/lib/auth/foreign-agent-stub';
 import { resolveReachRequester } from '@/src/lib/auth/reach-authority';
@@ -45,7 +46,7 @@ vi.mock('@imajin/bus', () => ({
 }));
 vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(),
-  rateLimit: () => ({ limited: false, retryAfter: 0 }), getClientIP: () => '192.0.2.1',
+  rateLimit: vi.fn(() => ({ limited: false, retryAfter: 0 })), getClientIP: () => '192.0.2.1',
 }));
 vi.mock('@/src/lib/auth/foreign-principal-stub', () => ({
   resolveOrMintForeignPrincipalStub: async () => ({ did: 'did:imajin:unverified-human' }),
@@ -225,6 +226,15 @@ describe('static-header HTTP round trip', () => {
     expect((await tool('reach_status', { reachId: first.reachId }, second.bearer)).status).toBe(404);
   });
 
+  it('MCP: uses the existing delivery abuse hook rather than bypassing or duplicating its limit', async () => {
+    const credential = await issued();
+    vi.mocked(rateLimit).mockReturnValueOnce({ limited: true, retryAfter: 30 });
+    const response = await tool('reach_send', { topic: 'business_development', message: 'Hello' }, credential.bearer);
+    expect(response.status).toBe(429);
+    expect(rateLimit).toHaveBeenCalledWith(`reach:send:${owner}:${credential.requesterDid}`, 5, 60_000);
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(0);
+  });
+
   it('knocks, sends, receives the principal’s genuine signed reply through bearer-only polling', async () => {
     const credential = await contact();
     expect(await (await poll(credential.bearer, credential.reachId)).json())
@@ -267,6 +277,9 @@ describe('static-header HTTP round trip', () => {
     const response = await poll(credential.bearer, credential.reachId);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ reachId: credential.reachId, state: 'blocked', reply: null });
+    expect(await toolContent(await tool('reach_status', { reachId: credential.reachId }, credential.bearer)))
+      .toEqual({ reachId: credential.reachId, state: 'blocked', reply: null });
+    expect((await tool('reach_send', { topic: 'business_development', message: 'Blocked' }, credential.bearer)).status).toBe(401);
     expect((await pg.query('SELECT status FROM auth.delegate_grant_bearers')).rows).toEqual([{ status: 'active' }]);
   });
   it.each(['expires_at', 'hard_cap_at'])('rejects a bearer past %s on status too', async column => {
@@ -289,6 +302,7 @@ beforeEach(async () => {
   failInsert = false;
   queries = [];
   vi.clearAllMocks();
+  vi.mocked(rateLimit).mockReturnValue({ limited: false, retryAfter: 0 });
   vi.mocked(emitAttestation).mockResolvedValue({} as never);
   vi.mocked(publish).mockResolvedValue(undefined);
   state.auth.mockResolvedValue({ identity: { id: owner, scope: 'actor', subtype: 'human' } });

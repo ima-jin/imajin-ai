@@ -77,12 +77,15 @@ async function denyForMissingScope(
   return ok(id, { content: [{ type: 'text', text }], isError: true });
 }
 
+function resolveTool(name: unknown, surface?: McpSurface) {
+  if (surface) return surface.tools.find((candidate) => candidate.name === name);
+  return typeof name === 'string' ? toolByName(name) : undefined;
+}
+
 /** `tools/call` — identical in both eras. */
 async function callTool(msg: JsonRpcMessage, ctx: McpToolContext, surface?: McpSurface) {
   const name = msg.params?.name;
-  const tool = surface
-    ? surface.tools.find((candidate) => candidate.name === name)
-    : typeof name === 'string' ? toolByName(name) : undefined;
+  const tool = resolveTool(name, surface);
   if (!tool) return rpcError(msg.id, MCP_ERROR_INVALID_PARAMS, `Unknown tool: ${String(name)}`);
   // Per-tool scope gate (#1170): the /mcp route only checks that SOME media
   // scope is present; the authoritative read-vs-write decision is here. A
