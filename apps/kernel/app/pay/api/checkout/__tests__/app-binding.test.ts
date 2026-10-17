@@ -2,8 +2,7 @@
  * POST /pay/api/checkout — app-authenticated checkout binding (#2642), against
  * a real embedded Postgres (pglite): a checkout carrying an app-service token
  * records the calling app DID + the payee manifest on `pay.transactions`
- * (settled marker still NULL); a checkout without one writes exactly what it
- * always did, with the app binding NULL.
+ * (settled marker still NULL); seller checkouts without one are refused.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
@@ -195,48 +194,51 @@ describe('POST /pay/api/checkout — app-authenticated checkout (#2642)', () => 
   });
 });
 
-describe('POST /pay/api/checkout — checkout without an app token is unchanged (#2642)', () => {
-  it('anonymous checkout: app binding NULL, payee manifest NULL, payeeManifest in the body is ignored', async () => {
-    const res = await POST(checkoutRequest({ payeeManifest: PAYEE_MANIFEST }));
-
-    expect(res.status).toBe(200);
-    const row = await rowFor((await res.json()).transactionId);
-    expect(row).toMatchObject({ appDid: null, payeeManifest: null, settledAt: null, fromDid: null, status: 'pending' });
-  });
-
-  it('session checkout: records the user as payer and leaves the app binding NULL', async () => {
+describe('POST /pay/api/checkout — seller requires an app service token (#2866)', () => {
+  it.each([
+    ['anonymous', {}],
+    ['session cookie', { Cookie: 'session=fixture' }],
+    ['session bearer', { Authorization: 'Bearer session-token' }],
+    ['session JWT', { Authorization: `Bearer ${jwtLike('session+jwt')}` }],
+    ['delegated app attestation', { 'x-app-did': APP }],
+    ['malformed bearer', { Authorization: 'Bearer invalid' }],
+  ])('refuses %s without opening a session or recording a payment', async (_label, headers) => {
     mocks.requireAuth.mockResolvedValue({ identity: { id: USER } });
-
-    const res = await POST(checkoutRequest({ fairManifest: PAYEE_MANIFEST }, { Authorization: 'Bearer session-token' }));
-
-    const row = await rowFor((await res.json()).transactionId);
-    expect(row).toMatchObject({ appDid: null, payeeManifest: null, fromDid: USER });
-    expect(row.fairManifest).toEqual(PAYEE_MANIFEST);
-  });
-
-  it('a non-service Bearer (a session JWT) never reaches app-service auth', async () => {
-    mocks.requireAuth.mockResolvedValue({ identity: { id: USER } });
-
-    const res = await POST(checkoutRequest({}, { Authorization: `Bearer ${jwtLike('session+jwt')}` }));
-
-    expect(res.status).toBe(200);
-    expect((await rowFor((await res.json()).transactionId)).appDid).toBeNull();
-  });
-
-  it('user-delegated app auth (x-app-did) still resolves the delegating user and records no app binding', async () => {
     mocks.requireAppAuth.mockResolvedValue({ appAuth: { appDid: APP, userDid: USER, scopes: ['wallet:write'], attestationId: 'att' } });
 
-    const res = await POST(checkoutRequest({}, { 'x-app-did': APP }));
+    const res = await POST(checkoutRequest({ payeeManifest: PAYEE_MANIFEST }, headers as Record<string, string>));
 
-    const row = await rowFor((await res.json()).transactionId);
-    expect(row).toMatchObject({ fromDid: USER, appDid: null });
+    expect(res.status).toBe(401);
+    expect(mocks.payCheckout).not.toHaveBeenCalled();
+    expect(mocks.requireAuth).not.toHaveBeenCalled();
+    expect(mocks.requireAppAuth).not.toHaveBeenCalled();
+    expect(await db.select().from(transactions)).toHaveLength(0);
   });
 
-  it('a failed x-app-did app auth is still a hard error', async () => {
-    mocks.requireAppAuth.mockResolvedValue({ error: 'Scope not granted', status: 403 });
+  it('also refuses an anonymous seller named only in metadata, before item validation', async () => {
+    const res = await POST(checkoutRequest({ sellerDid: undefined, items: [], metadata: { sellerDid: SELLER } }));
 
-    const res = await POST(checkoutRequest({}, { 'x-app-did': APP }));
+    expect(res.status).toBe(401);
+    expect(mocks.payCheckout).not.toHaveBeenCalled();
+    expect(await db.select().from(transactions)).toHaveLength(0);
+  });
 
-    expect(res.status).toBe(403);
+  it('accepts the events app-token checkout and binds metadata-only sellers to the verified app', async () => {
+    const res = await POST(checkoutRequest({
+      sellerDid: undefined,
+      metadata: { service: 'events', eventId: 'evt_1', sellerDid: SELLER, appDid: OTHER_APP },
+    }, { Authorization: `Bearer ${SERVICE_TOKEN}` }));
+
+    expect(res.status).toBe(200);
+    expect(await rowFor((await res.json()).transactionId)).toMatchObject({ appDid: APP, toDid: SELLER, service: 'events' });
+    expect(mocks.payCheckout).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not add an app-token requirement when no seller is named (card checkout still refuses)', async () => {
+    const res = await POST(checkoutRequest({ sellerDid: undefined }));
+
+    expect(res.status).toBe(400);
+    expect(mocks.requireAuth).toHaveBeenCalled();
+    expect(mocks.payCheckout).not.toHaveBeenCalled();
   });
 });
