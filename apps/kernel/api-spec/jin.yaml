@@ -800,7 +800,6 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [loop, events, horizon]
                 properties:
                   events:
                     type: array
@@ -1703,6 +1702,7 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [loop, events, horizon]
                 properties:
                   loop: { $ref: "#/components/schemas/LoopRecord" }
                   horizon: { $ref: "#/components/schemas/Horizon" }
