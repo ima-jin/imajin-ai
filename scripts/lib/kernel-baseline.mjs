@@ -5,7 +5,7 @@ export function migrationChecksum(content) {
 }
 
 /** Never infer adoption from a single sentinel: partial histories must stop. */
-export function baselineAction(manifest, applied, hash, occupied) {
+export function baselineAction(manifest, applied, hash, occupied, complete = occupied) {
   const existing = applied.get(manifest.filename);
   if (existing) {
     if (existing !== hash) throw new Error('Kernel baseline checksum mismatch; refusing modified baseline');
@@ -21,7 +21,7 @@ export function baselineAction(manifest, applied, hash, occupied) {
     if (changed.length > 0) {
       throw new Error(`Historical checksum mismatch: ${changed.map(entry => entry.filename).join(', ')}`);
     }
-    if (!occupied) throw new Error('Historical ledger exists without kernel schema; refusing adoption');
+    if (!complete) throw new Error('Historical ledger exists without kernel schemas; refusing incomplete adoption');
     return 'adopt';
   }
   if (occupied || applied.size > 0) {
@@ -37,9 +37,17 @@ export async function prepareKernelBaseline(sql, manifest, content) {
     await tx`LOCK TABLE public._migrations IN EXCLUSIVE MODE`;
     const rows = await tx`SELECT filename, checksum FROM public._migrations`;
     const occupied = await tx`
-      SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = ANY(${manifest.schemas})) AS present
+      SELECT
+        EXISTS (SELECT 1 FROM pg_namespace
+                WHERE nspname !~ '^pg_' AND nspname NOT IN ('public', 'information_schema'))
+        OR EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                   WHERE n.nspname='public' AND c.relname NOT IN
+                     ('_migrations','_migrations_id_seq','_migrations_pkey','_migrations_filename_key')
+                   AND c.relkind IN ('r','p','v','m','S','f')) AS present,
+        (SELECT count(*) FROM pg_namespace WHERE nspname = ANY(${manifest.schemas}))
+          = ${manifest.schemas.length} AS complete
     `;
-    const action = baselineAction(manifest, new Map(rows.map(row => [row.filename, row.checksum])), hash, occupied[0].present);
+    const action = baselineAction(manifest, new Map(rows.map(row => [row.filename, row.checksum])), hash, occupied[0].present, occupied[0].complete);
     if (action === 'skip') return;
     if (action === 'apply') await tx.unsafe(content);
     await tx`
