@@ -107,6 +107,8 @@ vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeSelfInfo: vi.fn() }));
 vi.mock('../operator-countersign', () => ({ verifyOperatorCountersignature: mockVerifyOperatorCountersignature }));
 
 vi.mock('../web-push', () => ({ pushWebNotificationToOperator: mockPushWebNotificationToOperator }));
+const { mockDiscardStaging } = vi.hoisted(() => ({ mockDiscardStaging: vi.fn() }));
+vi.mock('@/src/lib/apps/secret-staging', () => ({ discardAppSecretForProposal: mockDiscardStaging }));
 
 vi.mock('../operator-approvals', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../operator-approvals')>();
@@ -189,6 +191,43 @@ beforeEach(() => {
   mockInsertValues.mockResolvedValue(undefined);
   mockUpdateWhere.mockResolvedValue(undefined);
   mockPublish.mockResolvedValue(undefined);
+});
+
+describe('app-secret terminal cleanup', () => {
+  const appRow = (status: string) => row({
+    source: 'apps', kind: 'apps:secrets-set', status,
+    detail: { appDid: 'did:imajin:fake-app', name: 'DATABASE_URL', stagingRef: 'fake-ref' },
+  });
+  it('discards staged input after rejection is persisted', async () => {
+    const denied = appRow('denied');
+    mockSelectLimit.mockResolvedValueOnce([appRow('pending')]).mockResolvedValueOnce([denied]);
+    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'reject' });
+    expect(result.ok).toBe(true);
+    expect(mockDiscardStaging).toHaveBeenCalledOnce();
+    expect(mockDiscardStaging).toHaveBeenCalledWith(denied);
+  });
+
+  it.each(['denied', 'expired', 'withdrawn'])('retries cleanup of a proposal already %s', async (status) => {
+    const terminal = appRow(status);
+    mockSelectLimit.mockResolvedValueOnce([terminal]);
+    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'reject' });
+    expect(result.ok).toBe(false);
+    expect(mockDiscardStaging).toHaveBeenCalledOnce();
+    expect(mockDiscardStaging).toHaveBeenCalledWith(terminal);
+  });
+
+  it('preserves input if a concurrent approval won over the reject', async () => {
+    mockSelectLimit.mockResolvedValueOnce([appRow('pending')]).mockResolvedValueOnce([appRow('approved')]);
+    await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'reject' });
+    expect(mockDiscardStaging).not.toHaveBeenCalled();
+  });
+
+  it('does not change the approve path', async () => {
+    mockSelectLimit.mockResolvedValueOnce([appRow('pending')]).mockResolvedValueOnce([appRow('approved')]);
+    const result = await decideOperatorApproval({ proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' });
+    expect(result.ok).toBe(true);
+    expect(mockDiscardStaging).not.toHaveBeenCalled();
+  });
 });
 
 describe('recordApprovalRequested', () => {
