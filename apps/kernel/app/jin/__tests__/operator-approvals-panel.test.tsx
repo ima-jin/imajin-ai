@@ -37,6 +37,20 @@ interface ApprovalFixture {
   createdAt: string;
 }
 
+describe('vault import approval renderer (#2260)', () => {
+  it('shows owner and consuming agent on the existing signing rail for an addressed nonoperator', async () => {
+    installFetch([{ isOperator: false, approvals: [vaultApproval({
+      kind: 'vault:import', summary: 'Import credential for an organization',
+      detail: { ownerDid: 'did:imajin:test-org', consumerDid: 'did:imajin:test-agent', purpose: 'analysis', fingerprint: 'test-fingerprint' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByTestId('vault-import-approval')).toBeDefined();
+    expect(screen.getByText('did:imajin:test-org')).toBeDefined();
+    expect(screen.getByText('did:imajin:test-agent')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Sign' })).toBeDefined();
+  });
+});
+
 function approval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
   return {
     proposalId: 'opap_1',

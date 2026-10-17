@@ -3,6 +3,7 @@
 import { UsageFeedPanel } from './usage-feed-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
+import { VaultImportPanel } from './vault-import-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
 import { ProvisionAppPanel } from './provision-app-panel';
 import { AppSecretsPanel } from './app-secrets-panel';
@@ -47,6 +48,7 @@ export default function JinPage() {
             ABOVE the operator-approvals panel so a freshly-raised vault
             proposal's confirm card appears directly below it. */}
         <VaultKeysPanel />
+        <VaultImportPanel />
 
         {/* Delegate-grant bearers (#2252) — knock/manage self-service,
             visible to any signed-in identity; renders nothing when signed
