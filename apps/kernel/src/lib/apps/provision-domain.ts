@@ -1,6 +1,5 @@
 import { and, eq } from 'drizzle-orm';
 import { db, identities, registryApps } from '@/src/db';
-import { issueImajinDomain, normalizeDomain } from '@/src/lib/domains/service';
 
 /** Explicit owner choices must resolve before provisioning creates anything. */
 export async function validateProvisionOwner(did?: string): Promise<void> {
@@ -21,6 +20,9 @@ export async function provisionAppDomain(
   requestedDomain?: string,
   requestedOwner?: string,
 ): Promise<void> {
+  // Service-scope minting imports the provisioning approval vocabulary.
+  // Do not initialize DNS, node identity or vault signing on that read path.
+  const { issueImajinDomain, normalizeDomain } = await import('@/src/lib/domains/service');
   const domain = normalizeDomain(requestedDomain ?? `${slug}.imajin.ai`);
   if (!/^[a-z0-9-]+\.imajin\.ai$/.test(domain)) {
     throw new Error('Provisioned hosts must be direct imajin.ai subdomains; custom domains require TXT verification');
