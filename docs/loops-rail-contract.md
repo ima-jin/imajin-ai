@@ -1,4 +1,5 @@
 # Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
+Horizon step entries extend this signed rail under #2878; claim lease policy and Runs rendering remain separate.
 
 ## Surface leases (#2405)
 
