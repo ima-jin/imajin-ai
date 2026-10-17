@@ -343,6 +343,9 @@ paths:
         delegation policy: delegated agents cannot execute ownership mutations
         (403 AGENT_APPROVAL_REQUIRED). The service resolves appDid ownership
         from the active registry.apps.ownerDid, which may differ from zoneOwner.
+        When they differ for a custom DNS domain, that app must already advertise
+        the exact host in its authoritative entryUrl, callbackUrl or homepageUrl.
+        DNS control alone cannot put an unrelated app's owner on a site's record.
         zoneOwner is the path DID, never a body
         claim; arbitrary zoneOwner/siteOwner/other body fields are rejected.
         TXT proof is the exact zoneOwner DID at _imajin.<normalized-domain>.
@@ -368,7 +371,7 @@ paths:
               schema: { $ref: "#/components/schemas/DomainResult" }
         "400": { description: Invalid JSON/domain/appDid or prohibited ownership fields }
         "401": { description: Authentication required }
-        "403": { description: Owner/admin required, reserved Imajin domain, or agent countersign required }
+        "403": { description: Owner/admin required, missing app-host authorization, reserved Imajin domain, or agent countersign required }
         "404": { description: Active registered app or identity not found }
         "409": { description: Conflicting domain binding }
         "500": { description: Redacted domain operation failure }
@@ -386,6 +389,8 @@ paths:
         TXT chunks are joined and must equal the zoneOwner DID exactly.
         Signed domain.verified evidence is persisted in attestations.
         Periodic checks revoke proof when DNS no longer matches.
+        App ownership and cross-owner hostname authorization are revalidated;
+        withdrawn app-host authorization revokes an existing verified binding.
       security: [{ cookieAuth: [] }, { bearerAuth: [] }]
       responses:
         "200":
@@ -431,6 +436,8 @@ paths:
         Unauthenticated, no-store. Calls listDomains(did, true). Only verified
         bindings with a signed attestation are returned. Pending, revoked,
         legacy and unsigned bindings are never public ownership evidence.
+        Stale DNS evidence, changed app ownership or withdrawn cross-owner
+        app-host authorization are hidden immediately.
         Signed evidence is public data only; no credential or grant material.
       security: []
       parameters:
