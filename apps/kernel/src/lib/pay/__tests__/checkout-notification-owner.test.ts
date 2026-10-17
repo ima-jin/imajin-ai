@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   publish: vi.fn().mockResolvedValue(undefined),
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  settledSession: null as unknown,
 }));
 vi.mock('@/src/db', async () => {
   const pay = await import('@/src/db/schemas/pay');
@@ -26,7 +27,7 @@ vi.mock('@/src/db', async () => {
   };
 });
 vi.mock('@imajin/logger', () => ({ createLogger: () => mocks.log }));
-vi.mock('@imajin/bus', () => ({ publish: mocks.publish }));
+vi.mock('@imajin/bus', () => ({ publish: mocks.publish, registerReactor: vi.fn() }));
 vi.mock('../settle-core', () => ({ verifySettlementSignature: vi.fn() }));
 vi.mock('../providers/stripe-webhook', () => ({ fetchActualFee: vi.fn() }));
 vi.mock('@/src/lib/auth/kernel-webhook', () => ({
@@ -35,7 +36,18 @@ vi.mock('@/src/lib/auth/kernel-webhook', () => ({
 }));
 
 import { notifyCheckoutServices } from '../webhook-handlers';
+import { payStripeReactor } from '../stripe-bus-consumer';
 import type { StripeCheckoutSessionLike } from '../webhook-event-shapes';
+
+vi.mock('../byo-checkout-settlement', () => ({
+  settleCheckoutFromByoStripe: async () => ({ settled: true, session: mocks.settledSession }),
+}));
+vi.mock('../node-topup-settlement', () => ({ settleNodeTopupFromStripe: async () => false }));
+vi.mock('../payment-requests/byo-settlement', () => ({ settlePaymentRequestFromByoStripe: vi.fn() }));
+vi.mock('../payment-requests/checkout', () => ({ settlePaymentRequestFromStripeCheckout: vi.fn() }));
+vi.mock('../withdraw-intent', () => ({ confirmWithdrawalFromRailEvent: vi.fn() }));
+vi.mock('../rails/registry', () => ({ getWithdrawRailByName: vi.fn() }));
+vi.mock('../providers/stripe-withdraw-rail', () => ({ stripeRailName: 'stripe' }));
 
 let harness: PgliteLedgerHarness;
 let db: PgliteDatabase;
@@ -76,6 +88,7 @@ beforeEach(async () => {
   vi.stubEnv('EVENTS_SERVICE_URL', 'https://events.test');
   vi.stubEnv('MARKET_SERVICE_URL', 'https://market.test');
   vi.stubEnv('LEARN_SERVICE_URL', 'https://learn.test');
+  vi.stubEnv('COFFEE_SERVICE_URL', 'https://coffee.test');
   await harness.client.exec('DELETE FROM pay.transactions; DELETE FROM registry.apps');
   for (const slug of APPS) {
     await harness.client.query(
@@ -137,6 +150,20 @@ describe('recorded app ownership gates paid checkout notifications (#2866)', () 
     await notifyCheckoutServices(session());
     expect(mocks.post).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
+  });
+
+  it.each(['events', 'coffee'])('the BYO reactor gates the separate coffee callback for a %s-owned row', async (slug) => {
+    await seedRow(didFor(slug));
+    mocks.settledSession = session({ metadata: { service: 'coffee', tipId: 'tip_target' } });
+    await payStripeReactor({
+      type: 'stripe.payment_intent.succeeded', issuer: 'did:imajin:seller',
+      subject: 'did:imajin:seller', scope: 'stripe',
+      payload: {
+        ownerDid: 'did:imajin:seller', payTransactionId: 'tx_owned',
+        paymentIntentId: 'pi_owned', amount: 5000, currency: 'CAD',
+      },
+    }, {});
+    expect(mocks.post.mock.calls.map((call) => call[2])).toEqual(slug === 'coffee' ? ['coffee'] : []);
   });
 
   it('logs lookup errors and suppresses fulfillment without throwing', async () => {
