@@ -1,0 +1,1 @@
+-- Reconcile seed-era catalog drift (refs #2865); implementation follows in this draft.
