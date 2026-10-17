@@ -11,17 +11,11 @@
  * a hard failure, and these tests pin that in both directions: throw in
  * production, still work in development.
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { randomBytes } from 'node:crypto';
 
 // The import-time test below loads vault/index.ts, which pulls in the DB and bus
 // singletons. Stub them so the test exercises module evaluation only.
-vi.hoisted(() => {
-  const { join } = require('node:path') as typeof import('node:path');
-  const { tmpdir } = require('node:os') as typeof import('node:os');
-  process.env.VAULT_PATH = join(tmpdir(), `vault-key-guard-${Date.now()}.json`);
-  process.env.VAULT_ALLOW_BOOTSTRAP = '1';
-});
 
 vi.mock('@/src/db', () => ({
   db: {},
@@ -42,29 +36,14 @@ import {
   _resetSealingCache,
 } from '../sealing.js';
 
-const originalNodeEnv = process.env.NODE_ENV;
-
-/**
- * NODE_ENV is readonly in Next's type surface, so assign through a cast rather
- * than fighting the ambient declaration.
- */
-function setNodeEnv(value: string | undefined): void {
-  if (value === undefined) {
-    delete (process.env as Record<string, string | undefined>).NODE_ENV;
-    return;
-  }
-  (process.env as Record<string, string | undefined>).NODE_ENV = value;
-}
-
 beforeEach(() => {
   _resetSealingCache();
-  delete process.env.AUTH_PRIVATE_KEY;
+  vi.stubEnv('AUTH_PRIVATE_KEY', undefined);
 });
 
 afterEach(() => {
   _resetSealingCache();
-  delete process.env.AUTH_PRIVATE_KEY;
-  setNodeEnv(originalNodeEnv);
+  vi.unstubAllEnvs();
 });
 
 describe('vault key derivation in production', () => {
@@ -76,22 +55,22 @@ describe('vault key derivation in production', () => {
   ];
 
   it.each(derivations)('%s throws when AUTH_PRIVATE_KEY is absent', (_name, derive) => {
-    setNodeEnv('production');
+    vi.stubEnv('NODE_ENV', 'production');
     _resetSealingCache();
 
     expect(() => derive()).toThrow(/AUTH_PRIVATE_KEY is required in production/);
   });
 
   it.each(derivations)('%s succeeds when AUTH_PRIVATE_KEY is present', (_name, derive) => {
-    setNodeEnv('production');
-    process.env.AUTH_PRIVATE_KEY = randomBytes(32).toString('hex');
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('AUTH_PRIVATE_KEY', randomBytes(32).toString('hex'));
     _resetSealingCache();
 
     expect(() => derive()).not.toThrow();
   });
 
   it('derives the dev fallback outside production so local dev keeps working', () => {
-    setNodeEnv('development');
+    vi.stubEnv('NODE_ENV', 'development');
     _resetSealingCache();
 
     const identity = getNodeSigningIdentity();
@@ -99,7 +78,7 @@ describe('vault key derivation in production', () => {
   });
 
   it('names the standalone-server env pitfall in the error message', () => {
-    setNodeEnv('production');
+    vi.stubEnv('NODE_ENV', 'production');
     _resetSealingCache();
 
     // The error is the only breadcrumb an operator gets at 3am, so it must point
@@ -109,20 +88,37 @@ describe('vault key derivation in production', () => {
 });
 
 describe('module import in production', () => {
+  let vaultImport: Promise<typeof import('../index.js')>;
+
+  // Evaluate the cold graph under the actual build-time guard conditions,
+  // after mocks, not inside a 5s assertion window (#2848). A failed setup
+  // blocks this suite instead of letting tests re-enter an unfinished import.
+  beforeAll(async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('AUTH_PRIVATE_KEY', undefined);
+    vi.stubEnv('VAULT_PATH', undefined);
+    try {
+      vaultImport = import('../index.js');
+      await vaultImport;
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }, 30_000);
+
   it('does not derive keys merely by importing the vault', async () => {
     // `next build` imports route modules with NODE_ENV=production on a machine
     // that legitimately has no AUTH_PRIVATE_KEY. Deriving a key at module scope
     // therefore converts the runtime guard into a build failure, which is
     // exactly what happened when the identity was logged at init.
-    setNodeEnv('production');
+    vi.stubEnv('NODE_ENV', 'production');
 
-    await expect(import('../index.js')).resolves.toBeDefined();
+    await expect(vaultImport).resolves.toBeDefined();
   });
 });
 
 describe('JWT signing key in production', () => {
   it('refuses to mint tokens with an ephemeral keypair', async () => {
-    setNodeEnv('production');
+    vi.stubEnv('NODE_ENV', 'production');
     const { createSessionToken } = await import('@/src/lib/auth/jwt');
 
     // An ephemeral key would invalidate every session on restart and cannot be
