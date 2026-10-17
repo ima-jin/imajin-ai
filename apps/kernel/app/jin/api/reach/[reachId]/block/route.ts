@@ -4,6 +4,7 @@ import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { blockReachSender, getReachEnvelope } from '@/src/lib/auth/reach-envelope-store';
 import { isReachPrincipal } from '@/src/lib/auth/reach-reply-service';
+import { blockForeignAgentStub } from '@/src/lib/auth/foreign-agent-stub';
 
 const log = createLogger('kernel:reach:block');
 export const dynamic = 'force-dynamic';
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest, props: Readonly<{ params: Promi
     const { reachId } = await props.params;
     const envelope = await getReachEnvelope({ principalDid: auth.identity.id, reachId });
     if (!envelope) return NextResponse.json({ error: 'Reach envelope not found' }, { status: 404, headers });
+    await blockForeignAgentStub(envelope.requesterDid, auth.identity.id);
     await blockReachSender({ principalDid: auth.identity.id, requesterDid: envelope.requesterDid });
     return NextResponse.json({ blocked: true }, { headers });
   } catch (error) {

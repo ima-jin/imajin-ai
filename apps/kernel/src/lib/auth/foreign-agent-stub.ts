@@ -5,8 +5,8 @@
  * full identity, without adding authority to this scoped credential.
  */
 import { createHash } from 'node:crypto';
-import { and, eq, or, sql } from 'drizzle-orm';
-import { db, identities, foreignAgentStubs } from '@/src/db';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
+import { db, identities, foreignAgentStubs, delegateGrantBearers } from '@/src/db';
 
 export const FOREIGN_AGENT_STUB_SUBTYPE = 'foreign_agent_stub';
 export const FOREIGN_AGENT_CAPABILITY = 'reach';
@@ -84,6 +84,15 @@ export function blockForeignAgentStub(requesterDid: string, principalDid: string
         eq(foreignAgentStubs.promotedTo, requesterDid)),
       eq(foreignAgentStubs.principalDid, principalDid),
     )).returning({ stubDid: foreignAgentStubs.stubDid });
+    if (revoked.length > 0) {
+      const surfaces = JSON.stringify([`reach:${principalDid}`]);
+      await tx.update(delegateGrantBearers).set({
+        status: 'revoked', tokenHash: null, revokedAt: new Date(), revokedBy: principalDid,
+      }).where(and(
+        inArray(delegateGrantBearers.principalDid, revoked.map((stub) => stub.stubDid)),
+        sql`${delegateGrantBearers.surfaces} = ${surfaces}::jsonb`,
+      ));
+    }
     return revoked.length > 0;
   });
 }

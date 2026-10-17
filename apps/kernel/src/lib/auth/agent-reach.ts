@@ -37,6 +37,8 @@ import type { ReachDeliveryInput } from './reach-delivery-input';
 import { parseReachDelivery } from './reach-delivery-input';
 import { deliverReach } from './reach-delivery';
 import { markReachPublished } from './reach-envelope-store';
+import { resolveReachBearer } from '@/src/lib/access/reach-bearer';
+import { isTierAdmitted } from '@/src/lib/jin/front-door';
 
 const log = createLogger('kernel');
 
@@ -84,6 +86,7 @@ export interface ReachDelivered {
   delivered: true;
   reachId: string;
 }
+export type ReachResult = ReachAnswer | ReachDenied | ReachDelivered;
 
 /**
  * The canonical transcript the requester signs and both records hash.
@@ -197,6 +200,7 @@ async function emitReachAttestation(params: EmitReachAttestationParams): Promise
       onBehalfOfStubDid: params.onBehalfOfStubDid ?? null,
       onBehalfOfPlatform: input.onBehalfOf.platform,
       selfDescription: input.onBehalfOf.selfDescription ?? null,
+      claimVerified: false,
       purpose: input.purpose,
       field: input.field,
       predicate: input.predicate,
@@ -236,7 +240,7 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
   if (result.outcome === 'declined') return null;
   if (result.outcome !== 'delivered') {
     const reason = result.outcome === 'blocked' ? 'unauthorized' : 'rate_limited';
-    await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: true });
+    await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: params.requesterAuthTier !== 'bearer' });
     return denial(reason, result.outcome === 'blocked' ? 403 : 429);
   }
   // The attestation committed with the envelope, so publication retries can
@@ -263,7 +267,7 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
 export async function reachPrincipal(
   principalDid: string,
   input: ReachRequestInput,
-): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
+): Promise<ReachResult> {
   const transcript = reachTranscript(principalDid, input);
   const transcriptHash = hashTranscript(transcript);
 
@@ -308,6 +312,55 @@ export async function reachPrincipal(
     return denial('unauthorized', 403);
   }
 
+  return evaluateReach({ principalDid, input, principal, requester, introspection, transcriptHash, signatureVerified: true });
+}
+
+/** Possession authenticates THEIR stub, never the recipient or the claimed human. */
+export async function reachPrincipalWithBearer(
+  principalDid: string, token: string, body: Record<string, unknown>,
+): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
+  const credential = await resolveReachBearer(token, principalDid);
+  if (!credential) return denial('unauthorized', 401);
+  const [principal] = await db.select({ id: identities.id, metadata: identities.metadata })
+    .from(identities).where(eq(identities.id, principalDid)).limit(1);
+  const metadata = principal?.metadata as Record<string, unknown> | null;
+  if (!principal || !metadata || !Object.hasOwn(metadata, 'agentReachGate') || !isTierAdmitted(metadata, 'soft')) {
+    return denial('unauthorized', 403);
+  }
+  const topic = body.topic ?? body.arg;
+  if (typeof topic !== 'string' || !topic.trim() || topic.length > 200
+    || (body.purpose !== undefined && body.purpose !== 'agent.reach')
+    || (body.field !== undefined && body.field !== 'contact_topics')
+    || (body.predicate !== undefined && body.predicate !== 'contains')
+    || (body.arg !== undefined && body.arg !== topic)
+    || (body.requesterDid !== undefined && body.requesterDid !== credential.requesterDid)) {
+    return denial('unauthorized', 403);
+  }
+  const input: ReachRequestInput = {
+    requesterDid: credential.requesterDid, onBehalfOf: credential.onBehalfOf,
+    purpose: 'agent.reach', field: 'contact_topics', predicate: 'contains', arg: topic,
+    issuedAt: typeof body.issuedAt === 'string' ? body.issuedAt : new Date().toISOString(), signature: '',
+  };
+  const delivery = parseReachDelivery({ ...body, ...input });
+  if (!delivery.ok) return denial('unauthorized', 400);
+  Object.assign(input, delivery.delivery);
+  return evaluateReach({
+    principalDid, input, principal, requester: { tier: 'soft' }, introspection: {},
+    transcriptHash: hashTranscript(reachTranscript(principalDid, input)), signatureVerified: false,
+  });
+}
+
+/** Both transports must pass the same broker, topic and delivery policy. */
+async function evaluateReach(params: {
+  principalDid: string;
+  input: ReachRequestInput;
+  principal: { metadata: unknown };
+  requester: { tier: unknown };
+  introspection: { grantId?: string };
+  transcriptHash: string;
+  signatureVerified: boolean;
+}): Promise<ReachResult> {
+  const { principalDid, input, principal, requester, introspection, transcriptHash, signatureVerified } = params;
   const stub = await resolveOrMintForeignPrincipalStub({
     // An unverified human claim, not a grant or an authenticated sender.
     platform: input.onBehalfOf.platform,
@@ -332,7 +385,7 @@ export async function reachPrincipal(
   const issuedAt = new Date().toISOString();
   const delivery = parseReachDelivery(input as unknown as Record<string, unknown>);
   if (!delivery.ok) {
-    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified: true });
+    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified });
     return denial('unauthorized', 403);
   }
   if (delivery.delivery) {
@@ -340,6 +393,7 @@ export async function reachPrincipal(
       principalDid, input: { ...input, ...delivery.delivery }, metadata: principal.metadata,
       requesterTier: typeof requester.tier === 'string' ? requester.tier : 'unknown', onBehalfOfStubDid: stub.did,
       grantId: introspection.grantId ?? null, transcriptHash, admitted: answer,
+      requesterAuthTier: signatureVerified ? 'signed' : 'bearer',
     });
     if (result) return result;
     answer = false;
@@ -349,7 +403,7 @@ export async function reachPrincipal(
     principalDid,
     input,
     transcriptHash,
-    signatureVerified: true,
+    signatureVerified,
     outcome: 'answered',
     answer,
     onBehalfOfStubDid: stub.did,
