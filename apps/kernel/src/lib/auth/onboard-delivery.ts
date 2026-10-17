@@ -30,10 +30,11 @@ export async function deliverOnboardEmail(input: DeliveryInput): Promise<{
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
   });
   const verifyUrl = `${buildPublicUrlAbsolute('auth')}/api/onboard/verify?token=${token}`;
+  const contextText = input.context ? ` to ${input.context}` : '';
   const result = await sendEmail({
     to: input.email,
     sensitive: true,
-    subject: `Verify your email${input.context ? ` to ${input.context}` : ''} — Imajin`,
+    subject: `Verify your email${contextText} — Imajin`,
     html: onboardEmail({
       verifyUrl, context: input.context ?? undefined, name: input.name ?? undefined,
       onBehalfOf: input.onBehalfOf,

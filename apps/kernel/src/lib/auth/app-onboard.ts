@@ -38,7 +38,7 @@ async function loadOrder(app: App, transactionId: string) {
     eq(transactions.id, transactionId), eq(transactions.appDid, app.appDid),
     eq(transactions.status, 'completed'), eq(transactions.rail, 'stripe-byo'),
   )).limit(1);
-  if (!order || order.appDid !== app.appDid || order.status !== 'completed'
+  if (order?.appDid !== app.appDid || order.status !== 'completed'
     || order.rail !== 'stripe-byo' || !order.externalRef?.startsWith('cs_')) return null;
   if (order.toDid !== app.ownerDid
     && !await hasAppAuthorizationGrant(app.appDid, order.toDid, ONBOARD_SEND_SCOPE)) return null;
