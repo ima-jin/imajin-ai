@@ -3,6 +3,12 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.mock('@imajin/bus', () => ({
+  REACH_REPLY_EVENT: 'agent.reach.replied',
+  loadReachReplyEntitlements: vi.fn().mockResolvedValue([]),
+  matchingReachReplyEntitlements: vi.fn().mockReturnValue([]),
+}));
+
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
 
@@ -85,6 +91,7 @@ vi.mock('@/src/db', () => ({
 }));
 
 import { catchUpSubscriptionEvents } from '../event-subscriptions';
+import { loadReachReplyEntitlements } from '@imajin/bus';
 
 const AGENT = 'did:imajin:matchmaker-agent';
 const DELEGATOR = 'did:imajin:ryan';
@@ -170,6 +177,13 @@ describe('catchUpSubscriptionEvents — entitlement resolution + ordering', () =
   it('returns entitled event types resolved from active capabilities', async () => {
     const result = await catchUpSubscriptionEvents({ agentDid: AGENT, cursor: BigInt(0) });
     expect(result.entitledEventTypes).toEqual(['availability.match.surfaced']);
+  });
+
+  it('does not change unrelated delivery when reply entitlement storage fails', async () => {
+    vi.mocked(loadReachReplyEntitlements).mockRejectedValueOnce(new Error('reply lookup unavailable'));
+    logStore.set('evt_1', logRow());
+    const result = await catchUpSubscriptionEvents({ agentDid: AGENT, cursor: 0n });
+    expect(result.events.map((event) => event.id)).toEqual(['evt_1']);
   });
 
   it('returns missed events in ascending cursor order and advances nextCursor', async () => {

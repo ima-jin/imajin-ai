@@ -15,6 +15,13 @@
  * moment of delivery (live push) or read (catch-up).
  */
 import { and, asc, eq, gt, gte, inArray } from 'drizzle-orm';
+import { createLogger } from '@imajin/logger';
+import {
+  REACH_REPLY_EVENT,
+  loadReachReplyEntitlements,
+  matchingReachReplyEntitlements,
+  type ReachReplyEntitlement,
+} from '@imajin/bus';
 import {
   db,
   delegationGrants,
@@ -40,8 +47,23 @@ export interface CaughtUpEvent {
   payload: Record<string, unknown> | null;
   correlationId: string | null;
   occurredAt: string;
-  /** Dual-stamp-compatible provenance: which of the caller's grants entitled this event. */
+  /** Original grant, or reach:<reachId> for the requester's own gate-admitted reply receipt. */
   grantId: string;
+}
+function entitledGrantId(
+  row: typeof eventSubscriptionLog.$inferSelect,
+  grants: readonly ActiveGrant[],
+  replies: readonly ReachReplyEntitlement[],
+): string | undefined {
+  if (row.eventType === REACH_REPLY_EVENT) {
+    return matchingReachReplyEntitlements({
+      type: row.eventType, issuer: row.issuerDid, subject: row.subjectDid,
+      scope: row.scope, payload: (row.payload as Record<string, unknown> | null) ?? undefined,
+    }, replies)[0]?.grantId;
+  }
+  return grants.find(
+    (g) => eventTypesForGrantScopes(g.capabilities).includes(row.eventType) && audienceAllows(g.audience, row.subjectDid),
+  )?.grantId;
 }
 
 export interface CatchUpResult {
@@ -54,6 +76,18 @@ interface ActiveGrant {
   grantId: string;
   audience: DelegationAudience;
   capabilities: GrantScope[];
+}
+
+/** Reply-specific failures must not change delivery of other subscription types. */
+async function loadReplyEntitlements(agentDid: string): Promise<ReachReplyEntitlement[]> {
+  try {
+    return await loadReachReplyEntitlements(agentDid);
+  } catch (err) {
+    createLogger('kernel:event-subscriptions').error(
+      { err: String(err), agentDid }, 'Reply entitlement lookup failed closed',
+    );
+    return [];
+  }
 }
 
 /** Active, unexpired grants for `agentDid`, with their active capabilities attached. */
@@ -109,7 +143,9 @@ export async function catchUpSubscriptionEvents(params: {
   limit?: number;
 }): Promise<CatchUpResult> {
   const grants = await loadActiveGrants(params.agentDid);
+  const replies = await loadReplyEntitlements(params.agentDid);
   const entitledEventTypes = [...new Set(grants.flatMap((g) => eventTypesForGrantScopes(g.capabilities)))];
+  if (replies.length > 0 && !entitledEventTypes.includes(REACH_REPLY_EVENT)) entitledEventTypes.push(REACH_REPLY_EVENT);
 
   if (entitledEventTypes.length === 0) {
     return { events: [], nextCursor: params.cursor.toString(), entitledEventTypes: [] };
@@ -143,10 +179,8 @@ export async function catchUpSubscriptionEvents(params: {
     // A type can be entitled by one grant but the row's subject may not
     // match that grant's audience — re-check per row, per grant, exactly
     // like the live-push path in packages/bus/src/subscriptions.ts.
-    const matchingGrant = grants.find(
-      (g) => eventTypesForGrantScopes(g.capabilities).includes(row.eventType) && audienceAllows(g.audience, row.subjectDid),
-    );
-    if (!matchingGrant) continue;
+    const grantId = entitledGrantId(row, grants, replies);
+    if (!grantId) continue;
     events.push({
       id: row.id,
       cursor: row.seq.toString(),
@@ -157,7 +191,7 @@ export async function catchUpSubscriptionEvents(params: {
       payload: (row.payload as Record<string, unknown> | null) ?? null,
       correlationId: row.correlationId,
       occurredAt: row.occurredAt.toISOString(),
-      grantId: matchingGrant.grantId,
+      grantId,
     });
   }
 

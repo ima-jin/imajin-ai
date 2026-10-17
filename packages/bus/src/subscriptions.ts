@@ -7,6 +7,11 @@ import {
   type DelegationAudience,
 } from '@imajin/auth';
 import type { BusEvent } from './types';
+import {
+  REACH_REPLY_EVENT,
+  loadReachReplyEntitlements,
+  matchingReachReplyEntitlements,
+} from './reach-reply-subscriptions';
 
 const log = createLogger('bus:event-subscription');
 
@@ -95,7 +100,7 @@ export interface SubscriptionEventFrame {
   payload: Record<string, unknown> | undefined;
   correlationId: string | null;
   occurredAt: string;
-  /** Dual-stamp-compatible provenance: which grant entitled this delivery. */
+  /** Original grant, or reach:<reachId> for the requester's own gate-admitted reply receipt. */
   grantId: string;
 }
 
@@ -140,7 +145,29 @@ export async function deliverToSubscribers(event: BusEvent): Promise<void> {
 
   let grantRows: GrantRow[];
   try {
-    const rows = await sql`
+    grantRows = await loadDeliveryRecipients(event, capabilities);
+  } catch (err) {
+    // Fail closed; durable events remain available for a later fresh read.
+    log.error({ err: String(err), event: event.type }, 'grant lookup for event-subscription failed');
+    return;
+  }
+
+  await pushToRecipients(event, grantRows, { id, seq, occurredAt });
+}
+
+async function loadDeliveryRecipients(event: BusEvent, capabilities: string[]): Promise<GrantRow[]> {
+  if (event.type === REACH_REPLY_EVENT) {
+    const requesterDid = event.payload?.requesterDid;
+    if (typeof requesterDid !== 'string') return [];
+    const entitlements = await loadReachReplyEntitlements(requesterDid);
+    return matchingReachReplyEntitlements(event, entitlements).map((entry) => ({
+      agentDid: entry.requesterDid,
+      grantId: entry.grantId,
+      audience: { type: 'all' },
+    }));
+  }
+  const sql = await getSql();
+  const rows = await sql`
       SELECT DISTINCT g.agent_did, g.id AS grant_id, g.audience
       FROM auth.delegation_grants g
       JOIN auth.delegation_grant_capabilities c ON c.grant_id = g.id
@@ -149,20 +176,19 @@ export async function deliverToSubscribers(event: BusEvent): Promise<void> {
         AND c.status = 'active'
         AND c.capability = ANY(${capabilities})
     `;
-    grantRows = (rows as unknown as Array<{ agent_did: string; grant_id: string; audience: unknown }>).map((row) => ({
+  return (rows as unknown as Array<{ agent_did: string; grant_id: string; audience: unknown }>).map((row) => ({
       agentDid: row.agent_did,
       grantId: row.grant_id,
       audience: row.audience as DelegationAudience,
-    }));
-  } catch (err) {
-    // Fail closed: a lookup failure delivers to nobody, same invariant as
-    // introspectGrant (#1882). The event is already durable, so no one is
-    // permanently denied — a later catch-up read re-runs this same
-    // resolution fresh.
-    log.error({ err: String(err), event: event.type }, 'grant lookup for event-subscription failed');
-    return;
-  }
+  }));
+}
 
+async function pushToRecipients(
+  event: BusEvent,
+  grantRows: readonly GrantRow[],
+  persisted: { readonly id: string; readonly seq: string; readonly occurredAt: Date },
+): Promise<void> {
+  const { id, seq, occurredAt } = persisted;
   // One push per agent, even if multiple active grants independently
   // entitle the same event — the client dedupes by `id` regardless, but
   // there is no reason to fan out more than once. Keep the first matching

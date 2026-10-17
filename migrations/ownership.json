@@ -160,7 +160,7 @@
       "owner": "kernel",
       "schema": "auth",
       "firstMigration": "0195_reach_envelopes.sql",
-      "notes": ""
+      "notes": "#2589 extends envelope JSON with the principal-signed reply and replyPublishedAt; no new reply table."
     },
     "auth.reach_sender_blocks": {
       "owner": "kernel",
