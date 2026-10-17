@@ -77,7 +77,7 @@ const SCHEMA_ALTERNATION = [...ALL_SCHEMAS].join('|');
 // Group 1: the character before the match (or start-of-string), kept out of
 // the schema name itself so e.g. "mykernel.foo" doesn't match "kernel".
 // Group 2: the schema name. Quotes around it are optional and not captured.
-const SCHEMA_REF_RE = new RegExp(String.raw`(^|[^A-Za-z0-9_])"?(${SCHEMA_ALTERNATION})"?\.`, 'gi');
+const SCHEMA_REF_RE = new RegExp(String.raw`(^|[^A-Za-z0-9_])"?(${SCHEMA_ALTERNATION})"?\s*\.`, 'gi');
 
 /**
  * Strips `--`/`/* *\/` comments and blanks single-quoted string literal

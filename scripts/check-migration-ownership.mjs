@@ -322,7 +322,7 @@ function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
       throw new Error(`Invalid external schema identifier: ${schema}`);
     }
     const schemaDDL = new RegExp(
-      String.raw`\b(?:CREATE|ALTER|DROP)\s+SCHEMA\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"?${schema}"?(?![a-z0-9_])`,
+      String.raw`\bSCHEMA\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"?${schema}"?(?![a-z0-9_])`,
       'i',
     );
     const searchPath = new RegExp(

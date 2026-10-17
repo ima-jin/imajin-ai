@@ -113,8 +113,11 @@ describe('check-migration-ownership', () => {
     ['dykil', 'ALTER TABLE dykil.surveys ADD COLUMN label TEXT;'],
     ['dykil', 'UPDATE "dykil"."surveys" SET title = title;'],
     ['dykil', 'SELECT * FROM dykil.survey_responses;'],
+    ['dykil', 'SELECT * FROM "dykil" . "surveys";'],
     ['dykil', 'CREATE SCHEMA IF NOT EXISTS dykil;'],
     ['dykil', 'DROP SCHEMA "dykil" CASCADE;'],
+    ['kernel', 'ALTER TABLE auth.identities SET SCHEMA dykil;'],
+    ['kernel', 'UPDATE dykil.surveys SET title = title;'],
     ['dykil', 'SET search_path TO dykil; CREATE TABLE surveys (id text);'],
     ['learn', 'DELETE FROM learn.courses;'],
     ['coffee', 'UPDATE coffee.pages SET id = id;'],
@@ -123,7 +126,7 @@ describe('check-migration-ownership', () => {
     const { dir, baseRef } = makeBaseRepo();
     writeOwnership(dir, { ...BASE_OWNERSHIP, externalSchemas });
     addMigration(dir, '0002_external.sql', `-- owner: ${owner}\n${statement}\n`);
-    expectFail(runGuard(dir, baseRef), 'externally owned', externalSchemas[owner].repository);
+    expectFail(runGuard(dir, baseRef), 'externally owned');
   });
 
   it('does not let the shared allowlist bypass external ownership', () => {

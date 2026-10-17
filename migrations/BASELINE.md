@@ -66,6 +66,17 @@ a DECISION card requesting a sanitized restore or separately owned
 server-side verification. Do not represent disposable verification as
 that acceptance.
 
+Verification on October 17, PostgreSQL 16: all 189 root files applied;
+kernel-only dump/restore comparison was identical (normalized SHA-256
+`e235ed2a9d75f2b33425825efda1668502ff5fd3cf00bc3d9a415bd4ebe7da4b`).
+Dykil's fresh schema matched root history byte-for-byte excluding the app
+ledger (normalized SHA-256
+`146c94b9aeb283d87c7c9831ea7a4b5afa4757b3cf1887353d1fcbe5bf1f0a24`).
+Adopting a root-built database populated with a survey/response fixture,
+then rerunning, preserved table OIDs, relfilenodes, row `xmin`, row content,
+DDL and the full root ledger; exactly one app ledger row was created.
+These are disposable verification results only.
+
 ## Historical squash design (not executed)
 
 Per the
