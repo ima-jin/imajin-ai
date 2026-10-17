@@ -34,29 +34,46 @@ sql() {
   docker exec -i "$CONTAINER" psql -X -qAt -U postgres -d "$db" \
     --set=ON_ERROR_STOP=1 "$@"
 }
-apply() { sql "$1" --single-transaction < "$MIGRATION"; }
-query() { sql "$1" -c "$2"; }
+apply() {
+  local db="$1"
+  sql "$db" --single-transaction < "$MIGRATION"
+}
+query() {
+  local db="$1" statement="$2"
+  sql "$db" -c "$statement"
+}
 assert() {
-  [[ "$(query "$1" "$2")" == t ]] || die "$3"
+  local db="$1" statement="$2" message="$3"
+  [[ "$(query "$db" "$statement")" == t ]] || die "$message"
 }
 clone() {
-  query postgres "CREATE DATABASE $1 TEMPLATE seed_drift_baseline" >/dev/null
+  local db="$1"
+  query postgres "CREATE DATABASE $db TEMPLATE seed_drift_baseline" >/dev/null
 }
 schema() {
-  docker exec "$CONTAINER" pg_dump -U postgres -d "$1" \
+  local db="$1"
+  docker exec "$CONTAINER" pg_dump -U postgres -d "$db" \
     --schema-only --no-owner --no-privileges |
     sed -E '/^\\(un)?restrict /s/ .*/ NORMALIZED_DUMP_TOKEN/'
 }
-catalog() { sql "$1" < "$ROOT/scripts/seed-drift-catalog.sql"; }
-shape() { sql "$1" < "$ROOT/scripts/seed-drift-shape.sql"; }
+catalog() {
+  local db="$1"
+  sql "$db" < "$ROOT/scripts/seed-drift-catalog.sql"
+}
+shape() {
+  local db="$1"
+  sql "$db" < "$ROOT/scripts/seed-drift-shape.sql"
+}
 identities() {
-  query "$1" "SELECT n.nspname, c.relname, c.oid, c.relfilenode
+  local db="$1"
+  query "$db" "SELECT n.nspname, c.relname, c.oid, c.relfilenode
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
     ORDER BY n.nspname, c.relname"
 }
 rows() {
-  sql "$1" <<'SQL'
+  local db="$1"
+  sql "$db" <<'SQL'
 SELECT 'reads', xmin::text, to_jsonb(t) FROM chat.conversation_reads_v2 t ORDER BY to_jsonb(t)::text;
 SELECT 'reactions', xmin::text, to_jsonb(t) FROM chat.message_reactions_v2 t ORDER BY to_jsonb(t)::text;
 SELECT 'members', xmin::text, to_jsonb(t) FROM chat.conversation_members t ORDER BY to_jsonb(t)::text;
@@ -64,30 +81,33 @@ SELECT 'rollups', xmin::text, to_jsonb(t) FROM pay.balance_rollups t ORDER BY to
 SQL
 }
 snapshot() {
-  schema "$1" > "$TMP/$2.schema"
-  catalog "$1" > "$TMP/$2.catalog"
-  rows "$1" > "$TMP/$2.rows"
-  identities "$1" > "$TMP/$2.identities"
+  local db="$1" label="$2"
+  schema "$db" > "$TMP/$label.schema"
+  catalog "$db" > "$TMP/$label.catalog"
+  rows "$db" > "$TMP/$label.rows"
+  identities "$db" > "$TMP/$label.identities"
 }
 same_snapshot() {
-  local suffix
+  local before="$1" after="$2" message="$3" suffix
   for suffix in schema catalog rows identities; do
-    diff -u "$TMP/$1.$suffix" "$TMP/$2.$suffix" || die "$3 ($suffix)"
+    diff -u "$TMP/$before.$suffix" "$TMP/$after.$suffix" || die "$message ($suffix)"
   done
 }
 drop_keys() {
-  sql "$1" <<'SQL'
+  local db="$1"
+  sql "$db" <<'SQL'
 ALTER TABLE chat.conversation_reads_v2 DROP CONSTRAINT conversation_reads_v2_conversation_did_did_pk;
 ALTER TABLE chat.message_reactions_v2 DROP CONSTRAINT message_reactions_v2_message_id_did_emoji_pk;
 SQL
 }
 assert_keys() {
-  assert "$1" "SELECT count(*) = 2 FROM pg_constraint
+  local db="$1"
+  assert "$db" "SELECT count(*) = 2 FROM pg_constraint
     WHERE contype = 'p' AND (
       (conrelid = 'chat.conversation_reads_v2'::regclass AND
        pg_get_constraintdef(oid) = 'PRIMARY KEY (conversation_did, did)') OR
       (conrelid = 'chat.message_reactions_v2'::regclass AND
-       pg_get_constraintdef(oid) = 'PRIMARY KEY (message_id, did, emoji)'))" "$1: exact ordered primary keys"
+       pg_get_constraintdef(oid) = 'PRIMARY KEY (message_id, did, emoji)'))" "$db: exact ordered primary keys"
 }
 
 printf 'Bootstrapping all migrations directly with per-file transactions...\n'
@@ -174,6 +194,7 @@ for variant in partial expression wrong_columns nonunique wrong_order included d
     collation) definition='CREATE UNIQUE INDEX unsuitable ON chat.conversation_reads_v2 (conversation_did COLLATE "C", did)';;
     invalid) definition='CREATE UNIQUE INDEX unsuitable ON chat.conversation_reads_v2 (conversation_did, did); UPDATE pg_index SET indisvalid = false WHERE indexrelid = '\''chat.unsuitable'\''::regclass';;
     owned) definition='ALTER TABLE chat.conversation_reads_v2 ADD CONSTRAINT unsuitable UNIQUE (conversation_did, did)';;
+    *) die "Unexpected index variant: $variant";;
   esac
   query "$db" "$definition" >/dev/null
   original="$(query "$db" "SELECT 'chat.unsuitable'::regclass::oid")"
@@ -243,6 +264,7 @@ for variant in nonzero missing nonnumeric expression; do
       ALTER TABLE pay.balance_rollups ALTER COLUMN earned TYPE text USING earned::text, ALTER COLUMN spent TYPE text USING spent::text;
       ALTER TABLE pay.balance_rollups ALTER COLUMN earned SET DEFAULT '0', ALTER COLUMN spent SET DEFAULT '0'";;
     expression) ddl='ALTER COLUMN earned SET DEFAULT (random() * 0), ALTER COLUMN spent SET DEFAULT (random() * 0)';;
+    *) die "Unexpected default variant: $variant";;
   esac
   query "$db" "ALTER TABLE pay.balance_rollups $ddl" >/dev/null
   snapshot "$db" default_before
