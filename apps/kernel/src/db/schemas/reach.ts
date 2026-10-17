@@ -1,4 +1,5 @@
 import { index, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import type { SignedReachReplyEvent } from '@/src/lib/auth/reach-reply-wire';
 
 const reachSchema = pgSchema('auth');
 
@@ -16,12 +17,17 @@ export interface ReachEnvelope {
   transcriptHash: string;
   requesterSignature: string;
   requesterTier: string;
+  requesterAuthTier?: 'signed' | 'oauth' | 'bearer';
   /** Null for a tier-admitted caller authorized by the principal's gate. */
   grantId: string | null;
   /** Delivery server timestamp, distinct from the caller-signed timestamp. */
   issuedAt: string;
   requestIssuedAt: string;
   signedEvent: Record<string, unknown>;
+  /** Immutable principal-signed reply; never signed by the node or a delegate. */
+  reply?: SignedReachReplyEvent;
+  /** Bus acknowledgement is separate so pending signed replies can be replayed. */
+  replyPublishedAt?: string;
 }
 
 export const reachEnvelopes = reachSchema.table('reach_envelopes', {

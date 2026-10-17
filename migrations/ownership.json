@@ -178,7 +178,7 @@
       "owner": "kernel",
       "schema": "auth",
       "firstMigration": "0195_reach_envelopes.sql",
-      "notes": ""
+      "notes": "#2589 extends envelope JSON with the principal-signed reply and replyPublishedAt; no new reply table."
     },
     "auth.reach_sender_blocks": {
       "owner": "kernel",
@@ -436,7 +436,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0037_bus_chain_configs.sql",
-      "notes": ""
+      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589)."
     },
     "kernel.calendar_entries": {
       "owner": "kernel",

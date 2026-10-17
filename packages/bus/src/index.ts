@@ -34,6 +34,12 @@ registerReactor('loop-projection', loopProjectionReactor);
 
 export { publish } from './publish';
 export { LoopOwnershipConflictError } from './reactors/loop-projection';
+export {
+  REACH_REPLY_EVENT,
+  loadReachReplyEntitlements,
+  matchingReachReplyEntitlements,
+} from './reach-reply-subscriptions';
+export type { ReachReplyEntitlement } from './reach-reply-subscriptions';
 export type { PublishResult } from './publish';
 export { registerChainObserver } from './chain-observer';
 export type { ChainObservation, ChainObserver } from './chain-observer';

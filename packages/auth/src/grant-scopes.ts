@@ -52,10 +52,10 @@ export const GRANT_SCOPE_REGISTRY = [
   // #2251 — authority for a foreign agent's own DID (minted via the
   // existing knock -> accept flow, #1883, unmodified) to invoke the
   // per-principal agent-reach endpoint against the delegator who issued
-  // this grant. No event feed: reach is a synchronous pull, not a
-  // subscription. Revoking this grant is what makes the next reach call
-  // fail closed (introspectGrant() re-reads storage on every call).
-  { scope: 'agent:reach', origin: 'kernel', eventTypes: [] },
+  // this grant. Replies use the existing subscription rail, additionally
+  // restricted to the requester of the committed envelope. Revocation
+  // stops both the next reach and reply delivery for grant-backed reaches.
+  { scope: 'agent:reach', origin: 'kernel', eventTypes: ['agent.reach.replied'] },
   // #2358 — authorizes `agentDid` to publish `loop.*` lifecycle history
   // (`POST /api/loops`, apps/kernel/src/lib/loops/) on behalf of the
   // `delegatorDid` principal it names as `payload.principal`. Closes the

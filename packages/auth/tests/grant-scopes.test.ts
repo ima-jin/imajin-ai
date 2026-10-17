@@ -112,6 +112,9 @@ describe('validateGrantCapabilities', () => {
 });
 
 describe('eventTypesForGrantScopes', () => {
+  it('maps agent:reach to private replied events only, not delivered messages', () => {
+    expect(eventTypesForGrantScopes(['agent:reach'])).toEqual(['agent.reach.replied']);
+  });
   it('unions and dedupes event types across capabilities', () => {
     const eventTypes = eventTypesForGrantScopes(['inference:read', 'inference:write']);
     expect(eventTypes).toEqual(['attestation.created']);

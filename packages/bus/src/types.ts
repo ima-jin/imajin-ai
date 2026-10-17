@@ -967,9 +967,23 @@ export interface BusEventMap {
     signature: { keyId: string; alg: 'ed25519'; sig: string };
   };
   /**
-   * Refused reach request. Closed, non-PII reason vocabulary — never the raw
-   * rejection detail, transcript, message, or principal policy.
+   * Immutable human-principal reply (#2589), delivered privately to the
+   * original requester; emit audit projects metadata only.
    */
+  'agent.reach.replied': {
+    reachId: string;
+    principalDid: string;
+    requesterDid: string;
+    transcriptHash: string;
+    message: string;
+    issuedAt: string;
+    state: 'replied';
+    context_id: string;
+    context_type: 'agent.reach';
+    /** Human principal's own signature over the canonical unsigned event. */
+    signature: { keyId: string; alg: 'ed25519'; sig: string };
+  };
+  /** Refused reach request; disclosure-safe closed reason vocabulary only. */
   'agent.reach.denied': {
     requesterDid: string;
     principalDid: string;
