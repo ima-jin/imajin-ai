@@ -92,6 +92,29 @@ Full detail: `migrations/ownership.json`.
 
 ## Rule
 
+### Extracted repositories (#1991, October 14 ruling)
+
+`ownership.json.externalSchemas` identifies `dykil → ima-jin/dykil`,
+`coffee → ima-jin/coffee`, `learn → ima-jin/learn` and
+`market → ima-jin/market`. App schemas/data remain in place; pruning never
+permits dropping them. **New root migrations may not reference these
+schemas**, whether declared kernel-owned or app-owned, DDL or DML, even
+if added to `sharedMigrationAllowlist`. Schema DDL and literal/identifier-valued
+`search_path` settings are checked too.
+Like the existing scanner, this is a static heuristic, not a PostgreSQL
+parser: dynamically constructed SQL and `set_config` calls require review,
+never an ownership bypass.
+
+Historical SQL and table-owner/origin rows remain unchanged. Dykil's
+baseline/ledger live in `ima-jin/dykil`
+([PR #24](https://github.com/ima-jin/dykil/pull/24)). The other apps reuse
+the prospective guard without claiming their baselines ship here.
+Shared history stays replayable until the separately gated squash (#2525).
+See `BASELINE.md`'s current #1991 section; the older deferral/first-mover
+notes below are historical and superseded for dykil.
+
+### Schema boundary
+
 An app's migrations may only create, alter, drop, or rename tables/views/
 types/functions in its own schema. Touching another owner's schema from a
 migration is a contract violation — the runtime equivalent (an app reading

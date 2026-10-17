@@ -76,8 +76,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND } from './lib/migration-ownership-parser.mjs';
-import { detectTouchedOwners } from './lib/migration-schema-scan.mjs';
+import { parseStatements, ALL_OWNERS, BUCKET_FOR_KIND, stripSqlComments } from './lib/migration-ownership-parser.mjs';
+import { detectTouchedOwners, detectTouchedSchemas, maskForSchemaScan } from './lib/migration-schema-scan.mjs';
 
 const ROOT = process.env.CI_GUARD_WORKDIR
   ? resolve(process.env.CI_GUARD_WORKDIR)
@@ -306,22 +306,63 @@ function checkSharedSchemaViolation(filePath, sql, isNew, allowlist) {
   );
 }
 
+/**
+ * External ownership is prospective: never reinterpret applied history.
+ * Unlike the shared-file rule, this has no allowlist escape hatch and does
+ * not trust an app owner header in the kernel repository.
+ */
+function checkExternalSchemas(filePath, sql, isNew, externalSchemas = {}) {
+  if (!isNew) return [];
+  const touched = detectTouchedSchemas(sql);
+  const masked = maskForSchemaScan(sql);
+  const statements = stripSqlComments(sql).split(';');
+  const violations = [];
+  for (const [schema, entry] of Object.entries(externalSchemas)) {
+    // Metadata keys are identifiers, never arbitrary regex fragments.
+    if (!/^[a-z][a-z0-9_]*$/.test(schema)) {
+      throw new Error(`Invalid external schema identifier: ${schema}`);
+    }
+    const schemaDDL = new RegExp(
+      String.raw`\bSCHEMA\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?"?${schema}"?(?![a-z0-9_])`,
+      'i',
+    );
+    const searchPath = new RegExp(
+      String.raw`\bsearch_path"?\s*(?:=|TO)\s*[^;]*\b${schema}\b`,
+      'i',
+    );
+    const quotedSearchPath = statements.some((statement) => {
+      const setting = /^\s*SET\s+(?:(?:LOCAL|SESSION)\s+)?"?search_path"?\s*(?:=|TO)/i.exec(statement);
+      return setting !== null && statement.slice(setting[0].length).split(',')
+        .some((value) => value.trim().replaceAll(/['"]/g, '') === schema);
+    });
+    if (touched.has(schema) || schemaDDL.test(masked) || searchPath.test(masked) || quotedSearchPath) {
+      violations.push(
+        `${filePath}: schema "${schema}" is externally owned by ${entry.repository}. ` +
+        `Author this migration in that repository, not the kernel. Historical migration files remain immutable.`,
+      );
+    }
+  }
+  return violations;
+}
+
 function checkFile(filePath, status, ownershipMap, sharedMigrationAllowlist) {
   const sql = readFileSync(join(ROOT, filePath), 'utf8');
   const isNew = status === 'A';
 
   const sharedViolation = checkSharedSchemaViolation(filePath, sql, isNew, sharedMigrationAllowlist);
+  const externalViolations = checkExternalSchemas(filePath, sql, isNew, ownershipMap.externalSchemas);
+  const schemaViolations = [sharedViolation, ...externalViolations].filter(Boolean);
 
   const { declaredOwner, violation: headerViolation } = resolveDeclaredOwner(filePath, sql, isNew);
-  if (headerViolation) return [sharedViolation, headerViolation].filter(Boolean);
-  if (!declaredOwner) return [sharedViolation].filter(Boolean); // grandfathered
+  if (headerViolation) return [...schemaViolations, headerViolation];
+  if (!declaredOwner) return schemaViolations; // grandfathered
 
   const ownerViolation = checkOwnerIsKnown(filePath, declaredOwner);
-  if (ownerViolation) return [sharedViolation, ownerViolation].filter(Boolean);
+  if (ownerViolation) return [...schemaViolations, ownerViolation];
 
   const touches = collectTouches(parseStatements(sql));
   const touchViolations = touches.map((touch) => checkTouch(filePath, touch, ownershipMap, declaredOwner)).filter(Boolean);
-  return [sharedViolation, ...touchViolations].filter(Boolean);
+  return [...schemaViolations, ...touchViolations];
 }
 
 // ── main ─────────────────────────────────────────────────────────────────────

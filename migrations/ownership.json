@@ -1,4 +1,22 @@
 {
+  "externalSchemas": {
+    "coffee": {
+      "owner": "coffee",
+      "repository": "ima-jin/coffee"
+    },
+    "dykil": {
+      "owner": "dykil",
+      "repository": "ima-jin/dykil"
+    },
+    "learn": {
+      "owner": "learn",
+      "repository": "ima-jin/learn"
+    },
+    "market": {
+      "owner": "market",
+      "repository": "ima-jin/market"
+    }
+  },
   "tables": {
     "auth.agent_knocks": {
       "owner": "kernel",
