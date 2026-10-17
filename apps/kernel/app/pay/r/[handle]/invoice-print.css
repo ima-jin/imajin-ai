@@ -12,6 +12,10 @@
  *
  * The root layout's nav bar (and any other sibling of the page) is hidden by
  * the `:has(.invoice-sheet)` rule, so nothing outside the sheet prints.
+ *
+ * Root-qualified selectors outrank Tailwind utilities, including the two-class
+ * dark variants, regardless of stylesheet order. Muted/stamp hooks add another
+ * class so their colors win over the sheet's descendant reset.
  */
 @media print {
   @page {
@@ -19,55 +23,55 @@
     margin: 0.6in;
   }
 
-  html,
-  body {
-    background: #fff !important;
-    color: #111 !important;
+  html:root:has(.invoice-sheet),
+  html:root body:has(.invoice-sheet) {
+    background: #fff;
+    color: #111;
     /* The root layout's `min-h-screen` would otherwise stretch the body past one page and print a blank second sheet. */
-    height: auto !important;
-    min-height: 0 !important;
+    height: auto;
+    min-height: 0;
   }
 
-  [data-print='hide'] {
-    display: none !important;
+  html:root [data-print='hide'] {
+    display: none;
   }
 
-  body:has(.invoice-sheet) > *:not(:has(.invoice-sheet)) {
-    display: none !important;
+  html:root body:has(.invoice-sheet) > *:not(:has(.invoice-sheet)) {
+    display: none;
   }
 
-  .invoice-page {
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
+  html:root .invoice-page {
+    max-width: none;
+    margin: 0;
+    padding: 0;
   }
 
-  .invoice-sheet {
-    padding: 0 !important;
-    border: 0 !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
+  html:root .invoice-page .invoice-sheet {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  .invoice-sheet,
-  .invoice-sheet * {
-    color: #111 !important;
-    background: transparent !important;
-    border-color: #bbb !important;
+  html:root .invoice-page .invoice-sheet,
+  html:root .invoice-page .invoice-sheet * {
+    color: #111;
+    background: transparent;
+    border-color: #bbb;
   }
 
-  .invoice-sheet .invoice-muted {
-    color: #555 !important;
+  html:root .invoice-page .invoice-sheet .invoice-muted {
+    color: #555;
   }
 
-  .invoice-sheet .invoice-stamp {
-    color: #166534 !important;
-    border-color: #166534 !important;
+  html:root .invoice-page .invoice-sheet .invoice-stamp {
+    color: #166534;
+    border-color: #166534;
   }
 
-  .invoice-sheet [data-invoice-row] {
+  html:root .invoice-page .invoice-sheet [data-invoice-row] {
     break-inside: avoid;
     page-break-inside: avoid;
   }

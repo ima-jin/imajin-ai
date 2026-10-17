@@ -45,9 +45,6 @@ const SERVICES = [
   { name: 'input', label: 'Input' },
   { name: 'media', label: 'Media' },
   // Imajin apps
-  { name: 'coffee', label: 'Coffee' },
-  { name: 'dykil', label: 'Surveys' },
-  { name: 'links', label: 'Links' },
   { name: 'learn', label: 'Learn' },
   { name: 'market', label: 'Market' },
 ];

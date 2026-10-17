@@ -10,8 +10,8 @@
  * Service-tab rendering (#2425): SERVICE_TABS's hard-coded literal array is
  * gone — tabs for the six extractable apps (coffee/dykil/links/learn/
  * events/market) now come from the `apps` prop (resolved server-side from
- * `registry.apps` by `resolveNavAppsForIdentity`); Pay/Media stay a small
- * kernel-native pair gated by `showPay`/`showMedia`.
+ * `registry.apps` by `resolveNavAppsForIdentity`). Wallet and Media live
+ * in kernel navigation, not identity-management tabs.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
@@ -43,8 +43,6 @@ const BASE_PROPS = {
   showSecurity: false,
   showMoney: false,
   showTax: false,
-  showPay: false,
-  showMedia: false,
   apps: [] as NavApp[],
 };
 
@@ -64,8 +62,8 @@ describe('IdentityTabBar — Money tab', () => {
     expect(screen.queryByText('Money')).toBeNull();
   });
 
-  it('does not gate Money on the apps/showPay props — unlike the toggleable Pay service tab', () => {
-    render(<IdentityTabBar {...BASE_PROPS} showMoney showPay={false} />);
+  it('does not gate Money on the apps prop', () => {
+    render(<IdentityTabBar {...BASE_PROPS} showMoney />);
     expect(screen.getByText('Money')).toBeDefined();
     expect(screen.queryByText('Pay')).toBeNull();
   });
@@ -98,18 +96,14 @@ describe('IdentityTabBar — registry-driven service tabs (#2425)', () => {
     expect(learnLink?.getAttribute('href')).toBe('/auth/learn');
   });
 
-  it('renders no service tabs when apps is empty and showPay/showMedia are false', () => {
+  it('renders no service tabs when apps is empty', () => {
     render(<IdentityTabBar {...BASE_PROPS} />);
     expect(screen.queryByText('Coffee')).toBeNull();
     expect(screen.queryByText('Pay')).toBeNull();
     expect(screen.queryByText('Media')).toBeNull();
   });
 
-  it('renders the Pay/Media kernel-native tabs independently of the apps prop', () => {
-    render(<IdentityTabBar {...BASE_PROPS} apps={[]} showPay showMedia />);
-    expect(screen.getByText('Pay')).toBeDefined();
-    expect(screen.getByText('Media')).toBeDefined();
-  });
+
 });
 
 describe('IdentityTabBar — set_badge display (RFC-19, #2275)', () => {

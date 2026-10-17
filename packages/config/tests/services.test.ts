@@ -1,5 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { buildPublicUrl, buildPublicUrlAbsolute } from "../src/services";
+import { SERVICES, getService, getPort, buildPublicUrl, buildPublicUrlAbsolute } from "../src/services";
+
+describe("service manifest navigation boundary", () => {
+  it.each(["coffee", "dykil", "links"])("does not own extracted %s topology or navigation", (name) => {
+    expect(getService(name)).toBeUndefined();
+    expect(getPort(name)).toBeUndefined();
+  });
+
+  it.each(["usage", "calendar", "google"])("keeps %s API topology but hides its tile", (name) => {
+    expect(getService(name)?.visibility).toBe("internal");
+    expect(getPort(name)).toBe(3000);
+    expect(getService(name)?.category).toBe("kernel");
+  });
+
+  it("retains standalone URL contracts without making the manifest an app-list authority", () => {
+    expect(SERVICES.filter((service) => ["events", "learn", "market"].includes(service.name)).map((service) => service.name))
+      .toEqual(["events", "learn", "market"]);
+  });
+});
 
 const ENV_KEYS = [
   "NEXT_PUBLIC_SERVICE_PREFIX",

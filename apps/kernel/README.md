@@ -11,6 +11,66 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 ```
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
+## Static-header reach clients
+
+Clients that cannot sign requests or complete OAuth can obtain **their own agent's**
+reach credential with `POST /reach/ryan/knock` (replace `ryan` with the recipient's
+handle or DID). No login, owner approval, or manually issued token is required:
+
+```json
+{
+  "agentLabel": "My Muse agent",
+  "onBehalfOf": {
+    "platform": "muse",
+    "externalRef": "opaque-platform-reference",
+    "selfDescription": "Who I claim to act for"
+  },
+  "slidingWindowDays": 30
+}
+```
+
+`onBehalfOf` is **UNVERIFIED**, never an authentication or delegation claim.
+The recipient must already have a front-door gate admitting the `soft` tier.
+The `201` response contains `bearer` **exactly once**, `requesterDid` (the
+foreign-agent stub), `audience` (the recipient DID), `requestId`, `bearerId`,
+`scopes`, `surfaces`, `claimVerified: false`, `expiresAt`, and `hardCapAt`.
+Save the bearer directly in the client's static `Authorization: Bearer` header
+setting; do not log it. There is no retrieval endpoint. A lost response requires
+a new knock, which creates a distinct agent credential.
+
+Use that header on `POST /reach/ryan` or
+`POST /auth/api/agents/<recipient-DID>/reach` with:
+
+```json
+{
+  "topic": "collaboration",
+  "message": "Would you like to discuss a collaboration?",
+  "replyHandle": "opaque-client-thread-reference"
+}
+```
+
+For a boolean-only gate ask, send `{ "arg": "collaboration" }`. Topic publication,
+delivery mode, broker consent, sender blocks and delivery quotas are the same as
+for signed agents. The bearer cannot reach another recipient, authenticate a
+session, or access the general MCP/REST surfaces. MCP adapters remain separate
+follow-ups; this credential is not accepted on the MCP surface.
+
+After delivery, poll
+`POST /auth/api/agents/<recipient-DID>/reach/<reachId>/status` using the same
+static Authorization header. No body or requester signature is needed. The
+response contains `reachId`, `state` (`delivered`, `replied`, or `blocked`), and
+`reply` (the recipient's original signed reply event, or `null`). Only envelopes
+belonging to that bearer’s agent stub are visible; another stub's receipt returns
+404, and another recipient's audience or a revoked/expired bearer returns 401.
+An otherwise-valid bearer whose sender is blocked can learn `blocked`, but
+receives no reply content and cannot send. Polling retains sliding expiry and
+the hard cap. Signed status polling remains supported unchanged.
+
+Expiry slides on valid uses (30/90/180/365-day windows), but never beyond the
+unconditional 90-day hard cap. Only hashes are stored. The recipient sees an
+information-only Reach inbox card: **No action needed**, with the
+**UNVERIFIED onBehalfOf claim**. Blocking the card or a delivered sender
+revokes the stub and erases its bearer hashes immediately.
 
 ## Inference connectors
 

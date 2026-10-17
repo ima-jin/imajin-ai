@@ -1,5 +1,62 @@
 # Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
 
+## Surface leases (#2405)
+
+`POST /api/loops` also accepts signed `surface.acquired`, `surface.released`,
+and `surface.conflicted` observations. They use the same common loop envelope
+(`loopId`, `kind`, `principal`, `state`, `summary`, `at`, optional lineage/refs),
+plus a required `surface`. Sign **the exact wire payload** inside
+`canonicalize({type,payload})`; validation never adds optional defaults to a
+surface payload. The same key resolution and `loops:publish` authorization
+rules below apply to all three event kinds. An explicit conflict also requires
+`refs.conflictingLoopId`.
+
+Surface identities are exact, case-sensitive typed URIs, at most 2048 characters:
+`repo:<org>/<repo>#branch:<branch>`, `service:<app>@env:<env>`,
+`device:<id>`, or `issue:#<positive-integer>`. No gateway lookup, polling,
+session lease, or harness-specific state is involved.
+
+`kernel.surface_lease` holds one current row per surface. A live acquisition
+by a different loop retains the first holder and emits a node-witness-signed
+`surface.conflicted` naming the claimant in `loopId` and the holder in
+`refs.conflictingLoopId`. **Both loops proceed.** This is an observation,
+never a 409, fencing token, queue, or pre-dispatch check.
+
+The lease expires fifteen minutes after acquisition/latest signed heartbeat.
+`loop.progress` refreshes only a still-live, unreleased lease with the same
+loop, principal, and issuer; it cannot revive an expired holding.
+`surface.released` and `loop.finished` release matching holdings. Older
+transitions cannot regress newer holdings, and a release/completion delivered
+before its acquisition prevents that stale acquisition from becoming live.
+Expiry is evaluated at read/acquire time, so no new cron or environment
+configuration is required.
+
+Acquisition evidence is retained as `issuer`, `signature`, and `signed_payload`
+on the lease row. Surface observations are also in `kernel.loop_events`;
+their payload retains `evidence: {publisherDid, signature, signedPayload}`.
+Verify that signature against `canonicalize({type, payload: evidence.signedPayload})`,
+not the augmented history payload. When #2406 redaction or
+artifact spilling changes an envelope, surface history and lease rows retain
+only the prepared, redacted payload; history evidence has `redacted: true`
+instead of an exact `signedPayload`. As with `publisherProof`, original
+credentials and overflow output must never be reintroduced through evidence.
+A stored `observedConflictingLoopId` is projection metadata outside the
+signed payload, retaining the original collision outcome across retries.
+History deduplicates exact signed observations;
+retries can re-emit the same warning but never renew an old lease.
+Surface events never change `kernel.loops` lifecycle state.
+
+`GET /api/loops/surfaces` returns `{leases, conflicts, warnOnly: true}` under
+`requireAuth` and `resolveActingDid`. It returns only that effective principal's
+live leases and most recent conflict observations, with ISO timestamps and
+camelCase lease fields (including original signed evidence). Optional `loopId`
+filters leases by holder and conflicts by either named loop; `limit` defaults
+to 50, capped at 200 independently for each list. `principal`, if supplied,
+must match the effective principal. Cross-principal holdings are never returned;
+a collision observation exposes the conflicting loop id, not its principal or
+signature. The Runs lane can consume these warnings inline (#2404); rendering
+and publisher/plugin changes remain separate work.
+
 Kernel half of the loop registry rail's signed ingest boundary
 (`POST /api/loops`, `apps/kernel/src/lib/loops/`). Any publisher (Warp's
 own dispatch bridge, the sprint `cycle` loopKind, the OpenClaw plugin

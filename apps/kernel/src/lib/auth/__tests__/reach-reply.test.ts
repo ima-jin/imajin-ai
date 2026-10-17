@@ -18,6 +18,8 @@ const mocked = vi.hoisted(() => ({
 }));
 vi.mock('@imajin/db', () => ({ getClient: mocked.getClient }));
 vi.mock('@imajin/bus', () => ({ publish: mocked.publish }));
+vi.mock('../foreign-agent-stub', () => ({ blockForeignAgentStub: vi.fn().mockResolvedValue(true) }));
+vi.mock('@/src/lib/access/reach-bearer', () => ({ listReachBearerKnocks: async () => [] }));
 vi.mock('@/src/db', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: mocked.rows }) }) }) },
   identities: {},
@@ -286,7 +288,7 @@ describe('reach inbox and reply HTTP routes', () => {
   it('lists only the authenticated human principal and requires a real session', async () => {
     const response = await GET(new NextRequest('https://example.test/jin/api/reach'));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: false }] });
+    expect(await response.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: false }], knocks: [] });
     expect(mocked.requireAuth).toHaveBeenCalledWith(expect.anything(), { sessionOnly: true });
   });
 
@@ -347,7 +349,7 @@ describe('owner-only reach sender block', () => {
     expect(await (await BLOCK(request({ requesterDid: 'must-not-use-body' }), props)).json()).toEqual({ blocked: true });
     expect(await (await BLOCK(request({}), props)).json()).toEqual({ blocked: true });
     const refreshed = await GET(new NextRequest('https://example.test/jin/api/reach'));
-    expect(await refreshed.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: true }] });
+    expect(await refreshed.json()).toEqual({ principalDid: identity.id, envelopes: [{ ...envelope, blocked: true }], knocks: [] });
     expect((await database.query('SELECT * FROM auth.reach_sender_blocks')).rows)
       .toEqual(expect.arrayContaining([
         expect.objectContaining({ principal_did: identity.id, requester_did: envelope.requesterDid }),

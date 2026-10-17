@@ -18,7 +18,7 @@ const SERVICE_ICONS: Record<string, string> = {
 };
 
 export default async function Home() {
-  const session = await getSession();
+  const session = await getSession({ service: 'pay' });
 
   if (!session) {
     const authUrl = buildPublicUrl('auth');

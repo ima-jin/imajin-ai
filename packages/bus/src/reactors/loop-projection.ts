@@ -59,11 +59,17 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
   const at = typeof payload.at === 'string' ? payload.at : (event.timestamp ?? new Date().toISOString());
   const finishedAt = event.type === 'loop.finished' ? at : null;
   const initialObservation = payload.initialObservation === true;
+  const signedCompletion = event.type === 'loop.finished' && Boolean(event.id);
 
   const { getClient } = await import('@imajin/db');
   const sql = getClient();
 
   await sql.begin(async (tx) => {
+    if (signedCompletion) {
+      // Same principal/issuer/loop lock used by signed surface acquisitions.
+      const loopLock = JSON.stringify([principal, event.issuer, loopId]);
+      await tx`SELECT pg_advisory_xact_lock(hashtextextended(${loopLock}, 2406))`;
+    }
     // The unique loop_id upsert serializes even concurrent first writes.
     // A conflicting principal cannot update any projection field. Older
     // same-principal events are still logged, without regressing "now".
@@ -105,8 +111,17 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
       INSERT INTO kernel.loop_events
         (id, loop_id, type, issuer, principal, payload, occurred_at)
       VALUES
-        (${randomUUID()}, ${loopId}, ${event.type}, ${event.issuer}, ${principal},
+        (${event.id ?? randomUUID()}, ${loopId}, ${event.type}, ${event.issuer}, ${principal},
          ${JSON.stringify(payload)}::jsonb, ${at}::timestamptz)
+      ON CONFLICT (id) DO NOTHING
     `;
+    if (signedCompletion) {
+      // A failed history/projection write must not release a lease either.
+      await tx`
+        UPDATE kernel.surface_lease SET released_at = ${at}::timestamptz, updated_at = now()
+        WHERE loop_id = ${loopId} AND principal = ${principal} AND issuer = ${event.issuer}
+          AND released_at IS NULL AND heartbeat_at <= ${at}::timestamptz
+      `;
+    }
   });
 };

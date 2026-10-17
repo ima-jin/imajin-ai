@@ -116,6 +116,24 @@ describe('POST /api/loops (signed ingest)', () => {
     expect(res.status).toBe(413);
     expect(mockIngestLoopEvent).not.toHaveBeenCalled();
   });
+  it.each(['surface.acquired', 'surface.released', 'surface.conflicted'])('ingests signed %s through the existing route', async (type) => {
+    mockIngestLoopEvent.mockResolvedValueOnce({ ok: true });
+    const body = validIngestBody();
+    const surfaceBody = {
+      ...body, type,
+      payload: { ...body.payload, surface: 'repo:ima-jin/imajin-ai#branch:main', refs: { conflictingLoopId: 'loop_other' } },
+    };
+    const res = await POST(makePostReq(surfaceBody) as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(201);
+    expect(mockIngestLoopEvent).toHaveBeenCalledWith(surfaceBody);
+  });
+
+  it.each(['surface.acquired', 'surface.released', 'surface.conflicted'])('rejects malformed surface URI for %s', async (type) => {
+    const body = validIngestBody();
+    const res = await POST(makePostReq({ ...body, type, payload: { ...body.payload, surface: 'https://example.com' } }) as Parameters<typeof POST>[0]);
+    expect(res.status).toBe(400);
+    expect(mockIngestLoopEvent).not.toHaveBeenCalled();
+  });
   it('returns 400 for invalid JSON without calling ingestLoopEvent', async () => {
     const req = new Request('https://test.imajin.ai/api/loops', { method: 'POST', body: '{not json' });
     const res = await POST(req as Parameters<typeof POST>[0]);

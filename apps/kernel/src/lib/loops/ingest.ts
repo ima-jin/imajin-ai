@@ -22,11 +22,13 @@ import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
 import { verifyLoopPublisherSignature } from './verify-publisher-signature';
 import { authorizeLoopPublisher } from './authorize-publisher';
-import type { LoopIngestRequest } from './types';
+import { isLoopLifecycleType, type LoopIngestRequest } from './types';
 import { prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './prepare-output';
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { redactLoopText } from './output-redaction';
 import { canonicalize } from '@imajin/auth';
+import { projectSurfaceLease, loopObservationId } from './surface-lease';
+import { signSurfaceConflict } from './surface-conflict';
 
 const log = createLogger('kernel:loops');
 
@@ -67,26 +69,30 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   }
 
   try {
-    if (!await reserveLoopOwnership(type, sanitized)) {
+    if (isLoopLifecycleType(type) && !await reserveLoopOwnership(type, sanitized)) {
       return { ok: false, error: 'Loop belongs to a different principal', status: 409, code: 'loop_owner_conflict' };
     }
     const persistedPayload = await prepareLoopOutput(sanitized);
     const historyPayload = { ...persistedPayload };
     delete historyPayload.publisherProof;
+    const canKeepProof = persistedPayload === sanitized && canonicalize(payload) === canonicalize(sanitized);
+    const publishedPayload = {
+      ...historyPayload,
+      ...(canKeepProof ? { publisherProof: { type, payload, publisherDid, signature } } : {}),
+    };
+    const conflictingLoopId = await projectSurfaceLease(request, publishedPayload, canKeepProof);
     await bus.publish(type, {
+      ...(type === 'loop.finished' ? { id: loopObservationId(request) } : {}),
       issuer: publisherDid,
       subject: sanitized.principal,
       scope: 'loop',
-      payload: {
-        ...historyPayload,
-        // Exact proofs are safe only when redaction/storage left the envelope
-        // unchanged; never reintroduce credentials or spilled output via a proof.
-        ...(persistedPayload === sanitized && canonicalize(payload) === canonicalize(sanitized)
-          ? { publisherProof: { type, payload, publisherDid, signature } }
-          : {}),
-      },
+      // Never reintroduce credentials or spilled output through lease evidence.
+      payload: publishedPayload,
       correlationId: sanitized.loopId,
     });
+    if (conflictingLoopId) {
+      await observeSurfaceConflict(request, conflictingLoopId);
+    }
   } catch (err) {
     if (isOwnershipConflict(err)) {
       return { ok: false, error: 'Loop belongs to a different principal', status: 409, code: 'loop_owner_conflict' };
@@ -100,12 +106,21 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
   return { ok: true };
 }
 
+/** A collision is data, never a dispatch denial or harness call. */
+async function observeSurfaceConflict(request: LoopIngestRequest, conflictingLoopId: string): Promise<void> {
+  try {
+    const conflict = await ingestLoopEvent(signSurfaceConflict(request, conflictingLoopId));
+    if (!conflict.ok) log.warn({ loopId: request.payload.loopId }, 'surface conflict observation rejected');
+  } catch {
+    log.warn({ loopId: request.payload.loopId }, 'surface conflict observation failed (warning only)');
+  }
+}
 function isOwnershipConflict(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'loop_owner_conflict';
 }
 
 function hasStableLoopIdentity(request: LoopIngestRequest, sanitized: LoopIngestRequest['payload']): boolean {
-  const bindings = ['loopId', 'principal', 'parentLoopId'] as const;
+  const bindings = ['loopId', 'principal', 'parentLoopId', 'surface'] as const;
   return bindings.every(field => sanitized[field] === request.payload[field])
     && redactLoopText(request.publisherDid) === request.publisherDid;
 }

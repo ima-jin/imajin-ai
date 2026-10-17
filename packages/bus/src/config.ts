@@ -424,7 +424,7 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
   ],
-  // #2599 / migration 0200 — complete the metadata-only audit write before
+  // #2599 / migration 0204 — complete the metadata-only audit write before
   // publish resolves. Limiter keys, IPs, message bodies and signatures stay private.
   'agent.reach.throttled': [
     {
@@ -744,6 +744,9 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'loop.progress': loopLifecycleChain(),
   'loop.blocked': loopLifecycleChain(),
   'loop.finished': loopLifecycleChain(),
+  'surface.acquired': [{ type: 'emit', config: {}, enabled: true }],
+  'surface.released': [{ type: 'emit', config: {}, enabled: true }],
+  'surface.conflicted': [{ type: 'emit', config: {}, enabled: true }],
   // #1510 — data-driven notify templates. `notify-template-hot-reload`
   // (apps/kernel/src/lib/notify/template-store.ts) drops the affected
   // scope's cache entry immediately rather than waiting out its TTL, same

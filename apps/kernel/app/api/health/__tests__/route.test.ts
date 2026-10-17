@@ -73,6 +73,11 @@ afterEach(() => {
 });
 
 describe('GET /api/health', () => {
+  it('does not probe deleted coffee/dykil/links port hints as kernel URLs', async () => {
+    const { GET } = await import('../route');
+    const body = await (await GET()).json() as { services: { name: string }[] };
+    expect(body.services.some((service) => ['coffee', 'dykil', 'links'].includes(service.name))).toBe(false);
+  });
   it('resolves a parseable, absolute URL for every configured service', async () => {
     const { GET } = await import('../route');
     const res = await GET();

@@ -59,7 +59,7 @@ function stubPostMessage(iframe: HTMLIFrameElement) {
 }
 
 /** Render, stub postMessage, fire `load`, and wait for ready — the common "app is up" starting point. */
-async function renderReady(service = 'coffee', baseUrl: string | undefined = ORIGIN) {
+async function renderReady(service = 'coffee', baseUrl: string = ORIGIN) {
   render(<ServiceEmbed service={service} did="did:imajin:abc" baseUrl={baseUrl} />);
   const iframe = await screen.findByTitle<HTMLIFrameElement>(`${service} dashboard`);
   const postMessageSpy = stubPostMessage(iframe);
@@ -82,6 +82,13 @@ afterEach(() => {
 });
 
 describe('ServiceEmbed loading/error states (#2275)', () => {
+  it('uses an exact destination without adding a dashboard suffix', async () => {
+    globalThis.fetch = mockFetch() as unknown as typeof fetch;
+    const src = `${ORIGIN}/home?x=1&embed=hub&did=group#files`;
+    render(<ServiceEmbed service="coffee" did="group" baseUrl={`${ORIGIN}/home?x=1#files`} embedSrc={src} />);
+    const iframe = await screen.findByTitle<HTMLIFrameElement>('coffee dashboard');
+    expect(iframe.getAttribute('src')).toBe(src);
+  });
   it('shows a spinner while the health check is in flight, then mounts the iframe once it passes', async () => {
     globalThis.fetch = mockFetch() as unknown as typeof fetch;
 
@@ -188,19 +195,16 @@ describe('ServiceEmbed Kernel -> App messages (RFC-19, #2275)', () => {
     expect(sessionCall?.[1]).toBe(ORIGIN);
   });
 
-  it('skips session minting for kernel-native services but still sends theme', async () => {
+  it('mints a delegated session for a same-origin registry app too', async () => {
     const fetchMock = mockFetch();
     globalThis.fetch = fetchMock as unknown as typeof fetch;
-
-    render(<ServiceEmbed service="pay" did="did:imajin:abc" />);
-    const iframe = await screen.findByTitle<HTMLIFrameElement>('pay dashboard');
-    const postMessageSpy = stubPostMessage(iframe);
-    fireEvent.load(iframe);
-
+    const { postMessageSpy } = await renderReady('local-app', '/local-app');
     await waitFor(() =>
-      expect(postMessageSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'theme' }), expect.any(String)),
+      expect(postMessageSpy).toHaveBeenCalledWith({ type: 'session', token: 'tok-123' }, globalThis.location.origin),
     );
-    expect(fetchMock.mock.calls.some(([input]) => input.toString().includes('/auth/api/tokens/app'))).toBe(false);
+    expect(fetchMock).toHaveBeenCalledWith('/auth/api/tokens/app', expect.objectContaining({
+      body: JSON.stringify({ aud: globalThis.location.host }),
+    }));
   });
 
   it('sends an unload message when the embed unmounts', async () => {

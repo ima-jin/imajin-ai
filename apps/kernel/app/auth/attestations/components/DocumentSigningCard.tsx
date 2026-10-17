@@ -212,6 +212,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
             }
           }}
           aria-expanded={expanded}
+          aria-label={`Document details: ${title}`}
         />
         <span className={`relative text-xs px-2 py-0.5 rounded-full border shrink-0 ${badge.classes}`}>
           {badge.label}
@@ -252,6 +253,7 @@ export default function DocumentSigningCard({ attestation, signatures, sessionDi
             </button>
           )}
           <svg
+            aria-hidden="true"
             className={`w-4 h-4 text-zinc-600 transition-transform ${expanded ? 'rotate-180' : ''}`}
             fill="none"
             viewBox="0 0 24 24"

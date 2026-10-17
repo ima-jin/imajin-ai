@@ -15,6 +15,25 @@ import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './o
 
 export const LOOP_LIFECYCLE_TYPES = ['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished'] as const;
 export type LoopLifecycleType = (typeof LOOP_LIFECYCLE_TYPES)[number];
+export const SURFACE_EVENT_TYPES = ['surface.acquired', 'surface.released', 'surface.conflicted'] as const;
+export type SurfaceEventType = (typeof SURFACE_EVENT_TYPES)[number];
+export type LoopRailType = LoopLifecycleType | SurfaceEventType;
+
+export function isSurfaceEventType(value: unknown): value is SurfaceEventType {
+  return typeof value === 'string' && (SURFACE_EVENT_TYPES as readonly string[]).includes(value);
+}
+
+/** Exact, case-sensitive surface identity; no harness lookup or URI normalization. */
+export function isSurfaceUri(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  if (/\s/.test(value) || value.includes('\0')) return false;
+  return [
+    /^repo:[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+#branch:[^\s#]+$/,
+    /^service:[A-Za-z0-9_.-]+@env:[A-Za-z0-9_.-]+$/,
+    /^device:[A-Za-z0-9_.:-]+$/,
+    /^issue:#[1-9]\d*$/,
+  ].some((pattern) => pattern.test(value));
+}
 
 export function isLoopLifecycleType(value: unknown): value is LoopLifecycleType {
   return typeof value === 'string' && (LOOP_LIFECYCLE_TYPES as readonly string[]).includes(value);
@@ -26,6 +45,7 @@ export interface LoopRefs {
   runId?: string;
   sessionKey?: string;
   sessionId?: string;
+  conflictingLoopId?: string;
 }
 
 export interface LoopEnvelope {
@@ -49,7 +69,7 @@ export interface LoopPublisherSignature {
 }
 
 export interface LoopIngestRequest {
-  type: LoopLifecycleType;
+  type: LoopRailType;
   payload: LoopEnvelope;
   publisherDid: string;
   signature: LoopPublisherSignature;
@@ -58,7 +78,7 @@ export interface LoopIngestRequest {
 const ED25519_PUBLIC_KEY_HEX = /^[0-9a-f]{64}$/i;
 const ED25519_SIGNATURE_HEX = /^[0-9a-f]{128}$/i;
 const MAX_SUMMARY_LENGTH = 2000;
-const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId']);
+const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId', 'conflictingLoopId']);
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -168,8 +188,8 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
   }
   const { type, payload, publisherDid, signature } = raw as Record<string, unknown>;
 
-  if (!isLoopLifecycleType(type)) {
-    return { ok: false, error: `type must be one of ${LOOP_LIFECYCLE_TYPES.join(', ')}` };
+  if (!isLoopLifecycleType(type) && !isSurfaceEventType(type)) {
+    return { ok: false, error: `type must be one of ${[...LOOP_LIFECYCLE_TYPES, ...SURFACE_EVENT_TYPES].join(', ')}` };
   }
   if (!isDid(publisherDid)) {
     return { ok: false, error: 'publisherDid must be a DID string' };
@@ -177,6 +197,17 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
 
   const envelopeResult = parseEnvelope(payload);
   if (!envelopeResult.ok) return envelopeResult;
+  if (isSurfaceEventType(type)) {
+    const surface = (payload as Record<string, unknown>).surface;
+    if (!isSurfaceUri(surface)) {
+      return { ok: false, error: 'payload.surface must be a typed repo, service, device, or issue URI' };
+    }
+    if (type === 'surface.conflicted' && !envelopeResult.value.refs?.conflictingLoopId) {
+      return { ok: false, error: 'payload.refs.conflictingLoopId is required for surface.conflicted' };
+    }
+    // Validation must not insert optional defaults into signed wire data.
+    envelopeResult.value = { ...(payload as LoopEnvelope) };
+  }
 
   const signatureResult = parseSignature(signature);
   if (!signatureResult.ok) return signatureResult;

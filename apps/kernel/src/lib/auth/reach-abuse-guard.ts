@@ -9,6 +9,7 @@ export const REACH_ABUSE_LIMITS = {
   bodyBytes: 64 * 1024,
   ip: 60,
   stub: 5,
+  statusStub: 60,
   principal: 10,
   tier: { soft: 30, preliminary: 60, established: 120 },
 } as const;
@@ -66,6 +67,11 @@ async function consume(
 /** Before JSON parsing, key resolution, signature work, or stub minting. */
 export function guardReachIP(request: Request, principalDid: string): Promise<ReachThrottle | null> {
   return consume({ principalDid }, 'ip', [getClientIP(request)], REACH_ABUSE_LIMITS.ip);
+}
+
+/** Receipt polling has a separate budget so ordinary polls do not spend send allowance. */
+export function guardReachStatusRequester(principalDid: string, requesterDid: string): Promise<ReachThrottle | null> {
+  return consume({ principalDid, requesterDid }, 'stub', [principalDid, 'status', requesterDid], REACH_ABUSE_LIMITS.statusStub);
 }
 
 /** Verified identity only: caller-controlled tier labels never select a budget. */

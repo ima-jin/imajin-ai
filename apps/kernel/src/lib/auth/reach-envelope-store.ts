@@ -128,7 +128,7 @@ export async function listReachEnvelopes(params: {
 }
 
 /** Shares the delivery lock so a committed block prevents the next delivery. */
-export async function blockReachSender(params: { principalDid: string; requesterDid: string }): Promise<void> {
+export async function blockReachSender(params: { principalDid: string; requesterDid: string; onBehalfOfStubDid?: string }): Promise<void> {
   await getClient().begin('isolation level read committed', async (tx) => {
     await lockPrincipal(tx, params.principalDid);
     // Foreign credential mint/rotation uses this row lock. Taking it after the
@@ -141,7 +141,10 @@ export async function blockReachSender(params: { principalDid: string; requester
       WHERE principal_did = $1 AND $2::jsonb ? requester_did
         AND NULLIF(envelope->>'onBehalfOfStubDid', '') IS NOT NULL
     `, [params.principalDid, JSON.stringify(group.identities)]);
-    const blockedIdentities = [...new Set([...group.identities, ...claims.map((claim) => claim.stub_did)])];
+    const blockedIdentities = [...new Set([
+      ...group.identities, ...claims.map((claim) => claim.stub_did),
+      ...(params.onBehalfOfStubDid ? [params.onBehalfOfStubDid] : []),
+    ])];
     await tx.unsafe(`
       INSERT INTO auth.reach_sender_blocks (principal_did, requester_did)
       SELECT $1, value FROM jsonb_array_elements_text($2::jsonb)

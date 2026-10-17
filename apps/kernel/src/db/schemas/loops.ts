@@ -73,3 +73,20 @@ export const loopOutputArtifacts = loopsSchema.table('loop_output_artifacts', {
 }, (table) => ({
   scopeHashIdx: uniqueIndex('idx_loop_output_artifacts_scope_hash').on(table.principal, table.loopId, table.sha256),
 }));
+/** #2405 — one advisory holder per typed surface, with original signed evidence. */
+export const surfaceLease = loopsSchema.table('surface_lease', {
+  surface: text('surface').primaryKey(),
+  loopId: text('loop_id').notNull(),
+  principal: text('principal').notNull(),
+  issuer: text('issuer').notNull(),
+  signature: jsonb('signature').notNull(),
+  signedPayload: jsonb('signed_payload').notNull(),
+  acquiredAt: timestamp('acquired_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  heartbeatAt: timestamp('heartbeat_at', { withTimezone: true }).notNull(),
+  releasedAt: timestamp('released_at', { withTimezone: true }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  principalIdx: index('idx_surface_lease_principal').on(table.principal, table.expiresAt),
+  loopIdx: index('idx_surface_lease_loop').on(table.loopId, table.principal, table.issuer),
+}));

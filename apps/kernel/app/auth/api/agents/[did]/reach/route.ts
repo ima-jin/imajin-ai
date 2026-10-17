@@ -37,7 +37,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';
-import { reachPrincipal, type ReachRequestInput } from '@/src/lib/auth/agent-reach';
+import { reachPrincipal, reachPrincipalWithBearer, type ReachRequestInput, type ReachResult } from '@/src/lib/auth/agent-reach';
 import { parseReachDelivery } from '@/src/lib/auth/reach-delivery-input';
 import { guardReachIP, readReachBody, ReachBodyTooLarge } from '@/src/lib/auth/reach-abuse-guard';
 
@@ -102,6 +102,15 @@ function parseBody(body: Record<string, unknown>): { ok: true; input: ReachReque
   };
 }
 
+function reachResponse(result: ReachResult) {
+  if ('denied' in result) {
+    return NextResponse.json({ error: result.reason, onboarding: agentCardUrl() }, {
+      status: result.status, headers: result.retryAfter ? { 'Retry-After': String(result.retryAfter) } : undefined,
+    });
+  }
+  return NextResponse.json(result);
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ did: string }> }) {
   const { did } = await params;
   const principalDid = decodeURIComponent(did);
@@ -125,18 +134,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  const authorization = request.headers.get('authorization');
+  if (authorization !== null) {
+    if (!authorization.startsWith('Bearer ') || !body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid reach credential or body' }, { status: 401 });
+    }
+    const result = await reachPrincipalWithBearer(principalDid, authorization.slice(7), body);
+    return reachResponse(result);
+  }
   const parsed = parseBody(body);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
   const result = await reachPrincipal(principalDid, parsed.input);
-  if ('denied' in result) {
-    return NextResponse.json(
-      { error: result.reason, onboarding: agentCardUrl() },
-      { status: result.status, headers: result.retryAfter ? { 'Retry-After': String(result.retryAfter) } : undefined },
-    );
-  }
-
-  return NextResponse.json(result);
+  return reachResponse(result);
 }

@@ -436,7 +436,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0037_bus_chain_configs.sql",
-      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589). 0200_seed_agent_reach_throttled_chain.sql seeds the awaited, metadata-only agent.reach.throttled audit chain (#2599)."
+      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589). 0204_seed_agent_reach_throttled_chain.sql seeds the awaited, metadata-only agent.reach.throttled audit chain (#2599)."
     },
     "kernel.calendar_entries": {
       "owner": "kernel",
@@ -1073,6 +1073,12 @@
       "schema": "kernel",
       "firstMigration": "0157_loops_rail.sql",
       "notes": ""
+    },
+    "kernel.surface_lease": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0194_surface_lease.sql",
+      "notes": "#2405 — signed warn-only surface holdings attached to loops"
     }
   },
   "views": {},

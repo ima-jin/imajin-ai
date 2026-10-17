@@ -28,6 +28,8 @@ export async function deliverReach(params: {
   grantId: string | null;
   transcriptHash: string;
   admitted: boolean;
+  /** Bearer possession is authenticated, but is NOT a requester transcript signature. */
+  requesterAuthTier?: 'signed' | 'bearer';
 }): Promise<ReachDeliveryResult> {
   const { input, principalDid } = params;
   const config = resolveFrontDoorConfig(params.metadata, true);
@@ -45,7 +47,7 @@ export async function deliverReach(params: {
     onBehalfOfStubDid: params.onBehalfOfStubDid,
     onBehalfOf: input.onBehalfOf, claimVerified: false as const,
     requesterTier: params.requesterTier,
-    requesterAuthTier: 'signed' as const,
+    requesterAuthTier: params.requesterAuthTier ?? 'signed',
     topic: input.topic, message: input.message, replyHandle: input.replyHandle,
     transcriptHash: params.transcriptHash, requesterSignature: input.signature,
     requestIssuedAt: input.issuedAt, issuedAt, grantId: params.grantId,
@@ -80,7 +82,7 @@ export async function deliverReach(params: {
         requesterDid: input.requesterDid, principalDid, reachId,
         onBehalfOfStubDid: params.onBehalfOfStubDid,
         transcriptHash: params.transcriptHash, requesterSignature: input.signature,
-        signatureVerified: true, grantId: params.grantId, outcome: 'delivered',
+        signatureVerified: params.requesterAuthTier !== 'bearer', grantId: params.grantId, outcome: 'delivered',
       },
     }, `att_reach_${reachId}`),
   });

@@ -90,4 +90,14 @@ describe('requester-scoped reach_status', () => {
     await database.query('INSERT INTO auth.reach_sender_blocks (principal_did, requester_did) VALUES ($1, $2)', [principalDid, requesterDid]);
     expect(await reachStatus(params)).toEqual({ reachId: params.reachId, state: 'blocked', reply: null });
   });
+
+  it('withholds a reply for a revoked foreign stub without refusing its status', async () => {
+    await database.exec('UPDATE auth.foreign_agent_stubs SET revoked_at = now()');
+    expect(await reachStatus(params)).toEqual({ reachId: params.reachId, state: 'blocked', reply: null });
+  });
+
+  it('does not let an active stub replace the committed requester or principal', async () => {
+    expect(await reachStatus(params)).toEqual({ reachId: params.reachId, state: 'replied', reply });
+    expect(await reachStatus({ ...params, requesterDid: 'did:imajin:alias' })).toBeNull();
+  });
 });

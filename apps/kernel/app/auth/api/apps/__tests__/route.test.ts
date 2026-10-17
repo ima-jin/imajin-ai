@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: mocks.requireAuth,
-  resolveActingDid: (identity: { actingFor?: string; id: string }) => identity.actingFor ?? identity.id,
+  resolveActingDid: (identity: { actingFor?: string; actingAs?: string; id: string }) => identity.actingFor ?? identity.actingAs ?? identity.id,
 }));
 
 vi.mock('@/src/lib/kernel/app-nav', () => ({
@@ -19,7 +19,7 @@ vi.mock('@/src/lib/kernel/app-nav', () => ({
     apps.filter((app) => app.placements.includes(placement)),
 }));
 
-import { GET } from '../route';
+import { GET, OPTIONS } from '../route';
 
 const OWNER_DID = 'did:imajin:owner';
 const AGENT_DID = 'did:imajin:agent';
@@ -51,6 +51,54 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.requireAuth.mockResolvedValue({ identity: { id: OWNER_DID } });
   mocks.resolveNavAppsForIdentity.mockResolvedValue([COFFEE_APP, LEARN_APP]);
+});
+
+describe('identity apps CORS', () => {
+  const origin = 'https://coffee.imajin.ai';
+  const request = (query = '', requestOrigin = origin) => new NextRequest(`https://auth.imajin.ai/auth/api/apps${query}`, {
+    headers: { Origin: requestOrigin, 'X-Acting-As': 'did:imajin:group' },
+  });
+
+  it('allows credentialed acting-as preflight only through the existing origin policy', () => {
+    const res = OPTIONS(request());
+    expect(res.status).toBe(204);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(res.headers.get('Access-Control-Allow-Headers')).toContain('X-Acting-As');
+    expect(res.headers.get('Access-Control-Allow-Methods')).toBe('GET, OPTIONS');
+    expect(res.headers.get('Vary')).toBe('Origin');
+    expect(mocks.requireAuth).not.toHaveBeenCalled();
+  });
+
+  it('does not grant preflight to an untrusted origin', () => {
+    expect(OPTIONS(request('', 'https://untrusted.example')).headers.has('Access-Control-Allow-Origin')).toBe(false);
+  });
+
+  it('serves a credentialed group list using the validated acting-as identity', async () => {
+    mocks.requireAuth.mockResolvedValueOnce({ identity: { id: OWNER_DID, actingAs: 'did:imajin:group' } });
+    const res = await GET(request('?placement=launcher'));
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(mocks.resolveNavAppsForIdentity).toHaveBeenCalledWith('did:imajin:group');
+  });
+
+  it.each([
+    [401, ''],
+    [403, '?for=did:imajin:someone-else'],
+    [400, '?placement=invalid'],
+  ])('includes CORS on %s responses', async (status, query) => {
+    if (status === 401) mocks.requireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
+    const res = await GET(request(query as string));
+    expect(res.status).toBe(status);
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe(origin);
+    expect(res.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+  });
+
+  it('does not grant response access to an untrusted origin', async () => {
+    const res = await GET(request('', 'https://untrusted.example'));
+    expect(res.headers.has('Access-Control-Allow-Origin')).toBe(false);
+  });
 });
 
 describe('GET /auth/api/apps (#2425)', () => {

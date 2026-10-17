@@ -1,28 +1,15 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { getSessionFromCookies } from "@/src/lib/kernel/session";
-import type { Identity } from "@imajin/auth";
+import { getSession, resolveActingDid } from "@imajin/auth";
 import { MediaPageClient } from "@/src/components/media/MediaPageClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const cookieStore = await cookies();
-  const session = await getSessionFromCookies(cookieStore.toString());
+  const session = await getSession({ service: "media" });
 
   if (!session) {
     redirect("/auth/login");
   }
 
-  const identity: Identity = {
-    id: session.did,
-    scope: session.scope,
-    subtype: session.subtype,
-    name: session.name,
-    handle: session.handle,
-    tier: session.tier as Identity["tier"],
-    chainVerified: session.chainVerified,
-  };
-
-  return <MediaPageClient session={identity} />;
+  return <MediaPageClient session={{ ...session, id: resolveActingDid(session) }} />;
 }

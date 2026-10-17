@@ -19,16 +19,20 @@ vi.mock('next/server', () => {
 vi.mock('@/src/lib/http/node-url', () => ({ agentCardUrl: () => 'https://imajin.ai/.well-known/agent.json' }));
 
 const reachPrincipalMock = vi.fn();
+const bearerMock = vi.fn();
 vi.mock('@/src/lib/auth/agent-reach', () => ({
   reachPrincipal: (...args: unknown[]) => reachPrincipalMock(...args),
+  reachPrincipalWithBearer: (...args: unknown[]) => bearerMock(...args),
 }));
 
 const { POST } = await import('../route');
 
 const PRINCIPAL_DID = 'did:imajin:ryan';
 
-function makeRequest(body: unknown) {
-  return new Request('https://imajin.ai/reach', { method: 'POST', body: JSON.stringify(body) });
+function makeRequest(body: unknown, authorization?: string) {
+  return new Request('https://imajin.ai/reach', {
+    method: 'POST', body: JSON.stringify(body), headers: authorization ? { authorization } : {},
+  });
 }
 
 function validBody(overrides: Record<string, unknown> = {}) {
@@ -48,6 +52,30 @@ function validBody(overrides: Record<string, unknown> = {}) {
 describe('POST /auth/api/agents/:did/reach', () => {
   beforeEach(() => {
     reachPrincipalMock.mockReset();
+    bearerMock.mockReset();
+  });
+
+  it('dispatches a static-header request only to recipient-bound bearer auth', async () => {
+    bearerMock.mockResolvedValue({ delivered: true, reachId: 'reach_1' });
+    const body = { topic: 'collaboration', message: 'Hello', replyHandle: 'opaque' };
+    const response = await POST(makeRequest(body, 'Bearer synthetic') as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect(response.status).toBe(200);
+    expect(bearerMock).toHaveBeenCalledWith(PRINCIPAL_DID, 'synthetic', body);
+    expect(reachPrincipalMock).not.toHaveBeenCalled();
+  });
+  it('maps a denied reach credential without falling back to a signed body', async () => {
+    bearerMock.mockResolvedValue({ denied: true, reason: 'unauthorized', status: 401 });
+    const response = await POST(makeRequest(validBody(), 'Bearer wrong-audience') as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect(response.status).toBe(401);
+    expect(reachPrincipalMock).not.toHaveBeenCalled();
+  });
+  it.each([
+    { body: {}, header: 'Basic synthetic' }, { body: null, header: 'Bearer synthetic' },
+    { body: [], header: 'Bearer synthetic' }, { body: 'x', header: 'Bearer synthetic' },
+  ])('rejects malformed bearer HTTP input %j before authentication', async ({ body, header }) => {
+    const response = await POST(makeRequest(body, header) as never, { params: Promise.resolve({ did: PRINCIPAL_DID }) });
+    expect(response.status).toBe(401);
+    expect(bearerMock).not.toHaveBeenCalled();
   });
 
   it('rejects a non-DID principal path param with 400 before calling reachPrincipal', async () => {

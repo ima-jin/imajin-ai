@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { canonicalize, crypto as authCrypto } from '@imajin/auth';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import { reachReplyEvent, type SignedReachReplyEvent } from '@/src/lib/auth/reach-reply-wire';
 import { ReachInboxPanel } from '../reach-inbox-panel';
+import type { ReachBearerKnock } from '@/src/lib/access/reach-bearer-wire';
 
 const pair = {
   privateKey: '13'.repeat(32),
@@ -52,6 +53,108 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+function knock(): ReachBearerKnock {
+  return {
+    requestId: 'request/one', requesterDid: envelope().requesterDid, principalDid: envelope().principalDid,
+    agentLabel: '<b>Research agent</b>',
+    onBehalfOf: { platform: 'foreign', externalRef: 'claimant', selfDescription: '<script>claim</script>' },
+    claimVerified: false, status: 'active', issuedAt: '2026-10-17T00:00:00.000Z',
+    expiresAt: '2026-10-18T00:00:00.000Z', hardCapAt: '2026-10-24T00:00:00.000Z',
+  };
+}
+
+function installKnocks(knocks = [knock()], envelopes: unknown[] = []) {
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => options?.method === 'POST'
+    ? json({ blocked: true }) : json({ principalDid: envelope().principalDid, envelopes, knocks }));
+  vi.stubGlobal('fetch', fetchMock);
+  return fetchMock;
+}
+
+describe('Reach information-only knocks', () => {
+  it('renders plain-text UNVERIFIED claims and credential status with no consent or reply actions', async () => {
+    installKnocks();
+    const { container } = render(<ReachInboxPanel />);
+    const card = within(await screen.findByRole('article', { name: 'Reach knock' }));
+    expect(card.getByText('<b>Research agent</b>')).toBeDefined();
+    expect(card.getByText(envelope().requesterDid)).toBeDefined();
+    expect(card.getByText('UNVERIFIED onBehalfOf claim')).toBeDefined();
+    expect(card.getByText('foreign: claimant — <script>claim</script>')).toBeDefined();
+    expect(card.getByText('Credential status:')).toBeDefined();
+    expect(card.getByText('active')).toBeDefined();
+    expect(card.getByText('No action needed')).toBeDefined();
+    expect(card.getAllByRole('button')).toHaveLength(1);
+    expect(card.getByRole('button', { name: 'Block sender' })).toBeDefined();
+    expect(card.queryByRole('textbox')).toBeNull();
+    expect(card.queryByText(/approve|accept|reply/i)).toBeNull();
+    expect(screen.queryByText('No reach messages yet.')).toBeNull();
+    expect(container.querySelector('b, script')).toBeNull();
+  });
+
+  it('blocks all same-sender knocks and delivered cards through the knock route without signing', async () => {
+    const fetchMock = installKnocks([knock(), { ...knock(), requestId: 'request_2' }], [envelope()]);
+    render(<ReachInboxPanel />);
+    await screen.findByRole('textbox');
+    fireEvent.click(within(screen.getAllByRole('article', { name: 'Reach knock' })[0])
+      .getByRole('button', { name: 'Block sender' }));
+    await waitFor(() => expect(screen.getAllByText('Blocked sender')).toHaveLength(2));
+    expect(screen.getByText('Blocked — replies are disabled.')).toBeDefined();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Block sender' })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith('/jin/api/reach/knocks/request%2Fone/block', {
+      method: 'POST', credentials: 'include',
+    });
+  });
+
+  it('also updates knocks when a delivered card blocks their shared sender', async () => {
+    installKnocks([knock()], [envelope()]);
+    render(<ReachInboxPanel />);
+    await screen.findByRole('textbox');
+    const delivered = screen.getAllByRole('article').find(card => card.getAttribute('aria-label') !== 'Reach knock');
+    fireEvent.click(within(delivered!).getByRole('button', { name: 'Block sender' }));
+    await screen.findByText('Blocked sender');
+    expect(screen.queryByRole('button', { name: 'Block sender' })).toBeNull();
+  });
+
+  it.each([
+    json({ error: 'Block unavailable' }, 503), json({ blocked: false }),
+  ])('keeps the block available and never claims success on an unsuccessful response', async postResponse => {
+    const fetchMock = installKnocks();
+    render(<ReachInboxPanel />);
+    const button = await screen.findByRole('button', { name: 'Block sender' });
+    fetchMock.mockResolvedValueOnce(postResponse);
+    fireEvent.click(button);
+    await screen.findByRole('alert');
+    expect(screen.queryByText('Blocked sender')).toBeNull();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+    await screen.findByText('Blocked sender');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('prevents duplicate block requests while pending', async () => {
+    const fetchMock = installKnocks();
+    render(<ReachInboxPanel />);
+    const button = await screen.findByRole('button', { name: 'Block sender' });
+    let finish: (response: Response) => void = () => { throw new Error('Block not started'); };
+    fetchMock.mockImplementationOnce(async () => new Promise<Response>(resolve => { finish = resolve; }));
+    fireEvent.click(button);
+    const pending = screen.getByRole('button', { name: 'Blocking sender…' });
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(pending);
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+    finish(json({ blocked: true }));
+    await screen.findByText('Blocked sender');
+  });
+
+  it.each(['blocked', 'revoked'])('hides foreign-principal knocks and honors persisted %s status', async status => {
+    installKnocks([{ ...knock(), status }, { ...knock(), requestId: 'foreign', principalDid: 'did:other' }]);
+    render(<ReachInboxPanel />);
+    await screen.findByText('Blocked sender');
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Block sender' })).toBeNull();
+  });
 });
 
 describe('Reach sender blocking', () => {
