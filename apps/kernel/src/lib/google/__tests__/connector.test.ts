@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { sealMock, loadMock, publishMock, whereMock, updateSetMock, updateWhereMock, revokeRegistrationMock } = vi.hoisted(() => ({
+const { sealMock, loadMock, publishMock, whereMock, updateSetMock, updateWhereMock, revokeRegistrationMock, readScopesMock, requireApprovalMock } = vi.hoisted(() => ({
   sealMock: vi.fn(),
   loadMock: vi.fn(),
   publishMock: vi.fn(),
@@ -8,6 +8,8 @@ const { sealMock, loadMock, publishMock, whereMock, updateSetMock, updateWhereMo
   updateSetMock: vi.fn(),
   updateWhereMock: vi.fn(),
   revokeRegistrationMock: vi.fn(),
+  readScopesMock: vi.fn(),
+  requireApprovalMock: vi.fn(),
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -16,6 +18,8 @@ vi.mock('drizzle-orm', () => ({
 }));
 
 vi.mock('@/src/lib/vault', () => ({ sealAndStoreV2: sealMock, loadAndUnseal: loadMock }));
+vi.mock('../scope-manifest', () => ({ readActiveGoogleScopes: readScopesMock }));
+vi.mock('../setup', () => ({ requireBusinessProfileApproval: requireApprovalMock }));
 
 vi.mock('@/src/db', () => {
   const channelLinks = { slot: 'slot', channel: 'channel', did: 'did', appDid: 'appDid', status: 'status', scopes: 'scopes' };
@@ -86,6 +90,11 @@ function sealedTokens(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
+  vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', '');
+  readScopesMock.mockReset();
+  readScopesMock.mockResolvedValue(['google:gmail:read']);
+  requireApprovalMock.mockReset();
+  requireApprovalMock.mockResolvedValue(undefined);
   vi.mocked(recordConnectorRegistration).mockClear();
   sealMock.mockReset();
   sealMock.mockResolvedValue(undefined);
@@ -109,6 +118,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
 });
 
 describe('googleApiFetch / googleApiRequest (#2144 review — shared REST fetch helper)', () => {
@@ -165,10 +175,11 @@ describe('googleApiFetch / googleApiRequest (#2144 review — shared REST fetch 
 });
 
 describe('GOOGLE_OAUTH_SCOPES (#2144)', () => {
-  it('declares one Google API scope per v1 imajin scope', () => {
+  it('declares one Google API scope per supported imajin scope', () => {
     expect(Object.keys(GOOGLE_OAUTH_SCOPES).sort()).toEqual([
-      'google:calendar:read', 'google:calendar:write', 'google:drive:read',
+      'google:business-profile:read', 'google:calendar:read', 'google:calendar:write', 'google:drive:read',
       'google:gmail:read', 'google:gmail:send', 'google:meet:records',
+      'google:search-console:read',
     ]);
   });
 });
@@ -179,22 +190,71 @@ describe('buildAuthorizeUrl (#2144)', () => {
     const url = await buildAuthorizeUrl(OWNER, 'state123');
     expect(url).toContain('access_type=offline');
     expect(url).toContain('prompt=consent');
+    expect(url).toContain('include_granted_scopes=true');
     expect(url).toContain('client_id=cid');
     expect(url).toContain('state=state123');
     expect(url).toContain(encodeURIComponent('https://imajin.test/google/api/callback'));
   });
 
-  it('requests the union of all six v1 Google API scopes', async () => {
+  it('requests only the selected manifest scopes and deduplicates them', async () => {
     setConfig();
+    readScopesMock.mockResolvedValue(['google:search-console:read', 'google:search-console:read']);
     const url = await buildAuthorizeUrl(OWNER, 'state123');
     const params = new URL(url).searchParams;
-    const scope = params.get('scope') ?? '';
-    expect(scope).toContain('gmail.readonly');
-    expect(scope).toContain('gmail.send');
-    expect(scope).toContain('calendar.readonly');
-    expect(scope).toContain('calendar.events');
-    expect(scope).toContain('drive.readonly');
-    expect(scope).toContain('meetings.space.readonly');
+    expect(params.get('scope')).toBe(GOOGLE_OAUTH_SCOPES['google:search-console:read']);
+    expect(readScopesMock).toHaveBeenCalledWith(OWNER, 'primary');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('selects the organization identity and named connection, while preserving shared primary app config', async () => {
+    const org = 'did:imajin:org';
+    const sharedApp = 'did:imajin:shared-app';
+    setConfig();
+    readScopesMock.mockImplementation(async (owner: string, slot: string) =>
+      owner === org && slot === 'marketing' ? ['google:search-console:read'] : ['google:gmail:read']);
+    const url = await withConnectorConnection('google', org, 'marketing', () =>
+      buildAuthorizeUrl(org, 'state', sharedApp));
+    expect(readScopesMock).toHaveBeenCalledWith(org, 'marketing');
+    expect(loadMock).toHaveBeenCalledWith(`google-config:${sharedApp}`);
+    expect(new URL(url).searchParams.get('scope')).toBe(GOOGLE_OAUTH_SCOPES['google:search-console:read']);
+  });
+
+  it.each([{ selection: [] }, { selection: ['unknown:scope'] }, { selection: ['toString'] }, { selection: ['google:business-profile:read'] }])(
+    'rejects empty or disabled scope selections before loading credentials or contacting Google: $selection', async ({ selection }) => {
+      readScopesMock.mockResolvedValue(selection);
+      await expect(buildAuthorizeUrl(OWNER, 'state')).rejects.toThrow('google_no_scopes');
+      expect(loadMock).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, '', 'false', 'TRUE', '1'])('omits Business scope when flag is %s without blocking Search Console', async (flag) => {
+    vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', flag);
+    setConfig();
+    readScopesMock.mockResolvedValue(['google:search-console:read', 'google:business-profile:read']);
+    const url = await buildAuthorizeUrl(OWNER, 'state');
+    expect(new URL(url).searchParams.get('scope')).toBe(GOOGLE_OAUTH_SCOPES['google:search-console:read']);
+    expect(requireApprovalMock).not.toHaveBeenCalled();
+  });
+
+  it('requests Business scope only when explicitly enabled and selected', async () => {
+    vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', 'true');
+    setConfig();
+    readScopesMock.mockResolvedValue(['google:business-profile:read']);
+    const url = await buildAuthorizeUrl(OWNER, 'state', undefined, 'marketing');
+    expect(readScopesMock).toHaveBeenCalledWith(OWNER, 'marketing');
+    expect(new URL(url).searchParams.get('scope')).toBe('https://www.googleapis.com/auth/business.manage');
+    expect(requireApprovalMock).toHaveBeenCalledWith(OWNER, 'marketing');
+  });
+
+  it('rejects Business consent without per-connection project approval before accessing credentials', async () => {
+    vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', 'true');
+    readScopesMock.mockResolvedValue(['google:business-profile:read']);
+    requireApprovalMock.mockRejectedValue(new Error('google_business_profile_approval_pending'));
+    await expect(buildAuthorizeUrl(OWNER, 'state', undefined, 'marketing')).rejects.toThrow('google_business_profile_approval_pending');
+    expect(requireApprovalMock).toHaveBeenCalledWith(OWNER, 'marketing');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 
@@ -203,7 +263,7 @@ describe('exchangeCodeAndStore (#2144)', () => {
     setConfig();
     (fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: true,
-      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600 }),
+      json: async () => ({ access_token: 'at', refresh_token: 'rt', expires_in: 3600, scope: GOOGLE_OAUTH_SCOPES['google:search-console:read'] }),
     });
 
     await exchangeCodeAndStore(OWNER, 'code123');
@@ -211,7 +271,9 @@ describe('exchangeCodeAndStore (#2144)', () => {
     expect(sealMock).toHaveBeenCalledTimes(1);
     const [field, blob] = sealMock.mock.calls[0];
     expect(field).toBe(oauthVaultField(OWNER));
-    expect(JSON.parse(blob as string)).toMatchObject({ accessToken: 'at', refreshToken: 'rt' });
+    expect(JSON.parse(blob as string)).toMatchObject({
+      accessToken: 'at', refreshToken: 'rt', scope: GOOGLE_OAUTH_SCOPES['google:search-console:read'],
+    });
   });
 });
 
@@ -226,6 +288,56 @@ describeActiveGrantContract({
 });
 
 describe('requireGrantAndToken (#2144, fail-closed)', () => {
+  it('rejects Business calls before credential or provider access when disabled', async () => {
+    grant(['google:business-profile:read']);
+    sealedTokens({ scope: GOOGLE_OAUTH_SCOPES['google:business-profile:read'] });
+    await expect(requireGrantAndToken(OWNER, 'google:business-profile:read')).rejects.toThrow('google_business_profile_disabled');
+    expect(loadMock).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  describe.each(['google:search-console:read', 'google:business-profile:read'])('%s provider consent', (scope) => {
+    beforeEach(() => vi.stubEnv('GOOGLE_BUSINESS_PROFILE_ENABLED', 'true'));
+
+    it.each([undefined, 'https://www.googleapis.com/auth/gmail.readonly', `${GOOGLE_OAUTH_SCOPES[scope]}.extra`])(
+      'rejects a local grant without exact provider scope evidence (%s)', async (providerScope) => {
+        grant([scope]);
+        sealedTokens({ scope: providerScope });
+        await expect(requireGrantAndToken(OWNER, scope)).rejects.toThrow('google_insufficient_scope');
+        expect(fetch).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns a token only with both local grant and exact returned provider scope', async () => {
+      grant([scope]);
+      sealedTokens({ scope: `https://www.googleapis.com/auth/gmail.readonly ${GOOGLE_OAUTH_SCOPES[scope]}` });
+      await expect(requireGrantAndToken(OWNER, scope)).resolves.toBe('at');
+    });
+
+    it('uses refreshed provider scopes rather than stale scope evidence', async () => {
+      grant([scope]);
+      setConfig();
+      sealedTokens({ expiresAt: 0, scope: GOOGLE_OAUTH_SCOPES[scope] });
+      vi.mocked(fetch).mockResolvedValue({
+        ok: true, json: async () => ({ access_token: 'new', scope: GOOGLE_OAUTH_SCOPES['google:gmail:read'] }),
+      } as Response);
+      await expect(requireGrantAndToken(OWNER, scope)).rejects.toThrow('google_insufficient_scope');
+    });
+
+    it('cannot borrow provider consent from another organization connection slot', async () => {
+      const org = 'did:imajin:org';
+      grant([scope]);
+      loadMock.mockImplementation(async (field: string) => JSON.stringify({
+        accessToken: field.endsWith(':marketing') ? 'marketing' : 'primary',
+        expiresAt: Date.now() + 3_600_000,
+        scope: field.endsWith(':marketing') ? GOOGLE_OAUTH_SCOPES['google:gmail:read'] : GOOGLE_OAUTH_SCOPES[scope],
+      }));
+      await expect(withConnectorConnection('google', org, 'marketing', () => requireGrantAndToken(org, scope)))
+        .rejects.toThrow('google_insufficient_scope');
+      expect(loadMock).toHaveBeenCalledWith(`google-oauth:${org}:marketing`);
+      expect(loadMock).not.toHaveBeenCalledWith(`google-oauth:${org}`);
+    });
+  });
   it('throws google_no_grant with no active channel_links row', async () => {
     noGrant();
     await expect(requireGrantAndToken(OWNER, 'google:gmail:read')).rejects.toThrow(/google_no_grant/);
