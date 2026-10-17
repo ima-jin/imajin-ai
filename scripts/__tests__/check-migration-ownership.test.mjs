@@ -102,6 +102,54 @@ function expectFail(result, ...expectedSubstrings) {
 }
 
 describe('check-migration-ownership', () => {
+  const externalSchemas = {
+    dykil: { owner: 'dykil', repository: 'ima-jin/dykil' },
+    learn: { owner: 'learn', repository: 'ima-jin/learn' },
+    coffee: { owner: 'coffee', repository: 'ima-jin/coffee' },
+    market: { owner: 'market', repository: 'ima-jin/market' },
+  };
+
+  it.each([
+    ['dykil', 'ALTER TABLE dykil.surveys ADD COLUMN label TEXT;'],
+    ['dykil', 'UPDATE "dykil"."surveys" SET title = title;'],
+    ['dykil', 'SELECT * FROM dykil.survey_responses;'],
+    ['dykil', 'CREATE SCHEMA IF NOT EXISTS dykil;'],
+    ['dykil', 'DROP SCHEMA "dykil" CASCADE;'],
+    ['dykil', 'SET search_path TO dykil; CREATE TABLE surveys (id text);'],
+    ['learn', 'DELETE FROM learn.courses;'],
+    ['coffee', 'UPDATE coffee.pages SET id = id;'],
+    ['market', 'SELECT * FROM market.listings;'],
+  ])('rejects new %s schema access even with the app owner header: %s', (owner, statement) => {
+    const { dir, baseRef } = makeBaseRepo();
+    writeOwnership(dir, { ...BASE_OWNERSHIP, externalSchemas });
+    addMigration(dir, '0002_external.sql', `-- owner: ${owner}\n${statement}\n`);
+    expectFail(runGuard(dir, baseRef), 'externally owned', externalSchemas[owner].repository);
+  });
+
+  it('does not let the shared allowlist bypass external ownership', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    writeOwnership(dir, {
+      ...BASE_OWNERSHIP,
+      externalSchemas,
+      sharedMigrationAllowlist: ['0001_seed.sql', '0002_external.sql'],
+    });
+    addMigration(dir, '0002_external.sql', '-- owner: kernel\nSELECT * FROM dykil.surveys JOIN auth.identities ON true;\n');
+    expectFail(runGuard(dir, baseRef), 'externally owned', 'ima-jin/dykil');
+  });
+
+  it('ignores external schema names in comments and data values', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    writeOwnership(dir, { ...BASE_OWNERSHIP, externalSchemas });
+    addMigration(dir, '0002_kernel.sql', "-- owner: kernel\n-- DROP SCHEMA dykil;\nSELECT 'dykil.surveys', 'SET search_path TO coffee';\n");
+    expectPass(runGuard(dir, baseRef));
+  });
+
+  it('retains grandfathered history after external ownership is recorded', () => {
+    const { dir, baseRef } = makeBaseRepo();
+    writeOwnership(dir, { ...BASE_OWNERSHIP, externalSchemas });
+    commitAll(dir, 'record external ownership without changing SQL');
+    expectPass(runGuard(dir, baseRef));
+  });
   it('passes on a clean tree with no changed migration files', () => {
     const { dir, baseRef } = makeBaseRepo();
     expectPass(runGuard(dir, baseRef));

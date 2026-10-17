@@ -1,6 +1,74 @@
 # Kernel Baseline Squash — Dry-Run Plan (#1991 phase 3)
 
-**Status: plan only. Nothing in this document has been executed.** Per the
+**Status: no squash executed.** The ownership-exit verification below uses
+disposable PostgreSQL built from root history, not a live dev restore.
+The historical squash design remains dry-run documentation only and belongs
+to #2525 (blocked by #2517). Do not execute a squash as part of #1991.
+
+## #1991 — dykil exits to its own repository (October 14 ruling)
+
+Ryan lifted the deferral **for dykil** on October 14. This supersedes the
+older per-app-directory gating discussion below, not the squash gate.
+[`ima-jin/dykil#24`](https://github.com/ima-jin/dykil/pull/24) owns the
+`dykil` schema baseline and future migrations. Its runner uses
+`APP_DB_SCHEMA=dykil` and `dykil._migrations`, never `public._migrations`.
+Matching existing tables are adopted by recording the baseline checksum,
+**without replaying DDL**; fresh databases build from the app baseline.
+This is ownership of the legacy schema, not a return to table-backed
+application behavior: surveys/responses remain signed documents/attestations.
+
+`ownership.json.externalSchemas` records the repository boundary for dykil
+and already-pruned coffee, learn and market. New root migrations touching
+these schemas fail even with an app-owner header/shared-file allowlist
+entry. This does not assert the other apps adopted dykil's runner.
+
+All root SQL (`0001_seed.sql`, `0008`, `0025`, `0026`, etc.) remains
+byte-identical and replayable, and historical table-owner/origin rows stay.
+Shared files can still create/touch dykil during full fresh root bootstrap;
+this transitional overlap is **not** new migration authority. The events
+joins in `0025`/`0026` are never copied into dykil's baseline, and root ledger
+rows never move to the app ledger. Pruning never drops the schema/data.
+Runtime access (#2542) and legacy import (#2522) remain separate.
+
+### Effect on the eventual kernel baseline
+
+The future kernel baseline must omit **all of `dykil`**, including its
+ledger. Dykil initializes its own schema on fresh nodes and adopts existing
+ones without reconstruction. The kernel-only dump selection below already
+excludes all app schemas. Do not archive/split shared history now: #2525
+must account for every remaining app and shared-file dependency before
+retiring any history. The dykil baseline alone is not permission to delete it.
+
+### Ownership-exit dry run (not a squash)
+
+Use disposable databases and operator-provisioned credentials only:
+
+1. Build database A with the **unfiltered** `node scripts/migrate.mjs`, in
+   filename order. Verification cut `bbddcc30` applies all 189 root files.
+2. Dump only the kernel-owned schemas listed in procedure step 1 below,
+   **omitting `--schema=public`** (the root ledger is not baseline-managed
+   DDL). Use `pg_dump --schema-only --no-owner --no-privileges`.
+3. Restore that temporary dump into empty disposable B using
+   `psql --set=ON_ERROR_STOP=1`. Dump B with the identical selection.
+   Normalize only random `pg_dump` `\restrict`/`\unrestrict` tokens before
+   comparing: the schema dumps must match.
+4. Assert B has no app schemas and no `public._migrations`. This verifies
+   schema selection and dump/restore equivalence, not an executable
+   idempotent squash migration. No live schema or ledger changes.
+5. Run dykil's app runner against A, then rerun it. Verify adoption of the
+   actual root-history shape without changing table OIDs/definitions/data;
+   only `dykil._migrations` may change. Dykil's real-SQL tests additionally
+   cover fresh builds, populated adoption, repeats and mismatch refusal.
+
+**Remaining acceptance boundary:** the original real-dev-restore dry run
+needs server hands and has not been performed here. The issue/PR carries
+a DECISION card requesting a sanitized restore or separately owned
+server-side verification. Do not represent disposable verification as
+that acceptance.
+
+## Historical squash design (not executed)
+
+Per the
 2026-09-09 decision recorded on #1991 (see `OWNERSHIP.md`'s "Deferred"
 section), the actual squash waits on deploy posture (#2060). This document
 exists so the procedure is designed, reviewed, and ready before that gate

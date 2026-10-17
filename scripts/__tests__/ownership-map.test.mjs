@@ -17,6 +17,18 @@ const gapsFile = readJson('ownership-gaps.json');
 const allowlist = readJson('cross-schema-allowlist.json');
 
 describe('migrations/ownership.json', () => {
+  it('records extracted schema repositories without rewriting table origins', () => {
+    for (const schema of ['coffee', 'dykil', 'learn', 'market']) {
+      expect(ownership.externalSchemas[schema]).toEqual({
+        owner: schema,
+        repository: `ima-jin/${schema}`,
+      });
+    }
+    for (const table of ['dykil.surveys', 'dykil.survey_responses']) {
+      expect(ownership.tables[table].owner).toBe('dykil');
+      expect(ownership.tables[table].firstMigration).toBe('0001_seed.sql');
+    }
+  });
   it('assigns every table exactly one valid owner, consistent with its schema', () => {
     const schemaOwner = new Map();
     for (const [name, entry] of Object.entries(ownership.tables)) {
