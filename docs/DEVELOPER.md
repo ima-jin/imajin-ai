@@ -223,7 +223,7 @@ Each service owns a Postgres schema within the shared database. They don't share
 | `media` | kernel | assets, folders |
 | `pay` | kernel | payments, balances |
 | `registry` | kernel | nodes, heartbeats |
-| `kernel` | kernel | loops, loop_events, surface_lease (signed warn-only surface holders; migration `0192_surface_lease.sql`) |
+| `kernel` | kernel | loops, loop_events, surface_lease (signed warn-only surface holders; migration `0194_surface_lease.sql`) |
 | `events` | [standalone events](https://github.com/ima-jin/events) | events, tickets (historical migrations remain unchanged in the kernel repo; no schema/data removal in #2517) |
 | `coffee` | coffee | pages, tips |
 | `learn` | learn | courses, modules, lessons, enrollments, lesson_progress (app now in [ima-jin/learn](https://github.com/ima-jin/learn), #2503; schema stays here) |

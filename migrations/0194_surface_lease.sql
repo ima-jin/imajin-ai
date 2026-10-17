@@ -1,4 +1,4 @@
--- Migration: 0192_surface_lease
+-- Migration: 0194_surface_lease
 -- owner: kernel
 -- #2405: advisory holdings, not locks or dispatch gates. Expired rows are free.
 CREATE TABLE IF NOT EXISTS kernel.surface_lease (

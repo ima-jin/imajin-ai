@@ -43,7 +43,7 @@ beforeAll(async () => {
       id text PRIMARY KEY, loop_id text, type text, issuer text, principal text, payload jsonb, occurred_at timestamptz
     );
   `);
-  const migration = readFileSync(resolve(process.cwd(), 'migrations/0192_surface_lease.sql'), 'utf8');
+  const migration = readFileSync(resolve(process.cwd(), 'migrations/0194_surface_lease.sql'), 'utf8');
   await client.exec(migration);
   await client.exec(migration);
   const makeTagged = (connection: Pick<PGlite, 'query'>) => async (strings: TemplateStringsArray, ...values: unknown[]) => {
