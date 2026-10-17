@@ -188,15 +188,12 @@ directly above a `KEY=value` line, change that:
 | `# optional` | OK (grouped into one warning per service) | normal |
 | `# vault-sourced: <reason>` | OK, silent (fetched at boot instead) | WARN — "deprecated hand-provisioned value present; remove after rotation" |
 | `# deprecated: <reason>` | OK, silent | WARN with `<reason>` |
-| `# prod-carve-out: <reason>` | WARN with reason, grouped in prod; **ERROR** in dev | normal |
 | _(none)_ | **ERROR** | normal |
 
-`prod-carve-out` is an interim, issue-linked exception: its reason must contain
-an issue reference matching `/#\d+/`; without one the comment is inert and the
-key stays required, including in prod. Only `--env prod` permits the warning.
-The former monorepo events app-identity carve-outs were removed with its source
-in #2517. Standalone events validates its configuration in its own repository;
-kernel check-env does not require an events `.env.local`.
+The former monorepo events app-identity exceptions and their single-use annotation
+parser were removed with its source in #2517. Standalone events validates its
+configuration in its own repository; kernel check-env selects only services with
+a local workspace manifest and does not require an events `.env.local`.
 
 ```
 # vault-sourced: fetched at boot via loadFromVault (#2243), do not set locally
