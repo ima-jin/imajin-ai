@@ -60,6 +60,37 @@ describe('ingestLoopEvent', () => {
     expect(result).toEqual({ ok: false, error: 'Invalid publisher signature', status: 400 });
     expect(mockAuthorize).not.toHaveBeenCalled();
     expect(mockPublish).not.toHaveBeenCalled();
+    expect(logMock.warn).toHaveBeenCalledWith(
+      { type: REQUEST.type, loopId: REQUEST.payload.loopId, publisherDid: REQUEST.publisherDid },
+      'loop event signature rejected',
+    );
+  });
+
+  it('redacts credential-shaped identifiers in signature rejection logs', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: false, error: 'Invalid publisher signature' });
+    await ingestLoopEvent({
+      ...REQUEST,
+      publisherDid: 'did:imajin:sk-secretcredential',
+      payload: { ...REQUEST.payload, loopId: 'loop:sk-secretcredential' },
+    });
+    expect(logMock.warn).toHaveBeenCalledWith(
+      { type: REQUEST.type, loopId: 'loop:[REDACTED]', publisherDid: 'did:imajin:[REDACTED]' },
+      'loop event signature rejected',
+    );
+  });
+
+  it('omits caller proof metadata when redaction prevents an exact server proof', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const payload = { ...REQUEST.payload, summary: 'Bearer original-secret', publisherProof: { forged: true } };
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toEqual({ ok: true });
+    expect(mockPublish.mock.calls[0][1].payload).not.toHaveProperty('publisherProof');
+  });
+
+  it('does not duplicate oversized unredacted output inside a proof', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const payload = { ...REQUEST.payload, output: { kind: 'text' as const, text: 'x'.repeat(20000) } };
+    expect(await ingestLoopEvent({ ...REQUEST, payload })).toEqual({ ok: true });
+    expect(mockPublish.mock.calls[0][1].payload).not.toHaveProperty('publisherProof');
   });
 
   it('rejects a redaction-changing publisher without changing issuer identity', async () => {
@@ -180,6 +211,8 @@ describe('ingestLoopEvent', () => {
     expect(persisted.refs.sessionId).toBe('postgres://[REDACTED]@host/db');
     expect(persisted.metadata.api_key).toBe('[REDACTED]');
     expect(persisted.output.result.newField[0]).toEqual({ accessToken: '[REDACTED]', value: 'retained' });
+    expect(persisted).not.toHaveProperty('publisherProof');
+    expect(JSON.stringify(persisted)).not.toContain('original-secret');
     expect(JSON.stringify(mockSql.mock.calls)).not.toContain('nested-secret');
   });
 
@@ -193,6 +226,7 @@ describe('ingestLoopEvent', () => {
     expect(stored.artifactRef.byteLength).toBeGreaterThan(16384);
     expect(stored.preview.length).toBeLessThanOrEqual(512);
     expect(JSON.stringify(mockSql.mock.calls)).not.toContain('original-secret');
+    expect(mockPublish.mock.calls[0][1].payload).not.toHaveProperty('publisherProof');
   });
 
   it('fails ownership conflicts before artifact writes and publish', async () => {

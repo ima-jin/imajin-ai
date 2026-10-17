@@ -1,5 +1,5 @@
 -- owner: kernel
--- #2406: private, content-addressed, redacted loop output.
+-- #2406: private, content-addressed, redacted loop output (after registry refs/spend).
 CREATE TABLE IF NOT EXISTS kernel.loop_output_artifacts (
   id TEXT PRIMARY KEY,
   loop_id TEXT NOT NULL,

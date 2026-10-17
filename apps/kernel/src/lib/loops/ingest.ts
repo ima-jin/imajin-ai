@@ -37,7 +37,7 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
 
   const verification = await verifyLoopPublisherSignature(publisherDid, { type, payload }, signature);
   if (!verification.ok) {
-    log.warn({ type }, 'loop event signature rejected');
+    log.warn({ type, loopId: redactLoopText(payload.loopId), publisherDid: redactLoopText(publisherDid) }, 'loop event signature rejected');
     return { ok: false, error: verification.error, status: 400 };
   }
   if (!isBoundedLoopJson(payload) || !isWithinLoopMetadataBudget(payload) || (payload.output !== undefined && !isLoopOutput(payload.output))) {
@@ -71,12 +71,14 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
       return { ok: false, error: 'Loop belongs to a different principal', status: 409, code: 'loop_owner_conflict' };
     }
     const persistedPayload = await prepareLoopOutput(sanitized);
+    const historyPayload = { ...persistedPayload };
+    delete historyPayload.publisherProof;
     await bus.publish(type, {
       issuer: publisherDid,
       subject: sanitized.principal,
       scope: 'loop',
       payload: {
-        ...persistedPayload,
+        ...historyPayload,
         // Exact proofs are safe only when redaction/storage left the envelope
         // unchanged; never reintroduce credentials or spilled output via a proof.
         ...(persistedPayload === sanitized && canonicalize(payload) === canonicalize(sanitized)

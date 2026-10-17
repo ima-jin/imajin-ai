@@ -1029,7 +1029,7 @@
     "kernel.loop_output_artifacts": {
       "owner": "kernel",
       "schema": "kernel",
-      "firstMigration": "0192_loop_output_artifacts.sql",
+      "firstMigration": "0193_loop_output_artifacts.sql",
       "notes": ""
     },
     "kernel.loop_events": {
