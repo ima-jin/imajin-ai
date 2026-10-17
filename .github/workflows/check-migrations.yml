@@ -24,3 +24,13 @@ jobs:
         run: bash scripts/check-schema-migration-sync.sh "${{ steps.base.outputs.ref }}"
       - name: Migrations folder consistency
         run: bash scripts/check-migrations.sh
+
+  seed-drift-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Seed drift regression (disposable PostgreSQL, no credentials)
+        run: bash scripts/seed-drift.test.sh
