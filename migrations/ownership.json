@@ -46,7 +46,7 @@
       "owner": "kernel",
       "schema": "auth",
       "firstMigration": "0044_channel_links.sql",
-      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
+      "notes": "#2365 \u2014 0197_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "auth.claim_stub_index": {
       "owner": "kernel",
@@ -370,7 +370,7 @@
       "owner": "kernel",
       "schema": "github",
       "firstMigration": "0073_github_action_proposals.sql",
-      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
+      "notes": "#2365 \u2014 0197_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "inference.attestations": {
       "owner": "kernel",
@@ -424,7 +424,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0114_connectors_registry.sql",
-      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
+      "notes": "#2365 \u2014 0197_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "kernel.consent_grants": {
       "owner": "kernel",
@@ -448,7 +448,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0136_google_workspace_state.sql",
-      "notes": "Renumbered from 0133 (#2144 hotfix) \u2014 0133 collided with the independently merged 0133_pay_balance_units.sql. #2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
+      "notes": "Renumbered from 0133 (#2144 hotfix) \u2014 0133 collided with the independently merged 0133_pay_balance_units.sql. #2365 \u2014 0197_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "kernel.identity_aliases": {
       "owner": "kernel",
@@ -478,7 +478,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0088_quickbooks_realm_index.sql",
-      "notes": "#2365 \u2014 0193_connector_connection_slots.sql adds primary-default connection slot isolation."
+      "notes": "#2365 \u2014 0197_connector_connection_slots.sql adds primary-default connection slot isolation."
     },
     "kernel.stripe_webhook_index": {
       "owner": "kernel",

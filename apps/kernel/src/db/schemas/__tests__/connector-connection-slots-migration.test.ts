@@ -8,7 +8,7 @@ const migration = (name: string) => readFileSync(resolve(__dirname, '../../../..
 let client: PGlite;
 afterEach(async () => { await client?.close(); });
 
-describe('0193 connection slots on populated historical schemas', () => {
+describe('0197 connection slots on populated historical schemas', () => {
   it('preserves primary identities and credentials, isolates second installations, and reruns safely', async () => {
     client = new PGlite();
     await client.exec('CREATE SCHEMA auth; CREATE SCHEMA kernel;');
@@ -37,7 +37,7 @@ describe('0193 connection slots on populated historical schemas', () => {
         VALUES ('proposal_legacy', 'did:owner', 'github:write', 'github_update_issue', 'mutate', 'repo#1', 'fixture', 'approved');
     `);
     const custodyBefore = (await client.query('SELECT * FROM kernel.vault_delegation_grants')).rows;
-    const sql = migration('0193_connector_connection_slots.sql');
+    const sql = migration('0197_connector_connection_slots.sql');
     await client.exec(sql);
     expect((await client.query('SELECT id, slot, sealed_key_field, scopes, spend_cap FROM kernel.connectors')).rows).toEqual([{
       id: 'conn_legacy', slot: 'primary', sealed_key_field: 'google-oauth:did:owner',
