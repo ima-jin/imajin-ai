@@ -12,6 +12,7 @@ import { getNodeSigningIdentity, isVaultTier1 } from '@/src/lib/vault/sealing';
 import { isAppSecretStagingField } from '@/src/lib/vault/field-grammar';
 import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-service';
 import { appSecretsKind } from './secrets-kind';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel:apps:secret-staging');
 
@@ -115,14 +116,14 @@ export async function sweepExpiredAppSecretStaging(now: number = Date.now()): Pr
   }
   let swept = 0;
   let failed = false;
-  for (const row of candidates.values()) {
+  await forEachSequential(candidates.values(), async (row) => {
     try {
       if (await sweepStagingRow(row, now)) swept++;
     } catch {
       failed = true;
       log.error({ field: row.field }, 'App-secret staging sweep failed');
     }
-  }
+  });
   if (failed) throw new Error('App-secret staging sweep incomplete');
   return swept;
 }
