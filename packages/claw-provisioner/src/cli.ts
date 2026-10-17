@@ -57,12 +57,12 @@ export async function main(): Promise<void> {
     placement: result.provision.placement,
     fileCount: result.filesWritten.length,
     outDir: result.outDir,
-  }).replaceAll('\u0085', '\\u0085').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029'));
+  }).replaceAll('\u0085', String.raw`\u0085`).replaceAll('\u2028', String.raw`\u2028`).replaceAll('\u2029', String.raw`\u2029`));
   if (args.dryRun) {
     console.log('[dry-run] No files were actually written, no compose command ran, and no callback was sent.');
     for (const path of result.filesWritten) {
       console.log(JSON.stringify({ event: 'provision-file', path })
-        .replaceAll('\u0085', '\\u0085').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029'));
+        .replaceAll('\u0085', String.raw`\u0085`).replaceAll('\u2028', String.raw`\u2028`).replaceAll('\u2029', String.raw`\u2029`));
     }
   } else {
     console.log(JSON.stringify({
@@ -81,7 +81,7 @@ if (isMain) {
     console.error(JSON.stringify({
       event: 'claw-provisioner-fatal',
       error: err instanceof Error ? { name: err.name, message: err.message, stack: err.stack } : String(err),
-    }).replaceAll('\u0085', '\\u0085').replaceAll('\u2028', '\\u2028').replaceAll('\u2029', '\\u2029'));
+    }).replaceAll('\u0085', String.raw`\u0085`).replaceAll('\u2028', String.raw`\u2028`).replaceAll('\u2029', String.raw`\u2029`));
     process.exitCode = 1;
   }
 }

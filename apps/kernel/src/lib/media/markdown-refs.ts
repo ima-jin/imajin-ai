@@ -74,15 +74,19 @@ function* inlineRefs(text: string): Generator<InlineRef> {
     quotes: nextPositions(text, (character) => character === '"'),
   };
   let labelStart = -1;
+  let index = 0;
 
-  for (let index = 0; index < text.length; index++) {
-    if (text[index] === '[' && labelStart < 0) labelStart = index;
-    if (text[index] !== ']') continue;
-    const match = inlineRefAt(text, labelStart, index, boundaries);
+  while (index < text.length) {
+    const position = index;
+    const character = text[position];
+    index++;
+    if (character === '[' && labelStart < 0) labelStart = position;
+    if (character !== ']') continue;
+    const match = inlineRefAt(text, labelStart, position, boundaries);
     labelStart = -1;
     if (match === null) continue;
     yield match;
-    index = match.end - 1;
+    index = match.end;
   }
 }
 
@@ -150,8 +154,10 @@ export function rewriteMarkdownRefs(
     }
 
     rewritten.push({ from: ref, to: resolvedUrl });
-    parts.push(markdown.slice(previousEnd, match.start));
-    parts.push(`${markdown.slice(match.start, match.labelEnd + 1)}(${resolvedUrl})`);
+    parts.push(
+      markdown.slice(previousEnd, match.start),
+      `${markdown.slice(match.start, match.labelEnd + 1)}(${resolvedUrl})`,
+    );
     previousEnd = match.end;
   }
   parts.push(markdown.slice(previousEnd));
