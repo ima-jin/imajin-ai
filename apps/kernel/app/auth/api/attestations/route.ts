@@ -172,7 +172,7 @@ async function rejectUnsubmittableType(type: string, cors: HeadersInit): Promise
       { status: 400, headers: cors }
     );
   }
-  if (type === KEY_ROTATED_ATTESTATION_TYPE) {
+  if (type === KEY_ROTATED_ATTESTATION_TYPE || type === 'onboard.link.sent') {
     return NextResponse.json({ error: `Attestation type "${type}" is node-issued only` }, { status: 403, headers: cors });
   }
   return null;

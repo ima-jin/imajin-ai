@@ -86,7 +86,7 @@ vi.mock('@imajin/config', () => ({ corsHeaders: () => ({}) }));
 vi.mock('@imajin/auth', () => ({
   canonicalize: (obj: unknown) => JSON.stringify(obj),
   crypto: { verifySync: () => true },
-  ATTESTATION_TYPES: ['delivery.receipt', 'intro_proposed', 'survey_response', 'key.rotated'],
+  ATTESTATION_TYPES: ['delivery.receipt', 'intro_proposed', 'survey_response', 'key.rotated', 'onboard.link.sent'],
   KEY_ROTATED_ATTESTATION_TYPE: 'key.rotated',
   verifyNostrSig: vi.fn(),
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
@@ -161,6 +161,12 @@ beforeEach(() => {
 });
 
 describe('node-issued-only types (#2081)', () => {
+  it('rejects a caller-forged onboard.link.sent event', async () => {
+    const res = await POST(makeReq(baseBody({ type: 'onboard.link.sent' })));
+    expect(res.status).toBe(403);
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+    expect(h.mockPublish).not.toHaveBeenCalled();
+  });
   it('rejects key.rotated from a caller before touching the database', async () => {
     const res = await POST(makeReq(baseBody({ type: 'key.rotated' })));
 

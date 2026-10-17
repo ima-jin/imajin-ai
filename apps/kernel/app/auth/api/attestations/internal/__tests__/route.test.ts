@@ -91,6 +91,14 @@ beforeEach(() => {
 });
 
 describe('node-issued-only types (#2081)', () => {
+  it('rejects a caller-forged onboard.link.sent event even with an internal credential', async () => {
+    const res = await POST(makeReq({
+      issuer_did: 'did:imajin:node', subject_did: SUBJECT, type: 'onboard.link.sent',
+    }));
+    expect(res.status).toBe(403);
+    expect(h.mockSignSync).not.toHaveBeenCalled();
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+  });
   it('rejects key.rotated even with a valid internal API key, before signing or inserting', async () => {
     const res = await POST(
       makeReq({ issuer_did: 'did:imajin:node', subject_did: 'did:imajin:node', type: 'key.rotated', payload: { junk: true } }),
