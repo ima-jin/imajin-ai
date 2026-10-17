@@ -418,7 +418,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0037_bus_chain_configs.sql",
-      "notes": ""
+      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589)."
     },
     "kernel.calendar_entries": {
       "owner": "kernel",

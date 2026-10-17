@@ -39,7 +39,7 @@ describe('Reach reply bus contract', () => {
   });
 
   it('seeds the identical metadata-only emit fallback and synchronizes agent overrides', async () => {
-    const sql = readFileSync(new URL('../../../migrations/0197_seed_agent_reach_replied_chain.sql', import.meta.url), 'utf8');
+    const sql = readFileSync(new URL('../../../migrations/0199_seed_agent_reach_replied_chain.sql', import.meta.url), 'utf8');
     const literal = sql.match(/'(\[[^\n]+\])'::jsonb/)?.[1];
     expect(literal).toBeDefined();
     const config = await getChainConfig('agent.reach.replied', 'agent');

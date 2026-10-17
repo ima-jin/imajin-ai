@@ -1,5 +1,6 @@
 -- owner: kernel
 -- #2589 — reply content/signature is private to the committed requester.
+-- 0197/0198 are reserved for connection slots and foreign-agent stubs.
 -- No notify, harness, attestation, or callback: emit metadata only.
 INSERT INTO kernel.bus_chain_configs (event_type, scope, reactors, enabled)
 VALUES (
