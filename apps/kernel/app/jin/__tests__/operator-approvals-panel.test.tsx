@@ -20,7 +20,9 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock.current,
 }));
 
-import { OperatorApprovalsPanel, canonicalizeCountersignFields } from '../operator-approvals-panel';
+import { OperatorApprovalsPanel, ApprovalCardRow, canonicalizeCountersignFields } from '../operator-approvals-panel';
+const commandClient = vi.hoisted(() => ({ prepare: vi.fn() }));
+vi.mock('../session-command-client', () => ({ prepareSignedSessionCommand: commandClient.prepare }));
 
 interface ApprovalFixture {
   proposalId: string;
@@ -35,7 +37,66 @@ interface ApprovalFixture {
   outcome?: Record<string, unknown> | null;
   appliedAt: string | null;
   createdAt: string;
+  sessionBinding?: { loopId: string; principalDid: string; agentDid: string; approvalId: string } | null;
+  sessionOutcome?: { commandId: string; outcome: 'completed' | 'failed'; at: string; reason?: string } | null;
 }
+
+describe('shared native approval command controller', () => {
+  const binding = { loopId: 'loop_native', principalDid: 'did:imajin:principal', agentDid: 'did:imajin:agent', approvalId: 'native_1' };
+  const command = { type: 'session.approve', commandId: 'command_1', countersignature: { sig: 'full-wish' } };
+  const nativeCard = () => gatewayExecApproval({ sessionBinding: binding });
+
+  it.each([
+    ['Allow once', 'approve', 'session.approve', 'allow-once'],
+    ['Deny', 'reject', 'session.deny', 'deny'],
+  ])('uses the existing decision endpoint with the full %s wish, not generic dispatch', async (button, decision, type, mode) => {
+    commandClient.prepare.mockResolvedValueOnce(command);
+    const fetchSpy = installFetch([{ isOperator: true, approvals: [nativeCard()] }]);
+    render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: button }));
+    await screen.findByText('Decision recorded — awaiting signed agent attestation.');
+    expect(commandClient.prepare).toHaveBeenCalledWith(binding.loopId, type, {
+      loopId: binding.loopId, approvalId: binding.approvalId, kind: 'exec',
+    });
+    const sent = fetchSpy.mock.calls.find(([url]) => String(url).includes('/decision'));
+    expect(sent?.[1]).toMatchObject({ body: JSON.stringify({ decision, mode, sessionCommand: command }) });
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('/commands'))).toBe(false);
+  });
+  it.each(['completed', 'failed'] as const)('shows only attested %s approval resolution after receipt', async (outcome) => {
+    const card = gatewayExecApproval({ status: 'approved', sessionBinding: binding, sessionOutcome: { commandId: 'command_1', outcome, at: new Date().toISOString(), reason: 'agent reason' } });
+    installFetch([{ isOperator: true, approvals: [card] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText(outcome === 'completed' ? 'Approval resolved — agent attested' : 'Approval resolution failed — agent attested')).toBeDefined();
+    expect(screen.getByText('agent reason')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+    expect(screen.queryByText(/awaiting signed agent attestation/)).toBeNull();
+  });
+
+  it('never posts an unsigned fallback when command wish preparation fails', async () => {
+    commandClient.prepare.mockRejectedValueOnce(new Error('Signing key unavailable'));
+    const fetchSpy = installFetch([{ isOperator: true, approvals: [nativeCard()] }]);
+    render(<OperatorApprovalsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
+    await screen.findByText('Signing key unavailable');
+    expect(fetchSpy.mock.calls.some(([url]) => String(url).includes('/decision'))).toBe(false);
+  });
+
+  it('renders a submitted command as awaiting attestation and never offers Withdraw', async () => {
+    installFetch([{ isOperator: true, approvals: [gatewayExecApproval({ sessionBinding: binding, status: 'approved' })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('Decision recorded — awaiting signed agent attestation.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Withdraw' })).toBeNull();
+    expect(screen.queryByText('approved — pending apply')).toBeNull();
+  });
+
+  it('allows inline and Inbox copies of the same reusable row without duplicate anchors', () => {
+    const card = { ...nativeCard(), contentHash: 'hash', outcome: null };
+    const props = { approval: card, onDecide: vi.fn(), onArchive: vi.fn(), busy: false, highlighted: false, decisionsLocked: false };
+    const { container } = render(<><ApprovalCardRow {...props} /><ApprovalCardRow {...props} anchor={false} /></>);
+    expect(container.querySelectorAll('[id]')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(2);
+  });
+});
 
 function approval(overrides: Partial<ApprovalFixture> = {}): ApprovalFixture {
   return {
@@ -699,7 +760,7 @@ describe('per-source renderer registry — skill-workshop', () => {
 // `gateway-exec` renderer (#2221): verbatim command block, host/cwd/agent
 // badges, expiry countdown/expired state, and allow-once/deny-only labels.
 describe('per-source renderer registry — gateway-exec', () => {
-  it('renders the verbatim command block, host badge, cwd, agent + session, and an expiry countdown', async () => {
+  it('renders the verbatim command block, host badge, cwd, agent and expiry without harness identifiers', async () => {
     installFetch([{ isOperator: true, approvals: [gatewayExecApproval()] }]);
     render(<OperatorApprovalsPanel />);
 
@@ -707,7 +768,7 @@ describe('per-source renderer registry — gateway-exec', () => {
     expect(screen.getByText('gateway-01')).toBeDefined();
     expect(screen.getByText('/opt/openclaw')).toBeDefined();
     expect(screen.getByText('agent_123')).toBeDefined();
-    expect(screen.getByText('session_abc')).toBeDefined();
+    expect(screen.queryByText('session_abc')).toBeNull();
     expect(screen.getByText(/expires in/)).toBeDefined();
   });
 

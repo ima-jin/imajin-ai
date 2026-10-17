@@ -70,10 +70,57 @@ import { APPS_SERVICE_SCOPES_KIND } from '@/src/lib/apps/service-scopes-kind';
 import { APPS_FEATURED_KIND } from '@/src/lib/apps/featured-kind';
 import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
+import { prepareSignedSessionCommand } from './session-command-client';
+import type { SessionCommandFrame } from '@/src/lib/jin/session-command-contract';
 
 interface StoredKeypair {
   privateKey: string;
   publicKey: string;
+}
+
+function approvalStatusBadge(approval: OperatorApprovalCard): ReactNode {
+  if (approval.sessionOutcome) {
+    const label = approval.sessionOutcome.outcome === 'completed'
+      ? 'Approval resolved — agent attested' : 'Approval resolution failed — agent attested';
+    return <span className="text-xs text-amber-300">{label}</span>;
+  }
+  if (approval.sessionBinding && ['approved', 'denied'].includes(approval.status)) {
+    return <span className="text-xs text-amber-300">Decision recorded — awaiting signed agent attestation</span>;
+  }
+  return statusBadge(approval.status);
+}
+
+function decisionSuccessNotice(approval: OperatorApprovalCard, decision: DecisionAction): string {
+  return approval.sessionBinding ? 'Decision recorded — awaiting signed agent attestation.' : `Proposal ${decision}.`;
+}
+
+/** Render once beside either lane's shared controller, including one-time response secrets. */
+export function ApprovalControllerNotices({ controller }: Readonly<{ controller: ReturnType<typeof useRunApprovals> }>) {
+  const {
+    flash, actAs, revealedBearer, setRevealedBearer, revealedClaimCode, setRevealedClaimCode,
+    claimNotice, setClaimNotice, reissuing, handleReissue,
+  } = controller;
+  return (
+    <>
+      {flash && <div className={`mb-3 px-3 py-2 rounded text-xs font-medium ${
+        flash.type === 'ok' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+      }`}>{flash.msg}</div>}
+      {revealedBearer && <RevealedBearerBanner revealed={revealedBearer} onDismiss={() => setRevealedBearer(null)} />}
+      {revealedClaimCode && <RevealedClaimCodeBanner revealed={revealedClaimCode} onDismiss={() => setRevealedClaimCode(null)} />}
+      {claimNotice && <ClaimCodeNoticeBanner notice={claimNotice} busy={reissuing}
+        onReissue={() => void handleReissue(claimNotice)} onDismiss={() => setClaimNotice(null)} />}
+      {actAs && <ActAsReadOnlyNotice actAs={actAs} />}
+    </>
+  );
+}
+
+async function commandForDecision(approval: OperatorApprovalCard, decision: DecisionAction): Promise<SessionCommandFrame | undefined> {
+  if (!approval.sessionBinding) return undefined;
+  if (decision === 'withdrawn') throw new Error('A submitted native decision cannot be withdrawn');
+  const { loopId, approvalId } = approval.sessionBinding;
+  return prepareSignedSessionCommand(loopId, decision === 'approve' ? 'session.approve' : 'session.deny', {
+    loopId, approvalId, kind: 'exec',
+  });
 }
 
 function hexToBytes(hex: string): Uint8Array {
@@ -153,9 +200,9 @@ const POLL_INTERVAL_MS = 5000;
 // vocabulary rather than forking a github-specific type, same posture as
 // #2221 extending `outcome` for one kind without a kind-specific type.
 type ApprovalStatus = 'pending' | 'approved' | 'denied' | 'withdrawn' | 'applied' | 'expired';
-type DecisionAction = 'approve' | 'reject' | 'withdrawn';
+export type DecisionAction = 'approve' | 'reject' | 'withdrawn';
 
-interface OperatorApprovalCard {
+export interface OperatorApprovalCard {
   proposalId: string;
   /** Open vocabulary namespace, e.g. 'system-agent', 'skill-workshop' (#2152). */
   source: string;
@@ -174,6 +221,8 @@ interface OperatorApprovalCard {
   appliedAt: string | null;
   archivedAt?: string | null;
   createdAt: string;
+  sessionBinding?: { loopId: string; principalDid: string; agentDid: string; approvalId: string } | null;
+  sessionOutcome?: { commandId: string; outcome: 'completed' | 'failed'; at: string; reason?: string } | null;
 }
 
 /** True once a pending approval's own `detail.expiresAt` has passed (#2221) — undefined/malformed `expiresAt` never expires. */
@@ -386,7 +435,6 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
   const host = detailString(detail, 'host', 'unknown host');
   const cwd = detailString(detail, 'cwd', '—');
   const agentId = detailString(detail, 'agentId', '—');
-  const sessionKey = detailString(detail, 'sessionKey', '—');
   const expiresAtRaw = detail?.expiresAt;
   const expiresAtMs = typeof expiresAtRaw === 'string' ? Date.parse(expiresAtRaw) : Number.NaN;
   const countdown = formatExpiryCountdown(expiresAtMs, nowMs);
@@ -399,7 +447,7 @@ function ExecCommandDetailView({ approval }: Readonly<{ approval: OperatorApprov
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
         <span className="px-1.5 py-0.5 rounded bg-gray-800 text-gray-300 font-mono">{host}</span>
         <span>cwd: <span className="font-mono text-gray-400">{cwd}</span></span>
-        <span>agent: <span className="font-mono text-gray-400">{agentId}</span> / <span className="font-mono text-gray-400">{sessionKey}</span></span>
+        <span>agent: <span className="font-mono text-gray-400">{agentId}</span></span>
         {countdown && <span className={countdown === 'expired' ? 'text-red-400 font-medium' : 'text-gray-500'}>{countdown}</span>}
       </div>
       {outcome && <ExecOutcomeView outcome={outcome} />}
@@ -1044,6 +1092,7 @@ function CardActions({
 
   const decidable = approval.status === 'pending' || approval.status === 'approved';
   if (!decidable) return null;
+  if (approval.sessionOutcome) return null;
 
   // #2221: a pending approval past its own detail.expiresAt can no longer be
   // decided — the kernel enforces this authoritatively at decide time; this
@@ -1059,6 +1108,7 @@ function CardActions({
   if (decisionsLocked) return <ActAsLockedNote />;
 
   if (approval.status === 'approved') {
+    if (approval.sessionBinding) return <p className="text-xs text-amber-300">Decision recorded — awaiting signed agent attestation.</p>;
     return (
       <div className="flex items-center gap-2 pt-1">
         <button
@@ -1102,13 +1152,14 @@ function CardActions({
   );
 }
 
-function ApprovalCardRow({
+export function ApprovalCardRow({
   approval,
   onDecide,
   busy,
   highlighted,
   decisionsLocked,
   onArchive,
+  anchor = true,
 }: Readonly<{
   approval: OperatorApprovalCard;
   onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
@@ -1118,14 +1169,16 @@ function ApprovalCardRow({
   /** True while the session is under act-as (#2359). */
   decisionsLocked: boolean;
   onArchive: (approval: OperatorApprovalCard) => void;
+  /** Inline copies omit the Inbox deep-link anchor. */
+  anchor?: boolean;
 }>) {
   const renderer = rendererFor(approval.source);
   const highlightClass = highlighted ? ' ring-2 ring-amber-500/70' : '';
   return (
-    <div id={approvalCardAnchorId(approval.proposalId)} className={`min-w-0 break-words rounded-lg border border-gray-800 p-4 space-y-2${highlightClass}`}>
+    <div id={anchor ? approvalCardAnchorId(approval.proposalId) : undefined} className={`min-w-0 break-words rounded-lg border border-gray-800 p-4 space-y-2${highlightClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          {statusBadge(approval.status)}
+          {approvalStatusBadge(approval)}
           {approval.archivedAt && <span className="text-xs text-gray-400">Archived</span>}
           <span className="px-1.5 py-0.5 rounded text-xs font-mono bg-orange-900/50 text-orange-300">
             {approval.kind}
@@ -1134,6 +1187,7 @@ function ApprovalCardRow({
         <span className="text-xs text-gray-500">{new Date(approval.createdAt).toLocaleString()}</span>
       </div>
       {renderer.renderDetail(approval)}
+      {approval.sessionOutcome?.reason && <p className="text-xs text-red-300">{approval.sessionOutcome.reason}</p>}
       <CardActions approval={approval} onDecide={onDecide} busy={busy} decisionsLocked={decisionsLocked} />
       {isDecidedCard(approval) && !approval.archivedAt && !decisionsLocked && (
         <button
@@ -1208,12 +1262,7 @@ function renderPanelBody(
   );
 }
 
-function OperatorApprovalsPanelInner() {
-  // #2291: the phone push notificationclick handler opens `/jin?proposalId=<id>`
-  // — this is the "Inbox lane" deep link. Read once per navigation; the panel
-  // never rewrites the URL itself.
-  const searchParams = useSearchParams();
-  const deepLinkedProposalId = searchParams.get('proposalId');
+export function useRunApprovals() {
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
@@ -1287,6 +1336,16 @@ function OperatorApprovalsPanelInner() {
     }
   }, [load, notify]);
 
+  const applyReveals = useCallback((reveals: DecisionReveals) => {
+    if (reveals.bearer) setRevealedBearer(reveals.bearer);
+    if (reveals.claimCode) {
+      setRevealedClaimCode(reveals.claimCode);
+      setClaimNotice(null);
+    } else if (reveals.claimNotice) {
+      setClaimNotice(reveals.claimNotice);
+    }
+  }, []);
+
   const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => {
     const { proposalId } = approval;
     setBusyId(proposalId);
@@ -1305,6 +1364,7 @@ function OperatorApprovalsPanelInner() {
 
       let res: Response;
       try {
+        const sessionCommand = await commandForDecision(approval, decision);
         res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
           method: 'POST',
           credentials: 'include',
@@ -1313,15 +1373,16 @@ function OperatorApprovalsPanelInner() {
             decision,
             ...(mode ? { mode } : {}),
             ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
+            ...(sessionCommand ? { sessionCommand } : {}),
           }),
         });
-      } catch {
+      } catch (error) {
         // #2707: the request died mid-flight (proxy timeout / dropped connection).
         // Provisioning runs inside this request, so it may well have completed —
         // and the one-time claim code with it, lost. Say so, and offer a reissue.
         const lost = claimCodeNoticeFor(approval, decision, null);
         if (lost) setClaimNotice(lost);
-        notify('err', 'Network error \u2014 the decision response was lost. Refreshing the card.');
+        notify('err', error instanceof Error ? error.message : 'Network error — the decision response was lost. Refreshing the card.');
         await load(true);
         return;
       }
@@ -1344,26 +1405,20 @@ function OperatorApprovalsPanelInner() {
       // 4s flash, since the operator needs time to copy it.
       const responseBody = await res.json().catch(() => ({})) as DecisionResponseBody;
       const reveals = revealsFromDecision(approval, decision, responseBody);
-      if (reveals.bearer) setRevealedBearer(reveals.bearer);
-      if (reveals.claimCode) {
-        setRevealedClaimCode(reveals.claimCode);
-        setClaimNotice(null);
-      } else if (reveals.claimNotice) {
-        setClaimNotice(reveals.claimNotice);
-      }
+      applyReveals(reveals);
       if (responseBody.executionError) {
         // #2707: the decision IS recorded, but the action behind it did not run
         // (e.g. no operator countersignature, or a pipeline step failed). This used
         // to flash a green "Proposal approve." regardless.
         notify('err', `Proposal ${decision}, but it did not execute: ${responseBody.executionError}`);
       } else {
-        notify('ok', `Proposal ${decision}.`);
+        notify('ok', decisionSuccessNotice(approval, decision));
       }
       await load(true);
     } finally {
       setBusyId('');
     }
-  }, [load, notify]);
+  }, [load, notify, applyReveals]);
 
   // #2707: one-click recovery from the "no claim code" notice — raises the existing
   // `reissueClaim: true` proposal; approving it shows the same amber box.
@@ -1382,6 +1437,23 @@ function OperatorApprovalsPanelInner() {
       setReissuing(false);
     }
   }, [load, notify]);
+
+  return {
+    approvals, loading, busyId, isOperator, actAs, decisionsLocked: actAs !== null,
+    error: flash?.type === 'err' ? flash.msg : null, flash,
+    refresh: load, handleDecide, handleArchive,
+    revealedBearer, setRevealedBearer, revealedClaimCode, setRevealedClaimCode,
+    claimNotice, setClaimNotice, reissuing, handleReissue,
+  };
+}
+
+function OperatorApprovalsPanelInner() {
+  const searchParams = useSearchParams();
+  const deepLinkedProposalId = searchParams.get('proposalId');
+  const controller = useRunApprovals();
+  const {
+    approvals, loading, busyId, isOperator, actAs, refresh: load, handleDecide, handleArchive,
+  } = controller;
 
   // #2723: the Inbox is per-principal. The node operator always gets the
   // panel; anyone else only when something is addressed to them (their own
@@ -1406,32 +1478,7 @@ function OperatorApprovalsPanelInner() {
         </button>
       </div>
 
-      {flash && (
-        <div className={`mb-3 px-3 py-2 rounded text-xs font-medium ${
-          flash.type === 'ok' ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
-        }`}>
-          {flash.msg}
-        </div>
-      )}
-
-      {revealedBearer && (
-        <RevealedBearerBanner revealed={revealedBearer} onDismiss={() => setRevealedBearer(null)} />
-      )}
-
-      {revealedClaimCode && (
-        <RevealedClaimCodeBanner revealed={revealedClaimCode} onDismiss={() => setRevealedClaimCode(null)} />
-      )}
-
-      {claimNotice && (
-        <ClaimCodeNoticeBanner
-          notice={claimNotice}
-          busy={reissuing}
-          onReissue={() => void handleReissue(claimNotice)}
-          onDismiss={() => setClaimNotice(null)}
-        />
-      )}
-
-      {actAs && <ActAsReadOnlyNotice actAs={actAs} />}
+      <ApprovalControllerNotices controller={controller} />
 
       <ApprovalInbox
         approvals={approvals}
