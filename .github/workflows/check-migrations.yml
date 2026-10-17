@@ -6,6 +6,24 @@ on:
     branches: [main]
 
 jobs:
+  kernel-baseline:
+    name: Kernel baseline equivalence and restore adoption
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
+        with:
+          version: 9
+      - name: Install SQL driver
+        run: pnpm install --frozen-lockfile --ignore-scripts --filter imajin-ai
+      - name: Reproduce cut and verify fresh and restored databases
+        run: python3 scripts/kernel-baseline.py check
   schema-migration-sync:
     runs-on: ubuntu-latest
     steps:
