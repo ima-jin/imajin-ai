@@ -60,6 +60,25 @@ describe('Reach principal in-app and phone delivery (#2588)', () => {
     expect(mockPush).not.toHaveBeenCalled();
     expect(mockPhonePush).not.toHaveBeenCalled();
   });
+  it('persists and pushes the original signed reply only to its principal, without a phone preview', async () => {
+    const data = {
+      eventType: 'agent.reach.replied', issuer: RECIPIENT, subject: RECIPIENT,
+      principalDid: RECIPIENT, requesterDid: 'did:imajin:foreign-agent',
+      reachId: 'reach_reply', message: 'PRIVATE reply\n  unchanged',
+      signature: { keyId: 'public-fixture', alg: 'ed25519', sig: 'public-signature-fixture' },
+    };
+    const res = await POST(makeReq({
+      to: RECIPIENT, scope: 'agent.reach.replied', title: 'Reach reply sent',
+      body: 'Your signed Reach reply is available', data,
+    }));
+    expect(res.status).toBe(200);
+    expect(insertedRow()).toMatchObject({ recipientDid: RECIPIENT, scope: 'agent.reach.replied', data });
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledWith(RECIPIENT, expect.objectContaining({ data }));
+    expect(recordedChannels()).toEqual(['inapp', 'ws']);
+    expect(mockPhonePush).not.toHaveBeenCalled();
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
 
   it('does not phone-push legacy events', async () => {
     await POST(makeReq(warpCompletionBody()));

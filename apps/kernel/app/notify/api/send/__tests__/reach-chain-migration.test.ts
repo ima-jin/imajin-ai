@@ -11,7 +11,10 @@ function migration(name: string): string {
 }
 
 describe('Reach chain migration parity (#2588)', () => {
-  it('idempotently seeds default and replaces stale agent overrides with the code-default reactors', async () => {
+  it.each([
+    ['agent.reach.delivered', '0196_seed_agent_reach_delivered_chain.sql'],
+    ['agent.reach.replied', '0202_principal_reach_reply_notify.sql'],
+  ])('idempotently seeds %s and replaces stale agent overrides with the code-default reactors', async (eventType, migrationName) => {
     const db = new PGlite();
     try {
       await db.exec(migration('0037_bus_chain_configs.sql'));
@@ -19,17 +22,18 @@ describe('Reach chain migration parity (#2588)', () => {
       await db.exec(`
         INSERT INTO kernel.bus_chain_configs (event_type, scope, reactors, enabled)
         VALUES
-          ('agent.reach.delivered', NULL, '[{"type":"attestation"}]', false),
-          ('agent.reach.delivered', 'agent', '[{"type":"attestation"}]', false),
+          ('${eventType}', NULL, '[{"type":"attestation"}]', false),
+          ('${eventType}', 'agent', '[{"type":"attestation"}]', false),
           ('unrelated.event', 'agent', '[]', false);
       `);
-      const sql = migration('0196_seed_agent_reach_delivered_chain.sql');
+      const sql = migration(migrationName);
       await db.exec(sql);
       await db.exec(sql);
       const { rows } = await db.query<{ scope: string | null; reactors: unknown; enabled: boolean }>(
-        "SELECT scope, reactors, enabled FROM kernel.bus_chain_configs WHERE event_type = 'agent.reach.delivered'",
+        'SELECT scope, reactors, enabled FROM kernel.bus_chain_configs WHERE event_type = $1',
+        [eventType],
       );
-      const fallback = await getChainConfig('agent.reach.delivered', 'agent');
+      const fallback = await getChainConfig(eventType, 'agent');
       expect(fallback.source).toBe('defaults');
       expect(rows).toHaveLength(2);
       expect(rows.map((row) => row.scope)).toContain(null);

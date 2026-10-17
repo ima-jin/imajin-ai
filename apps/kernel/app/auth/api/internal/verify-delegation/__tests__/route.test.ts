@@ -11,12 +11,14 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { resolveAgentAuthorityMock } = vi.hoisted(() => ({
+const { resolveAgentAuthorityMock, resolvePrivateReachAuthorityMock } = vi.hoisted(() => ({
   resolveAgentAuthorityMock: vi.fn(),
+  resolvePrivateReachAuthorityMock: vi.fn(),
 }));
 
 vi.mock('@/src/lib/auth/agent-authority', () => ({
   resolveAgentAuthority: resolveAgentAuthorityMock,
+  resolvePrivateReachAuthority: resolvePrivateReachAuthorityMock,
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -102,6 +104,26 @@ describe('POST /auth/api/internal/verify-delegation — request body', () => {
 });
 
 describe('POST /auth/api/internal/verify-delegation — delegates to resolveAgentAuthority', () => {
+  it.each([true, false])('uses strict private authority for private-reach: %s', async (allowed) => {
+    resolvePrivateReachAuthorityMock.mockResolvedValue(allowed);
+    const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL, purpose: 'private-reach' });
+    expect(await res.json()).toEqual({ allowed });
+    expect(resolvePrivateReachAuthorityMock).toHaveBeenCalledWith(AGENT, PRINCIPAL);
+    expect(resolveAgentAuthorityMock).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when strict private authority lookup throws', async () => {
+    resolvePrivateReachAuthorityMock.mockRejectedValue(new Error('unavailable'));
+    const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL, purpose: 'private-reach' });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toMatchObject({ allowed: false });
+  });
+
+  it('rejects unknown purposes instead of downgrading to coarse authority', async () => {
+    const res = await verify({ agentDid: AGENT, principalDid: PRINCIPAL, purpose: 'unknown' });
+    expect(res.status).toBe(400);
+    expect(resolveAgentAuthorityMock).not.toHaveBeenCalled();
+  });
   it('passes agentDid and principalDid through and returns an allowed grant result verbatim', async () => {
     resolveAgentAuthorityMock.mockResolvedValue({ allowed: true, via: 'grant', grantId: 'grant_1' });
 

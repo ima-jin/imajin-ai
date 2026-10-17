@@ -1,6 +1,7 @@
 const { WebSocketServer } = require('ws');
 const { createAlsoRegistry } = require('./src/lib/ws/also-registry');
 const { createNotificationBacklogReplayer } = require('./src/lib/ws/notification-backlog');
+const { createPrivateNotifications, isPrivateReachFrame } = require('./src/lib/ws/private-notifications');
 const { createHeartbeat } = require('./src/lib/ws/heartbeat');
 const { handleDidConnectionsRequest, DID_CONNECTIONS_PATH } = require('./src/lib/ws/did-connections');
 
@@ -194,14 +195,15 @@ async function broadcastPresenceChange(did, isOnline) {
 
 /**
  * Verify that agentDid has an active agent delegation for principalDid.
- * Checks identity_members via an internal HTTP call (same pattern as
+ * Checks current authority via an internal HTTP call (same pattern as
  * authenticateWithCookie and authenticateWsToken — ws-server.js is plain
  * CJS outside Next, so it calls back into the app routes).
  *
- * Returns true only when an active (not revoked) role='agent' membership
- * exists. Never throws.
+ * The private-reach purpose checks messages:read and never downgrades grant
+ * revocation/expiry to membership. Ordinary registration keeps the existing
+ * coarse bootstrap policy. Never throws.
  */
-async function verifyAgentDelegation(agentDid, principalDid) {
+async function verifyAgentDelegation(agentDid, principalDid, purpose) {
   const port = process.env.PORT || '3000';
   const key = process.env.AUTH_INTERNAL_API_KEY;
   if (!key) {
@@ -215,7 +217,7 @@ async function verifyAgentDelegation(agentDid, principalDid) {
         'Content-Type': 'application/json',
         'x-internal-key': key,
       },
-      body: JSON.stringify({ agentDid, principalDid }),
+      body: JSON.stringify({ agentDid, principalDid, purpose }),
     });
     if (!res.ok) return false;
     const data = await res.json();
@@ -234,6 +236,14 @@ const alsoRegistry = createAlsoRegistry({
   verifyDelegation: verifyAgentDelegation,
   log: (message) => console.log('[WS]', message),
 });
+const privateNotifications = createPrivateNotifications({
+  getMeta: (ws) => socketMeta.get(ws),
+  registry: alsoRegistry,
+  verifyDelegation: (agentDid, principalDid) => verifyAgentDelegation(agentDid, principalDid, 'private-reach'),
+  fetchBacklog: fetchNotificationBacklog,
+  ack: ackNotification,
+  log: (message) => console.log('[WS]', message),
+});
 
 /**
  * Fetch `did`'s undelivered notification backlog from the kernel (#2044).
@@ -242,7 +252,7 @@ const alsoRegistry = createAlsoRegistry({
  * only has to send them — it never touches the database directly, the same
  * reasoning as `verifyAgentDelegation` above.
  */
-async function fetchNotificationBacklog(did) {
+async function fetchNotificationBacklog(did, privateReachOnly = false) {
   const port = process.env.PORT || '3000';
   const key = process.env.AUTH_INTERNAL_API_KEY;
   if (!key) return { frames: [], truncated: false };
@@ -252,7 +262,7 @@ async function fetchNotificationBacklog(did) {
       'Content-Type': 'application/json',
       'x-internal-key': key,
     },
-    body: JSON.stringify({ did }),
+    body: JSON.stringify({ did, privateReachOnly }),
   });
   if (!res.ok) return { frames: [], truncated: false };
   return res.json();
@@ -265,6 +275,7 @@ async function fetchNotificationBacklog(did) {
  */
 const notificationBacklog = createNotificationBacklogReplayer({
   fetchBacklog: fetchNotificationBacklog,
+  onSent: (ws, did, frame) => privateNotifications.observe(ws, did, frame),
   log: (message) => console.log('[WS]', message),
 });
 
@@ -298,8 +309,14 @@ async function handleAuthMessage(ws, meta, msg) {
  * The registry verifies the delegation before it registers anything.
  */
 async function handleAlsoRegistryMessage(ws, meta, msg) {
+  const version = alsoRegistry.versionFor(ws);
   const frame = await alsoRegistry.handle(ws, meta, msg);
-  if (frame && ws.readyState === 1) ws.send(JSON.stringify(frame));
+  if (ws.readyState !== 1 || socketMeta.get(ws) !== meta) return;
+  if (msg.type === 'register_also' && alsoRegistry.versionFor(ws) !== version) return;
+  if (frame) ws.send(JSON.stringify(frame));
+  if (frame?.type === 'registered_also' && frame.did !== meta.did) {
+    await privateNotifications.replay(ws, frame.did);
+  }
 }
 
 function handleSubscribeMessage(meta, msg) {
@@ -346,11 +363,11 @@ async function releaseWsClaims(did) {
 
 /**
  * Forward the plugin's `{ type: 'notification_ack', id }` frame (#2099) to
- * the kernel — the only place `delivered_at` is ever set. `did` is always
- * the acking socket's own authenticated DID, never anything read out of
- * the frame itself, so `ackNotificationDelivery` can scope its UPDATE to
- * it (PR #2101 review: a socket must not be able to ack an arbitrary id
- * belonging to a different DID). Never throws: an ack that fails to land
+ * the kernel — the only place `delivered_at` is ever set. `did` is the
+ * authenticated socket's own DID or a server-observed private recipient,
+ * freshly authorized before calling this helper. Never a DID read from the
+ * client frame: `ackNotificationDelivery` scopes its UPDATE to this recipient.
+ * Never throws: an ack that fails to land
  * is simply retried by the plugin's own retry/dedup logic, or the row
  * eventually times out and gets re-offered on the next reconnect either way.
  */
@@ -374,16 +391,12 @@ async function ackNotification(id, did) {
 
 /**
  * Handle an inbound `{ type: 'notification_ack', id }` frame (#2099).
- * Binds the ack to `meta.did` -- the socket's own authenticated identity,
- * established at connection/auth time, never a value the frame itself
- * could spoof (#2101 review). A socket with no authenticated DID never
- * reaches here (the message dispatcher already rejects it), but the guard
- * stays as defense in depth.
+ * Binds delegated private ACKs to observed notification-id recipients and
+ * rechecks their authority; all other ACKs retain own-DID scoping. The plugin
+ * need only send an id and cannot select a recipient DID (#2101).
  */
-function handleNotificationAck(meta, msg) {
-  if (typeof msg.id !== 'string' || !msg.id) return;
-  if (!meta.did) return;
-  void ackNotification(msg.id, meta.did);
+async function handleNotificationAck(ws, msg) {
+  await privateNotifications.acknowledge(ws, msg.id);
 }
 
 /**
@@ -421,10 +434,9 @@ async function dispatchMessage(ws, meta, msg) {
       break;
     case 'notification_ack':
       // Protocol contract with the plugin (#2099): the only trigger for
-      // `delivered_at`. Fire-and-forget — nothing useful to report back
-      // over this socket either way, and a dropped ack just leaves the
+      // `delivered_at`. No response frame: a dropped ack just leaves the
       // row to time out and get re-offered on the next reconnect.
-      handleNotificationAck(meta, msg);
+      await handleNotificationAck(ws, msg);
       break;
   }
 }
@@ -462,6 +474,7 @@ function cleanupSocket(ws, meta) {
   cleanedUpSockets.add(ws);
 
   alsoRegistry.cleanup(ws, meta);
+  privateNotifications.cleanup(ws);
   socketMeta.delete(ws);
   heartbeat.untrack(ws);
 
@@ -537,9 +550,13 @@ function setupWebSocket(server) {
 
 /**
  * Send a JSON payload to all sockets for a given DID (user may have multiple tabs/devices open).
- * Returns true if at least one socket received the message.
+ * Resolves true if at least one socket received the message.
  */
-function sendToDid(did, payload) {
+async function sendToDid(did, payload) {
+  // Await private fan-out before reporting delivery. The upstream bus still
+  // decides requester entitlement; only its extra delegate recipients need
+  // current private read authority for the target DID, never payload.subject.
+  if (isPrivateReachFrame(payload)) return sendPrivateToDid(did, payload);
   // Own sockets plus any delegate registered for this DID (#1653).
   const sockets = alsoRegistry.recipientsFor(did, didSockets.get(did));
   if (!sockets) return false;
@@ -548,10 +565,19 @@ function sendToDid(did, payload) {
   for (const ws of sockets) {
     if (ws.readyState === 1) { // WebSocket.OPEN
       ws.send(msg);
+      privateNotifications.observe(ws, did, payload);
       sent = true;
     }
   }
   return sent;
+}
+async function sendPrivateToDid(did, payload) {
+  const sockets = alsoRegistry.recipientsFor(did, didSockets.get(did));
+  const deliveries = await Promise.all(Array.from(
+    sockets ?? [],
+    (ws) => privateNotifications.send(ws, did, payload),
+  ));
+  return deliveries.some(Boolean);
 }
 
 /**
@@ -605,7 +631,7 @@ function setupBroadcastRoute(server) {
       }
       let body = '';
       req.on('data', chunk => body += chunk);
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const { targetDid, event } = JSON.parse(body);
           if (!targetDid || !event) {
@@ -613,7 +639,7 @@ function setupBroadcastRoute(server) {
             res.end('Bad request');
             return;
           }
-          const delivered = sendToDid(targetDid, event);
+          const delivered = await sendToDid(targetDid, event);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ delivered }));
         } catch {

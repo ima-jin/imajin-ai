@@ -42,13 +42,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { did } = (body ?? {}) as Record<string, unknown>;
+  const { did, privateReachOnly } = (body ?? {}) as Record<string, unknown>;
   if (typeof did !== 'string' || !did) {
     return NextResponse.json({ error: 'Missing did' }, { status: 400 });
   }
 
   try {
-    const { frames, truncated } = await getNotificationBacklog(did);
+    const { frames, truncated } = privateReachOnly === true
+      ? await getNotificationBacklog(did, true)
+      : await getNotificationBacklog(did);
     if (truncated) {
       log.warn({ did, count: frames.length }, 'Notification backlog truncated for recipient');
     }

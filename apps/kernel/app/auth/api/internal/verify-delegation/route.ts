@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { resolveAgentAuthority } from '@/src/lib/auth/agent-authority';
+import { resolveAgentAuthority, resolvePrivateReachAuthority } from '@/src/lib/auth/agent-authority';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -40,13 +40,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
-  const { agentDid, principalDid } = (body ?? {}) as Record<string, unknown>;
+  const { agentDid, principalDid, purpose } = (body ?? {}) as Record<string, unknown>;
   if (typeof agentDid !== 'string' || !agentDid ||
       typeof principalDid !== 'string' || !principalDid) {
     return NextResponse.json({ error: 'Missing agentDid or principalDid' }, { status: 400 });
   }
 
+  if (purpose !== undefined && purpose !== 'private-reach') {
+    return NextResponse.json({ error: 'Invalid purpose' }, { status: 400 });
+  }
+
   try {
+    if (purpose === 'private-reach') {
+      return NextResponse.json({ allowed: await resolvePrivateReachAuthority(agentDid, principalDid) });
+    }
     const result = await resolveAgentAuthority(agentDid, principalDid);
     return NextResponse.json({ allowed: result.allowed, via: result.via, grantId: result.grantId });
   } catch (err) {

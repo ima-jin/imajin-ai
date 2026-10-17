@@ -247,6 +247,18 @@ describe('register_also — cap', () => {
 });
 
 describe('unregister_also', () => {
+  it('cancels an in-flight registration instead of resurrecting it after unregister', async () => {
+    let release!: (allowed: boolean) => void;
+    verifyDelegation.mockImplementation(() => new Promise<boolean>((resolve) => { release = resolve; }));
+    const registry = makeRegistry();
+    const ws = makeSocket();
+    const meta = makeMeta();
+    const pending = register(registry, ws, meta, PRINCIPAL);
+    await unregister(registry, ws, meta, PRINCIPAL);
+    release(true);
+    expect(await pending).toBeNull();
+    expect(registry.recipientsFor(PRINCIPAL)).toBeUndefined();
+  });
   it('drops the delegation without dropping the connection', async () => {
     const registry = makeRegistry();
     const ws = makeSocket();

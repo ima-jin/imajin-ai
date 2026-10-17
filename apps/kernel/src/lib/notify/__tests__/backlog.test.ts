@@ -11,8 +11,9 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockLimit, mockClaim, logMock } = vi.hoisted(() => ({
+const { mockLimit, mockClaim, mockWhere, logMock } = vi.hoisted(() => ({
   mockLimit: vi.fn().mockResolvedValue([]),
+  mockWhere: vi.fn(),
   mockClaim: vi.fn().mockResolvedValue({ claimed: true, attempts: 1 }),
   logMock: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -22,13 +23,17 @@ vi.mock('@/src/db', () => {
   // another, to keep .select().from().where().orderBy().limit(...) shallow
   // (sonarjs/no-nested-functions).
   const limitChain = () => ({ limit: mockLimit });
-  const orderByChain = () => ({ orderBy: limitChain });
+  const orderByChain = (predicate: unknown) => {
+    mockWhere(predicate);
+    return { orderBy: limitChain };
+  };
   const whereChain = () => ({ where: orderByChain });
   const fromChain = () => ({ from: whereChain });
   return {
     db: { select: vi.fn(fromChain) },
     notifications: {
       id: 'id',
+      scope: 'scope',
       recipientDid: 'recipient_did',
       deliveredAt: 'delivered_at',
       read: 'read',
@@ -42,6 +47,7 @@ vi.mock('drizzle-orm', () => ({
   asc: (...args: unknown[]) => ({ asc: args }),
   eq: (...args: unknown[]) => ({ eq: args }),
   isNull: (...args: unknown[]) => ({ isNull: args }),
+  inArray: (...args: unknown[]) => ({ inArray: args }),
 }));
 
 vi.mock('@imajin/logger', () => ({
@@ -76,6 +82,13 @@ beforeEach(() => {
 });
 
 describe('getNotificationBacklog', () => {
+  it('filters private Reach scopes before selecting or claiming delegated backlog', async () => {
+    await getNotificationBacklog(RECIPIENT, true);
+    expect(mockWhere).toHaveBeenCalledWith({ and: [
+      { eq: ['recipient_did', RECIPIENT] }, { isNull: ['delivered_at'] }, { eq: ['read', false] },
+      { inArray: ['scope', ['agent.reach.delivered', 'agent.reach.replied']] },
+    ] });
+  });
   it('requests one more row than the cap, to detect truncation without a count query', async () => {
     await getNotificationBacklog(RECIPIENT);
 
