@@ -14,6 +14,7 @@
  * long as the agent stayed connected, and would suppress the principal's own
  * last_seen update on disconnect. Keeping the two indexes apart means delegation
  * changes fan-out and nothing else — `recipientsFor` unions them at send time.
+ * Private reach delivery must recheck delegation authority at the point of use.
  *
  * This module is plain CJS because ws-server.js is loaded by `node server.js`,
  * outside the Next build.
