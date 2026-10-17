@@ -19,7 +19,7 @@ export function parsePaymentLookup(body: unknown): PaymentLookup | null {
   if (!Array.isArray(sessionIds) || sessionIds.length < 1
     || sessionIds.length > MAX_PAYMENT_LOOKUP_SESSIONS
     || !sessionIds.every((id): id is string => typeof id === 'string'
-      && id.length <= 255 && /^cs_[A-Za-z0-9_]+$/.test(id))) return null;
+      && id.length <= 255 && /^cs_\w+$/.test(id))) return null;
   return { sellerDid, sessionIds: [...new Set(sessionIds)] };
 }
 
