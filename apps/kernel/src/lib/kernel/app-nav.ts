@@ -8,10 +8,9 @@
  * Deliberately scoped to the apps #1981 will eventually extract out of the
  * monorepo (coffee, dykil, links, learn, events, market — the rows
  * `0167_registry_apps_nav_metadata.sql` backfills `placements` for).
- * `pay`/`media` are kernel-native services that are never pruned (see
- * `apps/kernel/app/auth/lib/service-registry.ts`'s `isKernelNativeService`)
- * and stay outside this resolver — they are gated by scope/enabledServices
- * directly at each call site, exactly as before this issue.
+ * `pay`/`media` are kernel navigation, not registry apps, and stay outside
+ * this resolver. The shared launcher gates group Wallet/Media links on
+ * forest_config; their standalone pages validate the acting-as session.
  *
  * Enabled-for-identity resolution: every non-actor scope is gated by
  * `profile.forest_config.enabled_services` for that identity's own DID

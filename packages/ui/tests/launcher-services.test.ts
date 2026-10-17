@@ -28,6 +28,16 @@ describe('loadLauncherServices', () => {
     expect(request).toHaveBeenCalledWith('/registry/api/launcher');
   });
 
+  it('resolves single-node public links against the kernel for standalone apps', async () => {
+    request.mockResolvedValueOnce(response({ services: [
+      { ...kernel, name: 'kernel', url: '' }, kernel, { ...app, url: '/coffee' },
+    ] }));
+    const entries = await loadLauncherServices('https://node.test/registry', 'https://node.test/auth', false);
+    expect(entries.map((entry) => entry.url)).toEqual([
+      'https://node.test/', 'https://node.test/pay', 'https://node.test/coffee',
+    ]);
+  });
+
   it('uses only the person’s apps and retains static kernel/project entries', async () => {
     const spoof = { ...app, name: 'not-kernel', category: 'core', source: 'static' };
     request.mockResolvedValueOnce(response({ services: [kernel, app, spoof] }));
@@ -78,7 +88,8 @@ describe('loadLauncherServices', () => {
     request.mockResolvedValueOnce(response({ services: [kernel, app] }));
     if (failure === 'network') request.mockRejectedValueOnce(new TypeError('CORS'));
     else request.mockResolvedValueOnce(response({}, false));
-    expect(await loadLauncherServices('https://node.test/registry', 'https://node.test/auth', true)).toEqual([kernel, app]);
+    expect(await loadLauncherServices('https://node.test/registry', 'https://node.test/auth', true))
+      .toEqual([{ ...kernel, url: 'https://node.test/pay' }, app]);
     expect(request).toHaveBeenLastCalledWith('https://node.test/auth/api/apps?placement=launcher', expect.objectContaining({
       credentials: 'include',
     }));
@@ -87,7 +98,8 @@ describe('loadLauncherServices', () => {
   it('keeps a successful cross-origin empty personal list empty', async () => {
     request.mockResolvedValueOnce(response({ services: [kernel, app] }));
     request.mockResolvedValueOnce(response({ apps: [] }));
-    expect(await loadLauncherServices('https://node.test/registry', 'https://node.test/auth', true)).toEqual([kernel]);
+    expect(await loadLauncherServices('https://node.test/registry', 'https://node.test/auth', true))
+      .toEqual([{ ...kernel, url: 'https://node.test/pay' }]);
   });
 
   it.each(['http', 'network', 'missing'])('handles unavailable public %s lists without blocking personal apps', async (failure) => {

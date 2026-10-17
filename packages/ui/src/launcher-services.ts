@@ -29,7 +29,14 @@ async function readPublicServices(registryUrl: string): Promise<LauncherService[
     const response = await fetch(`${registryUrl}/api/launcher`);
     if (!response.ok) return [];
     const data = await response.json() as { services?: LauncherService[] };
-    return data.services ?? [];
+    const registry = new URL(registryUrl, globalThis.location.href);
+    if (registry.origin === globalThis.location.origin) return data.services ?? [];
+    // A kernel in single-node mode returns relative URLs. In a published
+    // SDK consumer those paths belong to the kernel, not the app's origin.
+    return (data.services ?? []).map((service) => ({
+      ...service,
+      url: new URL(service.url || '/', registry).href,
+    }));
   } catch {
     return [];
   }
@@ -44,7 +51,7 @@ function appEntry(app: RegistryApp, publicServices: LauncherService[], authUrl: 
     icon: app.icon ?? hint?.icon ?? '🧩',
     visibility: hint?.visibility ?? 'public',
     category: 'core',
-    url: hint?.url ?? new URL(app.entryUrl || `/${app.slug}`, new URL(authUrl, globalThis.location.href)).href,
+    url: hint?.url ?? new URL(app.entryUrl || `/${encodeURIComponent(app.slug)}`, new URL(authUrl, globalThis.location.href)).href,
     source: 'registry',
   };
 }

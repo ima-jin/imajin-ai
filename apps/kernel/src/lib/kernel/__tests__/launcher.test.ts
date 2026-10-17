@@ -32,7 +32,7 @@ beforeEach(() => {
 describe('buildLauncherEntries (#2434)', () => {
   it('lists a registry-only app that has no services.ts entry', async () => {
     expect(SERVICES.some((s) => s.name === 'registry-only-app')).toBe(false);
-    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'registry-only-app', name: 'Registry Only', icon: '🧪' })]);
+    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'registry-only-app', name: 'Registry Only', icon: '🧪', entryUrl: '/registry-only-app' })]);
 
     const entries = await buildLauncherEntries();
 
@@ -47,6 +47,12 @@ describe('buildLauncherEntries (#2434)', () => {
       url: buildPublicUrl('registry-only-app'),
       source: 'registry',
     });
+  });
+
+  it('uses registry destinations for extracted apps without inventing a manifest port', async () => {
+    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'coffee', entryUrl: 'https://coffee.test/coffee' })]);
+    expect((await buildLauncherEntries()).find((entry) => entry.name === 'coffee')?.url)
+      .toBe('https://coffee.test/coffee');
   });
 
   it('falls back to a default icon for a registry app with neither an icon nor a services.ts hint', async () => {

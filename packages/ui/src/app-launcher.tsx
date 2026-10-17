@@ -15,7 +15,7 @@ export interface AppLauncherProps {
   variant?: 'list' | 'grid';
   /** Auth service URL — enables identity switcher when provided */
   authUrl?: string;
-  /** If set, only show services in this list (from active identity config) */
+  /** Group kernel-service gates (registry apps are already scoped by the API). */
   enabledServices?: string[];
   /** Session identity key; changing people must invalidate the previous app list. */
   identityDid?: string | null;
