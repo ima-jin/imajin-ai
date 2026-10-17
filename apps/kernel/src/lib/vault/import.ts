@@ -165,6 +165,7 @@ export async function listImportedKeyCards(ownerDids: string[]): Promise<Importe
     createdAt: operatorApprovals.createdAt, appliedAt: operatorApprovals.appliedAt,
   }).from(operatorApprovals).where(and(
     eq(operatorApprovals.source, 'vault'), eq(operatorApprovals.kind, 'vault:import'),
+    eq(operatorApprovals.status, 'applied'),
     isNotNull(operatorApprovals.appliedAt),
     inArray(sql<string>`${operatorApprovals.detail}->>'ownerDid'`, ownerDids),
   ));

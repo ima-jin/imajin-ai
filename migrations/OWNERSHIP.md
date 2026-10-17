@@ -160,6 +160,15 @@ operator curation, not installation or authorization; this migration adds no
 tables and does not change anyone's enabled-app list or grants. Number 0202 is
 reserved for #2863 and 0204 for #2857.
 
+### Imported credential audit chain (#2260)
+
+`0208_seed_vault_key_imported_chain.sql` is kernel-owned and seeds only
+`kernel.bus_chain_configs` for `vault.key.imported`. Its metadata-only
+`audit-log` reactor matches `packages/bus/src/config.ts` DEFAULTS.
+`ON CONFLICT (event_type, scope) DO NOTHING` preserves existing operator
+configuration, including disabled chains. No tables are added; the existing
+owner and `firstMigration` remain unchanged.
+
 ### Environment variables
 
 The guard (`scripts/check-migration-ownership.mjs`) reads two optional
