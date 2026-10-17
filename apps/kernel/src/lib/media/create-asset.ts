@@ -31,7 +31,7 @@ const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {
 };
 
 const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
-const ALLOWED_MIME_EXACT = new Set(["application/pdf"]);
+const ALLOWED_MIME_EXACT = new Set(["application/pdf", "application/json"]);
 
 /** Map file extensions to MIME types for files browsers send as octet-stream. */
 const EXT_TO_MIME: Record<string, string> = {
