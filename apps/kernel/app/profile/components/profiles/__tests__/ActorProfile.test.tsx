@@ -58,8 +58,8 @@ describe('ActorProfile — events/market links come from the registry (#2434)', 
   it('renders both widgets with the registry-derived base URLs when the apps are registered', () => {
     render(<ActorProfile {...props()} />);
 
-    expect(screen.getByTestId('events').dataset.base).toBe('https://node.test/events');
-    expect(screen.getByTestId('market').dataset.base).toBe('https://node.test/market');
+    expect(screen.getByTestId('events').dataset.base).toBe('/events');
+    expect(screen.getByTestId('market').dataset.base).toBe('/market');
   });
 
   it('drops a widget when its app was pruned from the registry, even with the profile toggle on', () => {

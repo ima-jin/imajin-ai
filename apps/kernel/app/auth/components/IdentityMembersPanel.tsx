@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import IdentityPicker from './IdentityPicker';
 import { SERVICES } from '@imajin/config';
+import { loadRegistryAppOptions } from '@/src/lib/profile/app-options';
 import {
   ASSIGNABLE_MEMBER_ROLES,
   MEMBER_ADDED_VIA_DESCRIPTIONS,
@@ -52,11 +53,10 @@ const ROLE_HINTS: Record<string, string> = {
  */
 const PLATFORM_ONLY_SERVICES = new Set(['kernel', 'auth', 'registry']);
 
-const SELECTABLE_SERVICES = SERVICES.filter(
+const KERNEL_SERVICES = SERVICES.filter(
   (s) =>
+    s.category === 'kernel' &&
     s.visibility !== 'internal' &&
-    s.category !== 'meta' &&
-    s.category !== 'infrastructure' &&
     !PLATFORM_ONLY_SERVICES.has(s.name)
 );
 
@@ -106,7 +106,8 @@ function provenanceParts(ctrl: Controller): string[] {
 function AgentServiceScope({
   selected,
   onToggle,
-}: Readonly<{ selected: string[]; onToggle: (service: string) => void }>) {
+  services,
+}: Readonly<{ selected: string[]; onToggle: (service: string) => void; services: { name: string; label: string }[] }>) {
   return (
     <div className="space-y-2 rounded-lg border border-violet-900/50 bg-violet-950/10 p-3">
       <p className="text-sm text-gray-300">Restrict to specific services</p>
@@ -116,7 +117,7 @@ function AgentServiceScope({
           : `This agent may only act on: ${selected.join(', ')}.`}
       </p>
       <div className="flex flex-wrap gap-2">
-        {SELECTABLE_SERVICES.map(({ name: svc, label }) => {
+        {services.map(({ name: svc, label }) => {
           const checked = selected.includes(svc);
           return (
             <label
@@ -144,6 +145,7 @@ function AgentServiceScope({
 
 export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: string }>) {
   const [loading, setLoading] = useState(true);
+  const [appServices, setAppServices] = useState<{ name: string; label: string }[]>([]);
   const [controllers, setControllers] = useState<Controller[]>([]);
   const [addDid, setAddDid] = useState('');
   const [addRole, setAddRole] = useState('member');
@@ -171,6 +173,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
         const data = await res.json();
         setControllers(data.controllers ?? []);
       }
+      setAppServices(await loadRegistryAppOptions());
     } catch (err) {
       console.error('Failed to load members:', err);
     } finally {
@@ -401,7 +404,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
             would imply a restriction the platform does not apply.
           */}
           {addRole === 'agent' && (
-            <AgentServiceScope selected={addAllowedServices} onToggle={toggleService} />
+            <AgentServiceScope selected={addAllowedServices} onToggle={toggleService} services={[...KERNEL_SERVICES, ...appServices]} />
           )}
         </form>
       </div>

@@ -14,7 +14,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
 
   // Unauthenticated: just render children (login/register/onboard work normally)
   if (!sessionDid) {
-    return <>{children}</>;
+    return children;
   }
 
   // effectiveDid is non-null whenever sessionDid is non-null
@@ -47,22 +47,16 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
   // Tax registrations (#2420) live next to Money and share the same gate.
   const showTax = effectiveIdentity?.scope === 'business';
 
-  // Query forest_config for enabled services and landing service. Kept
-  // separately from the registry-driven `navApps` below: Pay/Media are
-  // kernel-native services (never pruned, see
-  // `apps/kernel/app/auth/lib/service-registry.ts`'s `isKernelNativeService`)
-  // and are gated on this raw toggle list directly, exactly as before #2425.
-  let rawEnabledServices: string[] = [];
+  // The identity shell still honors the group's configured landing service.
   let landingService: string | null = null;
   const isActorScope = !effectiveIdentity?.scope || effectiveIdentity.scope === 'actor';
 
   if (!isActorScope) {
     const [forestRow] = await db
-      .select({ enabledServices: forestConfig.enabledServices, landingService: forestConfig.landingService })
+      .select({ landingService: forestConfig.landingService })
       .from(forestConfig)
       .where(eq(forestConfig.groupDid, did))
       .limit(1);
-    rawEnabledServices = forestRow?.enabledServices ?? [];
     landingService = forestRow?.landingService ?? null;
 
     const [membership] = await db
@@ -81,9 +75,6 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       showMembers = true;
     }
   }
-
-  const showPay = isActorScope || rawEnabledServices.includes('pay');
-  const showMedia = isActorScope || rawEnabledServices.includes('media');
 
   // Registry-driven nav apps (#2425) — replaces the old hard-coded
   // actor-scope fallback list. `resolveNavAppsForIdentity` resolves the
@@ -117,8 +108,6 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
       showSecurity={showSecurity}
       showMoney={showMoney}
       showTax={showTax}
-      showPay={showPay}
-      showMedia={showMedia}
       apps={navApps}
     />
   );

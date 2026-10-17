@@ -2,17 +2,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useIdentities } from './use-identities';
-
-export interface LauncherService {
-  name: string;
-  description: string;
-  icon: string;
-  label: string;
-  visibility: 'public' | 'authenticated' | 'creator' | 'internal';
-  category: 'kernel' | 'core' | 'creator' | 'developer' | 'infrastructure' | 'meta';
-  url: string;
-  externalUrl?: string;
-}
+import { loadLauncherServices, type LauncherService } from './launcher-services';
+export type { LauncherService } from './launcher-services';
 
 export interface AppLauncherProps {
   registryUrl: string;
@@ -24,8 +15,10 @@ export interface AppLauncherProps {
   variant?: 'list' | 'grid';
   /** Auth service URL — enables identity switcher when provided */
   authUrl?: string;
-  /** If set, only show services in this list (from active identity config) */
+  /** Group kernel-service gates (registry apps are already scoped by the API). */
   enabledServices?: string[];
+  /** Session identity key; changing people must invalidate the previous app list. */
+  identityDid?: string | null;
 }
 
 function filterByTier(services: LauncherService[], tier: string): LauncherService[] {
@@ -39,11 +32,10 @@ function filterByTier(services: LauncherService[], tier: string): LauncherServic
   });
 }
 
-function groupByCategory(services: LauncherService[]): { kernel: LauncherService[]; core: LauncherService[]; creator: LauncherService[]; developer: LauncherService[]; meta: LauncherService[] } {
+function groupByCategory(services: LauncherService[]): { kernel: LauncherService[]; core: LauncherService[]; developer: LauncherService[]; meta: LauncherService[] } {
   return {
     kernel: services.filter((s) => s.category === 'kernel'),
-    core: services.filter((s) => s.category === 'core'),
-    creator: services.filter((s) => s.category === 'creator'),
+    core: services.filter((s) => s.category === 'core' || s.category === 'creator'),
     developer: services.filter((s) => s.category === 'developer'),
     meta: services.filter((s) => s.category === 'meta'),
   };
@@ -59,8 +51,9 @@ function scopeIcon(scope: string): string {
   return '👤';
 }
 
-export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices }: Readonly<AppLauncherProps>) {
+export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', inline = false, variant = 'list', authUrl, enabledServices, identityDid }: Readonly<AppLauncherProps>) {
   const [services, setServices] = useState<LauncherService[]>([]);
+  const [revision, setRevision] = useState(0);
   const [showPanel, setShowPanel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -69,13 +62,26 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const { identities, activeIdentity, setActiveIdentity } = useIdentities(showIdentities && authUrl ? authUrl : null, null);
 
   useEffect(() => {
-    fetch(`${registryUrl}/api/specs`)
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data?.services) setServices(data.services);
-      })
-      .catch(() => {});
-  }, [registryUrl]);
+    const refresh = () => { setServices([]); setRevision((value) => value + 1); };
+    globalThis.addEventListener('imajin:session-changed', refresh);
+    globalThis.addEventListener('imajin:acting-as-changed', refresh);
+    return () => {
+      globalThis.removeEventListener('imajin:session-changed', refresh);
+      globalThis.removeEventListener('imajin:acting-as-changed', refresh);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setServices([]);
+    // Existing direct consumers need not pass authUrl: derive it from the
+    // registry's node, never the standalone application's own origin.
+    const authBase = authUrl ?? new URL('../auth', new URL(`${registryUrl}/`, globalThis.location.href)).href;
+    void loadLauncherServices(registryUrl, authBase, tier !== 'anonymous').then((entries) => {
+      if (!cancelled) setServices(entries);
+    });
+    return () => { cancelled = true; };
+  }, [registryUrl, authUrl, tier, activeIdentity, identityDid, revision]);
 
   useEffect(() => {
     if (!showPanel) return;
@@ -89,12 +95,12 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   }, [showPanel]);
 
   let visible = filterByTier(services, tier);
-  if (enabledServices && enabledServices.length > 0) {
-    visible = visible.filter((s) => enabledServices.includes(s.name));
+  if (activeIdentity) {
+    visible = visible.filter((s) => !['pay', 'media'].includes(s.name) || enabledServices?.includes(s.name));
   }
-  const { kernel, core, creator, developer, meta } = groupByCategory(visible);
+  const { kernel, core, developer, meta } = groupByCategory(visible);
 
-  const wwwUrl = services.find((s) => s.name === 'kernel')?.url || services.find((s) => s.name === 'www')?.url || '#';
+  const wwwUrl = services.find((s) => s.name === 'kernel')?.url ?? services.find((s) => s.name === 'www')?.url ?? '/';
 
   function renderTile(service: LauncherService) {
     const isCurrent = service.name === currentService;
@@ -163,7 +169,7 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
   const footer = (
     <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-1">
       <a
-        href={`${wwwUrl}/`}
+        href={wwwUrl || '/'}
         className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition no-underline"
       >
         See all apps →
@@ -186,16 +192,6 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       {core.length > 0 && (
         <div className="grid grid-cols-4 gap-1 px-2">
           {core.map(renderGridTile)}
-        </div>
-      )}
-      {creator.length > 0 && (
-        <div>
-          <div className="col-span-4 px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            Creator Tools
-          </div>
-          <div className="grid grid-cols-4 gap-1 px-2">
-            {creator.map(renderGridTile)}
-          </div>
         </div>
       )}
       {developer.length > 0 && (
@@ -224,14 +220,6 @@ export function AppLauncher({ registryUrl, currentService, tier = 'anonymous', i
       {core.length > 0 && (
         <div>
           {core.map(renderTile)}
-        </div>
-      )}
-      {creator.length > 0 && (
-        <div>
-          <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            Creator Tools
-          </div>
-          {creator.map(renderTile)}
         </div>
       )}
       {developer.length > 0 && (

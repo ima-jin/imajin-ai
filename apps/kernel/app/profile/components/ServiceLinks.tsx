@@ -1,5 +1,5 @@
 import { AskButton } from './AskButton';
-import { buildPublicUrl } from '@imajin/config';
+import { registryAppBaseUrl, registryAppPublicUrl } from '@/src/lib/apps/public-url';
 import type { ProfileData } from '../lib/types';
 import type { NavApp } from '@/src/lib/kernel/app-nav';
 
@@ -28,18 +28,23 @@ export function ServiceLinks({ profile, viewerDid, apps }: Readonly<ServiceLinks
         inferenceEnabled={!!profile.featureToggles?.inference_enabled}
         canAsk={!!viewerDid}
       />
-      {apps.map((app) => (
-        <a
-          key={app.slug}
-          // The destination path segment was always the profile's own
-          // `handle` (see `apps/kernel/app/profile/edit/page.tsx`'s write
-          // path) — never a distinct per-app value.
-          href={`${buildPublicUrl(app.slug)}/${profile.handle}`}
-          className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
-        >
-          {app.icon} {app.name}
-        </a>
-      ))}
+      {apps.map((app) => {
+        const base = registryAppBaseUrl(app);
+        const url = base && profile.handle
+          ? `${base.replace(/\/$/, '')}/${encodeURIComponent(profile.handle)}`
+          : registryAppPublicUrl(app);
+        return (
+          <a
+            key={app.slug}
+            // Only a known app base supports the profile's own handle suffix.
+            // Deep/query entry URLs remain exact manifest destinations.
+            href={url}
+            className="px-4 py-2 bg-gray-900 border border-gray-800 rounded-lg hover:bg-gray-800 transition text-white text-sm font-medium"
+          >
+            {app.icon} {app.name}
+          </a>
+        );
+      })}
     </div>
   );
 }

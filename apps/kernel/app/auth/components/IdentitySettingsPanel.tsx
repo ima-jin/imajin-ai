@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react';
 import { SERVICES, buildPublicUrl } from '@imajin/config';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
+import { loadRegistryAppOptions } from '@/src/lib/profile/app-options';
+import type { LauncherEntry } from '@/src/lib/kernel/launcher';
 
 type JoinVisibility = 'open' | 'network' | 'invite';
 
@@ -17,16 +19,10 @@ interface IdentityConfig {
 
 const KERNEL_SERVICES = SERVICES.filter((s) => s.category === 'kernel' && s.visibility !== 'internal');
 
-const SELECTABLE_SERVICES = SERVICES.filter(
-  (s) =>
-    s.visibility !== 'internal' &&
-    s.category !== 'meta' &&
-    s.category !== 'infrastructure' &&
-    s.category !== 'kernel'
-);
 
 export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid: string }>) {
   const [loading, setLoading] = useState(true);
+  const [selectableServices, setSelectableServices] = useState<LauncherEntry[]>([]);
   const [enabledServices, setEnabledServices] = useState<string[]>([]);
   const [landingService, setLandingService] = useState<string | null>(null);
   const [joinVisibility, setJoinVisibility] = useState<JoinVisibility>('open');
@@ -61,6 +57,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
         setJoinNetworkDepth(cfg.joinNetworkDepth ?? 2);
         setScopeFeeBps(cfg.scopeFeeBps ?? 25);
       }
+      setSelectableServices(await loadRegistryAppOptions());
     } catch (err) {
       console.error('Failed to load identity settings:', err);
     } finally {
@@ -118,7 +115,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
     return <div className="text-gray-400 py-8">Loading settings…</div>;
   }
 
-  const enabledServiceOptions = SELECTABLE_SERVICES.filter((s) => enabledServices.includes(s.name));
+  const enabledServiceOptions = selectableServices.filter((s) => enabledServices.includes(s.name));
 
   return (
     <div className="space-y-6">
@@ -164,7 +161,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
           Toggle which apps are available for this identity.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          {SELECTABLE_SERVICES.map((svc) => {
+          {selectableServices.map((svc) => {
             const isEnabled = enabledServices.includes(svc.name);
             return (
               <button type="button"

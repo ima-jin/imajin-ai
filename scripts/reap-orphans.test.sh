@@ -16,15 +16,17 @@ REAP_SCRIPT="$SCRIPT_DIR/reap-orphans.sh"
 FAKE_BIN="$(mktemp -d "${TMPDIR:-/tmp}/reap-orphans-test.XXXXXX")"
 FAKE_PM2_HOME="$(mktemp -d "${TMPDIR:-/tmp}/reap-orphans-test-home.XXXXXX")"
 KILL_LOG="$(mktemp "${TMPDIR:-/tmp}/reap-orphans-test-kills.XXXXXX")"
-trap 'rm -rf "$FAKE_BIN" "$FAKE_PM2_HOME"; rm -f "$KILL_LOG"' EXIT
+SS_LOG="$(mktemp "${TMPDIR:-/tmp}/reap-orphans-test-ports.XXXXXX")"
+export SS_LOG
+trap 'rm -rf "$FAKE_BIN" "$FAKE_PM2_HOME"; rm -f "$KILL_LOG" "$SS_LOG"' EXIT
 
 echo 1156 > "$FAKE_PM2_HOME/pm2.pid"
 
 # Scenario wired into the fixed prod port list (scripts/reap-orphans.sh):
 #   :7006 (events)  -> pid 9001, a TRUE orphan (parented to init) — must be reaped.
-#   :7100 (coffee)  -> pid 9002, a pm2-managed grandchild (jlist reports the
+#   :7103 (learn)   -> pid 9002, a pm2-managed grandchild (jlist reports the
 #                      wrapper pid 9010; 9002's parent is 9010) — must NOT be reaped.
-#   :7101 (dykil)   -> pid 9003, a direct child of the PM2 God Daemon (1156)
+#   :7104 (market)  -> pid 9003, a direct child of the PM2 God Daemon (1156)
 #                      that ISN'T in the fake jlist (simulating a stale-list
 #                      respawn race, #2344) — must NOT be reaped either.
 # All other managed ports report no listener.
@@ -32,10 +34,11 @@ cat > "$FAKE_BIN/ss" <<'EOF'
 #!/usr/bin/env bash
 # Fakes `ss -ltnpH "sport = :<port>"`.
 port_arg="$*"
+printf '%s\n' "$port_arg" >> "$SS_LOG"
 case "$port_arg" in
   *":7006"*) echo "LISTEN 0 511 *:7006 *:* users:((\"orphan\",pid=9001,fd=3))" ;;
-  *":7100"*) echo "LISTEN 0 511 *:7100 *:* users:((\"next-server\",pid=9002,fd=3))" ;;
-  *":7101"*) echo "LISTEN 0 511 *:7101 *:* users:((\"next-server\",pid=9003,fd=3))" ;;
+  *":7103"*) echo "LISTEN 0 511 *:7103 *:* users:((\"next-server\",pid=9002,fd=3))" ;;
+  *":7104"*) echo "LISTEN 0 511 *:7104 *:* users:((\"next-server\",pid=9003,fd=3))" ;;
 esac
 EOF
 chmod +x "$FAKE_BIN/ss"
@@ -72,7 +75,7 @@ chmod +x "$FAKE_BIN/ps"
 cat > "$FAKE_BIN/pm2" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$1" = "jlist" ]]; then
-  echo '[{"pid":9010,"name":"prod-coffee","pm2_env":{"status":"online"}}]'
+  echo '[{"pid":9010,"name":"prod-learn","pm2_env":{"status":"online"}}]'
 fi
 EOF
 chmod +x "$FAKE_BIN/pm2"
@@ -121,8 +124,13 @@ export PM2_HOME
 # in effect for its whole run.
 OUTPUT="$(bash -c 'enable -n kill; source "$1" "${@:2}"' _ "$REAP_SCRIPT" prod)"
 echo "$OUTPUT"
+bash -c 'enable -n kill; source "$1" "${@:2}"' _ "$REAP_SCRIPT" dev
 
 FAILURES=0
+if grep -qE ':(3100|3101|3102|7100|7101|7102)$' "$SS_LOG"; then
+  echo "Deleted standalone app ports were incorrectly queried"
+  FAILURES=$((FAILURES + 1))
+fi
 
 if grep -qx "9001" "$KILL_LOG"; then
   echo "✅ true orphan (pid 9001, :7006) was reaped"
@@ -132,17 +140,17 @@ else
 fi
 
 if grep -qx "9002" "$KILL_LOG"; then
-  echo "❌ pm2 grandchild (pid 9002, :7100, via jlist) was incorrectly reaped"
+  echo "❌ pm2 grandchild (pid 9002, :7103, via jlist) was incorrectly reaped"
   FAILURES=$((FAILURES + 1))
 else
-  echo "✅ pm2 grandchild (pid 9002, :7100, via jlist) was left alone"
+  echo "✅ pm2 grandchild (pid 9002, :7103, via jlist) was left alone"
 fi
 
 if grep -qx "9003" "$KILL_LOG"; then
-  echo "❌ God-Daemon-owned pid (pid 9003, :7101, absent from jlist) was incorrectly reaped"
+  echo "❌ God-Daemon-owned pid (pid 9003, :7104, absent from jlist) was incorrectly reaped"
   FAILURES=$((FAILURES + 1))
 else
-  echo "✅ God-Daemon-owned pid (pid 9003, :7101, absent from jlist) was left alone"
+  echo "✅ God-Daemon-owned pid (pid 9003, :7104, absent from jlist) was left alone"
 fi
 
 if [[ "$FAILURES" -gt 0 ]]; then

@@ -32,7 +32,7 @@ beforeEach(() => {
 describe('buildLauncherEntries (#2434)', () => {
   it('lists a registry-only app that has no services.ts entry', async () => {
     expect(SERVICES.some((s) => s.name === 'registry-only-app')).toBe(false);
-    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'registry-only-app', name: 'Registry Only', icon: '🧪' })]);
+    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'registry-only-app', name: 'Registry Only', icon: '🧪', entryUrl: '/registry-only-app' })]);
 
     const entries = await buildLauncherEntries();
 
@@ -49,6 +49,12 @@ describe('buildLauncherEntries (#2434)', () => {
     });
   });
 
+  it('uses registry destinations for extracted apps without inventing a manifest port', async () => {
+    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'coffee', entryUrl: 'https://coffee.test/coffee' })]);
+    expect((await buildLauncherEntries()).find((entry) => entry.name === 'coffee')?.url)
+      .toBe('https://coffee.test/coffee');
+  });
+
   it('falls back to a default icon for a registry app with neither an icon nor a services.ts hint', async () => {
     mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'registry-only-app', name: 'Registry Only', icon: null })]);
 
@@ -58,11 +64,11 @@ describe('buildLauncherEntries (#2434)', () => {
   });
 
   it('uses services.ts only as presentation hints (grouping, visibility, description) for a registry app that has one', async () => {
-    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'coffee', name: 'Coffee', icon: '☕' })]);
+    mocks.resolveLauncherApps.mockResolvedValue([navApp({ slug: 'events', name: 'Events', icon: '🎫' })]);
 
-    const coffee = (await buildLauncherEntries()).find((e) => e.name === 'coffee');
+    const events = (await buildLauncherEntries()).find((e) => e.name === 'events');
 
-    expect(coffee).toMatchObject({ source: 'registry', category: 'creator', visibility: 'creator', icon: '☕' });
+    expect(events).toMatchObject({ source: 'registry', category: 'core', visibility: 'public', icon: '🎫' });
   });
 
   it('keeps kernel-native and project tiles from services.ts, marked static', async () => {

@@ -14,7 +14,7 @@ import type { FeatureToggles } from '@/src/db/schemas/profile';
 import { LEGACY_APP_SLUGS } from './feature-toggles-compat';
 
 export interface FeatureTogglesFormState {
-  /** Keyed by service key: the 4 legacy app slugs plus `inference`. */
+  /** Keyed by registry app slug plus the kernel-owned `inference` toggle. */
   serviceToggles: Readonly<Record<string, boolean>>;
   showMarketItems: boolean;
   showEvents: boolean;
@@ -32,9 +32,15 @@ function mergeEnabledApps(
   existing: readonly string[] | undefined,
   serviceToggles: Readonly<Record<string, boolean>>,
 ): string[] | undefined {
-  if (existing === undefined) return undefined;
-  const switchedOff = new Set<string>(LEGACY_APP_SLUGS.filter((slug) => !serviceToggles[slug]));
-  return existing.filter((slug) => !switchedOff.has(slug));
+  const appToggles = Object.entries(serviceToggles).filter(([slug]) => slug !== 'inference');
+  const hasGenericApp = appToggles.some(([slug]) => !(LEGACY_APP_SLUGS as readonly string[]).includes(slug));
+  if (existing === undefined && !hasGenericApp) return undefined;
+  const enabled = new Set(existing ?? []);
+  for (const [slug, on] of appToggles) {
+    if (!on) enabled.delete(slug);
+    else if (!(LEGACY_APP_SLUGS as readonly string[]).includes(slug)) enabled.add(slug);
+  }
+  return [...enabled];
 }
 
 /** Overlay the edit form's state onto the toggles the profile was loaded with. Never drops unrelated keys. */
@@ -50,6 +56,7 @@ export function mergeFeatureToggles(
   };
 
   for (const slug of LEGACY_APP_SLUGS) {
+    if (!(slug in form.serviceToggles)) continue;
     merged[slug] = form.serviceToggles[slug] && form.handle ? form.handle : null;
   }
 
