@@ -49,6 +49,7 @@ export async function deliverReach(params: {
     onBehalfOfStubDid: params.onBehalfOfStubDid,
     onBehalfOf: input.onBehalfOf, claimVerified: false as const,
     requesterTier: params.requesterTier,
+    requesterAuthTier: 'signed' as const,
     topic: input.topic, message: input.message, replyHandle: input.replyHandle,
     transcriptHash: params.transcriptHash, requesterSignature: input.signature,
     requestIssuedAt: input.issuedAt, issuedAt, grantId: params.grantId,
