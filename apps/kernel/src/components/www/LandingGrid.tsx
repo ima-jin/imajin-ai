@@ -98,7 +98,7 @@ async function fetchIdentityApps(authUrl: string, services: ServiceEntry[]): Pro
         category: hint?.category ?? 'core',
         visibility: hint?.visibility ?? 'public',
         source: 'registry' as const,
-        url: app.entryUrl || hint?.url || `/${encodeURIComponent(app.slug)}`,
+        url: hint?.url || app.entryUrl || `/${encodeURIComponent(app.slug)}`,
       };
     });
   } catch {

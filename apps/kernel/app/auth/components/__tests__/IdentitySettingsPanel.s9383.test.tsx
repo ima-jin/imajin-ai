@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+vi.mock('@imajin/ui/server', () => ({ getActingAsHeaders: () => ({}) }));
 
 vi.mock('@imajin/config', () => ({
   SERVICES: [],
@@ -22,8 +23,8 @@ const GROUP_DID = 'did:imajin:group';
 function installFetch() {
   const spy = vi.fn(async (url: string) => ({
     ok: true,
-    json: async () => url === '/registry/api/launcher' ? ({
-      services: [{ name: 'registry-only', label: 'Registry App', icon: '🧩', source: 'registry' }],
+    json: async () => url === '/auth/api/apps/directory' ? ({
+      apps: [{ slug: 'registry-only', name: 'Registry App', icon: '🧩', available: true }],
     }) : ({
       enabledServices: [],
       landingService: null,

@@ -20,6 +20,10 @@ afterEach(() => {
 });
 
 describe('developer visibility controls (#2897)', () => {
+  it('provides an add-app link for an unlisted registered slug', () => {
+    render(<AppDetailClient app={{ ...app, slug: 'invite-app', visibility: 'unlisted' }} />);
+    expect(screen.getByRole('link', { name: /Share this direct link/ }).getAttribute('href')).toBe('/auth/app-directory?app=invite-app');
+  });
   it.each(APP_VISIBILITIES)('registers selected visibility %s', async visibility => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...app, visibility }) });
     vi.stubGlobal('fetch', fetchMock);

@@ -67,6 +67,16 @@ afterEach(() => {
 });
 
 describe('LandingGrid (#2434)', () => {
+  it('retains an operator-resolved public launcher URL instead of replacing it with the raw entry path', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith('/api/launcher')) return Response.json({ services: LAUNCHER_TILES });
+      if (url.endsWith('/api/session')) return Response.json({ tier: 'established' });
+      return Response.json({ apps: [{ slug: 'coffee', name: 'Coffee', entryUrl: '/coffee' }] });
+    }));
+    render(<LandingGrid />);
+    expect((await screen.findByRole('link', { name: /Coffee/ })).getAttribute('href')).toBe('https://node.test/coffee');
+  });
   it('renders member-private apps from the identity response even when absent from anonymous discovery', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);

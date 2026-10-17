@@ -60,7 +60,7 @@ function DirectoryRow({ app, busy, disabled, onToggle }: Readonly<{
             type="button"
             onClick={() => onToggle(app)}
             disabled={disabled || app.inherited || (!app.available && !app.added)}
-            aria-label={`${action} ${app.name}`}
+            aria-label={app.inherited ? `${app.name} included with membership` : `${action} ${app.name}`}
             className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {app.inherited ? 'Included with membership' : action}

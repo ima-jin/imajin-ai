@@ -8,6 +8,7 @@ import VisibilitySelect from '../../components/VisibilitySelect';
 
 interface App {
   id: string;
+  slug?: string | null;
   name: string;
   description: string | null;
   appDid: string;
@@ -328,6 +329,13 @@ export default function AppDetailClient({ app: initialApp }: Readonly<Props>) {
             <p className="text-sm text-zinc-300">{app.visibility} — {APP_VISIBILITY_DESCRIPTIONS[app.visibility]}</p>
             <p className="mt-1 text-xs text-zinc-400">Public web pages remain public.</p>
           </Field>
+          {app.slug && app.visibility === 'unlisted' && (
+            <Field label="Add app link">
+              <a href={`/auth/app-directory?app=${encodeURIComponent(app.slug)}`} className="text-sm text-amber-400 underline">
+                Share this direct link to add {app.name}
+              </a>
+            </Field>
+          )}
 
           <Field label="App ID">
             <div className="flex items-center gap-2">
