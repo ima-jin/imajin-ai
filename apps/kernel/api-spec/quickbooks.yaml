@@ -1,0 +1,123 @@
+openapi: "3.1.0"
+info:
+  title: imajin quickbooks
+  version: "1.0.0"
+  description: >-
+    QuickBooks OAuth connections. Omitted slot means primary. BYO OAuth config,
+    tokens, realm identity and grants are isolated per slot; app-owned config
+    is shared from primary without borrowing its credentials or grants.
+    Labels and account emails are managed through the connections service.
+servers:
+  - url: https://{node}.imajin.ai/quickbooks
+    variables:
+      node: { default: jin }
+  - url: http://localhost:3000/quickbooks
+security:
+  - cookieAuth: []
+components:
+  securitySchemes:
+    cookieAuth: { type: apiKey, in: cookie, name: imajin_session }
+  parameters:
+    slot:
+      name: slot
+      in: query
+      required: false
+      schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$", default: primary }
+      description: Stable connection slot, never a display label.
+paths:
+  /api/configure:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    post:
+      operationId: quickbooksConfigure
+      summary: Seal Intuit BYO app config for this slot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [clientId, clientSecret, redirectUri]
+              properties:
+                clientId: { type: string }
+                clientSecret: { type: string }
+                redirectUri: { type: string, format: uri }
+                environment: { type: string, enum: [sandbox, production], default: sandbox }
+                webhookVerifierToken: { type: string }
+      responses:
+        "201": { description: Configuration sealed }
+        "400": { description: Invalid slot or configuration }
+        "401": { description: Not authenticated }
+  /api/connect:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    get:
+      operationId: quickbooksConnect
+      summary: Start Intuit authorization for the selected slot
+      parameters:
+        - name: returnTo
+          in: query
+          schema: { type: string, example: "/auth/connectors/quickbooks?slot=work" }
+      responses:
+        "307": { description: Redirect to Intuit with signed slot-bound state }
+        "400": { description: Invalid slot or missing configuration }
+        "401": { description: Not authenticated }
+        "409": { description: Configuration pending owner approval }
+  /api/callback:
+    get:
+      security: []
+      operationId: quickbooksCallback
+      summary: Seal Intuit token and realm for the slot bound into signed state
+      description: Legacy state means primary. Callback slot query parameters cannot override signed state.
+      parameters:
+        - { name: code, in: query, required: true, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: realmId, in: query, required: true, schema: { type: string } }
+      responses:
+        "307": { description: Redirect to returnTo with connected or error outcome }
+  /api/disconnect:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    post:
+      operationId: quickbooksDisconnect
+      summary: Revoke only the selected connection and its grants
+      responses:
+        "200": { description: Disconnected; other slots unchanged }
+        "400": { description: Invalid slot }
+        "401": { description: Not authenticated }
+  /api/scope-manifest:
+    parameters:
+      - $ref: "#/components/parameters/slot"
+    get:
+      operationId: quickbooksScopeManifestStatus
+      summary: Read credential and scope status for the selected slot
+      responses:
+        "200":
+          description: Missing slots do not inherit primary tokens or grants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  manifestAssetId: { type: [string, "null"] }
+                  activeScopes: { type: array, items: { type: string } }
+                  validScopes: { type: array, items: { type: string } }
+                  configSealed: { type: boolean }
+                  tokenSealed: { type: boolean }
+                  credentialPending: { type: boolean }
+    post:
+      operationId: quickbooksPublishScopeManifest
+      summary: Replace only the selected connection's grants
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [scopes]
+              properties:
+                scopes: { type: array, items: { type: string, enum: ["quickbooks:read", "quickbooks:write"] } }
+      responses:
+        "200": { description: Server-confirmed activeScopes for the selected connection }
+        "400": { description: Invalid slot or unknown scope }
+        "401": { description: Not authenticated }

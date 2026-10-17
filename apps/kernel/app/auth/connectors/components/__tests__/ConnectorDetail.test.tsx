@@ -1163,7 +1163,7 @@ describe('QuickBooks connector card (createOAuthConnectorCard)', () => {
     expect(screen.getByPlaceholderText('Client ID')).toBeDefined();
     expect(screen.getByPlaceholderText('Client Secret')).toBeDefined();
     expect(screen.getByPlaceholderText('Redirect URI')).toBeDefined();
-    expect(screen.getByRole('combobox')).toBeDefined();
+    expect(screen.getByRole('combobox', { name: 'QuickBooks environment' })).toBeDefined();
     // No custody notice on this connector's registry entry.
     expect(screen.queryByText(/Imajin can act on your/)).toBeNull();
   });
@@ -1175,7 +1175,7 @@ describe('QuickBooks connector card (createOAuthConnectorCard)', () => {
     fireEvent.change(await screen.findByPlaceholderText('Client ID'), { target: { value: 'cid' } });
     fireEvent.change(screen.getByPlaceholderText('Client Secret'), { target: { value: 'csecret' } });
     fireEvent.change(screen.getByPlaceholderText('Redirect URI'), { target: { value: 'https://imajin.test/quickbooks/api/callback' } });
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'production' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'QuickBooks environment' }), { target: { value: 'production' } });
     fireEvent.submit(screen.getByPlaceholderText('Client ID').closest('form') as HTMLFormElement);
 
     await waitFor(() => {
@@ -1239,7 +1239,7 @@ describe('Google Workspace connector card (createOAuthConnectorCard, #2144)', ()
     expect(screen.getByPlaceholderText('Client Secret')).toBeDefined();
     expect(screen.getByPlaceholderText('Redirect URI')).toBeDefined();
     // No `environment`-style extra field on this connector.
-    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'QuickBooks environment' })).toBeNull();
   });
 
   it('shows the custody notice verbatim from the registry entry', async () => {
