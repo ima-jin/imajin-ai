@@ -324,6 +324,19 @@ describe('read-time authority and failed rechecks', () => {
 });
 
 describe('organization issuance and legacy compatibility', () => {
+  it('leaves an unavailable org grant unbound and issues exactly once after signing becomes available', async () => {
+    state.signer.mockRejectedValueOnce(new DomainError('credential_unavailable', 'No scoped grant', 403));
+    await expect(issueImajinDomain({ domain: 'dev-gbs.imajin.ai', appDid: 'did:app' }))
+      .rejects.toMatchObject({ code: 'credential_unavailable' });
+    expect(await listDomains('did:org')).toEqual([]);
+    expect(await resolveRoutableDomain('dev-gbs.imajin.ai')).toBeNull();
+    expect(await countAttestations()).toBe(0);
+    state.signer.mockResolvedValue({ issuerDid: 'did:org', privateKey: key });
+    const issued = await issueImajinDomain({ domain: 'dev-gbs.imajin.ai', appDid: 'did:app' });
+    expect(issued).toMatchObject({ status: 'verified', method: 'imajin-issued', siteOwner: 'did:site' });
+    expect(await issueImajinDomain({ domain: 'dev-gbs.imajin.ai', appDid: 'did:app' })).toEqual(issued);
+    expect(await countAttestations()).toBe(1);
+  });
   it('issues with actual org issuer and registry app owner, idempotently without DNS', async () => {
     state.signer.mockResolvedValue({ issuerDid: 'did:org', privateKey: key });
     const issued = await issueImajinDomain({ domain: 'gbs.imajin.ai', appDid: 'did:app' });
