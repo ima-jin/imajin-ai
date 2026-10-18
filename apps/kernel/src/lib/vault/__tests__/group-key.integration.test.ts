@@ -343,6 +343,22 @@ describe('group custody — real SQL, operator countersignatures, encryption and
     await expectNoCustody(card);
     expect(await db.select().from(vaultGrantRequests)).toEqual([]);
   });
+  it('never permits custody through the deterministic dev signer when AUTH_PRIVATE_KEY is absent', async () => {
+    const card = await approval();
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await propose()).status).toBe(403);
+    await expectNoCustody(card);
+  });
+
+  it('grants the configured transacting node even when its DID encoding differs from the vault signer', async () => {
+    h.nodeDid = 'did:imajin:configurednode';
+    expect(h.nodeDid).not.toBe(getNodeSigningIdentity().senderDid);
+    expect(await execute(await approval())).toEqual({ ok: true });
+    const [grant] = await db.select().from(vaultDelegationGrants);
+    expect(grant.grantedTo).toBe(h.nodeDid);
+    expect(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue') === seed).toBe(true);
+    expect((await domainSigningIdentity(true)).privateKey === seed).toBe(true);
+  });
 
   it.each(['missing-secret', 'wrong-secret', 'missing-ciphertext', 'tampered-ciphertext', 'wrong-ciphertext', 'current-public-key'])('fails closed without partial writes for %s', async failure => {
     const card = await approval();
