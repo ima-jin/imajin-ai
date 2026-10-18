@@ -4,7 +4,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import ConnectionsPage from '../page';
 import { RelationshipEditor, type RelationshipLabel } from '../relationship-controls';
 
-const fixtures = [
+interface ConnectionFixture {
+  did: string;
+  name: string | null;
+  handle?: string | null;
+  relationshipLabel: RelationshipLabel | null;
+  connectedAt: string;
+}
+
+const fixtures: ConnectionFixture[] = [
   { did: 'did:imajin:client', name: 'Client Co', relationshipLabel: 'client' as const },
   { did: 'did:imajin:vendor', name: 'Vendor Co', relationshipLabel: 'vendor' as const },
   { did: 'did:imajin:partner', name: 'Partner Co', relationshipLabel: 'partner' as const },
@@ -35,6 +43,17 @@ afterEach(() => {
 });
 
 describe('connections relationship permissions and filtering', () => {
+  it.each([
+    ['client-handle', 'client-handle'],
+    [null, 'did:imajin:client'],
+  ])('labels the editor using the handle or DID when no display name exists (%s)', (handle, accessibleName) => {
+    data = {
+      connections: [{ ...fixtures[0], name: null, handle }],
+      canManageRelationshipLabels: true,
+    };
+    render(<ConnectionsPage />);
+    expect(screen.getByRole('combobox', { name: `Relationship for ${accessibleName}` })).toBeDefined();
+  });
   it.each([false, undefined])('shows labels without editors when permission is %s', permission => {
     data = { connections: fixtures, canManageRelationshipLabels: permission };
     render(<ConnectionsPage />);
