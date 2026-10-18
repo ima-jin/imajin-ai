@@ -1,6 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
 
 const mocks = vi.hoisted(() => ({
   verify: vi.fn(), select: vi.fn(), insert: vi.fn(), values: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock('@/src/db', async () => ({
 }));
 
 import { POST } from '../route';
-import { attestations, onboardTokens } from '@/src/db';
+import { attestations, credentials, onboardTokens } from '@/src/db';
 
 const appDid = 'did:imajin:events-app';
 const ownerDid = 'did:imajin:organizer';
@@ -45,7 +47,9 @@ function rows(result: unknown[]) {
   return { from: vi.fn().mockReturnValue({
     where: vi.fn((predicate: unknown) => {
       whereCalls.push(predicate);
-      return { limit: vi.fn().mockResolvedValue(result) };
+      const selection = { limit: vi.fn().mockResolvedValue(result), orderBy: vi.fn() };
+      selection.orderBy.mockReturnValue(selection);
+      return selection;
     }),
   }) };
 }
@@ -77,6 +81,52 @@ beforeEach(() => {
 });
 
 describe('kernel-private order onboarding', () => {
+  describe('verified credential ordering', () => {
+    const client = new PGlite();
+    const contactDb = drizzle(client);
+    const older = new Date('2026-01-01T00:00:00Z');
+    const newer = new Date('2026-02-01T00:00:00Z');
+
+    beforeAll(async () => {
+      await client.exec(`
+        CREATE SCHEMA auth;
+        CREATE TABLE auth.credentials (
+          id text PRIMARY KEY, did text NOT NULL, type text NOT NULL,
+          value text NOT NULL, verified_at timestamptz, created_at timestamptz DEFAULT now()
+        );
+      `);
+    });
+    afterAll(async () => { await client.close(); });
+
+    it.each([
+      { label: 'most recently verified', first: older, second: newer, firstId: 'cred_a', secondId: 'cred_z', expected: 'second@example.com' },
+      { label: 'stable credential id on equal verification times', first: newer, second: newer, firstId: 'cred_z', secondId: 'cred_a', expected: 'second@example.com' },
+      { label: 'verified over unverified', first: null, second: older, firstId: 'cred_a', secondId: 'cred_z', expected: 'second@example.com' },
+      { label: 'no fallback to unverified', first: null, second: null, firstId: 'cred_a', secondId: 'cred_z', expected: null },
+    ])('chooses $label from two stored emails', async ({ first, second, firstId, secondId, expected }) => {
+      await contactDb.delete(credentials);
+      // Insert the losing candidate first, with a lower ID except in the tie case.
+      await contactDb.insert(credentials).values([
+        { id: firstId, did: buyerDid, type: 'email', value: 'first@example.com', verifiedAt: first },
+        { id: secondId, did: buyerDid, type: 'email', value: 'second@example.com', verifiedAt: second },
+      ]);
+      mocks.select.mockReset()
+        .mockReturnValueOnce(rows([registered]))
+        .mockReturnValueOnce(rows([order]))
+        .mockReturnValueOnce(contactDb.select({ email: credentials.value }));
+
+      const response = await POST(request());
+
+      expect(response.status).toBe(expected ? 200 : 404);
+      if (expected) {
+        expect(mocks.email).toHaveBeenCalledWith(expect.objectContaining({ to: expected }));
+      } else {
+        expect(mocks.email).not.toHaveBeenCalled();
+        expect(mocks.insert).not.toHaveBeenCalled();
+      }
+      expect(mocks.customer).not.toHaveBeenCalled();
+    });
+  });
   it('emails only the kernel credential, stores the ordinary token and returns status only', async () => {
     const response = await POST(request());
     expect(response.status).toBe(200);
@@ -253,7 +303,9 @@ describe('kernel-private order onboarding', () => {
     const response = await POST(request());
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: 'Onboarding delivery unavailable' });
-    expect(mocks.error).toHaveBeenCalledWith({}, 'Order onboarding delivery unavailable');
+    expect(mocks.error).toHaveBeenCalledWith(
+      { status: 503, code: 'ONBOARD_DELIVERY_UNAVAILABLE' }, 'Order onboarding delivery unavailable',
+    );
     if (stage === 'signer' || stage === 'intent') expect(mocks.email).not.toHaveBeenCalled();
   });
 });
