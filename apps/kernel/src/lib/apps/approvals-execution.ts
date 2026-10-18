@@ -20,6 +20,7 @@ import type { OperatorApprovalCard } from '../notify/operator-approvals-service'
 import { resolveVaultAuthorization } from '../vault/authorization';
 import { runAppProvision, type AppProvisionOutcome } from './provision';
 import { parseManifestDeclarations } from './declarations-approval';
+import { APP_VISIBILITY_ERROR, isAppVisibility } from './visibility';
 
 const log = createLogger('kernel:apps:approvals-execution');
 
@@ -86,6 +87,8 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
   }
   const template = requireString(card.detail, 'template') ?? undefined;
   const attestationTypes = readAttestationTypes(card.detail);
+  const visibility = card.detail?.visibility === undefined ? 'public' : card.detail.visibility;
+  if (!isAppVisibility(visibility)) return { ok: false, error: APP_VISIBILITY_ERROR };
 
   try {
     // #2663: the providesScopes/dependsOn list the operator saw on the card — the
@@ -94,7 +97,7 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
     const siteOwnerDid = requireString(card.detail, 'siteOwnerDid');
     const domain = requireString(card.detail, 'domain');
     const outcome: AppProvisionOutcome = await runAppProvision({
-      slug, displayName, template, attestationTypes, approvedDeclarations, authorizedBy,
+      slug, displayName, template, attestationTypes, approvedDeclarations, authorizedBy, visibility,
       ...(siteOwnerDid ? { siteOwnerDid } : {}),
       ...(domain ? { domain } : {}),
     });

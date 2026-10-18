@@ -619,6 +619,7 @@ function renderAppsProvisionDetail(approval: OperatorApprovalCard): ReactNode {
   return (
     <div className="space-y-1 text-sm text-gray-200">
       <p>Provision <span className="font-medium text-gray-100">{displayName}</span> as a third-party app.</p>
+      <p className="text-xs text-gray-400">{approval.summary}</p>
       <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Slug</span><span className="font-mono">{slug}</span></div>
       <div className="text-xs text-gray-500"><span className="uppercase tracking-wide mr-2">Template</span><span className="font-mono">{template}</span></div>
       {/* #2663: the providesScopes/dependsOn list the operator is approving, read-only, before they approve it. */}

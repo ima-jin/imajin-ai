@@ -70,6 +70,7 @@ import { validateSecrets } from './secret-declarations';
 import { ensureAppDeclaredSecrets } from './self-secrets';
 import type { VaultAuthorization } from '@/src/lib/vault/authorization';
 import { provisionAppDomain, validateProvisionOwner } from './provision-domain';
+import { APP_VISIBILITY_ERROR, isAppVisibility, type AppVisibility } from './visibility';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -104,6 +105,8 @@ const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
 
 export interface AppProvisionParams {
   authorizedBy?: VaultAuthorization;
+  /** Directory visibility approved by the operator; omitted means public. */
+  visibility?: AppVisibility;
   /** Ownership and host are part of the operator-countersigned proposal. */
   siteOwnerDid?: string;
   domain?: string;
@@ -336,6 +339,19 @@ function resolveNavMetadata(slug: string, manifest: AppManifest): {
 }
 
 type ProvisionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+interface RegistrationRedirects {
+  callbackUrl: string;
+  allowedRedirectHosts: string[];
+}
+
+function resolveRegistrationRedirects(slug: string, domain?: string): RegistrationRedirects {
+  const nodeOrigin = resolveCallbackOrigin();
+  if (!domain) return { callbackUrl: `${nodeOrigin}/${slug}`, allowedRedirectHosts: [slug] };
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.imajin\.ai$/.test(domain)) {
+    throw new Error('Provisioned hosts must be direct imajin.ai subdomains; custom domains require TXT verification');
+  }
+  return { callbackUrl: `https://${domain}/api/auth/callback`, allowedRedirectHosts: [domain] };
+}
 
 /**
  * Lock both ownership seams before changing either: a manually cleared slug
@@ -391,21 +407,31 @@ async function registerApp(params: {
   publicKey: string;
   manifest: AppManifest;
   approvedDeclarations: ManifestDeclarations | null;
-  /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
-  callbackOrigin: string;
+  redirects: RegistrationRedirects;
+  visibility: AppVisibility;
   retiredLegacyAppId: string | null;
   ownerDid: string;
-}): Promise<{ id: string; retiredLegacyAppId?: string }> {
-  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
+}): Promise<{ id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string }> {
+  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations } = params;
 
   const [existing] = await db
-    .select({ id: registryApps.id })
+    .select({
+      id: registryApps.id,
+      visibility: registryApps.visibility,
+      callbackUrl: registryApps.callbackUrl,
+      allowedRedirectHosts: registryApps.allowedRedirectHosts,
+    })
     .from(registryApps)
     .where(eq(registryApps.appDid, appDid))
     .limit(1);
 
   if (existing) {
-    return { id: existing.id, ...retirementContext(params.retiredLegacyAppId) };
+    if (existing.visibility !== params.visibility
+      || existing.callbackUrl !== params.redirects.callbackUrl
+      || JSON.stringify(existing.allowedRedirectHosts) !== JSON.stringify(params.redirects.allowedRedirectHosts)) {
+      throw new Error('apps.provision: retry cannot change the registered visibility or callback — re-propose with the existing settings');
+    }
+    return { id: existing.id, allowedRedirectHosts: existing.allowedRedirectHosts, ...retirementContext(params.retiredLegacyAppId) };
   }
 
   let navMetadata: ReturnType<typeof resolveNavMetadata>;
@@ -459,14 +485,13 @@ async function registerApp(params: {
       description: `${displayName} (provisioned via apps.provision #2375)`,
       appDid,
       publicKey,
-      // #2746: the sign-in redirect target (`/oauth/authorize` falls back to it
-      // while `redirect_uris` is empty; `/auth/authorize` redirects to it). It is
-      // the node's own public origin, never a placeholder.
-      callbackUrl: `${callbackOrigin}/${slug}`,
+      // Explicit operator-approved hosts use the app's own auth callback.
+      // Without one, preserve the node-path callback (#2746).
+      ...params.redirects,
+      visibility: params.visibility,
       tier: 'third_party',
       status: 'active',
       slug,
-      allowedRedirectHosts: [slug],
       tokenAudiences: [slug],
       icon: navMetadata.icon,
       entryUrl: navMetadata.entryUrl,
@@ -488,18 +513,18 @@ async function registerApp(params: {
       retiredLegacyAppId: retiredLegacyAppId ?? params.retiredLegacyAppId,
       updatedAt: new Date(),
     }).where(eq(appProvisions.slug, slug));
-    return { id, ...retirementContext(retiredLegacyAppId ?? params.retiredLegacyAppId) };
+    return { id, allowedRedirectHosts: params.redirects.allowedRedirectHosts, ...retirementContext(retiredLegacyAppId ?? params.retiredLegacyAppId) };
   });
 }
 
-function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppId: string, displayName: string, slug: string, retirement: { retiredLegacyAppId?: string }): void {
+function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppId: string, displayName: string, slug: string, allowedRedirectHosts: string[], retirement: { retiredLegacyAppId?: string }): void {
   emitAttestation({
     issuer_did: nodeDid,
     subject_did: appDid,
     type: 'registry.app.registered',
     context_id: registryAppId,
     context_type: 'registry_app',
-    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts: [slug], ...retirement },
+    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts, ...retirement },
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
@@ -576,9 +601,11 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
 
   // #2746: resolve the callback origin up front so a node with no public URL
   // fails closed before the repo is created or any key is minted.
-  let callbackOrigin: string;
+  let redirects: RegistrationRedirects;
+  const visibility = params.visibility === undefined ? 'public' : params.visibility;
   try {
-    callbackOrigin = resolveCallbackOrigin();
+    if (!isAppVisibility(visibility)) throw new Error(APP_VISIBILITY_ERROR);
+    redirects = resolveRegistrationRedirects(slug, params.domain);
     await validateProvisionOwner(params.siteOwnerDid);
   } catch (err) {
     return markFailed(nodeDid, slug, 'config', err);
@@ -613,7 +640,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // ── Step 3: register (the app becomes servable ONLY from this point on) ──
   // #2813: unreadable/invalid manifests fail before registry writes or secret
   // issuance. Only a readable manifest may declare genuinely absent secrets.
-  let registration: { id: string; retiredLegacyAppId?: string };
+  let registration: { id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string };
   let retirement: { retiredLegacyAppId?: string };
   try {
     const manifestToken = await tryGetInstallationToken();
@@ -628,12 +655,13 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       publicKey: keypair.publicKey,
       manifest: manifest.ok,
       approvedDeclarations: params.approvedDeclarations ?? null,
-      callbackOrigin,
+      redirects,
+      visibility,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
       ownerDid: params.siteOwnerDid ?? params.authorizedBy?.operatorDid ?? 'did:imajin:platform',
     });
     retirement = retirementContext(registration.retiredLegacyAppId);
-    emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, retirement);
+    emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, registration.allowedRedirectHosts, retirement);
   } catch (err) {
     return markFailed(nodeDid, slug, 'register', err);
   }

@@ -46,6 +46,7 @@ import { APPS_SOURCE, APPS_PROVISION_KIND } from '@/src/lib/apps/approvals-execu
 import { getAppProvisionStatus } from '@/src/lib/apps/provision';
 import { listSucceededAppProvisions } from '@/src/lib/apps/provision-list';
 import { previewManifestDeclarations } from '@/src/lib/apps/manifest-preview';
+import { APP_VISIBILITY_ERROR, isAppVisibility } from '@/src/lib/apps/visibility';
 
 const log = createLogger('kernel:apps-provision-route');
 
@@ -57,6 +58,7 @@ const MAX_TEMPLATE_LENGTH = 200;
 const MAX_ATTESTATION_TYPES = 20;
 
 interface ProvisionRequestBody {
+  visibility?: unknown;
   siteOwnerDid?: unknown;
   domain?: unknown;
   slug?: unknown;
@@ -108,14 +110,15 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
 }
 
 function validateDomainChoice(body: ProvisionRequestBody): string | null {
+  if (body.visibility !== undefined && !isAppVisibility(body.visibility)) return APP_VISIBILITY_ERROR;
   if (body.siteOwnerDid !== undefined && (
     typeof body.siteOwnerDid !== 'string' || !/^did:[a-z0-9]+:[A-Za-z0-9:._-]{1,200}$/.test(body.siteOwnerDid)
   )) return 'siteOwnerDid must be a DID';
   if (body.domain !== undefined && (
     typeof body.domain !== 'string' || !/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.imajin\.ai$/.test(body.domain)
   )) return 'domain must be a direct imajin.ai subdomain; custom domains require TXT verification';
-  if (body.reissueClaim === true && (body.siteOwnerDid !== undefined || body.domain !== undefined)) {
-    return 'Reissuing a claim cannot change ownership or domain';
+  if (body.reissueClaim === true && (body.siteOwnerDid !== undefined || body.domain !== undefined || body.visibility !== undefined)) {
+    return 'Reissuing a claim cannot change ownership, domain or visibility';
   }
   return null;
 }
@@ -129,6 +132,7 @@ function provisionDetail(
   if (body.siteOwnerDid) detail.siteOwnerDid = body.siteOwnerDid;
   if (body.domain) detail.domain = body.domain;
   if (reissueClaim) detail.reissueClaim = true;
+  else detail.visibility = body.visibility ?? 'public';
   return detail;
 }
 
@@ -145,7 +149,7 @@ function provisionSummary(body: ProvisionRequestBody, slug: string, displayName:
   if (retryAppDid) {
     return `Retry domain issuance for existing app '${slug}' (${retryAppDid}) at ${domain} using its recorded registry owner, then reissue its claim code. No repo, keypair or owner is re-created or changed.`;
   }
-  return `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+  return `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Visibility: ${body.visibility ?? 'public'}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
 }
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
