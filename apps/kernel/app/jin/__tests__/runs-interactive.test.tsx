@@ -21,6 +21,12 @@ const response = (body: unknown, status = 200) => ({ ok: status === 200, status,
 const page = (loops = [runLoop()]) => ({ isOperator: true, page: { loops, hasNextPage: false, nextCursor: null } });
 const history = (loop = runLoop()) => ({ isOperator: true, detail: { loop, events: [] }, commandTarget: { available: true, agentDid: 'did:agent' } });
 
+function setFetch(fetcher: ReturnType<typeof vi.fn>) {
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) => options?.cache === 'no-store'
+    ? Promise.resolve(response({ isOperator: true, detail: { horizon: { steps: [], depth: 0, targetDepth: 12 } }, commandTarget: { available: false } }))
+    : fetcher(url, options));
+}
+
 afterEach(() => {
   cleanup(); vi.unstubAllGlobals(); vi.useRealTimers();
   shared.cards = []; shared.error = null; shared.row.mockClear(); shared.notices.mockClear();
@@ -33,7 +39,7 @@ describe('interactive Runs integration', () => {
       { proposalId: 'unbound', status: 'pending' }, { proposalId: 'done', status: 'applied' },
     ];
     shared.error = 'Approvals refresh unavailable';
-    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
+    setFetch(vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
       ? { conflicts: [] } : page([runLoop({ state: 'blocked' })])))));
     render(<RunsPanel />);
     const unified = await screen.findByTestId('blocked-on-you');
@@ -50,7 +56,7 @@ describe('interactive Runs integration', () => {
     const conflict = { id: 'conflict', loopId: 'a', type: 'surface.conflicted', payload: {
       loopId: 'a', refs: { conflictingLoopId: 'b' }, surface: 'issue:#2404',
     } };
-    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
+    setFetch(vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
       ? { conflicts: [conflict] } : page([runLoop({ loopId: 'a' }), runLoop({ loopId: 'b' })])))));
     const { container } = render(<RunsPanel />);
     await waitFor(() => expect(screen.getAllByText('Surface conflict · warning only')).toHaveLength(2));
@@ -66,7 +72,7 @@ describe('interactive Runs integration', () => {
   it('keeps typed drafts through polling, disables stale availability on failure, then recovers', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let failed = false;
-    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(failed ? {} : url.includes('ancestor=')
+    setFetch(vi.fn((url: string) => Promise.resolve(response(failed ? {} : url.includes('ancestor=')
       ? page([]) : history(), failed ? 500 : 200))));
     render(<RunsPanelDetail loopId="loop-1" onSelect={vi.fn()} onDenied={vi.fn()} />);
     fireEvent.change(await screen.findByLabelText('Message'), { target: { value: 'keep draft' } });
@@ -88,7 +94,7 @@ describe('interactive Runs integration', () => {
     const old = new Promise<Response>((resolve) => { resolveOld = resolve; });
     const fetcher = vi.fn((url: string) => url.endsWith('/old') ? old : Promise.resolve(response(url.includes('ancestor=')
       ? page([]) : history(runLoop({ loopId: 'new', summary: 'New loop' })))));
-    vi.stubGlobal('fetch', fetcher);
+    setFetch(fetcher);
     const denied = vi.fn();
     const view = render(<RunsPanelDetail loopId="old" onSelect={vi.fn()} onDenied={denied} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
@@ -101,7 +107,7 @@ describe('interactive Runs integration', () => {
   });
 
   it('revokes the lane on scoped surface authorization failure', async () => {
-    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(url === '/api/loops/surfaces'
+    setFetch(vi.fn((url: string) => Promise.resolve(url === '/api/loops/surfaces'
       ? response({}, 403) : response(page()))));
     render(<RunsPanel />);
     await waitFor(() => expect(screen.queryByTestId('runs-lane')).toBeNull());
@@ -109,7 +115,7 @@ describe('interactive Runs integration', () => {
 
   it('renders a verified bound shared row inline under its thread with the exact same controller', async () => {
     shared.cards = [{ proposalId: 'bound', status: 'pending', sessionBinding: { loopId: 'loop-1' } }];
-    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
+    setFetch(vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
       ? { conflicts: [] } : url.endsWith('/loop-1') ? history() : page()))));
     render(<RunsPanel />);
     const card = (await screen.findAllByTestId('run-card'))[0];
@@ -123,7 +129,7 @@ describe('interactive Runs integration', () => {
   it('silently merges an attested child into the main tree without losing loaded pages, cursor or draft', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let updated = false;
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
+    setFetch(vi.fn((url: string) => {
       if (url === '/api/loops/surfaces') return Promise.resolve(response({ conflicts: [] }));
       if (url.endsWith('/loop-1')) return Promise.resolve(response(history()));
       if (url.includes('ancestor=')) return Promise.resolve(response(page()));
