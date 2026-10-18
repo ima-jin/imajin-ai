@@ -130,7 +130,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: vi.fn() }));
 
 vi.mock('@/src/lib/notify/template-store', () => ({ getTemplate: vi.fn(() => undefined) }));
 
@@ -174,7 +174,7 @@ vi.mock('@/src/lib/notify/ws-push', async () => {
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
 import { POST } from '../route';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail as sendEmail } from '@/src/lib/mail/send';
 import { getTemplate } from '@/src/lib/notify/template-store';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────

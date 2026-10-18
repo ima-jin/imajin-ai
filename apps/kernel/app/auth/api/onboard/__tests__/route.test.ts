@@ -28,9 +28,7 @@ vi.mock('@imajin/config', () => ({
   buildPublicUrlAbsolute: (service: string) => `https://${service}.example`,
 }));
 
-vi.mock('@imajin/email', () => ({
-  sendEmail: mockSendEmail,
-}));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mockSendEmail }));
 
 vi.mock('@imajin/db', () => ({
   getClient: mockGetClient,
@@ -137,6 +135,7 @@ describe('POST /api/onboard — login mode security (#1871)', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.sent).toBe(true);
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'signin' }));
   });
 
   it('rejects hard DIDs before writing any onboard token', async () => {

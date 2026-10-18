@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db, contacts, mailingLists, subscriptions } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { withLogger } from '@imajin/logger';
@@ -30,7 +30,8 @@ async function sendVerificationEmail(email: string, baseUrl: string): Promise<vo
   const token = generateVerifyToken(email, expiresAt);
   const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(email)}&token=${token}&expires=${expiresAt}`;
 
-  await sendEmail({
+  await sendKernelEmail({
+    purpose: 'contact',
     to: email,
     subject: 'Confirm your email — Imajin',
     html: verificationEmail(verifyUrl),

@@ -80,8 +80,10 @@ export async function sendNewDeviceAlert(params: NewDeviceAlertParams): Promise<
   const templateParams = { platform: params.platform, browser: params.browser, location, timestamp, rotationLink };
 
   try {
-    const { sendEmail, emailWrapper } = await import('@imajin/email');
-    await sendEmail({
+    const { emailWrapper } = await import('@imajin/email');
+    const { sendKernelEmail } = await import('@/src/lib/mail/send');
+    await sendKernelEmail({
+      purpose: 'signin',
       to: emailCreds[0].value,
       subject: 'New login to your Imajin account',
       html: emailWrapper(renderHtml(templateParams)),

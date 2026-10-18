@@ -21,7 +21,7 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 import { loadAndUnseal, sealAndStore } from '@/src/lib/vault';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -95,7 +95,8 @@ export async function POST(request: NextRequest) {
   });
   const confirmUrl = `${PROFILE_URL}/profile/api/contact/verify-email/confirm?${params.toString()}`;
 
-  const result = await sendEmail({
+  const result = await sendKernelEmail({
+    purpose: 'contact',
     to: email,
     subject: 'Verify your email — Imajin',
     html: verifyEmailHtml({ confirmUrl }),
