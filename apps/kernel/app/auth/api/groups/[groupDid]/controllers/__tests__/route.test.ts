@@ -53,6 +53,9 @@ vi.mock('drizzle-orm', () => ({
 
 vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
 vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
+vi.mock('@/src/lib/auth/member-attestation', () => ({
+  recordMemberEvent: (...args: unknown[]) => mockPublish(...args),
+}));
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
 }));
@@ -216,13 +219,14 @@ describe('POST controllers — provenance', () => {
     });
   });
 
-  it('publishes the provenance alongside the role', async () => {
+  it('records a member event with the actual role and provenance', async () => {
     await add({ role: 'agent' });
 
     expect(mockPublish).toHaveBeenCalledWith(
-      'group.controller.added',
+      expect.anything(), 'group.member.added', GROUP, NEW_MEMBER,
+      expect.objectContaining({ id: OWNER }),
       expect.objectContaining({
-        payload: expect.objectContaining({ role: 'agent', added_via: 'direct' }),
+        role: 'agent', added_via: 'direct',
       }),
     );
   });

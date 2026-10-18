@@ -3382,6 +3382,7 @@ paths:
       tags: [auth]
       operationId: getGroup
       summary: Get a DID group by its DID
+      description: Returns the live controllers roster plus viewerDid and viewerRole for member-management controls.
       security:
         - cookieAuth: []
       parameters:
@@ -3427,7 +3428,13 @@ paths:
     post:
       tags: [auth]
       operationId: addGroupController
-      summary: Add a controller to a DID group
+      summary: Add an authority member to a DID group
+      description: |
+        Owner/admin only. Only owners may assign admin; owner is reserved to
+        accepted ownership transfer. Records group.member.added with the actual
+        role (a plain member is never called a controller), memberDid, by,
+        actingAs and actingFor. The node-signed record and membership commit
+        atomically. Existing audit history is never rewritten.
       security:
         - cookieAuth: []
       parameters:
@@ -3441,13 +3448,86 @@ paths:
           application/json:
             schema:
               type: object
+              required: [did]
               properties:
-                controllerDid: { type: string }
+                did: { type: string }
+                role: { type: string, enum: [admin, maintainer, member, agent], default: member }
+                allowedServices:
+                  type: [array, "null"]
+                  items: { type: string }
+                  description: Agent-only narrowing list; null or empty means unrestricted. Ignored for other roles.
       responses:
         "201":
           description: Controller added
 
   /api/groups/{groupDid}/controllers/{controllerDid}:
+    patch:
+      tags: [auth]
+      operationId: updateGroupMember
+      summary: Edit an existing authority member's role and service scope in place
+      description: |
+        Active owner/admin only; membership is re-read under the identity row
+        lock on every request, so a downgrade applies on the next call, even
+        with stale session claims. Admins may edit ordinary members or demote
+        themselves, but may not assign admin or edit other higher-role members.
+        Owner changes (including demotion) must use the accepted transfer-owner
+        policy from #2892. Missing/removed targets are never re-added by PATCH.
+
+        allowedServices follows the add contract: only role=agent is currently
+        enforced by delegation, so other roles normalize it to null. Omitted
+        fields preserve existing values; null/empty services means unrestricted.
+        The Members UI does not imply service restrictions for human members.
+
+        Each actual role or scope change commits exactly one node-signed
+        group.member.role.changed attestation atomically with the membership.
+        Subject is the member DID; context is the group DID. Payload contains
+        memberDid, oldRole, newRole, oldAllowedServices, allowedServices,
+        by (the authenticated principal DID), actingAs and actingFor (nullable).
+        No-op saves return changed:false without emitting another event.
+        Signing or evidence insertion failure rolls back the mutation.
+        Verify Ed25519 against the issuer's published key over canonical JSON
+        {subject_did,type,context_id,context_type,payload,issued_at}, with
+        issued_at in milliseconds. Never rewrites prior event history.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - { name: groupDid, in: path, required: true, schema: { type: string } }
+        - { name: controllerDid, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                role: { type: string, enum: [admin, maintainer, member, agent] }
+                allowedServices:
+                  type: [array, "null"]
+                  items: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Membership updated or unchanged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  memberDid: { type: string }
+                  role: { type: string }
+                  allowedServices:
+                    type: [array, "null"]
+                    items: { type: string }
+                  changed: { type: boolean }
+                  attestationId: { type: string }
+        "400": { description: Invalid JSON, role, service list, fields, or attempted owner mutation }
+        "401": { description: Authentication required }
+        "403": { description: Not authorized by live membership, or group suspended }
+        "404": { description: Group or active member not found }
+        "500": { description: Mutation or signed evidence failed; no changes committed }
     delete:
       tags: [auth]
       operationId: removeGroupController
@@ -3458,6 +3538,9 @@ paths:
         ownership first. Removal serializes with ownership acceptance to prevent
         deleting a newly promoted owner. A successful self-removal expires the
         matching selected-group x-acting-as cookie.
+        Atomically writes a node-signed group.member.removed attestation with
+        memberDid, actual role, allowedServices, by, actingAs and actingFor.
+        Signing or evidence-write failure leaves membership unchanged.
       security:
         - cookieAuth: []
       parameters:
