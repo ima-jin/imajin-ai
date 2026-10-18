@@ -15,6 +15,14 @@ describe('published horizon API contract', () => {
     expect(record.required ?? []).not.toContain('horizon');
     expect(record.properties).not.toHaveProperty('horizon');
   });
+  it('distinguishes historical step claims from authoritative live lease output', () => {
+    const schemas = spec.components.schemas;
+    expect(schemas.StepEnvelope.allOf[1].properties.claim.$ref).toBe('#/components/schemas/StepClaim');
+    expect(schemas.HorizonStep.allOf[0].properties.claim.$ref).toBe('#/components/schemas/HorizonClaim');
+    expect(schemas.HorizonClaim.required).toEqual(['leaseId', 'holderDid', 'acquiredAt', 'expiresAt']);
+    expect(schemas.SurfaceEnvelope.allOf[1].required).toEqual(['surface']);
+    expect(schemas.LoopRefs.properties.conflictingHolderDid.type).toBe('string');
+  });
   it('publishes every accepted step type and the opt-in exited audit flag', () => {
     const ingest = spec.paths['/api/loops'].post.requestBody.content['application/json'].schema;
     expect(ingest.properties.type.enum).toEqual(expect.arrayContaining([...STEP_EVENT_TYPES]));

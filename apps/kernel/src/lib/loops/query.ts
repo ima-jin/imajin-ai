@@ -17,7 +17,7 @@
  */
 import { getClient } from '@imajin/db';
 import { serializeLoop, serializeLoopEvent, type LoopJson, type LoopEventJson, type RawLoopRow, type RawLoopEventRow } from './serialize';
-import { projectHorizon, type Horizon } from './horizon';
+import { projectHorizon, type Horizon, type HorizonLease } from './horizon';
 
 export interface ListLoopsFilters {
   principal: string;
@@ -227,9 +227,20 @@ export async function getLoopWithHistory(loopId: string, principal: string, incl
   `) as unknown as RawLoopEventRow[];
 
   const events = eventRows.map(serializeLoopEvent);
+  const now = Date.now();
+  const leases = await sql`
+    SELECT surface, loop_id AS "loopId", principal, issuer AS "holderDid",
+           acquired_at AS "acquiredAt", expires_at AS "expiresAt"
+    FROM kernel.surface_lease
+    WHERE loop_id = ${loopId} AND principal = ${principal}
+      AND surface LIKE 'step:%' AND released_at IS NULL
+      AND expires_at > ${new Date(now).toISOString()}::timestamptz
+  ` as unknown as HorizonLease[];
   return {
     loop: serializeLoop(loopRow),
     events,
-    horizon: projectHorizon(events, loopId, principal, Date.now(), includeExited),
+    horizon: projectHorizon(events, loopId, principal, now, includeExited, leases.map(lease => ({
+      ...lease, acquiredAt: new Date(lease.acquiredAt).toISOString(), expiresAt: new Date(lease.expiresAt).toISOString(),
+    }))),
   };
 }

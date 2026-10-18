@@ -12,11 +12,16 @@ interface ConditionEvidence {
   at: string;
   fact: StepEvidence | StepAttestation;
 }
+function projectState(state: StepState, zone: StepZone, hasLease: boolean): StepState {
+  if (zone === 'done') return 'exited';
+  if (state === 'queued' || state === 'claimed') return hasLease ? 'claimed' : 'queued';
+  return state;
+}
 export type HorizonStep = StepDeclaration & StepUpdate & {
   stepId: string;
   state: StepState;
   zone: StepZone;
-  claim?: StepClaim;
+  claim?: StepClaim & { acquiredAt: string };
   conditions: Array<{ declaration: StepExitCondition; satisfied: boolean; evidence: ConditionEvidence | null }>;
   openExitConditions: string[];
 };
@@ -31,12 +36,19 @@ interface ReplayStep {
   declaration: StepDeclaration;
   update: StepUpdate;
   state: StepState;
-  claim?: StepClaim;
   evidence: Map<string, ConditionEvidence>;
+}
+export interface HorizonLease {
+  surface: string;
+  loopId: string;
+  principal: string;
+  holderDid: string;
+  acquiredAt: string;
+  expiresAt: string;
 }
 
 /** Smaller rank is closer to the head. History remains immutable, including done steps. */
-export function projectHorizon(events: LoopEventJson[], loopId: string, principal: string, now = Date.now(), includeExited = false): Horizon {
+export function projectHorizon(events: LoopEventJson[], loopId: string, principal: string, now = Date.now(), includeExited = false, leases: HorizonLease[] = []): Horizon {
   const steps = new Map<string, ReplayStep>();
   const ordered = events.filter(event => event.loopId === loopId && event.principal === principal)
     .sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt) || a.id.localeCompare(b.id));
@@ -48,7 +60,9 @@ export function projectHorizon(events: LoopEventJson[], loopId: string, principa
   for (const event of ordered) {
     if (event.type !== 'step.queued') replayEvent(steps, event);
   }
-  const projected = [...steps.values()].map(step => projectStep(step, now));
+  const liveLeases = new Map(leases.filter(lease => lease.loopId === loopId && lease.principal === principal
+    && Date.parse(lease.expiresAt) > now).map(lease => [lease.surface, lease]));
+  const projected = [...steps.values()].map(step => projectStep(step, liveLeases.get(`step:${step.stepId}`)));
   const visible = projected.filter(step => includeExited || step.zone !== 'done')
     .sort((a, b) => a.rank - b.rank || a.stepId.localeCompare(b.stepId));
   const depth = projected.filter(step => step.zone !== 'done').length;
@@ -75,7 +89,6 @@ function replayEvent(steps: Map<string, ReplayStep>, event: LoopEventJson): void
   if (event.type === 'step.updated') {
     step.update = { ...step.update, ...event.payload.update as StepUpdate };
   } else if (event.type === 'step.claimed') {
-    step.claim = event.payload.claim as StepClaim;
     step.state = 'claimed';
   } else if (event.type === 'step.observed' || event.type === 'step.attested') {
     rememberEvidence(step, event);
@@ -114,23 +127,25 @@ function conditionSatisfied(step: ReplayStep, condition: StepExitCondition): boo
     && release.repository === fact.repository && release.tag === fact.tag;
 }
 
-function projectStep(step: ReplayStep, now: number): HorizonStep {
+function projectStep(step: ReplayStep, lease?: HorizonLease): HorizonStep {
   const conditions = step.declaration.exitConditions.map(declaration => ({
     declaration, satisfied: conditionSatisfied(step, declaration), evidence: step.evidence.get(declaration.id) ?? null,
   }));
   const openExitConditions = conditions.filter(condition => !condition.satisfied).map(condition => condition.declaration.id);
-  const zone = deriveZone(step, conditions, now);
+  const zone = deriveZone(step, conditions, !!lease);
   return {
     ...step.declaration, ...step.update, stepId: step.stepId,
-    state: zone === 'done' ? 'exited' : step.state, zone,
-    ...(step.claim ? { claim: step.claim } : {}), conditions, openExitConditions,
+    state: projectState(step.state, zone, !!lease), zone,
+    ...(lease ? { claim: {
+      leaseId: lease.surface, holderDid: lease.holderDid, acquiredAt: lease.acquiredAt, expiresAt: lease.expiresAt,
+    } } : {}), conditions, openExitConditions,
   };
 }
 
-function deriveZone(step: ReplayStep, conditions: HorizonStep['conditions'], now: number): StepZone {
+function deriveZone(step: ReplayStep, conditions: HorizonStep['conditions'], hasLease: boolean): StepZone {
   if (conditions.every(condition => condition.satisfied)) return 'done';
   if (conditions.some(condition => condition.declaration.kind === 'issue_closed' && condition.satisfied)) return 'past';
-  if (step.claim && Date.parse(step.claim.expiresAt) > now) return 'head';
+  if (hasLease) return 'head';
   const { issue, briefRef, provisionRef, designRef } = step.update;
   if (issue && briefRef && provisionRef && designRef) return 'near';
   if (issue) return 'middle';

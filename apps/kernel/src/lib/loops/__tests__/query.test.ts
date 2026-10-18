@@ -176,6 +176,25 @@ describe('listLoopsPage', () => {
 });
 
 describe('getLoopWithHistory', () => {
+  it('reads step leases only for the loop/principal, filtering released and expired rows and serializing dates', async () => {
+    const at = new Date();
+    const expires = new Date(at.getTime() + 900_000);
+    resolveWith([rawLoopRow()]);
+    resolveWith([{
+      id: 'step-queue', loop_id: 'loop_1', type: 'step.queued', issuer: PRINCIPAL, principal: PRINCIPAL,
+      payload: { stepId: 'next', state: 'queued', step: CODE_STEP }, occurred_at: at, created_at: at,
+    }]);
+    resolveUsing(({ text, values }) => {
+      expect(text.replaceAll(/\s+/g, ' ')).toContain('WHERE loop_id = ? AND principal = ?');
+      expect(text).toContain("surface LIKE 'step:%' AND released_at IS NULL");
+      expect(text).toContain('expires_at >');
+      expect(values.slice(0, 2)).toEqual(['loop_1', PRINCIPAL]);
+      return [{ surface: 'step:next', loopId: 'loop_1', principal: PRINCIPAL, holderDid: 'did:imajin:holder', acquiredAt: at, expiresAt: expires }];
+    });
+    expect((await getLoopWithHistory('loop_1', PRINCIPAL))?.horizon.steps[0].claim).toEqual({
+      leaseId: 'step:next', holderDid: 'did:imajin:holder', acquiredAt: at.toISOString(), expiresAt: expires.toISOString(),
+    });
+  });
   it('exposes the horizon replay and depth on the same scoped detail used by HTTP and loops_get', async () => {
     const at = new Date().toISOString();
     resolveWith([rawLoopRow()]);
