@@ -14,6 +14,10 @@ on:
 # The queue skips coverage upload, Sonar, security audit, e2e and unaffected
 # app builds already proved by PR CI. Required job names must still resolve;
 # job-level `if:` skips report success, unlike skipping an entire workflow.
+# See https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-jobs-with-conditions
+# Queue runner work is limited to Check Migrations (including schema-sync),
+# Lint & Typecheck (including migration ownership), Test, Build and CI Guards.
+# Provisioning's full-workspace build/dry-run is also PR/push-only.
 #
 # Superseded PR runs are cancelled when a newer push lands (a single
 # self-hosted runner otherwise backs up past the 60-min check timeout, and
