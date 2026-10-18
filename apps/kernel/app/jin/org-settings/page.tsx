@@ -63,7 +63,7 @@ export default function OrgSettingsPage() {
         <h1 className="text-2xl font-semibold">Organization mail senders</h1>
         <p className="text-sm text-gray-400">Configure send-only addresses for the four kernel purposes. This does not create mailboxes or change DNS.</p>
         <p className="rounded border border-amber-800 p-3 text-sm text-amber-200">
-          Until domain ownership and mail verification are complete, messages use the imajin.ai fallback sender. Saving an address does not verify it.
+          Unverified domains never send mail. Until domain ownership and mail verification are complete, messages fall back to a verified organization sender or the imajin.ai kernel sender. Saving an address does not verify it.
         </p>
         {error && <p role="alert" className="text-red-400">{error}</p>}
         {loadingGroups && <p role="status">Loading organizations…</p>}

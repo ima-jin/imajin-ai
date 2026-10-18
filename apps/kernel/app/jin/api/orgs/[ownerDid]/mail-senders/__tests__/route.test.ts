@@ -11,7 +11,7 @@ vi.mock('@/src/db', () => ({
   db: { select: mocks.select },
   identities: { id: 'groupId', scope: 'scope' },
   identityMembers: { identityDid: 'ownerDid', memberDid: 'memberDid', role: 'role', removedAt: 'removedAt' },
-  registryApps: { id: 'id', ownerDid: 'ownerDid', appDid: 'appDid', status: 'status' },
+  registryApps: { id: 'id', ownerDid: 'ownerDid', appDid: 'appDid', status: 'status', revokedAt: 'revokedAt' },
 }));
 vi.mock('drizzle-orm', () => ({
   and: (...conditions: Array<(row: Row) => boolean>) => (row: Row) => conditions.every(check => check(row)),
@@ -41,7 +41,7 @@ function request(body: unknown = valid, headers: Record<string, string> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   membership = { ownerDid, memberDid: caller, role: 'owner', removedAt: null, scope: 'business' };
-  app = { id: 'app', ownerDid, appDid: 'did:imajin:app', status: 'active' };
+  app = { id: 'app', ownerDid, appDid: 'did:imajin:app', status: 'active', revokedAt: null };
   mocks.auth.mockResolvedValue({ identity: { id: caller } });
   mocks.list.mockResolvedValue([]);
   mocks.ready.mockResolvedValue(false);
@@ -153,7 +153,7 @@ describe('sender validation and persistence', () => {
     expect(mocks.save).toHaveBeenCalledWith({ ...body, domain: 'example.org', ownerDid });
   });
 
-  it.each([{ ownerDid: 'did:imajin:other' }, { status: 'revoked' }, { appDid: 'did:imajin:different' }])(
+  it.each([{ ownerDid: 'did:imajin:other' }, { status: 'revoked' }, { appDid: 'did:imajin:different' }, { revokedAt: new Date() }])(
     'rejects foreign, missing, or revoked app overrides %j', async override => {
       Object.assign(app, override);
       expect((await PUT(request({ ...valid, appDid: 'did:imajin:app' }), context)).status).toBe(403);

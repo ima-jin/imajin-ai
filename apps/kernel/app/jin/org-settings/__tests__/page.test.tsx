@@ -155,6 +155,38 @@ describe('organization sender settings page', () => {
 });
 
 describe('fixed purpose sender form', () => {
+  it.each([
+    { override: false, ownerReady: true, appReady: false, source: 'Organization sender', address: 'Example Login <login@example.org>' },
+    { override: true, ownerReady: true, appReady: false, source: 'Organization sender', address: 'Example Login <login@example.org>' },
+    { override: true, ownerReady: true, appReady: true, source: 'App override', address: 'App Login <app@app.org>' },
+    { override: true, ownerReady: false, appReady: true, source: 'App override', address: 'App Login <app@app.org>' },
+    { override: true, ownerReady: false, appReady: false, source: 'Kernel default', address: DEFAULT_SENDERS.signin },
+    { override: false, ownerReady: false, appReady: false, source: 'Kernel default', address: DEFAULT_SENDERS.signin },
+  ])('shows effective saved sender with policy %j', ({ override, ownerReady, appReady, source, address }) => {
+    const appSender = { ...sender, appDid: 'did:imajin:app', domain: 'app.org', localPart: 'app', displayName: 'App Login' };
+    render(<SenderForm ownerDid={group.groupDid} appDid="did:imajin:app" purpose="signin" settings={{
+      ...settings,
+      senders: override ? [sender, appSender] : [sender],
+      readiness: { 'example.org': ownerReady, 'app.org': appReady },
+    }} />);
+    expect(screen.getByText(`Effective sender (saved settings): ${source} — ${address}`)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'unsaved.org' } });
+    expect(screen.getByText('Edited domain: not verified for mail.')).toBeTruthy();
+    expect(screen.getByText(`Effective sender (saved settings): ${source} — ${address}`)).toBeTruthy();
+  });
+
+  it('ignores ready configurations for a different owner, purpose, or app', () => {
+    render(<SenderForm ownerDid={group.groupDid} appDid="did:imajin:app" purpose="signin" settings={{
+      ...settings,
+      senders: [
+        { ...sender, ownerDid: 'did:imajin:other' },
+        { ...sender, purpose: 'contact' },
+        { ...sender, appDid: 'did:imajin:other' },
+      ],
+      readiness: { 'example.org': true },
+    }} />);
+    expect(screen.getByText(`Effective sender (saved settings): Kernel default — ${DEFAULT_SENDERS.signin}`)).toBeTruthy();
+  });
   function form(appDid = '') {
     return render(<SenderForm ownerDid={group.groupDid} appDid={appDid} purpose="signin" settings={settings} />);
   }
@@ -212,8 +244,8 @@ describe('fixed purpose sender form', () => {
 
   it('reports verified state only from server readiness and not a save', () => {
     render(<SenderForm ownerDid={group.groupDid} appDid="" purpose="signin" settings={{ ...settings, readiness: { 'example.org': true } }} />);
-    expect(screen.getByText('Domain verified for mail.')).toBeTruthy();
+    expect(screen.getByText('Edited domain: verified for mail.')).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Domain'), { target: { value: 'unknown.org' } });
-    expect(screen.getByText('Domain not verified — fallback active.')).toBeTruthy();
+    expect(screen.getByText('Edited domain: not verified for mail.')).toBeTruthy();
   });
 });

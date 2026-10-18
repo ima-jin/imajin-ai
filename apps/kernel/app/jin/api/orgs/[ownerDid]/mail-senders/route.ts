@@ -84,6 +84,7 @@ export async function PUT(request: NextRequest, context: Context) {
           eq(registryApps.appDid, config.appDid),
           eq(registryApps.ownerDid, ownerDid),
           eq(registryApps.status, 'active'),
+          isNull(registryApps.revokedAt),
         )).limit(1);
       if (!app) return NextResponse.json({ error: 'App must belong to this organization and be active' }, { status: 403 });
     }
