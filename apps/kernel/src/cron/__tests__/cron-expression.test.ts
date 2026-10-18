@@ -94,7 +94,7 @@ describe('kernel manifest', () => {
     }
   });
 
-  it('preserves the ten schedules that vercel.json used to declare', () => {
+  it('preserves the existing schedules and adds hourly domain rechecks', () => {
     const table = Object.fromEntries(KERNEL_CRON_MANIFEST.jobs.map((j) => [cronJobName(j), j.schedule]));
     expect(table).toEqual({
       'vault-grant-expiry': '0 * * * *',
@@ -107,6 +107,7 @@ describe('kernel manifest', () => {
       'usage-rollup': '0 2 * * *',
       'usage-billed-ingest': '0 2 * * *',
       'google-gmail-watch-renew': '0 3 * * *',
+      'domain-recheck': '17 * * * *',
     });
   });
 

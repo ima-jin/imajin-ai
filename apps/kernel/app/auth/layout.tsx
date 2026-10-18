@@ -37,7 +37,7 @@ export default async function AuthLayout({ children }: Readonly<{ children: Reac
     .where(eq(identities.id, did))
     .limit(1);
 
-  let showSettings = false;
+  let showSettings = effectiveIdentity?.scope === 'actor' && sessionDid === did;
   let showMembers = false;
   const showSecurity = effectiveIdentity?.scope === 'actor';
   // Money (#2211) is the business-DID receivable surface — not a

@@ -92,6 +92,14 @@ Full detail: `migrations/ownership.json`.
 
 ## Rule
 
+### Verified domain bindings (#2902)
+
+`0211_domain_bindings.sql` is kernel-owned and creates
+`auth.domain_bindings`; its `ownership.json` entry records owner `kernel`
+and `firstMigration: 0211_domain_bindings.sql`. Number 0204 belongs to
+`0204_registry_apps_visibility.sql`; the domain migration uses its reserved
+slot 0211 without changing its SQL or legacy-routing backfill.
+
 ### Reach throttling audit seed (#2599)
 
 `0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
