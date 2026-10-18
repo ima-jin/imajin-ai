@@ -12,6 +12,7 @@ pnpm --filter @imajin/kernel dev   # http://localhost:3000
 
 Full setup guide: [docs/DEVELOPER.md](../../docs/DEVELOPER.md).
 ## Static-header reach clients
+Reach discovery and platform setup are tracked in [#2596](https://github.com/ima-jin/imajin-ai/issues/2596).
 
 Clients that cannot sign requests or complete OAuth can obtain **their own agent's**
 reach credential with `POST /reach/ryan/knock` (replace `ryan` with the recipient's
