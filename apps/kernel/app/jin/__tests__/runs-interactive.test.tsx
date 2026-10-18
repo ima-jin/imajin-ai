@@ -113,6 +113,45 @@ describe('interactive Runs integration', () => {
     await waitFor(() => expect(screen.queryByTestId('runs-lane')).toBeNull());
   });
 
+  it('does not restore revoked operator data when a pending list refresh returns stale success', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let revoke = false;
+    let denialSent = false;
+    let resolveRefresh!: (value: Response) => void;
+    const refresh = new Promise<Response>(resolve => { resolveRefresh = resolve; });
+    const afterDenial = new Promise<Response>(() => {});
+    const list = vi.fn().mockResolvedValueOnce(response(page())).mockReturnValue(refresh);
+    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/loops/surfaces') return Promise.resolve(response({ conflicts: [] }));
+      if (options?.cache === 'no-store') {
+        if (denialSent) return afterDenial;
+        if (revoke) {
+          denialSent = true;
+          return Promise.resolve(response({}, 403));
+        }
+        return Promise.resolve(response({
+          isOperator: true, detail: { horizon: { steps: [], depth: 0, targetDepth: 12 } },
+          commandTarget: { available: false },
+        }));
+      }
+      return list(url, options);
+    }));
+    render(<RunsPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Refresh runs' }));
+    expect(list).toHaveBeenCalledTimes(2);
+    const signal = list.mock.calls[1][1].signal as AbortSignal;
+    revoke = true;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.queryByTestId('runs-lane')).toBeNull();
+    await act(async () => {
+      resolveRefresh(response(page([runLoop({ summary: 'Stale operator-only data' })])));
+    });
+    expect(screen.queryByTestId('runs-lane')).toBeNull();
+    expect(signal.aborted).toBe(true);
+    expect(screen.queryByText('Stale operator-only data')).toBeNull();
+    expect(screen.queryByTestId('runs-horizon')).toBeNull();
+  });
+
   it('renders a verified bound shared row inline under its thread with the exact same controller', async () => {
     shared.cards = [{ proposalId: 'bound', status: 'pending', sessionBinding: { loopId: 'loop-1' } }];
     setFetch(vi.fn((url: string) => Promise.resolve(response(url === '/api/loops/surfaces'
