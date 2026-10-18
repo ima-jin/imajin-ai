@@ -11,6 +11,7 @@ import { reachCardFields, knockCardFields, publishReachApproval, publishKnockApp
 import { decideOperatorApproval } from '../operator-approvals-service';
 import { isReachSenderBlocked } from '../../auth/reach-block';
 import { reachStatus } from '../../auth/reach-status';
+import { readKnockReceipt, knockReceiptTranscript } from '../../auth/knock-receipt';
 
 const state = vi.hoisted(() => ({ database: null as unknown, sql: null as unknown, failChat: false }));
 vi.mock('@imajin/db', () => ({ getClient: () => state.sql }));
@@ -69,8 +70,10 @@ beforeAll(async () => {
       keys_touched jsonb, detail jsonb, content_hash text, notification_id text, signer_did text, status text,
       decision jsonb, outcome jsonb, applied_at timestamptz, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now());
     CREATE TABLE connections.connections (did_a text, did_b text, disconnected_at timestamptz, connected_at timestamptz DEFAULT now(), PRIMARY KEY(did_a,did_b));
-    CREATE TABLE chat.conversations_v2 (did text PRIMARY KEY, type text, created_by text);
+    CREATE TABLE chat.conversations_v2 (did text PRIMARY KEY, type text, created_by text, last_message_at timestamptz, updated_at timestamptz);
     CREATE TABLE chat.conversation_members (conversation_did text, member_did text, role text, left_at timestamptz, UNIQUE(conversation_did,member_did));
+    CREATE TABLE chat.messages_v2 (id text PRIMARY KEY, conversation_did text REFERENCES chat.conversations_v2(did),
+      from_did text, content jsonb, content_type text, signature text);
   `);
   state.database = drizzle(database);
   state.sql = {
@@ -82,7 +85,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   state.failChat = false;
   await database.exec(`TRUNCATE auth.identities, auth.identity_members, auth.reach_envelopes, auth.reach_sender_blocks,
-    auth.foreign_agent_stubs, auth.agent_knocks, operator.approvals, connections.connections, chat.conversations_v2, chat.conversation_members`);
+    auth.foreign_agent_stubs, auth.agent_knocks, operator.approvals, connections.connections, chat.messages_v2, chat.conversations_v2, chat.conversation_members`);
   for (const [id, key] of [[principalDid, principalKey], [actorDid, actorKey]]) {
     await database.query("INSERT INTO auth.identities (id,scope,subtype,public_key,tier) VALUES ($1,'actor','human',$2,'established')",
       [id, authCrypto.getPublicKey(key)]);
@@ -144,9 +147,26 @@ describe('shared Reach decision path', () => {
     };
     expect((await decideOperatorApproval(params)).ok).toBe(true);
     expect((await decideOperatorApproval(params)).ok).toBe(true);
+    const receiptInput = { knockId: knock.knockId, issuedAt: new Date().toISOString() };
+    const receipt = await readKnockReceipt({ ...receiptInput, signature: authCrypto.signSync(knockReceiptTranscript(receiptInput), senderKey) });
+    expect(receipt).toMatchObject({
+      ok: true, receipt: { payload: { mode, ...(mode === 'reply' ? { replyMessage: 'Knock reply' } : {}) }, evidence: fields },
+    });
+    if (receipt.ok && receipt.receipt) {
+      expect(authCrypto.verifySync(receipt.receipt.signature, canonicalize(receipt.receipt.payload), receipt.receipt.senderPubkey)).toBe(true);
+      expect(computeApprovalContentHash(receipt.receipt.evidence)).toBe(signedFields.contentHash);
+    }
     const [stored] = (await database.query<{ status: string }>('SELECT status FROM auth.agent_knocks')).rows;
     expect(stored.status).toBe(mode === 'reply' ? 'pending' : mode === 'accept' ? 'accepted' : 'declined');
     expect((await database.query('SELECT * FROM chat.conversations_v2')).rows).toHaveLength(mode === 'accept' ? 1 : 0);
+    const messages = (await database.query<{ content: { text: string; provenance: Record<string, unknown> }; signature: string | null }>('SELECT * FROM chat.messages_v2')).rows;
+    expect(messages).toHaveLength(mode === 'accept' ? 1 : 0);
+    if (mode === 'accept') {
+      expect(messages[0]).toMatchObject({
+        content: { text: 'Knock message', provenance: { source: 'knock', knockId: knock.knockId, requesterAuthTier: 'unverified', claimVerified: false } },
+        signature: null,
+      });
+    }
   });
 
   it('recovers publication and expires old knock cards after refresh without changing signed content', async () => {
@@ -185,6 +205,12 @@ describe('shared Reach decision path', () => {
     expect((await database.query('SELECT * FROM auth.identities WHERE id = $1', [senderDid])).rows).toHaveLength(mode === 'accept' ? 1 : 0);
     expect((await decideOperatorApproval(params)).ok).toBe(true);
     expect(await isReachSenderBlocked({ principalDid, requesterDid: senderDid })).toBe(mode === 'block');
+    const messages = (await database.query<{ content: { provenance: Record<string, unknown> }; signature: string | null }>('SELECT * FROM chat.messages_v2')).rows;
+    expect(messages).toHaveLength(mode === 'accept' ? 1 : 0);
+    if (mode === 'accept') expect(messages[0]).toMatchObject({
+      content: { text: envelope.message, provenance: { reachId: envelope.reachId, transcriptHash: envelope.transcriptHash, claimVerified: false } },
+      signature: null,
+    });
     const status = await reachStatus({ principalDid, requesterDid: senderDid, reachId: envelope.reachId });
     if (mode === 'reply') expect(status).toMatchObject({ state: 'replied', approvalDecision: { payload: { replyMessage: 'Signed reply' } } });
     if (mode === 'block') expect(status).toEqual({ reachId: envelope.reachId, state: 'blocked', reply: null });
