@@ -16,7 +16,8 @@
  *
  * Idempotent on `slug`:
  *   - An already-`succeeded` slug returns the cached `{repoUrl, appDid,
- *     secretsSet}` immediately — no new proposal, nothing re-created.
+ *     secretsSet}` immediately — unless an explicit domain requests a new
+ *     countersigned retry of host issuance; no repo/identity is re-created.
  *   - An already-`pending` proposal for the same slug is reused rather
  *     than raising a duplicate card.
  *
@@ -131,12 +132,19 @@ function provisionDetail(
   return detail;
 }
 
-function provisionSummary(body: ProvisionRequestBody, slug: string, displayName: string, operatorDid: string, reissueClaim: boolean): string {
+function isDomainRetry(status: string | undefined, domain: unknown): boolean {
+  return status === 'succeeded' && typeof domain === 'string';
+}
+
+function provisionSummary(body: ProvisionRequestBody, slug: string, displayName: string, operatorDid: string, reissueClaim: boolean, retryAppDid?: string | null): string {
   if (reissueClaim) {
     return `Reissue the claim code for app '${slug}' (${displayName}): issue a fresh one-time app-signing-key claim code; nothing is re-created.`;
   }
   const siteOwnerDid = typeof body.siteOwnerDid === 'string' ? body.siteOwnerDid : operatorDid;
   const domain = typeof body.domain === 'string' ? body.domain : `${slug}.imajin.ai`;
+  if (retryAppDid) {
+    return `Retry domain issuance for existing app '${slug}' (${retryAppDid}) at ${domain} using its recorded registry owner, then reissue its claim code. No repo, keypair or owner is re-created or changed.`;
+  }
   return `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
 }
 export async function POST(request: NextRequest) {
@@ -168,7 +176,7 @@ export async function POST(request: NextRequest) {
 
   // Idempotent on slug: an already-succeeded provision returns the cached
   // result immediately — no new proposal, nothing re-created — UNLESS the
-  // caller explicitly asked to reissue the app-signing-key claim code
+  // caller explicitly requests a domain retry or the app-signing-key claim code
   // (#2411), in which case a fresh proposal is raised anyway so the
   // operator's approval mints a new one-time code.
   const existingRun = await getAppProvisionStatus(slug);
@@ -178,7 +186,8 @@ export async function POST(request: NextRequest) {
   if (reissueClaim && existingRun?.status !== 'succeeded') {
     return NextResponse.json({ error: `nothing to reissue for ${slug}` }, { status: 409, headers: cors });
   }
-  if (existingRun?.status === 'succeeded' && !reissueClaim) {
+  const retryDomain = isDomainRetry(existingRun?.status, body.domain);
+  if (existingRun?.status === 'succeeded' && !reissueClaim && !retryDomain) {
     return NextResponse.json(
       {
         status: 'succeeded',
@@ -209,9 +218,9 @@ export async function POST(request: NextRequest) {
   // so the operator sees (and, by signing the card, approves) exactly that list.
   // An unreadable/invalid manifest blocks a fresh proposal, never approving [].
   // #2707: a reissue never re-registers anything (the succeeded branch of `runAppProvision`
-  // only re-grants + issues a code), so it carries no declarations and needs no manifest read.
+  // only retries an explicit host, re-grants + issues a code), so it carries no declarations and needs no manifest read.
   // A reissue is only ever raised for a `succeeded` ledger row (#2745 guard above).
-  const preview = reissueClaim ? { ok: null } : await previewManifestDeclarations(slug, template ?? undefined);
+  const preview = reissueClaim || retryDomain ? { ok: null } : await previewManifestDeclarations(slug, template ?? undefined);
   if ('error' in preview) {
     return NextResponse.json(
       { error: preview.error },
@@ -223,7 +232,7 @@ export async function POST(request: NextRequest) {
   // #2707: a reissue is flagged on the card itself (and so covered by the content hash the
   // operator signs) so /jin can say "Reissue claim code" instead of "Provision". Only set
   // when true — an ordinary provision proposal carries the retirement notice instead.
-  const summary = provisionSummary(body, slug, displayName, operatorDid, reissueClaim);
+  const summary = provisionSummary(body, slug, displayName, operatorDid, reissueClaim, retryDomain ? existingRun?.appDid : null);
   const detail = provisionDetail(body, { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok }, reissueClaim);
   const contentHash = computeApprovalContentHash({
     proposalId,

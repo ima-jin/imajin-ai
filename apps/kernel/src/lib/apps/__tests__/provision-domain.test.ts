@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ rows: [] as object[], issue: vi.fn() }));
+import { DomainError } from '@/src/lib/domains/normalize';
+const mocks = vi.hoisted(() => ({ rows: [] as object[], issue: vi.fn(), warn: vi.fn() }));
+vi.mock('@imajin/logger', () => ({ createLogger: () => ({ warn: mocks.warn }) }));
 vi.mock('@/src/db', () => {
   const limit = async () => mocks.rows;
   const where = () => ({ limit });
@@ -14,7 +16,7 @@ vi.mock('@/src/lib/domains/service', () => ({
   normalizeDomain: (input: string) => input.toLowerCase(), issueImajinDomain: mocks.issue,
 }));
 import { provisionAppDomain, validateProvisionOwner } from '../provision-domain';
-beforeEach(() => { vi.clearAllMocks(); mocks.rows = []; });
+beforeEach(() => { vi.clearAllMocks(); mocks.rows = []; mocks.issue.mockResolvedValue(undefined); });
 describe('provisioning domain ceremony', () => {
   it('requires an explicit site owner to exist before creating resources', async () => {
     await expect(validateProvisionOwner()).resolves.toBeUndefined();
@@ -39,8 +41,23 @@ describe('provisioning domain ceremony', () => {
     await expect(provisionAppDomain('did:app', 'gbs', undefined, 'did:attacker')).rejects.toThrow('cannot change');
     expect(mocks.issue).not.toHaveBeenCalled();
   });
-  it('propagates a missing organization key grant rather than succeeding unsigned', async () => {
+  it.each(['issuer_unavailable', 'credential_unavailable'])('defers %s without logging any provider values, then retries successfully', async (code) => {
+    const privateDetail = 'provider-value-must-not-be-logged';
+    mocks.rows = [{ ownerDid: 'did:gbs' }];
+    mocks.issue.mockRejectedValueOnce(new DomainError(code, privateDetail, 503));
+    await expect(provisionAppDomain('did:app', 'gbs', 'dev-gbs.imajin.ai')).resolves.toBeUndefined();
+    expect(mocks.warn).toHaveBeenCalledWith({}, expect.stringContaining('issuance deferred'));
+    expect(JSON.stringify(mocks.warn.mock.calls)).not.toContain(privateDetail);
+    await provisionAppDomain('did:app', 'gbs', 'dev-gbs.imajin.ai');
+    await provisionAppDomain('did:app', 'gbs', 'dev-gbs.imajin.ai');
+    expect(mocks.issue).toHaveBeenCalledTimes(3);
+    expect(mocks.issue).toHaveBeenLastCalledWith({ domain: 'dev-gbs.imajin.ai', appDid: 'did:app' });
+  });
+  it('propagates unexpected failures and ownership conflicts rather than treating them as missing signing prerequisites', async () => {
     mocks.rows = [{ ownerDid: 'did:gbs' }]; mocks.issue.mockRejectedValueOnce(new Error('missing org grant'));
     await expect(provisionAppDomain('did:app', 'gbs')).rejects.toThrow('missing org grant');
+    mocks.issue.mockRejectedValueOnce(new DomainError('domain_conflict', 'Already bound', 409));
+    await expect(provisionAppDomain('did:app', 'gbs')).rejects.toMatchObject({ code: 'domain_conflict' });
+    expect(mocks.warn).not.toHaveBeenCalled();
   });
 });

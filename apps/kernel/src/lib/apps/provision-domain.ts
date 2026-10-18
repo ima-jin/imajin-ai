@@ -1,5 +1,9 @@
 import { and, eq } from 'drizzle-orm';
 import { db, identities, registryApps } from '@/src/db';
+import { createLogger } from '@imajin/logger';
+import { DomainError } from '@/src/lib/domains/normalize';
+
+const log = createLogger('kernel:apps:domains');
 
 /** Explicit owner choices must resolve before provisioning creates anything. */
 export async function validateProvisionOwner(did?: string): Promise<void> {
@@ -10,7 +14,8 @@ export async function validateProvisionOwner(did?: string): Promise<void> {
 }
 
 /**
- * Every provision gets an org-issued host, including dev-* slugs. A retry
+ * Attempt an org-issued host, including dev-* slugs. Missing signing
+ * prerequisites defer the binding, never the app's signing-key claim. A retry
  * never transfers an existing app to a different owner. Custom domains use
  * the TXT ceremony rather than this zone-owner issuance path.
  */
@@ -32,5 +37,11 @@ export async function provisionAppDomain(
   if (!app || (requestedOwner && app.ownerDid !== requestedOwner)) {
     throw new Error('Provisioning cannot change an existing app owner');
   }
-  await issueImajinDomain({ domain, appDid });
+  try {
+    await issueImajinDomain({ domain, appDid });
+  } catch (error) {
+    if (!(error instanceof DomainError)
+      || !['issuer_unavailable', 'credential_unavailable'].includes(error.code)) throw error;
+    log.warn({}, 'App domain issuance deferred: organization signing is unavailable; retry the approved host after setup');
+  }
 }

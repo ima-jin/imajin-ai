@@ -183,6 +183,29 @@ describe('OPTIONS /api/apps/provision', () => {
 });
 
 describe('POST /api/apps/provision — idempotency', () => {
+  it('requires a fresh countersigned proposal to retry an explicit host on an existing app, without rereading its manifest', async () => {
+    getAppProvisionStatusMock.mockResolvedValue({
+      slug: 'gbs', status: 'succeeded', appDid: 'did:imajin:gbs-app',
+      repoUrl: 'https://github.com/ima-jin/gbs', secretsSet: [],
+    });
+    const request = { slug: 'gbs', displayName: 'GBS', domain: 'dev-gbs.imajin.ai' };
+    const response = await POST(postRequest(request) as never);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ status: 'pending', proposalId: 'appprov_testid' });
+    expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({
+      summary: expect.stringContaining('Retry domain issuance for existing app'),
+      detail: expect.objectContaining({ domain: 'dev-gbs.imajin.ai', manifestDeclarations: null }),
+    }));
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
+      summary: expect.stringContaining('did:imajin:gbs-app'),
+      detail: expect.objectContaining({ domain: 'dev-gbs.imajin.ai' }),
+    }));
+    expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
+    findPendingAppsProvisionProposalMock.mockResolvedValueOnce({ proposalId: 'appprov_testid' });
+    const repeated = await POST(postRequest(request) as never);
+    expect(await repeated.json()).toEqual({ status: 'pending', proposalId: 'appprov_testid' });
+    expect(recordApprovalRequestedMock).toHaveBeenCalledTimes(1);
+  });
   it('returns the cached result for an already-succeeded slug without raising a proposal', async () => {
     getAppProvisionStatusMock.mockResolvedValue({
       slug: 'dykil',

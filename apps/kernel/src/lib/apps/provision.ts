@@ -527,8 +527,15 @@ async function resumeSucceededProvision(
 ): Promise<AppProvisionOutcome> {
     const { slug, attestationTypes = [] } = params;
     const succeededAppDid = existingRun.appDid ?? '';
-    // Claim-code recovery must not infer a new host from the slug, or require
-    // the zone owner's signing grant. The original issued host is unchanged.
+    // Only an explicitly approved host retries issuance. Ordinary claim-code
+    // recovery must not infer another host from the slug.
+    if (params.domain) {
+      try {
+        await provisionAppDomain(succeededAppDid, slug, params.domain, params.siteOwnerDid);
+      } catch (error) {
+        return { status: 'failed', failedStep: 'domain', error: error instanceof Error ? error.message : 'Domain retry failed' };
+      }
+    }
     await ensureAppDeclaredSecrets(succeededAppDid, params.authorizedBy);
     const attestationTypeResults = attestationTypes.length > 0
       ? await seedAttestationTypes(succeededAppDid, slug, attestationTypes)
@@ -630,7 +637,8 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   } catch (err) {
     return markFailed(nodeDid, slug, 'register', err);
   }
-  // A successful provision must have evidence signed by the zone owner's org.
+  // Missing org signing prerequisites leave the host unbound, not the app
+  // unable to boot. Conflicting or invalid bindings still fail closed.
   try {
     await provisionAppDomain(appDid, slug, params.domain, params.siteOwnerDid);
   } catch (err) {
