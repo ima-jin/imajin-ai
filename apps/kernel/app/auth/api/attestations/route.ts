@@ -618,8 +618,8 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
     }));
 
     return NextResponse.json(annotatedRows, { headers: responseHeaders });
-  } catch (error) {
-    log.error({ err: String(error) }, 'Attestations GET error');
+  } catch {
+    log.error({ status: 500, code: 'ATTESTATIONS_QUERY_FAILED' }, 'Attestations GET error');
     return NextResponse.json({ error: 'Failed to query attestations' }, { status: 500, headers: cors });
   }
 });

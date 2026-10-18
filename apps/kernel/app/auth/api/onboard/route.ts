@@ -58,7 +58,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       // Only send to existing soft-DID accounts; reject hard DIDs; enumerate-protect.
       const loginCheck = await resolveLoginEmail(normalizedEmail);
       if (loginCheck.notFound) {
-        log.info({ email: normalizedEmail }, 'Login requested for unknown email');
+        log.info({ status: 200, code: 'ONBOARD_LOGIN_ACCOUNT_NOT_FOUND' }, 'Login requested for unknown email');
         return NextResponse.json({ sent: true }, { headers: cors });
       }
       if (loginCheck.hardDid) {
@@ -87,7 +87,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     });
 
     if (!result.success) {
-      log.error({}, 'Failed to send onboard email');
+      log.error({ status: 502, code: 'ONBOARD_EMAIL_DELIVERY_FAILED' }, 'Failed to send onboard email');
       return NextResponse.json(
         { error: 'Failed to send verification email' },
         { status: 502, headers: cors }
@@ -100,7 +100,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     );
 
   } catch {
-    log.error({}, 'Onboard start error');
+    log.error({ status: 500, code: 'ONBOARD_START_FAILED' }, 'Onboard start error');
     return NextResponse.json(
       { error: 'Failed to initiate onboarding' },
       { status: 500, headers: cors }

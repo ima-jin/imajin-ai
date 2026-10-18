@@ -10,7 +10,7 @@
  * receipts, etc.) that flow through this route via `emitAttestation()` never
  * trigger the `attestation-notify` reactor.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { NextRequest } from 'next/server';
 import { useVaultInternalKey } from '../../../__tests__/internal-api-key-auth-test-support';
 
@@ -25,6 +25,7 @@ const h = vi.hoisted(() => ({
   mockInsertValues: vi.fn(),
   mockIntrospectGrant: vi.fn(),
   mockSignSync: vi.fn().mockReturnValue('fake-signature'),
+  error: vi.fn(),
 }));
 
 vi.mock('@/src/lib/vault/internal-secret', async () =>
@@ -59,7 +60,7 @@ vi.mock('@imajin/auth', async () => ({
 }));
 
 vi.mock('@imajin/logger', () => ({
-  createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
+  createLogger: () => ({ error: h.error, info: vi.fn(), warn: vi.fn() }),
 }));
 
 vi.mock('@imajin/bus', () => ({ publish: h.mockPublish }));
@@ -84,10 +85,53 @@ function publishedPayload(): Record<string, unknown> {
 beforeEach(() => {
   vi.clearAllMocks();
   useVaultInternalKey(API_KEY);
-  process.env.AUTH_PRIVATE_KEY = 'fake-private-key';
+  vi.stubEnv('AUTH_PRIVATE_KEY', 'fake-private-key');
+  h.mockSignSync.mockReturnValue('fake-signature');
   h.mockReturning.mockResolvedValue([{ id: 'att_internal_123' }]);
   h.mockPublish.mockResolvedValue(undefined);
   h.mockIntrospectGrant.mockResolvedValue({ authorized: false, reason: 'No active, unexpired grant covers this capability and audience' });
+});
+afterEach(() => vi.unstubAllEnvs());
+
+describe('safe failure logging', () => {
+  const sensitive = 'buyer@example.test Bearer fixture https://private.test/?token=fixture';
+  const body = { issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' };
+
+  it('identifies missing signing configuration without recording key material', async () => {
+    vi.stubEnv('AUTH_PRIVATE_KEY', '');
+    expect((await POST(makeReq(body))).status).toBe(500);
+    expect(h.error.mock.calls).toEqual([
+      [{ status: 500, code: 'ATTESTATION_SIGNING_UNCONFIGURED' }, 'AUTH_PRIVATE_KEY not set — cannot sign attestation'],
+    ]);
+  });
+
+  it('does not log a sensitive signing exception', async () => {
+    h.mockSignSync.mockImplementationOnce(() => { throw new Error(sensitive); });
+    const response = await POST(makeReq(body));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Signing failed' });
+    expect(h.error.mock.calls).toEqual([
+      [{ status: 500, code: 'ATTESTATION_SIGNING_FAILED' }, 'Failed to sign attestation'],
+    ]);
+  });
+
+  it('does not log a sensitive database exception', async () => {
+    h.mockReturning.mockRejectedValueOnce(new Error(sensitive));
+    const response = await POST(makeReq(body));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Failed to store attestation' });
+    expect(h.error.mock.calls).toEqual([
+      [{ status: 500, code: 'ATTESTATION_INSERT_FAILED' }, 'Failed to insert attestation'],
+    ]);
+  });
+
+  it('identifies a failed background publish without logging its sensitive rejection', async () => {
+    h.mockPublish.mockRejectedValueOnce(new Error(sensitive));
+    expect((await POST(makeReq(body))).status).toBe(201);
+    expect(h.error.mock.calls).toEqual([
+      [{ code: 'ATTESTATION_PUBLISH_FAILED' }, 'attestation.created publish failed'],
+    ]);
+  });
 });
 
 describe('node-issued-only types (#2081)', () => {
