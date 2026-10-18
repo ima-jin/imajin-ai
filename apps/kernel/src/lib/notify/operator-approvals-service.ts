@@ -28,6 +28,10 @@ import { verifyOperatorCountersignature } from './operator-countersign';
 import { validateDecisionMode } from './operator-decision-modes';
 import { pushWebNotificationToOperator } from './web-push';
 import { resolveApprovalAddressee } from './approval-addressing';
+import type { Identity } from '@imajin/auth';
+import { isReachApproval, validReachReply } from './reach-approval-contract';
+import { canDecideReach } from './reach-approval-authority';
+import { commitReachDecision, ReachDecisionError } from './reach-approval-execution';
 import { forEachSequential } from '../async/sequential';
 import type { SessionBinding, SessionCommandFrame } from '../jin/session-command-contract';
 import type { ApprovalSessionOutcome } from './operator-approval-session-outcome';
@@ -322,6 +326,9 @@ export async function archiveOperatorApproval(params: {
 
 export interface DecideOperatorApprovalParams {
   proposalId: string;
+  /** Real authenticated identity, never a request-body claim. */
+  identity?: Identity;
+  replyMessage?: string;
   /** The REAL session DID deciding (#2723: must be the DID the row is addressed to — the connector owner, or the node operator for node-level kinds). */
   operatorDid: string;
   decision: ApprovalDecision;
@@ -460,6 +467,7 @@ async function resolveDecidedAt(
   contentHash: string,
   operatorSignature: OperatorCountersignature | undefined,
   claimedDecidedAt: string | undefined,
+  replyMessage?: string,
 ): Promise<DecidedAtResult> {
   if (!operatorSignature) {
     return { ok: true, decidedAt: new Date().toISOString() };
@@ -473,7 +481,10 @@ async function resolveDecidedAt(
   }
   const verification = await verifyOperatorCountersignature(
     operatorDid,
-    { contentHash, decision, decidedAt: claimedDecidedAt, ...(mode === undefined ? {} : { mode }) },
+    {
+      contentHash, decision, decidedAt: claimedDecidedAt, ...(mode === undefined ? {} : { mode }),
+      ...(replyMessage === undefined ? {} : { replyMessage }),
+    },
     operatorSignature,
   );
   if (!verification.ok) {
@@ -607,15 +618,62 @@ async function persistAndPublishDecision(
  * particular `withdrawn` is only legal from `approved` ("pending-apply"),
  * never once `applied`.
  */
+async function decideReachApproval(row: OperatorApprovalRow, params: DecideOperatorApprovalParams): Promise<DecideOperatorApprovalResult> {
+  const { identity, operatorSignature, mode, replyMessage } = params;
+  if (!identity || identity.id !== params.operatorDid || !await canDecideReach(identity, row.operatorDid)) {
+    return { ok: false, status: 403, error: 'Only the principal or a verified act-as admin may decide this Reach card' };
+  }
+  const gate = checkDecisionGates(row, params.decision, mode);
+  if (!gate.ok) return gate;
+  if (!validReachReply(mode, replyMessage)) return { ok: false, status: 400, error: 'replyMessage is required only for reply (non-empty, max 16000 characters)' };
+  if (!operatorSignature) return { ok: false, status: 400, error: 'Operator countersignature is required for Reach decisions' };
+  const contentHash = computeDecisionContentHash(row, row.proposalId);
+  if (!contentHash) return { ok: false, status: 500, error: 'Unable to compute contentHash' };
+  // Exact authenticated retries recover the committed result without executing twice.
+  const previous = (row.decision as { payload?: OperatorApprovalDecidedPayload } | null)?.payload;
+  if (row.status === 'applied' && previous && previous.decidedBy === identity.id
+    && previous.decidedAt === params.decidedAt && previous.mode === mode && previous.replyMessage === replyMessage
+    && canonicalize(previous.operatorSignature) === canonicalize(operatorSignature)) {
+    await publishApprovalDecided(row.proposalId, row.operatorDid, row.signerDid, previous);
+    return { ok: true, card: toCard(row) };
+  }
+  if (row.status !== 'pending') return { ok: false, status: 409, error: 'Proposal is no longer awaiting a decision' };
+  const time = await resolveDecidedAt(row.proposalId, identity.id, params.decision, mode, contentHash, operatorSignature, params.decidedAt, replyMessage);
+  if (!time.ok) return time;
+  const payload: OperatorApprovalDecidedPayload = {
+    proposalId: row.proposalId, source: row.source, kind: row.kind,
+    decision: params.decision, mode, decidedBy: identity.id, decidedAt: time.decidedAt,
+    ...(replyMessage === undefined ? {} : { replyMessage }), operatorSignature,
+    contentHash: toWireContentHash(contentHash),
+  };
+  const node = getNodeSigningIdentity();
+  const signed = { payload, signature: authCrypto.signSync(canonicalize(payload), node.privateKeyHex), senderPubkey: node.senderPubkey };
+  try {
+    await commitReachDecision(row, signed, identity);
+  } catch (error) {
+    if (error instanceof ReachDecisionError) return { ok: false, status: error.status, error: error.message };
+    throw error;
+  }
+  await publishApprovalDecided(row.proposalId, row.operatorDid, row.signerDid, payload);
+  const fresh = await loadApproval(row.proposalId);
+  return { ok: true, card: toCard(fresh ?? { ...row, status: 'applied', decision: signed }) };
+}
+
 export async function decideOperatorApproval(
   params: DecideOperatorApprovalParams,
 ): Promise<DecideOperatorApprovalResult> {
-  const { proposalId, operatorDid, decision, mode, reason, operatorSignature, decidedAt: claimedDecidedAt } = params;
-
-  const row = await loadApproval(proposalId);
+  const row = await loadApproval(params.proposalId);
   if (!row) {
     return { ok: false, error: 'Proposal not found', status: 404 };
   }
+  if (isReachApproval(row)) return decideReachApproval(row, params);
+  if (params.replyMessage !== undefined) return { ok: false, status: 400, error: 'replyMessage is only supported for Reach decisions' };
+  if (params.identity?.actingAs || params.identity?.actingFor) return { ok: false, status: 403, error: 'Other approval kinds are self-only' };
+  return decideLegacyApproval(row, params);
+}
+
+async function decideLegacyApproval(row: OperatorApprovalRow, params: DecideOperatorApprovalParams): Promise<DecideOperatorApprovalResult> {
+  const { proposalId, operatorDid, decision, mode, reason, operatorSignature, decidedAt: claimedDecidedAt } = params;
   // #2723: owner-only. `operatorDid` here is the REAL session DID; it must be
   // the DID the row is addressed to. A connector proposal is addressed to its
   // owner even if a legacy row still carries the node operator's DID.

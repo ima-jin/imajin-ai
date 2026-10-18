@@ -22,6 +22,7 @@
 import { DECISION_APPROVAL_KIND, parseDecisionCardView } from '../decisions/view';
 import { EXEC_COMMAND_KIND, validateExecCommandDecisionMode } from './exec-command-approvals';
 import type { ApprovalDecision } from './operator-approvals';
+import { isReachApproval, REACH_MODES } from './reach-approval-contract';
 
 /** Open-vocabulary source github proposals are raised under (#2293). */
 export const GITHUB_SOURCE = 'github';
@@ -90,6 +91,11 @@ export function validateDecisionMode(
   mode: string | undefined,
 ): DecisionModeValidation {
   if (subject.kind === DECISION_APPROVAL_KIND) return validateDecisionCardMode(decision, mode, subject.detail);
+  if (isReachApproval(subject)) {
+    return decision === 'approve' && REACH_MODES.some((choice) => choice === mode)
+      ? { ok: true }
+      : { ok: false, error: 'Reach decisions require approve and reply, accept, decline or block mode' };
+  }
   if (subject.kind === EXEC_COMMAND_KIND) return validateExecCommandDecisionMode(decision, mode);
   if (subject.source === GITHUB_SOURCE) return validateGithubMode(decision, mode);
   if (mode === undefined) return { ok: true };

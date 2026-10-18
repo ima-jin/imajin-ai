@@ -34,6 +34,9 @@ import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-ap
 import { inboxDidFor } from '@/src/lib/notify/approval-addressing';
 import { actAsContext } from '@/src/lib/notify/act-as-guard';
 import { listApprovalsForOperator } from '@/src/lib/notify/operator-approvals-service';
+import { reachActAsPrincipal } from '@/src/lib/notify/reach-approval-authority';
+import { backfillReachApprovals } from '@/src/lib/notify/reach-approvals';
+import { isReachApproval } from '@/src/lib/notify/reach-approval-contract';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,9 +58,16 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const source = searchParams.get('source');
+  const reachPrincipal = await reachActAsPrincipal(authResult.identity);
+  await backfillReachApprovals(inboxDid);
+  if (reachPrincipal && reachPrincipal !== inboxDid) await backfillReachApprovals(reachPrincipal);
   const approvals = await listApprovalsForOperator(inboxDid, source ? { source } : {});
+  if (reachPrincipal && reachPrincipal !== inboxDid) {
+    const shared = await listApprovalsForOperator(reachPrincipal, source ? { source } : {});
+    approvals.push(...shared.filter(isReachApproval));
+  }
   return NextResponse.json(
-    { isOperator, approvals, actAs: actAsContext(authResult.identity) },
+    { isOperator, approvals, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null },
     { headers: cors },
   );
 }
