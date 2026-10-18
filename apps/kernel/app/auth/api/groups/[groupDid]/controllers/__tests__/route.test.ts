@@ -9,6 +9,7 @@
  *  - `allowed_services` narrows authority for every non-owner role.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveAppDirectoryForIdentity: async () => [] }));
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 

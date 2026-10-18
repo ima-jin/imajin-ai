@@ -3436,6 +3436,8 @@ paths:
         actingAs and actingFor. The node-signed record and membership commit
         atomically. The event includes oldAllowedServices (null for a new
         membership) and allowedServices. Existing audit history is never rewritten.
+        Only owners may grant All services (null). Admins must choose a finite
+        subset of their own live allowed_services for add or reactivation.
       security:
         - cookieAuth: []
       parameters:
@@ -3457,7 +3459,7 @@ paths:
                   type: [array, "null"]
                   minItems: 1
                   items: { type: string }
-                  description: Known app-service names from the canonical service manifest, for admin/maintainer/member/agent. Null or omitted means All services; an empty or unknown list is rejected. Owners are always unrestricted and cannot be assigned here.
+                  description: Names from the canonical manifest plus the group's available registry apps, for admin/maintainer/member/agent. Null or omitted means All services (owner-only grant); an empty or unknown list is rejected. Owners are always unrestricted and cannot be assigned here.
       responses:
         "201":
           description: Controller added
@@ -3479,9 +3481,13 @@ paths:
         allowedServices follows the add contract for admin, maintainer, member
         and agent. Omitted fields preserve existing values, including across
         role changes; null means All services. A nonempty list must contain
-        known app-service names from the canonical manifest. Empty lists are
+        known app-service names from the canonical manifest plus the group's
+        available registry apps. Empty lists are
         rejected to prevent accidental lockout. Owners remain unrestricted
         and cannot be edited here.
+        Non-owners may only narrow services to a finite subset of both the
+        target's current scope and their own live allowed_services, including
+        self-edits and role changes. Only owners may widen or grant null.
 
         Each actual role or scope change commits exactly one node-signed
         group.member.role.changed attestation atomically with the membership.

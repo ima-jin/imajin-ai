@@ -166,5 +166,3 @@ The [honest-record accountability issue #1427](https://github.com/ima-jin/imajin
 ## License
 
 [Imajin Network License (INL) v1.0](LICENSE.md), **not MIT**. Source-available, with notice requirements for everyone and network-participation conditions for covered commercial organizations above the CAD $1 million annual-revenue threshold. Read the license for the actual conditions and exemptions; this summary does not replace it.
-
-<!-- Human member service scopes are configured in the members tab. -->

@@ -8,7 +8,8 @@ import { NextRequest } from 'next/server';
 import { canonicalize, type Identity } from '@imajin/auth';
 import * as schema from '@/src/db/schemas/auth';
 
-const mocks = vi.hoisted(() => ({ db: null as unknown, auth: vi.fn() }));
+const mocks = vi.hoisted(() => ({ db: null as unknown, auth: vi.fn(), directory: vi.fn() }));
+vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveAppDirectoryForIdentity: mocks.directory }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), get db() { return mocks.db; },
 }));
@@ -65,6 +66,7 @@ beforeAll(async () => {
   }
 });
 beforeEach(async () => {
+  mocks.directory.mockResolvedValue([]);
   await pg.exec('TRUNCATE auth.identities, auth.identity_members, auth.attestations');
   await database.insert(schema.identities).values({ id: groupDid, scope: 'business', publicKey: groupDid });
   await database.insert(schema.identityMembers).values([
@@ -143,7 +145,7 @@ describe('editable membership and signed history (#2946)', () => {
   });
 
   it('downgrade applies on the next call even with stale session role claims', async () => {
-    await edit({ role: 'admin' });
+    await edit({ role: 'admin', allowedServices: ['pay'] });
     as(member, { actingAs: groupDid, actingAsRole: 'admin' });
     expect((await edit({ role: 'member' })).status).toBe(200);
     expect((await edit({ role: 'admin' })).status).toBe(403);
@@ -184,7 +186,7 @@ describe('editable membership and signed history (#2946)', () => {
   });
 
   it('enforces admin add/remove boundaries and reserves all owner mutations to ownership transfer', async () => {
-    await edit({ role: 'admin' });
+    await edit({ role: 'admin', allowedServices: ['pay'] });
     as(member);
     expect((await edit({ role: 'member' }, owner)).status).toBe(400);
     as(owner);
@@ -193,7 +195,7 @@ describe('editable membership and signed history (#2946)', () => {
     await database.insert(schema.identityMembers).values({ identityDid: groupDid, memberDid: stranger, role: 'member' });
     as(member);
     expect((await edit({ role: 'admin' }, stranger)).status).toBe(403);
-    expect((await edit({ role: 'maintainer' }, stranger)).status).toBe(200);
+    expect((await edit({ role: 'maintainer', allowedServices: ['pay'] }, stranger)).status).toBe(200);
     expect((await edit({ role: 'member' }, stranger)).status).toBe(403);
     expect((await edit({ role: 'maintainer' })).status).toBe(200);
     expect((await rows()).filter((row) => row.role === 'owner')).toHaveLength(1);
@@ -243,5 +245,112 @@ describe('editable membership and signed history (#2946)', () => {
     const responses = await Promise.all([edit({ role: 'admin' }), edit({ role: 'admin' })]);
     expect(responses.map((response) => response.status)).toEqual([200, 200]);
     expect(await evidence()).toHaveLength(1);
+  });
+});
+
+describe('non-owner service-grant boundaries (#2956 sent-back)', () => {
+  async function restrictedAdmin(allowedServices = ['pay']) {
+    expect((await edit({ role: 'admin', allowedServices })).status).toBe(200);
+    as(member, { actingAsServices: ['pay', 'media', 'connections'] });
+  }
+  function addScoped(allowedServices?: string[] | null) {
+    return POST(request('POST', { did: stranger, role: 'member', allowedServices }), {
+      params: Promise.resolve({ groupDid }),
+    });
+  }
+
+  it.each(['member', 'maintainer', 'agent'])('refuses self-demotion to %s with wider services, but preserves omitted restrictions', async (role) => {
+    await restrictedAdmin();
+    for (const allowedServices of [null, ['pay', 'connections']]) {
+      expect((await edit({ role, allowedServices })).status).toBe(403);
+    }
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, role: 'admin', allowedServices: ['pay'] }));
+    expect(await evidence()).toHaveLength(1);
+    expect((await edit({ role })).status).toBe(200);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, role, allowedServices: ['pay'] }));
+  });
+
+  it('requires a subset of both the target scope and the live caller scope', async () => {
+    await restrictedAdmin(['pay', 'media']);
+    await database.insert(schema.identityMembers).values({
+      identityDid: groupDid, memberDid: stranger, role: 'member', allowedServices: ['pay'],
+    });
+    for (const allowedServices of [null, ['pay', 'media'], ['connections']]) {
+      expect((await edit({ allowedServices }, stranger)).status).toBe(403);
+    }
+    expect(await evidence()).toHaveLength(1);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: stranger, allowedServices: ['pay'] }));
+    expect(await (await edit({ allowedServices: ['pay'] }, stranger)).json()).toMatchObject({ changed: false });
+    as(owner);
+    await edit({ allowedServices: ['pay', 'connections'] }, stranger);
+    as(member);
+    expect((await edit({ allowedServices: ['connections'] }, stranger)).status).toBe(403);
+    expect((await edit({ allowedServices: ['pay'] }, stranger)).status).toBe(200);
+  });
+
+  it.each([undefined, null, ['connections'], ['pay', 'connections']].map((services) => ({ services })))('refuses restricted-admin add with $services without evidence', async ({ services }) => {
+    await restrictedAdmin();
+    expect((await addScoped(services)).status).toBe(403);
+    expect(await rows()).toHaveLength(2);
+    expect(await evidence()).toHaveLength(1);
+  });
+
+  it('applies caller subsets to re-adds and allows finite in-scope add/re-add', async () => {
+    await restrictedAdmin();
+    expect((await addScoped(['pay'])).status).toBe(201);
+    as(owner);
+    expect((await DELETE(request('DELETE'), params(stranger))).status).toBe(200);
+    const before = await rows();
+    const records = await evidence();
+    as(member);
+    for (const allowedServices of [null, ['connections']]) {
+      expect((await addScoped(allowedServices)).status).toBe(403);
+      expect(await rows()).toEqual(before);
+      expect(await evidence()).toEqual(records);
+    }
+    expect((await addScoped(['pay'])).status).toBe(201);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: stranger, allowedServices: ['pay'], removedAt: null }));
+  });
+
+  it('reserves All services grants to owners even when an admin is unrestricted', async () => {
+    await edit({ role: 'admin' });
+    as(member);
+    expect((await addScoped(null)).status).toBe(403);
+    as(owner);
+    expect((await addScoped(['pay'])).status).toBe(201);
+    as(member);
+    expect((await edit({ allowedServices: null }, stranger)).status).toBe(403);
+    expect((await edit({ allowedServices: ['pay', 'media'] }, stranger)).status).toBe(403);
+  });
+
+  it('allows the owner to widen/edit any non-owner scope and add/re-add All services', async () => {
+    await edit({ role: 'admin', allowedServices: ['pay'] });
+    expect((await edit({ role: 'maintainer', allowedServices: ['connections'] })).status).toBe(200);
+    expect((await edit({ allowedServices: null })).status).toBe(200);
+    expect((await addScoped(['connections'])).status).toBe(201);
+    expect((await edit({ allowedServices: null }, stranger)).status).toBe(200);
+    expect((await DELETE(request('DELETE'), params(stranger))).status).toBe(200);
+    expect((await addScoped(null)).status).toBe(201);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: stranger, allowedServices: null, removedAt: null }));
+    await evidence();
+  });
+
+  it('adds and saves existing registry-only agent scopes using the available group directory', async () => {
+    mocks.directory.mockResolvedValue([
+      { slug: 'registry-only', name: 'Registry App', available: true },
+      { slug: 'unavailable-app', name: 'Unavailable', available: false },
+    ]);
+    const added = await POST(request('POST', { did: stranger, role: 'agent', allowedServices: ['registry-only'] }), {
+      params: Promise.resolve({ groupDid }),
+    });
+    expect(added.status).toBe(201);
+    expect(await (await edit({ allowedServices: ['registry-only'] }, stranger)).json()).toMatchObject({
+      changed: false, allowedServices: ['registry-only'],
+    });
+    expect((await edit({ allowedServices: ['registry-only', 'pay'] }, stranger)).status).toBe(200);
+    expect((await edit({ allowedServices: ['unavailable-app'] }, stranger)).status).toBe(400);
+    expect(mocks.directory).toHaveBeenCalledWith(groupDid);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: stranger, role: 'agent', allowedServices: ['pay', 'registry-only'] }));
+    await evidence();
   });
 });

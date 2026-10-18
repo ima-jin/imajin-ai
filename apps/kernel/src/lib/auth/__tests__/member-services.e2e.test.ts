@@ -25,6 +25,7 @@ vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: async () 
 vi.mock('@/src/lib/kernel/lookup', () => ({ lookupIdentity: async () => null }));
 vi.mock('@/src/lib/connections/payment-request-invite', () => ({ createPaymentRequestInvite: vi.fn() }));
 vi.mock('@imajin/bus', () => ({ publish: mocks.publish, registerReactor: vi.fn() }));
+vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveAppDirectoryForIdentity: async () => [] }));
 
 import { POST as addMember } from '@/app/auth/api/groups/[groupDid]/controllers/route';
 import { GET as readMember, PATCH as editMember } from '@/app/auth/api/groups/[groupDid]/controllers/[controllerDid]/route';

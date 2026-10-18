@@ -3,7 +3,8 @@ import { db, identities, identityMembers } from '@/src/db';
 import { ASSIGNABLE_MEMBER_ROLES } from './membership';
 import { OwnershipError } from './ownership-policy';
 import { recordMemberEvent, type MemberActor } from './member-attestation';
-import { parseMemberServices } from './member-service-scope';
+import { assertMemberServiceGrant } from './member-service-scope';
+import { parseGroupMemberServices } from './group-member-services';
 
 function parseUpdate(body: unknown) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -17,13 +18,13 @@ function parseUpdate(body: unknown) {
   if (value.role !== undefined && !(ASSIGNABLE_MEMBER_ROLES as readonly unknown[]).includes(value.role)) {
     throw new OwnershipError('Invalid role; use ownership transfer to change owners', 400);
   }
-  const allowedServices = value.allowedServices === undefined
-    ? undefined : parseMemberServices(value.allowedServices);
-  return { role: value.role as string | undefined, allowedServices };
+  return { role: value.role as string | undefined, allowedServices: value.allowedServices };
 }
 
-export function updateGroupMember(groupDid: string, actor: MemberActor, memberDid: string, body: unknown) {
+export async function updateGroupMember(groupDid: string, actor: MemberActor, memberDid: string, body: unknown) {
   const input = parseUpdate(body);
+  const requestedServices = input.allowedServices === undefined
+    ? undefined : await parseGroupMemberServices(groupDid, input.allowedServices);
   return db.transaction(async (tx) => {
     // Same lock as add/remove and #2892: no stale membership or owner mutations.
     const [group] = await tx.select().from(identities).where(eq(identities.id, groupDid)).for('update');
@@ -46,7 +47,8 @@ export function updateGroupMember(groupDid: string, actor: MemberActor, memberDi
       || (target.role !== 'member' && actor.id !== memberDid))) {
       throw new OwnershipError('Admin can only edit members and cannot grant admin', 403);
     }
-    const services = input.allowedServices === undefined ? target.allowedServices : input.allowedServices;
+    const services = requestedServices === undefined ? target.allowedServices : requestedServices;
+    assertMemberServiceGrant(caller, services, target.allowedServices);
     const allowedServices = services === null
       ? null : [...new Set(services)].sort((a, b) => a.localeCompare(b));
     const oldServices = target.allowedServices

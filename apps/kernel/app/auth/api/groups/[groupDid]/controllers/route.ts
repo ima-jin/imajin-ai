@@ -5,7 +5,8 @@ import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { MEMBER_ROLES } from '@/src/lib/auth/membership';
 import { recordMemberEvent } from '@/src/lib/auth/member-attestation';
-import { parseMemberServices } from '@/src/lib/auth/member-service-scope';
+import { assertMemberServiceGrant } from '@/src/lib/auth/member-service-scope';
+import { parseGroupMemberServices } from '@/src/lib/auth/group-member-services';
 import { OwnershipError } from '@/src/lib/auth/ownership-policy';
 
 const log = createLogger('kernel');
@@ -24,10 +25,11 @@ interface AddControllerRequest {
  *
  * Returns the normalized request, or a NextResponse to return verbatim.
  */
-function parseAddControllerBody(
+async function parseAddControllerBody(
   body: Record<string, unknown>,
-  callerRole: string
-): AddControllerRequest | NextResponse {
+  callerRole: string,
+  groupDid: string,
+): Promise<AddControllerRequest | NextResponse> {
   const { did, role = 'member', allowedServices = null } = body as {
     did?: string;
     role?: string;
@@ -47,7 +49,7 @@ function parseAddControllerBody(
     return NextResponse.json({ error: 'Only owner can add admins' }, { status: 403 });
   }
 
-  const scoped = parseMemberServices(allowedServices);
+  const scoped = await parseGroupMemberServices(groupDid, allowedServices);
 
   return { did, role, allowedServices: scoped };
 }
@@ -70,7 +72,7 @@ export async function POST(
   return db.transaction(async (tx) => {
     await tx.select({ id: identities.id }).from(identities).where(eq(identities.id, groupDid)).for('update');
     const [callerMembership] = await tx
-      .select({ role: identityMembers.role })
+      .select({ role: identityMembers.role, allowedServices: identityMembers.allowedServices })
       .from(identityMembers)
       .where(
         and(
@@ -92,9 +94,10 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
     }
 
-    const parsed = parseAddControllerBody(body, callerMembership.role);
+    const parsed = await parseAddControllerBody(body, callerMembership.role, groupDid);
     if (parsed instanceof NextResponse) return parsed;
     const { did, role, allowedServices: normalizedServices } = parsed;
+    assertMemberServiceGrant(callerMembership, normalizedServices);
 
     // An agent adding members under X-Acting-For is programmatic provenance;
     // anything else came from a controller clicking Add in the UI.
