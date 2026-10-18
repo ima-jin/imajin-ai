@@ -64,6 +64,11 @@ describe('executeAppsProvisionApproval — countersignature gate', () => {
 });
 
 describe('executeAppsProvisionApproval — kind/detail validation', () => {
+  it.each([null, '', 'hidden', 42])('refuses invalid signed visibility %j', async (visibility) => {
+    const result = await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', visibility } }));
+    expect(result).toEqual({ ok: false, error: 'visibility must be one of: public, unlisted, private, internal' });
+    expect(runAppProvisionMock).not.toHaveBeenCalled();
+  });
   it('rejects an unrecognized kind', async () => {
     const result = await executeAppsProvisionApproval(card({ kind: 'apps:something-else' }));
     expect(result).toEqual({ ok: false, error: "Unrecognized apps proposal kind 'apps:something-else'" });
@@ -78,6 +83,11 @@ describe('executeAppsProvisionApproval — kind/detail validation', () => {
 });
 
 describe('executeAppsProvisionApproval — execution', () => {
+  it.each(['public', 'unlisted', 'private', 'internal'])('forwards countersigned visibility %s', async (visibility) => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'repo', error: 'test' });
+    await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', visibility } }));
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({ visibility, authorizedBy: AUTHORIZED_BY }));
+  });
   it('passes only the countersigned site-owner and host choices to provisioning', async () => {
     runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'domain', error: 'missing org grant' });
     await executeAppsProvisionApproval(card({
@@ -130,6 +140,7 @@ describe('executeAppsProvisionApproval — execution', () => {
       attestationTypes: [],
       approvedDeclarations: null,
       authorizedBy: AUTHORIZED_BY,
+      visibility: 'public',
     });
   });
 

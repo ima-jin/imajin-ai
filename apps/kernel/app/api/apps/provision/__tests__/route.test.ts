@@ -106,6 +106,27 @@ beforeEach(() => {
 });
 
 describe('POST /api/apps/provision — auth + validation', () => {
+  it.each([undefined, 'public', 'unlisted', 'private', 'internal'])('countersigns and discloses visibility %s', async (visibility) => {
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', visibility }) as never);
+    expect(response.status).toBe(201);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0];
+    expect(recorded.detail.visibility).toBe(visibility ?? 'public');
+    expect(recorded.summary).toContain(`Visibility: ${visibility ?? 'public'}`);
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
+      detail: recorded.detail, summary: recorded.summary,
+    }));
+  });
+
+  it.each([null, '', 'Private', 'hidden', 1, {}, []])('rejects invalid visibility %j before proposing', async (visibility) => {
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', visibility }) as never)).status).toBe(400);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+    expect(computeApprovalContentHashMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['public', 'private'])('refuses visibility %s on claim reissue', async (visibility) => {
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', reissueClaim: true, visibility }) as never)).status).toBe(400);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
   it.each([
     null, [], { siteOwnerDid: 'not-a-did' }, { domain: 'customer.example' },
     { domain: 'nested.dev-gbs.imajin.ai' }, { reissueClaim: true, siteOwnerDid: 'did:imajin:gbs' },
@@ -117,11 +138,11 @@ describe('POST /api/apps/provision — auth + validation', () => {
 
   it('includes site owner and domain in the countersigned proposal content', async () => {
     const response = await POST(postRequest({
-      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai',
+      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private',
     }) as never);
     expect(response.status).toBe(201);
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai' }),
+      detail: expect.objectContaining({ siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private' }),
       summary: expect.stringContaining('did:imajin:gbs'),
     }));
   });
@@ -267,6 +288,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
     expect(recorded.detail).toMatchObject({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true, manifestDeclarations: null });
+    expect(recorded.detail).not.toHaveProperty('visibility');
     expect(recorded.summary).toMatch(/^Reissue the claim code for app 'dykil'/);
     expect(recorded.summary).not.toContain('Will retire');
     // The same detail is what the content hash covers, so the operator signs "reissue" and nothing else.

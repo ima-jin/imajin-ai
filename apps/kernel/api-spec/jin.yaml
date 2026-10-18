@@ -722,6 +722,16 @@ components:
           example: dykil
           description: "Short, URL/repo-safe identifier. The repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
         displayName: { type: string, maxLength: 200, example: dykil }
+        visibility:
+          type: string
+          enum: [public, unlisted, private, internal]
+          default: public
+          description: |
+            Directory/add visibility (#2897), shown in and covered by the
+            operator-countersigned proposal. Private apps are visible/addable
+            only to the owning identity and its members; public web pages
+            remain public. The owner may be an unclaimed organization stub
+            with no members. Reissuing a claim cannot set or change visibility.
         template:
           type: string
           maxLength: 200
@@ -743,21 +753,27 @@ components:
             Optional authoritative site owner for the newly registered app.
             Defaults to the approving operator, not the proposing agent or node.
             Covered by the operator's countersigned provision proposal.
+            The identity must exist but need not be claimed or have members.
             Cannot change ownership during reissue.
         domain:
           type: string
           maxLength: 253
           description: |
             Optional direct subdomain of imajin.ai (for example dev-gbs.imajin.ai).
-            Defaults to <slug>.imajin.ai. Covered by the operator's countersign.
+            Defaults to <slug>.imajin.ai for domain issuance. Covered by the
+            operator's countersign. When explicitly set, registers callbackUrl
+            as https://<domain>/api/auth/callback and allowedRedirectHosts as
+            [<domain>]. When omitted, preserves the node-origin/<slug> callback
+            and [<slug>] redirect hosts.
             Provisioning issues signed domain evidence as the actual Imajin
             organization through its domain.issue grant, never a self-asserted
-            node identity. Missing organization identity or signing grant fails
-            the domain provisioning step. Cannot change a domain during reissue.
+            node identity. Missing organization identity or signing grant defers
+            domain issuance without blocking the claim code. Cannot change a
+            domain during reissue.
         reissueClaim:
           type: boolean
           default: false
-          description: Reissue a claim code for an already-succeeded app only; preserves app ownership and domain bindings.
+          description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, callback URL, redirect hosts and domain bindings.
     AppServiceScopesRequest:
       type: object
       description: >-
@@ -1422,7 +1438,15 @@ paths:
         unavailable issuer/grant/key defers the binding without blocking the
         signing-key grant or claim code. An explicit domain on a succeeded app
         stages a countersigned host retry. Plain claim reissue changes neither
-        domain nor owner.
+        domain, owner, visibility, callback URL nor redirect hosts.
+        New registrations use the countersigned visibility (default public).
+        An explicit approved domain registers https://<domain>/api/auth/callback
+        with that domain as its allowed redirect host; no domain preserves
+        the node-path callback. Existing registrations are never rewritten by
+        retry or claim reissue.
+        A failed-step retry that conflicts with already-registered visibility
+        or callbacks fails closed rather than reporting success with different
+        settings; re-propose with the existing settings.
         Optional imajin.app.json profileWidget ({path,label,icon?}) is a
         validated link-only contribution on the registered entryUrl origin,
         snapshotted on the signed operator card and rechecked for drift at
@@ -1456,7 +1480,7 @@ paths:
                   status: { type: string, enum: [pending] }
                   proposalId: { type: string }
         "400":
-          description: Malformed slug/displayName/template/attestationTypes/siteOwnerDid/domain, or forbidden owner/domain change on reissue
+          description: Malformed slug/displayName/template/attestationTypes/siteOwnerDid/domain/visibility, or forbidden owner/domain/visibility change on reissue
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

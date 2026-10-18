@@ -319,12 +319,49 @@ beforeEach(() => {
 });
 
 describe('runAppProvision — verified domain issuance', () => {
+  it.each([undefined, 'public', 'unlisted', 'private', 'internal'] as const)('registers visibility %s without a follow-up PATCH', async (visibility) => {
+    expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS', visibility })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0].visibility).toBe(visibility ?? 'public');
+  });
+
+  it.each(['private', 'public'] as const)('keeps approved %s visibility and redirects across reissue/retry, rejecting conflicting settings', async (visibility) => {
+    const params = { slug: 'gbs', displayName: 'GBS', visibility, domain: 'dev-gbs.imajin.ai' };
+    issueSigningKeyClaimMock.mockRejectedValueOnce(new Error('temporary claim failure'));
+    expect(await runAppProvision(params)).toMatchObject({ status: 'failed', failedStep: 'app-signing-key-grant' });
+    const registered = structuredClone([...registryAppsStore.values()][0]);
+    getMintedKeyByDidMock.mockResolvedValue({ status: 'active', publicKey: 'freshly-minted-public-key' });
+    const differentVisibility = visibility === 'private' ? 'public' : 'private';
+    expect(await runAppProvision({ ...params, visibility: differentVisibility })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect(await runAppProvision({ ...params, domain: 'other.imajin.ai' })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect((await runAppProvision(params)).status).toBe('succeeded');
+    expect([...registryAppsStore.values()]).toEqual([registered]);
+    expect(emitAttestationMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ allowedRedirectHosts: ['dev-gbs.imajin.ai'] }),
+    }));
+    expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS' })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()]).toEqual([registered]);
+    expect(mintKeypairMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['evil.test', 'https://dev-gbs.imajin.ai', 'dev-gbs.imajin.ai/path', 'nested.dev-gbs.imajin.ai'])('fails before side effects for invalid callback host %s', async (domain) => {
+    expect(await runAppProvision({ slug: 'gbs', displayName: 'GBS', domain })).toMatchObject({ status: 'failed', failedStep: 'config' });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+    expect(registryAppsStore.size).toBe(0);
+  });
   it('records the countersigned GBS owner and issues its dev host before the claim code', async () => {
     const outcome = await runAppProvision({
-      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai',
+      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private',
     });
     expect(outcome.status).toBe('succeeded');
-    expect([...registryAppsStore.values()][0].ownerDid).toBe('did:imajin:gbs');
+    expect([...registryAppsStore.values()][0]).toMatchObject({
+      ownerDid: 'did:imajin:gbs', visibility: 'private',
+      callbackUrl: 'https://dev-gbs.imajin.ai/api/auth/callback', allowedRedirectHosts: ['dev-gbs.imajin.ai'],
+      tokenAudiences: ['dev-gbs'],
+    });
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ allowedRedirectHosts: ['dev-gbs.imajin.ai'] }),
+    }));
     expect(provisionAppDomainMock).toHaveBeenCalledWith(MINTED_DID, 'dev-gbs', 'dev-gbs.imajin.ai', 'did:imajin:gbs');
     expect(provisionAppDomainMock.mock.invocationCallOrder[0]).toBeLessThan(issueSigningKeyClaimMock.mock.invocationCallOrder[0]);
   });
@@ -1738,6 +1775,9 @@ describe('runAppProvision — fail-closed mid-step', () => {
     registryAppsStore.set('app_existing', {
       id: 'app_existing',
       appDid: MINTED_DID,
+      visibility: 'public',
+      callbackUrl: 'https://jin.imajin.ai/dykil',
+      allowedRedirectHosts: ['dykil'],
       publicKey: 'already-minted-public-key',
       tier: 'third_party',
       status: 'active',
