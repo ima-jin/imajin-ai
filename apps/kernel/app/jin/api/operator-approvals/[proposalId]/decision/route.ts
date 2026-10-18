@@ -1,53 +1,10 @@
 /**
- * POST /jin/api/operator-approvals/:proposalId/decision — approve, reject,
- * or withdraw an operator approval proposal (#2059, generalized vocabulary
- * #2152).
- *
- * The load-bearing auth rule: this route decides as the REAL authenticated
- * session DID — never `resolveActingDid`, never `X-Acting-For` /
- * `onBehalfOf` — and that DID must be the one the proposal is ADDRESSED TO
- * (#2723). `operator.approvals.operator_did` means "whose Inbox": the
- * connector owner for a connector proposal (github …), the node operator for
- * every node-level kind. So the owner decides their own connector
- * proposal, the node operator decides node-level kinds, and the operator
- * gets 403 on someone else's connector proposal — the service enforces it
- * (see `resolveApprovalAddressee`). `@jin` (the agent) proposing and `@jin`
- * approving must stay impossible: an agent authenticated with its own DID
- * and `X-Acting-For: <ownerDid>` is refused by {@link inboxDidFor} (it has
- * no Inbox) regardless of what it claims to act for.
- *
- * #2359 closed the other half of that rule: act-as of ANY shape is refused
- * here before the operator comparison even runs ({@link actAsRefusal}, 403
- * `act_as_not_permitted`). `isOperatorIdentity` alone only ever excluded
- * `actingFor`, so the operator's own session carrying the
- * IdentitySwitcher's `x-acting-as: <group DID>` cookie still satisfied
- * `identity.id === operatorDid` and countersigned writes while wearing
- * somebody else's identity. This rail is self-only — the real session DID
- * is the party on the hook — so a borrowed one never reaches the signing
- * event. Listing stays readable under act-as (`GET /jin/api/operator-
- * approvals`); only deciding is refused.
- *
- * `decision` is the open, source-agnostic vocabulary (#2152): the kernel
- * never interprets it, only witnesses it and carries it (plus `source` +
- * `kind` from the stored proposal) through on `operator.approval.decided`.
- * An optional `mode` is the operator's chosen option (#2693) — a
- * decision-card option letter, exec `allow-once`/`deny`, or a github TTL.
- * It is NOT opaque: `decideOperatorApproval` refuses (400) any `mode` the
- * approval's kind doesn't offer (see `operator-decision-modes.ts`), and the
- * operator countersignature below covers it.
- *
- * Body (JSON): { decision: 'approve' | 'reject' | 'withdrawn', mode?: string, reason?: string,
- *   operatorSignature?: { keyId: string; alg: 'ed25519'; sig: string }, decidedAt?: string }
- *
- * `operatorSignature` + `decidedAt` (#2082): the operator's own
- * countersignature over `canonicalize({contentHash, decision, decidedAt})`
- * — plus `mode` whenever the decision carries one (#2693: a `mode` altered
- * after signing, or added to a signature that didn't cover it, fails
- * verification with 400) — produced client-side on /jin. `decidedAt` is REQUIRED whenever
- * `operatorSignature` is present (it's exactly what the client signed
- * over) and is verified for clock skew + against the signature in
- * `decideOperatorApproval`. Optional while `OPERATOR_COUNTERSIGN_REQUIRED`
- * is off; once that per-node flag is on, omitting it is rejected with 400.
+ * Shared Inbox decision rail. Ordinary kinds remain self-only. Reach/knock
+ * allow the principal or a live membership-verified act-as owner/admin;
+ * the real human actor always signs and receives decidedBy attribution.
+ * Reach decisions require approve + reply/accept/decline/block and a fresh
+ * countersignature over contentHash, decision, decidedAt, mode and (only for
+ * reply) replyMessage. The service commits domain actions atomically.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
@@ -67,6 +24,7 @@ import { APPS_FEATURED_KIND } from '@/src/lib/apps/featured-kind';
 import { executeAppsFeaturedApproval } from '@/src/lib/apps/featured';
 import { executeAppSecretsApproval } from '@/src/lib/apps/secrets-operator';
 import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
+import { reachActAsPrincipal } from '@/src/lib/notify/reach-approval-authority';
 
 const log = createLogger('kernel:operator-approvals:decision');
 
@@ -184,6 +142,15 @@ function parseMode(raw: unknown): { ok: true; mode: string | undefined } | { ok:
   return { ok: true, mode: raw };
 }
 
+function validReplyShape(raw: unknown): boolean {
+  return raw === undefined || (typeof raw === 'string' && raw.length <= 16_000);
+}
+
+function decisionFailure(error: { error: string; status: number }, borrowed: NextResponse | null, cors: HeadersInit) {
+  if (borrowed && error.status === 403) return borrowed;
+  return NextResponse.json({ error: error.error }, { status: error.status, headers: cors });
+}
+
 export async function POST(
   request: NextRequest,
   props: { params: Promise<{ proposalId: string }> },
@@ -196,11 +163,10 @@ export async function POST(
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
 
-  // #2359: self-only, checked first. A borrowed identity is refused for
-  // being borrowed and is never compared against the proposal's owner, so
-  // this refusal reveals nothing about whether `proposalId` exists either.
+  // Ordinary borrowed sessions fail before proposal lookup. Only a verified
+  // human admin reaches the service, which limits the exception to Reach cards.
   const borrowedIdentityRefusal = actAsRefusal(authResult.identity, cors);
-  if (borrowedIdentityRefusal) return borrowedIdentityRefusal;
+  if (borrowedIdentityRefusal && !await reachActAsPrincipal(authResult.identity)) return borrowedIdentityRefusal;
 
   // A delegated agent has no Inbox and may not decide. Whether the session
   // DID is the one this proposal is addressed to is the service's call (403).
@@ -227,6 +193,9 @@ export async function POST(
     );
   }
   const reason = typeof body.reason === 'string' ? body.reason : undefined;
+  if (!validReplyShape(body.replyMessage)) {
+    return NextResponse.json({ error: 'replyMessage must be a string of at most 16000 characters' }, { status: 400, headers: cors });
+  }
   const modeResult = parseMode(body.mode);
   if (!modeResult.ok) {
     return NextResponse.json({ error: modeResult.error }, { status: 400, headers: cors });
@@ -251,6 +220,8 @@ export async function POST(
     const result = await decideOperatorApproval({
       proposalId,
       operatorDid: deciderDid,
+      identity: authResult.identity,
+      replyMessage: body.replyMessage as string | undefined,
       decision: decision as 'approve' | 'reject' | 'withdrawn',
       mode,
       reason,
@@ -259,7 +230,7 @@ export async function POST(
       sessionCommand: body.sessionCommand,
     });
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });
+      return decisionFailure(result, borrowedIdentityRefusal, cors);
     }
 
     const outcome = await runProposalExecutionIfApplicable(proposalId, decision, result.card, mode);

@@ -1,5 +1,6 @@
 import { index, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { SignedReachReplyEvent } from '@/src/lib/auth/reach-reply-wire';
+import type { OperatorApprovalDecidedPayload, ContentHashFields } from '@/src/lib/notify/operator-approvals';
 
 const reachSchema = pgSchema('auth');
 
@@ -28,6 +29,8 @@ export interface ReachEnvelope {
   reply?: SignedReachReplyEvent;
   /** Bus acknowledgement is separate so pending signed replies can be replayed. */
   replyPublishedAt?: string;
+  /** Shared decision proof: content hash binds envelope evidence; actor signature binds mode and reply text. */
+  approvalDecision?: { payload: OperatorApprovalDecidedPayload; evidence: ContentHashFields };
 }
 
 export const reachEnvelopes = reachSchema.table('reach_envelopes', {
