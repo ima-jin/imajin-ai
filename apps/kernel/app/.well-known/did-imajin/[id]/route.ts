@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { getChainByImajinDid } from '@/src/lib/auth/dfos';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
 import { buildDidDocument } from '@/src/lib/auth/did-document';
+import { resolveReachDiscovery } from '@/src/lib/auth/reach-discovery';
 import { createLogger } from '@imajin/logger';
 import { nodeUrl } from '@/src/lib/http/node-url';
 
@@ -100,9 +101,12 @@ export async function GET(
     // A cold verifier is told to FOLLOW this endpoint and re-verify the chain
     // itself, so a malformed origin breaks resolution outright (#1614).
     const chainEndpoint = `${nodeUrl()}/auth/api/identity/${encodeURIComponent(imajinDid)}/chain`;
+    // Discovery is only a transport hint; chain verification above remains authoritative.
+    const reachCard = await resolveReachDiscovery(imajinDid);
 
     const doc = buildDidDocument(imajinDid, result, {
       chainEndpoint,
+      reachCardEndpoint: reachCard?.url,
       dfosDid: chain.dfosDid,
       headCid: chain.headCid,
     });
@@ -122,7 +126,8 @@ export async function GET(
       headers: {
         'Content-Type': 'application/did+json',
         'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=300, stale-while-revalidate=60',
+        // Reach opt-out must not leave a cached discovery hint behind.
+        'Cache-Control': 'no-store',
       },
     });
   } catch (error) {
