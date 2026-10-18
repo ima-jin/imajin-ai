@@ -118,6 +118,13 @@ describe('identity domain API', () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: 'TXT proof does not match', code: 'txt_not_found' });
   });
+
+  it('returns retryable 503 when manual verification cannot reach DNS', async () => {
+    mocks.verify.mockRejectedValue(new DomainError('dns_unavailable', 'DNS lookup unavailable; retry verification', 503));
+    const response = await verify(request(), context);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'DNS lookup unavailable; retry verification', code: 'dns_unavailable' });
+  });
 });
 
 describe('public domain evidence API', () => {

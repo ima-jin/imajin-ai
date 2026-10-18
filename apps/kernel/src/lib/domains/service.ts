@@ -198,7 +198,7 @@ async function verificationFailure(tx: Transaction, row: DomainBindingRow): Prom
     }
     return null;
   } catch (error) {
-    if (error instanceof DomainError) return error;
+    if (error instanceof DomainError && error.code !== 'dns_unavailable') return error;
     throw error;
   }
 }

@@ -165,16 +165,23 @@ describe('domain binding lifecycle with actual database constraints', () => {
     expect(await addDomain({ domain: 'example.com', zoneOwner: 'did:owner' })).toMatchObject({ status: 'pending', attestation: null });
   });
 
-  it('fails closed on DNS failures and rolls back on signer failure', async () => {
+  it('rolls back on signer failure', async () => {
     await addDomain({ domain: 'example.com', zoneOwner: 'did:owner' });
     state.signer.mockRejectedValueOnce(new Error('signing unavailable'));
     await expect(verifyDomain('example.com', 'did:owner')).rejects.toThrow();
     expect(await countAttestations()).toBe(0);
     expect(await listDomains('did:owner')).toMatchObject([{ status: 'pending' }]);
-    await verifyDomain('example.com', 'did:owner');
-    state.txt.mockRejectedValue({ code: 'ETIMEOUT' });
-    expect(await verifyDomain('example.com', 'did:owner')).toMatchObject({ status: 'revoked' });
-    expect(await resolveVerifiedDomain('example.com')).toBeNull();
+  });
+  it.each(['ETIMEOUT', 'ESERVFAIL', 'ECONNREFUSED'])('preserves verified evidence and returns 503 on %s', async (code) => {
+    await addDomain({ domain: 'example.com', zoneOwner: 'did:owner' });
+    const verified = await verifyDomain('example.com', 'did:owner');
+    state.txt.mockRejectedValue({ code });
+    await expect(verifyDomain('example.com', 'did:owner')).rejects.toMatchObject({ code: 'dns_unavailable', status: 503 });
+    expect(await listDomains('did:owner')).toEqual([verified]);
+    expect(await resolveVerifiedDomain('example.com')).toEqual(verified);
+    expect(await countAttestations()).toBe(1);
+    expect(await query('SELECT id FROM auth.attestations WHERE revoked_at IS NOT NULL')).toEqual([]);
+    expect(state.signer).toHaveBeenCalledTimes(1);
   });
 
   it('commits revocation and evidence atomically; remove is idempotent and owner-bound', async () => {
@@ -196,15 +203,29 @@ describe('domain binding lifecycle with actual database constraints', () => {
     await pg.exec('ALTER TABLE auth.domain_bindings DROP CONSTRAINT test_failure');
   });
 
-  it('rechecks due batches and revokes both lost proof and unavailable DNS', async () => {
+  it('counts unavailable DNS as failed without refreshing evidence in mixed due batches', async () => {
     for (const domain of ['a.com', 'b.com', 'c.com']) {
       await addDomain({ domain, zoneOwner: 'did:owner' });
       await verifyDomain(domain, 'did:owner');
     }
     await pg.exec("UPDATE auth.domain_bindings SET checked_at = now() - interval '25 hours'");
+    const before = await listDomains('did:owner');
+    const unavailable = before.find((row) => row.domain === 'b.com')!;
     state.txt.mockResolvedValueOnce([]).mockRejectedValueOnce({ code: 'ESERVFAIL' }).mockResolvedValueOnce([['did:owner']]);
-    expect(await recheckDomains()).toEqual({ checked: 3, revoked: 2, failed: 0 });
-    expect(await listDomains('did:owner', true)).toHaveLength(1);
+    expect(await recheckDomains()).toEqual({ checked: 2, revoked: 1, failed: 1 });
+    expect(await listDomains('did:owner')).toContainEqual(unavailable);
+    expect(await listDomains('did:owner', true)).toHaveLength(2);
+    expect(await countAttestations()).toBe(4);
+    expect(state.warn).toHaveBeenCalledWith({ domain: 'b.com' }, 'Domain recheck failed; no ownership evidence was changed');
+
+    await pg.exec("UPDATE auth.domain_bindings SET checked_at = now() - interval '49 hours' WHERE domain = 'b.com'");
+    const expired = (await listDomains('did:owner')).find((row) => row.domain === 'b.com')!;
+    state.txt.mockRejectedValue({ code: 'ETIMEOUT' });
+    expect(await recheckDomains()).toEqual({ checked: 0, revoked: 0, failed: 1 });
+    expect(await listDomains('did:owner')).toContainEqual(expired);
+    expect(await countAttestations()).toBe(4);
+    expect(await resolveVerifiedDomain('b.com')).toBeNull();
+    expect((await listDomains('did:owner', true)).map((row) => row.domain)).toEqual(['c.com']);
   });
 });
 
