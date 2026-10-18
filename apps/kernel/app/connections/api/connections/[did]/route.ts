@@ -54,7 +54,7 @@ export async function PATCH(
     if (error instanceof RelationshipLabelError) {
       return NextResponse.json({ error: error.message }, { status: error.status, headers });
     }
-    log.error({ err: String(error) }, 'Relationship label update failed');
+    log.error({ code: 'RELATIONSHIP_LABEL_UPDATE_FAILED' }, 'Relationship label update failed');
     return NextResponse.json({ error: 'Failed to update relationship label' }, { status: 500, headers });
   }
 }

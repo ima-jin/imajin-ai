@@ -10,7 +10,7 @@ import { canonicalize, type Identity } from '@imajin/auth';
 import * as authSchema from '@/src/db/schemas/auth';
 import * as connectionSchema from '@/src/db/schemas/connections';
 
-const mocks = vi.hoisted(() => ({ db: null as unknown, auth: vi.fn(), effective: vi.fn() }));
+const mocks = vi.hoisted(() => ({ db: null as unknown, auth: vi.fn(), effective: vi.fn(), logError: vi.fn() }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
   ...await import('@/src/db/schemas/connections'),
@@ -25,6 +25,10 @@ vi.mock('@imajin/auth', async (original) => ({
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@/src/lib/kernel/lookup', () => ({ lookupIdentity: async () => ({ handle: 'counterparty', name: 'Counterparty' }) }));
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@imajin/logger', async (original) => ({
+  ...await original<typeof import('@imajin/logger')>(),
+  createLogger: () => ({ error: mocks.logError, warn: vi.fn(), info: vi.fn() }),
+}));
 vi.mock('@/src/lib/auth/foreign-agent-stub', () => ({ blockForeignAgentStub: vi.fn() }));
 
 import { PATCH, OPTIONS } from '@/app/connections/api/connections/[did]/route';
@@ -243,6 +247,10 @@ describe('private relationship labels (#2945)', () => {
     await pg.exec("ALTER TABLE auth.attestations ADD CONSTRAINT reject_label CHECK (type <> 'connection.relationship.label.changed')");
     try {
       expect((await patch({ orgDid: org, relationshipLabel: 'client' })).status).toBe(500);
+      expect(mocks.logError).toHaveBeenCalledWith(
+        { code: 'RELATIONSHIP_LABEL_UPDATE_FAILED' }, 'Relationship label update failed',
+      );
+      expect(JSON.stringify(mocks.logError.mock.calls)).not.toContain('newLabel');
       expect((await connectionRows())[0].relationshipLabelA).toBeNull();
       expect(await auditRows()).toHaveLength(0);
     } finally {

@@ -313,6 +313,7 @@ paths:
         return false without removing existing read access.
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Connections list
@@ -397,7 +398,6 @@ paths:
           description: No active connection
         "500":
           description: Signing or persistence failed; mutation and event both rolled back
-  /api/connections/{podId}:
     delete:
       tags: [connections]
       operationId: disconnect
