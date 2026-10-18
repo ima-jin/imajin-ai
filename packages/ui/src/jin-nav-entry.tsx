@@ -43,6 +43,9 @@ export function JinNavEntry({ href, identityDid }: Readonly<{ href: string; iden
         setAttention(null);
       }
     }
+    function storageChanged(event: StorageEvent) {
+      if (event.key === null || event.key === 'imajin:acting-as') scopeChanged();
+    }
 
     function scopeChanged() {
       setAttention(null);
@@ -54,6 +57,7 @@ export function JinNavEntry({ href, identityDid }: Readonly<{ href: string; iden
     globalThis.addEventListener('jin:operator-approvals-refresh', refresh);
     globalThis.addEventListener('imajin:acting-as-changed', scopeChanged);
     globalThis.addEventListener('imajin:session-changed', scopeChanged);
+    globalThis.addEventListener('storage', storageChanged);
     return () => {
       generation++;
       controller?.abort();
@@ -62,6 +66,7 @@ export function JinNavEntry({ href, identityDid }: Readonly<{ href: string; iden
       globalThis.removeEventListener('jin:operator-approvals-refresh', refresh);
       globalThis.removeEventListener('imajin:acting-as-changed', scopeChanged);
       globalThis.removeEventListener('imajin:session-changed', scopeChanged);
+      globalThis.removeEventListener('storage', storageChanged);
     };
   }, [href, identityDid]);
 

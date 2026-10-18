@@ -1166,7 +1166,9 @@ paths:
         decision controls read-only instead of offering a tap the confirm
         rail will refuse with 403 `act_as_not_permitted`.
         `?view=acting` (#2952) opts into the validated acting organization's
-        read-only Inbox, enforcing controller access to service `jin`. Without
+        read-only Inbox, enforcing owner/admin membership of a genuine group
+        and controller access to service `jin`. Agent/maintainer roles cannot
+        use this projection to read a personal principal's Inbox. Without
         an acting organization it reads the session Inbox. It additionally
         returns `canAccess`: true for the node operator, an authorized group
         controller, or a principal with addressed cards; false for delegated

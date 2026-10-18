@@ -84,11 +84,11 @@ describe('persistent Jin nav entry', () => {
     expect(errorLog).toHaveBeenCalled();
   });
 
-  it.each(['focus', 'jin:operator-approvals-refresh'])('refreshes on %s', async event => {
+  it.each(['focus', 'jin:operator-approvals-refresh', 'storage'])('refreshes on %s', async event => {
     entry();
     await screen.findByRole('link');
     fetchMock.mockResolvedValue(inbox(['pending', 'pending']));
-    fireEvent(window, new Event(event));
+    fireEvent(window, event === 'storage' ? new StorageEvent('storage', { key: 'imajin:acting-as' }) : new Event(event));
     await screen.findByRole('link', { name: '/jin — 2 pending Inbox approvals' });
   });
 
@@ -157,5 +157,7 @@ describe('persistent Jin nav entry', () => {
     expect(link.parentElement?.parentElement?.tagName).toBe('NAV');
     expect(link.parentElement?.className).not.toContain('hidden');
     expect(link.closest('.hidden')).toBeNull();
+    expect(screen.getByText('@operator').className).toContain('truncate');
+    expect(screen.getByText('@operator').closest('button')?.className).toContain('max-w-[150px]');
   });
 });

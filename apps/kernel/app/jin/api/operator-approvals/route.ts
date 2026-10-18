@@ -40,6 +40,8 @@ import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-ap
 import { inboxDidFor } from '@/src/lib/notify/approval-addressing';
 import { actAsContext } from '@/src/lib/notify/act-as-guard';
 import { listApprovalsForOperator } from '@/src/lib/notify/operator-approvals-service';
+import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
+import { corsOptions } from '@/src/lib/kernel/cors';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,6 +55,13 @@ export async function GET(request: NextRequest) {
   const authResult = await requireAuth(request, actingView ? { service: 'jin' } : undefined);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
+  }
+  const { identity } = authResult;
+  if (actingView && identity.actingAs && (
+    !['owner', 'admin'].includes(identity.actingAsRole ?? '') ||
+    !await isActiveGroupMember(identity.actingAs, identity.id)
+  )) {
+    return NextResponse.json({ error: 'Organization Inbox requires an owner or admin of a group' }, { status: 403, headers: cors });
   }
 
   const sessionInboxDid = inboxDidFor(authResult.identity);
@@ -76,4 +85,9 @@ export async function GET(request: NextRequest) {
   );
 }
 
-export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+export function OPTIONS(request: NextRequest) {
+  const response = corsOptions(request);
+  const headers = response.headers.get('Access-Control-Allow-Headers');
+  response.headers.set('Access-Control-Allow-Headers', [headers, 'X-Acting-As'].filter(Boolean).join(', '));
+  return response;
+}
