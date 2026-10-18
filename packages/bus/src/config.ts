@@ -52,6 +52,10 @@ function loopLifecycleChain(): ReactorConfig[] {
     { type: 'emit', config: {}, enabled: true },
   ];
 }
+/** Step history and its Record emission must both be visible before ingest returns. */
+function stepObservationChain(): ReactorConfig[] {
+  return loopLifecycleChain().map(reactor => ({ ...reactor, await: true }));
+}
 
 /**
  * The `mjn` reactor entry shared by every emitting chain (#2017). Deliberately
@@ -748,6 +752,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'loop.progress': loopLifecycleChain(),
   'loop.blocked': loopLifecycleChain(),
   'loop.finished': loopLifecycleChain(),
+  // #2878 — observations only; new types use fallback config, no DB migration.
+  'step.queued': stepObservationChain(),
+  'step.updated': stepObservationChain(),
+  'step.claimed': stepObservationChain(),
+  'step.started': stepObservationChain(),
+  'step.progress': stepObservationChain(),
+  'step.blocked': stepObservationChain(),
+  'step.finished': stepObservationChain(),
+  'step.observed': stepObservationChain(),
+  'step.attested': stepObservationChain(),
   'surface.acquired': [{ type: 'emit', config: {}, enabled: true }],
   'surface.released': [{ type: 'emit', config: {}, enabled: true }],
   'surface.conflicted': [{ type: 'emit', config: {}, enabled: true }],

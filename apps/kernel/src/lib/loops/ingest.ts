@@ -29,6 +29,7 @@ import { redactLoopText } from './output-redaction';
 import { canonicalize } from '@imajin/auth';
 import { projectSurfaceLease, loopObservationId } from './surface-lease';
 import { signSurfaceConflict } from './surface-conflict';
+import { isStepEventType, validateStepPayload } from './step-types';
 
 const log = createLogger('kernel:loops');
 
@@ -42,16 +43,9 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     log.warn({ type, loopId: redactLoopText(payload.loopId), publisherDid: redactLoopText(publisherDid) }, 'loop event signature rejected');
     return { ok: false, error: verification.error, status: 400 };
   }
-  if (!isBoundedLoopJson(payload) || !isWithinLoopMetadataBudget(payload) || (payload.output !== undefined && !isLoopOutput(payload.output))) {
-    return { ok: false, error: 'Invalid loop output', status: 400 };
-  }
-  const sanitized = redactLoopEnvelope(payload);
-  if (!isWithinLoopMetadataBudget(sanitized)) {
-    return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };
-  }
-  if (!hasStableLoopIdentity(request, sanitized)) {
-    return { ok: false, error: 'Loop identity fields must not contain credentials', status: 400 };
-  }
+  const validation = validateLoopFacts(request);
+  if (!validation.ok) return validation;
+  const sanitized = validation.payload;
 
   // #2358: a valid signature only proves publisherDid controls its own key —
   // it says nothing about whether publisherDid may write history for
@@ -76,13 +70,17 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
     const historyPayload = { ...persistedPayload };
     delete historyPayload.publisherProof;
     const canKeepProof = persistedPayload === sanitized && canonicalize(payload) === canonicalize(sanitized);
+    // Step facts and manual attestations must retain exact signed evidence.
+    if (isStepEventType(type) && !canKeepProof) {
+      return { ok: false, error: 'Step observations must contain only inline, credential-free facts', status: 400 };
+    }
     const publishedPayload = {
       ...historyPayload,
       ...(canKeepProof ? { publisherProof: { type, payload, publisherDid, signature } } : {}),
     };
-    const conflictingLoopId = await projectSurfaceLease(request, publishedPayload, canKeepProof);
+    const conflictingLoopId = isStepEventType(type) ? null : await projectSurfaceLease(request, publishedPayload, canKeepProof);
     await bus.publish(type, {
-      ...(type === 'loop.finished' ? { id: loopObservationId(request) } : {}),
+      ...(type === 'loop.finished' || isStepEventType(type) ? { id: loopObservationId(request) } : {}),
       issuer: publisherDid,
       subject: sanitized.principal,
       scope: 'loop',
@@ -104,6 +102,25 @@ export async function ingestLoopEvent(request: LoopIngestRequest): Promise<Inges
 
   log.info({ type, loopId: sanitized.loopId, kind: sanitized.kind, principal: sanitized.principal }, 'loop event ingested');
   return { ok: true };
+}
+
+function validateLoopFacts(request: LoopIngestRequest):
+  { ok: true; payload: LoopIngestRequest['payload'] } | { ok: false; error: string; status: number } {
+  const { type, payload, publisherDid } = request;
+  if (isStepEventType(type) && !validateStepPayload(type, payload, publisherDid)) {
+    return { ok: false, error: 'Invalid step observation', status: 400 };
+  }
+  if (!isBoundedLoopJson(payload) || !isWithinLoopMetadataBudget(payload) || (payload.output !== undefined && !isLoopOutput(payload.output))) {
+    return { ok: false, error: 'Invalid loop output', status: 400 };
+  }
+  const sanitized = redactLoopEnvelope(payload);
+  if (!isWithinLoopMetadataBudget(sanitized)) {
+    return { ok: false, error: 'Redacted loop metadata exceeds 16 KiB', status: 400 };
+  }
+  if (!hasStableLoopIdentity(request, sanitized)) {
+    return { ok: false, error: 'Loop identity fields must not contain credentials', status: 400 };
+  }
+  return { ok: true, payload: sanitized };
 }
 
 /** A collision is data, never a dispatch denial or harness call. */
