@@ -196,7 +196,7 @@ function MemberEditor({
     <form onSubmit={save} aria-label={`Edit ${memberLabel(controller)}`} className="mt-3">
       <fieldset disabled={saving} className="space-y-3">
         <label className="block text-sm text-gray-300">
-          Member role
+          <span>Member role</span>
           <select
             value={role}
             onChange={(event) => setRole(event.target.value)}

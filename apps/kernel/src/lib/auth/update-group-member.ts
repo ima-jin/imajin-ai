@@ -24,7 +24,7 @@ function parseUpdate(body: unknown) {
   return value as { role?: string; allowedServices?: string[] | null };
 }
 
-export async function updateGroupMember(groupDid: string, actor: MemberActor, memberDid: string, body: unknown) {
+export function updateGroupMember(groupDid: string, actor: MemberActor, memberDid: string, body: unknown) {
   const input = parseUpdate(body);
   return db.transaction(async (tx) => {
     // Same lock as add/remove and #2892: no stale membership or owner mutations.
@@ -49,8 +49,10 @@ export async function updateGroupMember(groupDid: string, actor: MemberActor, me
       throw new OwnershipError('Admin can only edit members and cannot grant admin', 403);
     }
     const services = input.allowedServices === undefined ? target.allowedServices : input.allowedServices;
-    const allowedServices = role === 'agent' && services?.length ? [...new Set(services)].sort() : null;
-    const oldServices = target.allowedServices?.length ? [...target.allowedServices].sort() : null;
+    const allowedServices = role === 'agent' && services?.length
+      ? [...new Set(services)].sort((a, b) => a.localeCompare(b)) : null;
+    const oldServices = target.allowedServices?.length
+      ? [...target.allowedServices].sort((a, b) => a.localeCompare(b)) : null;
     if (role === target.role && JSON.stringify(oldServices) === JSON.stringify(allowedServices)) {
       return { ok: true, memberDid, role, allowedServices, changed: false };
     }
