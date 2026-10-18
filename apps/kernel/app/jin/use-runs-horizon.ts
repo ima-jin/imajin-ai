@@ -29,7 +29,8 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
         const next: RunHorizon[] = [];
         // Bound concurrent reads even when the operator loads many history pages.
         for (let index = 0; index < ids.length; index += 6) {
-          const batch = await Promise.all(ids.slice(index, index + 6).map(async (loopId) => {
+          if (controller.signal.aborted) return;
+          const batch = await Promise.allSettled(ids.slice(index, index + 6).map(async (loopId) => {
             const response = await fetch(`/jin/api/runs/${encodeURIComponent(loopId)}`, {
               credentials: 'include', signal: controller.signal, cache: 'no-store',
             });
@@ -46,7 +47,10 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
             return { loopId, horizon: data.detail.horizon as Horizon,
               commandAvailable: data.commandTarget?.available === true };
           }));
-          next.push(...batch);
+          for (const result of batch) {
+            if (result.status === 'rejected') throw result.reason;
+            next.push(result.value);
+          }
         }
         if (controller.signal.aborted) return;
         setRuns(next.filter(run => !!run.horizon));

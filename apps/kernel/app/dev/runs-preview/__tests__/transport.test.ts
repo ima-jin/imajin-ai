@@ -10,6 +10,26 @@ beforeEach(() => { vi.stubEnv('NODE_ENV', 'development'); vi.stubGlobal('crypto'
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
 describe('development-only Runs transport', () => {
+  it('projects twelve steps in all five zones and acquires a requested lease only after the delayed agent observation', async () => {
+    const fixture = await createRunsPreviewTransport();
+    vi.stubGlobal('fetch', fixture.fetcher);
+    const read = async () => (await (await fixture.fetcher('/jin/api/runs/fixture-session')).json()).detail.horizon;
+    const before = await read();
+    expect(before.depth).toBe(12);
+    expect(before.steps.map((step: { zone: string }) => step.zone)).toEqual([
+      'head', 'head', 'near', 'near', 'near', 'middle', 'middle', 'middle', 'tail', 'tail', 'past', 'past',
+    ]);
+    expect(before.steps[11].openExitConditions).toEqual(['prod']);
+    const command = await prepareSignedSessionCommand('fixture-session', 'session.send', {
+      loopId: 'fixture-session',
+      message: 'Claim horizon step "fixture-step-3" in loop "fixture-session". Acquire its step lease through the signed loop rail; do not treat this request as an acquired lease.',
+    }, fixture.keypair);
+    await dispatchSessionCommand('fixture-session', command);
+    expect((await read()).steps[2].zone).toBe('near');
+    await vi.waitFor(async () => expect((await read()).steps[2].zone).toBe('head'), { timeout: 2000 });
+    expect((await read()).steps[2].claim.holderDid).toBe('did:imajin:fixture-agent');
+    fixture.dispose();
+  });
   it('accepts URL and Request inputs, and reads Request JSON bodies without object stringification', async () => {
     const fixture = await createRunsPreviewTransport();
     expect((await fixture.fetcher(new URL('https://fixture.local/jin/api/runs'))).status).toBe(200);

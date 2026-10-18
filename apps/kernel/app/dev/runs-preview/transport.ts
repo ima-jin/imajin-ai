@@ -4,6 +4,7 @@ import type { SessionCommandBody, SessionCommandFrame } from '@/src/lib/jin/sess
 import type { OperatorApprovalCard } from '@/app/jin/operator-approvals-panel';
 import type { LoopOutput, StoredLoopOutput } from '@imajin/bus';
 import { canonicalCommandJson, prepareSignedSessionCommand, dispatchSessionCommand, type SessionCommandClient } from '@/app/jin/session-command-client';
+import { createHorizonFixture } from './horizon-fixture';
 
 const principal = 'did:imajin:fixture-principal';
 const agent = 'did:imajin:fixture-agent';
@@ -77,6 +78,7 @@ export async function createRunsPreviewTransport() {
   const kernelPublic = await ed.getPublicKeyAsync(kernelKey);
   const agentPublic = await ed.getPublicKeyAsync(agentKey);
   const loops = [fixtureLoop('fixture-session', 'openclaw.session'), fixtureLoop('fixture-warp', 'warp.run')];
+  const horizon = createHorizonFixture('fixture-session', principal, agent);
   loops[0].state = 'blocked';
   loops[0].lastEventType = 'loop.blocked';
   const events: LoopEventJson[] = fixtureOutputs().map((output, index) => ({
@@ -114,6 +116,7 @@ export async function createRunsPreviewTransport() {
     events.push({ id: `outcome-${command.commandId}`, loopId: parent, type: eventType, issuer: agent, principal, payload,
       occurredAt: payload.at, createdAt: payload.at });
     if (spawn) loops.push(fixtureLoop(loopId, 'openclaw.subagent', parent));
+    if (command.type === 'session.send') horizon.observeClaim(command.payload.message);
     if (native) native.sessionOutcome = { commandId: command.commandId, outcome: 'completed', at: payload.at };
   }
   async function commandRequest(loopId: string, data: Record<string, unknown>, approvalRail = false) {
@@ -168,7 +171,8 @@ export async function createRunsPreviewTransport() {
     if (match[2]) return commandRequest(loopId, await fixtureBody(input, options));
     const loop = loops.find((item) => item.loopId === loopId);
     if (!loop) return json({ error: 'Not found' }, 404);
-    return json({ isOperator: true, detail: { loop, events: events.filter((event) => event.loopId === loopId) },
+    return json({ isOperator: true, detail: { loop, events: events.filter((event) => event.loopId === loopId),
+      horizon: loopId === 'fixture-session' ? horizon.read() : { steps: [], depth: 0, targetDepth: 12 } },
       commandTarget: { available: loop.kind !== 'warp.run', agentDid: agent } });
   };
   return { fetcher, proofs, bindingProofs, agentPublicKey: ed.etc.bytesToHex(agentPublic),
