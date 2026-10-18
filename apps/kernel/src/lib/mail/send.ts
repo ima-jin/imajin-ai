@@ -5,6 +5,7 @@ import { prepareMechanicalAttestation } from '@/src/lib/auth/emit-mechanical-att
 import { createAttestationEntry } from '@/src/lib/auth/dfos';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { resolveMailSenderContext, type SenderResolution } from './resolver';
+import { validateReplyTo } from './validation';
 import type { MailPurpose } from './types';
 
 export interface KernelEmailOptions extends SendEmailOptions {
@@ -23,6 +24,7 @@ export async function sendKernelEmail(options: KernelEmailOptions): ReturnType<t
   let row: Awaited<ReturnType<typeof prepareMechanicalAttestation>>;
   let sender: SenderResolution;
   try {
+    if (options.replyTo !== undefined) validateReplyTo(options.replyTo);
     const resolved = await resolveMailSenderContext({ purpose, ownerDid, appDid });
     const owner = resolved.ownerDid;
     sender = resolved.sender;
@@ -38,11 +40,12 @@ export async function sendKernelEmail(options: KernelEmailOptions): ReturnType<t
   } catch {
     return { success: false, error: 'mail_signing_or_sender_unavailable' };
   }
+  const replyTo = options.replyTo ?? sender.replyTo;
   const result = await sendEmail({
     to: options.to, subject: options.subject, html: options.html,
     ...(options.text !== undefined ? { text: options.text } : {}),
     ...(options.unsubscribeUrl !== undefined ? { unsubscribeUrl: options.unsubscribeUrl } : {}),
-    from: sender.from, ...(sender.replyTo ? { replyTo: sender.replyTo } : {}),
+    from: sender.from, ...(replyTo ? { replyTo } : {}),
   });
   if (!result.success) return result;
   try {

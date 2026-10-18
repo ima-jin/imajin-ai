@@ -137,19 +137,30 @@ describe('mail sender propagation through actual notify routes', () => {
     expect(mocks.mail).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'receipts', ownerDid: 'did:imajin:issuer' }));
     expect(mocks.mail.mock.calls[0][0]).not.toHaveProperty('appDid');
   });
-  it('binds broadcast to registry owner, uses notifications even for receipt-named scope and strips raw replyTo', async () => {
+  it('binds broadcast to registry owner, fixes its purpose/from and forwards valid organizer replyTo', async () => {
     mocks.emptyLimit.mockResolvedValue([{ contactEmail: 'recipient@example.com' }]);
     const res = await broadcast(request({
       scope: 'pay:payment_request-paid', subject: 'Broadcast', html: '<p>Broadcast</p>',
       dids: ['did:imajin:recipient'], ownerDid: 'did:imajin:spoof', appDid: 'did:imajin:spoof',
-      purpose: 'receipts', from: 'spoof@example.com', replyTo: 'spoof@example.com',
+      purpose: 'receipts', from: 'spoof@example.com', replyTo: 'organizer@example.org',
     }));
     expect(await res.json()).toMatchObject({ sent: 1, errors: 0 });
     expect(mocks.mail).toHaveBeenCalledWith(expect.objectContaining({
       ownerDid: 'did:imajin:app-owner', appDid, purpose: 'notifications', to: 'recipient@example.com',
+      replyTo: 'organizer@example.org',
     }));
-    expect(mocks.mail.mock.calls[0][0]).not.toHaveProperty('replyTo');
     expect(mocks.mail.mock.calls[0][0]).not.toHaveProperty('from');
+  });
+  it('rejects broadcast reply-to header injection before any send', async () => {
+    mocks.emptyLimit.mockResolvedValue([{ contactEmail: 'recipient@example.com' }]);
+    const res = await broadcast(request({
+      scope: 'events', subject: 'Broadcast', html: '<p>Broadcast</p>',
+      dids: ['did:imajin:recipient'], replyTo: 'a@example.org\r\nBcc: victim',
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid reply-to' });
+    expect(mocks.mail).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
   });
 });
 

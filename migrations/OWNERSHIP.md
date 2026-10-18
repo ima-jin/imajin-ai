@@ -159,6 +159,13 @@ Wired into CI as `pnpm check:migration-ownership`, a step in the
 operator curation, not installation or authorization; this migration adds no
 tables and does not change anyone's enabled-app list or grants. Number 0202 is
 reserved for #2863 and 0204 for #2857.
+### Mail senders (#2919)
+
+`0210_mail_senders.sql` is kernel-owned and creates `kernel.mail_senders`
+for send-only, fixed-purpose owner/app sender configuration. It provisions
+no mailboxes or MX records and adds no grants. Migration 0210 is reserved
+for #2921; the surrounding train reservations are 0205 for #2899, 0206 for
+#2907, 0207 for #2857, 0208 for #2903, 0209 for #2912, and 0211 for #2906.
 
 ### Environment variables
 

@@ -17,7 +17,7 @@ function validateLocalPart(value: string): void {
   if (typeof value !== 'string' || value.length > 64 || !value.split('.').every(atom => LOCAL_ATOM.test(atom))) throw new Error('Invalid mail local part');
 }
 
-function validateReplyTo(value: string | null): void {
+export function validateReplyTo(value: string | null): void {
   if (value === null) return;
   if (typeof value !== 'string' || value.length > 254) throw new Error('Invalid reply-to');
   const parts = value.split('@');

@@ -9,6 +9,7 @@ import { db, notifications, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
 import { renderBroadcastEmail } from '@imajin/email';
 import { sendKernelEmail } from '@/src/lib/mail/send';
+import { validateReplyTo } from '@/src/lib/mail/validation';
 import { fetchAudienceFromRegistry, checkRegistryPreferences } from './registry';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { authenticateNotifySender, notifyRegistryKey } from '@/src/lib/notify/service-auth';
@@ -135,13 +136,19 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'], eventContext } = body;
+  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'], eventContext, replyTo } = body;
 
   if (!scope || !subject || (!htmlInput && !markdown)) {
     return NextResponse.json(
       { error: 'Missing required fields: scope, subject, html (or markdown)' },
       { status: 400, headers: cors },
     );
+  }
+
+  try {
+    if (replyTo !== undefined) validateReplyTo(replyTo);
+  } catch {
+    return NextResponse.json({ error: 'Invalid reply-to' }, { status: 400, headers: cors });
   }
 
   const { html, text } = resolveEmailContent(htmlInput, markdown, textInput, eventContext);
@@ -189,6 +196,7 @@ export async function POST(request: NextRequest) {
           if (channels.includes('email')) {
             const result = await sendKernelEmail({
               ...auth.sender,
+              ...(replyTo ? { replyTo } : {}),
               purpose: 'notifications',
               to: email,
               subject,

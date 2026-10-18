@@ -31,7 +31,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 describe('signed kernel email', () => {
   it('verifies the real persisted canonical crypto signature and redaction-safe payload', async () => {
-    expect(await sendKernelEmail({ ...options, appDid: 'did:imajin:app', ownerDid: owner, from: 'attacker@evil.com', replyTo: 'attacker@evil.com' }))
+    expect(await sendKernelEmail({ ...options, appDid: 'did:imajin:app', ownerDid: owner, from: 'attacker@evil.com' }))
       .toEqual({ success: true, messageId: 'provider-id' });
     const row = mocks.values.mock.calls[0][0] as PreparedMechanicalAttestation;
     expect(row).toMatchObject({ type: 'mail.sent', issuerDid: node, subjectDid: 'did:imajin:app', attestationStatus: null });
@@ -50,16 +50,29 @@ describe('signed kernel email', () => {
     expect(ATTESTATION_TYPES).toContain('mail.sent');
     expect(MECHANICAL_ATTESTATION_TYPES).toContain('mail.sent');
   });
-  it('preserves optional text and unsubscribe transport options, never raw reply-to', async () => {
+  it('preserves optional text, unsubscribe and valid caller reply-to transport options', async () => {
     await sendKernelEmail({ ...options, text: 'Plain', unsubscribeUrl: 'https://example.com/unsubscribe', replyTo: 'raw@example.com' });
     expect(mocks.send.mock.calls[0][0]).toMatchObject({ text: 'Plain', unsubscribeUrl: 'https://example.com/unsubscribe' });
-    expect(mocks.send.mock.calls[0][0]).not.toHaveProperty('replyTo');
+    expect(mocks.send.mock.calls[0][0].replyTo).toBe('raw@example.com');
   });
   it('uses owner as subject and emits resolved reply-to', async () => {
     mocks.sender.mockResolvedValue({ from: 'Owner <x@example.com>', replyTo: 'reply@example.com', source: 'owner' });
     await sendKernelEmail({ ...options, ownerDid: owner });
     expect(mocks.values.mock.calls[0][0].subjectDid).toBe(owner);
     expect(mocks.send.mock.calls[0][0].replyTo).toBe('reply@example.com');
+  });
+  it('prefers a valid caller reply-to over the configured sender reply-to', async () => {
+    mocks.sender.mockResolvedValue({ from: 'Owner <x@example.com>', replyTo: 'configured@example.com', source: 'owner' });
+    await sendKernelEmail({ ...options, replyTo: 'organizer@example.org' });
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+      from: 'Owner <x@example.com>', replyTo: 'organizer@example.org',
+    }));
+  });
+  it.each(['a@example.org\r\nBcc: victim', 'not-an-address', ''])('rejects invalid caller reply-to %s before sending', async replyTo => {
+    expect(await sendKernelEmail({ ...options, replyTo })).toEqual({ success: false, error: 'mail_signing_or_sender_unavailable' });
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.values).not.toHaveBeenCalled();
+    expect(mocks.chain).not.toHaveBeenCalled();
   });
   it('defaults subject/on-behalf-of to node and generates an opaque ref', async () => {
     await sendKernelEmail({ ...options, messageRef: undefined });
