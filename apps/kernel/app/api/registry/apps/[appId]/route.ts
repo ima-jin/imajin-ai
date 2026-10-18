@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAuth, resolveActingDid, approvedScopeCeiling, type AppDependency } from '@imajin/auth';
 import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
 import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
+import { validateTemplateLineage } from '@/src/lib/apps/template-lineage';
 import { enforceRoutePolicy, type IdentitySource } from '@imajin/auth/delegation-policy';
 import { isAppVisibility, isVisibilityWidening, APP_VISIBILITY_ERROR, type AppVisibility } from '@/src/lib/apps/visibility';
 import { canAccessAppListing, resolveAppOwnerDids } from '@/src/lib/kernel/app-visibility';
@@ -23,6 +24,11 @@ export async function GET(request: NextRequest, props: { params: Promise<{ appId
       callbackUrl: registryApps.callbackUrl,
       homepageUrl: registryApps.homepageUrl,
       logoUrl: registryApps.logoUrl,
+      sourceRepo: registryApps.sourceRepo,
+      template: registryApps.template,
+      templateRef: registryApps.templateRef,
+      templateSyncedAt: registryApps.templateSyncedAt,
+      joined: registryApps.joined,
       requestedScopes: registryApps.requestedScopes,
       providesScopes: registryApps.providesScopes,
       dependsOn: registryApps.dependsOn,
@@ -51,6 +57,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ appId
 }
 
 type AppUpdates = Partial<typeof registryApps.$inferInsert>;
+function buildVisibilityUpdate(value: unknown): Pick<AppUpdates, 'visibility'> {
+  return isAppVisibility(value) ? { visibility: value } : {};
+}
 
 /** The plain, unvalidated owner-editable fields of PATCH. */
 function buildFieldUpdates(body: Record<string, unknown>): AppUpdates {
@@ -190,7 +199,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   }
 
   const updates = buildFieldUpdates(body);
-  if (isAppVisibility(body.visibility)) updates.visibility = body.visibility;
+  const lineage = validateTemplateLineage(body);
+  if ('error' in lineage) {
+    return NextResponse.json({ error: lineage.error }, { status: 400 });
+  }
+  Object.assign(updates, lineage.ok, buildVisibilityUpdate(body.visibility));
 
   // #2663: the app's own scopes — same assignment model as requestedScopes,
   // validated the same way the register route validates them (#2674: and capped

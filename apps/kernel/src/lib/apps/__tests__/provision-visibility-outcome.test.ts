@@ -47,6 +47,7 @@ vi.mock('@/src/lib/vault', () => ({
   emitGrantEvents: vi.fn(),
 }));
 vi.mock('@/src/lib/github/org-provisioning', () => ({
+  PROVISIONING_ORG: 'ima-jin',
   DEFAULT_APP_TEMPLATE: 'ima-jin/imajin-app-template',
   ensureRepoFromTemplate: vi.fn().mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/gbs', created: true }),
   tryGetInstallationToken: vi.fn().mockResolvedValue(null),
@@ -109,6 +110,7 @@ describe('#2935 — one approved provision, no owner PATCH', () => {
       ownerDid: 'did:imajin:gbs', visibility: 'private',
       callbackUrl: 'https://dev-gbs.imajin.ai/api/auth/callback',
       allowedRedirectHosts: ['dev-gbs.imajin.ai'], tokenAudiences: ['gbs'],
+      sourceRepo: 'ima-jin/gbs', template: 'ima-jin/imajin-app-template', joined: true,
     });
     expect(await h.database.select().from(identityMembers)).toEqual([]);
     expect(h.issueDomain).toHaveBeenCalledWith({ domain: 'dev-gbs.imajin.ai', appDid: 'did:imajin:gbs-app' });

@@ -122,6 +122,19 @@ describe('POST /api/admin/registry/apps (#1990)', () => {
     mocks.requireAdminMock.mockResolvedValue({ actingAs: 'did:imajin:node' });
   });
 
+  it('accepts cross-org lineage on admin registration', async () => {
+    const lineage = { sourceRepo: 'gbscontracting/website', template: 'ima-jin/imajin-app-template', joined: false };
+    const res = await POST(makePostRequest({ name: 'Website', callbackUrl: 'https://example.com/cb', ownerDid: 'did:owner', ...lineage }) as never);
+    expect(res.status).toBe(201);
+    expect(mocks.insertValuesMock).toHaveBeenCalledWith(expect.objectContaining(lineage));
+  });
+
+  it('rejects invalid lineage on admin registration', async () => {
+    const res = await POST(makePostRequest({ name: 'Website', callbackUrl: 'https://example.com/cb', ownerDid: 'did:owner', template: 'bad' }) as never);
+    expect(res.status).toBe(400);
+    expect(mocks.insertMock).not.toHaveBeenCalled();
+  });
+
   it('registers a third-party profile widget with nav metadata but never owner app membership', async () => {
     const profileWidget = { path: '/profile/studio', label: 'Studio', icon: 'S' };
     const response = await POST(makePostRequest({

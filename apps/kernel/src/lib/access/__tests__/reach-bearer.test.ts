@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
@@ -182,6 +182,8 @@ describe('static-header HTTP round trip', () => {
   }
 
   it('caps a knock-minted bearer flood before persistence with one metadata-only audit', async () => {
+    // Freeze the rate-limit window without stalling PGlite's asynchronous timers.
+    vi.useFakeTimers({ toFake: ['Date'] });
     await realLimits();
     const credential = await contact();
     const responses = [];
@@ -393,6 +395,7 @@ describe('static-header HTTP round trip', () => {
     expect((await poll(credential.bearer, credential.reachId)).status).toBe(401);
   });
 });
+afterEach(() => vi.useRealTimers());
 afterAll(async () => { await pg.close(); });
 beforeEach(async () => {
   await pg.exec('TRUNCATE auth.delegate_grant_bearers, auth.delegate_grant_requests, auth.foreign_agent_stubs, auth.identities, auth.reach_sender_blocks, auth.reach_envelopes, auth.attestations CASCADE');

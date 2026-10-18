@@ -54,6 +54,7 @@ import {
   fetchAppManifest,
   appManifestError,
   DEFAULT_APP_TEMPLATE,
+  PROVISIONING_ORG,
   type EnsureRepoResult,
   type AppManifest,
   type AppManifestResult,
@@ -410,6 +411,8 @@ async function registerApp(params: {
   redirects: RegistrationRedirects;
   visibility: AppVisibility;
   retiredLegacyAppId: string | null;
+  template: string;
+  repoCreated: boolean;
   ownerDid: string;
 }): Promise<{ id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string }> {
   const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations } = params;
@@ -492,6 +495,10 @@ async function registerApp(params: {
       tier: 'third_party',
       status: 'active',
       slug,
+      sourceRepo: `${PROVISIONING_ORG}/${slug}`,
+      template: params.template,
+      // A newly generated repo starts joined; reusing a repo does not prove adoption.
+      joined: params.repoCreated,
       tokenAudiences: [slug],
       icon: navMetadata.icon,
       entryUrl: navMetadata.entryUrl,
@@ -616,7 +623,10 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // ── Step 1: repo ──────────────────────────────────────────────────────
   let repo: EnsureRepoResult;
   try {
-    repo = await ensureRepoFromTemplate(slug, template);
+    const ensured = await ensureRepoFromTemplate(slug, template);
+    // A prior attempt may have created the repo before failing mint/register.
+    // Finding it on retry must not erase durable template-creation provenance.
+    repo = { ...ensured, created: ensured.created || existingRun?.repoCreated === true };
     await upsertProvisionRow(slug, { repoUrl: repo.repoUrl, repoCreated: repo.created });
   } catch (err) {
     return markFailed(nodeDid, slug, 'repo', err);
@@ -658,6 +668,8 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       redirects,
       visibility,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
+      template,
+      repoCreated: repo.created,
       ownerDid: params.siteOwnerDid ?? params.authorizedBy?.operatorDid ?? 'did:imajin:platform',
     });
     retirement = retirementContext(registration.retiredLegacyAppId);

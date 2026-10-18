@@ -744,6 +744,20 @@ describe('runAppProvision — #2746 callbackUrl derives from the node public URL
 });
 
 describe('runAppProvision — happy path', () => {
+  it('preserves template creation provenance after a create-then-mint-failure retry', async () => {
+    mintKeypairMock.mockRejectedValueOnce(new Error('mint temporarily unavailable'));
+    expect((await runAppProvision({ slug: 'dykil', displayName: 'Dykil' })).status).toBe('failed');
+    expect(appProvisionsStore.get('dykil')?.repoCreated).toBe(true);
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
+    expect((await runAppProvision({ slug: 'dykil', displayName: 'Dykil' })).status).toBe('succeeded');
+    expect(appProvisionsStore.get('dykil')?.repoCreated).toBe(true);
+    expect([...registryAppsStore.values()][0]).toMatchObject({ sourceRepo: 'ima-jin/dykil', joined: true });
+  });
+  it('records reused repos as pending adoption, not proven joined', async () => {
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/dykil', created: false });
+    expect((await runAppProvision({ slug: 'dykil', displayName: 'Dykil' })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0]).toMatchObject({ sourceRepo: 'ima-jin/dykil', template: 'ima-jin/imajin-app-template', joined: false });
+  });
   it('runs repo -> mint -> register -> grant and returns a succeeded outcome (#2437: no Actions secrets)', async () => {
     const outcome = await runAppProvision({ slug: 'dykil', displayName: 'dykil' });
 
@@ -776,6 +790,9 @@ describe('runAppProvision — happy path', () => {
     expect(registryRow?.tier).toBe('third_party');
     expect(registryRow?.status).toBe('active');
     expect(registryRow?.slug).toBe('dykil');
+    expect(registryRow).toMatchObject({ sourceRepo: 'ima-jin/dykil', template: 'ima-jin/imajin-app-template', joined: true });
+    expect(registryRow).not.toHaveProperty('templateRef');
+    expect(registryRow).not.toHaveProperty('templateSyncedAt');
     // #2706: the audience apps.provision registers is the slug — never a host — so a Bearer
     // token minted for it verifies at the app with no post-provision registry edit.
     expect(registryRow?.tokenAudiences).toEqual(['dykil']);
