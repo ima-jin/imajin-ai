@@ -11,7 +11,7 @@ import { SCOPE_VOCABULARY } from '@imajin/auth/scope-vocabulary';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const h = vi.hoisted(() => ({
-  db: null as unknown, fail: false,
+  db: null as unknown, fail: false, failure: null as unknown,
   tokens: new Map<string, Record<string, unknown>>(), log: vi.fn(),
 }));
 vi.mock('@/src/db', async () => {
@@ -20,7 +20,7 @@ vi.mock('@/src/db', async () => {
   const registry = await import('@/src/db/schemas/registry');
   const db = new Proxy({}, {
     get: (_target, prop) => {
-      if (h.fail) throw new Error('database unavailable: internal detail');
+      if (h.fail) throw h.failure ?? new Error('database unavailable: internal detail');
       const target = h.db as Record<string | symbol, unknown>;
       const value = target[prop];
       return typeof value === 'function' ? value.bind(target) : value;
@@ -101,6 +101,7 @@ afterAll(async () => {
 beforeEach(async () => {
   vi.clearAllMocks();
   h.fail = false;
+  h.failure = null;
   sessionDid = OWNER;
   vi.stubEnv('AUTH_SERVICE_URL', 'https://kernel.test/auth');
   // Exercise real requireAuth with only its session-verification transport stubbed.
@@ -268,6 +269,18 @@ describe('validation and contract', () => {
       message: 'database unavailable: internal detail', code: undefined,
     }, 'App conversation metadata update failed');
   });
+  it.each([
+    [Object.assign(new Error('Database unavailable'), { code: '08006', token: 'must-not-log' }), 'Database unavailable', '08006'],
+    ['must-not-log', 'Unknown error', undefined],
+  ])('logs only safe message/code fields for failure %s', async (failure, message, code) => {
+    h.fail = true;
+    h.failure = failure;
+    const response = await put();
+    h.fail = false;
+    expect(response.status).toBe(500);
+    expect(h.log).toHaveBeenCalledWith({ message, code }, 'App conversation metadata update failed');
+    expect(JSON.stringify(h.log.mock.calls)).not.toContain('must-not-log');
+  });
   it('replays the guarded migration without changing legacy data', async () => {
     await seed(null);
     const before = await rows();
@@ -289,7 +302,7 @@ describe('validation and contract', () => {
 
 describe('identity provenance authority (#2926)', () => {
   it.each([false, true])('denies a foreign app before create/rename (room exists: %s)', async (exists) => {
-    if (exists) await seed(OTHER_APP);
+    if (exists) await seed(OTHER_APP, OTHER_APP);
     const before = await rows();
     const response = await put(request({ name: 'Hijacked', createdBy: OTHER_APP }, 'other-app', null));
     expect(response.status).toBe(403);
@@ -342,6 +355,9 @@ describe('identity provenance authority (#2926)', () => {
       const before = await rows();
       expect((await put(request(undefined, 'service', null))).status).toBe(401);
       sessionDid = OTHER_OWNER;
+      expect((await put()).status).toBe(403);
+      sessionDid = OWNER;
+      await client.query('UPDATE auth.identity_members SET removed_at = NOW()');
       expect((await put()).status).toBe(403);
       expect(await rows()).toEqual(before);
     });
