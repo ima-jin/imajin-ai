@@ -100,11 +100,11 @@ function ServiceScope({
       <div className="flex flex-wrap gap-3 text-sm text-gray-300">
         <label className="flex items-center gap-2">
           <input type="radio" name={modeName} checked={value === null} onChange={() => onChange(null)} />
-          All services
+          <span>All services</span>
         </label>
         <label className="flex items-center gap-2">
           <input type="radio" name={modeName} checked={value !== null} onChange={() => onChange([])} />
-          Restricted services
+          <span>Restricted services</span>
         </label>
       </div>
       {value !== null && (
@@ -232,8 +232,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
   const [removingDid, setRemovingDid] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const authBase =
-    typeof globalThis.location === 'undefined' ? (process.env.NEXT_PUBLIC_AUTH_URL ?? '') : globalThis.location.origin;
+  const authBase = globalThis.location?.origin ?? process.env.NEXT_PUBLIC_AUTH_URL ?? '';
 
   useEffect(() => {
     setEditingDid(null);
@@ -340,16 +339,16 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
   return (
     <div className="space-y-6">
       {status && (
-        <div
-          role={status.type === 'error' ? 'alert' : 'status'}
-          className={`p-4 rounded-lg border ${
+        <output
+          role={status.type === 'error' ? 'alert' : undefined}
+          className={`block p-4 rounded-lg border ${
             status.type === 'success'
               ? 'bg-green-900/20 border-green-800 text-green-400'
               : 'bg-red-900/20 border-red-800 text-red-400'
           }`}
         >
           {status.text}
-        </div>
+        </output>
       )}
 
       <div className="bg-[#0a0a0a] border border-gray-800 rounded-2xl p-6">
