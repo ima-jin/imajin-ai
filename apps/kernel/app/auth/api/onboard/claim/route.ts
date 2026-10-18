@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 /**
  * POST /api/onboard/claim
  *
@@ -126,14 +127,13 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       { success: true },
       { headers: cors }
     );
-    response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
 
     // Set active forest cookie if scoped
     if (record.scopeDid) {
       response.cookies.set('x-acting-as', record.scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
 
-    return response;
+    return withSessionCookie(response, sessionToken, cookieOptions);
 
   } catch (error) {
     log.error({ err: String(error) }, 'Onboard claim error');

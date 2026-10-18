@@ -18,6 +18,12 @@
     }
   },
   "tables": {
+    "auth.domain_bindings": {
+      "owner": "kernel",
+      "schema": "auth",
+      "firstMigration": "0211_domain_bindings.sql",
+      "notes": "Verified domain ownership and routing-only legacy forest bindings (#2902)."
+    },
     "auth.agent_knocks": {
       "owner": "kernel",
       "schema": "auth",
@@ -442,7 +448,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0037_bus_chain_configs.sql",
-      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589). 0207_seed_agent_reach_throttled_chain.sql seeds the awaited, metadata-only agent.reach.throttled audit chain (#2599)."
+      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589). 0207_seed_agent_reach_throttled_chain.sql seeds the awaited, metadata-only agent.reach.throttled audit chain (#2599). 0208_seed_vault_key_imported_chain.sql seeds the metadata-only vault.key.imported audit chain without replacing operator configuration (#2260)."
     },
     "kernel.calendar_entries": {
       "owner": "kernel",

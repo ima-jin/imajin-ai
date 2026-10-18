@@ -91,6 +91,13 @@ beforeEach(() => {
 });
 
 describe('node-issued-only types (#2081)', () => {
+  it.each(['domain.verified', 'domain.revoked'])('rejects internal %s even with the service key', async (type) => {
+    const res = await POST(makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type }));
+    expect(res.status).toBe(403);
+    expect(await res.json()).toEqual({ error: `Attestation type "${type}" requires the verified domain ceremony` });
+    expect(h.mockInsertValues).not.toHaveBeenCalled();
+    expect(h.mockPublish).not.toHaveBeenCalled();
+  });
   it.each(['onboard.link.sent', 'onboard.link.requested'])('rejects caller-forged %s even with an internal credential', async (type) => {
     const res = await POST(makeReq({
       issuer_did: 'did:imajin:node', subject_did: SUBJECT, type,

@@ -28,7 +28,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, KEY_ROTATED_ATTESTATION_TYPE } from '@imajin/auth';
+import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
@@ -36,6 +36,7 @@ import { randomUUID } from 'node:crypto';
 import { resolveIssuedAt, validateNostrKeyBinding, deriveOriginUrl, resolveEnvelopeFields, verifyDelegatedAttestation, validateSupersedesReference } from '../attestation-helpers';
 import { isRegisteredAttestationType } from '@/src/lib/auth/attestation-type-registry';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
+import { ceremonyAttestationRejection } from '@/src/lib/auth/ceremony-attestation-types';
 
 const log = createLogger('kernel');
 
@@ -111,6 +112,10 @@ function resolveNostrSignature(
  * `POST /api/admin/keys/rotation`. Returns the rejection, or null if allowed.
  */
 async function rejectUnsubmittableType(type: string): Promise<NextResponse | null> {
+  const ceremonyRejection = ceremonyAttestationRejection(type);
+  if (ceremonyRejection) {
+    return NextResponse.json({ error: ceremonyRejection }, { status: 403 });
+  }
   const isKnownType = (ATTESTATION_TYPES as readonly string[]).includes(type) || (await isRegisteredAttestationType(type));
   if (!isKnownType) {
     return NextResponse.json(
@@ -118,7 +123,7 @@ async function rejectUnsubmittableType(type: string): Promise<NextResponse | nul
       { status: 400 }
     );
   }
-  if (type === KEY_ROTATED_ATTESTATION_TYPE || type === 'onboard.link.sent' || type === 'onboard.link.requested') {
+  if (type === 'onboard.link.sent' || type === 'onboard.link.requested') {
     return NextResponse.json({ error: `Attestation type "${type}" is node-issued only` }, { status: 403 });
   }
   return null;

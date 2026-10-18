@@ -15,6 +15,7 @@ import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
 import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
+import { publicOrigin } from '@/src/lib/http/public-origin';
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -85,6 +86,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       scopeDid: resolvedScopeDid,
       inviteCode: resolvedInviteCode,
       wantPolling: wantPolling === true,
+      authUrl: `${publicOrigin(request)}/auth`,
     });
 
     if (!result.success) {

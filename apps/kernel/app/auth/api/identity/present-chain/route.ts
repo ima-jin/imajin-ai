@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { verifyChainLog } from '@/src/lib/auth/chain-providers';
@@ -71,8 +72,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         },
         created: false,
       });
-      response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-      return response;
+
+      return withSessionCookie(response, token, cookieConfig);
     }
 
     // 3. Check if the public key is already registered locally (same key, no chain yet)
@@ -106,8 +107,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         },
         created: false,
       });
-      response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-      return response;
+
+      return withSessionCookie(response, token, cookieConfig);
     }
 
     // 4. New external chain identity — create did:imajin alias
@@ -158,8 +159,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       },
       created: true,
     }, { status: 201 });
-    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-    return response;
+    return withSessionCookie(response, token, cookieConfig);
 
   } catch (error) {
     log.error({ err: String(error) }, '[present-chain] Error');

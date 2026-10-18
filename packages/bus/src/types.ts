@@ -821,12 +821,29 @@ export interface BusEventMap {
     context_id: string;
     context_type: 'vault.delegation';
   };
+  /** Imported external credential, metadata only; the node witnesses a human countersignature. */
+  'vault.key.imported': {
+    field: string;
+    ownerDid: string;
+    consumerDid: string;
+    purpose: string;
+    fingerprint: string;
+    label: string | null;
+    expiresAt: string | null;
+    replacesField: string | null;
+    grantId: string;
+    authorizedBy: {
+      approvalId: string;
+      operatorDid: string;
+      contentHash: string;
+      decidedAt: string;
+    };
+    context_id: string;
+    context_type: 'vault.import';
+  };
   /**
-   * Emitted when POST /api/vault/mint generates a new Ed25519 keypair
-   * inside the vault (#2242). Carries no key material — the private key is
-   * sealed and delivered only via the existing #2231 one-time
-   * delegation-grant fetch path; this event is the audit trail for the
-   * mint action itself.
+   * Emitted when POST /api/vault/mint generates an Ed25519 keypair inside
+   * the vault. No private key material appears in this audit event.
    */
   'vault.key.minted': {
     mintId: string;

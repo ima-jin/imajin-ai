@@ -707,6 +707,28 @@ components:
             existing attestation-type registry (#1885). Refused (per-type,
             never failing the whole call) when the prefix is not exactly
             `slug`.
+        siteOwnerDid:
+          type: string
+          pattern: "^did:imajin:"
+          description: |
+            Optional authoritative site owner for the newly registered app.
+            Defaults to the approving operator, not the proposing agent or node.
+            Covered by the operator's countersigned provision proposal.
+            Cannot change ownership during reissue.
+        domain:
+          type: string
+          maxLength: 253
+          description: |
+            Optional direct subdomain of imajin.ai (for example dev-gbs.imajin.ai).
+            Defaults to <slug>.imajin.ai. Covered by the operator's countersign.
+            Provisioning issues signed domain evidence as the actual Imajin
+            organization through its domain.issue grant, never a self-asserted
+            node identity. Missing organization identity or signing grant fails
+            the domain provisioning step. Cannot change a domain during reissue.
+        reissueClaim:
+          type: boolean
+          default: false
+          description: Reissue a claim code for an already-succeeded app only; preserves app ownership and domain bindings.
     AppServiceScopesRequest:
       type: object
       description: >-
@@ -1365,13 +1387,21 @@ paths:
         repo/mint/register/seal pipeline (`src/lib/apps/provision.ts`) only
         runs once the operator countersigns an 'approve' decision —
         provisioning is operator-authority, never self-service.
+        New app ownership is registry.apps.ownerDid (siteOwnerDid or approving
+        operator), separate from DNS zone ownership. Provisioning attempts to
+        issue the selected Imajin subdomain as the actual Imajin organization;
+        unavailable issuer/grant/key defers the binding without blocking the
+        signing-key grant or claim code. An explicit domain on a succeeded app
+        stages a countersigned host retry. Plain claim reissue changes neither
+        domain nor owner.
         Optional imajin.app.json profileWidget ({path,label,icon?}) is a
         validated link-only contribution on the registered entryUrl origin,
         snapshotted on the signed operator card and rechecked for drift at
         execution. It never adds anyone's apps: rendering requires the profile
         owner's enabledApps or forest enabled_services. See registry.yaml
         ProfileWidget for the declaration contract.
-        Idempotent on `slug`: an already-succeeded slug returns the cached
+        Idempotent on `slug`: absent an explicit host retry or claim reissue,
+        an already-succeeded slug returns the cached
         result immediately (status 200, no proposal); an already-pending
         proposal for the same slug is reused rather than duplicated.
       security:
@@ -1397,7 +1427,7 @@ paths:
                   status: { type: string, enum: [pending] }
                   proposalId: { type: string }
         "400":
-          description: Malformed slug/displayName/template/attestationTypes
+          description: Malformed slug/displayName/template/attestationTypes/siteOwnerDid/domain, or forbidden owner/domain change on reissue
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

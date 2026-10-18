@@ -92,6 +92,14 @@ Full detail: `migrations/ownership.json`.
 
 ## Rule
 
+### Verified domain bindings (#2902)
+
+`0211_domain_bindings.sql` is kernel-owned and creates
+`auth.domain_bindings`; its `ownership.json` entry records owner `kernel`
+and `firstMigration: 0211_domain_bindings.sql`. Number 0204 belongs to
+`0204_registry_apps_visibility.sql`; the domain migration uses its reserved
+slot 0211 without changing its SQL or legacy-routing backfill.
+
 ### Reach throttling audit seed (#2599)
 
 `0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
@@ -189,6 +197,15 @@ kernel-owned `chat.conversations_v2`. Existing rows remain unbound: membership
 and mutable context are not evidence of app ownership. The registered-app
 conversation route binds app and creator at insertion and cannot adopt legacy
 rows or transfer either binding. No events-owned schema or data is touched.
+
+### Imported credential audit chain (#2260)
+
+`0208_seed_vault_key_imported_chain.sql` is kernel-owned and seeds only
+`kernel.bus_chain_configs` for `vault.key.imported`. Its metadata-only
+`audit-log` reactor matches `packages/bus/src/config.ts` DEFAULTS.
+`ON CONFLICT (event_type, scope) DO NOTHING` preserves existing operator
+configuration, including disabled chains. No tables are added; the existing
+owner and `firstMigration` remain unchanged.
 
 ### Environment variables
 

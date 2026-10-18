@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { verify as totpVerify } from 'otplib';
 import { db, identities, mfaMethods } from '@/src/db';
@@ -123,7 +124,6 @@ export async function POST(request: NextRequest) {
       name: identity.name,
     }, { headers: cors });
 
-    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
 
     emitSessionAttestation({
       did: identity.id,
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       return logDevice({ did: identity.id, ip: ip ?? null, userAgent });
     }).catch(err => log.error({ err: String(err) }, '[mfa] Device log failed'));
 
-    return response;
+    return withSessionCookie(response, token, cookieConfig);
 
   } catch (error) {
     log.error({ err: String(error) }, '[login/mfa] POST error');

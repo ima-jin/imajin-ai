@@ -1,5 +1,7 @@
 'use client';
 
+import { VaultImportApproval } from './vault-import-approval';
+
 /**
  * Operator approvals panel for the `/jin` kernel dashboard (#2059,
  * generalized to a per-source renderer registry by #2152).
@@ -540,6 +542,8 @@ function renderVaultRevokeDetail(approval: OperatorApprovalCard): ReactNode {
 
 function renderVaultDetail(approval: OperatorApprovalCard): ReactNode {
   switch (approval.kind) {
+    case 'vault:import':
+      return <VaultImportApproval detail={approval.detail} />;
     case 'vault:mint':
       return renderVaultMintDetail(approval);
     case 'vault:grant':

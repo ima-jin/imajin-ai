@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { verifySessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { db, identities, identityChains, credentials } from '@/src/db';
@@ -25,8 +26,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
         { error: 'Invalid or expired session' },
         { status: 401, headers: cors }
       );
-      response.cookies.delete(cookieConfig.name);
-      return response;
+      return withSessionCookie(response, null, cookieConfig);
     }
 
     const identity = await db.select().from(identities).where(eq(identities.id, session.sub)).limit(1);
@@ -35,8 +35,7 @@ export const GET = withLogger('kernel', async (request: NextRequest, { log }) =>
         { error: 'Identity not found' },
         { status: 401, headers: cors }
       );
-      response.cookies.delete(cookieConfig.name);
-      return response;
+      return withSessionCookie(response, null, cookieConfig);
     }
 
     const metadata = identity[0].metadata as Record<string, unknown> || {};

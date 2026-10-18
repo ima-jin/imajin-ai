@@ -33,6 +33,11 @@ export interface DelegationRouteEntry {
 }
 
 export const DELEGATION_ROUTES = {
+  "kernel.vault.import": {
+    class: "irreversible", action: "import", app: "kernel", method: "POST",
+    path: "/api/vault/import",
+    why: "credential custody/disclosure rail: coarse agent delegation cannot enumerate vault metadata or stage input; a real human controls and countersigns import",
+  },
   "kernel.identity.owner.propose": {
     class: "value-moving", action: "propose", app: "kernel", method: "POST",
     path: "/auth/api/groups/[groupDid]/transfer-owner",

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -13,6 +13,19 @@ const { mockDbSelect, mockDbInsert, mockDbInsertValues, mockSendEmail, mockRateL
     mockGetClient: vi.fn(),
   };
 });
+afterEach(() => vi.unstubAllEnvs());
+
+describe('host-only email login destinations (#1069)', () => {
+  it.each(['jin.imajin.ai', 'dev-jin.imajin.ai'])('keeps the magic link on %s even with a stale public auth URL', async (host) => {
+    vi.stubEnv('APP_URL', `https://${host}`);
+    vi.stubEnv('NEXT_PUBLIC_AUTH_URL', 'https://auth.imajin.ai');
+    const response = await POST(makeReq({ email: 'fake@example.com' }));
+    expect(response.status).toBe(200);
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      html: expect.stringContaining(`https://${host}/auth/api/onboard/verify?token=`),
+    }));
+  });
+});
 
 vi.mock('@imajin/logger', () => ({
   withLogger:
@@ -25,7 +38,6 @@ vi.mock('@imajin/config', () => ({
   corsHeaders: () => ({}),
   rateLimit: mockRateLimit,
   getClientIP: () => '127.0.0.1',
-  buildPublicUrlAbsolute: (service: string) => `https://${service}.example`,
 }));
 
 vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mockSendEmail }));
@@ -63,12 +75,14 @@ import { POST } from '../route';
 
 function makeReq(body: Record<string, unknown>) {
   return {
+    url: 'http://localhost:3000/auth/api/onboard',
     headers: new Headers(),
     json: async () => body,
   } as unknown as Parameters<typeof POST>[0];
 }
 
 beforeEach(() => {
+  vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
   vi.clearAllMocks();
   mockRateLimit.mockReturnValue({ limited: false, retryAfter: 0 });
   mockDbInsertValues.mockResolvedValue(undefined);
