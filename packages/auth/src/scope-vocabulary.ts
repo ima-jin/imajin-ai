@@ -278,6 +278,8 @@ export const SCOPE_VOCABULARY = [
   { scope: 'profile:contact:backfill', connector: null, label: 'Fill missing contact email for people related to this app' },
   { scope: 'identity:read', connector: null, label: 'Read your identity and DID' },
   { scope: 'identity:write', connector: null, label: 'Resolve or mint soft identities on your behalf (registry get-or-create)' },
+  // Operator approval AND resource-owner authority are checked live; never self-granted.
+  { scope: 'onboard:send', connector: null, label: 'Ask the node to email onboarding links for your app-owned orders' },
   { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },
   // #1799: powers the per-connector usage rollup (attestations + signed connector
   // actions, scoped to the connector's registered scope(s)) — distinct from

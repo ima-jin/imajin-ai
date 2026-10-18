@@ -17,6 +17,8 @@ export const ATTESTATION_TYPES = [
   'connection.accepted',
   'vouch',
   'session.created',
+  'onboard.link.sent',
+  'onboard.link.requested',
   'learn.enrolled',
   'learn.completed',
   'media.uploaded',
@@ -293,6 +295,8 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2894 — unilateral read provenance, never awaiting a countersignature.
   'google.data.read',
   'session.created',
+  'onboard.link.sent',
+  'onboard.link.requested',
   'media.uploaded',
   'agent.turn.usage',
   'agent.external_identity',
