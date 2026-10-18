@@ -1295,7 +1295,7 @@ paths:
         Rate-limited to 5 req/min per IP.
         Omit Authorization for signed self-registration (including when a session cookie
         is present). With any Authorization header, even an empty one, the route takes
-        only the existing app-service JWT path: Bearer app-service+jwt with identity:write,
+        only the existing app-service JWT path (token type app-service+jwt), with identity:write,
         an active app registration, and live operator approval of identity:write.
         This optional app credential records registering-app provenance on new identities;
         it does not replace the registration signature.
