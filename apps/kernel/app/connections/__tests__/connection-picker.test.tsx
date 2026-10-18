@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // Lives under apps/ because the root vitest config only runs component tests from there.
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, act } from '@testing-library/react';
 import { ConnectionPicker } from '../../../../../packages/ui/src/connection-picker';
 
 const CONNECTIONS_URL = '/connections/api/connections';
@@ -19,6 +19,210 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+const BOB = { did: 'did:imajin:bob', name: 'Bob', handle: 'bob' };
+const jsonResponse = (body: unknown, ok = true) => ({ ok, status: ok ? 200 : 500, json: async () => body });
+
+function requestFetch(results = [BOB]) {
+  const spy = vi.fn(async (url: string, options?: RequestInit) => {
+    if (options?.method === 'POST') return jsonResponse({ invite: { code: 'direct-code' } });
+    if (url.includes('/search')) return jsonResponse({ results });
+    return jsonResponse({ connections: [] });
+  });
+  vi.stubGlobal('fetch', spy);
+  return spy;
+}
+
+async function typeQuery(query = '@bob') {
+  await screen.findByText('No connections available.');
+  vi.useFakeTimers();
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: query } });
+}
+
+async function debounce() {
+  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+}
+
+describe('ConnectionPicker — identity requests (#2944)', () => {
+  it('debounces handle search, strips @, and sends an explicit request without selecting', async () => {
+    const fetch = requestFetch();
+    const onSelect = vi.fn();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={onSelect} />);
+    await typeQuery('@bo');
+    await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@bob' } });
+    await act(async () => { await vi.advanceTimersByTimeAsync(299); });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(fetch).toHaveBeenLastCalledWith('/auth/api/search?q=bob', expect.objectContaining({ credentials: 'include' }));
+    expect(screen.getByText('Bob')).toBeDefined();
+    expect(screen.getByText('@bob')).toBeDefined();
+    expect(screen.getByText(BOB.did)).toBeDefined();
+    expect(onSelect).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send connection request' })); });
+    expect(fetch).toHaveBeenLastCalledWith('/connections/api/invites', expect.objectContaining({
+      method: 'POST', body: JSON.stringify({ toDid: BOB.did }), credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    }));
+    expect(screen.getByRole('status').textContent).toContain('awaiting acceptance');
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@other' } });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@bob' } });
+    await debounce();
+    expect(screen.getByRole('status').textContent).toContain('pending');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it.each([
+    ['https://kernel.example/connections/api/connections', 'https://kernel.example'],
+    ['//kernel.example/connections/api/connections', '//kernel.example'],
+  ])('looks up a DID using SDK connections URL %s', async (connectionsUrl, origin) => {
+    const fetch = requestFetch();
+    render(<ConnectionPicker connectionsUrl={connectionsUrl} onSelect={vi.fn()} />);
+    await typeQuery('did:imajin:MixedCase');
+    await debounce();
+    const searchOrigin = origin.startsWith('//') ? `${globalThis.location.protocol}${origin}` : origin;
+    expect(fetch).toHaveBeenLastCalledWith(`${searchOrigin}/auth/api/search?q=did%3Aimajin%3AMixedCase`, expect.anything());
+    await act(async () => { fireEvent.click(screen.getByRole('button')); });
+    expect(fetch).toHaveBeenLastCalledWith(`${origin}/connections/api/invites`, expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('allows explicit search and invite endpoints', async () => {
+    const fetch = requestFetch();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} searchUrl="https://auth.example/search?limit=5"
+      invitesUrl="https://connect.example/invites" onSelect={vi.fn()} />);
+    await typeQuery();
+    await debounce();
+    expect(fetch).toHaveBeenLastCalledWith('https://auth.example/search?limit=5&q=bob', expect.anything());
+    await act(async () => { fireEvent.click(screen.getByRole('button')); });
+    expect(fetch).toHaveBeenLastCalledWith('https://connect.example/invites', expect.objectContaining({ method: 'POST' }));
+  });
+
+  it('does not search below two characters or while disabled', async () => {
+    const fetch = requestFetch();
+    const props = { connectionsUrl: CONNECTIONS_URL, onSelect: vi.fn() };
+    const { rerender } = render(<ConnectionPicker {...props} />);
+    await typeQuery('@b');
+    await debounce();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@bob' } });
+    rerender(<ConnectionPicker {...props} disabled />);
+    await debounce();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole('textbox') as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it('filters existing and explicitly excluded DIDs out of identity results', async () => {
+    const alice = { did: 'did:imajin:alice', name: 'Alice', handle: 'alice', avatar: null };
+    const excluded = { did: 'did:imajin:hidden', name: 'Hidden', handle: 'hidden' };
+    const fetch = requestFetch([BOB, alice, excluded]);
+    fetch.mockImplementationOnce(async () => jsonResponse({ connections: [alice] }));
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} excludeDids={[excluded.did]} onSelect={vi.fn()} />);
+    await screen.findByText('Alice');
+    vi.useFakeTimers();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'bob' } });
+    await debounce();
+    expect(screen.getByText('Bob')).toBeDefined();
+    expect(screen.queryByText('Alice')).toBeNull();
+    expect(screen.queryByText('Hidden')).toBeNull();
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+  });
+
+  it.each(['http', 'network', 'json'])('shows lookup %s failures without selectable identities', async failure => {
+    const fetch = requestFetch();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} />);
+    await typeQuery();
+    fetch.mockImplementationOnce(async () => {
+      if (failure === 'network') throw new TypeError('offline');
+      if (failure === 'json') return { ok: true, status: 200, json: async () => { throw new SyntaxError('bad json'); } };
+      return jsonResponse({}, false);
+    });
+    await debounce();
+    expect(screen.getByRole('alert').textContent).toContain('Identity search is unavailable');
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('shows an empty lookup state', async () => {
+    requestFetch([]);
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} />);
+    await typeQuery();
+    await debounce();
+    expect(screen.getByText('No matching identities.')).toBeDefined();
+  });
+
+  it.each(['http', 'network'])('keeps request %s failures retryable and never calls onSelect', async failure => {
+    const fetch = requestFetch();
+    const onSelect = vi.fn();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={onSelect} />);
+    await typeQuery();
+    await debounce();
+    fetch.mockImplementationOnce(async () => {
+      if (failure === 'network') throw new TypeError('offline');
+      return jsonResponse({}, false);
+    });
+    await act(async () => { fireEvent.click(screen.getByRole('button')); });
+    expect(screen.getByRole('alert').textContent).toContain('Could not send connection request');
+    expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(false);
+    expect(onSelect).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole('button')); });
+    expect(screen.getByRole('status')).toBeDefined();
+  });
+
+  it('aborts and ignores stale lookup responses after query changes', async () => {
+    const fetch = requestFetch();
+    let resolve!: (value: ReturnType<typeof jsonResponse>) => void;
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} />);
+    await typeQuery();
+    fetch.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    await debounce();
+    const signal = fetch.mock.calls[1][1]?.signal;
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@charlie' } });
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { resolve(jsonResponse({ results: [BOB] })); });
+    expect(screen.queryByText('Bob')).toBeNull();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('clears query/results and reloads accepted connections after an act-as identity change', async () => {
+    const fetch = requestFetch();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} />);
+    await typeQuery();
+    await debounce();
+    expect(screen.getByText('Bob')).toBeDefined();
+    await act(async () => { globalThis.dispatchEvent(new CustomEvent('imajin:acting-as-changed')); });
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
+    expect(screen.queryByText('Bob')).toBeNull();
+    expect(fetch).toHaveBeenLastCalledWith(CONNECTIONS_URL, { credentials: 'include' });
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it.each(['query', 'identity', 'act-as', 'disabled', 'url'])('aborts stale sending actions after %s changes', async change => {
+    const fetch = requestFetch();
+    const onSelect = vi.fn();
+    const props = { connectionsUrl: CONNECTIONS_URL, onSelect };
+    const { rerender } = render(<ConnectionPicker {...props} />);
+    await typeQuery();
+    await debounce();
+    let resolve!: (value: ReturnType<typeof jsonResponse>) => void;
+    fetch.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    fireEvent.click(screen.getByRole('button'));
+    expect((screen.getByRole('button') as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button'));
+    expect(fetch).toHaveBeenCalledTimes(3);
+    const signal = fetch.mock.calls[2][1]?.signal;
+    if (change === 'query') fireEvent.change(screen.getByRole('textbox'), { target: { value: '@other' } });
+    if (change === 'identity') rerender(<ConnectionPicker {...props} identityKey="did:imajin:org" />);
+    if (change === 'act-as') act(() => { globalThis.dispatchEvent(new CustomEvent('imajin:acting-as-changed')); });
+    if (change === 'disabled') rerender(<ConnectionPicker {...props} disabled />);
+    if (change === 'url') rerender(<ConnectionPicker {...props} connectionsUrl={`${CONNECTIONS_URL}?org=1`} />);
+    expect(signal?.aborted).toBe(true);
+    await act(async () => { resolve(jsonResponse({ invite: { code: 'old' } })); });
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
 });
 
 const labelledConnections = [
@@ -176,5 +380,28 @@ describe('ConnectionPicker — selection', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Alice/ }));
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(connection));
+  });
+
+  it('does not select excluded or disabled accepted connections', async () => {
+    const alice = { did: 'did:imajin:a', name: 'Alice', handle: 'alice', avatar: null };
+    stubFetch({ ok: true, body: { connections: [alice, { ...alice, did: 'did:imajin:b', name: 'Bob' }] } });
+    const onSelect = vi.fn();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} excludeDids={[alice.did]} disabled onSelect={onSelect} />);
+    await screen.findByText('Bob');
+    expect(screen.queryByText('Alice')).toBeNull();
+    fireEvent.click(screen.getByRole('button'));
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it.each(['@alice', 'did:imajin:a'])('matches accepted connections by %s without a lookup', async query => {
+    const connection = { did: 'did:imajin:a', name: 'Alice', handle: 'alice', avatar: null };
+    const fetch = stubFetch({ ok: true, body: { connections: [connection] } });
+    const onSelect = vi.fn();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={onSelect} />);
+    await screen.findByText('Alice');
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: query } });
+    fireEvent.click(screen.getByRole('button', { name: /Alice/ }));
+    expect(onSelect).toHaveBeenCalledWith(connection);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });

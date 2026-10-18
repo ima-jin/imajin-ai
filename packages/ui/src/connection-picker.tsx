@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { ConnectionRelationshipFilter, filterRelationships, type RelationshipLabel, type RelationshipFilter } from './connection-relationships';
 
 interface Connection {
@@ -13,6 +13,12 @@ interface Connection {
 
 export interface ConnectionPickerProps {
   connectionsUrl: string;
+  /** Defaults to /auth/api/search on the connections URL's origin. */
+  searchUrl?: string;
+  /** Defaults to /connections/api/invites on the connections URL's origin. */
+  invitesUrl?: string;
+  /** Change when an SDK consumer switches authenticated/effective identity without remounting. */
+  identityKey?: string;
   excludeDids?: string[];
   onSelect: (connection: Connection) => void;
   placeholder?: string;
@@ -36,14 +42,134 @@ function describeLoadFailure(status: number): string {
 
 /** Fetch the connection list, throwing a {@link ConnectionsLoadError} for any non-2xx response so it never reads as an empty list. */
 async function fetchConnections(url: string): Promise<Connection[]> {
-  const res = await fetch(url);
+  const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new ConnectionsLoadError(describeLoadFailure(res.status));
   const data = await res.json();
   return data.connections ?? [];
 }
 
-export function ConnectionPicker({
+function endpointOnOrigin(connectionsUrl: string, path: string): string {
+  if (connectionsUrl.startsWith('//')) return `//${new URL(`https:${connectionsUrl}`).host}${path}`;
+  if (/^https?:\/\//.test(connectionsUrl)) return new URL(path, connectionsUrl).toString();
+  return path;
+}
+
+interface IdentityResult {
+  did: string;
+  name: string | null;
+  handle: string | null;
+}
+
+function IdentityLookup({
+  query, searchUrl, invitesUrl, excludedDids, pendingDids, onRequested,
+}: Readonly<{
+  query: string;
+  searchUrl: string;
+  invitesUrl: string;
+  excludedDids: Set<string>;
+  pendingDids: Set<string>;
+  onRequested: (did: string) => void;
+}>) {
+  const [results, setResults] = useState<IdentityResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [sendingDid, setSendingDid] = useState<string | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const sending = useRef(false);
+
+  useEffect(() => {
+    const abort = new AbortController();
+    controller.current = abort;
+    const timer = setTimeout(async () => {
+      try {
+        const url = new URL(searchUrl, globalThis.location.href);
+        url.searchParams.set('q', query);
+        const target = searchUrl.startsWith('/') && !searchUrl.startsWith('//')
+          ? `${url.pathname}${url.search}` : url.toString();
+        const res = await fetch(target, { credentials: 'include', signal: abort.signal });
+        if (!res.ok) throw new Error('Identity search is unavailable. Try again.');
+        const data = await res.json();
+        if (!abort.signal.aborted) setResults(data.results ?? []);
+      } catch {
+        if (!abort.signal.aborted) setError('Identity search is unavailable. Try again.');
+      } finally {
+        if (!abort.signal.aborted) setLoading(false);
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      abort.abort();
+    };
+  }, [query, searchUrl]);
+
+  async function sendRequest(did: string) {
+    const signal = controller.current?.signal;
+    if (!signal || signal.aborted || sending.current || excludedDids.has(did) || pendingDids.has(did)) return;
+    sending.current = true;
+    setSendingDid(did);
+    setError(null);
+    try {
+      const res = await fetch(invitesUrl, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ toDid: did }),
+        signal,
+      });
+      if (!res.ok) throw new Error('request failed');
+      if (!signal.aborted) onRequested(did);
+    } catch {
+      if (!signal.aborted) setError('Could not send connection request. Please try again.');
+    } finally {
+      sending.current = false;
+      if (!signal.aborted) setSendingDid(null);
+    }
+  }
+
+  const visible = results.filter(result => !excludedDids.has(result.did));
+  return (
+    <div className="space-y-2" aria-live="polite">
+      {loading && <p className="text-sm text-gray-500 px-1">Searching identities...</p>}
+      {error && <p role="alert" className="text-sm text-red-400 px-1">{error}</p>}
+      {!loading && !error && visible.length === 0 && (
+        <p className="text-sm text-gray-500 px-1">No matching identities.</p>
+      )}
+      {visible.map(identity => (
+        <div key={identity.did} className="space-y-1 border border-gray-700 bg-gray-900 px-3 py-2">
+          <div className="text-sm font-medium text-white break-words">{identity.name || identity.handle || identity.did}</div>
+          {identity.handle && <div className="text-xs text-gray-400">@{identity.handle}</div>}
+          <div className="text-xs text-gray-400 break-all">{identity.did}</div>
+          {pendingDids.has(identity.did) ? (
+            <p role="status" className="text-sm text-orange-400">Connection request pending — awaiting acceptance.</p>
+          ) : (
+            <button type="button"
+              onClick={() => sendRequest(identity.did)}
+              disabled={sendingDid !== null}
+              className="px-3 py-2 text-sm text-orange-400 border border-gray-600 hover:bg-gray-800 disabled:opacity-50"
+            >
+              {sendingDid === identity.did ? 'Sending request...' : 'Send connection request'}
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ConnectionPicker(props: Readonly<ConnectionPickerProps>) {
+  const [identityRevision, setIdentityRevision] = useState(0);
+  useEffect(() => {
+    const reset = () => setIdentityRevision(revision => revision + 1);
+    globalThis.addEventListener('imajin:acting-as-changed', reset);
+    return () => globalThis.removeEventListener('imajin:acting-as-changed', reset);
+  }, []);
+  return <ConnectionPickerContent key={`${props.connectionsUrl}:${props.identityKey ?? ''}:${identityRevision}`} {...props} />;
+}
+
+function ConnectionPickerContent({
   connectionsUrl,
+  searchUrl = endpointOnOrigin(connectionsUrl, '/auth/api/search'),
+  invitesUrl = endpointOnOrigin(connectionsUrl, '/connections/api/invites'),
   excludeDids = [],
   onSelect,
   placeholder = 'Search connections...',
@@ -56,6 +182,7 @@ export function ConnectionPicker({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [relationshipFilter, setRelationshipFilter] = useState<RelationshipFilter>('all');
+  const [pendingDids, setPendingDids] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -81,10 +208,13 @@ export function ConnectionPicker({
 
   const excludeSet = new Set(excludeDids);
   const available = connections.filter(c => !excludeSet.has(c.did));
-  const matching = search
+  const query = search.trim().replace(/^@/, '');
+  const matchQuery = query.toLowerCase();
+  const matching = query
     ? available.filter(c =>
-        (c.handle || '').toLowerCase().includes(search.toLowerCase()) ||
-        (c.name || '').toLowerCase().includes(search.toLowerCase())
+        (c.handle || '').toLowerCase().includes(matchQuery) ||
+        (c.name || '').toLowerCase().includes(matchQuery) ||
+        c.did.toLowerCase().includes(matchQuery)
       )
     : available;
   const filtered = relationshipLabels ? filterRelationships(matching, relationshipFilter) : matching;
@@ -146,6 +276,17 @@ export function ConnectionPicker({
         </div>
       );
       })()}
+      {!loading && !error && !disabled && matching.length === 0 && query.length >= 2 && (
+        <IdentityLookup
+          key={`${query}:${searchUrl}:${invitesUrl}`}
+          query={query}
+          searchUrl={searchUrl}
+          invitesUrl={invitesUrl}
+          excludedDids={new Set([...excludeDids, ...connections.map(connection => connection.did)])}
+          pendingDids={pendingDids}
+          onRequested={did => setPendingDids(previous => new Set([...previous, did]))}
+        />
+      )}
     </div>
   );
 }
