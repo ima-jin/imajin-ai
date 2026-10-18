@@ -442,11 +442,14 @@ export function createKernelDeps(grantedBy: string): ProvisionDeps {
     },
 
     async registerIdentity({ did, publicKey, name }) {
-      const { db, identities } = await loadKernelDb();
-      await db
-        .insert(identities)
-        .values({ id: did, scope: 'actor', subtype: 'service', publicKey, name, tier: 'preliminary' })
-        .onConflictDoNothing();
+      const { getClient } = await loadKernelDb();
+      // #2960: Drizzle's insert names every schema column, even unused ones.
+      // Only name columns we write so an additive migration cannot break this.
+      await getClient()`
+        INSERT INTO auth.identities (id, scope, subtype, public_key, name, tier)
+        VALUES (${did}, 'actor', 'service', ${publicKey}, ${name}, 'preliminary')
+        ON CONFLICT DO NOTHING
+      `;
     },
 
     async ensureGrant(did) {
