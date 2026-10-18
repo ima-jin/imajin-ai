@@ -24,8 +24,7 @@ const other = 'did:imajin:org-two';
 
 beforeAll(async () => {
   database.db = db;
-  await client.exec('CREATE SCHEMA auth; CREATE TABLE auth.identities (
-      registered_by_app_did text,id text PRIMARY KEY, metadata jsonb, updated_at timestamptz)');
+  await client.exec('CREATE SCHEMA auth; CREATE TABLE auth.identities (registered_by_app_did text,id text PRIMARY KEY, metadata jsonb, updated_at timestamptz)');
 });
 beforeEach(async () => {
   await client.exec('TRUNCATE auth.identities');
