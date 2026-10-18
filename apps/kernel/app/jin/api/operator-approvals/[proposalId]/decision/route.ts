@@ -256,6 +256,7 @@ export async function POST(
       reason,
       operatorSignature: operatorSignatureResult.value,
       decidedAt,
+      sessionCommand: body.sessionCommand,
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status, headers: cors });

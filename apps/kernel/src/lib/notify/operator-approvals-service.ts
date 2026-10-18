@@ -10,6 +10,7 @@
  * witnessing the operator's explicit tap.
  */
 import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { ZodError } from 'zod';
 import { createLogger } from '@imajin/logger';
 import { canonicalize, crypto as authCrypto, SIGNED_MESSAGE_MAX_AGE, FUTURE_TOLERANCE } from '@imajin/auth';
 import * as bus from '@imajin/bus';
@@ -28,18 +29,69 @@ import { validateDecisionMode } from './operator-decision-modes';
 import { pushWebNotificationToOperator } from './web-push';
 import { resolveApprovalAddressee } from './approval-addressing';
 import { forEachSequential } from '../async/sequential';
+import type { SessionBinding, SessionCommandFrame } from '../jin/session-command-contract';
+import type { ApprovalSessionOutcome } from './operator-approval-session-outcome';
 import {
   EXEC_COMMAND_KIND,
-  asExecCommandDetail,
+  EXEC_COMMAND_SOURCE,
   isExecCommandExpired,
   type ExecCommandOutcome,
 } from './exec-command-approvals';
 
 const log = createLogger('kernel:operator-approvals');
+let commandServicePromise: Promise<typeof import('../jin/session-commands')> | undefined;
+function commandService() {
+  commandServicePromise ??= import('../jin/session-commands');
+  return commandServicePromise;
+}
+
+/** Native cards expose display fields, never harness addressing material. The original content hash is unchanged. */
+function publicApprovalDetail(row: OperatorApprovalRow): Record<string, unknown> | null {
+  const detail = (row.detail as Record<string, unknown> | null) ?? null;
+  if (row.source !== EXEC_COMMAND_SOURCE || row.kind !== EXEC_COMMAND_KIND || !detail) return detail;
+  const fields = ['command', 'host', 'cwd', 'agentId', 'requestedBy', 'approvalId', 'expiresAt'];
+  return Object.fromEntries(fields.filter((field) => Object.hasOwn(detail, field)).map((field) => [field, detail[field]]));
+}
 async function cleanupAppSecretStaging(row: OperatorApprovalRow): Promise<void> {
   if (row.source !== 'apps' || !['denied', 'withdrawn', 'expired'].includes(row.status)) return;
   const { discardAppSecretForProposal } = await import('@/src/lib/apps/secret-staging');
   await discardAppSecretForProposal(row);
+}
+
+async function usesNativeRail(row: OperatorApprovalRow): Promise<boolean> {
+  const approvalId = nativeApprovalId(row);
+  if (!approvalId) return false;
+  const { hasSessionBinding } = await commandService();
+  return hasSessionBinding(row.operatorDid, approvalId);
+}
+function nativeApprovalId(row: OperatorApprovalRow): string | null {
+  if (row.source !== EXEC_COMMAND_SOURCE || row.kind !== EXEC_COMMAND_KIND) return null;
+  const id = (row.detail as Record<string, unknown> | null)?.approvalId;
+  return typeof id === 'string' && id.length > 0 ? id : null;
+}
+
+async function bindingFor(row: OperatorApprovalRow): Promise<SessionBinding | null> {
+  const approvalId = nativeApprovalId(row);
+  if (!approvalId) return null;
+  const { getSessionBinding } = await commandService();
+  return getSessionBinding(row.operatorDid, approvalId);
+}
+
+async function boundCard(row: OperatorApprovalRow, archivedAt: string | null = null): Promise<OperatorApprovalCard> {
+  const card = toCard(row, archivedAt);
+  const sessionBinding = await bindingFor(row);
+  const approvalId = nativeApprovalId(row);
+  if (!approvalId) return card;
+  const record = row.decision as { sessionCommand?: unknown; payload?: { decision?: string } } | null;
+  const { readApprovalSessionOutcome } = await import('./operator-approval-session-outcome');
+  const sessionOutcome = await readApprovalSessionOutcome(row.operatorDid, approvalId, record?.payload?.decision, record?.sessionCommand);
+  const nativeRail = sessionBinding !== null || await usesNativeRail(row);
+  return {
+    ...card,
+    ...(nativeRail ? { outcome: null, appliedAt: null } : {}),
+    ...(sessionBinding ? { sessionBinding } : {}),
+    ...(sessionOutcome ? { sessionOutcome } : {}),
+  };
 }
 
 export interface OperatorApprovalCard {
@@ -65,6 +117,9 @@ export interface OperatorApprovalCard {
   archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Only populated from authenticated, signature-verified native evidence. */
+  sessionBinding?: SessionBinding | null;
+  sessionOutcome?: ApprovalSessionOutcome | null;
 }
 
 /** Archive markers are private Inbox metadata, not part of the public execution outcome. */
@@ -84,7 +139,7 @@ function toCard(row: OperatorApprovalRow, archivedAt: string | null = null): Ope
     kind: row.kind,
     summary: row.summary,
     keysTouched: (row.keysTouched as string[] | null) ?? [],
-    detail: (row.detail as Record<string, unknown> | null) ?? null,
+    detail: publicApprovalDetail(row),
     // Always the effective hash (recomputed for a legacy row with no
     // stored contentHash) — #2082: this is what a client signs against,
     // so it must never be null once there's a countersignature to build.
@@ -283,6 +338,8 @@ export interface DecideOperatorApprovalParams {
    * `operatorSignature` is supplied.
    */
   decidedAt?: string;
+  /** Full principal wish over the kernel-granted command, not the legacy decision signature. */
+  sessionCommand?: unknown;
 }
 
 /**
@@ -346,8 +403,8 @@ function checkExecCommandGate(
   if (row.kind !== EXEC_COMMAND_KIND) return { ok: true };
   if (decision === 'withdrawn') return { ok: true };
 
-  const execDetail = asExecCommandDetail(row.detail as Record<string, unknown> | null);
-  if (execDetail && isExecCommandExpired(execDetail)) {
+  const expiresAt = (row.detail as Record<string, unknown> | null)?.expiresAt;
+  if (typeof expiresAt === 'string' && isExecCommandExpired({ expiresAt })) {
     return { ok: false, error: 'Approval has expired and can no longer be decided', status: 409 };
   }
 
@@ -458,6 +515,85 @@ async function publishApprovalDecided(
   });
 }
 
+type ApprovalCommandResult =
+  | { ok: true; frame: SessionCommandFrame | null; binding: SessionBinding | null }
+  | { ok: false; error: string; status: number };
+
+/** Resolve the native rail before updating. A verified bound request never falls back to legacy. */
+async function resolveApprovalCommand(
+  row: OperatorApprovalRow,
+  params: DecideOperatorApprovalParams,
+): Promise<ApprovalCommandResult> {
+  const binding = await bindingFor(row);
+  if (!binding) {
+    if (await usesNativeRail(row)) return { ok: false, error: 'Native approval binding is no longer commandable', status: 409 };
+    return params.sessionCommand === undefined
+      ? { ok: true, frame: null, binding: null }
+      : { ok: false, error: 'No verified native approval binding', status: 400 };
+  }
+  if (params.decision === 'withdrawn' || !params.sessionCommand) {
+    return { ok: false, error: 'A full signed session command is required for this native approval', status: 400 };
+  }
+  const { verifySessionCommand, SessionCommandError } = await commandService();
+  let frame: SessionCommandFrame;
+  try {
+    frame = await verifySessionCommand(binding.loopId, params.operatorDid, params.sessionCommand, { approvalId: binding.approvalId });
+  } catch (error) {
+    if (error instanceof SessionCommandError) return { ok: false, error: error.message, status: error.status };
+    if (error instanceof ZodError) return { ok: false, error: 'Malformed session command wish', status: 400 };
+    throw error;
+  }
+  const expectedType = params.decision === 'approve' ? 'session.approve' : 'session.deny';
+  if (frame.type !== expectedType || frame.to !== binding.agentDid || frame.principal !== binding.principalDid) {
+    return { ok: false, error: 'Session command does not match the native approval decision', status: 400 };
+  }
+  if (frame.payload.approvalId !== binding.approvalId || frame.payload.loopId !== binding.loopId || frame.payload.kind !== 'exec') {
+    return { ok: false, error: 'Session command native approval target mismatch', status: 400 };
+  }
+  return { ok: true, frame, binding };
+}
+
+/** UPDATE RETURNING is the compare-and-set authority; a duplicate command rolls back the decision. */
+async function commitNativeDecision(
+  row: OperatorApprovalRow,
+  decision: OperatorApprovalRow['decision'],
+  status: OperatorApprovalRow['status'],
+  frame: SessionCommandFrame,
+  binding: SessionBinding,
+): Promise<boolean> {
+  const { insertSessionCommand } = await commandService();
+  return db.transaction(async (tx) => {
+    const won = await tx.update(operatorApprovals)
+      .set({ status, decision, updatedAt: new Date() })
+      .where(and(eq(operatorApprovals.proposalId, row.proposalId), eq(operatorApprovals.status, 'pending')))
+      .returning({ proposalId: operatorApprovals.proposalId });
+    if (won.length === 0) return false;
+    if (!await insertSessionCommand(tx, binding.loopId, frame)) throw new Error('Session command already recorded');
+    return true;
+  });
+}
+
+async function persistAndPublishDecision(
+  row: OperatorApprovalRow,
+  params: DecideOperatorApprovalParams,
+  signedDecision: { payload: OperatorApprovalDecidedPayload; signature: string; senderPubkey: string },
+  command: Extract<ApprovalCommandResult, { ok: true }>,
+): Promise<boolean> {
+  const status = nextStatusFor(params.decision);
+  if (command.frame && command.binding) {
+    const won = await commitNativeDecision(row, { ...signedDecision, sessionCommand: command.frame }, status, command.frame, command.binding);
+    if (!won) return false;
+    const { deliverSessionCommand } = await commandService();
+    await deliverSessionCommand(command.binding.loopId, command.frame);
+    return true;
+  }
+  await db.update(operatorApprovals)
+    .set({ status, decision: signedDecision, updatedAt: new Date() })
+    .where(and(eq(operatorApprovals.proposalId, row.proposalId), eq(operatorApprovals.status, requiredStatusFor(params.decision))));
+  await publishApprovalDecided(row.proposalId, params.operatorDid, row.signerDid, signedDecision.payload);
+  return true;
+}
+
 /**
  * Record the operator's decision: sign a kernel-witnessed attestation,
  * advance the proposal's state machine, and publish `operator.approval.decided`
@@ -496,6 +632,8 @@ export async function decideOperatorApproval(
   if (!gate.ok) {
     return { ok: false, error: gate.error, status: gate.status };
   }
+  const command = await resolveApprovalCommand(row, params);
+  if (!command.ok) return command;
 
   // #2294: contentHash is required on the `operator.approval.decided` bus
   // payload — it's the exact digest a source adapter's #2084 echo check
@@ -542,19 +680,16 @@ export async function decideOperatorApproval(
 
   const nextStatus = nextStatusFor(decision);
   const now = new Date();
-  await db
-    .update(operatorApprovals)
-    .set({ status: nextStatus, decision: signedDecision, updatedAt: now })
-    .where(and(eq(operatorApprovals.proposalId, proposalId), eq(operatorApprovals.status, requiredStatus)));
-
-  await publishApprovalDecided(proposalId, operatorDid, row.signerDid, payload);
+  const committed = await persistAndPublishDecision(row, params, signedDecision, command);
+  if (!committed) return { ok: false, error: 'Proposal changed before this decision could be committed', status: 409 };
 
   log.info({ proposalId, operatorDid, signerDid: row.signerDid, decision }, 'operator approval decided');
 
   const fresh = await loadApproval(proposalId);
   // Consult persisted state: a concurrent approval must never lose its input.
   if (fresh) await cleanupAppSecretStaging(fresh);
-  return { ok: true, card: toCard(fresh ?? { ...row, status: nextStatus, decision: signedDecision, updatedAt: now }) };
+  const card = toCard(fresh ?? { ...row, status: nextStatus, decision: signedDecision, updatedAt: now });
+  return { ok: true, card: command.binding ? { ...card, outcome: null, appliedAt: null, sessionBinding: command.binding } : card };
 }
 
 /**
@@ -567,6 +702,7 @@ export async function decideOperatorApproval(
 export async function markApplied(proposalId: string): Promise<{ ok: boolean }> {
   const row = await loadApproval(proposalId);
   if (!row) return { ok: false };
+  if (await usesNativeRail(row)) return { ok: false };
   if (row.status === 'applied') return { ok: true };
   if (row.status !== 'approved') return { ok: false };
 
@@ -598,6 +734,7 @@ export async function attachApprovalOutcome(
   if (row.kind !== EXEC_COMMAND_KIND) {
     return { ok: false, error: 'Outcome attachment is only supported for exec.command approvals' };
   }
+  if (await usesNativeRail(row)) return { ok: false, error: 'Native command outcomes require a correlated signed agent attestation' };
 
   await db
     .update(operatorApprovals)
@@ -639,7 +776,7 @@ export async function listApprovalsForOperator(
     .from(operatorApprovals)
     .where(and(...conditions))
     .orderBy(desc(operatorApprovals.createdAt));
-  return rows
+  return Promise.all(rows
     .filter((row) => resolveApprovalAddressee(row, row.operatorDid) === inboxDid)
-    .map((row) => toCard(row, archivedAtFor(row, inboxDid)));
+    .map((row) => boundCard(row, archivedAtFor(row, inboxDid))));
 }

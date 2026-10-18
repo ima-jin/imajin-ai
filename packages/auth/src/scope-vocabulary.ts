@@ -497,7 +497,8 @@ export const SCOPE_VOCABULARY = [
   // warp:dispatch. `surfaces: MCP_TOKENS` because google_* tools ride MCP
   // access tokens the same way github:* does.
   //
-  // v1 (Artifact day one) is exactly the six rows below. v2 — deliberately
+  // v1 (Artifact day one) began with six scopes. #2894 adds incremental
+  // Search Console and operator-gated Business Profile reads. v2 — deliberately
   // NOT declared here yet — adds `google:contacts:read` (claimable-stub
   // candidates), `google:admin:reports` (Admin audit-log ingestion +
   // proactive revocation propagation), and `google:sheets:write` (only if a
@@ -514,6 +515,10 @@ export const SCOPE_VOCABULARY = [
     label: 'Read your Google Drive file metadata and content' },
   { scope: 'google:meet:records', connector: 'google', verb: 'meet:records', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
     label: 'Read your Google Meet conference records, recordings, and transcripts' },
+  { scope: 'google:search-console:read', connector: 'google', verb: 'search-console:read', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Read your Google Search Console sites, search analytics, and URL inspections' },
+  { scope: 'google:business-profile:read', connector: 'google', verb: 'business-profile:read', surface: 'google-api', classification: SELF_SENSITIVE, surfaces: MCP_TOKENS,
+    label: 'Read your Google Business Profile locations and reviews' },
 
   // ── TypeSafe.ai (Jev) connector (#2197) — a SERVICE connector, not an
   // inference connector: the sealed key buys the `/v1/systemone` calibrated

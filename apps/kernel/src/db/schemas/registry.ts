@@ -1,4 +1,4 @@
-import { text, timestamp, jsonb, index, boolean, pgSchema, unique, uniqueIndex, real, integer } from 'drizzle-orm/pg-core';
+import { text, timestamp, jsonb, index, boolean, pgSchema, unique, uniqueIndex, real, integer, check } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 export const registrySchema = pgSchema('registry');
@@ -373,6 +373,8 @@ export const registryApps = registrySchema.table('apps', {
   requiredScope: text('required_scope'),
   /** Directory curation only (0203_registry_apps_featured.sql); countersigned apps:featured proposals, never an install or grant. */
   featured: boolean('featured').notNull().default(false),
+  /** Discovery/addition only; never a public-page or API access gate (#2897). */
+  visibility: text('visibility').$type<'public' | 'unlisted' | 'private' | 'internal'>().notNull().default('public'),
   /**
    * Scopes this app defines and enforces itself (#2663,
    * 0176_registry_apps_provides_scopes_depends_on.sql) — e.g. `dykil:read`.
@@ -418,6 +420,7 @@ export const registryApps = registrySchema.table('apps', {
   tierIdx: index('idx_registry_apps_tier').on(table.tier),
   templateIdx: index('idx_registry_apps_template').on(table.template),
   slugUniq: uniqueIndex('uniq_registry_apps_slug').on(table.slug).where(sql`${table.slug} IS NOT NULL`),
+  visibilityCheck: check('registry_apps_visibility_check', sql`${table.visibility} IN ('public', 'unlisted', 'private', 'internal')`),
 }));
 
 export type RegistryApp = typeof registryApps.$inferSelect;

@@ -4,6 +4,16 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { RunsPanel } from '../runs-panel';
 import { RunsPanelDetail } from '../runs-panel-detail';
 import { runLoop } from '@/src/lib/jin/__tests__/runs-fixture';
+vi.mock('../operator-approvals-panel', () => ({
+  useRunApprovals: () => ({ approvals: [], error: null, busyId: '', decisionsLocked: false, handleDecide: vi.fn(), handleArchive: vi.fn() }),
+  ApprovalCardRow: () => null,
+  ApprovalControllerNotices: () => null,
+}));
+
+function setFetch(fetcher: ReturnType<typeof vi.fn>) {
+  vi.stubGlobal('fetch', (url: string, options?: RequestInit) => url === '/api/loops/surfaces'
+    ? Promise.resolve(response({ conflicts: [] })) : fetcher(url, options));
+}
 
 function response(body: unknown, status = 200) {
   return { ok: status >= 200 && status < 300, status, json: async () => body } as Response;
@@ -39,7 +49,7 @@ describe('RunsPanel', () => {
     response({}, 500),
   ])('renders no chrome when the initial response does not establish operator status', async (result) => {
     const fetcher = vi.fn().mockResolvedValue(result);
-    vi.stubGlobal('fetch', fetcher);
+    setFetch(fetcher);
     const { container } = render(<RunsPanel />);
     await waitFor(() => expect(fetcher).toHaveBeenCalled());
     expect(container.innerHTML).toBe('');
@@ -52,7 +62,7 @@ describe('RunsPanel', () => {
       if (url.endsWith('/blocked')) return Promise.resolve(response(history(blocked)));
       return Promise.resolve(response(page([runLoop(), blocked])));
     });
-    vi.stubGlobal('fetch', fetcher);
+    setFetch(fetcher);
     const { container } = render(<RunsPanel />);
     const cards = await screen.findAllByTestId('run-card');
     expect(cards[0].textContent).toContain('Awaiting human review');
@@ -67,8 +77,8 @@ describe('RunsPanel', () => {
     expect(container.querySelector('table')).toBeNull();
     expect(container.innerHTML).not.toMatch(/overflow-x-(auto|scroll)|\b(?:min-)?w-\[\d+px\]/);
     expect(cards[0].className).toContain('min-w-0');
-    expect(within(cards[0]).getByRole('button').className).toContain('min-h-11');
-    fireEvent.click(within(cards[0]).getByRole('button'));
+    expect(within(cards[0]).getByRole('button', { expanded: true }).className).toContain('min-h-11');
+    fireEvent.click(within(cards[0]).getByRole('button', { expanded: true }));
     expect(screen.queryByTestId('run-detail')).toBeNull();
   });
 
@@ -77,7 +87,7 @@ describe('RunsPanel', () => {
       .mockResolvedValueOnce(response(page([runLoop()], 'opaque+cursor')))
       .mockResolvedValueOnce(response(page([runLoop({ state: 'blocked' }), runLoop({ loopId: 'second', summary: 'Second loop' })])))
       .mockResolvedValueOnce(response({ isOperator: false, page: null }));
-    vi.stubGlobal('fetch', fetcher);
+    setFetch(fetcher);
     render(<RunsPanel />);
     fireEvent.click(await screen.findByRole('button', { name: 'Load more runs' }));
     await screen.findByText('Second loop');
@@ -94,7 +104,7 @@ describe('RunsPanel', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce(response({}, 500))
       .mockResolvedValueOnce(response(page([])));
-    vi.stubGlobal('fetch', fetcher);
+    setFetch(fetcher);
     render(<RunsPanel />);
     await screen.findByText('Runs');
     fireEvent.click(screen.getByRole('button', { name: 'Refresh runs' }));
@@ -109,7 +119,7 @@ describe('RunsPanel', () => {
   });
 
   it.each([401, 403])('hides already-visible data after an auth failure (%s)', async (status) => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValueOnce(response(page())).mockResolvedValueOnce(response({}, status)));
+    setFetch(vi.fn().mockResolvedValueOnce(response(page())).mockResolvedValueOnce(response({}, status)));
     render(<RunsPanel />);
     fireEvent.click(await screen.findByRole('button', { name: 'Refresh runs' }));
     await waitFor(() => expect(screen.queryByTestId('runs-lane')).toBeNull());
@@ -118,7 +128,7 @@ describe('RunsPanel', () => {
   it('navigates to a parent not loaded in the lane and back through descendants', async () => {
     const child = runLoop({ parentLoopId: 'root', summary: 'Child work' });
     const root = runLoop({ loopId: 'root', summary: 'Parent work' });
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
+    setFetch(vi.fn((url: string) => {
       if (url.endsWith('/root')) return Promise.resolve(response(history(root)));
       if (url.endsWith('/loop-1')) return Promise.resolve(response(history(child)));
       if (url.includes('ancestor=root')) return Promise.resolve(response(page([root, child])));

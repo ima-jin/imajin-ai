@@ -29,12 +29,13 @@ const {
   mockGenerateKeypair,
   mockValidateAppDeclarations,
 } = vi.hoisted(() => {
-  const mockDbInsertValues = vi.fn(() => ({
+  const mockDbInsertValues = vi.fn((values: Record<string, unknown>) => ({
     returning: vi.fn().mockResolvedValue([
       {
         id: 'app_testid0000000000',
         appDid: 'did:imajin:generatedDid',
         name: 'Test App',
+        visibility: values.visibility,
         publicKey: 'a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f9',
       },
     ]),
@@ -124,6 +125,24 @@ describe('POST /api/registry/apps (#1739)', () => {
     const res = await POST(makeRequest({ name: 'Website', callbackUrl: 'https://example.com/cb', sourceRepo: 'https://github.com/org/repo' }) as never);
     expect(res.status).toBe(400);
     expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+  it.each(['public', 'unlisted', 'private', 'internal'])('persists registration visibility %s', async visibility => {
+    const res = await POST(makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', visibility }) as never);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toHaveProperty('visibility', visibility);
+    expect(mockDbInsertValues.mock.calls[0][0]).toHaveProperty('visibility', visibility);
+  });
+
+  it.each([null, '', 'PUBLIC', 'members', true, 1, {}, ['private']])('rejects invalid visibility %j before insertion', async visibility => {
+    const res = await POST(makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback', visibility }) as never);
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('visibility must be one of');
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('defaults omitted visibility to public', async () => {
+    await POST(makeRequest({ name: 'Test App', callbackUrl: 'https://example.com/callback' }) as never);
+    expect(mockDbInsertValues.mock.calls[0][0]).toHaveProperty('visibility', 'public');
   });
   it('inserts only into registry.apps — never auth.identities', async () => {
     const res = await POST(

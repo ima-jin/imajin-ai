@@ -4,12 +4,13 @@ info:
   version: "1.0.0"
   description: |
     Google Workspace connector (#2144, v1): Gmail/Calendar/Drive/Meet via
-    OAuth2 authorization-code with offline access. One consent screen requests
-    all six v1 `google:*` scopes at once; the resulting refresh token is
-    sealed per-DID in the vault and never returned by any route below.
+    OAuth2 authorization-code with offline access. Consent requests only the
+    selected connection's active manifest scopes, incrementally, with
+    include_granted_scopes=true. The resulting refresh token is sealed per
+    identity and connection slot in the vault and never returned.
 
     Scopes are declared in `packages/auth/src/scope-vocabulary.ts` and gate
-    which `google_*` MCP tools (a follow-up PR) may act on the connecting
+    which `google_*` MCP tools may act on the connecting
     DID's behalf. Every scope is `owner-only`: the sealed refresh token is
     consumed server-side on every call and never released to a third party.
 
@@ -45,6 +46,13 @@ components:
         primary, but a new slot never borrows primary credentials or grants.
       schema: { type: string, pattern: "^[a-z0-9][a-z0-9_-]{0,63}$", default: primary }
   securitySchemes:
+    mcpBearer:
+      type: http
+      scheme: bearer
+      description: >-
+        Audience-bound MCP app token. Subject is the resource-owner identity;
+        azp is the calling app. Both token scope and live app grant are required,
+        in addition to the identity's Google connection grant and provider scope.
     cookieAuth:
       type: apiKey
       in: cookie
@@ -63,6 +71,195 @@ components:
         The vault-held cron secret (purpose kernel.cron-secret), shared by every
         /api/cron/* route in this repo. Never an env var.
   schemas:
+    GoogleSetupStep:
+      type: object
+      required: [status, updatedAt, pendingSince]
+      properties:
+        status: { type: string, enum: [not_started, submitted, pending_google, approved, failed] }
+        updatedAt: { type: [string, "null"], format: date-time }
+        pendingSince: { type: [string, "null"], format: date-time }
+        caseUrl: { type: string, format: uri, description: "Optional HTTPS support.google.com case link; business-access step only." }
+    GoogleSetupStatus:
+      type: object
+      required: [version, slot, steps, businessProfileEnabled, businessProfileApproved, businessProfileAvailable, configSealed, tokenSealed, credentialPending]
+      properties:
+        version: { type: integer, const: 1, description: "Version of the data-driven setup copy." }
+        slot: { type: string }
+        steps:
+          type: object
+          required: [project, apis, consent, business-access, vault, connect]
+          properties:
+            project: { $ref: "#/components/schemas/GoogleSetupStep" }
+            apis: { $ref: "#/components/schemas/GoogleSetupStep" }
+            consent: { $ref: "#/components/schemas/GoogleSetupStep" }
+            business-access: { $ref: "#/components/schemas/GoogleSetupStep" }
+            vault: { $ref: "#/components/schemas/GoogleSetupStep" }
+            connect: { $ref: "#/components/schemas/GoogleSetupStep" }
+        businessProfileEnabled: { type: boolean, description: "Exact-true operator flag, default false." }
+        businessProfileApproved: { type: boolean, description: "Admin-recorded business-access approval for this identity/slot." }
+        businessProfileAvailable: { type: boolean, description: "Both flag and slot approval are true; Google still enforces API access." }
+        configSealed: { type: boolean }
+        tokenSealed: { type: boolean }
+        credentialPending: { type: boolean }
+        checks:
+          type: object
+          properties:
+            searchConsole:
+              type: object
+              required: [status, checkedAt, message]
+              properties:
+                status: { type: string, enum: [passed, failed] }
+                checkedAt: { type: string, format: date-time }
+                message: { type: string }
+    SearchAnalyticsInput:
+      type: object
+      additionalProperties: false
+      required: [siteUrl, startDate, endDate]
+      properties:
+        connection: { type: string, description: "Slot or unique label; defaults to primary." }
+        siteUrl: { type: string, maxLength: 2048, description: "Google URL property or sc-domain:example.com." }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date, description: "Must not precede startDate." }
+        dimensions:
+          type: array
+          maxItems: 7
+          items: { type: string, enum: [country, device, page, query, searchAppearance, date, hour] }
+        type: { type: string, enum: [web, image, video, news, discover, googleNews] }
+        aggregationType: { type: string, enum: [auto, byPage, byProperty, byNewsShowcasePanel] }
+        dataState: { type: string, enum: [final, all, hourly_all] }
+        rowLimit: { type: integer, minimum: 1, maximum: 25000, default: 1000 }
+        startRow: { type: integer, minimum: 0, maximum: 1000000, default: 0 }
+    SearchAnalyticsResult:
+      type: object
+      required: [rows]
+      properties:
+        responseAggregationType: { type: string }
+        rows:
+          type: array
+          items:
+            type: object
+            required: [clicks, impressions, ctr, position]
+            properties:
+              keys: { type: array, items: { type: string } }
+              clicks: { type: number }
+              impressions: { type: number }
+              ctr: { type: number }
+              position: { type: number }
+    SearchConsoleSitesResult:
+      type: object
+      required: [sites]
+      properties:
+        sites:
+          type: array
+          items:
+            type: object
+            properties:
+              siteUrl: { type: string }
+              permissionLevel: { type: string, enum: [siteOwner, siteFullUser, siteRestrictedUser, siteUnverifiedUser] }
+    UrlInspectionInput:
+      type: object
+      additionalProperties: false
+      required: [siteUrl, inspectionUrl]
+      properties:
+        connection: { type: string }
+        siteUrl: { type: string, maxLength: 2048 }
+        inspectionUrl: { type: string, format: uri, maxLength: 2048, description: "HTTP(S), no embedded credentials. Sent to Google, never fetched locally." }
+        languageCode: { type: string, minLength: 2, maxLength: 35 }
+    UrlInspectionResult:
+      type: object
+      properties:
+        inspectionResult:
+          type: object
+          properties:
+            inspectionResultLink: { type: string, format: uri }
+            indexStatusResult:
+              type: object
+              properties:
+                verdict: { type: string }
+                coverageState: { type: string }
+                robotsTxtState: { type: string }
+                indexingState: { type: string }
+                lastCrawlTime: { type: string }
+                pageFetchState: { type: string }
+                googleCanonical: { type: string }
+                userCanonical: { type: string }
+                sitemap: { type: array, items: { type: string } }
+                referringUrls: { type: array, items: { type: string } }
+                crawledAs: { type: string }
+            mobileUsabilityResult: { type: object }
+            richResultsResult: { type: object }
+    BusinessLocationsInput:
+      type: object
+      additionalProperties: false
+      required: [accountId]
+      properties:
+        connection: { type: string }
+        accountId: { type: string, pattern: "^[a-zA-Z0-9_-]+$", maxLength: 128 }
+        pageSize: { type: integer, minimum: 1, maximum: 100, default: 50 }
+        pageToken: { type: string, minLength: 1, maxLength: 4096 }
+    BusinessReviewsInput:
+      type: object
+      additionalProperties: false
+      required: [accountId, locationId]
+      properties:
+        connection: { type: string }
+        accountId: { type: string, pattern: "^[a-zA-Z0-9_-]+$", maxLength: 128 }
+        locationId: { type: string, pattern: "^[a-zA-Z0-9_-]+$", maxLength: 128 }
+        pageSize: { type: integer, minimum: 1, maximum: 50, default: 50 }
+        pageToken: { type: string, minLength: 1, maxLength: 4096 }
+        orderBy: { type: string, enum: [rating, "rating desc", "updateTime desc"] }
+    BusinessLocationsResult:
+      type: object
+      required: [locations]
+      properties:
+        nextPageToken: { type: string }
+        locations:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              title: { type: string }
+              storeCode: { type: string }
+              websiteUri: { type: string }
+              storefrontAddress:
+                type: object
+                properties:
+                  regionCode: { type: string }
+                  languageCode: { type: string }
+                  postalCode: { type: string }
+                  administrativeArea: { type: string }
+                  locality: { type: string }
+                  addressLines: { type: array, items: { type: string } }
+    BusinessReviewsResult:
+      type: object
+      required: [reviews]
+      properties:
+        nextPageToken: { type: string }
+        averageRating: { type: number }
+        totalReviewCount: { type: integer }
+        reviews:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              reviewId: { type: string }
+              reviewer:
+                type: object
+                properties:
+                  displayName: { type: string }
+                  profilePhotoUrl: { type: string }
+                  isAnonymous: { type: boolean }
+              starRating: { type: string, enum: [STAR_RATING_UNSPECIFIED, ONE, TWO, THREE, FOUR, FIVE] }
+              comment: { type: string }
+              createTime: { type: string }
+              updateTime: { type: string }
+              reviewReply:
+                type: object
+                properties:
+                  comment: { type: string }
+                  updateTime: { type: string }
     GoogleScopeManifestStatus:
       type: object
       properties:
@@ -84,6 +281,91 @@ components:
         error: { type: string }
 
 paths:
+  /api/setup:
+    parameters:
+      - $ref: "#/components/parameters/connectionSlot"
+    get:
+      tags: [google]
+      operationId: googleSetupStatus
+      summary: Read the identity's persistent per-connection setup checklist
+      description: >-
+        Uses the authenticated acting identity. Stores only non-secret statuses,
+        timestamps and an optional Google support case link in identity metadata.
+        Pending Google survives reloads with its original pendingSince.
+        Config/token status is checked live against the existing identity vault.
+        All responses are no-store. Search Console never depends on the
+        business-access step or operator Business Profile flag.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Checklist state and live credential/feature status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GoogleSetupStatus" }
+        "400": { description: Invalid connection slot }
+        "401": { description: Authentication required }
+        "403": { description: Identity authority denied }
+        "500": { description: Sanitized internal error }
+    patch:
+      tags: [google]
+      operationId: googleUpdateSetupStep
+      summary: Update a setup step for this identity and connection
+      description: >-
+        Admin-reported status, not a claim of independent Google approval.
+        Atomic updates preserve other metadata and other slots. No credential
+        fields are accepted here; use the existing vault-backed configure route.
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [step, status]
+              properties:
+                step: { type: string, enum: [project, apis, consent, business-access, vault, connect] }
+                status: { type: string, enum: [not_started, submitted, pending_google, approved, failed] }
+                caseUrl: { type: string, format: uri, description: "HTTPS support.google.com link; business-access only." }
+      responses:
+        "200":
+          description: Updated checklist state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GoogleSetupStatus" }
+        "400": { description: Invalid slot, step, status or case link }
+        "401": { description: Authentication required }
+        "403": { description: Identity authority denied }
+        "500": { description: Sanitized internal error }
+    post:
+      tags: [google]
+      operationId: googleCheckSetup
+      summary: Check this connection against the Search Console API
+      description: >-
+        Calls sites.list through the same scoped credential/identity/slot gates.
+        Returns a safe passed/failed check message, never provider bodies,
+        credentials or site data. Does not falsely approve admin checklist
+        steps or submit a Business Profile access request.
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Setup view plus current Search Console check
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GoogleSetupStatus" }
+        "400": { description: Invalid slot }
+        "401": { description: Authentication required }
+        "403": { description: Identity authority denied }
+        "500": { description: Sanitized internal error }
+    options:
+      tags: [google]
+      operationId: googleSetupOptions
+      summary: CORS pre-flight
+      responses:
+        "204": { description: No content }
   /api/connect:
     parameters:
       - $ref: "#/components/parameters/connectionSlot"
@@ -93,8 +375,11 @@ paths:
       summary: Begin the Google OAuth2 authorization-code flow
       description: >-
         Session-gated. Redirects to Google's consent screen with
-        `access_type=offline&prompt=consent` so a refresh token is always
-        issued. An optional `?returnTo=` query param carries the browser back
+        `access_type=offline&prompt=consent&include_granted_scopes=true`.
+        Only scopes selected in this identity/slot's manifest are requested;
+        an empty selection is rejected. Business Profile additionally requires
+        the operator flag and this slot's approved business-access setup step.
+        An optional `?returnTo=` query param carries the browser back
         to its starting page after the callback.
       security:
         - cookieAuth: []
@@ -107,7 +392,7 @@ paths:
         "307":
           description: Redirect to Google's authorize endpoint
         "400":
-          description: No OAuth client configured for this DID yet
+          description: No OAuth client configured or no enabled manifest scopes selected
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -117,7 +402,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
-          description: Config sealed but awaiting owner grant approval
+          description: Config sealed but awaiting owner grant approval, or Business project approval pending
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -270,6 +555,8 @@ paths:
                       - "google:calendar:write"
                       - "google:drive:read"
                       - "google:meet:records"
+                      - "google:search-console:read"
+                      - "google:business-profile:read"
       responses:
         "200":
           description: Published
@@ -373,3 +660,100 @@ paths:
           description: Missing or wrong cron secret bearer
         "500":
           description: Internal server error
+  /mcp:
+    servers:
+      - url: https://{node}.imajin.ai
+        variables:
+          node: { default: jin }
+      - url: http://localhost:3000
+    post:
+      tags: [google]
+      operationId: googleReadTools
+      summary: Typed Google data reads through the existing MCP connector surface
+      description: >-
+        JSON-RPC tools/call. Search Console tools require google:search-console:read.
+        Business Profile tools require google:business-profile:read,
+        GOOGLE_BUSINESS_PROFILE_ENABLED=true (default off), and the selected
+        connection's business-access setup step approved. No writes are exposed.
+        The connection selector binds all grant/vault/API work to the token's
+        owner identity and that slot. Successful reads produce an awaited signed
+        google.data.read audit event with onBehalfOf, slot and operation, not
+        provider data. Provider permission/verified-property checks remain
+        Google's responsibility. Tool failures return isError=true in-band.
+      security:
+        - mcpBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jsonrpc, id, method, params]
+              properties:
+                jsonrpc: { type: string, const: "2.0" }
+                id: { type: [integer, string] }
+                method: { type: string, const: "tools/call" }
+                params:
+                  oneOf:
+                    - type: object
+                      required: [name, arguments]
+                      properties:
+                        name: { const: google_search_console_list_sites }
+                        arguments:
+                          type: object
+                          additionalProperties: false
+                          properties:
+                            connection: { type: string }
+                    - type: object
+                      required: [name, arguments]
+                      properties:
+                        name: { const: google_search_console_query_analytics }
+                        arguments: { $ref: "#/components/schemas/SearchAnalyticsInput" }
+                    - type: object
+                      required: [name, arguments]
+                      properties:
+                        name: { const: google_search_console_inspect_url }
+                        arguments: { $ref: "#/components/schemas/UrlInspectionInput" }
+                    - type: object
+                      required: [name, arguments]
+                      properties:
+                        name: { const: google_business_profile_list_locations }
+                        arguments: { $ref: "#/components/schemas/BusinessLocationsInput" }
+                    - type: object
+                      required: [name, arguments]
+                      properties:
+                        name: { const: google_business_profile_list_reviews }
+                        arguments: { $ref: "#/components/schemas/BusinessReviewsInput" }
+      responses:
+        "200":
+          description: >-
+            JSON-RPC result.content text contains JSON matching the selected
+            tool's result schema; result.isError indicates denial/provider errors.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jsonrpc: { const: "2.0" }
+                  id: { type: [integer, string] }
+                  result:
+                    type: object
+                    properties:
+                      isError: { type: boolean }
+                      content:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type: { const: text }
+                            text: { type: string }
+          x-tool-results:
+            google_search_console_list_sites: { $ref: "#/components/schemas/SearchConsoleSitesResult" }
+            google_search_console_query_analytics: { $ref: "#/components/schemas/SearchAnalyticsResult" }
+            google_search_console_inspect_url: { $ref: "#/components/schemas/UrlInspectionResult" }
+            google_business_profile_list_locations: { $ref: "#/components/schemas/BusinessLocationsResult" }
+            google_business_profile_list_reviews: { $ref: "#/components/schemas/BusinessReviewsResult" }
+        "401":
+          description: Missing, expired or invalid audience-bound MCP bearer
+        "403":
+          description: No recognized MCP scope

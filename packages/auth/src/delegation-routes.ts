@@ -153,6 +153,11 @@ export const DELEGATION_ROUTES = {
     path: "/api/registry/apps/[appId]",
     why: "deletes a registered app",
   },
+  "kernel.registry-app.visibility-widen": {
+    class: "irreversible", action: "visibility-widen", app: "kernel", method: "PATCH",
+    path: "/api/registry/apps/[appId]",
+    why: "widening visibility discloses an app to new people",
+  },
   "kernel.chat.conversation.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",
     path: "/chat/api/conversations/[id]",

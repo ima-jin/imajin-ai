@@ -7,6 +7,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, waitFor } from '@testing-library/react';
+vi.mock('@imajin/ui/server', () => ({ getActingAsHeaders: () => ({}) }));
 
 const DID = 'did:imajin:alice';
 

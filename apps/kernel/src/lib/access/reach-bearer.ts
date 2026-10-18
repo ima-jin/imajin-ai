@@ -16,6 +16,7 @@ import { generateOpaqueToken, hashToken } from '@/src/lib/mcp/oauth-config';
 import { isTierAdmitted } from '@/src/lib/jin/front-door';
 import { blockForeignAgentStub } from '@/src/lib/auth/foreign-agent-stub';
 import { blockReachSender } from '@/src/lib/auth/reach-envelope-store';
+import { resolveOrMintForeignPrincipalStub } from '@/src/lib/auth/foreign-principal-stub';
 import {
   DELEGATE_GRANT_HARD_CAP_DAYS,
   DELEGATE_GRANT_SLIDING_WINDOW_DAYS_OPTIONS,
@@ -224,14 +225,27 @@ export async function listReachBearerKnocks(principalDid: string): Promise<Reach
   }));
 }
 
+function storedKnockClaim(purpose: string) {
+  try {
+    return parseReachKnock({ agentLabel: 'stored', ...JSON.parse(purpose) });
+  } catch {
+    return { ok: false as const };
+  }
+}
+
 export async function blockReachBearerKnock(params: { principalDid: string; requestId: string }): Promise<boolean> {
-  const [row] = await getClient().unsafe<Array<{ requester_did: string }>>(`
-    SELECT b.principal_did AS requester_did FROM auth.delegate_grant_bearers b
+  const [row] = await getClient().unsafe<Array<{ requester_did: string; purpose: string }>>(`
+    SELECT b.principal_did AS requester_did, b.purpose FROM auth.delegate_grant_bearers b
     JOIN auth.foreign_agent_stubs s ON s.stub_did = b.principal_did
     WHERE b.request_id = $1 AND s.principal_did = $2 AND b.surfaces = $3::jsonb LIMIT 1
   `, [params.requestId, params.principalDid, JSON.stringify([reachBearerSurface(params.principalDid)])]);
   if (!row) return false;
   await blockForeignAgentStub(row.requester_did, params.principalDid);
-  await blockReachSender({ principalDid: params.principalDid, requesterDid: row.requester_did });
+  const claim = storedKnockClaim(row.purpose);
+  const stub = claim.ok ? await resolveOrMintForeignPrincipalStub(claim.input.onBehalfOf) : null;
+  await blockReachSender({
+    principalDid: params.principalDid, requesterDid: row.requester_did,
+    ...(stub ? { onBehalfOfStubDid: stub.did } : {}),
+  });
   return true;
 }
