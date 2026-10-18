@@ -602,7 +602,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // #2746: resolve the callback origin up front so a node with no public URL
   // fails closed before the repo is created or any key is minted.
   let redirects: RegistrationRedirects;
-  const visibility = params.visibility === undefined ? 'public' : params.visibility;
+  const visibility = params.visibility ?? 'public';
   try {
     if (!isAppVisibility(visibility)) throw new Error(APP_VISIBILITY_ERROR);
     redirects = resolveRegistrationRedirects(slug, params.domain);
