@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { setVaultInternalApiKey } from '../../../../../../packages/auth/tests/support/internal-post-test-env';
 
-const { db, tables, authSpy, publish, resolveMembers } = vi.hoisted(() => {
-  const tables = Object.fromEntries(['connections', 'nicknames', 'pods', 'podMembers', 'podLinks']
+const { db, tables, authSpy, publish, resolveMembers, registrations } = vi.hoisted(() => {
+  const tables = Object.fromEntries(['connections', 'nicknames', 'pods', 'podMembers', 'podLinks', 'registryApps', 'googleWorkspaceState']
     .map((name) => [name, new Proxy({}, { get: (_target, key) => `${name}.${String(key)}` })]));
   const rows = [{ id: 'pod', ownerDid: 'did:imajin:org', role: 'member', nickname: 'Friend', pod: { id: 'pod' } }];
   const chain = {
@@ -20,12 +20,18 @@ const { db, tables, authSpy, publish, resolveMembers } = vi.hoisted(() => {
     },
     authSpy: vi.fn(), publish: vi.fn(async () => undefined),
     resolveMembers: vi.fn(async () => new Set(['did:imajin:org'])),
+    registrations: {
+      listConnectorRegistrations: vi.fn(async () => []),
+      createConnectorConnection: vi.fn(async () => ({ slot: 'primary', label: 'Test' })),
+      renameConnectorConnection: vi.fn(async () => ({ slot: 'primary', label: 'Test' })),
+    },
   };
 });
 
 vi.mock('@/src/db', () => ({ db, ...tables }));
 vi.mock('@imajin/auth', async () => {
   const { requireAuth } = await import('../../../../../../packages/auth/src/require-auth');
+  const { requireAppAuth } = await import('../../../../../../packages/auth/src/require-app-auth');
   const { resolveActingDid } = await import('../../../../../../packages/auth/src/acting-did');
   return {
     requireAuth: (...args: Parameters<typeof requireAuth>) => {
@@ -33,6 +39,7 @@ vi.mock('@imajin/auth', async () => {
       return requireAuth(...args);
     },
     resolveActingDid,
+    requireAppAuth,
     isVerifiedTier: () => true,
   };
 });
@@ -41,6 +48,14 @@ vi.mock('@imajin/bus', () => ({ publish }));
 vi.mock('@imajin/trust-graph', () => ({ resolvePodMembers: resolveMembers }));
 vi.mock('@/src/lib/auth/foreign-agent-stub', () => ({ blockForeignAgentStub: async () => false }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: () => 'pod' }));
+vi.mock('@/src/lib/kernel/connector-registry', () => ({
+  getConnector: () => ({ id: 'test', channel: 'test', connectorDid: 'did:imajin:test', ingestionPattern: 'native' }),
+}));
+vi.mock('@/src/lib/kernel/connector-registry-store', () => registrations);
+vi.mock('@/src/lib/kernel/scope-manifest-core', () => ({ readActiveConnectorScopes: async () => [] }));
+vi.mock('@/src/lib/vault', () => ({
+  vaultFieldStatus: async () => 'absent', vaultFieldStatusForGrantee: async () => 'absent',
+}));
 vi.mock('@/src/lib/kernel/cors', () => ({
   corsHeaders: () => ({}), corsOptions: () => new Response(),
   withCors: (response: Response) => response,
@@ -54,6 +69,7 @@ import * as pod from '../pods/[id]/route';
 import * as links from '../pods/[id]/links/route';
 import * as members from '../pods/[id]/members/route';
 import * as resolve from '../pods/[id]/resolve/route';
+import * as connectorConnections from '../connectors/[id]/connections/route';
 
 const ORG = 'did:imajin:org';
 const props = { params: Promise.resolve({ id: 'pod', did: 'did:imajin:other' }) };
@@ -94,6 +110,9 @@ const routes = [
   ['pod member edit', (req: NextRequest) => members.PATCH(req, props), 200],
   ['pod member delete', (req: NextRequest) => members.DELETE(req, props), 200],
   ['pod resolve', (req: NextRequest) => resolve.GET(req, props), 200],
+  ['connector registrations list', (req: NextRequest) => connectorConnections.GET(req, props), 200],
+  ['connector registrations create', (req: NextRequest) => connectorConnections.POST(req, props), 201],
+  ['connector registrations rename', (req: NextRequest) => connectorConnections.PATCH(req, props), 200],
 ] as const;
 
 describe.each(routes)('%s service gate', (_name, handler, status) => {
@@ -101,7 +120,7 @@ describe.each(routes)('%s service gate', (_name, handler, status) => {
     return new NextRequest('https://kernel.test/connections/api', {
       method: 'POST',
       headers: { cookie: `imajin_session=test; x-acting-as=${ORG}` },
-      body: JSON.stringify({ name: 'Pod', nickname: 'Friend', dids: ['did:imajin:other'], did: 'did:imajin:other', role: 'member', childPodId: 'child' }),
+      body: JSON.stringify({ name: 'Pod', nickname: 'Friend', dids: ['did:imajin:other'], did: 'did:imajin:other', role: 'member', childPodId: 'child', label: 'Test' }),
     });
   }
   it.each([{ services: null }, { services: ['connections'] }])('allows unrestricted or listed-service maintainers ($services)', async ({ services }) => {
@@ -115,6 +134,7 @@ describe.each(routes)('%s service gate', (_name, handler, status) => {
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ error: 'Not authorized to act as this group' });
     for (const query of Object.values(db)) expect(query).not.toHaveBeenCalled();
+    for (const operation of Object.values(registrations)) expect(operation).not.toHaveBeenCalled();
     expect(resolveMembers).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
   });
