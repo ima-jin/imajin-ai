@@ -63,6 +63,7 @@ async function openEmailPanelAndFillAddress() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -100,6 +101,23 @@ describe('successful email delivery', () => {
 });
 
 describe('email delivery failure (#1860)', () => {
+  it('cancels copy feedback timers when leaving the invitations tab', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    installFetch(async () => ({
+      ok: true,
+      json: async () => ({ invite: { code: 'abc123' }, url: INVITE_URL, emailSent: false }),
+    }));
+    const { unmount } = render(<InvitationsTab />);
+    await openEmailPanelAndFillAddress();
+    fireEvent.click(screen.getByRole('button', { name: 'Send Invite' }));
+    await screen.findByRole('button', { name: 'Copy link' });
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    fireEvent.click(screen.getByRole('button', { name: '✓ Copied' }));
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('renders a distinct failed-delivery state instead of a false success when emailSent is false', async () => {
     installFetch(async () => ({
       ok: true,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import { useToast } from '@imajin/ui';
@@ -236,12 +236,16 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
   const [generating, setGenerating] = useState(false);
   const [generatedInvite, setGeneratedInvite] = useState<{ url: string; code: string } | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailResult, setEmailResult] = useState<EmailInviteResult | null>(null);
   const [qrUrl, setQrUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fireAndForget(fetchAll(), 'invitations:fetchAll');
+    return () => {
+      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    };
   }, []);
 
   async function fetchAll() {
@@ -357,7 +361,8 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
   function copyLink(url: string, code: string) {
     fireAndForget(navigator.clipboard.writeText(url), 'invitations:clipboard');
     setCopiedCode(code);
-    setTimeout(() => setCopiedCode(null), 2000);
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    copyResetTimer.current = setTimeout(() => setCopiedCode(null), 2000);
   }
 
   const allSentRows = sentInvites
