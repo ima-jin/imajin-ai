@@ -14,7 +14,7 @@ export function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:read' });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:read', service: 'connections' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }

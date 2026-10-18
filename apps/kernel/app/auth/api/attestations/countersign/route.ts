@@ -30,7 +30,7 @@ const log = createLogger('kernel:countersign');
  */
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  const auth = await resolveEffectiveDid(request, { scope: 'attestations:write' });
+  const auth = await resolveEffectiveDid(request, { scope: 'attestations:write', service: 'auth' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }

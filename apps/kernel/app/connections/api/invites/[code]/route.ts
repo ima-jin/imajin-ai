@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ code
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
   }
   if (invite.delivery === 'direct') {
-    const auth = await resolveEffectiveDid(_request, { scope: 'connections:read' });
+    const auth = await resolveEffectiveDid(_request, { scope: 'connections:read', service: 'connections' });
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     if (auth.effectiveDid !== invite.fromDid && auth.effectiveDid !== invite.toDid) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
@@ -64,7 +64,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ co
 
 async function deleteInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
   const params = await props.params;
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write', service: 'connections' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }

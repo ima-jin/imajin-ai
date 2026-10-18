@@ -178,7 +178,7 @@ async function resolveInviteAuth(
   request: NextRequest,
   scope: 'connections:read' | 'connections:write' = 'connections:write',
 ): Promise<InviteAuthResult> {
-  const auth = await resolveEffectiveDid(request, { scope });
+  const auth = await resolveEffectiveDid(request, { scope, service: 'connections' });
   if (!auth.ok) {
     return { error: auth.error, status: auth.status };
   }

@@ -16,7 +16,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await resolveEffectiveDid(request, { scope: 'messages:read' });
+  const auth = await resolveEffectiveDid(request, { scope: 'messages:read', service: 'chat' });
   if (!auth.ok) {
     return errorResponse(auth.error, auth.status);
   }
@@ -84,7 +84,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = await resolveEffectiveDid(request, { scope: 'messages:write' });
+  const auth = await resolveEffectiveDid(request, { scope: 'messages:write', service: 'chat' });
   if (!auth.ok) {
     return errorResponse(auth.error, auth.status);
   }

@@ -8,7 +8,7 @@ import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
 async function resolveMemberAuth(request: NextRequest) {
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write', service: 'connections' });
   if (!auth.ok) return auth;
 
   const session = await getSessionForDid(auth.effectiveDid);
@@ -18,7 +18,7 @@ async function resolveMemberAuth(request: NextRequest) {
   // so an org-issued attestation does not erase who performed the operation.
   let actorDid: string | undefined;
   if (auth.via === 'session') {
-    const caller = await requireAuth(request);
+    const caller = await requireAuth(request, { service: 'connections' });
     if ('error' in caller) return { ok: false as const, error: caller.error, status: caller.status };
     if (caller.identity.id !== auth.effectiveDid) actorDid = caller.identity.id;
   }

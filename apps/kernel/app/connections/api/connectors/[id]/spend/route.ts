@@ -51,7 +51,7 @@ export async function GET(
     return NextResponse.json({ error: `Unknown inference connector: ${id}` }, { status: 404, headers });
   }
 
-  const auth = await resolveEffectiveDid(request, { scope: 'infer:usage-read' });
+  const auth = await resolveEffectiveDid(request, { scope: 'infer:usage-read', service: 'connections' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
   }
