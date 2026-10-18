@@ -32,6 +32,7 @@ vi.mock('@/src/lib/kernel/cors', () => ({
 
 const { mockListConnections } = vi.hoisted(() => ({ mockListConnections: vi.fn() }));
 vi.mock('@/src/lib/connections/list', () => ({ listConnections: mockListConnections }));
+vi.mock('@/src/lib/connections/relationship-labels', () => ({ canManageRelationshipLabels: vi.fn() }));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }),
@@ -83,6 +84,7 @@ describe('GET /connections/api/connections — AgriFortress bearer-only app toke
 
     expect(res.status).toBe(200);
     expect(mockListConnections).toHaveBeenCalledWith(RECIPIENT_DID);
+    expect(await res.json()).toEqual({ connections: [], canManageRelationshipLabels: false });
   });
 
   it('rejects a bearer app token missing the connections:read scope with 403, not a generic 401', async () => {

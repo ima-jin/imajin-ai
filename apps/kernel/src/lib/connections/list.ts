@@ -1,6 +1,7 @@
 import { db, connections, nicknames } from '@/src/db';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
+import type { RelationshipLabel } from '@/src/db/schemas/connections';
 
 export interface ConnectionEntry {
   did: string;
@@ -8,6 +9,7 @@ export interface ConnectionEntry {
   name: string | null;
   nickname: string | null;
   connectedAt: Date;
+  relationshipLabel: RelationshipLabel | null;
 }
 
 /**
@@ -30,6 +32,7 @@ export async function listConnections(did: string): Promise<ConnectionEntry[]> {
   const mapped = rows.map((row) => ({
     did: row.didA === did ? row.didB : row.didA,
     connectedAt: row.connectedAt,
+    relationshipLabel: row.didA === did ? row.relationshipLabelA : row.relationshipLabelB,
   }));
 
   const targetDids = mapped.map((c) => c.did);
@@ -52,6 +55,7 @@ export async function listConnections(did: string): Promise<ConnectionEntry[]> {
         name: identity?.name ?? null,
         nickname,
         connectedAt: conn.connectedAt,
+        relationshipLabel: conn.relationshipLabel,
       };
     })
   );

@@ -10,6 +10,7 @@ vi.mock('@imajin/auth', () => ({
 }));
 vi.mock('@imajin/auth/delegation-policy', () => ({ enforceRoutePolicy: (...args: unknown[]) => mocks.policy(...args) }));
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: vi.fn() }));
 vi.mock('@/src/lib/auth/foreign-agent-stub', () => ({ blockForeignAgentStub: (...args: unknown[]) => mocks.block(...args) }));
 vi.mock('@/src/db', () => {
   const where = () => ({ returning: mocks.rows });
