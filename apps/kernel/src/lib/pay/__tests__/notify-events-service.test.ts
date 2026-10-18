@@ -19,11 +19,15 @@ const mocks = vi.hoisted(() => {
     limit,
     where: vi.fn(() => ({ limit })),
     select: vi.fn(),
+    resolveRegistryAppBaseUrl: vi.fn(),
     whereExternalRef: vi.fn((ref: string) => ({ externalRef: ref })),
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
   };
 });
 
+vi.mock('@/src/lib/apps/registry-url', () => ({
+  resolveRegistryAppBaseUrl: mocks.resolveRegistryAppBaseUrl,
+}));
 vi.mock('@/src/db', () => ({
   db: { select: mocks.select },
   feeLedger: {},
@@ -70,7 +74,7 @@ describe('events checkout notification carries the kernel transactionId', () => 
     mocks.select.mockReturnValue({ from: () => ({ where: mocks.where }) });
     mocks.limit.mockResolvedValue([{ id: 'tx_abc123' }]);
     vi.stubGlobal('fetch', fetchMock);
-    vi.stubEnv('EVENTS_SERVICE_URL', EVENTS_URL);
+    mocks.resolveRegistryAppBaseUrl.mockResolvedValue(EVENTS_URL);
     fetchMock.mockReset().mockImplementation(async () => new Response(JSON.stringify({ received: true }), { status: 200 }));
   });
 
@@ -111,6 +115,29 @@ describe('events checkout notification carries the kernel transactionId', () => 
   });
 
   describe('notifyEventsService', () => {
+    it('uses registry discovery, not an environment service URL', async () => {
+      vi.stubEnv('EVENTS_SERVICE_URL', 'https://stale-events.test');
+      await notifyEventsService('checkout.completed', eventsSession());
+      expect(mocks.resolveRegistryAppBaseUrl).toHaveBeenCalledWith('events');
+      expect(fetchMock.mock.calls[0][0]).toBe(`${EVENTS_URL}/api/webhook/payment`);
+    });
+
+    it('skips delivery when the registry has no usable destination', async () => {
+      mocks.resolveRegistryAppBaseUrl.mockResolvedValue(null);
+      await expect(notifyEventsService('checkout.completed', eventsSession())).resolves.toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.select).not.toHaveBeenCalled();
+      expect(mocks.log.error).toHaveBeenCalledWith({}, expect.stringContaining('registry URL unavailable'));
+    });
+
+    it('fails soft when registry discovery throws', async () => {
+      mocks.resolveRegistryAppBaseUrl.mockRejectedValue(new Error('registry down'));
+      await expect(notifyEventsService('checkout.completed', eventsSession())).resolves.toBeUndefined();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(mocks.log.error).toHaveBeenCalledWith(
+        { err: expect.stringContaining('registry down') }, 'Failed to notify events service',
+      );
+    });
     it('delivers without legacy bearer configuration', async () => {
       await notifyEventsService('checkout.completed', eventsSession());
       expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Authorization');

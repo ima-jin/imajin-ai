@@ -14,21 +14,12 @@ import { computeCid } from "@imajin/cid";
 import { blobStore } from "@/src/lib/media/blob-store-lore";
 import { deriveArticleProjection, mergeArticleMetadata } from "@/src/lib/media/article-core";
 import { emitUploadAttestation } from "@/src/lib/media/emit-upload-attestation";
+import { resolveContextFolder } from '@/src/lib/media/context-folder';
 
 const log = createLogger("kernel");
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || "/mnt/media";
 
-/** Context → system-folder mapping for auto-assignment on create. */
-const CONTEXT_FOLDER_MAP: Record<string, { name: string; icon: string }> = {
-  bugs: { name: "Bug Reports", icon: "🐛" },
-  chat: { name: "Chat", icon: "💬" },
-  profile: { name: "Profile", icon: "👤" },
-  events: { name: "Events", icon: "🎫" },
-  market: { name: "Profile", icon: "👤" },
-  voice: { name: "Audio Recordings", icon: "🎙️" },
-  signed: { name: "Signed Documents", icon: "📝" },
-};
 
 const ALLOWED_MIME_PREFIXES = ["image/", "audio/", "video/", "text/"];
 const ALLOWED_MIME_EXACT = new Set(["application/pdf", "application/json"]);
@@ -175,11 +166,10 @@ async function findDedupTarget(cid: string, hash: string, ownerDid: string): Pro
 
 /** Auto-assign a freshly-created asset to a system folder based on context (non-fatal). */
 async function autoAssignContextFolder(assetId: string, ownerDid: string, context: CreateAssetInput['context']): Promise<void> {
-  const folderKey = context?.feature || context?.app || "";
-  if (!folderKey) return;
-  const folderConfig = CONTEXT_FOLDER_MAP[folderKey];
-  if (!folderConfig) return;
+  if (!context) return;
   try {
+    const folderConfig = await resolveContextFolder(context);
+    if (!folderConfig) return;
     const folderId = await getOrCreateSystemFolder(ownerDid, folderConfig.name, folderConfig.icon);
     await db.insert(assetFolders).values({ assetId, folderId }).onConflictDoNothing();
   } catch (err) {

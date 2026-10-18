@@ -17,6 +17,7 @@ export const conversationsV2 = chatSchema.table('conversations_v2', {
   trustRadius: text('trust_radius'),
   podId: text('pod_id'),                                        // Link to connections.pods
   createdBy: text('created_by').notNull(),                      // DID of creator
+  appDid: text('app_did'),                                      // Immutable registered-app provenance; null for legacy/session rooms
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }),

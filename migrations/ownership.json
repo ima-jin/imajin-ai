@@ -24,6 +24,12 @@
       "firstMigration": "0102_agent_knocks.sql",
       "notes": ""
     },
+    "kernel.mail_senders": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0210_mail_senders.sql",
+      "notes": "Send-only fixed-purpose sender configuration (#2919)."
+    },
     "auth.agent_provisions": {
       "owner": "kernel",
       "schema": "auth",
@@ -226,7 +232,7 @@
       "owner": "kernel",
       "schema": "chat",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "#2539: 0209_chat_conversations_app_binding.sql adds nullable app_did provenance; legacy conversations remain unbound."
     },
     "chat.invites": {
       "owner": "kernel",
@@ -802,7 +808,7 @@
       "owner": "kernel",
       "schema": "registry",
       "firstMigration": "0007_registry_apps.sql",
-      "notes": "#2871 — 0203_registry_apps_featured.sql adds the operator-curated featured flag; no install table or grant changes."
+      "notes": "#2871 — 0203_registry_apps_featured.sql adds the operator-curated featured flag; 0204_registry_apps_visibility.sql adds listing visibility; #2899 — 0205_registry_apps_profile_widget.sql adds profile widget declarations. No install table or grant changes."
     },
     "registry.bump_events": {
       "owner": "kernel",

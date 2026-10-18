@@ -10,7 +10,11 @@ const mocks = vi.hoisted(() => ({
   insert: vi.fn(),
   resolveScope: vi.fn(),
   audience: vi.fn(),
-  emptyLimit: vi.fn(async () => []),
+  mail: vi.fn(),
+  template: vi.fn(),
+  eligible: vi.fn(),
+  payment: vi.fn(),
+  emptyLimit: vi.fn<() => Promise<Record<string, unknown>[]>>(async () => []),
 }));
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: mocks.claims }));
 vi.mock('@/src/lib/vault/internal-secret', () => ({
@@ -28,19 +32,21 @@ vi.mock('@imajin/logger', () => ({
 }));
 vi.mock('@/src/db', () => ({
   registryApps: { appDid: 'appDid' },
+  paymentRequests: { id: 'paymentId' },
   notifications: {}, preferences: {}, identities: {}, profiles: {}, credentials: {},
   db: {
     select: () => ({
-      from: (table: { appDid?: string }) => ({
-        where: () => ({ limit: table?.appDid ? mocks.registration : mocks.emptyLimit }),
+      from: (table: { appDid?: string; id?: string }) => ({
+        where: () => ({ limit: table?.id === 'paymentId' ? mocks.payment : table?.appDid ? mocks.registration : mocks.emptyLimit }),
       }),
     }),
     insert: () => ({ values: mocks.insert }),
     update: () => ({ set: () => ({ where: async () => undefined }) }),
   },
 }));
-vi.mock('@imajin/email', () => ({ sendEmail: vi.fn(), renderBroadcastEmail: vi.fn() }));
-vi.mock('@/src/lib/notify/template-store', () => ({ getTemplate: async () => undefined }));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mocks.mail }));
+vi.mock('@imajin/email', () => ({ renderBroadcastEmail: vi.fn() }));
+vi.mock('@/src/lib/notify/template-store', () => ({ getTemplate: mocks.template }));
 vi.mock('@/src/lib/notify/ws-push', () => ({
   buildNotificationFrame: () => ({}),
   pushNotificationToDid: async () => false,
@@ -55,7 +61,7 @@ vi.mock('../interest/registry', () => ({
 }));
 vi.mock('../broadcast/registry', () => ({
   fetchAudienceFromRegistry: mocks.audience,
-  checkRegistryPreferences: vi.fn(),
+  checkRegistryPreferences: mocks.eligible,
 }));
 
 const routes = [
@@ -77,6 +83,85 @@ beforeEach(() => {
   mocks.insert.mockResolvedValue(undefined);
   mocks.resolveScope.mockResolvedValue(null);
   mocks.audience.mockResolvedValue([]);
+  mocks.template.mockResolvedValue(undefined);
+  mocks.mail.mockResolvedValue({ success: true });
+  mocks.emptyLimit.mockResolvedValue([]);
+  mocks.eligible.mockResolvedValue(true);
+  mocks.payment.mockResolvedValue([]);
+});
+
+describe('mail sender propagation through actual notify routes', () => {
+  beforeEach(() => {
+    mocks.claims.mockResolvedValue({ azp: appDid, scope: 'notify:send notify:broadcast', isServiceToken: true });
+    mocks.registration.mockResolvedValue([{
+      status: 'active', approved: ['notify:send', 'notify:broadcast'], ownerDid: 'did:imajin:app-owner',
+    }]);
+    mocks.template.mockResolvedValue({
+      urgency: 'normal', title: () => 'Receipt', body: () => 'Body',
+      email: { subject: () => 'Receipt', html: () => '<p>Receipt</p>' },
+    });
+  });
+  it.each([
+    ['pay:payment_request-paid', 'receipts'],
+    ['pay:payment_request-settled', 'receipts'],
+    ['event:ticket-receipt', 'receipts'],
+    ['custom:receipt', 'notifications'],
+  ])('selects kernel purpose for %s and ignores injected owner/app/from/replyTo/purpose', async (scope, purpose) => {
+    const res = await send(request({
+      to: 'did:imajin:recipient', scope, purpose: 'signin', ownerDid: 'did:imajin:spoof',
+      appDid: 'did:imajin:spoof', from: 'spoof@example.com', replyTo: 'spoof@example.com',
+      data: { email: 'recipient@example.com', ownerDid: 'did:imajin:spoof', paymentRequestId: 'pr_spoof' },
+    }));
+    expect(res.status).toBe(200);
+    expect(mocks.mail).toHaveBeenCalledWith({
+      ownerDid: 'did:imajin:app-owner', appDid, purpose, messageRef: expect.stringMatching(/^ntf_/),
+      to: 'recipient@example.com', subject: 'Receipt', html: '<p>Receipt</p>',
+    });
+  });
+  it('keeps internal ordinary mail on the node default, never the recipient sender', async () => {
+    await send(request({
+      to: 'did:imajin:recipient', scope: 'custom:notice',
+      ownerDid: 'did:imajin:spoof', data: { email: 'recipient@example.com' },
+    }, 'fake-vault-internal-key'));
+    const options = mocks.mail.mock.calls[0][0];
+    expect(options.purpose).toBe('notifications');
+    expect(options).not.toHaveProperty('ownerDid');
+    expect(options).not.toHaveProperty('appDid');
+  });
+  it('resolves internal pay bus receipt sender from canonical issuer, not recipient or payload owner', async () => {
+    mocks.payment.mockResolvedValue([{ issuerDid: 'did:imajin:issuer', recipientDid: 'did:imajin:recipient' }]);
+    await send(request({
+      to: 'did:imajin:recipient', scope: 'pay:payment_request-paid',
+      data: { email: 'recipient@example.com', paymentRequestId: 'pr_test', ownerDid: 'did:imajin:spoof' },
+    }, 'fake-vault-internal-key'));
+    expect(mocks.mail).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'receipts', ownerDid: 'did:imajin:issuer' }));
+    expect(mocks.mail.mock.calls[0][0]).not.toHaveProperty('appDid');
+  });
+  it('binds broadcast to registry owner, fixes its purpose/from and forwards valid organizer replyTo', async () => {
+    mocks.emptyLimit.mockResolvedValue([{ contactEmail: 'recipient@example.com' }]);
+    const res = await broadcast(request({
+      scope: 'pay:payment_request-paid', subject: 'Broadcast', html: '<p>Broadcast</p>',
+      dids: ['did:imajin:recipient'], ownerDid: 'did:imajin:spoof', appDid: 'did:imajin:spoof',
+      purpose: 'receipts', from: 'spoof@example.com', replyTo: 'organizer@example.org',
+    }));
+    expect(await res.json()).toMatchObject({ sent: 1, errors: 0 });
+    expect(mocks.mail).toHaveBeenCalledWith(expect.objectContaining({
+      ownerDid: 'did:imajin:app-owner', appDid, purpose: 'notifications', to: 'recipient@example.com',
+      replyTo: 'organizer@example.org',
+    }));
+    expect(mocks.mail.mock.calls[0][0]).not.toHaveProperty('from');
+  });
+  it('rejects broadcast reply-to header injection before any send', async () => {
+    mocks.emptyLimit.mockResolvedValue([{ contactEmail: 'recipient@example.com' }]);
+    const res = await broadcast(request({
+      scope: 'events', subject: 'Broadcast', html: '<p>Broadcast</p>',
+      dids: ['did:imajin:recipient'], replyTo: 'a@example.org\r\nBcc: victim',
+    }));
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid reply-to' });
+    expect(mocks.mail).not.toHaveBeenCalled();
+    expect(mocks.insert).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => vi.unstubAllEnvs());
@@ -84,11 +169,11 @@ afterEach(() => vi.unstubAllEnvs());
 describe.each(routes)('%s actual POST authorization', (scope, handler, body) => {
   beforeEach(() => {
     mocks.claims.mockResolvedValue({ azp: appDid, scope, isServiceToken: true });
-    mocks.registration.mockResolvedValue([{ status: 'active', approved: [scope] }]);
+    mocks.registration.mockResolvedValue([{ status: 'active', approved: [scope], ownerDid: 'did:imajin:app-owner' }]);
   });
   it('accepts a registered app holding only this endpoint scope', async () => {
     expect((await handler(request(body))).status).toBe(200);
-    expect(mocks.registration).toHaveBeenCalledOnce();
+    expect(mocks.registration).toHaveBeenCalledTimes(scope === 'notify:interest' ? 1 : 2);
   });
   it('keeps the vault internal Bearer path working without an app token', async () => {
     expect((await handler(request(body, 'fake-vault-internal-key'))).status).toBe(200);

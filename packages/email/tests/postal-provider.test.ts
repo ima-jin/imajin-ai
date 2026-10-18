@@ -83,6 +83,15 @@ describe('PostalProvider configuration guards', () => {
 });
 
 describe('PostalProvider error handling (#1847)', () => {
+  it.each(['Signin <signin@imajin.ai>', 'receipts@example.com'])('honors kernel sender %s in both envelope and header', async from => {
+    setPostalEnv({ POSTAL_API_URL, POSTAL_API_KEY, POSTAL_FROM: 'Legacy <legacy@example.com>' });
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ status: 'success' }), { status: 200 }));
+    const provider = await loadProvider();
+    await provider.send({ to: TO, subject: SUBJECT, html: HTML, from });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.from).toBe(from);
+    expect(body.sender).toBe(from.includes('<') ? 'signin@imajin.ai' : from);
+  });
   it('returns success and the Postal message id on a 200 success response', async () => {
     setPostalEnv({ POSTAL_API_URL, POSTAL_API_KEY });
     fetchMock.mockResolvedValue(

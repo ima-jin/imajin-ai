@@ -417,6 +417,7 @@ paths:
       tags: [profile]
       operationId: queryProfile
       summary: Non-streaming AI presence query — requires trust distance ≤ 2
+      description: Events and learning tool endpoints are discovered from active app registry entryUrl values, not per-app environment settings.
       security:
         - cookieAuth: []
       parameters:
@@ -478,6 +479,7 @@ paths:
       tags: [profile]
       operationId: streamProfile
       summary: Streaming AI presence query (NDJSON) — requires trust distance ≤ 2
+      description: Events and learning tool endpoints are discovered from active app registry entryUrl values, not per-app environment settings.
       security:
         - cookieAuth: []
       parameters:

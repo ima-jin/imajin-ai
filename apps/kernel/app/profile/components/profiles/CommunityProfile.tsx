@@ -4,8 +4,7 @@ import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
 import { JoinButton } from '../JoinButton';
 import { FollowButton } from '../FollowButton';
-import { UpcomingEvents } from '../UpcomingEvents';
-import { MarketItems } from '../MarketItems';
+import { ProfileWidget } from '../ProfileWidgets';
 import { StubGallery } from '../StubGallery';
 import { ContactCard } from '../ContactCard';
 import { MemberList } from '../MemberList';
@@ -13,7 +12,7 @@ import { Avatar } from '../Avatar';
 import { CopyDid } from '../CopyDid';
 
 import { CommunityPageClient } from './CommunityPageClient';
-import { resolveRegistryAppUrl, buildCommunityTabs } from '../../lib/registry-app-links';
+import { enabledProfileWidgets, buildCommunityTabs } from '../../lib/registry-app-links';
 import type { ProfileViewProps } from '../../lib/types';
 
 async function resolveCanJoin(
@@ -69,20 +68,12 @@ export async function CommunityProfile({ profile, identity, viewer, links, regis
 
   const enabledServices = forestConfig?.enabledServices ?? [];
 
-  // #2434: events/market links come from the registry (not hard-coded literals) — a
-  // pruned app yields null, which drops its tab and widget below.
-  const eventsUrl = resolveRegistryAppUrl(registryApps, 'events');
-  const marketUrl = resolveRegistryAppUrl(registryApps, 'market');
-
-  const enabledTabs = buildCommunityTabs({
-    enabledServices,
-    featureToggles: profile.featureToggles,
-    eventsUrl,
-    marketUrl,
-  });
-
-  const showEvents = Boolean(eventsUrl) && enabledServices.includes('events') && profile.featureToggles?.show_events;
-  const showMarket = Boolean(marketUrl) && enabledServices.includes('market') && profile.featureToggles?.show_market_items;
+  const widgetApps = enabledProfileWidgets(registryApps, enabledServices, profile);
+  const enabledTabs = buildCommunityTabs(enabledServices, widgetApps);
+  const widgetContents = widgetApps.map((app) => ({
+    id: `app:${app.slug}`,
+    content: <ProfileWidget app={app} profile={profile} viewerDid={viewer.viewerDid} />,
+  }));
 
   // --- Build tab content sections ---
 
@@ -94,7 +85,7 @@ export async function CommunityProfile({ profile, identity, viewer, links, regis
       {/* Links */}
       {links.length > 0 && (
         <div className="space-y-2">
-          {links.map((link, i) => (
+          {links.map((link) => (
             <a
               key={link.url}
               href={link.url}
@@ -120,16 +111,6 @@ export async function CommunityProfile({ profile, identity, viewer, links, regis
     </div>
   );
 
-  const eventsContent = showEvents && eventsUrl ? (
-    <UpcomingEvents
-      did={profile.did}
-      eventsBaseUrl={eventsUrl}
-      viewerDid={viewer.viewerDid}
-    />
-  ) : (
-    <p className="text-sm text-zinc-500 text-center py-8">No events yet</p>
-  );
-
   const membersContent = (
     <MemberList
       identityDid={profile.did}
@@ -139,13 +120,6 @@ export async function CommunityProfile({ profile, identity, viewer, links, regis
     />
   );
 
-  const marketContent = showMarket && marketUrl ? (
-    <MarketItems
-      did={profile.did}
-      handle={profile.handle}
-      marketBaseUrl={marketUrl}
-    />
-  ) : null;
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -213,9 +187,8 @@ export async function CommunityProfile({ profile, identity, viewer, links, regis
             enabledTabs={enabledTabs}
             isMember={isMember}
             overviewContent={overviewContent}
-            eventsContent={eventsContent}
+            widgetContents={widgetContents}
             membersContent={membersContent}
-            marketContent={marketContent}
             communityDid={profile.did}
           />
         </div>

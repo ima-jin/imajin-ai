@@ -305,14 +305,43 @@ function installFetch(
   return spy;
 }
 
+let scrollIntoViewDescriptor: PropertyDescriptor | undefined;
+let clipboardDescriptor: PropertyDescriptor | undefined;
+async function loadOperatorSigner() {
+  // Keep cold module loading outside findBy's DOM-update timeout; the
+  // decisions still exercise real Ed25519 signing and signature verification.
+  await Promise.all([import('@noble/ed25519'), import('@noble/hashes/sha2.js')]);
+}
+
 beforeEach(() => {
+  vi.useRealTimers();
+  localStorage.clear();
+  sessionStorage.clear();
+  commandClient.prepare.mockReset();
   searchParamsMock.current = new URLSearchParams();
+  scrollIntoViewDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+  clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
 });
 
 afterEach(() => {
   cleanup();
+  localStorage.clear();
+  sessionStorage.clear();
+  commandClient.prepare.mockReset();
+  searchParamsMock.current = new URLSearchParams();
+  if (scrollIntoViewDescriptor) {
+    Object.defineProperty(Element.prototype, 'scrollIntoView', scrollIntoViewDescriptor);
+  } else {
+    Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+  }
+  if (clipboardDescriptor) {
+    Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+  } else {
+    Reflect.deleteProperty(navigator, 'clipboard');
+  }
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #2723)', () => {
@@ -326,19 +355,23 @@ describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #27
 
   it('renders nothing at all — no header, no empty state — for a non-operator with an empty Inbox', async () => {
     const spy = installFetch([{ isOperator: false, approvals: [] }]);
-    const { container } = render(<OperatorApprovalsPanel />);
-
-    await waitFor(() => expect(spy).toHaveBeenCalledTimes(1));
+    let container!: HTMLElement;
+    await act(async () => {
+      ({ container } = render(<OperatorApprovalsPanel />));
+    });
+    expect(spy).toHaveBeenCalledTimes(1);
     expect(container.firstChild).toBeNull();
     expect(screen.queryByText('Operator approvals')).toBeNull();
   });
 
-  it('renders nothing while the initial operator check is still loading', () => {
+  it('renders nothing while the initial operator check is still loading', async () => {
     installFetch([{ isOperator: true, approvals: [] }]);
-    const { container } = render(<OperatorApprovalsPanel />);
-
-    // Before the fetch resolves, isOperator is still its initial `false`.
-    expect(container.firstChild).toBeNull();
+    await act(async () => {
+      const { container } = render(<OperatorApprovalsPanel />);
+      // Before the fetch resolves, isOperator is still its initial `false`.
+      expect(container.firstChild).toBeNull();
+    });
+    expect(screen.getByText('No operator approvals yet.')).toBeDefined();
   });
 });
 
@@ -591,9 +624,11 @@ describe('flash timer cleanup (#2492)', () => {
 describe('network failure', () => {
   it('does not throw and stays hidden when the initial fetch rejects', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
-    const { container } = render(<OperatorApprovalsPanel />);
-
-    await waitFor(() => expect(container.firstChild).toBeNull());
+    let container!: HTMLElement;
+    await act(async () => {
+      ({ container } = render(<OperatorApprovalsPanel />));
+    });
+    expect(container.firstChild).toBeNull();
   });
 });
 
@@ -637,6 +672,7 @@ describe('refresh event (#2367)', () => {
 });
 
 describe('operator countersignature (#2082)', () => {
+  beforeEach(loadOperatorSigner);
   it('signs the decision client-side and includes operatorSignature + decidedAt when a local keypair is present', async () => {
     const { privateKey, publicKey } = authCrypto.generateKeypair();
     localStorage.setItem('imajin_keypair', JSON.stringify({ privateKey, publicKey }));
@@ -648,9 +684,12 @@ describe('operator countersignature (#2082)', () => {
     render(<OperatorApprovalsPanel />);
     await screen.findByRole('button', { name: 'Approve' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+    });
 
     await waitFor(() => expect(screen.getByText('Proposal approve.')).toBeDefined());
+    await screen.findByText('approved — pending apply');
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
     const sentBody = JSON.parse((decisionCall?.[1] as { body: string }).body) as {
       decision: string;
@@ -661,7 +700,6 @@ describe('operator countersignature (#2082)', () => {
     expect(typeof sentBody.decidedAt).toBe('string');
     expect(sentBody.operatorSignature).toEqual({ keyId: publicKey, alg: 'ed25519', sig: expect.stringMatching(/^[0-9a-f]{128}$/) });
 
-    localStorage.removeItem('imajin_keypair');
   });
 
   it('omits operatorSignature when no local keypair is present (unchanged pre-#2082 behavior)', async () => {
@@ -683,8 +721,8 @@ describe('operator countersignature (#2082)', () => {
 // exec allow-once, or a decision-card letter), not just "approve".
 describe('operator countersignature binds the chosen mode (#2693)', () => {
   const CONTENT_HASH = 'c'.repeat(64);
+  beforeEach(loadOperatorSigner);
 
-  afterEach(() => localStorage.removeItem('imajin_keypair'));
 
   async function clickAndCaptureDecision(fixture: ApprovalFixture, buttonName: string, publicKeyPair: { privateKey: string; publicKey: string }) {
     localStorage.setItem('imajin_keypair', JSON.stringify(publicKeyPair));
@@ -695,8 +733,11 @@ describe('operator countersignature binds the chosen mode (#2693)', () => {
     );
     render(<OperatorApprovalsPanel />);
     await screen.findByRole('button', { name: buttonName });
-    fireEvent.click(screen.getByRole('button', { name: buttonName }));
-    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('/decision'))).toBe(true));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: buttonName }));
+    });
+    await screen.findByText('Proposal approve.');
+    await screen.findByText('approved — pending apply');
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
     return JSON.parse((decisionCall?.[1] as { body: string }).body) as {
       decision: string;
@@ -850,7 +891,8 @@ describe('per-source renderer registry — gateway-exec', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Deny' }));
 
-    await waitFor(() => expect(spy.mock.calls.some(([url]) => String(url).includes('/decision'))).toBe(true));
+    await screen.findByText('Proposal reject.');
+    await screen.findByText('denied');
     const decisionCall = spy.mock.calls.find(([url]) => String(url).includes('/decision'));
     expect(decisionCall?.[1]).toMatchObject({ body: JSON.stringify({ decision: 'reject', mode: 'deny' }) });
   });
@@ -1033,6 +1075,7 @@ describe('per-source renderer registry — access', () => {
     await screen.findByTestId('revealed-bearer');
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+    await screen.findByRole('button', { name: 'Copied!' });
     expect(writeText).toHaveBeenCalledWith('plaintext-secret-xyz');
 
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
@@ -1060,9 +1103,9 @@ describe('per-source renderer registry — access', () => {
     fireEvent.click(screen.getByRole('button', { name: /dismiss/i }));
     expect(screen.queryByTestId('revealed-bearer')).toBeNull();
 
-    resolveWrite();
-    await Promise.resolve();
-    await Promise.resolve();
+    await act(async () => {
+      resolveWrite();
+    });
 
     expect(setTimeoutSpy.mock.calls.some(([, ms]) => ms === 2000)).toBe(false);
   });
@@ -1374,9 +1417,11 @@ describe('per-source renderer registry — apps', () => {
     const revealBox = await screen.findByTestId('revealed-claim-code');
 
     fireEvent.click(within(revealBox).getByRole('button', { name: 'Copy link' }));
+    await within(revealBox).findByRole('button', { name: 'Copied!' });
     expect(writeText).toHaveBeenCalledWith(`${globalThis.location.origin}/dykil/claim`);
 
     fireEvent.click(within(revealBox).getByRole('button', { name: 'Copy' }));
+    await waitFor(() => expect(within(revealBox).getAllByRole('button', { name: 'Copied!' })).toHaveLength(2));
     expect(writeText).toHaveBeenCalledWith('claim_plaintext_xyz');
   });
 

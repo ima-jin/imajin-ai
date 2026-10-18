@@ -3,17 +3,13 @@ import { ScopeHeader } from '../ScopeHeader';
 import { ProfileStats } from '../ProfileStats';
 import { ContactCard } from '../ContactCard';
 import { ServiceLinks } from '../ServiceLinks';
-import { UpcomingEvents } from '../UpcomingEvents';
-import { MarketItems } from '../MarketItems';
+import { ProfileWidgets } from '../ProfileWidgets';
+import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
 import { formatMemberSince } from '../../lib/profile-utils';
-import { resolveRegistryAppUrl } from '../../lib/registry-app-links';
 import type { ProfileViewProps } from '../../lib/types';
 
 export function ActorProfile({ profile, identity, viewer, counts, links, serviceApps, registryApps }: Readonly<ProfileViewProps>) {
   const isSoftDID = !isVerifiedTier(identity.tier);
-  // #2434: widget links come from the registry, not hard-coded literals — a pruned app yields null and drops its widget.
-  const eventsUrl = resolveRegistryAppUrl(registryApps, 'events');
-  const marketUrl = resolveRegistryAppUrl(registryApps, 'market');
 
   return (
     <div className="max-w-lg mx-auto">
@@ -47,7 +43,7 @@ export function ActorProfile({ profile, identity, viewer, counts, links, service
         {/* Expanded links list */}
         {links.length > 0 && (
           <div className="mb-6 space-y-2">
-            {links.map((link, i) => (
+            {links.map((link) => (
               <a
                 key={link.url}
                 href={link.url}
@@ -64,15 +60,7 @@ export function ActorProfile({ profile, identity, viewer, counts, links, service
           </div>
         )}
 
-        {/* Upcoming events */}
-        {profile.featureToggles?.show_events && eventsUrl && (
-          <UpcomingEvents did={profile.did} eventsBaseUrl={eventsUrl} viewerDid={viewer.viewerDid} />
-        )}
-
-        {/* Market items */}
-        {profile.featureToggles?.show_market_items && marketUrl && (
-          <MarketItems did={profile.did} handle={profile.handle} marketBaseUrl={marketUrl} />
-        )}
+        <ProfileWidgets apps={registryApps} enabledSlugs={resolveEnabledApps(profile.featureToggles)} profile={profile} viewerDid={viewer.viewerDid} />
 
         {/* Member since */}
         <p className="text-xs text-gray-500 mt-4">

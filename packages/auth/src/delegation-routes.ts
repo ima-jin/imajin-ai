@@ -38,6 +38,21 @@ export const DELEGATION_ROUTES = {
     path: "/api/vault/import",
     why: "credential custody/disclosure rail: coarse agent delegation cannot enumerate vault metadata or stage input; a real human controls and countersigns import",
   },
+  "kernel.identity.owner.propose": {
+    class: "value-moving", action: "propose", app: "kernel", method: "POST",
+    path: "/auth/api/groups/[groupDid]/transfer-owner",
+    why: "proposes reassignment of group ownership",
+  },
+  "kernel.identity.owner.cancel": {
+    class: "value-moving", action: "cancel", app: "kernel", method: "DELETE",
+    path: "/auth/api/groups/[groupDid]/transfer-owner",
+    why: "withdraws the pending ownership invitation",
+  },
+  "kernel.identity.owner.accept": {
+    class: "value-moving", action: "accept", app: "kernel", method: "POST",
+    path: "/auth/api/groups/[groupDid]/transfer-owner/accept",
+    why: "accepts ownership and demotes the former owner",
+  },
   "media.asset.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",
     path: "/media/api/assets/[id]",

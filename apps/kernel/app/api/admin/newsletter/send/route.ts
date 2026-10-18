@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
-import { sendEmail, renderBroadcastEmail } from '@imajin/email';
+import { renderBroadcastEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { withLogger } from '@imajin/logger';
 import { requireAdmin } from '@imajin/auth';
 import { generateUnsubscribeToken } from '@/src/lib/www/subscribe-tokens';
@@ -35,7 +36,8 @@ async function sendBatch({ emails, subject, html, text, replyTo, listSlug }: Sen
   // Sequential on purpose: batches are paced (200ms apart) to stay under the email provider's rate limit.
   await forEachSequential(batches, async (batch, index) => {
     await Promise.all(
-      batch.map((to) => sendEmail({
+      batch.map((to) => sendKernelEmail({
+        purpose: 'notifications',
         to,
         subject,
         html,
@@ -78,7 +80,8 @@ export const POST = withLogger('kernel', async (req, { log }) => {
     if (!targetEmail) {
       return NextResponse.json({ error: 'No test email provided and no contact email on operator profile' }, { status: 400 });
     }
-    await sendEmail({
+    await sendKernelEmail({
+      purpose: 'notifications',
       to: targetEmail,
       subject: `[TEST] ${subject}`,
       html,

@@ -52,6 +52,10 @@ function loopLifecycleChain(): ReactorConfig[] {
     { type: 'emit', config: {}, enabled: true },
   ];
 }
+/** Step history and its Record emission must both be visible before ingest returns. */
+function stepObservationChain(): ReactorConfig[] {
+  return loopLifecycleChain().map(reactor => ({ ...reactor, await: true }));
+}
 
 /**
  * The `mjn` reactor entry shared by every emitting chain (#2017). Deliberately
@@ -64,11 +68,6 @@ function loopLifecycleChain(): ReactorConfig[] {
  */
 function mjnEmission(attestationType: string): ReactorConfig {
   return { type: 'mjn', config: { attestationType }, await: true, enabled: true };
-}
-function settlementWebhookUrl(): string {
-  const url = new URL(process.env.EVENTS_SERVICE_URL || 'http://localhost:3006');
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/api/webhook/settlement`;
-  return url.toString();
 }
 
 // Hardcoded defaults for Phase 1
@@ -155,14 +154,6 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'settlement.completed': [
     { type: 'emit', config: {}, enabled: true },
-    {
-      type: 'webhook',
-      config: {
-        url: settlementWebhookUrl(),
-        recipient: { appSlug: 'events' },
-      },
-      enabled: !!process.env.EVENTS_SERVICE_URL,
-    },
   ],
   'listing.purchased': [
     { type: 'attestation', config: { attestationType: 'listing.purchased' }, await: true, enabled: true },
@@ -757,6 +748,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'loop.progress': loopLifecycleChain(),
   'loop.blocked': loopLifecycleChain(),
   'loop.finished': loopLifecycleChain(),
+  // #2878 — observations only; new types use fallback config, no DB migration.
+  'step.queued': stepObservationChain(),
+  'step.updated': stepObservationChain(),
+  'step.claimed': stepObservationChain(),
+  'step.started': stepObservationChain(),
+  'step.progress': stepObservationChain(),
+  'step.blocked': stepObservationChain(),
+  'step.finished': stepObservationChain(),
+  'step.observed': stepObservationChain(),
+  'step.attested': stepObservationChain(),
   'surface.acquired': [{ type: 'emit', config: {}, enabled: true }],
   'surface.released': [{ type: 'emit', config: {}, enabled: true }],
   'surface.conflicted': [{ type: 'emit', config: {}, enabled: true }],

@@ -21,6 +21,7 @@ const { calls, fakeSql, resolveWith, resolveUsing } = vi.hoisted(() => {
 vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 
 import { listLoops, listLoopsPage, getLoopWithHistory } from '../query';
+import { CODE_STEP } from './horizon-fixtures';
 
 const PRINCIPAL = 'did:imajin:ryan';
 
@@ -175,6 +176,17 @@ describe('listLoopsPage', () => {
 });
 
 describe('getLoopWithHistory', () => {
+  it('exposes the horizon replay and depth on the same scoped detail used by HTTP and loops_get', async () => {
+    const at = new Date().toISOString();
+    resolveWith([rawLoopRow()]);
+    resolveWith([{
+      id: 'step-queue', loop_id: 'loop_1', type: 'step.queued', issuer: PRINCIPAL, principal: PRINCIPAL,
+      payload: { stepId: 'next', state: 'queued', step: CODE_STEP }, occurred_at: at, created_at: at,
+    }]);
+    expect((await getLoopWithHistory('loop_1', PRINCIPAL))?.horizon).toMatchObject({
+      depth: 1, targetDepth: 12, steps: [{ stepId: 'next', zone: 'tail', state: 'queued' }],
+    });
+  });
   it('returns null when the loop does not exist for this principal (never reveals existence otherwise)', async () => {
     resolveWith([]); // loop lookup returns nothing
 
