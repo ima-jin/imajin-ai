@@ -1464,11 +1464,16 @@ paths:
         operator-approved onboard:send scope are rechecked on every call.
 
         For an identified buyer the kernel uses only a verified email credential
-        belonging to the recorded buyer DID; missing credentials never fall back to
-        billing metadata. For anonymous checkout it reads the customer from the
+        belonging to the recorded buyer DID. The credentials schema has no primary
+        designation: the most recently verified email wins, with credential id
+        ascending as a stable tie-breaker. Unverified credentials are excluded;
+        missing verified credentials never fall back to billing metadata.
+        For anonymous checkout it reads the customer from the
         recorded seller's own Stripe checkout session. No request-supplied email,
         buyer, owner, redirect, scopeDid, inviteCode or polling option is accepted.
         The verified browser lands on the kernel auth root, not an app-supplied URL.
+        Email name, context and on-behalf-of labels are HTML-escaped and rendered
+        as text, never interpreted as caller-supplied markup.
 
         Unknown, unbound, cross-app, unauthorized-owner and unsupported resources
         return the same 404 without contact disclosure. Standalone free/EMT orders

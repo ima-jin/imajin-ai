@@ -15,6 +15,7 @@ vi.mock('@/src/db', async () => {
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppServiceToken: vi.fn(), verifyAppToken: vi.fn() }));
 import { backfillContact } from '../backfill-contact';
 import { relatedContactDids } from '../app-contact-auth';
+import { db } from '@/src/db';
 
 const PERSON = 'did:imajin:buyer';
 const APP = 'did:imajin:events';
@@ -113,5 +114,47 @@ describe('contact contract against real Postgres SQL', () => {
     expect(await relatedContactDids(APP, [PERSON], WRITE)).toEqual([]);
     await h.pg.exec(`UPDATE auth.channel_links SET status = 'revoked'`);
     expect(await relatedContactDids(APP, [PERSON], READ)).toEqual([]);
+  });
+
+  it.each([
+    { channel: 'github', app: APP, status: 'active', scopes: [READ] },
+    { channel: 'app', app: OTHER, status: 'active', scopes: [READ] },
+    { channel: 'app', app: APP, status: 'revoked', scopes: [READ] },
+    { channel: 'app', app: APP, status: 'active', scopes: [WRITE] },
+    { channel: 'app', app: APP, status: 'active', scopes: [`${READ}:extra`] },
+    { channel: 'app', app: APP, status: 'active', scopes: null },
+    { channel: 'app', app: APP, status: 'active', scopes: READ },
+    { channel: 'app', app: APP, status: 'active', scopes: { [READ]: true } },
+  ])('rejects nonqualifying grant alongside a qualifying grant: %j', async ({ channel, app, status, scopes }) => {
+    await h.pg.query('INSERT INTO auth.channel_links VALUES ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)', [
+      channel, PERSON, app, status, JSON.stringify(scopes),
+      'app', OTHER, APP, 'active', JSON.stringify([READ]),
+    ]);
+    expect(await relatedContactDids(APP, [PERSON, OTHER], READ)).toEqual([OTHER]);
+  });
+
+  it('uses two queries for 200 DIDs while preserving order and excluding unrequested grants', async () => {
+    const dids = Array.from({ length: 200 }, (_, index) => `did:imajin:batch-${index}`);
+    await h.pg.query(`
+      INSERT INTO auth.channel_links (channel, did, app_did, status, scopes)
+      SELECT 'app', 'did:imajin:batch-' || n, $1, 'active', $2::jsonb
+      FROM generate_series(0, 200) AS n
+    `, [APP, JSON.stringify([READ])]);
+    const select = vi.spyOn(db, 'select');
+    try {
+      expect(await relatedContactDids(APP, [...dids].reverse(), READ)).toEqual([...dids].reverse());
+      expect(select).toHaveBeenCalledTimes(2);
+    } finally {
+      select.mockRestore();
+    }
+  });
+
+  it('combines paid and granted DIDs in requested order with no unrequested disclosures', async () => {
+    await h.pg.query('INSERT INTO pay.transactions VALUES ($1, $2, $3)', [APP, PERSON, 'completed']);
+    await h.pg.query('INSERT INTO auth.channel_links VALUES ($1, $2, $3, $4, $5), ($1, $6, $3, $4, $5)', [
+      'app', OTHER, APP, 'active', JSON.stringify([READ]), 'did:imajin:unrequested',
+    ]);
+    expect(await relatedContactDids(APP, [OTHER, 'did:imajin:denied', PERSON, OTHER], READ))
+      .toEqual([OTHER, PERSON, OTHER]);
   });
 });

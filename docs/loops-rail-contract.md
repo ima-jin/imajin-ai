@@ -1,5 +1,6 @@
 # Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
-Horizon step entries extend this signed rail under #2878; claim lease policy and Runs rendering remain separate.
+Horizon step entries extend this signed rail under #2878; #2879 binds claims to
+the existing surface leases. Runs rendering remains separate (#2880).
 ## Horizon steps (#2878, parent #2313 decision a)
 
 Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`
@@ -73,17 +74,49 @@ Zones are **read projection only**, in precedence order:
 1. `done` / derived state `exited`: every declared condition holds; omitted
    from `horizon.steps` and `depth`, never erased from history.
 2. `past`: this item's issue is closed but at least one exit remains open.
-3. `head`: a signed claim references an unexpired lease.
+3. `head`: `kernel.surface_lease` holds a live, unreleased `step:<stepId>`
+   lease for this loop and principal.
 4. `near`: issue/OUTCOME, brief, provision and settled-design refs all exist.
 5. `middle`: issue/OUTCOME exists.
 6. `tail`: one-line intention only.
 
 Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
 Other common-envelope state labels are observational only; they cannot override
-the projected lifecycle. Lease acquisition, exclusivity, renewal/release policy
-and authoritative lease validation belong to **#2879**. This substrate records
-the signer's claim reference, not proof that a lease service granted ownership;
-readers must not use it as a dispatch lock. **#2880** owns Runs rendering.
+the projected lifecycle. A `step.claimed` fact alone cannot make an item `head`
+or supply its projected `claim`. **#2880** owns Runs rendering.
+
+### Step claim leases (#2879; decision c: warn-only)
+
+Acquire by pushing signed `surface.acquired` with `surface: "step:<stepId>"`
+and the existing owning `loopId` and `principal`. The publisher DID (human or
+agent) is the holder; delegated agents use the same `loops:publish` grant.
+The step must already be declared under that loop/principal at the signed
+acquisition time. Missing declarations/owners fail with 409; **a second
+claimant never does**. Step ids used as surfaces must be whitespace-free,
+case-sensitive URI identifiers.
+
+TTL is the existing fifteen minutes from signed `at`; renewal is a fresh
+`surface.acquired`, not a retry or unrelated `loop.progress`. Finish/abandon
+by pushing matching `surface.released`; signed `loop.finished` also releases
+that issuer's holdings. `step.finished` remains a work observation, not a
+lease release or proof of exit.
+
+The first live holder remains in `kernel.surface_lease`. Another DID claiming
+the same step, including within the same loop, succeeds and emits a
+node-signed `surface.conflicted` naming `refs.conflictingLoopId` and, for the
+same principal, `refs.conflictingHolderDid`. Both may proceed; no exclusive
+dispatch lock, refusal, queue, or harness call is introduced. Cross-principal
+collisions expose only the conflicting loop id, never its holder DID.
+
+HTTP loop detail and MCP `loops_get` share this authoritative, principal- and
+loop-scoped horizon read. A live `claim` is
+`{leaseId: "step:<stepId>", holderDid, acquiredAt, expiresAt}`, with ISO
+timestamps; `leaseId` is the existing surface key, not a new lease record.
+Released/expired holdings are omitted from `claim`. Without a live holding,
+read-time zone derivation returns a sharpened step to `near` (or its other
+fact-derived zone, with `past`/`done` still taking precedence). A bare
+`claimed` state becomes `queued`; work lifecycle observations remain history.
+No timer, sweep, cleanup write, or agent memory is needed after a restart.
 
 `kernel.loop_events` already stores all necessary facts. New bus defaults await
 history persistence and invoke the existing emit reactor, so no schema migration, schema ownership change
@@ -118,7 +151,7 @@ rules below apply to all three event kinds. An explicit conflict also requires
 
 Surface identities are exact, case-sensitive typed URIs, at most 2048 characters:
 `repo:<org>/<repo>#branch:<branch>`, `service:<app>@env:<env>`,
-`device:<id>`, or `issue:#<positive-integer>`. No gateway lookup, polling,
+`device:<id>`, `issue:#<positive-integer>`, or `step:<stepId>`. No gateway lookup, polling,
 session lease, or harness-specific state is involved.
 
 `kernel.surface_lease` holds one current row per surface. A live acquisition
@@ -128,8 +161,8 @@ by a different loop retains the first holder and emits a node-witness-signed
 never a 409, fencing token, queue, or pre-dispatch check.
 
 The lease expires fifteen minutes after acquisition/latest signed heartbeat.
-`loop.progress` refreshes only a still-live, unreleased lease with the same
-loop, principal, and issuer; it cannot revive an expired holding.
+`loop.progress` refreshes only a still-live, unreleased **non-step** lease with
+the same loop, principal, and issuer; it cannot revive an expired holding.
 `surface.released` and `loop.finished` release matching holdings. Older
 transitions cannot regress newer holdings, and a release/completion delivered
 before its acquisition prevents that stale acquisition from becoming live.
@@ -147,7 +180,9 @@ instead of an exact `signedPayload`. As with `publisherProof`, original
 credentials and overflow output must never be reintroduced through evidence.
 A stored `observedConflictingLoopId` is projection metadata outside the
 signed payload, retaining the original collision outcome across retries.
-History deduplicates exact signed observations;
+Step collisions also retain `observedConflictingHolderDid` outside the signed
+payload for same-principal warnings; publisher-supplied projection metadata is
+never trusted. History deduplicates exact signed observations;
 retries can re-emit the same warning but never renew an old lease.
 Surface events never change `kernel.loops` lifecycle state.
 

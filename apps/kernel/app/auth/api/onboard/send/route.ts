@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { headers });
   } catch {
     // Provider/DB errors may contain the bearer, email or verify URL. Never log their raw message.
-    log.error({}, 'Order onboarding delivery unavailable');
+    log.error({ status: 503, code: 'ONBOARD_DELIVERY_UNAVAILABLE' }, 'Order onboarding delivery unavailable');
     return NextResponse.json({ error: 'Onboarding delivery unavailable' }, { status: 503, headers });
   }
 }

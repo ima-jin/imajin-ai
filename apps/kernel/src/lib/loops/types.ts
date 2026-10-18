@@ -33,6 +33,7 @@ export function isSurfaceUri(value: unknown): value is string {
     /^service:[A-Za-z0-9_.-]+@env:[A-Za-z0-9_.-]+$/,
     /^device:[A-Za-z0-9_.:-]+$/,
     /^issue:#[1-9]\d*$/,
+    /^step:[^\s]+$/,
   ].some((pattern) => pattern.test(value));
 }
 
@@ -47,6 +48,7 @@ export interface LoopRefs {
   sessionKey?: string;
   sessionId?: string;
   conflictingLoopId?: string;
+  conflictingHolderDid?: string;
 }
 
 export interface LoopEnvelope {
@@ -79,7 +81,7 @@ export interface LoopIngestRequest {
 const ED25519_PUBLIC_KEY_HEX = /^[0-9a-f]{64}$/i;
 const ED25519_SIGNATURE_HEX = /^[0-9a-f]{128}$/i;
 const MAX_SUMMARY_LENGTH = 2000;
-const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId', 'conflictingLoopId']);
+const REFS_KEYS = new Set(['issue', 'pr', 'runId', 'sessionKey', 'sessionId', 'conflictingLoopId', 'conflictingHolderDid']);
 
 export type ParseResult<T> = { ok: true; value: T } | { ok: false; error: string };
 
@@ -204,7 +206,7 @@ export function parseLoopIngestRequest(raw: unknown): ParseResult<LoopIngestRequ
   if (isSurfaceEventType(type)) {
     const surface = (payload as Record<string, unknown>).surface;
     if (!isSurfaceUri(surface)) {
-      return { ok: false, error: 'payload.surface must be a typed repo, service, device, or issue URI' };
+      return { ok: false, error: 'payload.surface must be a typed repo, service, device, issue, or step URI' };
     }
     if (type === 'surface.conflicted' && !envelopeResult.value.refs?.conflictingLoopId) {
       return { ok: false, error: 'payload.refs.conflictingLoopId is required for surface.conflicted' };

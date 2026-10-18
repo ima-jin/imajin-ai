@@ -27,7 +27,7 @@ import { prepareLoopOutput, redactLoopEnvelope, reserveLoopOwnership } from './p
 import { isBoundedLoopJson, isLoopOutput, isWithinLoopMetadataBudget } from './output-validation';
 import { redactLoopText } from './output-redaction';
 import { canonicalize } from '@imajin/auth';
-import { projectSurfaceLease, loopObservationId } from './surface-lease';
+import { projectSurfaceLease, loopObservationId, type SurfaceConflict } from './surface-lease';
 import { signSurfaceConflict } from './surface-conflict';
 import { isStepEventType, validateStepPayload } from './step-types';
 
@@ -124,7 +124,7 @@ function validateLoopFacts(request: LoopIngestRequest):
 }
 
 /** A collision is data, never a dispatch denial or harness call. */
-async function observeSurfaceConflict(request: LoopIngestRequest, conflictingLoopId: string): Promise<void> {
+async function observeSurfaceConflict(request: LoopIngestRequest, conflictingLoopId: SurfaceConflict): Promise<void> {
   try {
     const conflict = await ingestLoopEvent(signSurfaceConflict(request, conflictingLoopId));
     if (!conflict.ok) log.warn({ loopId: request.payload.loopId }, 'surface conflict observation rejected');
