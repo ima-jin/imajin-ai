@@ -10,7 +10,7 @@ import { createLogger } from '@imajin/logger';
 const log = createLogger('kernel');
 
 export async function GET(request: Request) {
-  const auth = await requireAuth(request);
+  const auth = await requireAuth(request, { service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const did = resolveActingDid(auth.identity);
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireGraphMember(request);
+  const auth = await requireGraphMember(request, { service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const body = await request.json();

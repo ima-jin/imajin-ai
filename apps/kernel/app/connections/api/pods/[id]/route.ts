@@ -6,7 +6,7 @@ import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
 
 export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request);
+  const auth = await requireAuth(request, { service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
@@ -22,7 +22,7 @@ export async function GET(request: Request, props: { params: Promise<{ id: strin
 
 export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request);
+  const auth = await requireAuth(request, { service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const effectiveDid = resolveActingDid(auth.identity);
@@ -39,7 +39,7 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
 
 export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request);
+  const auth = await requireAuth(request, { service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const effectiveDid = resolveActingDid(auth.identity);

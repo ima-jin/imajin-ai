@@ -36,6 +36,11 @@ export async function resolveEffectiveDid(
   request: Request,
   opts: { scope: Scope; service: string }
 ): Promise<EffectiveDidResult> {
+  // Older JS callers must not bypass the required service option and
+  // silently skip controller restrictions.
+  if (!opts.service?.trim()) {
+    return { ok: false, status: 403, error: "Not authorized to act as this group" };
+  }
   const hasAppAuthCandidate =
     Boolean(request.headers.get("x-app-did")) || Boolean(request.headers.get("authorization")?.startsWith("Bearer "));
 

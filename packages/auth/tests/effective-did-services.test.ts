@@ -71,12 +71,19 @@ describe.each(['GET', 'POST'])('effective DID service gate (%s)', (method) => {
     expect(await resolveEffectiveDid(request(method), { scope: 'wallet:write', service: 'pay' })).toEqual(REFUSAL);
   });
 
-  it('refuses missing service context even for a direct requireAuth caller', async () => {
-    expect(await requireAuth(request(method))).toEqual({ error: REFUSAL.error, status: 403 });
+  it('refuses missing runtime service context before any authentication fallback', async () => {
+    const options = { scope: 'wallet:write' } as Parameters<typeof resolveEffectiveDid>[1];
+    expect(await resolveEffectiveDid(request(method), options)).toEqual(REFUSAL);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('refuses blank service context in the helper', async () => {
-    expect(await resolveEffectiveDid(request(method), { scope: 'wallet:write', service: '' })).toEqual(REFUSAL);
+  it.each(['', '   '])('refuses blank service context in the helper (%j)', async (service) => {
+    expect(await resolveEffectiveDid(request(method), { scope: 'wallet:write', service })).toEqual(REFUSAL);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves legacy optional-service requireAuth compatibility outside helper callers', async () => {
+    expect(await requireAuth(request(method))).toMatchObject({ identity: { id: PERSON, actingAs: ORG } });
   });
 
   it.each([true, false])('keeps agent delegation authoritative (grant allowed: %s)', async (allowed) => {
