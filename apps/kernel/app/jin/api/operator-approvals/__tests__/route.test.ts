@@ -67,6 +67,45 @@ describe('OPTIONS /jin/api/operator-approvals', () => {
 });
 
 describe('GET /jin/api/operator-approvals (#2059)', () => {
+  describe('acting read projection (#2952)', () => {
+    it('reads only the validated organization Inbox and retains the self-only context', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+      const req = makeReq('?view=acting&source=github');
+      const res = await GET(req as Parameters<typeof GET>[0]);
+      expect(mockRequireAuth).toHaveBeenCalledWith(req, { service: 'jin' });
+      expect(mockList).toHaveBeenCalledWith(GROUP_DID, { source: 'github' });
+      expect(await res.json()).toMatchObject({
+        canAccess: true, actAs: { sessionDid: OPERATOR_DID, actingDid: GROUP_DID },
+      });
+    });
+
+    it('refuses invalid or service-restricted act-as without reading either Inbox', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ error: 'Not authorized to act as this group', status: 403 });
+      const res = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect(res.status).toBe(403);
+      expect(mockList).not.toHaveBeenCalled();
+    });
+
+    it('does not let a delegated agent read an acting Inbox', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForOperatorIdentity() });
+      const res = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect(await res.json()).toEqual({ isOperator: false, canAccess: false, approvals: [] });
+      expect(mockList).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['operator with empty Inbox', operatorIdentity, [], true],
+      ['principal with empty Inbox', otherHumanIdentity, [], false],
+      ['principal with addressed cards', otherHumanIdentity, [pendingApprovalCard()], true],
+      ['controller with empty org Inbox', operatorActingAsGroupIdentity, [], true],
+    ])('follows existing console visibility for %s', async (_label, identity, cards, canAccess) => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: identity() });
+      mockList.mockResolvedValueOnce(cards);
+      const res = await GET(makeReq('?view=acting&did=did:imajin:untrusted') as Parameters<typeof GET>[0]);
+      expect(await res.json()).toMatchObject({ canAccess });
+      expect(mockList).toHaveBeenCalledWith(identity().actingAs ?? identity().id, {});
+    });
+  });
   it('returns 401 when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
     const res = await GET(makeReq() as Parameters<typeof GET>[0]);

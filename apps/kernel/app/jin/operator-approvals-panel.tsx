@@ -1297,7 +1297,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('/jin/api/operator-approvals', { credentials: 'include' });
+      const res = await fetch('/jin/api/operator-approvals?view=acting', { credentials: 'include' });
       if (!res.ok) return;
       const data = (await res.json()) as {
         isOperator: boolean;
@@ -1432,6 +1432,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
         notify('ok', decisionSuccessNotice(approval, decision));
       }
       await load(true);
+      globalThis.dispatchEvent(new Event(APPROVALS_REFRESH_EVENT));
     } finally {
       setBusyId('');
     }
@@ -1477,7 +1478,7 @@ function OperatorApprovalsPanelInner() {
   // connector proposals) — otherwise no header, no empty-state, no card.
   // This also holds during the initial load so nobody briefly sees panel
   // chrome before the first fetch resolves.
-  if (!isOperator && approvals.length === 0) return null;
+  if (!isOperator && !actAs && approvals.length === 0) return null;
 
   return (
     <section className="mt-8">

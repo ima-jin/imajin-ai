@@ -5,6 +5,7 @@ import { AppLauncher } from './app-launcher';
 import { NotificationBell } from './notification-bell';
 import { getPort } from '@imajin/config';
 import { useIdentities } from './use-identities';
+import { JinNavEntry } from './jin-nav-entry';
 
 export interface NavIdentity {
   isLoggedIn: boolean;
@@ -298,6 +299,10 @@ export function NavBar({
 
         {/* Children slot (center, fills available space) */}
         <div className="flex-1 min-w-0">{children}</div>
+        <JinNavEntry
+          href={`${buildUrl('www', servicePrefix, domain, serviceUrls).replace(/\/$/, '')}/jin`}
+          identityDid={identity?.isLoggedIn ? identity.did : null}
+        />
 
         {/* Right - Launcher + Quick Access (desktop) */}
         <div className="hidden sm:flex items-center gap-1">

@@ -26,6 +26,12 @@
  * real session DID, so the panel can render its approve/deny controls
  * disabled with an explanation instead of offering a tap the confirm rail
  * will refuse with 403 `act_as_not_permitted`.
+ *
+ * #2952: `?view=acting` explicitly selects the validated group's read-only
+ * Inbox instead. Controller service restrictions are checked for `jin`;
+ * delegated agents still have no Inbox. `canAccess` follows panel visibility
+ * (node operator, group controller, or a principal with addressed cards).
+ * This changes neither the default session projection nor decision authority.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
@@ -40,24 +46,32 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const authResult = await requireAuth(request);
+  // Opt-in read projection for the shared nav and org Inbox. The legacy
+  // session view and self-only decision rail retain their existing semantics.
+  const { searchParams } = new URL(request.url);
+  const actingView = searchParams.get('view') === 'acting';
+  const authResult = await requireAuth(request, actingView ? { service: 'jin' } : undefined);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }
 
-  const inboxDid = inboxDidFor(authResult.identity);
+  const sessionInboxDid = inboxDidFor(authResult.identity);
+  const inboxDid = sessionInboxDid && actingView
+    ? authResult.identity.actingAs ?? sessionInboxDid : sessionInboxDid;
   if (!inboxDid) {
-    return NextResponse.json({ isOperator: false, approvals: [] }, { headers: cors });
+    return NextResponse.json({ isOperator: false, approvals: [], ...(actingView ? { canAccess: false } : {}) }, { headers: cors });
   }
 
   const operatorDid = await getOperatorDid();
   const isOperator = operatorDid !== null && isOperatorIdentity(authResult.identity, operatorDid);
 
-  const { searchParams } = new URL(request.url);
   const source = searchParams.get('source');
   const approvals = await listApprovalsForOperator(inboxDid, source ? { source } : {});
   return NextResponse.json(
-    { isOperator, approvals, actAs: actAsContext(authResult.identity) },
+    {
+      isOperator, approvals, actAs: actAsContext(authResult.identity),
+      ...(actingView ? { canAccess: isOperator || Boolean(authResult.identity.actingAs) || approvals.length > 0 } : {}),
+    },
     { headers: cors },
   );
 }
