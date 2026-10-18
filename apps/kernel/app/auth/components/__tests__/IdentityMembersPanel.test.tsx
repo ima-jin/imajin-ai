@@ -238,11 +238,17 @@ describe('inline member editing', () => {
     expect(Array.from(editRole().options).map((option) => option.value)).not.toContain('owner');
   });
 
-  it('prevents admins from editing other admins or assigning admin', async () => {
+  it('prevents admins from editing other admins, maintainers or agents or assigning admin', async () => {
     await renderPanel([controller(), jin(), controller({
       controllerDid: 'did:imajin:other-admin', role: 'admin', name: 'Other admin', handle: null,
+    }), controller({
+      controllerDid: 'did:imajin:maintainer', role: 'maintainer', name: 'Maintainer', handle: null,
+    }), controller({
+      controllerDid: 'did:imajin:agent', role: 'agent', name: 'Agent', handle: null,
     })], 'admin');
     expect(screen.queryByRole('button', { name: 'Edit Other admin' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit Maintainer' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit Agent' })).toBeNull();
     edit();
     expect(Array.from(editRole().options).map((option) => option.value))
       .toEqual(['maintainer', 'member', 'agent']);

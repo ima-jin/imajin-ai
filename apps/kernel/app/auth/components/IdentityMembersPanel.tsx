@@ -391,7 +391,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
               const roleStyle = ROLE_STYLES[ctrl.role] ?? ROLE_STYLES.member;
               const isRemoving = removingDid === ctrl.controllerDid;
               const canEdit = !isOwner && (viewerRole === 'owner'
-                || (viewerRole === 'admin' && (ctrl.role !== 'admin' || ctrl.controllerDid === viewerDid)));
+                || (viewerRole === 'admin' && (ctrl.role === 'member' || ctrl.controllerDid === viewerDid)));
               const isEditing = editingDid === ctrl.controllerDid && canEdit;
               const label = memberLabel(ctrl);
               const resolved = Boolean(ctrl.name || ctrl.handle);
