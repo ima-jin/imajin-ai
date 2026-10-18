@@ -21,7 +21,7 @@
     "auth.domain_bindings": {
       "owner": "kernel",
       "schema": "auth",
-      "firstMigration": "0204_domain_bindings.sql",
+      "firstMigration": "0211_domain_bindings.sql",
       "notes": "Verified domain ownership and routing-only legacy forest bindings (#2902)."
     },
     "auth.agent_knocks": {

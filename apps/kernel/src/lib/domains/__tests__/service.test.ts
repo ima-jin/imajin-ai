@@ -33,7 +33,7 @@ import {
 } from '../service';
 import { DomainError, normalizeDomain } from '../normalize';
 
-const migration = readFileSync('migrations/0204_domain_bindings.sql', 'utf8');
+const migration = readFileSync('migrations/0211_domain_bindings.sql', 'utf8');
 const key = '1'.repeat(64);
 let pg: PGlite;
 
