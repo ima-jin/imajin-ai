@@ -271,7 +271,7 @@ paths:
                         properties:
                           publicKey: { type: string }
                           privateKey: { type: string }
-        "400": { description: Invalid JSON, visibility, URL, key or declarations }
+        "400": { description: "Invalid JSON, visibility, URL, key or declarations" }
         "401": { description: Not authenticated }
 
   /api/registry/apps/{appId}:
@@ -323,9 +323,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/App" }
-        "400": { description: Invalid JSON, visibility or scope declaration }
+        "400": { description: "Invalid JSON, visibility or scope declaration" }
         "401": { description: Not authenticated }
-        "403": { description: Not the owner, or widening requires owner countersign (AGENT_APPROVAL_REQUIRED) }
+        "403": { description: "Not the owner, or widening requires owner countersign (AGENT_APPROVAL_REQUIRED)" }
         "404": { description: App not found }
         "409": { description: Owner or visibility changed concurrently; reload before saving }
     delete:
