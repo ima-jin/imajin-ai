@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { serviceBadgeClass } from '@/src/lib/admin/service-color';
 
 interface LogEntry {
   id: string;
@@ -38,27 +39,6 @@ interface Filters {
   to: string;
 }
 
-const SERVICE_COLORS: Record<string, string> = {
-  auth: 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400',
-  kernel: 'bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-400',
-  pay: 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400',
-  events: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',
-  connections: 'bg-cyan-100 dark:bg-cyan-900/40 text-cyan-700 dark:text-cyan-400',
-  chat: 'bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-400',
-  profile: 'bg-pink-100 dark:bg-pink-900/40 text-pink-700 dark:text-pink-400',
-  registry: 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400',
-  market: 'bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-400',
-  notify: 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-400',
-  input: 'bg-lime-100 dark:bg-lime-900/40 text-lime-700 dark:text-lime-400',
-  media: 'bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-400',
-  coffee: 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400',
-  dykil: 'bg-sky-100 dark:bg-sky-900/40 text-sky-700 dark:text-sky-400',
-  learn: 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400',
-  links: 'bg-fuchsia-100 dark:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-400',
-  fixready: 'bg-slate-100 dark:bg-slate-900/40 text-slate-700 dark:text-slate-400',
-  karaoke: 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-400',
-};
-
 const LEVEL_COLORS: Record<string, string> = {
   debug: 'bg-gray-100 dark:bg-gray-800 text-gray-500',
   info: 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-400',
@@ -67,12 +47,6 @@ const LEVEL_COLORS: Record<string, string> = {
 };
 
 const ALL_LEVELS = ['debug', 'info', 'warn', 'error'];
-const KNOWN_SERVICES = Object.keys(SERVICE_COLORS);
-
-function serviceBadgeClass(service: string): string {
-  return SERVICE_COLORS[service] ?? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400';
-}
-
 function formatTs(ts: string) {
   const d = new Date(ts);
   return `${d.toLocaleTimeString(undefined, { hour12: false })  } ${  d.toLocaleDateString()}`;
@@ -314,17 +288,13 @@ export default function LogsClient() {
             {/* Service */}
             <div className="flex flex-col gap-1">
               <label htmlFor="logs-filter-service" className="text-xs text-gray-500 dark:text-gray-400">Service</label>
-              <select
+              <input
+                placeholder="All services"
                 id="logs-filter-service"
                 value={pendingFilters.service}
                 onChange={(e) => setPendingFilters({ ...pendingFilters, service: e.target.value })}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-36"
-              >
-                <option value="">All</option>
-                {KNOWN_SERVICES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Level pills */}
@@ -594,16 +564,13 @@ export default function LogsClient() {
           <div className="flex flex-wrap gap-2 items-end">
             <div className="flex flex-col gap-1">
               <label htmlFor="raw-logs-service" className="text-xs text-gray-500 dark:text-gray-400">Service</label>
-              <select
+              <input
+                placeholder="Service slug"
                 id="raw-logs-service"
                 value={rawService}
                 onChange={(e) => setRawService(e.target.value)}
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 w-40"
-              >
-                {KNOWN_SERVICES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
+              />
             </div>
             <div className="flex flex-col gap-1">
               <label htmlFor="raw-logs-lines" className="text-xs text-gray-500 dark:text-gray-400">Lines</label>

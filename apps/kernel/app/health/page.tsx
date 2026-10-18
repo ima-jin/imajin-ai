@@ -8,6 +8,7 @@ import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
 interface ServiceCheck {
   name: string;
+  kind: 'core' | 'app';
   label?: string;
   url: string;
   status: 'up' | 'down' | 'degraded';
@@ -48,7 +49,7 @@ function ServiceRow({ service }: Readonly<{ service: ServiceCheck }>) {
           >
             {service.label || service.name}
           </a>
-          <p className="text-sm text-gray-500">{service.name}.imajin.ai</p>
+          <p className="text-sm text-gray-500">{service.url}</p>
         </div>
       </div>
       <div className="text-right">
@@ -99,11 +100,10 @@ export default function HealthPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const allUp = health?.services.every(s => s.status === 'up');
+  const allUp = health?.status === 'operational';
 
-  const CORE_NAMES = new Set(['www', 'auth', 'pay', 'profile', 'registry', 'events', 'chat', 'connections', 'input', 'media']);
-  const coreServices = health?.services.filter(s => CORE_NAMES.has(s.name)) || [];
-  const appServices = health?.services.filter(s => !CORE_NAMES.has(s.name)) || [];
+  const coreServices = health?.services.filter(s => s.kind === 'core') || [];
+  const appServices = health?.services.filter(s => s.kind === 'app') || [];
 
   return (
     <main className="min-h-screen py-16 px-6">
@@ -161,13 +161,13 @@ export default function HealthPage() {
         {/* Services list */}
         <div className="space-y-3">
           <h2 className="text-xl font-medium text-gray-400 mb-4">Core Platform</h2>
-          {coreServices.map(s => <ServiceRow key={s.name} service={s} />)}
+          {coreServices.map(s => <ServiceRow key={`${s.kind}:${s.name}`} service={s} />)}
         </div>
 
         {appServices.length > 0 && (
           <div className="space-y-3 mt-8">
             <h2 className="text-xl font-medium text-gray-400 mb-4">Applications</h2>
-            {appServices.map(s => <ServiceRow key={s.name} service={s} />)}
+            {appServices.map(s => <ServiceRow key={`${s.kind}:${s.name}`} service={s} />)}
           </div>
         )}
 

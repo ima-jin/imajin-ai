@@ -5,6 +5,8 @@ const { sql } = vi.hoisted(() => ({ sql: vi.fn() }));
 vi.mock('@imajin/db', () => ({ getClient: () => sql }));
 import { loopProjectionReactor, LoopOwnershipConflictError } from '../../../../../../packages/bus/src/reactors/loop-projection';
 import type { BusEvent } from '../../../../../../packages/bus/src/types';
+import { getLoopWithHistory } from '../query';
+import { STEP_ISSUE_UPDATE, queuedStep, stepEvent, closureStep, releaseStep, deployedStep } from './horizon-fixtures';
 
 const pg = new PGlite();
 function taggedSql(executor: Pick<PGlite, 'query'>) {
@@ -38,6 +40,32 @@ async function project(type: string, at: string, refs?: Record<string, string>, 
 }
 
 describe('real loop projection SQL', () => {
+  it('persists and rebuilds ranked horizon facts, deduplicates retry, and keeps the parent lifecycle unchanged', async () => {
+    const queue = queuedStep();
+    const owner = queue.principal;
+    await project('loop.started', queue.occurredAt, undefined, { loopId: 'cycle', principal: owner });
+    const steps = [queue, stepEvent('step.updated', 1, { update: STEP_ISSUE_UPDATE }), closureStep(), releaseStep()];
+    for (const event of [...steps].reverse()) {
+      await loopProjectionReactor({ ...event, subject: owner, scope: 'loop' }, {});
+    }
+    await loopProjectionReactor({ ...queue, subject: owner, scope: 'loop' }, {});
+    const beforeRestart = await getLoopWithHistory('cycle', owner);
+    expect(beforeRestart?.horizon).toMatchObject({ depth: 1, steps: [{ zone: 'past', openExitConditions: ['prod'] }] });
+    expect(beforeRestart?.loop.state).toBe('loop.started');
+    expect(beforeRestart?.events.filter(event => event.type === 'step.queued')).toHaveLength(1);
+    // Recreate the SQL client: no per-agent or in-memory projection survives.
+    sql.mockImplementation(taggedSql(pg));
+    expect((await getLoopWithHistory('cycle', owner))?.horizon).toEqual(beforeRestart?.horizon);
+    expect(await getLoopWithHistory('cycle', 'did:imajin:someone-else', true)).toBeNull();
+    const deployed = deployedStep();
+    await loopProjectionReactor({ ...deployed, subject: owner, scope: 'loop' }, {});
+    expect((await getLoopWithHistory('cycle', owner))?.horizon.depth).toBe(0);
+    const audit = await getLoopWithHistory('cycle', owner, true);
+    expect(audit?.horizon.steps[0]).toMatchObject({ state: 'exited', zone: 'done', openExitConditions: [] });
+    expect(audit?.events.filter(event => event.type.startsWith('step.'))).toHaveLength(5);
+    const foreign = { ...queue, id: 'foreign-step', principal: 'did:imajin:other', payload: { ...queue.payload, principal: 'did:imajin:other' }, subject: 'did:imajin:other', scope: 'loop' };
+    await expect(loopProjectionReactor(foreign, {})).rejects.toBeInstanceOf(LoopOwnershipConflictError);
+  });
   it('does not let another principal overwrite a globally unique loop id', async () => {
     await project('loop.started', '2026-10-16T00:00:00Z', { issue: 'original' }, { loopId: 'collision' });
     await expect(project('loop.finished', '2026-10-16T00:01:00Z', { issue: 'hostile' }, { loopId: 'collision', principal: 'did:imajin:other' }))

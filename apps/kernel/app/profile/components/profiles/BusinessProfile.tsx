@@ -1,4 +1,5 @@
-import { getViewerMembership } from '../../lib/profile-data';
+import { ProfileWidgets } from '../ProfileWidgets';
+import { getForestConfig, getViewerMembership } from '../../lib/profile-data';
 import { formatMemberSince } from '../../lib/profile-utils';
 import { ScopeHeader } from '../ScopeHeader';
 import { ServiceLinks } from '../ServiceLinks';
@@ -8,7 +9,8 @@ import { StubActions } from '../StubActions';
 import { StubGallery } from '../StubGallery';
 import type { ProfileViewProps } from '../../lib/types';
 
-export async function BusinessProfile({ profile, identity, viewer, counts, links, serviceApps }: Readonly<ProfileViewProps>) {
+export async function BusinessProfile({ profile, identity, viewer, links, serviceApps, registryApps }: Readonly<ProfileViewProps>) {
+  const forestConfig = await getForestConfig(profile.did);
   const isUnclaimed = !profile.claimStatus || profile.claimStatus === 'unclaimed';
   let viewerRole: string | null;
   if (viewer.viewerDid && !viewer.isSelf) {
@@ -81,7 +83,7 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
         {/* Expanded links */}
         {links.length > 0 && (
           <div className="mb-6 space-y-2">
-            {links.map((link, i) => (
+            {links.map((link) => (
               <a
                 key={link.url}
                 href={link.url}
@@ -97,6 +99,8 @@ export async function BusinessProfile({ profile, identity, viewer, counts, links
             ))}
           </div>
         )}
+
+        <ProfileWidgets apps={registryApps} enabledSlugs={forestConfig?.enabledServices ?? []} profile={profile} viewerDid={viewer.viewerDid} />
 
         {/* Member since */}
         <p className="text-xs text-gray-500 mt-4">

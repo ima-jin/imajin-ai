@@ -39,16 +39,19 @@ The default window is ±300 seconds. Set `maxAgeSeconds` and
 Crypto verification uses Ed25519 verification, not string equality of signatures.
 Unsigned, stale, future, replayed, tampered or wrong-audience/method/path callbacks fail closed.
 
-The kernel resolves active registry entries for its named payment receivers.
+The kernel resolves active registry entries for its payment receivers.
 Generic bus webhook configurations identify a recipient with
 `recipient: { appDid }` or `recipient: { appSlug }`; destinations must match that
-app's registered origin or a trusted, fixed kernel-routed service URL. The
-coffee/events/learn/market mappings apply to provisioned apps regardless of
-registry tier; relative nav paths and bare audience slugs do not grant origins. Existing
-`settlement.completed` configurations without a recipient resolve the registered
-events app, preserving the registered-app delivery path for standalone
-[ima-jin/events](https://github.com/ima-jin/events). Other missing/revoked or
-ambiguous recipients fail closed; the event payload cannot select the audience.
+app's active registry origins from its callback, homepage, redirect or entry URL.
+A root-relative entry URL is resolved against the node URL; environment service
+URLs and bare audience slugs do not grant origins. Missing, revoked or ambiguous
+recipients fail closed; the event payload cannot select the audience.
+`settlement.completed` emits by default and never implicitly calls an app.
+Operators that need settlement callbacks configure an explicit `webhook` reactor
+in `kernel.bus_chain_configs`, with both `url` and `recipient` naming the registered
+app. Existing webhook configs without a recipient must be updated before delivery
+can resume. This applies equally to standalone [ima-jin/events](https://github.com/ima-jin/events)
+and third-party apps; no kernel or environment edit is needed.
 
 ## Trust and rotation
 
@@ -129,7 +132,7 @@ The kernel's signed delivery path does not require these shared secrets;
 they are temporary legacy Bearers required only by the unmigrated receivers.
 Keep the existing kernel `COFFEE_WEBHOOK_SECRET`, `LEARN_WEBHOOK_SECRET` and
 `MARKET_WEBHOOK_SECRET` set, matching each app's existing `WEBHOOK_SECRET`;
-keep their service URLs configured too. `kernel-webhook-legacy.ts` attaches
+keep their active registry callback URLs configured too. `kernel-webhook-legacy.ts` attaches
 the required Bearer only while the corresponding var is set. Removing a var
 before that app's migration ships causes payment callbacks to return 401.
 Do not generate, copy or rotate credentials for this rollout; retain the

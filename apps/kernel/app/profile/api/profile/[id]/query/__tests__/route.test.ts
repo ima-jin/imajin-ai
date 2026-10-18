@@ -11,6 +11,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   mockRequireAuth,
+  mockCreatePresenceTools,
+  mockRegistryUrl,
   mockFindFirst,
   mockResolveBrain,
   mockGetModel,
@@ -52,6 +54,15 @@ afterEach(() => {
 // ─── Owner-brain resolution ──────────────────────────────────────────────────
 
 describe('presence query — runs on the owner\'s sealed brain (#1621)', () => {
+  it('resolves optional app tool endpoints from registry entry URLs', async () => {
+    await POST(makeReq(), params);
+    expect(mockRegistryUrl).toHaveBeenCalledWith('events');
+    expect(mockRegistryUrl).toHaveBeenCalledWith('learn');
+    expect(mockCreatePresenceTools).toHaveBeenCalledWith(expect.objectContaining({
+      eventsUrl: 'https://apps.example.test/events',
+      learnUrl: 'https://apps.example.test/learn',
+    }));
+  });
   it('resolves the brain for the presence owner, not the requester', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:someone-else' } });
     // A different requester would need the trust hop; make it pass.

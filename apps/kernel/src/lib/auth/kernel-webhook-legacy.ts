@@ -21,8 +21,9 @@ const WARNED_KEY = Symbol.for('@imajin/kernel:legacy-webhook-warnings');
 type WarningHolder = { [WARNED_KEY]?: Set<string> };
 const warned = (globalThis as WarningHolder)[WARNED_KEY] ??= new Set<string>();
 
-export function legacyWebhookHeaders(app: LegacyWebhookApp): Record<string, string> {
-  const variable = LEGACY_SECRET_VARS[app];
+export function legacyWebhookHeaders(app: string): Record<string, string> {
+  if (!Object.hasOwn(LEGACY_SECRET_VARS, app)) return {};
+  const variable = LEGACY_SECRET_VARS[app as LegacyWebhookApp];
   const secret = process.env[variable];
   if (!secret) return {};
   if (!warned.has(variable)) {

@@ -15,8 +15,11 @@ vi.mock('next/server', () => ({
 
 const { mockSelectWhere, mockDbSelect, mockDbUpdate, mockRequireAuth } = vi.hoisted(() => {
   const mockSelectWhere = vi.fn();
+  const where = vi.fn(() => ({ limit: mockSelectWhere }));
+  const innerJoin = vi.fn(() => ({ where }));
+  const from = vi.fn(() => ({ innerJoin }));
   const mockDbSelect = vi.fn(() => ({
-    from: vi.fn(() => ({ where: vi.fn(() => ({ limit: mockSelectWhere })) })),
+    from,
   }));
   const mockDbUpdate = vi.fn(() => ({
     set: vi.fn(() => ({ where: vi.fn().mockResolvedValue(undefined) })),
@@ -27,6 +30,7 @@ const { mockSelectWhere, mockDbSelect, mockDbUpdate, mockRequireAuth } = vi.hois
 
 vi.mock('@/src/db', () => ({
   db: { select: mockDbSelect, update: mockDbUpdate },
+  identities: { id: 'identities.id', scope: 'identities.scope', subtype: 'identities.subtype' },
   identityMembers: {
     identityDid: 'identityMembers.identityDid',
     memberDid: 'identityMembers.memberDid',

@@ -1,10 +1,35 @@
 import { randomUUID } from 'node:crypto';
 import { createLogger } from '@imajin/logger';
-import type { ReactorHandler } from '../types';
+import type { BusEvent, ReactorHandler } from '../types';
 
 const log = createLogger('bus:loop-projection');
 
 const LIFECYCLE_TYPES = new Set(['loop.started', 'loop.progress', 'loop.blocked', 'loop.finished']);
+const STEP_TYPES = new Set([
+  'step.queued', 'step.updated', 'step.claimed', 'step.started', 'step.progress',
+  'step.blocked', 'step.finished', 'step.observed', 'step.attested',
+]);
+
+function nonemptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+function observedAt(event: BusEvent): string {
+  return typeof event.payload?.at === 'string' ? event.payload.at : (event.timestamp ?? new Date().toISOString());
+}
+
+/** The kernel owns step semantics; this boundary only validates persistence prerequisites. */
+function validateStepObservation(event: BusEvent, payload: Record<string, unknown>): void {
+  const fields = ['loopId', 'stepId', 'kind', 'principal', 'state', 'summary', 'at'];
+  const invalidField = fields.find(field => !nonemptyString(payload[field]));
+  if (invalidField) throw new Error(`Invalid step observation: ${invalidField} is required`);
+  if (!nonemptyString(event.id)) throw new Error('Invalid step observation: stable event.id is required');
+  if (![event.issuer, event.subject, event.scope].every(nonemptyString)) {
+    throw new Error('Invalid step observation: issuer, subject and scope are required');
+  }
+  if (!Number.isFinite(Date.parse(payload.at as string))) {
+    throw new TypeError('Invalid step observation: at must be a valid timestamp');
+  }
+}
 export class LoopOwnershipConflictError extends Error {
   readonly code = 'loop_owner_conflict';
 
@@ -31,14 +56,20 @@ export class LoopOwnershipConflictError extends Error {
  * wired `await: true` in `bus_chain_configs` so `POST /api/loops` sees its
  * own write immediately (read-after-write).
  *
+ * Step observations (#2878) append only to history after locking an existing,
+ * same-principal loop. They never advance the loop lifecycle or dispatch work.
+ *
  * Raw SQL via @imajin/db — packages/bus must not import apps/kernel (AGENTS.md).
- * Malformed envelopes are skipped. Ownership conflicts and persistence
- * failures throw; the awaited bus chain must propagate these to ingest.
+ * Malformed lifecycle envelopes are skipped; malformed steps are rejected.
+ * Ownership conflicts and persistence failures throw; the awaited bus chain
+ * must propagate these to ingest.
  */
 export const loopProjectionReactor: ReactorHandler = async (event) => {
-  if (!LIFECYCLE_TYPES.has(event.type)) return;
+  const stepObservation = STEP_TYPES.has(event.type);
+  if (!LIFECYCLE_TYPES.has(event.type) && !stepObservation) return;
 
   const payload = (event.payload ?? {}) as Record<string, unknown>;
+  if (stepObservation) validateStepObservation(event, payload);
   const loopId = typeof payload.loopId === 'string' ? payload.loopId : null;
   if (!loopId) {
     log.warn({ event: event.type }, 'loop event without loopId; skipping projection');
@@ -56,7 +87,7 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
 
   const parentLoopId = typeof payload.parentLoopId === 'string' ? payload.parentLoopId : null;
   const refs = (payload.refs && typeof payload.refs === 'object') ? payload.refs : {};
-  const at = typeof payload.at === 'string' ? payload.at : (event.timestamp ?? new Date().toISOString());
+  const at = observedAt(event);
   const finishedAt = event.type === 'loop.finished' ? at : null;
   const initialObservation = payload.initialObservation === true;
   const signedCompletion = event.type === 'loop.finished' && Boolean(event.id);
@@ -73,7 +104,7 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
     // The unique loop_id upsert serializes even concurrent first writes.
     // A conflicting principal cannot update any projection field. Older
     // same-principal events are still logged, without regressing "now".
-    await tx`
+    if (!stepObservation) await tx`
     INSERT INTO kernel.loops
       (loop_id, kind, principal, parent_loop_id, refs, state, summary, last_event_type, started_at, last_seen_at, finished_at)
     VALUES
@@ -97,9 +128,9 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
       AND NOT ${initialObservation}
     `;
 
-    // The upsert holds the row lock until commit, including when its WHERE
-    // condition failed. Check ownership separately: no RETURNING rows can
-    // also mean an older, otherwise valid event.
+    // Lifecycle upserts already hold this lock. Steps must lock an existing
+    // row before appending history, serializing with lifecycle writes and
+    // deletion/ownership changes without ever creating or updating the loop.
     const owners = await tx`
       SELECT principal FROM kernel.loops WHERE loop_id = ${loopId} FOR UPDATE
     `;
@@ -107,6 +138,8 @@ export const loopProjectionReactor: ReactorHandler = async (event) => {
 
     // History and projection commit together, or neither does. Keep payload
     // opaque so optional typed output survives without reinterpretation.
+    // Steps require the stable signed-ingest id above; only legacy lifecycle
+    // publishers may generate a local id.
     await tx`
       INSERT INTO kernel.loop_events
         (id, loop_id, type, issuer, principal, payload, occurred_at)

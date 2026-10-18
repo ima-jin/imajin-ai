@@ -6,7 +6,7 @@
  * to re-onboard, just join.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNotNull } from 'drizzle-orm';
 import { db, identities, identityMembers, forestConfig } from '@/src/db';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import { withLogger } from '@imajin/logger';
@@ -92,7 +92,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
         .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedVia: 'invite', addedAt: new Date() })
         .where(and(
           eq(identityMembers.identityDid, scopeDid),
-          eq(identityMembers.memberDid, session.did)
+          eq(identityMembers.memberDid, session.did),
+          isNotNull(identityMembers.removedAt)
         ));
     } else {
       await db.insert(identityMembers).values({

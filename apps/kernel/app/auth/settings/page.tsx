@@ -3,6 +3,7 @@ import { getEffectiveDid } from '@/app/auth/lib/get-effective-did';
 import { eq, and, isNull } from 'drizzle-orm';
 import { redirect } from 'next/navigation';
 import IdentitySettingsPanel from '../components/IdentitySettingsPanel';
+import IdentityOwnershipPanel from '../components/IdentityOwnershipPanel';
 
 export default async function SettingsPage() {
   const { sessionDid, effectiveDid } = await getEffectiveDid();
@@ -44,11 +45,17 @@ export default async function SettingsPage() {
 
   if (membership?.role !== 'owner') {
     return (
-      <div className="text-zinc-500 text-sm py-8">
-        You need owner access to manage settings for this identity.
+      <div className="space-y-6">
+        <IdentityOwnershipPanel groupDid={did} />
+        <p className="text-zinc-500 text-sm py-8">You need owner access to manage other settings for this identity.</p>
       </div>
     );
   }
 
-  return <IdentitySettingsPanel groupDid={did} />;
+  return (
+    <div className="space-y-6">
+      <IdentityOwnershipPanel groupDid={did} />
+      <IdentitySettingsPanel groupDid={did} />
+    </div>
+  );
 }
