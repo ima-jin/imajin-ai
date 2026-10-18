@@ -235,6 +235,27 @@ const labelledConnections = [
 ];
 
 describe('ConnectionPicker — opt-in relationship labels (#2945)', () => {
+  it('looks up text misses, not accepted connections hidden by a label filter', async () => {
+    const fetch = requestFetch();
+    fetch.mockImplementationOnce(async () => jsonResponse({ connections: labelledConnections }));
+    const onSelect = vi.fn();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={onSelect} relationshipLabels />);
+    await screen.findByText('Vendor');
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Clients' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@vendor' } });
+    await debounce();
+    expect(screen.getByText('No matching connections.')).toBeDefined();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Send connection request' })).toBeNull();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '@bob' } });
+    await debounce();
+    expect(fetch).toHaveBeenLastCalledWith('/auth/api/search?q=bob', expect.anything());
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Send connection request' })); });
+    expect(screen.getByRole('status').textContent).toContain('awaiting acceptance');
+    expect(screen.getByRole('button', { name: 'Clients' }).getAttribute('aria-pressed')).toBe('true');
+    expect(onSelect).not.toHaveBeenCalled();
+  });
   it('keeps all visible by default with clients first and the remaining order stable', async () => {
     stubFetch({ ok: true, body: { connections: labelledConnections } });
     render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} relationshipLabels />);

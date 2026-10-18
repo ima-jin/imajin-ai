@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, invites, profiles } from '@/src/db';
-import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { resolveEffectiveDid } from '@imajin/auth';
-import { directInviteResponse, transitionDirectInvite } from '@/src/lib/connections/direct-invites';
 
 export function OPTIONS(request: NextRequest) {
   const response = corsOptions(request);
   response.headers.set('Access-Control-Allow-Methods', `${response.headers.get('Access-Control-Allow-Methods')}, PATCH`);
+  return response;
+}
+
+function withInviteCors(response: NextResponse, request: NextRequest) {
+  for (const [key, value] of Object.entries(corsHeaders(request))) response.headers.set(key, value);
   return response;
 }
 
@@ -55,7 +59,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ code
 }
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ code: string }> }) {
-  return withCors(await deleteInvite(request, props), request);
+  return withInviteCors(await deleteInvite(request, props), request);
 }
 
 async function deleteInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
@@ -76,6 +80,7 @@ async function deleteInvite(request: NextRequest, props: { params: Promise<{ cod
   }
 
   if (invite.delivery === 'direct') {
+    const { directInviteResponse, transitionDirectInvite } = await import('@/src/lib/connections/direct-invites');
     return directInviteResponse(() => transitionDirectInvite(request, invite, 'cancel'));
   }
   if (invite.fromDid !== auth.effectiveDid) {
@@ -104,7 +109,7 @@ async function deleteInvite(request: NextRequest, props: { params: Promise<{ cod
 }
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ code: string }> }) {
-  return withCors(await declineInvite(request, props), request);
+  return withInviteCors(await declineInvite(request, props), request);
 }
 
 async function declineInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
@@ -118,5 +123,6 @@ async function declineInvite(request: NextRequest, props: { params: Promise<{ co
   if (invite.delivery !== 'direct') {
     return NextResponse.json({ error: 'Only direct requests can be declined' }, { status: 400 });
   }
+  const { directInviteResponse, transitionDirectInvite } = await import('@/src/lib/connections/direct-invites');
   return directInviteResponse(() => transitionDirectInvite(request, invite, 'decline'));
 }

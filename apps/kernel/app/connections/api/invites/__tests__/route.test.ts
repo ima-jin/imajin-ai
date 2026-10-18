@@ -567,6 +567,21 @@ describe('POST /connections/api/invites — rejects whitespace-only toEmail for 
 });
 
 describe('GET /connections/api/invites — no-disclosure list masking (#1839)', () => {
+  it('uses the scoped read path for incoming direct requests', async () => {
+    mockDbSelect.mockReset();
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([{ handle: SESSION.handle }]));
+    const req = {
+      url: 'http://localhost/connections/api/invites?direction=incoming',
+      headers: new Headers(),
+    } as unknown as Parameters<typeof GET>[0];
+    const response = await GET(req);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ invites: [] });
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read' });
+    expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
+  });
   const INVITER_DID = OWNER_DID;
   const REAL_TARGET_DID = 'did:imajin:real-target';
 

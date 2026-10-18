@@ -7,11 +7,10 @@ import { trustGraphInviteEmail } from '@imajin/email';
 import { sendKernelEmail } from '@/src/lib/mail/send';
 import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { buildPublicUrl, corsOptions, withCors } from '@imajin/config';
+import { buildPublicUrl, corsHeaders, corsOptions } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import type { Logger } from '@imajin/logger';
 import { resolveOrMintInviteTarget, withNoDisclosure } from '@/src/lib/auth/claimable-stub';
-import { createDirectInvite, directInviteResponse, listIncomingDirectInvites, publicDirectInvite } from '@/src/lib/connections/direct-invites';
 
 import { getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
@@ -196,11 +195,17 @@ export function OPTIONS(request: NextRequest) {
 }
 
 export const POST = withLogger('kernel', async (request, { log }) =>
-  withCors(await createInvite(request, log), request));
+  withInviteCors(await createInvite(request, log), request));
+
+function withInviteCors(response: NextResponse, request: NextRequest) {
+  for (const [key, value] of Object.entries(corsHeaders(request))) response.headers.set(key, value);
+  return response;
+}
 
 async function createInvite(request: NextRequest, log: LoggerLike) {
   const body = await request.json().catch(() => ({}));
   if (body && (Object.hasOwn(body, 'toDid') || Object.hasOwn(body, 'handle') || body.delivery === 'direct')) {
+    const { createDirectInvite, directInviteResponse } = await import('@/src/lib/connections/direct-invites');
     return directInviteResponse(() => createDirectInvite(request, body));
   }
   const authResult = await resolveInviteAuth(request, 'connections:write');
@@ -443,7 +448,7 @@ async function handleLinkInvite(
 }
 
 export async function GET(request: NextRequest) {
-  return withCors(await listInvites(request), request);
+  return withInviteCors(await listInvites(request), request);
 }
 
 async function listInvites(request: NextRequest) {
@@ -453,6 +458,7 @@ async function listInvites(request: NextRequest) {
   }
   const { session } = authResult;
   if (new URL(request.url).searchParams.get('direction') === 'incoming') {
+    const { directInviteResponse, listIncomingDirectInvites } = await import('@/src/lib/connections/direct-invites');
     return directInviteResponse(() => listIncomingDirectInvites(session.did));
   }
 
@@ -476,6 +482,8 @@ async function listInvites(request: NextRequest) {
   const pending = results.filter((r) => r.invite.delivery === 'link' && r.invite.status === 'pending').length;
 
   const now = Date.now();
+  const directInvites = results.some((row) => row.invite.delivery === 'direct')
+    ? await import('@/src/lib/connections/direct-invites') : null;
   const withDaysAgo = results.map((r) => {
     // No-disclosure (#1839): the joined profile (name/handle) and toDid are
     // legitimate bilateral knowledge only once the invite is accepted — a
@@ -484,7 +492,7 @@ async function listInvites(request: NextRequest) {
     const disclosed = r.invite.status === 'accepted';
     return {
       ...(r.invite.delivery === 'direct' ? {
-        ...publicDirectInvite(r.invite), toHandle: r.toHandle, toName: r.toName,
+        ...directInvites!.publicDirectInvite(r.invite), toHandle: r.toHandle, toName: r.toName,
       } : withNoDisclosure(r.invite)),
       acceptedBy: disclosed ? (r.acceptedHandle || r.acceptedName || null) : null,
       acceptedHandle: disclosed ? (r.acceptedHandle || null) : null,
