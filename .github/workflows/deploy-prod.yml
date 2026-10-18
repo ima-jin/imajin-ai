@@ -89,6 +89,11 @@ jobs:
       - name: Build workspace packages (provisioning prerequisite)
         run: pnpm -r --filter './packages/**' build
 
+      # #2960: migrate before provisioning imports the current identity schema.
+      # Both must precede build-changed.sh: build.sh can restart services.
+      - name: Run migrations
+        run: node scripts/migrate.mjs --owner kernel
+
       - name: Provision service bootstrap identities
         env:
           # pm2 sets NODE_ENV for prod-jin in the ecosystem file, not .env.local.
@@ -117,9 +122,6 @@ jobs:
         # Falls back to all ecosystem-owned in-repo apps if no build stamp.
         # build.sh's migrations are also kernel-scoped here.
         run: ./scripts/build-changed.sh --deploy-env prod
-
-      - name: Run migrations
-        run: node scripts/migrate.mjs --owner kernel
 
       - name: Reap orphaned port squatters
         run: ./scripts/reap-orphans.sh prod
