@@ -81,8 +81,8 @@ async function loadEvidence(tx: Tx, row: OperatorApprovalRow) {
   return { fields: knockCardFields(knockRecord(knock)), envelope: null, knock };
 }
 
-/** Accept is the sole identity promotion / DM creation path. No grants or identity-member roles. */
-async function acceptSender(tx: Tx, principalDid: string, requesterDid: string, knock: KnockSqlRow | null): Promise<{ conversationDid: string; agentDid: string }> {
+/** Signed senders alone can acquire a full agent identity, never a bearer placeholder. */
+async function promoteSignedSender(tx: Tx, principalDid: string, requesterDid: string, knock: KnockSqlRow | null): Promise<string> {
   let agentDid = requesterDid;
   let publicKey = knock?.public_key;
   if (!publicKey) {
@@ -121,6 +121,33 @@ async function acceptSender(tx: Tx, principalDid: string, requesterDid: string, 
     WHERE principal_did = $1 AND revoked_at IS NULL
       AND (signer_key = $2 OR signer_aliases @> $4::jsonb)
   `, [principalDid, publicKey, agentDid, JSON.stringify([publicKey])]);
+  return agentDid;
+}
+
+/** Static clients keep their exact placeholder identity and reach-only authority. */
+async function acceptBearerStub(tx: Tx, principalDid: string, requesterDid: string): Promise<string> {
+  const [stub] = await tx.unsafe<{ stub_did: string; public_key: string; signer_key: string }[]>(`
+    SELECT s.stub_did, i.public_key, s.signer_key
+    FROM auth.foreign_agent_stubs s JOIN auth.identities i ON i.id = s.stub_did
+    WHERE s.principal_did = $1 AND s.stub_did = $2 AND s.requester_did = $2
+      AND s.capability = 'reach' AND s.revoked_at IS NULL
+      AND i.scope = 'actor' AND i.subtype = 'foreign_agent_stub' AND i.suspended_at IS NULL
+    FOR SHARE OF s, i
+  `, [principalDid, requesterDid]);
+  if (!stub || !/^stub_[0-9a-f]{64}$/.test(stub.public_key)
+    || stub.signer_key !== `bearer_${stub.public_key.slice(5)}`) {
+    throw new ReachDecisionError('Static sender is no longer an active scoped Reach identity');
+  }
+  return stub.stub_did;
+}
+
+/** Accept is the sole DM creation path. No grants or identity-member roles. */
+async function acceptSender(
+  tx: Tx, principalDid: string, requesterDid: string, knock: KnockSqlRow | null, envelope: ReachEnvelope | null,
+): Promise<{ conversationDid: string; agentDid: string }> {
+  const agentDid = !knock && envelope?.requesterAuthTier === 'bearer'
+    ? await acceptBearerStub(tx, principalDid, requesterDid)
+    : await promoteSignedSender(tx, principalDid, requesterDid, knock);
   const [didA, didB] = [principalDid, agentDid].sort((a, b) => a.localeCompare(b));
   await tx.unsafe(`
     INSERT INTO connections.connections (did_a, did_b) VALUES ($1, $2)
@@ -165,7 +192,7 @@ export async function commitReachDecision(row: OperatorApprovalRow, signed: Sign
     const mode = signed.payload.mode;
     if (mode !== 'block' && await isReachSenderBlockedInTransaction(tx, blockParams)) throw new ReachDecisionError('Sender is blocked', 403);
     if (mode === 'block') await blockReachSenderInTransaction(tx, blockParams);
-    const accepted = mode === 'accept' ? await acceptSender(tx, row.operatorDid, requesterDid, knock) : null;
+    const accepted = mode === 'accept' ? await acceptSender(tx, row.operatorDid, requesterDid, knock, envelope) : null;
     if (accepted) await seedAcceptedContext(tx, row, accepted, envelope);
     if (envelope) {
       await tx.unsafe(`

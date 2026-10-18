@@ -51,18 +51,35 @@ function adapter(client: Pick<PGlite, 'query'>) {
     },
   };
 }
+async function seedBearerEnvelope() {
+  const random = 'ab'.repeat(32);
+  const stubDid = `did:imajin:foreign_${random}`;
+  envelope = { ...envelope, requesterDid: stubDid, requesterAuthTier: 'bearer', requesterTier: 'soft' };
+  await database.exec('TRUNCATE auth.foreign_agent_stubs, operator.approvals');
+  await database.query(`INSERT INTO auth.identities (id,scope,subtype,public_key,tier,metadata)
+    VALUES ($1,'actor','foreign_agent_stub',$2,'soft',$3::jsonb)`,
+  [stubDid, `stub_${random}`, JSON.stringify({ capabilities: ['reach'], credential: 'bearer', principalDid })]);
+  await database.query(`INSERT INTO auth.foreign_agent_stubs (stub_did,principal_did,requester_did,signer_key)
+    VALUES ($1,$2,$1,$3)`, [stubDid, principalDid, `bearer_${random}`]);
+  await database.query('UPDATE auth.reach_envelopes SET requester_did = $1, envelope = $2::jsonb', [stubDid, JSON.stringify(envelope)]);
+  const fields = reachCardFields(envelope);
+  await drizzle(database).insert(operatorApprovals).values({
+    ...fields, operatorDid: principalDid, signerDid: stubDid, contentHash: computeApprovalContentHash(fields), status: 'pending',
+  });
+  return stubDid;
+}
 
 beforeAll(async () => {
   database = new PGlite();
   await database.waitReady;
   await database.exec(`
     CREATE SCHEMA auth; CREATE SCHEMA operator; CREATE SCHEMA connections; CREATE SCHEMA chat;
-    CREATE TABLE auth.identities (id text PRIMARY KEY, scope text, subtype text, public_key text, tier text, metadata jsonb);
+    CREATE TABLE auth.identities (id text PRIMARY KEY, scope text, subtype text, public_key text, tier text, metadata jsonb, suspended_at timestamptz);
     CREATE TABLE auth.identity_members (identity_did text, member_did text, role text, removed_at timestamptz);
     CREATE TABLE auth.reach_envelopes (reach_id text PRIMARY KEY, principal_did text, requester_did text, envelope jsonb);
     CREATE TABLE auth.reach_sender_blocks (principal_did text, requester_did text, created_at timestamptz DEFAULT now(), PRIMARY KEY (principal_did, requester_did));
     CREATE TABLE auth.foreign_agent_stubs (stub_did text, principal_did text, requester_did text, signer_key text,
-      requester_aliases jsonb DEFAULT '[]', signer_aliases jsonb DEFAULT '[]', promoted_to text, revoked_at timestamptz);
+      requester_aliases jsonb DEFAULT '[]', signer_aliases jsonb DEFAULT '[]', promoted_to text, revoked_at timestamptz, capability text DEFAULT 'reach');
     CREATE TABLE auth.agent_knocks (id text PRIMARY KEY, declared_target text, agent_did text, public_key text,
       self_description text, requested_capabilities jsonb, external_did text, status text, expires_at timestamptz,
       created_at timestamptz DEFAULT now(), responded_at timestamptz);
@@ -123,6 +140,34 @@ function command(mode: string, identity = principal, replyMessage?: string) {
 }
 
 describe('shared Reach decision path', () => {
+  it.each(['reply', 'accept', 'decline', 'block'])('supports static bearer %s without fabricating a signing identity', async (mode) => {
+    const stubDid = await seedBearerEnvelope();
+    const before = (await database.query('SELECT * FROM auth.identities WHERE id = $1', [stubDid])).rows;
+    const params = command(mode, principal, mode === 'reply' ? 'Bearer reply' : undefined);
+    expect((await decideOperatorApproval(params)).ok).toBe(true);
+    expect((await decideOperatorApproval(params)).ok).toBe(true);
+    expect((await database.query('SELECT * FROM auth.identities WHERE id = $1', [stubDid])).rows).toEqual(before);
+    expect((await database.query('SELECT * FROM auth.identities')).rows).toHaveLength(3);
+    expect((await database.query('SELECT promoted_to FROM auth.foreign_agent_stubs')).rows).toEqual([{ promoted_to: null }]);
+    const messages = (await database.query<{ from_did: string; content: { provenance: Record<string, unknown> } }>('SELECT * FROM chat.messages_v2')).rows;
+    expect(messages).toHaveLength(mode === 'accept' ? 1 : 0);
+    if (mode === 'accept') expect(messages[0]).toMatchObject({
+      from_did: stubDid, content: { text: 'Hello', provenance: { requesterAuthTier: 'bearer', claimVerified: false } },
+    });
+  });
+
+  it.each(['revoked', 'unrelated', 'suspended', 'bad-marker', 'wrong-capability'])('refuses %s static sender acceptance', async (state) => {
+    await seedBearerEnvelope();
+    if (state === 'revoked') await database.exec('UPDATE auth.foreign_agent_stubs SET revoked_at = now()');
+    if (state === 'unrelated') await database.exec("UPDATE auth.foreign_agent_stubs SET principal_did = 'another-principal'");
+    if (state === 'suspended') await database.exec("UPDATE auth.identities SET suspended_at = now() WHERE subtype = 'foreign_agent_stub'");
+    if (state === 'bad-marker') await database.exec("UPDATE auth.foreign_agent_stubs SET signer_key = 'bearer_bad'");
+    if (state === 'wrong-capability') await database.exec("UPDATE auth.foreign_agent_stubs SET capability = 'other'");
+    expect(await decideOperatorApproval(command('accept'))).toMatchObject({ ok: false });
+    expect((await database.query('SELECT * FROM chat.conversations_v2')).rows).toHaveLength(0);
+    expect((await database.query('SELECT * FROM chat.messages_v2')).rows).toHaveLength(0);
+    expect((await database.query('SELECT * FROM auth.identities')).rows).toHaveLength(3);
+  });
   it.each(['reply', 'accept', 'decline', 'block'])('handles knock %s with the same signed path', async (mode) => {
     const knock = {
       knockId: 'knock-test', agentDid: senderDid, declaredTarget: principalDid, selfDescription: 'Knock message',
