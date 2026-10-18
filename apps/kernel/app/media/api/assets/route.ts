@@ -132,12 +132,38 @@ function buildUploadResponse(input: {
   );
 }
 
-/** Resolve ownerDid for GET /api/assets listing: internal key path or user auth path. */
+interface ListOwner {
+  ownerDid: string;
+  isAgentQuery: boolean;
+  isAnonymous?: boolean;
+}
+
+/** A failed authentication may only fall back to a DID-scoped public listing. */
+function anonymousListOwner(
+  request: NextRequest,
+  searchParams: URLSearchParams,
+  authError: { error: string; status: number },
+  cors: Record<string, string>
+): ListOwner | NextResponse {
+  const did = searchParams.get("did")?.trim();
+  if (authError.status !== 401 || !did) return mediaAuthErrorResponse(authError, cors);
+
+  const rl = rateLimit(`media:assets:anonymous:${getClientIP(request)}`, 60, 60_000);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "Too many requests", retryAfter: rl.retryAfter },
+      { status: 429, headers: { ...cors, "Retry-After": String(rl.retryAfter) } }
+    );
+  }
+  return { ownerDid: did, isAgentQuery: true, isAnonymous: true };
+}
+
+/** Resolve listing scope without weakening authenticated authorization failures. */
 async function resolveListOwnerDid(
   request: NextRequest,
   searchParams: URLSearchParams,
   cors: Record<string, string>
-): Promise<{ ownerDid: string; isAgentQuery: boolean } | NextResponse> {
+): Promise<ListOwner | NextResponse> {
   const internalApiKey = process.env.MEDIA_INTERNAL_API_KEY;
   const authHeader = request.headers.get("Authorization");
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -160,7 +186,7 @@ async function resolveListOwnerDid(
   // requireMediaAuth's own docblock.
   const authResult = await requireMediaAuth(request, "media:read");
   if ("error" in authResult) {
-    return mediaAuthErrorResponse(authResult, cors);
+    return anonymousListOwner(request, searchParams, authResult, cors);
   }
   const { auth } = authResult;
   const didParam = searchParams.get("did");
@@ -189,6 +215,27 @@ function contextFilterConditions(searchParams: URLSearchParams): SQL[] {
     conditions.push(sql`${assets.metadata}->'context'->>'feature' = ${contextFeature}`);
   }
   return conditions;
+}
+/** Anonymous callers cannot bypass SQL pagination with NaN or negative values. */
+function anonymousPageValue(value: string | null, fallback: number, min: number, max: number): number {
+  if (!value?.trim()) return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) return fallback;
+  return Math.min(Math.max(parsed, min), max);
+}
+
+/** Allowlist, never spread a DB row or arbitrary owner-supplied metadata. */
+function publicAssetDescriptor(asset: Asset) {
+  return {
+    id: asset.id,
+    ownerDid: asset.ownerDid,
+    filename: asset.filename,
+    mimeType: asset.mimeType,
+    size: asset.size,
+    hash: asset.hash,
+    createdAt: asset.createdAt,
+    updatedAt: asset.updatedAt,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -316,7 +363,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/assets — list assets for authenticated user (or via internal API key)
+// GET /api/assets — own library, or a DID-scoped anonymous public listing
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -324,13 +371,17 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const ownerInfo = await resolveListOwnerDid(request, searchParams, cors);
   if (ownerInfo instanceof NextResponse) return ownerInfo;
-  const { ownerDid, isAgentQuery } = ownerInfo;
+  const { ownerDid, isAgentQuery, isAnonymous } = ownerInfo;
 
   const search = searchParams.get("search");      // filename search
   const type = searchParams.get("type");          // e.g. "image"
   const order = searchParams.get("order") || "desc";
-  const limit = Math.min(Number.parseInt(searchParams.get("limit") || "50", 10), 200);
-  const offset = Number.parseInt(searchParams.get("offset") || "0", 10);
+  const limit = isAnonymous
+    ? anonymousPageValue(searchParams.get("limit"), 50, 1, 200)
+    : Math.min(Number.parseInt(searchParams.get("limit") || "50", 10), 200);
+  const offset = isAnonymous
+    ? anonymousPageValue(searchParams.get("offset"), 0, 0, 2_147_483_647)
+    : Number.parseInt(searchParams.get("offset") || "0", 10);
 
   try {
     const { desc: drizzleDesc, asc: drizzleAsc } = await import("drizzle-orm");
@@ -339,8 +390,15 @@ export async function GET(request: NextRequest) {
     const conditions = [eq(assets.ownerDid, ownerDid), eq(assets.status, "active")];
 
     // If querying another DID's assets, restrict to public ones
-    if (isAgentQuery) {
-      // Public = fairManifest->access->>type = 'public' OR no access restriction set
+    if (isAnonymous) {
+      // Match getAccessType's explicit string/object public forms. Missing,
+      // null and unknown access fail closed, as on the single-asset read.
+      conditions.push(sql`(
+        ${assets.fairManifest}->'access' = '"public"'::jsonb
+        OR ${assets.fairManifest}->'access'->>'type' = 'public'
+      )`);
+    } else if (isAgentQuery) {
+      // Preserve the pre-existing authenticated cross-DID query.
       conditions.push(
         sql`COALESCE((${assets.fairManifest}->'access'->>'type'), 'private') = 'public'`
       );
@@ -365,11 +423,12 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    return NextResponse.json({ assets: rows, limit, offset, count: rows.length }, { headers: cors });
+    const listedAssets = isAnonymous ? rows.map(publicAssetDescriptor) : rows;
+    return NextResponse.json({ assets: listedAssets, limit, offset, count: rows.length }, { headers: cors });
   } catch (err) {
     log.error({ err: String(err) }, "DB query failed");
     return NextResponse.json(
-      { error: "Database failure", detail: String(err) },
+      { error: "Database failure", ...(!isAnonymous && { detail: String(err) }) },
       { status: 500, headers: cors }
     );
   }
