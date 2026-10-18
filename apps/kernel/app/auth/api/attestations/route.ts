@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, attestations, attestationTypeRegistry } from '@/src/db';
 import type { Attestation } from '@/src/db';
-import { eq, and, isNull, ne, desc, notInArray, inArray, sql } from 'drizzle-orm';
+import { eq, and, or, isNull, ne, desc, notInArray, inArray, sql } from 'drizzle-orm';
 import { corsHeaders } from '@imajin/config';
 import { canonicalize, crypto as authCrypto, ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES, evidenceGradeForAttestationStatus, isDisclosureScope } from '@imajin/auth';
 import type { AttestationType } from '@imajin/auth';
@@ -18,7 +18,7 @@ import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
 import { encodeAttestationCursor, parseAttestationCursor } from './attestation-cursor';
 import type { AttestationCursor } from './attestation-cursor';
 import { ceremonyAttestationRejection } from '@/src/lib/auth/ceremony-attestation-types';
-import { filterRelationshipLabelEvents } from './relationship-label-visibility';
+import { filterRelationshipLabelEvents, RELATIONSHIP_LABEL_EVENT } from './relationship-label-visibility';
 
 const ATTESTATION_LIMIT_MAX = 100;
 const ATTESTATION_REF_MAX_LENGTH = 256;
@@ -499,7 +499,12 @@ function buildListConditions(params: {
     // but shouldn't clutter the default "current state" list view. A caller
     // that explicitly asks for `status=superseded` (or evidence_grade) still
     // gets it back, since that branch is skipped whenever statusFilter is set.
-    conditions.push(ne(attestations.attestationStatus, 'superseded'));
+    // Mechanical label changes have NULL status, not a countersign state.
+    // Keep them queryable without widening existing legacy disclosure.
+    conditions.push(or(
+      ne(attestations.attestationStatus, 'superseded'),
+      and(eq(attestations.type, RELATIONSHIP_LABEL_EVENT), isNull(attestations.attestationStatus)),
+    ));
   }
   // #1822: an untyped `status=pending` query is the "pending your
   // countersignature" view — exclude mechanical audit-record types (e.g.
@@ -532,6 +537,7 @@ async function filterDisclosedRows(rows: Attestation[], request: NextRequest): P
   const viewerDid = await resolveCallerDid(request);
   const connectedDids = viewerDid ? await trustRadius(db, viewerDid, 1) : null;
   return rows.filter((row: Attestation) => {
+    if (row.type === RELATIONSHIP_LABEL_EVENT) return true; // already gated by live org controller membership
     if (!registryGatedTypes.has(row.type)) return true; // legacy type — unrestricted, unchanged behavior
     const scope = isDisclosureScope(row.disclosureScope) ? row.disclosureScope : 'parties';
     return resolveDisclosureAccess(

@@ -50,6 +50,7 @@ vi.mock('@/src/db', () => ({
 vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]): Op => ({ op: 'eq', args }),
   and: (...args: unknown[]): Op => ({ op: 'and', args }),
+  or: (...args: unknown[]): Op => ({ op: 'or', args }),
   isNull: (...args: unknown[]): Op => ({ op: 'isNull', args }),
   ne: (...args: unknown[]): Op => ({ op: 'ne', args }),
   gt: (...args: unknown[]): Op => ({ op: 'gt', args }),
@@ -108,7 +109,10 @@ function hasNotInArray(args: unknown[]): boolean {
 }
 
 function hasNe(args: unknown[]): boolean {
-  return args.some((arg) => (arg as Op).op === 'ne');
+  return args.some((arg) => {
+    const operation = arg as Op;
+    return operation.op === 'ne' || (operation.op === 'or' && hasNe(operation.args));
+  });
 }
 
 /** The `eq(column, value)` conditions in the where-list, as `[column, value]` pairs. */

@@ -14,6 +14,8 @@ import type { NextRequest } from 'next/server';
 const mocks = vi.hoisted(() => ({
   ATTESTATIONS: { __table: 'attestations' },
   REGISTRY: { __table: 'attestation_type_registry' },
+  MEMBERS: { __table: 'identity_members', identityDid: 'identity_did' },
+  membershipRows: [] as Record<string, unknown>[],
   attestationRows: [] as Record<string, unknown>[],
   registryRows: [] as Record<string, unknown>[],
   trustRadius: vi.fn(),
@@ -27,6 +29,9 @@ function attestationsOrderBy() {
 }
 
 function dbFrom(table: unknown) {
+  if (table === mocks.MEMBERS) {
+    return { where: () => Promise.resolve(mocks.membershipRows) };
+  }
   if (table === mocks.REGISTRY) {
     return { where: () => Promise.resolve(mocks.registryRows) };
   }
@@ -40,12 +45,14 @@ vi.mock('@/src/db', () => ({
   identities: {},
   attestations: mocks.ATTESTATIONS,
   attestationTypeRegistry: mocks.REGISTRY,
+  identityMembers: mocks.MEMBERS,
   tokens: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
   eq: vi.fn(),
   and: (...args: unknown[]) => args,
+  or: (...args: unknown[]) => args,
   isNull: vi.fn(),
   ne: vi.fn(),
   gt: vi.fn(),
@@ -126,10 +133,36 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.attestationRows = [];
   mocks.registryRows = [];
+  mocks.membershipRows = [];
   mocks.trustRadius.mockResolvedValue(new Set());
 });
 
 describe('GET /auth/api/attestations — disclosure_scope enforcement (#1885)', () => {
+  it('never returns private commercial labels to anonymous callers, even without a type registry entry', async () => {
+    mocks.attestationRows = [row({ type: 'connection.relationship.label.changed', disclosureScope: 'public' })];
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations?subject_did=${SUBJECT}`));
+    expect(await res.json()).toEqual([]);
+  });
+
+  it('does not disclose the label to a connected counterparty named in its event payload', async () => {
+    mocks.attestationRows = [row({
+      type: 'connection.relationship.label.changed',
+      payload: { counterpartyDid: STRANGER, newLabel: 'client' },
+    })];
+    mocks.verifySessionToken.mockResolvedValue({ sub: STRANGER });
+    mocks.trustRadius.mockResolvedValue(new Set([SUBJECT]));
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations?subject_did=${SUBJECT}`, { sessionSub: STRANGER }));
+    expect(await res.json()).toEqual([]);
+  });
+
+  it('keeps the private audit visible to a live controller even if the type becomes registered', async () => {
+    mocks.attestationRows = [row({ type: 'connection.relationship.label.changed' })];
+    mocks.registryRows = [{ typeName: 'connection.relationship.label.changed' }];
+    mocks.membershipRows = [{ orgDid: SUBJECT }];
+    mocks.verifySessionToken.mockResolvedValue({ sub: STRANGER });
+    const res = await GET(makeGetReq(`https://kernel.test/auth/api/attestations?subject_did=${SUBJECT}`, { sessionSub: STRANGER }));
+    expect(await res.json()).toHaveLength(1);
+  });
   it('returns legacy (non-registered) types unfiltered to an anonymous caller', async () => {
     mocks.attestationRows = [row({ type: 'vouch', disclosureScope: 'parties' })];
     mocks.registryRows = []; // 'vouch' is not in the registry
