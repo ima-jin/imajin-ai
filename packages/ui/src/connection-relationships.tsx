@@ -31,7 +31,7 @@ export function ConnectionRelationshipFilter({
   disabled?: boolean;
 }>) {
   return (
-    <div role="group" aria-label="Filter relationships" className="flex flex-wrap gap-1">
+    <fieldset aria-label="Filter relationships" className="flex flex-wrap gap-1 border-0 p-0 min-w-0">
       {RELATIONSHIP_FILTERS.map(filter => (
         <button
           key={filter.value}
@@ -46,6 +46,6 @@ export function ConnectionRelationshipFilter({
           {filter.text}
         </button>
       ))}
-    </div>
+    </fieldset>
   );
 }

@@ -20,7 +20,7 @@ export function RelationshipFilterControl({
 }: Readonly<{ value: RelationshipFilter; onChange: (value: RelationshipFilter) => void }>) {
   return (
     <label className="block text-sm text-gray-400 mb-4">
-      Relationship
+      <span>Relationship</span>
       <select
         value={value}
         onChange={event => onChange(event.target.value as RelationshipFilter)}
@@ -85,7 +85,7 @@ export function RelationshipEditor({
         <option value="">Unset</option>
         {LABELS.map(label => <option key={label} value={label}>{label}</option>)}
       </select>
-      {saving && <span role="status" className="ml-2 text-xs text-gray-400">Saving…</span>}
+      {saving && <output className="ml-2 text-xs text-gray-400">Saving…</output>}
       {error && <p role="alert" className="mt-1 text-xs text-red-400">{error}</p>}
     </div>
   );
