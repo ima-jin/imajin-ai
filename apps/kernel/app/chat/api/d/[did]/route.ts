@@ -102,11 +102,8 @@ export async function PUT(
     });
     if (!conversation) return errorResponse('Conversation is not owned by this app and creator', 403, cors);
     return jsonResponse({ conversation }, 200, cors);
-  } catch (err) {
-    log.error({
-      message: err instanceof Error ? err.message : 'Unknown error',
-      code: err instanceof Error && 'code' in err && typeof err.code === 'string' ? err.code : undefined,
-    }, 'App conversation metadata update failed');
+  } catch {
+    log.error({ status: 500, code: 'APP_CONVERSATION_UPDATE_FAILED' }, 'App conversation metadata update failed');
     return errorResponse('Failed to update conversation metadata', 500, cors);
   }
 }

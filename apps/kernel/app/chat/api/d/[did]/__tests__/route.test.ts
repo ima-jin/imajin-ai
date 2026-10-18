@@ -266,20 +266,23 @@ describe('validation and contract', () => {
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Failed to update conversation metadata' });
     expect(h.log).toHaveBeenCalledWith({
-      message: 'database unavailable: internal detail', code: undefined,
+      status: 500, code: 'APP_CONVERSATION_UPDATE_FAILED',
     }, 'App conversation metadata update failed');
   });
   it.each([
-    [Object.assign(new Error('Database unavailable'), { code: '08006', token: 'must-not-log' }), 'Database unavailable', '08006'],
-    ['must-not-log', 'Unknown error', undefined],
-  ])('logs only safe message/code fields for failure %s', async (failure, message, code) => {
+    Object.assign(new Error('must-not-log: duplicate key did:imajin:private-owner'), { code: '08006', token: 'must-not-log' }),
+    'must-not-log',
+  ])('logs only fixed failure metadata for failure %s', async (failure) => {
     h.fail = true;
     h.failure = failure;
     const response = await put();
     h.fail = false;
     expect(response.status).toBe(500);
-    expect(h.log).toHaveBeenCalledWith({ message, code }, 'App conversation metadata update failed');
+    expect(h.log).toHaveBeenCalledWith({
+      status: 500, code: 'APP_CONVERSATION_UPDATE_FAILED',
+    }, 'App conversation metadata update failed');
     expect(JSON.stringify(h.log.mock.calls)).not.toContain('must-not-log');
+    expect(JSON.stringify(h.log.mock.calls)).not.toContain('did:imajin:private-owner');
   });
   it('replays the guarded migration without changing legacy data', async () => {
     await seed(null);

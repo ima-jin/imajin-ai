@@ -47,7 +47,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: "Existing app-service+jwt from POST /auth/api/apps/token/service; onboard:send token scope and live operator approval required."
+      description: "Existing app-service+jwt from POST /auth/api/apps/token/service; the operation's token scope and live operator approval are required."
     internalKeyAuth:
       type: apiKey
       in: header
@@ -1293,6 +1293,18 @@ paths:
         registrations (unless NEXT_PUBLIC_DISABLE_INVITE_GATE=true). Non-human types bypass the
         invite gate. If the public key already exists, returns the existing identity (login-via-register).
         Rate-limited to 5 req/min per IP.
+        Omit Authorization for signed self-registration (including when a session cookie
+        is present). With any Authorization header, even an empty one, the route takes
+        only the existing app-service JWT path: Bearer app-service+jwt with identity:write,
+        an active app registration, and live operator approval of identity:write.
+        This optional app credential records registering-app provenance on new identities;
+        it does not replace the registration signature.
+        Invalid/expired tokens, session bearers and malformed Authorization return 401;
+        verified delegated app tokens or app-service tokens lacking permission return 403.
+        Neither falls back to self-registration or session authentication.
+      security:
+        - {}
+        - appServiceAuth: []
       requestBody:
         required: true
         content:
@@ -1343,12 +1355,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Invalid signature
+          description: Invalid signature, or invalid/expired/non-app Authorization credential (no fallback)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
-          description: Invite required or invalid
+          description: Invite required or invalid, or app-service credential lacks required authority (no fallback)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

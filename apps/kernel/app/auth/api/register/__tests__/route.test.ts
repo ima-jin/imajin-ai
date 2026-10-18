@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -18,6 +20,7 @@ const {
   mockPublish,
   mockNanoid,
   mockAppAuth,
+  mockVerifyAppToken,
 } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
@@ -34,6 +37,7 @@ const {
   mockPublish: vi.fn(async () => undefined),
   mockNanoid: vi.fn(() => 'mocknanoid123'),
   mockAppAuth: vi.fn(),
+  mockVerifyAppToken: vi.fn(),
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -60,6 +64,7 @@ vi.mock('@/src/lib/auth/crypto', () => ({
 vi.mock('@/src/lib/auth/jwt', () => ({
   createSessionToken: mockCreateSessionToken,
   getSessionCookieOptions: mockGetSessionCookieOptions,
+  verifyAppToken: mockVerifyAppToken,
 }));
 
 vi.mock('@/src/lib/kernel/node-identity', () => ({
@@ -114,6 +119,7 @@ vi.mock('@/src/db', () => ({
   identities: { id: 'identities.id', publicKey: 'identities.publicKey', handle: 'identities.handle' },
   profiles: { did: 'profiles.did' },
   credentials: { did: 'credentials.did', type: 'credentials.type', value: 'credentials.value' },
+  registryApps: {},
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -163,6 +169,7 @@ beforeEach(() => {
   mockDbInsert.mockImplementation(() => insertChain([]));
   mockDidFromPublicKey.mockImplementation((pk: string) => `did:imajin:${pk.slice(0, 8)}`);
   mockAppAuth.mockResolvedValue({ appDid: 'did:imajin:app' });
+  mockVerifyAppToken.mockReset().mockResolvedValue(null);
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
@@ -192,6 +199,37 @@ describe('POST /api/register — auth.credentials email row (#1855)', () => {
     request.headers.set('Authorization', 'Bearer invalid');
     expect((await POST(request)).status).toBe(status);
     expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['Bearer opaque-session-token', null, 401],
+    ['Bearer invalid-app-token', null, 401],
+    ['Basic session-token', null, 401],
+    ['', null, 401],
+    ['Bearer delegated-app-token', { azp: 'did:imajin:app', isServiceToken: false }, 403],
+  ] as const)('fails closed for Authorization %s', async (authorization, claims, status) => {
+    const { authenticatePayApp } = await vi.importActual<typeof import('@/src/lib/kernel/app-service-auth')>(
+      '@/src/lib/kernel/app-service-auth',
+    );
+    mockAppAuth.mockImplementationOnce(authenticatePayApp);
+    mockVerifyAppToken.mockResolvedValueOnce(claims);
+    const request = makeRequest(VALID_BODY);
+    request.headers.set('Authorization', authorization);
+    const response = await POST(request);
+    expect(response.status).toBe(status);
+    expect(mockDbSelect).not.toHaveBeenCalled();
+    expect(mockDbInsert).not.toHaveBeenCalled();
+    expect(mockCreateSessionToken).not.toHaveBeenCalled();
+    expect(mockVerifyRegistrationSignature).not.toHaveBeenCalled();
+  });
+  it('documents optional app-service auth and fail-closed Authorization statuses', () => {
+    const spec = parse(readFileSync(new URL('../../../../../api-spec/auth.yaml', import.meta.url), 'utf8'));
+    const registration = spec.paths['/api/register'].post;
+    expect(registration.security).toEqual([{}, { appServiceAuth: [] }]);
+    expect(registration.description).toContain('session bearers and malformed Authorization return 401');
+    expect(registration.description).toContain('permission return 403');
+    expect(registration.responses['401'].description).toContain('no fallback');
+    expect(registration.responses['403'].description).toContain('no fallback');
   });
 
   it('does not claim an existing signed identity on re-registration', async () => {
