@@ -97,7 +97,7 @@ vi.mock('@/src/lib/media/article-core', () => ({
   }),
 }));
 
-import { createAsset } from '../create-asset';
+import { createAsset, inferMime, isAllowedMime } from '../create-asset';
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -152,6 +152,55 @@ beforeEach(() => {
 });
 
 afterEach(() => vi.unstubAllEnvs());
+
+describe('createAsset — JSON MIME allowlist (#2889)', () => {
+  it('allows application/json as an exact MIME type', () => {
+    expect(isAllowedMime('application/json')).toBe(true);
+    expect(isAllowedMime('application/pdf')).toBe(true);
+  });
+
+  it.each(['application/x-msdownload', 'application/json-patch+json', 'application/octet-stream'])(
+    'does not widen the allowlist to %s',
+    (mimeType) => {
+      expect(isAllowedMime(mimeType)).toBe(false);
+    },
+  );
+
+  it.each(['application/json', 'application/octet-stream'])(
+    'creates a JSON asset after resolving %s',
+    async (browserMime) => {
+      const input = {
+        ownerDid: MARKDOWN_INPUT.ownerDid,
+        buffer: Buffer.from('{"survey":"legacy"}'),
+        filename: 'survey.json',
+        mimeType: inferMime(browserMime, 'survey.json'),
+        classify: false,
+      };
+      const record = { id: 'asset_json', ...input, metadata: {} };
+      mockInsertValuesReturning.mockResolvedValueOnce([record]);
+
+      const result = await createAsset(input);
+
+      expect(result).toEqual({ asset: record, deduplicated: false });
+      expect(mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+        filename: 'survey.json',
+        mimeType: 'application/json',
+      }));
+      expect(writeFile).toHaveBeenCalledWith(expect.stringMatching(/\/assets\/[^/]+\.json$/), input.buffer);
+    },
+  );
+
+  it('rejects an executable MIME before storage or database writes', async () => {
+    await expect(createAsset({
+      ...MARKDOWN_INPUT,
+      filename: 'survey.json',
+      mimeType: 'application/x-msdownload',
+    })).rejects.toThrow('MIME type application/x-msdownload is not allowed');
+
+    expect(writeFile).not.toHaveBeenCalled();
+    expect(mockInsertValues).not.toHaveBeenCalled();
+  });
+});
 
 describe('createAsset — media.uploaded (#2276)', () => {
   const input = { ...MARKDOWN_INPUT, mimeType: 'text/plain', baseUrl: 'https://test.imajin.ai' };

@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, credentials } from '@/src/db';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { createLogger } from '@imajin/logger';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
+import { authenticateContactApp, relatedContactDids } from '@/src/lib/profile/app-contact-auth';
+import { backfillContact } from '@/src/lib/profile/backfill-contact';
+import { corsHeaders } from '@/src/lib/kernel/cors';
+
+export { corsOptions as OPTIONS } from '@/src/lib/kernel/cors';
+export const dynamic = 'force-dynamic';
 
 const log = createLogger('kernel');
 
@@ -68,7 +74,7 @@ export async function GET(
 /**
  * POST /auth/api/identity/:did/contact
  *
- * Internal endpoint — backfill `auth.identities.contact_email` for a DID
+ * Backfill `auth.identities.contact_email` and `profile.profiles.contact_email`
  * (#2058, sibling of #1999/#2053). NULL-guarded: only ever sets the column
  * when it is currently unset, so repeated calls for the same buyer (every
  * checkout, every webhook retry) are safe no-ops once a value is on file.
@@ -78,14 +84,10 @@ export async function GET(
  * The deliberate, user-initiated `email_verified` flow
  * (app/profile/api/contact/verify-email/) is unrelated and untouched.
  *
- * Auth: service-to-service via requireInternalApiKey (Bearer
- * ATTESTATION_INTERNAL_API_KEY, shared with /api/eligibility/evaluate and
- * the attestations routes, #2053). The events checkout/webhook callers resolve/
- * validate the email before calling this route themselves (an
- * `optionalAuth`-checked session for checkout, or a Stripe webhook payload
- * with no end-user session at all) — there is no session belonging to `did`
- * to forward, so this mirrors eligibility/evaluate's reasoning rather than
- * requireAuth/actingFor.
+ * Auth: vault-only internal Bearer, or an active registered app-service token
+ * with live operator-approved `profile:contact:backfill` and a kernel-recorded
+ * relationship to this DID. GET remains internal-only. An app's write scope
+ * never authorizes reading an existing address: contactEmail is null for apps.
  *
  * Body: { email: string }
  * Returns: { did, contactEmail, backfilled }
@@ -94,56 +96,54 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ did: string }> }
 ) {
-  const authError = await requireInternalApiKey(request);
-  if (authError) return authError;
+  const cors = corsHeaders(request);
 
   const { did } = await params;
   const decodedDid = decodeURIComponent(did);
+  let isApp = false;
+  try {
+    const authError = await requireInternalApiKey(request);
+    if (authError) {
+      const app = await authenticateContactApp(request, 'profile:contact:backfill');
+      if ('error' in app) {
+        return NextResponse.json({ error: app.error }, { status: app.status, headers: cors });
+      }
+      const related = await relatedContactDids(app.appDid, [decodedDid], 'profile:contact:backfill');
+      if (!related.includes(decodedDid)) {
+        return NextResponse.json({ error: 'Forbidden - no app relationship' }, { status: 403, headers: cors });
+      }
+      isApp = true;
+    }
+  } catch {
+    log.error({}, 'Contact authorization unavailable');
+    return NextResponse.json({ error: 'Contact authorization unavailable' }, { status: 503, headers: cors });
+  }
 
-  let body: Record<string, unknown>;
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { email } = body;
+  const email = body && typeof body === 'object' ? (body as Record<string, unknown>).email : null;
   if (!email || typeof email !== 'string') {
-    return NextResponse.json({ error: 'email required' }, { status: 400 });
+    return NextResponse.json({ error: 'email required' }, { status: 400, headers: cors });
   }
 
   const normalizedEmail = email.toLowerCase().trim();
   if (!normalizedEmail) {
-    return NextResponse.json({ error: 'email required' }, { status: 400 });
+    return NextResponse.json({ error: 'email required' }, { status: 400, headers: cors });
   }
 
   try {
-    const [updated] = await db
-      .update(identities)
-      .set({ contactEmail: normalizedEmail })
-      .where(and(eq(identities.id, decodedDid), isNull(identities.contactEmail)))
-      .returning({ contactEmail: identities.contactEmail });
-
-    if (updated) {
-      return NextResponse.json({ did: decodedDid, contactEmail: updated.contactEmail, backfilled: true });
+    const result = await backfillContact(decodedDid, normalizedEmail);
+    if (!result) {
+      return NextResponse.json({ error: 'Identity not found' }, { status: 404, headers: cors });
     }
-
-    // The NULL guard prevented the write — either the identity doesn't
-    // exist at all, or it already has a contact_email. Distinguish the two
-    // so the caller isn't left guessing.
-    const [existing] = await db
-      .select({ contactEmail: identities.contactEmail })
-      .from(identities)
-      .where(eq(identities.id, decodedDid))
-      .limit(1);
-
-    if (!existing) {
-      return NextResponse.json({ error: 'Identity not found' }, { status: 404 });
-    }
-
-    return NextResponse.json({ did: decodedDid, contactEmail: existing.contactEmail, backfilled: false });
+    return NextResponse.json({ ...result, contactEmail: isApp ? null : result.contactEmail }, { headers: cors });
   } catch (error) {
     log.error({ err: String(error), did: decodedDid }, 'Contact email backfill error');
-    return NextResponse.json({ error: 'Failed to backfill contact email' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to backfill contact email' }, { status: 500, headers: cors });
   }
 }

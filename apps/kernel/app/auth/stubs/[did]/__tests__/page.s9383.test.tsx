@@ -21,7 +21,8 @@ vi.mock('next/image', () => ({
   default: ({ src, alt }: { src: string; alt: string }) => <img src={src} alt={alt} />,
 }));
 
-vi.mock('@imajin/config', () => ({
+vi.mock('@imajin/config', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@imajin/config')>(),
   normalizeHandleInput: (v: string) => v,
   profilePath: (v: string) => `/${v}`,
 }));

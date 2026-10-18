@@ -3,11 +3,10 @@
 import { useState, useEffect, useRef, useCallback, FormEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Image from 'next/image';
-import { normalizeHandleInput, profilePath } from '@imajin/config';
+import { normalizeHandleInput, profilePath, IDENTITY_CATEGORIES } from '@imajin/config';
 import { DeviceLocationStatus } from '../../lib/device-location-status';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 
-const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 const MAX_IMAGES = 6;
 
 // Nominatim (OpenStreetMap) — no API key, 1 req/sec rate limit
@@ -531,7 +530,7 @@ export default function EditStubPage() {
               Category
             </label>
             <div className="flex flex-wrap gap-2 mb-2">
-              {CATEGORY_PRESETS.map((preset) => (
+              {IDENTITY_CATEGORIES.map((preset) => (
                 <button
                   key={preset}
                   type="button"

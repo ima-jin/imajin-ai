@@ -37,8 +37,9 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { agentCardUrl } from '@/src/lib/http/node-url';
-import { reachPrincipal, reachPrincipalWithBearer, type ReachRequestInput } from '@/src/lib/auth/agent-reach';
+import { reachPrincipal, reachPrincipalWithBearer, type ReachRequestInput, type ReachResult } from '@/src/lib/auth/agent-reach';
 import { parseReachDelivery } from '@/src/lib/auth/reach-delivery-input';
+import { guardReachIP, readReachBody, ReachBodyTooLarge } from '@/src/lib/auth/reach-abuse-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +102,15 @@ function parseBody(body: Record<string, unknown>): { ok: true; input: ReachReque
   };
 }
 
+function reachResponse(result: ReachResult) {
+  if ('denied' in result) {
+    return NextResponse.json({ error: result.reason, onboarding: agentCardUrl() }, {
+      status: result.status, headers: result.retryAfter ? { 'Retry-After': String(result.retryAfter) } : undefined,
+    });
+  }
+  return NextResponse.json(result);
+}
+
 export async function POST(request: NextRequest, { params }: { params: Promise<{ did: string }> }) {
   const { did } = await params;
   const principalDid = decodeURIComponent(did);
@@ -108,10 +118,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     return NextResponse.json({ error: 'Invalid principal DID' }, { status: 400 });
   }
 
+  const throttled = await guardReachIP(request, principalDid);
+  if (throttled) {
+    return NextResponse.json({ error: throttled.reason }, {
+      status: 429, headers: { 'Retry-After': String(throttled.retryAfter) },
+    });
+  }
   let body: Record<string, unknown>;
   try {
-    body = await request.json();
-  } catch {
+    body = await readReachBody(request);
+  } catch (error) {
+    if (error instanceof ReachBodyTooLarge) {
+      return NextResponse.json({ error: 'body_too_large' }, { status: 413 });
+    }
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
@@ -121,9 +140,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return NextResponse.json({ error: 'Invalid reach credential or body' }, { status: 401 });
     }
     const result = await reachPrincipalWithBearer(principalDid, authorization.slice(7), body);
-    return 'denied' in result
-      ? NextResponse.json({ error: result.reason, onboarding: agentCardUrl() }, { status: result.status })
-      : NextResponse.json(result);
+    return reachResponse(result);
   }
   const parsed = parseBody(body);
   if (!parsed.ok) {
@@ -131,12 +148,5 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const result = await reachPrincipal(principalDid, parsed.input);
-  if ('denied' in result) {
-    return NextResponse.json(
-      { error: result.reason, onboarding: agentCardUrl() },
-      { status: result.status },
-    );
-  }
-
-  return NextResponse.json(result);
+  return reachResponse(result);
 }

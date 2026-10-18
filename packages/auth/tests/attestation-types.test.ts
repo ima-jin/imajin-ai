@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { ATTESTATION_TYPES } from '../src/types/attestation';
+import { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '../src/types/attestation';
 
 const ATTESTATION_TYPES_SET = new Set<string>(ATTESTATION_TYPES);
 
 describe('ATTESTATION_TYPES', () => {
+  it('registers Google read provenance as a canonical mechanical type (#2894)', () => {
+    expect(ATTESTATION_TYPES_SET.has('google.data.read')).toBe(true);
+    expect(MECHANICAL_ATTESTATION_TYPES).toContain('google.data.read');
+  });
   it('contains media.uploaded', () => {
     expect(ATTESTATION_TYPES_SET.has('media.uploaded')).toBe(true);
   });

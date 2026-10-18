@@ -33,6 +33,7 @@ export interface LauncherEntry {
   externalUrl?: string;
   /** `registry` entries are subject to per-identity narrowing by the grid; `static` ones are always listed. */
   source: 'static' | 'registry';
+  inherited?: boolean;
 }
 
 const DEFAULT_APP_ICON = '🧩';

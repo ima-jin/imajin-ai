@@ -30,7 +30,7 @@ import type { BrokerPredicateClaim } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { verifySignature } from './crypto';
 import { resolveReachRequester, authorizeReachRequester } from './reach-authority';
-import { resolveOrMintForeignPrincipalStub } from './foreign-principal-stub';
+import { resolveOrMintForeignPrincipalStub, type ForeignPrincipalStubResult } from './foreign-principal-stub';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
 import { generateId } from '@/src/lib/kernel/id';
 import type { ReachDeliveryInput } from './reach-delivery-input';
@@ -39,6 +39,8 @@ import { deliverReach } from './reach-delivery';
 import { markReachPublished } from './reach-envelope-store';
 import { resolveReachBearer } from '@/src/lib/access/reach-bearer';
 import { isTierAdmitted } from '@/src/lib/jin/front-door';
+import { auditReachThrottle, guardReachRequester, reachDailyRetryAfter, reachInputTooLarge } from './reach-abuse-guard';
+import { isReachSenderBlocked } from './reach-block';
 
 const log = createLogger('kernel');
 
@@ -78,8 +80,9 @@ export interface ReachAnswer {
 
 export interface ReachDenied {
   denied: true;
-  reason: ReachDenialReason;
+  reason: ReachDenialReason | 'body_too_large';
   status: number;
+  retryAfter?: number;
 }
 
 export interface ReachDelivered {
@@ -148,7 +151,7 @@ async function publishDenied(params: { requesterDid: string; principalDid: strin
   }).catch((err: unknown) => log.error({ err: String(err) }, '[agent-reach] agent.reach.denied publish failed'));
 }
 
-function denial(reason: ReachDenialReason, status: number): ReachDenied {
+function denial(reason: ReachDenied['reason'], status: number): ReachDenied {
   return { denied: true, reason, status };
 }
 
@@ -240,6 +243,11 @@ async function completeDelivery(params: Parameters<typeof deliverReach>[0]): Pro
   if (result.outcome === 'declined') return null;
   if (result.outcome !== 'delivered') {
     const reason = result.outcome === 'blocked' ? 'unauthorized' : 'rate_limited';
+    if (reason === 'rate_limited') {
+      const retryAfter = reachDailyRetryAfter();
+      await auditReachThrottle({ principalDid, requesterDid: input.requesterDid }, 'daily', principalDid, retryAfter);
+      return { ...denial(reason, 429), retryAfter };
+    }
     await denyReach({ principalDid, input, transcriptHash, reason, signatureVerified: params.requesterAuthTier !== 'bearer' });
     return denial(reason, result.outcome === 'blocked' ? 403 : 429);
   }
@@ -268,6 +276,7 @@ export async function reachPrincipal(
   principalDid: string,
   input: ReachRequestInput,
 ): Promise<ReachResult> {
+  if (reachInputTooLarge(input)) return denial('body_too_large', 413);
   const transcript = reachTranscript(principalDid, input);
   const transcriptHash = hashTranscript(transcript);
 
@@ -319,6 +328,7 @@ export async function reachPrincipal(
 export async function reachPrincipalWithBearer(
   principalDid: string, token: string, body: Record<string, unknown>,
 ): Promise<ReachAnswer | ReachDenied | ReachDelivered> {
+  if (reachInputTooLarge(body)) return denial('body_too_large', 413);
   const credential = await resolveReachBearer(token, principalDid);
   if (!credential) return denial('unauthorized', 401);
   return reachPrincipalWithCredential(principalDid, credential, body);
@@ -354,27 +364,49 @@ export async function reachPrincipalWithCredential(
   if (!delivery.ok) return denial('unauthorized', 400);
   Object.assign(input, delivery.delivery);
   return evaluateReach({
-    principalDid, input, principal, requester: { tier: 'soft' }, introspection: {},
+    principalDid, input, principal, requester: { tier: 'soft' }, introspection: { stubDid: credential.requesterDid },
     transcriptHash: hashTranscript(reachTranscript(principalDid, input)), signatureVerified: false,
   });
 }
 
-/** Both transports must pass the same broker, topic and delivery policy. */
+async function prepareReachClaim(params: {
+  principalDid: string; input: ReachRequestInput; publicKey?: string;
+  agentStubDid: string; tier: unknown; transcriptHash: string; signatureVerified: boolean;
+}): Promise<ReachDenied | ForeignPrincipalStubResult> {
+  const { principalDid, input, transcriptHash, signatureVerified } = params;
+  const throttled = await guardReachRequester({
+    principalDid, requesterDid: input.requesterDid, agentStubDid: params.agentStubDid,
+    onBehalfOf: input.onBehalfOf, tier: params.tier,
+  });
+  if (throttled) return throttled;
+  const stub = await resolveOrMintForeignPrincipalStub({
+    platform: input.onBehalfOf.platform, externalRef: input.onBehalfOf.externalRef,
+  });
+  if (await isReachSenderBlocked({
+    principalDid, requesterDid: input.requesterDid, publicKey: params.publicKey, onBehalfOfStubDid: stub.did,
+  })) {
+    await denyReach({ principalDid, input, transcriptHash, reason: 'unauthorized', signatureVerified });
+    return denial('unauthorized', 403);
+  }
+  return stub;
+}
+
+/** Both transports must pass the same abuse, broker, topic and delivery policy. */
 async function evaluateReach(params: {
   principalDid: string;
   input: ReachRequestInput;
   principal: { metadata: unknown };
-  requester: { tier: unknown };
-  introspection: { grantId?: string };
+  requester: { tier: unknown; publicKey?: string };
+  introspection: { grantId?: string; stubDid?: string };
   transcriptHash: string;
   signatureVerified: boolean;
 }): Promise<ReachResult> {
   const { principalDid, input, principal, requester, introspection, transcriptHash, signatureVerified } = params;
-  const stub = await resolveOrMintForeignPrincipalStub({
-    // An unverified human claim, not a grant or an authenticated sender.
-    platform: input.onBehalfOf.platform,
-    externalRef: input.onBehalfOf.externalRef,
+  const stub = await prepareReachClaim({
+    principalDid, input, publicKey: requester.publicKey, transcriptHash, signatureVerified,
+    agentStubDid: introspection.stubDid ?? requester.publicKey ?? input.requesterDid, tier: requester.tier,
   });
+  if ('denied' in stub) return stub;
 
   const metadata = (principal.metadata ?? {}) as Record<string, unknown>;
   const rawGateValue = Array.isArray(metadata.agentReachTopics) ? metadata.agentReachTopics : [];

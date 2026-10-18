@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { getConnector } from '@/src/lib/kernel/connector-registry';
+import { GOOGLE_SETUP_STEPS, GOOGLE_SETUP_VERSION } from '@/src/lib/google/setup-content';
 import { ConnectorDetail } from '../ConnectorDetail';
 import { slotRoute } from '../ConnectionSlots';
 
@@ -25,6 +26,16 @@ function setup(id = 'google', options: {
       ? Response.json({ ticket: 'test-ticket', userCode: 'TEST-1234', verificationUri: 'https://github.com/login/device', interval: 1 })
       : Response.json({ error: 'Device test stopped' }, { status: 400 });
   }
+  function connectionStatus(url: string) {
+    const disconnected = options.disconnectedWork && url.includes('slot=work');
+    return {
+      ...status,
+      activeScopes: options.disconnectedWork && !disconnected ? ['google:gmail:read'] : [],
+      tokenSealed: disconnected ? false : options.connected ?? true,
+      configSealed: disconnected ? false : options.configured ?? true,
+      ...(options.flow ? { flow: options.flow } : {}),
+    };
+  }
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith(endpoint)) {
@@ -34,14 +45,23 @@ function setup(id = 'google', options: {
     }
     if (url.includes('/device/start')) return deviceStart();
     if (url.includes('/device/poll')) return Response.json({ status: 'authorized' });
-    const disconnected = options.disconnectedWork && url.includes('slot=work');
-    return Response.json({
-      ...status,
-      activeScopes: options.disconnectedWork && !disconnected ? ['google:gmail:read'] : [],
-      tokenSealed: disconnected ? false : options.connected ?? true,
-      configSealed: disconnected ? false : options.configured ?? true,
-      ...(options.flow ? { flow: options.flow } : {}),
-    });
+    const selectedStatus = connectionStatus(url);
+    if (new URL(url, 'https://kernel.test').pathname === '/google/api/setup') {
+      return Response.json({
+        version: GOOGLE_SETUP_VERSION,
+        slot: new URL(url, 'https://kernel.test').searchParams.get('slot') ?? 'primary',
+        steps: Object.fromEntries(GOOGLE_SETUP_STEPS.map(({ id: step }) => [
+          step, { status: 'not_started', updatedAt: null, pendingSince: null },
+        ])),
+        businessProfileEnabled: false,
+        businessProfileApproved: false,
+        businessProfileAvailable: false,
+        configSealed: selectedStatus.configSealed,
+        tokenSealed: selectedStatus.tokenSealed,
+        credentialPending: false,
+      });
+    }
+    return Response.json(selectedStatus);
   });
   vi.stubGlobal('fetch', fetch);
   render(<ConnectorDetail entry={entry} />);
@@ -118,7 +138,9 @@ describe('labelled OAuth connections', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('/google/api/scope-manifest?slot=work'));
     await screen.findByPlaceholderText('Client ID');
     expect((screen.getAllByRole('checkbox')[0] as HTMLInputElement).checked).toBe(false);
-    expect((screen.getAllByRole('checkbox')[0] as HTMLInputElement).disabled).toBe(true);
+    // Google scopes must be selectable before the first OAuth consent; this
+    // unconfigured slot still must not inherit the previous slot's grants.
+    expect((screen.getAllByRole('checkbox')[0] as HTMLInputElement).disabled).toBe(false);
     expect(window.location.search).toBe('?slot=work');
     expect((screen.getByRole('textbox', { name: 'Connection label' }) as HTMLInputElement).value).toBe('Company');
   });

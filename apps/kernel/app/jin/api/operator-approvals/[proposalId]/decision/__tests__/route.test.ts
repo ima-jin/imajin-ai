@@ -187,6 +187,12 @@ describe('OPTIONS /jin/api/operator-approvals/:proposalId/decision', () => {
 });
 
 describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => {
+  it('passes the complete command wish unchanged to the existing decision service', async () => {
+    const sessionCommand = { type: 'session.approve', commandId: 'command', payload: { loopId: 'loop', approvalId: 'native', kind: 'exec' }, countersignature: { sig: 'wish' } };
+    const response = await POST(makeReq({ decision: 'approve', sessionCommand }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
+    expect(response.status).toBe(200);
+    expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({ operatorDid: OPERATOR_DID, sessionCommand }));
+  });
   it('returns 401 when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
     const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));

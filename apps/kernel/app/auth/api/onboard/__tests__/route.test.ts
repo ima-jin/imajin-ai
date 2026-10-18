@@ -92,6 +92,22 @@ beforeEach(() => {
 
 describe('POST /api/onboard — invite context threading (#1834 Phase 2)', () => {
   const SCOPE_DID = 'did:imajin:scope-org';
+  it('preserves named, contextual polling delivery without returning the verification token', async () => {
+    const res = await POST(makeReq({
+      email: ' Buyer@example.com ', name: ' Buyer ', context: 'access tickets',
+      wantPolling: true, redirectUrl: 'https://events.example/tickets',
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sent: true, pollHandle: expect.any(String) });
+    expect(mockDbInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'buyer@example.com', name: 'Buyer', context: 'access tickets',
+      redirectUrl: 'https://events.example/tickets', pollHandle: expect.any(String),
+    }));
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'buyer@example.com', subject: 'Verify your email to access tickets — Imajin',
+      html: expect.stringContaining('Hi Buyer,'),
+    }));
+  });
 
   it('stores no scopeDid/inviteCode when neither is supplied (backward compatible)', async () => {
     const res = await POST(makeReq({ email: 'plain@example.com' }));
