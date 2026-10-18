@@ -4,18 +4,24 @@ import { db, registryApps } from '@/src/db';
 import { eq, desc, and } from 'drizzle-orm';
 import { requireAuth, generateKeypair, isValidPublicKey, resolveActingDid } from '@imajin/auth';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
-import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/app-declarations';
+import { validateAppDeclarations, DEPENDS_ON_OPERATOR_ONLY_ERROR, type AppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR } from '@/src/lib/kernel/emittable-events';
 import { withLogger } from '@imajin/logger';
-import { validateTemplateLineage } from '@/src/lib/apps/template-lineage';
+import { validateTemplateLineage, type TemplateLineage } from '@/src/lib/apps/template-lineage';
 import { isAppVisibility, APP_VISIBILITY_ERROR, type AppVisibility } from '@/src/lib/apps/visibility';
 
 function registrationVisibility(value: unknown): AppVisibility | null {
   if (value === undefined) return 'public';
   return isAppVisibility(value) ? value : null;
 }
-function isRegistrationBody(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === 'object' && !Array.isArray(value);
+async function registrationDeclarations(
+  body: Record<string, unknown>,
+): Promise<{ ok: AppDeclarations & { lineage: TemplateLineage } } | { error: string }> {
+  const declarations = await validateAppDeclarations({ providesScopes: body.providesScopes, requestedScopes: body.requestedScopes });
+  if ('error' in declarations) return declarations;
+  const lineage = validateTemplateLineage(body);
+  if ('error' in lineage) return lineage;
+  return { ok: { ...declarations.ok, lineage: lineage.ok } };
 }
 
 /** `[origin]` of an absolute URL, or `null` when it isn't one. */
@@ -59,7 +65,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
-  if (!isRegistrationBody(body)) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
   }
   const visibility = registrationVisibility(body.visibility);
@@ -78,7 +84,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     return NextResponse.json({ error: EMITTABLE_EVENTS_OPERATOR_ONLY_ERROR }, { status: 400 });
   }
 
-  const { name, description, callbackUrl, homepageUrl, logoUrl, requestedScopes, providesScopes, publicKey: suppliedPublicKey } = body as {
+  const { name, description, callbackUrl, homepageUrl, logoUrl, publicKey: suppliedPublicKey } = body as {
     name?: string;
     description?: string;
     callbackUrl?: string;
@@ -108,15 +114,11 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
   // #1990: no ad-hoc scope strings — clamp to the declarative SCOPE_VOCABULARY
   // (#1253), the same clamp every scoped-token mint route already applies.
   // #2663: widened by the app's own declared `providesScopes`.
-  const declarations = await validateAppDeclarations({ providesScopes, requestedScopes });
+  const declarations = await registrationDeclarations(body);
   if ('error' in declarations) {
     return NextResponse.json({ error: declarations.error }, { status: 400 });
   }
-  const { requestedScopes: scopes, providesScopes: ownScopes } = declarations.ok;
-  const lineage = validateTemplateLineage(body);
-  if ('error' in lineage) {
-    return NextResponse.json({ error: lineage.error }, { status: 400 });
-  }
+  const { requestedScopes: scopes, providesScopes: ownScopes, lineage } = declarations.ok;
 
   // #1990: self-service registration always yields a third_party app.
   // first_party is reserved for the admin surface (POST /api/admin/registry/apps).
@@ -142,7 +144,7 @@ export const POST = withLogger('kernel', async (request: NextRequest) => {
     providesScopes: ownScopes,
     tier: 'third_party',
     allowedRedirectHosts,
-    ...lineage.ok,
+    ...lineage,
     // #1348: this surface only ever takes a single callbackUrl, so the
     // registered redirect_uris set is that one URI. Kept in sync with
     // callbackUrl so /oauth/authorize's exact-set match behaves identically
