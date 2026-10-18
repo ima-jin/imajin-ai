@@ -30,7 +30,7 @@ export class SendGridProvider implements EmailProvider {
         },
         body: JSON.stringify({
           personalizations: [{ to: [{ email: options.to }] }],
-          from: parseSender(SENDGRID_FROM),
+          from: parseSender(options.from || SENDGRID_FROM),
           ...(options.replyTo && { reply_to: { email: options.replyTo } }),
           subject: options.subject,
           content: [
