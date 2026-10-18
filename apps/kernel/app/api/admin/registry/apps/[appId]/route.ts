@@ -20,6 +20,7 @@ import { emitAttestation } from '@imajin/auth';
 import { requireAdminSession } from '@/src/lib/kernel/app-registry-admin';
 import { readEmittableEvents, validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import { createLogger } from '@imajin/logger';
+import { hasPresentationUpdate, updateAppPresentation } from '@/src/lib/kernel/update-app-presentation';
 
 const log = createLogger('kernel');
 
@@ -36,6 +37,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ app
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+  if (body && hasPresentationUpdate(body)) return updateAppPresentation(appId, body, session.actingAs);
   if (body?.emittableEvents === undefined) {
     return NextResponse.json({ error: 'emittableEvents is required' }, { status: 400 });
   }

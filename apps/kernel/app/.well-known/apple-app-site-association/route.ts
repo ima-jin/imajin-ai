@@ -1,49 +1,19 @@
 import { NextResponse } from "next/server";
+import { operationalAppOrigins } from "@/src/lib/kernel/operational-apps";
 
-/**
- * /.well-known/apple-app-site-association — iOS Universal Links / Webcredentials
- *
- * Establishes cross-subdomain trust for iOS. When the platform
- * ships as a PWA or native app, this enables seamless auth
- * handoff across subdomains.
- *
- * Generated dynamically from NEXT_PUBLIC_DOMAIN for federation.
- */
+export const dynamic = "force-dynamic";
 
-const SERVICES = [
-  "auth",
-  "pay",
-  "profile",
-  "registry",
-  "events",
-  "chat",
-  "connections",
-  "coffee",
-  "links",
-  "dykil",
-  "karaoke",
-  "fixready",
-  "learn",
-];
-
-export function GET() {
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
-
+/** iOS association discovery for the kernel and active registered destinations. */
+export async function GET() {
+  const origins = await operationalAppOrigins();
   const association = {
-    webcredentials: {
-      apps: [],
-    },
+    webcredentials: { apps: [] },
     applinks: {
       apps: [],
-      details: SERVICES.map((service) => ({
-        appID: `*.${domain}`,
+      details: origins.map((origin) => ({
+        appID: `*.${new URL(origin).hostname}`,
         paths: ["*"],
-        components: [
-          {
-            "/": "/*",
-            comment: `${service}.${domain}`,
-          },
-        ],
+        components: [{ "/": "/*", comment: new URL(origin).host }],
       })),
     },
   };

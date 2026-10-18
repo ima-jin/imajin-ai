@@ -30,6 +30,8 @@ const hoistedMocks = vi.hoisted(() => ({
   mockCalculateCost: vi.fn(),
   mockRecordPresenceQueryUsage: vi.fn().mockResolvedValue(undefined),
   mockSettlePayment: vi.fn(),
+  mockRegistryUrl: vi.fn(),
+  mockCreatePresenceTools: vi.fn(),
 }));
 const {
   mockRequireAuth,
@@ -42,6 +44,8 @@ const {
   mockCalculateCost,
   mockRecordPresenceQueryUsage,
   mockSettlePayment,
+  mockRegistryUrl,
+  mockCreatePresenceTools,
 } = hoistedMocks;
 export {
   mockRequireAuth,
@@ -54,6 +58,8 @@ export {
   mockCalculateCost,
   mockRecordPresenceQueryUsage,
   mockSettlePayment,
+  mockRegistryUrl,
+  mockCreatePresenceTools,
 };
 
 vi.mock('@/src/db', () => ({
@@ -65,6 +71,7 @@ vi.mock('@/src/db', () => ({
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAuth: mockRequireAuth }));
+vi.mock('@/src/lib/apps/registry-url', () => ({ resolveRegistryAppBaseUrl: mockRegistryUrl }));
 
 // #2642: query settlement runs in-process through settlePayment() — no HTTP hop to /pay/api/settle.
 vi.mock('@/src/lib/pay/settle-core', () => ({ settlePayment: mockSettlePayment }));
@@ -76,7 +83,7 @@ vi.mock('ai', () => ({ generateText: mockGenerateText, streamText: mockStreamTex
 vi.mock('@imajin/llm', () => ({
   getModel: mockGetModel,
   calculateCost: mockCalculateCost,
-  createPresenceTools: () => ({}),
+  createPresenceTools: mockCreatePresenceTools,
 }));
 
 // NoBrainSealedError must be a real class so the routes' `instanceof` branch
@@ -146,6 +153,8 @@ export function resetPresenceRouteMocks(): void {
   mockCalculateCost.mockReturnValue(0);
   mockInsertValues.mockResolvedValue(undefined);
   mockRecordPresenceQueryUsage.mockResolvedValue(undefined);
+  mockRegistryUrl.mockImplementation(async (slug: string) => `https://apps.example.test/${slug}`);
+  mockCreatePresenceTools.mockReturnValue({});
   // No presence document — the route falls back to a default system prompt.
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) }));
 }

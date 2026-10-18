@@ -1289,6 +1289,9 @@ paths:
       description: |
         Consumes the one-time onboard token from the email link. Mints or retrieves a soft DID,
         sets the imajin_session cookie, and redirects to the configured redirectUrl.
+        With no stored destination, verification and used-token recovery return to this
+        kernel's public origin, never to a default app. Optional ticket migration uses
+        the active events registration's entryUrl and is skipped when absent.
       parameters:
         - name: token
           in: query

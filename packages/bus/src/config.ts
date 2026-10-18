@@ -69,11 +69,6 @@ function stepObservationChain(): ReactorConfig[] {
 function mjnEmission(attestationType: string): ReactorConfig {
   return { type: 'mjn', config: { attestationType }, await: true, enabled: true };
 }
-function settlementWebhookUrl(): string {
-  const url = new URL(process.env.EVENTS_SERVICE_URL || 'http://localhost:3006');
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/api/webhook/settlement`;
-  return url.toString();
-}
 
 // Hardcoded defaults for Phase 1
 // DB-backed config is Phase 2 (future work order)
@@ -159,14 +154,6 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'settlement.completed': [
     { type: 'emit', config: {}, enabled: true },
-    {
-      type: 'webhook',
-      config: {
-        url: settlementWebhookUrl(),
-        recipient: { appSlug: 'events' },
-      },
-      enabled: !!process.env.EVENTS_SERVICE_URL,
-    },
   ],
   'listing.purchased': [
     { type: 'attestation', config: { attestationType: 'listing.purchased' }, await: true, enabled: true },

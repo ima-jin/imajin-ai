@@ -17,8 +17,7 @@ export function buildEmbedSrc(did: string, baseUrl: string): string {
 /** Registry entryUrl is an exact destination; only legacy bases imply `/dashboard`. */
 export function registryAppEmbedUrl(app: { slug: string; entryUrl: string | null }, did: string): string {
   const destination = registryAppPublicUrl(app);
-  const explicitBase = process.env[`NEXT_PUBLIC_${app.slug.toUpperCase()}_URL`];
-  if (!explicitBase && app.entryUrl && validateEntryUrl(app.entryUrl).ok) {
+  if (app.entryUrl && validateEntryUrl(app.entryUrl).ok) {
     return withEmbedParams(destination, did);
   }
   return buildEmbedSrc(did, destination);

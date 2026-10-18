@@ -165,8 +165,15 @@ Wired into CI as `pnpm check:migration-ownership`, a step in the
 `registry.apps.featured` (`boolean NOT NULL DEFAULT false`). The existing
 `registry.apps` owner and `firstMigration` remain unchanged. Featuring is
 operator curation, not installation or authorization; this migration adds no
-tables and does not change anyone's enabled-app list or grants. Number 0202 is
-reserved for #2863 and 0204 for #2857.
+tables and does not change anyone's enabled-app list or grants.
+`0204_registry_apps_visibility.sql` adds listing visibility on the same
+kernel-owned table. PR #2899 retains `0205_registry_apps_profile_widget.sql`
+for profile widget declarations; neither migration changes table ownership
+or its `firstMigration`.
+
+The open train reserves 0206 for #2907, 0207 for #2857, 0208 for #2903,
+0209 for #2912, 0210 for #2921, and 0211 for #2906. These reservations do
+not renumber the migrations already committed on main or PR #2899.
 
 ### Environment variables
 
