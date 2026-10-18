@@ -33,6 +33,9 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
   const approvals = useRunApprovals(client?.prepare);
 
   const hide = useCallback(() => {
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    setLoading(false);
     setIsOperator(false);
     setLoops([]);
     setSelected(null);

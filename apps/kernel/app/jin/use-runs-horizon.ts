@@ -8,6 +8,13 @@ export interface RunHorizon {
   horizon: Horizon;
   commandAvailable: boolean;
 }
+function requireHorizon(value: Horizon | undefined): Horizon {
+  if (!value || !Array.isArray(value.steps) || !Number.isInteger(value.depth)
+    || value.depth < 0 || value.targetDepth !== 12) {
+    throw new Error('Incomplete horizon observation');
+  }
+  return value;
+}
 
 /** Read the existing projection; never infer a zone from thread state or command delivery. */
 export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
@@ -44,7 +51,7 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
               if (!controller.signal.aborted) onDenied();
               throw new Error('Authorization changed');
             }
-            return { loopId, horizon: data.detail.horizon as Horizon,
+            return { loopId, horizon: requireHorizon(data.detail?.horizon),
               commandAvailable: data.commandTarget?.available === true };
           }));
           for (const result of batch) {
@@ -53,7 +60,7 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
           }
         }
         if (controller.signal.aborted) return;
-        setRuns(next.filter(run => !!run.horizon));
+        setRuns(next);
         setError('');
       } catch {
         if (!controller.signal.aborted) {

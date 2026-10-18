@@ -287,7 +287,7 @@ describe('Horizon polling lifecycle', () => {
     expect(screen.getByRole('button', { name: 'Sign & claim sensitive' }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('settles an empty selection without fetching and omits absent horizons', async () => {
+  it('settles an empty selection without fetching and reports absent horizons as unavailable', async () => {
     const fetcher = vi.fn().mockResolvedValue(response({ isOperator: true, detail: {} }));
     vi.stubGlobal('fetch', fetcher);
     const hook = renderHook(({ ids }) => useRunsHorizon(ids, denied), { initialProps: { ids: [] as string[] } });
@@ -296,7 +296,22 @@ describe('Horizon polling lifecycle', () => {
     hook.rerender({ ids: ['legacy'] });
     await waitFor(() => expect(hook.result.current.loading).toBe(false));
     expect(hook.result.current.runs).toEqual([]);
-    expect(hook.result.current.error).toBe('');
+    expect(hook.result.current.error).toContain('claims disabled');
+  });
+
+  it.each([
+    undefined, {}, { steps: {}, depth: 1, targetDepth: 12 }, { steps: [], depth: -1, targetDepth: 12 },
+    { steps: [], depth: 1.5, targetDepth: 12 }, { steps: [], depth: 0, targetDepth: 10 },
+  ])('retains the complete last observation on an incomplete projection (%s)', async horizon => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetcher = fixture([step('ready', 'near')]);
+    mount();
+    await screen.findByText('Intention ready');
+    fetcher.mockResolvedValue(response({ isOperator: true, detail: { horizon } }));
+    await poll();
+    expect(screen.getByRole('alert').textContent).toContain('claims disabled');
+    expect(screen.getByLabelText('Horizon depth').textContent).toBe('1 / 12');
+    expect(screen.getByRole('button', { name: 'Sign & claim ready' }).hasAttribute('disabled')).toBe(true);
   });
 
   it('bounds batches to six, prevents overlapping polls and aborts on unmount', async () => {
