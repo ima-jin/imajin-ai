@@ -32,6 +32,7 @@ export const ATTESTATION_TYPES = [
   'group.created',
   'group.member.added',
   'group.member.removed',
+  'group.member.role.changed',
   'group.member.left',
   'scope.onboard',
   'identity.created',
@@ -298,6 +299,9 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
   'connection.relationship.label.changed',
+  'group.member.added',
+  'group.member.removed',
+  'group.member.role.changed',
   'domain.verified',
   'domain.revoked',
   'mail.sent',

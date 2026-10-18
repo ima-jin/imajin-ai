@@ -1,9 +1,11 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db, identities, identityMembers } from '@/src/db';
 import { OwnershipError } from './ownership-policy';
+import { recordMemberEvent, type MemberActor } from './member-attestation';
 
 /** Share the transfer lock: a stale role check can never remove the new owner. */
-export async function removeGroupController(groupDid: string, callerDid: string, controllerDid: string) {
+export async function removeGroupController(groupDid: string, actor: MemberActor, controllerDid: string) {
+  const callerDid = actor.id;
   await db.transaction(async (tx) => {
     await tx.select({ id: identities.id }).from(identities).where(eq(identities.id, groupDid)).for('update');
     const rows = await tx.select().from(identityMembers)
@@ -19,6 +21,9 @@ export async function removeGroupController(groupDid: string, callerDid: string,
     if (caller.role === 'admin' && !leaving && target.role !== 'member') {
       throw new OwnershipError('Admin can only remove members', 403);
     }
+    await recordMemberEvent(tx, 'group.member.removed', groupDid, controllerDid, actor, {
+      role: target.role, allowedServices: target.allowedServices,
+    });
     await tx.update(identityMembers).set({ removedAt: new Date() }).where(
       and(eq(identityMembers.identityDid, groupDid), eq(identityMembers.memberDid, controllerDid)),
     );

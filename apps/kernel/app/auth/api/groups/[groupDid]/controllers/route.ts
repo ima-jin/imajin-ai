@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { MEMBER_ROLES } from '@/src/lib/auth/membership';
+import { recordMemberEvent } from '@/src/lib/auth/member-attestation';
 
 const log = createLogger('kernel');
 
@@ -104,66 +104,61 @@ export async function POST(
     // anything else came from a controller clicking Add in the UI.
     const addedVia = caller.actingFor === groupDid ? 'agent' : 'direct';
 
-    try {
-      // Check if controller was previously removed (soft delete)
-      const [existing] = await tx
-        .select({ removedAt: identityMembers.removedAt, role: identityMembers.role })
-        .from(identityMembers)
+    // Check if controller was previously removed (soft delete)
+    const [existing] = await tx
+      .select({ removedAt: identityMembers.removedAt, role: identityMembers.role })
+      .from(identityMembers)
+      .where(
+        and(
+          eq(identityMembers.identityDid, groupDid),
+          eq(identityMembers.memberDid, did)
+        )
+      )
+      .limit(1);
+
+    if (existing && !existing.removedAt) {
+      return NextResponse.json({ error: 'Already a controller' }, { status: 409 });
+    }
+
+    if (existing?.removedAt) {
+      // Reactivate
+      await tx
+        .update(identityMembers)
+        .set({
+          removedAt: null,
+          role,
+          allowedServices: normalizedServices,
+          addedBy: caller.id,
+          addedVia,
+          addedAt: new Date(),
+        })
         .where(
           and(
             eq(identityMembers.identityDid, groupDid),
             eq(identityMembers.memberDid, did)
           )
-        )
-        .limit(1);
-
-      if (existing && !existing.removedAt) {
-        return NextResponse.json({ error: 'Already a controller' }, { status: 409 });
-      }
-
-      if (existing?.removedAt) {
-        // Reactivate
-        await tx
-          .update(identityMembers)
-          .set({
-            removedAt: null,
-            role,
-            allowedServices: normalizedServices,
-            addedBy: caller.id,
-            addedVia,
-            addedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(identityMembers.identityDid, groupDid),
-              eq(identityMembers.memberDid, did)
-            )
-          );
-      } else {
-        await tx.insert(identityMembers).values({
-          identityDid: groupDid,
-          memberDid: did,
-          role,
-          allowedServices: normalizedServices,
-          addedBy: caller.id,
-          addedVia,
-        });
-      }
-
-      publish('group.controller.added', {
-        issuer: caller.id,
-        subject: did,
-        scope: 'auth',
-        payload: { context_id: groupDid, context_type: 'group', role, added_via: addedVia },
-      }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
-
-      return NextResponse.json(
-        { ok: true, identityDid: groupDid, memberDid: did, role, addedVia, allowedServices: normalizedServices },
-        { status: 201 }
-      );
-    } catch (error) {
-      log.error({ err: String(error) }, '[groups] Add controller error');
-      return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });
+        );
+    } else {
+      await tx.insert(identityMembers).values({
+        identityDid: groupDid,
+        memberDid: did,
+        role,
+        allowedServices: normalizedServices,
+        addedBy: caller.id,
+        addedVia,
+      });
     }
+
+    await recordMemberEvent(tx, 'group.member.added', groupDid, did, caller, {
+      role, added_via: addedVia, allowedServices: normalizedServices,
+    });
+
+    return NextResponse.json(
+      { ok: true, identityDid: groupDid, memberDid: did, role, addedVia, allowedServices: normalizedServices },
+      { status: 201 }
+    );
+  }).catch((error) => {
+    log.error({ err: String(error) }, '[groups] Add controller error');
+    return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });
   });
 }

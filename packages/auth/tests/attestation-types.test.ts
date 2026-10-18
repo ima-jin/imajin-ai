@@ -4,6 +4,13 @@ import { ATTESTATION_TYPES, MECHANICAL_ATTESTATION_TYPES } from '../src/types/at
 const ATTESTATION_TYPES_SET = new Set<string>(ATTESTATION_TYPES);
 
 describe('ATTESTATION_TYPES', () => {
+  it.each(['group.member.added', 'group.member.role.changed', 'group.member.removed'])(
+    'registers %s as a canonical mechanical record (#2946)',
+    (type) => {
+      expect(ATTESTATION_TYPES_SET.has(type)).toBe(true);
+      expect(MECHANICAL_ATTESTATION_TYPES).toContain(type);
+    },
+  );
   it('registers Google read provenance as a canonical mechanical type (#2894)', () => {
     expect(ATTESTATION_TYPES_SET.has('google.data.read')).toBe(true);
     expect(MECHANICAL_ATTESTATION_TYPES).toContain('google.data.read');

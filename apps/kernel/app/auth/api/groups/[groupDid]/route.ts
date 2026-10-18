@@ -137,7 +137,10 @@ export async function GET(
       };
     });
 
-    return NextResponse.json({ ...group, createdBy: ownerRow?.controllerDid ?? null, controllers });
+    return NextResponse.json({
+      ...group, createdBy: ownerRow?.controllerDid ?? null, controllers,
+      viewerDid: caller.id, viewerRole: membership.role,
+    });
   } catch (error) {
     log.error({ err: String(error) }, '[groups] Get error');
     return NextResponse.json({ error: 'Failed to get group' }, { status: 500 });

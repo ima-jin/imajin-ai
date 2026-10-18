@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth } from '@imajin/auth';
-import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
 import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
 import { OwnershipError } from '@/src/lib/auth/ownership-policy';
+import { updateGroupMember } from '@/src/lib/auth/update-group-member';
 
 const log = createLogger('kernel');
 export const dynamic = 'force-dynamic';
@@ -29,14 +29,7 @@ export async function DELETE(
 
 
   try {
-    await removeGroupController(groupDid, caller.id, controllerDid);
-
-    publish('group.controller.removed', {
-      issuer: caller.id,
-      subject: controllerDid,
-      scope: 'auth',
-      payload: { context_id: groupDid, context_type: 'group' },
-    }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
+    await removeGroupController(groupDid, caller, controllerDid);
 
     const response = NextResponse.json({ ok: true });
     if (caller.id === controllerDid && request.cookies.get('x-acting-as')?.value === groupDid) {
@@ -49,6 +42,30 @@ export async function DELETE(
     }
     log.error({ err: String(error) }, '[groups] Remove controller error');
     return NextResponse.json({ error: 'Failed to remove controller' }, { status: 500 });
+  }
+}
+/** PATCH edits an existing member, never ownership or membership provenance. */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ groupDid: string; controllerDid: string }> }
+) {
+  const auth = await requireAuth(request);
+  if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+  }
+  const { groupDid, controllerDid } = await params;
+  try {
+    return NextResponse.json(await updateGroupMember(groupDid, auth.identity, controllerDid, body));
+  } catch (error) {
+    if (error instanceof OwnershipError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    log.error({ err: String(error) }, '[groups] Edit member error');
+    return NextResponse.json({ error: 'Failed to edit member' }, { status: 500 });
   }
 }
 
