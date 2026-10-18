@@ -18,6 +18,7 @@ import { resolveDisclosureAccess } from '@/src/lib/auth/disclosure-access';
 import { encodeAttestationCursor, parseAttestationCursor } from './attestation-cursor';
 import type { AttestationCursor } from './attestation-cursor';
 import { ceremonyAttestationRejection } from '@/src/lib/auth/ceremony-attestation-types';
+import { filterRelationshipLabelEvents } from './relationship-label-visibility';
 
 const ATTESTATION_LIMIT_MAX = 100;
 const ATTESTATION_REF_MAX_LENGTH = 256;
@@ -37,6 +38,11 @@ function resolveRef(value: unknown): RefResolution {
     return { ok: false, error: `ref must be a non-empty string of at most ${ATTESTATION_REF_MAX_LENGTH} characters` };
   }
   return { ok: true, ref: value };
+}
+
+async function filterVisibleRows(rows: Attestation[], request: NextRequest): Promise<Attestation[]> {
+  const privateFiltered = await filterRelationshipLabelEvents(rows, () => resolveCallerDid(request));
+  return filterDisclosedRows(privateFiltered, request);
 }
 
 function genId(prefix: string): string {
@@ -512,7 +518,7 @@ function buildListConditions(params: {
  * Extracted from GET so the handler's own branching stays under the
  * cognitive-complexity budget.
  */
-async function filterVisibleRows(rows: Attestation[], request: NextRequest): Promise<Attestation[]> {
+async function filterDisclosedRows(rows: Attestation[], request: NextRequest): Promise<Attestation[]> {
   const distinctTypes: string[] = Array.from(new Set(rows.map((row: Attestation): string => row.type)));
   const registeredTypeRows: { typeName: string }[] = distinctTypes.length
     ? await db
