@@ -17,6 +17,7 @@ const {
   mockSubscribeEmailToMailingList,
   mockPublish,
   mockNanoid,
+  mockAppAuth,
 } = vi.hoisted(() => ({
   mockDbSelect: vi.fn(),
   mockDbInsert: vi.fn(),
@@ -32,6 +33,7 @@ const {
   mockSubscribeEmailToMailingList: vi.fn(),
   mockPublish: vi.fn(async () => undefined),
   mockNanoid: vi.fn(() => 'mocknanoid123'),
+  mockAppAuth: vi.fn(),
 }));
 
 vi.mock('@imajin/config', () => ({
@@ -62,6 +64,10 @@ vi.mock('@/src/lib/auth/jwt', () => ({
 
 vi.mock('@/src/lib/kernel/node-identity', () => ({
   getNodeDid: mockGetNodeDid,
+}));
+
+vi.mock('@/src/lib/kernel/app-service-auth', () => ({
+  authenticatePayApp: mockAppAuth,
 }));
 
 vi.mock('@/src/lib/auth/register', async (importOriginal) => {
@@ -156,11 +162,45 @@ beforeEach(() => {
   mockDbSelect.mockImplementation(() => selectChain([]));
   mockDbInsert.mockImplementation(() => insertChain([]));
   mockDidFromPublicKey.mockImplementation((pk: string) => `did:imajin:${pk.slice(0, 8)}`);
+  mockAppAuth.mockResolvedValue({ appDid: 'did:imajin:app' });
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('POST /api/register — auth.credentials email row (#1855)', () => {
+  it('records verified app provenance for key-backed identities, ignoring body claims', async () => {
+    const chain = insertChain([IDENTITY]);
+    mockDbInsert.mockImplementationOnce(() => chain);
+    const request = makeRequest({ ...VALID_BODY, registeredByAppDid: 'did:imajin:spoofed' });
+    request.headers.set('Authorization', 'Bearer fixture-app-token');
+    expect((await POST(request)).status).toBe(201);
+    expect(mockAppAuth).toHaveBeenCalledWith(request, 'identity:write');
+    expect(chain.values).toHaveBeenCalledWith(expect.objectContaining({ registeredByAppDid: 'did:imajin:app' }));
+  });
+
+  it('leaves signed self-registration provenance NULL', async () => {
+    const chain = insertChain([IDENTITY]);
+    mockDbInsert.mockImplementationOnce(() => chain);
+    expect((await POST(makeRequest({ ...VALID_BODY, registeredByAppDid: 'did:imajin:spoofed' }))).status).toBe(201);
+    expect(mockAppAuth).not.toHaveBeenCalled();
+    expect(chain.values).toHaveBeenCalledWith(expect.objectContaining({ registeredByAppDid: null }));
+  });
+
+  it.each([401, 403])('refuses invalid app credentials (%s) without creating an identity', async (status) => {
+    mockAppAuth.mockResolvedValue({ error: 'Invalid app credential', status });
+    const request = makeRequest(VALID_BODY);
+    request.headers.set('Authorization', 'Bearer invalid');
+    expect((await POST(request)).status).toBe(status);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
+
+  it('does not claim an existing signed identity on re-registration', async () => {
+    mockDbSelect.mockImplementationOnce(() => selectChain([IDENTITY]));
+    const request = makeRequest(VALID_BODY);
+    request.headers.set('Authorization', 'Bearer fixture-app-token');
+    expect((await POST(request)).status).toBe(200);
+    expect(mockDbInsert).not.toHaveBeenCalled();
+  });
   it('inserts an auth.credentials row with normalized email on new registration', async () => {
     mockDbInsert
       .mockImplementationOnce(() => insertChain([IDENTITY]))

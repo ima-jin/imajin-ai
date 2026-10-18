@@ -20,6 +20,12 @@ import {
 } from '@/src/lib/auth/register';
 
 const log = createLogger('kernel');
+/** No app credential means self-registration, not inferred app ownership. */
+async function registeringApp(request: NextRequest) {
+  return request.headers.has('authorization')
+    ? authenticatePayApp(request, 'identity:write')
+    : { appDid: null };
+}
 
 /**
  * POST /api/register
@@ -49,10 +55,8 @@ export async function POST(request: NextRequest) {
   try {
     // Signed self-registration remains available without an app token. When an
     // app registers a key-backed identity, provenance comes only from its JWT.
-    const appAuth = request.headers.has('authorization')
-      ? await authenticatePayApp(request, 'identity:write')
-      : null;
-    if (appAuth && 'error' in appAuth) {
+    const appAuth = await registeringApp(request);
+    if ('error' in appAuth) {
       return NextResponse.json({ error: appAuth.error }, { status: appAuth.status });
     }
     const body = await request.json();
@@ -103,7 +107,7 @@ export async function POST(request: NextRequest) {
       .insert(identities)
       .values({
         id: did, scope, subtype: subtype || null, publicKey,
-        registeredByAppDid: appAuth?.appDid ?? null,
+        registeredByAppDid: appAuth.appDid,
         handle: handle || null, name: name?.trim().slice(0, 100) || null, tier: 'preliminary',
       })
       .returning();
