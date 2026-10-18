@@ -45,6 +45,7 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => mocks.log }));
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@imajin/fair', () => ({ processorFeeCents: () => 0 }));
 vi.mock('../providers/stripe-webhook', () => ({ fetchActualFee: vi.fn() }));
+vi.mock('../checkout-notification-owner', () => ({ checkoutAppSlug: async () => 'events' }));
 
 import { findTransactionIdForSession, notifyCheckoutServices, notifyEventsService } from '../webhook-handlers';
 import type { StripeCheckoutSessionLike } from '../webhook-event-shapes';

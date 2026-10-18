@@ -838,17 +838,16 @@ paths:
         Returns a URL to redirect the customer to Stripe Checkout. Supports `.fair` manifests for
         multi-party revenue splits via `fairManifest`. Rate-limited to 10 req/min per IP.
 
-        A registered app may authenticate with its app-service token (#2642): the checkout
-        row is then bound to the app's DID and records the declared `payeeManifest` (falling
+        A seller checkout requires a registered app's app-service token (#2866): the checkout
+        row is bound to the verified app's DID and records the declared `payeeManifest` (falling
         back to `fairManifest`). The returned `transactionId` identifies the pending payment
         completed by the seller webhook. Requires the operator-approved `pay:settle` scope (403 otherwise).
         Checkout requires a seller DID (also accepted as `metadata.sellerDid`).
         Seller-owned charges settle through the seller's webhook, not `/api/settle`;
-        no platform balance moves. No app token means no app binding.
+        no platform balance moves. Anonymous, user-session and delegated-attestation callers
+        cannot open seller checkouts (401). Paid notifications go only to the recorded app.
       security:
-        - bearerAuth: []
         - appServiceToken: []
-        - {}
       requestBody:
         required: true
         content:
@@ -911,6 +910,10 @@ paths:
                   - type: object
                     properties:
                       code: { type: string, description: "Stable machine-readable reason, e.g. SELLER_NO_CARD_RAIL" }
+        "401":
+          description: Seller checkout requires a valid app service token, not a user session or delegated attestation
+        "403":
+          description: App is revoked or lacks the operator-approved pay:settle scope
         "429":
           description: Too many requests
           content:

@@ -15,6 +15,7 @@ import type { FieldVisibility } from '@/src/db/schemas/profile';
 import { loadAndUnseal } from '@/src/lib/vault';
 import { processEmailUpdate, processPhoneUpdate } from '@/src/lib/profile/vault-contacts';
 import { enforceRoutePolicy } from '@imajin/auth/delegation-policy';
+import { projectPublicAppToggles } from '@/src/lib/profile/public-app-toggles';
 
 const log = createLogger('kernel');
 
@@ -487,6 +488,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Per-field metadata visibility (#1003): non-owners get broker-filtered metadata.
     if (viewerDid !== profile.did) {
+      result.featureToggles = await projectPublicAppToggles(profile.featureToggles, { ownerDid: profile.did, viewerDid });
       result.metadata = await filterProfileFields(
         profile.metadata as Record<string, unknown> | null,
         profile.fieldVisibility,

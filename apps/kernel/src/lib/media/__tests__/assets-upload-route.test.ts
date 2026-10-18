@@ -47,15 +47,9 @@ vi.mock('@/src/lib/kernel/cors', () => ({
   corsOptions: vi.fn(() => new Response(null, { status: 204 })),
 }));
 
-vi.mock('@/src/lib/media/create-asset', () => ({
+vi.mock('@/src/lib/media/create-asset', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../create-asset')>(),
   createAsset: mockCreateAsset,
-  inferMime: (browserMime: string, filename: string) =>
-    browserMime && browserMime !== 'application/octet-stream'
-      ? browserMime
-      : filename.endsWith('.md')
-        ? 'text/markdown'
-        : 'application/octet-stream',
-  isAllowedMime: () => true,
 }));
 
 import type { NextRequest } from 'next/server';
@@ -119,6 +113,38 @@ beforeEach(() => {
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
+
+describe('POST /media/api/assets — JSON MIME allowlist (#2889)', () => {
+  it.each(['application/json', 'application/octet-stream'])(
+    'accepts a survey.json upload sent as %s with 201',
+    async (type) => {
+      const res = await POST(uploadRequest({
+        content: '{"survey":"legacy"}',
+        filename: 'survey.json',
+        type,
+        context: { app: 'dykil', feature: 'signed' },
+      }));
+
+      expect(res.status).toBe(201);
+      expect(mockCreateAsset).toHaveBeenCalledWith(expect.objectContaining({
+        filename: 'survey.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from('{"survey":"legacy"}'),
+      }));
+    },
+  );
+
+  it.each(['application/x-msdownload', 'application/json-patch+json'])(
+    'rejects %s with 415 even with a .json filename',
+    async (type) => {
+      const res = await POST(uploadRequest({ filename: 'survey.json', type }));
+
+      expect(res.status).toBe(415);
+      expect(await res.json()).toEqual({ error: `MIME type ${type} is not allowed` });
+      expect(mockCreateAsset).not.toHaveBeenCalled();
+    },
+  );
+});
 
 describe('POST /media/api/assets — article frontmatter guard (#1542)', () => {
   it('warns and flags articleProjection: null for article-context markdown with no header', async () => {

@@ -609,7 +609,7 @@ export const CONNECTOR_REGISTRY: readonly ConnectorEntry[] = [
   {
     id: 'google',
     name: 'Google Workspace',
-    description: 'Read and send Gmail, manage Calendar events, read Drive files, and pull Meet recordings/transcripts on your behalf.',
+    description: 'Connect Gmail, Calendar, Drive, Meet and Search Console on your behalf; Business Profile reads require project approval and operator enablement.',
     icon: '📨',
     ingestionPattern: 'oauth',
     channel: 'google',

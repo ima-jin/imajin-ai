@@ -95,10 +95,16 @@ describe('PATCH /api/admin/registry/apps/:appId — approving an emit list', () 
   });
 
   it('writes nothing but the emit list (no scope, audience, status or tier change)', async () => {
-    await patch({ emittableEvents: ['tip.granted'], tier: 'first_party', tokenAudiences: ['evil'], providesScopes: ['x:y'], status: 'active' });
+    await patch({ emittableEvents: ['tip.granted'], visibility: 'public', ownerDid: OPERATOR_DID, tier: 'first_party', tokenAudiences: ['evil'], providesScopes: ['x:y'], status: 'active' });
 
     const updates = (mocks.setMock.mock.calls[0] as unknown as [Record<string, unknown>])[0];
     expect(Object.keys(updates).sort((a, b) => a.localeCompare(b))).toEqual(['emittableEvents', 'updatedAt']);
+  });
+
+  it('cannot change an existing owner visibility through the operator route (#2897)', async () => {
+    const response = await patch({ visibility: 'public' });
+    expect(response.status).toBe(400);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
   });
 
   it('signs the change into the audit trail with the before and after lists, attributed to the operator', async () => {

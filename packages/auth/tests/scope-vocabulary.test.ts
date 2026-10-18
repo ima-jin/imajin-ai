@@ -211,6 +211,21 @@ describe('lookups', () => {
 // ── SCOPES projection ─────────────────────────────────────────────────────────
 
 describe('SCOPES is a faithful projection', () => {
+  it.each([
+    ['google:search-console:read', 'search-console:read'],
+    ['google:business-profile:read', 'business-profile:read'],
+  ])('includes %s as a consent-backed, credential-spending Google MCP capability', (scope, verb) => {
+    expect(validateScopes([scope]).invalid).toEqual([]);
+    const entry = scopeEntry(scope) as ConnectorScopeEntry;
+    expect(entry.connector).toBe('google');
+    expect(entry.verb).toBe(verb);
+    expect(entry.surface).toBe('google-api');
+    expect(deriveScopeReleaseTier(entry)).toBe('owner-only');
+    expect(viewerForScope(entry)).toBe(CONNECTOR_DIDS.google);
+    expect(isCredentialFreeScope(entry)).toBe(false);
+    expect(isServiceEligibleScope(entry)).toBe(false);
+    expect(scopesForSurface('mcp')).toContain(scope);
+  });
   it('has exactly one key per vocabulary entry, in vocabulary order', () => {
     expect(Object.keys(SCOPES)).toEqual(SCOPE_VOCABULARY.map((e) => e.scope));
   });

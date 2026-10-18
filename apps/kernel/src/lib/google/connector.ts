@@ -10,9 +10,8 @@
  * factory (#1333) GitHub and QuickBooks already use.
  *
  * No PATs, no service-account JSON, no app passwords — see the issue's
- * boundary section. One consent screen requests all six v1 Google API scopes
- * at once; the resulting single refresh token is what every `google:*` scope
- * below gates use of.
+ * boundary section. Consent requests only the selected owner's connection
+ * scopes; incremental authorization reuses the same sealed token bundle.
  *
  * ── Revocation, both directions (#2144) ──────────────────────────────────────
  * - Our revoke → Google: {@link revokeAtGoogle} POSTs the sealed refresh token
@@ -50,6 +49,8 @@ import {
   type OAuthTokenResponse,
 } from '../kernel/connector-oauth';
 import { GOOGLE_CONNECTOR_DID } from './constants';
+import { readActiveGoogleScopes } from './scope-manifest';
+import { isBusinessProfileEnabled } from './features';
 
 const log = createLogger('kernel');
 
@@ -59,7 +60,7 @@ export { GOOGLE_CONNECTOR_DID } from './constants';
 export const GOOGLE_CHANNEL = 'google';
 
 /**
- * Google API scopes requested at authorize time, one per v1 imajin scope.
+ * Google API scope mapping, requested only when selected in the manifest.
  * Order is cosmetic (space-joined into a single `scope` param) but kept
  * parallel to the imajin scope list for readability.
  */
@@ -70,9 +71,12 @@ export const GOOGLE_OAUTH_SCOPES: Readonly<Record<string, string>> = {
   'google:calendar:write': 'https://www.googleapis.com/auth/calendar.events',
   'google:drive:read': 'https://www.googleapis.com/auth/drive.readonly',
   'google:meet:records': 'https://www.googleapis.com/auth/meetings.space.readonly',
+  'google:search-console:read': 'https://www.googleapis.com/auth/webmasters.readonly',
+  'google:business-profile:read': 'https://www.googleapis.com/auth/business.manage',
 };
 
-const GOOGLE_OAUTH_SCOPE = Object.values(GOOGLE_OAUTH_SCOPES).join(' ');
+const BUSINESS_PROFILE_SCOPE = 'google:business-profile:read';
+const PROVIDER_VERIFIED_SCOPES = new Set(['google:search-console:read', BUSINESS_PROFILE_SCOPE]);
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_REVOKE_URL = 'https://oauth2.googleapis.com/revoke';
@@ -177,7 +181,9 @@ const google = createConnectorOAuth<GoogleConfig, GoogleTokens>({
   channel: GOOGLE_CHANNEL,
   authorizeUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
   tokenUrl: GOOGLE_TOKEN_URL,
-  oauthScope: GOOGLE_OAUTH_SCOPE,
+  // The public wrapper below supplies the owner/slot-selected scope, never a
+  // static all-scopes fallback. Credential custody remains in the shared factory.
+  oauthScope: '',
   // Google accepts client credentials in the token-endpoint body.
   tokenAuth: 'body',
   // access_type=offline is what makes Google issue a refresh_token at all;
@@ -185,7 +191,7 @@ const google = createConnectorOAuth<GoogleConfig, GoogleTokens>({
   // refresh_token) on every authorize, instead of only the very first one —
   // without it, a re-connect after a revoke would silently fail to seal a
   // usable refresh token.
-  extraAuthorizeParams: { access_type: 'offline', prompt: 'consent' },
+  extraAuthorizeParams: { access_type: 'offline', prompt: 'consent', include_granted_scopes: 'true' },
   parseConfig: (raw) => raw as GoogleConfig,
   buildTokens: (data: OAuthTokenResponse, _extra, previous) => ({
     accessToken: data.access_token as string,
@@ -201,8 +207,50 @@ const google = createConnectorOAuth<GoogleConfig, GoogleTokens>({
 
 export const configField = google.configField;
 export const oauthVaultField = google.tokenField;
-export const storeConfig = google.storeConfig;
-export const buildAuthorizeUrl = google.buildAuthorizeUrl;
+export async function storeConfig(
+  ownerDid: string,
+  config: GoogleConfig,
+  slot = currentConnectionSlot('google', ownerDid),
+): Promise<void> {
+  slot = connectionSlot(slot);
+  // Approval belongs to the configured Google project, not indefinitely to a
+  // reusable connection slot. Reimporting any client requires reconfirmation.
+  const { resetBusinessProfileApproval } = await import('./setup');
+  await resetBusinessProfileApproval(ownerDid, slot);
+  await google.storeConfig(ownerDid, config, slot);
+}
+export async function buildAuthorizeUrl(
+  ownerDid: string,
+  state: string,
+  configDid?: string,
+  slot = currentConnectionSlot('google', ownerDid),
+): Promise<string> {
+  slot = connectionSlot(slot);
+  const selected = await readActiveGoogleScopes(ownerDid, slot);
+  let scopes = [...new Set(selected
+    .filter((scope) => scope !== BUSINESS_PROFILE_SCOPE || isBusinessProfileEnabled())
+    .filter((scope) => Object.hasOwn(GOOGLE_OAUTH_SCOPES, scope))
+    .map((scope) => GOOGLE_OAUTH_SCOPES[scope]))];
+  if (scopes.length === 0) {
+    throw new Error('google_no_scopes: enable a Google connector scope in this connection scope-manifest before authorizing');
+  }
+  if (selected.includes(BUSINESS_PROFILE_SCOPE) && isBusinessProfileEnabled()) {
+    const { requireBusinessProfileApproval } = await import('./setup');
+    try {
+      await requireBusinessProfileApproval(ownerDid, slot);
+    } catch (err) {
+      // Pending Business approval must not hold unrelated selected capabilities
+      // hostage. Storage failures still reject the entire consent attempt.
+      if (!(err instanceof Error) || err.message !== 'google_business_profile_approval_pending' || scopes.length === 1) {
+        throw err;
+      }
+      scopes = scopes.filter((scope) => scope !== GOOGLE_OAUTH_SCOPES[BUSINESS_PROFILE_SCOPE]);
+    }
+  }
+  const url = new URL(await google.buildAuthorizeUrl(ownerDid, state, configDid, slot));
+  url.searchParams.set('scope', scopes.join(' '));
+  return url.toString();
+}
 export const exchangeCodeAndStore = google.exchangeCodeAndStore;
 export const resolveActiveGrant = google.resolveActiveGrant;
 
@@ -333,6 +381,9 @@ async function tombstoneOnDetectedRevoke(ownerDid: string, slot: string): Promis
  */
 export async function requireGrantAndToken(ownerDid: string, scope: string, slot = currentConnectionSlot('google', ownerDid)): Promise<string> {
   slot = connectionSlot(slot);
+  if (scope === BUSINESS_PROFILE_SCOPE && !isBusinessProfileEnabled()) {
+    throw new Error('google_business_profile_disabled: Business Profile access is not enabled by the operator');
+  }
   const hasGrant = await google.resolveActiveGrant(ownerDid, scope, slot);
   if (!hasGrant) {
     throw new Error(
@@ -341,9 +392,9 @@ export async function requireGrantAndToken(ownerDid: string, scope: string, slot
     );
   }
 
-  let accessToken: string | undefined;
+  let tokens: GoogleTokens | undefined;
   try {
-    accessToken = await google.loadAccessToken(ownerDid, undefined, slot);
+    tokens = await google.loadAndRefreshTokens(ownerDid, undefined, slot);
   } catch (err) {
     if (err instanceof ConnectorCredentialPendingError) {
       throw new Error(
@@ -360,13 +411,17 @@ export async function requireGrantAndToken(ownerDid: string, scope: string, slot
     throw err;
   }
 
-  if (accessToken === undefined) {
+  if (tokens?.accessToken === undefined) {
     throw new Error(
       `google_no_credential: no Google OAuth token sealed for DID ${ownerDid} — ` +
       `authorize via /google/api/connect first`,
     );
   }
-  return accessToken;
+  if (PROVIDER_VERIFIED_SCOPES.has(scope) &&
+      !(tokens.scope ?? '').split(/\s+/).includes(GOOGLE_OAUTH_SCOPES[scope])) {
+    throw new Error(`google_insufficient_scope: reconnect this Google connection to consent to '${scope}'`);
+  }
+  return tokens.accessToken;
 }
 
 // ── Provider-side revoke (our revoke → Google, #2144) ────────────────────────

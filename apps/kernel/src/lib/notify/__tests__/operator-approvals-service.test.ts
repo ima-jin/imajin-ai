@@ -5,6 +5,7 @@
  * bus publish.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ZodError } from 'zod';
 import {
   AGENT_DID,
   CONNECTOR_OWNER_DID,
@@ -46,12 +47,15 @@ const {
   // vault/web-push machinery.
   mockPushWebNotificationToOperator: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock('../operator-approval-session-outcome', () => ({ readApprovalSessionOutcome: native.outcome }));
+import { SessionCommandError } from '../../jin/session-commands';
 
 vi.mock('@/src/db', () => ({
   db: {
     select: vi.fn(() => ({ from: () => ({ where: () => ({ limit: mockSelectLimit }) }) })),
     insert: vi.fn(() => ({ values: mockInsertValues })),
     update: vi.fn(() => ({ set: vi.fn(() => ({ where: mockUpdateWhere })) })),
+    transaction: (...args: unknown[]) => native.transaction(...args),
   },
   operatorApprovals: {
     proposalId: 'proposal_id',
@@ -88,6 +92,159 @@ vi.mock('@imajin/auth', async (importOriginal) => {
     SIGNED_MESSAGE_MAX_AGE: 5 * 60 * 1000,
     FUTURE_TOLERANCE: 30 * 1000,
   };
+});
+
+describe('verified native approvals: one command execution rail', () => {
+  const binding = { loopId: 'loop_native', principalDid: OPERATOR_DID, agentDid: AGENT_DID, approvalId: 'oc_approval_1' };
+  const frame = {
+    type: 'session.approve', commandId: 'command_native', principal: OPERATOR_DID, to: AGENT_DID,
+    issuer: 'did:imajin:kernel', issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    payload: { loopId: binding.loopId, approvalId: binding.approvalId, kind: 'exec' },
+    signature: { keyId: 'kernel', alg: 'ed25519', sig: 'grant' },
+    countersignature: { keyId: 'principal', alg: 'ed25519', sig: 'wish' },
+  };
+  const params = { proposalId: PROPOSAL_ID, operatorDid: OPERATOR_DID, decision: 'approve' as const, sessionCommand: frame };
+
+  beforeEach(() => {
+    native.binding.mockResolvedValue(binding);
+    native.verify.mockResolvedValue(frame);
+    mockSelectLimit.mockResolvedValue([execCommandRow()]);
+  });
+  it.each([null, { commandId: frame.commandId, outcome: 'completed', at: frame.issuedAt }])('projects native receipts without legacy applied claims after binding revocation: %j', async (sessionOutcome) => {
+    const { db } = await import('@/src/db');
+    native.binding.mockResolvedValue(null);
+    native.hasBinding.mockResolvedValue(true);
+    native.outcome.mockResolvedValue(sessionOutcome);
+    const nativeRow = execCommandRow({
+      status: 'applied', appliedAt: new Date(), outcome: { exitCode: 0, durationMs: 1, outputHash: 'old' },
+      decision: { payload: { decision: 'approve' }, sessionCommand: frame },
+    });
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([nativeRow]) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+    const [card] = await listApprovalsForOperator(OPERATOR_DID);
+    expect(card.outcome).toBeNull();
+    expect(card.appliedAt).toBeNull();
+    expect(card.sessionOutcome).toEqual(sessionOutcome ?? undefined);
+    expect(native.outcome).toHaveBeenCalledWith(OPERATOR_DID, binding.approvalId, 'approve', frame);
+  });
+  it('rejects a missing wish after binding authority is revoked rather than falling back to legacy', async () => {
+    native.binding.mockResolvedValue(null);
+    native.hasBinding.mockResolvedValue(true);
+    expect(await decideOperatorApproval({ ...params, sessionCommand: undefined })).toMatchObject({ ok: false, status: 409 });
+    expect(mockPublish).not.toHaveBeenCalled();
+    expect(native.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([binding, null])('enriches native cards only from verified binding: %j', async (verified) => {
+    const { db } = await import('@/src/db');
+    native.binding.mockResolvedValue(verified);
+    vi.mocked(db.select).mockReturnValueOnce({
+      from: () => ({ where: () => ({ orderBy: vi.fn().mockResolvedValue([execCommandRow()]) }) }),
+    } as unknown as ReturnType<typeof db.select>);
+    const [card] = await listApprovalsForOperator(OPERATOR_DID);
+    expect(card.sessionBinding).toEqual(verified ?? undefined);
+    expect(Object.keys(card.detail ?? {})).not.toContain('sessionKey');
+    expect(native.binding).toHaveBeenCalledWith(OPERATOR_DID, binding.approvalId);
+  });
+
+  it.each(['approve', 'reject'] as const)('commits %s and durable command before delivery, never legacy fan-out', async (decision) => {
+    const command = { ...frame, type: decision === 'approve' ? 'session.approve' : 'session.deny' };
+    native.verify.mockResolvedValue(command);
+    const result = await decideOperatorApproval({ ...params, decision, sessionCommand: command });
+    expect(result.ok).toBe(true);
+    expect(native.verify).toHaveBeenCalledWith(binding.loopId, OPERATOR_DID, command, { approvalId: binding.approvalId });
+    expect(native.insert).toHaveBeenCalledWith(expect.anything(), binding.loopId, command);
+    expect(native.deliver).toHaveBeenCalledWith(binding.loopId, command);
+    expect(native.insert.mock.invocationCallOrder[0]).toBeLessThan(native.deliver.mock.invocationCallOrder[0]);
+    expect(mockPublish).not.toHaveBeenCalled();
+    if (result.ok) expect(result.card.sessionBinding).toEqual(binding);
+  });
+
+  it('requires a full wish even while the legacy countersignature flag is off', async () => {
+    const result = await decideOperatorApproval({ ...params, sessionCommand: undefined });
+    expect(result).toMatchObject({ ok: false, status: 400 });
+    expect(native.transaction).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('does not allow withdrawing a submitted native command', async () => {
+    mockSelectLimit.mockResolvedValue([execCommandRow({ status: 'approved' })]);
+    expect(await decideOperatorApproval({ ...params, decision: 'withdrawn' })).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it.each([
+    { type: 'session.deny' }, { to: 'did:imajin:foreign' }, { principal: 'did:imajin:foreign' },
+    { payload: { ...frame.payload, approvalId: 'foreign' } },
+    { payload: { ...frame.payload, loopId: 'foreign' } },
+    { payload: { ...frame.payload, kind: 'plugin' } },
+  ])('rejects a cryptographically valid but mismatched command %j', async (change) => {
+    native.verify.mockResolvedValue({ ...frame, ...change });
+    expect(await decideOperatorApproval(params)).toMatchObject({ ok: false, status: 400 });
+    expect(native.transaction).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it.each(['invalid kernel grant', 'missing principal wish', 'rotated principal key'])('refuses %s before state mutation', async (reason) => {
+    native.verify.mockRejectedValueOnce(new SessionCommandError(reason, 400));
+    expect(await decideOperatorApproval(params)).toMatchObject({ ok: false, status: 400 });
+    expect(native.transaction).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('propagates unexpected verifier failures without selecting legacy', async () => {
+    native.verify.mockRejectedValueOnce(new Error('unavailable'));
+    await expect(decideOperatorApproval(params)).rejects.toThrow('unavailable');
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+  it('refuses malformed full wishes with a client error and no fallback', async () => {
+    native.verify.mockRejectedValueOnce(new ZodError([]));
+    expect(await decideOperatorApproval(params)).toMatchObject({ ok: false, status: 400 });
+    expect(native.transaction).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('never downgrades stale or ambiguous stored bindings to legacy', async () => {
+    native.binding.mockRejectedValueOnce(new Error('binding unavailable'));
+    await expect(decideOperatorApproval({ ...params, sessionCommand: undefined })).rejects.toThrow('binding unavailable');
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('uses UPDATE RETURNING to allow only the winning concurrent tap to insert and deliver', async () => {
+    native.returning.mockResolvedValueOnce([{ proposalId: PROPOSAL_ID }]).mockResolvedValueOnce([]);
+    const results = await Promise.all([decideOperatorApproval(params), decideOperatorApproval(params)]);
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    expect(results.find((result) => !result.ok)).toMatchObject({ status: 409 });
+    expect(native.insert).toHaveBeenCalledOnce();
+    expect(native.deliver).toHaveBeenCalledOnce();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a decision when durable command insertion reports a replay', async () => {
+    native.insert.mockResolvedValueOnce(false);
+    await expect(decideOperatorApproval(params)).rejects.toThrow('already recorded');
+    expect(native.deliver).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('rejects commands on unbound legacy cards rather than inferring a target', async () => {
+    native.binding.mockResolvedValue(null);
+    expect(await decideOperatorApproval(params)).toMatchObject({ ok: false, status: 400 });
+  });
+
+  it('does not interpret native-looking detail or signer DID on unrelated sources', async () => {
+    mockSelectLimit.mockResolvedValue([row({ detail: { approvalId: binding.approvalId }, signerDid: AGENT_DID })]);
+    expect(await decideOperatorApproval(params)).toMatchObject({ ok: false, status: 400 });
+    expect(native.binding).not.toHaveBeenCalled();
+  });
+
+  it('rejects legacy applied and outcome callbacks for a bound command', async () => {
+    native.hasBinding.mockResolvedValue(true);
+    mockSelectLimit.mockResolvedValue([execCommandRow({ status: 'approved' })]);
+    expect(await markApplied(PROPOSAL_ID)).toEqual({ ok: false });
+    expect(await attachApprovalOutcome(PROPOSAL_ID, { exitCode: 0, durationMs: 1, outputHash: 'hash' })).toMatchObject({ ok: false });
+    expect(mockUpdateWhere).not.toHaveBeenCalled();
+  });
 });
 
 vi.mock('@imajin/bus', () => ({ publish: mockPublish }));
@@ -131,6 +288,26 @@ import {
 } from '../operator-approvals-service';
 import { EXEC_COMMAND_KIND, EXEC_COMMAND_SOURCE } from '../exec-command-approvals';
 import { computeApprovalContentHash, validateApprovalRequestedPayload } from '../operator-approvals';
+const native = vi.hoisted(() => ({
+  binding: vi.fn().mockResolvedValue(null),
+  hasBinding: vi.fn().mockResolvedValue(false),
+  verify: vi.fn(),
+  insert: vi.fn().mockResolvedValue(true),
+  deliver: vi.fn().mockResolvedValue({ delivered: true }),
+  returning: vi.fn(),
+  transaction: vi.fn(),
+  outcome: vi.fn().mockResolvedValue(null),
+}));
+vi.mock('../../jin/session-commands', () => ({
+  getSessionBinding: native.binding,
+  hasSessionBinding: native.hasBinding,
+  verifySessionCommand: native.verify,
+  insertSessionCommand: native.insert,
+  deliverSessionCommand: native.deliver,
+  SessionCommandError: class extends Error {
+    status = 400;
+  },
+}));
 
 function execCommandDetail(overrides: Record<string, unknown> = {}) {
   return {
@@ -191,6 +368,14 @@ beforeEach(() => {
   mockInsertValues.mockResolvedValue(undefined);
   mockUpdateWhere.mockResolvedValue(undefined);
   mockPublish.mockResolvedValue(undefined);
+  native.binding.mockResolvedValue(null);
+  native.outcome.mockResolvedValue(null);
+  native.hasBinding.mockResolvedValue(false);
+  native.insert.mockResolvedValue(true);
+  native.returning.mockResolvedValue([{ proposalId: PROPOSAL_ID }]);
+  native.transaction.mockImplementation(async (callback) => callback({
+    update: () => ({ set: () => ({ where: () => ({ returning: native.returning }) }) }),
+  }));
 });
 
 describe('app-secret terminal cleanup', () => {

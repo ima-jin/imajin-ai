@@ -2,6 +2,8 @@
 
 import { useState, FormEvent } from 'react';
 import { SCOPES } from '@imajin/auth/scope-vocabulary';
+import { type AppVisibility } from '@/src/lib/apps/visibility';
+import VisibilitySelect from './VisibilitySelect';
 
 interface RegisteredApp {
   id: string;
@@ -21,6 +23,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
   const [callbackUrl, setCallbackUrl] = useState('');
   const [homepageUrl, setHomepageUrl] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
+  const [visibility, setVisibility] = useState<AppVisibility>('public');
   const [selectedScopes, setSelectedScopes] = useState<string[]>([]);
   const [useOwnKey, setUseOwnKey] = useState(false);
   const [publicKey, setPublicKey] = useState('');
@@ -49,6 +52,7 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
       homepageUrl: homepageUrl.trim() || undefined,
       logoUrl: logoUrl.trim() || undefined,
       requestedScopes: selectedScopes,
+      visibility,
     };
 
     if (useOwnKey && publicKey.trim()) {
@@ -243,6 +247,8 @@ export default function RegisterAppForm({ onSuccess, onCancel }: Readonly<Props>
             className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-white placeholder-zinc-600 focus:outline-none focus:border-amber-500 transition-colors text-sm"
           />
         </div>
+
+        <VisibilitySelect id="register-app-visibility" value={visibility} onChange={setVisibility} />
 
         {/* Requested Scopes */}
         <div>
