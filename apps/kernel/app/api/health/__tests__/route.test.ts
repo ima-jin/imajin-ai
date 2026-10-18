@@ -8,6 +8,13 @@
  * marked prod "degraded" for a config bug rather than a real outage.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { operationalRegistryRows } from '@/src/lib/kernel/__tests__/fixtures/third-party-app';
+
+const { registryWhere } = vi.hoisted(() => ({ registryWhere: vi.fn() }));
+vi.mock('@/src/db', () => ({
+  db: { select: () => ({ from: () => ({ where: registryWhere }) }) },
+  registryApps: { id: 'id', slug: 'slug', name: 'name', entryUrl: 'entry_url', status: 'status' },
+}));
 
 const SINGLE_DOMAIN_ENV = {
   NEXT_PUBLIC_SERVICE_PREFIX: 'https://jin.imajin.ai/',
@@ -15,6 +22,11 @@ const SINGLE_DOMAIN_ENV = {
 } as const;
 
 const CAUGHT_UP = { migrationHead: '0100_fixture.sql', appliedCount: 100, pendingCount: 0 };
+function waitForAbort(_url: string, options: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    options.signal?.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
+  });
+}
 
 // #2384: kernel reports its own migration state through the same
 // @imajin/db helper (checkAppMigrations) every other app's own /api/health
@@ -54,6 +66,8 @@ beforeAll(async () => {
 }, 60_000);
 
 beforeEach(() => {
+  vi.stubEnv('APP_URL', 'https://jin.imajin.ai');
+  registryWhere.mockResolvedValue(operationalRegistryRows);
   // Prod runs in single-domain mode (base URL + path) without a
   // NEXT_PUBLIC_INPUT_URL override — that's exactly the state that exposed
   // #2345, since the "input" service was retired (see
@@ -68,11 +82,74 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
 
 describe('GET /api/health', () => {
+  it('reports an unavailable registry explicitly instead of claiming a partial inventory is operational', async () => {
+    registryWhere.mockRejectedValue(new Error('private database details'));
+    const { GET } = await import('../route');
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'degraded', error: 'registry_unavailable' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('does not append health paths to registered deep links, queries or fragments', async () => {
+    registryWhere.mockResolvedValue([
+      { id: 'deep', slug: 'deep', name: 'Deep', status: 'active', entryUrl: 'https://deep.example.test/start' },
+      { id: 'query', slug: 'query', name: 'Query', status: 'active', entryUrl: 'https://query.example.test/?campaign=launch' },
+      { id: 'hash', slug: 'hash', name: 'Hash', status: 'active', entryUrl: '/hash#start' },
+    ]);
+    const { GET } = await import('../route');
+    await GET();
+    expect(fetch).toHaveBeenCalledWith('https://deep.example.test/start', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://query.example.test/?campaign=launch', expect.any(Object));
+    expect(fetch).toHaveBeenCalledWith('https://jin.imajin.ai/hash#start', expect.any(Object));
+  });
+
+  it('marks failed probes down and cleans up their timers', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network unavailable')));
+    const { GET } = await import('../route');
+    const body = await (await GET()).json();
+    expect(body.status).toBe('degraded');
+    expect(body.services.every((service: { status: string; error: string; kind: string }) =>
+      service.status === 'down' && service.error === 'network unavailable' && service.kind)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('aborts timed-out probes and reports a null elapsed time', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('fetch', vi.fn(waitForAbort));
+    const { GET } = await import('../route');
+    const pending = GET();
+    await vi.advanceTimersByTimeAsync(10000);
+    const body = await (await pending).json();
+    expect(body.services.every((service: { status: string; responseTime: number | null }) =>
+      service.status === 'down' && service.responseTime === null)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('reports non-Error probe failures without exposing arbitrary values', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue('secret-ish failure'));
+    const { GET } = await import('../route');
+    const body = await (await GET()).json();
+    expect(body.services.every((service: { error: string }) => service.error === 'Unknown error')).toBe(true);
+  });
+
+  it('marks server errors degraded while treating redirects and auth failures as alive', async () => {
+    vi.stubGlobal('fetch', vi.fn((url: string) => Promise.resolve(
+      new Response(null, { status: url.includes('studio.example.test') ? 503 : 401 }),
+    )));
+    const { GET } = await import('../route');
+    const body = await (await GET()).json();
+    expect(body.status).toBe('degraded');
+    expect(body.services.find((service: { name: string }) => service.name === 'fixture-studio').status).toBe('degraded');
+    expect(body.services.find((service: { name: string }) => service.name === 'auth').status).toBe('up');
+  });
   it('does not probe deleted coffee/dykil/links port hints as kernel URLs', async () => {
     const { GET } = await import('../route');
     const body = await (await GET()).json() as { services: { name: string }[] };
@@ -89,15 +166,18 @@ describe('GET /api/health', () => {
     }
   });
 
-  it('resolves the input service to an absolute URL instead of a bare path (regression for #2345)', async () => {
+  it('probes the active fixture app at its registered destination without kernel/env edits', async () => {
+    vi.stubEnv('NEXT_PUBLIC_FIXTURE-STUDIO_URL', 'https://override.example.test');
     const { GET } = await import('../route');
     const res = await GET();
     const body = await res.json() as { services: { name: string; url: string; status: string; error?: string }[] };
 
-    const input = body.services.find((service) => service.name === 'input');
-    expect(input?.url).toBe('https://jin.imajin.ai/input');
-    expect(input?.error).toBeUndefined();
-    expect(input?.status).not.toBe('down');
+    const studio = body.services.find((service) => service.name === 'fixture-studio');
+    expect(studio).toMatchObject({ label: 'Fixture Studio', kind: 'app', url: 'https://studio.example.test/', status: 'up' });
+    expect(studio?.error).toBeUndefined();
+    expect(body.services.some(service => ['input', 'events', 'revoked-app', 'unsafe-app', 'missing-url'].includes(service.name))).toBe(false);
+    expect(fetch).toHaveBeenCalledWith('https://studio.example.test/api/health', expect.objectContaining({ redirect: 'manual' }));
+    expect(fetch).toHaveBeenCalledWith('https://jin.imajin.ai/relative-app/api/health', expect.any(Object));
   });
 
   it('never leaves the whole kernel reporting degraded solely because of an unparseable service URL', async () => {
@@ -114,7 +194,7 @@ describe('GET /api/health', () => {
     const pendingMigrations = { migrationHead: '0050_learn_thing.sql', appliedCount: 50, pendingCount: 3 };
 
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      const body = url.includes('/learn')
+      const body = url.includes('studio.example.test')
         ? { status: 'ok', service: 'learn', migrations: pendingMigrations }
         : { status: 'ok', migrations: CAUGHT_UP };
       return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
@@ -128,8 +208,8 @@ describe('GET /api/health', () => {
       services: { name: string; migrations?: typeof pendingMigrations }[];
     };
 
-    const learn = body.services.find((service) => service.name === 'learn');
-    expect(learn?.migrations).toEqual(pendingMigrations);
+    const studio = body.services.find((service) => service.name === 'fixture-studio');
+    expect(studio?.migrations).toEqual(pendingMigrations);
     expect(body.migrations).toEqual(CAUGHT_UP);
     expect(body.status).toBe('degraded');
   });

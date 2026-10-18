@@ -14,8 +14,8 @@
  * files does not preserve, and the editor/markdown libraries are plain,
  * jsdom-safe React components.
  */
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 import type { Asset } from '@/src/db/schemas/media';
 import { FileEditor } from '../FileEditor';
 
@@ -44,18 +44,35 @@ function installContentFetch(raw: string) {
   return spy;
 }
 
-async function findEditorTextarea(container: HTMLElement): Promise<HTMLTextAreaElement> {
+async function findEditorTextarea(container: HTMLElement, expectedContent = BODY): Promise<HTMLTextAreaElement> {
   return waitFor(() => {
     const textarea = container.querySelector('textarea');
     if (!textarea) throw new Error('editor textarea not mounted yet');
+    expect(textarea.value).toBe(expectedContent);
     return textarea;
   });
 }
+beforeEach(async () => {
+  vi.useRealTimers();
+  localStorage.clear();
+  sessionStorage.clear();
+  // Await the real lazy dependencies outside findBy/waitFor's UI deadline.
+  // The first shuffled case must not pay for cold module loading in that wait.
+  await Promise.all([
+    import('react-simple-code-editor'),
+    import('prismjs'),
+    import('react-markdown'),
+  ]);
+});
 
 afterEach(() => {
   cleanup();
+  if (vi.isFakeTimers()) vi.clearAllTimers();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
 });
 
 describe('hiding frontmatter', () => {
@@ -103,7 +120,7 @@ describe('hiding frontmatter', () => {
       <FileEditor asset={makeAsset({ filename: 'data.json', mimeType: 'application/json' })} isOwner />
     );
 
-    const editor = await findEditorTextarea(container);
+    const editor = await findEditorTextarea(container, jsonRaw);
     expect(editor.value).toBe(jsonRaw);
     expect(screen.queryByText('frontmatter hidden')).toBeNull();
   });
@@ -115,14 +132,13 @@ describe('preserving frontmatter on save', () => {
     const { container } = render(<FileEditor asset={makeAsset()} isOwner />);
 
     const editor = await findEditorTextarea(container);
+    vi.useFakeTimers();
     fireEvent.change(editor, { target: { value: '# Heading\n\nEdited body.' } });
-    fireEvent.click(screen.getByText('Save'));
+    await act(async () => { fireEvent.click(screen.getByText('Save')); });
+    expect(screen.getByText('Saved')).toBeDefined();
 
-    await waitFor(() => {
-      const putCall = spy.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT');
-      expect(putCall).toBeDefined();
-    });
     const putCall = spy.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')!;
+    expect(putCall).toBeDefined();
     expect(putCall[0]).toBe(`/media/api/assets/${ASSET_ID}/content`);
     const sent = JSON.parse(String((putCall[1] as RequestInit).body));
     expect(sent.content).toBe(`${HEADER}# Heading\n\nEdited body.`);
@@ -136,14 +152,12 @@ describe('preserving frontmatter on save', () => {
     const { container } = render(<FileEditor asset={makeAsset()} isOwner />);
 
     const editor = await findEditorTextarea(container);
+    vi.useFakeTimers();
     fireEvent.change(editor, { target: { value: 'Edited note.' } });
-    fireEvent.click(screen.getByText('Save'));
-
-    await waitFor(() => {
-      const putCall = spy.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT');
-      expect(putCall).toBeDefined();
-    });
+    await act(async () => { fireEvent.click(screen.getByText('Save')); });
+    expect(screen.getByText('Saved')).toBeDefined();
     const putCall = spy.mock.calls.find(([, init]) => (init as RequestInit | undefined)?.method === 'PUT')!;
+    expect(putCall).toBeDefined();
     const sent = JSON.parse(String((putCall[1] as RequestInit).body));
     expect(sent.content).toBe('Edited note.');
   });

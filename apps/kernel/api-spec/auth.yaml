@@ -43,12 +43,44 @@ components:
       type: http
       scheme: bearer
       description: "Bearer token (imajin_tok_* API token)"
+    appServiceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Existing app-service+jwt from POST /auth/api/apps/token/service; onboard:send token scope and live operator approval required."
     internalKeyAuth:
       type: apiKey
       in: header
       name: x-internal-key
       description: "Service-to-service key (AUTH_INTERNAL_API_KEY)"
   schemas:
+    PendingOwnerTransfer:
+      type: object
+      required: [id, from, to, by, policy, createdAt]
+      properties:
+        id: { type: string }
+        from: { type: string, description: Current owner DID }
+        to: { type: string, description: Named human recipient DID }
+        by: { type: string, description: Initiating owner DID }
+        policy: { type: string, example: owner-only }
+        createdAt: { type: string, format: date-time }
+    GroupOwnership:
+      type: object
+      required: [groupDid, groupName, ownerDid, policy, pendingTransfer, viewerDid, viewerRole, canTransfer, canAccept, acceptanceUrl]
+      properties:
+        groupDid: { type: string }
+        groupName: { type: [string, "null"] }
+        ownerDid: { type: string }
+        policy: { type: string, example: owner-only }
+        pendingTransfer:
+          oneOf:
+            - { $ref: "#/components/schemas/PendingOwnerTransfer" }
+            - { type: "null" }
+        viewerDid: { type: string }
+        viewerRole: { type: [string, "null"] }
+        canTransfer: { type: boolean }
+        canAccept: { type: boolean }
+        acceptanceUrl: { type: string, description: Relative URL of the recipient acceptance page }
     ReachError:
       type: object
       required: [error]
@@ -424,6 +456,148 @@ components:
         error_description: { type: string, example: "This app is not registered with the kernel, or its registration has been revoked." }
 
 paths:
+  /api/groups/{groupDid}/transfer-owner:
+    parameters:
+      - { name: groupDid, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [auth]
+      operationId: getGroupOwnership
+      summary: Current owner and pending ownership invitation
+      description: |
+        Active members and the named pending recipient may read this state.
+        A recipient does not need act-as permission or prior membership to review
+        their DID-bound invitation. Never changes ownership.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current ownership and caller-specific available actions
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupOwnership" }
+        "401": { description: Authentication required }
+        "403": { description: Not an active member or the named recipient, or OWNERSHIP_POLICY_UNKNOWN }
+        "404": { description: Group identity not found }
+    post:
+      tags: [auth]
+      operationId: proposeGroupOwnerTransfer
+      summary: Owner invites another person to take ownership
+      description: |
+        The current owner names an existing, unsuspended human actor DID.
+        Existing members must explicitly accept too. For a non-member, the
+        pending transfer is a DID-bound membership invitation: acceptance joins
+        them and transfers ownership in one transaction. The DID, profile and
+        keys are preserved. Only one pending proposal is allowed.
+
+        Every proposal, cancel and acceptance consults the node's replaceable
+        ownership-policy hook. Operators configure registry.node_config key
+        identity.ownership.policy through PUT /api/admin/config with
+        {key:"identity.ownership.policy",value:"owner-only"} (or a registered policy id);
+        absent configuration defaults to owner-only. Unknown policies fail closed.
+        No quorum, controller consent or cooling-off is implemented.
+
+        Independently, #2360's value-moving delegation rule rejects delegated
+        agents with 403 AGENT_APPROVAL_REQUIRED. The owner approves by executing
+        from their own session; a request-body flag or header grants no approval.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newOwnerDid]
+              properties:
+                newOwnerDid: { type: string }
+      responses:
+        "201":
+          description: Pending acceptance; owner remains unchanged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupOwnership" }
+        "400": { description: Invalid JSON, invalid recipient, or transfer to self }
+        "401": { description: Authentication required }
+        "403": { description: Ownership policy denied, OWNERSHIP_POLICY_UNKNOWN, or AGENT_APPROVAL_REQUIRED }
+        "404": { description: Group or recipient not found }
+        "409": { description: A pending transfer already exists or ownership is inconsistent }
+    delete:
+      tags: [auth]
+      operationId: cancelGroupOwnerTransfer
+      summary: Owner cancels the matching pending transfer
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transferId]
+              properties:
+                transferId: { type: string }
+      responses:
+        "200": { description: Pending transfer cancelled; owner unchanged }
+        "400": { description: Invalid JSON or missing transferId }
+        "401": { description: Authentication required }
+        "403": { description: Ownership policy denied, OWNERSHIP_POLICY_UNKNOWN, or AGENT_APPROVAL_REQUIRED }
+        "404": { description: Group not found }
+        "409": { description: Proposal no longer pending or transferId is stale }
+  /api/groups/{groupDid}/transfer-owner/accept:
+    parameters:
+      - { name: groupDid, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [auth]
+      operationId: acceptGroupOwnerTransfer
+      summary: Named person accepts ownership and any required membership invitation
+      description: |
+        Requires the named recipient's own authenticated session and the exact
+        pending transferId. Rechecks the current owner and node policy under a
+        group identity row lock; cancel, replacement and replay cannot execute
+        a stale proposal. The previous owner becomes an unrestricted admin and
+        may leave through DELETE /api/groups/{groupDid}/controllers/{controllerDid}.
+
+        The role changes, pending-proposal removal and signed
+        identity.owner.transferred attestation are committed atomically.
+        Signing or attestation-write failure leaves ownership unchanged.
+        Attestation payload includes from, to, by and policy. This mechanical
+        record is signed by the node over canonical JSON
+        {subject_did,type,context_id,context_type,payload,issued_at}, with
+        issued_at in milliseconds; verify the Ed25519 signature against the
+        issuer's published public key. The group DID is subject and context.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transferId]
+              properties:
+                transferId: { type: string }
+      responses:
+        "200":
+          description: Ownership transferred without recreating the identity
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, ownerDid, attestationId]
+                properties:
+                  ok: { type: boolean, const: true }
+                  ownerDid: { type: string }
+                  attestationId: { type: string }
+        "400": { description: Invalid JSON or missing transferId }
+        "401": { description: Authentication required }
+        "403": { description: Not the named human recipient, ownership policy denied, OWNERSHIP_POLICY_UNKNOWN, or AGENT_APPROVAL_REQUIRED }
+        "404": { description: Group or recipient not found }
+        "409": { description: Stale, cancelled, accepted or otherwise invalid proposal }
+        "500": { description: Transfer or attestation could not be committed; no ownership change }
   /.well-known/agent/{id}:
     get:
       tags: [reach]
@@ -972,6 +1146,11 @@ paths:
 
         Set `wantPolling: true` to receive a `pollHandle` for cross-tab handoff via
         `/api/onboard/poll`. Rate-limited to 5 req/min per IP.
+
+        A 502 with error `mail_audit_failed_after_delivery_do_not_retry`,
+        retryable=false and deliveredMayHaveOccurred=true means provider
+        acceptance preceded an audit failure. Do not retry or claim audited
+        success. The verification bearer is never returned in the response.
       requestBody:
         required: true
         content:
@@ -1000,6 +1179,17 @@ paths:
                 properties:
                   sent: { type: boolean }
                   pollHandle: { type: string, description: "Present when wantPolling=true" }
+        "502":
+          description: Email delivery or audit failure; do not retry a post-delivery audit failure
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+                  retryable: { type: boolean, const: false }
+                  deliveredMayHaveOccurred: { type: boolean, const: true }
         "400":
           description: Invalid email
           content:
@@ -1016,6 +1206,97 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  /api/onboard/send:
+    post:
+      tags: [auth]
+      operationId: sendOrderOnboard
+      summary: Ask the node to privately email an app-owned order's buyer an onboarding link
+      security:
+        - appServiceAuth: []
+      description: |
+        Kernel-private delivery (#2537): the app never receives a verification token,
+        URL, buyer email, poll handle, handoff token or session cookie. The node sends
+        the ordinary 15-minute /auth/api/onboard/verify link on behalf of the app.
+        No new token type is introduced.
+
+        Supply the kernel transactionId returned by POST /pay/api/checkout, not the
+        standalone app's order id, Stripe session id, or an arbitrary buyer DID.
+        The transaction must be completed, bound to the calling app DID and on the
+        stripe-byo hosted-checkout rail (a recorded cs_ external reference).
+        The recorded seller must be the registry app owner or have a live per-owner
+        app authorization grant for onboard:send. App-service authentication alone
+        is not authority over another owner's order. Both active registration and
+        operator-approved onboard:send scope are rechecked on every call.
+
+        For an identified buyer the kernel uses only a verified email credential
+        belonging to the recorded buyer DID; missing credentials never fall back to
+        billing metadata. For anonymous checkout it reads the customer from the
+        recorded seller's own Stripe checkout session. No request-supplied email,
+        buyer, owner, redirect, scopeDid, inviteCode or polling option is accepted.
+        The verified browser lands on the kernel auth root, not an app-supplied URL.
+
+        Unknown, unbound, cross-app, unauthorized-owner and unsupported resources
+        return the same 404 without contact disclosure. Standalone free/EMT orders
+        without a kernel-bound checkout reference are not eligible; do not invent a
+        transaction or fall back to kernel SQL.
+
+        Before delivery the node persists an onboard.link.requested mechanical attestation
+        and prepares an onboard.link.sent record. After the mail provider accepts delivery
+        it persists the sent record, linked by requestId, before returning sent.
+        Its issuer is the node; subject/onBehalfOf is the authenticated app DID;
+        contextId/transactionId is the order reference and ownerDid the recorded seller.
+        The signed payload contains no email, token, verification URL or provider body.
+        Provider acceptance is not proof of inbox delivery or completed verification.
+        Signing/recording failures return 503, never a false audited success. If audit
+        persistence fails after mail acceptance, the email may already have been sent;
+        the durable request record remains with an unknown outcome, never a false sent
+        claim. Do not automatically retry 5xx responses.
+
+        Rate limits: 20/minute per app, 3/hour per app/order, and the shared
+        onboarding 3/hour per recipient. All responses use Cache-Control: no-store.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [transactionId]
+              properties:
+                transactionId:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Kernel pay.transactions id for this app's completed hosted checkout.
+      responses:
+        "200":
+          description: Mail provider accepted delivery and the node-signed send record is durable.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status: { type: string, enum: [sent] }
+        "400":
+          description: Invalid JSON or fields other than transactionId.
+        "401":
+          description: Missing or invalid strict app-service JWT (type, audience, expiry, signature, sub/azp binding).
+        "403":
+          description: Missing token scope, inactive registration or revoked operator approval.
+        "404":
+          description: Order unavailable, unauthorized, unsupported or without a kernel-verifiable buyer email.
+        "429":
+          description: App, order or recipient rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+        "502":
+          description: Mail provider did not accept delivery; no sent event is recorded.
+        "503":
+          description: Registration/contact lookup, rail, node signing, delivery or durable audit is unavailable.
+
   /api/onboard/verify:
     get:
       tags: [auth]
@@ -1024,6 +1305,9 @@ paths:
       description: |
         Consumes the one-time onboard token from the email link. Mints or retrieves a soft DID,
         sets the imajin_session cookie, and redirects to the configured redirectUrl.
+        With no stored destination, verification and used-token recovery return to this
+        kernel's public origin, never to a default app. Optional ticket migration uses
+        the active events registration's entryUrl and is skipped when absent.
       parameters:
         - name: token
           in: query
@@ -2915,7 +3199,13 @@ paths:
     delete:
       tags: [auth]
       operationId: removeGroupController
-      summary: Remove a controller from a DID group
+      summary: Remove a controller or leave as a former-owner admin
+      description: |
+        Active owners may remove non-owner controllers. Admins may remove members
+        or leave themselves. An active owner can never be removed: transfer
+        ownership first. Removal serializes with ownership acceptance to prevent
+        deleting a newly promoted owner. A successful self-removal expires the
+        matching selected-group x-acting-as cookie.
       security:
         - cookieAuth: []
       parameters:
@@ -2928,8 +3218,12 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        "200":
-          description: Controller removed
+        "200": { description: Membership soft-deleted }
+        "400": { description: Cannot remove an active owner }
+        "401": { description: Authentication required }
+        "403": { description: Caller lacks membership-management authority }
+        "404": { description: Group or controller not found }
+        "500": { description: Membership removal failed }
 
   /api/identity/{did}/contact:
     get:

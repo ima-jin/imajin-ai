@@ -292,7 +292,11 @@ paths:
                 urgency: { type: string, enum: [low, normal, urgent] }
       responses:
         "200":
-          description: Notification stored; sent reflects delivery outcome when email was attempted
+          description: |
+            Notification stored; sent reflects audited delivery outcome when email
+            was attempted. If error is mail_audit_failed_after_delivery_do_not_retry,
+            sent is false but delivery may already have occurred. retryable is
+            false and deliveredMayHaveOccurred is true; do not retry the send.
           content:
             application/json:
               schema:
@@ -300,6 +304,10 @@ paths:
                 properties:
                   id: { type: string }
                   sent: { type: boolean }
+                  emailResolved: { type: boolean }
+                  error: { type: string, description: "Safe delivery error; raw provider details are never returned." }
+                  retryable: { type: boolean, const: false, description: "Present on a post-delivery audit failure; never retry that send." }
+                  deliveredMayHaveOccurred: { type: boolean, const: true, description: "Present on a post-delivery audit failure; provider acceptance is not an audited success or inbox delivery." }
         "400":
           description: Invalid request
         "401":

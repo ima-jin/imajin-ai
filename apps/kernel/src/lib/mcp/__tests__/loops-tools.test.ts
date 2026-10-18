@@ -192,6 +192,13 @@ describe('loops_list', () => {
 // ─── loops_get — happy path + not-found ──────────────────────────────────────
 
 describe('loops_get', () => {
+  it('preserves horizon data and scopes an explicit exited audit request to the acting DID', async () => {
+    const horizon = { depth: 0, targetDepth: 12, steps: [{ stepId: 'done', zone: 'done', state: 'exited' }] };
+    mockGetLoopWithHistory.mockResolvedValueOnce({ loop: { loopId: 'loop_1' }, events: [], horizon });
+    const out = parseResult(await call('loops_get', { loop_id: 'loop_1', include_exited: true }, ctxFor('did:imajin:alice')));
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_1', 'did:imajin:alice', true);
+    expect(out.horizon).toEqual(horizon);
+  });
   it('reads by loop_id, scoped to the acting DID', async () => {
     mockGetLoopWithHistory.mockResolvedValueOnce({
       loop: { loopId: 'loop_1', state: 'blocked' },
@@ -200,7 +207,7 @@ describe('loops_get', () => {
 
     const out = parseResult(await call('loops_get', { loop_id: 'loop_1' }, ctxFor('did:imajin:alice')));
 
-    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_1', 'did:imajin:alice');
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_1', 'did:imajin:alice', false);
     expect(out.loop.loopId).toBe('loop_1');
     expect(out.events.map((e: { type: string }) => e.type)).toEqual(['loop.started', 'loop.blocked']);
   });
@@ -227,7 +234,7 @@ describe('loops_get', () => {
     await expect(call('loops_get', { loop_id: 'loop_owned_by_bob' }, ctxFor('did:imajin:alice'))).rejects.toThrow(
       /not_found/,
     );
-    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_owned_by_bob', 'did:imajin:alice');
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_owned_by_bob', 'did:imajin:alice', false);
   });
 
   it('checks the scope-manifest grant before querying', async () => {

@@ -1,4 +1,109 @@
 # Loop registry rail — publisher-authorization contract (#2358, epic #2288/#2290, #2295, #2296, #2338)
+Horizon step entries extend this signed rail under #2878; claim lease policy and Runs rendering remain separate.
+## Horizon steps (#2878, parent #2313 decision a)
+
+Publish `step.queued|updated|claimed|started|progress|blocked|finished|observed|attested`
+through the existing `POST /api/loops` signature and `loops:publish` authorization
+boundary. All events carry the common loop envelope plus a nonempty `stepId`.
+`loopId` names the **existing owning loop**, not a harness session or the step.
+A missing loop or different principal fails with 409. Step observations never
+change the owning loop's lifecycle, refs, last-seen time or surface leases.
+No gateway RPC, connector polling, harness lookup, session credential or new
+secret is involved. The publisher pushes facts; signatures prove who asserted
+them, not that GitHub or a deployment actually agrees.
+
+The type-specific data, with no other type-specific block permitted, is:
+
+| Event | Signed data |
+| --- | --- |
+| `step.queued` | `step: {stepKind: "code" \| "human" \| "ops", intention, rank, repository?, exitConditions}`; `state` must be `queued` |
+| `step.updated` | nonempty `update: {rank?, intention?, issue?: {ref, outcome}, briefRef?, provisionRef?, designRef?}` |
+| `step.claimed` | `claim: {leaseId, holderDid, expiresAt}`; holder DID must equal the actual signer |
+| `step.started`, `step.progress`, `step.blocked`, `step.finished` | no extra block; derive `running`, `running`, `blocked`, `finished` respectively |
+| `step.observed` | `observation: {conditionId, evidence}` |
+| `step.attested` | `attestation: {conditionId, did, statement}`; DID must equal the actual signer |
+
+`rank` is finite, lower first; ties use exact `stepId`. No automatic rank
+normalization or 12-item truncation occurs. Text facts are nonblank and bounded
+to 2000 characters. `outcome` must start with `OUTCOME`; refs are assertions,
+not URLs the kernel fetches. A code declaration requires `repository` in
+`owner/repo` form. Updates are sparse and cannot replace exit conditions or kind.
+The earliest queued declaration by `(occurred_at, id)` wins, including on retry.
+Declare before sharpening/working (timestamps determine order, not arrival).
+Declarations are seeded before folding other facts so co-timestamped batches
+cannot lose an update to signed-id ordering. Facts dated before their declaration
+are retained in history but do not affect that step.
+Unknown-step observations stay in history but cannot create an undeclared item.
+
+Code items declare exactly one of each:
+
+- `{id, kind: "issue_closed"}` — evidence `{kind: "issue_closed", issue}` must
+  match the sharpened `issue.ref`.
+- `{id, kind: "release_contains"}` — evidence
+  `{kind: "release_contains", repository, issue, mergeCommit, tag}` must match
+  this step's repository and issue. `mergeCommit` is a full 40-hex Git SHA.
+  The signed assertion means **that commit is contained in that release tag**.
+- `{id, kind: "deployed"}` — evidence
+  `{kind: "deployed", repository, tag, environment: "prod"}` must match this
+  step's repository and the release-containment tag. Dev/staging assertions
+  cannot satisfy production exit, nor can deploying a different tag.
+
+Human/ops items instead declare exactly
+`[{id, kind: "attestation", attestorDid}]`, identifying the person who completes
+the work. Only `step.attested` signed by that same DID satisfies it; an agent
+or node cannot attest *as* that person through its publishing delegation.
+Condition ids are distinct, nonempty, immutable, and never vacuously empty.
+Unknown ids, wrong evidence kinds and mismatched targets never satisfy an exit.
+The latest well-shaped assertion per declared condition supplies its evidence;
+corrections are new signed observations, never edits to historical rows.
+
+`GET /api/loops/{loopId}` and MCP `loops_get` return
+`{loop, events, horizon: {steps, depth, targetDepth: 12}}`. `steps` are sorted
+by rank then id. Each carries its declaration, sharpening facts, projected
+`state`, derived `zone`, optional `claim`, `conditions` (each declaration,
+`satisfied`, and evidence `{eventId, issuer, at, fact}`), and `openExitConditions`
+(ids still unsatisfied). The flat loops list retains its existing contract;
+use detail for the horizon. For explicit audit reads only, HTTP
+`?includeExited=true` / MCP `include_exited: true` includes completed steps
+with `state: "exited"` and `zone: "done"`, without changing non-done `depth`.
+No new MCP scope or HTTP endpoint is needed.
+
+Zones are **read projection only**, in precedence order:
+
+1. `done` / derived state `exited`: every declared condition holds; omitted
+   from `horizon.steps` and `depth`, never erased from history.
+2. `past`: this item's issue is closed but at least one exit remains open.
+3. `head`: a signed claim references an unexpired lease.
+4. `near`: issue/OUTCOME, brief, provision and settled-design refs all exist.
+5. `middle`: issue/OUTCOME exists.
+6. `tail`: one-line intention only.
+
+Input `zone`, `depth`, derived `state: "exited"` and step `output` are rejected.
+Other common-envelope state labels are observational only; they cannot override
+the projected lifecycle. Lease acquisition, exclusivity, renewal/release policy
+and authoritative lease validation belong to **#2879**. This substrate records
+the signer's claim reference, not proof that a lease service granted ownership;
+readers must not use it as a dispatch lock. **#2880** owns Runs rendering.
+
+`kernel.loop_events` already stores all necessary facts. New bus defaults await
+history persistence and invoke the existing emit reactor, so no schema migration, schema ownership change
+or numbered migration reservation is needed. Exact signed retries deduplicate
+by a hash of the signed ingest request. History is principal scoped; replay
+sorts by `(occurred_at, id)`, with no in-memory session state to lose at restart.
+Every step fact retains server-assigned `publisherProof` over its exact wire
+payload; credential-bearing/redaction-changing step facts are rejected instead
+of storing an unverifiable substitute. The existing Record lane can read
+`action=step.attested` from the emitted signed event stream, including the
+completing DID, statement and publisher proof, under its existing principal /
+delegated-issuer visibility rules. No `/jin` change is part of this PR.
+Record emission uses the existing batched, fire-and-forget adapter; only
+`loop_events` history/horizon has read-after-write durability. This feature
+does not change the shared Record adapter's delivery guarantees.
+
+The referenced workspace bridge is outside this repository and no settled
+bridge field-shape ruling was attached to #2878 at dispatch. This contract is
+the explicit kernel wire seam for the later plugin sync (#2881); it does not
+claim to have inspected or modified an agent's local horizon files.
 
 ## Surface leases (#2405)
 

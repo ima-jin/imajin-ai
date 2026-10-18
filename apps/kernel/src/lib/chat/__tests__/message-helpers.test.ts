@@ -15,6 +15,7 @@ const h = vi.hoisted(() => ({
   inserted: [] as Record<string, unknown>[],
   updated: [] as Record<string, unknown>[],
   unfurlLinks: vi.fn(),
+  registryUrl: vi.fn(),
 }));
 
 vi.mock('drizzle-orm', () => ({
@@ -58,8 +59,9 @@ vi.mock('../dm-guard', () => ({
 }));
 
 vi.mock('../unfurl', () => ({ unfurlLinks: h.unfurlLinks }));
+vi.mock('@/src/lib/apps/registry-url', () => ({ resolveRegistryAppBaseUrl: h.registryUrl }));
 
-import { ensureConversation, triggerLinkUnfurl } from '../message-helpers';
+import { ensureConversation, triggerLinkUnfurl, resolveConversationName } from '../message-helpers';
 
 const ALICE = 'did:imajin:alice';
 const BOB = 'did:imajin:bob';
@@ -71,8 +73,35 @@ beforeEach(() => {
   h.updated.splice(0);
   h.canonicalDmConversationDid.mockReset();
   h.unfurlLinks.mockReset().mockResolvedValue([]);
+  h.registryUrl.mockReset().mockResolvedValue(null);
 });
 
+describe('event conversation names use the registry', () => {
+  const did = 'did:imajin:event:studio-gathering';
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+  it('uses the active registered endpoint even if a stale env URL exists', async () => {
+    h.registryUrl.mockResolvedValue('https://node.test/events');
+    vi.stubEnv('EVENTS_SERVICE_URL', 'https://stale.test');
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ event: { title: 'Studio gathering' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(resolveConversationName(did)).resolves.toBe('Studio gathering Lobby');
+    expect(h.registryUrl).toHaveBeenCalledWith('events');
+    expect(fetchMock).toHaveBeenCalledWith(`https://node.test/events/api/events/by-did/${encodeURIComponent(did)}`);
+  });
+  it('does not contact a guessed service when the app is missing', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(resolveConversationName(did)).resolves.toBe(did);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('fails soft on a registry outage', async () => {
+    h.registryUrl.mockRejectedValue(new Error('offline'));
+    await expect(resolveConversationName(did)).resolves.toBe(did);
+  });
+});
 describe('ensureConversation — canonical DM rewrite (#1649)', () => {
   it('rewrites a raw person DID to the canonical pair DID before writing', async () => {
     h.canonicalDmConversationDid.mockResolvedValue(CANONICAL);

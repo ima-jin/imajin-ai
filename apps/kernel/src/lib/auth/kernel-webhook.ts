@@ -2,7 +2,7 @@
 import { randomUUID } from 'node:crypto';
 import { computeKeyKid, crypto as authCrypto } from '@imajin/auth';
 import { canonicalKernelWebhookPayload } from '@imajin/auth/kernel-webhook';
-import { legacyWebhookHeaders, type LegacyWebhookApp } from './kernel-webhook-legacy';
+import { legacyWebhookHeaders } from './kernel-webhook-legacy';
 import { resolveKernelWebhookAudience, validateKernelWebhookAudience } from './kernel-webhook-recipient';
 
 /** Append a callback path without dropping a configured base path or query string. */
@@ -35,7 +35,7 @@ export function signKernelWebhook(url: string, rawBody: string, audience: string
 export async function postKernelWebhook(
   url: string,
   payload: unknown,
-  app: LegacyWebhookApp,
+  app: string,
 ): Promise<Response> {
   const audience = await resolveKernelWebhookAudience(url, { appSlug: app });
   const body = JSON.stringify(payload);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, identityMembers } from '@/src/db';
+import { db, identities, identityMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
 import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
@@ -33,9 +33,12 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     const [membership] = await db
       .select({ role: identityMembers.role })
       .from(identityMembers)
+      .innerJoin(identities, eq(identities.id, identityMembers.identityDid))
       .where(
         and(
           eq(identityMembers.identityDid, agentDid),
+          eq(identities.scope, 'actor'),
+          eq(identities.subtype, 'agent'),
           eq(identityMembers.memberDid, caller.id),
           isNull(identityMembers.removedAt)
         )

@@ -1,11 +1,8 @@
 import { NextResponse } from 'next/server';
 
-// buildPublicUrlAbsolute (not buildPublicUrl) is required here: this runs
-// server-side and calls fetch() directly, so it needs a guaranteed absolute
-// URL. buildPublicUrl() falls back to a bare relative path (e.g. "/input")
-// once neither an explicit NEXT_PUBLIC_{NAME}_URL env var nor an explicit
-// prefix/domain is present, which fetch() cannot parse (#2345).
-import { buildPublicUrlAbsolute } from '@imajin/config';
+import { listOperationalApps, type OperationalApp } from '@/src/lib/kernel/operational-apps';
+import { registryAppBaseUrl } from '@/src/lib/apps/public-url';
+
 // #2384: kernel is also master of its own schema (auth/chat/pay/profile/
 // etc. all live in kernel-owned schemas, migrations/OWNERSHIP.md), so it
 // reports its own migration state via the same shared helpers every other
@@ -19,11 +16,9 @@ import { checkAppMigrations, hasPendingMigrations, type MigrationStatus } from '
 // this endpoint reported green). Surfaces path / entry count / last-load time
 // only — never field names or values. Same audience as the rest of /api/health.
 import { getVaultHealth, type VaultHealth } from '@/src/lib/vault/vault-repository';
+export const dynamic = 'force-dynamic';
 
-interface ServiceCheck {
-  name: string;
-  label: string;
-  url: string;
+interface ServiceCheck extends OperationalApp {
   status: 'up' | 'down' | 'degraded';
   responseTime: number | null;
   statusCode: number | null;
@@ -32,22 +27,6 @@ interface ServiceCheck {
   migrations?: MigrationStatus;
 }
 
-const SERVICES = [
-  // Core platform
-  { name: 'www', label: 'Website' },
-  { name: 'auth', label: 'Auth' },
-  { name: 'pay', label: 'Payments' },
-  { name: 'profile', label: 'Profiles' },
-  { name: 'registry', label: 'Registry' },
-  { name: 'events', label: 'Events' },
-  { name: 'chat', label: 'Chat' },
-  { name: 'connections', label: 'Connections' },
-  { name: 'input', label: 'Input' },
-  { name: 'media', label: 'Media' },
-  // Imajin apps
-  { name: 'learn', label: 'Learn' },
-  { name: 'market', label: 'Market' },
-];
 
 // Reads the `migrations` block off a service's own /api/health body, if
 // present. Never throws: a non-JSON body or a response with no `migrations`
@@ -62,24 +41,28 @@ async function readMigrationsBlock(response: Response): Promise<MigrationStatus 
   }
 }
 
-async function checkService(service: { name: string; label: string }): Promise<ServiceCheck> {
-  const url = buildPublicUrlAbsolute(service.name);
+/** Only append API paths to known app bases, never to registered deep links. */
+function serviceProbeUrl(service: OperationalApp): string {
+  if (service.kind === 'core') return service.url;
+  const base = registryAppBaseUrl({ slug: service.name, entryUrl: service.url });
+  return base ? `${base.replace(/\/$/, '')}/api/health` : service.url;
+}
+async function checkService(service: OperationalApp): Promise<ServiceCheck> {
   const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
 
     // GET (not HEAD): the migrations block this route relays (#2384) only
     // exists in the response body, which a HEAD request never returns.
-    const response = await fetch(url, {
+    const response = await fetch(serviceProbeUrl(service), {
       method: 'GET',
       signal: controller.signal,
       redirect: 'manual', // Don't follow redirects — a redirect means the service is alive
       cache: 'no-store',
     });
 
-    clearTimeout(timeout);
     const responseTime = Date.now() - start;
 
     // Any response (including redirects, 401, 403) means the service is up.
@@ -88,9 +71,7 @@ async function checkService(service: { name: string; label: string }): Promise<S
     const migrations = await readMigrationsBlock(response);
 
     return {
-      name: service.name,
-      label: service.label,
-      url,
+      ...service,
       status,
       responseTime,
       statusCode: response.status,
@@ -99,14 +80,14 @@ async function checkService(service: { name: string; label: string }): Promise<S
   } catch (error) {
     const responseTime = Date.now() - start;
     return {
-      name: service.name,
-      label: service.label,
-      url,
+      ...service,
       status: 'down',
       responseTime: responseTime < 10000 ? responseTime : null,
       statusCode: null,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -120,8 +101,14 @@ function isVaultDegraded(vault: VaultHealth): boolean {
 }
 
 export async function GET() {
+  let services: OperationalApp[];
+  try {
+    services = await listOperationalApps();
+  } catch {
+    return NextResponse.json({ status: 'degraded', error: 'registry_unavailable' }, { status: 503 });
+  }
   const [checks, migrations, vault] = await Promise.all([
-    Promise.all(SERVICES.map(checkService)),
+    Promise.all(services.map(checkService)),
     checkAppMigrations(),
     getVaultHealth(),
   ]);

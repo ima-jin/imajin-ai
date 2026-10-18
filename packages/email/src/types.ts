@@ -1,4 +1,6 @@
 export interface SendEmailOptions {
+  /** Resolved sender; callers outside the kernel may omit for provider defaults. */
+  from?: string;
   to: string;
   subject: string;
   html: string;
@@ -7,6 +9,8 @@ export interface SendEmailOptions {
   unsubscribeUrl?: string;
   /** Reply-To address (e.g. event organizer email) */
   replyTo?: string;
+  /** Credential-bearing mail: provider logs must omit recipients, bodies, IDs and exceptions. */
+  sensitive?: boolean;
 }
 
 export function parseSender(from: string): { email: string; name?: string } {

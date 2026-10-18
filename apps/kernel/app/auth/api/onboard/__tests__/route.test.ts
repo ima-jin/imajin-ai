@@ -8,7 +8,7 @@ const { mockDbSelect, mockDbInsert, mockDbInsertValues, mockSendEmail, mockRateL
     mockDbSelect: vi.fn(),
     mockDbInsertValues: mockDbInsertValuesInner,
     mockDbInsert: vi.fn(() => ({ values: (...args: unknown[]) => mockDbInsertValuesInner(...args) })),
-    mockSendEmail: vi.fn(async () => ({ success: true })),
+    mockSendEmail: vi.fn(async () => ({ success: true } as { success: boolean; error?: string; messageId?: string })),
     mockRateLimit: vi.fn(() => ({ limited: false, retryAfter: 0 })),
     mockGetClient: vi.fn(),
   };
@@ -28,9 +28,7 @@ vi.mock('@imajin/config', () => ({
   buildPublicUrlAbsolute: (service: string) => `https://${service}.example`,
 }));
 
-vi.mock('@imajin/email', () => ({
-  sendEmail: mockSendEmail,
-}));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mockSendEmail }));
 
 vi.mock('@imajin/db', () => ({
   getClient: mockGetClient,
@@ -78,6 +76,23 @@ beforeEach(() => {
 
 describe('POST /api/onboard — invite context threading (#1834 Phase 2)', () => {
   const SCOPE_DID = 'did:imajin:scope-org';
+  it('preserves named, contextual polling delivery without returning the verification token', async () => {
+    const res = await POST(makeReq({
+      email: ' Buyer@example.com ', name: ' Buyer ', context: 'access tickets',
+      wantPolling: true, redirectUrl: 'https://events.example/tickets',
+    }));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sent: true, pollHandle: expect.any(String) });
+    expect(mockDbInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      email: 'buyer@example.com', name: 'Buyer', context: 'access tickets',
+      redirectUrl: 'https://events.example/tickets', pollHandle: expect.any(String),
+    }));
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'signin', sensitive: true, appDid: undefined, ownerDid: undefined,
+      to: 'buyer@example.com', subject: 'Verify your email to access tickets — Imajin',
+      html: expect.stringContaining('Hi Buyer,'),
+    }));
+  });
 
   it('stores no scopeDid/inviteCode when neither is supplied (backward compatible)', async () => {
     const res = await POST(makeReq({ email: 'plain@example.com' }));
@@ -124,6 +139,26 @@ describe('POST /api/onboard — invite context threading (#1834 Phase 2)', () =>
   });
 });
 
+describe('POST /api/onboard — post-delivery audit safety', () => {
+  it('returns a safe nonretryable 502 without leaking token, polling handle, or provider ID', async () => {
+    mockSendEmail.mockResolvedValueOnce({
+      success: false, error: 'mail_audit_failed_after_delivery_do_not_retry', messageId: 'provider-private-fixture',
+    });
+    const res = await POST(makeReq({ email: 'plain@example.com', wantPolling: true }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: 'mail_audit_failed_after_delivery_do_not_retry', retryable: false, deliveredMayHaveOccurred: true,
+    });
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+  it('keeps ordinary provider failures generic without asserting post-delivery state', async () => {
+    mockSendEmail.mockResolvedValueOnce({ success: false, error: 'provider-private-fixture' });
+    const res = await POST(makeReq({ email: 'plain@example.com' }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'Failed to send verification email' });
+  });
+});
+
 describe('POST /api/onboard — login mode security (#1871)', () => {
   const SOFT_DID = 'did:imajin:soft-user';
   const HARD_DID = 'did:imajin:hard-user';
@@ -137,6 +172,7 @@ describe('POST /api/onboard — login mode security (#1871)', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.sent).toBe(true);
+    expect(mockSendEmail).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'signin' }));
   });
 
   it('rejects hard DIDs before writing any onboard token', async () => {

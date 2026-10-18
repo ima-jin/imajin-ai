@@ -126,6 +126,12 @@ describe('SmtpProvider transport construction', () => {
 });
 
 describe('SmtpProvider message building', () => {
+  it('honors kernel sender rather than the provider default', async () => {
+    setSmtpEnv(configuredEnv());
+    const provider = await loadProvider();
+    await provider.send({ to: TO, subject: SUBJECT, html: HTML, from: 'Receipts <receipts@imajin.ai>' });
+    expect(sendMail).toHaveBeenCalledWith(expect.objectContaining({ from: 'Receipts <receipts@imajin.ai>' }));
+  });
   it('sends the message fields and returns the provider message id', async () => {
     setSmtpEnv(configuredEnv());
     const provider = await loadProvider();

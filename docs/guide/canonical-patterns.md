@@ -23,6 +23,7 @@
 | **App/agent auth + scope** | `requireAppAuth(request, { scope })` | `packages/auth/src/require-app-auth.ts` | Read `x-app-did` / validate scopes inline. Use the dual-path: app-DID header → `requireAppAuth`; else `requireAuth`. Accepts both user-delegated (`app+jwt`) and session-less service (`app-service+jwt`) tokens — see the next row for the latter. |
 | **Session-less service credential (machine-to-machine reads)** | `POST /auth/api/apps/token/service` to mint, `requireAppAuth(request, { scope })` to gate | `apps/kernel/app/auth/api/apps/token/service/route.ts`, [service-credentials.md](./service-credentials.md) | Borrow a human's attestation/session for a webhook, cron, or other automated caller. A registered app proves possession of its own keypair and gets a token attributed to its own DID (`userDid: ''`, `isServiceToken: true`) — never a borrowed human identity. |
 | **Session auth** | `requireAuth(request)` / `optionalAuth(request)` | `@imajin/auth` | Parse the session cookie or call `/api/session` by hand. |
+| **Group ownership transfer** | `ownershipTransfer(groupDid, actor, operation, input)` | `apps/kernel/src/lib/auth/ownership-transfer.ts` | Write owner roles or `identities.metadata['pending-owner-transfer']` directly. The primitive checks the node-selected `identity.ownership.policy`, shared delegation gate and explicit human recipient acceptance, locks the group identity, and commits the signed transfer attestation atomically with role/profile changes. Configure the policy id through the existing operator `PUT /api/admin/config` with `{ "key": "identity.ownership.policy", "value": "owner-only" }`; a replacement policy must be registered in `ownership-policy.ts`, and unknown ids fail closed. |
 | **Principal ↔ agent binding (`serviceOf`) + live connection** | `resolveServingAgents(principalDid)`, `listServiceOf(agentDid)` | `apps/kernel/src/lib/auth/agent-service.ts`, [agent-service-binding.md](../agents/agent-service-binding.md) | Query `identity_members` for agents inline, address a gateway instead of the agent DID, or treat `subtype='agent'` / a `serviceOf` entry as authority — authority is only `resolveAgentAuthority()`. |
 | **Settlement (fee split → ledger/balances)** | `settlePayment()`, called by `POST /api/settle` (and `settleReactor` via the bus) | `apps/kernel/src/lib/pay/settle-core.ts`, `apps/kernel/app/pay/api/settle/route.ts`, `packages/bus/src/reactors/settle.ts` | Write `feeLedger` / `balances` rows inline. **Known debt:** the Stripe webhook's consumer still credits `feeLedger`/`balanceRollups` inline (`apps/kernel/src/lib/pay/stripe-bus-consumer.ts` — the `pay-stripe` reactor on the #1785 `stripe.*` bus events, #2177; the webhook routes are ingress only) via a different manifest shape — it now shares `settlePayment()`'s signature-verification primitive (non-blocking), but not its crediting mechanics. See #1073 and "Known divergences" below. |
 | **.fair manifest build** | `buildFairManifest(...)` | `packages/fair` | Hand-assemble fee/chain objects. |
@@ -31,6 +32,17 @@
 | **Rate limiting** | `rateLimit(key, limit, windowMs)`, `getClientIP` | `@imajin/config` | Hand-roll a limiter. Key by IP *and* (for abuse-sensitive flows) by email/subject. |
 
 ### App-owned checkout patterns
+
+For onboarding email after an app-owned hosted checkout, call
+`POST /auth/api/onboard/send` with `{ transactionId }` and the app's own
+operator-approved `onboard:send` service token (#2537). The kernel enforces
+app binding plus the recorded seller's ownership/live authorization, resolves
+the buyer from kernel credentials or the seller's recorded Stripe session,
+and emails the existing magic link privately. Only send status leaves the
+kernel; apps must never mint, receive, embed, log or redeem its verification
+bearer. A node-signed `onboard.link.sent` record binds the app and order.
+Free/EMT resources without a kernel-bound transaction fail closed; see the
+auth API spec for the supported hosted-checkout contract and failure semantics.
 
 The former events checkout-identity, ticket reconciliation, contact-email and
 order-creation helpers are no longer kernel primitives or import targets.

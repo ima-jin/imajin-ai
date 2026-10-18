@@ -13,6 +13,10 @@
  * Single-use: the nonce is stored in the vault as
  * `verify:email-nonce:{did}` and consumed (deleted) by the confirm handler.
  * Any subsequent attempt with the same link returns `verified=invalid`.
+ *
+ * A 502 with mail_audit_failed_after_delivery_do_not_retry includes
+ * retryable:false and deliveredMayHaveOccurred:true. Do not retry: delivery
+ * may already have occurred, but this is not an audited send success.
  */
 
 import { createHmac, randomBytes } from 'node:crypto';
@@ -21,7 +25,8 @@ import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
 import { loadAndUnseal, sealAndStore } from '@/src/lib/vault';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
+import { mailDeliveryFailure } from '@/src/lib/kernel/mail-delivery-error';
 import { createLogger } from '@imajin/logger';
 
 const log = createLogger('kernel');
@@ -95,7 +100,8 @@ export async function POST(request: NextRequest) {
   });
   const confirmUrl = `${PROFILE_URL}/profile/api/contact/verify-email/confirm?${params.toString()}`;
 
-  const result = await sendEmail({
+  const result = await sendKernelEmail({
+    purpose: 'contact',
     to: email,
     subject: 'Verify your email — Imajin',
     html: verifyEmailHtml({ confirmUrl }),
@@ -103,7 +109,7 @@ export async function POST(request: NextRequest) {
 
   if (!result.success) {
     log.error({ err: String(result.error), did: ownerDid }, 'Failed to send verification email');
-    return NextResponse.json({ error: 'Failed to send verification email' }, { status: 502, headers: cors });
+    return NextResponse.json(mailDeliveryFailure(result.error, 'Failed to send verification email'), { status: 502, headers: cors });
   }
 
   // Return the masked email for UI confirmation (last part of domain only)

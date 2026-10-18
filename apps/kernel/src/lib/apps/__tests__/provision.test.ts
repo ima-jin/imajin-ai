@@ -303,6 +303,27 @@ beforeEach(() => {
 });
 
 describe('runAppProvision — #2663 scope declarations: exactly what the operator approved', () => {
+  it('registers an approved profile widget declaration without touching owner membership', async () => {
+    const profileWidget = { path: '/profile/studio', label: 'Studio' };
+    fetchAppManifestMock.mockResolvedValue({ ok: { profileWidget, entryUrl: 'https://studio.example.test' } });
+    const result = await runAppProvision({ slug: 'fixture-studio', displayName: 'Fixture Studio',
+      approvedDeclarations: { providesScopes: [], dependsOn: [], emittableEvents: [], profileWidget } });
+    expect(result.status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0]).toMatchObject({ profileWidget, tier: 'third_party', entryUrl: 'https://studio.example.test' });
+    expect([...registryAppsStore.values()][0]).not.toHaveProperty('enabledApps');
+  });
+
+  it('refuses a widget the operator never approved', async () => {
+    fetchAppManifestMock.mockResolvedValue({ ok: { profileWidget: { path: '/profile/studio', label: 'Studio' } } });
+    expect(await runAppProvision({ slug: 'fixture-studio', displayName: 'Fixture Studio' })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect(registryAppsStore.size).toBe(0);
+  });
+
+  it('refuses a malformed widget before registry writes even when the manifest reader is bypassed', async () => {
+    fetchAppManifestMock.mockResolvedValue({ ok: { profileWidget: { path: '//evil.test', label: 'Evil' } } });
+    expect(await runAppProvision({ slug: 'fixture-studio', displayName: 'Fixture Studio' })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect(registryAppsStore.size).toBe(0);
+  });
   it('#2799 registers approved recipes and issues through the vault before returning a claim', async () => {
     const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' as const }];
     const approved = { providesScopes: [], dependsOn: [], emittableEvents: [], secrets };

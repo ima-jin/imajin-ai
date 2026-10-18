@@ -189,7 +189,7 @@ vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
 }));
 
-import { resolveAppDirectoryForIdentity, resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, resolveLauncherApps, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
+import { resolveProfileWidgetApps, resolveAppDirectoryForIdentity, resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, resolveLauncherApps, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
 
 // requiredScope is null (#2425 send-back): 'creator' is services.ts's
 // display-visibility tier, not one of the four identity scopes, so the
@@ -386,6 +386,16 @@ describe('resolveNavAppsForIdentity — group/business scope (#2425)', () => {
 });
 
 describe('filterByPlacement (#2425)', () => {
+  it('discovers registry-only widget declarations without placements but never installs them', async () => {
+    const widget = { path: '/profile/studio', label: 'Studio' };
+    const fixture = { ...LEARN_ROW, slug: 'fixture-studio', name: 'Fixture Studio', tier: 'third_party',
+      entryUrl: 'https://studio.example.test', placements: [], profileWidget: widget };
+    mocks.state.registryRows = [fixture, { ...fixture, slug: 'revoked', status: 'revoked' },
+      { ...fixture, slug: 'invalid', profileWidget: { path: '//evil.test', label: 'Evil' } }];
+    expect(await resolveProfileWidgetApps()).toEqual([expect.objectContaining({ slug: 'fixture-studio', profileWidget: widget })]);
+    expect(await resolveLauncherApps()).toEqual([]);
+    expect(await resolveNavAppsForIdentity('unconfigured')).toEqual([]);
+  });
   it('narrows a resolved list down to apps declaring the given placement', () => {
     const apps: NavApp[] = [
       { ...COFFEE_ROW, placements: ['launcher', 'home', 'auth-submenu'] } as NavApp,
