@@ -6,7 +6,7 @@ import { createLogger } from '@imajin/logger';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { eraseInactiveGrantKeyMaterial } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
-import { isInternalSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isInternalSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -52,6 +52,9 @@ export async function POST(request: NextRequest) {
   }
 
   const trimmedField = parsedField.value.field;
+  if (isGroupKeyField(trimmedField)) {
+    return NextResponse.json({ error: 'Group keys require countersigned group custody revocation' }, { status: 409 });
+  }
 
   // #2452 — fail-closed, server-side: revoking the node's grant on an
   // internal-secret:* field would strand the kernel from its own secret.
