@@ -69,6 +69,21 @@ describe('executeAppsProvisionApproval — kind/detail validation', () => {
     expect(result).toEqual({ ok: false, error: 'visibility must be one of: public, unlisted, private, internal' });
     expect(runAppProvisionMock).not.toHaveBeenCalled();
   });
+  it.each([null, '', ' gbscontracting/website', 'https://github.com/gbscontracting/website', 42])(
+    'rejects malformed signed sourceRepo %j without normalizing it', async (sourceRepo) => {
+      const result = await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', sourceRepo } }));
+      expect(result.ok).toBe(false);
+      expect(runAppProvisionMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a sourceRepo on a signed reissue card', async () => {
+    const result = await executeAppsProvisionApproval(card({
+      detail: { slug: 'gbs', displayName: 'GBS', sourceRepo: 'gbscontracting/website', reissueClaim: true },
+    }));
+    expect(result).toEqual({ ok: false, error: 'Reissuing a claim cannot change sourceRepo' });
+    expect(runAppProvisionMock).not.toHaveBeenCalled();
+  });
   it('rejects an unrecognized kind', async () => {
     const result = await executeAppsProvisionApproval(card({ kind: 'apps:something-else' }));
     expect(result).toEqual({ ok: false, error: "Unrecognized apps proposal kind 'apps:something-else'" });
@@ -87,6 +102,15 @@ describe('executeAppsProvisionApproval — execution', () => {
     runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'repo', error: 'test' });
     await executeAppsProvisionApproval(card({ detail: { slug: 'gbs', displayName: 'GBS', visibility } }));
     expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({ visibility, authorizedBy: AUTHORIZED_BY }));
+  });
+  it('forwards the exact validated sourceRepo from the countersigned card', async () => {
+    runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'manifest', error: 'x' });
+    await executeAppsProvisionApproval(card({
+      detail: { slug: 'gbs', displayName: 'GBS', sourceRepo: 'GBScontracting/Website' },
+    }));
+    expect(runAppProvisionMock).toHaveBeenCalledWith(expect.objectContaining({
+      sourceRepo: 'GBScontracting/Website', authorizedBy: AUTHORIZED_BY,
+    }));
   });
   it('passes only the countersigned site-owner and host choices to provisioning', async () => {
     runAppProvisionMock.mockResolvedValue({ status: 'failed', failedStep: 'domain', error: 'missing org grant' });

@@ -32,6 +32,15 @@ describe('parseAttestationTypes', () => {
 });
 
 describe('validateProvisionForm', () => {
+  it.each(['https://github.com/gbscontracting/website', 'owner/repo/extra', ' owner/repo', 'owner/..'])(
+    'refuses malformed source repository %j', (sourceRepo) => {
+      expect(validateProvisionForm(values({ sourceRepo })).sourceRepo).toBeDefined();
+    },
+  );
+
+  it.each(['', 'gbscontracting/website'])('accepts optional source repository %j', (sourceRepo) => {
+    expect(validateProvisionForm(values({ sourceRepo })).sourceRepo).toBeUndefined();
+  });
   it('accepts a minimal valid form', () => {
     expect(hasProvisionErrors(validateProvisionForm(values()))).toBe(false);
   });
@@ -75,6 +84,10 @@ describe('validateProvisionForm', () => {
 });
 
 describe('buildProvisionPayload', () => {
+  it('preserves the exact validated repository value and omits an empty field', () => {
+    expect(buildProvisionPayload(values({ sourceRepo: 'GBScontracting/Website' })).sourceRepo).toBe('GBScontracting/Website');
+    expect(buildProvisionPayload(values({ sourceRepo: '' }))).not.toHaveProperty('sourceRepo');
+  });
   it('trims fields, defaults the template and parses attestation types', () => {
     expect(buildProvisionPayload(values({ slug: ' coffee ', displayName: ' Coffee ', template: '  ', attestationTypes: 'coffee/order' }))).toEqual({
       slug: 'coffee',

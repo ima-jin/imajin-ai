@@ -139,6 +139,14 @@ describe('ProvisionAppPanel visibility', () => {
 });
 
 describe('ProvisionAppPanel validation', () => {
+  it('refuses a repository URL rather than owner/name', async () => {
+    const { spy } = installFetch();
+    await renderVisible();
+    fill('Source repository', 'https://github.com/gbscontracting/website');
+    await proposeCoffee();
+    expect(screen.getByRole('alert').textContent).toMatch(/Source repository must be an owner\/name/);
+    expect(postCalls(spy)).toHaveLength(0);
+  });
   it('refuses a bad slug before anything is proposed', async () => {
     const { spy } = installFetch();
     await renderVisible();
@@ -176,6 +184,14 @@ describe('ProvisionAppPanel validation', () => {
 });
 
 describe('ProvisionAppPanel submit', () => {
+  it('includes an entered existing repository in the proposal request', async () => {
+    const { spy } = installFetch();
+    await renderVisible();
+    fill('Source repository', 'gbscontracting/website');
+    await proposeCoffee();
+    const init = postCalls(spy)[0][1] as RequestInit;
+    expect(JSON.parse(init.body as string).sourceRepo).toBe('gbscontracting/website');
+  });
   it('posts the payload to the existing route and shows the proposalId with a link to its card', async () => {
     const { spy } = installFetch();
     await renderVisible();

@@ -1252,6 +1252,20 @@ describe('per-source renderer registry — apps', () => {
     expect(await screen.findByText(summary)).toBeDefined();
     expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
   });
+  it('shows the exact existing source repository instead of a misleading template', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      detail: {
+        slug: 'gbs', displayName: 'GBS', sourceRepo: 'GBScontracting/Website',
+        template: 'ima-jin/imajin-app-template',
+      },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('GBScontracting/Website')).toBeDefined();
+    expect(screen.getByText('Source repository')).toBeDefined();
+    expect(screen.getByText(/No repository is created/)).toBeDefined();
+    expect(screen.queryByText('Template')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+  });
   it.each([true, false])('renders featured=%s as directory curation, never provisioning', async (featured) => {
     installFetch([{ isOperator: true, approvals: [appsApproval({
       kind: 'apps:featured',
