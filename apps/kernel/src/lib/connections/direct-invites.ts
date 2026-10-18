@@ -31,6 +31,14 @@ export async function directInviteResponse(operation: () => Promise<NextResponse
   }
 }
 
+/** Ordered identity locks serialize both directions of a pair, including reconnect. */
+async function lockPair(tx: Transaction, fromDid: string, toDid: string, requireAvailable = true) {
+  const pair = [fromDid, toDid].sort((a, b) => a.localeCompare(b));
+  await lockIdentity(tx, pair[0], requireAvailable);
+  await lockIdentity(tx, pair[1], requireAvailable);
+  return pair;
+}
+
 async function resolveActor(request: Request): Promise<Actor> {
   const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
   if (!auth.ok) throw new DirectInviteError(auth.error, auth.status);
@@ -45,16 +53,11 @@ async function resolveActor(request: Request): Promise<Actor> {
   };
 }
 
-/** Ordered identity locks serialize both directions of a pair, including reconnect. */
-async function lockPair(tx: Transaction, fromDid: string, toDid: string, requireAvailable = true) {
-  const pair = [fromDid, toDid].sort((a, b) => a.localeCompare(b));
-  for (const did of pair) {
-    const [identity] = await tx.select().from(identities).where(eq(identities.id, did)).for('update');
-    if (requireAvailable && (!identity || identity.tier === 'soft' || identity.suspendedAt)) {
-      throw new DirectInviteError('Identity is unavailable', 404);
-    }
+async function lockIdentity(tx: Transaction, did: string, requireAvailable: boolean) {
+  const [identity] = await tx.select().from(identities).where(eq(identities.id, did)).for('update');
+  if (requireAvailable && (!identity || identity.tier === 'soft' || identity.suspendedAt)) {
+    throw new DirectInviteError('Identity is unavailable', 404);
   }
-  return pair;
 }
 
 function pairWhere(didA: string, didB: string) {
@@ -191,7 +194,7 @@ export async function transitionDirectInvite(request: Request, original: Invite,
   const result = await db.transaction(async (tx) => {
     const [didA, didB] = await lockPair(tx, original.fromDid, original.toDid!, action === 'accept');
     const [invite] = await tx.select().from(invites).where(eq(invites.code, original.code)).for('update');
-    if (!invite || invite.delivery !== 'direct') throw new DirectInviteError('Invite not found', 404);
+    if (invite?.delivery !== 'direct') throw new DirectInviteError('Invite not found', 404);
     const authorizedDid = action === 'cancel' ? invite.fromDid : invite.toDid;
     if (authorizedDid !== actor.did) throw new DirectInviteError('Not authorized', 403);
     if (invite.status !== 'pending' || invite.usedCount >= invite.maxUses) {

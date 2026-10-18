@@ -49,7 +49,7 @@ async function fetchConnections(url: string): Promise<Connection[]> {
 }
 
 function endpointOnOrigin(connectionsUrl: string, path: string): string {
-  if (connectionsUrl.startsWith('//')) return `//${new URL(`https:${connectionsUrl}`).host}${path}`;
+  if (connectionsUrl.startsWith('//')) return `//${new URL('https:' + connectionsUrl).host}${path}`;
   if (/^https?:\/\//.test(connectionsUrl)) return new URL(path, connectionsUrl).toString();
   return path;
 }
@@ -140,7 +140,7 @@ function IdentityLookup({
           {identity.handle && <div className="text-xs text-gray-400">@{identity.handle}</div>}
           <div className="text-xs text-gray-400 break-all">{identity.did}</div>
           {pendingDids.has(identity.did) ? (
-            <p role="status" className="text-sm text-orange-400">Connection request pending — awaiting acceptance.</p>
+            <output className="text-sm text-orange-400">Connection request pending — awaiting acceptance.</output>
           ) : (
             <button type="button"
               onClick={() => sendRequest(identity.did)}

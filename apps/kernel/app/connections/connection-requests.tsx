@@ -150,9 +150,9 @@ export default function ConnectionRequests({ onConnected }: Readonly<{ onConnect
           onChange={(event) => setTarget(event.target.value)}
           placeholder="@handle or did:…"
           disabled={busy}
-          className="min-w-0 flex-1 bg-gray-900 border border-white/20 px-3 py-2 text-sm text-white"
+          className="min-w-0 w-full sm:w-auto sm:flex-1 bg-gray-900 border border-white/20 px-3 py-2 text-sm text-white"
         />
-        <button type="submit" disabled={busy || !target.trim()} className={BUTTON_STYLE}>Send connection request</button>
+        <button type="submit" disabled={busy || !target.trim()} className={`${BUTTON_STYLE} w-full sm:w-auto`}>Send connection request</button>
       </form>
       {status && <p role={status.error ? 'alert' : 'status'} className={status.error ? 'text-sm text-red-400' : 'text-sm text-green-400'}>{status.message}</p>}
       {(sentError || receivedError) && <p role="alert" className="text-sm text-red-400">Could not load connection requests. Refresh to try again.</p>}
