@@ -12,6 +12,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   mockRequireAuth,
+  mockCreatePresenceTools,
+  mockRegistryUrl,
   mockResolveBrain,
   mockStreamText,
   mockCalculateCost,
@@ -64,6 +66,13 @@ afterEach(() => {
 // ─── usage.incurred emission (#1956) ──────────────────────────────────────────
 
 describe('presence stream — usage.incurred emission (#1956)', () => {
+  it('omits unregistered app tool endpoints rather than inventing env destinations', async () => {
+    mockRegistryUrl.mockResolvedValue(null);
+    await POST(makeReq(), params);
+    expect(mockCreatePresenceTools).toHaveBeenCalledWith(expect.objectContaining({
+      eventsUrl: '', learnUrl: '',
+    }));
+  });
   it('emits exactly one usage.incurred row on completion, with the final token counts', async () => {
     const res = await POST(makeReq(), params);
     expect(res.status).toBe(200);

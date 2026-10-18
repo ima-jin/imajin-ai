@@ -6,14 +6,16 @@ import { getKernelWebhookSigner, registerKernelWebhookSigner, webhookReactor } f
 import type { BusEvent } from '../src/types';
 
 const log = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn() }));
+const fakeSql = vi.hoisted(() => vi.fn(async () => [] as Array<Record<string, unknown>>));
 vi.mock('@imajin/logger', () => ({ createLogger: () => log }));
-vi.mock('@imajin/db', () => ({ getClient: () => async () => [] }));
+vi.mock('@imajin/db', () => ({ getClient: () => fakeSql }));
 const fetchMock = vi.fn();
-const audience = 'did:imajin:events';
-const url = 'https://events.test/events/api/webhook/settlement?tenant=%2F&v=2';
+const audience = 'did:imajin:third-party';
+const url = 'https://third-party.test/custom/api/webhook/settlement?tenant=%2F&v=2';
+const recipient = { appDid: audience };
 const event: BusEvent = {
   id: 'evt_test', type: 'settlement.completed', issuer: 'did:imajin:buyer',
-  subject: 'did:imajin:seller', scope: 'events', timestamp: new Date().toISOString(),
+  subject: 'did:imajin:seller', scope: 'third-party', timestamp: new Date().toISOString(),
   correlationId: 'correlation-test', payload: { orderId: 'order_test', message: 'héllo' },
 };
 
@@ -21,6 +23,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   registerKernelWebhookSigner(null);
   vi.stubGlobal('fetch', fetchMock);
+  fakeSql.mockResolvedValue([]);
   fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
 });
 afterEach(() => {
@@ -46,6 +49,17 @@ describe('signed bus webhook reactor', () => {
     expect(signer).toHaveBeenCalledWith(url, expect.any(String), { appDid: audience });
   });
 
+  it.each([undefined, {}])('rejects a settlement webhook without a recipient (%j), including legacy DB configs', async (missingRecipient) => {
+    const signer = vi.fn(() => ({}));
+    registerKernelWebhookSigner(signer);
+    const settlement = { ...event, scope: 'events', payload: { appSlug: 'events', appDid: audience } };
+    await expect(webhookReactor(settlement, {
+      url, recipient: missingRecipient, secret: 'obvious-fake-placeholder',
+    })).rejects.toThrow('recipient is required');
+    expect(signer).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('fails closed without a registered signer even with a legacy DB config secret', async () => {
     expect(getKernelWebhookSigner()).toBeUndefined();
     await expect(webhookReactor(event, { url, secret: 'obvious-fake-placeholder' })).rejects.toThrow('not registered');
@@ -54,9 +68,9 @@ describe('signed bus webhook reactor', () => {
 
   it('never sends after a signer failure or missing signature header', async () => {
     registerKernelWebhookSigner(() => { throw new Error('signing unavailable'); });
-    await expect(webhookReactor(event, { url })).rejects.toThrow('signing unavailable');
+    await expect(webhookReactor(event, { url, recipient })).rejects.toThrow('signing unavailable');
     registerKernelWebhookSigner(() => ({}));
-    await expect(webhookReactor(event, { url })).rejects.toThrow('omitted x-kernel-kid');
+    await expect(webhookReactor(event, { url, recipient })).rejects.toThrow('omitted x-kernel-kid');
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -75,9 +89,9 @@ describe('signed bus webhook reactor', () => {
       }), pair.privateKey) };
     });
     registerKernelWebhookSigner(sign);
-    await webhookReactor(event, { url, secret: 'obvious-fake-placeholder' });
+    await webhookReactor(event, { url, recipient, secret: 'obvious-fake-placeholder' });
     const [target, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(sign).toHaveBeenCalledWith(target, init.body, { appSlug: 'events' });
+    expect(sign).toHaveBeenCalledWith(target, init.body, recipient);
     expect(JSON.parse(init.body as string)).toEqual({
       type: event.type, issuer: event.issuer, subject: event.subject, scope: event.scope,
       payload: event.payload, timestamp: event.timestamp, correlationId: event.correlationId,
@@ -101,20 +115,37 @@ describe('signed bus webhook reactor', () => {
       'x-kernel-nonce': 'fake', 'x-kernel-signature': 'fake',
     }));
     fetchMock.mockResolvedValue(new Response('unavailable', { status: 503 }));
-    await webhookReactor(event, { url });
+    await webhookReactor(event, { url, recipient });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(log.error).toHaveBeenCalledWith(expect.objectContaining({ status: 503 }), 'Webhook delivery failed');
   });
 
-  it('keeps the settlement base path and query without configuring legacy secret authority', async () => {
+  it('never adds an implicit settlement webhook even when the legacy events URL is set', async () => {
     vi.stubEnv('EVENTS_SERVICE_URL', 'https://events.test/events/?tenant=%2F&v=2');
     vi.resetModules();
     const { getChainConfig } = await import('../src/config');
     const chain = await getChainConfig('settlement.completed', 'events');
-    const webhook = chain.reactors.find((reactor) => reactor.type === 'webhook');
-    expect(webhook?.config.url).toBe(url);
-    expect(webhook?.config.recipient).toEqual({ appSlug: 'events' });
-    expect(webhook?.config).not.toHaveProperty('secret');
+    expect(chain.source).toBe('defaults');
+    expect(chain.reactors).toEqual([{ type: 'emit', config: {}, enabled: true }]);
+  });
+
+  it.each([{ appDid: audience }, { appSlug: 'third-party' }])('delivers settlement using an explicit third-party chain recipient %j', async (configuredRecipient) => {
+    const config = { url, recipient: configuredRecipient };
+    const reactors = [{ type: 'webhook', config, enabled: true }];
+    fakeSql.mockResolvedValue([{ reactors, enabled: true }]);
+    vi.resetModules();
+    const { getChainConfig } = await import('../src/config');
+    const chain = await getChainConfig(event.type, event.scope);
+    const signer = vi.fn(() => ({
+      'x-kernel-audience': audience, 'x-kernel-kid': 'fake', 'x-kernel-timestamp': '1',
+      'x-kernel-nonce': 'fake', 'x-kernel-signature': 'fake',
+    }));
+    registerKernelWebhookSigner(signer);
+    expect(chain.source).toBe('db');
+    expect(chain.reactors).toEqual(reactors);
+    await webhookReactor(event, chain.reactors[0].config);
+    expect(signer).toHaveBeenCalledWith(url, expect.any(String), configuredRecipient);
+    expect(fetchMock).toHaveBeenCalledWith(url, expect.objectContaining({ method: 'POST', redirect: 'error' }));
   });
 
   it('shares the registered signer across separately loaded module copies', async () => {

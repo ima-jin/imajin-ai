@@ -1,23 +1,45 @@
 // @vitest-environment jsdom
 import { webcrypto } from 'node:crypto';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RunsPanel } from '@/app/jin/runs-panel';
-import { installRunsPreview } from '../transport';
+import { dispatchSessionCommand, prepareSignedSessionCommand, type SessionCommandClient } from '@/app/jin/session-command-client';
+import { createRunsPreviewTransport } from '../transport';
 
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.useRealTimers(); });
+beforeEach(() => {
+  vi.useRealTimers();
+  localStorage.clear();
+  sessionStorage.clear();
+  vi.stubEnv('NODE_ENV', 'development');
+  vi.stubGlobal('crypto', webcrypto);
+});
+afterEach(() => {
+  cleanup();
+  vi.clearAllTimers();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  localStorage.clear();
+  sessionStorage.clear();
+});
 
 describe('real Runs components on exact-contract fixture transport', () => {
   it('signs send/spawn and inline native approve/deny through the shared endpoint, then displays attested results', async () => {
-    vi.stubEnv('NODE_ENV', 'development');
-    vi.stubGlobal('crypto', webcrypto);
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+    // Only polling is virtual: Ed25519 signing and the fixture's delayed
+    // outcomes must finish before we advance the components' refresh clocks.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     const storage = vi.spyOn(Storage.prototype, 'setItem');
-    const fixture = await installRunsPreview();
-    const transport = vi.fn(globalThis.fetch);
+    const fixture = await createRunsPreviewTransport();
+    const client: SessionCommandClient = {
+      prepare: (loopId, type, payload) =>
+        prepareSignedSessionCommand(loopId, type, payload, fixture.keypair),
+      dispatch: dispatchSessionCommand,
+    };
+    const transport = vi.fn(fixture.fetcher);
     vi.stubGlobal('fetch', transport);
-    const view = render(<RunsPanel client={fixture.client} />);
+    const view = render(<RunsPanel client={client} />);
     try {
       const cards = await screen.findAllByTestId('run-card');
       const session = cards.find((card) => card.textContent?.includes('openclaw.session'))!;
@@ -44,10 +66,13 @@ describe('real Runs components on exact-contract fixture transport', () => {
       fireEvent.change(within(session).getByLabelText('Model'), { target: { value: 'fixture model' } });
       fireEvent.click(within(session).getByRole('button', { name: 'Sign & spawn' }));
       await waitFor(() => expect(transport.mock.calls.filter(([url, options]) => String(url).endsWith('/commands') && JSON.parse(String(options?.body)).action === 'dispatch')).toHaveLength(2));
+      await waitFor(() => expect(within(session).queryByText('Preparing your signed wish…')).toBeNull());
+      // Delivery does not await the fixture's asynchronously signed outcome.
+      await vi.waitFor(() => expect(fixture.proofs).toHaveLength(4));
       await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
       await waitFor(() => expect(screen.getAllByTestId('run-card')).toHaveLength(3));
-      expect(screen.getByText('Signed outcome: completed')).toBeDefined();
-      expect(within(session).getAllByText('Approval resolved — agent attested')).toHaveLength(2);
+      expect(await screen.findByText('Signed outcome: completed')).toBeDefined();
+      await waitFor(() => expect(within(session).getAllByText('Approval resolved — agent attested')).toHaveLength(2));
       expect((within(session).getByLabelText('Message') as HTMLTextAreaElement).value).toBe('continue with fixture');
       expect(within(session).getByTestId('stored-output')).toBeDefined();
       expect(storage).not.toHaveBeenCalled();

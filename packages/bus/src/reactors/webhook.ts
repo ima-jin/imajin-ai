@@ -42,11 +42,10 @@ export const webhookReactor: ReactorHandler = async (event, config) => {
     correlationId: event.correlationId,
   });
   const recipient = config.recipient as KernelWebhookRecipient | undefined;
-  const trustedRecipient = recipient ?? (event.type === 'settlement.completed' ? { appSlug: 'events' } : undefined);
-  if (!trustedRecipient || (!trustedRecipient.appDid && !trustedRecipient.appSlug)) {
+  if (!recipient || (!recipient.appDid && !recipient.appSlug)) {
     throw new Error('Kernel webhook recipient is required');
   }
-  const signatures = await signer(url, body, trustedRecipient);
+  const signatures = await signer(url, body, recipient);
   for (const header of ['x-kernel-kid', 'x-kernel-timestamp', 'x-kernel-nonce', 'x-kernel-signature', 'x-kernel-audience']) {
     if (!signatures[header]) throw new Error(`Kernel webhook signer omitted ${header}`);
   }

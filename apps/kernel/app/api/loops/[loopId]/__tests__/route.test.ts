@@ -32,12 +32,21 @@ beforeEach(() => {
 });
 
 describe('GET /api/loops/{loopId}', () => {
+  it('opts into exited audit steps only on explicit includeExited=true, without widening principal scope', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OPERATOR_DID } });
+    const horizon = { depth: 0, targetDepth: 12, steps: [{ stepId: 'done', state: 'exited', zone: 'done' }] };
+    mockGetLoopWithHistory.mockResolvedValueOnce({ loop: {}, events: [], horizon });
+    const request = new Request('https://test.imajin.ai/api/loops/loop_abc123?includeExited=true');
+    const response = await GET(request as Parameters<typeof GET>[0], { params: Promise.resolve({ loopId: 'loop_abc123' }) });
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_abc123', OPERATOR_DID, true);
+    expect((await response.json()).horizon).toEqual(horizon);
+  });
   it('uses the delegated principal for typed output reads and disables caching', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: 'did:imajin:agent', actingFor: OPERATOR_DID } });
     const history = { loop: { loopId: 'loop_abc123' }, events: [{ payload: { output: { kind: 'text', text: 'hello' } } }] };
     mockGetLoopWithHistory.mockResolvedValueOnce(history);
     const res = await GET(makeReq() as Parameters<typeof GET>[0], { params: Promise.resolve({ loopId: 'loop_abc123' }) });
-    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_abc123', OPERATOR_DID);
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_abc123', OPERATOR_DID, false);
     expect(res.headers.get('cache-control')).toBe('private, no-store');
     expect(await res.json()).toEqual(history);
   });
@@ -65,7 +74,7 @@ describe('GET /api/loops/{loopId}', () => {
 
     await GET(makeReq() as Parameters<typeof GET>[0], { params: Promise.resolve({ loopId: 'loop_abc123' }) });
 
-    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_abc123', OPERATOR_DID);
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('loop_abc123', OPERATOR_DID, false);
   });
 
   it('returns 404 when the loop does not exist', async () => {

@@ -1,4 +1,6 @@
 import { and, eq } from 'drizzle-orm';
+import { nodeUrl } from '@/src/lib/http/node-url';
+import { validateEntryUrl } from '@/src/lib/apps/entry-url';
 
 export interface KernelWebhookRecipient {
   appDid?: string;
@@ -36,12 +38,6 @@ function registeredOrigin(value: string): string | null {
   }
 }
 
-const KERNEL_SERVICE_URLS = new Map([
-  ['coffee', 'COFFEE_SERVICE_URL'],
-  ['events', 'EVENTS_SERVICE_URL'],
-  ['learn', 'LEARN_SERVICE_URL'],
-  ['market', 'MARKET_SERVICE_URL'],
-]);
 
 /** Resolve only trusted configuration, never an event payload or inbound header. */
 export async function resolveKernelWebhookAudience(
@@ -61,11 +57,10 @@ export async function resolveKernelWebhookAudience(
     ...(app.allowedRedirectHosts ?? []), ...(app.redirectUris ?? []),
     app.callbackUrl, app.homepageUrl, app.entryUrl,
   ].filter((value): value is string => typeof value === 'string' && value.length > 0);
-  // Known kernel-routed services may be provisioned as third_party and reached internally.
-  // Only these fixed operator-owned settings grant an additional origin, never arbitrary slugs.
-  const serviceSetting = KERNEL_SERVICE_URLS.get(app.slug ?? '');
-  const serviceUrl = serviceSetting ? process.env[serviceSetting] : undefined;
-  if (serviceUrl) registered.push(serviceUrl);
+  // Root-relative entries belong to this node, not an inferred app subdomain.
+  if (app.entryUrl && validateEntryUrl(app.entryUrl).ok) {
+    registered.push(new URL(app.entryUrl, nodeUrl()).toString());
+  }
   const destination = origin(url);
   if (!registered.some((value) => registeredOrigin(value) === destination)) {
     throw new Error('Kernel webhook destination does not match its registered recipient');

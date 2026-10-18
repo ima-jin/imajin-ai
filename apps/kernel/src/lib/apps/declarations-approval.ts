@@ -11,10 +11,12 @@
  * Pure (no DB, no network): shared by the proposal route, the approvals bridge,
  * the provisioning pipeline, and the card.
  */
+import { validateProfileWidget, type ProfileWidgetDeclaration } from './profile-widget';
 import type { AppDependency } from '@imajin/auth';
 import { validateSecrets, type AppSecretDeclaration } from './secret-declarations';
 
 export interface ManifestDeclarations {
+  profileWidget?: ProfileWidgetDeclaration | null;
   /** Absent on older signed proposals means no approved secrets. */
   secrets?: AppSecretDeclaration[];
   providesScopes: string[];
@@ -49,9 +51,12 @@ export function parseManifestDeclarations(value: unknown): ManifestDeclarations 
   if (!Array.isArray(v.dependsOn) || !v.dependsOn.every(isDependency)) return null;
   // Absent on a proposal staged before #2638: that approved no events, so read it as the empty list.
   if (v.emittableEvents !== undefined && !isStringArray(v.emittableEvents)) return null;
+  const widget = validateProfileWidget(v.profileWidget);
+  if ('error' in widget) return null;
   const secrets = validateSecrets(v.secrets);
   if ('error' in secrets) return null;
   return {
+    ...(widget.ok ? { profileWidget: widget.ok } : {}),
     ...(secrets.ok.length > 0 ? { secrets: secrets.ok } : {}),
     providesScopes: [...v.providesScopes],
     dependsOn: v.dependsOn.map((d) => ({ aud: d.aud, scopes: [...d.scopes] })),
@@ -62,6 +67,7 @@ export function parseManifestDeclarations(value: unknown): ManifestDeclarations 
 /** Order-insensitive canonical form, so two lists compare equal iff they grant the same things. */
 function canonical(declarations: ManifestDeclarations): string {
   return JSON.stringify({
+    profileWidget: declarations.profileWidget ?? null,
     secrets: [...(declarations.secrets ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
     providesScopes: [...new Set(declarations.providesScopes)].sort((a, b) => a.localeCompare(b)),
     dependsOn: declarations.dependsOn

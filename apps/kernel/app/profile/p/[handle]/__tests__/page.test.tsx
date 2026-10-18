@@ -11,11 +11,12 @@ const mocks = vi.hoisted(() => ({
   getLinks: vi.fn(),
   getIdentityInfo: vi.fn(),
   resolveRegistryAppsBySlug: vi.fn(),
+  resolveProfileWidgetApps: vi.fn(),
 }));
 
 vi.mock('next/navigation', () => ({ notFound: vi.fn() }));
 vi.mock('@imajin/config', () => ({ buildPublicUrlAbsolute: () => 'https://node.test/profile' }));
-vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveRegistryAppsBySlug: mocks.resolveRegistryAppsBySlug }));
+vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveRegistryAppsBySlug: mocks.resolveRegistryAppsBySlug, resolveProfileWidgetApps: mocks.resolveProfileWidgetApps }));
 vi.mock('../../../lib/profile-data', () => ({
   getViewerDid: vi.fn().mockResolvedValue(null),
   getProfile: mocks.getProfile,
@@ -50,6 +51,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.getLinks.mockResolvedValue(LINK_ITEMS);
   mocks.resolveRegistryAppsBySlug.mockResolvedValue([]);
+  mocks.resolveProfileWidgetApps.mockResolvedValue([]);
   // The viewer is anonymous, so use a public scope (business) to get past the connection gate.
   mocks.getIdentityInfo.mockResolvedValue({ scope: 'business', subtype: null, tier: 'established', chainVerified: true });
 });
@@ -87,20 +89,21 @@ describe('ProfilePage links check (#2434)', () => {
     expect(mocks.getLinks).not.toHaveBeenCalled();
   });
 
-  it('asks the registry for the resolved enabled apps plus the events/market widget apps', async () => {
+  it('asks the registry for owner-enabled buttons independently of declared widgets', async () => {
     await renderProps({ coffee: 'ryan', enabledApps: ['learn'] });
 
     const slugs = mocks.resolveRegistryAppsBySlug.mock.calls[0][0] as string[];
-    expect([...slugs].sort()).toEqual(['events', 'learn', 'market']);
+    expect([...slugs].sort()).toEqual(['learn']);
   });
 
   it('passes only owner-enabled registry apps as serviceApps, while registryApps keeps the widget apps', async () => {
     const nav = (slug: string) => ({ slug, name: slug, icon: null, entryUrl: null, placements: ['launcher'], requiredScope: null, tier: 'first_party' });
     mocks.resolveRegistryAppsBySlug.mockResolvedValue([nav('coffee'), nav('events')]);
+    mocks.resolveProfileWidgetApps.mockResolvedValue([nav('fixture-studio')]);
 
     const props = await renderProps({ coffee: 'ryan' });
 
     expect((props.serviceApps as Array<{ slug: string }>).map((a) => a.slug)).toEqual(['coffee']);
-    expect((props.registryApps as Array<{ slug: string }>).map((a) => a.slug)).toEqual(['coffee', 'events']);
+    expect((props.registryApps as Array<{ slug: string }>).map((a) => a.slug)).toEqual(['fixture-studio']);
   });
 });

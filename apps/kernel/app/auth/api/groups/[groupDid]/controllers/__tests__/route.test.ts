@@ -30,7 +30,13 @@ const { mockSelect, mockInsert, mockUpdate, insertedValues, updatedValues, mockR
   });
 
 vi.mock('@/src/db', () => ({
-  db: { select: mockSelect, insert: mockInsert, update: mockUpdate },
+  db: {
+    select: mockSelect, insert: mockInsert, update: mockUpdate,
+    transaction: (callback: (tx: unknown) => Promise<unknown>) => callback({
+      select: mockSelect, insert: mockInsert, update: mockUpdate,
+    }),
+  },
+  identities: { id: 'identity_id' },
   identityMembers: {
     identityDid: 'identity_did',
     memberDid: 'member_did',
@@ -84,7 +90,7 @@ async function add(body: Record<string, unknown>) {
 
 /** The next queued query result, as a `.limit()`-terminated stage. */
 function limited() {
-  return { limit: () => Promise.resolve(selectResults.shift() ?? []) };
+  return { limit: () => Promise.resolve(selectResults.shift() ?? []), for: () => Promise.resolve([]) };
 }
 
 beforeEach(() => {

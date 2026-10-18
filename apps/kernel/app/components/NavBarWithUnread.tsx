@@ -10,7 +10,6 @@ const DOMAIN = process.env.NEXT_PUBLIC_DOMAIN || 'imajin.ai';
 const serviceUrls: ServiceUrls = {
   ...(process.env.NEXT_PUBLIC_WWW_URL && { www: process.env.NEXT_PUBLIC_WWW_URL }),
   ...(process.env.NEXT_PUBLIC_AUTH_URL && { auth: process.env.NEXT_PUBLIC_AUTH_URL }),
-  ...(process.env.NEXT_PUBLIC_EVENTS_URL && { events: process.env.NEXT_PUBLIC_EVENTS_URL }),
   ...(process.env.NEXT_PUBLIC_PROFILE_URL && { profile: process.env.NEXT_PUBLIC_PROFILE_URL }),
   ...(process.env.NEXT_PUBLIC_PAY_URL && { pay: process.env.NEXT_PUBLIC_PAY_URL }),
   ...(process.env.NEXT_PUBLIC_CONNECTIONS_URL && { connections: process.env.NEXT_PUBLIC_CONNECTIONS_URL }),

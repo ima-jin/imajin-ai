@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Imported in-process (not spawned as a `tsx` subprocess like
 // check-env.test.mjs): vitest's own `@imajin/auth` resolve.alias
@@ -10,18 +10,27 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 const SCRIPT = '../bootstrap-corpus-identity.ts';
 
 describe('bootstrap-corpus-identity.ts', () => {
+  let logSpy;
+
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useRealTimers();
+    logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+  });
   afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.useRealTimers();
     vi.resetModules();
   });
 
   it('dynamically imports generateKeypair/createDID from @imajin/auth and prints a corpus DID + private key', async () => {
-    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     const mod = await import(SCRIPT);
     await mod.__mainPromise;
 
     const output = logSpy.mock.calls.map((args) => args.join(' ')).join('\n');
-    logSpy.mockRestore();
 
     expect(output).toContain('Corpus Service Identity Bootstrap (#1751)');
 
@@ -38,18 +47,18 @@ describe('bootstrap-corpus-identity.ts', () => {
   it('mints a fresh, non-idempotent DID/keypair on every run', async () => {
     const extractDid = (output) => /Generated corpus DID: (did:imajin:[0-9a-f]{16})/.exec(output)[1];
 
-    const runOnce = async () => {
-      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-      vi.resetModules();
-      const mod = await import(SCRIPT);
+    const runOnce = async (entrypoint) => {
+      logSpy.mockClear();
+      const mod = await import(entrypoint);
       await mod.__mainPromise;
       const output = logSpy.mock.calls.map((args) => args.join(' ')).join('\n');
-      logSpy.mockRestore();
       return extractDid(output);
     };
 
-    const first = await runOnce();
-    const second = await runOnce();
+    // Reload the executable, not the entire auth dependency graph. Both
+    // invocations still execute main() against the real crypto library.
+    const first = await runOnce(`${SCRIPT}?run=first`);
+    const second = await runOnce(`${SCRIPT}?run=second`);
     expect(first).not.toBe(second);
   });
 });
