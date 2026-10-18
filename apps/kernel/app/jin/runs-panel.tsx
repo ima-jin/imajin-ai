@@ -8,6 +8,7 @@ import { RunsPanelDetail } from './runs-panel-detail';
 import { ApprovalControllerNotices, useRunApprovals } from './operator-approvals-panel';
 import type { SessionCommandClient } from './session-command-client';
 import { RunApprovalRows } from './runs-approval-rows';
+import { RunsHorizon } from './runs-horizon';
 
 async function loadSurfaceWarnings(
   signal: AbortSignal, onDenied: () => void, onData: (events: LoopEventJson[]) => void,
@@ -99,6 +100,7 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
         <RunApprovalRows cards={approvals.approvals.filter((card) => !!card.sessionBinding && card.status !== 'pending')} controller={approvals} />
       </div>}
       {error && <p role="alert" className="mb-3 text-sm text-red-300">{error}</p>}
+      <RunsHorizon loopIds={loops.map(loop => loop.loopId).sort((a, b) => a.localeCompare(b))} onDenied={hide} onSelect={setSelected} client={client} hasMore={!!nextCursor} />
       <div className="mb-4 min-w-0 space-y-2" data-testid="blocked-on-you">
         <h3 className="text-sm font-semibold text-amber-200">Blocked on you</h3>
         <ApprovalControllerNotices controller={approvals} />
@@ -111,7 +113,7 @@ export function RunsPanel({ client }: Readonly<{ client?: SessionCommandClient }
       {threads.length === 0 && <p className="text-sm text-gray-500">No loops recorded.</p>}
       <ul className="space-y-2">
         {runTree(threads).map(({ loop, depth, orphan }) => (
-          <li key={loop.loopId} className="min-w-0 rounded-lg border border-gray-800" style={{ marginLeft: `${Math.min(depth, 3) * 8}px` }} data-testid="run-card">
+          <li key={loop.loopId} id={`run-${encodeURIComponent(loop.loopId)}`} className="min-w-0 rounded-lg border border-gray-800" style={{ marginLeft: `${Math.min(depth, 3) * 8}px` }} data-testid="run-card">
             <button
               type="button"
               aria-expanded={selected === loop.loopId}
