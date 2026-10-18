@@ -92,7 +92,7 @@ export function buildReachCard(identity: ReachIdentity, origin: string): ReachCa
     onboarding: {
       flow: 'knock',
       endpoint: `${base}/knock`,
-      flowDocument: `${origin}/.well-known/imajin-onboarding.json`,
+      flowDocument: `${base}/onboarding.json`,
       description: 'Static-header clients obtain their own recipient-bound reach bearer from this knock endpoint. No recipient login, hand-issued token or per-agent acceptance is needed. A gate admitting soft-tier clients is required. Save the bearer once, never share or log it.',
     },
     transports,

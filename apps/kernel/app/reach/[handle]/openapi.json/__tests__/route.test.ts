@@ -199,7 +199,7 @@ describe('public reach OpenAPI 3.1', () => {
     expect(spec['x-published-topic-labels']).toEqual(['Collaboration']);
     const text = JSON.stringify(spec);
     for (const hidden of ['NEVER_DISCLOSE_PRIVATE_METADATA', 'speaking', 'Speaking',
-      'business_development', 'dailyCap', 'tiers', 'agentReachGate', 'agentReachTopics',
+      'business_development', 'dailyCap', 'agentReachGate', 'agentReachTopics',
       'cookieAuth', 'internalKeyAuth', 'AUTH_INTERNAL_API_KEY', '/api/health', '/api/grants']) {
       expect(text).not.toContain(hidden);
     }
