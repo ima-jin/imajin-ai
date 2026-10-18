@@ -3,7 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { eq, desc, and, sql, isNull, count } from 'drizzle-orm';
 import { db, invites, profiles, podMembers, identities, attestations } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
-import { sendEmail, trustGraphInviteEmail } from '@imajin/email';
+import { trustGraphInviteEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { buildPublicUrl } from '@imajin/config';
@@ -136,10 +137,13 @@ async function deliverInviteEmail(params: {
   inviteUrl: string;
   note?: string;
   expiresAt: string;
+  ownerDid: string;
 }): Promise<boolean> {
   const { log, toEmail, inviterName, inviterHandle, inviteUrl, note, expiresAt } = params;
   try {
-    const result = await sendEmail({
+    const result = await sendKernelEmail({
+      purpose: 'contact',
+      ownerDid: params.ownerDid,
       to: toEmail,
       subject: `${inviterName} invited you to Imajin`,
       html: trustGraphInviteEmail({ inviterName, inviterHandle, inviteUrl, note, expiresAt }),
@@ -326,6 +330,7 @@ async function handleEmailInvite(
   const inviterHandle = profile.handle || undefined;
 
   const emailSent = await deliverInviteEmail({
+    ownerDid: session.did,
     log,
     toEmail,
     inviterName,

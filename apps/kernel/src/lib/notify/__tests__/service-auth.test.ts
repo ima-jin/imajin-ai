@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { requireNotifyAuth, notifyRegistryKey } from '../service-auth';
+import { requireNotifyAuth, authenticateNotifySender, notifyRegistryKey } from '../service-auth';
 import { SCOPE_VOCABULARY } from '@imajin/auth/scope-vocabulary';
 
 const mocks = vi.hoisted(() => ({
@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppToken: mocks.verify }));
 vi.mock('@/src/lib/vault/internal-secret', () => ({ getInternalSecret: mocks.internalKey }));
 vi.mock('@/src/db', () => ({
-  registryApps: { appDid: 'appDid', status: 'status', approvedServiceScopes: 'approved' },
+  registryApps: { appDid: 'appDid', status: 'status', approvedServiceScopes: 'approved', ownerDid: 'ownerDid' },
   db: { select: () => ({ from: () => ({ where: () => ({ limit: mocks.app }) }) }) },
 }));
 
@@ -75,6 +75,37 @@ it('resolves registry credentials itself rather than forwarding app credentials'
   expect(await notifyRegistryKey()).toBe('fake-vault-internal-key');
   expect(mocks.internalKey).toHaveBeenCalledWith('kernel.attestation-internal-api-key');
 });
+describe('trusted mail sender context', () => {
+  it('uses the authenticated app and its live registry owner, not body/recipient identity', async () => {
+    mocks.app.mockResolvedValueOnce([{ status: 'active', approved: [...scopes] }])
+      .mockResolvedValueOnce([{ ownerDid: 'did:imajin:registry-owner' }]);
+    const req = new NextRequest('https://kernel.test/notify/api/send', {
+      method: 'POST', headers: { Authorization: 'Bearer fake-app-token' },
+      body: JSON.stringify({ ownerDid: 'did:imajin:spoof', appDid: 'did:imajin:spoof', to: 'did:imajin:recipient' }),
+    });
+    expect(await authenticateNotifySender(req, 'notify:send', {})).toEqual({
+      response: null, internal: false,
+      sender: { appDid: claims.azp, ownerDid: 'did:imajin:registry-owner' },
+    });
+  });
+  it.each([[], [{}]])('fails closed if the app owner cannot be resolved: %j', async (...rows) => {
+    mocks.app.mockResolvedValueOnce([{ status: 'active', approved: [...scopes] }]).mockResolvedValueOnce(rows);
+    const result = await authenticateNotifySender(request(), 'notify:send', {});
+    expect(result.response?.status).toBe(403);
+  });
+  it('keeps internal calls unscoped to any recipient identity', async () => {
+    expect(await authenticateNotifySender(request('fake-vault-internal-key'), 'notify:send', {})).toEqual({
+      response: null, sender: {}, internal: true,
+    });
+    expect(mocks.app).not.toHaveBeenCalled();
+  });
+  it('does not look up an owner after rejected app authentication', async () => {
+    mocks.verify.mockResolvedValue(null);
+    expect((await authenticateNotifySender(request(), 'notify:send', {})).response?.status).toBe(401);
+    expect(mocks.app).not.toHaveBeenCalled();
+  });
+});
+
 it('registers notify scopes without globally enabling self-requested service minting', () => {
   for (const scope of scopes) {
     const entry = SCOPE_VOCABULARY.find((entry) => entry.scope === scope);

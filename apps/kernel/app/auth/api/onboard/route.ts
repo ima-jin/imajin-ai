@@ -9,7 +9,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db, onboardTokens, credentials, identities, invites } from '@/src/db';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
+import { mailDeliveryFailure } from '@/src/lib/kernel/mail-delivery-error';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
@@ -102,7 +103,8 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Send verification email
     const contextText = context ? ` to ${context}` : '';
-    const result = await sendEmail({
+    const result = await sendKernelEmail({
+      purpose: 'signin',
       to: normalizedEmail,
       subject: `Verify your email${contextText} — Imajin`,
       html: onboardEmail({ verifyUrl, context, name: name?.trim() }),
@@ -111,7 +113,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     if (!result.success) {
       log.error({ err: String(result.error) }, 'Failed to send onboard email');
       return NextResponse.json(
-        { error: 'Failed to send verification email' },
+        mailDeliveryFailure(result.error, 'Failed to send verification email'),
         { status: 502, headers: cors }
       );
     }

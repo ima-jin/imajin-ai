@@ -972,6 +972,11 @@ paths:
 
         Set `wantPolling: true` to receive a `pollHandle` for cross-tab handoff via
         `/api/onboard/poll`. Rate-limited to 5 req/min per IP.
+
+        A 502 with error `mail_audit_failed_after_delivery_do_not_retry`,
+        retryable=false and deliveredMayHaveOccurred=true means provider
+        acceptance preceded an audit failure. Do not retry or claim audited
+        success. The verification bearer is never returned in the response.
       requestBody:
         required: true
         content:
@@ -1000,6 +1005,17 @@ paths:
                 properties:
                   sent: { type: boolean }
                   pollHandle: { type: string, description: "Present when wantPolling=true" }
+        "502":
+          description: Email delivery or audit failure; do not retry a post-delivery audit failure
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [error]
+                properties:
+                  error: { type: string }
+                  retryable: { type: boolean, const: false }
+                  deliveredMayHaveOccurred: { type: boolean, const: true }
         "400":
           description: Invalid email
           content:

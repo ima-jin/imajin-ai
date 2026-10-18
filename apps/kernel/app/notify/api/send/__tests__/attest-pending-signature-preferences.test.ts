@@ -55,12 +55,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-vi.mock('@imajin/email', async () => {
-  // Preserve the real emailWrapper/renderBroadcastEmail/stripHtml — the real
-  // (unmocked) template under test calls these; only sendEmail is stubbed.
-  const actual = await vi.importActual<typeof import('@imajin/email')>('@imajin/email');
-  return { ...actual, sendEmail: mockSendEmail };
-});
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mockSendEmail }));
 
 vi.mock('@/src/lib/notify/ws-push', () => ({
   buildNotificationFrame: () => ({}),

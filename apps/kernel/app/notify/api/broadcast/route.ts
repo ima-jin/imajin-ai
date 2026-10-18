@@ -7,10 +7,11 @@ const log = createLogger('kernel');
 import { createHmac } from 'node:crypto';
 import { db, notifications, identities } from '@/src/db';
 import { eq } from 'drizzle-orm';
-import { sendEmail, renderBroadcastEmail } from '@imajin/email';
+import { renderBroadcastEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { fetchAudienceFromRegistry, checkRegistryPreferences } from './registry';
 import { forEachSequential } from '@/src/lib/async/sequential';
-import { requireNotifyAuth, notifyRegistryKey } from '@/src/lib/notify/service-auth';
+import { authenticateNotifySender, notifyRegistryKey } from '@/src/lib/notify/service-auth';
 
 const UNSUBSCRIBE_HMAC_SECRET = process.env.UNSUBSCRIBE_HMAC_SECRET;
 
@@ -112,8 +113,8 @@ export function OPTIONS(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
-  const authError = await requireNotifyAuth(request, 'notify:broadcast', cors);
-  if (authError) return authError;
+  const auth = await authenticateNotifySender(request, 'notify:broadcast', cors);
+  if (auth.response) return auth.response;
   const secret = await notifyRegistryKey();
 
   let body: {
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400, headers: cors });
   }
 
-  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'], eventContext, replyTo } = body;
+  const { scope, dids: explicitDids, subject, html: htmlInput, markdown, text: textInput, channels = ['email'], eventContext } = body;
 
   if (!scope || !subject || (!htmlInput && !markdown)) {
     return NextResponse.json(
@@ -186,13 +187,14 @@ export async function POST(request: NextRequest) {
           const channelsSent: string[] = [];
 
           if (channels.includes('email')) {
-            const result = await sendEmail({
+            const result = await sendKernelEmail({
+              ...auth.sender,
+              purpose: 'notifications',
               to: email,
               subject,
               html,
               text,
               ...(unsubscribeUrl ? { unsubscribeUrl } : {}),
-              ...(replyTo ? { replyTo } : {}),
             });
 
             if (result.success) {
