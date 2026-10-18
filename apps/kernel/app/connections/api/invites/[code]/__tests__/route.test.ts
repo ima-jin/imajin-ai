@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockGetSessionFromCookies, mockDbSelect, mockDbUpdate } = vi.hoisted(() => ({
-  mockGetSessionFromCookies: vi.fn(),
+const { mockResolveEffectiveDid, mockDbSelect, mockDbUpdate } = vi.hoisted(() => ({
+  mockResolveEffectiveDid: vi.fn(),
   mockDbSelect: vi.fn(),
   mockDbUpdate: vi.fn(),
 }));
 
-vi.mock('@/src/lib/kernel/session', () => ({
-  getSessionFromCookies: mockGetSessionFromCookies,
+vi.mock('@imajin/auth', () => ({
+  resolveEffectiveDid: mockResolveEffectiveDid,
 }));
 
 vi.mock('@/src/lib/kernel/cors', () => ({
@@ -76,7 +76,7 @@ function makeParams(code: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetSessionFromCookies.mockResolvedValue(null);
+  mockResolveEffectiveDid.mockResolvedValue({ ok: false, error: 'Unauthorized', status: 401 });
   mockDbUpdate.mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn(async () => undefined) }) });
 });
 
@@ -111,7 +111,7 @@ describe('GET /connections/api/invites/[code] — invite context extension (#183
 
 describe('DELETE /connections/api/invites/[code]', () => {
   it('returns 401 when there is no session', async () => {
-    // getSessionFromCookies is checked before any db lookup — no select is queued.
+    // resolveEffectiveDid is checked before any db lookup — no select is queued.
     const res = await DELETE(makeReq(), makeParams(CODE));
 
     expect(res.status).toBe(401);
@@ -120,7 +120,7 @@ describe('DELETE /connections/api/invites/[code]', () => {
   });
 
   it('returns 403 when the caller does not own the invite', async () => {
-    mockGetSessionFromCookies.mockResolvedValue({ did: 'did:imajin:someone-else' });
+    mockResolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: 'did:imajin:someone-else' });
     mockDbSelect.mockImplementationOnce(() => makeSelectChain([baseInvite()]));
 
     const res = await DELETE(makeReq(), makeParams(CODE));
@@ -130,7 +130,7 @@ describe('DELETE /connections/api/invites/[code]', () => {
   });
 
   it('revokes a pending invite for its owner', async () => {
-    mockGetSessionFromCookies.mockResolvedValue({ did: OWNER_DID });
+    mockResolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: OWNER_DID });
     mockDbSelect.mockImplementationOnce(() => makeSelectChain([baseInvite()]));
 
     const res = await DELETE(makeReq(), makeParams(CODE));
@@ -140,7 +140,7 @@ describe('DELETE /connections/api/invites/[code]', () => {
   });
 
   it('rejects revoking an invite that is not pending', async () => {
-    mockGetSessionFromCookies.mockResolvedValue({ did: OWNER_DID });
+    mockResolveEffectiveDid.mockResolvedValue({ ok: true, effectiveDid: OWNER_DID });
     mockDbSelect.mockImplementationOnce(() => makeSelectChain([baseInvite({ status: 'accepted' })]));
 
     const res = await DELETE(makeReq(), makeParams(CODE));

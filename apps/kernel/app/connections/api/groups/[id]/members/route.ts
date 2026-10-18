@@ -74,7 +74,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  const auth = await resolveMemberAuth(request);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -96,7 +96,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   if (!updated) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
-  if (session.chainVerified) {
+  if (auth.chainVerified) {
     publish('pod.role.changed', {
       issuer: auth.effectiveDid,
       subject: body.did,
@@ -112,7 +112,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  const auth = await resolveMemberAuth(request);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
@@ -134,7 +134,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ id
 
   if (!removed) return NextResponse.json({ error: 'Member not found' }, { status: 404 });
 
-  if (session.chainVerified) {
+  if (auth.chainVerified) {
     publish('pod.member.removed', {
       issuer: auth.effectiveDid,
       subject: body.did,

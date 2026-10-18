@@ -192,6 +192,27 @@ describe('POST /connections/api/invites/[code]/accept — session auth (existing
 
     expect(res.status).toBe(400);
   });
+
+  it('accepts personally even when the request carries org act-as header and cookie', async () => {
+    mockGetSessionFromCookies.mockResolvedValue(SESSION);
+    mockDbSelect.mockImplementationOnce(() => makeSelectChain([baseInvite()]));
+    queueAcceptSelects();
+
+    const res = await POST(makeReq({
+      'x-acting-as': 'did:imajin:org',
+      cookie: 'imajin_session=test; x-acting-as=did:imajin:org',
+    }), makeParams(CODE));
+
+    expect(res.status).toBe(201);
+    const memberValues = mockDbInsert.mock.results[1].value.values as ReturnType<typeof vi.fn>;
+    expect(memberValues).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ did: ACCEPTER_DID, addedBy: ACCEPTER_DID }),
+    ]));
+    const updateSet = mockDbUpdate.mock.results[0].value.set as ReturnType<typeof vi.fn>;
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({
+      consumedBy: ACCEPTER_DID, toDid: ACCEPTER_DID,
+    }));
+  });
 });
 
 describe('POST /connections/api/invites/[code]/accept — unauthenticated stub accept (#1834 Phase 1)', () => {
