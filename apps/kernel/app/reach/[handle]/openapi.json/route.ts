@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveReachRecipient } from '@/src/lib/access/reach-bearer';
 import { reachOpenApi } from '@/src/lib/kernel/reach-openapi';
+import { resolveReachDiscovery } from '@/src/lib/auth/reach-discovery';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,12 +15,16 @@ export async function GET(
 ) {
   try {
     const { handle } = await params;
-    const principal = await resolveReachRecipient(handle);
+    const card = await resolveReachDiscovery(handle);
+    if (!card) {
+      return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers: uncached });
+    }
+    const principal = await resolveReachRecipient(card.principalDid);
     if (!principal) {
       return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers: uncached });
     }
-    return NextResponse.json(reachOpenApi(handle, principal), {
-      headers: { ...cors, 'Cache-Control': 'public, max-age=60' },
+    return NextResponse.json(reachOpenApi(card.principalDid, principal), {
+      headers: uncached,
     });
   } catch {
     return NextResponse.json({ error: 'Reach specification unavailable' }, { status: 503, headers: uncached });

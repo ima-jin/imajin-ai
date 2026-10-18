@@ -8,10 +8,14 @@ import { discoverResult } from './protocol';
 import type { McpSurface } from './server';
 import type { McpTool } from './types';
 import { reachResourceUrls } from './reach-resource';
+import { buildReachCard } from '@/src/lib/auth/reach-discovery';
+import { nodeUrl } from '@/src/lib/http/node-url';
 
 type Credential = NonNullable<Awaited<ReturnType<typeof resolveReachBearer>>>;
 interface ReachPrincipal {
   id: string;
+  handle?: string | null;
+  name?: string | null;
   metadata: Record<string, unknown> | null;
 }
 
@@ -33,16 +37,21 @@ export function createReachSurface(
   outcome: { status: number },
 ): McpSurface {
   const urls = reachResourceUrls(handle);
+  const card = buildReachCard({
+    ...principal,
+    handle: principal.handle ?? null,
+    name: principal.name ?? null,
+  }, nodeUrl());
   const tools: McpTool[] = [
     {
       name: 'reach_card',
       description: 'Read this principal’s public reach card and published topics. No credential required.',
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       handler: () => [{ type: 'text', text: JSON.stringify({
-        principalDid: principal.id,
+        ...card,
         topics: publishedTopicLabels(principal.metadata),
         mcp: urls.resource,
-        authentication: { scope: 'agent:reach', knock: urls.knock },
+        authentication: { ...card.authentication, scope: 'agent:reach', knock: urls.knock },
         instructions: 'Obtain your own reach bearer from knock, send with reach_send, then poll reach_status for the principal-signed reply.',
       }) }],
     },
