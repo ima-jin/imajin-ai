@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildDidDocument } from '../did-document';
+import { buildAgentReachServices, buildDidDocument } from '../did-document';
 import type { ChainVerificationResult } from '../chain-providers';
 
 const DID = 'did:imajin:alice';
@@ -9,6 +9,26 @@ const VERIFIED: ChainVerificationResult = {
   keyCount: 1,
 };
 const CARD_URL = 'https://node.example/alice/card';
+describe('method-neutral AgentReach publishing', () => {
+  it('lets a did:web document owner publish a hint without inventing an identity mapping', () => {
+    const webDid = 'did:web:example.org:people:alice';
+    const hostedDocument = {
+      id: webDid,
+      verificationMethod: [{ id: `${webDid}#key-1`, publicKeyMultibase: 'zOwnerKey' }],
+      service: buildAgentReachServices(webDid, CARD_URL),
+    };
+    expect(hostedDocument.service).toEqual([{
+      id: `${webDid}#agent-reach`,
+      type: 'AgentReach',
+      serviceEndpoint: CARD_URL,
+    }]);
+    expect(hostedDocument.verificationMethod[0].publicKeyMultibase).toBe('zOwnerKey');
+  });
+
+  it('omits discovery for a did:web document without an eligible reach card', () => {
+    expect(buildAgentReachServices('did:web:example.org', undefined)).toEqual([]);
+  });
+});
 
 describe('buildDidDocument reach discovery', () => {
   it('keeps discovery optional for pure non-HTTP callers', () => {

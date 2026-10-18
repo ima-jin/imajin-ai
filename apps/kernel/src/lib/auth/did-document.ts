@@ -31,7 +31,11 @@ export interface AgentReachService {
   type: 'AgentReach';
   serviceEndpoint: string;
 }
-function reachServices(did: string, endpoint?: string): AgentReachService[] {
+/**
+ * Method-neutral transport hints for document publishers, including did:web owners.
+ * Does not establish domain ownership or authorize reach; callers check eligibility.
+ */
+export function buildAgentReachServices(did: string, endpoint?: string): AgentReachService[] {
   return endpoint
     ? [{ id: `${did}#agent-reach`, type: 'AgentReach', serviceEndpoint: endpoint }]
     : [];
@@ -156,7 +160,7 @@ export function buildDidDocument(
         type: 'ImajinChain',
         serviceEndpoint,
       },
-      ...reachServices(imajinDid, options.reachCardEndpoint),
+      ...buildAgentReachServices(imajinDid, options.reachCardEndpoint),
     ],
     'imajin:chainHead': chainHead,
     'imajin:keyCount': keyCount,
