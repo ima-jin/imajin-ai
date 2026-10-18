@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback, FormEvent, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { normalizeHandleInput } from '@imajin/config';
+import { normalizeHandleInput, IDENTITY_CATEGORIES } from '@imajin/config';
 import { DeviceLocationStatus } from '../../lib/device-location-status';
 
 const SCOPES = [
@@ -20,7 +20,6 @@ const SUBTYPES: Record<ScopeValue, string[]> = {
   family: ['birth', 'chosen'],
 };
 
-const CATEGORY_PRESETS = ['café', 'restaurant', 'shop', 'venue', 'studio', 'bar', 'gallery', 'gym'];
 
 // Nominatim (OpenStreetMap) — no API key, 1 req/sec rate limit
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org';
@@ -348,10 +347,11 @@ function NewGroupForm() {
                 Category
               </label>
               <div className="flex flex-wrap gap-2 mb-2">
-                {CATEGORY_PRESETS.map(preset => (
+                {IDENTITY_CATEGORIES.map(preset => (
                   <button
                     key={preset}
                     type="button"
+                    aria-pressed={category === preset}
                     onClick={() => setCategory(category === preset ? '' : preset)}
                     className={`px-3 py-1 rounded-full text-xs border transition-colors ${
                       category === preset

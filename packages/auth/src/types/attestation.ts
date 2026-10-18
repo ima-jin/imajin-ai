@@ -58,6 +58,9 @@ export const ATTESTATION_TYPES = [
   'imajin/nostr-key-binding',
   'agent.turn.usage',
   'broker.release',
+  // #2894 — node-signed proof of a grant-bound Google read, metadata only.
+  // Owner/onBehalfOf/slot/operation provenance, never provider results or PII.
+  'google.data.read',
 
   // Intro-funnel vocabulary (#1885) — shared schema for matchmaking-style
   // intro funnels so any agent's funnel is signed, comparable, and
@@ -288,6 +291,8 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
   'identity.owner.transferred',
+  // #2894 — unilateral read provenance, never awaiting a countersignature.
+  'google.data.read',
   'session.created',
   'media.uploaded',
   'agent.turn.usage',

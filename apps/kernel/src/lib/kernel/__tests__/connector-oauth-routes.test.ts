@@ -229,6 +229,19 @@ afterAll(() => {
 });
 
 describe('createConnectHandler', () => {
+  it.each([
+    ['google_no_scopes: select a connection scope first', 400],
+    ['google_business_profile_disabled', 403],
+    ['google_business_profile_approval_pending', 409],
+  ])('maps actionable Google setup error %s to %i', async (message, status) => {
+    const handler = createConnectHandler(
+      async () => { throw new Error(message); },
+      () => 'state123',
+    );
+    const response = await handler(makeRequest('https://kernel.test/google/api/connect?slot=business'));
+    expect(response.status).toBe(status);
+    expect(await response.json()).toEqual({ error: message });
+  });
   it('redirects to the built authorize URL on success', async () => {
     const handler = createConnectHandler(
       async () => 'https://provider.test/authorize?x=1',

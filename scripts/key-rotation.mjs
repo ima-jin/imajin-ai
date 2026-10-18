@@ -3,6 +3,13 @@
  * scripts/key-rotation.mjs (#2081) — machine checks for the AUTH_PRIVATE_KEY
  * rotation runbook, docs/security/node-key-roles-and-rotation.md.
  *
+ *   generate   Mint and install a new Ed25519 seed in-process. Atomic 0600 env
+ *              rewrite; exclusive 0600 <env-file>.key-rotation.bak rollback.
+ *                node scripts/key-rotation.mjs generate --env-file apps/kernel/.env.local
+ *
+ *   destroy    Remove that backup after the rotation has been verified.
+ *                node scripts/key-rotation.mjs destroy --env-file apps/kernel/.env.local
+ *
  *   preflight  Before the env swap. Pure: no database, no kernel. Refuses an
  *              unusable old/new pair and prints the AUTH_PREVIOUS_PUBLIC_KEY*
  *              values to set for the grace window.
@@ -31,8 +38,10 @@
  *
  * KERNEL_ADMIN_COOKIE is the full Cookie header of a logged-in admin session
  * (same as scripts/migrate-vault-custody.mjs); KERNEL_BASE_URL defaults to
- * http://localhost:3000. Private keys are read from the environment only and
- * never printed. Exit codes: 0 ok, 1 a check failed, 2 bad usage.
+ * http://localhost:3000. `generate` reads the old key from the env file and
+ * writes the new key there without shell transport. Legacy preflight/sign read
+ * keys from the environment. No private keys are printed.
+ * Exit codes: 0 ok, 1 a check failed, 2 bad usage.
  *
  * The crypto is `@imajin/auth/key-rotation`'s pre-built module — run after
  * `pnpm -r --filter './packages/**' build`, as the other deploy-time scripts do.

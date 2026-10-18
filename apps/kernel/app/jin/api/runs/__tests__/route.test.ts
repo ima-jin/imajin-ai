@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { runLoop } from '@/src/lib/jin/__tests__/runs-fixture';
 
-const { auth, operator, list, history } = vi.hoisted(() => ({
-  auth: vi.fn(), operator: vi.fn(), list: vi.fn(), history: vi.fn(),
+const { auth, operator, list, history, target } = vi.hoisted(() => ({
+  auth: vi.fn(), operator: vi.fn(), list: vi.fn(), history: vi.fn(), target: vi.fn(),
 }));
 vi.mock('@imajin/auth', () => ({ requireAuth: auth }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: vi.fn() }) }));
@@ -16,6 +16,7 @@ vi.mock('@/src/lib/notify/operator-approvals', async (original) => ({
   getOperatorDid: operator,
 }));
 vi.mock('@/src/lib/loops/query', () => ({ listLoopsPage: list, getLoopWithHistory: history }));
+vi.mock('@/src/lib/jin/session-command-authority', () => ({ resolveSessionCommandTarget: target }));
 
 import { GET as getList, OPTIONS as listOptions } from '../route';
 import { GET as getDetail, OPTIONS as detailOptions } from '../[loopId]/route';
@@ -30,12 +31,19 @@ beforeEach(() => {
   operator.mockResolvedValue(DID);
   list.mockResolvedValue({ loops: [runLoop()], hasNextPage: false, nextCursor: null });
   history.mockResolvedValue({ loop: runLoop(), events: [] });
+  target.mockResolvedValue('did:imajin:agent');
 });
 
 describe('Runs operator adapters', () => {
   it('shares CORS preflight on both routes', async () => {
     expect((await listOptions(request())).status).toBe(204);
     expect((await detailOptions(request())).status).toBe(204);
+  });
+  it('keeps run readable but commands unavailable without current verified agent proof', async () => {
+    target.mockRejectedValue(new Error('private proof details'));
+    const response = await detail();
+    expect(response.status).toBe(200);
+    expect((await response.json()).commandTarget).toEqual({ available: false, reason: 'No current verified serving agent for this run' });
   });
 
   it('rejects unauthenticated requests before either registry read', async () => {
@@ -94,7 +102,9 @@ describe('Runs operator adapters', () => {
   });
 
   it('returns operator-scoped history and rejects empty or unknown IDs', async () => {
-    expect(await (await detail()).json()).toEqual({ isOperator: true, detail: { loop: runLoop(), events: [] } });
+    expect(await (await detail()).json()).toEqual({
+      isOperator: true, detail: { loop: runLoop(), events: [] }, commandTarget: { available: true, agentDid: 'did:imajin:agent' },
+    });
     expect(history).toHaveBeenCalledWith('loop-1', DID);
     expect((await detail(' ')).status).toBe(400);
     history.mockResolvedValue(null);

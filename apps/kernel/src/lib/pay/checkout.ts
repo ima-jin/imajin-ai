@@ -172,16 +172,20 @@ export type CheckoutIdentityResult =
  *      verification / lacks the operator-approved `pay:settle` scope is a hard error.
  *   2. app auth via `x-app-did` (user-delegated);
  *   3. a user session.
- * Checkout is allowed to proceed unauthenticated (identity stays null, no app
- * binding) exactly as before, except when app auth is attempted and fails.
+ * A named seller requires path 1: sessions and delegated attestations must
+ * never open a session on a seller's sealed key. Without a seller, the legacy
+ * identity resolution remains available (hosted checkout still requires one).
  */
-export async function resolveCheckoutIdentity(request: NextRequest): Promise<CheckoutIdentityResult> {
+export async function resolveCheckoutIdentity(request: NextRequest, sellerDid?: string): Promise<CheckoutIdentityResult> {
   if (carriesAppServiceToken(request)) {
     const app = await authenticateSettleApp(request);
     if ('error' in app) {
       return { ok: false, error: app.error, status: app.status };
     }
     return { ok: true, identity: null, appDid: app.appDid };
+  }
+  if (sellerDid) {
+    return { ok: false, error: 'Seller checkout requires an app service token', status: 401 };
   }
 
   if (request.headers.get('x-app-did')) {

@@ -34,7 +34,7 @@ export async function resolveReachRequester(requesterDid: string, suppliedKey?: 
  */
 export async function authorizeReachRequester(params: {
   requesterDid: string; principalDid: string; publicKey: string; metadata: unknown; tier: unknown; purpose: string; field: string;
-}): Promise<{ authorized: boolean; grantId?: string }> {
+}): Promise<{ authorized: boolean; grantId?: string; stubDid?: string }> {
   const existing = await findForeignAgentStub(params.requesterDid, params.principalDid, params.publicKey);
   if (existing?.revokedAt) return { authorized: false };
   const grant = await introspectGrant({
@@ -46,5 +46,5 @@ export async function authorizeReachRequester(params: {
   const tierAdmitted = authored && gateTierForIdentityTier(params.tier) !== null && isTierAdmitted(params.metadata, params.tier);
   if (!grantId && (!tierAdmitted || params.purpose !== 'agent.reach' || params.field !== 'contact_topics')) return { authorized: false };
   const stub = await resolveOrMintForeignAgentStub(params.requesterDid, params.principalDid, params.publicKey);
-  return { authorized: !!stub && !stub.revokedAt, grantId };
+  return { authorized: !!stub && !stub.revokedAt, grantId, stubDid: stub?.stubDid };
 }

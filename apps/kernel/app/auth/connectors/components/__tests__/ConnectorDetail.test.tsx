@@ -1234,7 +1234,7 @@ describe('Google Workspace connector card (createOAuthConnectorCard, #2144)', ()
 
     render(<ConnectorDetail entry={entryFor('google')} />);
 
-    expect(await screen.findByText('OAuth Client (Google Cloud Console)')).toBeDefined();
+    expect(await screen.findByText('Import OAuth client into identity vault')).toBeDefined();
     expect(screen.getByPlaceholderText('Client ID')).toBeDefined();
     expect(screen.getByPlaceholderText('Client Secret')).toBeDefined();
     expect(screen.getByPlaceholderText('Redirect URI')).toBeDefined();

@@ -45,6 +45,44 @@ components:
         before, and independently of, cookieAuth/bearerAuth — any other
         `Authorization` scheme (or none) falls through to those unchanged.
   schemas:
+    AppVisibility:
+      type: string
+      enum: [public, unlisted, private, internal]
+      default: public
+      description: |
+        Directory and adding policy, never public web access.
+        public: listed; anyone can add.
+        unlisted: hidden from directories; add by direct link or invite
+        (/auth/app-directory?app=<slug>, backed by GET /auth/api/apps/<slug>
+        and PUT /auth/api/apps/<slug>).
+        private: owning identity and its members only; appears automatically
+        on joining the identity and disappears on leaving it.
+        internal: API-only; no tile and launcher returns 404.
+        Public web pages are served regardless of this value.
+    AppWrite:
+      type: object
+      properties:
+        name: { type: string }
+        description: { type: [string, "null"] }
+        callbackUrl: { type: string, format: uri }
+        homepageUrl: { type: [string, "null"], format: uri }
+        logoUrl: { type: [string, "null"], format: uri }
+        requestedScopes: { type: array, items: { type: string } }
+        providesScopes: { type: array, items: { type: string } }
+        visibility: { $ref: "#/components/schemas/AppVisibility" }
+    App:
+      allOf:
+        - $ref: "#/components/schemas/AppWrite"
+        - type: object
+          required: [id, ownerDid, appDid, visibility]
+          properties:
+            id: { type: string }
+            ownerDid: { type: string }
+            appDid: { type: string }
+            publicKey: { type: string }
+            status: { type: string, enum: [active, revoked] }
+            createdAt: { type: [string, "null"], format: date-time }
+            updatedAt: { type: [string, "null"], format: date-time }
     Node:
       type: object
       properties:
@@ -105,6 +143,146 @@ components:
         error: { type: string }
 
 paths:
+  /api/registry/apps:
+    # Unlike the service APIs below, app registration is rooted at /api.
+    servers:
+      - url: /
+        description: Current node root (not /registry)
+    get:
+      tags: [registry]
+      operationId: listRegistryApps
+      summary: List discoverable active apps, or the acting owner's apps
+      parameters:
+        - name: owner
+          in: query
+          schema: { type: string, enum: [me] }
+          description: Requires authentication; includes all apps owned by the acting identity.
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0, minimum: 0 }
+      responses:
+        "200":
+          description: App list filtered by directory visibility
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps: { type: array, items: { $ref: "#/components/schemas/App" } }
+                  limit: { type: integer }
+                  offset: { type: integer }
+        "401": { description: Authentication required for owner=me }
+    post:
+      tags: [registry]
+      operationId: registerApp
+      summary: Register an app owned by the authenticated acting identity
+      description: |
+        Visibility defaults to public. Only the four documented values are
+        accepted. Self-service registration is always third_party.
+        dependsOn and emittableEvents are operator-only and rejected.
+        A supplied Ed25519 publicKey keeps private key material client-side;
+        otherwise the generated keypair is returned once and never stored.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AppWrite"
+                - type: object
+                  required: [name, callbackUrl]
+                  properties:
+                    publicKey: { type: string, description: Optional Ed25519 public key }
+      responses:
+        "201":
+          description: Registered app, including visibility and optional one-time keypair
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/App"
+                  - type: object
+                    properties:
+                      keypair:
+                        type: object
+                        properties:
+                          publicKey: { type: string }
+                          privateKey: { type: string }
+        "400": { description: Invalid JSON, visibility, URL, key or declarations }
+        "401": { description: Not authenticated }
+
+  /api/registry/apps/{appId}:
+    servers:
+      - url: /
+        description: Current node root (not /registry)
+    parameters:
+      - name: appId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [registry]
+      operationId: getRegistryApp
+      summary: Read an app by registration id
+      responses:
+        "200":
+          description: App detail, including visibility
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/App" }
+        "404": { description: App absent or its listing is not accessible to this identity }
+    patch:
+      tags: [registry]
+      operationId: updateRegistryApp
+      summary: Update an app (owner only, compared against the acting DID)
+      description: |
+        Omitted visibility is preserved; null and unknown values are rejected.
+        Reversible metadata edits and narrowing may be executed by a delegate
+        with an active grant. Widening visibility requires the owner's own
+        countersign/session: internal -> private/unlisted/public,
+        private -> unlisted/public, unlisted -> public.
+        A delegate receives 403 AGENT_APPROVAL_REQUIRED and may propose but
+        never execute widening. This never changes public web serving.
+        providesScopes and provisioned requestedScopes may narrow, not exceed
+        the previously approved scope ceiling. dependsOn and emittableEvents
+        are operator-only and rejected.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AppWrite" }
+      responses:
+        "200":
+          description: Updated app including persisted visibility
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/App" }
+        "400": { description: Invalid JSON, visibility or scope declaration }
+        "401": { description: Not authenticated }
+        "403": { description: Not the owner, or widening requires owner countersign (AGENT_APPROVAL_REQUIRED) }
+        "404": { description: App not found }
+        "409": { description: Owner or visibility changed concurrently; reload before saving }
+    delete:
+      tags: [registry]
+      operationId: revokeRegistryApp
+      summary: Soft revoke an owned app (owner countersign required)
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200": { description: App revoked }
+        "401": { description: Not authenticated }
+        "403": { description: Not the owner or delegate needs owner countersign }
+        "404": { description: App not found }
   /api/health:
     get:
       tags: [registry]
@@ -156,7 +334,7 @@ paths:
                         description: { type: string }
                         icon: { type: string }
                         label: { type: string }
-                        visibility: { type: string }
+                        visibility: { $ref: "#/components/schemas/AppVisibility" }
                         category: { type: string }
                         url: { type: string }
                         spec: { type: string }
