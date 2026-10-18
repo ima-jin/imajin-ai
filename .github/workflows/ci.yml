@@ -8,6 +8,13 @@ on:
   merge_group:
   workflow_dispatch:
 
+# Merge-group contract (#2928): recheck affected packages against the queue's
+# base SHA, while retaining migration/schema and CI guards for cross-PR
+# collisions. PR/push runs remain the full validation and Sonar coverage source.
+# The queue skips coverage upload, Sonar, security audit, e2e and unaffected
+# app builds already proved by PR CI. Required job names must still resolve;
+# job-level `if:` skips report success, unlike skipping an entire workflow.
+#
 # Superseded PR runs are cancelled when a newer push lands (a single
 # self-hosted runner otherwise backs up past the 60-min check timeout, and
 # merge-queue entries get kicked with checks_timed_out). merge_group, push and
