@@ -5,6 +5,7 @@ import { getClient } from '@imajin/db';
 import { eq, count, and, isNull } from 'drizzle-orm';
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 import type { ProfileData, ProfileCounts, LinkItem, IdentityInfo } from './types';
+import { resolveRegistryAppBaseUrl } from '@/src/lib/apps/registry-url';
 
 // Connection lookup is shared with the chat routes (#855) — single source of
 // truth lives in src/lib/chat/connection-check.ts.
@@ -62,9 +63,9 @@ export async function getFollowStatus(viewerDid: string, targetDid: string): Pro
 }
 
 export async function getLinks(linksHandle: string): Promise<LinkItem[]> {
-  const linksServiceUrl = process.env.LINKS_SERVICE_URL;
-  if (!linksServiceUrl) return [];
   try {
+    const linksServiceUrl = await resolveRegistryAppBaseUrl('links');
+    if (!linksServiceUrl) return [];
     const res = await fetch(
       `${linksServiceUrl}/api/pages/${encodeURIComponent(linksHandle)}/links`,
       { cache: 'no-store' }

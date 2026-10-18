@@ -336,7 +336,19 @@ paths:
         `email` is included per-entry only when the caller is authorized to
         see it: a service-scope caller (Bearer PROFILE_INTERNAL_API_KEY) sees
         every requested DID's email; a session-authenticated caller only
-        ever sees their own; anonymous callers never see email. DIDs with no
+        ever sees their own; anonymous callers never see email.
+        Registered apps use Bearer app-service+jwt (aud imajin:apps, sub=azp)
+        with profile:email:read. Both the token scope and current operator
+        approval on the active registration are required. For each requested DID,
+        the kernel additionally requires an active app-authorization grant of
+        profile:email:read from that person to that exact app, or a completed
+        pay.transactions row bound to the app with fromDid equal to that person.
+        Unbound/anonymous payments, pending payments, metadata and profile:read
+        alone never authorize email. Unauthorized entries omit email, including
+        mixed batches and invalid/unscoped app callers; app attempts do not
+        fall through to a forwarded user's cookie. Email precedence remains
+        auth.credentials, profile.profiles.contact_email, auth.identities.contact_email.
+        DIDs with no
         known profile and no visible email are omitted from the response.
       security:
         - {}
@@ -405,6 +417,7 @@ paths:
       tags: [profile]
       operationId: queryProfile
       summary: Non-streaming AI presence query — requires trust distance ≤ 2
+      description: Events and learning tool endpoints are discovered from active app registry entryUrl values, not per-app environment settings.
       security:
         - cookieAuth: []
       parameters:
@@ -466,6 +479,7 @@ paths:
       tags: [profile]
       operationId: streamProfile
       summary: Streaming AI presence query (NDJSON) — requires trust distance ≤ 2
+      description: Events and learning tool endpoints are discovered from active app registry entryUrl values, not per-app environment settings.
       security:
         - cookieAuth: []
       parameters:

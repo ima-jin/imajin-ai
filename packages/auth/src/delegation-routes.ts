@@ -33,6 +33,21 @@ export interface DelegationRouteEntry {
 }
 
 export const DELEGATION_ROUTES = {
+  "kernel.identity.owner.propose": {
+    class: "value-moving", action: "propose", app: "kernel", method: "POST",
+    path: "/auth/api/groups/[groupDid]/transfer-owner",
+    why: "proposes reassignment of group ownership",
+  },
+  "kernel.identity.owner.cancel": {
+    class: "value-moving", action: "cancel", app: "kernel", method: "DELETE",
+    path: "/auth/api/groups/[groupDid]/transfer-owner",
+    why: "withdraws the pending ownership invitation",
+  },
+  "kernel.identity.owner.accept": {
+    class: "value-moving", action: "accept", app: "kernel", method: "POST",
+    path: "/auth/api/groups/[groupDid]/transfer-owner/accept",
+    why: "accepts ownership and demotes the former owner",
+  },
   "media.asset.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",
     path: "/media/api/assets/[id]",
@@ -152,6 +167,11 @@ export const DELEGATION_ROUTES = {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",
     path: "/api/registry/apps/[appId]",
     why: "deletes a registered app",
+  },
+  "kernel.registry-app.visibility-widen": {
+    class: "irreversible", action: "visibility-widen", app: "kernel", method: "PATCH",
+    path: "/api/registry/apps/[appId]",
+    why: "widening visibility discloses an app to new people",
   },
   "kernel.chat.conversation.delete": {
     class: "irreversible", action: "delete", app: "kernel", method: "DELETE",

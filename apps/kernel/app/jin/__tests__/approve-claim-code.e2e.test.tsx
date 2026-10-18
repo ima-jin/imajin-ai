@@ -11,7 +11,7 @@
  * hide behind a hand-written response fixture.
  */
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { crypto as authCrypto } from '@imajin/auth';
 import { OPERATOR_DID, operatorIdentity, pendingApprovalCard } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
 
@@ -92,12 +92,35 @@ const succeededOutcome = (claimCode: string) => ({
 
 /** Last decision response body, kept so the secret-handling test can inspect exactly what crossed the wire. */
 let lastDecisionBody = '';
+const routedRequests = new Set<Promise<Response>>();
+let decisionSettled: (() => void) | undefined;
+
+/** Await real signing + route execution before starting a DOM query's short retry window. */
+async function approveDecision(button: HTMLElement) {
+  try {
+    await act(async () => {
+      const completed = new Promise<void>((resolve) => { decisionSettled = resolve; });
+      fireEvent.click(button);
+      await completed;
+    });
+    // The response reveals the code before handleDecide awaits its list refresh.
+    await waitFor(() => {
+      expect(screen.queryAllByRole('button', { name: '…' })).toHaveLength(0);
+    });
+  } finally {
+    decisionSettled = undefined;
+  }
+}
 
 /** Routes fetches into the real handlers; the approvals list is served from `cards`. */
-function installRoutedFetch(options: { dropDecision?: boolean; decisionStatus?: number } = {}) {
-  const spy = vi.fn(async (url: string, init?: RequestInit) => {
+function installRoutedFetch(options: { dropDecision?: boolean; dropFirstDecision?: boolean; decisionStatus?: number } = {}) {
+  let dropFirstDecision = options.dropFirstDecision === true;
+  const route = async (url: string, init?: RequestInit): Promise<Response> => {
     if (url.includes('/decision')) {
-      if (options.dropDecision) throw new TypeError('network error');
+      if (options.dropDecision || dropFirstDecision) {
+        dropFirstDecision = false;
+        throw new TypeError('network error');
+      }
       // A proxy answering for a request that is still (or was) running behind it.
       if (options.decisionStatus) return new Response('Gateway Time-out', { status: options.decisionStatus });
       const proposalId = decodeURIComponent(url.split('/operator-approvals/')[1].split('/')[0]);
@@ -118,15 +141,33 @@ function installRoutedFetch(options: { dropDecision?: boolean; decisionStatus?: 
       return new Response(JSON.stringify({ error: 'none' }), { status: 404 });
     }
     return new Response(JSON.stringify({ isOperator: true, approvals: cards, actAs: null }), { status: 200 });
+  };
+  const spy = vi.fn(async (url: string, init?: RequestInit) => {
+    const request = route(url, init);
+    routedRequests.add(request);
+    try {
+      return await request;
+    } finally {
+      routedRequests.delete(request);
+      if (url.includes('/decision')) decisionSettled?.();
+    }
   });
   vi.stubGlobal('fetch', spy);
   return spy;
 }
 
 beforeEach(() => {
+  vi.useRealTimers();
+  for (const mock of [
+    mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested,
+    mockRunAppProvision, mockGetStatus, mockListSucceeded, ...Object.values(logSpies),
+  ]) mock.mockReset();
+  localStorage.clear();
+  sessionStorage.clear();
   searchParamsMock.current = new URLSearchParams();
   cards = [];
   lastDecisionBody = '';
+  decisionSettled = undefined;
   const { privateKey, publicKey } = authCrypto.generateKeypair();
   localStorage.setItem('imajin_keypair', JSON.stringify({ privateKey, publicKey }));
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
@@ -164,12 +205,25 @@ beforeEach(() => {
   mockRunAppProvision.mockResolvedValue(succeededOutcome(CLAIM_CODE));
 });
 
-afterEach(() => {
-  cleanup();
-  localStorage.clear();
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-  vi.clearAllMocks();
+afterEach(async () => {
+  try {
+    // A reveal can render before its refresh/list requests finish. Keep the route
+    // mocks and in-memory table alive until those requests and React work settle.
+    await act(async () => {
+      while (routedRequests.size) await Promise.allSettled([...routedRequests]);
+    });
+  } finally {
+    cleanup();
+    vi.useRealTimers();
+    localStorage.clear();
+    sessionStorage.clear();
+    cards = [];
+    lastDecisionBody = '';
+    searchParamsMock.current = new URLSearchParams();
+    decisionSettled = undefined;
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  }
 });
 
 function seedPendingProvision() {
@@ -181,7 +235,7 @@ describe('approve → claim-code banner (#2707)', () => {
     seedPendingProvision();
     installRoutedFetch();
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
 
     const box = await screen.findByTestId('revealed-claim-code');
     expect(within(box).getByText(CLAIM_CODE)).toBeDefined();
@@ -192,13 +246,18 @@ describe('approve → claim-code banner (#2707)', () => {
   });
 
   it('keeps the box through the post-approve refresh and the 5s poll (the card flips to approved underneath it)', async () => {
+    // Leave crypto, Response streams, and Testing Library's retry timers real.
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
     seedPendingProvision();
-    installRoutedFetch();
+    const spy = installRoutedFetch();
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
     await screen.findByTestId('revealed-claim-code');
 
     await screen.findByText('approved — pending apply');
+    const beforePoll = spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals').length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals')).toHaveLength(beforePoll + 1);
     expect(screen.getByTestId('revealed-claim-code')).toBeDefined();
   });
 
@@ -207,7 +266,7 @@ describe('approve → claim-code banner (#2707)', () => {
     seedPendingProvision();
     installRoutedFetch();
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
 
     const notice = await screen.findByTestId('claim-code-missing');
     expect(notice.textContent).toMatch(/requires a countersigned operator decision/);
@@ -220,7 +279,7 @@ describe('approve → claim-code banner (#2707)', () => {
     seedPendingProvision();
     installRoutedFetch({ dropDecision: true });
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
 
     const notice = await screen.findByTestId('claim-code-missing');
     expect(notice.textContent).toMatch(/response was lost/);
@@ -231,7 +290,7 @@ describe('approve → claim-code banner (#2707)', () => {
     seedPendingProvision();
     installRoutedFetch({ decisionStatus: 504 });
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
 
     const notice = await screen.findByTestId('claim-code-missing');
     expect(notice.textContent).toMatch(/response was lost/);
@@ -245,7 +304,7 @@ describe('approve → claim-code banner (#2707)', () => {
     mockRunAppProvision.mockResolvedValue({ ...succeededOutcome(''), claimCode: '' });
     installRoutedFetch();
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
 
     const notice = await screen.findByTestId('claim-code-missing');
     expect(notice.textContent).toMatch(/returned no claim code/);
@@ -258,19 +317,10 @@ describe('reissue claim code from /jin (#2707)', () => {
     // Provisioning finished behind the dropped response, so the ledger row is `succeeded` — which is
     // what makes the route raise a genuine reissue card rather than an ordinary provision one.
     mockGetStatus.mockResolvedValue({ slug: 'dykil', status: 'succeeded', appDid: 'did:imajin:dykil-app', repoUrl: 'https://github.com/ima-jin/dykil', secretsSet: [] });
-    let dropNext = true;
-    const spy = installRoutedFetch();
-    const routed = spy.getMockImplementation()!;
-    spy.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url.includes('/decision') && dropNext) {
-        dropNext = false;
-        throw new TypeError('network error');
-      }
-      return routed(url, init);
-    });
+    const spy = installRoutedFetch({ dropFirstDecision: true });
     mockRunAppProvision.mockResolvedValue(succeededOutcome(REISSUED_CODE));
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
     const notice = await screen.findByTestId('claim-code-missing');
 
     fireEvent.click(within(notice).getByRole('button', { name: 'Reissue claim code' }));
@@ -281,7 +331,7 @@ describe('reissue claim code from /jin (#2707)', () => {
       return call!;
     });
     expect(JSON.parse((reissueCall[1] as RequestInit).body as string)).toEqual({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true });
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & reissue' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & reissue' }));
     const box = await screen.findByTestId('revealed-claim-code');
     expect(within(box).getByText(REISSUED_CODE)).toBeDefined();
     expect(within(box).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
@@ -317,7 +367,7 @@ describe('reissue claim code from /jin (#2707)', () => {
     const reissuePost = spy.mock.calls.filter(([url, init]) => url === '/api/apps/provision' && init?.method === 'POST').at(-1)!;
     expect(JSON.parse((reissuePost[1] as RequestInit).body as string)).toMatchObject({ slug: 'dykil', reissueClaim: true });
 
-    fireEvent.click(approve);
+    await approveDecision(approve);
     const box = await screen.findByTestId('revealed-claim-code');
     expect(within(box).getByText(REISSUED_CODE)).toBeDefined();
     expect(within(box).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
@@ -344,7 +394,7 @@ describe('reissue claim code from /jin (#2707)', () => {
     const reissuePost = spy.mock.calls.filter(([url, init]) => url === '/api/apps/provision' && init?.method === 'POST').at(-1)!;
     expect(JSON.parse((reissuePost[1] as RequestInit).body as string)).toMatchObject({ slug: 'dykil', reissueClaim: true });
 
-    fireEvent.click(approve);
+    await approveDecision(approve);
     const box = await screen.findByTestId('revealed-claim-code');
     expect(within(box).getByText(REISSUED_CODE)).toBeDefined();
     expect(within(box).getByText(`${globalThis.location.origin}/dykil/claim`)).toBeDefined();
@@ -386,7 +436,7 @@ describe('claim code is never logged or persisted (#2707)', () => {
     seedPendingProvision();
     installRoutedFetch();
     render(<OperatorApprovalsPanel />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve & provision' }));
+    await approveDecision(await screen.findByRole('button', { name: 'Approve & provision' }));
     await screen.findByTestId('revealed-claim-code');
     await screen.findByText('approved — pending apply');
 

@@ -14,6 +14,7 @@ import { generateText } from 'ai';
 import { calculateCost, createPresenceTools } from '@imajin/llm';
 import { resolvePresenceBrain } from '@/src/lib/inference/presence-brain';
 import { recordPresenceQueryUsage } from '@/src/lib/inference/presence-query-usage';
+import { resolveRegistryAppBaseUrl } from '@/src/lib/apps/registry-url';
 import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { buildPublicUrl } from '@imajin/config';
@@ -92,12 +93,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
   // 8. Create trust-scoped tools
   const tools = createPresenceTools({
-    eventsUrl: process.env.EVENTS_SERVICE_URL ?? '',
+    eventsUrl: await resolveRegistryAppBaseUrl('events') ?? '',
     connectionsUrl: CONNECTIONS_URL,
     authUrl: '',
     payUrl: process.env.PAY_SERVICE_URL ?? '',
     profileUrl: buildPublicUrl('profile'),
-    learnUrl: process.env.LEARN_SERVICE_URL ?? '',
+    learnUrl: await resolveRegistryAppBaseUrl('learn') ?? '',
     targetDid: resolvedTargetDid,
     requesterDid,
     trustDistance,

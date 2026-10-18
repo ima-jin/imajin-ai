@@ -32,19 +32,20 @@ import {
 } from '../scope-manifest';
 import { GOOGLE_CONNECTOR_DID } from '../connector';
 
-const V1_SCOPES = [
+const GOOGLE_SCOPES = [
   'google:gmail:read', 'google:gmail:send',
   'google:calendar:read', 'google:calendar:write',
   'google:drive:read', 'google:meet:records',
+  'google:search-console:read', 'google:business-profile:read',
 ];
 
 describe('GOOGLE_SCOPE_DESCRIPTORS (#2144)', () => {
-  it('exposes exactly the six v1 scopes, in vocabulary order', () => {
-    expect(VALID_GOOGLE_SCOPES).toEqual(V1_SCOPES);
-    expect(Object.keys(GOOGLE_SCOPE_DESCRIPTORS)).toEqual(V1_SCOPES);
+  it('exposes all eight supported scopes, in vocabulary order', () => {
+    expect(VALID_GOOGLE_SCOPES).toEqual(GOOGLE_SCOPES);
+    expect(Object.keys(GOOGLE_SCOPE_DESCRIPTORS)).toEqual(GOOGLE_SCOPES);
   });
 
-  it.each(V1_SCOPES)('defines %s as owner-only (sensitive, not disclosing others)', (scope) => {
+  it.each(GOOGLE_SCOPES)('defines %s as owner-only (sensitive, not disclosing others)', (scope) => {
     const r = GOOGLE_SCOPE_DESCRIPTORS[scope].release;
     expect(r.discloses_others).toBe(false);
     expect(r.sensitive).toBe(true);
@@ -52,7 +53,7 @@ describe('GOOGLE_SCOPE_DESCRIPTORS (#2144)', () => {
   });
 
   it('reaches every scope over the one google-api surface', () => {
-    for (const scope of V1_SCOPES) {
+    for (const scope of GOOGLE_SCOPES) {
       expect(GOOGLE_SCOPE_DESCRIPTORS[scope].surface).toBe('google-api');
     }
   });
@@ -93,11 +94,11 @@ describe('syncConsentGrants', () => {
    * these must record a consent_grants row: unsealing the refresh token is
    * exactly the decision the owner is being asked to make.
    */
-  it('records a consent row for every v1 scope', async () => {
-    await syncConsentGrants('did:owner', 'asset_x', V1_SCOPES);
+  it('records a consent row for every supported scope', async () => {
+    await syncConsentGrants('did:owner', 'asset_x', GOOGLE_SCOPES);
     const [, connDid, , , isOnConsent] = vi.mocked(mockSync).mock.calls[0];
     expect(connDid).toBe(GOOGLE_CONNECTOR_DID);
-    for (const scope of V1_SCOPES) {
+    for (const scope of GOOGLE_SCOPES) {
       expect(isOnConsent(scope)).toBe(true);
     }
   });

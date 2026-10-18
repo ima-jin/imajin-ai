@@ -18,10 +18,13 @@
  * Actor scope follows explicit membership (legacy-only fallback) union live
  * person-issued app.authorized grants. No identity gets default apps.
  */
+import type { ProfileWidgetDeclaration } from '@/src/lib/apps/profile-widget';
+import { validateProfileWidget } from '@/src/lib/apps/profile-widget';
 import { and, eq } from 'drizzle-orm';
 import { db, identities, forestConfig, registryApps, profiles, attestations } from '@/src/db';
 import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
 import { isLiveAppAuthorization } from '@/src/lib/auth/live-app-authorization';
+import { canAccessAppListing, canDiscoverApp, resolveAppOwnerDids } from './app-visibility';
 
 /** The 3 nav surfaces an app registry row can declare itself visible on. */
 export type AppPlacement = 'launcher' | 'home' | 'auth-submenu';
@@ -39,6 +42,11 @@ export interface NavApp {
   description?: string | null;
   featured?: boolean;
   appDid?: string;
+  profileWidget?: ProfileWidgetDeclaration | null;
+  visibility?: 'public' | 'unlisted' | 'private' | 'internal';
+  ownerDid?: string;
+  /** Private apps follow owning-identity membership, not an install preference. */
+  inherited?: boolean;
 }
 export interface AppDirectoryApp extends NavApp {
   description: string | null;
@@ -53,9 +61,10 @@ function isAppPlacement(value: string): value is AppPlacement {
 }
 
 /** Every active, slug-having registry row that declares at least one nav placement. */
-async function listNavCapableApps(): Promise<NavApp[]> {
+async function listRegistryApps(): Promise<NavApp[]> {
   const rows = await db
     .select({
+      profileWidget: registryApps.profileWidget,
       slug: registryApps.slug,
       name: registryApps.name,
       icon: registryApps.icon,
@@ -67,6 +76,8 @@ async function listNavCapableApps(): Promise<NavApp[]> {
       description: registryApps.description,
       featured: registryApps.featured,
       appDid: registryApps.appDid,
+      visibility: registryApps.visibility,
+      ownerDid: registryApps.ownerDid,
     })
     .from(registryApps);
 
@@ -74,8 +85,9 @@ async function listNavCapableApps(): Promise<NavApp[]> {
   for (const row of rows) {
     if (row.status !== 'active' || !row.slug) continue;
     const placements = (row.placements ?? []).filter(isAppPlacement);
-    if (placements.length === 0) continue;
+    const widget = validateProfileWidget(row.profileWidget);
     apps.push({
+      profileWidget: 'ok' in widget ? widget.ok : null,
       slug: row.slug,
       name: row.name,
       icon: row.icon,
@@ -86,9 +98,20 @@ async function listNavCapableApps(): Promise<NavApp[]> {
       description: row.description ?? null,
       featured: row.featured ?? false,
       appDid: row.appDid,
+      visibility: row.visibility ?? 'public',
+      ownerDid: row.ownerDid,
     });
   }
   return apps;
+}
+
+async function listNavCapableApps(): Promise<NavApp[]> {
+  return (await listRegistryApps()).filter((app) => app.placements.length > 0);
+}
+
+/** Active declared widget apps, independent of launcher placement and viewer grants. */
+export async function resolveProfileWidgetApps(): Promise<NavApp[]> {
+  return (await listRegistryApps()).filter((app) => app.profileWidget);
 }
 
 /**
@@ -144,12 +167,15 @@ function passesScopeGate(app: NavApp, scope: string | undefined): boolean {
  * surface.
  */
 export async function resolveNavAppsForIdentity(did: string): Promise<NavApp[]> {
-  const directory = await resolveAppDirectoryForIdentity(did);
-  return directory.filter((app) => app.available && (app.added || app.authorized));
+  const directory = await resolveAppDirectoryForIdentity(did, { includeUnlisted: true });
+  return directory.filter((app) => app.available && (app.inherited || app.added || app.authorized));
 }
 
-/** All active nav-capable apps, including those not yet added or scope-available. */
-export async function resolveAppDirectoryForIdentity(did: string): Promise<AppDirectoryApp[]> {
+/** Discoverable apps, or an explicitly linked unlisted app. Never expose internal apps. */
+export async function resolveAppDirectoryForIdentity(
+  did: string,
+  options: { slug?: string; includeUnlisted?: boolean } = {},
+): Promise<AppDirectoryApp[]> {
   const [identity] = await db
     .select({ scope: identities.scope })
     .from(identities)
@@ -157,7 +183,7 @@ export async function resolveAppDirectoryForIdentity(did: string): Promise<AppDi
     .limit(1);
   const scope = identity?.scope;
 
-  const [navCapable, enabledSlugs, grants] = await Promise.all([
+  const [navCapable, enabledSlugs, grants, ownerDids] = await Promise.all([
     listNavCapableApps(),
     resolveEnabledSlugsForIdentity(did, scope),
     scope === 'actor'
@@ -170,15 +196,23 @@ export async function resolveAppDirectoryForIdentity(did: string): Promise<AppDi
         eq(attestations.type, 'app.authorized'),
       ))
       : Promise.resolve([]),
+    resolveAppOwnerDids(did),
   ]);
   const authorizedDids = new Set(grants.filter((grant) => isLiveAppAuthorization(grant)).map((grant) => grant.subjectDid));
-  return navCapable.map((app) => ({
+  const visible = navCapable.filter((app) => {
+    if (options.slug && app.slug !== options.slug) return false;
+    return options.slug || options.includeUnlisted
+      ? canAccessAppListing(app, ownerDids)
+      : canDiscoverApp(app, ownerDids);
+  });
+  return visible.map((app) => ({
     ...app,
     description: app.description ?? null,
     featured: app.featured ?? false,
     added: enabledSlugs.has(app.slug),
     authorized: !!app.appDid && authorizedDids.has(app.appDid),
     available: !!scope && passesScopeGate(app, scope),
+    inherited: app.visibility === 'private',
   })).sort((a, b) => Number(b.featured) - Number(a.featured)
     || a.name.localeCompare(b.name) || a.slug.localeCompare(b.slug));
 }
@@ -202,7 +236,7 @@ export function filterByPlacement(apps: readonly NavApp[], placement: AppPlaceme
 export async function resolveLauncherApps(): Promise<NavApp[]> {
   const navCapable = await listNavCapableApps();
   return filterByPlacement(
-    navCapable.filter((app) => !app.requiredScope),
+    navCapable.filter((app) => !app.requiredScope && app.visibility === 'public'),
     'launcher',
   );
 }
@@ -220,7 +254,7 @@ export async function resolveRegistryAppsBySlug(slugs: readonly string[]): Promi
   if (slugs.length === 0) return [];
   const navCapable = await listNavCapableApps();
   const slugSet = new Set(slugs);
-  return navCapable.filter((app) => slugSet.has(app.slug));
+  return navCapable.filter((app) => slugSet.has(app.slug) && app.visibility === 'public');
 }
 
 /**

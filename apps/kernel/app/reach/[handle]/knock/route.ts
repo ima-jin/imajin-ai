@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { KNOCK_IP_RATE_LIMIT, KNOCK_IP_RATE_WINDOW, KNOCK_TARGET_RATE_LIMIT, KNOCK_TARGET_RATE_WINDOW } from '@imajin/auth';
 import { issueReachBearer, parseReachKnock, resolveReachRecipient } from '@/src/lib/access/reach-bearer';
+import { readReachBody, ReachBodyTooLarge } from '@/src/lib/auth/reach-abuse-guard';
 
 export const dynamic = 'force-dynamic';
 const headers = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
@@ -15,7 +16,7 @@ export async function POST(request: NextRequest, props: Readonly<{ params: Promi
   const ip = rateLimit(`knock:ip:${getClientIP(request)}`, KNOCK_IP_RATE_LIMIT, KNOCK_IP_RATE_WINDOW);
   if (ip.limited) return limited(ip);
   try {
-    const parsed = parseReachKnock(await request.json());
+    const parsed = parseReachKnock(await readReachBody(request));
     if (!parsed.ok) return NextResponse.json({ error: parsed.error }, { status: 400, headers });
     const { handle } = await props.params;
     const principal = await resolveReachRecipient(handle);
@@ -31,6 +32,7 @@ export async function POST(request: NextRequest, props: Readonly<{ params: Promi
       expiresAt: result.expiresAt, hardCapAt: result.hardCapAt,
     }, { status: 201, headers });
   } catch (error) {
+    if (error instanceof ReachBodyTooLarge) return NextResponse.json({ error: 'body_too_large' }, { status: 413, headers });
     // Deliberately never log errors from issuance: DB errors can include query parameters.
     const status = error instanceof SyntaxError ? 400 : 503;
     return NextResponse.json({ error: status === 400 ? 'Invalid JSON' : 'Unable to issue reach credential' }, { status, headers });

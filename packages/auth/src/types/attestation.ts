@@ -17,6 +17,8 @@ export const ATTESTATION_TYPES = [
   'connection.accepted',
   'vouch',
   'session.created',
+  'onboard.link.sent',
+  'onboard.link.requested',
   'learn.enrolled',
   'learn.completed',
   'media.uploaded',
@@ -29,6 +31,7 @@ export const ATTESTATION_TYPES = [
   'group.member.left',
   'scope.onboard',
   'identity.created',
+  'identity.owner.transferred',
   'identity.verified.preliminary',
   'identity.verified.hard',
   'identity.verified.steward',
@@ -57,6 +60,9 @@ export const ATTESTATION_TYPES = [
   'imajin/nostr-key-binding',
   'agent.turn.usage',
   'broker.release',
+  // #2894 — node-signed proof of a grant-bound Google read, metadata only.
+  // Owner/onBehalfOf/slot/operation provenance, never provider results or PII.
+  'google.data.read',
 
   // Intro-funnel vocabulary (#1885) — shared schema for matchmaking-style
   // intro funnels so any agent's funnel is signed, comparable, and
@@ -286,7 +292,12 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'identity.owner.transferred',
+  // #2894 — unilateral read provenance, never awaiting a countersignature.
+  'google.data.read',
   'session.created',
+  'onboard.link.sent',
+  'onboard.link.requested',
   'media.uploaded',
   'agent.turn.usage',
   'agent.external_identity',

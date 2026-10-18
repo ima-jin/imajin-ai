@@ -31,6 +31,16 @@ beforeEach(() => {
   mocks.deliver.mockResolvedValue(new Response('delivered'));
 });
 describe('public reach knock', () => {
+  it.each([undefined, '1', '65537'])('rejects an oversized knock with declared length %s before minting a credential', async length => {
+    const response = await POST(new NextRequest('https://example.test/reach/ryan/knock', {
+      method: 'POST', body: JSON.stringify({ ...input, padding: 'x'.repeat(64 * 1024) }),
+      headers: length ? { 'content-length': length } : {},
+    }), props);
+    expect(response.status).toBe(413);
+    expect(mocks.parse).not.toHaveBeenCalled();
+    expect(mocks.recipient).not.toHaveBeenCalled();
+    expect(mocks.issue).not.toHaveBeenCalled();
+  });
   it('issues exactly one response with a reach-only audience and no cacheable/retrievable hash', async () => {
     const response = await POST(request(), props);
     expect(response.status).toBe(201);

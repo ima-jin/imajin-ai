@@ -14,6 +14,7 @@ import { appManifestError, fetchAppManifest, tryGetInstallationToken, DEFAULT_AP
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import type { ManifestDeclarations } from './declarations-approval';
+import { validateProfileWidget } from './profile-widget';
 import { validateSecrets } from './secret-declarations';
 /** Same repo-safe identifier as the provision route's SLUG_PATTERN. */
 const SLUG_PATTERN = /^[a-z][a-z0-9-]{0,38}$/;
@@ -47,6 +48,8 @@ export async function previewManifestDeclarations(slug: string, template = DEFAU
   const result = await readManifest(slug, template);
   if ('error' in result) return { error: appManifestError(slug, result) };
   const manifest = result.ok;
+  const widget = validateProfileWidget(manifest.profileWidget);
+  if ('error' in widget) return { error: appManifestError(slug, { error: 'invalid' }) };
   const secrets = validateSecrets(manifest.secrets);
   if ('error' in secrets) return { error: appManifestError(slug, { error: 'invalid' }) };
 
@@ -60,6 +63,7 @@ export async function previewManifestDeclarations(slug: string, template = DEFAU
   if ('error' in emittable) return { error: appManifestError(slug, { error: 'invalid' }) };
   return {
     ok: {
+      ...(widget.ok ? { profileWidget: widget.ok } : {}),
       ...(secrets.ok.length > 0 ? { secrets: secrets.ok } : {}),
       providesScopes: declarations.ok.providesScopes,
       dependsOn: declarations.ok.dependsOn,

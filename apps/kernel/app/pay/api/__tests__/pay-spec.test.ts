@@ -83,6 +83,12 @@ function collectRefs(node: unknown, out: string[] = []): string[] {
 }
 
 describe('pay.yaml is a structurally valid OpenAPI 3.1 document', () => {
+  it('documents app-service-only seller checkout authentication (#2866)', () => {
+    const checkout = spec.paths['/api/checkout'].post;
+    expect(checkout.security).toEqual([{ appServiceToken: [] }]);
+    expect(checkout.responses['401']).toBeDefined();
+    expect(checkout.responses['403']).toBeDefined();
+  });
   it('declares openapi 3.1.x with info and paths', () => {
     expect(String(spec.openapi)).toMatch(/^3\.1\./);
     expect(spec.info.title).toBeTruthy();

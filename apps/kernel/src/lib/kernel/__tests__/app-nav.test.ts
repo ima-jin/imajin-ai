@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
     fromCalls: [] as unknown[],
     registryRows: [] as Array<Record<string, unknown>>,
     grantRows: [] as Array<{ subjectDid: string; revokedAt?: Date | null; expiresAt?: Date | null }>,
+    ownerDids: [] as string[],
   };
 
   function limitedWhere(rows: () => unknown[]) {
@@ -66,6 +67,55 @@ const mocks = vi.hoisted(() => {
   const selectMock = vi.fn(() => ({ from: fromTable }));
 
   return { identities, forestConfig, profiles, registryApps, attestations, state, selectMock };
+});
+
+describe('registry visibility (#2897)', () => {
+  const privateApp = () => ({ ...COFFEE_ROW, visibility: 'private', ownerDid: 'business' });
+  it('automatically includes a private app on join and removes it on departure despite stale preferences/grants', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.registryRows = [privateApp()];
+    expect(await resolveNavAppsForIdentity('person')).toEqual([]);
+    mocks.state.ownerDids = ['business'];
+    expect((await resolveNavAppsForIdentity('person')).map((app) => app.slug)).toEqual(['coffee']);
+    mocks.state.profileRows = [{ featureToggles: { enabledApps: ['coffee'] } }];
+    mocks.state.grantRows = [{ subjectDid: COFFEE_ROW.appDid }];
+    mocks.state.ownerDids = [];
+    expect(await resolveNavAppsForIdentity('person')).toEqual([]);
+    expect(await resolveAppDirectoryForIdentity('person', { slug: 'coffee' })).toEqual([]);
+  });
+  it('shows private apps to the owning identity without a separate install', async () => {
+    mocks.state.identityRows = [{ scope: 'business' }];
+    mocks.state.registryRows = [privateApp()];
+    expect((await resolveNavAppsForIdentity('business'))[0]).toMatchObject({ inherited: true, added: false });
+  });
+  it('does not discover unlisted apps but permits direct lookup and explicit addition', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.registryRows = [{ ...COFFEE_ROW, visibility: 'unlisted' }];
+    expect(await resolveAppDirectoryForIdentity('person')).toEqual([]);
+    expect((await resolveAppDirectoryForIdentity('person', { slug: 'coffee' }))[0]?.slug).toBe('coffee');
+    expect(await resolveNavAppsForIdentity('person')).toEqual([]);
+    mocks.state.profileRows = [{ featureToggles: { enabledApps: ['coffee'] } }];
+    expect((await resolveNavAppsForIdentity('person'))[0]?.slug).toBe('coffee');
+  });
+  it('never lists internal apps, even for owners with preferences and authorization', async () => {
+    mocks.state.identityRows = [{ scope: 'actor' }];
+    mocks.state.registryRows = [{ ...COFFEE_ROW, visibility: 'internal', ownerDid: 'person' }];
+    mocks.state.profileRows = [{ featureToggles: { enabledApps: ['coffee'] } }];
+    mocks.state.grantRows = [{ subjectDid: COFFEE_ROW.appDid }];
+    expect(await resolveNavAppsForIdentity('person')).toEqual([]);
+    expect(await resolveAppDirectoryForIdentity('person', { slug: 'coffee' })).toEqual([]);
+    // Reachability is not directory visibility: private/internal public pages/APIs stay served.
+    expect(await isActiveRegistryAppSlug('coffee')).toBe(true);
+  });
+  it('exposes only public apps on anonymous launcher and profile discovery', async () => {
+    mocks.state.registryRows = [
+      LEARN_ROW, privateApp(),
+      { ...COFFEE_ROW, slug: 'hidden', visibility: 'unlisted' },
+      { ...COFFEE_ROW, slug: 'daemon', visibility: 'internal' },
+    ];
+    expect((await resolveLauncherApps()).map((app) => app.slug)).toEqual(['learn']);
+    expect((await resolveRegistryAppsBySlug(['learn', 'coffee', 'hidden', 'daemon'])).map((app) => app.slug)).toEqual(['learn']);
+  });
 });
 
 describe('app directory and authorization union (#2871)', () => {
@@ -129,13 +179,17 @@ vi.mock('@/src/db', () => ({
   registryApps: mocks.registryApps,
   attestations: mocks.attestations,
 }));
+vi.mock('../app-visibility', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../app-visibility')>(),
+  resolveAppOwnerDids: async (did: string) => new Set([did, ...mocks.state.ownerDids]),
+}));
 
 vi.mock('drizzle-orm', () => ({
   eq: (...args: unknown[]) => ({ eq: args }),
   and: (...args: unknown[]) => ({ and: args }),
 }));
 
-import { resolveAppDirectoryForIdentity, resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, resolveLauncherApps, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
+import { resolveProfileWidgetApps, resolveAppDirectoryForIdentity, resolveNavAppsForIdentity, filterByPlacement, resolveRegistryAppsBySlug, resolveLauncherApps, isActiveRegistryAppSlug, type NavApp } from '../app-nav';
 
 // requiredScope is null (#2425 send-back): 'creator' is services.ts's
 // display-visibility tier, not one of the four identity scopes, so the
@@ -175,6 +229,7 @@ beforeEach(() => {
   mocks.state.fromCalls = [];
   mocks.state.registryRows = [];
   mocks.state.grantRows = [];
+  mocks.state.ownerDids = [];
 });
 
 describe('resolveNavAppsForIdentity — actor scope (#2425, #2434 ruling b)', () => {
@@ -331,6 +386,16 @@ describe('resolveNavAppsForIdentity — group/business scope (#2425)', () => {
 });
 
 describe('filterByPlacement (#2425)', () => {
+  it('discovers registry-only widget declarations without placements but never installs them', async () => {
+    const widget = { path: '/profile/studio', label: 'Studio' };
+    const fixture = { ...LEARN_ROW, slug: 'fixture-studio', name: 'Fixture Studio', tier: 'third_party',
+      entryUrl: 'https://studio.example.test', placements: [], profileWidget: widget };
+    mocks.state.registryRows = [fixture, { ...fixture, slug: 'revoked', status: 'revoked' },
+      { ...fixture, slug: 'invalid', profileWidget: { path: '//evil.test', label: 'Evil' } }];
+    expect(await resolveProfileWidgetApps()).toEqual([expect.objectContaining({ slug: 'fixture-studio', profileWidget: widget })]);
+    expect(await resolveLauncherApps()).toEqual([]);
+    expect(await resolveNavAppsForIdentity('unconfigured')).toEqual([]);
+  });
   it('narrows a resolved list down to apps declaring the given placement', () => {
     const apps: NavApp[] = [
       { ...COFFEE_ROW, placements: ['launcher', 'home', 'auth-submenu'] } as NavApp,

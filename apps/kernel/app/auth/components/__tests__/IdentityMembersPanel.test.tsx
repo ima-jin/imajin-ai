@@ -64,9 +64,9 @@ function controller(overrides: Partial<ControllerFixture> = {}): ControllerFixtu
 /** Serves the group endpoint; every other request (config) 404s harmlessly. */
 function installFetch(controllers: ControllerFixture[]) {
   const spy = vi.fn(async (url: string, _init?: RequestInit) => {
-    if (url === '/registry/api/launcher') {
+    if (url === '/auth/api/apps/directory') {
       return { ok: true, json: async () => ({
-        services: [{ name: 'registry-only', label: 'Registry App', source: 'registry' }],
+        apps: [{ slug: 'registry-only', name: 'Registry App', available: true }],
       }) } as unknown as Response;
     }
     if (url.endsWith('/controllers')) {

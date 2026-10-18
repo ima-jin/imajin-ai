@@ -226,7 +226,7 @@
       "owner": "kernel",
       "schema": "chat",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "#2539: 0209_chat_conversations_app_binding.sql adds nullable app_did provenance; legacy conversations remain unbound."
     },
     "chat.invites": {
       "owner": "kernel",
@@ -436,7 +436,7 @@
       "owner": "kernel",
       "schema": "kernel",
       "firstMigration": "0037_bus_chain_configs.sql",
-      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589)."
+      "notes": "0199_seed_agent_reach_replied_chain.sql seeds the metadata-only agent.reach.replied chain (#2589). 0207_seed_agent_reach_throttled_chain.sql seeds the awaited, metadata-only agent.reach.throttled audit chain (#2599)."
     },
     "kernel.calendar_entries": {
       "owner": "kernel",
@@ -802,7 +802,7 @@
       "owner": "kernel",
       "schema": "registry",
       "firstMigration": "0007_registry_apps.sql",
-      "notes": "#2871 — 0203_registry_apps_featured.sql adds the operator-curated featured flag; no install table or grant changes."
+      "notes": "#2871 — 0203_registry_apps_featured.sql adds the operator-curated featured flag; 0204_registry_apps_visibility.sql adds listing visibility; #2899 — 0205_registry_apps_profile_widget.sql adds profile widget declarations. No install table or grant changes."
     },
     "registry.bump_events": {
       "owner": "kernel",

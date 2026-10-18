@@ -69,11 +69,6 @@ function stepObservationChain(): ReactorConfig[] {
 function mjnEmission(attestationType: string): ReactorConfig {
   return { type: 'mjn', config: { attestationType }, await: true, enabled: true };
 }
-function settlementWebhookUrl(): string {
-  const url = new URL(process.env.EVENTS_SERVICE_URL || 'http://localhost:3006');
-  url.pathname = `${url.pathname.replace(/\/$/, '')}/api/webhook/settlement`;
-  return url.toString();
-}
 
 // Hardcoded defaults for Phase 1
 // DB-backed config is Phase 2 (future work order)
@@ -86,6 +81,11 @@ function settlementWebhookUrl(): string {
 // (no `mjn` reactor) is unaffected and keeps firing `attestation`
 // fire-and-forget.
 const DEFAULTS: Record<string, ReactorConfig[]> = {
+  // Reader provenance is signed and persisted; never includes provider results.
+  'google.data.read': [
+    { type: 'attestation', config: { attestationType: 'google.data.read' }, await: true, enabled: true },
+    { type: 'audit-log', config: {}, await: true, enabled: true },
+  ],
   'identity.created': [
     { type: 'attestation', config: { attestationType: 'identity.created' }, await: true, enabled: true },
     mjnEmission('identity.created'),
@@ -154,14 +154,6 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'settlement.completed': [
     { type: 'emit', config: {}, enabled: true },
-    {
-      type: 'webhook',
-      config: {
-        url: settlementWebhookUrl(),
-        recipient: { appSlug: 'events' },
-      },
-      enabled: !!process.env.EVENTS_SERVICE_URL,
-    },
   ],
   'listing.purchased': [
     { type: 'attestation', config: { attestationType: 'listing.purchased' }, await: true, enabled: true },
@@ -427,6 +419,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
+  ],
+  // #2599 / migration 0207 — complete the metadata-only audit write before
+  // publish resolves. Limiter keys, IPs, message bodies and signatures stay private.
+  'agent.reach.throttled': [
+    {
+      type: 'audit-log',
+      config: { fields: ['principalDid', 'requesterDid', 'dimension', 'tier', 'retryAfter', 'context_id', 'context_type'] },
+      await: true,
+      enabled: true,
+    },
   ],
   // #2588 / migration 0196 — the service persists the signed envelope and
   // mints exactly one attestation. This chain only emits and notifies the

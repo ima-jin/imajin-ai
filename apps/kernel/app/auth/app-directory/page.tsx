@@ -53,14 +53,17 @@ function DirectoryRow({ app, busy, disabled, onToggle }: Readonly<{
               Authorized — <Link href="/jin#grants" className="underline">manage in Grants</Link>
             </p>
           )}
+          {app.inherited && (
+            <p className="text-sm text-zinc-400">Included through identity membership. Leaving the owning identity removes this app.</p>
+          )}
           <button
             type="button"
             onClick={() => onToggle(app)}
-            disabled={disabled || (!app.available && !app.added)}
-            aria-label={`${action} ${app.name}`}
+            disabled={disabled || app.inherited || (!app.available && !app.added)}
+            aria-label={app.inherited ? `${app.name} included with membership` : `${action} ${app.name}`}
             className="rounded-lg border border-zinc-700 px-3 py-1.5 text-sm text-zinc-100 hover:border-amber-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {action}
+            {app.inherited ? 'Included with membership' : action}
           </button>
         </div>
       </div>
@@ -100,7 +103,9 @@ export default function AppDirectoryPage() {
     pending.current = controller;
     setLoading(true);
     setError('');
-    void readDirectory('/auth/api/apps/directory', controller.signal)
+    const slug = new URLSearchParams(globalThis.location.search).get('app');
+    const url = slug ? `/auth/api/apps/${encodeURIComponent(slug)}` : '/auth/api/apps/directory';
+    void readDirectory(url, controller.signal)
       .then((rows) => { if (!controller.signal.aborted) setApps(rows); })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'Unable to load apps.');
