@@ -3,6 +3,7 @@ import { db, identities, identityMembers } from '@/src/db';
 import { ASSIGNABLE_MEMBER_ROLES } from './membership';
 import { OwnershipError } from './ownership-policy';
 import { recordMemberEvent, type MemberActor } from './member-attestation';
+import { parseMemberServices } from './member-service-scope';
 
 function parseUpdate(body: unknown) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -16,12 +17,9 @@ function parseUpdate(body: unknown) {
   if (value.role !== undefined && !(ASSIGNABLE_MEMBER_ROLES as readonly unknown[]).includes(value.role)) {
     throw new OwnershipError('Invalid role; use ownership transfer to change owners', 400);
   }
-  if (value.allowedServices !== undefined && value.allowedServices !== null
-    && (!Array.isArray(value.allowedServices)
-      || !value.allowedServices.every((service) => typeof service === 'string' && service.trim().length > 0))) {
-    throw new OwnershipError('allowedServices must be null or an array of nonempty strings', 400);
-  }
-  return value as { role?: string; allowedServices?: string[] | null };
+  const allowedServices = value.allowedServices === undefined
+    ? undefined : parseMemberServices(value.allowedServices);
+  return { role: value.role as string | undefined, allowedServices };
 }
 
 export function updateGroupMember(groupDid: string, actor: MemberActor, memberDid: string, body: unknown) {
@@ -49,9 +47,9 @@ export function updateGroupMember(groupDid: string, actor: MemberActor, memberDi
       throw new OwnershipError('Admin can only edit members and cannot grant admin', 403);
     }
     const services = input.allowedServices === undefined ? target.allowedServices : input.allowedServices;
-    const allowedServices = role === 'agent' && services?.length
-      ? [...new Set(services)].sort((a, b) => a.localeCompare(b)) : null;
-    const oldServices = target.allowedServices?.length
+    const allowedServices = services === null
+      ? null : [...new Set(services)].sort((a, b) => a.localeCompare(b));
+    const oldServices = target.allowedServices
       ? [...target.allowedServices].sort((a, b) => a.localeCompare(b)) : null;
     if (role === target.role && JSON.stringify(oldServices) === JSON.stringify(allowedServices)) {
       return { ok: true, memberDid, role, allowedServices, changed: false };

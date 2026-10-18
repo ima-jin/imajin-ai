@@ -36,6 +36,7 @@ function request(method: string, body?: unknown) {
   return new NextRequest('http://localhost/auth/api/groups/group/controllers/member', {
     method, ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
+
 }
 function edit(body: unknown, did = member) { return PATCH(request('PATCH', body), params(did)); }
 function add(did = stranger) {
@@ -112,10 +113,33 @@ describe('editable membership and signed history (#2946)', () => {
     expect(await (await GET(request('GET'), params())).json()).toMatchObject({
       valid: true, role: 'agent', allowedServices: ['pay'],
     });
-    expect((await edit({ allowedServices: [] })).status).toBe(200);
+    expect((await edit({ allowedServices: [] })).status).toBe(400);
+    expect((await edit({ allowedServices: null })).status).toBe(200);
     expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, allowedServices: null }));
     expect((await edit({ role: 'member', allowedServices: ['media'] })).status).toBe(200);
-    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, role: 'member', allowedServices: null }));
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, role: 'member', allowedServices: ['media'] }));
+  });
+
+  it.each(['admin', 'maintainer', 'member', 'agent'])('persists and signs %s scopes, preserves omitted scope and restores full access', async (role) => {
+    expect((await edit({ role, allowedServices: ['pay', 'pay'] })).status).toBe(200);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, role, allowedServices: ['pay'] }));
+    expect((await evidence())[0].payload).toMatchObject({ oldAllowedServices: null, allowedServices: ['pay'] });
+    expect(await (await edit({ role })).json()).toMatchObject({ changed: false, allowedServices: ['pay'] });
+    expect((await edit({ role: 'maintainer' })).status).toBe(200);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: member, allowedServices: ['pay'] }));
+    expect((await edit({ allowedServices: null })).status).toBe(200);
+    const records = await evidence();
+    expect(records.at(-1)?.payload).toMatchObject({ oldAllowedServices: ['pay'], allowedServices: null });
+  });
+
+  it.each(['admin', 'maintainer', 'member', 'agent'])('adds a scoped %s with verifiable evidence', async (role) => {
+    const response = await POST(request('POST', { did: stranger, role, allowedServices: ['pay'] }), {
+      params: Promise.resolve({ groupDid }),
+    });
+    expect(response.status).toBe(201);
+    expect(await rows()).toContainEqual(expect.objectContaining({ memberDid: stranger, role, allowedServices: ['pay'] }));
+    const [record] = await evidence();
+    expect(record.payload).toMatchObject({ role, oldAllowedServices: null, allowedServices: ['pay'], by: owner });
   });
 
   it('downgrade applies on the next call even with stale session role claims', async () => {
@@ -177,6 +201,7 @@ describe('editable membership and signed history (#2946)', () => {
 
   it.each([null, [], {}, { role: 'owner' }, { role: 'superuser' }, { role: 4 },
     { allowedServices: 'media' }, { allowedServices: [4] }, { allowedServices: [''] },
+    { allowedServices: [] }, { allowedServices: ['made-up'] }, { allowedServices: ['pay', 'unknown'] },
     { addedBy: stranger }, { role: null }])('rejects malformed update %j', async (body) => {
     expect((await edit(body)).status).toBe(400);
     expect(await evidence()).toHaveLength(0);

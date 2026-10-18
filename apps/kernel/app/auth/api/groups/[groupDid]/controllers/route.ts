@@ -5,6 +5,8 @@ import { requireAuth } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { MEMBER_ROLES } from '@/src/lib/auth/membership';
 import { recordMemberEvent } from '@/src/lib/auth/member-attestation';
+import { parseMemberServices } from '@/src/lib/auth/member-service-scope';
+import { OwnershipError } from '@/src/lib/auth/ownership-policy';
 
 const log = createLogger('kernel');
 
@@ -13,7 +15,7 @@ const VALID_ROLES: readonly string[] = MEMBER_ROLES;
 interface AddControllerRequest {
   did: string;
   role: string;
-  /** null = full access. Only ever non-null for the agent role. */
+  /** null = full access for any non-owner authority role. */
   allowedServices: string[] | null;
 }
 
@@ -45,13 +47,7 @@ function parseAddControllerBody(
     return NextResponse.json({ error: 'Only owner can add admins' }, { status: 403 });
   }
 
-  // Service scoping is only enforced for delegated agents (the X-Acting-For
-  // path checks allowed_services); ignore it elsewhere rather than storing a
-  // restriction nothing honours.
-  const scoped =
-    role === 'agent' && Array.isArray(allowedServices) && allowedServices.length > 0
-      ? allowedServices.map(String)
-      : null;
+  const scoped = parseMemberServices(allowedServices);
 
   return { did, role, allowedServices: scoped };
 }
@@ -106,7 +102,11 @@ export async function POST(
 
     // Check if controller was previously removed (soft delete)
     const [existing] = await tx
-      .select({ removedAt: identityMembers.removedAt, role: identityMembers.role })
+      .select({
+        removedAt: identityMembers.removedAt,
+        role: identityMembers.role,
+        allowedServices: identityMembers.allowedServices,
+      })
       .from(identityMembers)
       .where(
         and(
@@ -150,7 +150,9 @@ export async function POST(
     }
 
     await recordMemberEvent(tx, 'group.member.added', groupDid, did, caller, {
-      role, added_via: addedVia, allowedServices: normalizedServices,
+      role, added_via: addedVia,
+      oldAllowedServices: existing?.allowedServices ?? null,
+      allowedServices: normalizedServices,
     });
 
     return NextResponse.json(
@@ -158,6 +160,9 @@ export async function POST(
       { status: 201 }
     );
   }).catch((error) => {
+    if (error instanceof OwnershipError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     log.error({ err: String(error) }, '[groups] Add controller error');
     return NextResponse.json({ error: 'Failed to add controller' }, { status: 500 });
   });

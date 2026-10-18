@@ -6,9 +6,7 @@
  *  - `agent` is the role the X-Acting-For delegation path checks for. Until it
  *    was accepted here the only way to create one was a direct DB insert, so
  *    the accepted-role list is asserted explicitly rather than left implicit.
- *  - `allowed_services` narrows what a delegated agent may touch. It is only
- *    consulted for agents, so storing it against a human member would record a
- *    restriction nothing enforces — the normalisation is pinned below.
+ *  - `allowed_services` narrows authority for every non-owner role.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -166,23 +164,50 @@ describe('POST controllers — service scoping', () => {
   it('stores allowed_services for an agent', async () => {
     const { row } = await add({ role: 'agent', allowedServices: ['media', 'chat'] });
 
-    expect(row).toMatchObject({ allowedServices: ['media', 'chat'] });
+    expect(row).toMatchObject({ allowedServices: ['chat', 'media'] });
   });
 
-  it('stores null for an agent with an empty selection — no list means full access', async () => {
-    const { row } = await add({ role: 'agent', allowedServices: [] });
+  it.each(['admin', 'maintainer', 'member', 'agent'])('rejects empty scopes for %s rather than broadening access', async (role) => {
+    const { res, row } = await add({ role, allowedServices: [] });
 
-    expect(row).toMatchObject({ allowedServices: null });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: expect.stringContaining('Pick at least one service') });
+    expect(row).toBeUndefined();
+    expect(mockPublish).not.toHaveBeenCalled();
   });
 
   it.each(['admin', 'maintainer', 'member'])(
-    'ignores allowed_services for role=%s — only the agent path enforces it',
+    'stores human allowed_services for role=%s',
     async (role) => {
       const { row } = await add({ role, allowedServices: ['media'] });
 
-      expect(row).toMatchObject({ role, allowedServices: null });
+      expect(row).toMatchObject({ role, allowedServices: ['media'] });
     },
   );
+
+  it.each(['admin', 'maintainer', 'member', 'agent'])('normalizes %s scopes and includes them in signed evidence', async (role) => {
+    const { res, row } = await add({ role, allowedServices: ['pay', 'auth', 'usage', 'pay'] });
+    expect(res.status).toBe(201);
+    expect(row).toMatchObject({ allowedServices: ['auth', 'pay', 'usage'] });
+    expect(mockPublish).toHaveBeenCalledWith(
+      expect.anything(), 'group.member.added', GROUP, NEW_MEMBER,
+      expect.objectContaining({ id: OWNER }),
+      expect.objectContaining({ oldAllowedServices: null, allowedServices: ['auth', 'pay', 'usage'] }),
+    );
+  });
+
+  it.each([null, undefined])('stores full access for scope %s', async (allowedServices) => {
+    const { res, row } = await add({ role: 'maintainer', allowedServices });
+    expect(res.status).toBe(201);
+    expect(row).toMatchObject({ allowedServices: null });
+  });
+
+  it.each(['pay', [1], [''], ['unknown'], ['pay', 'unknown'], ['project'], {}])('rejects invalid scope %j', async (allowedServices) => {
+    const { res } = await add({ role: 'member', allowedServices });
+    expect(res.status).toBe(400);
+    expect(insertedValues).toHaveLength(0);
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
 });
 
 describe('POST controllers — provenance', () => {
