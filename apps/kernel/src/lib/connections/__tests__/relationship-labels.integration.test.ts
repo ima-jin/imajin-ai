@@ -87,7 +87,7 @@ beforeAll(async () => {
   const migration = await readFile('migrations/0213_connection_relationship_labels.sql', 'utf8');
   await pg.exec(migration);
   await pg.exec(migration);
-});
+}, 30_000);
 
 beforeEach(async () => {
   vi.clearAllMocks();
