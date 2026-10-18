@@ -632,7 +632,7 @@ describe('GET /connections/api/invites — no-disclosure list masking (#1839)', 
   });
 
   it('returns 401 for an unrelated, unauthenticated caller — no list data leaks without a session', async () => {
-    mockGetSessionFromCookies.mockResolvedValue(null);
+    mockResolveEffectiveDid.mockResolvedValueOnce(UNAUTHENTICATED);
 
     const res = await GET(makeGetReq());
 

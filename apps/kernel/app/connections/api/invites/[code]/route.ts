@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, invites, profiles } from '@/src/db';
 import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 
-import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { resolveEffectiveDid } from '@imajin/auth';
 
 export function OPTIONS(request: NextRequest) {
   return corsOptions(request);
@@ -47,9 +47,9 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ code
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ code: string }> }) {
   const params = await props.params;
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const [invite] = await db
@@ -62,7 +62,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ co
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
   }
 
-  if (invite.fromDid !== session.did) {
+  if (invite.fromDid !== auth.effectiveDid) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
 
@@ -81,7 +81,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ co
     await db
       .update(profiles)
       .set({ nextInviteAvailableAt: null })
-      .where(eq(profiles.did, session.did));
+      .where(eq(profiles.did, auth.effectiveDid));
   }
 
   return NextResponse.json({ ok: true });

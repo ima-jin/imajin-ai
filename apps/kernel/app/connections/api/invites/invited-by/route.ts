@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq, and, or, isNotNull } from 'drizzle-orm';
 import { db, invites, profiles } from '@/src/db';
-import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { resolveEffectiveDid } from '@imajin/auth';
 
 /**
  * GET /api/invites/invited-by
  * Returns who invited the current user, or null if founding member.
  */
 export async function GET(request: NextRequest) {
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:read' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   // Find invite where: consumedBy = current user (link invite accepted)
@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
     .select()
     .from(invites)
     .where(or(
-      and(eq(invites.consumedBy, session.did), isNotNull(invites.consumedBy)),
-      and(eq(invites.toDid, session.did), eq(invites.status, 'accepted')),
+      and(eq(invites.consumedBy, auth.effectiveDid), isNotNull(invites.consumedBy)),
+      and(eq(invites.toDid, auth.effectiveDid), eq(invites.status, 'accepted')),
     ))
     .limit(1);
 

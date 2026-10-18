@@ -12,7 +12,7 @@ import { withLogger } from '@imajin/logger';
 import type { Logger } from '@imajin/logger';
 import { resolveOrMintInviteTarget, withNoDisclosure } from '@/src/lib/auth/claimable-stub';
 
-import { getSessionFromCookies, getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
+import { getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
 type LoggerLike = Pick<Logger, 'error'>;
 
@@ -175,8 +175,11 @@ async function deliverInviteEmail(params: {
  * handler — tier limits, cooldowns, trust-graph checks — stays identical
  * regardless of which guard let the caller through.
  */
-async function resolveInviteAuth(request: NextRequest): Promise<InviteAuthResult> {
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+async function resolveInviteAuth(
+  request: NextRequest,
+  scope: 'connections:read' | 'connections:write' = 'connections:write',
+): Promise<InviteAuthResult> {
+  const auth = await resolveEffectiveDid(request, { scope });
   if (!auth.ok) {
     return { error: auth.error, status: auth.status };
   }
@@ -430,10 +433,11 @@ async function handleLinkInvite(
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const authResult = await resolveInviteAuth(request, 'connections:read');
+  if ('error' in authResult) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
+  const { session } = authResult;
 
   const limit = getInviteLimit(session.tier);
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull } from 'drizzle-orm';
-import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { resolveEffectiveDid } from '@imajin/auth';
 import { lookupIdentity } from '@/src/lib/kernel/lookup';
 
 async function resolveIdentity(did: string) {
@@ -12,9 +12,9 @@ async function resolveIdentity(did: string) {
 
 export async function GET(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:read' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const [pod] = await db.select().from(pods).where(eq(pods.id, params.id));
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
     .where(and(eq(podMembers.podId, params.id), isNull(podMembers.removedAt)));
 
   // Verify requester is a member
-  const isMember = members.some((m) => m.did === session.did);
+  const isMember = members.some((m) => m.did === auth.effectiveDid);
   if (!isMember) return NextResponse.json({ error: 'Not a member' }, { status: 403 });
 
   // Resolve member profiles
@@ -44,9 +44,9 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const body = await request.json();
@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       .select()
       .from(podMembers)
       .where(and(eq(podMembers.podId, params.id), isNull(podMembers.removedAt)));
-    const isMember = members.some((m) => m.did === session.did);
+    const isMember = members.some((m) => m.did === auth.effectiveDid);
     if (!isMember) return NextResponse.json({ error: 'Not a member' }, { status: 403 });
 
     // Only set if not already set (first-write wins)
@@ -87,7 +87,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const [updated] = await db
     .update(pods)
     .set(updates)
-    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, session.did)))
+    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, auth.effectiveDid)))
     .returning();
 
   if (!updated) return NextResponse.json({ error: 'Pod not found or unauthorized' }, { status: 404 });
@@ -96,14 +96,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
   const [deleted] = await db
     .delete(pods)
-    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, session.did)))
+    .where(and(eq(pods.id, params.id), eq(pods.ownerDid, auth.effectiveDid)))
     .returning();
 
   if (!deleted) return NextResponse.json({ error: 'Pod not found or unauthorized' }, { status: 404 });
