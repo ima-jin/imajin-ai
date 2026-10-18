@@ -7,16 +7,16 @@ import { trustGraphInviteEmail } from '@imajin/email';
 import { sendKernelEmail } from '@/src/lib/mail/send';
 import { isVerifiedTier, resolveEffectiveDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
-import { buildPublicUrl } from '@imajin/config';
+import { buildPublicUrl, corsOptions, withCors } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
 import type { Logger } from '@imajin/logger';
 import { resolveOrMintInviteTarget, withNoDisclosure } from '@/src/lib/auth/claimable-stub';
+import { createDirectInvite, directInviteResponse, listIncomingDirectInvites, publicDirectInvite } from '@/src/lib/connections/direct-invites';
 
 import { getSessionForDid, type KernelSession } from '@/src/lib/kernel/session';
 
 type LoggerLike = Pick<Logger, 'error'>;
 
-const INVITE_COOLDOWN_DAYS = 7;
 const INVITE_EXPIRY_DAYS = 7;
 
 /**
@@ -191,14 +191,24 @@ async function resolveInviteAuth(
   return { session };
 }
 
-export const POST = withLogger('kernel', async (request, { log }) => {
-  const authResult = await resolveInviteAuth(request);
+export function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
+export const POST = withLogger('kernel', async (request, { log }) =>
+  withCors(await createInvite(request, log), request));
+
+async function createInvite(request: NextRequest, log: LoggerLike) {
+  const body = await request.json().catch(() => ({}));
+  if (body && (Object.hasOwn(body, 'toDid') || Object.hasOwn(body, 'handle') || body.delivery === 'direct')) {
+    return directInviteResponse(() => createDirectInvite(request, body));
+  }
+  const authResult = await resolveInviteAuth(request, 'connections:write');
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { session } = authResult;
 
-  const body = await request.json().catch(() => ({}));
   const delivery: 'link' | 'email' = body.delivery === 'email' ? 'email' : 'link';
 
   // Invite context extension (#1834 Phase 2): optional, backward compatible.
@@ -210,7 +220,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   return delivery === 'email'
     ? handleEmailInvite(session, body, contextResult.context, log)
     : handleLinkInvite(session, body, contextResult.context, log);
-});
+}
 
 /**
  * Email invite flow: requires a hard DID + trust graph membership, enforces
@@ -433,11 +443,18 @@ async function handleLinkInvite(
 }
 
 export async function GET(request: NextRequest) {
+  return withCors(await listInvites(request), request);
+}
+
+async function listInvites(request: NextRequest) {
   const authResult = await resolveInviteAuth(request, 'connections:read');
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
   const { session } = authResult;
+  if (new URL(request.url).searchParams.get('direction') === 'incoming') {
+    return directInviteResponse(() => listIncomingDirectInvites(session.did));
+  }
 
   const limit = getInviteLimit(session.tier);
 
@@ -446,9 +463,12 @@ export async function GET(request: NextRequest) {
       invite: invites,
       acceptedHandle: profiles.handle,
       acceptedName: profiles.displayName,
+      toHandle: identities.handle,
+      toName: identities.name,
     })
     .from(invites)
     .leftJoin(profiles, eq(invites.toDid, profiles.did))
+    .leftJoin(identities, eq(invites.toDid, identities.id))
     .where(eq(invites.fromDid, session.did))
     .orderBy(desc(invites.createdAt));
 
@@ -463,7 +483,9 @@ export async function GET(request: NextRequest) {
     // to, or the list becomes the same existence oracle invite-create closes.
     const disclosed = r.invite.status === 'accepted';
     return {
-      ...withNoDisclosure(r.invite),
+      ...(r.invite.delivery === 'direct' ? {
+        ...publicDirectInvite(r.invite), toHandle: r.toHandle, toName: r.toName,
+      } : withNoDisclosure(r.invite)),
       acceptedBy: disclosed ? (r.acceptedHandle || r.acceptedName || null) : null,
       acceptedHandle: disclosed ? (r.acceptedHandle || null) : null,
       daysAgo: r.invite.createdAt ? Math.floor((now - new Date(r.invite.createdAt).getTime()) / 86400000) : 0,
@@ -473,6 +495,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     invites: withDaysAgo,
+    effectiveDid: session.did,
+    effectiveName: session.name || session.handle || session.did,
     tier: session.tier,
     limit: limit === Infinity ? null : limit,
     pending,

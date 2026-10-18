@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { eq } from 'drizzle-orm';
 import { db, invites, profiles } from '@/src/db';
-import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
-
+import { corsHeaders, corsOptions, withCors } from '@/src/lib/kernel/cors';
 import { resolveEffectiveDid } from '@imajin/auth';
+import { directInviteResponse, transitionDirectInvite } from '@/src/lib/connections/direct-invites';
 
 export function OPTIONS(request: NextRequest) {
-  return corsOptions(request);
+  const response = corsOptions(request);
+  response.headers.set('Access-Control-Allow-Methods', `${response.headers.get('Access-Control-Allow-Methods')}, PATCH`);
+  return response;
 }
 
 export async function GET(_request: NextRequest, props: { params: Promise<{ code: string }> }) {
@@ -19,6 +21,13 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ code
 
   if (!invite) {
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
+  }
+  if (invite.delivery === 'direct') {
+    const auth = await resolveEffectiveDid(_request, { scope: 'connections:read' });
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    if (auth.effectiveDid !== invite.fromDid && auth.effectiveDid !== invite.toDid) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
   }
 
   const response = NextResponse.json({
@@ -46,6 +55,10 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ code
 }
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  return withCors(await deleteInvite(request, props), request);
+}
+
+async function deleteInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
   const params = await props.params;
   const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
   if (!auth.ok) {
@@ -62,6 +75,9 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ co
     return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
   }
 
+  if (invite.delivery === 'direct') {
+    return directInviteResponse(() => transitionDirectInvite(request, invite, 'cancel'));
+  }
   if (invite.fromDid !== auth.effectiveDid) {
     return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
   }
@@ -85,4 +101,22 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ co
   }
 
   return NextResponse.json({ ok: true });
+}
+
+export async function PATCH(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  return withCors(await declineInvite(request, props), request);
+}
+
+async function declineInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const { code } = await props.params;
+  const body = await request.json().catch(() => ({}));
+  if (body?.action !== 'decline') {
+    return NextResponse.json({ error: 'action must be decline' }, { status: 400 });
+  }
+  const [invite] = await db.select().from(invites).where(eq(invites.code, code)).limit(1);
+  if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
+  if (invite.delivery !== 'direct') {
+    return NextResponse.json({ error: 'Only direct requests can be declined' }, { status: 400 });
+  }
+  return directInviteResponse(() => transitionDirectInvite(request, invite, 'decline'));
 }

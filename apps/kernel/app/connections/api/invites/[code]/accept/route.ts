@@ -8,6 +8,8 @@ import { createLogger } from '@imajin/logger';
 import { isUnclaimedStub, tryActivateClaim } from '@/src/lib/auth/claimable-stub';
 import { resolveDidForEmail } from '@imajin/auth';
 import { resolvePaymentRequestsOnRecipientClaim } from '@/src/lib/pay/payment-requests/claim';
+import { directInviteResponse, transitionDirectInvite } from '@/src/lib/connections/direct-invites';
+import { corsOptions, withCors } from '@/src/lib/kernel/cors';
 
 import { getSessionFromCookies } from '@/src/lib/kernel/session';
 
@@ -49,18 +51,7 @@ async function resolveAccepter(request: NextRequest, invite: Invite): Promise<Ac
   return { error: 'Not authenticated', status: 401 };
 }
 
-export async function POST(request: NextRequest, props: { params: Promise<{ code: string }> }) {
-  const params = await props.params;
-
-  const [invite] = await db
-    .select()
-    .from(invites)
-    .where(eq(invites.code, params.code))
-    .limit(1);
-
-  if (!invite) {
-    return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
-  }
+async function validateLegacyInvite(invite: Invite): Promise<NextResponse | null> {
 
   if (invite.status !== 'pending') {
     return NextResponse.json({ error: `Invite is ${invite.status}` }, { status: 410 });
@@ -75,9 +66,37 @@ export async function POST(request: NextRequest, props: { params: Promise<{ code
     await db
       .update(invites)
       .set({ status: 'expired' })
-      .where(eq(invites.code, params.code));
+      .where(eq(invites.code, invite.code));
     return NextResponse.json({ error: 'Invite has expired' }, { status: 410 });
   }
+  return null;
+}
+
+export async function POST(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  return withCors(await acceptInvite(request, props), request);
+}
+
+export function OPTIONS(request: NextRequest) {
+  return corsOptions(request);
+}
+
+async function acceptInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+  const params = await props.params;
+
+  const [invite] = await db
+    .select()
+    .from(invites)
+    .where(eq(invites.code, params.code))
+    .limit(1);
+
+  if (!invite) {
+    return NextResponse.json({ error: 'Invite not found' }, { status: 404 });
+  }
+  if (invite.delivery === 'direct') {
+    return directInviteResponse(() => transitionDirectInvite(request, invite, 'accept'));
+  }
+  const invalid = await validateLegacyInvite(invite);
+  if (invalid) return invalid;
 
   const accepterResult = await resolveAccepter(request, invite);
   if ('error' in accepterResult) {
