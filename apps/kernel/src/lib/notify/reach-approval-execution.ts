@@ -1,4 +1,5 @@
 import { getClient } from '@imajin/db';
+import { createHash } from 'node:crypto';
 import type { Identity } from '@imajin/auth';
 import type { OperatorApprovalRow } from '@/src/db';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
@@ -16,6 +17,35 @@ type SignedDecision = { payload: OperatorApprovalDecidedPayload; signature: stri
 
 export class ReachDecisionError extends Error {
   constructor(message: string, public readonly status = 409) { super(message); }
+}
+
+async function seedAcceptedContext(
+  tx: Tx,
+  row: OperatorApprovalRow,
+  target: { conversationDid: string; agentDid: string },
+  envelope: ReachEnvelope | null,
+) {
+  const detail = row.detail ?? {};
+  const messageId = `msg_reach_${createHash('sha256').update(row.proposalId).digest('hex')}`;
+  const content = {
+    type: 'text', text: detail.message,
+    provenance: {
+      source: row.source, proposalId: row.proposalId, transcriptHash: detail.transcriptHash,
+      ...(envelope ? { reachId: envelope.reachId, requesterAuthTier: envelope.requesterAuthTier ?? 'signed' }
+        : { knockId: detail.knockId, requesterAuthTier: 'unverified' }),
+      onBehalfOf: detail.onBehalfOf, claimVerified: false,
+    },
+  };
+  const inserted = await tx.unsafe(`
+    INSERT INTO chat.messages_v2 (id, conversation_did, from_did, content, content_type)
+    VALUES ($1, $2, $3, $4::jsonb, 'text') ON CONFLICT (id) DO NOTHING RETURNING id
+  `, [messageId, target.conversationDid, target.agentDid, JSON.stringify(content)]);
+  if (inserted.length) {
+    await tx.unsafe(`
+      UPDATE chat.conversations_v2 SET last_message_at = statement_timestamp(), updated_at = statement_timestamp()
+      WHERE did = $1
+    `, [target.conversationDid]);
+  }
 }
 
 interface KnockSqlRow {
@@ -52,7 +82,7 @@ async function loadEvidence(tx: Tx, row: OperatorApprovalRow) {
 }
 
 /** Accept is the sole identity promotion / DM creation path. No grants or identity-member roles. */
-async function acceptSender(tx: Tx, principalDid: string, requesterDid: string, knock: KnockSqlRow | null): Promise<string> {
+async function acceptSender(tx: Tx, principalDid: string, requesterDid: string, knock: KnockSqlRow | null): Promise<{ conversationDid: string; agentDid: string }> {
   let agentDid = requesterDid;
   let publicKey = knock?.public_key;
   if (!publicKey) {
@@ -106,20 +136,24 @@ async function acceptSender(tx: Tx, principalDid: string, requesterDid: string, 
     VALUES ($1, $2, 'member'), ($1, $3, 'member')
     ON CONFLICT (conversation_did, member_did) DO UPDATE SET left_at = NULL
   `, [conversationDid, principalDid, agentDid]);
-  return conversationDid;
+  return { conversationDid, agentDid };
+}
+
+async function verifyLiveActor(tx: Tx, row: OperatorApprovalRow, signed: SignedDecision, identity: Identity): Promise<void> {
+  if (!await canDecideReach(identity, row.operatorDid, tx)) throw new ReachDecisionError('Not authorized to decide this Reach card', 403);
+  const [actor] = await tx.unsafe<{ public_key: string }[]>(
+    'SELECT public_key FROM auth.identities WHERE id = $1 FOR SHARE', [identity.id],
+  );
+  if (actor?.public_key.toLowerCase() !== signed.payload.operatorSignature?.keyId.toLowerCase()) {
+    throw new ReachDecisionError('Actor signing key changed; sign again', 400);
+  }
 }
 
 /** Atomic domain mutation + signed decision. A thrown error rolls everything back for retry. */
 export async function commitReachDecision(row: OperatorApprovalRow, signed: SignedDecision, identity: Identity): Promise<void> {
   await getClient().begin('isolation level read committed', async (tx) => {
     await tx.unsafe('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`reach:${row.operatorDid}`]);
-    if (!await canDecideReach(identity, row.operatorDid, tx)) throw new ReachDecisionError('Not authorized to decide this Reach card', 403);
-    const [actor] = await tx.unsafe<{ public_key: string }[]>(
-      'SELECT public_key FROM auth.identities WHERE id = $1 FOR SHARE', [identity.id],
-    );
-    if (actor?.public_key.toLowerCase() !== signed.payload.operatorSignature?.keyId.toLowerCase()) {
-      throw new ReachDecisionError('Actor signing key changed; sign again', 400);
-    }
+    await verifyLiveActor(tx, row, signed, identity);
     const [current] = await tx.unsafe<{ status: string; content_hash: string }[]>(
       'SELECT status, content_hash FROM operator.approvals WHERE proposal_id = $1 FOR UPDATE', [row.proposalId],
     );
@@ -131,7 +165,8 @@ export async function commitReachDecision(row: OperatorApprovalRow, signed: Sign
     const mode = signed.payload.mode;
     if (mode !== 'block' && await isReachSenderBlockedInTransaction(tx, blockParams)) throw new ReachDecisionError('Sender is blocked', 403);
     if (mode === 'block') await blockReachSenderInTransaction(tx, blockParams);
-    const conversationDid = mode === 'accept' ? await acceptSender(tx, row.operatorDid, requesterDid, knock) : null;
+    const accepted = mode === 'accept' ? await acceptSender(tx, row.operatorDid, requesterDid, knock) : null;
+    if (accepted) await seedAcceptedContext(tx, row, accepted, envelope);
     if (envelope) {
       await tx.unsafe(`
         UPDATE auth.reach_envelopes SET envelope = jsonb_set(envelope, '{approvalDecision}', $3::jsonb)
@@ -147,6 +182,6 @@ export async function commitReachDecision(row: OperatorApprovalRow, signed: Sign
       UPDATE operator.approvals SET status = 'applied', decision = $2::jsonb, outcome = $3::jsonb,
         applied_at = statement_timestamp(), updated_at = statement_timestamp()
       WHERE proposal_id = $1
-    `, [row.proposalId, JSON.stringify(signed), JSON.stringify({ mode, ...(conversationDid ? { conversationDid } : {}) })]);
+    `, [row.proposalId, JSON.stringify(signed), JSON.stringify({ mode, ...(accepted ? { conversationDid: accepted.conversationDid } : {}) })]);
   });
 }

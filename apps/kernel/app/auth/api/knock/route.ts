@@ -31,6 +31,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { KNOCK_IP_RATE_LIMIT, KNOCK_IP_RATE_WINDOW, KNOCK_TARGET_RATE_LIMIT, KNOCK_TARGET_RATE_WINDOW } from '@imajin/auth';
 import { submitKnock } from '@/src/lib/auth/knock';
+import { readKnockReceipt } from '@/src/lib/auth/knock-receipt';
+/** Same route, different action: key-possession receipt read, never registration. */
+async function receiptResponse(body: Record<string, unknown>) {
+  const headers = { 'Cache-Control': 'no-store' };
+  try {
+    const receipt = await readKnockReceipt(body);
+    if (!receipt.ok) return NextResponse.json({ error: 'Invalid knock receipt proof' }, { status: 401, headers });
+    return NextResponse.json({ receipt: receipt.receipt }, { headers });
+  } catch {
+    return NextResponse.json({ error: 'Knock receipt unavailable' }, { status: 503, headers });
+  }
+}
 
 export async function POST(request: NextRequest) {
   const ip = getClientIP(request);
@@ -49,6 +61,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  if (body.action === 'receipt') return receiptResponse(body);
+  if (body.action !== undefined) return NextResponse.json({ error: 'Unknown knock action' }, { status: 400 });
   const declaredTarget = (body.declared_target ?? body.declaredTarget) as unknown;
 
   if (typeof declaredTarget === 'string' && declaredTarget) {
