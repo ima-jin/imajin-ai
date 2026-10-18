@@ -227,6 +227,22 @@ components:
       properties:
         reachId: { type: string }
         state: { type: string, enum: [delivered, replied, blocked] }
+        approvalDecision:
+          type: object
+          required: [payload, evidence]
+          description: |
+            Present for a shared /jin Reach decision; omitted for blocked senders.
+            For mode reply, payload.replyMessage is the immutable reply text and
+            state is replied even when the legacy reply field is null.
+            Recompute SHA-256 over canonical evidence and compare to the
+            sha256-prefixed payload.contentHash. Verify payload.operatorSignature
+            over canonical {contentHash,decision,decidedAt,mode,replyMessage?},
+            using the bare hash and the real actor's registered key.
+            Evidence contains the original safe card fields, never replyHandle,
+            gate rules or unpublished topics.
+          properties:
+            payload: { type: object }
+            evidence: { type: object }
         reply:
           type: [object, "null"]
           description: |

@@ -56,6 +56,9 @@ import { VaultImportApproval } from './vault-import-approval';
  * control is replaced by an explanatory line. The server refuses these
  * decisions with 403 `act_as_not_permitted` regardless; this is the
  * affordance catching up with the rule, not the rule itself.
+ * #2597 adds one narrow exception: server-verified act-as admins may act on
+ * Reach/knock cards using their own signing key. Every other source remains
+ * self-only. Reach/knock never use the unsigned-key compatibility fallback.
  */
 import { Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useCancellableTimeout } from './use-cancellable-timeout';

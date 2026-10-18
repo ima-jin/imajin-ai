@@ -48,7 +48,7 @@ export const reachEnvelopes = reachSchema.table('reach_envelopes', {
   senderDayIdx: index('idx_reach_envelopes_sender_day').on(table.principalDid, table.requesterDid, table.createdAt),
 }));
 
-/** Principal-owned sender blocks; intentionally no UI, callbacks, or reply workflow. */
+/** Principal-owned sender blocks shared by delivery, knocks and signed Inbox actions. */
 export const reachSenderBlocks = reachSchema.table('reach_sender_blocks', {
   principalDid: text('principal_did').notNull(),
   requesterDid: text('requester_did').notNull(),
