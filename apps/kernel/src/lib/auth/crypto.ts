@@ -98,6 +98,39 @@ export async function encryptPrivateKey(privateKeyHex: string): Promise<{ encryp
 
   return { encryptedKey: Buffer.from(combined).toString('base64'), salt };
 }
+/** Open only the server-held format. Never expose provider diagnostics or input. */
+export async function decryptPrivateKey(stored: {
+  encryptedKey: string; salt: string; keyDerivation: string;
+}): Promise<string> {
+  let plaintext: Uint8Array | undefined;
+  try {
+    const secret = process.env.GROUP_KEY_ENCRYPTION_SECRET;
+    if (!secret || stored.keyDerivation !== 'pbkdf2') throw new Error('Unavailable');
+    const combined = Buffer.from(stored.encryptedKey, 'base64');
+    const salt = Buffer.from(stored.salt, 'base64');
+    // The writer encrypts exactly 64 UTF-8 hex characters plus the GCM tag.
+    if (combined.length !== 92 || salt.length !== 16
+      || combined.toString('base64') !== stored.encryptedKey
+      || salt.toString('base64') !== stored.salt) throw new Error('Unavailable');
+    const keyMaterial = await crypto.subtle.importKey(
+      'raw', new TextEncoder().encode(secret), 'PBKDF2', false, ['deriveKey'],
+    );
+    const key = await crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt, iterations: 100_000, hash: 'SHA-256' },
+      keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['decrypt'],
+    );
+    plaintext = new Uint8Array(await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: combined.subarray(0, 12) }, key, combined.subarray(12),
+    ));
+    const seed = new TextDecoder('utf-8', { fatal: true }).decode(plaintext);
+    if (!/^[a-f0-9]{64}$/i.test(seed)) throw new Error('Unavailable');
+    return seed;
+  } catch {
+    throw new Error('Stored group key unavailable');
+  } finally {
+    plaintext?.fill(0);
+  }
+}
 
 // Hex utilities
 function hexToBytes(hex: string): Uint8Array {
