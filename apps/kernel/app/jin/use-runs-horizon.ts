@@ -16,6 +16,35 @@ function requireHorizon(value: Horizon | undefined): Horizon {
   return value;
 }
 
+async function readHorizon(loopId: string, signal: AbortSignal, onDenied: () => void): Promise<RunHorizon> {
+  const response = await fetch(`/jin/api/runs/${encodeURIComponent(loopId)}`, {
+    credentials: 'include', signal, cache: 'no-store',
+  });
+  if (response.status === 401 || response.status === 403) {
+    if (!signal.aborted) onDenied();
+    throw new Error('Authorization changed');
+  }
+  if (!response.ok) throw new Error('Horizon unavailable');
+  const data = await response.json();
+  if (!data.isOperator) {
+    if (!signal.aborted) onDenied();
+    throw new Error('Authorization changed');
+  }
+  return { loopId, horizon: requireHorizon(data.detail?.horizon),
+    commandAvailable: data.commandTarget?.available === true };
+}
+
+/** Await every sibling, then advance the bounded batch; failure never releases a partial observation. */
+async function readBatches(ids: string[], signal: AbortSignal, onDenied: () => void): Promise<RunHorizon[]> {
+  if (signal.aborted || ids.length === 0) return [];
+  const settled = await Promise.allSettled(ids.slice(0, 6).map(loopId => readHorizon(loopId, signal, onDenied)));
+  const batch = settled.map(result => {
+    if (result.status === 'rejected') throw result.reason;
+    return result.value;
+  });
+  return [...batch, ...await readBatches(ids.slice(6), signal, onDenied)];
+}
+
 /** Read the existing projection; never infer a zone from thread state or command delivery. */
 export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
   const [runs, setRuns] = useState<RunHorizon[]>([]);
@@ -33,32 +62,7 @@ export function useRunsHorizon(loopIds: string[], onDenied: () => void) {
       if (inFlight) return;
       inFlight = true;
       try {
-        const next: RunHorizon[] = [];
-        // Bound concurrent reads even when the operator loads many history pages.
-        for (let index = 0; index < ids.length; index += 6) {
-          if (controller.signal.aborted) return;
-          const batch = await Promise.allSettled(ids.slice(index, index + 6).map(async (loopId) => {
-            const response = await fetch(`/jin/api/runs/${encodeURIComponent(loopId)}`, {
-              credentials: 'include', signal: controller.signal, cache: 'no-store',
-            });
-            if (response.status === 401 || response.status === 403) {
-              if (!controller.signal.aborted) onDenied();
-              throw new Error('Authorization changed');
-            }
-            if (!response.ok) throw new Error('Horizon unavailable');
-            const data = await response.json();
-            if (!data.isOperator) {
-              if (!controller.signal.aborted) onDenied();
-              throw new Error('Authorization changed');
-            }
-            return { loopId, horizon: requireHorizon(data.detail?.horizon),
-              commandAvailable: data.commandTarget?.available === true };
-          }));
-          for (const result of batch) {
-            if (result.status === 'rejected') throw result.reason;
-            next.push(result.value);
-          }
-        }
+        const next = await readBatches(ids, controller.signal, onDenied);
         if (controller.signal.aborted) return;
         setRuns(next);
         setError('');

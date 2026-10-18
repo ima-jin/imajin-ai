@@ -81,7 +81,7 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
 }>) {
   const { runs, error, loading } = useRunsHorizon(loopIds, onDenied);
   const items = runs.flatMap(run => run.horizon.steps.map(step => ({ ...run, step })))
-    .filter(item => zones.some(zone => zone === item.step.zone))
+    .filter(item => item.step.zone !== 'done')
     .sort((a, b) => a.step.rank - b.step.rank || a.loopId.localeCompare(b.loopId) || a.step.stepId.localeCompare(b.step.stepId));
   const depth = runs.reduce((total, run) => total + run.horizon.depth, 0);
   return <section aria-label="Runs horizon" className="mb-5 min-w-0 space-y-3" data-testid="runs-horizon">
@@ -90,7 +90,7 @@ export function RunsHorizon({ loopIds, onDenied, onSelect, client = browserSessi
       <output aria-label="Horizon depth" className="font-mono text-sm text-indigo-200">{depth} / 12</output>
     </div>
     <p className="text-xs text-gray-400">Nearest first · signed registry observation · updates every 5s</p>
-    {loading && <p role="status" className="text-xs text-gray-400">Loading horizon…</p>}
+    {loading && <output className="block text-xs text-gray-400">Loading horizon…</output>}
     {error && <p role="alert" className="text-xs text-amber-200">{error}</p>}
     {!loading && !error && depth < 12 && <p className="text-xs text-amber-200">Below target · {12 - depth} more steps to reach 12. The horizon is not full yet.</p>}
     {hasMore && <p className="text-xs text-gray-400">Loaded runs only · load more runs below to include older horizons.</p>}
