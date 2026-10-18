@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import type { EmailProvider } from './types';
+import { providerLogFields, type EmailProvider } from './types';
 import type { SendEmailOptions } from '../types';
 import nodemailer from 'nodemailer';
 
@@ -14,7 +14,7 @@ const SMTP_FROM = process.env.SMTP_FROM || process.env.EMAIL_FROM || 'Jin <jin@i
 export class SmtpProvider implements EmailProvider {
   async send(options: SendEmailOptions): Promise<{ success: boolean; error?: any; messageId?: string }> {
     if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS) {
-      log.warn({ to: options.to }, 'SMTP_HOST, SMTP_USER, or SMTP_PASS not set — skipping email');
+      log.warn(providerLogFields(options, { to: options.to }), 'SMTP_HOST, SMTP_USER, or SMTP_PASS not set — skipping email');
       return { success: false, error: 'SMTP not fully configured' };
     }
 
@@ -46,10 +46,10 @@ export class SmtpProvider implements EmailProvider {
         }),
       });
 
-      log.info({ to: options.to, messageId: info.messageId }, 'Email sent via SMTP');
+      log.info(providerLogFields(options, { to: options.to, messageId: info.messageId }), 'Email sent via SMTP');
       return { success: true, messageId: info.messageId };
     } catch (error) {
-      log.error({ err: String(error) }, 'SMTP send failed');
+      log.error(providerLogFields(options, { err: String(error) }), 'SMTP send failed');
       return { success: false, error };
     }
   }

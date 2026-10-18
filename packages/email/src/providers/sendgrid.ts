@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import type { EmailProvider } from './types';
+import { providerLogFields, type EmailProvider } from './types';
 import type { SendEmailOptions } from '../types';
 import { parseSender } from '../types';
 
@@ -11,7 +11,7 @@ const SENDGRID_FROM = process.env.SENDGRID_FROM || 'Jin <jin@imajin.ai>';
 export class SendGridProvider implements EmailProvider {
   async send(options: SendEmailOptions): Promise<{ success: boolean; error?: any; messageId?: string }> {
     if (!SENDGRID_API_KEY) {
-      log.warn({ to: options.to }, 'SENDGRID_API_KEY not set — skipping email');
+      log.warn(providerLogFields(options, { to: options.to }), 'SENDGRID_API_KEY not set — skipping email');
       return { success: false, error: 'No API key configured' };
     }
 
@@ -42,15 +42,15 @@ export class SendGridProvider implements EmailProvider {
       });
 
       if (res.status === 202) {
-        log.info({ to: options.to }, 'Email sent via SendGrid');
+        log.info(providerLogFields(options, { to: options.to }), 'Email sent via SendGrid');
         return { success: true, messageId: res.headers.get('x-message-id') ?? undefined };
       } else {
         const body = await res.text();
-        log.error({ status: res.status, body }, 'SendGrid error');
+        log.error(providerLogFields(options, { status: res.status, body }), 'SendGrid error');
         return { success: false, error: `SendGrid ${res.status}: ${body}` };
       }
     } catch (error) {
-      log.error({ err: String(error) }, 'SendGrid send failed');
+      log.error(providerLogFields(options, { err: String(error) }), 'SendGrid send failed');
       return { success: false, error };
     }
   }
