@@ -3434,7 +3434,10 @@ paths:
         accepted ownership transfer. Records group.member.added with the actual
         role (a plain member is never called a controller), memberDid, by,
         actingAs and actingFor. The node-signed record and membership commit
-        atomically. Existing audit history is never rewritten.
+        atomically. The event includes oldAllowedServices (null for a new
+        membership) and allowedServices. Existing audit history is never rewritten.
+        Only owners may grant All services (null). Admins must choose a finite
+        subset of their own live allowed_services for add or reactivation.
       security:
         - cookieAuth: []
       parameters:
@@ -3454,11 +3457,13 @@ paths:
                 role: { type: string, enum: [admin, maintainer, member, agent], default: member }
                 allowedServices:
                   type: [array, "null"]
+                  minItems: 1
                   items: { type: string }
-                  description: Agent-only narrowing list; null or empty means unrestricted. Ignored for other roles.
+                  description: Names from the canonical manifest plus the group's available registry apps, for admin/maintainer/member/agent. Null or omitted means All services (owner-only grant); an empty or unknown list is rejected. Owners are always unrestricted and cannot be assigned here.
       responses:
         "201":
           description: Controller added
+        "400": { description: Invalid role or service list; choose at least one known service or null for All services }
 
   /api/groups/{groupDid}/controllers/{controllerDid}:
     patch:
@@ -3473,10 +3478,16 @@ paths:
         Owner changes (including demotion) must use the accepted transfer-owner
         policy from #2892. Missing/removed targets are never re-added by PATCH.
 
-        allowedServices follows the add contract: only role=agent is currently
-        enforced by delegation, so other roles normalize it to null. Omitted
-        fields preserve existing values; null/empty services means unrestricted.
-        The Members UI does not imply service restrictions for human members.
+        allowedServices follows the add contract for admin, maintainer, member
+        and agent. Omitted fields preserve existing values, including across
+        role changes; null means All services. A nonempty list must contain
+        known app-service names from the canonical manifest plus the group's
+        available registry apps. Empty lists are
+        rejected to prevent accidental lockout. Owners remain unrestricted
+        and cannot be edited here.
+        Non-owners may only narrow services to a finite subset of both the
+        target's current scope and their own live allowed_services, including
+        self-edits and role changes. Only owners may widen or grant null.
 
         Each actual role or scope change commits exactly one node-signed
         group.member.role.changed attestation atomically with the membership.
@@ -3506,6 +3517,7 @@ paths:
                 role: { type: string, enum: [admin, maintainer, member, agent] }
                 allowedServices:
                   type: [array, "null"]
+                  minItems: 1
                   items: { type: string, minLength: 1 }
       responses:
         "200":
