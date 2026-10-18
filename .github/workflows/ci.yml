@@ -511,6 +511,9 @@ jobs:
       - name: Swallowed-assertion guard
         run: node scripts/ci-guard-no-swallowed-assertions.mjs
 
+      - name: Deploy provisioning order guard
+        run: pnpm exec vitest run scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs
+
       - name: Extracted events workspace guard
         run: pnpm check:events-pruned
 
