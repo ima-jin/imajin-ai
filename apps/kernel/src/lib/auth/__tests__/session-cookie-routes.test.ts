@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   emailMfa: vi.fn(() => true),
   chainIdentity: null as Record<string, unknown> | null,
   grace: vi.fn(async () => null),
+  migrateTickets: vi.fn(async () => undefined),
 }));
 const identity = { id: 'did:imajin:FAKE_USER', publicKey: 'FAKE_PUBLIC_KEY', scope: 'actor', tier: 'preliminary', handle: 'fake' };
 
@@ -67,6 +68,7 @@ vi.mock('@/src/lib/auth/onboard', () => ({
   resolveOnboardRedirect: async () => 'https://jin.imajin.ai/events',
 }));
 vi.mock('@/src/lib/auth/consume-invite', () => ({ consumePendingInvites: async () => undefined }));
+vi.mock('@/src/lib/auth/onboard-tickets', () => ({ migrateOnboardTickets: state.migrateTickets }));
 vi.mock('@/src/lib/auth/encrypt', () => ({ decryptSecret: () => 'FAKE_UNUSED' }));
 vi.mock('@/src/lib/auth/email-mfa-codes', () => ({ verifyEmailMfaCode: state.emailMfa }));
 vi.mock('@imajin/bus', () => ({ publish: state.publish }));
@@ -162,15 +164,16 @@ describe('kernel session routes — phase 2', () => {
     const response = await verifyOnboard(request('/auth/api/onboard/verify?token=FAKE_ONBOARD'));
     expect(response.status).toBe(307);
     expect(response.headers.get('location')).toBe('https://jin.imajin.ai/events');
+    expect(state.migrateTickets).toHaveBeenCalledWith('fake@example.com', identity.id);
     expect(response.headers.getSetCookie()).toHaveLength(3);
     expect(response.headers.getSetCookie().filter(h => h.startsWith('imajin_session='))).toHaveLength(2);
   });
 
-  it('used-email fallback stays on the kernel host instead of events.imajin.ai', async () => {
+  it('used-email fallback stays on the kernel root without depending on events', async () => {
     vi.stubEnv('APP_URL', 'https://dev-jin.imajin.ai');
     const response = await verifyOnboard(request('/auth/api/onboard/verify?token=FAKE_USED'));
     expect(response.status).toBe(410);
-    expect(state.grace).toHaveBeenCalledWith('FAKE_USED', null, expect.anything(), 'https://dev-jin.imajin.ai/events');
+    expect(state.grace).toHaveBeenCalledWith('FAKE_USED', null, expect.anything(), 'https://dev-jin.imajin.ai');
   });
   it('login migrates an existing legacy session and preserves response data', async () => {
     state.rows = [[{ id: 'FAKE_CHALLENGE_ID', identityId: identity.id, challenge: 'FAKE_CHALLENGE' }], [identity], []];

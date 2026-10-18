@@ -5,6 +5,7 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'mail.sent',
   'event.attendance',
   'institution.verified',
   'vouch.given',
@@ -31,6 +32,7 @@ export const ATTESTATION_TYPES = [
   'group.member.left',
   'scope.onboard',
   'identity.created',
+  'identity.owner.transferred',
   'identity.verified.preliminary',
   'identity.verified.hard',
   'identity.verified.steward',
@@ -291,6 +293,8 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'mail.sent',
+  'identity.owner.transferred',
   // #2894 — unilateral read provenance, never awaiting a countersignature.
   'google.data.read',
   'session.created',

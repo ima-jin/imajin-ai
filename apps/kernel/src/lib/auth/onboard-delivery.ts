@@ -1,5 +1,5 @@
 import { nanoid } from 'nanoid';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { db, onboardTokens } from '@/src/db';
 import { onboardEmail } from './onboard-email';
@@ -9,12 +9,15 @@ type DeliveryInput = Pick<typeof onboardTokens.$inferInsert,
   wantPolling?: boolean;
   onBehalfOf?: string;
   authUrl?: string;
+  appDid?: string;
+  ownerDid?: string;
 };
 
 /** The verification bearer never leaves kernel storage and email delivery. */
 export async function deliverOnboardEmail(input: DeliveryInput): Promise<{
   success: boolean;
   pollHandle?: string;
+  error?: unknown;
 }> {
   const token = nanoid(48);
   const pollHandle = input.wantPolling ? nanoid(24) : null;
@@ -32,7 +35,10 @@ export async function deliverOnboardEmail(input: DeliveryInput): Promise<{
   });
   const verifyUrl = `${input.authUrl ?? buildPublicUrlAbsolute('auth')}/api/onboard/verify?token=${token}`;
   const contextText = input.context ? ` to ${input.context}` : '';
-  const result = await sendEmail({
+  const result = await sendKernelEmail({
+    purpose: 'signin',
+    appDid: input.appDid,
+    ownerDid: input.ownerDid,
     to: input.email,
     sensitive: true,
     subject: `Verify your email${contextText} — Imajin`,
@@ -41,5 +47,9 @@ export async function deliverOnboardEmail(input: DeliveryInput): Promise<{
       onBehalfOf: input.onBehalfOf,
     }),
   });
-  return { success: result.success, ...(pollHandle ? { pollHandle } : {}) };
+  return {
+    success: result.success,
+    ...(!result.success ? { error: result.error } : {}),
+    ...(pollHandle ? { pollHandle } : {}),
+  };
 }

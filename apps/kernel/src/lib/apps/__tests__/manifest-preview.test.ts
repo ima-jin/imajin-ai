@@ -26,6 +26,15 @@ beforeEach(() => {
 });
 
 describe('manifest declarations preview (#2813)', () => {
+  it('snapshots the validated widget for the signed approval card', async () => {
+    const profileWidget = { path: '/profile/studio', label: 'Studio' };
+    mocks.manifest.mockResolvedValue({ ok: { profileWidget } });
+    expect(await previewManifestDeclarations('fixture-studio')).toEqual({ ok: { ...empty, profileWidget } });
+  });
+  it('rejects an invalid widget instead of approving an empty declaration', async () => {
+    mocks.manifest.mockResolvedValue({ ok: { profileWidget: { path: '//evil.test', label: 'Evil' } } });
+    expect(await previewManifestDeclarations('fixture-studio')).toEqual({ error: "App 'fixture-studio' manifest invalid" });
+  });
   it.each([
     'foreign-org/template',
     'ima-jin/..',

@@ -120,6 +120,18 @@ describe('resolveOwnedAgentDids (#2289)', () => {
 });
 
 describe('listRecordEventsForPrincipal — scoping (#2289 acceptance)', () => {
+  it('reads a completing DID step attestation and its publisher proof from Record, including after agent revocation', async () => {
+    const completingDid = 'did:imajin:completing-agent';
+    await insertDelegationGrant(PRINCIPAL_A, completingDid, { revoked: true });
+    const attestation = { conditionId: 'manual', did: completingDid, statement: 'I completed the operational task' };
+    const payload = { loopId: 'cycle', stepId: 'ops', principal: PRINCIPAL_A, attestation };
+    const publisherProof = { type: 'step.attested', publisherDid: completingDid, payload,
+      signature: { keyId: 'a'.repeat(64), alg: 'ed25519', sig: 'b'.repeat(128) } };
+    await insertEvent({ id: 'step-attestation', did: completingDid, action: 'step.attested', payload: { ...payload, publisherProof } });
+    const record = await listRecordEventsForPrincipal(PRINCIPAL_A, { action: 'step.attested' });
+    expect(record.events[0]).toMatchObject({ did: completingDid, action: 'step.attested', payload: { attestation, publisherProof } });
+    expect((await listRecordEventsForPrincipal(PRINCIPAL_B, { action: 'step.attested' })).events).toEqual([]);
+  });
   it('principal A never sees principal B events (issuer isolation)', async () => {
     await insertEvent({ id: 'evt_a', did: PRINCIPAL_A });
     await insertEvent({ id: 'evt_b', did: PRINCIPAL_B });

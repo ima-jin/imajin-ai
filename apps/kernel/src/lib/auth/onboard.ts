@@ -5,7 +5,7 @@ import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 
 import { NextResponse } from 'next/server';
 import { db, identities, credentials, identityMembers, onboardTokens, invites } from '@/src/db';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNotNull } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { createSessionToken, getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { mintOrAccrueClaimableStub, findClaimableStubDid, verifyClaimantEmail } from '@/src/lib/auth/claimable-stub';
@@ -325,7 +325,7 @@ export async function addScopeMembership(
       await db
         .update(identityMembers)
         .set({ removedAt: null, role: 'member', addedBy: scopeDid, addedVia: 'invite', addedAt: new Date() })
-        .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, memberDid)));
+        .where(and(eq(identityMembers.identityDid, scopeDid), eq(identityMembers.memberDid, memberDid), isNotNull(identityMembers.removedAt)));
     }
     // If existing and not removed: already a member, nothing to do.
   } catch (err) {

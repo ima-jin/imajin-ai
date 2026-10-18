@@ -76,7 +76,7 @@ async function seedRow(appDid: string | null, rail = 'stripe-byo') {
 beforeAll(async () => {
   harness = await createPgliteLedgerHarness();
   await harness.client.exec(readFileSync(join(__dirname, '../../../../../../migrations/0007_registry_apps.sql'), 'utf8'));
-  await harness.client.exec('ALTER TABLE registry.apps ADD COLUMN IF NOT EXISTS slug TEXT');
+  await harness.client.exec('ALTER TABLE registry.apps ADD COLUMN IF NOT EXISTS slug TEXT, ADD COLUMN IF NOT EXISTS entry_url TEXT');
   db = drizzle(harness.client);
   mocks.db = db;
 });
@@ -85,16 +85,13 @@ beforeEach(async () => {
   vi.clearAllMocks();
   mocks.db = db;
   mocks.post.mockResolvedValue(new Response(null, { status: 200 }));
-  vi.stubEnv('EVENTS_SERVICE_URL', 'https://events.test');
-  vi.stubEnv('MARKET_SERVICE_URL', 'https://market.test');
-  vi.stubEnv('LEARN_SERVICE_URL', 'https://learn.test');
   vi.stubEnv('COFFEE_SERVICE_URL', 'https://coffee.test');
   await harness.client.exec('DELETE FROM pay.transactions; DELETE FROM registry.apps');
   for (const slug of APPS) {
     await harness.client.query(
-      `INSERT INTO registry.apps (id, owner_did, name, app_did, public_key, callback_url, slug)
-       VALUES ($1, 'did:imajin:owner', $1, $2, 'fixture', 'https://app.test/cb', $1)`,
-      [slug, didFor(slug)],
+      `INSERT INTO registry.apps (id, owner_did, name, app_did, public_key, callback_url, slug, entry_url)
+       VALUES ($1, 'did:imajin:owner', $1, $2, 'fixture', 'https://app.test/cb', $1, $3)`,
+      [slug, didFor(slug), `https://${slug}.test`],
     );
   }
 });

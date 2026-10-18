@@ -72,6 +72,7 @@ vi.mock('@/src/db', () => ({
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq:  (...args: unknown[]) => ({ eq: args }),
+  isNotNull: (...args: unknown[]) => ({ isNotNull: args }),
 }));
 
 vi.mock('@imajin/auth', () => ({

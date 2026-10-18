@@ -8,6 +8,15 @@ import { NO_DECLARATIONS, parseManifestDeclarations, sameDeclarations } from '..
 const MEDIA_READ = { aud: 'jin.imajin.ai', scopes: ['media:read'] };
 
 describe('parseManifestDeclarations', () => {
+  it('reads validated widgets and detects widget drift without treating registration as opt-in', () => {
+    const profileWidget = { path: '/profile/studio', label: 'Studio' };
+    const snapshot = { ...NO_DECLARATIONS, profileWidget };
+    expect(parseManifestDeclarations(snapshot)).toEqual(snapshot);
+    expect(parseManifestDeclarations({ ...snapshot, profileWidget: {} })).toBeNull();
+    expect(sameDeclarations(snapshot, NO_DECLARATIONS)).toBe(false);
+    expect(sameDeclarations(snapshot, { ...snapshot, profileWidget: { ...profileWidget, path: '/other' } })).toBe(false);
+    expect(sameDeclarations(snapshot, parseManifestDeclarations(snapshot)!)).toBe(true);
+  });
   it('reads a well-formed snapshot', () => {
     expect(
       parseManifestDeclarations({ providesScopes: ['dykil:read'], dependsOn: [MEDIA_READ], emittableEvents: ['tip.granted'] }),

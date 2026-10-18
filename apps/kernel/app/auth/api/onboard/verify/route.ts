@@ -16,7 +16,8 @@ import { nanoid } from 'nanoid';
 import { createLogger } from '@imajin/logger';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { consumePendingInvites } from '@/src/lib/auth/consume-invite';
-import { publicOrigin } from '@/src/lib/http/public-origin';
+import { nodeUrl } from '@/src/lib/http/node-url';
+import { migrateOnboardTickets } from '@/src/lib/auth/onboard-tickets';
 import {
   addScopeMembership,
   handleExpiredOrUsedToken,
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
       .limit(1);
 
     if (!record) {
-      const DEFAULT_REDIRECT = `${publicOrigin(request)}/events`;
+      const DEFAULT_REDIRECT = nodeUrl();
       const graceResponse = await handleExpiredOrUsedToken(
         token, existingSession, getSessionCookieOptions(), DEFAULT_REDIRECT,
       );
@@ -146,12 +147,8 @@ export async function GET(request: NextRequest) {
     }).catch(err => log.error({ err: String(err) }, 'Session attestation error'));
 
     // Fire-and-forget: migrate any guest tickets purchased with this email to the hard DID
-    const EVENTS_URL = process.env.EVENTS_SERVICE_URL || 'http://localhost:7006';
-    fetch(`${EVENTS_URL}/events/api/migrate-tickets`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail, hardDid: did }),
-    }).catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
+    migrateOnboardTickets(normalizedEmail, did)
+      .catch(err => log.warn({ err: String(err) }, 'Ticket migration call failed (non-fatal)'));
 
     // Branch on response shape only:
     // - Polling: store handoff token, render affirmation (no cookie, no redirect).
@@ -184,7 +181,7 @@ export async function GET(request: NextRequest) {
     const redirectUrl = await resolveOnboardRedirect({
       inviteCode: record.inviteCode,
       claimActivated,
-      defaultRedirectUrl: record.redirectUrl || '/',
+      defaultRedirectUrl: record.redirectUrl || nodeUrl(),
     });
     const response = NextResponse.redirect(redirectUrl);
     if (record.scopeDid) {

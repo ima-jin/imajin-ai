@@ -1,4 +1,6 @@
 export interface SendEmailOptions {
+  /** Resolved sender; callers outside the kernel may omit for provider defaults. */
+  from?: string;
   to: string;
   subject: string;
   html: string;

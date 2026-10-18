@@ -61,8 +61,8 @@ vi.mock('@imajin/config', () => ({
   buildPublicUrl: (service: string) => `https://${service}.example`,
 }));
 
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: vi.fn(async () => ({ success: true, messageId: 'msg_test' })) }));
 vi.mock('@imajin/email', () => ({
-  sendEmail: vi.fn(async () => ({ success: true, messageId: 'msg_test' })),
   trustGraphInviteEmail: vi.fn(() => '<html></html>'),
 }));
 
@@ -117,7 +117,7 @@ vi.mock('@/src/db', () => ({
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
 import { POST, GET } from '../route';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail as sendEmail } from '@/src/lib/mail/send';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -420,6 +420,7 @@ describe('POST /connections/api/invites — emailSent observability (#1847)', ()
 
     expect(res.status).toBe(201);
     expect(body.emailSent).toBe(true);
+    expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ purpose: 'contact', ownerDid: OWNER_DID }));
   });
 
   it('returns emailSent: false without failing the request when the provider reports a failure', async () => {

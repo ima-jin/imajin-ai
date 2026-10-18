@@ -1,6 +1,7 @@
 import { createLogger } from '@imajin/logger';
 import { providerLogFields, type EmailProvider } from './types';
 import type { SendEmailOptions } from '../types';
+import { parseSender } from '../types';
 
 const log = createLogger('email:postal');
 
@@ -19,11 +20,7 @@ export class PostalProvider implements EmailProvider {
       return { success: false, error: 'POSTAL_API_KEY not configured' };
     }
 
-    const lt = POSTAL_FROM.indexOf('<');
-    const gt = POSTAL_FROM.lastIndexOf('>');
-    const hasBracketAddress = lt > 0 && gt > lt;
-    const fromName = hasBracketAddress ? POSTAL_FROM.slice(0, lt).trim() : undefined;
-    const fromEmail = hasBracketAddress ? POSTAL_FROM.slice(lt + 1, gt).trim() : POSTAL_FROM;
+    const { name: fromName, email: fromEmail } = parseSender(options.from || POSTAL_FROM);
 
     const body: Record<string, any> = {
       to: [options.to],

@@ -95,6 +95,7 @@ export async function sendOrderOnboard(app: App, transactionId: string): Promise
   const delivery = await deliverOnboardEmail({
     email: parsedEmail.data, redirectUrl: buildPublicUrlAbsolute('auth'),
     context: 'access your order', onBehalfOf: app.name,
+    appDid: app.appDid, ownerDid: app.ownerDid,
   });
   if (!delivery.success) return { error: 'Email delivery failed', status: 502 };
   // Await durability; a failed write must not be reported to the caller as an audited success.
