@@ -1355,7 +1355,7 @@ paths:
     post:
       tags: [jin]
       operationId: raiseVaultProposal
-      summary: Raise a vault:* proposal (mint/grant/rotate/revoke) as a canvas-native operator-approval card
+      summary: Raise a vault action as a canvas-native operator-approval card
       description: >-
         Canvas-native counterpart to an agent proposing in chat via
         `POST /notify/api/send` (#2247). Only the node operator may call
@@ -1368,6 +1368,22 @@ paths:
         server-side at that point (`src/lib/vault/approvals-execution.ts`).
         Self-only too (#2359): a session under act-as is refused with 403
         `act_as_not_permitted` before anything is written.
+        Group custody (#2934) accepts identifiers only: `custody-group-key`
+        and `revoke-group-key` require {groupDid,purpose}. The configured node
+        DID is resolved server-side and included in the signed proposal.
+        Both require the real node operator's cryptographic countersignature
+        and current group owner/admin membership with vault access, rechecked
+        at execution. Custody authenticates the existing server-encrypted key
+        in process, matches its public key, seals a unique vault-group-key field
+        and issues one reusable group-to-node purpose grant. Existing
+        fetchPurposeCredential is the internal consumer; HTTP fetch/export and
+        generic mutation paths refuse this namespace. Revoke erases the grant's
+        wrapped material and stops future fetches, not previously loaded keys.
+        It does not rotate/delete the group's original stored key. Both actions
+        atomically persist a node-signed audit binding purpose, public key,
+        group, node, field, grant and countersigned approval reference.
+        Unsupported ciphertext, absent/mismatched existing encryption secret,
+        Tier-1 custody or duplicate purpose grants fail closed without fallback.
       security:
         - cookieAuth: []
       requestBody:
@@ -1378,7 +1394,7 @@ paths:
               type: object
               required: [kind, detail]
               properties:
-                kind: { type: string, enum: [mint, grant, rotate, revoke] }
+                kind: { type: string, enum: [mint, grant, rotate, revoke, custody-group-key, revoke-group-key] }
                 detail:
                   type: object
                   description: >-
@@ -1386,7 +1402,9 @@ paths:
                     requesterDid, expiresAt?}; grant needs {did, grantedTo,
                     purpose?, oneTime?, expiresAt?}; rotate needs {did,
                     purpose?, requesterDid?, expiresAt?}; revoke needs
-                    {did, tier?: withdraw|tombstone|destroy}.
+                    {did, tier?: withdraw|tombstone|destroy}; custody-group-key
+                    and revoke-group-key accept only {groupDid,purpose},
+                    e.g. purpose domain.issue. Never submit a key or nodeDid.
       responses:
         "201":
           description: Proposal raised

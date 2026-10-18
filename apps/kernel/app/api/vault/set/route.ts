@@ -7,7 +7,7 @@ import { ensureVaultHotReloadReactorRegistered } from '@/src/lib/vault/subscribe
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { listOtherActiveGrantees } from '@/src/lib/vault/grantees';
-import { isInternalSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isInternalSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 ensureVaultHotReloadReactorRegistered();
@@ -34,6 +34,9 @@ interface SetVaultBody {
  *    (#2450 / #2495: guard first, never strand). Rotate re-issues grantees.
  */
 async function checkSetGuards(field: string): Promise<NextResponse | null> {
+  if (isGroupKeyField(field)) {
+    return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 409 });
+  }
   if (isInternalSecretField(field)) {
     return NextResponse.json(
       { error: `'${field}' is a kernel-internal secret and cannot be set by an operator.` },

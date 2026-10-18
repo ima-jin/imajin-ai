@@ -23,6 +23,7 @@ export async function GET() {
       .select({
         field: vaultDelegationGrants.field,
         grantedTo: vaultDelegationGrants.grantedTo,
+        purpose: vaultDelegationGrants.purpose,
         expiresAt: vaultDelegationGrants.expiresAt,
       })
       .from(vaultDelegationGrants)
@@ -49,6 +50,7 @@ export async function GET() {
         custodyScheme,
         ...(custodyScheme === 'delegation-grant' ? {
           grantedTo: grant?.grantedTo ?? null,
+          purpose: grant?.purpose ?? null,
           expiresAt: grant?.expiresAt?.toISOString() ?? null,
           grantStatus: grant ? 'active' : 'none',
         } : {}),

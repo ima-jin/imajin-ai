@@ -59,6 +59,15 @@ original signed verification record rather than silently re-signing it.
 Imajin-issued subdomain evidence instead uses the pinned organization's own
 vault-granted key, never the node key. Node rotation still requires preserving
 that vault grant through the custody steps below.
+Group signing-key custody (#2934) uses
+`apps/kernel/src/lib/vault/group-key.ts`: it refuses missing node signing
+configuration rather than accepting the deterministic dev fallback, and reuses
+D2/D3 custody plus S3 audit preparation. Its `vault-group-key:*` fields are
+never plaintext-exported by the legacy rotation sweep. Before rotating the
+node key, countersign revocation of each group purpose grant; after rotation,
+countersign fresh custody from the group's original server-encrypted key.
+Keep the independent group-encryption secret unchanged. If that source cannot
+be authenticated, stop: do not export a seed or invent a replacement.
 
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
@@ -581,6 +590,7 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
 - `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
 - `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
+- `apps/kernel/src/lib/vault/group-key.ts` — D2/D3/S3 (explicit node-key configuration gate; countersigned group-to-node custody, wrapped-key revoke and transactional signed audit)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-rotate.ts` — D2
