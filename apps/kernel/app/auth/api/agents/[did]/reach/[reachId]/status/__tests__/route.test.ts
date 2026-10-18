@@ -78,6 +78,12 @@ describe('HTTP reach bearer status', () => {
 });
 
 describe('signed reach_status route', () => {
+  it('rejects oversized signed status input before signature or receipt resolution', async () => {
+    const response = await request({ ...body(), padding: 'x'.repeat(64 * 1024) });
+    expect(response.status).toBe(413);
+    expect(mocked.resolve).not.toHaveBeenCalled();
+    expect(mocked.status).not.toHaveBeenCalled();
+  });
   it('returns the same reachId and signed reply to its authenticated sender', async () => {
     const response = await request();
     expect(response.status).toBe(200);
