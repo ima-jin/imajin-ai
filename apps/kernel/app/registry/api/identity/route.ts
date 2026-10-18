@@ -24,7 +24,7 @@ function mapType(type: string): { scope: string; subtype: string } {
 }
 
 /** Drizzle-backed repository enforcing the unique (namespace, ref) constraint. */
-const repo: IdentityAliasRepo = {
+const identityRepo = (registeredByAppDid: string | null): IdentityAliasRepo => ({
   async findAlias(namespace, ref) {
     const [row] = await db
       .select({ did: identityAliases.did })
@@ -52,6 +52,7 @@ const repo: IdentityAliasRepo = {
         id: did,
         scope,
         subtype,
+        registeredByAppDid,
         publicKey: `soft_${nanoid(32)}`, // no keypair; placeholder satisfies NOT NULL UNIQUE
         handle: null,
         name,
@@ -90,7 +91,7 @@ const repo: IdentityAliasRepo = {
   mintDid() {
     return `did:imajin:${nanoid(44)}`;
   },
-};
+});
 
 /**
  * Parse and coerce the POST /registry/api/identity request body.
@@ -133,7 +134,7 @@ export async function POST(request: Request) {
   if ('appAuth' in appAuthResult) {
     // Service tokens carry userDid='' — use the app's own DID as the acting principal
     // so identity.created.issuer records provenance as the calling partner.
-    return handleIdentityPost(request, appAuthResult.appAuth.appDid);
+    return handleIdentityPost(request, appAuthResult.appAuth.appDid, appAuthResult.appAuth.appDid);
   }
 
   // If the app token was valid but lacked identity:write, propagate the scope error
@@ -150,7 +151,7 @@ export async function POST(request: Request) {
   return handleIdentityPost(request, resolveActingDid(auth.identity));
 }
 
-async function handleIdentityPost(request: Request, actingDid: string) {
+async function handleIdentityPost(request: Request, actingDid: string, registeredByAppDid: string | null = null) {
   let body: Record<string, unknown>;
   try {
     body = await request.json();
@@ -167,7 +168,7 @@ async function handleIdentityPost(request: Request, actingDid: string) {
     return NextResponse.json({ error: 'optInRef must be a non-empty string when provided' }, { status: 400 });
   }
 
-  const result = await resolveOrMintIdentity(repo, { namespace, ref, type, metadata });
+  const result = await resolveOrMintIdentity(identityRepo(registeredByAppDid), { namespace, ref, type, metadata });
 
   if (isResolveIdentityError(result)) {
     log.error({ namespace, ref, err: result.error }, 'Identity resolution failed');

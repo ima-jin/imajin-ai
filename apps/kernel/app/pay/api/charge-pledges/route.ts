@@ -28,7 +28,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-import { authenticatePayApp } from '@/src/lib/pay/app-service-auth';
+import { authenticatePayApp } from '@/src/lib/kernel/app-service-auth';
 import { loadAppPledges, chargeBoundPledge, pledgeFailure, PledgeChargeError, type PledgeReference } from '@/src/lib/pay/app-pledges';
 import { forEachSequential } from '@/src/lib/async/sequential';
 

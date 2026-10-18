@@ -92,6 +92,15 @@ Full detail: `migrations/ownership.json`.
 
 ## Rule
 
+### Identity registering-app provenance (#2926)
+
+`0212_identity_registering_app.sql` is kernel-owned and adds only nullable
+`auth.identities.registered_by_app_did`. The kernel records the verified app
+DID at identity creation, never from caller-supplied metadata or alias
+re-resolution. Legacy and non-app registrations remain NULL; there is no
+inferred backfill. Identity and conversation ownership remain kernel-owned.
+Numbers 0208–0211 were reserved by open PRs when 0212 was allocated.
+
 ### Reach throttling audit seed (#2599)
 
 `0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates

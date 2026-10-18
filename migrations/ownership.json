@@ -130,7 +130,7 @@
       "owner": "kernel",
       "schema": "auth",
       "firstMigration": "0001_seed.sql",
-      "notes": ""
+      "notes": "#2926 — 0212_identity_registering_app.sql adds nullable registered_by_app_did from authenticated app registration only; legacy rows remain NULL."
     },
     "auth.identity_chains": {
       "owner": "kernel",

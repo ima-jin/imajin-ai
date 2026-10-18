@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { rateLimit } from '@imajin/config';
 import { createLogger } from '@imajin/logger';
 import { corsHeaders } from '@/src/lib/kernel/cors';
-import { authenticatePayApp } from '@/src/lib/pay/app-service-auth';
+import { authenticatePayApp } from '@/src/lib/kernel/app-service-auth';
 import { parsePaymentLookup, PAY_READ_SCOPE, readAppPayments } from '@/src/lib/pay/app-payment-read';
 
 const log = createLogger('kernel');
