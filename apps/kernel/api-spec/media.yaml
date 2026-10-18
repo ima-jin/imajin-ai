@@ -65,7 +65,7 @@ components:
     PublicAssetDescriptor:
       type: object
       additionalProperties: false
-      description: Anonymous listing allowlist. No storage paths, uploader, classification, arbitrary metadata or full .fair manifest are disclosed.
+      description: Anonymous and authenticated cross-DID listing allowlist. No storage paths, uploader, classification, arbitrary metadata or full .fair manifest are disclosed.
       properties:
         id: { type: string }
         ownerDid: { type: string }
@@ -224,19 +224,21 @@ paths:
     get:
       tags: [media]
       operationId: listAssets
-      summary: List own assets when authenticated, or a specified DID's public assets anonymously.
+      summary: List own assets when authenticated, or a specified DID's public asset descriptors.
       description: |
         Anonymous callers MUST supply a non-empty `did`. Only active assets
         whose stored `.fair` access is explicitly `public` (string or object
         form, as on the anonymous single-asset read) are listed. Private,
         unlisted, connections-only, missing-access and draft assets are never
         included. Context and other filters apply before pagination.
-        Anonymous responses contain only `PublicAssetDescriptor` fields;
+        Anonymous and authenticated cross-DID responses contain only `PublicAssetDescriptor` fields;
         owner-only metadata, full manifests and server paths are never returned.
         Anonymous listing is limited to 60 requests per minute per IP.
 
-        Authenticated behavior is unchanged: omitted/own `did` lists the
-        caller's library; another DID lists public assets. Internal Bearer +
+        Authenticated omitted/own `did` lists the caller's library with full
+        `Asset` rows, including when acting as the owner through validated
+        delegation; another DID lists only public asset descriptors, using
+        the same explicit string/object public-access check as anonymous calls. Internal Bearer +
         X-Owner-DID is also accepted for service-to-service. App-token callers
         need `media:read`; authorization failures (403) never fall back to
         anonymous access.
@@ -253,10 +255,11 @@ paths:
             Required for anonymous callers; omitted, empty or whitespace-only
             values are refused with 401. List another identity's assets instead
             of the caller's own. When
-            `did` differs from the caller's DID the result is restricted to
-            assets whose `.fair` manifest access is `public`. Omitted (or equal
-            to the caller's own DID) lists the caller's own assets, of any
-            access level.
+            `did` differs from the caller's effective (including act-as) DID
+            the result is restricted to `PublicAssetDescriptor` fields for
+            assets whose `.fair` manifest access is explicitly `public`
+            (string or object form). Omitted (or equal to the caller's
+            effective DID) lists full rows for their own assets, of any access level.
         - name: context_app
           in: query
           schema: { type: string }
@@ -272,7 +275,7 @@ paths:
         - name: search
           in: query
           schema: { type: string }
-          description: "Filename search (case-insensitive substring)"
+          description: "Literal filename search (case-insensitive substring); % and _ are not wildcards."
         - name: sort
           in: query
           schema: { type: string, default: created }
@@ -289,7 +292,7 @@ paths:
           description: "Anonymous callers: clamped to 0–2147483647; invalid or non-integer values default to 0."
       responses:
         "200":
-          description: Assets list; anonymous callers receive public descriptors only, authenticated callers receive existing Asset rows.
+          description: Assets list; anonymous and authenticated cross-DID callers receive public descriptors only. Owners and validated act-as delegates receive full Asset rows for their effective DID; internal service calls retain full rows.
           content:
             application/json:
               schema:

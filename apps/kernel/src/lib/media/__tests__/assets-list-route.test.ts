@@ -145,6 +145,29 @@ describe('GET /media/api/assets — auth modes (#2648)', () => {
 });
 
 describe('GET /media/api/assets — did= param', () => {
+  it.each(['actingAs', 'actingFor'])('keeps full owner rows under validated %s delegation', async (delegation) => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: { id: 'did:imajin:admin', [delegation]: 'did:imajin:owner', scope: 'actor' },
+    } as never);
+    const fullRow = { id: 'asset_1', storagePath: '/private/asset_1', metadata: { ownerNote: 'private' } };
+    mockOffset.mockResolvedValueOnce([fullRow]);
+
+    const res = await GET(listRequest('?did=did:imajin:owner'));
+    expect(res.status).toBe(200);
+    expect((await res.json()).assets).toEqual([fullRow]);
+    expect(lastConditions()).toContainEqual(expect.objectContaining({ op: 'eq', val: 'did:imajin:owner' }));
+    expect(lastConditions().some((c) => c.op === 'sql')).toBe(false);
+  });
+
+  it('does not bypass projection for an unrelated DID under act-as delegation', async () => {
+    vi.mocked(requireAuth).mockResolvedValueOnce({
+      identity: { id: 'did:imajin:admin', actingAs: 'did:imajin:owner', scope: 'actor' },
+    } as never);
+    mockOffset.mockResolvedValueOnce([{ id: 'asset_1', storagePath: '/private/asset_1' }]);
+    const res = await GET(listRequest('?did=did:imajin:other'));
+    expect((await res.json()).assets).toEqual([{ id: 'asset_1' }]);
+    expect(lastConditions().some((c) => c.op === 'sql')).toBe(true);
+  });
   it('lists another DID\'s assets restricted to public ones', async () => {
     const res = await GET(listRequest('?did=did:imajin:other'));
     expect(res.status).toBe(200);
