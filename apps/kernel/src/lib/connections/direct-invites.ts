@@ -40,12 +40,12 @@ async function lockPair(tx: Transaction, fromDid: string, toDid: string, require
 }
 
 async function resolveActor(request: Request): Promise<Actor> {
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write', service: 'connections' });
   if (!auth.ok) throw new DirectInviteError(auth.error, auth.status);
   // EffectiveDid deliberately omits the human behind act-as; retain that
   // authenticated actor separately in the node-witnessed signed evidence.
-  const session = auth.via === 'session' ? await requireAuth(request) : null;
-  if (session && 'error' in session) throw new DirectInviteError('Unauthorized', 401);
+  const session = auth.via === 'session' ? await requireAuth(request, { service: 'connections' }) : null;
+  if (session && 'error' in session) throw new DirectInviteError(session.error, session.status);
   return {
     did: auth.effectiveDid,
     actorDid: session && 'identity' in session ? session.identity.id : auth.effectiveDid,

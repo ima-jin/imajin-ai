@@ -1,12 +1,17 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { eq } from 'drizzle-orm';
 import { crypto, canonicalize } from '@imajin/auth';
+import { NextRequest } from 'next/server';
+import { requireAuth as realRequireAuth } from '../../../../../../packages/auth/src/require-auth';
+import { resolveEffectiveDid as realResolveEffectiveDid } from '../../../../../../packages/auth/src/resolve-effective-did';
+import { setVaultInternalApiKey } from '../../../../../../packages/auth/tests/support/internal-post-test-env';
 import * as auth from '@/src/db/schemas/auth';
 import * as graph from '@/src/db/schemas/connections';
 import * as notify from '@/src/db/schemas/notify';
+import * as profile from '@/src/db/schemas/profile';
 
 const mocks = vi.hoisted(() => ({ db: null as unknown, effective: vi.fn(), actor: vi.fn(), sign: vi.fn(), push: vi.fn(), rate: vi.fn() }));
 vi.mock('@imajin/config', async (original) => ({
@@ -16,6 +21,7 @@ vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
   ...await import('@/src/db/schemas/notify'),
   ...await import('@/src/db/schemas/connections'),
+  ...await import('@/src/db/schemas/profile'),
   invites: (await import('@/src/db/schemas/connections')).invitesInConnections,
   pods: (await import('@/src/db/schemas/connections')).podsInConnections,
   podMembers: (await import('@/src/db/schemas/connections')).podMembersInConnections,
@@ -27,22 +33,42 @@ vi.mock('@imajin/auth', async (original) => ({
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: mocks.sign }));
 vi.mock('@/src/lib/notify/ws-push', () => ({ buildNotificationFrame: (row: unknown) => row, pushNotificationToDid: mocks.push }));
+vi.mock('@/src/lib/kernel/session', () => ({
+  getSessionForDid: async (did: string) => ({ did, tier: 'established', handle: 'business' }),
+  getSessionFromCookies: async () => ({ did: 'did:dfos:person', handle: 'Person' }),
+}));
+vi.mock('@imajin/bus', () => ({ publish: vi.fn(async () => undefined) }));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: vi.fn() }));
+vi.mock('@/src/lib/auth/claimable-stub', () => ({
+  resolveOrMintInviteTarget: vi.fn(), withNoDisclosure: (row: unknown) => row,
+  isUnclaimedStub: () => false, tryActivateClaim: vi.fn(async () => undefined),
+}));
+vi.mock('@/src/lib/kernel/verification', () => ({
+  checkPreliminaryEligibility: vi.fn(async () => undefined), checkHardEligibility: vi.fn(async () => undefined),
+}));
+vi.mock('@/src/lib/pay/payment-requests/claim', () => ({
+  resolvePaymentRequestsOnRecipientClaim: vi.fn(async () => undefined),
+}));
 
 import { createDirectInvite, directInviteResponse, listIncomingDirectInvites, transitionDirectInvite } from '../direct-invites';
+import * as inviteRoutes from '@/app/connections/api/invites/route';
+import * as codeRoutes from '@/app/connections/api/invites/[code]/route';
+import { POST as acceptRoute } from '@/app/connections/api/invites/[code]/accept/route';
 
 const pg = new PGlite();
 const signingKeys = crypto.generateKeypair();
 const database = drizzle(pg);
 const org = 'did:imajin:org';
 const person = 'did:dfos:person';
+const controller = 'did:imajin:owner';
 const request = new Request('http://localhost/connections/api/invites');
 const tables = [auth.identities, auth.attestations, graph.invitesInConnections, graph.connections, graph.podsInConnections,
-  graph.podMembersInConnections, notify.notifications, notify.preferences];
+  graph.podMembersInConnections, notify.notifications, notify.preferences, profile.profiles];
 
 vi.setConfig({ hookTimeout: 30_000, testTimeout: 30_000 });
 beforeAll(async () => {
   mocks.db = database;
-  await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA connections; CREATE SCHEMA notify;');
+  await pg.exec('CREATE SCHEMA auth; CREATE SCHEMA connections; CREATE SCHEMA notify; CREATE SCHEMA profile;');
   // Mirror current columns, including defaults, without depending on unrelated migrations.
   for (const table of tables) {
     const config = getTableConfig(table);
@@ -65,6 +91,11 @@ beforeAll(async () => {
   }
 });
 afterAll(async () => { await pg.close(); });
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+  setVaultInternalApiKey(undefined);
+});
 beforeEach(async () => {
   for (const table of [...tables].reverse()) {
     const config = getTableConfig(table);
@@ -110,7 +141,7 @@ describe('direct requests persisted lifecycle', () => {
   it.each([{ toDid: person }, { handle: '@pErSoN' }])('creates exact public target %j with signed org/actor attribution and no selectable connection', async (body) => {
     const response = await create(body);
     expect(response.status).toBe(201);
-    expect(mocks.effective).toHaveBeenCalledWith(request, { scope: 'connections:write' });
+    expect(mocks.effective).toHaveBeenCalledWith(request, { scope: 'connections:write', service: 'connections' });
     expect(await response.json()).toMatchObject({ invite: { toDid: person, toHandle: 'Person', delivery: 'direct', maxUses: 1 } });
     expect(await database.select().from(graph.connections)).toHaveLength(0);
     expect(await database.select().from(graph.podMembersInConnections)).toHaveLength(0);
@@ -211,4 +242,130 @@ describe('direct requests persisted lifecycle', () => {
     expect((await Promise.all([transition('accept'), transition('accept')])).map((r) => r.status).sort()).toEqual([201, 410]);
     expect(await database.select().from(graph.podsInConnections)).toHaveLength(1);
   });
+});
+
+function useRealAuth(services: string[] | null, did = controller, revokeOnRecheck = false) {
+  let controllerChecks = 0;
+  mocks.effective.mockImplementation(realResolveEffectiveDid);
+  mocks.actor.mockImplementation(realRequireAuth);
+  vi.stubEnv('AUTH_SERVICE_URL', 'https://auth.test');
+  setVaultInternalApiKey('test-vault-key');
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    if (url.endsWith('/api/session')) return Response.json({ did, scope: 'actor', tier: 'established' });
+    if (url.includes('/controllers/')) {
+      controllerChecks += 1;
+      return Response.json({
+        valid: true, role: 'maintainer',
+        allowedServices: revokeOnRecheck && controllerChecks > 1 ? ['pay'] : services,
+      });
+    }
+    throw new Error(`Unexpected auth URL: ${url}`);
+  }));
+}
+
+function routeRequest(method: string, body?: object, overlay: 'header' | 'cookie' | 'none' = 'cookie', incoming = false) {
+  return new NextRequest(`https://kernel.test/connections/api/invites${incoming ? '?direction=incoming' : ''}`, {
+    method,
+    headers: {
+      cookie: `imajin_session=test${overlay === 'cookie' ? `; x-acting-as=${org}` : ''}`,
+      ...(overlay === 'header' ? { 'x-acting-as': org } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+}
+
+const serviceRoutes = [
+  { name: 'create', method: 'POST', status: 201, incoming: false },
+  { name: 'outgoing list', method: 'GET', status: 200, incoming: false },
+  { name: 'incoming list', method: 'GET', status: 200, incoming: true },
+  { name: 'detail', method: 'GET', status: 200, incoming: false },
+  { name: 'accept', method: 'POST', status: 201, incoming: true },
+  { name: 'decline', method: 'PATCH', status: 200, incoming: true },
+  { name: 'cancel', method: 'DELETE', status: 200, incoming: false },
+] as const;
+
+async function seedRequest(incoming: boolean) {
+  if (incoming) asRecipient();
+  expect((await create(incoming ? { toDid: org } : { toDid: person })).status).toBe(201);
+}
+
+async function runRoute(route: typeof serviceRoutes[number], overlay: 'header' | 'cookie') {
+  const body = route.method === 'GET' ? undefined : { toDid: person, action: 'decline' };
+  const req = routeRequest(route.method, body, overlay, route.incoming);
+  if (route.name === 'create') return inviteRoutes.POST(req);
+  if (route.name.endsWith('list')) return inviteRoutes.GET(req);
+  const props = { params: Promise.resolve({ code: (await storedInvite()).code }) };
+  if (route.name === 'detail') return codeRoutes.GET(req, props);
+  if (route.name === 'accept') return acceptRoute(req, props);
+  if (route.name === 'decline') return codeRoutes.PATCH(req, props);
+  return codeRoutes.DELETE(req, props);
+}
+
+describe.each(['header', 'cookie'] as const)('direct request service gate (%s act-as)', (overlay) => {
+  describe.each(serviceRoutes)('$name', (route) => {
+    it.each([{ services: null }, { services: ['connections'] }])('allows unrestricted/listed maintainers ($services)', async ({ services }) => {
+      if (route.name !== 'create') await seedRequest(route.incoming);
+      vi.clearAllMocks();
+      useRealAuth(services);
+      const response = await runRoute(route, overlay);
+      expect(response.status).toBe(route.status);
+      if (route.name.endsWith('list')) {
+        expect((await response.json()).invites).toEqual([
+          expect.objectContaining({ fromDid: route.incoming ? person : org, toDid: route.incoming ? org : person }),
+        ]);
+      }
+      if (route.name === 'create' || route.name === 'accept') {
+        const [event] = await database.select().from(auth.attestations)
+          .where(eq(auth.attestations.type, route.name === 'create' ? 'connection.invited' : 'connection.accepted'));
+        expect(event.payload).toMatchObject({ actorDid: controller, effectiveDid: org });
+        expect(verifyEvent(event)).toBe(true);
+      }
+      if (route.name === 'accept') expect(await storedInvite()).toMatchObject({ consumedBy: org, status: 'accepted' });
+      if (route.name === 'decline') expect(await storedInvite()).toMatchObject({ status: 'declined' });
+      if (route.name === 'cancel') expect(await storedInvite()).toMatchObject({ status: 'revoked' });
+      if (['create', 'accept', 'decline', 'cancel'].includes(route.name)) {
+        expect(mocks.actor).toHaveBeenCalledWith(expect.anything(), { service: 'connections' });
+      }
+    });
+
+    it.each([{ services: ['pay'] }, { services: [] }])('refuses restricted maintainers ($services) without personal fallback or mutations', async ({ services }) => {
+      if (route.name !== 'create') await seedRequest(route.incoming);
+      const before = await Promise.all(tables.map((table) => database.select().from(table)));
+      vi.clearAllMocks();
+      useRealAuth(services);
+      const response = await runRoute(route, overlay);
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ error: 'Not authorized to act as this group' });
+      expect(await Promise.all(tables.map((table) => database.select().from(table)))).toEqual(before);
+      expect(mocks.sign).not.toHaveBeenCalled();
+      expect(mocks.push).not.toHaveBeenCalled();
+    });
+  });
+});
+
+it('preserves a service refusal from the real-actor recheck without falling back or creating state', async () => {
+  useRealAuth(['connections'], controller, true);
+  const response = await inviteRoutes.POST(routeRequest('POST', { toDid: person }));
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({ error: 'Not authorized to act as this group' });
+  expect(await database.select().from(graph.invitesInConnections)).toEqual([]);
+});
+
+it('accepts a personal direct request only as its recipient, never via an org-to-person fallback', async () => {
+  await create();
+  useRealAuth(['connections'], person);
+  const props = { params: Promise.resolve({ code: (await storedInvite()).code }) };
+  expect((await acceptRoute(routeRequest('POST', {}), props)).status).toBe(403);
+  expect(await storedInvite()).toMatchObject({ status: 'pending', usedCount: 0 });
+  expect((await acceptRoute(routeRequest('POST', {}, 'none'), props)).status).toBe(201);
+  expect(await storedInvite()).toMatchObject({ consumedBy: person, status: 'accepted' });
+});
+
+it('keeps legacy link acceptance personal even when an org with unlisted services is selected', async () => {
+  await create();
+  await database.update(graph.invitesInConnections).set({ delivery: 'link' });
+  useRealAuth(['pay']);
+  const props = { params: Promise.resolve({ code: (await storedInvite()).code }) };
+  expect((await acceptRoute(routeRequest('POST', {}), props)).status).toBe(201);
+  expect(await storedInvite()).toMatchObject({ consumedBy: person, status: 'accepted' });
 });

@@ -579,7 +579,7 @@ describe('GET /connections/api/invites — no-disclosure list masking (#1839)', 
     const response = await GET(req);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ invites: [] });
-    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read' });
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read', service: 'connections' });
     expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
   });
   const INVITER_DID = OWNER_DID;
@@ -670,7 +670,7 @@ describe('GET /connections/api/invites — no-disclosure list masking (#1839)', 
     }]));
     const req = makeGetReq();
     const body = await (await GET(req)).json();
-    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read' });
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read', service: 'connections' });
     expect(body).toMatchObject({ effectiveDid: OWNER_DID, effectiveName: SESSION.handle, pending: 0 });
     expect(body.invites[0]).toMatchObject({ toDid: REAL_TARGET_DID, toHandle: 'real-user-handle', toName: 'Real User' });
     expect(body.invites[0]).not.toHaveProperty('toEmail');
