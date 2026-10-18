@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 export const dynamic = "force-dynamic";
 /**
  * GET /api/onboard/verify?token=xxx
@@ -183,11 +184,10 @@ export async function GET(request: NextRequest) {
       defaultRedirectUrl: record.redirectUrl || nodeUrl(),
     });
     const response = NextResponse.redirect(redirectUrl);
-    response.cookies.set(cookieOptions.name, sessionToken, cookieOptions.options);
     if (record.scopeDid) {
       response.cookies.set('x-acting-as', record.scopeDid, { path: '/', maxAge: 31536000, sameSite: 'lax' });
     }
-    return response;
+    return withSessionCookie(response, sessionToken, cookieOptions);
 
   } catch (error) {
     log.error({ err: String(error) }, 'Onboard verify error');

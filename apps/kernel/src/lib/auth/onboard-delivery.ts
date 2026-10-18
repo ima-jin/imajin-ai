@@ -8,6 +8,7 @@ type DeliveryInput = Pick<typeof onboardTokens.$inferInsert,
   'email' | 'name' | 'redirectUrl' | 'context' | 'scopeDid' | 'inviteCode'> & {
   wantPolling?: boolean;
   onBehalfOf?: string;
+  authUrl?: string;
   appDid?: string;
   ownerDid?: string;
 };
@@ -32,7 +33,7 @@ export async function deliverOnboardEmail(input: DeliveryInput): Promise<{
     pollHandle,
     expiresAt: new Date(Date.now() + 15 * 60 * 1000),
   });
-  const verifyUrl = `${buildPublicUrlAbsolute('auth')}/api/onboard/verify?token=${token}`;
+  const verifyUrl = `${input.authUrl ?? buildPublicUrlAbsolute('auth')}/api/onboard/verify?token=${token}`;
   const contextText = input.context ? ` to ${input.context}` : '';
   const result = await sendKernelEmail({
     purpose: 'signin',

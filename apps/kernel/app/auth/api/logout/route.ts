@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { getSessionCookieOptions, verifySessionToken } from '@/src/lib/auth/jwt';
 import { corsHeaders } from '@imajin/config';
@@ -13,10 +14,6 @@ export async function POST(request: NextRequest) {
 
   const response = NextResponse.json({ success: true }, { headers: cors });
 
-  response.cookies.set(cookieConfig.name, '', {
-    ...cookieConfig.options,
-    maxAge: 0,
-  });
 
   if (session?.sub) {
     publish('session.destroyed', {
@@ -27,7 +24,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return response;
+  return withSessionCookie(response, null, cookieConfig);
 }
 
 export { preflight as OPTIONS } from '@/app/auth/lib/preflight';
