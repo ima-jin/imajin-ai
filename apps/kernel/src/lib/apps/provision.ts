@@ -50,6 +50,7 @@ import { getMintedKeyByDid } from '@/src/lib/vault/key-cards';
 import { grantExistingMintedKey, emitGrantEvents } from '@/src/lib/vault';
 import {
   ensureRepoFromTemplate,
+  resolveSourceRepo,
   tryGetInstallationToken,
   fetchAppManifest,
   appManifestError,
@@ -72,6 +73,7 @@ import { ensureAppDeclaredSecrets } from './self-secrets';
 import type { VaultAuthorization } from '@/src/lib/vault/authorization';
 import { provisionAppDomain, validateProvisionOwner } from './provision-domain';
 import { APP_VISIBILITY_ERROR, isAppVisibility, type AppVisibility } from './visibility';
+import { isRepositoryName } from './template-lineage';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -114,6 +116,8 @@ export interface AppProvisionParams {
   slug: string;
   displayName: string;
   template?: string;
+  /** Existing repository selected in the operator-countersigned proposal. */
+  sourceRepo?: string;
   /** Optional `<slug>/<type>` attestation types to seed (2026-09-26 refinement). */
   attestationTypes?: string[];
   /**
@@ -412,6 +416,7 @@ async function registerApp(params: {
   visibility: AppVisibility;
   retiredLegacyAppId: string | null;
   template: string;
+  sourceRepo: string;
   repoCreated: boolean;
   ownerDid: string;
 }): Promise<{ id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string }> {
@@ -495,7 +500,7 @@ async function registerApp(params: {
       tier: 'third_party',
       status: 'active',
       slug,
-      sourceRepo: `${PROVISIONING_ORG}/${slug}`,
+      sourceRepo: params.sourceRepo,
       template: params.template,
       // A newly generated repo starts joined; reusing a repo does not prove adoption.
       joined: params.repoCreated,
@@ -596,6 +601,27 @@ async function resumeSucceededProvision(
     };
 }
 
+function invalidProvisionSource(params: AppProvisionParams, existingRun: AppProvisionRow | undefined, sourceRepo: string): boolean {
+  if ((params.sourceRepo !== undefined && !isRepositoryName(params.sourceRepo))
+    || ((params.sourceRepo !== undefined || existingRun?.status !== 'succeeded') && existingRun?.repoUrl && existingRun.repoUrl.toLowerCase() !== `https://github.com/${sourceRepo}`.toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
+async function resolveProvisionRepo(params: AppProvisionParams, template: string, existingRun?: AppProvisionRow) {
+  if (params.sourceRepo !== undefined) return resolveSourceRepo(params.sourceRepo);
+  const ensured = await ensureRepoFromTemplate(params.slug, template);
+  // Finding a repo on retry must not erase durable template-creation provenance.
+  return { ...ensured, created: ensured.created || existingRun?.repoCreated === true, token: null };
+}
+
+async function provisionManifest(params: AppProvisionParams, sourceToken: string | null): Promise<AppManifestResult> {
+  if (params.sourceRepo === undefined) return fetchAppManifest(params.slug, await tryGetInstallationToken());
+  const [owner, name] = params.sourceRepo.split('/');
+  return fetchAppManifest(name, sourceToken, owner);
+}
+
 /**
  * Run (or resume) the full provisioning pipeline for one slug.
  * The operator bridge reports failed steps without exposing credentials.
@@ -604,6 +630,10 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   const { slug, displayName, template = DEFAULT_APP_TEMPLATE, attestationTypes = [] } = params;
   const nodeDid = getNodeSigningIdentity().senderDid;
   const existingRun = await getProvisionRow(slug);
+  const sourceRepo = params.sourceRepo ?? `${PROVISIONING_ORG}/${slug}`;
+  if (invalidProvisionSource(params, existingRun, sourceRepo)) {
+    return { status: 'failed', failedStep: 'repo', error: 'apps.provision: invalid sourceRepo or repository differs from the recorded provision — repository changes are not allowed on retry' };
+  }
   if (existingRun?.status === 'succeeded') return resumeSucceededProvision(params, existingRun, nodeDid);
 
   // #2746: resolve the callback origin up front so a node with no public URL
@@ -622,11 +652,11 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
 
   // ── Step 1: repo ──────────────────────────────────────────────────────
   let repo: EnsureRepoResult;
+  let sourceToken: string | null = null;
   try {
-    const ensured = await ensureRepoFromTemplate(slug, template);
-    // A prior attempt may have created the repo before failing mint/register.
-    // Finding it on retry must not erase durable template-creation provenance.
-    repo = { ...ensured, created: ensured.created || existingRun?.repoCreated === true };
+    const ensured = await resolveProvisionRepo(params, template, existingRun);
+    sourceToken = ensured.token;
+    repo = { repoUrl: ensured.repoUrl, created: ensured.created };
     await upsertProvisionRow(slug, { repoUrl: repo.repoUrl, repoCreated: repo.created });
   } catch (err) {
     return markFailed(nodeDid, slug, 'repo', err);
@@ -653,8 +683,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   let registration: { id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string };
   let retirement: { retiredLegacyAppId?: string };
   try {
-    const manifestToken = await tryGetInstallationToken();
-    const manifest: AppManifestResult = await fetchAppManifest(slug, manifestToken);
+    const manifest = await provisionManifest(params, sourceToken);
     if ('error' in manifest) {
       throw new Error(appManifestError(slug, manifest));
     }
@@ -669,6 +698,7 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       visibility,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
       template,
+      sourceRepo,
       repoCreated: repo.created,
       ownerDid: params.siteOwnerDid ?? params.authorizedBy?.operatorDid ?? 'did:imajin:platform',
     });
