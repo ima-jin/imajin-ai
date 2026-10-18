@@ -127,6 +127,12 @@ describe('editable membership and signed history (#2946)', () => {
     expect(await (await GET(request('GET'), params())).json()).toMatchObject({ valid: true, role: 'member' });
     expect(await evidence()).toHaveLength(2);
   });
+  it('keeps the authenticated principal distinct from the delegated group in signed evidence', async () => {
+    as(owner, { actingFor: groupDid });
+    expect((await edit({ role: 'maintainer' })).status).toBe(200);
+    const [record] = await evidence();
+    expect(record.payload).toMatchObject({ by: owner, memberDid: member, actingFor: groupDid, actingAs: null });
+  });
 
   it('adds/removes plain members with exactly one verifiable member-named event each and preserves history', async () => {
     expect((await add()).status).toBe(201);

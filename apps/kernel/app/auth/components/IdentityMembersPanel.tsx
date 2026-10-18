@@ -200,7 +200,7 @@ function MemberEditor({
           <select
             value={role}
             onChange={(event) => setRole(event.target.value)}
-            className="ml-3 px-3 py-2 bg-gray-950 border border-gray-700 rounded-lg text-sm text-white"
+            className="ml-3 px-3 py-2 bg-gray-950 border border-gray-700 rounded-lg text-sm text-white [color-scheme:dark]"
           >
             {controller.role === 'admin' && viewerRole !== 'owner' && (
               <option value="admin" disabled>admin (choose a new role)</option>
@@ -400,7 +400,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
                   key={ctrl.controllerDid}
                   className="p-3 bg-gray-900 rounded-lg border border-gray-800"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3 min-w-0">
                       {ctrl.avatarUrl ? (
                         <img
@@ -436,7 +436,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                    <div className="flex items-center gap-2 flex-shrink-0 sm:ml-3">
                       <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
                         {ctrl.role}
                       </span>
