@@ -45,6 +45,51 @@ components:
         before, and independently of, cookieAuth/bearerAuth — any other
         `Authorization` scheme (or none) falls through to those unchanged.
   schemas:
+    KernelServiceCheck:
+      type: object
+      required: [name, label, kind, url, status, responseTime, statusCode]
+      properties:
+        name: { type: string, description: Kernel route name or registered slug (registry id when slugless). }
+        label: { type: string }
+        kind: { type: string, enum: [core, app], description: Server-derived grouping for health clients. }
+        url: { type: string, format: uri }
+        status: { type: string, enum: [up, down, degraded] }
+        responseTime: { type: [number, "null"] }
+        statusCode: { type: [integer, "null"] }
+        error: { type: string }
+        migrations: { type: object }
+    ProfileWidget:
+      type: [object, "null"]
+      additionalProperties: false
+      required: [path, label]
+      description: >-
+        Optional link-only profile contribution, also accepted in imajin.app.json.
+        Path is root-relative on the validated registered entryUrl origin (node
+        origin for a relative entryUrl). A registered slug is required so the
+        profile owner can explicitly enable the app. No independent origin, HTML, scripts,
+        or iframe content. Protocol-relative URLs, backslashes, encoded
+        separators and controls are rejected. The link receives URL-encoded did
+        and optional handle query parameters naming the profile owner.
+        Active registration alone never enables the widget or installs an app.
+        Rendering requires owner enabledApps (actor) or forest enabled_services
+        (business/community/family); family visibility remains member-only.
+      properties:
+        path: { type: string, maxLength: 2048, pattern: "^/(?!/)", example: "/profile/studio" }
+        label: { type: string, minLength: 1, maxLength: 80 }
+        icon: { type: string, minLength: 1, maxLength: 32 }
+    AppPresentation:
+      type: object
+      properties:
+        entryUrl:
+          type: [string, "null"]
+          description: Validated root-relative path or HTTPS URL without credentials. Required when profileWidget is non-null.
+        profileWidget: { $ref: "#/components/schemas/ProfileWidget" }
+        icon: { type: [string, "null"], maxLength: 32 }
+        placements:
+          type: array
+          default: []
+          items: { type: string, enum: [launcher, home, auth-submenu] }
+        requiredScope: { type: [string, "null"], enum: [actor, business, community, family, null] }
     AppVisibility:
       type: string
       enum: [public, unlisted, private, internal]
@@ -283,8 +328,89 @@ paths:
         "401": { description: Not authenticated }
         "403": { description: Not the owner or delegate needs owner countersign }
         "404": { description: App not found }
-  /api/health:
+
+  /api/admin/registry/apps:
+    servers:
+      - url: /
     get:
+      operationId: adminListRegistryApps
+      summary: List all registry apps including presentation declarations
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "{apps} including entryUrl, slug, icon, placements, requiredScope and nullable profileWidget" }
+        "401": { description: Admin session required }
+    post:
+      operationId: adminRegisterRegistryApp
+      summary: Register an app and optional safe profile contribution
+      description: >-
+        Admin session required. Registry metadata only; never writes enabledApps,
+        enabled_services, authorization grants, or featured. A widget does not
+        require any nav placement. Provisioned apps accept the same optional
+        profileWidget in imajin.app.json, snapshotted on the signed approval card.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: "#/components/schemas/AppPresentation"
+                - type: object
+                  required: [name, ownerDid, callbackUrl]
+                  properties:
+                    name: { type: string }
+                    ownerDid: { type: string }
+                    callbackUrl: { type: string, format: uri }
+                    slug: { type: string, pattern: "^[a-z][a-z0-9-]{0,38}$" }
+                    tier: { type: string, enum: [first_party, third_party], default: third_party }
+                    description: { type: string }
+                    homepageUrl: { type: string }
+                    logoUrl: { type: string }
+                    publicKey: { type: string }
+                    requestedScopes: { type: array, items: { type: string } }
+                    providesScopes: { type: array, items: { type: string } }
+                    dependsOn: { type: array, items: { type: object } }
+                    emittableEvents: { type: array, items: { type: string } }
+                    allowedRedirectHosts: { type: array, items: { type: string } }
+                    tokenAudiences: { type: array, items: { type: string } }
+      responses:
+        "201": { description: Registered app including presentation fields and one-time generated keypair when applicable }
+        "400": { description: Invalid registration or unsafe widget declaration }
+        "401": { description: Admin session required }
+        "409": { description: Slug already registered }
+  /api/admin/registry/apps/{appId}:
+    servers:
+      - url: /
+    parameters:
+      - { name: appId, in: path, required: true, schema: { type: string } }
+    patch:
+      operationId: adminUpdateRegistryApp
+      summary: Update app presentation or approved emittable events
+      description: >-
+        Partial presentation update preserves omitted fields. profileWidget:null
+        removes the contribution. Validated and audited, without installation
+        or grants. Do not mix presentation and emittableEvents in one request.
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: "#/components/schemas/AppPresentation"
+                - type: object
+                  required: [emittableEvents]
+                  properties:
+                    emittableEvents: { type: array, items: { type: string } }
+      responses:
+        "200": { description: "{ok:true,app} with updated metadata" }
+        "400": { description: Invalid declaration or mixed update }
+        "401": { description: Admin session required }
+        "404": { description: App not found }
+  /registry/api/health:
+    get:
+      servers:
+        - url: /
       tags: [registry]
       operationId: healthCheck
       summary: Service health check
@@ -997,3 +1123,117 @@ paths:
       responses:
         "200":
           description: Preference removed
+
+  /api/health:
+    get:
+      servers:
+        - url: /
+      tags: [registry]
+      operationId: kernelHealth
+      summary: Check kernel routes and active registered app destinations
+      description: >-
+        Registry entryUrl values must pass entry URL validation. Root-relative
+        destinations resolve against the node URL; absolute HTTPS destinations
+        retain their registered hosts. Revoked, missing and unsafe destinations
+        are omitted. App environment URL overrides and inferred app subdomains
+        are not used. Fetches do not follow redirects. Known registry app bases
+        (origin root or /slug without query/fragment) are probed at their
+        /api/health endpoint for migration reporting; custom deep links are
+        probed as registered. The displayed url remains the app entry URL.
+      responses:
+        "503":
+          description: Registry unavailable; no partial inventory is advertised as operational
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, error]
+                properties:
+                  status: { type: string, const: degraded }
+                  error: { type: string, const: registry_unavailable }
+        "200":
+          description: Aggregate health, including kernel migrations and vault metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, version, build, timestamp, services, migrations, vault]
+                properties:
+                  status: { type: string, enum: [operational, degraded] }
+                  version: { type: string }
+                  build: { type: string }
+                  timestamp: { type: string, format: date-time }
+                  migrations: { type: object }
+                  vault: { type: object }
+                  services:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/KernelServiceCheck"
+  /.well-known/apple-app-site-association:
+    get:
+      servers:
+        - url: /
+      tags: [registry]
+      operationId: kernelAppleAssociation
+      summary: Apple association discovery
+      description: >-
+        Lists the deduplicated node host and validated active registry entry
+        hosts, not synthetic slug.node hosts. Registration does not install an
+        app in anyone's navigation. The existing wildcard appID placeholders
+        are retained; no native bundle identifiers are configured here.
+      responses:
+        "200":
+          description: Association document (public cache max-age 86400)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [webcredentials, applinks]
+                properties:
+                  webcredentials:
+                    type: object
+                    properties:
+                      apps: { type: array, items: { type: string } }
+                  applinks:
+                    type: object
+                    properties:
+                      apps: { type: array, items: { type: string } }
+                      details:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            appID: { type: string }
+                            paths: { type: array, items: { type: string } }
+                            components:
+                              type: array
+                              items:
+                                type: object
+                                properties:
+                                  "/": { type: string }
+                                  comment: { type: string }
+  /.well-known/assetlinks.json:
+    get:
+      servers:
+        - url: /
+      tags: [registry]
+      operationId: kernelAndroidAssociation
+      summary: Android association discovery
+      description: Lists deduplicated node and active registered entry origins; excludes revoked and unsafe entries.
+      responses:
+        "200":
+          description: Association document (public cache max-age 86400)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [relation, target]
+                  properties:
+                    relation: { type: array, items: { type: string } }
+                    target:
+                      type: object
+                      properties:
+                        namespace: { type: string, const: web }
+                        site: { type: string, format: uri }

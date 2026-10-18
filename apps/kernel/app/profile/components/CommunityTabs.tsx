@@ -2,27 +2,26 @@
 
 import { useEffect } from 'react';
 
-export type CommunityTab = 'overview' | 'events' | 'chat' | 'members' | 'market';
 
 interface CommunityTabsProps {
-  tabs: { id: CommunityTab; label: string; icon: string; memberOnly?: boolean }[];
-  activeTab: CommunityTab;
-  onTabChange: (tab: CommunityTab) => void;
+  tabs: { id: string; label: string; icon: string; memberOnly?: boolean }[];
+  activeTab: string;
+  onTabChange: (tab: string) => void;
   isMember: boolean;
 }
 
 export function CommunityTabs({ tabs, activeTab, onTabChange, isMember }: Readonly<CommunityTabsProps>) {
   // Read initial tab from URL hash on mount
   useEffect(() => {
-    const hash = globalThis.location.hash.slice(1) as CommunityTab;
+    const hash = globalThis.location.hash.slice(1);
     if (hash && tabs.some(t => t.id === hash)) {
       if (tabs.find(t => t.id === hash)?.memberOnly && !isMember) return;
       onTabChange(hash);
     }
-  }, []);
+  }, [tabs, isMember, onTabChange]);
 
   // Update hash when tab changes
-  const handleTabChange = (tab: CommunityTab) => {
+  const handleTabChange = (tab: string) => {
     globalThis.history.replaceState(null, '', `#${tab}`);
     onTabChange(tab);
   };

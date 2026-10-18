@@ -27,6 +27,7 @@ function navApp(slug: string): NavApp {
   return {
     slug,
     name: slug,
+    profileWidget: { path: '/profile', label: slug },
     icon: null,
     entryUrl: `/${slug}`,
     placements: ['launcher'],
@@ -42,7 +43,7 @@ function props(overrides: Partial<ProfileViewProps> = {}): ProfileViewProps {
       handle: 'ryan',
       displayName: 'Ryan',
       createdAt: new Date().toISOString(),
-      featureToggles: { show_events: true, show_market_items: true },
+      featureToggles: { enabledApps: ['events', 'market'], show_events: true, show_market_items: true },
     },
     identity: { scope: 'actor', subtype: 'human', tier: 'established', chainVerified: true },
     viewer: { viewerDid: null, isSelf: false, isConnected: false, isFollowing: false },

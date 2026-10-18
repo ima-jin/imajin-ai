@@ -123,13 +123,19 @@ const getLoopTool: McpTool = {
   requiredScope: LOOPS_READ_SCOPE,
   description:
     'Read one loop by id: its current lifecycle projection (state, summary, refs, timestamps) plus ' +
-    'its full ordered event history. Only resolves loops you own or are delegate for — a loop id ' +
+    'its full ordered event history and horizon {steps, depth, targetDepth: 12}. Horizon steps are ' +
+    'rank-ordered, with derived zones and openExitConditions; include_exited opts into done-step audit projections. ' +
+    'Only resolves loops you own or are delegate for — a loop id ' +
     'that exists but belongs to a different principal is reported the same way as an unknown id, so ' +
     'this never confirms existence to a caller who is not allowed to see it. Requires an active ' +
     'loops:read grant on the Imajin MCP connector.',
   inputSchema: {
     type: 'object',
     properties: {
+      include_exited: {
+        type: 'boolean',
+        description: 'Include exited/done steps for audit. Default false; depth always excludes them.',
+      },
       loop_id: {
         type: 'string',
         description: 'The loop id, e.g. from loops_list or a loop.* event payload.',
@@ -143,7 +149,7 @@ const getLoopTool: McpTool = {
     const loopId = str(args, 'loop_id');
     if (loopId === undefined) throw new Error('loop_id is required');
 
-    const result = await getLoopWithHistory(loopId, ctx.did);
+    const result = await getLoopWithHistory(loopId, ctx.did, args.include_exited === true);
     if (!result) {
       throw new Error('not_found: no loop with that id is visible to you');
     }

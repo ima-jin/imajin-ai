@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { requireAuth, requireAppAuth, resolveActingDid } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { db, identities, identityAliases, identityMembers } from '@/src/db';
+import { PENDING_OWNER_TRANSFER_KEY } from '@/src/lib/auth/ownership-policy';
 import {
   resolveOrMintIdentity,
   isResolveIdentityError,
@@ -73,19 +74,13 @@ const identityRepo = (registeredByAppDid: string | null): IdentityAliasRepo => (
   },
 
   async mergeMetadata(did, incoming) {
-    const [identity] = await db
-      .select({ metadata: identities.metadata })
-      .from(identities)
-      .where(eq(identities.id, did))
-      .limit(1);
-    const current = (identity?.metadata as Record<string, unknown> | null) ?? {};
-    const merged = { ...current, ...incoming };
+    // Atomic merge preserves server-owned state even across concurrent transfers.
     const [updated] = await db
       .update(identities)
-      .set({ metadata: merged, updatedAt: new Date() })
+      .set({ metadata: sql`coalesce(${identities.metadata}, '{}'::jsonb) || ${JSON.stringify(incoming)}::jsonb`, updatedAt: new Date() })
       .where(eq(identities.id, did))
       .returning({ metadata: identities.metadata });
-    return (updated?.metadata as Record<string, unknown> | null) ?? merged;
+    return (updated?.metadata as Record<string, unknown> | null) ?? incoming;
   },
 
   mintDid() {
@@ -160,6 +155,9 @@ async function handleIdentityPost(request: Request, actingDid: string, registere
   }
 
   const { namespace, ref, type, optInRef, metadata } = parseIdentityRequestBody(body);
+  if (Object.hasOwn(metadata, PENDING_OWNER_TRANSFER_KEY)) {
+    return NextResponse.json({ error: 'Ownership transfer metadata is reserved' }, { status: 400 });
+  }
 
   if (!namespace) return NextResponse.json({ error: 'namespace is required' }, { status: 400 });
   if (!ref) return NextResponse.json({ error: 'ref is required' }, { status: 400 });
@@ -263,6 +261,7 @@ async function upsertAgentGrant({
       and(
         eq(identityMembers.identityDid, travelerDid),
         eq(identityMembers.memberDid, appDid),
+        isNotNull(identityMembers.removedAt),
       )
     );
 }

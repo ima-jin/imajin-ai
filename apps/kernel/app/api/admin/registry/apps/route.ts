@@ -11,6 +11,7 @@
  * every other admin mutation in this codebase relies on, publishing the
  * generic `attestation.created` bus event.
  */
+import { validateRegistryPresentation } from '@/src/lib/apps/registry-presentation';
 import { NextRequest, NextResponse } from 'next/server';
 import { nanoid } from 'nanoid';
 import { desc } from 'drizzle-orm';
@@ -150,6 +151,12 @@ export async function GET(_request: NextRequest) {
 
   const apps = await db
     .select({
+      entryUrl: registryApps.entryUrl,
+      profileWidget: registryApps.profileWidget,
+      icon: registryApps.icon,
+      placements: registryApps.placements,
+      requiredScope: registryApps.requiredScope,
+      slug: registryApps.slug,
       id: registryApps.id,
       ownerDid: registryApps.ownerDid,
       name: registryApps.name,
@@ -188,6 +195,11 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
+  if (!rawBody || typeof rawBody !== 'object' || Array.isArray(rawBody)) {
+    return NextResponse.json({ error: 'Expected a JSON object' }, { status: 400 });
+  }
+  const presentation = validateRegistryPresentation(rawBody);
+  if ('error' in presentation) return NextResponse.json({ error: presentation.error }, { status: 400 });
   const body = rawBody as RegisterBody;
 
   const validated = validateRegisterBody(body);
@@ -245,6 +257,7 @@ export async function POST(request: NextRequest) {
   const id = `app_${nanoid(16)}`;
 
   const inserted = await insertRegistryApp({
+    ...presentation.ok,
     id,
     ownerDid,
     name: name.trim(),
@@ -279,7 +292,7 @@ export async function POST(request: NextRequest) {
     type: 'registry.app.registered',
     context_id: id,
     context_type: 'registry_app',
-    payload: { appId: id, name: app.name, tier, ownerDid, slug, scopes, providesScopes, dependsOn, emittableEvents, allowedRedirectHosts, tokenAudiences },
+    payload: { appId: id, name: app.name, tier, ownerDid, slug, scopes, providesScopes, dependsOn, emittableEvents, allowedRedirectHosts, tokenAudiences, ...presentation.ok },
   }).catch((err: unknown) => log.error({ err: String(err), appId: id }, 'registry.app.registered attestation failed'));
 
   const response: Record<string, unknown> = { ...app };

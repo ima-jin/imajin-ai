@@ -2,8 +2,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { buildPublicUrlAbsolute } from '@imajin/config';
 import { resolveEnabledApps } from '@/src/lib/profile/feature-toggles-compat';
-import { resolveRegistryAppsBySlug } from '@/src/lib/kernel/app-nav';
-import { PROFILE_WIDGET_APP_SLUGS } from '../../lib/registry-app-links';
+import { resolveRegistryAppsBySlug, resolveProfileWidgetApps } from '@/src/lib/kernel/app-nav';
 import {
   getViewerDid,
   getProfile,
@@ -99,23 +98,19 @@ export default async function ProfilePage({ params }: Readonly<PageProps>) {
     ? (profile.featureToggles?.links || profile.handle)
     : null;
 
-  const [counts, isFollowing, links, registryApps] = await Promise.all([
+  const [counts, isFollowing, links, serviceCandidates, registryApps] = await Promise.all([
     getProfileCounts(profile.did),
     viewerDid && !isSelf ? getFollowStatus(viewerDid, profile.did) : Promise.resolve(false),
     // The links service is keyed by the profile's handle — the value the legacy
     // field always carried (see `profile/edit/page.tsx`'s write path); fall back
     // to the current handle for a profile that enabled links via `enabledApps` only.
     linksHandle ? getLinks(linksHandle) : Promise.resolve([]),
-    // One registry read covers both the owner-enabled service buttons
-    // (#2425 send-back: registry apps ∩ resolveEnabledApps — replaces
-    // ServiceLinks.tsx's own hard-coded 'links'/'coffee' literals) and the
-    // events/market widget apps (#2434). Public, unauthenticated read (the
-    // profile owner already opted in via feature_toggles); see
-    // resolveRegistryAppsBySlug's docblock.
-    resolveRegistryAppsBySlug([...enabledApps, ...PROFILE_WIDGET_APP_SLUGS]),
+    // Service buttons use owner membership; widget discovery is declaration-based, never a fixed slug list.
+    resolveRegistryAppsBySlug(enabledApps),
+    resolveProfileWidgetApps(),
   ]);
-  const enabledAppSet = new Set(enabledApps);
-  const serviceApps = registryApps.filter((app) => enabledAppSet.has(app.slug));
+
+  const serviceApps = serviceCandidates.filter((app) => enabledApps.includes(app.slug));
 
   const viewer = {
     viewerDid,

@@ -3,6 +3,7 @@ import { db, conversationsV2, conversationMembers, messagesV2 } from '@/src/db';
 import { parseConversationDid } from '@/src/lib/chat/conversation-did';
 import { canonicalDmConversationDid } from '@/src/lib/chat/dm-guard';
 import { unfurlLinks } from '@/src/lib/chat/unfurl';
+import { resolveRegistryAppBaseUrl } from '@/src/lib/apps/registry-url';
 
 /**
  * Resolve the display name for a new conversation.
@@ -20,7 +21,8 @@ export async function resolveConversationName(
 
   if (parsed.type === 'event') {
     try {
-      const eventsUrl = process.env.EVENTS_SERVICE_URL || 'http://localhost:3006';
+      const eventsUrl = await resolveRegistryAppBaseUrl('events');
+      if (!eventsUrl) return did;
       const evtRes = await fetch(`${eventsUrl}/api/events/by-did/${encodeURIComponent(did)}`);
       if (evtRes.ok) {
         const evtData = await evtRes.json();

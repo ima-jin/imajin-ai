@@ -1,69 +1,35 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { NavApp } from '@/src/lib/kernel/app-nav';
+import { enabledProfileWidgets, buildCommunityTabs, resolveRegistryAppUrl } from '../registry-app-links';
 
-vi.mock('@imajin/config', () => ({ buildPublicUrl: (slug: string) => `https://node.test/${slug}` }));
+const app: NavApp = {
+  slug: 'fixture-studio', name: 'Fixture Studio', entryUrl: 'https://studio.example.test',
+  profileWidget: { path: '/profile/studio', label: 'Studio', icon: 'S' },
+  icon: null, placements: [], requiredScope: null, tier: 'third_party',
+};
+const profile = { did: 'did:imajin:owner', createdAt: '', displayName: 'Owner' };
 
-import { resolveRegistryAppUrl, buildCommunityTabs, PROFILE_WIDGET_APP_SLUGS } from '../registry-app-links';
-
-function navApp(slug: string): NavApp {
-  return {
-    slug,
-    name: slug,
-    icon: null,
-    entryUrl: `/${slug}`,
-    placements: ['launcher'],
-    requiredScope: null,
-    tier: 'first_party',
-  };
-}
-
-describe('resolveRegistryAppUrl (#2434)', () => {
-  it('disables API-backed widgets for arbitrary deep/query/hash entry destinations', () => {
-    for (const entryUrl of ['/events/list', '/events?view=calendar', 'https://app.test/events#next']) {
-      expect(resolveRegistryAppUrl([{ ...navApp('events'), entryUrl }], 'events')).toBeNull();
-    }
+describe('registry profile widgets', () => {
+  it('requires the profile owner to enable a declared app; featuring is not opt-in', () => {
+    expect(enabledProfileWidgets([{ ...app, featured: true }], [], profile)).toEqual([]);
+    expect(enabledProfileWidgets([app], ['fixture-studio'], profile)).toEqual([app]);
   });
-  it('returns the registry entry URL for an app that has a registry row', () => {
-    expect(resolveRegistryAppUrl([navApp('events'), navApp('market')], 'events')).toBe('/events');
+  it('ignores missing declarations and unsafe registered destinations', () => {
+    expect(enabledProfileWidgets([{ ...app, profileWidget: null }], [app.slug], profile)).toEqual([]);
+    expect(enabledProfileWidgets([{ ...app, entryUrl: 'javascript:alert(1)' }], [app.slug], profile)).toEqual([]);
   });
-
-  it('returns null once the app is gone from the registry (pruned)', () => {
-    expect(resolveRegistryAppUrl([navApp('market')], 'events')).toBeNull();
-    expect(resolveRegistryAppUrl([], 'market')).toBeNull();
-  });
-
-  it('covers exactly the events and market widget apps', () => {
-    expect([...PROFILE_WIDGET_APP_SLUGS]).toEqual(['events', 'market']);
-  });
-});
-
-describe('buildCommunityTabs (#2434)', () => {
-  const urls = { eventsUrl: 'https://node.test/events', marketUrl: 'https://node.test/market' };
-
-  it('always includes overview and members', () => {
-    expect(buildCommunityTabs({ enabledServices: [], featureToggles: undefined, eventsUrl: null, marketUrl: null })).toEqual([
-      'overview',
-      'members',
+  it('creates arbitrary app tabs without fixed candidates or collisions with kernel tabs', () => {
+    expect(buildCommunityTabs(['chat'], [app]).map((tab) => tab.id)).toEqual([
+      'overview', 'app:fixture-studio', 'chat', 'members',
     ]);
+    expect(buildCommunityTabs([], [])).toEqual([
+      { id: 'overview', label: 'Overview', icon: '🏠' }, { id: 'members', label: 'Members', icon: '👥' },
+    ]);
+    expect(buildCommunityTabs([], [{ ...app, profileWidget: null }])[1].label).toBe(app.name);
   });
-
-  it('shows events via the forest service or the profile toggle, and market only when both are on', () => {
-    expect(buildCommunityTabs({ enabledServices: ['events'], featureToggles: undefined, ...urls })).toContain('events');
-    expect(buildCommunityTabs({ enabledServices: [], featureToggles: { show_events: true }, ...urls })).toContain('events');
-    expect(buildCommunityTabs({ enabledServices: ['market'], featureToggles: undefined, ...urls })).not.toContain('market');
-    expect(
-      buildCommunityTabs({ enabledServices: ['market'], featureToggles: { show_market_items: true }, ...urls }),
-    ).toContain('market');
-  });
-
-  it('drops the events/market tabs when their app is no longer in the registry', () => {
-    const tabs = buildCommunityTabs({
-      enabledServices: ['events', 'market', 'chat'],
-      featureToggles: { show_events: true, show_market_items: true },
-      eventsUrl: null,
-      marketUrl: null,
-    });
-
-    expect(tabs).toEqual(['overview', 'chat', 'members']);
+  it('retains safe specialized API-base resolution', () => {
+    expect(resolveRegistryAppUrl([], 'events')).toBeNull();
+    expect(resolveRegistryAppUrl([{ ...app, slug: 'events', entryUrl: '/events' }], 'events')).toBe('/events');
+    expect(resolveRegistryAppUrl([{ ...app, slug: 'events', entryUrl: '/events/list?x=1' }], 'events')).toBeNull();
   });
 });

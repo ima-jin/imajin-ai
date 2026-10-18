@@ -35,6 +35,8 @@ vi.mock('../surface-conflict', () => ({ signSurfaceConflict: vi.fn() }));
 import { ingestLoopEvent } from '../ingest';
 import type { LoopIngestRequest } from '../types';
 import { OUTPUTS } from './output-fixtures';
+import { queuedStep } from './horizon-fixtures';
+import { projectSurfaceLease } from '../surface-lease';
 
 const REQUEST: LoopIngestRequest = {
   type: 'loop.started',
@@ -58,6 +60,42 @@ beforeEach(() => {
 });
 
 describe('ingestLoopEvent', () => {
+  const stepRequest = (): LoopIngestRequest => ({
+    ...REQUEST, type: 'step.queued', publisherDid: queuedStep().issuer,
+    payload: queuedStep().payload as LoopIngestRequest['payload'],
+  });
+
+  it('publishes signed steps with stable ids, exact publisher proofs and no surface or ownership mutations', async () => {
+    mockVerify.mockResolvedValue({ ok: true });
+    const request = stepRequest();
+    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
+    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
+    expect(mockPublish.mock.calls[0]).toEqual(mockPublish.mock.calls[1]);
+    expect(mockPublish.mock.calls[0]).toEqual(['step.queued', expect.objectContaining({
+      id: 'signed-finish', issuer: request.publisherDid,
+      payload: { ...request.payload, publisherProof: request },
+    })]);
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(projectSurfaceLease).not.toHaveBeenCalled();
+  });
+
+  it('rejects malformed direct-call step data before publishing or writing', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const request = stepRequest();
+    request.payload.zone = 'done';
+    expect(await ingestLoopEvent(request)).toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
+
+  it('never retains a redaction-changing step fact as an unverifiable attestation', async () => {
+    mockVerify.mockResolvedValueOnce({ ok: true });
+    const request = stepRequest();
+    request.payload.summary = 'Bearer private-value';
+    expect(await ingestLoopEvent(request)).toMatchObject({ status: 400 });
+    expect(mockSql).not.toHaveBeenCalled();
+    expect(mockPublish).not.toHaveBeenCalled();
+  });
   it('rejects with 400 and never publishes when signature verification fails (forged/unsigned event)', async () => {
     mockVerify.mockResolvedValueOnce({ ok: false, error: 'Invalid publisher signature' });
 

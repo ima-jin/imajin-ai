@@ -1,6 +1,7 @@
 import { db, identities, attestations, connections, identityMembers, profiles } from '@/src/db';
 import { eq, or, and, isNull, count } from 'drizzle-orm';
 import Link from 'next/link';
+import IdentityOwner from './IdentityOwner';
 
 function tierBadge(tier: string): { label: string; classes: string } {
   if (tier === 'established') return { label: 'established', classes: 'bg-green-900/30 text-green-400 border-green-800' };
@@ -104,6 +105,7 @@ export default async function IdentityDetail({ did, sessionDid }: Readonly<Props
       </div>
 
       <div className="font-mono text-xs text-zinc-600 break-all">{did}</div>
+      {identity.scope !== 'actor' && <IdentityOwner groupDid={did} />}
 
       <div className="flex flex-wrap gap-4 text-sm text-zinc-400 pt-1">
         <span>

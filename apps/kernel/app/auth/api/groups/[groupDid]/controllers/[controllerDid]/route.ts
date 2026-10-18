@@ -5,13 +5,16 @@ import { requireAuth } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
 import { requireInternalApiKey } from '@/src/lib/auth/require-internal-api-key';
+import { removeGroupController } from '@/src/lib/auth/remove-group-controller';
+import { OwnershipError } from '@/src/lib/auth/ownership-policy';
 
 const log = createLogger('kernel');
+export const dynamic = 'force-dynamic';
 
 /**
  * DELETE /api/groups/[groupDid]/controllers/[controllerDid]
  * Remove a controller (soft delete).
- * Owner can remove anyone (except self). Admin can remove members only.
+ * Owners cannot be removed. Admins may remove members or leave themselves.
  */
 export async function DELETE(
   request: NextRequest,
@@ -24,57 +27,9 @@ export async function DELETE(
   const { identity: caller } = authResult;
   const { groupDid, controllerDid } = await params;
 
-  const [callerMembership] = await db
-    .select({ role: identityMembers.role })
-    .from(identityMembers)
-    .where(
-      and(
-        eq(identityMembers.identityDid, groupDid),
-        eq(identityMembers.memberDid, caller.id),
-        isNull(identityMembers.removedAt)
-      )
-    )
-    .limit(1);
-
-  if (!callerMembership || !['owner', 'admin'].includes(callerMembership.role)) {
-    return NextResponse.json({ error: 'Must be owner or admin to remove controllers' }, { status: 403 });
-  }
-
-  if (callerMembership.role === 'owner' && caller.id === controllerDid) {
-    return NextResponse.json({ error: 'Owner cannot remove themselves' }, { status: 400 });
-  }
-
-  // Check target's role
-  const [targetMembership] = await db
-    .select({ role: identityMembers.role })
-    .from(identityMembers)
-    .where(
-      and(
-        eq(identityMembers.identityDid, groupDid),
-        eq(identityMembers.memberDid, controllerDid),
-        isNull(identityMembers.removedAt)
-      )
-    )
-    .limit(1);
-
-  if (!targetMembership) {
-    return NextResponse.json({ error: 'Controller not found' }, { status: 404 });
-  }
-
-  if (callerMembership.role === 'admin' && targetMembership.role !== 'member') {
-    return NextResponse.json({ error: 'Admin can only remove members' }, { status: 403 });
-  }
 
   try {
-    await db
-      .update(identityMembers)
-      .set({ removedAt: new Date() })
-      .where(
-        and(
-          eq(identityMembers.identityDid, groupDid),
-          eq(identityMembers.memberDid, controllerDid)
-        )
-      );
+    await removeGroupController(groupDid, caller.id, controllerDid);
 
     publish('group.controller.removed', {
       issuer: caller.id,
@@ -83,8 +38,15 @@ export async function DELETE(
       payload: { context_id: groupDid, context_type: 'group' },
     }).catch((err) => log.error({ err: String(err) }, '[groups] Attestation failed (non-fatal)'));
 
-    return NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true });
+    if (caller.id === controllerDid && request.cookies.get('x-acting-as')?.value === groupDid) {
+      response.cookies.set('x-acting-as', '', { path: '/', maxAge: 0, sameSite: 'lax' });
+    }
+    return response;
   } catch (error) {
+    if (error instanceof OwnershipError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     log.error({ err: String(error) }, '[groups] Remove controller error');
     return NextResponse.json({ error: 'Failed to remove controller' }, { status: 500 });
   }

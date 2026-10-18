@@ -1,42 +1,14 @@
 import { NextResponse } from "next/server";
+import { operationalAppOrigins } from "@/src/lib/kernel/operational-apps";
 
-/**
- * /.well-known/assetlinks.json — Android Digital Asset Links
- *
- * Declares all subdomains as trusted, preventing "wants to access
- * other apps and services" warnings on cross-subdomain navigation.
- *
- * Generated dynamically from NEXT_PUBLIC_DOMAIN so each node
- * in the federated network serves its own.
- */
+export const dynamic = "force-dynamic";
 
-const SERVICES = [
-  "", // root domain
-  "auth",
-  "pay",
-  "profile",
-  "registry",
-  "events",
-  "chat",
-  "connections",
-  "coffee",
-  "links",
-  "dykil",
-  "karaoke",
-  "fixready",
-  "learn",
-];
-
-export function GET() {
-  const domain = process.env.NEXT_PUBLIC_DOMAIN || "imajin.ai";
-  const protocol = process.env.NEXT_PUBLIC_SERVICE_PREFIX || "https://";
-
-  const assetLinks = SERVICES.map((service) => ({
+/** Android association discovery for the kernel and active registered destinations. */
+export async function GET() {
+  const origins = await operationalAppOrigins();
+  const assetLinks = origins.map((site) => ({
     relation: ["delegate_permission/common.handle_all_urls"],
-    target: {
-      namespace: "web",
-      site: `${protocol}${service ? `${service}.` : ""}${domain}`,
-    },
+    target: { namespace: "web", site },
   }));
 
   return NextResponse.json(assetLinks, {
