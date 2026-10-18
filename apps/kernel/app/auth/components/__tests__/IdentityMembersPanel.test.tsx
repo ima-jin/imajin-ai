@@ -116,6 +116,7 @@ function addControllerBody(spy: FetchSpy): Record<string, unknown> | null {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  localStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -298,6 +299,7 @@ describe('member identity', () => {
     expect(screen.getByText(/Clients, vendors and partners should be added as a connection instead/)).toBeDefined();
     const link = screen.getByRole('link', { name: 'Add a connection' });
     expect(link.getAttribute('href')).toBe('/connections?connect=1');
+    link.addEventListener('click', (event) => event.preventDefault());
     fireEvent.click(link);
     expect(localStorage.getItem('imajin:acting-as')).toBe(GROUP);
   });

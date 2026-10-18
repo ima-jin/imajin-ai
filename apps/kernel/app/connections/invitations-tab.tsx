@@ -23,7 +23,7 @@ interface SentInvite {
   toEmail: string | null;
   toDid: string | null;
   note: string | null;
-  delivery: 'link' | 'email';
+  delivery: 'link' | 'email' | 'direct';
   status: string;
   usedCount: number;
   maxUses: number;
@@ -267,7 +267,7 @@ export default function InvitationsTab({ onCountUpdate }: Readonly<{ onCountUpda
       const res = await fetch('/connections/api/invites');
       if (res.ok) {
         const data = await res.json();
-        setSentInvites(data.invites || []);
+        setSentInvites((data.invites || []).filter((invite: SentInvite) => invite.delivery !== 'direct'));
         const q = {
           tier: data.tier || data.role || 'unknown',
           limit: data.limit,

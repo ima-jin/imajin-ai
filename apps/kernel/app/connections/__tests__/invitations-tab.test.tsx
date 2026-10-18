@@ -68,6 +68,22 @@ afterEach(() => {
 });
 
 describe('successful email delivery', () => {
+  it('keeps direct requests on Connections rather than presenting them as shareable link invites', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.endsWith('/invited-by') ? { invitedBy: null } : {
+        ...invitesListResponse(),
+        invites: [{
+          id: 'direct-only', code: 'target-bound', delivery: 'direct', status: 'pending',
+          toDid: 'did:imajin:counterparty', note: 'not a bearer link', daysAgo: 0,
+        }],
+      },
+    })));
+    render(<InvitationsTab />);
+    await waitFor(() => expect(screen.getByText('Email Invite')).toBeDefined());
+    expect(screen.queryByText('not a bearer link')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull();
+  });
   it('renders the success state when emailSent is true', async () => {
     installFetch(async () => ({
       ok: true,
