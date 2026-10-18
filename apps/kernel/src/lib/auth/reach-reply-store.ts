@@ -39,6 +39,7 @@ export function persistReachReply(params: {
       [params.principalDid, row.envelope.requesterDid],
     );
     if (blocked.length) return { ok: false, status: 403, error: 'Reach sender is blocked' };
+    if (row.envelope.approvalDecision) return { ok: false, status: 409, error: 'Reach envelope already has a shared decision' };
     const { signature, ...unsigned } = params.reply.payload;
     const expected = reachReplyEvent(row.envelope, unsigned.message, unsigned.issuedAt);
     if (canonicalReachReply({ ...params.reply, payload: unsigned }) !== canonicalReachReply(expected)) {

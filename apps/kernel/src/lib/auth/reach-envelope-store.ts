@@ -131,28 +131,36 @@ export async function listReachEnvelopes(params: {
 export async function blockReachSender(params: { principalDid: string; requesterDid: string; onBehalfOfStubDid?: string }): Promise<void> {
   await getClient().begin('isolation level read committed', async (tx) => {
     await lockPrincipal(tx, params.principalDid);
-    // Foreign credential mint/rotation uses this row lock. Taking it after the
-    // delivery lock serializes both writers without reversing their lock order.
-    await tx.unsafe('SELECT id FROM auth.identities WHERE id = $1 FOR UPDATE', [params.principalDid]);
-    const group = await reachSenderGroup(tx, params);
-    const claims = await tx.unsafe<{ stub_did: string }[]>(`
-      SELECT DISTINCT envelope->>'onBehalfOfStubDid' AS stub_did
-      FROM auth.reach_envelopes
-      WHERE principal_did = $1 AND $2::jsonb ? requester_did
-        AND NULLIF(envelope->>'onBehalfOfStubDid', '') IS NOT NULL
-    `, [params.principalDid, JSON.stringify(group.identities)]);
-    const blockedIdentities = [...new Set([
-      ...group.identities, ...claims.map((claim) => claim.stub_did),
-      ...(params.onBehalfOfStubDid ? [params.onBehalfOfStubDid] : []),
-    ])];
-    await tx.unsafe(`
-      INSERT INTO auth.reach_sender_blocks (principal_did, requester_did)
-      SELECT $1, value FROM jsonb_array_elements_text($2::jsonb)
-      ON CONFLICT (principal_did, requester_did) DO NOTHING
-    `, [params.principalDid, JSON.stringify(blockedIdentities)]);
-    await tx.unsafe(`
-      UPDATE auth.foreign_agent_stubs SET revoked_at = COALESCE(revoked_at, statement_timestamp())
-      WHERE principal_did = $1 AND $2::jsonb ? stub_did
-    `, [params.principalDid, JSON.stringify(group.stubDids)]);
+    await blockReachSenderInTransaction(tx, params);
   });
+}
+
+/** Caller holds the reach principal lock; shares atomicity with Inbox decision writes. */
+export async function blockReachSenderInTransaction(
+  tx: ReachTransaction,
+  params: { principalDid: string; requesterDid: string; onBehalfOfStubDid?: string },
+): Promise<void> {
+  // Foreign credential mint/rotation uses this row lock. Taking it after the
+  // delivery lock serializes both writers without reversing their lock order.
+  await tx.unsafe('SELECT id FROM auth.identities WHERE id = $1 FOR UPDATE', [params.principalDid]);
+  const group = await reachSenderGroup(tx, params);
+  const claims = await tx.unsafe<{ stub_did: string }[]>(`
+    SELECT DISTINCT envelope->>'onBehalfOfStubDid' AS stub_did
+    FROM auth.reach_envelopes
+    WHERE principal_did = $1 AND $2::jsonb ? requester_did
+      AND NULLIF(envelope->>'onBehalfOfStubDid', '') IS NOT NULL
+  `, [params.principalDid, JSON.stringify(group.identities)]);
+  const blockedIdentities = [...new Set([
+    ...group.identities, ...claims.map((claim) => claim.stub_did),
+    ...(params.onBehalfOfStubDid ? [params.onBehalfOfStubDid] : []),
+  ])];
+  await tx.unsafe(`
+    INSERT INTO auth.reach_sender_blocks (principal_did, requester_did)
+    SELECT $1, value FROM jsonb_array_elements_text($2::jsonb)
+    ON CONFLICT (principal_did, requester_did) DO NOTHING
+  `, [params.principalDid, JSON.stringify(blockedIdentities)]);
+  await tx.unsafe(`
+    UPDATE auth.foreign_agent_stubs SET revoked_at = COALESCE(revoked_at, statement_timestamp())
+    WHERE principal_did = $1 AND $2::jsonb ? stub_did
+  `, [params.principalDid, JSON.stringify(group.stubDids)]);
 }

@@ -2,6 +2,11 @@
  * Unit tests for the external-agent knock lifecycle (#1883).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+vi.mock('../reach-block', () => ({
+  isReachSenderBlocked: vi.fn().mockResolvedValue(false),
+  isReachSenderBlockedInTransaction: vi.fn().mockResolvedValue(false),
+}));
+vi.mock('../../notify/reach-approvals', () => ({ publishKnockApproval: vi.fn().mockResolvedValue(undefined) }));
 
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
@@ -163,7 +168,10 @@ function selectFrom(projection?: Record<string, string>) {
 }
 
 vi.mock('@/src/db', () => ({
-  db: { insert: insertInto, select: selectFrom, update: updateTable },
+  db: {
+    insert: insertInto, select: selectFrom, update: updateTable,
+    transaction: (fn: (tx: unknown) => unknown) => fn({ insert: insertInto, select: selectFrom, update: updateTable, execute: vi.fn().mockResolvedValue([]) }),
+  },
   identities: IDENTITIES_TABLE,
   agentKnocks: KNOCKS_TABLE,
   connections: CONNECTIONS_TABLE,
@@ -192,6 +200,8 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: v
 vi.mock('@imajin/cid', () => ({ computeCid: vi.fn().mockResolvedValue('cid_fixed') }));
 
 import { hexToMultibase } from '@imajin/auth';
+import { isReachSenderBlocked, isReachSenderBlockedInTransaction } from '../reach-block';
+import { publishKnockApproval } from '../../notify/reach-approvals';
 import {
   submitKnock,
   listPendingKnocksForTarget,
@@ -263,6 +273,30 @@ describe('resolveDeclaredTarget', () => {
 });
 
 describe('submitKnock — validation and escrow', () => {
+  it('refuses a persistent Reach block without minting, storing or publishing a knock', async () => {
+    vi.mocked(isReachSenderBlocked).mockResolvedValueOnce(true);
+    const before = vi.mocked(publishKnockApproval).mock.calls.length;
+    expect(await submitKnock(VALID_INPUT)).toMatchObject({ status: 403 });
+    expect(knocksStore.size).toBe(0);
+    expect(identitiesStore.size).toBe(1);
+    expect(vi.mocked(publishKnockApproval).mock.calls.length).toBe(before);
+  });
+
+  it('rechecks blocks under the same principal transaction lock as delivery and block', async () => {
+    vi.mocked(isReachSenderBlockedInTransaction).mockResolvedValueOnce(true);
+    expect(await submitKnock(VALID_INPUT)).toMatchObject({ status: 403 });
+    expect(knocksStore.size).toBe(0);
+  });
+
+  it('publishes requester-controlled evidence on both submit and refresh', async () => {
+    const first = await submitKnock(VALID_INPUT);
+    if (!('knock' in first)) throw new Error('expected knock');
+    expect(publishKnockApproval).toHaveBeenLastCalledWith(first.knock);
+    const second = await submitKnock({ ...VALID_INPUT, selfDescription: 'Refreshed' });
+    if (!('knock' in second)) throw new Error('expected knock');
+    expect(publishKnockApproval).toHaveBeenLastCalledWith(second.knock);
+    expect(second.knock.knockId).toBe(first.knock.knockId);
+  });
   it('rejects a malformed public key', async () => {
     const result = await submitKnock({ ...VALID_INPUT, publicKey: 'not-hex' });
     expect(result).toMatchObject({ status: 400 });

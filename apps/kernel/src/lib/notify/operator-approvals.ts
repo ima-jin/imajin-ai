@@ -107,6 +107,7 @@ export interface OperatorCountersignFields {
   decision: ApprovalDecision;
   decidedAt: string;
   mode?: string;
+  replyMessage?: string;
 }
 
 /** The `operator.approval.requested` notification payload (the /jin card). */
@@ -143,6 +144,7 @@ export interface OperatorApprovalDecidedPayload {
   mode?: string;
   decidedBy: string;
   decidedAt: string;
+  replyMessage?: string;
   reason?: string;
   /**
    * The operator's own countersignature over `{contentHash, decision,

@@ -25,7 +25,7 @@
  *     expiry is a plain timestamp comparison at read/accept/decline time,
  *     never a background sweep into a stored 'expired' status.
  */
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, sql, type SQL } from 'drizzle-orm';
 import { db, identities, agentKnocks, connections, attestations, type AgentKnockRow } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
 import { didFromPublicKey } from '@/src/lib/auth/crypto';
@@ -46,12 +46,25 @@ import type { AttestationType, ExternalDidVerificationState } from '@imajin/auth
 import { computeCid } from '@imajin/cid';
 import * as bus from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
+import { isReachSenderBlocked, isReachSenderBlockedInTransaction, type ReachBlockReader } from './reach-block';
+import { publishKnockApproval } from '../notify/reach-approvals';
 
 const log = createLogger('kernel');
 
 export interface LibError {
   error: string;
   status: number;
+}
+
+/** Adapt our own positional SQL to Drizzle parameters without interpolating caller text. */
+function knockBlockReader(execute: (query: SQL) => PromiseLike<unknown>): ReachBlockReader {
+  const unsafe = async (text: string, params: unknown[] = []) => {
+    const parts = text.split(/(\$\d+)/);
+    const query = sql.join(parts.map((part) => /^\$\d+$/.test(part)
+      ? sql`${params[Number(part.slice(1)) - 1]}` : sql.raw(part)), sql.raw(''));
+    return await execute(query);
+  };
+  return { unsafe: unsafe as ReachBlockReader['unsafe'] };
 }
 
 export interface KnockRecord {
@@ -156,56 +169,69 @@ export async function submitKnock(input: SubmitKnockInput): Promise<{ knock: Kno
   if (agentDid === targetDid) {
     return { error: 'An identity cannot knock on itself', status: 400 };
   }
+  if (await isReachSenderBlocked({ principalDid: targetDid, requesterDid: agentDid, publicKey })) {
+    return { error: 'Knock is not available', status: 403 };
+  }
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + KNOCK_TTL);
+  const selfDescription = input.selfDescription;
+  const requestedCapabilities = [...input.requestedCapabilities];
+  const result = await db.transaction(async (tx): Promise<{ knock: KnockRecord } | LibError> => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`reach:${targetDid}`}, 0))`);
+    const reader = knockBlockReader((query) => tx.execute(query));
+    if (await isReachSenderBlockedInTransaction(reader, { principalDid: targetDid, requesterDid: agentDid, publicKey })) {
+      return { error: 'Knock is not available', status: 403 };
+    }
+    const [existingPending] = await tx
+      .select({ id: agentKnocks.id })
+      .from(agentKnocks)
+      .where(
+        and(
+          eq(agentKnocks.publicKey, publicKey),
+          eq(agentKnocks.declaredTarget, targetDid),
+          eq(agentKnocks.status, 'pending'),
+        ),
+      )
+      .limit(1);
 
-  const [existingPending] = await db
-    .select({ id: agentKnocks.id })
-    .from(agentKnocks)
-    .where(
-      and(
-        eq(agentKnocks.publicKey, publicKey),
-        eq(agentKnocks.declaredTarget, targetDid),
-        eq(agentKnocks.status, 'pending'),
-      ),
-    )
-    .limit(1);
+    const knockId = existingPending?.id ?? generateId('knock');
 
-  const knockId = existingPending?.id ?? generateId('knock');
-
-  if (existingPending) {
-    await db
-      .update(agentKnocks)
-      .set({
-        selfDescription: input.selfDescription,
-        requestedCapabilities: [...input.requestedCapabilities],
+    if (existingPending) {
+      await tx
+        .update(agentKnocks)
+        .set({
+          selfDescription,
+          requestedCapabilities,
+          externalDid,
+          externalDidVerification,
+          externalDidVerifiedAt,
+          expiresAt,
+        })
+        .where(eq(agentKnocks.id, knockId));
+    } else {
+      await tx.insert(agentKnocks).values({
+        id: knockId,
+        publicKey,
+        agentDid,
+        declaredTarget: targetDid,
+        selfDescription,
+        requestedCapabilities,
         externalDid,
         externalDidVerification,
         externalDidVerifiedAt,
+        status: 'pending',
         expiresAt,
-      })
-      .where(eq(agentKnocks.id, knockId));
-  } else {
-    await db.insert(agentKnocks).values({
-      id: knockId,
-      publicKey,
-      agentDid,
-      declaredTarget: targetDid,
-      selfDescription: input.selfDescription,
-      requestedCapabilities: [...input.requestedCapabilities],
-      externalDid,
-      externalDidVerification,
-      externalDidVerifiedAt,
-      status: 'pending',
-      expiresAt,
-      createdAt: now,
-    });
-  }
+        createdAt: now,
+      });
+    }
 
-  const [row] = await db.select().from(agentKnocks).where(eq(agentKnocks.id, knockId)).limit(1);
-  log.info({ knockId, agentDid, declaredTarget: targetDid }, existingPending ? 'Knock refreshed' : 'Knock submitted');
-  return { knock: toRecord(row) };
+    const [row] = await tx.select().from(agentKnocks).where(eq(agentKnocks.id, knockId)).limit(1);
+    log.info({ knockId, agentDid, declaredTarget: targetDid }, existingPending ? 'Knock refreshed' : 'Knock submitted');
+    return { knock: toRecord(row) };
+  });
+  if ('knock' in result) await publishKnockApproval(result.knock);
+  return result;
 }
 
 /** List a target's pending, unexpired knocks — the review-surface list, newest first. */
