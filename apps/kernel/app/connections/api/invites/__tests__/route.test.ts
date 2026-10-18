@@ -200,7 +200,7 @@ describe('POST /connections/api/invites — dual guard via resolveEffectiveDid (
     expect(res.status).toBe(201);
     expect(mockResolveEffectiveDid).toHaveBeenCalledWith(
       expect.anything(),
-      { scope: 'connections:write' },
+      { scope: 'connections:write', service: 'connections' },
     );
     expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
     expect(mockDbInsert).toHaveBeenCalled();

@@ -29,10 +29,12 @@ export type EffectiveDidResult =
  * so that case falls through to session auth instead of failing outright.
  * The legacy header path has no such ambiguity and its errors are always
  * authoritative (#1812).
+ * `service` names the owning service, independently of the app-token scope,
+ * so session act-as checks enforce the controller's allowed_services.
  */
 export async function resolveEffectiveDid(
   request: Request,
-  opts: { scope: Scope }
+  opts: { scope: Scope; service: string }
 ): Promise<EffectiveDidResult> {
   const hasAppAuthCandidate =
     Boolean(request.headers.get("x-app-did")) || Boolean(request.headers.get("authorization")?.startsWith("Bearer "));
@@ -49,8 +51,11 @@ export async function resolveEffectiveDid(
     // session JWT.
   }
 
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: opts.service });
   if ("error" in authResult) {
+    if (authResult.status === 403) {
+      return { ok: false, status: authResult.status, error: authResult.error };
+    }
     return { ok: false, status: 401, error: "Unauthorized" };
   }
   return {

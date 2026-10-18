@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   const headers = responseHeaders(request);
 
-  const auth = await resolveEffectiveDid(request, { scope: 'telemetry:read' });
+  const auth = await resolveEffectiveDid(request, { scope: 'telemetry:read', service: 'connections' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
   }

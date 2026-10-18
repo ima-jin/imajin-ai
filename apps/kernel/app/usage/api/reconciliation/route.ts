@@ -43,7 +43,7 @@ function parseDateParam(value: string | null): Date | undefined {
 export async function GET(request: NextRequest) {
   const headers = responseHeaders(request);
 
-  const auth = await resolveEffectiveDid(request, { scope: 'infer:usage-read' });
+  const auth = await resolveEffectiveDid(request, { scope: 'infer:usage-read', service: 'usage' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
   }

@@ -17,7 +17,7 @@ const rawSql = getClient();
  * Returns conversations the user participates in, with DM enrichment.
  */
 export const GET = withLogger('kernel', async (request, { log }) => {
-  const auth = await resolveEffectiveDid(request, { scope: 'messages:read' });
+  const auth = await resolveEffectiveDid(request, { scope: 'messages:read', service: 'chat' });
   if (!auth.ok) {
     return errorResponse(auth.error, auth.status);
   }

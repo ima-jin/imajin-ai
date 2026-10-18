@@ -76,7 +76,7 @@ function parseCookieValue(cookieHeader: string | null, name: string): string | n
 export interface AuthOptions {
   sessionOnly?: boolean; // If true, accept only a user session cookie, never a Bearer credential
   verifyChain?: boolean; // If true, also verify the chain is valid (not just session)
-  service?: string;      // If set, validate that acting-as controller has access to this service
+  service?: string;      // Required for service-restricted acting-as controllers
   permissions?: string[]; // If set, restrict what acting-as roles can do (e.g. ['read'])
 }
 
@@ -165,7 +165,7 @@ export interface ActingAsResult {
 
 /**
  * Validate that a caller is an active owner or admin controller of a group DID.
- * Optionally checks if the controller has access to a specific service.
+ * Restricted controllers require an explicitly allowed service; null is full access.
  * Uses the internal API to avoid recursive auth checks.
  *
  * Exported (#2639) so the kernel's app-token mint can run this SAME gate once, at
@@ -199,11 +199,10 @@ export async function validateActingAs(
 
     const allowedServices: string[] | null = data.allowedServices ?? null;
 
-    // If a service is specified and the controller has a restricted list, check it
-    if (service && allowedServices && allowedServices.length > 0) {
-      if (!allowedServices.includes(service)) {
-        return { valid: false };
-      }
+    // A restricted list never becomes full access when empty or when the
+    // caller omits service context. Only null means unrestricted.
+    if (allowedServices !== null && (!Array.isArray(allowedServices) || !service || !allowedServices.includes(service))) {
+      return { valid: false };
     }
 
     return { valid: true, role: data.role, allowedServices };

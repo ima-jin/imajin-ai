@@ -64,7 +64,7 @@ export async function DELETE(request: NextRequest, props: { params: Promise<{ co
 
 async function deleteInvite(request: NextRequest, props: { params: Promise<{ code: string }> }) {
   const params = await props.params;
-  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write', service: 'connections' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
