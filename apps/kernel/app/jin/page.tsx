@@ -38,7 +38,10 @@ export default function JinPage() {
         </div>
         {/* #2291 — phone push path: install-to-home-screen PWA + web-push
             opt-in. Renders nothing for a non-operator or unsupported browser. */}
-        <PushSubscribeButton />
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <a href="/jin/org-settings" className="text-sm text-amber-400 underline">Organization settings</a>
+          <PushSubscribeButton />
+        </div>
       </header>
 
       <main className="px-6 py-4">

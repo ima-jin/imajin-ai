@@ -30,7 +30,7 @@ export class SmtpProvider implements EmailProvider {
 
     try {
       const info = await transporter.sendMail({
-        from: SMTP_FROM,
+        from: options.from || SMTP_FROM,
         to: options.to,
         subject: options.subject,
         text: options.text || '',

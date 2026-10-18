@@ -23,7 +23,7 @@ vi.mock('@/src/lib/auth/crypto', () => ({
 }));
 
 vi.mock('@/src/lib/kernel/utils', () => ({ generateId: vi.fn(() => 'mock_id') }));
-vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: vi.fn() }));
 vi.mock('@/src/lib/www/subscribe-tokens', () => ({
   generateVerifyToken: vi.fn(() => 'tok'),
   verifyTokenExpiry: vi.fn(() => 9999),

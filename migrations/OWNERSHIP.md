@@ -174,6 +174,13 @@ or its `firstMigration`.
 The open train reserves 0206 for #2907, 0207 for #2857, 0208 for #2903,
 0209 for #2912, 0210 for #2921, and 0211 for #2906. These reservations do
 not renumber the migrations already committed on main or PR #2899.
+### Mail senders (#2919)
+
+`0210_mail_senders.sql` is kernel-owned and creates `kernel.mail_senders`
+for send-only, fixed-purpose owner/app sender configuration. It provisions
+no mailboxes or MX records and adds no grants. Migration 0210 remains
+reserved for #2921 and does not renumber main's profile widget migration
+`0205_registry_apps_profile_widget.sql` or the surrounding migration train.
 
 ### App-owned event conversations (#2539)
 

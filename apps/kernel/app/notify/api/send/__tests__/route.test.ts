@@ -130,7 +130,7 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
-vi.mock('@imajin/email', () => ({ sendEmail: vi.fn() }));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: vi.fn() }));
 
 vi.mock('@/src/lib/notify/template-store', () => ({ getTemplate: vi.fn(() => undefined) }));
 
@@ -174,7 +174,7 @@ vi.mock('@/src/lib/notify/ws-push', async () => {
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
 import { POST } from '../route';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail as sendEmail } from '@/src/lib/mail/send';
 import { getTemplate } from '@/src/lib/notify/template-store';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -481,6 +481,21 @@ describe('email delivery honesty (#1854)', () => {
       sent: false,
       emailResolved: true,
       error: 'Email delivery failed',
+    });
+    expect(recordedChannels()).not.toContain('email');
+  });
+
+  it('preserves the safe post-delivery audit code and forbids retry without claiming audited success', async () => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({
+      success: false, messageId: 'provider-private-fixture',
+      error: 'mail_audit_failed_after_delivery_do_not_retry',
+    });
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      id: NOTIFICATION_ID, sent: false, emailResolved: true,
+      error: 'mail_audit_failed_after_delivery_do_not_retry',
+      retryable: false, deliveredMayHaveOccurred: true,
     });
     expect(recordedChannels()).not.toContain('email');
   });

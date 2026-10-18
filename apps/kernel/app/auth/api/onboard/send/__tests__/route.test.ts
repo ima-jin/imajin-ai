@@ -11,7 +11,7 @@ vi.mock('@/src/lib/auth/jwt', () => ({ verifyAppServiceToken: mocks.verify }));
 vi.mock('@/src/lib/auth/app-authorization-grant', () => ({ hasAppAuthorizationGrant: mocks.grant }));
 vi.mock('@/src/lib/stripe/byo-checkout', () => ({ retrieveByoCheckoutCustomer: mocks.customer }));
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: mocks.prepare }));
-vi.mock('@imajin/email', () => ({ sendEmail: mocks.email }));
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mocks.email }));
 vi.mock('nanoid', () => ({ nanoid: (length: number) => `test-fixture-${length}` }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: mocks.error }) }));
 vi.mock('@imajin/config', () => ({
@@ -85,6 +85,7 @@ describe('kernel-private order onboarding', () => {
     expect(response.headers.has('set-cookie')).toBe(false);
     expect(mocks.verify).toHaveBeenCalledWith('fixture.jwt.value');
     expect(mocks.email).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'signin', sensitive: true, appDid, ownerDid,
       to: 'buyer@example.com',
       html: expect.stringContaining('/auth/api/onboard/verify?token=test-fixture-48'),
     }));
@@ -130,6 +131,9 @@ describe('kernel-private order onboarding', () => {
     mocks.grant.mockResolvedValue(true);
     expect((await POST(request())).status).toBe(200);
     expect(mocks.grant).toHaveBeenCalledWith(appDid, 'did:imajin:delegating-org', 'onboard:send');
+    expect(mocks.email).toHaveBeenCalledWith(expect.objectContaining({
+      purpose: 'signin', sensitive: true, appDid, ownerDid,
+    }));
   });
 
   it.each([

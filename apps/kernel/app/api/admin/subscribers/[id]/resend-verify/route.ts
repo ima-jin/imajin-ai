@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getClient } from '@imajin/db';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { requireAdmin } from '@imajin/auth';
 import { buildPublicUrlAbsolute } from '@imajin/config';
@@ -30,7 +30,8 @@ export async function POST(
   const baseUrl = buildPublicUrlAbsolute('kernel');
   const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(email)}&token=${token}&expires=${expiresAt}`;
 
-  await sendEmail({
+  await sendKernelEmail({
+    purpose: 'contact',
     to: email,
     subject: 'Confirm your email — Imajin',
     html: verificationEmail(verifyUrl),

@@ -24,6 +24,12 @@
       "firstMigration": "0102_agent_knocks.sql",
       "notes": ""
     },
+    "kernel.mail_senders": {
+      "owner": "kernel",
+      "schema": "kernel",
+      "firstMigration": "0210_mail_senders.sql",
+      "notes": "Send-only fixed-purpose sender configuration (#2919)."
+    },
     "auth.agent_provisions": {
       "owner": "kernel",
       "schema": "auth",
