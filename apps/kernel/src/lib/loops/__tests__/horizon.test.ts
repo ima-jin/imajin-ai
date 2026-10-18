@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { projectHorizon } from '../horizon';
+import { projectHorizon, type HorizonLease } from '../horizon';
 import {
   CODE_STEP, STEP_CLAIM, STEP_ISSUE, STEP_ISSUE_UPDATE, STEP_NOW, STEP_PRINCIPAL, STEP_READY,
   STEP_REPOSITORY, closureStep, deployedStep, observedStep, queuedStep, releaseStep, stepEvent,
 } from './horizon-fixtures';
 
-const project = (events: ReturnType<typeof stepEvent>[], now = STEP_NOW) => projectHorizon(events, 'cycle', STEP_PRINCIPAL, now);
+const lease: HorizonLease = {
+  surface: 'step:step-2878', loopId: 'cycle', principal: STEP_PRINCIPAL,
+  holderDid: STEP_PRINCIPAL, acquiredAt: new Date(STEP_NOW).toISOString(), expiresAt: STEP_CLAIM.expiresAt,
+};
+const project = (events: ReturnType<typeof stepEvent>[], now = STEP_NOW, leases: HorizonLease[] = []) =>
+  projectHorizon(events, 'cycle', STEP_PRINCIPAL, now, false, leases);
 
 describe('signed horizon projection', () => {
   it('moves tail → middle → near → head → past → gone using facts, not authored zones', () => {
@@ -16,7 +21,9 @@ describe('signed horizon projection', () => {
     events.push(stepEvent('step.updated', 2, { update: STEP_READY }));
     expect(project(events).steps[0].zone).toBe('near');
     events.push(stepEvent('step.claimed', 3, { claim: STEP_CLAIM }));
-    expect(project(events).steps[0]).toMatchObject({ zone: 'head', state: 'claimed', claim: STEP_CLAIM });
+    expect(project(events, STEP_NOW, [lease]).steps[0]).toMatchObject({
+      zone: 'head', state: 'claimed', claim: { ...STEP_CLAIM, leaseId: lease.surface, acquiredAt: lease.acquiredAt },
+    });
     events.push(stepEvent('step.started', 4));
     expect(project(events).steps[0].state).toBe('running');
     events.push(stepEvent('step.finished', 5), closureStep());
@@ -49,11 +56,15 @@ describe('signed horizon projection', () => {
     expect(result.steps[0].state).toBe({ 'step.started': 'running', 'step.progress': 'running', 'step.blocked': 'blocked', 'step.finished': 'finished' }[type]);
   });
 
-  it('derives head only from an unexpired signed claim reference', () => {
+  it('derives head only from an authoritative unexpired lease, never a signed claim reference alone', () => {
     const events = [queuedStep(), stepEvent('step.updated', 1, { update: { ...STEP_ISSUE_UPDATE, ...STEP_READY } }),
       stepEvent('step.claimed', 2, { claim: STEP_CLAIM })];
-    expect(project(events, Date.parse(STEP_CLAIM.expiresAt)).steps[0].zone).toBe('near');
-    expect(project(events).steps[0].zone).toBe('head');
+    expect(project(events).steps[0]).toMatchObject({ state: 'queued', zone: 'near' });
+    expect(project(events).steps[0]).not.toHaveProperty('claim');
+    expect(project(events, Date.parse(STEP_CLAIM.expiresAt), [lease]).steps[0].zone).toBe('near');
+    expect(project(events, STEP_NOW, [lease]).steps[0].zone).toBe('head');
+    expect(project(events, STEP_NOW, [{ ...lease, principal: 'did:imajin:other' }]).steps[0].zone).toBe('near');
+    expect(project(events, STEP_NOW, [{ ...lease, loopId: 'other' }]).steps[0].zone).toBe('near');
   });
 
   it('requires all readiness facts and retains rank zero with a deterministic stepId tie-break', () => {

@@ -34,6 +34,7 @@ vi.mock('@imajin/db', () => ({
   getClient: () => async (strings: TemplateStringsArray, ...values: unknown[]) => {
     const query = strings.join('?');
     if (query.includes('UPDATE kernel.surface_lease')) return [];
+    if (query.includes('FROM kernel.surface_lease')) return [];
     if (query.includes('INSERT INTO kernel.loops')) {
       const [loopId, kind, principal] = values as string[];
       const owner = state.loops.get(loopId);

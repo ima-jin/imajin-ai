@@ -242,6 +242,8 @@ components:
         runId: { type: string, description: "Warp run id." }
         sessionKey: { type: string, description: "OpenClaw gateway session key." }
         sessionId: { type: string, description: "Original source session id." }
+        conflictingLoopId: { type: string, description: "Holder loop named by a surface.conflicted warning; never an exclusive refusal." }
+        conflictingHolderDid: { type: string, description: "Holder DID in same-principal surface conflict warnings only." }
     RegistryRunCost:
       type: object
       required: [runId, loopId, refs, summary, state, startedAt, lastSeenAt, metered]
@@ -447,7 +449,7 @@ components:
       type: object
       required: [leaseId, holderDid, expiresAt]
       additionalProperties: false
-      description: "Signed claim reference only, not lease acquisition/validation (#2879). holderDid must equal publisherDid."
+      description: "Signed historical claim reference only; cannot acquire a lease or override the live horizon claim. holderDid must equal publisherDid."
       properties:
         leaseId: { type: string, minLength: 1, maxLength: 2000 }
         holderDid: { type: string, pattern: '^did:[^\s:]+:\S+$', maxLength: 512 }
@@ -511,6 +513,33 @@ components:
                 conditionId: { type: string, minLength: 1, maxLength: 2000 }
                 evidence: { $ref: "#/components/schemas/StepEvidence" }
             attestation: { $ref: "#/components/schemas/StepAttestation" }
+    HorizonClaim:
+      type: object
+      readOnly: true
+      required: [leaseId, holderDid, acquiredAt, expiresAt]
+      additionalProperties: false
+      description: "Live, unreleased kernel.surface_lease holding scoped to this loop and principal. Omitted after release/TTL expiry."
+      properties:
+        leaseId: { type: string, description: "Existing surface key step:<stepId>." }
+        holderDid: { type: string, description: "Verified acquisition publisher DID." }
+        acquiredAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+    SurfaceEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/LoopEnvelope"
+        - type: object
+          required: [surface]
+          description: >-
+            Signed surface.acquired/released/conflicted fact. Acquisition TTL is
+            fifteen minutes from at; re-acquire renews. Step surfaces require their
+            owning loop and a prior step declaration. Different-DID step claims
+            warn via surface.conflicted, even within one loop; never a 409 for
+            contention. Explicit conflicts require refs.conflictingLoopId.
+          properties:
+            surface:
+              type: string
+              maxLength: 2048
+              description: "Exact case-sensitive repo:<org>/<repo>#branch:<branch>, service:<app>@env:<env>, device:<id>, issue:#<N>, or step:<stepId>; no whitespace or NUL."
     HorizonStep:
       allOf:
         - type: object
@@ -528,7 +557,7 @@ components:
             briefRef: { type: string }
             provisionRef: { type: string }
             designRef: { type: string }
-            claim: { $ref: "#/components/schemas/StepClaim" }
+            claim: { $ref: "#/components/schemas/HorizonClaim" }
             conditions:
               type: array
               items:
@@ -1788,6 +1817,7 @@ paths:
                   anyOf:
                     - $ref: "#/components/schemas/LoopEnvelope"
                     - $ref: "#/components/schemas/StepEnvelope"
+                    - $ref: "#/components/schemas/SurfaceEnvelope"
                 publisherDid: { type: string, description: "The signing agent's own DID." }
                 signature: { $ref: "#/components/schemas/LoopPublisherSignature" }
       responses:
@@ -1814,7 +1844,7 @@ paths:
         "403":
           description: Publisher has no loops:publish authority for the principal
         "409":
-          description: Loop id is already owned by a different principal, or a step's owning loop does not exist
+          description: Loop owner or step declaration missing/mismatched; never returned for lease contention
         "413":
           description: Complete request exceeds 1048576 bytes
 

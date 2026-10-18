@@ -33,7 +33,7 @@ function taggedSql(executor: Pick<PGlite, 'query'>): TaggedSql {
 
 const migrationsDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../../migrations');
 const outputMigration = readdirSync(migrationsDir).find(name => name.endsWith('_loop_output_artifacts.sql'));
-const migrationNames = ['0157_loops_rail.sql', outputMigration];
+const migrationNames = ['0157_loops_rail.sql', '0194_surface_lease.sql', outputMigration];
 const PRINCIPAL = 'did:imajin:owner';
 const OTHER = 'did:imajin:other';
 const AT = '2026-10-16T12:00:00.000Z';
@@ -86,7 +86,7 @@ afterAll(async () => {
 });
 
 describe('loop output SQL isolation against real embedded Postgres', () => {
-  it('applies both migrations repeatedly without losing rows or duplicating lifecycle chains', async () => {
+  it('applies migrations repeatedly without losing rows or duplicating lifecycle chains', async () => {
     await loopProjectionReactor(event(envelope(), 'loop.started'), {});
     const before = await getLoopWithHistory('loop_sql', PRINCIPAL);
     await applyMigrations();
@@ -95,7 +95,7 @@ describe('loop output SQL isolation against real embedded Postgres', () => {
       'SELECT event_type FROM kernel.bus_chain_configs ORDER BY event_type',
     );
     expect(chains.rows.map(row => row.event_type))
-      .toEqual(['loop.blocked', 'loop.finished', 'loop.progress', 'loop.started']);
+      .toEqual(['loop.blocked', 'loop.finished', 'loop.progress', 'loop.started', 'surface.acquired', 'surface.conflicted', 'surface.released']);
   });
 
   it('preserves opaque typed output and older history without regressing the projection', async () => {

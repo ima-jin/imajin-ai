@@ -55,6 +55,26 @@ describe('surface signed ingest contract', () => {
     expect(project).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
   });
+
+  it('accepts a second step claimant and emits a verified warning naming the same-loop holder DID', async () => {
+    const request = signed('surface.acquired', { surface: 'step:next' });
+    project.mockResolvedValueOnce({ loopId: request.payload.loopId, holderDid: 'did:imajin:first' }).mockResolvedValue(null);
+    expect(parseLoopIngestRequest(request)).toEqual({ ok: true, value: request });
+    expect(await ingestLoopEvent(request)).toEqual({ ok: true });
+    const conflict = project.mock.calls[1][0] as LoopIngestRequest;
+    expect(conflict.type).toBe('surface.conflicted');
+    expect(conflict.payload).toMatchObject({
+      surface: 'step:next', loopId: request.payload.loopId,
+      refs: { conflictingLoopId: request.payload.loopId, conflictingHolderDid: 'did:imajin:first' },
+    });
+    expect(parseLoopIngestRequest(conflict).ok).toBe(true);
+    expect(authCrypto.verifySync(conflict.signature.sig, canonicalize({ type: conflict.type, payload: conflict.payload }), nodeIdentity().senderPubkey)).toBe(true);
+  });
+
+  it('does not witness a caller-supplied holder DID when the conflicting principal differs', () => {
+    const request = signed('surface.acquired', { refs: { conflictingHolderDid: 'did:imajin:injected' } });
+    expect(signSurfaceConflict(request, { loopId: 'foreign-loop' }).payload.refs).toEqual({ conflictingLoopId: 'foreign-loop' });
+  });
   it('passes only redacted prepared data to surface evidence after verifying the original', async () => {
     const request = signed('surface.acquired', { summary: 'Bearer original-secret', metadata: { apiKey: 'private-value' } });
     expect(await ingestLoopEvent(request)).toEqual({ ok: true });
@@ -94,7 +114,7 @@ describe('surface signed ingest contract', () => {
 
   it('retries a failed acquisition publication and then emits the recovered conflict', async () => {
     const request = signed();
-    project.mockResolvedValueOnce('loop-a').mockResolvedValueOnce('loop-a').mockResolvedValue(null);
+    project.mockResolvedValueOnce({ loopId: 'loop-a' }).mockResolvedValueOnce({ loopId: 'loop-a' }).mockResolvedValue(null);
     publish.mockRejectedValueOnce(new Error('bus unavailable')).mockResolvedValue({});
     expect(await ingestLoopEvent(request)).toMatchObject({ ok: false, status: 500 });
     expect(await ingestLoopEvent(request)).toEqual({ ok: true });
@@ -138,7 +158,7 @@ describe('surface signed ingest contract', () => {
   });
 
   it('emits a node-signed conflict through real verification with both loop ids, never a denial', async () => {
-    project.mockResolvedValueOnce('loop-a').mockResolvedValue(null);
+    project.mockResolvedValueOnce({ loopId: 'loop-a' }).mockResolvedValue(null);
     expect(await ingestLoopEvent(signed())).toEqual({ ok: true });
     expect(publish).toHaveBeenCalledTimes(2);
     expect(publish.mock.calls[1]).toEqual(['surface.conflicted', expect.objectContaining({
@@ -151,14 +171,14 @@ describe('surface signed ingest contract', () => {
 
   it('still succeeds if the advisory conflict cannot be signed', async () => {
     const request = signed();
-    project.mockResolvedValueOnce('loop-a');
+    project.mockResolvedValueOnce({ loopId: 'loop-a' });
     nodeIdentity.mockReturnValueOnce(nodeIdentity()).mockImplementationOnce(() => { throw new Error('signer unavailable'); });
     expect(await ingestLoopEvent(request)).toEqual({ ok: true });
     expect(publish).toHaveBeenCalledTimes(1);
   });
 
   it('still succeeds if a generated advisory conflict is rejected', async () => {
-    project.mockResolvedValueOnce('loop-a');
+    project.mockResolvedValueOnce({ loopId: 'loop-a' });
     authorize.mockResolvedValueOnce({ authorized: true }).mockResolvedValueOnce({ authorized: false });
     expect(await ingestLoopEvent(signed())).toEqual({ ok: true });
     expect(publish).toHaveBeenCalledTimes(1);
@@ -173,7 +193,7 @@ describe('surface signed ingest contract', () => {
   it('signs derived conflict evidence as the node, not as the claimant', () => {
     const request = signed();
     request.publisherDid = 'did:imajin:external-publisher';
-    const conflict = signSurfaceConflict(request, 'loop-a');
+    const conflict = signSurfaceConflict(request, { loopId: 'loop-a' });
     expect(conflict.publisherDid).toBe('did:imajin:node');
     expect(conflict.payload.principal).toBe(request.payload.principal);
     expect(parseLoopIngestRequest(conflict).ok).toBe(true);
@@ -187,10 +207,10 @@ describe('surface signed ingest contract', () => {
 });
 
 describe('typed surface URIs', () => {
-  it.each(['repo:ima-jin/imajin-ai#branch:feat/2405-leases', 'service:kernel@env:prod', 'device:phone-1', 'issue:#2405'])('accepts %s', (surface) => {
+  it.each(['repo:ima-jin/imajin-ai#branch:feat/2405-leases', 'service:kernel@env:prod', 'device:phone-1', 'issue:#2405', 'step:step-2879', 'step:cycle/next'])('accepts %s', (surface) => {
     expect(isSurfaceUri(surface)).toBe(true);
   });
-  it.each([null, 1, '', 'repo:owner/repo', 'repo:owner/repo#branch:', 'repo:owner/repo#branch:main extra', 'repo:owner/repo#branch:main\0', 'issue:#2405\n', 'service:kernel', 'device:', 'issue:#0', 'issue:#-1', 'issue:#1.5', 'https://host', 'device:' + 'a'.repeat(2049)])('rejects malformed URI %#', (surface) => {
+  it.each([null, 1, '', 'step:', 'step:two words', 'step:next\0', 'repo:owner/repo', 'repo:owner/repo#branch:', 'repo:owner/repo#branch:main extra', 'repo:owner/repo#branch:main\0', 'issue:#2405\n', 'service:kernel', 'device:', 'issue:#0', 'issue:#-1', 'issue:#1.5', 'https://host', 'device:' + 'a'.repeat(2049)])('rejects malformed URI %#', (surface) => {
     expect(isSurfaceUri(surface)).toBe(false);
   });
 });
