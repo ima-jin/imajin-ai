@@ -105,6 +105,10 @@ paths:
         Requires a live app-authorization channel_links grant of connections:read
         from each pod owner to this exact app (channel=app, status=active,
         revokedAt=null). The existing OAuth consent flow creates this grant.
+        Consent label: "View your connections and member lists of all pods you own
+        (including other people)". This owner-wide grant exposes other people's
+        membership in every pod the granting owner owns, not just the owner's
+        own membership or one selected pod.
         Registration, operator approval, an ownerDid/appDid query parameter,
         X-Acting-For, or a forwarded cookie alone never grants access.
         Only entitled pods are returned, of any type; no recursive membership,
@@ -143,6 +147,8 @@ paths:
       summary: Read active direct pod members with the pod owner's grant to this app
       description: >-
         Same service credential and live owner-grant gates as GET /api/apps/pods.
+        The connections:read grant covers member lists of all pods owned by the
+        granting owner, including other people's DIDs, roles, and join timestamps.
         Missing pods and pods without the owner's active connections:read grant
         to this exact app both return 404; registration or sharing an app owner
         never substitutes for the grant. Empty entitled pods return members=[].
