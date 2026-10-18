@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { requireAuth, resolveActingDid } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
-import { db, conversationsV2, identities } from '@/src/db';
-import { authenticatePayApp as authenticateRegisteredApp } from '@/src/lib/pay/app-service-auth';
+import { db, conversationsV2, identities, identityMembers } from '@/src/db';
+import { authenticatePayApp as authenticateRegisteredApp } from '@/src/lib/kernel/app-service-auth';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { errorResponse, isValidDid, jsonResponse } from '@/src/lib/kernel/utils';
 
@@ -27,8 +27,32 @@ async function authorizeCreator(request: NextRequest, appDid: string, createdBy:
     : { error: 'createdBy must match the authenticated acting identity', status: 403 };
 }
 
+/** Identity authority is checked before room existence, including for legacy identities. */
+async function authorizeIdentity(request: NextRequest, did: string, appDid: string, createdBy: string) {
+  const denied = { error: 'Identity is not managed by this app or creator', status: 403 };
+  const [identity] = await db.select({
+    registeredByAppDid: identities.registeredByAppDid,
+  }).from(identities).where(and(
+    eq(identities.id, did), isNull(identities.suspendedAt),
+  )).limit(1);
+  if (!identity) return denied;
+  if (identity.registeredByAppDid === appDid) return null;
+
+  const members = await db.select({ did: identityMembers.memberDid }).from(identityMembers).where(and(
+    eq(identityMembers.identityDid, did),
+    inArray(identityMembers.memberDid, [appDid, createdBy]),
+    inArray(identityMembers.role, ['owner', 'admin']),
+    isNull(identityMembers.removedAt),
+  ));
+  if (members.some((member) => member.did === appDid)) return null;
+  if (members.some((member) => member.did === createdBy)) {
+    return authorizeCreator(request, appDid, createdBy);
+  }
+  return denied;
+}
+
 /**
- * PUT /chat/api/d/:did — create or rename an app-owned event conversation.
+ * PUT /chat/api/d/:did — create or rename an app-owned identity conversation.
  * Must run before member sync. Existing unbound rooms are never claimable.
  */
 export async function PUT(
@@ -43,9 +67,11 @@ export async function PUT(
     const body = metadataSchema.safeParse(await request.json().catch(() => null));
     const { did } = await params;
     if (!isValidDid(did) || !body.success) {
-      return errorResponse('Valid event DID, name (1–200 characters), and createdBy are required', 400, cors);
+      return errorResponse('Valid identity DID, name (1–200 characters), and createdBy are required', 400, cors);
     }
     const { name, createdBy } = body.data;
+    const identityDenied = await authorizeIdentity(request, did, auth.appDid, createdBy);
+    if (identityDenied) return errorResponse(identityDenied.error, identityDenied.status, cors);
     const [existing] = await db.select({
       appDid: conversationsV2.appDid, createdBy: conversationsV2.createdBy,
     }).from(conversationsV2).where(eq(conversationsV2.did, did)).limit(1);
@@ -57,15 +83,8 @@ export async function PUT(
       if (denied) return errorResponse(denied.error, denied.status, cors);
     }
 
-    const [event] = await db.select({ did: identities.id }).from(identities).where(and(
-      eq(identities.id, did),
-      eq(identities.subtype, 'event'),
-      isNull(identities.suspendedAt),
-    )).limit(1);
-    if (!event) return errorResponse('Active event identity not found', 404, cors);
-
     // One atomic statement: a conflicting app/owner/legacy row cannot be adopted,
-    // even if competing requests race. Context and membership grant no authority.
+    // even if competing requests race. Context and chat membership grant no authority.
     const [conversation] = await db.insert(conversationsV2).values({
       did, type: 'group', name, createdBy, appDid: auth.appDid,
     }).onConflictDoUpdate({
@@ -84,7 +103,7 @@ export async function PUT(
     if (!conversation) return errorResponse('Conversation is not owned by this app and creator', 403, cors);
     return jsonResponse({ conversation }, 200, cors);
   } catch {
-    log.error({}, 'App conversation metadata update failed');
+    log.error({ status: 500, code: 'APP_CONVERSATION_UPDATE_FAILED' }, 'App conversation metadata update failed');
     return errorResponse('Failed to update conversation metadata', 500, cors);
   }
 }

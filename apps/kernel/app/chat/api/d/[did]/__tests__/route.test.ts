@@ -11,7 +11,7 @@ import { SCOPE_VOCABULARY } from '@imajin/auth/scope-vocabulary';
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 const h = vi.hoisted(() => ({
-  db: null as unknown, fail: false,
+  db: null as unknown, fail: false, failure: null as unknown,
   tokens: new Map<string, Record<string, unknown>>(), log: vi.fn(),
 }));
 vi.mock('@/src/db', async () => {
@@ -20,7 +20,7 @@ vi.mock('@/src/db', async () => {
   const registry = await import('@/src/db/schemas/registry');
   const db = new Proxy({}, {
     get: (_target, prop) => {
-      if (h.fail) throw new Error('database unavailable: internal detail');
+      if (h.fail) throw h.failure ?? new Error('database unavailable: internal detail');
       const target = h.db as Record<string | symbol, unknown>;
       const value = target[prop];
       return typeof value === 'function' ? value.bind(target) : value;
@@ -28,6 +28,7 @@ vi.mock('@/src/db', async () => {
   });
   return { db, ...chat, ...auth, ...registry };
 });
+
 vi.mock('@/src/lib/auth/jwt', () => ({
   verifyAppToken: async (token: string) => h.tokens.get(token) ?? null,
 }));
@@ -44,6 +45,7 @@ const EVENT = 'did:imajin:eventidentity';
 const SESSION = 'eyJ0eXAiOiJKV1QifQ.fixture-session.fixture-signature';
 const root = resolve(__dirname, '../../../../../../../..');
 const migration = readFileSync(resolve(root, 'migrations/0209_chat_conversations_app_binding.sql'), 'utf8');
+const provenanceMigration = readFileSync(resolve(root, 'migrations/0212_identity_registering_app.sql'), 'utf8');
 let client: PGlite;
 let sessionDid: string | null;
 
@@ -88,6 +90,7 @@ beforeAll(async () => {
     await client.exec(readFileSync(resolve(root, 'migrations', file), 'utf8'));
   }
   await client.exec(migration);
+  await client.exec(provenanceMigration);
   h.db = drizzle(client);
 });
 afterAll(async () => {
@@ -98,6 +101,7 @@ afterAll(async () => {
 beforeEach(async () => {
   vi.clearAllMocks();
   h.fail = false;
+  h.failure = null;
   sessionDid = OWNER;
   vi.stubEnv('AUTH_SERVICE_URL', 'https://kernel.test/auth');
   // Exercise real requireAuth with only its session-verification transport stubbed.
@@ -113,9 +117,9 @@ beforeEach(async () => {
   h.tokens.set('other-app', { azp: OTHER_APP, scope: 'chat:write', isServiceToken: true });
   h.tokens.set('delegated', { azp: APP, scope: 'chat:write', isServiceToken: false });
   h.tokens.set('wrong-scope', { azp: APP, scope: 'profile:read', isServiceToken: true });
-  await client.exec('TRUNCATE chat.conversations_v2 CASCADE; DELETE FROM auth.identities; DELETE FROM registry.apps;');
+  await client.exec('TRUNCATE chat.conversations_v2 CASCADE; DELETE FROM auth.identity_members; DELETE FROM auth.identities; DELETE FROM registry.apps;');
   await client.query(
-    "INSERT INTO auth.identities (id, public_key, scope, subtype) VALUES ($1, 'fixture-public-key', 'actor', 'event')", [EVENT],
+    "INSERT INTO auth.identities (id, public_key, scope, subtype, registered_by_app_did) VALUES ($1, 'fixture-public-key', 'actor', 'event', $2)", [EVENT, APP],
   );
   for (const appDid of [APP, OTHER_APP]) {
     await client.query(
@@ -126,7 +130,7 @@ beforeEach(async () => {
   }
 });
 
-describe('app-owned event conversation metadata', () => {
+describe('app-owned identity conversation metadata', () => {
   it('creates name, human creator and app binding together before member sync', async () => {
     const response = await put(request({ name: '  Event title  ', createdBy: OWNER }));
     expect(response.status).toBe(200);
@@ -249,11 +253,10 @@ describe('validation and contract', () => {
     expect((await put(request(), 'did:imajin:dm:abc')).status).toBe(400);
     expect((await put(request(), 'did:imajin:group:abc')).status).toBe(400);
   });
-  it.each(['missing', 'human', 'suspended'])('rejects %s event identities', async (state) => {
+  it.each(['missing', 'suspended'])('rejects %s identities without disclosing room existence', async (state) => {
     if (state === 'missing') await client.query('DELETE FROM auth.identities WHERE id = $1', [EVENT]);
-    if (state === 'human') await client.query("UPDATE auth.identities SET subtype = 'human' WHERE id = $1", [EVENT]);
     if (state === 'suspended') await client.query('UPDATE auth.identities SET suspended_at = NOW() WHERE id = $1', [EVENT]);
-    expect((await put()).status).toBe(404);
+    expect((await put()).status).toBe(403);
     expect(await rows()).toEqual([]);
   });
   it('fails closed with a sanitized error if the database fails', async () => {
@@ -262,7 +265,24 @@ describe('validation and contract', () => {
     h.fail = false;
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: 'Failed to update conversation metadata' });
-    expect(h.log).toHaveBeenCalled();
+    expect(h.log).toHaveBeenCalledWith({
+      status: 500, code: 'APP_CONVERSATION_UPDATE_FAILED',
+    }, 'App conversation metadata update failed');
+  });
+  it.each([
+    Object.assign(new Error('must-not-log: duplicate key did:imajin:private-owner'), { code: '08006', token: 'must-not-log' }),
+    'must-not-log',
+  ])('logs only fixed failure metadata for failure %s', async (failure) => {
+    h.fail = true;
+    h.failure = failure;
+    const response = await put();
+    h.fail = false;
+    expect(response.status).toBe(500);
+    expect(h.log).toHaveBeenCalledWith({
+      status: 500, code: 'APP_CONVERSATION_UPDATE_FAILED',
+    }, 'App conversation metadata update failed');
+    expect(JSON.stringify(h.log.mock.calls)).not.toContain('must-not-log');
+    expect(JSON.stringify(h.log.mock.calls)).not.toContain('did:imajin:private-owner');
   });
   it('replays the guarded migration without changing legacy data', async () => {
     await seed(null);
@@ -273,12 +293,107 @@ describe('validation and contract', () => {
   });
   it('publishes the served YAML contract and keeps chat:write operator-approved only', () => {
     const spec = parse(readFileSync(resolve(root, 'apps/kernel/api-spec/chat.yaml'), 'utf8'));
-    expect(spec.paths['/api/d/{did}'].put.operationId).toBe('putAppEventConversation');
+    expect(spec.paths['/api/d/{did}'].put.operationId).toBe('putAppIdentityConversation');
     expect(spec.paths['/api/d/{did}'].put.requestBody.content['application/json'].schema.required).toEqual(['name', 'createdBy']);
     const entry = SCOPE_VOCABULARY.find((scope) => scope.scope === 'chat:write');
     expect(entry).toBeDefined();
     expect('serviceEligible' in entry!).toBe(false);
     expect(dynamic).toBe('force-dynamic');
     expect(typeof OPTIONS).toBe('function');
+  });
+});
+
+describe('identity provenance authority (#2926)', () => {
+  it.each([false, true])('denies a foreign app before create/rename (room exists: %s)', async (exists) => {
+    if (exists) await seed(OTHER_APP, OTHER_APP);
+    const before = await rows();
+    const response = await put(request({ name: 'Hijacked', createdBy: OTHER_APP }, 'other-app', null));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Identity is not managed by this app or creator' });
+    expect(await rows()).toEqual(before);
+  });
+
+  it.each(['foreign', 'legacy', 'missing', 'suspended'])('does not expose whether a room exists for %s identities', async (state) => {
+    const provenance = state === 'foreign' ? OTHER_APP : null;
+    await client.query('UPDATE auth.identities SET registered_by_app_did = $1 WHERE id = $2', [provenance, EVENT]);
+    if (state === 'missing') await client.query('DELETE FROM auth.identities WHERE id = $1', [EVENT]);
+    if (state === 'suspended') await client.query('UPDATE auth.identities SET suspended_at = NOW() WHERE id = $1', [EVENT]);
+    const absent = await put();
+    await seed();
+    const before = await rows();
+    const present = await put();
+    expect([absent.status, present.status]).toEqual([403, 403]);
+    expect(await absent.json()).toEqual(await present.json());
+    expect(await rows()).toEqual(before);
+  });
+
+  it.each(['course', 'business', 'human'])('allows registered %s identities without a subtype gate', async (subtype) => {
+    await client.query('UPDATE auth.identities SET subtype = $1 WHERE id = $2', [subtype, EVENT]);
+    expect((await put()).status).toBe(200);
+    expect((await put(request({ name: 'Renamed', createdBy: OWNER }))).status).toBe(200);
+    expect(await rows()).toMatchObject([{ name: 'Renamed', appDid: APP }]);
+  });
+
+  describe.each(['owner', 'admin'])('%s membership', (role) => {
+    it.each([null, OTHER_APP])('allows a member app on legacy/foreign provenance %s', async (provenance) => {
+      await client.query('UPDATE auth.identities SET registered_by_app_did = $1 WHERE id = $2', [provenance, EVENT]);
+      await client.query(
+        'INSERT INTO auth.identity_members (identity_did, member_did, role) VALUES ($1, $2, $3)', [EVENT, APP, role],
+      );
+      expect((await put(request({ name: 'Member app', createdBy: APP }, 'service', null))).status).toBe(200);
+      expect((await put(request({ name: 'Renamed', createdBy: APP }, 'service', null))).status).toBe(200);
+      await client.query('UPDATE auth.identity_members SET removed_at = NOW()');
+      const before = await rows();
+      expect((await put(request({ name: 'Revoked', createdBy: APP }, 'service', null))).status).toBe(403);
+      expect(await rows()).toEqual(before);
+    });
+
+    it('requires a verified human member on every call, including rename', async () => {
+      await client.query('UPDATE auth.identities SET registered_by_app_did = NULL WHERE id = $1', [EVENT]);
+      await client.query(
+        'INSERT INTO auth.identity_members (identity_did, member_did, role) VALUES ($1, $2, $3)', [EVENT, OWNER, role],
+      );
+      expect((await put()).status).toBe(200);
+      expect((await put(request({ name: 'Renamed', createdBy: OWNER }))).status).toBe(200);
+      const before = await rows();
+      expect((await put(request(undefined, 'service', null))).status).toBe(401);
+      sessionDid = OTHER_OWNER;
+      expect((await put()).status).toBe(403);
+      sessionDid = OWNER;
+      await client.query('UPDATE auth.identity_members SET removed_at = NOW()');
+      expect((await put()).status).toBe(403);
+      expect(await rows()).toEqual(before);
+    });
+  });
+
+  it.each(['member', 'agent', 'maintainer', 'cohost'])('rejects non-admin role %s', async (role) => {
+    await client.query('UPDATE auth.identities SET registered_by_app_did = NULL WHERE id = $1', [EVENT]);
+    for (const member of [APP, OWNER]) {
+      await client.query(
+        'INSERT INTO auth.identity_members (identity_did, member_did, role) VALUES ($1, $2, $3)', [EVENT, member, role],
+      );
+    }
+    expect((await put()).status).toBe(403);
+    expect(await rows()).toEqual([]);
+  });
+
+  it('does not accept ownership of another identity or caller-supplied provenance', async () => {
+    await client.query('UPDATE auth.identities SET registered_by_app_did = NULL, metadata = $1 WHERE id = $2',
+      [JSON.stringify({ registeredByAppDid: APP, appDid: APP, createdBy: OWNER }), EVENT]);
+    await client.query(
+      "INSERT INTO auth.identity_members (identity_did, member_did, role) VALUES ($1, $2, 'owner')", [OTHER_OWNER, APP],
+    );
+    expect((await put()).status).toBe(403);
+    expect(await rows()).toEqual([]);
+  });
+
+  it('replays provenance migration twice, preserving NULL legacy and existing app provenance', async () => {
+    await client.query("INSERT INTO auth.identities (id, public_key, scope) VALUES ($1, 'legacy-key', 'actor')", [OWNER]);
+    await client.exec(provenanceMigration);
+    await client.exec(provenanceMigration);
+    expect((await client.query('SELECT id, registered_by_app_did FROM auth.identities ORDER BY id')).rows).toEqual([
+      { id: OWNER, registered_by_app_did: null },
+      { id: EVENT, registered_by_app_did: APP },
+    ]);
   });
 });

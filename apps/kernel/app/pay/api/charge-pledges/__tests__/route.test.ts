@@ -14,7 +14,7 @@ const h = vi.hoisted(() => ({
 vi.mock('@/src/lib/pay/rails/stripe-keys', () => ({
   SellerNoCardRailError: class extends Error { code = 'SELLER_NO_CARD_RAIL'; },
 }));
-vi.mock('@/src/lib/pay/app-service-auth', () => ({
+vi.mock('@/src/lib/kernel/app-service-auth', () => ({
   authenticatePayApp: async (request: Request) => request.headers.get('authorization')
     ? { appDid: 'did:imajin:events' }
     : { error: 'App-service token required', status: 401 },

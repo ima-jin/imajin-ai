@@ -1,5 +1,4 @@
 openapi: "3.1.0"
-# Registered-app conversation metadata is part of the kernel chat contract (#2539).
 info:
   title: imajin chat
   version: "2.0.0"
@@ -667,8 +666,8 @@ paths:
   /api/d/{did}:
     put:
       tags: [chat]
-      operationId: putAppEventConversation
-      summary: Create or rename a registered app's event conversation
+      operationId: putAppIdentityConversation
+      summary: Create or rename an app-owned identity conversation
       description: |
         Requires an app-service Bearer JWT with chat:write, an active app
         registration, and live operator approval of chat:write through the
@@ -680,10 +679,20 @@ paths:
         identity of an additional forwarded imajin_session Cookie (including
         validated X-Acting-As / X-Acting-For delegation for the chat service).
         The app token alone never authorizes new attribution to a human.
-        Renames need no human session: createdBy must match the immutable
-        creator already bound to that app's conversation.
+        Renames must preserve the immutable app/creator binding.
 
-        The DID must identify an active registered event. Call this BEFORE
+        The DID must identify an active identity of any subtype. The calling
+        app must match auth.identities.registered_by_app_did, or the app DID
+        or verified human createdBy must be an active owner/admin in
+        auth.identity_members for this identity. Human membership requires
+        the matching session on every call, including renames. Registering
+        apps and app owner/admin members need a human session only for new
+        human attribution. Removed members and other roles grant no authority.
+        Legacy NULL-provenance identities require this owner/admin exception;
+        caller-supplied metadata cannot establish provenance.
+        Unknown, suspended and unauthorized identities return 403 before any
+        conversation lookup, whether or not a conversation exists.
+        Call this BEFORE
         syncing members so creation atomically records the name, creator and
         app binding. Repeated calls can only rename the same app/creator's
         conversation; neither owner can be transferred. Unbound legacy rooms
@@ -697,7 +706,7 @@ paths:
         - name: did
           in: path
           required: true
-          description: URL-encoded registered event DID
+          description: URL-encoded identity DID managed by the app or an authenticated owner/admin
           schema: { type: string }
       requestBody:
         required: true
@@ -732,9 +741,7 @@ paths:
         "401":
           description: Missing/invalid app-service token or required creator session
         "403":
-          description: Missing/revoked scope or registration, spoofed creator, or app/owner mismatch (including legacy rows)
-        "404":
-          description: No active event identity for this DID
+          description: Missing/revoked scope or registration, unauthorized identity, spoofed creator, or immutable app/owner mismatch
         "500":
           description: Metadata update failed (no internal details returned)
 

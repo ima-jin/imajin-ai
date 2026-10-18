@@ -82,7 +82,7 @@ beforeAll(async () => {
     '../../../../../../migrations/0195_reach_envelopes.sql', import.meta.url,
   )), 'utf8');
   await database.exec(migration);
-  await database.exec('CREATE TABLE auth.identities (id text PRIMARY KEY)');
+  await database.exec('CREATE TABLE auth.identities (registered_by_app_did text,id text PRIMARY KEY)');
   await database.exec(readFileSync(new URL(
     '../../../../../../migrations/0198_foreign_agent_stubs.sql', import.meta.url,
   ), 'utf8'));

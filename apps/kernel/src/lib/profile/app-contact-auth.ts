@@ -1,7 +1,7 @@
 import type { NextRequest } from 'next/server';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db, transactions, channelLinks } from '@/src/db';
-import { authenticatePayApp as authenticateRegisteredApp } from '@/src/lib/pay/app-service-auth';
+import { authenticatePayApp as authenticateRegisteredApp } from '@/src/lib/kernel/app-service-auth';
 import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { verifyAppServiceToken } from '@/src/lib/auth/jwt';
 

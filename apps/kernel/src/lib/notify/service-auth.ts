@@ -1,6 +1,6 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
-import { authenticatePayApp as authenticateRegisteredApp } from '../pay/app-service-auth';
+import { authenticatePayApp as authenticateRegisteredApp } from '../kernel/app-service-auth';
 import { requireInternalApiKey, ATTESTATION_INTERNAL_API_KEY_PURPOSE } from '../auth/require-internal-api-key';
 import { getInternalSecret } from '../vault/internal-secret';
 import { acceptsLegacyNotifyCredential } from './legacy-auth';

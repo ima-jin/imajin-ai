@@ -18,6 +18,7 @@ export const identities = authSchema.table('identities', {
   id: text('id').primaryKey(),                    // did:imajin:xxx
   scope: text('scope').notNull(),                 // 'actor' | 'family' | 'community' | 'business'
   subtype: text('subtype'),                       // scope-dependent: 'human' | 'agent' | 'device' | etc.
+  registeredByAppDid: text('registered_by_app_did'), // verified registering app; NULL for legacy/session registrations
   publicKey: text('public_key').notNull().unique(),
   handle: text('handle').unique(),                // @username (unique, optional)
   name: text('name'),                             // Display name

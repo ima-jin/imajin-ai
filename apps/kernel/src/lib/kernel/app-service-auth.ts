@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db, registryApps } from '@/src/db';
 import { verifyAppToken } from '@/src/lib/auth/jwt';
 
-/** Re-read registration and operator approval on every call, not only token mint. */
+/** Shared app-service JWT auth: re-read registration and operator approval on every call. */
 export async function authenticatePayApp(
   request: NextRequest,
   scope: string,

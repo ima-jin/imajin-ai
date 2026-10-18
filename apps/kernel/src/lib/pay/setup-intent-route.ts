@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/src/lib/kernel/cors';
 import { createByoSetupIntent, verifyByoSetupIntent } from '@/src/lib/stripe/byo-setup-intent';
-import { authenticatePayApp } from './app-service-auth';
+import { authenticatePayApp } from '../kernel/app-service-auth';
 import { PAY_SETUP_INTENT_SCOPE, SetupIntentError, setupIntentBody, verifySetupIntentBody } from './setup-intent';
 import { SellerNoCardRailError } from './rails/stripe-keys';
 

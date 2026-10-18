@@ -18,7 +18,7 @@ vi.mock('../rails/stripe-keys', () => ({
   },
 }));
 vi.mock('../providers/seller-pledge-refund', () => ({ sellerPledgeRefundClient: h.client }));
-vi.mock('../app-service-auth', () => ({
+vi.mock('../../kernel/app-service-auth', () => ({
   authenticatePayApp: async (request: Request) => !request.headers.has('authorization')
     ? { error: 'App-service token required', status: 401 }
     : h.authDenied ? { error: 'Approved scope required', status: 403 } : { appDid: h.app },

@@ -6,6 +6,7 @@ import { didFromPublicKey } from '@/src/lib/auth/crypto';
 import { createSessionToken, getSessionCookieOptions } from '@/src/lib/auth/jwt';
 import { rateLimit, getClientIP } from '@imajin/config';
 import { getNodeDid } from '@/src/lib/kernel/node-identity';
+import { authenticatePayApp } from '@/src/lib/kernel/app-service-auth';
 import { createLogger } from '@imajin/logger';
 import * as bus from '@imajin/bus';
 import {
@@ -20,6 +21,12 @@ import {
 } from '@/src/lib/auth/register';
 
 const log = createLogger('kernel');
+/** No app credential means self-registration, not inferred app ownership. */
+async function registeringApp(request: NextRequest) {
+  return request.headers.has('authorization')
+    ? authenticatePayApp(request, 'identity:write')
+    : { appDid: null };
+}
 
 /**
  * POST /api/register
@@ -47,6 +54,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    // Signed self-registration remains available without an app token. When an
+    // app registers a key-backed identity, provenance comes only from its JWT.
+    const appAuth = await registeringApp(request);
+    if ('error' in appAuth) {
+      return NextResponse.json({ error: appAuth.error }, { status: appAuth.status });
+    }
     const body = await request.json();
     const {
       publicKey, handle, name,
@@ -95,6 +108,7 @@ export async function POST(request: NextRequest) {
       .insert(identities)
       .values({
         id: did, scope, subtype: subtype || null, publicKey,
+        registeredByAppDid: appAuth.appDid,
         handle: handle || null, name: name?.trim().slice(0, 100) || null, tier: 'preliminary',
       })
       .returning();

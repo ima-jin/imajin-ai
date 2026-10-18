@@ -73,6 +73,7 @@ beforeAll(async () => {
   state.db = database;
   await pg.exec(`CREATE SCHEMA auth;
     CREATE TABLE auth.identities (
+      registered_by_app_did text,
       id text PRIMARY KEY, public_key text NOT NULL UNIQUE, scope text NOT NULL,
       subtype text, tier text NOT NULL DEFAULT 'soft', metadata jsonb DEFAULT '{}', suspended_at timestamptz,
       handle text, name text, avatar_url text, avatar_asset_id text, upload_limit_mb integer,

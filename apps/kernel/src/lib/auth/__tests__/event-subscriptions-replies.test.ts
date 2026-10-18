@@ -70,7 +70,8 @@ beforeAll(async () => {
   await client().exec(`
     CREATE SCHEMA auth;
     CREATE SCHEMA kernel;
-    CREATE TABLE auth.identities (id text PRIMARY KEY, tier text, suspended_at timestamptz);
+    CREATE TABLE auth.identities (
+      registered_by_app_did text,id text PRIMARY KEY, tier text, suspended_at timestamptz);
     CREATE TABLE auth.delegation_grants (
       id text PRIMARY KEY, agent_did text, delegator_did text, status text,
       expires_at timestamptz, audience jsonb
