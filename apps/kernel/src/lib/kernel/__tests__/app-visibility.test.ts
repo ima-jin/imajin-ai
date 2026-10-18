@@ -23,7 +23,8 @@ describe('live owning identity membership', () => {
     h.database = drizzle(client);
     await client.exec(`
       CREATE SCHEMA auth;
-      CREATE TABLE auth.identities (id text PRIMARY KEY, scope text);
+      CREATE TABLE auth.identities (
+      registered_by_app_did text,id text PRIMARY KEY, scope text);
       CREATE TABLE auth.identity_members (identity_did text, member_did text, removed_at timestamptz);
       INSERT INTO auth.identities VALUES ('business','business'), ('person','actor'), ('other-person','actor');
     `);

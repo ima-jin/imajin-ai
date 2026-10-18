@@ -26,7 +26,8 @@ const EMAIL = 'buyer@example.com';
 beforeAll(async () => {
   await h.pg.exec(`
     CREATE SCHEMA auth; CREATE SCHEMA profile; CREATE SCHEMA pay;
-    CREATE TABLE auth.identities (id text PRIMARY KEY, contact_email text);
+    CREATE TABLE auth.identities (
+      registered_by_app_did text,id text PRIMARY KEY, contact_email text);
     CREATE TABLE profile.profiles (did text PRIMARY KEY, contact_email text);
     CREATE TABLE pay.transactions (app_did text, from_did text, status text);
     CREATE TABLE auth.channel_links (

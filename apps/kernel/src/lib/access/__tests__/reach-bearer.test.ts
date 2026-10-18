@@ -98,6 +98,7 @@ beforeAll(async () => {
       UNIQUE(event_type, scope)
     );
     CREATE TABLE auth.identities (
+      registered_by_app_did text,
       id text PRIMARY KEY, scope text NOT NULL, subtype text, public_key text UNIQUE NOT NULL,
       tier text DEFAULT 'soft', metadata jsonb DEFAULT '{}', handle text, suspended_at timestamptz,
       name text, avatar_url text, avatar_asset_id text, upload_limit_mb integer, handle_claimed_at timestamptz,
