@@ -23,6 +23,11 @@ interface RequestList {
 
 const REQUESTS_URL = '/connections/api/invites';
 const BUTTON_STYLE = 'min-h-11 px-3 py-2 border border-white/20 text-sm font-mono hover:bg-white/10 disabled:opacity-40';
+const ACTION_MESSAGES = {
+  accept: 'Connection accepted.',
+  decline: 'Connection request declined.',
+  cancel: 'Connection request cancelled.',
+};
 
 function counterparty(request: DirectRequest, incoming: boolean): string {
   if (incoming) return request.fromName || request.fromHandle || request.fromDid;
@@ -114,7 +119,7 @@ export default function ConnectionRequests({ onConnected }: Readonly<{ onConnect
       if (action === 'accept') await requestAction(`${url}/accept`, 'POST');
       else if (action === 'decline') await requestAction(url, 'PATCH', { action: 'decline' });
       else await requestAction(url, 'DELETE');
-      setStatus({ error: false, message: action === 'accept' ? 'Connection accepted.' : `Connection request ${action === 'decline' ? 'declined' : 'cancelled'}.` });
+      setStatus({ error: false, message: ACTION_MESSAGES[action] });
       await refresh();
       if (action === 'accept') onConnected();
     } catch (error) {
