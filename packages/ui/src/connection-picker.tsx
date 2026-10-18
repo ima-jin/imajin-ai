@@ -1,12 +1,14 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
+import { ConnectionRelationshipFilter, filterRelationships, type RelationshipLabel, type RelationshipFilter } from './connection-relationships';
 
 interface Connection {
   did: string;
   name: string | null;
   handle: string | null;
   avatar: string | null;
+  relationshipLabel?: RelationshipLabel | null;
 }
 
 export interface ConnectionPickerProps {
@@ -17,6 +19,8 @@ export interface ConnectionPickerProps {
   disabled?: boolean;
   /** Shown when the user has no connections at all (not when a search matches nothing). Defaults to "No connections available." */
   emptyMessage?: ReactNode;
+  /** Show relationship labels and filters, with clients first and all connections initially visible. */
+  relationshipLabels?: boolean;
 }
 
 const DEFAULT_EMPTY_MESSAGE = 'No connections available.';
@@ -45,11 +49,13 @@ export function ConnectionPicker({
   placeholder = 'Search connections...',
   disabled = false,
   emptyMessage = DEFAULT_EMPTY_MESSAGE,
+  relationshipLabels = false,
 }: Readonly<ConnectionPickerProps>) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [relationshipFilter, setRelationshipFilter] = useState<RelationshipFilter>('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -75,15 +81,19 @@ export function ConnectionPicker({
 
   const excludeSet = new Set(excludeDids);
   const available = connections.filter(c => !excludeSet.has(c.did));
-  const filtered = search
+  const matching = search
     ? available.filter(c =>
         (c.handle || '').toLowerCase().includes(search.toLowerCase()) ||
         (c.name || '').toLowerCase().includes(search.toLowerCase())
       )
     : available;
+  const filtered = relationshipLabels ? filterRelationships(matching, relationshipFilter) : matching;
 
   return (
     <div className="space-y-2">
+      {relationshipLabels && (
+        <ConnectionRelationshipFilter value={relationshipFilter} onChange={setRelationshipFilter} disabled={disabled || loading || error !== null} />
+      )}
       <input
         type="text"
         value={search}
@@ -126,6 +136,9 @@ export function ConnectionPicker({
                 </div>
                 {conn.handle && conn.name && (
                   <div className="text-xs text-gray-400 truncate">@{conn.handle}</div>
+                )}
+                {relationshipLabels && (
+                  <div className="text-xs text-amber-400 capitalize">{conn.relationshipLabel ?? 'Unset'}</div>
                 )}
               </div>
             </button>

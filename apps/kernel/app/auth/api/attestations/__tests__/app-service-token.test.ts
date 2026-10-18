@@ -54,7 +54,7 @@ vi.mock('@/src/db', () => ({
 
 vi.mock('drizzle-orm', () => {
   const fn = () => vi.fn();
-  return { eq: fn(), and: fn(), isNull: fn(), gt: fn(), ne: fn(), desc: fn(), notInArray: fn(), inArray: fn(), arrayContains: fn(), sql: fn() };
+  return { eq: fn(), and: fn(), or: fn(), isNull: fn(), gt: fn(), ne: fn(), desc: fn(), notInArray: fn(), inArray: fn(), arrayContains: fn(), sql: fn() };
 });
 
 vi.mock('@/src/lib/kernel/app-registry', () => ({ resolveActiveAppByAudience: vi.fn().mockResolvedValue(null) }));

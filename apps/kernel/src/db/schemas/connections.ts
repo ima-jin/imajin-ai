@@ -1,4 +1,7 @@
-import { pgSchema, index, text, timestamp, unique, integer, foreignKey, primaryKey } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { pgSchema, index, text, timestamp, unique, integer, foreignKey, primaryKey, check } from "drizzle-orm/pg-core";
+
+export type RelationshipLabel = 'client' | 'vendor' | 'partner' | 'other';
 
 export const connectionsSchema = pgSchema("connections");
 
@@ -129,12 +132,16 @@ export const podMembersInConnections = connectionsSchema.table("pod_members", {
 export const connections = connectionsSchema.table('connections', {
   didA: text('did_a').notNull(),
   didB: text('did_b').notNull(),
+  relationshipLabelA: text('relationship_label_a').$type<RelationshipLabel>(),
+  relationshipLabelB: text('relationship_label_b').$type<RelationshipLabel>(),
   connectedAt: timestamp('connected_at', { withTimezone: true }).defaultNow().notNull(),
   disconnectedAt: timestamp('disconnected_at', { withTimezone: true }),
 }, (table) => ({
   pk: primaryKey({ columns: [table.didA, table.didB] }),
   didAIdx: index('connections_did_a_idx').on(table.didA),
   didBIdx: index('connections_did_b_idx').on(table.didB),
+  labelACheck: check('connections_relationship_label_a_check', sql`${table.relationshipLabelA} IN ('client', 'vendor', 'partner', 'other')`),
+  labelBCheck: check('connections_relationship_label_b_check', sql`${table.relationshipLabelB} IN ('client', 'vendor', 'partner', 'other')`),
 }));
 
 export const nicknames = connectionsSchema.table('nicknames', {

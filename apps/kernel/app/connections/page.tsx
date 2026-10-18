@@ -6,6 +6,7 @@ import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import InvitationsTab from './invitations-tab';
 import useSWR from 'swr';
 import { useToast } from '@imajin/ui';
+import { RelationshipEditor, RelationshipFilterControl, matchesRelationship, type RelationshipLabel, type RelationshipFilter } from './relationship-controls';
 
 import { buildPublicUrl } from '@imajin/config';
 
@@ -18,6 +19,11 @@ interface Connection {
   name?: string | null;
   connectedAt: string;
   nickname?: string | null;
+  relationshipLabel?: RelationshipLabel | null;
+}
+interface ConnectionsData {
+  connections: Connection[];
+  canManageRelationshipLabels?: boolean;
 }
 
 interface Pod {
@@ -137,6 +143,7 @@ export default function ConnectionsPage() {
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [sortMode, setSortMode] = useState<'date' | 'alpha'>('date');
   const [sortAsc, setSortAsc] = useState(false); // date defaults descending (newest first)
+  const [relationshipFilter, setRelationshipFilter] = useState<RelationshipFilter>('all');
 
   useEffect(() => {
     const params = new URLSearchParams(globalThis.location.search);
@@ -145,7 +152,7 @@ export default function ConnectionsPage() {
     else if (tab === 'invitations') setActiveTab('invitations');
   }, []);
 
-  const { data: connectionsData, mutate: mutateConnections } = useSWR(
+  const { data: connectionsData, mutate: mutateConnections } = useSWR<ConnectionsData>(
     isLoggedIn ? '/connections/api/connections' : null
   );
   const connections: Connection[] = connectionsData?.connections ?? [];
@@ -165,6 +172,15 @@ export default function ConnectionsPage() {
       }),
       false
     );
+  }
+
+  function updateRelationship(targetDid: string, relationshipLabel: RelationshipLabel | null) {
+    mutateConnections(current => current && ({
+      ...current,
+      connections: current.connections.map(connection =>
+        connection.did === targetDid ? { ...connection, relationshipLabel } : connection
+      ),
+    }), false);
   }
 
   async function disconnectFrom(connDid: string) {
@@ -234,7 +250,7 @@ export default function ConnectionsPage() {
     return (conn.nickname || conn.name || (conn.handle ? `@${conn.handle}` : conn.did)).toLowerCase();
   }
 
-  const sortedConnections = [...connections].sort((a, b) => {
+  const sortedConnections = connections.filter(connection => matchesRelationship(connection, relationshipFilter)).sort((a, b) => {
     const dir = sortAsc ? 1 : -1;
     if (sortMode === 'date') {
       return dir * (new Date(a.connectedAt).getTime() - new Date(b.connectedAt).getTime());
@@ -358,6 +374,12 @@ export default function ConnectionsPage() {
             </div>
           </div>
 
+          <RelationshipFilterControl value={relationshipFilter} onChange={setRelationshipFilter} />
+
+          {connections.length > 0 && sortedConnections.length === 0 && (
+            <p className="text-gray-400 text-sm mb-6">No connections with this relationship label.</p>
+          )}
+
           {/* Connections List */}
           {connections.length > 0 ? (
             <div className="space-y-3 mb-10">
@@ -414,6 +436,13 @@ export default function ConnectionsPage() {
                         {conn.did}
                       </span>
                     </div>
+                    <RelationshipEditor
+                      did={conn.did}
+                      name={conn.nickname || conn.name || conn.handle || conn.did}
+                      value={conn.relationshipLabel ?? null}
+                      canManage={connectionsData?.canManageRelationshipLabels === true}
+                      onSave={updateRelationship}
+                    />
                   </div>
                   <div className="relative flex items-center gap-2">
                     <a

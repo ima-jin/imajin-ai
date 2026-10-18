@@ -18,6 +18,7 @@ export const ATTESTATION_TYPES = [
   'customer',
   'connection.invited',
   'connection.accepted',
+  'connection.relationship.label.changed',
   'vouch',
   'session.created',
   'onboard.link.sent',
@@ -296,6 +297,7 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'connection.relationship.label.changed',
   'domain.verified',
   'domain.revoked',
   'mail.sent',

@@ -21,6 +21,75 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const labelledConnections = [
+  { did: 'did:imajin:v', name: 'Vendor', handle: 'vendor', avatar: null, relationshipLabel: 'vendor' },
+  { did: 'did:imajin:c', name: 'Client', handle: 'client', avatar: null, relationshipLabel: 'client' },
+  { did: 'did:imajin:p', name: 'Partner', handle: 'partner', avatar: null, relationshipLabel: 'partner' },
+  { did: 'did:imajin:o', name: 'Other party', handle: 'other', avatar: null, relationshipLabel: 'other' },
+  { did: 'did:imajin:u', name: 'Unlabelled', handle: null, avatar: null, relationshipLabel: null },
+  { did: 'did:imajin:l', name: 'Legacy', handle: null, avatar: null },
+];
+
+describe('ConnectionPicker — opt-in relationship labels (#2945)', () => {
+  it('keeps all visible by default with clients first and the remaining order stable', async () => {
+    stubFetch({ ok: true, body: { connections: labelledConnections } });
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} relationshipLabels />);
+    await screen.findByText('Vendor');
+    const rows = screen.getAllByRole('button').filter(button => !button.hasAttribute('aria-pressed'));
+    expect(rows.map(button => button.textContent)).toEqual([
+      expect.stringContaining('Client'), expect.stringContaining('Vendor'), expect.stringContaining('Partner'),
+      expect.stringContaining('Other party'), expect.stringContaining('Unlabelled'), expect.stringContaining('Legacy'),
+    ]);
+    expect(screen.getByRole('button', { name: 'All' }).getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it.each([
+    ['Clients', ['Client']], ['Vendors', ['Vendor']], ['Partners', ['Partner']],
+    ['Other', ['Other party']], ['Unset', ['Unlabelled', 'Legacy']],
+  ])('filters by %s with one click', async (filter, names) => {
+    stubFetch({ ok: true, body: { connections: labelledConnections } });
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} relationshipLabels />);
+    await screen.findByText('Vendor');
+    fireEvent.click(screen.getByRole('button', { name: filter as string }));
+    const rows = screen.getAllByRole('button').filter(button => !button.hasAttribute('aria-pressed'));
+    expect(rows).toHaveLength(names.length);
+    for (const name of names) expect(screen.getByText(name)).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByText('Vendor')).toBeDefined();
+  });
+
+  it('combines labels with search and exclusions and preserves the full selection', async () => {
+    stubFetch({ ok: true, body: { connections: labelledConnections } });
+    const onSelect = vi.fn();
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={onSelect} relationshipLabels excludeDids={['did:imajin:l']} />);
+    await screen.findByText('Client');
+    fireEvent.click(screen.getByRole('button', { name: 'Unset' }));
+    expect(screen.queryByText('Legacy')).toBeNull();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'zzz' } });
+    expect(screen.getByText('No matching connections.')).toBeDefined();
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'unlabel' } });
+    fireEvent.click(screen.getByRole('button', { name: /Unlabelled/ }));
+    expect(onSelect).toHaveBeenCalledWith(labelledConnections[4]);
+    expect((screen.getByRole('textbox') as HTMLInputElement).value).toBe('');
+  });
+
+  it('does not show labels, filters or reorder existing callers', async () => {
+    stubFetch({ ok: true, body: { connections: labelledConnections } });
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} />);
+    await screen.findByText('Vendor');
+    expect(screen.queryByRole('group', { name: 'Filter relationships' })).toBeNull();
+    expect(screen.queryByText('client')).toBeNull();
+    expect(screen.getAllByRole('button')[0].textContent).toContain('Vendor');
+  });
+
+  it('disables filter controls and selection when disabled', async () => {
+    stubFetch({ ok: true, body: { connections: labelledConnections } });
+    render(<ConnectionPicker connectionsUrl={CONNECTIONS_URL} onSelect={vi.fn()} relationshipLabels disabled />);
+    await screen.findByText('Vendor');
+    expect(screen.getAllByRole('button').every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+});
+
 describe('ConnectionPicker — load failures (#2651)', () => {
   it.each([
     [401, 'Your session has expired. Sign in again to load connections.'],

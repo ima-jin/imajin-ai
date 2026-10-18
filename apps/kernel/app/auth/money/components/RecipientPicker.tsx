@@ -8,7 +8,7 @@ export type RecipientMode = 'connection' | 'invite';
 interface Props {
   mode: RecipientMode;
   onModeChange: (mode: RecipientMode) => void;
-  selectedConnection: SelectedConnection | null;
+  selectedConnection: (SelectedConnection & { relationshipLabel?: 'client' | 'vendor' | 'partner' | 'other' | null }) | null;
   onSelectConnection: (connection: SelectedConnection | null) => void;
   invite: RecipientInviteDraft;
   onInviteChange: (invite: RecipientInviteDraft) => void;
@@ -75,6 +75,9 @@ export default function RecipientPicker({
         (selectedConnection ? (
           <div className="flex items-center gap-2 px-3 py-2 bg-black/40 rounded-lg">
             <span className="text-sm text-zinc-300">{connectionLabel(selectedConnection)}</span>
+            {selectedConnection.relationshipLabel && (
+              <span className="text-xs text-amber-400 capitalize">{selectedConnection.relationshipLabel}</span>
+            )}
             <span className="text-xs text-zinc-600 font-mono truncate">{selectedConnection.did}</span>
             <button
               type="button"
@@ -87,9 +90,8 @@ export default function RecipientPicker({
         ) : (
           <ConnectionPicker
             connectionsUrl="/connections/api/connections"
-            onSelect={(connection) =>
-              onSelectConnection({ did: connection.did, name: connection.name, handle: connection.handle })
-            }
+            relationshipLabels
+            onSelect={onSelectConnection}
             placeholder="Search this business's connections…"
             emptyMessage={BUSINESS_EMPTY_MESSAGE}
           />

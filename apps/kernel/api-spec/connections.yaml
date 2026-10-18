@@ -302,9 +302,18 @@ paths:
     get:
       tags: [connections]
       operationId: listConnections
-      summary: List 2-person connection pods for authenticated user — resolves handles from auth service
+      summary: List active connections for the effective DID, with its private relationship labels
+      description: >-
+        Supports session act-as and scoped app tokens (connections:read).
+        relationshipLabel belongs only to the effective DID's side; the
+        counterparty's label is never returned. Labels grant no membership,
+        roster, configuration or internal access. canManageRelationshipLabels
+        is true only for a live business owner/admin session with connections
+        service access; app/delegated credentials and failed capability checks
+        return false without removing existing read access.
       security:
         - cookieAuth: []
+        - bearerAuth: []
       responses:
         "200":
           description: Connections list
@@ -312,28 +321,91 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [connections, canManageRelationshipLabels]
                 properties:
+                  canManageRelationshipLabels: { type: boolean }
                   connections:
                     type: array
                     items:
                       type: object
+                      required: [did, handle, name, nickname, connectedAt, relationshipLabel]
                       properties:
                         did: { type: string }
-                        podId: { type: string }
-                        joinedAt: { type: string, format: date-time }
-                        podName: { type: string }
+                        connectedAt: { type: string, format: date-time }
+                        nickname: { type: [string, "null"] }
+                        relationshipLabel:
+                          type: [string, "null"]
+                          enum: [client, vendor, partner, other, null]
                         handle: { type: string, nullable: true }
                         name: { type: string, nullable: true }
-
-  /api/connections/{podId}:
+  /api/connections/{did}:
+    patch:
+      tags: [connections]
+      operationId: setConnectionRelationshipLabel
+      summary: Set, change or clear the business org's private label on an active connection
+      description: >-
+        Requires the original authenticated actor's live owner/admin membership
+        of an active business identity and connections service access. orgDid
+        selects the org for a direct controller; omitted means the effective
+        act-as DID. Counterparties, noncontrollers, app-service tokens and
+        delegated agents cannot mutate the org's label. Only that org's side
+        changes. An atomic node-signed connection.relationship.label.changed
+        event records orgDid, counterpartyDid, actorDid, oldLabel and newLabel;
+        its disclosure is restricted to the org's live controllers. Repeating
+        the current value is a no-op. No membership or payment access changes.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: did
+          in: path
+          required: true
+          schema: { type: string }
+          description: Counterparty DID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [relationshipLabel]
+              properties:
+                relationshipLabel:
+                  type: [string, "null"]
+                  enum: [client, vendor, partner, other, null]
+                orgDid: { type: string, description: "Optional business DID for direct owner/admin use" }
+      responses:
+        "200":
+          description: Own-side label updated, or unchanged for a no-op
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [did, relationshipLabel]
+                properties:
+                  did: { type: string }
+                  relationshipLabel:
+                    type: [string, "null"]
+                    enum: [client, vendor, partner, other, null]
+                  attestationId: { type: string, description: "Present when the value changed" }
+        "400":
+          description: Invalid JSON, label or orgDid
+        "401":
+          description: Not authenticated
+        "403":
+          description: Not an authorized live business owner/admin; agent countersign required
+        "404":
+          description: No active connection
+        "500":
+          description: Signing or persistence failed; mutation and event both rolled back
     delete:
       tags: [connections]
       operationId: disconnect
-      summary: Disconnect from a 2-person connection pod — removes user from pod; deletes pod if empty
+      summary: Disconnect the effective DID's bilateral connection
       security:
         - cookieAuth: []
       parameters:
-        - name: podId
+        - name: did
           in: path
           required: true
           schema: { type: string }
