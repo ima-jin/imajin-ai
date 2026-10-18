@@ -87,8 +87,10 @@ function request(path: string, body: unknown, method = 'POST'): never {
 async function expectPrivateRefusal(response: Response, status: number) {
   expect(response.status).toBe(status);
   const text = await response.text();
-  expect(text.includes(seed)).toBe(false);
-  expect(text.includes(FIELD)).toBe(false);
+  // Fail with a constant message rather than printing the secret as an
+  // expected/actual matcher argument if the non-disclosure invariant breaks.
+  if (text.includes(seed)) throw new Error('Group key material disclosed in response');
+  expect(text).not.toContain(FIELD);
   expect(JSON.stringify(mocks.log.mock.calls).includes(seed)).toBe(false);
   expect(mocks.log).not.toHaveBeenCalled();
   expect(mocks.audit).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { Identity } from '@imajin/auth';
 import type { VaultFile } from '@imajin/vault-core';
@@ -74,6 +74,9 @@ let client: PGlite;
 let db: ReturnType<typeof drizzle>;
 let seed: string;
 let responses: unknown[];
+function seedDigest(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
 
 // Same real-column/default harness as import.integration.test.ts; retain production uniqueness.
 function createTable(table: PgTable) {
@@ -217,10 +220,10 @@ describe('group custody — real SQL, operator countersignatures, encryption and
     expect(grantees).toEqual([{ grantId: grant.id, grantedTo: h.nodeDid, purpose: 'domain.issue', oneTime: false, expiresAt: null }]);
     expect(await getRotateGranteeGuard(grant.field, h.nodeDid)).toEqual({ grantees, reissuedOnRotate: false });
     expect(h.vault.entries[0]).toMatchObject({ version: 2, field: `vault-group-key:${card.proposalId}`, custodyScheme: 'delegation-grant' });
-    expect(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue') === seed).toBe(true);
+    expect(seedDigest(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue'))).toBe(seedDigest(seed));
     const signer = await domainSigningIdentity(true);
     expect(signer.issuerDid).toBe(ORG);
-    expect(signer.privateKey === seed).toBe(true);
+    expect(seedDigest(signer.privateKey)).toBe(seedDigest(seed));
     expect((await db.select().from(storedKeys))[0].lastUsedAt).toBeInstanceOf(Date);
     const [importAudit] = await db.select().from(attestations);
     verifyAudit(importAudit);
@@ -356,8 +359,8 @@ describe('group custody — real SQL, operator countersignatures, encryption and
     expect(await execute(await approval())).toEqual({ ok: true });
     const [grant] = await db.select().from(vaultDelegationGrants);
     expect(grant.grantedTo).toBe(h.nodeDid);
-    expect(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue') === seed).toBe(true);
-    expect((await domainSigningIdentity(true)).privateKey === seed).toBe(true);
+    expect(seedDigest(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue'))).toBe(seedDigest(seed));
+    expect(seedDigest((await domainSigningIdentity(true)).privateKey)).toBe(seedDigest(seed));
   });
 
   it.each(['missing-secret', 'wrong-secret', 'missing-ciphertext', 'tampered-ciphertext', 'wrong-ciphertext', 'current-public-key'])('fails closed without partial writes for %s', async failure => {
@@ -462,7 +465,7 @@ describe('group custody — real SQL, operator countersignatures, encryption and
       expect(await execute(card)).toMatchObject({ ok: false });
       expect(await db.select().from(vaultDelegationGrants)).toEqual(before);
       expect(await db.select().from(attestations)).toHaveLength(1);
-      expect(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue') === seed).toBe(true);
+      expect(seedDigest(await fetchPurposeCredential(ORG, h.nodeDid, 'domain.issue'))).toBe(seedDigest(seed));
     } finally {
       await client.exec('DROP TRIGGER reject_revoke_audit ON auth.attestations; DROP FUNCTION auth.reject_revoke_audit();');
     }

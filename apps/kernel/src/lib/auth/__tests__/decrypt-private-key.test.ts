@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { decryptPrivateKey, encryptPrivateKey } from '../crypto';
 
 const log = vi.hoisted(() => vi.fn());
@@ -7,6 +7,9 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => ({ error: log, info: log,
 
 let seed: string;
 let stored: { encryptedKey: string; salt: string; keyDerivation: string };
+function seedDigest(value: string) {
+  return createHash('sha256').update(value).digest('hex');
+}
 beforeEach(async () => {
   vi.clearAllMocks();
   vi.stubEnv('GROUP_KEY_ENCRYPTION_SECRET', randomBytes(32).toString('hex'));
@@ -24,7 +27,8 @@ async function unavailable(input = stored) {
 
 describe('decryptPrivateKey server-held AES-GCM format', () => {
   it('roundtrips generated Ed25519 seeds without plaintext in ciphertext or logs', async () => {
-    expect(await decryptPrivateKey(stored) === seed).toBe(true);
+    // Dedicated matchers must never print either seed on assertion failure.
+    expect(seedDigest(await decryptPrivateKey(stored))).toBe(seedDigest(seed));
     expect(JSON.stringify([stored, log.mock.calls]).includes(seed)).toBe(false);
   });
   it.each(['iv', 'ciphertext', 'tag', 'salt'])('authenticates %s against tampering', async part => {

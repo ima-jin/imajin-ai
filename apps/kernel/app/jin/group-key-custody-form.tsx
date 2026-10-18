@@ -24,17 +24,17 @@ export function GroupKeyCustodyForm({ busy, onPropose }: Readonly<{
         The existing group key stays inside the kernel. Revocation stops future use; it does not rotate the group identity.
       </p>
       <label className="block text-xs text-gray-400">
-        Group DID
+        <span>Group DID</span>
         <input required value={groupDid} onChange={e => setGroupDid(e.target.value)} maxLength={256}
           className="block min-h-[44px] w-full rounded bg-gray-900 p-2 text-gray-200" placeholder="did:imajin:…" />
       </label>
       <label className="block text-xs text-gray-400">
-        Purpose
+        <span>Purpose</span>
         <input required value={purpose} onChange={e => setPurpose(e.target.value)} maxLength={200}
           className="block min-h-[44px] w-full rounded bg-gray-900 p-2 text-gray-200" />
       </label>
       <label className="block text-xs text-gray-400">
-        Action
+        <span>Action</span>
         <select value={action} onChange={e => setAction(e.target.value as GroupCustodyAction)}
           className="block min-h-[44px] w-full rounded bg-gray-900 p-2 text-gray-200">
           <option value="custody-group-key">Grant custody to this node</option>
