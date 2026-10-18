@@ -4411,14 +4411,31 @@ paths:
         never block or fail the knock itself; resolution problems surface
         as `resolution_failed`. Non-`did:web` methods are always
         `declared_unverified` in v1.
+
+        Submission raises a private source knock card in the target's /jin
+        Inbox. The principal's Reply / Accept thread / Decline / Block actions
+        use the shared signed decision path. A blocked sender cannot knock again.
+
+        On this same endpoint, action receipt reads a private decision without
+        registering an identity or issuing any authority. Send knockId, issuedAt
+        and an Ed25519 hex signature over canonical JSON
+        {action:"knock.receipt",knockId,issuedAt}, signed with the escrowed
+        knock key. Freshness is checked. A public key alone cannot read a reply;
+        invalid, missing or unknown proof always returns the same 401.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [publicKey, declared_target, self_description, requested_capabilities]
+              oneOf:
+                - required: [publicKey, declared_target, self_description, requested_capabilities]
+                - required: [action, knockId, issuedAt, signature]
               properties:
+                action: { type: string, enum: [receipt], description: Omit for public submission; receipt requires escrow-key proof. }
+                knockId: { type: string }
+                issuedAt: { type: string, format: date-time }
+                signature: { type: string, pattern: "^[0-9a-fA-F]{128}$", description: Signature over canonical action knock.receipt, knockId and issuedAt. }
                 publicKey: { type: string, description: "64-char hex Ed25519 public key" }
                 declared_target: { type: string, description: "DID or handle of an existing principal" }
                 self_description: { type: string }
@@ -4428,6 +4445,12 @@ paths:
                   description: Advisory only — never becomes authority.
                 external_did: { type: string, description: "Optional bring-your-own DID, e.g. did:web:boardy.ai. Recorded as an attestation on accept, never used for auth." }
       responses:
+        "200":
+          description: "Authenticated {receipt}; null while pending, otherwise the original actor-countersigned payload, evidence and node witness. Never gate configuration."
+        "401":
+          description: Missing, invalid, stale or unknown knock receipt proof
+        "403":
+          description: This requester is blocked by the target
         "201":
           description: Knock submitted (or refreshed, if already pending from this keypair to this target)
           content:

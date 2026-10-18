@@ -1155,9 +1155,14 @@ paths:
       operationId: listOperatorApprovals
       summary: List operator approval proposals across every connected source
       description: >-
-        Lists only proposals addressed to the real session principal (#2723),
-        including their own connector proposals, never another principal's.
-        A delegated agent gets `{isOperator: false, approvals: []}`.
+        Each principal sees only proposals addressed to their own Inbox
+        (#2723), including their own connector proposals, never another
+        principal's. A delegated agent gets `{isOperator: false, approvals: []}`.
+        Reach messages and pending agent knocks appear as source reach / kind
+        reach:message and source knock / kind knock:request, including safe
+        evidence but no gate rules. A verified human owner/admin acting as a
+        principal additionally sees that principal's Reach/knock cards, never
+        their unrelated proposals.
         Optional `?source=` scopes the list to
         one source (#2152) — a view filter only, never a security boundary.
         This READ surface keeps listing under act-as (#2359) — hiding the
@@ -1175,6 +1180,9 @@ paths:
         agents or other empty Inboxes. The shared nav counts only `pending`
         cards from this same projection. No query parameter selects a DID.
         Decisions remain self-only; this read view grants no write authority.
+        The one exception is Reach/knock cards: `reachActAsAllowed` permits
+        their actions for a live owner/admin acting as the principal. All
+        other sources remain self-only.
       security:
         - cookieAuth: []
       parameters:
@@ -1198,6 +1206,7 @@ paths:
                 properties:
                   isOperator: { type: boolean }
                   canAccess: { type: boolean, description: "Present only for view=acting; shared nav and Inbox visibility." }
+                  reachActAsAllowed: { type: boolean, description: Live owner/admin membership verified for the acting principal; applies only to Reach/knock cards. }
                   approvals:
                     type: array
                     items: { $ref: "#/components/schemas/OperatorApprovalCard" }
@@ -1215,13 +1224,17 @@ paths:
       operationId: decideOperatorApproval
       summary: Approve, reject, or withdraw a pending operator approval proposal
       description: >-
-        Requires `requireAuth` to resolve the exact HUMAN operator identity
-        directly — never `X-Acting-For`/`onBehalfOf`. A non-operator
-        identity (including `@jin` acting for the operator) gets 403
-        without ever learning whether `proposalId` exists. Self-only
-        (#2359): a session under act-as of ANY shape — `X-Acting-For`, or
-        the `x-acting-as` cookie — is refused with 403
-        `act_as_not_permitted` before the operator comparison even runs.
+        Requires the proposal's addressee, never a delegated agent.
+        All sources remain self-only except reach:message and knock:request:
+        these allow a human session acting as the principal only after a
+        fresh active owner/admin membership check. The real actor's key
+        signs, and decidedBy records that actor, not the borrowed identity.
+        Reach/knock require decision approve and mode reply, accept, decline
+        or block, with a mandatory operatorSignature regardless of the node
+        flag. Reply additionally signs replyMessage (nonblank, max 16000).
+        Only accept creates a chat thread; block persists and prevents
+        future knocks/delivery. Domain mutation and signed decision commit
+        atomically; exact signed retries are idempotent. No grants are issued.
         `decision` is
         the open, source-agnostic vocabulary (#2152): the kernel never
         interprets it, only witnesses it and republishes it — together
@@ -1230,10 +1243,11 @@ paths:
         operator's chosen option — a decision-card option letter (required
         on `approve` for `decision:card`), exec `allow-once`/`deny`, or a
         github TTL `single`/`5m`/`24h` — and is refused with 400 when the
-        approval's kind does not offer it (every other kind offers none).
+        approval's kind does not offer it.
         `operatorSignature` + `decidedAt` (#2082): the operator's own
         countersignature over `{contentHash, decision, decidedAt}` plus
-        `mode` whenever the decision carries one (#2693), produced
+        `mode` whenever the decision carries one (#2693) and replyMessage
+        when replying to Reach/knock, produced
         client-side; required
         (400 otherwise) once the per-node `OPERATOR_COUNTERSIGN_REQUIRED`
         flag is on, verified whenever supplied regardless of the flag.
@@ -1259,7 +1273,8 @@ paths:
               required: [decision]
               properties:
                 decision: { type: string, enum: [approve, reject, withdrawn] }
-                mode: { type: string, minLength: 1, maxLength: 128, description: "The chosen option (#2693): decision-card option letter | exec 'allow-once'/'deny' | github TTL 'single'/'5m'/'24h'. 400 when the approval's kind does not offer it; covered by operatorSignature when supplied." }
+                mode: { type: string, minLength: 1, maxLength: 128, description: "The chosen option: decision-card letter | exec allow-once/deny | github TTL | Reach/knock reply/accept/decline/block. Covered by operatorSignature." }
+                replyMessage: { type: string, minLength: 1, maxLength: 16000, description: Required and countersigned only for Reach/knock mode reply; forbidden otherwise. }
                 reason: { type: string }
                 operatorSignature:
                   $ref: "#/components/schemas/OperatorCountersignature"

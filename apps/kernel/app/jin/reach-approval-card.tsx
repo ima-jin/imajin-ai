@@ -2,15 +2,12 @@
 
 import { useState } from 'react';
 import type { DecisionAction, OperatorApprovalCard } from './operator-approvals-panel';
+export { isReachApproval } from '@/src/lib/notify/reach-approval-contract';
 
 export type InboxDecisionHandler = (
   approval: OperatorApprovalCard, decision: DecisionAction, mode?: string, replyMessage?: string,
 ) => void;
 
-export function isReachApproval(card: Pick<OperatorApprovalCard, 'source' | 'kind'>): boolean {
-  return (card.source === 'reach' && card.kind === 'reach:message')
-    || (card.source === 'knock' && card.kind === 'knock:request');
-}
 
 function text(value: unknown, fallback = 'Not supplied'): string {
   return typeof value === 'string' && value.length > 0 ? value : fallback;
