@@ -143,10 +143,100 @@ function AgentServiceScope({
   );
 }
 
+function MemberEditor({
+  controller,
+  endpoint,
+  viewerRole,
+  services,
+  onCancel,
+  onSaved,
+}: Readonly<{
+  controller: Controller;
+  endpoint: string;
+  viewerRole: string | null;
+  services: { name: string; label: string }[];
+  onCancel: () => void;
+  onSaved: () => Promise<void>;
+}>) {
+  const [role, setRole] = useState(controller.role);
+  const [selected, setSelected] = useState(controller.allowedServices ?? []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const roles = ASSIGNABLE_MEMBER_ROLES.filter((value) => value !== 'admin' || viewerRole === 'owner');
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    if (saving || (role === 'admin' && viewerRole !== 'owner')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(endpoint, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role,
+          allowedServices: role === 'agent' && selected.length > 0 ? selected : null,
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setError(body.error || 'Failed to update member.');
+        return;
+      }
+      await onSaved();
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={save} aria-label={`Edit ${memberLabel(controller)}`} className="mt-3">
+      <fieldset disabled={saving} className="space-y-3">
+        <label className="block text-sm text-gray-300">
+          Member role
+          <select
+            value={role}
+            onChange={(event) => setRole(event.target.value)}
+            className="ml-3 px-3 py-2 bg-gray-950 border border-gray-700 rounded-lg text-sm text-white"
+          >
+            {controller.role === 'admin' && viewerRole !== 'owner' && (
+              <option value="admin" disabled>admin (choose a new role)</option>
+            )}
+            {roles.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        </label>
+        {ROLE_HINTS[role] && <p className="text-xs text-gray-500">{ROLE_HINTS[role]}</p>}
+        {role === 'agent' && (
+          <AgentServiceScope selected={selected} services={services} onToggle={(service) => {
+            setSelected((previous) => previous.includes(service)
+              ? previous.filter((value) => value !== service)
+              : [...previous, service]);
+          }} />
+        )}
+        {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+        <div className="flex gap-2">
+          <button type="submit" disabled={role === 'admin' && viewerRole !== 'owner'} className="px-3 py-1.5 rounded-lg bg-amber-500 text-black text-sm disabled:opacity-40">
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" onClick={onCancel} className="px-3 py-1.5 rounded-lg border border-gray-700 text-gray-300 text-sm disabled:opacity-40">
+            Cancel
+          </button>
+        </div>
+      </fieldset>
+    </form>
+  );
+}
+
 export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: string }>) {
   const [loading, setLoading] = useState(true);
   const [appServices, setAppServices] = useState<{ name: string; label: string }[]>([]);
   const [controllers, setControllers] = useState<Controller[]>([]);
+  const [viewerRole, setViewerRole] = useState<string | null>(null);
+  const [viewerDid, setViewerDid] = useState<string | null>(null);
+  const [editingDid, setEditingDid] = useState<string | null>(null);
   const [addDid, setAddDid] = useState('');
   const [addRole, setAddRole] = useState('member');
   const [addAllowedServices, setAddAllowedServices] = useState<string[]>([]);
@@ -158,6 +248,7 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
     typeof window === 'undefined'  ? (process.env.NEXT_PUBLIC_AUTH_URL ?? '') : globalThis.location.origin;
 
   useEffect(() => {
+    setEditingDid(null);
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDid]);
@@ -172,6 +263,8 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
       if (res.ok) {
         const data = await res.json();
         setControllers(data.controllers ?? []);
+        setViewerRole(data.viewerRole ?? null);
+        setViewerDid(data.viewerDid ?? null);
       }
       setAppServices(await loadRegistryAppOptions(groupDid));
     } catch (err) {
@@ -280,7 +373,13 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
             </span>
           )}
         </div>
-        <p className="text-sm text-gray-400 mb-6">People connected to this identity.</p>
+        <p className="text-sm text-gray-400 mb-2">People connected to this identity.</p>
+        <p className="text-xs text-gray-500 mb-6">
+          Owner roles cannot be edited here. Use the{' '}
+          <a href={`/auth/groups/${encodeURIComponent(groupDid)}/ownership`} className="text-amber-400 underline">
+            ownership transfer
+          </a>{' '}flow to change the owner.
+        </p>
 
         {controllers.length === 0 ? (
           <p className="text-sm text-gray-500 mb-6">No members found.</p>
@@ -291,73 +390,102 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
               const isAgent = ctrl.role === 'agent' || ctrl.subtype === 'agent';
               const roleStyle = ROLE_STYLES[ctrl.role] ?? ROLE_STYLES.member;
               const isRemoving = removingDid === ctrl.controllerDid;
+              const canEdit = !isOwner && (viewerRole === 'owner'
+                || (viewerRole === 'admin' && (ctrl.role !== 'admin' || ctrl.controllerDid === viewerDid)));
+              const isEditing = editingDid === ctrl.controllerDid && canEdit;
               const label = memberLabel(ctrl);
               const resolved = Boolean(ctrl.name || ctrl.handle);
               return (
                 <div
                   key={ctrl.controllerDid}
-                  className="flex items-center justify-between p-3 bg-gray-900 rounded-lg border border-gray-800"
+                  className="p-3 bg-gray-900 rounded-lg border border-gray-800"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    {ctrl.avatarUrl ? (
-                      <img
-                        src={ctrl.avatarUrl}
-                        alt=""
-                        className="w-7 h-7 rounded-full object-cover flex-shrink-0 bg-gray-800"
-                      />
-                    ) : (
-                      <span className="text-xl flex-shrink-0">{isAgent ? '🤖' : '👤'}</span>
-                    )}
-                    <div className="min-w-0">
-                      <p
-                        className={`text-sm text-white font-medium truncate ${resolved ? '' : 'font-mono'}`}
-                        title={ctrl.controllerDid}
-                      >
-                        {label}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">
-                        {provenanceParts(ctrl).map((part, i) => (
-                          <span key={part}>
-                            {i > 0 && <span className="text-gray-700"> · </span>}
-                            <span
-                              title={
-                                ctrl.addedVia && part === MEMBER_ADDED_VIA_LABELS[ctrl.addedVia]
-                                  ? MEMBER_ADDED_VIA_DESCRIPTIONS[ctrl.addedVia]
-                                  : undefined
-                              }
-                            >
-                              {part}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {ctrl.avatarUrl ? (
+                        <img
+                          src={ctrl.avatarUrl}
+                          alt=""
+                          className="w-7 h-7 rounded-full object-cover flex-shrink-0 bg-gray-800"
+                        />
+                      ) : (
+                        <span className="text-xl flex-shrink-0">{isAgent ? '🤖' : '👤'}</span>
+                      )}
+                      <div className="min-w-0">
+                        <p
+                          className={`text-sm text-white font-medium truncate ${resolved ? '' : 'font-mono'}`}
+                          title={ctrl.controllerDid}
+                        >
+                          {label}
+                        </p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {provenanceParts(ctrl).map((part, i) => (
+                            <span key={part}>
+                              {i > 0 && <span className="text-gray-700"> · </span>}
+                              <span
+                                title={
+                                  ctrl.addedVia && part === MEMBER_ADDED_VIA_LABELS[ctrl.addedVia]
+                                    ? MEMBER_ADDED_VIA_DESCRIPTIONS[ctrl.addedVia]
+                                    : undefined
+                                }
+                              >
+                                {part}
+                              </span>
                             </span>
-                          </span>
-                        ))}
-                      </p>
+                          ))}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                      <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
+                        {ctrl.role}
+                      </span>
+                      {ctrl.allowedServices && ctrl.allowedServices.length > 0 && (
+                        <span
+                          className="px-2 py-0.5 text-xs rounded border border-gray-700 text-gray-400"
+                          title={ctrl.allowedServices.join(', ')}
+                        >
+                          {ctrl.allowedServices.length === 1
+                            ? ctrl.allowedServices[0]
+                            : `${ctrl.allowedServices.length} services`}
+                        </span>
+                      )}
+                      {canEdit && (
+                        <button type="button"
+                          onClick={() => setEditingDid(ctrl.controllerDid)}
+                          disabled={isRemoving || editingDid !== null}
+                          aria-label={`Edit ${label}`}
+                          className="px-2 py-1 text-xs rounded text-gray-400 hover:text-amber-400 transition disabled:opacity-40"
+                        >
+                          Edit
+                        </button>
+                      )}
+                      {!isOwner && (
+                        <button type="button"
+                          onClick={() => handleRemoveMember(ctrl.controllerDid)}
+                          disabled={isRemoving || editingDid !== null}
+                          className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition disabled:opacity-40"
+                          title="Remove member"
+                        >
+                          {isRemoving ? '…' : '×'}
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                    <span className={`px-2 py-0.5 text-xs rounded border capitalize ${roleStyle}`}>
-                      {ctrl.role}
-                    </span>
-                    {ctrl.allowedServices && ctrl.allowedServices.length > 0 && (
-                      <span
-                        className="px-2 py-0.5 text-xs rounded border border-gray-700 text-gray-400"
-                        title={ctrl.allowedServices.join(', ')}
-                      >
-                        {ctrl.allowedServices.length === 1
-                          ? ctrl.allowedServices[0]
-                          : `${ctrl.allowedServices.length} services`}
-                      </span>
-                    )}
-                    {!isOwner && (
-                      <button type="button"
-                        onClick={() => handleRemoveMember(ctrl.controllerDid)}
-                        disabled={isRemoving}
-                        className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-900/20 transition disabled:opacity-40"
-                        title="Remove member"
-                      >
-                        {isRemoving ? '…' : '×'}
-                      </button>
-                    )}
-                  </div>
+                  {isEditing && (
+                    <MemberEditor
+                      controller={ctrl}
+                      viewerRole={viewerRole}
+                      endpoint={`${authBase}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(ctrl.controllerDid)}`}
+                      services={[...KERNEL_SERVICES, ...appServices]}
+                      onCancel={() => setEditingDid(null)}
+                      onSaved={async () => {
+                        setEditingDid(null);
+                        showStatus('success', 'Member updated.');
+                        await loadData();
+                      }}
+                    />
+                  )}
                 </div>
               );
             })}

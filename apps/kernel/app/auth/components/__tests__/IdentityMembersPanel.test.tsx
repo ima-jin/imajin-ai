@@ -62,8 +62,8 @@ function controller(overrides: Partial<ControllerFixture> = {}): ControllerFixtu
 }
 
 /** Serves the group endpoint; every other request (config) 404s harmlessly. */
-function installFetch(controllers: ControllerFixture[]) {
-  const spy = vi.fn(async (url: string, _init?: RequestInit) => {
+function installFetch(controllers: ControllerFixture[], viewerRole: string | null = 'owner', viewerDid = RYAN) {
+  const spy = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/auth/api/apps/directory') {
       return { ok: true, json: async () => ({
         apps: [{ slug: 'registry-only', name: 'Registry App', available: true }],
@@ -72,8 +72,13 @@ function installFetch(controllers: ControllerFixture[]) {
     if (url.endsWith('/controllers')) {
       return { ok: true, status: 201, json: async () => ({ ok: true }) } as unknown as Response;
     }
+    if (init?.method === 'PATCH') {
+      const member = controllers.find((entry) => url.endsWith(encodeURIComponent(entry.controllerDid)));
+      if (member) Object.assign(member, JSON.parse(String(init.body)));
+      return { ok: true, status: 200, json: async () => ({ ok: true }) } as unknown as Response;
+    }
     if (url.includes('/auth/api/groups/')) {
-      return { ok: true, status: 200, json: async () => ({ controllers }) } as unknown as Response;
+      return { ok: true, status: 200, json: async () => ({ controllers, viewerRole, viewerDid }) } as unknown as Response;
     }
     return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
   });
@@ -81,8 +86,8 @@ function installFetch(controllers: ControllerFixture[]) {
   return spy;
 }
 
-async function renderPanel(controllers: ControllerFixture[] = [controller()]) {
-  const spy = installFetch(controllers);
+async function renderPanel(controllers: ControllerFixture[] = [controller()], viewerRole: string | null = 'owner', viewerDid = RYAN) {
+  const spy = installFetch(controllers, viewerRole, viewerDid);
   render(<IdentityMembersPanel groupDid={GROUP} />);
   await waitFor(() => expect(screen.queryByText('Loading members…')).toBeNull());
   return spy;
@@ -112,6 +117,151 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+describe('inline member editing', () => {
+  const jin = (overrides: Partial<ControllerFixture> = {}) => controller({
+    controllerDid: JIN, role: 'member', name: 'Jin', handle: 'jin', ...overrides,
+  });
+  const edit = () => fireEvent.click(screen.getByRole('button', { name: 'Edit Jin (@jin)' }));
+  const editRole = () => screen.getByRole('combobox', { name: 'Member role' }) as HTMLSelectElement;
+  const patchCalls = (spy: FetchSpy) => spy.mock.calls.filter(([, init]) => init?.method === 'PATCH');
+  const patchBody = (spy: FetchSpy) => JSON.parse(String(patchCalls(spy)[0]?.[1]?.body));
+
+  it.each([
+    ['member', 'admin'],
+    ['admin', 'maintainer'],
+    ['maintainer', 'member'],
+  ])('changes %s to %s and refreshes the member list', async (initial, next) => {
+    const spy = await renderPanel([controller(), jin({ role: initial })]);
+    edit();
+    expect(editRole().value).toBe(initial);
+    fireEvent.change(editRole(), { target: { value: next } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
+    await waitFor(() => expect(screen.queryByText('Loading members…')).toBeNull());
+    expect(patchBody(spy)).toEqual({ role: next, allowedServices: null });
+    expect(patchCalls(spy)[0][0]).toBe(
+      `http://localhost:3000/auth/api/groups/${encodeURIComponent(GROUP)}/controllers/${encodeURIComponent(JIN)}`,
+    );
+    expect(patchCalls(spy)[0][1]).toMatchObject({
+      method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+    });
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
+  it('initializes agent scope and saves kernel and registry service changes', async () => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
+    edit();
+    expect((screen.getByLabelText('Media') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByLabelText('Media'));
+    fireEvent.click(screen.getByLabelText('Registry App'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
+    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: ['registry-only'] });
+  });
+
+  it('clears the service restriction when all services are deselected', async () => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
+    edit();
+    fireEvent.click(screen.getByLabelText('Media'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
+    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: null });
+  });
+
+  it('sends null scope on a human role even when the agent was scoped', async () => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
+    edit();
+    fireEvent.change(editRole(), { target: { value: 'member' } });
+    expect(screen.queryByText('Restrict to specific services')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
+    expect(patchBody(spy)).toEqual({ role: 'member', allowedServices: null });
+  });
+
+  it('discards unsaved role and scope changes on Cancel', async () => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
+    edit();
+    fireEvent.click(screen.getByLabelText('Media'));
+    fireEvent.change(editRole(), { target: { value: 'maintainer' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(patchCalls(spy)).toHaveLength(0);
+    edit();
+    expect(editRole().value).toBe('agent');
+    expect((screen.getByLabelText('Media') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it.each(['server', 'invalid-json', 'network'])('retains edits after %s failure and permits retry', async (failure) => {
+    const spy = await renderPanel([jin()]);
+    edit();
+    fireEvent.change(editRole(), { target: { value: 'maintainer' } });
+    spy.mockImplementationOnce(async () => {
+      if (failure === 'network') throw new Error('offline');
+      return {
+        ok: false,
+        json: async () => {
+          if (failure === 'invalid-json') throw new Error('invalid JSON');
+          return { error: 'Member changed; retry.' };
+        },
+      } as Response;
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    const expected = failure === 'network' ? 'Network error. Please try again.'
+      : failure === 'server' ? 'Member changed; retry.' : 'Failed to update member.';
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(expected));
+    expect(editRole().value).toBe('maintainer');
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
+  });
+
+  it('disables editor controls and removal while saving', async () => {
+    const spy = await renderPanel([jin({ role: 'agent' })]);
+    edit();
+    let resolve!: (response: Response) => void;
+    spy.mockImplementationOnce(() => new Promise<Response>((done) => { resolve = done; }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(document.querySelector('fieldset')?.disabled).toBe(true);
+    expect((screen.getByTitle('Remove member') as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDefined();
+    resolve({ ok: true } as Response);
+    await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
+  });
+
+  it('keeps owners immutable and routes ownership changes to the transfer flow', async () => {
+    await renderPanel([controller(), jin()]);
+    expect(screen.queryByRole('button', { name: 'Edit Ryan Veteze (@veteze)' })).toBeNull();
+    expect(screen.getAllByTitle('Remove member')).toHaveLength(1);
+    expect(screen.getByRole('link', { name: 'ownership transfer' }).getAttribute('href'))
+      .toBe(`/auth/groups/${encodeURIComponent(GROUP)}/ownership`);
+    edit();
+    expect(Array.from(editRole().options).map((option) => option.value)).not.toContain('owner');
+  });
+
+  it('prevents admins from editing other admins or assigning admin', async () => {
+    await renderPanel([controller(), jin(), controller({
+      controllerDid: 'did:imajin:other-admin', role: 'admin', name: 'Other admin', handle: null,
+    })], 'admin');
+    expect(screen.queryByRole('button', { name: 'Edit Other admin' })).toBeNull();
+    edit();
+    expect(Array.from(editRole().options).map((option) => option.value))
+      .toEqual(['maintainer', 'member', 'agent']);
+  });
+
+  it('allows an admin to self-demote without reassigning admin', async () => {
+    const spy = await renderPanel([jin({ role: 'admin' })], 'admin', JIN);
+    edit();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(editRole(), { target: { value: 'member' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
+    expect(patchBody(spy)).toEqual({ role: 'member', allowedServices: null });
+  });
+
+  it.each([null, 'member', 'maintainer', 'agent'])('hides editing for viewer role %s', async (viewerRole) => {
+    await renderPanel([jin()], viewerRole);
+    expect(screen.queryByRole('button', { name: 'Edit Jin (@jin)' })).toBeNull();
+  });
 });
 
 describe('member identity', () => {
