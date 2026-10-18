@@ -3,7 +3,8 @@
 import { useState, useEffect, useId } from 'react';
 import IdentityPicker from './IdentityPicker';
 import { setActingAs } from '@imajin/ui/server';
-import { MEMBER_SERVICES } from '@/src/lib/auth/member-service-scope';
+import { memberServiceOptions } from '@/src/lib/auth/member-service-scope';
+import { loadRegistryAppOptions } from '@/src/lib/profile/app-options';
 import {
   ASSIGNABLE_MEMBER_ROLES,
   MEMBER_ADDED_VIA_DESCRIPTIONS,
@@ -85,8 +86,14 @@ function provenanceParts(ctrl: Controller): string[] {
 function ServiceScope({
   label,
   value,
+  services,
   onChange,
-}: Readonly<{ label: string; value: string[] | null; onChange: (value: string[] | null) => void }>) {
+}: Readonly<{
+  label: string;
+  value: string[] | null;
+  services: readonly { name: string; label: string }[];
+  onChange: (value: string[] | null) => void;
+}>) {
   const modeName = useId();
   function toggle(service: string) {
     const selected = value ?? [];
@@ -109,7 +116,7 @@ function ServiceScope({
       </div>
       {value !== null && (
         <div className="flex flex-wrap gap-2">
-          {MEMBER_SERVICES.map(({ name: svc, label: serviceLabel }) => {
+          {services.map(({ name: svc, label: serviceLabel }) => {
             const checked = value.includes(svc);
             return (
               <label
@@ -140,12 +147,14 @@ function MemberEditor({
   controller,
   endpoint,
   viewerRole,
+  services,
   onCancel,
   onSaved,
 }: Readonly<{
   controller: Controller;
   endpoint: string;
   viewerRole: string | null;
+  services: readonly { name: string; label: string }[];
   onCancel: () => void;
   onSaved: () => Promise<void>;
 }>) {
@@ -204,7 +213,7 @@ function MemberEditor({
           </select>
         </label>
         {ROLE_HINTS[role] && <p className="text-xs text-gray-500">{ROLE_HINTS[role]}</p>}
-        <ServiceScope label={`Services for ${memberLabel(controller)}`} value={selected} onChange={setSelected} />
+        <ServiceScope label={`Services for ${memberLabel(controller)}`} value={selected} services={services} onChange={setSelected} />
         {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
         <div className="flex gap-2">
           <button type="submit" disabled={role === 'admin' && viewerRole !== 'owner'} className="px-3 py-1.5 rounded-lg bg-amber-500 text-black text-sm disabled:opacity-40">
@@ -221,6 +230,7 @@ function MemberEditor({
 
 export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ groupDid: string; scope: string }>) {
   const [loading, setLoading] = useState(true);
+  const [appServices, setAppServices] = useState<{ name: string; label: string }[]>([]);
   const [controllers, setControllers] = useState<Controller[]>([]);
   const [viewerRole, setViewerRole] = useState<string | null>(null);
   const [viewerDid, setViewerDid] = useState<string | null>(null);
@@ -258,6 +268,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
         setViewerRole(data.viewerRole ?? null);
         setViewerDid(data.viewerDid ?? null);
       }
+      setAppServices(await loadRegistryAppOptions(groupDid));
     } catch (err) {
       console.error('Failed to load members:', err);
     } finally {
@@ -331,6 +342,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
   }
 
   const existingDids = controllers.map((c) => c.controllerDid);
+  const services = memberServiceOptions(appServices);
 
   if (loading) {
     return <div className="text-gray-400 py-8">Loading members…</div>;
@@ -458,6 +470,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
                     <MemberEditor
                       controller={ctrl}
                       viewerRole={viewerRole}
+                      services={services}
                       endpoint={`${authBase}/auth/api/groups/${encodeURIComponent(groupDid)}/controllers/${encodeURIComponent(ctrl.controllerDid)}`}
                       onCancel={() => setEditingDid(null)}
                       onSaved={async () => {
@@ -521,7 +534,7 @@ export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ gro
             <p className="text-xs text-gray-500">{ROLE_HINTS[addRole]}</p>
           )}
 
-          <ServiceScope label="New member services" value={addAllowedServices} onChange={setAddAllowedServices} />
+          <ServiceScope label="New member services" value={addAllowedServices} services={services} onChange={setAddAllowedServices} />
         </form>
       </div>
     </div>

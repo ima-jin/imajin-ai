@@ -68,7 +68,11 @@ function installFetch(controllers: ControllerFixture[], viewerRole: string | nul
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/auth/api/apps/directory') {
       return { ok: true, json: async () => ({
-        apps: [{ slug: 'registry-only', name: 'Registry App', available: true }],
+        apps: [
+          { slug: 'registry-only', name: 'Registry App', available: true },
+          { slug: 'pay', name: 'Wallet', available: true },
+          { slug: 'unavailable-app', name: 'Unavailable App', available: false },
+        ],
       }) } as unknown as Response;
     }
     if (url.endsWith('/controllers')) {
@@ -84,6 +88,7 @@ function installFetch(controllers: ControllerFixture[], viewerRole: string | nul
     }
     return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
   });
+
 
   vi.stubGlobal('fetch', spy);
   return spy;
@@ -171,6 +176,16 @@ describe('inline member editing', () => {
       method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' },
     });
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
+  it('edits an agent with an existing registry-only restriction without losing its scope', async () => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['registry-only'] })]);
+    edit();
+    expect((editScope().getByLabelText('Registry App') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(editScope().getByLabelText('Wallet'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
+    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: ['registry-only', 'pay'] });
   });
 
   it('initializes agent scope and saves canonical service changes', async () => {
@@ -437,17 +452,35 @@ describe('provenance', () => {
 });
 
 describe('adding scoped members', () => {
-  it('offers canonical auth, usage and internal services but no registry-only options', async () => {
+  it('combines canonical and available registry-only services without duplicate options', async () => {
     const spy = await renderPanel();
     fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
     expect(addScope().getByLabelText('Identity')).toBeDefined();
     expect(addScope().getByLabelText('Usage')).toBeDefined();
     expect(addScope().getByLabelText('Notify')).toBeDefined();
-    expect(addScope().queryByLabelText('Registry App')).toBeNull();
+    expect(addScope().getByLabelText('Registry App')).toBeDefined();
+    expect(addScope().getAllByLabelText('Wallet')).toHaveLength(1);
+    expect(addScope().queryByLabelText('Unavailable App')).toBeNull();
     expect(addScope().queryByLabelText('Project')).toBeNull();
     expect(addScope().queryByLabelText('Broker Agent')).toBeNull();
-    expect(spy.mock.calls.some(([url]) => url.includes('/apps/directory'))).toBe(false);
+    expect(spy).toHaveBeenCalledWith('/auth/api/apps/directory', expect.objectContaining({
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-Acting-As': GROUP }),
+    }));
   });
+  it('adds an agent restricted to a registry-only service', async () => {
+    const spy = await renderPanel();
+    fireEvent.change(roleSelect(), { target: { value: 'agent' } });
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(addScope().getByLabelText('Registry App'));
+    fireEvent.click(screen.getByText('pick-identity'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.getByText('Member added.')).toBeDefined());
+    expect(addControllerBody(spy)).toEqual({
+      did: JIN, role: 'agent', allowedServices: ['registry-only'],
+    });
+  });
+
   it('offers agent in the role dropdown', async () => {
     await renderPanel();
 
