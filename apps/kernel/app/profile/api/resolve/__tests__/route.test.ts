@@ -4,6 +4,11 @@
  * enforcement, and email gating (service-scope vs. self vs. anonymous).
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+const app = vi.hoisted(() => ({ authenticate: vi.fn(), related: vi.fn() }));
+vi.mock('@/src/lib/profile/app-contact-auth', () => ({
+  authenticateContactApp: app.authenticate,
+  relatedContactDids: app.related,
+}));
 
 const { mockDbSelect, mockGetSessionFromCookies, fakeSql, sqlCalls, queueResult, resetQueue, fakeSqlThrowOnce } = vi.hoisted(() => {
   const sqlCalls: Array<{ text: string; values: unknown[] }> = [];
@@ -27,6 +32,62 @@ const { mockDbSelect, mockGetSessionFromCookies, fakeSql, sqlCalls, queueResult,
     resetQueue: () => queue.splice(0, queue.length),
     fakeSqlThrowOnce: (err: Error) => { throwOnce = err; },
   };
+});
+
+describe('registered app email', () => {
+  beforeEach(() => {
+    mockDbSelect.mockReturnValue(selectChain([
+      { did: DID_A, handle: 'alice', displayName: 'Alice' },
+      { did: DID_B, handle: 'bob', displayName: 'Bob' },
+    ]));
+  });
+
+  it('resolves email only for the authenticated app related subset in a mixed batch', async () => {
+    app.authenticate.mockResolvedValue({ appDid: 'did:imajin:events' });
+    app.related.mockResolvedValue([DID_A]);
+    queueResult([{ did: DID_A, value: 'alice@example.com' }]);
+    const res = await POST(makeReq({ dids: [DID_A, DID_B] }, { authorization: 'Bearer app-token' }));
+    expect((await res.json()).results).toEqual([
+      { did: DID_A, handle: 'alice', displayName: 'Alice', email: 'alice@example.com' },
+      { did: DID_B, handle: 'bob', displayName: 'Bob' },
+    ]);
+    expect(app.authenticate).toHaveBeenCalledWith(expect.anything(), 'profile:email:read');
+    expect(app.related).toHaveBeenCalledWith('did:imajin:events', [DID_A, DID_B], 'profile:email:read');
+    expect(sqlCalls[0].values).toEqual([[DID_A]]);
+  });
+
+  it.each([401, 403])('omits email for invalid/unscoped apps (%s), even with a human cookie', async (status) => {
+    app.authenticate.mockResolvedValue({ error: 'Denied', status });
+    mockGetSessionFromCookies.mockResolvedValue({ did: DID_A });
+    const res = await POST(makeReq({ dids: [DID_A] }, {
+      authorization: 'Bearer app-token', cookie: 'imajin_session=tok',
+    }));
+    expect((await res.json()).results[0].email).toBeUndefined();
+    expect(sqlCalls).toHaveLength(0);
+    expect(app.related).not.toHaveBeenCalled();
+    expect(mockGetSessionFromCookies).not.toHaveBeenCalled();
+  });
+
+  it('does not trust a spoofed app DID header', async () => {
+    const res = await POST(makeReq({ dids: [DID_A] }, { 'x-app-did': 'did:imajin:events' }));
+    expect((await res.json()).results[0].email).toBeUndefined();
+    expect(sqlCalls).toHaveLength(0);
+  });
+
+  it('does not query email when this app has no related DIDs', async () => {
+    app.authenticate.mockResolvedValue({ appDid: 'did:imajin:other-app' });
+    const res = await POST(makeReq({ dids: [DID_A] }, { authorization: 'Bearer other-app-token' }));
+    expect((await res.json()).results[0].email).toBeUndefined();
+    expect(sqlCalls).toHaveLength(0);
+  });
+
+  it('fails closed before any email query when the relationship store fails', async () => {
+    app.authenticate.mockResolvedValue({ appDid: 'did:imajin:events' });
+    app.related.mockRejectedValue(new Error('store down'));
+    const res = await POST(makeReq({ dids: [DID_A] }, { authorization: 'Bearer app-token' }));
+    expect(res.status).toBe(500);
+    expect(sqlCalls).toHaveLength(0);
+  });
 });
 
 function selectChain(result: unknown) {
@@ -71,6 +132,8 @@ beforeEach(() => {
   sqlCalls.length = 0;
   resetQueue();
   mockGetSessionFromCookies.mockResolvedValue(null);
+  app.authenticate.mockResolvedValue({ error: 'Unauthorized', status: 401 });
+  app.related.mockResolvedValue([]);
   vi.stubEnv('PROFILE_INTERNAL_API_KEY', INTERNAL_KEY);
 });
 

@@ -90,6 +90,20 @@ beforeEach(() => {
 });
 
 describe('mintableServiceScopes', () => {
+  it.each(['profile:email:read', 'profile:contact:backfill'])('mints %s only through explicit approval, never requests alone', async (scope) => {
+    expect(mintableServiceScopes([scope], [])).toEqual([]);
+    appRow([]);
+    const approved = await executeAppsServiceScopesApproval(grant([scope]));
+    expect(approved).toMatchObject({ ok: true, data: { approvedServiceScopes: [scope] } });
+    expect(mintableServiceScopes([], [scope])).toEqual([scope]);
+    expect(setMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      approvedServiceScopes: [scope], requestedScopes: [scope],
+    }));
+    appRow([scope], 'active', [scope]);
+    const revoked = await executeAppsServiceScopesApproval(revoke([scope]));
+    expect(revoked).toMatchObject({ ok: true, data: { approvedServiceScopes: [] } });
+    expect(mintableServiceScopes([scope], [])).toEqual([]);
+  });
   it('mints notify endpoint scopes only when operator-approved, including implicit requests', () => {
     const notifyScopes = ['notify:send', 'notify:broadcast', 'notify:interest'];
     expect(mintableServiceScopes(notifyScopes, [])).toEqual([]);
