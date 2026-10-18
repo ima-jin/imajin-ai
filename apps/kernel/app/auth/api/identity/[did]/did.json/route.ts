@@ -63,8 +63,9 @@ export async function GET(
     // A cold verifier is told to FOLLOW this endpoint and re-verify the chain
     // itself, so a malformed origin breaks resolution outright (#1614).
     const chainEndpoint = `${nodeUrl()}/auth/api/identity/${encodeURIComponent(imajinDid)}/chain`;
-    // Discovery is only a transport hint; chain verification above remains authoritative.
-    const reachCard = await resolveReachDiscovery(imajinDid);
+    // Optional discovery must not take verified identity resolution offline.
+    // Fail closed by omitting the hint; never expose or log lookup error details.
+    const reachCard = await resolveReachDiscovery(imajinDid).catch(() => null);
 
     const doc = buildDidDocument(imajinDid, result, {
       chainEndpoint,

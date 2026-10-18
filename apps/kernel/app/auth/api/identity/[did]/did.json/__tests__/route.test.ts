@@ -77,8 +77,17 @@ describe('identity DID document reach discovery', () => {
     expect((await call()).status).toBe(422);
   });
 
-  it('does not advertise reach when discovery fails', async () => {
-    resolveReach.mockRejectedValue(new Error('discovery unavailable'));
-    expect((await call()).status).toBe(500);
+  it('preserves the verified chain-only document when optional discovery fails', async () => {
+    resolveReach.mockResolvedValueOnce(null);
+    const baseline = await (await call()).json();
+    resolveReach.mockRejectedValue(new Error('private discovery database details'));
+    const res = await call();
+    const doc = await res.json();
+    expect(res.status).toBe(200);
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+    expect(res.headers.get('Content-Type')).toBe('application/did+json');
+    expect(doc).toEqual(baseline);
+    expect(doc.service.map((service: { type: string }) => service.type)).toEqual(['ImajinChain']);
+    expect(JSON.stringify(doc)).not.toContain('private discovery database details');
   });
 });

@@ -34,4 +34,18 @@ describe('PublicReachPage', () => {
     expect(mocks.notFound).toHaveBeenCalledOnce();
     expect(screen.queryByRole('main')).toBeNull();
   });
+
+  it('re-resolves an enabled then disabled gate in the same process without serving a stale page', async () => {
+    mocks.resolve.mockResolvedValueOnce(card).mockResolvedValueOnce(null);
+    const params = Promise.resolve({ handle: 'alex' });
+    const firstRequest = render(await PublicReachPage({ params }));
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Reach Alex');
+    firstRequest.unmount();
+
+    await expect(PublicReachPage({ params })).rejects.toThrow('NEXT_NOT_FOUND');
+    expect(mocks.resolve).toHaveBeenCalledTimes(2);
+    expect(mocks.resolve).toHaveBeenNthCalledWith(2, 'alex');
+    expect(mocks.notFound).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('main')).toBeNull();
+  });
 });
