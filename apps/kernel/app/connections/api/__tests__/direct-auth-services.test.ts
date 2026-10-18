@@ -29,6 +29,9 @@ const { db, tables, authSpy, publish, resolveMembers, registrations } = vi.hoist
 });
 
 vi.mock('@/src/db', () => ({ db, ...tables }));
+// Disconnect also imports relationship-label signing. Its node identity
+// initializes a separate raw SQL client unless mocked at this boundary.
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@imajin/auth', async () => {
   const { requireAuth } = await import('../../../../../../packages/auth/src/require-auth');
   const { requireAppAuth } = await import('../../../../../../packages/auth/src/require-app-auth');

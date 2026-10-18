@@ -79,6 +79,9 @@ vi.mock('drizzle-orm', () => ({
   desc: (column: string) => column,
 }));
 vi.mock('@/src/db', () => ({ db, ...tables }));
+// Relationship-label imports now reach node identity, whose raw SQL client
+// bypasses the mocked Drizzle DB. Keep real auth without requiring Postgres.
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@/src/lib/connections/list', () => ({ listConnections }));
 vi.mock('@imajin/auth', async () => {
   const { resolveEffectiveDid } = await import('../../../../../../packages/auth/src/resolve-effective-did');
