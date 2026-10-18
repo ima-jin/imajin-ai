@@ -43,6 +43,11 @@ components:
       type: http
       scheme: bearer
       description: "Bearer token (imajin_tok_* API token)"
+    appServiceAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Existing app-service+jwt from POST /auth/api/apps/token/service; onboard:send token scope and live operator approval required."
     internalKeyAuth:
       type: apiKey
       in: header
@@ -1031,6 +1036,97 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+
+  /api/onboard/send:
+    post:
+      tags: [auth]
+      operationId: sendOrderOnboard
+      summary: Ask the node to privately email an app-owned order's buyer an onboarding link
+      security:
+        - appServiceAuth: []
+      description: |
+        Kernel-private delivery (#2537): the app never receives a verification token,
+        URL, buyer email, poll handle, handoff token or session cookie. The node sends
+        the ordinary 15-minute /auth/api/onboard/verify link on behalf of the app.
+        No new token type is introduced.
+
+        Supply the kernel transactionId returned by POST /pay/api/checkout, not the
+        standalone app's order id, Stripe session id, or an arbitrary buyer DID.
+        The transaction must be completed, bound to the calling app DID and on the
+        stripe-byo hosted-checkout rail (a recorded cs_ external reference).
+        The recorded seller must be the registry app owner or have a live per-owner
+        app authorization grant for onboard:send. App-service authentication alone
+        is not authority over another owner's order. Both active registration and
+        operator-approved onboard:send scope are rechecked on every call.
+
+        For an identified buyer the kernel uses only a verified email credential
+        belonging to the recorded buyer DID; missing credentials never fall back to
+        billing metadata. For anonymous checkout it reads the customer from the
+        recorded seller's own Stripe checkout session. No request-supplied email,
+        buyer, owner, redirect, scopeDid, inviteCode or polling option is accepted.
+        The verified browser lands on the kernel auth root, not an app-supplied URL.
+
+        Unknown, unbound, cross-app, unauthorized-owner and unsupported resources
+        return the same 404 without contact disclosure. Standalone free/EMT orders
+        without a kernel-bound checkout reference are not eligible; do not invent a
+        transaction or fall back to kernel SQL.
+
+        Before delivery the node persists an onboard.link.requested mechanical attestation
+        and prepares an onboard.link.sent record. After the mail provider accepts delivery
+        it persists the sent record, linked by requestId, before returning sent.
+        Its issuer is the node; subject/onBehalfOf is the authenticated app DID;
+        contextId/transactionId is the order reference and ownerDid the recorded seller.
+        The signed payload contains no email, token, verification URL or provider body.
+        Provider acceptance is not proof of inbox delivery or completed verification.
+        Signing/recording failures return 503, never a false audited success. If audit
+        persistence fails after mail acceptance, the email may already have been sent;
+        the durable request record remains with an unknown outcome, never a false sent
+        claim. Do not automatically retry 5xx responses.
+
+        Rate limits: 20/minute per app, 3/hour per app/order, and the shared
+        onboarding 3/hour per recipient. All responses use Cache-Control: no-store.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [transactionId]
+              properties:
+                transactionId:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: Kernel pay.transactions id for this app's completed hosted checkout.
+      responses:
+        "200":
+          description: Mail provider accepted delivery and the node-signed send record is durable.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status]
+                properties:
+                  status: { type: string, enum: [sent] }
+        "400":
+          description: Invalid JSON or fields other than transactionId.
+        "401":
+          description: Missing or invalid strict app-service JWT (type, audience, expiry, signature, sub/azp binding).
+        "403":
+          description: Missing token scope, inactive registration or revoked operator approval.
+        "404":
+          description: Order unavailable, unauthorized, unsupported or without a kernel-verifiable buyer email.
+        "429":
+          description: App, order or recipient rate limit exceeded.
+          headers:
+            Retry-After:
+              schema: { type: integer }
+        "502":
+          description: Mail provider did not accept delivery; no sent event is recorded.
+        "503":
+          description: Registration/contact lookup, rail, node signing, delivery or durable audit is unavailable.
 
   /api/onboard/verify:
     get:
@@ -2952,6 +3048,9 @@ paths:
       tags: [auth]
       operationId: getIdentityContact
       summary: Get contact information for an identity
+      description: Internal-only vault Bearer contract. App-service scopes do not authorize this GET; apps use POST /profile/api/resolve.
+      security:
+        - bearerAuth: []
       parameters:
         - name: did
           in: path
@@ -2965,20 +3064,30 @@ paths:
     post:
       tags: [auth]
       operationId: backfillIdentityContactEmail
-      summary: Internal — backfill contact_email for a DID (service-to-service)
+      summary: Backfill missing contact email for a DID
       description: |
-        NULL-guarded backfill of `auth.identities.contact_email` (#2058,
-        sibling of #1999/#2053). Never overwrites an existing value, so
-        calling this repeatedly for the same DID is safe — once a
-        contact_email is on file, later calls report `backfilled: false`
-        and perform no write. The standalone events checkout and payment-webhook
-        flows must call this instead of writing `auth.identities` directly.
+        Atomic, independently NULL-guarded backfill of auth.identities.contact_email
+        and an existing profile.profiles.contact_email. Normalizes by trimming and
+        lowercasing; never overwrites either column, creates a profile, or writes
+        verified credentials. A missing profile address uses the existing identity
+        contact email when present, not a conflicting posted address, so a backfill
+        cannot change the effective email through the higher-precedence profile
+        fallback. backfilled is true if either column was filled.
+        Repeated calls are safe no-ops when both existing rows already have email.
 
-        Requires `ATTESTATION_INTERNAL_API_KEY` as Bearer token. No session
-        cookie — mirrors POST /api/eligibility/evaluate's reasoning: the
-        caller has already established the email itself (a validated
-        session, or a Stripe webhook payload with no end-user session at
-        all) before calling this route.
+        Accepts the existing vault-only ATTESTATION_INTERNAL_API_KEY Bearer, or a
+        registered app's own app-service+jwt (aud imajin:apps, sub=azp) carrying
+        profile:contact:backfill. App calls require an active registration and
+        current operator approval of that scope, plus an active app-authorization
+        grant of profile:contact:backfill from the target person to the exact app,
+        or a completed pay.transactions row bound to that app whose fromDid is
+        the target DID. Anonymous/unbound payments, caller metadata, profile:read
+        and an ordinary app login are not sufficient.
+
+        App responses always return contactEmail: null, even on a no-op, so a
+        write-only scope cannot reveal an existing address. Read email separately
+        through POST /profile/api/resolve with profile:email:read and its per-person
+        relationship gate. GET on this contact route remains internal-only.
 
         Does not emit an attestation: contact_email is an unverified
         billing/notification address, not a verification-state change.
@@ -3007,17 +3116,27 @@ paths:
                 type: object
                 properties:
                   did: { type: string }
-                  contactEmail: { type: string, nullable: true }
+                  contactEmail: { type: string, nullable: true, description: "Always null for registered-app callers; internal callers retain the existing identity contactEmail response." }
                   backfilled:
                     type: boolean
-                    description: True only when this call performed the write (not a prior call).
+                    description: True only when this call filled at least one of the two NULL contact columns.
         "400":
           description: Invalid request (missing/invalid email)
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
-          description: Unauthorized (invalid API key)
+          description: Unauthorized (invalid internal key or app-service token)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "403":
+          description: App scope not granted or no relationship to the target person
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "503":
+          description: Contact authorization unavailable; no contact read or write performed
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

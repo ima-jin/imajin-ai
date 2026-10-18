@@ -55,6 +55,10 @@ describe('signed kernel email', () => {
     expect(mocks.send.mock.calls[0][0]).toMatchObject({ text: 'Plain', unsubscribeUrl: 'https://example.com/unsubscribe' });
     expect(mocks.send.mock.calls[0][0].replyTo).toBe('raw@example.com');
   });
+  it.each([true, false])('preserves the sensitive-mail transport flag %s', async sensitive => {
+    await sendKernelEmail({ ...options, sensitive });
+    expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ sensitive }));
+  });
   it('uses owner as subject and emits resolved reply-to', async () => {
     mocks.sender.mockResolvedValue({ from: 'Owner <x@example.com>', replyTo: 'reply@example.com', source: 'owner' });
     await sendKernelEmail({ ...options, ownerDid: owner });

@@ -272,8 +272,14 @@ function connectorBillingScope<C extends ConnectorId>(
 export const SCOPE_VOCABULARY = [
   // ── Platform scopes — no owning connector, granted via the OAuth consent screen
   { scope: 'profile:read', connector: null, label: 'Read your profile information' },
+  // Personal email is never self-granted via serviceEligible/requestedScopes.
+  // Service callers require live operator approval AND a per-person relationship.
+  { scope: 'profile:email:read', connector: null, label: 'Read contact email for people related to this app' },
+  { scope: 'profile:contact:backfill', connector: null, label: 'Fill missing contact email for people related to this app' },
   { scope: 'identity:read', connector: null, label: 'Read your identity and DID' },
   { scope: 'identity:write', connector: null, label: 'Resolve or mint soft identities on your behalf (registry get-or-create)' },
+  // Operator approval AND resource-owner authority are checked live; never self-granted.
+  { scope: 'onboard:send', connector: null, label: 'Ask the node to email onboarding links for your app-owned orders' },
   { scope: 'connectors:read-status', connector: null, label: 'Read your connector connection status' },
   // #1799: powers the per-connector usage rollup (attestations + signed connector
   // actions, scoped to the connector's registered scope(s)) — distinct from
@@ -310,6 +316,8 @@ export const SCOPE_VOCABULARY = [
   // `apps:service-scopes` card (#2711), and the kernel re-checks that approval live on
   // every settle. Same `<domain>:<verb>` grammar as the scopes around it.
   { scope: 'pay:settle', connector: null, label: 'Settle payments this app created on its own behalf' },
+  // #2540: read only app-bound checkout payments; live operator approval required.
+  { scope: 'pay:read', connector: null, label: 'Read checkout payment IDs and safe order metadata belonging to this app' },
   // Money-moving scopes are operator-approved only, never self-request serviceEligible.
   { scope: 'pay:refund', connector: null, label: 'Refund payments this app created on its own behalf' },
   { scope: 'pay:charge-pledges', connector: null, label: 'Charge pledges this app created on its own behalf' },

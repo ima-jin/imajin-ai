@@ -45,6 +45,7 @@ export async function sendKernelEmail(options: KernelEmailOptions): ReturnType<t
     to: options.to, subject: options.subject, html: options.html,
     ...(options.text !== undefined ? { text: options.text } : {}),
     ...(options.unsubscribeUrl !== undefined ? { unsubscribeUrl: options.unsubscribeUrl } : {}),
+    ...(options.sensitive !== undefined ? { sensitive: options.sensitive } : {}),
     from: sender.from, ...(replyTo ? { replyTo } : {}),
   });
   if (!result.success) return result;

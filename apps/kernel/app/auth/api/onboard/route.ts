@@ -8,16 +8,13 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { db, onboardTokens, credentials, identities, invites } from '@/src/db';
-import { sendKernelEmail } from '@/src/lib/mail/send';
+import { db, credentials, identities, invites } from '@/src/db';
+import { deliverOnboardEmail } from '@/src/lib/auth/onboard-delivery';
 import { mailDeliveryFailure } from '@/src/lib/kernel/mail-delivery-error';
 import { getClient } from '@imajin/db';
 import { eq, and } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
-import { corsHeaders, rateLimit, getClientIP, buildPublicUrlAbsolute } from '@imajin/config';
+import { corsHeaders, rateLimit, getClientIP } from '@imajin/config';
 import { withLogger } from '@imajin/logger';
-
-const AUTH_URL = buildPublicUrlAbsolute('auth');
 
 export const POST = withLogger('kernel', async (request: NextRequest, { log }) => {
   const cors = corsHeaders(request);
@@ -73,10 +70,6 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
       }
     }
 
-    const token = nanoid(48);
-    const id = `obt_${nanoid(16)}`;
-    const pollHandle = wantPolling === true ? nanoid(24) : null;
-
     // Invite context extension (#1834 Phase 2): re-resolve scopeDid from
     // the invite row itself when an inviteCode is supplied, rather than
     // trusting a client-supplied scopeDid outright — context stays
@@ -84,34 +77,18 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     // onboarding (the person can still complete plain email verification).
     const { resolvedScopeDid, resolvedInviteCode } = await resolveInviteContext(inviteCode, scopeDid);
 
-    // Store token (15 minute TTL)
-    await db.insert(onboardTokens).values({
-      id,
+    const result = await deliverOnboardEmail({
       email: normalizedEmail,
       name: name?.trim() || null,
-      token,
       redirectUrl: redirectUrl || null,
       context: context || null,
       scopeDid: resolvedScopeDid,
       inviteCode: resolvedInviteCode,
-      pollHandle,
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
-    });
-
-    // Build verification link
-    const verifyUrl = `${AUTH_URL}/api/onboard/verify?token=${token}`;
-
-    // Send verification email
-    const contextText = context ? ` to ${context}` : '';
-    const result = await sendKernelEmail({
-      purpose: 'signin',
-      to: normalizedEmail,
-      subject: `Verify your email${contextText} — Imajin`,
-      html: onboardEmail({ verifyUrl, context, name: name?.trim() }),
+      wantPolling: wantPolling === true,
     });
 
     if (!result.success) {
-      log.error({ err: String(result.error) }, 'Failed to send onboard email');
+      log.error({}, 'Failed to send onboard email');
       return NextResponse.json(
         mailDeliveryFailure(result.error, 'Failed to send verification email'),
         { status: 502, headers: cors }
@@ -119,12 +96,12 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
     }
 
     return NextResponse.json(
-      { sent: true, ...(pollHandle ? { pollHandle } : {}) },
+      { sent: true, ...(result.pollHandle ? { pollHandle: result.pollHandle } : {}) },
       { headers: cors }
     );
 
-  } catch (error) {
-    log.error({ err: String(error) }, 'Onboard start error');
+  } catch {
+    log.error({}, 'Onboard start error');
     return NextResponse.json(
       { error: 'Failed to initiate onboarding' },
       { status: 500, headers: cors }
@@ -198,45 +175,5 @@ async function resolveLoginEmail(
   return { notFound: false, hardDid: !!(identity && identity.tier !== 'soft') };
 }
 
-function onboardEmail({ verifyUrl, context, name }: { verifyUrl: string; context?: string; name?: string }): string {
-  const greeting = name ? `Hi ${name},` : 'Hi,';
-  const contextLine = context ? `<p style="margin:0 0 24px;font-size:15px;color:#a1a1aa;line-height:1.6;">You're about to <strong style="color:#ffffff;">${context}</strong>. Verify your email to continue.</p>` : '<p style="margin:0 0 24px;font-size:15px;color:#a1a1aa;line-height:1.6;">Verify your email to continue.</p>';
-
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background-color:#000000;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#000000;">
-    <tr>
-      <td align="center" style="padding:20px 16px;">
-        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-          <tr>
-            <td style="background-color:#111111;border-radius:8px;padding:32px;">
-              <p style="margin:0 0 8px;font-size:15px;color:#a1a1aa;">${greeting}</p>
-              ${contextLine}
-              <div style="text-align:center;margin:32px 0;">
-                <a href="${verifyUrl}" style="display:inline-block;background-color:#f59e0b;color:#000000;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:600;font-size:15px;">Verify Email & Continue →</a>
-              </div>
-              <p style="margin:0;font-size:13px;color:#52525b;text-align:center;">This link expires in 15 minutes.</p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:24px 32px;text-align:center;">
-              <p style="margin:0 0 8px;font-size:15px;font-weight:600;color:#ffffff;letter-spacing:2px;">IMAJIN</p>
-              <p style="margin:0;font-size:12px;color:#52525b;">The internet that pays you back</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-`;
-}
 
 export { preflight as OPTIONS } from '@/app/auth/lib/preflight';

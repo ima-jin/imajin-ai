@@ -1,5 +1,5 @@
 import { createLogger } from '@imajin/logger';
-import type { EmailProvider } from './types';
+import { providerLogFields, type EmailProvider } from './types';
 import type { SendEmailOptions } from '../types';
 import { parseSender } from '../types';
 
@@ -12,11 +12,11 @@ const POSTAL_FROM = process.env.POSTAL_FROM || process.env.EMAIL_FROM || 'Jin <j
 export class PostalProvider implements EmailProvider {
   async send(options: SendEmailOptions): Promise<{ success: boolean; error?: any; messageId?: string }> {
     if (!POSTAL_API_URL) {
-      log.warn({ to: options.to }, 'POSTAL_API_URL not set — skipping email');
+      log.warn(providerLogFields(options, { to: options.to }), 'POSTAL_API_URL not set — skipping email');
       return { success: false, error: 'POSTAL_API_URL not configured' };
     }
     if (!POSTAL_API_KEY) {
-      log.warn({ to: options.to }, 'POSTAL_API_KEY not set — skipping email');
+      log.warn(providerLogFields(options, { to: options.to }), 'POSTAL_API_KEY not set — skipping email');
       return { success: false, error: 'POSTAL_API_KEY not configured' };
     }
 
@@ -54,15 +54,15 @@ export class PostalProvider implements EmailProvider {
       }
 
       if (res.status === 200 && resBody?.status === 'success') {
-        log.info({ to: options.to, messageId: resBody.data?.message_id }, 'Email sent via Postal');
+        log.info(providerLogFields(options, { to: options.to, messageId: resBody.data?.message_id }), 'Email sent via Postal');
         return { success: true, messageId: resBody.data?.message_id };
       }
 
       const errorBody = resBody ?? rawBody;
-      log.error({ status: res.status, body: errorBody, to: options.to }, 'Postal error');
+      log.error(providerLogFields(options, { status: res.status, body: errorBody, to: options.to }), 'Postal error');
       return { success: false, error: `Postal ${res.status}: ${JSON.stringify(errorBody)}` };
     } catch (error) {
-      log.error({ err: String(error) }, 'Postal send failed');
+      log.error(providerLogFields(options, { err: String(error) }), 'Postal send failed');
       return { success: false, error };
     }
   }
