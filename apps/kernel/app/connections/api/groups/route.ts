@@ -3,7 +3,7 @@ import { db, pods, podMembers } from '@/src/db';
 import { eq, and, isNull, inArray, sql, ne } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { corsHeaders, corsOptions } from '@imajin/config';
-import { getSessionFromCookies } from '@/src/lib/kernel/session';
+import { resolveEffectiveDid } from '@imajin/auth';
 import { forEachSequential } from '@/src/lib/async/sequential';
 
 export function OPTIONS(request: NextRequest) {
@@ -12,16 +12,16 @@ export function OPTIONS(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:read' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
 
   // Get all pods the user is a member of (excluding personal/connection pods)
   const memberPodIds = await db
     .select({ podId: podMembers.podId })
     .from(podMembers)
-    .where(and(eq(podMembers.did, session.did), isNull(podMembers.removedAt)));
+    .where(and(eq(podMembers.did, auth.effectiveDid), isNull(podMembers.removedAt)));
 
   if (memberPodIds.length === 0) {
     return NextResponse.json({ pods: [] }, { headers: cors });
@@ -57,9 +57,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  const session = await getSessionFromCookies(request.headers.get('cookie'));
-  if (!session?.did) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401, headers: cors });
+  const auth = await resolveEffectiveDid(request, { scope: 'connections:write' });
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status, headers: cors });
   }
 
   const body = await request.json();
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
     name: body.name.trim(),
     description: body.description?.trim() || null,
     avatar: null,
-    ownerDid: session.did,
+    ownerDid: auth.effectiveDid,
     type: 'shared',
     visibility: 'private',
     conversationDid: body.conversationDid || null,
@@ -86,9 +86,9 @@ export async function POST(request: NextRequest) {
   // Add creator as owner
   await db.insert(podMembers).values({
     podId: id,
-    did: session.did,
+    did: auth.effectiveDid,
     role: 'owner',
-    addedBy: session.did,
+    addedBy: auth.effectiveDid,
     joinedAt: now,
   });
 
@@ -96,18 +96,18 @@ export async function POST(request: NextRequest) {
   const memberDids: string[] = body.memberDids || [];
   // Sequential on purpose: members are added in request order, and the first failed insert stops the rest.
   await forEachSequential(memberDids, async (did) => {
-    if (did !== session.did) {
+    if (did !== auth.effectiveDid) {
       await db.insert(podMembers).values({
         podId: id,
         did,
         role: 'member',
-        addedBy: session.did,
+        addedBy: auth.effectiveDid,
         joinedAt: now,
       });
     }
   });
 
-  const memberCount = 1 + memberDids.filter(d => d !== session.did).length;
+  const memberCount = 1 + memberDids.filter(d => d !== auth.effectiveDid).length;
 
   return NextResponse.json({ pod: { ...pod, memberCount } }, { status: 201, headers: cors });
 }

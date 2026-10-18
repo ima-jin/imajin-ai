@@ -36,6 +36,7 @@ type AccepterResult = { did: string; handle?: string } | { error: string; status
  * "accepted into" by an anonymous click.
  */
 async function resolveAccepter(request: NextRequest, invite: Invite): Promise<AccepterResult> {
+  // Accepting an invitation is personal: act-as must not enroll the org instead of the signed-in person.
   const session = await getSessionFromCookies(request.headers.get('cookie'));
   if (session?.did) {
     return { did: session.did, handle: session.handle };
