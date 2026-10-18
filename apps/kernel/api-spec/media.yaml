@@ -62,6 +62,19 @@ components:
         status: { type: string, enum: [active, deleted] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time, nullable: true }
+    PublicAssetDescriptor:
+      type: object
+      additionalProperties: false
+      description: Anonymous listing allowlist. No storage paths, uploader, classification, arbitrary metadata or full .fair manifest are disclosed.
+      properties:
+        id: { type: string }
+        ownerDid: { type: string }
+        filename: { type: string }
+        mimeType: { type: string }
+        size: { type: integer }
+        hash: { type: string, description: "SHA-256 hex" }
+        createdAt: { type: string, format: date-time, nullable: true }
+        updatedAt: { type: string, format: date-time, nullable: true }
     AssetUploadResponse:
       type: object
       properties:
@@ -211,17 +224,35 @@ paths:
     get:
       tags: [media]
       operationId: listAssets
-      summary: List assets for authenticated user — also accepts internal Bearer + X-Owner-DID for service-to-service. App-token callers need `media:read`.
+      summary: List own assets when authenticated, or a specified DID's public assets anonymously.
+      description: |
+        Anonymous callers MUST supply a non-empty `did`. Only active assets
+        whose stored `.fair` access is explicitly `public` (string or object
+        form, as on the anonymous single-asset read) are listed. Private,
+        unlisted, connections-only, missing-access and draft assets are never
+        included. Context and other filters apply before pagination.
+        Anonymous responses contain only `PublicAssetDescriptor` fields;
+        owner-only metadata, full manifests and server paths are never returned.
+        Anonymous listing is limited to 60 requests per minute per IP.
+
+        Authenticated behavior is unchanged: omitted/own `did` lists the
+        caller's library; another DID lists public assets. Internal Bearer +
+        X-Owner-DID is also accepted for service-to-service. App-token callers
+        need `media:read`; authorization failures (403) never fall back to
+        anonymous access.
       security:
         - cookieAuth: []
         - bearerAuth: []
         - appTokenAuth: []
+        - {}
       parameters:
         - name: did
           in: query
           schema: { type: string }
           description: |
-            List another identity's assets instead of the caller's own. When
+            Required for anonymous callers; omitted, empty or whitespace-only
+            values are refused with 401. List another identity's assets instead
+            of the caller's own. When
             `did` differs from the caller's DID the result is restricted to
             assets whose `.fair` manifest access is `public`. Omitted (or equal
             to the caller's own DID) lists the caller's own assets, of any
@@ -250,13 +281,15 @@ paths:
           schema: { type: string, enum: [asc, desc], default: desc }
         - name: limit
           in: query
-          schema: { type: integer, default: 50, maximum: 200 }
+          schema: { type: integer, default: 50, minimum: 1, maximum: 200 }
+          description: "Anonymous callers: clamped to 1–200; invalid or non-integer values default to 50."
         - name: offset
           in: query
-          schema: { type: integer, default: 0 }
+          schema: { type: integer, default: 0, minimum: 0 }
+          description: "Anonymous callers: clamped to 0–2147483647; invalid or non-integer values default to 0."
       responses:
         "200":
-          description: Assets list
+          description: Assets list; anonymous callers receive public descriptors only, authenticated callers receive existing Asset rows.
           content:
             application/json:
               schema:
@@ -264,17 +297,28 @@ paths:
                 properties:
                   assets:
                     type: array
-                    items: { $ref: "#/components/schemas/Asset" }
+                    items:
+                      anyOf:
+                        - $ref: "#/components/schemas/Asset"
+                        - $ref: "#/components/schemas/PublicAssetDescriptor"
                   limit: { type: integer }
                   offset: { type: integer }
                   count: { type: integer }
         "401":
-          description: Not authenticated
+          description: Not authenticated and no non-empty did supplied
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "403":
           description: App-token missing the `media:read` scope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Anonymous listing rate limit exceeded (60 requests per 60 seconds per IP)
+          headers:
+            Retry-After:
+              schema: { type: integer }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
