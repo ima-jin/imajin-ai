@@ -6,8 +6,8 @@ function escapeHtml(value: string): string {
 export function onboardEmail({ verifyUrl, context, name, onBehalfOf }: {
   verifyUrl: string; context?: string; name?: string; onBehalfOf?: string;
 }): string {
-  const greeting = name ? `Hi ${name},` : 'Hi,';
-  const contextLine = context ? `<p style="margin:0 0 24px;font-size:15px;color:#a1a1aa;line-height:1.6;">You're about to <strong style="color:#ffffff;">${context}</strong>. Verify your email to continue.</p>` : '<p style="margin:0 0 24px;font-size:15px;color:#a1a1aa;line-height:1.6;">Verify your email to continue.</p>';
+  const greeting = name ? `Hi ${escapeHtml(name)},` : 'Hi,';
+  const contextLine = context ? `<p style="margin:0 0 24px;font-size:15px;color:#a1a1aa;line-height:1.6;">You're about to <strong style="color:#ffffff;">${escapeHtml(context)}</strong>. Verify your email to continue.</p>` : '<p style="margin:0 0 24px;font-size:15px;color:#a1a1aa;line-height:1.6;">Verify your email to continue.</p>';
 
   return `
 <!DOCTYPE html>

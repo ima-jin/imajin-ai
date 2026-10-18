@@ -330,7 +330,7 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
       'media:read': { verb: 'read', surface: 'media', label: 'Read your media assets', release: { discloses_others: false, sensitive: false } },
       'media:write': { verb: 'write', surface: 'media', label: 'Create and update your media assets', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
       'media:share': { verb: 'write', surface: 'media-access', label: "Grant or revoke other people's access to your assets", release: { discloses_others: true, sensitive: false, viewer: MCP_DID } },
-      'connections:read': { verb: 'read', surface: 'connections', label: 'Read your trust-graph connections', release: { discloses_others: false, sensitive: false } },
+      'connections:read': { verb: 'read', surface: 'connections', label: 'Read your trust-graph connections and member lists of all pods you own (including other people)', release: { discloses_others: false, sensitive: false } },
       'messages:read': { verb: 'read', surface: 'messages', label: 'List your conversations and read their messages', release: { discloses_others: false, sensitive: false } },
       'messages:write': { verb: 'write', surface: 'messages', label: 'Send messages in your conversations on your behalf', release: { discloses_others: false, sensitive: false, release: 'on-consent', viewer: MCP_DID } },
       // #1636/#1679 — the descriptor is byte-identical to the one the Warp

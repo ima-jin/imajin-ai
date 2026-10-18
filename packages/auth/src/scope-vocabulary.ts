@@ -331,7 +331,8 @@ export const SCOPE_VOCABULARY = [
   { scope: 'notify:interest', connector: null, label: 'Record interest signals as this registered app' },
 
   { scope: 'connections:read', connector: 'mcp', verb: 'read', surface: 'connections', classification: SELF_ONLY, surfaces: MCP_TOKENS,
-    label: 'View your connections', manifestLabel: 'Read your trust-graph connections' },
+    label: 'View your connections and member lists of all pods you own (including other people)',
+    manifestLabel: 'Read your trust-graph connections and member lists of all pods you own (including other people)' },
   // Platform scope (#1793): consumed directly via requireAppAuth() on
   // POST /connections/api/invites, the same way wallet:write gates
   // POST /pay/api/checkout — not an MCP tool surface, so no owning connector.

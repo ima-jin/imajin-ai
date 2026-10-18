@@ -1,4 +1,4 @@
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { buildPublicUrlAbsolute, rateLimit } from '@imajin/config';
 import { db, attestations, credentials, registryApps, transactions } from '@/src/db';
@@ -48,9 +48,10 @@ async function loadOrder(app: App, transactionId: string) {
 async function buyerContact(order: typeof transactions.$inferSelect): Promise<string | null> {
   if (order.fromDid) {
     // An established buyer must use their verified kernel credential; never a billing-address fallback.
+    // Credentials have no primary flag: newest verification wins, with a stable ID tie-breaker.
     const [credential] = await db.select({ email: credentials.value }).from(credentials).where(and(
       eq(credentials.did, order.fromDid), eq(credentials.type, 'email'), isNotNull(credentials.verifiedAt),
-    )).limit(1);
+    )).orderBy(desc(credentials.verifiedAt), asc(credentials.id)).limit(1);
     return credential?.email ?? null;
   }
   // Anonymous checkout: recover the customer from the recorded seller's rail, not request/metadata.
