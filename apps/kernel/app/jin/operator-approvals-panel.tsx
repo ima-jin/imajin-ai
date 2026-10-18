@@ -65,6 +65,7 @@ import { ApprovalInbox, isDecidedCard } from './approval-inbox';
 import { ProvisionDeclarationsPreview } from './provision-declarations-preview';
 import { proposeClaimReissue } from './provision-reissue';
 import { DecisionCardDetail, DecisionCardOptions } from './decision-card-detail';
+import { ReachApprovalActions, ReachApprovalDetail, isReachApproval, type InboxDecisionHandler } from './reach-approval-card';
 import { DECISION_APPROVAL_SOURCE, parseDecisionCardView } from '@/src/lib/decisions/view';
 import { useSearchParams } from 'next/navigation';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
@@ -99,7 +100,7 @@ function decisionSuccessNotice(approval: OperatorApprovalCard, decision: Decisio
 /** Render once beside either lane's shared controller, including one-time response secrets. */
 export function ApprovalControllerNotices({ controller }: Readonly<{ controller: ReturnType<typeof useRunApprovals> }>) {
   const {
-    flash, actAs, revealedBearer, setRevealedBearer, revealedClaimCode, setRevealedClaimCode,
+    flash, actAs, reachActAsAllowed, revealedBearer, setRevealedBearer, revealedClaimCode, setRevealedClaimCode,
     claimNotice, setClaimNotice, reissuing, handleReissue,
   } = controller;
   return (
@@ -111,7 +112,7 @@ export function ApprovalControllerNotices({ controller }: Readonly<{ controller:
       {revealedClaimCode && <RevealedClaimCodeBanner revealed={revealedClaimCode} onDismiss={() => setRevealedClaimCode(null)} />}
       {claimNotice && <ClaimCodeNoticeBanner notice={claimNotice} busy={reissuing}
         onReissue={() => void handleReissue(claimNotice)} onDismiss={() => setClaimNotice(null)} />}
-      {actAs && <ActAsReadOnlyNotice actAs={actAs} />}
+      {actAs && <ActAsReadOnlyNotice actAs={actAs} reachActAsAllowed={reachActAsAllowed} />}
     </>
   );
 }
@@ -151,9 +152,11 @@ export function canonicalizeCountersignFields(fields: {
   decidedAt: string;
   decision: string;
   mode?: string;
+  replyMessage?: string;
 }): string {
   const modePart = fields.mode === undefined ? '' : `,"mode":${JSON.stringify(fields.mode)}`;
-  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}${modePart}}`;
+  const replyPart = fields.replyMessage === undefined ? '' : `,"replyMessage":${JSON.stringify(fields.replyMessage)}`;
+  return `{"contentHash":${JSON.stringify(fields.contentHash)},"decidedAt":${JSON.stringify(fields.decidedAt)},"decision":${JSON.stringify(fields.decision)}${modePart}${replyPart}}`;
 }
 
 interface OperatorSignature {
@@ -175,6 +178,7 @@ async function signOperatorDecision(fields: {
   decidedAt: string;
   decision: string;
   mode?: string;
+  replyMessage?: string;
 }): Promise<OperatorSignature | null> {
   if (typeof window === 'undefined') return null;
   const stored = localStorage.getItem('imajin_keypair');
@@ -200,6 +204,31 @@ async function signOperatorDecision(fields: {
 }
 
 const POLL_INTERVAL_MS = 5000;
+
+async function signedDecisionBody(
+  approval: OperatorApprovalCard,
+  decision: DecisionAction,
+  mode: string | undefined,
+  replyMessage: string | undefined,
+  prepareCommand: typeof prepareSignedSessionCommand,
+): Promise<Record<string, unknown>> {
+  const decidedAt = new Date().toISOString();
+  const choice = {
+    decision,
+    ...(mode ? { mode } : {}),
+    ...(replyMessage === undefined ? {} : { replyMessage }),
+  };
+  const operatorSignature = await signOperatorDecision({ contentHash: approval.contentHash, decidedAt, ...choice });
+  if (isReachApproval(approval) && !operatorSignature) {
+    throw new Error('Your own signing key is required for Reach and knock actions. Sign in with your key on this device.');
+  }
+  const sessionCommand = await commandForDecision(approval, decision, prepareCommand);
+  return {
+    ...choice,
+    ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
+    ...(sessionCommand ? { sessionCommand } : {}),
+  };
+}
 
 // #2293: 'expired' is a github:*-only terminal (a windowed approval whose
 // TTL lapsed unused, or one withdrawn early) — added to the shared status
@@ -298,7 +327,7 @@ interface SourceRenderer {
    */
   renderPendingActions?: (
     approval: OperatorApprovalCard,
-    onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+    onDecide: InboxDecisionHandler,
     busy: boolean,
   ) => ReactNode;
 }
@@ -733,7 +762,7 @@ function GithubDetailView({ approval }: Readonly<{ approval: OperatorApprovalCar
 /** No / Yes / 5m / 24h \u2014 reproduces the retired legacy rail's TTL picker exactly (single-call vs. a 5-minute or 24-hour approval window covering further same-tier writes). */
 function renderGithubPendingActions(
   approval: OperatorApprovalCard,
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+  onDecide: InboxDecisionHandler,
   busy: boolean,
 ): ReactNode {
   return (
@@ -796,7 +825,7 @@ function renderDecisionDetail(approval: OperatorApprovalCard): ReactNode {
 
 function renderDecisionPendingActions(
   approval: OperatorApprovalCard,
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+  onDecide: InboxDecisionHandler,
   busy: boolean,
 ): ReactNode {
   return (
@@ -814,6 +843,13 @@ const DECISION_RENDERER: SourceRenderer = {
   renderDetail: renderDecisionDetail,
   renderPendingActions: renderDecisionPendingActions,
 };
+const REACH_RENDERER: SourceRenderer = {
+  decisionLabels: { approve: 'Accept thread', reject: 'Decline' },
+  renderDetail: (approval) => <ReachApprovalDetail approval={approval} />,
+  renderPendingActions: (approval, onDecide, busy) => (
+    <ReachApprovalActions approval={approval} onDecide={onDecide} busy={busy} />
+  ),
+};
 
 const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   [DECISION_APPROVAL_SOURCE]: DECISION_RENDERER,
@@ -823,6 +859,8 @@ const SOURCE_RENDERERS: Readonly<Record<string, SourceRenderer>> = {
   access: ACCESS_RENDERER,
   github: GITHUB_RENDERER,
   apps: APPS_RENDERER,
+  reach: REACH_RENDERER,
+  knock: REACH_RENDERER,
 };
 
 function rendererFor(source: string): SourceRenderer {
@@ -1097,7 +1135,7 @@ function CardActions({
   decisionsLocked,
 }: Readonly<{
   approval: OperatorApprovalCard;
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
+  onDecide: InboxDecisionHandler;
   busy: boolean;
   /** True while the session is under act-as (#2359) — self-only rail, so no control is offered. */
   decisionsLocked: boolean;
@@ -1125,6 +1163,7 @@ function CardActions({
   if (decisionsLocked) return <ActAsLockedNote />;
 
   if (approval.status === 'approved') {
+    if (isReachApproval(approval)) return null;
     if (approval.sessionBinding) return <p className="text-xs text-amber-300">Decision recorded — awaiting signed agent attestation.</p>;
     return (
       <div className="flex items-center gap-2 pt-1">
@@ -1175,16 +1214,18 @@ export function ApprovalCardRow({
   busy,
   highlighted,
   decisionsLocked,
+  reachActAsAllowed = false,
   onArchive,
   anchor = true,
 }: Readonly<{
   approval: OperatorApprovalCard;
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void;
+  onDecide: InboxDecisionHandler;
   busy: boolean;
   /** True when this card is the one the operator was deep-linked to from a phone push (#2291). */
   highlighted: boolean;
   /** True while the session is under act-as (#2359). */
   decisionsLocked: boolean;
+  reachActAsAllowed?: boolean;
   onArchive: (approval: OperatorApprovalCard) => void;
   /** Inline copies omit the Inbox deep-link anchor. */
   anchor?: boolean;
@@ -1205,7 +1246,8 @@ export function ApprovalCardRow({
       </div>
       {renderer.renderDetail(approval)}
       {approval.sessionOutcome?.reason && <p className="text-xs text-red-300">{approval.sessionOutcome.reason}</p>}
-      <CardActions approval={approval} onDecide={onDecide} busy={busy} decisionsLocked={decisionsLocked} />
+      <CardActions approval={approval} onDecide={onDecide} busy={busy}
+        decisionsLocked={decisionsLocked && !(reachActAsAllowed && isReachApproval(approval))} />
       {isDecidedCard(approval) && !approval.archivedAt && !decisionsLocked && (
         <button
           type="button"
@@ -1227,14 +1269,15 @@ interface ActAsState {
 }
 
 /** Panel-level companion to the per-card lock: says the whole queue is read-only, and names both identities. */
-function ActAsReadOnlyNotice({ actAs }: Readonly<{ actAs: ActAsState }>) {
+function ActAsReadOnlyNotice({ actAs, reachActAsAllowed }: Readonly<{ actAs: ActAsState; reachActAsAllowed: boolean }>) {
   return (
     <div
       data-testid="act-as-readonly-notice"
       className="mb-3 px-3 py-2 rounded text-xs text-amber-300 bg-amber-950/40 border border-amber-800/60"
     >
-      Read-only while acting as <span className="font-mono">{actAs.actingDid}</span>. Approvals are self-only — drop
-      act-as to decide as <span className="font-mono">{actAs.sessionDid}</span>.
+      {reachActAsAllowed ? 'Reach/knock admin actions allowed while acting as ' : 'Read-only while acting as '}
+      <span className="font-mono">{actAs.actingDid}</span>.
+      {' '}Other approvals are self-only — drop act-as to decide as <span className="font-mono">{actAs.sessionDid}</span>.
     </div>
   );
 }
@@ -1243,11 +1286,12 @@ function ActAsReadOnlyNotice({ actAs }: Readonly<{ actAs: ActAsState }>) {
 function renderPanelBody(
   loading: boolean,
   approvals: OperatorApprovalCard[],
-  onDecide: (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => void,
+  onDecide: InboxDecisionHandler,
   busyId: string,
   deepLinkedProposalId: string | null,
   decisionsLocked: boolean,
   onArchive: (approval: OperatorApprovalCard) => void,
+  reachActAsAllowed: boolean,
 ) {
   if (loading) {
     return <p className="text-sm text-gray-500 py-6 text-center">Loading…</p>;
@@ -1272,6 +1316,7 @@ function renderPanelBody(
           busy={busyId === approval.proposalId}
           highlighted={deepLinkedProposalId === approval.proposalId}
           decisionsLocked={decisionsLocked}
+          reachActAsAllowed={reachActAsAllowed}
           onArchive={onArchive}
         />
       ))}
@@ -1283,6 +1328,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
 
   const [isOperator, setIsOperator] = useState(false);
   const [actAs, setActAs] = useState<ActAsState | null>(null);
+  const [reachActAsAllowed, setReachActAsAllowed] = useState(false);
   const [approvals, setApprovals] = useState<OperatorApprovalCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
@@ -1303,9 +1349,11 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
         isOperator: boolean;
         approvals: OperatorApprovalCard[];
         actAs?: ActAsState | null;
+        reachActAsAllowed?: boolean;
       };
       setIsOperator(data.isOperator);
       setActAs(data.actAs ?? null);
+      setReachActAsAllowed(data.reachActAsAllowed === true);
       setApprovals(data.approvals ?? []);
     } catch {
       // Silent — this panel simply stays empty on a transient network error.
@@ -1363,35 +1411,18 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
     }
   }, []);
 
-  const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string) => {
+  const handleDecide = useCallback(async (approval: OperatorApprovalCard, decision: DecisionAction, mode?: string, replyMessage?: string) => {
     const { proposalId } = approval;
     setBusyId(proposalId);
     try {
-      // #2082: decidedAt is chosen client-side, since it's exactly the
-      // timestamp the operator's signature below covers — the kernel
-      // verifies it (clock-skew bounds + the signature itself) rather than
-      // substituting its own.
-      const decidedAt = new Date().toISOString();
-      const operatorSignature = await signOperatorDecision({
-        contentHash: approval.contentHash,
-        decidedAt,
-        decision,
-        ...(mode ? { mode } : {}),
-      });
-
       let res: Response;
       try {
-        const sessionCommand = await commandForDecision(approval, decision, prepareCommand);
+        const body = await signedDecisionBody(approval, decision, mode, replyMessage, prepareCommand);
         res = await fetch(`/jin/api/operator-approvals/${encodeURIComponent(proposalId)}/decision`, {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            decision,
-            ...(mode ? { mode } : {}),
-            ...(operatorSignature ? { decidedAt, operatorSignature } : {}),
-            ...(sessionCommand ? { sessionCommand } : {}),
-          }),
+          body: JSON.stringify(body),
         });
       } catch (error) {
         // #2707: the request died mid-flight (proxy timeout / dropped connection).
@@ -1456,7 +1487,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   }, [load, notify]);
 
   return {
-    approvals, loading, busyId, isOperator, actAs, decisionsLocked: actAs !== null,
+    approvals, loading, busyId, isOperator, actAs, reachActAsAllowed, decisionsLocked: actAs !== null,
     error: flash?.type === 'err' ? flash.msg : null, flash,
     refresh: load, handleDecide, handleArchive,
     revealedBearer, setRevealedBearer, revealedClaimCode, setRevealedClaimCode,
@@ -1469,7 +1500,7 @@ function OperatorApprovalsPanelInner() {
   const deepLinkedProposalId = searchParams.get('proposalId');
   const controller = useRunApprovals();
   const {
-    approvals, loading, busyId, isOperator, actAs, refresh: load, handleDecide, handleArchive,
+    approvals, loading, busyId, isOperator, actAs, reachActAsAllowed, refresh: load, handleDecide, handleArchive,
   } = controller;
 
   // #2723: the Inbox is per-principal. The node operator always gets the
@@ -1483,7 +1514,7 @@ function OperatorApprovalsPanelInner() {
     <section className="mt-8">
       <div className="flex items-center justify-between mb-3">
         <div>
-          <h2 className="text-base font-semibold text-gray-100">Operator approvals</h2>
+          <h2 className="text-base font-semibold text-gray-100">Inbox</h2>
           <p className="text-xs text-gray-500">Pending approvals across every connected source — approve from anywhere</p>
         </div>
         <button
@@ -1500,7 +1531,7 @@ function OperatorApprovalsPanelInner() {
       <ApprovalInbox
         approvals={approvals}
         deepLinkedProposalId={deepLinkedProposalId}
-        renderCards={(cards) => renderPanelBody(loading, cards, handleDecide, busyId, deepLinkedProposalId, actAs !== null, handleArchive)}
+        renderCards={(cards) => renderPanelBody(loading, cards, handleDecide, busyId, deepLinkedProposalId, actAs !== null, handleArchive, reachActAsAllowed)}
       />
     </section>
   );
