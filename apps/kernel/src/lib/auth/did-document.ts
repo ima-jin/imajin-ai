@@ -25,6 +25,17 @@ export interface ImajinChainService {
   type: 'ImajinChain';
   serviceEndpoint: string;
 }
+/** Agent reach discovery descriptor — untrusted transport hint, not authority */
+export interface AgentReachService {
+  id: string;
+  type: 'AgentReach';
+  serviceEndpoint: string;
+}
+function reachServices(did: string, endpoint?: string): AgentReachService[] {
+  return endpoint
+    ? [{ id: `${did}#agent-reach`, type: 'AgentReach', serviceEndpoint: endpoint }]
+    : [];
+}
 
 /** W3C DID Document (RFC-40 §3.2) */
 export interface DidDocument {
@@ -34,7 +45,7 @@ export interface DidDocument {
   authentication: string[];
   assertionMethod: string[];
   capabilityInvocation?: string[];
-  service: ImajinChainService[];
+  service: Array<ImajinChainService | AgentReachService>;
   'imajin:chainHead': string;
   'imajin:keyCount': number;
   'imajin:dfosDid'?: string;
@@ -43,6 +54,8 @@ export interface DidDocument {
 export interface BuildDidDocumentOptions {
   /** Untrusted transport hint — where a verifier can fetch the chain log */
   chainEndpoint?: string;
+  /** Optional public reach card URL; eligibility is checked by the HTTP caller */
+  reachCardEndpoint?: string;
   /** DFOS DID alias (did:dfos:...) to include as metadata */
   dfosDid?: string;
   /** CID of the chain head (from identity_chains.headCid) */
@@ -143,6 +156,7 @@ export function buildDidDocument(
         type: 'ImajinChain',
         serviceEndpoint,
       },
+      ...reachServices(imajinDid, options.reachCardEndpoint),
     ],
     'imajin:chainHead': chainHead,
     'imajin:keyCount': keyCount,
