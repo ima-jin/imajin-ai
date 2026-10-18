@@ -252,6 +252,11 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groupDid]);
+  useEffect(() => {
+    if (!status) return;
+    const timeout = setTimeout(() => setStatus(null), 5000);
+    return () => clearTimeout(timeout);
+  }, [status]);
 
   async function loadData() {
     setLoading(true);
@@ -276,7 +281,6 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
 
   function showStatus(type: 'success' | 'error', text: string) {
     setStatus({ type, text });
-    setTimeout(() => setStatus(null), 5000);
   }
 
   function toggleService(service: string) {

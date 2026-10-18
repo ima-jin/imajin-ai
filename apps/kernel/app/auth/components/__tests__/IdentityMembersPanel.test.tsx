@@ -9,7 +9,7 @@
  * its service scoping, which is only enforced for agents.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 
 const GROUP = 'did:imajin:artifact';
 const RYAN = 'did:imajin:88kPYWwv5YFrQwAteQQQQQQQQQQQQQQQQQ';
@@ -115,6 +115,7 @@ function addControllerBody(spy: FetchSpy): Record<string, unknown> | null {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -127,6 +128,26 @@ describe('inline member editing', () => {
   const editRole = () => screen.getByRole('combobox', { name: 'Member role' }) as HTMLSelectElement;
   const patchCalls = (spy: FetchSpy) => spy.mock.calls.filter(([, init]) => init?.method === 'PATCH');
   const patchBody = (spy: FetchSpy) => JSON.parse(String(patchCalls(spy)[0]?.[1]?.body));
+  it('dismisses the update status after five seconds', async () => {
+    await renderPanel([jin()]);
+    vi.useFakeTimers();
+    edit();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })); });
+    expect(screen.getByText('Member updated.')).toBeDefined();
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.queryByText('Member updated.')).toBeNull();
+  });
+
+  it('cancels its pending status timeout when the panel unmounts', async () => {
+    await renderPanel([jin()]);
+    vi.useFakeTimers();
+    edit();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Save' })); });
+    expect(vi.getTimerCount()).toBe(1);
+    cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+    await act(async () => { vi.advanceTimersByTime(5000); });
+  });
 
   it.each([
     ['member', 'admin'],
