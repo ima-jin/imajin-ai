@@ -9,6 +9,7 @@ export async function reachActAsPrincipal(identity: Identity, reader: ReachBlock
     SELECT 1 FROM auth.identity_members
     WHERE identity_did = $1 AND member_did = $2
       AND role IN ('owner', 'admin') AND removed_at IS NULL
+      AND (allowed_services IS NULL OR 'jin' = ANY(allowed_services))
     LIMIT 1 FOR SHARE
   `, [identity.actingAs, identity.id]);
   return rows.length ? identity.actingAs : null;
