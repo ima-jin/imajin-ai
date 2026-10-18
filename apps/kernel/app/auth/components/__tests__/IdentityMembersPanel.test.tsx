@@ -86,9 +86,9 @@ function installFetch(controllers: ControllerFixture[], viewerRole: string | nul
   return spy;
 }
 
-async function renderPanel(controllers: ControllerFixture[] = [controller()], viewerRole: string | null = 'owner', viewerDid = RYAN) {
+async function renderPanel(controllers: ControllerFixture[] = [controller()], viewerRole: string | null = 'owner', viewerDid = RYAN, scope = 'business') {
   const spy = installFetch(controllers, viewerRole, viewerDid);
-  render(<IdentityMembersPanel groupDid={GROUP} />);
+  render(<IdentityMembersPanel groupDid={GROUP} scope={scope} />);
   await waitFor(() => expect(screen.queryByText('Loading members…')).toBeNull());
   return spy;
 }
@@ -292,6 +292,20 @@ describe('inline member editing', () => {
 });
 
 describe('member identity', () => {
+  it.each(['business', 'community', 'family'])('explains authority and roster access for %s identities', async (scope) => {
+    await renderPanel(undefined, 'owner', RYAN, scope);
+    expect(screen.getByText(/Members act for this organization and can see who's inside it/)).toBeDefined();
+    expect(screen.getByText(/Clients, vendors and partners should be added as a connection instead/)).toBeDefined();
+    const link = screen.getByRole('link', { name: 'Add a connection' });
+    expect(link.getAttribute('href')).toBe('/connections?connect=1');
+    fireEvent.click(link);
+    expect(localStorage.getItem('imajin:acting-as')).toBe(GROUP);
+  });
+
+  it('does not show org guardrail copy on personal identities', async () => {
+    await renderPanel(undefined, 'owner', RYAN, 'actor');
+    expect(screen.queryByRole('link', { name: 'Add a connection' })).toBeNull();
+  });
   it('shows the resolved name and handle instead of the DID', async () => {
     await renderPanel();
 
