@@ -33,6 +33,8 @@ servers:
 tags:
   - name: vault-mint
     description: vault.mint (#2242) — Ed25519 keypairs born inside the vault
+  - name: vault-import
+    description: Third-party credentials sealed once for an identity and purpose-bound consumer (#2260)
 
 components:
   securitySchemes:
@@ -51,6 +53,161 @@ components:
         error: { type: string }
 
 paths:
+  /api/vault/import:
+    get:
+      tags: [vault-import]
+      operationId: vaultImportCards
+      summary: Authorized owning identities and imported-credential timeline cards
+      description: >-
+        Returns the authenticated human's identity and groups they currently
+        administer, the preferred owning DID (including an authorized acting-as
+        group), and imported credential metadata across those owners. No
+        plaintext, ciphertext or wrapped keys are returned. Imported provenance
+        is projected from the existing approval record and v2 grants, not a
+        parallel credential store. Consumer fetch/ack timestamps use the
+        existing #2231 delegation path.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: ownerDid
+          schema: { type: string }
+          description: Optionally narrow cards to an authorized owning identity.
+      responses:
+        "200":
+          description: Metadata only; Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ownerDid, owners, cards]
+                properties:
+                  ownerDid: { type: string }
+                  owners:
+                    type: array
+                    items:
+                      type: object
+                      required: [did, name]
+                      properties:
+                        did: { type: string }
+                        name: { type: string }
+                  cards:
+                    type: array
+                    items:
+                      type: object
+                      required: [field, ownerDid, consumerDid, purpose, fingerprint, grantId, provenance, status, timeline]
+                      properties:
+                        field: { type: string }
+                        ownerDid: { type: string }
+                        consumerDid: { type: string }
+                        purpose: { type: string }
+                        label: { type: [string, "null"] }
+                        fingerprint: { type: string, description: SHA-256 digest; never credential bytes or last4 }
+                        grantId: { type: [string, "null"] }
+                        provenance: { type: string, const: imported }
+                        status: { type: string }
+                        timeline:
+                          type: array
+                          items:
+                            type: object
+                            required: [type, at]
+                            properties:
+                              type: { type: string, enum: [imported, granted, fetched, acked, rotated, revoked] }
+                              at: { type: string, format: date-time }
+                              alert: { type: boolean, description: Fetched without a matching acknowledgment }
+        "401":
+          description: Authentication required
+        "403":
+          description: Delegated agent or unauthorized owning identity
+        "503":
+          description: Metadata unavailable; generic error without credential material
+    post:
+      tags: [vault-import]
+      operationId: vaultImport
+      summary: Paste once and propose an identity-owned static-secret import or rotation
+      description: |
+        The real authenticated human may target themselves or an org/group
+        where they hold an active owner/admin role. The owning DID is explicit
+        and checked server-side; a borrowed or agent identity cannot approve.
+        Acting-as a group selects custody, not who signs the decision.
+
+        Input is immediately sealed using the existing vault staging path.
+        The returned proposal carries owner, consumer, purpose, expiry and a
+        fingerprint only; it never carries the submitted credential. Approve
+        via the existing `/jin/api/operator-approvals/{proposalId}/decision`
+        route as the real human, with their verified countersignature. The node
+        rechecks ownership authority and executes `sealAndGrantStaticSecret`
+        with principalDid = ownerDid and granteeDid = consumerDid, attesting
+        `vault.key.imported`. This reuses v2 delegation custody, not a new store.
+
+        Consumers discover the purpose-bound grant through `imajin_vault`
+        `list_grants` and resolve it with `fetch`; services can use the existing
+        `loadFromVault` boot helper and acknowledgment path. The card timeline
+        shows imported → granted → fetched → acked. After migrating a service,
+        remove its old credential line from `.env.local`; the kernel does not
+        modify remote consumer files.
+
+        `replacesField` proposes re-import → grant → revoke old as one signed
+        rotation. The old owner must match; old access remains until successful
+        replacement. External-issuer auto-rotation is out of scope. The
+        synchronous import executor fails closed under external Tier-1 custody.
+        Coarse acting-for agent delegation cannot read or submit imports.
+        Imported fields are excluded from the legacy plaintext rotation sweep;
+        use this countersigned re-import rail for replacement credentials.
+        Plaintext is never echoed, logged, returned, or persisted unsealed.
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [ownerDid, purpose, consumerDid, secret]
+              properties:
+                ownerDid:
+                  type: string
+                  description: Identity that owns the sealed field, including an administered group DID.
+                purpose: { type: string, minLength: 1, maxLength: 200 }
+                consumerDid:
+                  type: string
+                  description: Agent or service DID receiving the purpose-bound v2 grant.
+                secret:
+                  type: string
+                  writeOnly: true
+                  minLength: 1
+                  description: At most 65536 UTF-8 bytes. Paste field is cleared on submission; no reveal.
+                label: { type: string, maxLength: 200 }
+                expiresAt: { type: [string, "null"], format: date-time }
+                replacesField:
+                  type: string
+                  description: An existing imported field owned by ownerDid; revoke only after replacement succeeds.
+      responses:
+        "201":
+          description: Sealed pending a real human countersignature; metadata only, Cache-Control no-store
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, proposalId, fingerprint, purpose]
+                properties:
+                  status: { type: string, const: pending }
+                  proposalId: { type: string }
+                  fingerprint: { type: string }
+                  purpose: { type: string }
+        "400":
+          description: Invalid body, DID, purpose, size or expiry
+        "401":
+          description: Authentication required
+        "403":
+          description: Caller is not the real owner or active group administrator
+        "409":
+          description: Unsupported custody or invalid replacement
+        "503":
+          description: Import unavailable; generic error without credential material
   /api/vault/mint:
     post:
       tags: [vault-mint]

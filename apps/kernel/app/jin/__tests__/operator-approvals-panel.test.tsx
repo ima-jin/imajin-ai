@@ -41,6 +41,19 @@ interface ApprovalFixture {
   sessionOutcome?: { commandId: string; outcome: 'completed' | 'failed'; at: string; reason?: string } | null;
 }
 
+describe('vault import approval renderer (#2260)', () => {
+  it('shows owner and consuming agent on the existing signing rail for an addressed nonoperator', async () => {
+    installFetch([{ isOperator: false, approvals: [vaultApproval({
+      kind: 'vault:import', summary: 'Import credential for an organization',
+      detail: { ownerDid: 'did:imajin:test-org', consumerDid: 'did:imajin:test-agent', purpose: 'analysis', fingerprint: 'test-fingerprint' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByTestId('vault-import-approval')).toBeDefined();
+    expect(screen.getByText('did:imajin:test-org')).toBeDefined();
+    expect(screen.getByText('did:imajin:test-agent')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Sign' })).toBeDefined();
+  });
+});
 describe('shared native approval command controller', () => {
   const binding = { loopId: 'loop_native', principalDid: 'did:imajin:principal', agentDid: 'did:imajin:agent', approvalId: 'native_1' };
   const command = { type: 'session.approve', commandId: 'command_1', countersignature: { sig: 'full-wish' } };

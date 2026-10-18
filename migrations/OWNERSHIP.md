@@ -190,6 +190,15 @@ and mutable context are not evidence of app ownership. The registered-app
 conversation route binds app and creator at insertion and cannot adopt legacy
 rows or transfer either binding. No events-owned schema or data is touched.
 
+### Imported credential audit chain (#2260)
+
+`0208_seed_vault_key_imported_chain.sql` is kernel-owned and seeds only
+`kernel.bus_chain_configs` for `vault.key.imported`. Its metadata-only
+`audit-log` reactor matches `packages/bus/src/config.ts` DEFAULTS.
+`ON CONFLICT (event_type, scope) DO NOTHING` preserves existing operator
+configuration, including disabled chains. No tables are added; the existing
+owner and `firstMigration` remain unchanged.
+
 ### Environment variables
 
 The guard (`scripts/check-migration-ownership.mjs`) reads two optional

@@ -5,7 +5,7 @@ import { createLogger } from '@imajin/logger';
 import { loadAndUnseal, sealAndStoreV2 } from '@/src/lib/vault';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
-import { parseVaultFieldName, isAppSelfSecretField } from '@/src/lib/vault/field-grammar';
+import { parseVaultFieldName, isAppSelfSecretField, isImportedKeyField } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -96,8 +96,8 @@ async function handleExport(): Promise<NextResponse> {
     const exported: { field: string; plaintext: string }[] = [];
 
     for (const { field } of rows) {
-      // App inputs have only encrypted app-DID delivery, never admin export.
-      if (isAppSelfSecretField(field)) continue;
+      // App inputs and imported credentials never use the legacy plaintext export.
+      if (isAppSelfSecretField(field) || isImportedKeyField(field)) continue;
       let plaintext: string | undefined;
       try {
         plaintext = await loadAndUnseal(field);
@@ -146,6 +146,9 @@ async function handleReimport(
 
   if (fields.some(({ field }) => isAppSelfSecretField(field))) {
     return NextResponse.json({ error: 'App secrets require the countersigned app-secret rail' }, { status: 403 });
+  }
+  if (fields.some(({ field }) => isImportedKeyField(field))) {
+    return NextResponse.json({ error: 'Imported credentials require the countersigned import rail' }, { status: 403 });
   }
 
   try {
