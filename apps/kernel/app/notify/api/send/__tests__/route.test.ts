@@ -485,6 +485,21 @@ describe('email delivery honesty (#1854)', () => {
     expect(recordedChannels()).not.toContain('email');
   });
 
+  it('preserves the safe post-delivery audit code and forbids retry without claiming audited success', async () => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({
+      success: false, messageId: 'provider-private-fixture',
+      error: 'mail_audit_failed_after_delivery_do_not_retry',
+    });
+    const res = await POST(makeReq(emailScopeBody({ data: { email: 'payload@example.com' } })));
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      id: NOTIFICATION_ID, sent: false, emailResolved: true,
+      error: 'mail_audit_failed_after_delivery_do_not_retry',
+      retryable: false, deliveredMayHaveOccurred: true,
+    });
+    expect(recordedChannels()).not.toContain('email');
+  });
+
   it('returns sent: false with emailResolved: true when sendEmail throws', async () => {
     vi.mocked(sendEmail).mockRejectedValueOnce(new Error('network error'));
 

@@ -36,7 +36,20 @@ describe('contact verification through kernel mail', () => {
   });
   it('reports provider refusal', async () => {
     mocks.mail.mockResolvedValue({ success: false, error: 'refused' });
-    expect((await POST(request())).status).toBe(502);
+    const response = await POST(request());
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: 'Failed to send verification email' });
+  });
+  it('preserves nonretryable post-delivery audit state without exposing the verification URL or provider ID', async () => {
+    mocks.mail.mockResolvedValue({
+      success: false, error: 'mail_audit_failed_after_delivery_do_not_retry', messageId: 'provider-private-fixture',
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: 'mail_audit_failed_after_delivery_do_not_retry', retryable: false, deliveredMayHaveOccurred: true,
+    });
+    expect(mocks.mail).toHaveBeenCalledOnce();
   });
   it('does not send without authentication', async () => {
     mocks.auth.mockResolvedValue({ error: 'Unauthorized', status: 401 });

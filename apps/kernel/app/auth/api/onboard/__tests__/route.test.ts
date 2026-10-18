@@ -8,7 +8,7 @@ const { mockDbSelect, mockDbInsert, mockDbInsertValues, mockSendEmail, mockRateL
     mockDbSelect: vi.fn(),
     mockDbInsertValues: mockDbInsertValuesInner,
     mockDbInsert: vi.fn(() => ({ values: (...args: unknown[]) => mockDbInsertValuesInner(...args) })),
-    mockSendEmail: vi.fn(async () => ({ success: true })),
+    mockSendEmail: vi.fn(async () => ({ success: true } as { success: boolean; error?: string; messageId?: string })),
     mockRateLimit: vi.fn(() => ({ limited: false, retryAfter: 0 })),
     mockGetClient: vi.fn(),
   };
@@ -119,6 +119,26 @@ describe('POST /api/onboard — invite context threading (#1834 Phase 2)', () =>
     expect(mockDbInsertValues).toHaveBeenCalledWith(
       expect.objectContaining({ scopeDid: null, inviteCode: null }),
     );
+  });
+});
+
+describe('POST /api/onboard — post-delivery audit safety', () => {
+  it('returns a safe nonretryable 502 without leaking token, polling handle, or provider ID', async () => {
+    mockSendEmail.mockResolvedValueOnce({
+      success: false, error: 'mail_audit_failed_after_delivery_do_not_retry', messageId: 'provider-private-fixture',
+    });
+    const res = await POST(makeReq({ email: 'plain@example.com', wantPolling: true }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({
+      error: 'mail_audit_failed_after_delivery_do_not_retry', retryable: false, deliveredMayHaveOccurred: true,
+    });
+    expect(mockSendEmail).toHaveBeenCalledOnce();
+  });
+  it('keeps ordinary provider failures generic without asserting post-delivery state', async () => {
+    mockSendEmail.mockResolvedValueOnce({ success: false, error: 'provider-private-fixture' });
+    const res = await POST(makeReq({ email: 'plain@example.com' }));
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ error: 'Failed to send verification email' });
   });
 });
 

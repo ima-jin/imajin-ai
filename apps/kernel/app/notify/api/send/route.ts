@@ -8,6 +8,7 @@ import { getTemplate } from '@/src/lib/notify/template-store';
 import type { NotifyTemplate } from '@/src/lib/notify/templates';
 import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
 import { sendKernelEmail } from '@/src/lib/mail/send';
+import { mailDeliveryFailure, type MailDeliverySafety } from '@/src/lib/kernel/mail-delivery-error';
 import { notificationMailPurpose } from '@/src/lib/notify/mail-purpose';
 import { resolvePaymentMailSender } from '@/src/lib/notify/payment-mail-sender';
 import {
@@ -73,7 +74,7 @@ async function resolveRecipientEmail(
  * "we found one but the provider rejected it" — both used to collapse into
  * the same unconditional `sent: true`.
  */
-interface EmailDeliveryResult {
+interface EmailDeliveryResult extends MailDeliverySafety {
   /** True once the email was actually handed off to the provider successfully. */
   delivered: boolean;
   /** True when a recipient email address could be resolved at all. */
@@ -113,7 +114,7 @@ async function resolveAndSendEmail(
     });
     if (!result.success) {
       log.error({ err: result.error, id: notifId }, 'Email send failed for notification');
-      return { delivered: false, emailResolved: true, error: 'Email delivery failed' };
+      return { delivered: false, emailResolved: true, ...mailDeliveryFailure(result.error, 'Email delivery failed') };
     }
     return { delivered: true, emailResolved: true };
   } catch (err) {
@@ -211,18 +212,20 @@ function notificationRecipient(to: string, normalized: OperatorApprovalNormalize
  * the email leg actually delivered, kept out of POST's own control flow so
  * the handler's complexity stays where it was before this fix.
  */
+interface NotificationSendResponse extends MailDeliverySafety {
+  id: string;
+  sent: boolean;
+  emailResolved?: boolean;
+  error?: string;
+}
+
 function buildResponseBody(
   id: string,
   emailResult: EmailDeliveryResult | null,
-): { id: string; sent: boolean; emailResolved?: boolean; error?: string } {
+): NotificationSendResponse {
   if (!emailResult) return { id, sent: true };
-  const body: { id: string; sent: boolean; emailResolved?: boolean; error?: string } = {
-    id,
-    sent: emailResult.delivered,
-    emailResolved: emailResult.emailResolved,
-  };
-  if (emailResult.error) body.error = emailResult.error;
-  return body;
+  const { delivered, emailResolved, ...failure } = emailResult;
+  return { id, sent: delivered, emailResolved, ...failure };
 }
 
 /**
