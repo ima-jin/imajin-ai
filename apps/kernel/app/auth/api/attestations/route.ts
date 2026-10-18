@@ -504,7 +504,7 @@ function buildListConditions(params: {
     conditions.push(or(
       ne(attestations.attestationStatus, 'superseded'),
       and(eq(attestations.type, RELATIONSHIP_LABEL_EVENT), isNull(attestations.attestationStatus)),
-    ));
+    )!);
   }
   // #1822: an untyped `status=pending` query is the "pending your
   // countersignature" view — exclude mechanical audit-record types (e.g.
