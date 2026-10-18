@@ -135,7 +135,7 @@ export async function POST(request: NextRequest) {
 
   const privateKey = process.env.AUTH_PRIVATE_KEY;
   if (!privateKey) {
-    log.error({}, 'AUTH_PRIVATE_KEY not set — cannot sign attestation');
+    log.error({ status: 500, code: 'ATTESTATION_SIGNING_UNCONFIGURED' }, 'AUTH_PRIVATE_KEY not set — cannot sign attestation');
     return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 });
   }
 
@@ -204,8 +204,8 @@ export async function POST(request: NextRequest) {
   let signature: string;
   try {
     signature = authCrypto.signSync(canonicalPayload, privateKey);
-  } catch (err) {
-    log.error({ err: String(err) }, 'Failed to sign attestation');
+  } catch {
+    log.error({ status: 500, code: 'ATTESTATION_SIGNING_FAILED' }, 'Failed to sign attestation');
     return NextResponse.json({ error: 'Signing failed' }, { status: 500 });
   }
 
@@ -259,11 +259,11 @@ export async function POST(request: NextRequest) {
         originUrl,
         pendingSignature,
       },
-    }).catch((err: unknown) => log.error({ err: String(err) }, 'attestation.created publish failed'));
+    }).catch(() => log.error({ code: 'ATTESTATION_PUBLISH_FAILED' }, 'attestation.created publish failed'));
 
     return NextResponse.json(attestation, { status: 201 });
-  } catch (err) {
-    log.error({ err: String(err) }, 'Failed to insert attestation');
+  } catch {
+    log.error({ status: 500, code: 'ATTESTATION_INSERT_FAILED' }, 'Failed to insert attestation');
     return NextResponse.json({ error: 'Failed to store attestation' }, { status: 500 });
   }
 }

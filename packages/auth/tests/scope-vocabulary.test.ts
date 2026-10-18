@@ -168,6 +168,15 @@ describe('viewerForScope', () => {
 });
 
 describe('label fallbacks', () => {
+  it('discloses pod member-list access in every connections:read label', () => {
+    const entry = scopeEntry('connections:read') as ConnectorScopeEntry;
+    expect(BROWSER_SCOPES['connections:read']).toBe(
+      'View your connections and member lists of all pods you own (including other people)',
+    );
+    const manifestLabel = 'Read your trust-graph connections and member lists of all pods you own (including other people)';
+    expect(manifestLabelForScope(entry)).toBe(manifestLabel);
+    expect(uiLabelForScope(entry)).toBe(manifestLabel);
+  });
   it('falls back manifest label to the consent label', () => {
     const gemini = scopeEntry('gemini:infer');
     expect(gemini && isConnectorScope(gemini)).toBe(true);

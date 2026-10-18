@@ -25,7 +25,7 @@ const mocks = vi.hoisted(() => {
   const fromMock = vi.fn(() => ({ where: whereMock }));
   const selectMock = vi.fn(() => ({ from: fromMock }));
 
-  return { limitMock, orderByMock, whereMock, fromMock, selectMock };
+  return { limitMock, orderByMock, whereMock, fromMock, selectMock, error: vi.fn() };
 });
 
 vi.mock('@/src/db', () => ({
@@ -80,7 +80,7 @@ vi.mock('@imajin/cid', () => ({ computeCid: vi.fn() }));
 
 vi.mock('@imajin/logger', () => ({
   withLogger: (_service: string, handler: (req: unknown, ctx: unknown) => Promise<Response>) =>
-    (req: unknown) => handler(req, { log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }),
+    (req: unknown) => handler(req, { log: { error: mocks.error, info: vi.fn(), warn: vi.fn() } }),
   // The route module transitively imports grants.ts (via attestation-helpers'
   // delegation check, #1895/#1897), which calls createLogger at module scope.
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
@@ -130,6 +130,15 @@ beforeEach(() => {
 });
 
 describe('GET /auth/api/attestations — countersign-pending filter (#1822)', () => {
+  it('logs only fixed query failure metadata when the database throws sensitive data', async () => {
+    mocks.limitMock.mockRejectedValueOnce(new Error('buyer@example.test Bearer fixture https://private.test/?token=fixture'));
+    const response = await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob'));
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: 'Failed to query attestations' });
+    expect(mocks.error.mock.calls).toEqual([
+      [{ status: 500, code: 'ATTESTATIONS_QUERY_FAILED' }, 'Attestations GET error'],
+    ]);
+  });
   it('excludes mechanical attestation types when status=pending and no type filter is given', async () => {
     await GET(makeGetReq('https://kernel.test/auth/api/attestations?subject_did=did:imajin:bob&status=pending'));
 

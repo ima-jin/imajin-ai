@@ -1,8 +1,8 @@
 import type { NextRequest } from 'next/server';
 import { and, eq, inArray } from 'drizzle-orm';
-import { db, transactions } from '@/src/db';
+import { db, transactions, channelLinks } from '@/src/db';
 import { authenticatePayApp as authenticateRegisteredApp } from '@/src/lib/kernel/app-service-auth';
-import { hasAppAuthorizationGrant } from '@/src/lib/auth/app-authorization-grant';
+import { APP_AUTHORIZATION_CHANNEL } from '@/src/lib/auth/app-authorization-grant';
 import { verifyAppServiceToken } from '@/src/lib/auth/jwt';
 
 export type AppContactScope = 'profile:email:read' | 'profile:contact:backfill';
@@ -37,8 +37,20 @@ export async function relatedContactDids(
       inArray(transactions.fromDid, dids),
     ));
   const paid = new Set(payments.map((row) => row.did));
-  const related = await Promise.all(dids.map(async (did) =>
-    paid.has(did) || await hasAppAuthorizationGrant(appDid, did, scope) ? did : null,
-  ));
-  return related.filter((did): did is string => did !== null);
+  const unpaid = dids.filter((did) => !paid.has(did));
+  if (unpaid.length === 0) return dids;
+
+  const grants = await db
+    .select({ did: channelLinks.did, scopes: channelLinks.scopes })
+    .from(channelLinks)
+    .where(and(
+      eq(channelLinks.channel, APP_AUTHORIZATION_CHANNEL),
+      eq(channelLinks.appDid, appDid),
+      eq(channelLinks.status, 'active'),
+      inArray(channelLinks.did, unpaid),
+    ));
+  const granted = new Set(grants
+    .filter((row) => Array.isArray(row.scopes) && row.scopes.includes(scope))
+    .map((row) => row.did));
+  return dids.filter((did) => paid.has(did) || granted.has(did));
 }

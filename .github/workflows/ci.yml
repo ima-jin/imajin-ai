@@ -8,6 +8,17 @@ on:
   merge_group:
   workflow_dispatch:
 
+# Merge-group contract (#2928): recheck affected packages against the queue's
+# base SHA, while retaining migration/schema and CI guards for cross-PR
+# collisions. PR/push runs remain the full validation and Sonar coverage source.
+# The queue skips coverage upload, Sonar, security audit, e2e and unaffected
+# app builds already proved by PR CI. Required job names must still resolve;
+# job-level `if:` skips report success, unlike skipping an entire workflow.
+# See https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-jobs-with-conditions
+# Queue runner work is limited to Check Migrations (including schema-sync),
+# Lint & Typecheck (including migration ownership), Test, Build and CI Guards.
+# Provisioning's full-workspace build/dry-run is also PR/push-only.
+#
 # Superseded PR runs are cancelled when a newer push lands (a single
 # self-hosted runner otherwise backs up past the 60-min check timeout, and
 # merge-queue entries get kicked with checks_timed_out). merge_group, push and
@@ -33,6 +44,8 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'merge_group' && '0' || '1' }}
 
       - uses: actions/setup-node@v4
         with:
@@ -40,9 +53,20 @@ jobs:
 
       - name: Verify migration artifacts
         run: ./scripts/check-migrations.sh
+      # Keep this inside a REQUIRED context, not only the advisory job in
+      # check-migrations.yml (which intentionally keeps its PR/push triggers).
+      - name: Schema/migration sync (merge group)
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git cat-file -e "${MERGE_GROUP_BASE_SHA}^{commit}"
+          bash scripts/check-schema-migration-sync.sh "$MERGE_GROUP_BASE_SHA"
 
   audit:
     name: Security Audit
+    if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
@@ -153,7 +177,13 @@ jobs:
       # local turbo cache at /turbo-cache when the package and the shared
       # eslint config are unchanged (#2605).
       - name: Lint
+        if: github.event_name != 'merge_group'
         run: pnpm lint
+      - name: Lint affected packages (merge group)
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: pnpm lint --filter="...[$MERGE_GROUP_BASE_SHA]"
 
       # `turbo run typecheck` (root `typecheck` script). Each package's
       # `tsc --noEmit` needs its workspace dependencies' built declarations, so
@@ -162,12 +192,20 @@ jobs:
       # `build:types` order (cid before vault-core, money before fair, ...);
       # `build:types` stays as a local-dev shortcut.
       - name: Typecheck
+        if: github.event_name != 'merge_group'
         run: pnpm typecheck
+      - name: Typecheck affected packages (merge group)
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: pnpm typecheck --filter="...[$MERGE_GROUP_BASE_SHA]"
 
       # Schema-boundary guard (#1991 phase 1): a migration may only touch
       # tables its declared "-- owner:" header actually owns, per
       # migrations/ownership.json. See migrations/OWNERSHIP.md.
       - name: Migration ownership guard
+        env:
+          MIGRATION_OWNERSHIP_BASE_REF: ${{ github.event.merge_group.base_sha || 'origin/main' }}
         run: pnpm check:migration-ownership
 
   test:
@@ -188,6 +226,8 @@ jobs:
       npm_config_store_dir: /pnpm-store
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'merge_group' && '0' || '1' }}
 
       - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
         with:
@@ -210,12 +250,23 @@ jobs:
         run: pnpm rebuild -r better-sqlite3
 
       - name: Run tests with coverage
+        if: github.event_name != 'merge_group'
         run: pnpm test:coverage
+      # Root Vitest owns the aliases/config for ALL workspace tests; invoking
+      # package test scripts would miss packages without one and lose aliases.
+      - name: Run affected unit tests (merge group)
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          bash scripts/ci/merge-group-tests.sh
 
       # Handed to the SonarCloud job rather than re-running the suite there.
       # Without a coverage report the scanner reports new_coverage=0.0 and fails
       # the quality gate on every PR that adds code.
       - name: Upload coverage report
+        if: github.event_name != 'merge_group'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-lcov
@@ -250,6 +301,8 @@ jobs:
     needs: [lint-and-typecheck, test]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: ${{ github.event_name == 'merge_group' && '0' || '1' }}
 
       - uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b # v2
         with:
@@ -273,15 +326,26 @@ jobs:
       # turbo cache are skipped. Needs the same env as the Build step below:
       # DATABASE_URL is part of the build task's hash.
       - name: Restore Next.js build cache
+        if: github.event_name != 'merge_group'
         run: scripts/ci-build-cache.sh restore-next
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
+      # ^build prerequisites remain in Turbo's graph. Unaffected apps are not
+      # selected, even for cache replay. Skip the full-graph Next-cache helper
+      # on this path; the persistent Turbo task cache still applies.
+      - name: Build affected packages (merge group)
+        if: github.event_name == 'merge_group'
+        env:
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
+        run: pnpm build --filter="...[$MERGE_GROUP_BASE_SHA]"
 
       # `turbo run build` (root `build` script). Untouched packages/apps are
       # replayed from the local turbo cache (dist/ and .next/ outputs, minus
       # .next/cache); a change to a package re-runs it and everything that
       # depends on it.
       - name: Build
+        if: github.event_name != 'merge_group'
         run: pnpm build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL_STAGING || 'postgresql://ci:ci@localhost:5432/ci_build' }}
@@ -300,6 +364,7 @@ jobs:
       # the build and the guard passed, so a broken build never poisons the
       # shared copy).
       - name: Save Next.js build cache
+        if: github.event_name != 'merge_group'
         run: scripts/ci-build-cache.sh save-next
 
       # Ceiling for the append-only turbo cache on the runner host: drop
@@ -319,6 +384,8 @@ jobs:
   # scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs.
   provisioning-entrypoint:
     name: Provisioning entrypoint
+    # Its full workspace build and deploy dry-run were proved on the PR head.
+    if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681
@@ -473,6 +540,9 @@ jobs:
 
   sonarcloud:
     name: SonarCloud
+    # A skipped JOB resolves this exact required context successfully without
+    # a runner or a coverage artifact. Do not skip the workflow via path filters.
+    if: github.event_name != 'merge_group'
     runs-on: imajin-self-hosted
     container:
       image: ghcr.io/ima-jin/ci-runner@sha256:fcc0fb4320e709976a93ac9f940bb2f532a82d3e7f953798c48dc4b0d8435681

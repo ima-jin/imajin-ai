@@ -32,6 +32,18 @@ beforeEach(() => {
 });
 
 describe('GET /api/loops/{loopId}', () => {
+  it('exposes the head holder and lease expiry in the uncached loop detail', async () => {
+    mockRequireAuth.mockResolvedValueOnce({ identity: { id: OPERATOR_DID } });
+    const claim = { leaseId: 'step:next', holderDid: 'did:imajin:agent', acquiredAt: '2026-10-18T04:00:00Z', expiresAt: '2026-10-18T04:15:00Z' };
+    mockGetLoopWithHistory.mockResolvedValueOnce({
+      loop: { loopId: 'loop_abc123' }, events: [],
+      horizon: { depth: 1, targetDepth: 12, steps: [{ stepId: 'next', zone: 'head', claim }] },
+    });
+    const response = await GET(makeReq() as Parameters<typeof GET>[0], { params: Promise.resolve({ loopId: 'loop_abc123' }) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect((await response.json()).horizon.steps[0].claim).toEqual(claim);
+  });
   it('opts into exited audit steps only on explicit includeExited=true, without widening principal scope', async () => {
     mockRequireAuth.mockResolvedValueOnce({ identity: { id: OPERATOR_DID } });
     const horizon = { depth: 0, targetDepth: 12, steps: [{ stepId: 'done', state: 'exited', zone: 'done' }] };

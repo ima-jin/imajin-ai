@@ -192,6 +192,16 @@ describe('loops_list', () => {
 // ─── loops_get — happy path + not-found ──────────────────────────────────────
 
 describe('loops_get', () => {
+  it('returns head holder and lease expiry unchanged for the Runs lane', async () => {
+    const claim = { leaseId: 'step:next', holderDid: 'did:imajin:agent', acquiredAt: '2026-10-18T04:00:00Z', expiresAt: '2026-10-18T04:15:00Z' };
+    mockGetLoopWithHistory.mockResolvedValueOnce({
+      loop: { loopId: 'cycle' }, events: [],
+      horizon: { depth: 1, targetDepth: 12, steps: [{ stepId: 'next', zone: 'head', claim }] },
+    });
+    const out = parseResult(await call('loops_get', { loop_id: 'cycle' }, ctxFor('did:imajin:alice')));
+    expect(out.horizon.steps[0].claim).toEqual(claim);
+    expect(mockGetLoopWithHistory).toHaveBeenCalledWith('cycle', 'did:imajin:alice', false);
+  });
   it('preserves horizon data and scopes an explicit exited audit request to the acting DID', async () => {
     const horizon = { depth: 0, targetDepth: 12, steps: [{ stepId: 'done', zone: 'done', state: 'exited' }] };
     mockGetLoopWithHistory.mockResolvedValueOnce({ loop: { loopId: 'loop_1' }, events: [], horizon });
