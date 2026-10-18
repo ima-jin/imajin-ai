@@ -38,7 +38,7 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
   const cors = corsHeaders(request);
 
   try {
-    const auth = await resolveEffectiveDid(request, { scope: 'wallet:write' });
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:write', service: 'pay' });
     if (!auth.ok) {
       return NextResponse.json(
         { error: auth.error },

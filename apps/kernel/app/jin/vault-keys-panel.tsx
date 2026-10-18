@@ -27,6 +27,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useFlashNotice } from './use-flash-notice';
+import { GroupKeyCustodyForm, type GroupCustodyAction } from './group-key-custody-form';
 
 type VaultKeyTimelineEventType = 'minted' | 'granted' | 'fetched' | 'acked' | 'rotated' | 'revoked';
 
@@ -462,7 +463,7 @@ export function VaultKeysPanel() {
     };
   }, [load]);
 
-  const raiseProposal = useCallback(async (kind: 'mint' | 'grant' | 'rotate' | 'revoke', detail: Record<string, unknown>) => {
+  const raiseProposal = useCallback(async (kind: 'mint' | 'grant' | 'rotate' | 'revoke' | GroupCustodyAction, detail: Record<string, unknown>) => {
     setBusy(true);
     try {
       const res = await fetch('/jin/api/vault-proposals', {
@@ -547,6 +548,9 @@ export function VaultKeysPanel() {
 
       <div className="mb-3">
         <ClaimPendingServiceStub />
+      </div>
+      <div className="mb-3">
+        <GroupKeyCustodyForm busy={busy} onPropose={raiseProposal} />
       </div>
 
       {showHandProvisioned && knownFields.length > 0 && (

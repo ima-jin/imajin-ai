@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { requireAdmin, verifySync } from '@imajin/auth';
 import { publish } from '@imajin/bus';
 import { createLogger } from '@imajin/logger';
-import { isAppSelfSecretField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
+import { isAppSelfSecretField, isGroupKeyField, parseVaultFieldName } from '@/src/lib/vault/field-grammar';
 import { db, vaultDelegationGrants, vaultGrantRequests } from '@/src/db';
 import {
   canonicalizeGrantPayload,
@@ -213,6 +213,15 @@ function validateSignedFieldName(field: string): string | null {
   }
   return parsedField.value.field === field ? null : 'field must not have leading or trailing whitespace';
 }
+function privateCustodyRefusal(field: string): NextResponse | null {
+  if (isGroupKeyField(field)) {
+    return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 409 });
+  }
+  if (isAppSelfSecretField(field)) {
+    return NextResponse.json({ error: 'App self-secret grants are issued only by app provisioning' }, { status: 409 });
+  }
+  return null;
+}
 
 /**
  * Validate the optional #2231 metadata fields, returning an error message or
@@ -285,9 +294,8 @@ export async function POST(request: NextRequest) {
   if (fieldError) {
     return NextResponse.json({ error: fieldError }, { status: 400 });
   }
-  if (isAppSelfSecretField(field)) {
-    return NextResponse.json({ error: 'App self-secret grants are issued only by app provisioning' }, { status: 409 });
-  }
+  const custodyRefusal = privateCustodyRefusal(field);
+  if (custodyRefusal) return custodyRefusal;
 
   const metadataError = validateGrantMetadata(purpose, oneTime);
   if (metadataError) {

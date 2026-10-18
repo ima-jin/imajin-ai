@@ -10,7 +10,7 @@ export function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'connections' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
   }

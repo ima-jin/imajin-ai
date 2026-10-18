@@ -47,6 +47,7 @@ import { SignJWT } from 'jose';
 import { createLogger } from '@imajin/logger';
 import { loadAndUnseal } from '@/src/lib/vault';
 import { validateSecrets, type AppSecretDeclaration } from '@/src/lib/apps/secret-declarations';
+import { isRepositoryName } from '@/src/lib/apps/template-lineage';
 
 const log = createLogger('kernel:github:org-provisioning');
 
@@ -356,6 +357,52 @@ export interface EnsureRepoResult {
   repoUrl: string;
   /** true when THIS call created the repo; false when an existing repo was found and reused. */
   created: boolean;
+}
+
+/** Safe operator-facing failure; never retain provider bodies or credentials. */
+export class SourceRepoAccessError extends Error {
+  constructor(sourceRepo: string) {
+    super(`apps.provision: sourceRepo '${sourceRepo}' does not exist or is not accessible to this node — make it public or install the node's GitHub App on that repository with Contents read access`);
+    this.name = 'SourceRepoAccessError';
+  }
+}
+
+export interface ExistingSourceRepo extends EnsureRepoResult {
+  /** Ephemeral read credential, never persisted in the ledger or registry. */
+  token: string | null;
+}
+
+/** Discover the repository's installation, not the default ima-jin installation. */
+async function repositoryInstallationToken(sourceRepo: string): Promise<string> {
+  const credential = await loadOrgCredential();
+  const jwt = await mintAppJwt(credential);
+  const installation = await callGitHubApi<{ id: number }>({
+    method: 'GET', path: `/repos/${sourceRepo}/installation`, token: jwt,
+  });
+  const id = installation.data?.id;
+  if (installation.status !== 200 || typeof id !== 'number' || !Number.isSafeInteger(id) || id <= 0) {
+    throw new SourceRepoAccessError(sourceRepo);
+  }
+  const minted = await mintInstallationToken({ ...credential, installationId: String(id) });
+  return minted.token;
+}
+
+/** Explicit sources are read-only: never create a missing repository or use a template. */
+export async function resolveSourceRepo(sourceRepo: string): Promise<ExistingSourceRepo> {
+  if (!isRepositoryName(sourceRepo)) throw new TypeError('sourceRepo must be an owner/name repository identifier');
+  try {
+    const path = `/repos/${sourceRepo}`;
+    const anonymous = await callGitHubApi({ method: 'GET', path });
+    if (anonymous.status === 200) {
+      return { repoUrl: `https://github.com/${sourceRepo}`, created: false, token: null };
+    }
+    const token = await repositoryInstallationToken(sourceRepo);
+    const authenticated = await callGitHubApi({ method: 'GET', path, token });
+    if (authenticated.status !== 200) throw new SourceRepoAccessError(sourceRepo);
+    return { repoUrl: `https://github.com/${sourceRepo}`, created: false, token };
+  } catch {
+    throw new SourceRepoAccessError(sourceRepo);
+  }
 }
 
 interface GitHubRepoResponse {

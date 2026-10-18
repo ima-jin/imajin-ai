@@ -168,6 +168,9 @@ export async function resolveInviteCode(
     .where(eq(invites.code, inviteCode))
     .limit(1);
 
+  if (invite?.delivery === 'direct') {
+    return { ok: false, error: 'Direct connection requests cannot be used to register', status: 403 };
+  }
   if (invite?.status === 'pending' && invite.usedCount < invite.maxUses) {
     return {
       ok: true,
@@ -297,6 +300,11 @@ export async function autoAcceptInvite({
   identity,
 }: AutoAcceptInviteParams): Promise<AutoAcceptInviteResult> {
   try {
+    const [invite] = await db.select({ delivery: invites.delivery }).from(invites)
+      .where(eq(invites.code, inviteCode)).limit(1);
+    if (!invite || invite.delivery === 'direct') {
+      return { ok: false, error: 'Direct connection requests require explicit recipient acceptance' };
+    }
     const podId = generateId('pod_');
     const senderLabel = inviteData.fromHandle ?? inviteData.fromDid.slice(0, 16);
     const accepterLabel = identity.handle ?? identity.id.slice(0, 16);

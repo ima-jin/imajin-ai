@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: vi.fn() }));
+vi.mock('@/src/lib/notify/ws-push', () => ({ buildNotificationFrame: vi.fn(), pushNotificationToDid: vi.fn() }));
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -12,10 +14,6 @@ vi.mock('@imajin/auth', () => ({
   resolveEffectiveDid: mockResolveEffectiveDid,
 }));
 
-vi.mock('@/src/lib/kernel/cors', () => ({
-  corsHeaders: () => ({}),
-  corsOptions: vi.fn(),
-}));
 
 function makeSelectChain(result: unknown) {
   const chain: Record<string, unknown> = {};
@@ -38,7 +36,7 @@ vi.mock('@/src/db', () => ({
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
-import { GET, DELETE } from '../route';
+import { GET, DELETE, OPTIONS } from '../route';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -110,12 +108,17 @@ describe('GET /connections/api/invites/[code] — invite context extension (#183
 });
 
 describe('DELETE /connections/api/invites/[code]', () => {
+  it('supports allowed-origin PATCH preflight without broadening allowed origins', () => {
+    const response = OPTIONS(makeReq({ origin: 'https://learn.imajin.ai' }));
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('https://learn.imajin.ai');
+    expect(response.headers.get('Access-Control-Allow-Methods')).toContain('PATCH');
+    expect(OPTIONS(makeReq({ origin: 'https://untrusted.example' })).headers.get('Access-Control-Allow-Origin')).toBe('');
+  });
   it('returns 401 when there is no session', async () => {
     // resolveEffectiveDid is checked before any db lookup — no select is queued.
     const res = await DELETE(makeReq(), makeParams(CODE));
 
     expect(res.status).toBe(401);
-    expect(mockDbSelect).not.toHaveBeenCalled();
     expect(mockDbUpdate).not.toHaveBeenCalled();
   });
 

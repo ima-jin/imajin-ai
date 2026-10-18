@@ -1,7 +1,7 @@
 import { createLogger } from '@imajin/logger';
 import { publish } from '@imajin/bus';
 import { db, invitesInConnections as invites, podsInConnections as pods, podMembersInConnections as podMembers, connections, profiles } from '@/src/db';
-import { eq, and, or } from 'drizzle-orm';
+import { eq, and, or, ne } from 'drizzle-orm';
 import { generateId } from '@/src/lib/kernel/id';
 import { forEachSequential } from '@/src/lib/async/sequential';
 import { checkPreliminaryEligibility, checkHardEligibility } from '@/src/lib/kernel/verification';
@@ -29,6 +29,9 @@ export async function consumePendingInvites(opts: {
       .where(
         and(
           eq(invites.status, 'pending'),
+          // Direct requests need explicit recipient consent and atomic signed
+          // acceptance, never a coincidental email magic-link reauthentication.
+          ne(invites.delivery, 'direct'),
           or(
             eq(invites.toEmail, normalizedEmail),
             eq(invites.toDid, did),
@@ -42,6 +45,7 @@ export async function consumePendingInvites(opts: {
     // marks itself accepted — invites are consumed one at a time in order, and a
     // failure on one is logged without blocking the next.
     await forEachSequential(pendingInvites, async (invite) => {
+      if (invite.delivery === 'direct') return;
       // Skip self-invites
       if (invite.fromDid === did) return;
 

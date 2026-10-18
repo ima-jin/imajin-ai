@@ -75,6 +75,7 @@ function CustodyCell({ row }: Readonly<{ row: VaultSecretRow }>) {
           {row.grantedTo.length > 20 ? `${row.grantedTo.slice(0, 14)}…${row.grantedTo.slice(-6)}` : row.grantedTo}
         </p>
       )}
+      {row.purpose && <p className="text-xs text-gray-500 dark:text-gray-400">{row.purpose}</p>}
       {row.expiresAt && (
         <p className={`text-xs ${
           isExpired ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'
@@ -135,6 +136,7 @@ async function fetchVaultList(): Promise<VaultSecretRow[]> {
     status: toStatus(row),
     custodyScheme: row.custodyScheme ?? 'node-sealed',
     grantedTo: row.grantedTo,
+    purpose: row.purpose,
     expiresAt: row.expiresAt,
     grantStatus: row.grantStatus,
   }));

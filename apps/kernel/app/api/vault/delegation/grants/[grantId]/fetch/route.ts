@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { requireAuth, authErrorResponse } from '@imajin/auth';
 import { createLogger } from '@imajin/logger';
 import { fetchGrantSecret, getGrantById, type GrantFetchOutcome } from '@/src/lib/vault';
-import { isAppSelfSecretField } from '@/src/lib/vault/field-grammar';
+import { isAppSelfSecretField, isGroupKeyField } from '@/src/lib/vault/field-grammar';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
 import { GRANT_NOT_FOUND_STATUS, GRANT_NOT_FOUND_ERROR, publishVaultDelegationAudit } from '@/src/lib/vault/route-helpers';
 
@@ -85,7 +85,7 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
   const granteeDid = authResult.identity.id;
 
   try {
-    // Refuse app-self fields BEFORE fetchGrantSecret can decrypt or consume.
+    // Refuse private custody fields BEFORE fetchGrantSecret can decrypt or consume.
     let grant;
     try {
       grant = await getGrantById(grantId);
@@ -94,7 +94,7 @@ export async function POST(request: Request, props: { params: Promise<{ grantId:
         status: 403, headers: { 'Cache-Control': 'no-store' },
       });
     }
-    if (grant && isAppSelfSecretField(grant.field)) {
+    if (grant && (isAppSelfSecretField(grant.field) || isGroupKeyField(grant.field))) {
       return NextResponse.json({ error: 'Unable to fetch this grant' }, {
         status: 403, headers: { 'Cache-Control': 'no-store' },
       });

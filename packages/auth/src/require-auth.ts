@@ -165,7 +165,7 @@ export interface ActingAsResult {
 
 /**
  * Validate that a caller is an active owner or admin controller of a group DID.
- * Optionally checks if the controller has access to a specific service.
+ * Checks controller service restrictions when the caller supplies a service.
  * Uses the internal API to avoid recursive auth checks.
  *
  * Exported (#2639) so the kernel's app-token mint can run this SAME gate once, at
@@ -199,11 +199,13 @@ export async function validateActingAs(
 
     const allowedServices: string[] | null = data.allowedServices ?? null;
 
-    // If a service is specified and the controller has a restricted list, check it
-    if (service && allowedServices && allowedServices.length > 0) {
-      if (!allowedServices.includes(service)) {
-        return { valid: false };
-      }
+    // Empty/malformed restrictions grant nothing. Preserve optional-service
+    // compatibility for legacy direct callers; resolveEffectiveDid requires it.
+    if (allowedServices !== null && (
+      !Array.isArray(allowedServices) || allowedServices.length === 0 ||
+      (service !== undefined && !allowedServices.includes(service))
+    )) {
+      return { valid: false };
     }
 
     return { valid: true, role: data.role, allowedServices };

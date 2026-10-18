@@ -20,6 +20,8 @@ import type { OperatorApprovalCard } from '../notify/operator-approvals-service'
 import { resolveVaultAuthorization } from '../vault/authorization';
 import { runAppProvision, type AppProvisionOutcome } from './provision';
 import { parseManifestDeclarations } from './declarations-approval';
+import { APP_VISIBILITY_ERROR, isAppVisibility } from './visibility';
+import { isRepositoryName } from './template-lineage';
 
 const log = createLogger('kernel:apps:approvals-execution');
 
@@ -86,6 +88,15 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
   }
   const template = requireString(card.detail, 'template') ?? undefined;
   const attestationTypes = readAttestationTypes(card.detail);
+  const visibility = card.detail?.visibility === undefined ? 'public' : card.detail.visibility;
+  if (!isAppVisibility(visibility)) return { ok: false, error: APP_VISIBILITY_ERROR };
+  const sourceRepo = card.detail?.sourceRepo;
+  if (sourceRepo !== undefined && !isRepositoryName(sourceRepo)) {
+    return { ok: false, error: 'apps:provision sourceRepo must be an owner/name repository identifier' };
+  }
+  if (card.detail?.reissueClaim === true && Object.hasOwn(card.detail, 'sourceRepo')) {
+    return { ok: false, error: 'Reissuing a claim cannot change sourceRepo' };
+  }
 
   try {
     // #2663: the providesScopes/dependsOn list the operator saw on the card — the
@@ -94,9 +105,10 @@ export async function executeAppsProvisionApproval(card: OperatorApprovalCard): 
     const siteOwnerDid = requireString(card.detail, 'siteOwnerDid');
     const domain = requireString(card.detail, 'domain');
     const outcome: AppProvisionOutcome = await runAppProvision({
-      slug, displayName, template, attestationTypes, approvedDeclarations, authorizedBy,
+      slug, displayName, template, attestationTypes, approvedDeclarations, authorizedBy, visibility,
       ...(siteOwnerDid ? { siteOwnerDid } : {}),
       ...(domain ? { domain } : {}),
+      ...(sourceRepo ? { sourceRepo } : {}),
     });
     if (outcome.status === 'failed') {
       return { ok: false, error: `apps.provision failed at step '${outcome.failedStep}': ${outcome.error}` };

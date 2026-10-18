@@ -8,14 +8,18 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockMigrateCustody, mockRequireAdmin } = vi.hoisted(() => ({
+const { mockMigrateCustody, mockRequireAdmin, mockSelectLiveV1Fields } = vi.hoisted(() => ({
   mockMigrateCustody: vi.fn<() => Promise<Record<string, unknown>>>(),
+  mockSelectLiveV1Fields: vi.fn(async (): Promise<{ field: string }[]> => []),
   mockRequireAdmin: vi.fn(async () => true),
 }));
 
 vi.mock('@imajin/auth', () => ({ requireAdmin: mockRequireAdmin }));
 
-vi.mock('@/src/lib/vault/migrate-custody', () => ({ migrateCustody: mockMigrateCustody }));
+vi.mock('@/src/lib/vault/migrate-custody', () => ({
+  migrateCustody: mockMigrateCustody,
+  selectLiveV1Fields: mockSelectLiveV1Fields,
+}));
 
 vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
@@ -51,6 +55,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRequireAdmin.mockResolvedValue(true);
   mockMigrateCustody.mockResolvedValue(report());
+  mockSelectLiveV1Fields.mockResolvedValue([]);
 });
 
 describe('POST /api/vault/migrate-custody', () => {

@@ -26,7 +26,7 @@ async function authorize(request: NextRequest, context: Context) {
   const { id } = await context.params;
   const connector = getConnector(id);
   if (!connector) return NextResponse.json({ error: 'Unknown connector' }, { status: 404, headers: headers(request) });
-  const auth = await resolveConnectorOwnerDid(request);
+  const auth = await resolveConnectorOwnerDid(request, { service: 'connections' });
   if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: headers(request) });
   return { connector, ownerDid: auth.ownerDid };
 }

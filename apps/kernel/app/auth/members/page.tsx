@@ -48,5 +48,5 @@ export default async function MembersPage() {
     );
   }
 
-  return <IdentityMembersPanel groupDid={did} />;
+  return <IdentityMembersPanel groupDid={did} scope={identity.scope} />;
 }

@@ -20,7 +20,7 @@ describe('RecipientPicker — relationship labels (#2945)', () => {
     const onModeChange = vi.fn();
     render(<RecipientPicker mode="connection" onModeChange={onModeChange} selectedConnection={null} onSelectConnection={onSelectConnection} invite={{ email: '', delivery: 'email', note: '' }} onInviteChange={vi.fn()} />);
     await screen.findByText('Vendor');
-    expect(fetchSpy).toHaveBeenCalledWith('/connections/api/connections');
+    expect(fetchSpy).toHaveBeenCalledWith('/connections/api/connections', { credentials: 'include' });
     fireEvent.click(screen.getByRole('button', { name: 'Clients' }));
     expect(screen.queryByText('Vendor')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Client client/ }));

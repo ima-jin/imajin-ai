@@ -1242,6 +1242,30 @@ describe('per-source renderer registry — github', () => {
 // alongside the app's own `/claim` page URL (#2427) so the operator can
 // paste the code there instead of ssh-ing in to edit an env file.
 describe('per-source renderer registry — apps', () => {
+  it('shows the signed visibility, site owner and approved host before the operator approves', async () => {
+    const summary = "Provision app 'gbs' (GBS). Visibility: private. Site owner: did:imajin:gbs; issue dev-gbs.imajin.ai from Imajin's organization.";
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      summary,
+      detail: { slug: 'gbs', displayName: 'GBS', visibility: 'private', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText(summary)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+  });
+  it('shows the exact existing source repository instead of a misleading template', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      detail: {
+        slug: 'gbs', displayName: 'GBS', sourceRepo: 'GBScontracting/Website',
+        template: 'ima-jin/imajin-app-template',
+      },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('GBScontracting/Website')).toBeDefined();
+    expect(screen.getByText('Source repository')).toBeDefined();
+    expect(screen.getByText(/No repository is created/)).toBeDefined();
+    expect(screen.queryByText('Template')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+  });
   it.each([true, false])('renders featured=%s as directory curation, never provisioning', async (featured) => {
     installFetch([{ isOperator: true, approvals: [appsApproval({
       kind: 'apps:featured',
