@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { readFileSync } from 'node:fs';
@@ -32,6 +32,7 @@ import {
   resolveRoutableDomain, issueImajinDomain, recheckDomains,
 } from '../service';
 import { DomainError, normalizeDomain } from '../normalize';
+import { provisionAppDomain } from '@/src/lib/apps/provision-domain';
 
 const migration = readFileSync('migrations/0211_domain_bindings.sql', 'utf8');
 const key = '1'.repeat(64);
@@ -48,7 +49,8 @@ beforeAll(async () => {
   pg = new PGlite();
   await pg.exec(`
     CREATE SCHEMA auth; CREATE SCHEMA registry; CREATE SCHEMA profile;
-    CREATE TABLE auth.identities (id text PRIMARY KEY, public_key text, suspended_at timestamptz);
+    CREATE TABLE auth.identities (id text PRIMARY KEY, public_key text, suspended_at timestamptz,
+      handle text, scope text, subtype text, tier text);
     CREATE TABLE registry.apps (app_did text PRIMARY KEY, owner_did text, status text, entry_url text, callback_url text, homepage_url text);
     CREATE TABLE registry.nodes (id text PRIMARY KEY, subdomain text);
     CREATE TABLE auth.attestations (
@@ -73,7 +75,8 @@ beforeEach(async () => {
   state.txt.mockResolvedValue([['did:owner']]);
   await pg.exec(`
     TRUNCATE auth.domain_bindings, auth.attestations, auth.identities, registry.apps, registry.nodes, profile.forest_config;
-    INSERT INTO auth.identities VALUES ('did:owner','pub',NULL),('did:other','other',NULL),('did:site','site',NULL),('did:org','org',NULL);
+    INSERT INTO auth.identities (id, public_key, suspended_at)
+      VALUES ('did:owner','pub',NULL),('did:other','other',NULL),('did:site','site',NULL),('did:org','org',NULL);
     INSERT INTO registry.apps VALUES
       ('did:app','did:site','active','https://example.com/app','https://example.com/callback',NULL),
       ('did:other-app','did:other','active',NULL,NULL,NULL);
@@ -320,6 +323,55 @@ describe('read-time authority and failed rechecks', () => {
     state.txt.mockRejectedValue({ code: 'ESERVFAIL' });
     await expect(verifyDomain('example.com', 'did:owner')).rejects.toMatchObject({ code: 'dns_unavailable' });
     expect(await countAttestations()).toBe(0);
+  });
+});
+
+describe('pinned platform issuer authority with actual database predicates', () => {
+  beforeEach(async () => {
+    vi.stubEnv('PLATFORM_DID', 'did:org');
+    const signing = await vi.importActual<typeof import('../signing')>('../signing');
+    state.org.mockImplementation(signing.getImajinOrganization);
+    state.signer.mockResolvedValue({ issuerDid: 'did:org', privateKey: key });
+    await pg.exec(`UPDATE auth.identities SET handle = 'imajin', scope = 'community',
+      subtype = 'network', tier = 'preliminary' WHERE id = 'did:org'`);
+  });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it('signs host evidence for the pinned community/network/preliminary identity and the recorded site owner', async () => {
+    await provisionAppDomain('did:app', 'gbs', 'dev-gbs.imajin.ai');
+    expect(await resolveVerifiedDomain('dev-gbs.imajin.ai')).toMatchObject({
+      zoneOwner: 'did:org', siteOwner: 'did:site', status: 'verified',
+      attestation: { issuerDid: 'did:org', subjectDid: 'did:site' },
+    });
+    expect(await countAttestations()).toBe(1);
+    expect(state.warn).not.toHaveBeenCalled();
+    expect(state.txt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "id = 'did:wrong'",
+    "handle = 'not-imajin'",
+    'suspended_at = now()',
+  ])('refuses an unauthorized issuer (%s) without writing evidence', async (update) => {
+    await pg.exec(`UPDATE auth.identities SET ${update} WHERE id = 'did:org'`);
+    await expect(issueImajinDomain({ domain: 'dev-gbs.imajin.ai', appDid: 'did:app' }))
+      .rejects.toMatchObject({ code: 'issuer_unavailable', status: 503 });
+    expect(await countAttestations()).toBe(0);
+    expect(await query('SELECT id FROM auth.domain_bindings')).toEqual([]);
+    expect(state.signer).not.toHaveBeenCalled();
+  });
+
+  it('defers provisioning when PLATFORM_DID is unset, then issues on an approved retry after configuration', async () => {
+    vi.stubEnv('PLATFORM_DID', undefined);
+    await expect(provisionAppDomain('did:app', 'gbs', 'dev-gbs.imajin.ai')).resolves.toBeUndefined();
+    expect(state.warn).toHaveBeenCalledWith({}, expect.stringContaining('issuance deferred'));
+    expect(await countAttestations()).toBe(0);
+    expect(await query('SELECT id FROM auth.domain_bindings')).toEqual([]);
+    expect(state.signer).not.toHaveBeenCalled();
+    vi.stubEnv('PLATFORM_DID', 'did:org');
+    await provisionAppDomain('did:app', 'gbs', 'dev-gbs.imajin.ai');
+    expect(await resolveVerifiedDomain('dev-gbs.imajin.ai')).toMatchObject({ siteOwner: 'did:site', status: 'verified' });
+    expect(await countAttestations()).toBe(1);
   });
 });
 

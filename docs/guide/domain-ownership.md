@@ -49,16 +49,18 @@ The existing countersigned `POST /api/apps/provision` proposal accepts
 and `<slug>.imajin.ai` as host. The proposal displays the owner and host before
 approval. Reissuing a signing-key claim cannot transfer ownership.
 
-Issuance uses the existing unique `@imajin` business identity, not an arbitrary
-node claiming to be Imajin. Its DID must also match the existing public
-`PLATFORM_DID` organization configuration; the handle alone is not authority.
+Issuance uses the unsuspended identity pinned by the existing public
+`PLATFORM_DID` configuration, with the expected `imajin` handle, not an arbitrary
+node claiming to be Imajin. The pinned DID is the authority; the handle alone
+is not. There is no scope or tier gate: the real `@imajin` identity is
+`community` / `network` / `preliminary`.
 This is an identity reference, not a credential. Bootstrap its signing key through
 the vault, with an active reusable `domain.issue` purpose grant to the configured node
 DID. The kernel checks the fetched key against the organization's registered
 public key before signing. Missing organization identity, missing grant, or a
-key mismatch fails provisioning at the domain step rather than publishing
-unsigned ownership. No organization key or domain credential belongs in an
-environment file.
+key mismatch defers domain issuance without failing app provisioning or publishing
+unsigned ownership; retry the approved host after setup. No organization key or
+domain credential belongs in an environment file.
 
 ## Visitor evidence and app-host integration
 
