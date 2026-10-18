@@ -10,7 +10,7 @@ import type { OperatorApprovalCard } from '@/src/lib/notify/operator-approvals-s
 import { canExecuteImport } from './import-authority';
 import { resolveVaultAuthorization } from './authorization';
 import { sealAndGrantStaticSecret, revokeStaticSecretGrant, vaultService, type DbExecutor } from './index';
-import { getNodeSigningIdentity, isVaultTier1 } from './sealing';
+import { isVaultTier1 } from './sealing';
 import { GROUP_KEY_NAMESPACE, isGroupKeyField } from './field-grammar';
 
 export const GROUP_CUSTODY_KIND = 'vault:custody-group-key';
@@ -43,9 +43,8 @@ export function groupKeyField(proposalId: string): string {
 
 /** Proposal-time checks never select ciphertext. Execution repeats them under locks. */
 export async function authorizeGroupKey(operatorDid: string, detail: GroupKeyDetail, executor: DbExecutor = db): Promise<void> {
-  if (isVaultTier1() || operatorDid !== await getOperatorDid()
+  if (!process.env.AUTH_PRIVATE_KEY || isVaultTier1() || operatorDid !== await getOperatorDid()
     || detail.nodeDid !== await getNodeDidFromConfig()
-    || detail.nodeDid !== getNodeSigningIdentity().senderDid
     || !(await canExecuteImport(operatorDid, detail.groupDid, executor))) throw new Error(FAILURE);
   const [group] = await executor.select({ scope: identities.scope, suspendedAt: identities.suspendedAt })
     .from(identities).where(eq(identities.id, detail.groupDid)).limit(1);
@@ -139,7 +138,7 @@ export async function executeGroupKeyApproval(card: OperatorApprovalCard): Promi
       const audit = await prepareMechanicalAttestation({
         subjectDid: detail.groupDid, type: card.kind === GROUP_CUSTODY_KIND ? 'vault.key.imported' : 'vault.key.revoked',
         contextId: card.proposalId, contextType: 'vault.group-key',
-        payload: { ...detail, field: result.field, grantId: result.grantId, action: card.kind, authorizedBy: resolveVaultAuthorization(card) },
+        payload: { ...detail, publicKey: group.publicKey, field: result.field, grantId: result.grantId, action: card.kind, authorizedBy: resolveVaultAuthorization(card) },
       });
       await tx.insert(attestations).values(audit);
       await tx.update(operatorApprovals).set({ status: 'applied', appliedAt: new Date(), updatedAt: new Date() })

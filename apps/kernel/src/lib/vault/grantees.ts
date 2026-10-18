@@ -20,6 +20,7 @@
 import { and, eq, gt, isNull, ne, or } from 'drizzle-orm';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { isVaultTier1 } from './sealing';
+import { isGroupKeyField } from './field-grammar';
 
 export interface VaultGrantee {
   grantId: string;
@@ -43,7 +44,8 @@ export async function listOtherActiveGrantees(field: string, nodeDid: string): P
       and(
         eq(vaultDelegationGrants.field, field),
         eq(vaultDelegationGrants.status, 'active'),
-        ne(vaultDelegationGrants.grantedTo, nodeDid),
+        // Group custody is NOT a node self-grant: show its node consumer.
+        isGroupKeyField(field) ? undefined : ne(vaultDelegationGrants.grantedTo, nodeDid),
         isNull(vaultDelegationGrants.consumedAt),
         or(isNull(vaultDelegationGrants.expiresAt), gt(vaultDelegationGrants.expiresAt, new Date())),
       ),
@@ -71,5 +73,5 @@ export interface RotateGranteeGuard {
  * re-issue, so a field with grantees is refused (fail-closed, #2450).
  */
 export async function getRotateGranteeGuard(field: string, nodeDid: string): Promise<RotateGranteeGuard> {
-  return { grantees: await listOtherActiveGrantees(field, nodeDid), reissuedOnRotate: !isVaultTier1() };
+  return { grantees: await listOtherActiveGrantees(field, nodeDid), reissuedOnRotate: !isGroupKeyField(field) && !isVaultTier1() };
 }

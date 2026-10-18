@@ -142,6 +142,22 @@ function validateDetailForKind(kind: string, detail: Record<string, unknown>): V
   }
 }
 
+async function prepareGroupDetail(kind: string, body: VaultProposalBody, detail: Record<string, unknown>, operatorDid: string) {
+  if (kind !== 'custody-group-key' && kind !== 'revoke-group-key') return null;
+  if (Object.keys(body).some(key => !['kind', 'detail'].includes(key))
+    || Object.keys(detail).some(key => !['groupDid', 'purpose'].includes(key))) {
+    return { error: 'Invalid group key proposal', status: 400 };
+  }
+  try {
+    detail.nodeDid = await getNodeDidFromConfig();
+    const parsed = readGroupKeyDetail(detail);
+    if (!parsed) return { error: 'Invalid group key proposal', status: 400 };
+    await authorizeGroupKey(operatorDid, parsed);
+    return null;
+  } catch {
+    return { error: 'Group key custody unavailable', status: 403 };
+  }
+}
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -179,21 +195,8 @@ export async function POST(request: NextRequest) {
   const detail = (typeof body.detail === 'object' && body.detail !== null && !Array.isArray(body.detail))
     ? (body.detail as Record<string, unknown>)
     : {};
-  if (kind === 'custody-group-key' || kind === 'revoke-group-key') {
-    // Consumer is kernel configuration, never a caller-selected DID.
-    if (Object.keys(body).some(key => !['kind', 'detail'].includes(key))
-      || Object.keys(detail).some(key => !['groupDid', 'purpose'].includes(key))) {
-      return NextResponse.json({ error: 'Invalid group key proposal' }, { status: 400, headers: cors });
-    }
-    try {
-      detail.nodeDid = await getNodeDidFromConfig();
-      const parsed = readGroupKeyDetail(detail);
-      if (!parsed) return NextResponse.json({ error: 'Invalid group key proposal' }, { status: 400, headers: cors });
-      await authorizeGroupKey(operatorDid, parsed);
-    } catch {
-      return NextResponse.json({ error: 'Group key custody unavailable' }, { status: 403, headers: cors });
-    }
-  }
+  const groupError = await prepareGroupDetail(kind, body, detail, operatorDid);
+  if (groupError) return NextResponse.json({ error: groupError.error }, { status: groupError.status, headers: cors });
 
   const validation = validateDetailForKind(kind, detail);
   if (!validation.ok) {
@@ -231,7 +234,10 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ proposalId }, { status: 201, headers: cors });
   } catch (err) {
-    log.error({ err: String(err), kind: proposalKind, operatorDid }, 'Failed to record vault proposal');
+    // Custody diagnostics never forward provider exceptions.
+    if (kind !== 'custody-group-key' && kind !== 'revoke-group-key') {
+      log.error({ err: String(err), kind: proposalKind, operatorDid }, 'Failed to record vault proposal');
+    }
     return NextResponse.json({ error: 'Failed to raise vault proposal' }, { status: 500, headers: cors });
   }
 }

@@ -32,6 +32,7 @@
 | **Rate limiting** | `rateLimit(key, limit, windowMs)`, `getClientIP` | `@imajin/config` | Hand-roll a limiter. Key by IP *and* (for abuse-sensitive flows) by email/subject. |
 | **Verified domain ownership and routing** | `addDomain`, `verifyDomain`, `removeDomain`, `listDomains`, `resolveVerifiedDomain`, `issueImajinDomain`, `resolveRoutableDomain` | `apps/kernel/src/lib/domains/service.ts` | Accept a caller-supplied site owner, invent verified evidence, route pending claims, or use the node identity as the Imajin organization. Mutating routes must enforce shared delegation policy and owner/admin authorization. |
 | **Domain-scoped vault credentials** | `resolveDomainCredential(domain, granteeDid, purpose)` | `apps/kernel/src/lib/vault/domain-credential.ts` | Fall back to node environment credentials or raw unseal. Resolve verified binding → zone owner → active subject/purpose/grantee-bound grant → existing grant fetch. |
+| **Server-held group signing-key custody** | `vault:custody-group-key` / `vault:revoke-group-key` on the existing `/jin` vault proposal rail | `apps/kernel/src/lib/vault/group-key.ts` | Decrypt in a shell, generate replacement secrets, export custody fields, or grant to caller-selected nodes. The current owner/admin operator countersigns identifiers only; the kernel authenticates the stored seed, matches its public key and reuses static-secret sealing and purpose fetch. |
 
 ### App-owned checkout patterns
 
