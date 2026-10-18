@@ -27,7 +27,7 @@ import {
   parseReachKnock, resolveReachRecipient,
 } from '../reach-bearer';
 
-const state = vi.hoisted(() => ({ db: null as unknown, client: null as unknown, log: vi.fn(), auth: vi.fn(), node: vi.fn() }));
+const state = vi.hoisted(() => ({ db: null as unknown, client: null as unknown, log: vi.fn(), auth: vi.fn(), node: vi.fn(), limit: vi.fn() }));
 vi.mock('@imajin/db', () => ({ getClient: () => state.client }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), ...await import('@/src/db/schemas/access'),
@@ -46,7 +46,7 @@ vi.mock('@imajin/bus', () => ({
 }));
 vi.mock('@imajin/config', async original => ({
   ...await original<typeof import('@imajin/config')>(),
-  rateLimit: vi.fn(() => ({ limited: false, retryAfter: 0 })), getClientIP: () => '192.0.2.1',
+  rateLimit: state.limit,
 }));
 vi.mock('@/src/lib/auth/foreign-principal-stub', () => ({
   resolveOrMintForeignPrincipalStub: async () => ({ did: 'did:imajin:unverified-human' }),
@@ -124,6 +124,28 @@ beforeAll(async () => {
 });
 
 describe('static-header HTTP round trip', () => {
+  let floodSequence = 0;
+  async function realLimits() {
+    const { rateLimit } = await vi.importActual<typeof import('@imajin/config')>('@imajin/config');
+    const namespace = `bearer-test-${floodSequence++}:`;
+    state.limit.mockImplementation((key: string, cap: number, window: number) => rateLimit(namespace + key, cap, window));
+  }
+  function deliver(bearer: string, message: string, extra: Record<string, unknown> = {}) {
+    return send(new NextRequest('https://node.test/reach/ryan', {
+      method: 'POST', headers: { authorization: `Bearer ${bearer}` },
+      body: JSON.stringify({ topic: 'business_development', message, replyHandle: 'opaque:thread', ...extra }),
+    }), { params: Promise.resolve({ handle: 'ryan' }) });
+  }
+  async function knockCredential() {
+    const response = await knock(new NextRequest('https://node.test/reach/ryan/knock', {
+      method: 'POST', body: JSON.stringify(input),
+    }), { params: Promise.resolve({ handle: 'ryan' }) });
+    expect(response.status).toBe(201);
+    return response.json();
+  }
+  function throttleEvents() {
+    return vi.mocked(publish).mock.calls.filter(([type]) => type === 'agent.reach.throttled');
+  }
   async function contact() {
     const response = await knock(new NextRequest('https://node.test/reach/ryan/knock', {
       method: 'POST', body: JSON.stringify(input),
@@ -139,9 +161,9 @@ describe('static-header HTTP round trip', () => {
     expect(reachId).toEqual(expect.any(String));
     return { ...credential, reachId };
   }
-  function poll(bearer: string, reachId: string, principalDid = owner) {
+  function poll(bearer: string, reachId: string, principalDid = owner, ip?: string) {
     return status(new NextRequest('https://node.test/status', {
-      method: 'POST', headers: { authorization: `Bearer ${bearer}` },
+      method: 'POST', headers: { authorization: `Bearer ${bearer}`, ...(ip ? { 'x-forwarded-for': ip } : {}) },
     }), { params: Promise.resolve({ did: principalDid, reachId }) });
   }
   async function answer(reachId: string) {
@@ -158,6 +180,89 @@ describe('static-header HTTP round trip', () => {
     expect(response.status).toBe(200);
     return (await response.json()).reply;
   }
+
+  it('caps a knock-minted bearer flood before persistence with one metadata-only audit', async () => {
+    await realLimits();
+    const credential = await contact();
+    const responses = [];
+    for (let n = 0; n < 14; n++) responses.push(await deliver(credential.bearer, `PRIVATE flood ${n}`));
+    expect(responses.filter(response => response.status === 200)).toHaveLength(4);
+    expect(responses.filter(response => response.status === 429)).toHaveLength(10);
+    expect(responses.at(-1)?.headers.get('retry-after')).toBe('60');
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(5);
+    expect(throttleEvents()).toHaveLength(1);
+    expect(JSON.stringify(throttleEvents())).not.toContain(credential.bearer);
+    expect(JSON.stringify(throttleEvents())).not.toContain('PRIVATE');
+  });
+
+  it.each(['{}', '{invalid'])('still revokes a corrupt stored knock claim %s without inventing a cascade', async purpose => {
+    const result = await issued();
+    await pg.query('UPDATE auth.delegate_grant_bearers SET purpose = $1', [purpose]);
+    expect(await blockReachBearerKnock({ principalDid: owner, requestId: result.requestId })).toBe(true);
+    expect((await pg.query('SELECT requester_did FROM auth.reach_sender_blocks')).rows).toEqual([{ requester_did: result.requesterDid }]);
+    expect((await pg.query('SELECT token_hash FROM auth.delegate_grant_bearers')).rows).toEqual([{ token_hash: null }]);
+  });
+
+  it('shares the platform-account send budget across newly knock-minted bearers', async () => {
+    const credentials = [];
+    for (let n = 0; n < 12; n++) credentials.push(await knockCredential());
+    await realLimits();
+    const statuses = [];
+    for (const [n, credential] of credentials.entries()) {
+      statuses.push((await deliver(credential.bearer, `PRIVATE account ${n}`)).status);
+    }
+    expect(statuses).toEqual([...Array(10).fill(200), 429, 429]);
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(10);
+    expect(throttleEvents()).toHaveLength(1);
+    expect(throttleEvents()[0][1].payload).toMatchObject({ dimension: 'principal' });
+  });
+
+  it('caps authenticated status polling across IPs without spending send allowance or leaking replies on throttles', async () => {
+    const credential = await contact();
+    await answer(credential.reachId);
+    await realLimits();
+    const responses = [];
+    for (let n = 0; n < 70; n++) responses.push(await poll(credential.bearer, credential.reachId, owner, `192.0.2.${n}`));
+    expect(responses.filter(response => response.status === 200)).toHaveLength(60);
+    expect(responses.filter(response => response.status === 429)).toHaveLength(10);
+    expect(await responses.at(-1)!.json()).toEqual({ error: 'rate_limited' });
+    expect(throttleEvents()).toHaveLength(1);
+    expect(throttleEvents()[0][1].payload).toMatchObject({ dimension: 'stub' });
+    expect(JSON.stringify(throttleEvents())).not.toContain(credential.bearer);
+    expect((await deliver(credential.bearer, 'Allowed after polling')).status).toBe(200);
+  });
+
+  it('caps IP polling floods before authenticating and never exposes the bearer or IP in throttle audits', async () => {
+    const credential = await contact();
+    await realLimits();
+    const responses = [];
+    for (let n = 0; n < 70; n++) responses.push(await poll(credential.bearer, credential.reachId, owner, '192.0.2.200'));
+    expect(responses.filter(response => response.status === 200)).toHaveLength(60);
+    expect(responses.filter(response => response.status === 429)).toHaveLength(10);
+    expect(throttleEvents()).toHaveLength(1);
+    expect(throttleEvents()[0][1].payload).toMatchObject({ dimension: 'ip' });
+    expect(JSON.stringify(throttleEvents())).not.toContain('192.0.2.200');
+    expect(JSON.stringify(throttleEvents())).not.toContain(credential.bearer);
+  });
+
+  it('rejects an oversized bearer send before sliding its expiry or persisting an envelope', async () => {
+    const credential = await knockCredential();
+    expect((await deliver(credential.bearer, 'Small message', { padding: 'x'.repeat(64 * 1024) })).status).toBe(413);
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(0);
+    expect((await pg.query('SELECT last_used_at FROM auth.delegate_grant_bearers')).rows).toEqual([{ last_used_at: null }]);
+  });
+
+  it('a knock blocked before delivery also blocks a fresh bearer for its claimed principal', async () => {
+    const first = await knockCredential();
+    await blockReachBearerKnock({ principalDid: owner, requestId: first.requestId });
+    const second = await knockCredential();
+    expect((await deliver(second.bearer, 'Must not arrive')).status).toBe(403);
+    expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(0);
+    expect((await poll(first.bearer, 'unknown')).status).toBe(401);
+    expect(emitAttestation).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ outcome: 'denied', signatureVerified: false }),
+    }));
+  });
 
   function tool(name: string, args: Record<string, unknown>, bearer?: string, handle = 'ryan') {
     return mcp(new NextRequest(`https://node.test/reach/${handle}/mcp`, {
@@ -231,7 +336,7 @@ describe('static-header HTTP round trip', () => {
     vi.mocked(rateLimit).mockReturnValueOnce({ limited: true, retryAfter: 30 });
     const response = await tool('reach_send', { topic: 'business_development', message: 'Hello' }, credential.bearer);
     expect(response.status).toBe(429);
-    expect(rateLimit).toHaveBeenCalledWith(`reach:send:${owner}:${credential.requesterDid}`, 5, 60_000);
+    expect(rateLimit).toHaveBeenCalledWith(expect.stringMatching(/^reach:guard:stub:/), 5, 60_000);
     expect((await pg.query('SELECT reach_id FROM auth.reach_envelopes')).rows).toHaveLength(0);
   });
 
@@ -302,7 +407,7 @@ beforeEach(async () => {
   failInsert = false;
   queries = [];
   vi.clearAllMocks();
-  vi.mocked(rateLimit).mockReturnValue({ limited: false, retryAfter: 0 });
+  state.limit.mockReset().mockReturnValue({ limited: false, retryAfter: 0 });
   vi.mocked(emitAttestation).mockResolvedValue({} as never);
   vi.mocked(publish).mockResolvedValue(undefined);
   state.auth.mockResolvedValue({ identity: { id: owner, scope: 'actor', subtype: 'human' } });
@@ -393,7 +498,9 @@ describe('reach bearer issuance (#2591)', () => {
     expect((await pg.query('SELECT status, token_hash, revoked_by FROM auth.delegate_grant_bearers')).rows)
       .toEqual([{ status: 'revoked', token_hash: null, revoked_by: owner }]);
     expect((await listReachBearerKnocks(owner))[0].status).toBe('revoked');
-    expect((await pg.query('SELECT * FROM auth.reach_sender_blocks')).rows).toHaveLength(1);
+    expect((await pg.query('SELECT requester_did FROM auth.reach_sender_blocks')).rows).toEqual(expect.arrayContaining([
+      { requester_did: result.requesterDid }, { requester_did: 'did:imajin:unverified-human' },
+    ]));
   });
 
   it('the existing foreign-agent block primitive also erases reach bearer hashes', async () => {
