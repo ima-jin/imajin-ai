@@ -22,6 +22,7 @@ import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import { REGISTRY_APP_TIERS, type RegistryAppTier } from '@/src/db/schemas/registry';
 import { createLogger } from '@imajin/logger';
+import { validateTemplateLineage } from '@/src/lib/apps/template-lineage';
 
 const log = createLogger('kernel');
 
@@ -170,6 +171,11 @@ export async function GET(_request: NextRequest) {
       actAsAllowed: registryApps.actAsAllowed,
       status: registryApps.status,
       tier: registryApps.tier,
+      sourceRepo: registryApps.sourceRepo,
+      template: registryApps.template,
+      templateRef: registryApps.templateRef,
+      templateSyncedAt: registryApps.templateSyncedAt,
+      joined: registryApps.joined,
       allowedRedirectHosts: registryApps.allowedRedirectHosts,
       tokenAudiences: registryApps.tokenAudiences,
       revokedAt: registryApps.revokedAt,
@@ -207,6 +213,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: validated.error }, { status: 400 });
   }
   const { tier, name, callbackUrl, ownerDid, slug } = validated.ok;
+  const lineage = validateTemplateLineage(rawBody);
+  if ('error' in lineage) {
+    return NextResponse.json({ error: lineage.error }, { status: 400 });
+  }
 
   const keyResult = resolvePublicKey(body.publicKey);
   if ('error' in keyResult) {
@@ -275,6 +285,7 @@ export async function POST(request: NextRequest) {
     slug,
     allowedRedirectHosts,
     tokenAudiences,
+    ...lineage.ok,
     // #1348: the admin surface only takes a single callbackUrl, so the
     // registered redirect_uris set is that one URI — keeps /oauth/authorize's
     // exact-set match behaving identically to the pre-#1348 comparison for
