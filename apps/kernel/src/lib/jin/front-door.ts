@@ -38,6 +38,8 @@ import { createLogger } from '@imajin/logger';
 import { brokerTermVocabulary, normalizeBrokerTerm } from '@imajin/auth/broker-consent-vocabulary';
 import { db, identities, consentGrants } from '@/src/db';
 import { generateId } from '@/src/lib/kernel/id';
+import { gateTierForIdentityTier } from '@/src/lib/auth/reach-tier';
+export { gateTierForIdentityTier } from '@/src/lib/auth/reach-tier';
 
 const log = createLogger('kernel');
 
@@ -58,25 +60,6 @@ export type FrontDoorTier = (typeof FRONT_DOOR_TIERS)[number];
 /** The tiers the operator can switch on — everything except the locked `anonymous`. */
 export type FrontDoorGateTier = Exclude<FrontDoorTier, 'anonymous'>;
 
-const GATE_TIER_BY_IDENTITY_TIER: Readonly<Record<string, FrontDoorGateTier>> = {
-  soft: 'soft',
-  preliminary: 'preliminary',
-  hard: 'preliminary', // legacy value, see `normalizeTier` in @imajin/auth
-  established: 'established',
-  steward: 'established',
-  operator: 'established',
-};
-
-/**
- * Map a raw `auth.identities.tier` value onto the gate tier it is judged as,
- * or `null` for a missing / non-string / unknown value — which the gate
- * treats as "admitted nowhere" (fail closed, same posture as
- * `requireEstablishedDid`).
- */
-export function gateTierForIdentityTier(tier: unknown): FrontDoorGateTier | null {
-  if (typeof tier !== 'string') return null;
-  return Object.hasOwn(GATE_TIER_BY_IDENTITY_TIER, tier) ? GATE_TIER_BY_IDENTITY_TIER[tier] : null;
-}
 
 export const FRONT_DOOR_MODES = ['deliver', 'decline'] as const;
 export type FrontDoorMode = (typeof FRONT_DOOR_MODES)[number];

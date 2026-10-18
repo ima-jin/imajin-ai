@@ -1,4 +1,5 @@
 openapi: "3.1.0"
+# #2540: Registered-app order payment reads belong to the kernel pay contract.
 info:
   title: imajin pay
   version: "2.0.0"
@@ -49,7 +50,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying the route's operator-approved per-app scope (pay:settle, pay:refund, pay:charge-pledges or pay:setup-intent); active app and live approval checked on every call"
+      description: "Registered-app service token (typ app-service+jwt) from POST /auth/api/apps/token/service, carrying the route's operator-approved per-app scope (pay:read, pay:settle, pay:refund, pay:charge-pledges or pay:setup-intent); active app and live approval checked on every call"
     railWebhookSignature:
       type: apiKey
       in: header
@@ -272,6 +273,96 @@ components:
           schema: { $ref: "#/components/schemas/SetupIntentError" }
 
 paths:
+  /api/transactions/lookup:
+    post:
+      tags: [pay]
+      operationId: lookupAppOrderPayments
+      summary: Read this registered app's order payment IDs by checkout session
+      description: |
+        Read-only batched lookup; no Stripe calls, settlement, writes or balance changes.
+        Requires an app-service token with pay:read, approved per app through the
+        operator-countersigned apps:service-scopes flow. This scope is NOT globally
+        service-eligible. Active registration and approval are rechecked on every call.
+        Cookies, delegated user tokens and shared service keys cannot authorize this read.
+
+        Only rows whose first-class appDid equals the authenticated app, toDid equals
+        sellerDid, externalRef is a requested checkout session and rail is stripe or
+        stripe-byo are returned. Caller-supplied appDid or metadata cannot widen the query.
+        Unknown, foreign-app, wrong-seller and legacy unbound sessions are all omitted;
+        an empty match is 200 with transactions: []. Never infer ownership from metadata.
+        Duplicate sessionIds are deduplicated. Results are ordered by transactionId;
+        all matching rows are returned (session references are not globally unique).
+        Consumers must group by seller and join by sessionId, not response position.
+
+        metadata contains only string orderId, order_id, eventId, event_id, service
+        and type values up to 200 characters. It is app-supplied descriptive data,
+        never payment proof. All other keys, nested values, card/payment-method details,
+        customer and PaymentIntent IDs, credentials and manifests are withheld.
+        The only provider reference returned is the requested checkout sessionId.
+        No status, amount or buyer identity is disclosed by this minimal read contract.
+        Responses carry Cache-Control: no-store. Limited to 60 calls per minute per app.
+        The app must authorize its organizer and derive sellerDid and sessionIds from
+        its own stored orders before calling; app-service authority is not user authority.
+        Checkouts must have been created using that app's own service token; no legacy
+        backfill or cross-app access is provided.
+      security:
+        - appServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sellerDid, sessionIds]
+              properties:
+                sellerDid:
+                  type: string
+                  maxLength: 500
+                  pattern: "^did:[a-z0-9]+:[A-Za-z0-9._:%-]+$"
+                sessionIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items: { type: string, maxLength: 255, pattern: "^cs_[A-Za-z0-9_]+$" }
+      responses:
+        "200":
+          description: Matching app-and-seller-owned payments only
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [transactions]
+                properties:
+                  transactions:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: false
+                      required: [transactionId, sessionId, metadata]
+                      properties:
+                        transactionId: { type: string, description: "Kernel pay.transactions primary key, not a Stripe PaymentIntent ID" }
+                        sessionId: { type: string, description: "The requested checkout session ID" }
+                        metadata:
+                          type: object
+                          additionalProperties: false
+                          properties:
+                            orderId: { type: string, maxLength: 200 }
+                            order_id: { type: string, maxLength: 200 }
+                            eventId: { type: string, maxLength: 200 }
+                            event_id: { type: string, maxLength: 200 }
+                            service: { type: string, maxLength: 200 }
+                            type: { type: string, maxLength: 200 }
+        "400":
+          description: Invalid JSON, missing sellerDid, or invalid/empty/oversized sessionIds
+        "401":
+          description: Missing, invalid or expired app-service bearer credential
+        "403":
+          description: Non-service token, missing pay:read scope, inactive app or revoked operator approval
+        "429":
+          description: Per-app request limit exceeded; Retry-After header specifies seconds
+        "500":
+          description: Registry or payment lookup unavailable; no internal details returned
   /api/setup-intent:
     post:
       tags: [pay]
@@ -838,17 +929,16 @@ paths:
         Returns a URL to redirect the customer to Stripe Checkout. Supports `.fair` manifests for
         multi-party revenue splits via `fairManifest`. Rate-limited to 10 req/min per IP.
 
-        A registered app may authenticate with its app-service token (#2642): the checkout
-        row is then bound to the app's DID and records the declared `payeeManifest` (falling
+        A seller checkout requires a registered app's app-service token (#2866): the checkout
+        row is bound to the verified app's DID and records the declared `payeeManifest` (falling
         back to `fairManifest`). The returned `transactionId` identifies the pending payment
         completed by the seller webhook. Requires the operator-approved `pay:settle` scope (403 otherwise).
         Checkout requires a seller DID (also accepted as `metadata.sellerDid`).
         Seller-owned charges settle through the seller's webhook, not `/api/settle`;
-        no platform balance moves. No app token means no app binding.
+        no platform balance moves. Anonymous, user-session and delegated-attestation callers
+        cannot open seller checkouts (401). Paid notifications go only to the recorded app.
       security:
-        - bearerAuth: []
         - appServiceToken: []
-        - {}
       requestBody:
         required: true
         content:
@@ -911,6 +1001,10 @@ paths:
                   - type: object
                     properties:
                       code: { type: string, description: "Stable machine-readable reason, e.g. SELLER_NO_CARD_RAIL" }
+        "401":
+          description: Seller checkout requires a valid app service token, not a user session or delegated attestation
+        "403":
+          description: App is revoked or lacks the operator-approved pay:settle scope
         "429":
           description: Too many requests
           content:

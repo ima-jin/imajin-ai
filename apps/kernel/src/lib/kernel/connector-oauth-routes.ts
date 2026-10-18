@@ -668,6 +668,9 @@ export interface DeviceStartResponse {
  */
 function connectorErrorStatus(message: string): number {
   if (message.includes('_credential_pending')) return 409;
+  if (message.includes('google_business_profile_approval_pending')) return 409;
+  if (message.includes('google_business_profile_disabled')) return 403;
+  if (message.includes('google_no_scopes')) return 400;
   if (message.includes('_no_config')) return 400;
   if (message.includes('_device_unsupported')) return 400;
   if (message.includes('_flow_mismatch')) return 400;

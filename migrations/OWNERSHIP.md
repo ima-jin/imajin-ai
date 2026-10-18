@@ -92,6 +92,14 @@ Full detail: `migrations/ownership.json`.
 
 ## Rule
 
+### Reach throttling audit seed (#2599)
+
+`0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
+`kernel.bus_chain_configs`, including existing `agent`-scoped overrides.
+Its awaited `audit-log` chain writes allowlisted throttling metadata to the
+existing kernel-owned `kernel.audit_log`; it creates no schema objects and
+never persists IPs, limiter keys/hashes, message bodies, or signatures.
+
 ### Extracted repositories (#1991, October 14 ruling)
 
 `ownership.json.externalSchemas` identifies `dykil → ima-jin/dykil`,

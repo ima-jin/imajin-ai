@@ -24,6 +24,7 @@ const h = vi.hoisted(() => ({
   mockPublish: vi.fn().mockResolvedValue(undefined),
   mockInsertValues: vi.fn(),
   mockIntrospectGrant: vi.fn(),
+  mockSignSync: vi.fn().mockReturnValue('fake-signature'),
 }));
 
 vi.mock('@/src/lib/vault/internal-secret', async () =>
@@ -45,10 +46,10 @@ vi.mock('@/src/lib/auth/grants', () => ({
   introspectGrant: h.mockIntrospectGrant,
 }));
 
-vi.mock('@imajin/auth', () => ({
+vi.mock('@imajin/auth', async () => ({
   canonicalize: (obj: unknown) => JSON.stringify(obj),
-  crypto: { signSync: () => 'fake-signature' },
-  ATTESTATION_TYPES: ['identity.created', 'intro_proposed', 'key.rotated'],
+  crypto: { signSync: h.mockSignSync },
+  ATTESTATION_TYPES: (await import('../../../../../../../../packages/auth/src/types/attestation')).ATTESTATION_TYPES,
   KEY_ROTATED_ATTESTATION_TYPE: 'key.rotated',
   verifyNostrSig: vi.fn(),
   DISCLOSURE_SCOPES: ['parties', 'connections', 'network', 'public'],
@@ -109,6 +110,37 @@ describe('node-issued-only types (#2081)', () => {
 });
 
 describe('attestation.created payload (internal route)', () => {
+  it.each([
+    'search-console.sites.list', 'search-console.searchAnalytics.query', 'search-console.urlInspection.inspect',
+    'business-profile.locations.list', 'business-profile.reviews.list',
+  ])('accepts canonical Google read metadata for %s and signs/stores owner-slot provenance (#2894)', async (operation) => {
+    const ownerDid = 'did:imajin:organization';
+    const payload = {
+      ownerDid,
+      onBehalfOf: ownerDid,
+      slot: 'marketing',
+      operation,
+      context_id: ownerDid,
+      context_type: 'google',
+    };
+    const res = await POST(makeReq({
+      issuer_did: ownerDid, subject_did: ownerDid, type: 'google.data.read',
+      context_id: ownerDid, context_type: 'google', payload,
+    }));
+    expect(res.status).toBe(201);
+    expect(await res.json()).toMatchObject({ id: 'att_internal_123' });
+    expect(h.mockInsertValues).toHaveBeenCalledWith(expect.objectContaining({
+      issuerDid: ownerDid, subjectDid: ownerDid, type: 'google.data.read',
+      contextId: ownerDid, contextType: 'google', payload, signature: 'fake-signature',
+    }));
+    expect(publishedPayload()).toMatchObject({
+      type: 'google.data.read', issuerDid: ownerDid, subjectDid: ownerDid, pendingSignature: false,
+    });
+    expect(h.mockIntrospectGrant).not.toHaveBeenCalled();
+    expect(JSON.parse(h.mockSignSync.mock.calls[0][0])).toMatchObject({
+      subject_did: ownerDid, type: 'google.data.read', payload,
+    });
+  });
   it('publishes attestation.created after inserting the row', async () => {
     const res = await POST(
       makeReq({ issuer_did: ISSUER, subject_did: SUBJECT, type: 'identity.created' }),

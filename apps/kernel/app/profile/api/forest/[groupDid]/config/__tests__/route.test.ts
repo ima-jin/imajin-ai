@@ -5,6 +5,10 @@ const mocks = vi.hoisted(() => ({
   registryWhere: vi.fn(),
   upsert: vi.fn(),
 }));
+vi.mock('@/src/lib/kernel/app-visibility', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/src/lib/kernel/app-visibility')>(),
+  resolveAppOwnerDids: async (did: string) => new Set([did]),
+}));
 
 vi.mock('@imajin/auth', () => ({
   requireAuth: vi.fn(async () => ({ identity: { id: 'did:caller' } })),
@@ -39,6 +43,18 @@ async function patch(body: unknown) {
 }
 
 describe('forest config service validation', () => {
+  it('refuses private non-member and internal app additions while allowing owned private apps and unlisted links', async () => {
+    mocks.registryWhere.mockResolvedValue([
+      { slug: 'private-other', ownerDid: 'other', visibility: 'private' },
+      { slug: 'internal', ownerDid: 'did:group', visibility: 'internal' },
+      { slug: 'owned-private', ownerDid: 'did:group', visibility: 'private' },
+      { slug: 'unlisted', visibility: 'unlisted' },
+    ]);
+    expect((await patch({ enabledServices: ['private-other'] })).status).toBe(400);
+    expect((await patch({ enabledServices: ['internal'] })).status).toBe(400);
+    expect(mocks.upsert).not.toHaveBeenCalled();
+    expect((await patch({ enabledServices: ['owned-private', 'unlisted'] })).status).toBe(200);
+  });
   it('accepts an active registry-only app alongside an allowed kernel service', async () => {
     expect((await patch({ enabledServices: ['registry-only', 'chat'], landingService: 'registry-only' })).status).toBe(200);
     expect(mocks.upsert).toHaveBeenCalledOnce();

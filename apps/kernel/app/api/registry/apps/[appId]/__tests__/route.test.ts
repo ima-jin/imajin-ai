@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const setMock = vi.fn(() => ({ where: whereUpdateMock }));
   const updateMock = vi.fn(() => ({ set: setMock }));
   return {
+    whereUpdateMock,
     whereSelectMock,
     selectMock,
     returningMock,
@@ -35,6 +36,83 @@ const mocks = vi.hoisted(() => {
     requireAuthMock: vi.fn(),
     validateAppDeclarationsMock: vi.fn(),
   };
+});
+
+describe('PATCH app visibility (#2897)', () => {
+  it.each(['public', 'unlisted', 'private', 'internal'])('persists %s for the owner and returns it', async visibility => {
+    mocks.returningMock.mockResolvedValue([{ id: APP_ID, visibility }]);
+    const res = await patch({ visibility });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toHaveProperty('visibility', visibility);
+    expect(mocks.setMock).toHaveBeenCalledWith(expect.objectContaining({ visibility }));
+    expect(mocks.whereUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+      and: expect.arrayContaining([{ eq: ['registryApps.visibility', 'public'] }]),
+    }));
+  });
+
+  it.each([null, '', 'PUBLIC', 'members', true, 1, {}, ['private']])('rejects invalid visibility %j without writing', async visibility => {
+    const res = await patch({ visibility });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toContain('visibility must be one of');
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('preserves visibility on an unrelated metadata edit', async () => {
+    await patch({ name: 'New name' });
+    expect(mocks.setMock.mock.calls[0][0]).not.toHaveProperty('visibility');
+  });
+
+  it('rejects non-owner changes, including members without owner act-as authority', async () => {
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:member' } });
+    expect((await patch({ visibility: 'public' })).status).toBe(403);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('uses the acting group DID for owner changes', async () => {
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:member', actingAs: OWNER } });
+    expect((await patch({ visibility: 'private' })).status).toBe(200);
+  });
+
+  it.each([
+    ['private', 'public'], ['private', 'unlisted'],
+    ['internal', 'public'], ['internal', 'unlisted'], ['internal', 'private'],
+    ['unlisted', 'public'],
+  ])('requires owner countersign for delegated %s → %s', async (previous, visibility) => {
+    mocks.whereSelectMock.mockResolvedValue([existingRow({ visibility: previous })]);
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:delegate', actingFor: OWNER } });
+    const res = await patch({ visibility, name: 'Must not write either' });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      code: 'AGENT_APPROVAL_REQUIRED', class: 'irreversible',
+      ownerDid: OWNER, delegateDid: 'did:imajin:delegate', resourceId: APP_ID,
+    });
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['public', 'unlisted'], ['public', 'private'], ['public', 'internal'],
+    ['unlisted', 'private'], ['private', 'internal'], ['private', 'private'],
+  ])('allows active-grant delegated narrowing/no-op %s → %s', async (previous, visibility) => {
+    mocks.whereSelectMock.mockResolvedValue([existingRow({ visibility: previous })]);
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:delegate', actingFor: OWNER } });
+    expect((await patch({ visibility })).status).toBe(200);
+  });
+
+  it('allows reversible delegated metadata edits', async () => {
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:delegate', actingFor: OWNER } });
+    expect((await patch({ description: 'Updated metadata' })).status).toBe(200);
+  });
+
+  it('does not treat a delegate for another principal as the owner', async () => {
+    mocks.requireAuthMock.mockResolvedValue({ identity: { id: 'did:imajin:delegate', actingFor: 'did:imajin:other' } });
+    expect((await patch({ visibility: 'internal' })).status).toBe(403);
+    expect(mocks.updateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 when owner or visibility changed since authorization', async () => {
+    mocks.returningMock.mockResolvedValue([]);
+    expect((await patch({ visibility: 'unlisted' })).status).toBe(409);
+  });
 });
 
 vi.mock('@/src/db', () => ({
@@ -46,16 +124,21 @@ vi.mock('@/src/db', () => ({
     requestedScopes: 'registryApps.requestedScopes',
     providesScopes: 'registryApps.providesScopes',
     dependsOn: 'registryApps.dependsOn',
+    visibility: 'registryApps.visibility',
   },
 }));
-vi.mock('drizzle-orm', () => ({ eq: (...args: unknown[]) => ({ eq: args }) }));
+vi.mock('drizzle-orm', () => ({
+  eq: (...args: unknown[]) => ({ eq: args }),
+  and: (...args: unknown[]) => ({ and: args }),
+}));
 vi.mock('@imajin/auth', async () => {
   // The ceiling is a pure function with its own tests (packages/auth/tests/app-scopes.test.ts); use the real one.
   const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
   return {
     approvedScopeCeiling: actual.approvedScopeCeiling,
     requireAuth: mocks.requireAuthMock,
-    resolveActingDid: (identity: { id: string }) => identity.id,
+    resolveActingDid: (identity: { id: string; actingFor?: string; actingAs?: string }) =>
+      identity.actingFor ?? identity.actingAs ?? identity.id,
   };
 });
 vi.mock('@/src/lib/kernel/app-declarations', () => ({
@@ -74,6 +157,7 @@ function existingRow(overrides: Record<string, unknown> = {}): Record<string, un
     id: APP_ID,
     ownerDid: OWNER,
     slug: 'dykil',
+    visibility: 'public',
     requestedScopes: ['dykil:read', 'dykil:write', 'media:read'],
     providesScopes: ['dykil:read', 'dykil:write'],
     dependsOn: [{ aud: 'jin.imajin.ai', scopes: ['media:read'] }],

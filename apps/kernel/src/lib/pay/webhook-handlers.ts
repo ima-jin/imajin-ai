@@ -22,6 +22,7 @@ import { forEachSequential } from '@/src/lib/async/sequential';
 import type { StripeCheckoutSessionLike } from './webhook-event-shapes';
 import { kernelWebhookUrl, postKernelWebhook } from '@/src/lib/auth/kernel-webhook';
 import type { LegacyWebhookApp } from '@/src/lib/auth/kernel-webhook-legacy';
+import { checkoutAppSlug } from './checkout-notification-owner';
 
 const log = createLogger('kernel');
 
@@ -541,15 +542,16 @@ export async function handleTopupCheckout(session: StripeCheckoutSessionLike): P
 // ---------------------------------------------------------------------------
 
 /**
- * Notify downstream services (events, market, learn) after a non-topup checkout
- * completes.
+ * Notify only the registered app that created this checkout. Caller metadata
+ * may describe its purchase, but can never select another app's fulfillment.
  */
 export async function notifyCheckoutServices(session: StripeCheckoutSessionLike): Promise<void> {
-  if (session.metadata?.eventId) {
+  const appSlug = await checkoutAppSlug(session);
+  if (appSlug === 'events' && session.metadata?.eventId) {
     await notifyEventsService('checkout.completed', session);
   }
 
-  if (session.metadata?.service === 'market') {
+  if (appSlug === 'market' && session.metadata?.service === 'market') {
     if (session.metadata.sellerDid) {
       publishMarketNotifications(session);
     }
@@ -558,7 +560,7 @@ export async function notifyCheckoutServices(session: StripeCheckoutSessionLike)
     await notifyMarketService(session);
   }
 
-  if (isLearnCheckout(session)) {
+  if (appSlug === 'learn' && isLearnCheckout(session)) {
     // ima-jin/learn#13: learn creates the enrollment from this notification. Awaited, but never
     // throws — see notifyLearnService.
     await notifyLearnService(session);

@@ -26,7 +26,7 @@ vi.mock('@/src/lib/kernel/app-nav', () => ({ resolveAppDirectoryForIdentity: h.d
 vi.mock('@/src/lib/kernel/app-membership', () => ({
   setPersonAppMembership: h.person, setGroupAppMembership: h.group, canManageGroupApps: h.canManage,
 }));
-import { DELETE, PUT } from '../route';
+import { DELETE, PUT, GET as linkedApp } from '../route';
 import { GET } from '../../directory/route';
 
 const context = { params: Promise.resolve({ slug: 'coffee' }) };
@@ -44,6 +44,20 @@ beforeEach(() => {
 });
 
 describe('app directory API', () => {
+  it('resolves direct links through the visibility-aware per-slug lookup', async () => {
+    const result = await linkedApp(request('GET'), context);
+    expect(result.status).toBe(200);
+    expect(result.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(h.directory).toHaveBeenCalledWith('person', { slug: 'coffee' });
+    h.directory.mockResolvedValue([]);
+    expect((await linkedApp(request('GET'), context)).status).toBe(404);
+  });
+  it('does not let members remove an inherited private app or persist a stale install', async () => {
+    h.directory.mockResolvedValue([{ slug: 'coffee', available: true, inherited: true }]);
+    expect((await PUT(request(), context)).status).toBe(409);
+    expect((await DELETE(request('DELETE'), context)).status).toBe(409);
+    expect(h.person).not.toHaveBeenCalled();
+  });
   it('requires authentication for directory reads and writes', async () => {
     h.requireAuth.mockResolvedValue({ error: 'Unauthorized', status: 401 });
     expect((await GET(request('GET')))?.status).toBe(401);

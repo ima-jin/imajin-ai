@@ -82,6 +82,11 @@ function settlementWebhookUrl(): string {
 // (no `mjn` reactor) is unaffected and keeps firing `attestation`
 // fire-and-forget.
 const DEFAULTS: Record<string, ReactorConfig[]> = {
+  // Reader provenance is signed and persisted; never includes provider results.
+  'google.data.read': [
+    { type: 'attestation', config: { attestationType: 'google.data.read' }, await: true, enabled: true },
+    { type: 'audit-log', config: {}, await: true, enabled: true },
+  ],
   'identity.created': [
     { type: 'attestation', config: { attestationType: 'identity.created' }, await: true, enabled: true },
     mjnEmission('identity.created'),
@@ -432,6 +437,16 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   ],
   'agent.reach.denied': [
     { type: 'audit-log', config: { fields: ['requesterDid', 'principalDid', 'reason'] }, enabled: true },
+  ],
+  // #2599 / migration 0207 — complete the metadata-only audit write before
+  // publish resolves. Limiter keys, IPs, message bodies and signatures stay private.
+  'agent.reach.throttled': [
+    {
+      type: 'audit-log',
+      config: { fields: ['principalDid', 'requesterDid', 'dimension', 'tier', 'retryAfter', 'context_id', 'context_type'] },
+      await: true,
+      enabled: true,
+    },
   ],
   // #2588 / migration 0196 — the service persists the signed envelope and
   // mints exactly one attestation. This chain only emits and notifies the

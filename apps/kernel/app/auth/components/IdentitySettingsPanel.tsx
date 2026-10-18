@@ -57,7 +57,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
         setJoinNetworkDepth(cfg.joinNetworkDepth ?? 2);
         setScopeFeeBps(cfg.scopeFeeBps ?? 25);
       }
-      setSelectableServices(await loadRegistryAppOptions());
+      setSelectableServices(await loadRegistryAppOptions(groupDid));
     } catch (err) {
       console.error('Failed to load identity settings:', err);
     } finally {
@@ -162,11 +162,14 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {selectableServices.map((svc) => {
-            const isEnabled = enabledServices.includes(svc.name);
+            const isEnabled = svc.inherited || enabledServices.includes(svc.name);
+            const selectionLabel = isEnabled ? 'Enabled' : 'Disabled';
+            const statusLabel = svc.inherited ? 'Included with membership' : selectionLabel;
             return (
               <button type="button"
                 key={svc.name}
                 onClick={() => toggleService(svc.name)}
+                disabled={svc.inherited}
                 className={`flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left ${
                   isEnabled
                     ? 'border-amber-500/60 bg-amber-500/10 text-white'
@@ -178,7 +181,7 @@ export default function IdentitySettingsPanel({ groupDid }: Readonly<{ groupDid:
                 <span
                   className={`text-xs leading-tight ${isEnabled ? 'text-amber-400/70' : 'text-gray-600'}`}
                 >
-                  {isEnabled ? 'Enabled' : 'Disabled'}
+                  {statusLabel}
                 </span>
               </button>
             );
