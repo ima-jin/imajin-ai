@@ -31,6 +31,7 @@ import {
   getInstallationToken,
   tryGetInstallationToken,
   ensureRepoFromTemplate,
+  resolveSourceRepo,
   fetchAppManifest,
   appManifestError,
   OrgCredentialMissingError,
@@ -93,6 +94,73 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe('resolveSourceRepo', () => {
+  const source = 'gbscontracting/website';
+  it('uses anonymous access for public sources without loading any credential', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { full_name: source }));
+    await expect(resolveSourceRepo(source)).resolves.toEqual({
+      repoUrl: `https://github.com/${source}`, created: false, token: null,
+    });
+    expect(loadAndUnsealMock).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('discovers and uses the external installation using the node App identity', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, {}))
+      .mockResolvedValueOnce(jsonResponse(200, { id: 987 }))
+      .mockResolvedValueOnce(installationTokenResponse())
+      .mockResolvedValueOnce(jsonResponse(200, { full_name: source }));
+    await expect(resolveSourceRepo(source)).resolves.toMatchObject({ created: false, token: INSTALLATION_TOKEN });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `https://api.github.com/repos/${source}`,
+      `https://api.github.com/repos/${source}/installation`,
+      'https://api.github.com/app/installations/987/access_tokens',
+      `https://api.github.com/repos/${source}`,
+    ]);
+    const jwt = (fetchMock.mock.calls[1][1].headers as Record<string, string>).Authorization.slice(7);
+    const verified = await jose.jwtVerify(jwt, await jose.importSPKI(PUBLIC_KEY_PEM, 'RS256'));
+    expect(verified.payload.iss).toBe(APP_ID);
+    expect(fetchMock.mock.calls[3][1].headers.Authorization).toBe(`Bearer ${INSTALLATION_TOKEN}`);
+  });
+  it.each([403, 404, 500])('explains missing access when installation lookup returns %s', async (status) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, {})).mockResolvedValueOnce(jsonResponse(status, { message: 'PRIVATE_PROVIDER_BODY' }));
+    await expect(resolveSourceRepo(source)).rejects.toThrow("sourceRepo 'gbscontracting/website' does not exist or is not accessible to this node");
+    expect(fetchMock.mock.calls.every(([url]) => !String(url).endsWith('/generate'))).toBe(true);
+  });
+  it('explains how to grant access when credentials are not sealed', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, {}));
+    loadAndUnsealMock.mockResolvedValue(undefined);
+    await expect(resolveSourceRepo(source)).rejects.toThrow("install the node's GitHub App");
+  });
+  it('fails closed when the installation token cannot read the source', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, {}))
+      .mockResolvedValueOnce(jsonResponse(200, { id: 987 }))
+      .mockResolvedValueOnce(installationTokenResponse())
+      .mockResolvedValueOnce(jsonResponse(403, {}));
+    await expect(resolveSourceRepo(source)).rejects.toThrow('not accessible');
+  });
+  it.each([null, {}, { id: '987' }, { id: -1 }])('rejects invalid installation responses: %j', async (installation) => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, {})).mockResolvedValueOnce(jsonResponse(200, installation));
+    await expect(resolveSourceRepo(source)).rejects.toThrow('not accessible');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it('sanitizes token mint failures', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(404, {}))
+      .mockResolvedValueOnce(jsonResponse(200, { id: 987 }))
+      .mockResolvedValueOnce(jsonResponse(403, { message: 'PRIVATE_PROVIDER_BODY' }));
+    await expect(resolveSourceRepo(source)).rejects.toThrow('not accessible');
+  });
+  it('sanitizes transport failures', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('PRIVATE_PROVIDER_BODY'));
+    const error = await resolveSourceRepo(source).catch((err: unknown) => String(err));
+    expect(error).not.toContain('PRIVATE_PROVIDER_BODY');
+    expect(error).toContain('not accessible');
+  });
+  it.each(['../website', 'owner/name/extra', '', 'https://github.com/owner/name'])('validates before any fetch: %s', async (sourceRepo) => {
+    await expect(resolveSourceRepo(sourceRepo)).rejects.toThrow('owner/name');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('loadOrgCredential', () => {

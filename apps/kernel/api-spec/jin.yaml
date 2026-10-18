@@ -720,7 +720,7 @@ components:
           type: string
           pattern: "^[a-z][a-z0-9-]{0,38}$"
           example: dykil
-          description: "Short, URL/repo-safe identifier. The repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
+          description: "Short, URL/repo-safe identifier. Unless sourceRepo is set, the repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
         displayName: { type: string, maxLength: 200, example: dykil }
         visibility:
           type: string
@@ -736,7 +736,23 @@ components:
           type: string
           maxLength: 200
           default: ima-jin/imajin-app-template
-          description: "owner/repo of the template to generate the app repo from."
+          description: "owner/repo of the template to generate the app repo from. Ignored when sourceRepo is set."
+        sourceRepo:
+          type: string
+          maxLength: 140
+          example: gbscontracting/website
+          description: >-
+            Optional existing GitHub owner/name repository, not a URL. Owner
+            must be 1–39 letters/digits/hyphens with alphanumeric ends; name
+            must be 1–100 letters/digits/underscores/dots/hyphens, not . or ...
+            No repository is created. Reads this repository's own
+            imajin.app.json without template fallback, anonymously for public
+            repositories or with an installation token where available.
+            The exact value is shown on the proposal and included in its
+            countersigned content hash. Recorded as source lineage with
+            joined=false. Must be omitted entirely on claim reissue; an
+            already-succeeded app cannot change its repository, including
+            during domain retry.
         attestationTypes:
           type: array
           maxItems: 20
@@ -773,7 +789,7 @@ components:
         reissueClaim:
           type: boolean
           default: false
-          description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, callback URL, redirect hosts and domain bindings.
+          description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, callback URL, redirect hosts, source repository and domain bindings. Any provided sourceRepo is refused.
     AppServiceScopesRequest:
       type: object
       description: >-
@@ -1450,6 +1466,10 @@ paths:
         repo/mint/register/seal pipeline (`src/lib/apps/provision.ts`) only
         runs once the operator countersigns an 'approve' decision —
         provisioning is operator-authority, never self-service.
+        Optional sourceRepo selects an existing owner/name repository in any
+        organization instead of generating ima-jin/<slug> from a template.
+        Its own manifest is required and its source is visible on the signed
+        proposal. Default behavior is unchanged when sourceRepo is omitted.
         New app ownership is registry.apps.ownerDid (siteOwnerDid or approving
         operator), separate from DNS zone ownership. Provisioning attempts to
         issue the selected Imajin subdomain as the actual Imajin organization;
@@ -1498,12 +1518,17 @@ paths:
                   status: { type: string, enum: [pending] }
                   proposalId: { type: string }
         "400":
-          description: Malformed slug/displayName/template/attestationTypes/siteOwnerDid/domain/visibility, or forbidden owner/domain/visibility change on reissue
+          description: Malformed slug/displayName/template/sourceRepo/attestationTypes/siteOwnerDid/domain/visibility, or forbidden owner/domain/visibility/sourceRepo input on reissue
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: No succeeded app exists for claim reissue, or sourceRepo would change an already-succeeded app's repository
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

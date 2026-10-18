@@ -47,6 +47,7 @@ import { getAppProvisionStatus } from '@/src/lib/apps/provision';
 import { listSucceededAppProvisions } from '@/src/lib/apps/provision-list';
 import { previewManifestDeclarations } from '@/src/lib/apps/manifest-preview';
 import { APP_VISIBILITY_ERROR, isAppVisibility } from '@/src/lib/apps/visibility';
+import { isRepositoryName } from '@/src/lib/apps/template-lineage';
 
 const log = createLogger('kernel:apps-provision-route');
 
@@ -64,6 +65,7 @@ interface ProvisionRequestBody {
   slug?: unknown;
   displayName?: unknown;
   template?: unknown;
+  sourceRepo?: unknown;
   attestationTypes?: unknown;
   /**
    * #2411: when true, an already-`succeeded` slug is NOT short-circuited
@@ -76,7 +78,7 @@ interface ProvisionRequestBody {
   reissueClaim?: unknown;
 }
 
-type ValidatedBody = { slug: string; displayName: string; template: string | null; attestationTypes: string[]; reissueClaim: boolean };
+type ValidatedBody = { slug: string; displayName: string; template: string | null; sourceRepo?: string; attestationTypes: string[]; reissueClaim: boolean };
 
 function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedBody } | { ok: false; error: string } {
   if (typeof body.slug !== 'string' || !SLUG_PATTERN.test(body.slug)) {
@@ -103,6 +105,7 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
       slug: body.slug,
       displayName: body.displayName.trim(),
       template: typeof body.template === 'string' ? body.template : null,
+      ...(isRepositoryName(body.sourceRepo) ? { sourceRepo: body.sourceRepo } : {}),
       attestationTypes: Array.isArray(body.attestationTypes) ? (body.attestationTypes as string[]) : [],
       reissueClaim: body.reissueClaim === true,
     },
@@ -111,6 +114,12 @@ function validateBody(body: ProvisionRequestBody): { ok: true; value: ValidatedB
 
 function validateDomainChoice(body: ProvisionRequestBody): string | null {
   if (body.visibility !== undefined && !isAppVisibility(body.visibility)) return APP_VISIBILITY_ERROR;
+  if (body.reissueClaim === true && Object.hasOwn(body, 'sourceRepo')) {
+    return 'Reissuing a claim cannot change sourceRepo';
+  }
+  if (body.sourceRepo !== undefined && !isRepositoryName(body.sourceRepo)) {
+    return 'sourceRepo must be an owner/name repository identifier';
+  }
   if (body.siteOwnerDid !== undefined && (
     typeof body.siteOwnerDid !== 'string' || !/^did:[a-z0-9]+:[A-Za-z0-9:._-]{1,200}$/.test(body.siteOwnerDid)
   )) return 'siteOwnerDid must be a DID';
@@ -131,6 +140,7 @@ function provisionDetail(
   const detail = { ...base };
   if (body.siteOwnerDid) detail.siteOwnerDid = body.siteOwnerDid;
   if (body.domain) detail.domain = body.domain;
+  if (isRepositoryName(body.sourceRepo)) detail.sourceRepo = body.sourceRepo;
   if (reissueClaim) detail.reissueClaim = true;
   else detail.visibility = body.visibility ?? 'public';
   return detail;
@@ -138,6 +148,17 @@ function provisionDetail(
 
 function isDomainRetry(status: string | undefined, domain: unknown): boolean {
   return status === 'succeeded' && typeof domain === 'string';
+}
+function changesSucceededSource(existingRun: Awaited<ReturnType<typeof getAppProvisionStatus>>, sourceRepo?: string): boolean {
+  return existingRun?.status === 'succeeded' && sourceRepo !== undefined
+    && existingRun.repoUrl?.toLowerCase() !== `https://github.com/${sourceRepo}`.toLowerCase();
+}
+
+async function previewProvisionDeclarations(skip: boolean, slug: string, template: string | null, sourceRepo?: string) {
+  if (skip) return { ok: null };
+  return sourceRepo
+    ? previewManifestDeclarations(slug, template ?? undefined, sourceRepo)
+    : previewManifestDeclarations(slug, template ?? undefined);
 }
 
 function provisionSummary(body: ProvisionRequestBody, slug: string, displayName: string, operatorDid: string, reissueClaim: boolean, retryAppDid?: string | null): string {
@@ -150,7 +171,10 @@ function provisionSummary(body: ProvisionRequestBody, slug: string, displayName:
   if (retryAppDid) {
     return `Retry domain issuance for existing app '${slug}' (${retryAppDid}) at ${domain} using its recorded registry owner, then reissue its claim code. No repo, keypair or owner is re-created or changed.`;
   }
-  return `Provision app '${slug}' (${displayName}): create ima-jin/${slug} from template, register it, and seal its credential. Visibility: ${visibility}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
+  const repositoryAction = isRepositoryName(body.sourceRepo)
+    ? `use existing repository ${body.sourceRepo} (no repository is created), register it, and seal its credential`
+    : `create ima-jin/${slug} from template, register it, and seal its credential`;
+  return `Provision app '${slug}' (${displayName}): ${repositoryAction}. Visibility: ${visibility}. Site owner: ${siteOwnerDid}; issue ${domain} from Imajin's organization. Will retire app_first_party_${slug} if it holds the slug or active audience; no app schema/data is changed.`;
 }
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -177,7 +201,7 @@ export async function POST(request: NextRequest) {
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400, headers: cors });
   }
-  const { slug, displayName, template, attestationTypes, reissueClaim } = validation.value;
+  const { slug, displayName, template, sourceRepo, attestationTypes, reissueClaim } = validation.value;
 
   // Idempotent on slug: an already-succeeded provision returns the cached
   // result immediately — no new proposal, nothing re-created — UNLESS the
@@ -185,6 +209,9 @@ export async function POST(request: NextRequest) {
   // (#2411), in which case a fresh proposal is raised anyway so the
   // operator's approval mints a new one-time code.
   const existingRun = await getAppProvisionStatus(slug);
+  if (changesSucceededSource(existingRun, sourceRepo)) {
+    return NextResponse.json({ error: 'An already-provisioned app cannot change sourceRepo' }, { status: 409, headers: cors });
+  }
   // #2745: a reissue only makes sense for an app that was actually provisioned. Refuse before
   // anything else (no pending-proposal reuse, no manifest read, no proposal row) so it can never
   // turn into a fresh provision.
@@ -225,7 +252,7 @@ export async function POST(request: NextRequest) {
   // #2707: a reissue never re-registers anything (the succeeded branch of `runAppProvision`
   // only retries an explicit host, re-grants + issues a code), so it carries no declarations and needs no manifest read.
   // A reissue is only ever raised for a `succeeded` ledger row (#2745 guard above).
-  const preview = reissueClaim || retryDomain ? { ok: null } : await previewManifestDeclarations(slug, template ?? undefined);
+  const preview = await previewProvisionDeclarations(reissueClaim || retryDomain, slug, template, sourceRepo);
   if ('error' in preview) {
     return NextResponse.json(
       { error: preview.error },
@@ -238,7 +265,9 @@ export async function POST(request: NextRequest) {
   // operator signs) so /jin can say "Reissue claim code" instead of "Provision". Only set
   // when true — an ordinary provision proposal carries the retirement notice instead.
   const summary = provisionSummary(body, slug, displayName, operatorDid, reissueClaim, retryDomain ? existingRun?.appDid : null);
-  const detail = provisionDetail(body, { slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok }, reissueClaim);
+  const detail = provisionDetail(body, {
+    slug, displayName, template, attestationTypes, manifestDeclarations: preview.ok,
+  }, reissueClaim);
   const contentHash = computeApprovalContentHash({
     proposalId,
     source: APPS_SOURCE,

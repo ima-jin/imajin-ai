@@ -5,6 +5,8 @@
  * validates server-side and stays the authority.
  */
 
+import { isRepositoryName } from '@/src/lib/apps/template-lineage';
+
 export const DEFAULT_APP_TEMPLATE = 'ima-jin/imajin-app-template';
 
 /** Same pattern as the route's `SLUG_PATTERN` — a repo-safe, lowercase, hyphenated identifier. */
@@ -17,6 +19,7 @@ export interface ProvisionFormValues {
   slug: string;
   displayName: string;
   template: string;
+  sourceRepo?: string;
   /** Raw textarea/input text — comma- or whitespace-separated `<slug>/<type>` entries. */
   attestationTypes: string;
 }
@@ -25,6 +28,7 @@ export interface ProvisionFormErrors {
   slug?: string;
   displayName?: string;
   template?: string;
+  sourceRepo?: string;
   attestationTypes?: string;
 }
 
@@ -32,6 +36,7 @@ export interface ProvisionPayload {
   slug: string;
   displayName: string;
   template: string;
+  sourceRepo?: string;
   attestationTypes: string[];
 }
 
@@ -75,6 +80,9 @@ export function validateProvisionForm(values: ProvisionFormValues): ProvisionFor
   if (template.length > MAX_TEMPLATE_LENGTH) {
     errors.template = `Template must be at most ${MAX_TEMPLATE_LENGTH} characters`;
   }
+  if (values.sourceRepo && !isRepositoryName(values.sourceRepo)) {
+    errors.sourceRepo = 'Source repository must be an owner/name identifier, e.g. gbscontracting/website';
+  }
   const typesError = attestationTypesError(parseAttestationTypes(values.attestationTypes), slug, slugValid);
   if (typesError) {
     errors.attestationTypes = typesError;
@@ -93,6 +101,7 @@ export function buildProvisionPayload(values: ProvisionFormValues): ProvisionPay
     displayName: values.displayName.trim(),
     template: values.template.trim() || DEFAULT_APP_TEMPLATE,
     attestationTypes: parseAttestationTypes(values.attestationTypes),
+    ...(values.sourceRepo ? { sourceRepo: values.sourceRepo } : {}),
   };
 }
 
