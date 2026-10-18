@@ -5,6 +5,9 @@
  */
 
 export const ATTESTATION_TYPES = [
+  'domain.verified',
+  'domain.revoked',
+  'mail.sent',
   'event.attendance',
   'institution.verified',
   'vouch.given',
@@ -195,6 +198,7 @@ export const ATTESTATION_TYPES = [
   // #2242 — minted mechanically when a vault keypair is born in-vault or a
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
+  'vault.key.imported',
   'vault.key.revoked',
   // #2251 — per-principal agent-reach exchange. Minted mechanically (kernel
   // node key) on every reach attempt, answered or denied: binds the foreign
@@ -292,6 +296,9 @@ export type AttestationType = typeof ATTESTATION_TYPES[number];
  * excluded from any "pending your countersignature" view or query.
  */
 export const MECHANICAL_ATTESTATION_TYPES = [
+  'domain.verified',
+  'domain.revoked',
+  'mail.sent',
   'identity.owner.transferred',
   // #2894 — unilateral read provenance, never awaiting a countersignature.
   'google.data.read',
@@ -339,6 +346,7 @@ export const MECHANICAL_ATTESTATION_TYPES = [
   // #2242 — minted mechanically when a vault keypair is born in-vault or a
   // minted key's grant is revoked. See ATTESTATION_TYPES above.
   'vault.key.minted',
+  'vault.key.imported',
   'vault.key.revoked',
   // #2251 — minted mechanically by the kernel node key on every reach
   // attempt (answered or denied). See ATTESTATION_TYPES above.

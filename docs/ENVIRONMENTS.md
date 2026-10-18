@@ -59,7 +59,7 @@ All services run via **pm2** on the server. **Caddy** handles reverse proxy with
 
 | Tier | Service | Dev | Prod | Domain |
 |------|---------|-----|------|--------|
-| Core | kernel | 3000 | 7000 | imajin.ai (+ auth/pay/profile/connections/registry/chat/media/notify subdomains via Caddy) |
+| Core | kernel | 3000 | 7000 | jin.imajin.ai (prod) / dev-jin.imajin.ai (dev); auth/pay/profile/connections/registry/chat/media/notify are paths |
 | App | events (external, [ima-jin/events](https://github.com/ima-jin/events)) | 3006 | 7006 | jin.imajin.ai/events |
 | Imajin | coffee (external, [ima-jin/coffee](https://github.com/ima-jin/coffee)) | 3100 | 7100 | jin.imajin.ai/coffee |
 | Imajin | dykil (external, [ima-jin/dykil](https://github.com/ima-jin/dykil)) | 3101 | 7101 | jin.imajin.ai/dykil |
@@ -118,6 +118,14 @@ The kernel reaches corpus over HTTP via `CORPUS_SERVICE_URL`
 (`apps/kernel/.env.example`) — its `localhost` default is only correct when
 kernel and corpus are colocated on the same host; point it at gx10 in prod.
 
+**Session boundary (#1069 phase 2):** host-only by default on each kernel
+host; `SESSION_COOKIE_SCOPE=domain` on that kernel process is the rollback.
+No mass logout: legacy cookies migrate on the next session write. Same-origin
+path-proxied apps still receive Cookie until phase 3 ops/Caddy or Path work.
+See [cookie isolation](security/cookie-isolation.md). The production ecosystem
+file retains obsolete split-service entries (documented in deploy/README.md);
+they do not establish a cross-host sign-in requirement.
+
 ### pm2 Naming
 
 - **Bare names** = production (e.g., `kernel`, `events`)
@@ -145,11 +153,11 @@ Each service has a `.env.local` file for its current bootstrap/non-secret config
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `DATABASE_URL` | Postgres connection string (app vault adoption is follow-up work) | `FAKE_DATABASE_URL_NOT_A_CONNECTION_STRING` |
-| `AUTH_SERVICE_URL` | Auth service base URL | `http://localhost:3001` |
-| `PAY_SERVICE_URL` | Pay service base URL | `http://localhost:3004` |
-| `CONNECTIONS_SERVICE_URL` | Connections service URL | `http://localhost:3003` |
-| `PROFILE_SERVICE_URL` | Profile service URL | `http://localhost:3005` |
-| `NEXT_PUBLIC_SERVICE_PREFIX` | URL scheme prefix | `https://` (prod) or `http://` (dev) |
+| `AUTH_SERVICE_URL` | Auth service base URL | `http://localhost:3000/auth` |
+| `PAY_SERVICE_URL` | Pay service base URL | `http://localhost:3000/pay` |
+| `CONNECTIONS_SERVICE_URL` | Connections service URL | `http://localhost:3000/connections` |
+| `PROFILE_SERVICE_URL` | Profile service URL | `http://localhost:3000/profile` |
+| `NEXT_PUBLIC_SERVICE_PREFIX` | URL scheme prefix | `https://jin.imajin.ai/` (prod) or `https://dev-jin.imajin.ai/` (dev) |
 | `NEXT_PUBLIC_DOMAIN` | Base domain | `imajin.ai` |
 | `NEXT_PUBLIC_BASE_URL` | Service's own base URL | `http://localhost:3006` |
 | `APP_URL` | Kernel's public origin for server-side browser redirects (runtime, not build-inlined — origin only) | `https://jin.imajin.ai` |

@@ -50,6 +50,16 @@ overlap by both kid and public key, and accepts currently published non-expired
 keys during grace and binds each delivery to its recipient app DID. Unlike corpus's boot reconciliation, apps do not need a restart
 or a key-file/env edit during an overlapping rotation. See `kernel-webhooks.md`.
 
+S3 also covers DNS domain evidence (#2902):
+`apps/kernel/src/lib/domains/signing.ts` verifies the configured node DID's
+registered public key before using `AUTH_PRIVATE_KEY` for DNS verification
+and revocation attestations. Historical domain evidence needs the same
+verified `key.rotated` history as other S3 records; DNS rechecks preserve the
+original signed verification record rather than silently re-signing it.
+Imajin-issued subdomain evidence instead uses the pinned organization's own
+vault-granted key, never the node key. Node rotation still requires preserving
+that vault grant through the custody steps below.
+
 ### 2.2 Derived-secret roles (HKDF / HMAC; nobody outside the process can verify these)
 
 | Role | Consumers | What breaks on rotation | Who can read the old material |
@@ -215,6 +225,14 @@ forward. Do not destroy the old node key until app-secret custody has been
 preserved through separately approved, non-plaintext tool steps; this legacy
 sweep is not an app-secret migration tool. Pending inputs can be submitted again
 through `/jin` after the identity change.
+
+**Imported credential exclusion (#2260).** The sweep also excludes
+`vault-imported-key:*` from export and rejects those fields on reimport.
+These credentials retain identity-owned, purpose-bound custody through the
+countersigned `/jin` import rail; the legacy sweep must not reveal their bytes
+or replace an org/agent grant with node-only ownership. Preserve their custody
+through separately approved non-plaintext tooling before destroying an old node
+key, or re-import a replacement credential through `/jin`.
 
 **Rollback boundary.** Until step 6 completes, rolling back is "restore the old key and
 restart": the old vault entries, grants and provisions rows (all keyed by the old node
@@ -506,6 +524,7 @@ file: ``- `path` — role``.
 - `apps/kernel/app/auth/.well-known/kernel-signing-key/route.ts` — S2
 - `apps/corpus/src/middleware/access-claim.ts` — S2 (verifier; public keys only)
 - `apps/kernel/src/lib/auth/emit-mechanical-attestation.ts` — S3
+- `apps/kernel/src/lib/domains/signing.ts` — S3 (DNS domain verification/revocation; organization issuance uses its own vault-granted key)
 - `apps/kernel/src/lib/auth/emit-recovery-attestation.ts` — S3
 - `apps/kernel/src/lib/pay/payment-requests/attestations.ts` — S3
 - `apps/kernel/src/lib/auth/knock.ts` — S3
@@ -560,6 +579,8 @@ file: ``- `path` — role``.
 - `apps/kernel/src/lib/vault/field-status.ts` — D2
 - `apps/kernel/src/lib/vault/mint.ts` — D2
 - `apps/kernel/src/lib/vault/mint-authority.ts` — D2
+- `apps/kernel/src/lib/vault/import-authority.ts` — D2 (node identity comparison only; real human/group ownership remains independently checked)
+- `apps/kernel/src/lib/vault/import.ts` — D2/S3 (v2 static-secret custody and node-attested, human-countersigned import/rotation)
 - `apps/kernel/src/lib/vault/internal-secret.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-revoke.ts` — D2
 - `apps/kernel/src/lib/vault/internal-secret-rotate.ts` — D2

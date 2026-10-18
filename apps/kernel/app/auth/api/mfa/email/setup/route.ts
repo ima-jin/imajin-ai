@@ -49,8 +49,9 @@ export const POST = withLogger('kernel', async (request: NextRequest, { log }) =
 
     // Send email (non-fatal)
     try {
-      const { sendEmail } = await import('@imajin/email');
-      await sendEmail({
+      const { sendKernelEmail } = await import('@/src/lib/mail/send');
+      await sendKernelEmail({
+        purpose: 'signin',
         to: emailCreds[0].value,
         subject: 'Your Imajin verification code',
         html: `<p>Your verification code is: <strong>${code}</strong></p><p>This code expires in 5 minutes.</p>`,

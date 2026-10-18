@@ -384,6 +384,15 @@ const DEFAULTS: Record<string, ReactorConfig[]> = {
   'vault.delegation.acked': [
     { type: 'audit-log', config: { fields: ['grantId', 'granteeDid', 'ownerDid', 'purpose', 'outcome', 'evidenceKind', 'ackedAt'] }, enabled: true },
   ],
+  // #2260 — imported credential audit metadata, never secret material.
+  // Kept in sync with migration 0208_seed_vault_key_imported_chain.sql.
+  'vault.key.imported': [
+    {
+      type: 'audit-log',
+      config: { fields: ['field', 'ownerDid', 'consumerDid', 'purpose', 'fingerprint', 'grantId', 'authorizedBy', 'replacesField'] },
+      enabled: true,
+    },
+  ],
   // #2242 — vault.mint audit trail. `audit-log` persists the mint/revoke
   // metadata (never key material) into kernel.audit_log, mirroring
   // vault.delegation.fetched's #2231 pattern above. Kept in sync with

@@ -101,6 +101,14 @@ re-resolution. Legacy and non-app registrations remain NULL; there is no
 inferred backfill. Identity and conversation ownership remain kernel-owned.
 Numbers 0208–0211 were reserved by open PRs when 0212 was allocated.
 
+### Verified domain bindings (#2902)
+
+`0211_domain_bindings.sql` is kernel-owned and creates
+`auth.domain_bindings`; its `ownership.json` entry records owner `kernel`
+and `firstMigration: 0211_domain_bindings.sql`. Number 0204 belongs to
+`0204_registry_apps_visibility.sql`; the domain migration uses its reserved
+slot 0211 without changing its SQL or legacy-routing backfill.
+
 ### Reach throttling audit seed (#2599)
 
 `0207_seed_agent_reach_throttled_chain.sql` is kernel-owned and only updates
@@ -183,6 +191,13 @@ or its `firstMigration`.
 The open train reserves 0206 for #2907, 0207 for #2857, 0208 for #2903,
 0209 for #2912, 0210 for #2921, and 0211 for #2906. These reservations do
 not renumber the migrations already committed on main or PR #2899.
+### Mail senders (#2919)
+
+`0210_mail_senders.sql` is kernel-owned and creates `kernel.mail_senders`
+for send-only, fixed-purpose owner/app sender configuration. It provisions
+no mailboxes or MX records and adds no grants. Migration 0210 remains
+reserved for #2921 and does not renumber main's profile widget migration
+`0205_registry_apps_profile_widget.sql` or the surrounding migration train.
 
 ### App-owned event conversations (#2539)
 
@@ -191,6 +206,15 @@ kernel-owned `chat.conversations_v2`. Existing rows remain unbound: membership
 and mutable context are not evidence of app ownership. The registered-app
 conversation route binds app and creator at insertion and cannot adopt legacy
 rows or transfer either binding. No events-owned schema or data is touched.
+
+### Imported credential audit chain (#2260)
+
+`0208_seed_vault_key_imported_chain.sql` is kernel-owned and seeds only
+`kernel.bus_chain_configs` for `vault.key.imported`. Its metadata-only
+`audit-log` reactor matches `packages/bus/src/config.ts` DEFAULTS.
+`ON CONFLICT (event_type, scope) DO NOTHING` preserves existing operator
+configuration, including disabled chains. No tables are added; the existing
+owner and `firstMigration` remain unchanged.
 
 ### Environment variables
 

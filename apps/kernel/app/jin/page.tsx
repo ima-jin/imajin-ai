@@ -3,6 +3,7 @@
 import { UsageFeedPanel } from './usage-feed-panel';
 import { OperatorApprovalsPanel } from './operator-approvals-panel';
 import { VaultKeysPanel } from './vault-keys-panel';
+import { VaultImportPanel } from './vault-import-panel';
 import { AccessBearersPanel } from './access-bearers-panel';
 import { ProvisionAppPanel } from './provision-app-panel';
 import { AppSecretsPanel } from './app-secrets-panel';
@@ -38,7 +39,10 @@ export default function JinPage() {
         </div>
         {/* #2291 — phone push path: install-to-home-screen PWA + web-push
             opt-in. Renders nothing for a non-operator or unsupported browser. */}
-        <PushSubscribeButton />
+        <div className="flex flex-wrap items-center justify-end gap-3">
+          <a href="/jin/org-settings" className="text-sm text-amber-400 underline">Organization settings</a>
+          <PushSubscribeButton />
+        </div>
       </header>
 
       <main className="px-6 py-4">
@@ -47,6 +51,7 @@ export default function JinPage() {
             ABOVE the operator-approvals panel so a freshly-raised vault
             proposal's confirm card appears directly below it. */}
         <VaultKeysPanel />
+        <VaultImportPanel />
 
         {/* Delegate-grant bearers (#2252) — knock/manage self-service,
             visible to any signed-in identity; renders nothing when signed

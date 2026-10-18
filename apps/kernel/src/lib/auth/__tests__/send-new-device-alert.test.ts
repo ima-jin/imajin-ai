@@ -28,8 +28,8 @@ vi.mock('@imajin/logger', () => ({
   createLogger: () => ({ error: vi.fn(), info: vi.fn(), warn: vi.fn() }),
 }));
 
+vi.mock('@/src/lib/mail/send', () => ({ sendKernelEmail: mocks.sendEmailMock }));
 vi.mock('@imajin/email', () => ({
-  sendEmail: mocks.sendEmailMock,
   emailWrapper: (content: string) => `<html>${content}</html>`,
 }));
 
@@ -50,6 +50,8 @@ describe('sendNewDeviceAlert (#306)', () => {
     expect(mocks.sendEmailMock).toHaveBeenCalledOnce();
     const call = mocks.sendEmailMock.mock.calls[0][0];
     expect(call.to).toBe('user@example.com');
+    expect(call.purpose).toBe('signin');
+    expect(call).not.toHaveProperty('ownerDid');
     expect(call.subject).toBe('New login to your Imajin account');
     expect(call.html).toContain('Chrome');
     expect(call.html).toContain('macOS');

@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, profiles } from '@/src/db';
 import { eq, or } from 'drizzle-orm';
@@ -230,8 +231,8 @@ async function finishRegistrationResponse(params: {
         scope: identity.scope, subtype: identity.subtype,
         created: true, inviteAccepted: true, dfosChainLinked,
       }, { status: 201 });
-      acceptedResponse.cookies.set(cookieConfig.name, token, cookieConfig.options);
-      return acceptedResponse;
+
+      return withSessionCookie(acceptedResponse, token, cookieConfig);
     }
     log.error({ err: String(accepted.error) }, '[register] Auto-accept failed (non-fatal)');
   }
@@ -241,8 +242,7 @@ async function finishRegistrationResponse(params: {
     scope: identity.scope, subtype: identity.subtype,
     created: true, inviteAccepted: false, dfosChainLinked,
   }, { status: 201 });
-  response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-  return response;
+  return withSessionCookie(response, token, cookieConfig);
 }
 
 /** Handle the case where the same public key re-registers (login-via-register flow). */
@@ -271,6 +271,5 @@ async function loginViaRegister(
     created: false, message: 'Identity already exists',
     dfosChainLinked,
   });
-  response.cookies.set(cookieConfig.name, token, cookieConfig.options);
-  return response;
+  return withSessionCookie(response, token, cookieConfig);
 }

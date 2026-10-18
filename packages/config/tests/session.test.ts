@@ -1,72 +1,65 @@
-/**
- * Tests for getSessionCookieOptions (#1069 Phase 1).
- *
- * `SESSION_COOKIE_SCOPE=host` is the flag that narrows the deployed session
- * cookie from a shared `.imajin.ai` parent-domain cookie to a host-only
- * cookie. The property that matters most for a p1 change: with the flag
- * unset (or set to anything other than "host"), behavior must be byte-for-
- * byte identical to before this change.
- */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { getSessionCookieOptions } from '../src/session';
+import { NextResponse } from 'next/server';
+import { getSessionCookieName, getSessionCookieOptions } from '../src/session';
 
-afterEach(() => {
-  vi.unstubAllEnvs();
-});
+afterEach(() => vi.unstubAllEnvs());
 
-describe('getSessionCookieOptions — default behavior is unchanged (#1069 Phase 1)', () => {
-  it('sets domain=".imajin.ai" when SESSION_COOKIE_SCOPE is unset (deployed)', () => {
-    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://');
-    vi.stubEnv('SESSION_COOKIE_SCOPE', '');
-
-    const { options } = getSessionCookieOptions('prod');
-
-    expect(options.domain).toBe('.imajin.ai');
+describe('host-only session default (#1069 phase 2)', () => {
+  it.each(['', 'host', 'typo'])('fails narrow for scope %j in each deployed environment', (scope) => {
+    vi.stubEnv('SESSION_COOKIE_SCOPE', scope);
+    for (const [env, host] of [['prod', 'jin.imajin.ai'], ['dev', 'dev-jin.imajin.ai']] as const) {
+      vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', `https://${host}/`);
+      const { name, options } = getSessionCookieOptions(env);
+      expect(options).not.toHaveProperty('domain');
+      const response = new NextResponse();
+      response.cookies.set(name, 'FAKE_SESSION', options);
+      const header = response.headers.get('set-cookie')!;
+      expect(header).not.toMatch(/domain=/i);
+      expect(header).toContain('HttpOnly');
+      expect(header).toContain('Secure');
+      expect(header).toContain('SameSite=none');
+      expect(header).toContain('Path=/');
+      expect(header).toContain('Max-Age=86400');
+    }
   });
 
-  it('sets domain=".imajin.ai" when SESSION_COOKIE_SCOPE is any value other than "host"', () => {
-    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://');
+  it('restores the legacy options and serialized cookie byte-for-byte with domain rollback', () => {
+    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://jin.imajin.ai/');
     vi.stubEnv('SESSION_COOKIE_SCOPE', 'domain');
-
-    const { options } = getSessionCookieOptions('prod');
-
-    expect(options.domain).toBe('.imajin.ai');
+    const config = getSessionCookieOptions('prod');
+    const legacyOptions = {
+      httpOnly: true, secure: true, sameSite: 'none' as const,
+      path: '/', domain: '.imajin.ai', maxAge: 86400,
+    };
+    expect(config).toEqual({ name: 'imajin_session', options: legacyOptions });
+    vi.useFakeTimers();
+    try {
+      const actual = new NextResponse();
+      const legacy = new NextResponse();
+      actual.cookies.set(config.name, 'FAKE_SESSION', config.options);
+      legacy.cookies.set('imajin_session', 'FAKE_SESSION', legacyOptions);
+      expect(actual.headers.get('set-cookie')).toBe(legacy.headers.get('set-cookie'));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it('never sets domain on localhost regardless of the flag', () => {
-    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'http://localhost:3000');
-    vi.stubEnv('SESSION_COOKIE_SCOPE', 'host');
-
-    const { options } = getSessionCookieOptions('dev');
-
-    expect(options.domain).toBeUndefined();
-  });
-});
-
-describe('getSessionCookieOptions — SESSION_COOKIE_SCOPE=host (#1069 Phase 1)', () => {
-  it('omits the domain attribute entirely when deployed', () => {
-    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://');
-    vi.stubEnv('SESSION_COOKIE_SCOPE', 'host');
-
-    const { options } = getSessionCookieOptions('prod');
-
-    expect(options.domain).toBeUndefined();
-    expect('domain' in options).toBe(false);
+  it.each(['', 'host', 'domain'])('preserves localhost attributes with scope %j', (scope) => {
+    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'http://localhost:3000/');
+    vi.stubEnv('SESSION_COOKIE_SCOPE', scope);
+    expect(getSessionCookieOptions('dev')).toEqual({
+      name: 'imajin_session_dev',
+      options: { httpOnly: true, secure: false, sameSite: 'lax', path: '/', maxAge: 86400 },
+    });
   });
 
-  it('leaves every other cookie attribute unchanged', () => {
-    vi.stubEnv('NEXT_PUBLIC_SERVICE_PREFIX', 'https://');
-    vi.stubEnv('SESSION_COOKIE_SCOPE', 'host');
-    const hostScoped = getSessionCookieOptions('prod');
-
-    vi.stubEnv('SESSION_COOKIE_SCOPE', '');
-    const domainScoped = getSessionCookieOptions('prod');
-
-    expect(hostScoped.name).toBe(domainScoped.name);
-    expect(hostScoped.options.httpOnly).toBe(domainScoped.options.httpOnly);
-    expect(hostScoped.options.secure).toBe(domainScoped.options.secure);
-    expect(hostScoped.options.sameSite).toBe(domainScoped.options.sameSite);
-    expect(hostScoped.options.path).toBe(domainScoped.options.path);
-    expect(hostScoped.options.maxAge).toBe(domainScoped.options.maxAge);
+  it('keeps dev/prod cookie names and environment auto-detection', () => {
+    vi.stubEnv('IMAJIN_ENV', 'dev');
+    expect(getSessionCookieOptions().name).toBe('imajin_session_dev');
+    vi.stubEnv('IMAJIN_ENV', 'prod');
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(getSessionCookieName()).toBe('imajin_session');
+    vi.stubEnv('NODE_ENV', 'development');
+    expect(getSessionCookieName()).toBe('imajin_session_dev');
   });
 });

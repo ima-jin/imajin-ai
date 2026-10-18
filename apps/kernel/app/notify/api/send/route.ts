@@ -7,7 +7,10 @@ import { eq, and } from 'drizzle-orm';
 import { getTemplate } from '@/src/lib/notify/template-store';
 import type { NotifyTemplate } from '@/src/lib/notify/templates';
 import { buildNotificationFrame, pushNotificationToDid } from '@/src/lib/notify/ws-push';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
+import { mailDeliveryFailure, type MailDeliverySafety } from '@/src/lib/kernel/mail-delivery-error';
+import { notificationMailPurpose } from '@/src/lib/notify/mail-purpose';
+import { resolvePaymentMailSender } from '@/src/lib/notify/payment-mail-sender';
 import {
   OPERATOR_APPROVAL_REQUESTED_SCOPE,
   getOperatorDid,
@@ -15,7 +18,7 @@ import {
 } from '@/src/lib/notify/operator-approvals';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { resolveApprovalAddressee } from '@/src/lib/notify/approval-addressing';
-import { requireNotifyAuth } from '@/src/lib/notify/service-auth';
+import { authenticateNotifySender, type NotifySender } from '@/src/lib/notify/service-auth';
 import { pushWebNotificationToOperator } from '@/src/lib/notify/web-push';
 
 export function OPTIONS(request: NextRequest) {
@@ -71,7 +74,7 @@ async function resolveRecipientEmail(
  * "we found one but the provider rejected it" — both used to collapse into
  * the same unconditional `sent: true`.
  */
-interface EmailDeliveryResult {
+interface EmailDeliveryResult extends MailDeliverySafety {
   /** True once the email was actually handed off to the provider successfully. */
   delivered: boolean;
   /** True when a recipient email address could be resolved at all. */
@@ -93,21 +96,25 @@ async function resolveAndSendEmail(
   data: Record<string, unknown>,
   template: import('@/src/lib/notify/templates').NotifyTemplate,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
-  notifId: string,
+  context: { notifId: string; sender: NotifySender; scope: string },
 ): Promise<EmailDeliveryResult> {
+  const { notifId, sender, scope } = context;
   const recipientEmail = await resolveRecipientEmail(to, data);
   if (!recipientEmail) {
     return { delivered: false, emailResolved: false, error: 'No email address found for recipient' };
   }
   try {
-    const result = await sendEmail({
+    const result = await sendKernelEmail({
+      ...sender,
+      purpose: notificationMailPurpose(scope),
+      messageRef: notifId,
       to: recipientEmail,
       subject: template.email!.subject(data as Record<string, any>),
       html: template.email!.html(data as Record<string, any>),
     });
     if (!result.success) {
       log.error({ err: result.error, id: notifId }, 'Email send failed for notification');
-      return { delivered: false, emailResolved: true, error: 'Email delivery failed' };
+      return { delivered: false, emailResolved: true, ...mailDeliveryFailure(result.error, 'Email delivery failed') };
     }
     return { delivered: true, emailResolved: true };
   } catch (err) {
@@ -205,18 +212,20 @@ function notificationRecipient(to: string, normalized: OperatorApprovalNormalize
  * the email leg actually delivered, kept out of POST's own control flow so
  * the handler's complexity stays where it was before this fix.
  */
+interface NotificationSendResponse extends MailDeliverySafety {
+  id: string;
+  sent: boolean;
+  emailResolved?: boolean;
+  error?: string;
+}
+
 function buildResponseBody(
   id: string,
   emailResult: EmailDeliveryResult | null,
-): { id: string; sent: boolean; emailResolved?: boolean; error?: string } {
+): NotificationSendResponse {
   if (!emailResult) return { id, sent: true };
-  const body: { id: string; sent: boolean; emailResolved?: boolean; error?: string } = {
-    id,
-    sent: emailResult.delivered,
-    emailResolved: emailResult.emailResolved,
-  };
-  if (emailResult.error) body.error = emailResult.error;
-  return body;
+  const { delivered, emailResolved, ...failure } = emailResult;
+  return { id, sent: delivered, emailResolved, ...failure };
 }
 
 /**
@@ -308,18 +317,18 @@ async function resolveEmailChannel(
   to: string,
   data: Record<string, unknown>,
   log: { error: (obj: Record<string, unknown>, msg: string) => void },
-  notifId: string,
+  context: { notifId: string; sender: NotifySender; scope: string },
 ): Promise<{ channels: string[]; emailResult: EmailDeliveryResult | null }> {
   if (!emailEnabled || !template?.email) return { channels: [], emailResult: null };
-  const emailResult = await resolveAndSendEmail(to, data, template, log, notifId);
+  const emailResult = await resolveAndSendEmail(to, data, template, log, context);
   return { channels: emailResult.delivered ? ['email'] : [], emailResult };
 }
 
 export const POST = withLogger('kernel', async (request, { log }) => {
   const cors = corsHeaders(request);
 
-  const authError = await requireNotifyAuth(request, 'notify:send', cors);
-  if (authError) return authError;
+  const auth = await authenticateNotifySender(request, 'notify:send', cors);
+  if (auth.response) return auth.response;
 
   let body: {
     to: string;
@@ -349,6 +358,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   const operatorApprovalGuard = await rejectInvalidOperatorApprovalRequest(scope, data, to, cors);
   if (operatorApprovalGuard.response) return operatorApprovalGuard.response;
   const recipientDid = notificationRecipient(to, operatorApprovalGuard.normalized);
+  const sender = await resolvePaymentMailSender({ internal: auth.internal, sender: auth.sender, scope, to: recipientDid, data });
 
   // Resolve template (#1510 — DB row when enabled, else the in-code registry).
   const template = await getTemplate(scope);
@@ -398,7 +408,7 @@ export const POST = withLogger('kernel', async (request, { log }) => {
   // Send email if enabled and template has email config (#1854: the result
   // is a structured outcome, not a boolean, so the response below can be
   // honest about whether the email leg actually delivered).
-  const { channels: emailChannels, emailResult } = await resolveEmailChannel(emailEnabled, template, recipientDid, data, log, id);
+  const { channels: emailChannels, emailResult } = await resolveEmailChannel(emailEnabled, template, recipientDid, data, log, { notifId: id, sender, scope });
 
   const channelsSent: string[] = [...inAppChannels, ...emailChannels];
 

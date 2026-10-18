@@ -1,3 +1,4 @@
+import { withSessionCookie } from '@/src/lib/auth/session-cookie';
 import { NextRequest, NextResponse } from 'next/server';
 import { db, identities, challenges, mfaMethods } from '@/src/db';
 import { eq, and, isNull, gt, isNotNull } from 'drizzle-orm';
@@ -163,7 +164,6 @@ export async function POST(request: NextRequest) {
       dfosChainLinked,
     });
 
-    response.cookies.set(cookieConfig.name, token, cookieConfig.options);
 
     publish('session.created', {
       issuer: identity.id,
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
       return logDevice({ did: identity.id, ip, userAgent });
     }).catch(err => log.error({ err: String(err) }, '[login] Device log failed'));
 
-    return response;
+    return withSessionCookie(response, token, cookieConfig);
 
   } catch (error) {
     log.error({ err: String(error) }, 'Verify error');

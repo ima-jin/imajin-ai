@@ -8,7 +8,7 @@ import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { generateId } from '@/src/lib/kernel/utils';
-import { sendEmail } from '@imajin/email';
+import { sendKernelEmail } from '@/src/lib/mail/send';
 import { generateVerifyToken, verifyTokenExpiry } from '@/src/lib/www/subscribe-tokens';
 import { verificationEmail, verificationEmailText } from '@/src/lib/www/verify-email-template';
 import { createLogger } from '@imajin/logger';
@@ -264,7 +264,8 @@ async function sendVerificationEmail(normalizedEmail: string, baseUrl: string): 
   const expiresAt = verifyTokenExpiry();
   const token = generateVerifyToken(normalizedEmail, expiresAt);
   const verifyUrl = `${baseUrl}/api/subscribe/verify?email=${encodeURIComponent(normalizedEmail)}&token=${token}&expires=${expiresAt}`;
-  await sendEmail({
+  await sendKernelEmail({
+    purpose: 'contact',
     to: normalizedEmail,
     subject: 'Confirm your email — Imajin',
     html: verificationEmail(verifyUrl),
