@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useIdentity } from './context/IdentityContext';
 import { fireAndForget } from '@/src/lib/async/fire-and-forget';
 import InvitationsTab from './invitations-tab';
+import ConnectionRequests from './connection-requests';
 import useSWR from 'swr';
 import { useToast } from '@imajin/ui';
 import { RelationshipEditor, RelationshipFilterControl, matchesRelationship, type RelationshipLabel, type RelationshipFilter } from './relationship-controls';
@@ -322,6 +323,7 @@ export default function ConnectionsPage() {
       {/* ─── Connections tab ─── */}
       {activeTab === 'connections' && (
         <>
+          <ConnectionRequests onConnected={() => { void mutateConnections(); }} />
           <div className="flex items-center justify-between mb-8">
             <p className="text-gray-400 text-sm">
               {connections.length} connection{connections.length === 1  ? '' : 's'}
@@ -471,7 +473,7 @@ export default function ConnectionsPage() {
           ) : (
             <div className="text-center py-12 mb-10 bg-white/5 border border-white/10 rounded-lg">
               <div className="text-4xl mb-3">🤝</div>
-              <p className="text-gray-400">No connections yet. Invite someone to get started!</p>
+              <p className="text-gray-400">No connections yet. Send a connection request above, or invite someone new.</p>
             </div>
           )}
 

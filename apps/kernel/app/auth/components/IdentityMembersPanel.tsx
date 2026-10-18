@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import IdentityPicker from './IdentityPicker';
 import { SERVICES } from '@imajin/config';
+import { setActingAs } from '@imajin/ui/server';
 import { loadRegistryAppOptions } from '@/src/lib/profile/app-options';
 import {
   ASSIGNABLE_MEMBER_ROLES,
@@ -230,7 +231,7 @@ function MemberEditor({
   );
 }
 
-export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: string }>) {
+export default function IdentityMembersPanel({ groupDid, scope }: Readonly<{ groupDid: string; scope: string }>) {
   const [loading, setLoading] = useState(true);
   const [appServices, setAppServices] = useState<{ name: string; label: string }[]>([]);
   const [controllers, setControllers] = useState<Controller[]>([]);
@@ -498,6 +499,19 @@ export default function IdentityMembersPanel({ groupDid }: Readonly<{ groupDid: 
 
         {/* Add member form */}
         <form onSubmit={handleAddMember} className="space-y-3">
+          {['business', 'community', 'family'].includes(scope) && (
+            <p className="text-sm text-gray-400">
+              Members act for this organization and can see who&apos;s inside it.
+              Clients, vendors and partners should be added as a connection instead.{' '}
+              <a
+                href="/connections?connect=1"
+                onClick={() => setActingAs(groupDid)}
+                className="text-amber-400 underline hover:text-amber-300"
+              >
+                Add a connection
+              </a>
+            </p>
+          )}
           <div className="flex gap-2 items-start">
             <div className="flex-1 min-w-0">
               <IdentityPicker

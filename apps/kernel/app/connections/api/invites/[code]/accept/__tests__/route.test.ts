@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: vi.fn() }));
+vi.mock('@/src/lib/notify/ws-push', () => ({ buildNotificationFrame: vi.fn(), pushNotificationToDid: vi.fn() }));
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
