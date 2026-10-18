@@ -25,7 +25,7 @@ export default function OrgSettingsPage() {
   const [error, setError] = useState('');
   const [loadingGroups, setLoadingGroups] = useState(true);
   function rememberSender(sender: SenderConfig) {
-    setSettings(current => current && current.ownerDid === sender.ownerDid ? ({
+    setSettings(current => current?.ownerDid === sender.ownerDid ? ({
       ...current,
       senders: [...current.senders.filter(existing =>
         existing.purpose !== sender.purpose || existing.appDid !== sender.appDid), sender],
@@ -66,10 +66,10 @@ export default function OrgSettingsPage() {
           Unverified domains never send mail. Until domain ownership and mail verification are complete, messages fall back to a verified organization sender or the imajin.ai kernel sender. Saving an address does not verify it.
         </p>
         {error && <p role="alert" className="text-red-400">{error}</p>}
-        {loadingGroups && <p role="status">Loading organizations…</p>}
+        {loadingGroups && <output className="block">Loading organizations…</output>}
         {!loadingGroups && groups.length === 0 && <p>No organizations you own or administer are available.</p>}
         {groups.length > 0 && (
-          <label className="block">Organization
+          <label className="block"><span>Organization</span>
             <select className="mt-1 block w-full rounded bg-gray-900 p-3" value={ownerDid} onChange={event => { setOwnerDid(event.target.value); setAppDid(''); }}>
               {groups.map(group => <option key={group.groupDid} value={group.groupDid}>{group.name || group.handle || group.groupDid}</option>)}
             </select>
@@ -77,7 +77,7 @@ export default function OrgSettingsPage() {
         )}
         {settings && (
           <>
-            <label className="block">App override DID (optional)
+            <label className="block"><span>App override DID (optional)</span>
               <input className="mt-1 block w-full rounded bg-gray-900 p-3" value={appDid} onChange={event => setAppDid(event.target.value.trim())} placeholder="Leave empty for organization defaults" />
             </label>
             <p className="text-sm text-gray-400">An app override must be a registered active app owned by this organization. Without a verified override, the organization sender or kernel default is used.</p>

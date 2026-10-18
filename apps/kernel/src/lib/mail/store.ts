@@ -13,7 +13,7 @@ export async function resolveMailOwner(ownerDid?: string, appDid?: string): Prom
   return app.ownerDid;
 }
 
-export async function listSenderConfigs(ownerDid: string): Promise<SenderConfig[]> {
+export function listSenderConfigs(ownerDid: string): Promise<SenderConfig[]> {
   return db.select().from(mailSenders).where(eq(mailSenders.ownerDid, ownerDid));
 }
 
