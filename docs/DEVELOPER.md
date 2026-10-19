@@ -426,9 +426,7 @@ See [the signed loop output contract](guide/loop-output.md) for the eight
 artifact retrieval used by the plugin and `/jin` Runs. This uses the existing
 database and auth configuration; no new environment variables are required.
 
-## Testing
-
-### Provider-billed usage and the v1 budget (#2972)
+## Provider-billed usage and the v1 budget (#2972)
 
 `usage.incurred` is our meter; `usage.billed` is the counterparty's statement.
 They are never merged. `/usage/api/summary` exposes both and their drift.
@@ -476,6 +474,7 @@ totals, cumulative actuals, remaining cap and a trailing-seven-day projection.
 It does not backfill historical costs, prorate vendor daily statements, or
 claim that absent/ungranted providers have complete coverage. `/jin` Spend UI
 rendering remains owned by #2725.
+## Testing
 
 - **End-to-end test cases:** `tests/HAPPY_PATH.md`
 - **Security audit checklist:** `tests/AUDIT.md`
