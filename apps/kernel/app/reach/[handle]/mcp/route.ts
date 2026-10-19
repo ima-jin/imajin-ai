@@ -34,9 +34,11 @@ async function credentialFor(request: NextRequest, body: JsonRpcMessage, princip
   return resolveReachBearer(authorization.slice(7), principalDid,
     body.params?.name === 'reach_status' ? 'status' : 'send');
 }
+function isGatedCall(body: JsonRpcMessage) {
+  return body.method === 'tools/call' && REACH_GATED_TOOLS.has(String(body.params?.name));
+}
 function needsCredential(body: JsonRpcMessage, declared: string | undefined) {
-  return body.method === 'tools/call' && REACH_GATED_TOOLS.has(String(body.params?.name))
-    && (declared === undefined || isSupportedProtocolVersion(declared));
+  return isGatedCall(body) && (declared === undefined || isSupportedProtocolVersion(declared));
 }
 
 function isMessage(body: unknown): body is JsonRpcMessage {
@@ -70,7 +72,7 @@ export async function POST(request: NextRequest, props: Props) {
   try {
     const { handle } = await props.params;
     // Opt-out hides discovery, not requester-private receipts or existing reach authority.
-    const gatedCall = body.method === 'tools/call' && REACH_GATED_TOOLS.has(String(body.params?.name));
+    const gatedCall = isGatedCall(body);
     const card = gatedCall ? null : await resolveReachDiscovery(handle);
     if (!card && !gatedCall) return NextResponse.json({ error: 'Reach recipient not found' }, { status: 404, headers });
     const principal = await resolveReachRecipient(card?.principalDid ?? handle);
