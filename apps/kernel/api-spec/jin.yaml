@@ -1155,20 +1155,34 @@ paths:
       operationId: listOperatorApprovals
       summary: List operator approval proposals across every connected source
       description: >-
-        A non-operator identity — including `@jin` itself, or anyone else
-        authenticated on this node — gets `{isOperator: false, approvals:
-        []}`: no card, no data, indistinguishable from "nothing pending" so
-        this endpoint never confirms whether a proposal exists to a caller
-        who isn't allowed to see it. Optional `?source=` scopes the list to
+        Lists only proposals addressed to the real session principal (#2723),
+        including their own connector proposals, never another principal's.
+        A delegated agent gets `{isOperator: false, approvals: []}`.
+        Optional `?source=` scopes the list to
         one source (#2152) — a view filter only, never a security boundary.
         This READ surface keeps listing under act-as (#2359) — hiding the
         queue would only make the act-as state harder to notice — and
         reports the act-as overlay as `actAs` so the panel can render its
         decision controls read-only instead of offering a tap the confirm
         rail will refuse with 403 `act_as_not_permitted`.
+        `?view=acting` (#2952) opts into the validated acting organization's
+        read-only Inbox, enforcing owner/admin membership of a genuine group
+        and controller access to service `jin`. Agent/maintainer roles cannot
+        use this projection to read a personal principal's Inbox. Without
+        an acting organization it reads the session Inbox. It additionally
+        returns `canAccess`: true for the node operator, an authorized group
+        controller, or a principal with addressed cards; false for delegated
+        agents or other empty Inboxes. The shared nav counts only `pending`
+        cards from this same projection. No query parameter selects a DID.
+        Decisions remain self-only; this read view grants no write authority.
       security:
         - cookieAuth: []
       parameters:
+        - name: view
+          in: query
+          required: false
+          schema: { type: string, enum: [acting] }
+          description: "Read the validated acting principal's Inbox; default is the real session Inbox."
         - name: source
           in: query
           required: false
@@ -1183,6 +1197,7 @@ paths:
                 type: object
                 properties:
                   isOperator: { type: boolean }
+                  canAccess: { type: boolean, description: "Present only for view=acting; shared nav and Inbox visibility." }
                   approvals:
                     type: array
                     items: { $ref: "#/components/schemas/OperatorApprovalCard" }

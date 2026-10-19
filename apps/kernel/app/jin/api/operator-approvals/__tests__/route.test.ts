@@ -12,11 +12,13 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockList } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockList, mockGroupMember } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockList: vi.fn(),
+  mockGroupMember: vi.fn(),
 }));
+vi.mock('@/src/lib/auth/group-membership', () => ({ isActiveGroupMember: mockGroupMember }));
 
 // #2359: the route's act-as context is computed by the real
 // `isUnderActAs`/`resolveActingDid`, so keep the actual implementations
@@ -26,10 +28,6 @@ vi.mock('@imajin/auth', async () => {
   return { ...actual, requireAuth: mockRequireAuth };
 });
 
-vi.mock('@/src/lib/kernel/cors', () => ({
-  corsHeaders: () => new Headers(),
-  corsOptions: () => new Response(null, { status: 204 }),
-}));
 
 // operator-approvals.ts imports node-identity.ts, which calls getClient() at
 // module scope (requires DATABASE_URL). Stub it so importOriginal() below can
@@ -57,16 +55,87 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockList.mockResolvedValue([pendingApprovalCard()]);
+  mockGroupMember.mockResolvedValue(true);
 });
 
 describe('OPTIONS /jin/api/operator-approvals', () => {
   it('delegates to the shared CORS preflight handler', async () => {
     const res = await OPTIONS(makeReq() as Parameters<typeof OPTIONS>[0]);
     expect(res.status).toBe(204);
+    expect(res.headers.get('Access-Control-Allow-Headers')).toContain('X-Acting-As');
+  });
+  it.each([
+    ['https://client.imajin.ai', 'https://client.imajin.ai'],
+    ['https://untrusted.example', ''],
+  ])('retains the origin allowlist for %s', async (origin, allowed) => {
+    const req = new Request('https://test.imajin.ai/jin/api/operator-approvals?view=acting', {
+      headers: { Origin: origin, 'Access-Control-Request-Headers': 'X-Acting-As' },
+    });
+    const response = OPTIONS(req as Parameters<typeof OPTIONS>[0]);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe(allowed);
+    expect(response.headers.get('Access-Control-Allow-Credentials')).toBe('true');
+    expect(response.headers.get('Access-Control-Allow-Headers')).toContain('X-Acting-As');
   });
 });
 
 describe('GET /jin/api/operator-approvals (#2059)', () => {
+  describe('acting read projection (#2952)', () => {
+    it.each(['agent', 'maintainer', 'member', undefined])('refuses actingAsRole=%s before reading an Inbox', async role => {
+      mockRequireAuth.mockResolvedValueOnce({
+        identity: { ...operatorActingAsGroupIdentity(), actingAsRole: role },
+      });
+      const res = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect(res.status).toBe(403);
+      expect(mockList).not.toHaveBeenCalled();
+      expect(mockGroupMember).not.toHaveBeenCalled();
+    });
+
+    it('refuses personal targets and removed group membership', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+      mockGroupMember.mockResolvedValueOnce(false);
+      const res = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect(res.status).toBe(403);
+      expect(mockGroupMember).toHaveBeenCalledWith(GROUP_DID, OPERATOR_DID);
+      expect(mockList).not.toHaveBeenCalled();
+    });
+    it('reads only the validated organization Inbox and retains the self-only context', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: operatorActingAsGroupIdentity() });
+      const req = makeReq('?view=acting&source=github');
+      const res = await GET(req as Parameters<typeof GET>[0]);
+      expect(mockRequireAuth).toHaveBeenCalledWith(req, { service: 'jin' });
+      expect(mockList).toHaveBeenCalledWith(GROUP_DID, { source: 'github' });
+      expect(await res.json()).toMatchObject({
+        canAccess: true, actAs: { sessionDid: OPERATOR_DID, actingDid: GROUP_DID },
+      });
+    });
+
+    it('refuses invalid or service-restricted act-as without reading either Inbox', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ error: 'Not authorized to act as this group', status: 403 });
+      const res = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect(res.status).toBe(403);
+      expect(mockList).not.toHaveBeenCalled();
+    });
+
+    it('does not let a delegated agent read an acting Inbox', async () => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: agentActingForOperatorIdentity() });
+      const res = await GET(makeReq('?view=acting') as Parameters<typeof GET>[0]);
+      expect(await res.json()).toEqual({ isOperator: false, canAccess: false, approvals: [] });
+      expect(mockList).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['operator with empty Inbox', operatorIdentity, [], true],
+      ['principal with empty Inbox', otherHumanIdentity, [], false],
+      ['principal with addressed cards', otherHumanIdentity, [pendingApprovalCard()], true],
+      ['controller with empty org Inbox', operatorActingAsGroupIdentity, [], true],
+    ])('follows existing console visibility for %s', async (_label, identity, cards, canAccess) => {
+      mockRequireAuth.mockResolvedValueOnce({ identity: identity() });
+      mockList.mockResolvedValueOnce(cards);
+      const res = await GET(makeReq('?view=acting&did=did:imajin:untrusted') as Parameters<typeof GET>[0]);
+      expect(await res.json()).toMatchObject({ canAccess });
+      expect(mockList).toHaveBeenCalledWith(identity().actingAs ?? identity().id, {});
+    });
+  });
   it('returns 401 when unauthenticated', async () => {
     mockRequireAuth.mockResolvedValueOnce({ error: 'Unauthorized', status: 401 });
     const res = await GET(makeReq() as Parameters<typeof GET>[0]);

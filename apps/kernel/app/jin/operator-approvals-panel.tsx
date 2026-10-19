@@ -74,6 +74,7 @@ import { isAppSecretsKind } from '@/src/lib/apps/secrets-kind';
 import { validateSecrets } from '@/src/lib/apps/secret-declarations';
 import { prepareSignedSessionCommand } from './session-command-client';
 import type { SessionCommandFrame } from '@/src/lib/jin/session-command-contract';
+import { getActingAsHeaders } from '@imajin/ui/server';
 
 interface StoredKeypair {
   privateKey: string;
@@ -1291,36 +1292,70 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
   const [claimNotice, setClaimNotice] = useState<ClaimCodeNotice | null>(null);
   const [reissuing, setReissuing] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadGeneration = useRef(0);
+  const loadController = useRef<AbortController | null>(null);
 
   const { flash, notify } = useFlashNotice(4000);
+  const cancelLoad = useCallback(() => {
+    loadGeneration.current++;
+    loadController.current?.abort();
+  }, []);
 
   const load = useCallback(async (silent = false) => {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
+    const generation = ++loadGeneration.current;
     if (!silent) setLoading(true);
     try {
-      const res = await fetch('/jin/api/operator-approvals', { credentials: 'include' });
-      if (!res.ok) return;
+      const res = await fetch('/jin/api/operator-approvals?view=acting', {
+        credentials: 'include', cache: 'no-store', headers: getActingAsHeaders(), signal: controller.signal,
+      });
+      if (!res.ok) throw new Error('Inbox unavailable');
       const data = (await res.json()) as {
         isOperator: boolean;
         approvals: OperatorApprovalCard[];
         actAs?: ActAsState | null;
       };
+      if (generation !== loadGeneration.current) return;
       setIsOperator(data.isOperator);
       setActAs(data.actAs ?? null);
       setApprovals(data.approvals ?? []);
     } catch {
-      // Silent — this panel simply stays empty on a transient network error.
+      if (generation !== loadGeneration.current) return;
+      setIsOperator(false);
+      setActAs(null);
+      setApprovals([]);
     } finally {
-      if (!silent) setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     load();
     pollRef.current = setInterval(() => load(true), POLL_INTERVAL_MS);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+    const scopeChanged = () => {
+      setIsOperator(false);
+      setActAs(null);
+      setApprovals([]);
+      void load();
     };
-  }, [load]);
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key === null || event.key === 'imajin:acting-as') scopeChanged();
+    };
+    globalThis.addEventListener('focus', scopeChanged);
+    globalThis.addEventListener('imajin:acting-as-changed', scopeChanged);
+    globalThis.addEventListener('imajin:session-changed', scopeChanged);
+    globalThis.addEventListener('storage', storageChanged);
+    return () => {
+      cancelLoad();
+      if (pollRef.current) clearInterval(pollRef.current);
+      globalThis.removeEventListener('focus', scopeChanged);
+      globalThis.removeEventListener('imajin:acting-as-changed', scopeChanged);
+      globalThis.removeEventListener('imajin:session-changed', scopeChanged);
+      globalThis.removeEventListener('storage', storageChanged);
+    };
+  }, [load, cancelLoad]);
 
   // #2367: a sibling form (static-bearer knock) just staged a card — re-fetch
   // now so its `#<anchor>` hand-off link has a target without waiting a poll.
@@ -1432,6 +1467,7 @@ export function useRunApprovals(prepareCommand = prepareSignedSessionCommand) {
         notify('ok', decisionSuccessNotice(approval, decision));
       }
       await load(true);
+      globalThis.dispatchEvent(new Event(APPROVALS_REFRESH_EVENT));
     } finally {
       setBusyId('');
     }
@@ -1477,7 +1513,7 @@ function OperatorApprovalsPanelInner() {
   // connector proposals) — otherwise no header, no empty-state, no card.
   // This also holds during the initial load so nobody briefly sees panel
   // chrome before the first fetch resolves.
-  if (!isOperator && approvals.length === 0) return null;
+  if (!isOperator && !actAs && approvals.length === 0) return null;
 
   return (
     <section className="mt-8">

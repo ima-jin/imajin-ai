@@ -311,9 +311,9 @@ describe('approve → claim-code banner (#2707)', () => {
     await screen.findByTestId('revealed-claim-code');
 
     await screen.findByText('approved — pending apply');
-    const beforePoll = spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals').length;
+    const beforePoll = spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals?view=acting').length;
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    expect(spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals')).toHaveLength(beforePoll + 1);
+    expect(spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals?view=acting')).toHaveLength(beforePoll + 1);
     expect(screen.getByTestId('revealed-claim-code')).toBeDefined();
   });
 
