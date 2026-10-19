@@ -131,9 +131,9 @@ export function installConnectorInboxHarness(holder: { db: unknown }): { readonl
   beforeAll(async () => {
     harness = await createConnectorInboxHarness();
     holder.db = harness.db;
-  });
+  }, 30_000);
   afterAll(async () => {
-    await harness.close();
+    if (harness) await harness.close();
   });
   return {
     get db() {
