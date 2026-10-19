@@ -146,7 +146,7 @@ describe('pinned scope sets (change these deliberately)', () => {
     ['Anthropic', 'anthropic', ['anthropic:infer', 'anthropic:billing']],
     ['xAI', 'xai', ['xai:infer']],
     ['OpenAI', 'openai', ['openai:infer', 'openai:billing']],
-    ['Moonshot', 'moonshot', ['moonshot:infer']],
+    ['Moonshot', 'moonshot', ['moonshot:infer', 'moonshot:billing']],
     ['Z.ai', 'zai', ['zai:infer']],
     ['Local Inference', 'local', ['local:infer']],
     ['OpenRouter', 'openrouter', ['openrouter:infer']],
@@ -414,6 +414,7 @@ describe('derived descriptors match the pre-#1253 literals exactly', () => {
   it('moonshot', () => {
     expect(connectorScopeDescriptors('moonshot')).toEqual({
       'moonshot:infer': { verb: 'infer', surface: 'moonshot-api', label: 'Use your Moonshot API key for inference', release: { discloses_others: false, sensitive: true, viewer: MOONSHOT_DID } },
+      'moonshot:billing': { verb: 'billing', surface: 'moonshot-api', label: 'Read your Moonshot account balance (billed receipts remain manual)', release: { discloses_others: false, sensitive: true, viewer: MOONSHOT_DID } },
     });
   });
 

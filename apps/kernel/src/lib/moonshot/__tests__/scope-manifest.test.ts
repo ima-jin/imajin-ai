@@ -59,6 +59,7 @@ describeScopeManifestIdentityContract({
   connectorDid: 'did:imajin:moonshot-connector',
   channel: 'moonshot',
   inferScope: 'moonshot:infer',
+  extraScopes: ['moonshot:billing'],
   filename: 'moonshot-scope-manifest.md',
   core,
   scopeDescriptors: MOONSHOT_SCOPE_DESCRIPTORS,

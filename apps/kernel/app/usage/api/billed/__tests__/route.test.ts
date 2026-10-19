@@ -199,6 +199,16 @@ describe('POST /usage/api/billed — body validation', () => {
 });
 
 describe('POST /usage/api/billed — write outcomes', () => {
+  it.each(['manual', 'document'])('accepts Moonshot top-up receipts through the existing %s path', async (source) => {
+    const res = await POST(makeReq(goodBody({
+      vendor: 'moonshot', source, category: 'top-up', evidenceAssetId: 'asset_receipt',
+    })));
+    expect(res.status).toBe(201);
+    expect(mocks.insertManualBilledLine).toHaveBeenCalledWith(expect.objectContaining({
+      principalDid: OWNER_DID, vendor: 'moonshot', source, category: 'top-up',
+      evidenceAssetId: 'asset_receipt',
+    }));
+  });
   it('never writes to usage.incurred (route only ever calls the manual billed writer)', async () => {
     await POST(makeReq(goodBody()));
     expect(mocks.insertManualBilledLine).toHaveBeenCalledOnce();

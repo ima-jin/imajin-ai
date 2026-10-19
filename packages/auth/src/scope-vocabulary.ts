@@ -464,6 +464,7 @@ export const SCOPE_VOCABULARY = [
   // remaining brain connectors are left for a later pass.
   connectorBillingScope('anthropic', 'anthropic-billing-api', 'Use your Anthropic Admin API key for usage/cost reconciliation'),
   connectorBillingScope('openai', 'openai-billing-api', 'Use your OpenAI org admin API key for usage/cost reconciliation'),
+  connectorBillingScope('moonshot', 'moonshot-api', 'Read your Moonshot account balance (billed receipts remain manual)'),
 
   // ── Google Cloud connector (#1317) — a sealed service-account key, not an
   // inference-only brain. The key is the owner's own credential and is consumed
