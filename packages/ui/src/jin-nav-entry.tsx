@@ -23,19 +23,19 @@ export function JinNavEntry({ href, identityDid }: Readonly<{ href: string; iden
       controller = new AbortController();
       const requestGeneration = ++generation;
       try {
-        const response = await fetch(`${href}/api/operator-approvals?view=acting`, {
+        const response = await fetch(`${href}/api/operator-approvals?view=acting&count=true`, {
           credentials: 'include',
           cache: 'no-store',
           headers: getActingAsHeaders(),
           signal: controller.signal,
         });
         const data = response.ok ? await response.json() as {
-          canAccess?: boolean; approvals?: { status: string }[];
+          canAccess?: boolean; pending?: number;
         } : null;
         if (generation !== requestGeneration) return;
         setAttention(data ? {
           canAccess: data.canAccess === true,
-          pending: (data.approvals ?? []).filter(card => card.status === 'pending').length,
+          pending: data.pending ?? 0,
         } : null);
       } catch (error) {
         if (generation !== requestGeneration) return;

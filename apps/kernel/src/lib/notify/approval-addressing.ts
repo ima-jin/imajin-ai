@@ -23,7 +23,7 @@
 import type { Identity } from '@imajin/auth';
 
 /** `<connector>:<tier>` kinds that carry a write against a principal's own connector. */
-const CONNECTOR_KIND_PATTERN = /^[a-z][a-z0-9-]*:(append|mutate|write)$/;
+export const CONNECTOR_KIND_PATTERN = /^[a-z][a-z0-9-]*:(append|mutate|write)$/;
 
 export interface AddressableApproval {
   kind: string;
