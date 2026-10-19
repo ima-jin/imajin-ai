@@ -7,6 +7,8 @@ export interface ReachStatus {
   reachId: string;
   state: 'delivered' | 'replied' | 'blocked';
   reply: SignedReachReplyEvent | null;
+  /** Shared decisions carry their original evidence and actor countersignature, not a forged legacy reply signature. */
+  approvalDecision?: NonNullable<ReachEnvelope['approvalDecision']>;
 }
 
 /**
@@ -35,5 +37,9 @@ export async function reachStatus(params: {
     ...params, onBehalfOfStubDid: row.envelope.onBehalfOfStubDid,
   })) return { reachId: params.reachId, state: 'blocked', reply: null };
   const reply = row.envelope.reply ?? null;
+  if (row.envelope.approvalDecision) {
+    const approvalDecision = row.envelope.approvalDecision;
+    return { reachId: params.reachId, state: approvalDecision.payload.mode === 'reply' ? 'replied' : 'delivered', reply, approvalDecision };
+  }
   return { reachId: params.reachId, state: reply ? 'replied' : 'delivered', reply };
 }

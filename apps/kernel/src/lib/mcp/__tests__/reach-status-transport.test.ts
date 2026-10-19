@@ -37,6 +37,19 @@ beforeEach(() => {
 });
 
 describe('reach_status through caller MCP transport', () => {
+  it('preserves shared decision evidence and actor countersignature for a reach-only caller', async () => {
+    const receipt = {
+      reachId, state: 'replied', reply: null,
+      approvalDecision: {
+        payload: { mode: 'reply', replyMessage: 'Shared reply', decidedBy: principalDid, operatorSignature: { sig: 'actor-proof' } },
+        evidence: { detail: { principalDid, requesterDid, transcriptHash: 'transcript', claimVerified: false } },
+      },
+    };
+    mocked.bearer.mockResolvedValue({ ok: true, principalDid: requesterDid, bearerId: 'bearer_1', scopes: ['discovery:read'] });
+    mocked.status.mockResolvedValue(receipt);
+    const result = await (await call()).json();
+    expect(JSON.parse(result.result.content[0].text)).toEqual(receipt);
+  });
   it('returns the reply over OAuth using verified token sub, never arguments/act-as/app DID', async () => {
     mocked.jwt.mockResolvedValue({ sub: requesterDid, azp: 'did:imajin:client', aud: getMcpResource(), scope: 'discovery:read' });
     const response = await call({ principalDid, reachId, requesterDid: 'did:imajin:victim' });

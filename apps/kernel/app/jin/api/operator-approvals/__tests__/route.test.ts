@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/notify/reach-approvals', () => ({ backfillReachApprovals: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/src/lib/notify/reach-approval-authority', () => ({ reachActAsPrincipal: vi.fn().mockResolvedValue(null) }));
 import {
   OPERATOR_DID,
   OTHER_HUMAN_DID,

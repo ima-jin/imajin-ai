@@ -12,6 +12,8 @@
  * all real.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('@/src/lib/notify/reach-approvals', () => ({ backfillReachApprovals: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/src/lib/notify/reach-approval-authority', () => ({ reachActAsPrincipal: vi.fn().mockResolvedValue(null) }));
 import {
   CONNECTOR_OWNER_DID,
   GROUP_DID,

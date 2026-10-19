@@ -5,7 +5,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import * as schema from '@/src/db/schemas/auth';
 
-const state = vi.hoisted(() => ({ db: null as unknown, grant: vi.fn(), persist: vi.fn(), node: vi.fn() }));
+const state = vi.hoisted(() => ({ db: null as unknown, grant: vi.fn(), persist: vi.fn(), node: vi.fn(), approval: vi.fn() }));
+vi.mock('@/src/lib/notify/reach-approvals', () => ({ publishReachApproval: (...args: unknown[]) => state.approval(...args) }));
 vi.mock('../reach-block', () => ({ isReachSenderBlocked: vi.fn().mockResolvedValue(false) }));
 vi.mock('../reach-abuse-guard', async (original) => ({
   ...await original<typeof import('../reach-abuse-guard')>(),
@@ -13,6 +14,7 @@ vi.mock('../reach-abuse-guard', async (original) => ({
 }));
 vi.mock('../reach-envelope-store', () => ({
   persistReachEnvelope: (...args: unknown[]) => state.persist(...args),
+  getReachEnvelope: async () => state.persist.mock.calls.at(-1)?.[0] ?? null,
   markReachPublished: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock('../emit-mechanical-attestation', () => ({
@@ -99,6 +101,7 @@ beforeEach(async () => {
     { id: otherPrincipal, publicKey: 'other', scope: 'actor' },
   ]);
   state.grant.mockReset().mockResolvedValue({ authorized: false });
+  state.approval.mockReset().mockResolvedValue(undefined);
   state.persist.mockReset().mockImplementation(async (envelope: Record<string, unknown>) => ({
     stored: true, reachId: envelope.reachId, published: false, signedEvent: envelope.signedEvent,
   }));
@@ -123,6 +126,7 @@ describe('gate authority and foreign-agent stubs (#2590)', () => {
     expect(state.persist).toHaveBeenCalledWith(expect.objectContaining({
       message: input.message, replyHandle: input.replyHandle, requesterSignature: input.signature, grantId: null,
     }));
+    expect(state.approval).toHaveBeenCalledWith(expect.objectContaining({ principalDid, message: input.message }));
     expect(publish).toHaveBeenCalledWith('agent.reach.delivered', expect.objectContaining({
       subject: principalDid, payload: expect.objectContaining({ grantId: null, requesterTier: 'soft', claimVerified: false }),
     }));

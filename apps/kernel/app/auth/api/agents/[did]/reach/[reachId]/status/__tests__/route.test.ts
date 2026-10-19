@@ -78,6 +78,17 @@ describe('HTTP reach bearer status', () => {
 });
 
 describe('signed reach_status route', () => {
+  it('returns the shared signed decision proof without dropping evidence or reply text', async () => {
+    const receipt = {
+      reachId, state: 'replied', reply: null,
+      approvalDecision: {
+        payload: { mode: 'reply', replyMessage: 'Shared reply', decidedBy: principalDid, operatorSignature: { sig: 'actor-proof' } },
+        evidence: { detail: { principalDid, requesterDid, transcriptHash: 'transcript', claimVerified: false } },
+      },
+    };
+    mocked.status.mockResolvedValue(receipt);
+    expect(await (await request()).json()).toEqual(receipt);
+  });
   it('rejects oversized signed status input before signature or receipt resolution', async () => {
     const response = await request({ ...body(), padding: 'x'.repeat(64 * 1024) });
     expect(response.status).toBe(413);

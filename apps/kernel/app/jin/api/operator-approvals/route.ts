@@ -41,8 +41,29 @@ import { inboxDidFor } from '@/src/lib/notify/approval-addressing';
 import { actAsContext } from '@/src/lib/notify/act-as-guard';
 import { listApprovalsForOperator } from '@/src/lib/notify/operator-approvals-service';
 import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
+import { reachActAsPrincipal } from '@/src/lib/notify/reach-approval-authority';
+import { backfillReachApprovals } from '@/src/lib/notify/reach-approvals';
+import { isReachApproval } from '@/src/lib/notify/reach-approval-contract';
 
 export const dynamic = 'force-dynamic';
+
+/**
+ * The session Inbox plus, for a verified act-as owner/admin, the acting
+ * principal's Reach/knock cards only (#2597). Backfill recovers failed or
+ * pre-upgrade publications before listing.
+ */
+async function listInboxApprovals(inboxDid: string, reachPrincipal: string | null, source: string | null) {
+  const filter = source ? { source } : {};
+  const sharedPrincipal = reachPrincipal && reachPrincipal !== inboxDid ? reachPrincipal : null;
+  await backfillReachApprovals(inboxDid);
+  if (sharedPrincipal) await backfillReachApprovals(sharedPrincipal);
+  const approvals = await listApprovalsForOperator(inboxDid, filter);
+  if (sharedPrincipal) {
+    const shared = await listApprovalsForOperator(sharedPrincipal, filter);
+    approvals.push(...shared.filter(isReachApproval));
+  }
+  return approvals;
+}
 
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -73,11 +94,11 @@ export async function GET(request: NextRequest) {
   const operatorDid = await getOperatorDid();
   const isOperator = operatorDid !== null && isOperatorIdentity(authResult.identity, operatorDid);
 
-  const source = searchParams.get('source');
-  const approvals = await listApprovalsForOperator(inboxDid, source ? { source } : {});
+  const reachPrincipal = await reachActAsPrincipal(authResult.identity);
+  const approvals = await listInboxApprovals(inboxDid, reachPrincipal, searchParams.get('source'));
   return NextResponse.json(
     {
-      isOperator, approvals, actAs: actAsContext(authResult.identity),
+      isOperator, approvals, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null,
       ...(actingView ? { canAccess: isOperator || Boolean(authResult.identity.actingAs) || approvals.length > 0 } : {}),
     },
     { headers: cors },
