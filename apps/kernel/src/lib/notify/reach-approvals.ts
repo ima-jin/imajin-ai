@@ -5,7 +5,6 @@ import { createLogger } from '@imajin/logger';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import type { KnockRecord } from '../auth/knock';
 import { computeApprovalContentHash } from './operator-approvals';
-import { pushWebNotificationToOperator } from './web-push';
 
 const log = createLogger('kernel:reach-approvals');
 
@@ -131,6 +130,7 @@ export async function backfillReachApprovals(principalDid: string): Promise<void
   // One aggregate push avoids per-card subscription/VAPID queries. As on the
   // ordinary publish path, transport failure cannot undo durable publication.
   if (inserted.length) {
+    const { pushWebNotificationToOperator } = await import('./web-push');
     void pushWebNotificationToOperator(principalDid, {
       title: 'Operator approvals needed',
       body: `${inserted.length} incoming Reach or knock request${inserted.length === 1 ? '' : 's'}`,
