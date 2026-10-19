@@ -133,6 +133,37 @@ resolver uses the existing grant fetch primitive and does not fall back to a
 node-level environment token. Plaintext belongs only in the consuming
 server's memory, never an API response, log, or command line.
 
+### DNS adapter boundary (#2920)
+
+`apps/kernel/src/lib/dns/provider.ts` provides an internal `resolveDnsProvider`
+seam. Its per-domain configuration is either `{ provider: 'manual' }` or
+`{ provider: 'cloudflare', zoneId }`; configuration contains identifiers, never
+a credential. Cloudflare operations resolve `dns.cloudflare` for the specified
+consumer DID through `resolveDomainCredential` on every apply. No usable scoped
+grant returns manual records/instructions; unverified ownership, vault failures
+and provider failures do not silently become a successful write.
+
+The adapters accept only domain-scoped TXT/CNAME records. They never change MX,
+nameservers, addresses, mailboxes or inbound delivery. Cloudflare preflights the
+whole plan, reads paginated record sets, preserves unrelated TXT records, refuses
+conflicting CNAMEs and multiple existing SPF records, and merges required
+positive SPF includes before the owner's existing `all`. Existing mechanisms,
+includes, redirect and policy qualifiers are retained. Identical records are
+not rewritten; mail CNAMEs are DNS-only. A later retry re-reads provider state,
+including after a partial network failure. Provider errors are fixed codes,
+without response bodies, headers or exception causes.
+
+This is **not yet wired to `/jin`**, does not persist provider settings and does
+not enable owner-domain sending. #2918's merged #2958 contains no implementation;
+its supported Postal domain-management boundary still needs a decision. The
+future integration must supply authoritative Postal records, enforce owner/admin
+and delegation policy, serialize setup per domain, persist non-secret settings,
+and poll actual verification before enabling mail. Cloudflare has no atomic
+SPF compare-and-swap here: concurrent external DNS edits require reconciliation.
+The current credential primitive also requires an already verified binding;
+this adapter cannot bootstrap ownership for a pending claim. Its verification
+TXT support is for an already verified domain, not an ownership bypass.
+
 ## Acceptance verification
 
 The domain integration tests exercise PostgreSQL-compatible migrations twice,
