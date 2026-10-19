@@ -8,8 +8,9 @@ const mocks = vi.hoisted(() => ({
   rows: new Map<string, Record<string, unknown>>(),
   envelopes: new Map<string, Record<string, unknown>>(),
   attest: vi.fn(), publish: vi.fn(), broker: vi.fn(), grant: vi.fn(),
-  persist: vi.fn(), markPublished: vi.fn(), prepareAttestation: vi.fn(), limit: vi.fn(), node: vi.fn(), bearer: vi.fn(),
+  persist: vi.fn(), markPublished: vi.fn(), prepareAttestation: vi.fn(), limit: vi.fn(), node: vi.fn(), bearer: vi.fn(), raiseApproval: vi.fn(),
 }));
+vi.mock('@/src/lib/notify/reach-approvals', () => ({ publishReachApproval: mocks.raiseApproval }));
 vi.mock('@/src/lib/auth/reach-block', () => ({ isReachSenderBlocked: vi.fn().mockResolvedValue(false) }));
 vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({
   prepareMechanicalAttestation: (...args: unknown[]) => mocks.prepareAttestation(...args),
@@ -64,6 +65,10 @@ vi.mock('@/src/lib/auth/foreign-principal-stub', () => ({
 vi.mock('@/src/lib/auth/reach-envelope-store', () => ({
   persistReachEnvelope: (...args: unknown[]) => mocks.persist(...args),
   markReachPublished: (...args: unknown[]) => mocks.markPublished(...args),
+  getReachEnvelope: async ({ principalDid, reachId }: { principalDid: string; reachId: string }) => {
+    const envelope = mocks.envelopes.get(reachId);
+    return envelope?.principalDid === principalDid ? envelope : null;
+  },
 }));
 vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
 vi.mock('@/src/lib/access/reach-bearer', () => ({ resolveReachBearer: mocks.bearer }));
@@ -112,6 +117,7 @@ beforeEach(() => {
     ...params, id, signature: 'prepared-node-attestation',
   }));
   mocks.markPublished.mockResolvedValue(undefined);
+  mocks.raiseApproval.mockResolvedValue(undefined);
   mocks.publish.mockResolvedValue({});
   mocks.broker.mockResolvedValue({ status: 'released', data: { contact_topics: { result: true } } });
   mocks.grant.mockResolvedValue({ authorized: true, grantId: 'grant_test' });
@@ -222,6 +228,7 @@ describe('signed reach delivery through POST', () => {
     expect(response.body).toEqual({ delivered: true, reachId: expect.stringMatching(/^reach_/) });
     const stored = mocks.envelopes.get(String(response.body.reachId));
     expect(stored).toMatchObject({ message: input.message, replyHandle: input.replyHandle, requesterDid, principalDid });
+    expect(mocks.raiseApproval).toHaveBeenCalledWith(stored);
     expect(mocks.persist.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
     expect(mocks.publish).toHaveBeenCalledTimes(1);
     const [type, event] = mocks.publish.mock.calls[0];
