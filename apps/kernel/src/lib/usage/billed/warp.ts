@@ -5,6 +5,8 @@
  * Never retains prompts, titles, provider errors or arbitrary run metadata.
  * A resumed run is re-read from the fixed cutoff, not a moving day window.
  * Its cumulative credits stay attributed to its original creation time.
+ * Writes target the inherited usage.billed_warp_runs relation so parent reads
+ * include runs without changing the old parent bucket uniqueness/upsert seam.
  */
 import { createHash } from 'node:crypto';
 import { getClient } from '@imajin/db';
@@ -16,6 +18,7 @@ import {
 } from '@/src/lib/warp/dispatch';
 import { WarpApiError } from '@/src/lib/warp/errors';
 import { BillingApiError } from './types';
+import { forEachSequential } from '@/src/lib/async/sequential';
 
 export const WARP_BILLED_SINCE = '2026-10-19T00:00:00.000Z';
 /** Operator config via the existing admin config route: { usd: 100, credits: 6500 }. */
@@ -131,13 +134,13 @@ export async function ingestWarpBilledUsage(principalDid: string, now = new Date
     const rate = await loadCreditRate();
     const sql = getClient();
     let rowsWritten = 0;
-    for (const line of lines) {
+    await forEachSequential(lines, async (line) => {
       const raw = {
         runId: line.runId, parentRunId: line.parentRunId,
         requestUsage: { ...line.requestUsage }, credits: line.credits, creditRate: { ...rate },
       };
       const rows = await sql`
-        INSERT INTO usage.billed
+        INSERT INTO usage.billed_warp_runs
           (id, principal_did, provider, source, currency, period_start, period_end,
            granularity, model, billed_usd, raw, fetched_at)
         VALUES
@@ -146,21 +149,21 @@ export async function ingestWarpBilledUsage(principalDid: string, now = new Date
            ${line.credits}::numeric * ${rate.usd}::numeric / ${rate.credits}::numeric,
            ${sql.json(raw)}, now())
         ON CONFLICT (id) DO UPDATE SET
-          period_end = GREATEST(usage.billed.period_end, EXCLUDED.period_end),
+          period_end = GREATEST(usage.billed_warp_runs.period_end, EXCLUDED.period_end),
           billed_usd = round(
             (EXCLUDED.raw->>'credits')::numeric
-            * (usage.billed.raw->'creditRate'->>'usd')::numeric
-            / (usage.billed.raw->'creditRate'->>'credits')::numeric, 8),
-          raw = jsonb_set(EXCLUDED.raw, '{creditRate}', usage.billed.raw->'creditRate'),
+            * (usage.billed_warp_runs.raw->'creditRate'->>'usd')::numeric
+            / (usage.billed_warp_runs.raw->'creditRate'->>'credits')::numeric, 8),
+          raw = jsonb_set(EXCLUDED.raw, '{creditRate}', usage.billed_warp_runs.raw->'creditRate'),
           fetched_at = EXCLUDED.fetched_at
-        WHERE usage.billed.provider = 'warp'
-          AND usage.billed.source = 'api'
-          AND usage.billed.granularity = 'run'
-          AND (EXCLUDED.raw->>'credits')::numeric > (usage.billed.raw->>'credits')::numeric
+        WHERE usage.billed_warp_runs.provider = 'warp'
+          AND usage.billed_warp_runs.source = 'api'
+          AND usage.billed_warp_runs.granularity = 'run'
+          AND (EXCLUDED.raw->>'credits')::numeric > (usage.billed_warp_runs.raw->>'credits')::numeric
         RETURNING id
       `;
       rowsWritten += rows.length;
-    }
+    });
     return rowsWritten;
   } catch (error) {
     if (error instanceof BillingApiError) throw error;

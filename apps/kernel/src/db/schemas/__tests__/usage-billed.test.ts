@@ -15,17 +15,24 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { getTableColumns } from 'drizzle-orm';
 import { getTableConfig, PgDialect } from 'drizzle-orm/pg-core';
-import { usageBilled } from '../usage';
+import { usageBilled, usageBilledWarpRuns } from '../usage';
 
 describe('usageBilled drizzle schema', () => {
-  it('#2972: excludes individually identified run rows from bucket uniqueness in schema and migration', () => {
+  it('#2972: represents inherited run columns without altering the old parent bucket unique index', () => {
     const migration = readFileSync(resolve(__dirname, '../../../../../../migrations/0214_usage_billed_warp_runs.sql'), 'utf-8');
-    expect(migration).toContain('DROP INDEX IF EXISTS "usage"."uniq_usage_billed_period"');
-    expect(migration).toContain('CREATE UNIQUE INDEX IF NOT EXISTS "uniq_usage_billed_period"');
-    expect(migration).toContain('WHERE "granularity" <> \'run\'');
+    expect(migration).toContain('CREATE TABLE IF NOT EXISTS usage.billed_warp_runs');
+    expect(migration).toContain('INHERITS (usage.billed)');
+    expect(migration).not.toMatch(/DROP INDEX|ALTER TABLE usage\.billed\s/);
     const index = getTableConfig(usageBilled).indexes.find((item) => item.config.name === 'uniq_usage_billed_period');
-    expect(index?.config.where).toBeDefined();
-    expect(new PgDialect().sqlToQuery(index!.config.where!).sql).toContain('<> \'run\'');
+    expect(index?.config.where).toBeUndefined();
+    const parentColumns = getTableColumns(usageBilled);
+    const childColumns = getTableColumns(usageBilledWarpRuns);
+    expect(Object.keys(childColumns)).toEqual(Object.keys(parentColumns));
+    expect(childColumns.id).not.toBe(parentColumns.id);
+    expect(childColumns.id.primary).toBe(true);
+    const child = getTableConfig(usageBilledWarpRuns);
+    expect(child.indexes.some(item => item.config.name === 'uniq_usage_billed_period')).toBe(false);
+    expect(new PgDialect().sqlToQuery(child.checks[0].value).sql).toContain("'run'");
   });
   it('declares every column the ingest/reconciliation code depends on', () => {
     const columns = getTableColumns(usageBilled);

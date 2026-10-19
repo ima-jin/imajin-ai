@@ -126,10 +126,11 @@ describe('ingestWarpBilledUsage', () => {
     expect(values).toContainEqual(new Date(run().createdAt!));
     expect(values).toContainEqual(new Date(run().updatedAt!));
     expect(text).toContain('ON CONFLICT (id)');
-    expect(text).toContain("jsonb_set(EXCLUDED.raw, '{creditRate}', usage.billed.raw->'creditRate')");
-    expect(text).toContain("(usage.billed.raw->'creditRate'->>'usd')::numeric");
-    expect(text).toContain("(usage.billed.raw->'creditRate'->>'credits')::numeric");
-    expect(text).toContain("(EXCLUDED.raw->>'credits')::numeric > (usage.billed.raw->>'credits')::numeric");
+    expect(text).toContain('INSERT INTO usage.billed_warp_runs');
+    expect(text).toContain("jsonb_set(EXCLUDED.raw, '{creditRate}', usage.billed_warp_runs.raw->'creditRate')");
+    expect(text).toContain("(usage.billed_warp_runs.raw->'creditRate'->>'usd')::numeric");
+    expect(text).toContain("(usage.billed_warp_runs.raw->'creditRate'->>'credits')::numeric");
+    expect(text).toContain("(EXCLUDED.raw->>'credits')::numeric > (usage.billed_warp_runs.raw->>'credits')::numeric");
   });
 
   it('uses configured rate for new rows but never puts it into conflict growth calculation', async () => {
@@ -139,7 +140,7 @@ describe('ingestWarpBilledUsage', () => {
     expect(json).toHaveBeenCalledWith(expect.objectContaining({ creditRate: { usd: 50, credits: 6500 } }));
     const text = sql.mock.calls[1][0].join('?').split('DO UPDATE SET')[1];
     expect(text).not.toContain('EXCLUDED.billed_usd');
-    expect(text).toContain("usage.billed.raw->'creditRate'");
+    expect(text).toContain("usage.billed_warp_runs.raw->'creditRate'");
   });
 
   it('returns zero on unchanged/stale runs, without unconditional fetched_at/raw updates', async () => {

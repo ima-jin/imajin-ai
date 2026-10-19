@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 # Schema/migration sync guard. Compares working tree against HEAD.
 # For broader changes (multi-commit branches), CI runs the same check against origin/main.
-STAGED_SCHEMA=$(git diff --cached --name-only | grep -E '(apps/.*/src/db/schema\.ts|packages/db/src/.*\.ts)$' || true)
+STAGED_SCHEMA=$(git diff --cached --name-only | grep -E '(apps/.*/src/db/(schema\.ts|schemas/[^/]+\.ts)|packages/db/src/.*\.ts)$' || true)
 STAGED_MIGRATIONS=$(git diff --cached --name-only --diff-filter=A | grep -E '^migrations/[0-9]{4}_.*\.sql$' || true)
 if [ -n "$STAGED_SCHEMA" ] && [ -z "$STAGED_MIGRATIONS" ]; then
   echo "❌ Staged schema change without a new migration file:"

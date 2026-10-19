@@ -39,7 +39,7 @@ describe('ingestBilledUsage', () => {
     expect(firstCallText).toContain('INSERT INTO usage.billed');
     expect(firstCallText).toContain("ON CONFLICT (principal_did, provider, period_start, granularity, COALESCE(model, ''))");
     expect(firstCallText).toContain('DO UPDATE SET');
-    expect(firstCallText).toContain("WHERE granularity <> 'run'");
+    expect(firstCallText).not.toContain("WHERE granularity <> 'run'");
   });
 
   it('rounds billedUsd to 8 decimal places, and passes null through untouched', async () => {

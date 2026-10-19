@@ -21,6 +21,7 @@ const CREATED = '2026-10-19T12:00:00Z';
 const migrationPath = resolve(__dirname, '../../../../../../../migrations');
 const migration = readFileSync(resolve(migrationPath, '0214_usage_billed_warp_runs.sql'), 'utf8');
 let pg: PGlite;
+let originalParentIndex: unknown[];
 
 // Executes production tagged SQL, without interpreting its conditional logic.
 // PGlite serializes statements, so this tests atomic guards, not backend locks.
@@ -53,6 +54,7 @@ beforeAll(async () => {
   for (const name of ['0122_usage_billed.sql', '0125_usage_billed_manual.sql', '0127_usage_billed_receipts.sql']) {
     await pg.exec(readFileSync(resolve(migrationPath, name), 'utf8'));
   }
+  originalParentIndex = (await pg.query("SELECT indexdef FROM pg_indexes WHERE schemaname = 'usage' AND tablename = 'billed' ORDER BY indexname")).rows;
   await pg.exec(migration);
   await pg.exec('CREATE SCHEMA registry; CREATE TABLE registry.node_config (key text PRIMARY KEY, value jsonb)');
   getClient.mockReturnValue(Object.assign(sql, { json: (value: unknown) => JSON.stringify(value) }));
@@ -64,6 +66,31 @@ beforeEach(async () => {
 afterAll(async () => { await pg?.close(); });
 
 describe('Warp billed production SQL against embedded PostgreSQL', () => {
+  it('exposes inherited run rows to ordinary parent aggregates without changing parent indexes', async () => {
+    runs(6500, ['run-a', 'run-b']);
+    await ingestWarpBilledUsage(OWNER, NOW);
+    expect((await pg.query('SELECT count(*)::int AS count, sum(billed_usd)::text AS total FROM usage.billed')).rows)
+      .toEqual([{ count: 2, total: '200.00000000' }]);
+    expect((await pg.query('SELECT count(*)::int AS count FROM ONLY usage.billed')).rows)
+      .toEqual([{ count: 0 }]);
+    expect((await pg.query("SELECT indexdef FROM pg_indexes WHERE schemaname = 'usage' AND tablename = 'billed' ORDER BY indexname")).rows)
+      .toEqual(originalParentIndex);
+    expect((await pg.query("SELECT inhparent::regclass::text AS parent FROM pg_inherits WHERE inhrelid = 'usage.billed_warp_runs'::regclass")).rows)
+      .toEqual([{ parent: 'usage.billed' }]);
+  });
+
+  it('enforces its own run-ID primary key and fixed provider/source/granularity constraints', async () => {
+    await ingestWarpBilledUsage(OWNER, NOW);
+    await expect(pg.exec('INSERT INTO usage.billed_warp_runs SELECT * FROM usage.billed_warp_runs'))
+      .rejects.toMatchObject({ code: '23505' });
+    await expect(pg.exec("UPDATE usage.billed_warp_runs SET provider = 'other'"))
+      .rejects.toMatchObject({ code: '23514' });
+    await expect(pg.exec("UPDATE usage.billed_warp_runs SET granularity = 'day'"))
+      .rejects.toMatchObject({ code: '23514' });
+    await expect(pg.exec("UPDATE usage.billed_warp_runs SET source = 'manual'"))
+      .rejects.toMatchObject({ code: '23514' });
+    expect(await snapshot()).toMatchObject([{ provider: 'warp', granularity: 'run', source: 'api' }]);
+  });
   it('is a complete no-op on unchanged re-ingest, even after config and metadata change', async () => {
     expect(await ingestWarpBilledUsage(OWNER, NOW)).toBe(1);
     const before = await snapshot();
@@ -99,10 +126,10 @@ describe('Warp billed production SQL against embedded PostgreSQL', () => {
   });
 
   it('atomically permits only one insert/growth when passes overlap', async () => {
-    expect((await Promise.all([ingestWarpBilledUsage(OWNER, NOW), ingestWarpBilledUsage(OWNER, NOW)])).sort())
+    expect((await Promise.all([ingestWarpBilledUsage(OWNER, NOW), ingestWarpBilledUsage(OWNER, NOW)])).sort((a, b) => a - b))
       .toEqual([0, 1]);
     runs(13000);
-    expect((await Promise.all([ingestWarpBilledUsage(OWNER, NOW), ingestWarpBilledUsage(OWNER, NOW)])).sort())
+    expect((await Promise.all([ingestWarpBilledUsage(OWNER, NOW), ingestWarpBilledUsage(OWNER, NOW)])).sort((a, b) => a - b))
       .toEqual([0, 1]);
     expect(await snapshot()).toMatchObject([{ billed_usd: '200.00000000' }]);
   });

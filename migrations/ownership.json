@@ -1002,6 +1002,12 @@
       "firstMigration": "0122_usage_billed.sql",
       "notes": ""
     },
+    "usage.billed_warp_runs": {
+      "owner": "kernel",
+      "schema": "usage",
+      "firstMigration": "0214_usage_billed_warp_runs.sql",
+      "notes": "Inherited physical Warp run ledger: parent usage.billed reads include rows; child owns its id PK and indexes. Preserves old parent bucket upserts on rollback (#2972)."
+    },
     "usage.emitters": {
       "owner": "kernel",
       "schema": "usage",

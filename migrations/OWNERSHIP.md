@@ -92,6 +92,19 @@ Full detail: `migrations/ownership.json`.
 
 ## Rule
 
+### Warp run billed ledger (#2972)
+
+`0214_usage_billed_warp_runs.sql` is kernel-owned and adds
+`usage.billed_warp_runs` with PostgreSQL `INHERITS (usage.billed)`. Normal
+parent reads include run rows; the existing parent's bucket unique index
+and generic upsert remain unchanged for previous-release rollback safety.
+The child owns its run-ID primary key and read indexes: parent PK/FK/index
+constraints do not extend to inherited rows. Run writes must target the
+child, normal aggregate reads the parent (not `ONLY usage.billed`).
+Shared Drizzle column builders keep both relations aligned; inheritance
+itself is migration-owned because Drizzle cannot generate `INHERITS`.
+Future parent foreign keys must not assume they cover child run IDs.
+
 ### Identity registering-app provenance (#2926)
 
 `0212_identity_registering_app.sql` is kernel-owned and adds only nullable
