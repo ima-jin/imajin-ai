@@ -35,13 +35,12 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
-import { corsHeaders } from '@/src/lib/kernel/cors';
+import { corsHeaders, corsOptions } from '@/src/lib/kernel/cors';
 import { getOperatorDid, isOperatorIdentity } from '@/src/lib/notify/operator-approvals';
 import { inboxDidFor } from '@/src/lib/notify/approval-addressing';
 import { actAsContext } from '@/src/lib/notify/act-as-guard';
 import { listApprovalsForOperator } from '@/src/lib/notify/operator-approvals-service';
 import { isActiveGroupMember } from '@/src/lib/auth/group-membership';
-import { corsOptions } from '@/src/lib/kernel/cors';
 
 export const dynamic = 'force-dynamic';
 
