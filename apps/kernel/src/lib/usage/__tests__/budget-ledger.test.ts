@@ -65,7 +65,7 @@ it('reads incurred-only estimates, unknown pricing and exact date bounds indepen
     principalDid: OWNER, from: new Date('2026-10-01T00:00:00Z'), to: new Date('2026-11-01T00:00:00Z'),
     windowLabel: '2026-10',
     budget: { since: SINCE, now: NOW, cap: { amount: 400000, currency: 'USD' } },
-    costReport: { from: SINCE, to: new Date('2026-10-20T00:00:00Z') },
+    costReport: { from: SINCE, to: new Date('2026-10-20T00:00:00Z'), asOf: NOW },
   };
   const result = await readUsageSummary(query);
   expect(result.incurred.total).toBe(1154);
@@ -84,7 +84,7 @@ it('reads incurred-only estimates, unknown pricing and exact date bounds indepen
     incurred: { rowCount: 3, unpricedCount: 1 },
   });
   expect(result.costReport).toEqual({
-    from: SINCE.toISOString(), to: query.costReport.to.toISOString(), currency: 'USD', basis: 'meter-estimate',
+    from: SINCE.toISOString(), to: query.costReport.to.toISOString(), asOf: NOW.toISOString(), currency: 'USD', basis: 'meter-estimate',
     total: 20, byProvider: { warp: 0, anthropic: 20, moonshot: 0 }, rowCount: 2, unpricedCount: 1,
   });
   const [actual] = (await pg.query<{ total: string; count: number }>(`
@@ -102,4 +102,10 @@ it('reads incurred-only estimates, unknown pricing and exact date bounds indepen
   expect(unrelatedWindow.drift).toBe(0);
   expect(unrelatedWindow.budget).toEqual(result.budget);
   expect(unrelatedWindow.costReport).toEqual(result.costReport);
+  const openPeriod = await readUsageSummary({
+    ...query, costReport: { from: SINCE, to: new Date('2026-11-01T00:00:00Z'), asOf: NOW },
+  });
+  expect(openPeriod.costReport?.total).toBe(100);
+  expect(openPeriod.costReport?.asOf).toBe(NOW.toISOString());
+  expect(openPeriod.costReport?.to).toBe('2026-11-01T00:00:00.000Z');
 });

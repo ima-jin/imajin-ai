@@ -8,13 +8,16 @@ export interface BudgetQuery {
   cap: Money;
   now: Date;
 }
+function parseReportBound(value: string): Date | null {
+  return parseTimestamp(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
+}
 /** Optional independent report interval, never silently normalizing dates. */
 export function parseCostReportQuery(params: URLSearchParams, now = new Date()): CostReportQuery | null | undefined {
   if (!params.has('from') && !params.has('to')) return undefined;
   if (params.getAll('from').length !== 1 || params.getAll('to').length !== 1) return null;
-  const from = parseTimestamp(params.get('from') ?? '');
-  const to = parseTimestamp(params.get('to') ?? '');
-  return from && to && from < to && to <= now ? { from, to } : null;
+  const from = parseReportBound(params.get('from') ?? '');
+  const to = parseReportBound(params.get('to') ?? '');
+  return from && to && from < to ? { from, to, asOf: now } : null;
 }
 
 export interface MeterRow {
@@ -27,6 +30,7 @@ export interface MeterRow {
 export interface CostReportQuery {
   from: Date;
   to: Date;
+  asOf: Date;
 }
 
 export function parseTimestamp(value: string): Date | null {
@@ -99,10 +103,10 @@ function providerNames(rows: MeterRow[]): string[] {
 }
 
 export function buildCostReport(query: CostReportQuery, rows: MeterRow[]) {
-  const included = includedRows(rows, query.from, query.to);
+  const included = includedRows(rows, query.from, new Date(Math.min(query.to.getTime(), query.asOf.getTime())));
   const totals = emptyTotals(providerNames(included));
   for (const row of included) addRow(totals, row);
-  return { from: query.from.toISOString(), to: query.to.toISOString(), currency: 'USD' as const, basis: 'meter-estimate' as const, ...totals };
+  return { from: query.from.toISOString(), to: query.to.toISOString(), asOf: query.asOf.toISOString(), currency: 'USD' as const, basis: 'meter-estimate' as const, ...totals };
 }
 
 function capDate(now: Date, remaining: number, dailyRate: number): string | null {

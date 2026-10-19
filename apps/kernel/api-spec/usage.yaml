@@ -88,10 +88,11 @@ components:
       allOf:
         - $ref: "#/components/schemas/MeterTotals"
         - type: object
-          required: [from, to, currency, basis]
+          required: [from, to, asOf, currency, basis]
           properties:
             from: { type: string, format: date-time, description: "Inclusive createdAt bound" }
             to: { type: string, format: date-time, description: "Exclusive createdAt bound" }
+            asOf: { type: string, format: date-time, description: "Captured observation instant; only createdAt < min(to, asOf) is counted" }
             currency: { type: string, const: USD }
             basis: { type: string, const: meter-estimate }
       description: |
@@ -100,6 +101,8 @@ components:
         invoices or balances. status=error rows are excluded; unknown costs
         remain visible through unpricedCount. This does not alter the normal
         window's legacy incurred/billed/drift/rollup fields or the budget period.
+        Future requested endpoints are allowed for open calendar periods; only
+        observations before min(to, asOf) count, never future completeness.
     UsageBudget:
       type: object
       description: |
@@ -378,11 +381,11 @@ paths:
         - name: from
           in: query
           schema: { type: string, format: date-time }
-          description: "Optional cost report, paired exactly once with to. Inclusive incurred createdAt bound; strict ISO timestamp with seconds, optional 1-3 fractional digits and Z or offset. Must be < to. Independent of window/budget."
+          description: "Optional cost report, paired exactly once with to. Inclusive incurred createdAt bound; strict YYYY-MM-DD (UTC midnight) or ISO timestamp with seconds, optional 1-3 fractional digits and Z or offset. Must be < to. Independent of window/budget."
         - name: to
           in: query
           schema: { type: string, format: date-time }
-          description: "Exclusive incurred createdAt bound; paired with from. Must be <= the captured server now. Same strict timestamp syntax; no normalized impossible dates."
+          description: "Exclusive requested incurred createdAt bound; paired with from. Future period endpoints allowed. Same strict date/timestamp syntax; no normalized impossible dates. Actual observations clipped at min(to, asOf)."
       responses:
         "200":
           description: Usage summary

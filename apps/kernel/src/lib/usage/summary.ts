@@ -126,7 +126,7 @@ export async function readUsageSummary(query: UsageSummaryQuery): Promise<UsageS
     readReconciliation({ principalDid, from, to }),
     readLatestRollup(principalDid, from, to),
     query.budget ? readMeterRows(principalDid, query.budget.since, query.budget.now) : Promise.resolve([]),
-    query.costReport ? readMeterRows(principalDid, query.costReport.from, query.costReport.to) : Promise.resolve([]),
+    query.costReport ? readMeterRows(principalDid, query.costReport.from, new Date(Math.min(query.costReport.to.getTime(), query.costReport.asOf.getTime()))) : Promise.resolve([]),
   ]);
 
   const byProvider: Record<string, number> = {};

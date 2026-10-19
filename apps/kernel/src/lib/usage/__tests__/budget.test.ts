@@ -37,10 +37,34 @@ describe('parseBudgetQuery', () => {
 });
 
 describe('cost reports', () => {
-  it('validates a strictly paired independent past interval and allows to=now', () => {
+  it('accepts strict UTC ISO days and future calendar ends without changing exact budget timestamp rules', () => {
+    expect(parseCostReportQuery(new URLSearchParams({ from: '2026-10-01', to: '2026-11-01' }), NOW))
+      .toEqual({ from: new Date('2026-10-01T00:00:00Z'), to: new Date('2026-11-01T00:00:00Z'), asOf: NOW });
+    expect(parseBudgetQuery(new URLSearchParams({ budgetSince: '2026-10-01', budgetCap: '4000USD' }), NOW)).toBeNull();
+    expect(parseCostReportQuery(new URLSearchParams({ from: '2028-02-29', to: '2028-03-01' }), NOW)).not.toBeNull();
+    expect(parseCostReportQuery(new URLSearchParams({ from: '2026-02-29', to: '2026-03-01' }), NOW)).toBeNull();
+  });
+
+  it('counts UTC midnight inclusively, next midnight exclusively, and clips a future end at asOf', () => {
+    const from = new Date('2026-10-20T00:00:00Z');
+    const to = new Date('2026-10-21T00:00:00Z');
+    const rows = [
+      row('2026-10-19T23:59:59.999Z', '1000'), row(from.toISOString(), '1'),
+      row('2026-10-20T23:59:59.999Z', '2'), row(to.toISOString(), '1000'),
+    ];
+    expect(buildCostReport({ from, to, asOf: NOW }, rows).total).toBe(3);
+    const open = buildCostReport({ from: SINCE, to: new Date('2026-11-01T00:00:00Z'), asOf: NOW }, [
+      row(SINCE.toISOString(), '1'), row('2026-10-26T16:12:59.999Z', '2'),
+      row(NOW.toISOString(), '1000'), row('2026-10-27T00:00:00Z', '1000'),
+    ]);
+    expect(open.total).toBe(3);
+    expect(open.to).toBe('2026-11-01T00:00:00.000Z');
+    expect(open.asOf).toBe(NOW.toISOString());
+  });
+  it('validates a strictly paired independent interval', () => {
     expect(parseCostReportQuery(new URLSearchParams(), NOW)).toBeUndefined();
     expect(parseCostReportQuery(new URLSearchParams({ from: SINCE.toISOString(), to: NOW.toISOString() }), NOW))
-      .toEqual({ from: SINCE, to: NOW });
+      .toEqual({ from: SINCE, to: NOW, asOf: NOW });
   });
 
   it.each([
@@ -48,8 +72,8 @@ describe('cost reports', () => {
     'from=2026-10-20T00:00:00Z&to=2026-10-19T00:00:00Z',
     'from=2026-10-20T00:00:00Z&to=2026-10-20T00:00:00Z',
     'from=2026-02-30T00:00:00Z&to=2026-10-20T00:00:00Z',
-    'from=2026-10-20&to=2026-10-21T00:00:00Z',
-    'from=2026-10-20T00:00:00Z&to=2027-10-21T00:00:00Z',
+    'from=2026-02-30&to=2026-10-21',
+    'from=2026-10-20T00:00&to=2027-10-21T00:00:00Z',
     'from=2026-10-20T00:00:00Z&from=2026-10-19T00:00:00Z&to=2026-10-21T00:00:00Z',
     'from=2026-10-20T00:00:00Z&to=2026-10-21T00:00:00Z&to=2026-10-22T00:00:00Z',
   ])('rejects invalid report query %s', params => {
@@ -57,7 +81,7 @@ describe('cost reports', () => {
   });
 
   it('reports only priced non-error costs and separately counts unpriced observations', () => {
-    expect(buildCostReport({ from: SINCE, to: NOW }, [
+    expect(buildCostReport({ from: SINCE, to: NOW, asOf: NOW }, [
       row(SINCE.toISOString(), '12', 'anthropic'),
       row(SINCE.toISOString(), null, 'moonshot'),
       row(SINCE.toISOString(), '0', 'warp'),
@@ -65,7 +89,7 @@ describe('cost reports', () => {
       row(NOW.toISOString(), '1000'),
       row('2026-10-19T16:12:59.999Z', '1000'),
     ])).toEqual({
-      from: SINCE.toISOString(), to: NOW.toISOString(), currency: 'USD', basis: 'meter-estimate',
+      from: SINCE.toISOString(), to: NOW.toISOString(), asOf: NOW.toISOString(), currency: 'USD', basis: 'meter-estimate',
       total: 12, byProvider: { anthropic: 12, moonshot: 0, warp: 0 }, rowCount: 3, unpricedCount: 1,
     });
   });

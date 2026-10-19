@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
   const costReport = parseCostReportQuery(searchParams, now);
   if (costReport === null) {
     return NextResponse.json(
-      { error: 'from and to must be paired ISO timestamps with timezone, with from < to <= now' },
+      { error: 'from and to must be paired YYYY-MM-DD dates or ISO timestamps with timezone, with from < to' },
       { status: 400, headers: cors },
     );
   }

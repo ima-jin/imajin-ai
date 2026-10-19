@@ -81,7 +81,7 @@ describe('readUsageSummary', () => {
   it('reads an independent cost report from incurred even without a budget', async () => {
     enqueue([], [{ provider: 'anthropic', source: 'api', granularity: 'day', billedUsd: '999' }], []);
     queue.push([{ provider: 'moonshot', costUsd: '2.12345678', createdAt: new Date('2026-10-20T00:00:00Z'), status: null }]);
-    const costReport = { from: new Date('2026-10-19T16:13:00Z'), to: new Date('2026-10-26T00:00:00Z') };
+    const costReport = { from: new Date('2026-10-19T16:13:00Z'), to: new Date('2026-10-26T00:00:00Z'), asOf: new Date('2026-10-27T00:00:00Z') };
     const result = await readUsageSummary({ principalDid: PRINCIPAL_DID, from: FROM, to: TO, windowLabel: '2026-08', costReport });
     expect(result.costReport).toMatchObject({ total: 2.12345678, rowCount: 1, unpricedCount: 0, byProvider: { moonshot: 2.12345678 } });
     expect(result.billed.total).toBe(999);
