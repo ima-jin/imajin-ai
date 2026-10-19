@@ -8,6 +8,7 @@ import { OPERATOR_APPROVALS_TABLE_SQL } from '../../jin/__tests__/pglite-record-
 import { backfillReachApprovals, knockCardFields, reachCardFields } from '../reach-approvals';
 import { computeApprovalContentHash } from '../operator-approvals';
 import { pushWebNotificationToOperator } from '../web-push';
+import { countInboxApprovals } from '../approval-inbox-count';
 
 const state = vi.hoisted(() => ({ db: null as unknown, sql: null as unknown }));
 vi.mock('@imajin/db', () => ({ getClient: () => state.sql }));
@@ -130,6 +131,13 @@ describe('batched Reach recovery', () => {
     expect(pushWebNotificationToOperator).toHaveBeenCalledTimes(1);
     expect(pushWebNotificationToOperator).toHaveBeenCalledWith(principalDid,
       expect.objectContaining({ body: '120 incoming Reach or knock requests', url: '/jin' }));
+    const { listApprovalsForOperator } = await import('../operator-approvals-service');
+    const inbox = await listApprovalsForOperator(principalDid);
+    queries.length = 0;
+    const count = await countInboxApprovals(principalDid);
+    expect(queries).toHaveLength(1);
+    expect(count).toEqual({ pending: inbox.filter(card => card.status === 'pending').length, total: inbox.length });
+    expect(count).toEqual({ pending: 120, total: 120 });
     expect(await recover()).toHaveLength(4);
     expect(await cards()).toEqual(first);
     expect(pushWebNotificationToOperator).toHaveBeenCalledTimes(1);
