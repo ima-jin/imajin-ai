@@ -1,0 +1,290 @@
+{
+  "recordedAt": "2026-10-19T16:35:37.895Z",
+  "records": [
+    {
+      "kind": "pr",
+      "variables": {
+        "owner": "ima-jin",
+        "repo": "imajin-ai",
+        "number": 2413
+      },
+      "response": {
+        "data": {
+          "repository": {
+            "pullRequest": {
+              "body": "Closes #2411\n\n## What shipped (kernel side)\n\n**Bootstrap-credential decision**: confirmed against #2241/#1979 that the third-party bootstrap-credential problem was *not* already settled by the epic — `packages/auth/src/vault-client.ts`'s own docblock explicitly defers \"the claimable pending service self-registration/pairing flow\" as future work, and `apps/corpus/.env.example`'s `CORPUS_VAULT_BOOTSTRAP_*` pair is the hand-provisioned \"honest residue\" #2241 accepts for a first-party service we control. #2411 implements the issue's rec (a) — the one-time claim code — since a third-party app on a box the operator doesn't control has no equivalent to hand-copy.\n\n1. **`apps.provision` mints + grants.** On operator approval, in addition to the existing self-granted (node→node) copy sealed into GitHub Actions secrets, the app's own DID is granted the SAME minted key (`grantExistingMintedKey`, purpose `app-signing-key`, no re-seal — reuses #2247's \"add a consumer\" primitive). GitHub Actions sealing is kept as the second destination unchanged: it's still the right path for CI-deployed apps, and this PR only adds the vault-fetch path for apps started directly on a host (pm2, no CI).\n2. **First boot: claim/exchange.** A one-time, ~15-minute claim code (SHA-256-hashed at rest, plaintext never persisted) is issued alongside the grant. `POST /api/apps/claim` — deliberately *not* `requireAuth`-gated, since the app has no identity yet — takes the claim code **and** a bootstrap Ed25519 public key the app just minted, binds that key to the claim, then redeems and returns the real signing key.\n3. **Every later boot: bootstrap-key re-authentication (Ryan's restart-authentication ruling).** The app persists its bootstrap keypair in a local keystore file (`IMAJIN_APP_KEYSTORE`, default `./.imajin/keystore.json`, `0600` — never the actual signing key). On every subsequent boot it signs a fresh, replay-protected challenge with that key and re-fetches via the new `POST /api/apps/signing-key/fetch` — no claim code spent, no operator action needed. The kernel verifies the signature against the bound public key (`apps/kernel/src/lib/apps/bootstrap-fetch-auth.ts`, an in-memory nonce guard mirroring `apps/corpus/src/middleware/access-claim.ts`'s existing precedent) and refuses a wrong key, a stale timestamp, or a replayed nonce with `401`.\n4. **`reissueClaim` kept, now with revocation.** Operator re-binding a lost keystore is a legitimate use, so the flag stays — but redeeming a reissued claim now revokes the *previous* bootstrap key's binding, so a lost/compromised keystore can never authenticate a fetch again.\n5. **Signed/audited chain.** `vault.key.minted` → `vault.grant.fulfilled` → `apps.signing-key.claimed` → `apps.signing-key.fetched`, the last now tagged `via: 'claim'` (first boot) vs. `via: 'bootstrap-key'` (every later boot).\n6. **`/jin` reveal.** The claim code is surfaced exactly once in the `apps:provision` decision response's `data.claimCode`, rendered in a dismissable reveal banner — same pattern as #2252's bearer-plaintext reveal.\n7. **SDK helper.** `@ima-jin/auth-client` gains `loadAppSigningKey()`, `generateBootstrapKeypair()`/`signBootstrapPayload()` (self-contained Ed25519, no `@imajin/auth` dependency), and the local keystore read/write helpers. Fails loud on any error — a signing key is the app's own identity.\n8. **Docs.** `docs/REGISTRATION.md` and `packages/auth-client/README.md` document the full first-boot + every-later-boot flow.\n9. **Tests**: grant missing, grant revoked, wrong purpose, claim code reused, claim code expired, first-party legacy row untouched, wrong bootstrap key → 401, replayed nonce → 401, second boot succeeds with keystore + no code, second boot with no keystore/no code fails loud, rebinding via `reissueClaim` revokes the old key — plus issuance/re-issuance and no-secret-leak assertions across logs/bus events/DB rows. **95%+ line/branch coverage on all new files.**\n\n## Files\n- Migration: `migrations/0165_app_signing_key_claims.sql` (edited in place — additive columns `bootstrap_public_key`/`bootstrap_key_revoked_at` — since it was still unmerged; `migrations/ownership.json` unchanged in shape)\n- `apps/kernel/src/db/schemas/app-signing-key-claims.ts`, `apps/kernel/src/db/index.ts`\n- `apps/kernel/src/lib/apps/signing-key-claims.ts`, `signing-key-fetch.ts` (new, shared grant-resolution core), `bootstrap-fetch-auth.ts` (new), `provision.ts`, `approvals-execution.ts`\n- `apps/kernel/app/api/apps/claim/route.ts`, `apps/kernel/app/api/apps/signing-key/fetch/route.ts` (new), `apps/kernel/app/api/apps/provision/route.ts` (`reissueClaim` flag)\n- `apps/kernel/app/jin/operator-approvals-panel.tsx` (claim-code reveal banner; `globalThis.navigator` review nit fixed)\n- `packages/auth-client/src/load-app-signing-key.ts`, `ed25519.ts` (new), `keystore.ts` (new) + README\n- `packages/bus/src/types.ts` (two new event types + `via` field)\n- `docs/REGISTRATION.md`\n\n## Out of scope (as instructed)\nThe `imajin-app-template`/`dykil` side is a follow-up PR — see the companion comment on this PR for the exact call to add (updated with the `IMAJIN_APP_KEYSTORE` env var).\n\n<!-- warp:pr-description-artifacts start -->\n<!-- warp:pr-description-artifacts end -->\n",
+              "closingIssuesReferences": {
+                "nodes": [
+                  {
+                    "number": 2411,
+                    "repository": {
+                      "nameWithOwner": "ima-jin/imajin-ai"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MQ"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "pr",
+      "variables": {
+        "owner": "ima-jin",
+        "repo": "dykil",
+        "number": 6
+      },
+      "response": {
+        "data": {
+          "repository": {
+            "pullRequest": {
+              "body": "## Summary\n\nReplaces the `IMAJIN_APP_DID`/`DYKIL_APP_PRIVATE_KEY` env-var boot requirement with `@ima-jin/auth-client`'s `loadAppSigningKey()` (refs [imajin-ai#2411](https://github.com/ima-jin/imajin-ai/issues/2411), ruled **b** by Ryan 2026-09-27 — see the [dykil#5 follow-up](https://github.com/ima-jin/imajin-ai/pull/2413#issuecomment-3390033785) on imajin-ai#2413). This app no longer holds its own private key in any env file.\n\n- Bumped `@ima-jin/auth-client` to `^0.8.8` (verified as the latest published version).\n- New `src/lib/auth/signing-identity.ts` wraps `loadAppSigningKey()`, caching the fetched key in process memory only (never persisted, logged, or re-exposed).\n- `instrumentation.ts` now calls `bootstrapSigningIdentity()` at boot and fails loud — before touching the kernel — if a raw `DYKIL_APP_PRIVATE_KEY` is still set, pointing at the new flow.\n- `scripts/import-legacy.ts`'s self-signing (`--commit` only) now goes through the same signing-identity module instead of reading a raw private key from env, since \"no private key in any env file\" applies everywhere, not just the Next.js boot path.\n- `.env.example`, `README.md`, and `docs/REGISTRATION.md` updated to the new env shape: `IMAJIN_KERNEL_URL` (always), `IMAJIN_APP_DID` (every boot once a keystore exists), `IMAJIN_APP_CLAIM_CODE` (first boot only), `IMAJIN_APP_KEYSTORE` (optional, defaults to `./.imajin/keystore.json`, `0600`). Added `.imajin/` to `.gitignore`.\n- Tests (`src/lib/auth/__tests__/signing-identity.test.ts`) exercise the **real** `loadAppSigningKey()` (never mocked) with only the kernel's HTTP surface mocked:\n  - first boot with a claim code → `POST /api/apps/claim`, bootstrap keystore persisted, key returned\n  - second boot from an existing keystore, no claim code → `POST /api/apps/signing-key/fetch`, no claim spent\n  - no keystore + no claim code → throws a clear, actionable error\n  - `instrumentation.ts` and `scripts/import-legacy.ts` also each get updated/new unit tests for their own integration points (mocking the signing-identity module).\n- Added a `next/headers` vitest shim (mirroring the existing `next/server` one) since `@ima-jin/auth-client` has a single package entrypoint that pulls in its (unrelated) session-cookie code.\n\n`pnpm typecheck`, `pnpm lint` (no new warnings — the 3 pre-existing `no-await-in-loop` disable-directive warnings are unrelated), `pnpm test` (145/145 passing), `pnpm test:coverage` (100% on both new/changed files), and `pnpm build` all pass locally.\n\nCloses #5\n\n\n<!-- warp:pr-description-artifacts start -->\n<!-- warp:pr-description-artifacts end -->\n",
+              "closingIssuesReferences": {
+                "nodes": [
+                  {
+                    "number": 5,
+                    "repository": {
+                      "nameWithOwner": "ima-jin/dykil"
+                    }
+                  }
+                ],
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "MQ"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "issue",
+      "variables": {
+        "owner": "ima-jin",
+        "repo": "dykil",
+        "number": 5
+      },
+      "response": {
+        "data": {
+          "repository": {
+            "issue": {
+              "number": 5,
+              "repository": {
+                "nameWithOwner": "ima-jin/dykil"
+              },
+              "title": "feat(boot): fetch the signing key from the vault via loadAppSigningKey() — no key in .env (imajin-ai#2411 follow-up)",
+              "body": "Follow-up to ima-jin/imajin-ai#2411 (merged in PR #2413, kernel build 188373d). Refs ima-jin/imajin-ai#1985. Ruled c + b by Ryan 2026-09-27.\n\nThe kernel side is live: on operator approval, `apps.provision` grants the app's signing key to the app DID in the vault and shows a one-time claim code on the /jin card; `POST /api/apps/claim` exchanges code + the app's **bootstrap public key** for the signing key; later boots fetch with a request signed by the bootstrap key. `@ima-jin/auth-client` exports `loadAppSigningKey()` which does all of it.\n\n## Do\n- Boot path (`instrumentation.ts` or equivalent): replace the `IMAJIN_APP_DID`/`DYKIL_APP_PRIVATE_KEY` env requirement with `loadAppSigningKey()` per the PR #2413 follow-up comment (exact env vars: keystore path env, claim-code env for first boot only, kernel URL). No private key in any env file — fail loud if one is present.\n- `.env.example`, README, `check-env`/startup validation updated to the new shape.\n- Tests: first boot with claim code; second boot from keystore; no keystore + no code → clear error.\n- Bump `@ima-jin/auth-client` to the version that ships the helper (check the publish workflow / npm).\n\n## Verify (dev)\nOperator approves a fresh dykil provision on dev /jin → claim code → start `~/dev/dykil-standalone` on `:3101` with an env file containing no key → boots, signs a `dykil/survey-response` attestation that dev-jin accepts → `pm2 restart` → boots again with no human involved.\n\nSame change lands in `ima-jin/imajin-app-template` so the other split children inherit it (separate issue on the template repo).\n",
+              "author": {
+                "login": "imajin-jin"
+              },
+              "createdAt": "2026-09-28T03:28:58Z",
+              "updatedAt": "2026-09-28T06:15:39Z",
+              "url": "https://github.com/ima-jin/dykil/issues/5",
+              "parent": null,
+              "comments": {
+                "nodes": [],
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "issue",
+      "variables": {
+        "owner": "ima-jin",
+        "repo": "imajin-ai",
+        "number": 2411
+      },
+      "response": {
+        "data": {
+          "repository": {
+            "issue": {
+              "number": 2411,
+              "repository": {
+                "nameWithOwner": "ima-jin/imajin-ai"
+              },
+              "title": "feat(apps): provisioned app key lives in the vault — apps.provision mints in-vault + grants; template fetches at boot (no key in .env.local)",
+              "body": "Child of #2241 (vault-native service credentials — mint in-vault, fetch-at-boot). Follow-up to #2375 (apps.provision, merged in #2408). Blocks #1985 (rebuild(dykil)) and every later split child running server-side.\n\n**DECISION ruled c (Ryan, 2026-09-27):** the app fetches its own signing key at boot via a vault delegation grant. Not a /jin copy-paste into `.env.local` (a), not an unseal CLI on the box (b).\n\n## Problem\n`apps.provision` mints `IMAJIN_APP_PRIVATE_KEY` and seals it into the target repo's **GitHub Actions secrets** only. It never returns the key and never puts it in the vault. Fine for a CI-deployed app; an app started on a host (dev box `~/dev/dykil-standalone`, pm2, `:3101`) has no honest way to receive its key. Found 2026-09-27 on the first dykil dev deploy after proposal `appprov_8b310d3367e8334505cf9262` was approved on dev — app row + DID exist, key is unreachable.\n\n## Scope\n1. **Kernel — provision writes to the vault.** `apps.provision` (on operator approval) mints the app key **in-vault** as a sealed secret owned by the provisioning operator, and issues a delegation grant to the app's DID with a purpose (e.g. `app-signing-key`). GitHub Actions sealing stays as a *second* destination (or becomes a grant-driven fetch too — agent picks, states why). The signed record shows: minted → granted → fetched-at-boot.\n2. **Template / dykil — fetch at boot.** `ima-jin/imajin-app-template` (and `ima-jin/dykil` as the first consumer) resolves the key at startup via the #2351 pattern: `loadFromVault` + `resolveGrantByPurpose` (see `apps/corpus/src/lib/attestation-key.ts`). `.env.local` holds only `PORT`, `NODE_ENV`, `IMAJIN_KERNEL_URL`, `IMAJIN_APP_DID`, and **one bootstrap grant ref** — same shape as #2241's verify line. No private key in any env file.\n3. **Bootstrap credential (open design point).** How does a third-party app authenticate its first vault fetch? Options: (a) the approval step emits a one-time claim code shown once on the /jin card, exchanged at first boot for the grant; (b) provision registers the app's node/bootstrap DID and the box holds that bootstrap key; (c) reuse the existing service-bootstrap-DID flow from #2353. **rec: a** — it's the same claim-once shape as the rest of the vault v2 surface (#2260 import, #2247 key cards), works for a box the operator doesn't control, and leaves a signed claim event. Agent confirms against #1979 / #2241 before building; if the epic already settled this, follow the epic.\n4. `check-env` for app template: assert the bootstrap grant ref, refuse to start if a raw private key env var is present (fail loud on the old pattern).\n5. api-spec + README updates; tests for: grant missing, grant revoked, wrong purpose, claim code reused.\n\n## Verify\nDev: re-run provision for dykil (or reuse the existing app row) → approve on dev /jin → start `~/dev/dykil-standalone` with an env file containing no key material → app boots, signs a `dykil/survey-response` attestation accepted by dev-jin → vault record shows minted/granted/fetched events.\n",
+              "author": {
+                "login": "imajin-jin"
+              },
+              "createdAt": "2026-09-27T23:08:58Z",
+              "updatedAt": "2026-09-28T03:28:15Z",
+              "url": "https://github.com/ima-jin/imajin-ai/issues/2411",
+              "parent": {
+                "number": 2241,
+                "repository": {
+                  "nameWithOwner": "ima-jin/imajin-ai"
+                }
+              },
+              "comments": {
+                "nodes": [],
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "issue",
+      "variables": {
+        "owner": "ima-jin",
+        "repo": "imajin-ai",
+        "number": 2241
+      },
+      "response": {
+        "data": {
+          "repository": {
+            "issue": {
+              "number": 2241,
+              "repository": {
+                "nameWithOwner": "ima-jin/imajin-ai"
+              },
+              "title": "epic: vault-native service credentials — mint in-vault, fetch-at-boot, publish pubkeys; .env.local shrinks to PORT + NODE_ENV",
+              "body": "OUTCOME · Operator can provision, claim, boot and rotate any app or service with every secret born and sealed in the vault (env holds only the keystore path, DATABASE_URL, the kernel URL and non-secret config) · via /jin and the app's /<slug>/claim page · without anyone generating, seeing, pasting or copying a secret in a shell, SSH session or env file\n\nAddresses: #2231, #2235, #2024, #1750, #1751, #1520, #738, #267, #1726\nRisk: high\nVerify: prod corpus boots with .env.local containing only PORT/NODE_ENV + one bootstrap grant ref, and check-env passes\n---\n\n## Thesis\n\nThe honesty inversion applied to our own ops: the signed record should say where every key was born and who touched it. Nothing secret leaves prod — prod *pulls* from the vault. Tonight's prod deploy (run 35666860065, tag v0.7.0) failed at check-env because `apps/corpus/.env.local` has never existed on prod. Filling it means hand-minting `CORPUS_DID_PRIVATE_KEY` via `scripts/bootstrap-corpus-identity.ts`, hand-copying the kernel's public key into `CORPUS_KERNEL_PUBLIC_KEY`, and hand-copying the kernel's `ATTESTATION_INTERNAL_API_KEY` — all pasted into a file on the prod box over SSH. That's the PAT-paste pattern wearing a DID costume: long-lived secrets born outside their home, copied by hand, on disk, unrevocable except by editing a file.\n\n## The wall we hit (evidence)\n\n- Deploy to Prod run 35666860065 (v0.7.0) failed at check-env: `apps/corpus/.env.local` missing on prod\n- Corpus needs `CORPUS_DID`, `CORPUS_DID_PRIVATE_KEY`, `CORPUS_KERNEL_PUBLIC_KEY`, `ATTESTATION_INTERNAL_API_KEY` — all currently hand-copied secrets\n- \"Can I pipe the values off prod?\" — no. Opening a pathway that reads secrets OUT of prod is the wrong direction. The vault path inverts it: prod PULLS from the vault, nothing pipes out.\n\n## Goal\n\nOperate Imajin mostly remotely via Imajin itself. We are walking into walls on purpose to find them.\n\n## Honest bootstrap residue\n\nEach service still needs ONE bootstrap credential to authenticate to the vault at boot — a short-lived, one-time-consumption grant per #2231, not N long-lived secrets. This is stated plainly: we are not pretending zero-secret. The reduction is from N hand-copied long-lived secrets to 1 short-lived bootstrap grant.\n\n## Migration order\n\nDev first, then prod. Corpus is the first consumer.\n\n## Acceptance criteria\n\n- [ ] Prod corpus boots with an env file containing only PORT/NODE_ENV + one bootstrap grant ref\n- [ ] check-env passes with vault-sourced vars declared (not present in .env.local)\n- [ ] No service private key exists on disk on any host\n- [ ] Kernel signing pubkey is fetchable via well-known endpoint, pinned by consumers (TOFU)\n- [ ] Shared internal secrets (ATTESTATION_INTERNAL_API_KEY) are vault grants, not env vars\n- [ ] Rotation = revoke + re-grant, no file edits\n",
+              "author": {
+                "login": "imajin-jin"
+              },
+              "createdAt": "2026-09-22T00:04:09Z",
+              "updatedAt": "2026-10-17T13:25:53Z",
+              "url": "https://github.com/ima-jin/imajin-ai/issues/2241",
+              "parent": null,
+              "comments": {
+                "nodes": [
+                  {
+                    "body": "## Lineage — the closed/open hardening work that was pointing here\n\nRyan (2026-09-21): *\"there may have been some older / closed issues around hardening the system that alluded to a future version shaped like this. but nothing solid. it was all pointing at this.\"* Recording the convergence so the tracker shows the shape was earned, not invented tonight:\n\n- **#1239** (closed) — vault: owner-sealed secrets (zero-custody) SPIKE: *where does the key live*. The question this epic answers for service keys: in the vault, born there.\n- **#1242** (closed) — vault v2: delegation-grant-sealed secrets. The grant machinery #2243 consumes.\n- **#1979** (open) — vault v2 remaining work: *prod adoption evidence*. This epic IS the prod adoption — corpus on prod is the first evidence.\n- **#2081** (open) — node key roles inventory + rotation runbook + `key.rotated` attestation. #2242 (mint attestation + revocation) and #2245 (rotate = revoke + re-grant) are the vault-side half of that runbook.\n- **#1922** (open) — inference connectors: sealed provider keys. Same shape, different consumer; should ride #2243's `loadFromVault` rather than its own path.\n- **#1250** (open) — key recovery paths. Out of scope here, but mint-in-vault changes its threat model (the key never existed on a human's disk to lose).\n- **#2231 / #2235** — the owner→agent handoff + ack shipped today; this epic adds the missing verb (*mint*) and the missing consumer (*a service at boot*).\n\nTriggering evidence: Deploy to Prod run 35666860065 (v0.7.0) blocked at check-env on a corpus env file that can only be written by a human pasting secrets over SSH.",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-09-22T00:11:50Z",
+                    "updatedAt": "2026-09-22T00:11:50Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2241#issuecomment-5769385426"
+                  },
+                  {
+                    "body": "**Decision (Ryan, 2026-09-21 20:13): prod is HELD.** There is no safe path today to get the corpus secrets onto prod, so v0.7.0 (tag exists, `74ffb788`) does not deploy. Prod stays on v0.6.1 until this epic lands; corpus-on-prod becomes the first in-vault-minted service key. **Follow-on: a key-rotation sweep** once mint/fetch-at-boot are live — every hand-pasted service secret (dev corpus included) gets re-minted in-vault and the old material revoked (ties to #2081). Opening pair dispatched: #2242 (Warp 01a0c676-339f) and #2244 (Warp 01a0c676-97ab).",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-09-22T00:14:33Z",
+                    "updatedAt": "2026-09-22T00:14:33Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2241#issuecomment-5769407482"
+                  },
+                  {
+                    "body": "## UX note — what the human sees (Ryan asked 2026-09-21 20:20; approved for the record)\n\n**Principle:** chat proposes, canvas signs, the record is the interface. The distinguishing twist: **a vault UI with no reveal button.** Every secrets manager shows a masked value with an eye icon; this one has nothing to show — the bytes never existed anywhere a human could look. What you see is the *history* of the key. Visibility of the record, invisibility of the material.\n\n**Five moments, one card per key:**\n\n1. **Mint.** Triggered from `/jin` → Vault → *Mint service key*, or proposed by the agent in chat with a deep link. Lands as a proposal card: purpose, environment, requester (`Jin onBehalfOf Ryan`), what it produces. **Approve = sign = the mint attestation** (#2242). Card then shows `did:…` + public key — the whole payload. Nothing to copy or paste.\n2. **Grant.** Bind to a consumer: who may fetch (`prod-corpus`), for what (`sign IngestionAttestations`), one-time consumption, TTL (#2231 path). Another card, another signature.\n3. **Boot = pairing, not pasting.** The bootstrap residue resolved with our own primitive: **the service is a claimable stub.** First boot with zero secrets → service generates a local device keypair → announces `pending service · corpus · prod-jin · <DID>` → appears on the canvas as *unclaimed* → operator inspects host/fingerprint/time and **claims** it. The claim is the consent event AND the grant handshake. No token crosses SSH. Same move as node pairing and the Trojan-horse stub, pointed at our own infra. **This changes #2243's bootstrap design** — the bootstrap credential is not provisioned *to* the service; the service's self-minted device key is *claimed by* the owner.\n4. **Live.** The card is a timeline: minted (by whom, via whom, when) → granted → fetched (from host, when) → acked (what it's doing — #2235). Status line: *held in memory by prod-corpus, last ack Nm ago.* A restart is a visible fetch event. **A fetch without an ack renders as a red line** — the honest-record thesis as an affordance.\n5. **Rotate / Revoke.** Rotate = mint new → grant same consumer → revoke old, as ONE signed proposal; timeline shows the handover. Revoke is tiered and explicit: *withdraw* (stop new fetches) · *tombstone* (destroy material, keep record) · *destroy* (hard, with the dignity warning — Revocation is first-class). The rotation sweep = filter *\"hand-provisioned\"*, rotate down the list, sign each card.\n\n**Surfaces:** `/jin` canvas is authoritative (same rail as the approvals bridge). Chat proposes + links. CLI `imajin vault mint --purpose …` still yields a canvas card to sign. Service side is logs only: *pending claim → claimed → fetched → acked.* Nothing in the flow requires the operator on the box — the remote-ops goal falls out for free.\n",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-09-22T00:23:30Z",
+                    "updatedAt": "2026-09-22T00:23:30Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2241#issuecomment-5769478597"
+                  },
+                  {
+                    "body": "DECISION ruled b (Ryan, 2026-10-14 14:10) · #2241 · build the secret gaps first, then cut prod over using tool steps only.\n\nStanding rule (AGENTS.md, 2026-10-14): webhook secrets, claim codes, app keys and Stripe keys are sealed through the kernel's vault/provision/seal tooling. Never generated with `openssl rand`, never copied between env files over SSH, never on a command line. Missing tool → card the gap.\n\nGaps being built now (children filed under this epic): (A) kernel signs kernel→app webhooks with its published key, (B) apps verify via the SDK helper, (C) kernel issues + seals app self-secrets, (D) apps `loadFromVault` at boot, (E) claim page is the only claim path. The app prod cutovers (#2497 coffee, #2502 learn, #2510 market, #2522 dykil, #2516 events) are blockedBy the matching per-app children.\n\nNote: the 2026-10-14 dev learn webhook secret was generated in a shell and must be re-issued through the tools once A/B land.\n",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-10-14T18:14:25Z",
+                    "updatedAt": "2026-10-14T18:14:25Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2241#issuecomment-6175162131"
+                  },
+                  {
+                    "body": "DECISION ruled · SDK publish for #2800 + #2801 · ruled **a** (Ryan, 2026-10-14 17:16): one publish of @ima-jin/auth + @ima-jin/auth-client now that both are merged, then dispatch B and D pinned to the new versions. Publish dispatched 17:40. Also ruled: #2784 is dispatched now, and #2784/#2529/#2516 are hoisted onto v0.8.18. — Jin",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-10-14T21:38:34Z",
+                    "updatedAt": "2026-10-14T21:38:34Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2241#issuecomment-6179067808"
+                  },
+                  {
+                    "body": "OUTCOME met on main/dev; closing. All 29 children closed (kernel #2242–#2247, #2245, #2353, #2354, #2411, #2442, #2798, #2799, #2802 plus the per-app claim/self-secret children in the app repos). ev: /jin provisions apps and its app-secrets panel does sync/set/rotate/revoke (`apps/kernel/app/jin/api/app-secrets/route.ts`, `app-secrets-panel.tsx`); every standalone app on dev (events, coffee, learn, market, dykil, links) reports `claimed:true` from a sealed keystore; self-secrets are issued and sealed by the kernel (#2799/PR #2801); kernel→app webhooks are signed with the published kernel key (#2798/PR #2800). Prod picks this up in the #2516 window (4 fresh prod mints via /jin, step 4). Known residue: the dev learn webhook secret generated in a shell on 2026-10-14 still needs re-issuing through /jin rotate. That's an ops task, not a missing capability. — Jin (triage 2026-10-17)",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-10-17T13:25:51Z",
+                    "updatedAt": "2026-10-17T13:25:51Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2241#issuecomment-6234421453"
+                  }
+                ],
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpHPAAAAAXOZuM0="
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "kind": "issue",
+      "variables": {
+        "owner": "ima-jin",
+        "repo": "imajin-ai",
+        "number": 2370
+      },
+      "response": {
+        "data": {
+          "repository": {
+            "issue": {
+              "number": 2370,
+              "repository": {
+                "nameWithOwner": "ima-jin/imajin-ai"
+              },
+              "title": "epic(c0): agent provisions a registered app from template to a live dev URL, unaided",
+              "body": "OUTCOME · An operator approves an app on /jin, opens <app>/claim, pastes the code, and the app is live · via the /jin card + the app's own claim page · without a shell.\n\nPart of #1981. Ruled by Ryan 2026-09-24: the split isn't done until an agent (Warp / Jin) can take a `rebuild(<app>)` issue and end at a running, registered, deployed app **with no human step**. This is the acceptance test of the kernel/app split — not a nice-to-have after it.\n\n## Definition of unaided\nOne dispatch → new GitHub repo from `ima-jin/imajin-app-template` → CI green → app identity registered with the kernel → schema owned by the app → deployed to dev → reachable at its URL → smoke test passes. A human touches nothing between dispatch and the report.\n\n## Gates (each is its own issue; this epic is done when the loop runs end to end once)\n- [ ] **Repo creation** — `gh repo create ima-jin/<app> --template ima-jin/imajin-app-template` from the acting identity. Today `warp-factories[bot]` has contents-write only; org repo creation needs Administration:write on the App **or** a kernel-side `apps.provision` route that creates the repo with an org-scoped credential (preferred — the kernel is customer zero of its own registered-app contract, #1990).\n- [ ] **Register** — `docs/REGISTRATION.md` becomes a call, not a doc: provisioning registers the app identity (#1990 table) and hands the new repo its app-auth credential via the vault (v2 grant, #2311 shape). No secrets in the brief, no secrets in chat.\n- [ ] **Repo secrets/vars inherited** — SonarCloud token, `@ima-jin/*` GitHub Packages read (#1982), deploy credential: org-level secrets the template's workflows consume by name. Template CI parity → ima-jin/imajin-app-template#3.\n- [ ] **Schema** — provisioning creates the app's Postgres schema + role and the app owns its migrations from day one (#1991 per-app ownership). Kernel never learns the app's tables.\n- [ ] **Deploy target** — a template `deploy-dev.yml` that ships the app to the dev host and routes `<env-domain>/<app>` through the kernel front door (Caddy path prefix). Depends on #2060 (deploy posture) defining what \"deployed to dev\" is machine-checkably.\n- [ ] **Smoke + report** — the run ends by hitting `/api/health` on the new URL and posting a Phase-5 evidence line (`ev: repo=… registered=y schema=… deploy=<run> health=<version>`).\n\n## Why now\n144 open issues and growing; the kernel's size is gumming up publish. Every `rebuild(<app>)` child (#1984–#1989) pays the same manual provisioning tax six times unless this loop exists first. Build it once on dykil (#1985), then the other five are dispatches.\n\n## Out of scope\nProd deploy (stays tag + human gate). Migrating existing app data (per-app issues).\n",
+              "author": {
+                "login": "imajin-jin"
+              },
+              "createdAt": "2026-09-24T23:42:28Z",
+              "updatedAt": "2026-10-17T13:25:55Z",
+              "url": "https://github.com/ima-jin/imajin-ai/issues/2370",
+              "parent": null,
+              "comments": {
+                "nodes": [
+                  {
+                    "body": "Evidence from the dykil reference run (2026-09-26): standalone dykil cloned, built, Caddy-routed on dev in ~10 min unaided — then hard-stopped at **app registration**. `POST /auth/api/registry/apps` needs a human session cookie (or a NODE_DID session); there is no agent-callable path, so the agent cannot obtain `IMAJIN_APP_DID` / app id / app private key and the app refuses to boot. Same again for attestation-type registration. This is the gate #2375 (`apps.provision`) exists for — registration is the first unaided step that fails in practice.",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-09-27T00:53:35Z",
+                    "updatedAt": "2026-09-27T00:53:35Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2370#issuecomment-5851419280"
+                  },
+                  {
+                    "body": "OUTCOME met; closing. 3/3 children closed: #2415 (PR #2417), #2416 (PR #2418), #2427. ev: the registration hard-stop recorded here on 09-27 is gone. Every split app (dykil, links, learn, coffee, market, events) was provisioned from /jin and claimed via its own /<app>/claim page on dev with no shell (all report `claimed:true`), and the #2516 runbook does the prod side the same way (step 4: provision 4 apps in one /jin sitting plus claim pastes). — Jin (triage 2026-10-17)",
+                    "author": {
+                      "login": "imajin-jin"
+                    },
+                    "createdAt": "2026-10-17T13:25:55Z",
+                    "updatedAt": "2026-10-17T13:25:55Z",
+                    "url": "https://github.com/ima-jin/imajin-ai/issues/2370#issuecomment-6234421953"
+                  }
+                ],
+                "pageInfo": {
+                  "hasNextPage": false,
+                  "endCursor": "Y3Vyc29yOnYyOpHPAAAAAXOZusE="
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
