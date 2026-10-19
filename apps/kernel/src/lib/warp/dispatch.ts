@@ -2234,6 +2234,9 @@ async function publishRunCompleted(
       sessionLink: run.sessionLink,
       principalDid,
       completedAt,
+      createdAt: run.createdAt,
+      modelId: run.modelId,
+      parentRunId: run.parentRunId,
       ...(resumeContext === undefined
         ? {}
         : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
@@ -2302,6 +2305,9 @@ async function publishRunFailed(
       sessionLink: run.sessionLink,
       principalDid,
       failedAt,
+      createdAt: run.createdAt,
+      modelId: run.modelId,
+      parentRunId: run.parentRunId,
       ...(resumeContext === undefined
         ? {}
         : { resumedFrom: resumeContext.resumedFrom, segment: resumeContext.segment }),
@@ -2381,9 +2387,17 @@ export async function publishTerminalRunOutcome(
 ): Promise<void> {
   if (state === 'FAILED') {
     await publishRunFailed(principalDid, run, resumeContext);
-    return;
+  } else {
+    await publishRunCompleted(principalDid, run, state, resumeContext);
   }
-  await publishRunCompleted(principalDid, run, state, resumeContext);
+  // Metering is fail-open and independently retried from durable terminal
+  // records/known-root lifecycle observations, not the publish-claim gate.
+  try {
+    const { recordWarpRunUsage } = await import('../usage/warp-incurred');
+    await recordWarpRunUsage(principalDid, run);
+  } catch {
+    log.warn({ principalDid, runId: run.runId }, 'Warp incurred meter unavailable; completion preserved');
+  }
 }
 
 /**

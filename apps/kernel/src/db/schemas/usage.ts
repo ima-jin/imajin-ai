@@ -59,6 +59,8 @@ export const usageIncurred = usageSchema.table(
     tokensIn: integer('tokens_in'),                       // null when the upstream response never reported usage
     tokensOut: integer('tokens_out'),
     costUsd: numeric('cost_usd', { precision: 20, scale: 8 }), // null when tokens are unknown or the model has no pricing entry
+    // #2972: optional meter-owned conversion provenance; never a vendor bill.
+    pricing: jsonb('pricing'),
     // #1148: emitter-agnostic quantity/unit pair. This module writes
     // `quantity = tokensIn + tokensOut`, `unit = 'tokens'` whenever both
     // token counts are known; null alongside tokensIn/tokensOut otherwise.

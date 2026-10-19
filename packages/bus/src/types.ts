@@ -1306,6 +1306,10 @@ export interface BusEventMap {
    */
   'warp.run.completed': {
     runId: string;
+    /** Optional own-record metadata for incurred-meter replay (#2972). */
+    createdAt?: string | null;
+    modelId?: string | null;
+    parentRunId?: string | null;
     /**
      * The terminal state.
      *
@@ -1371,6 +1375,10 @@ export interface BusEventMap {
    */
   'warp.run.failed': {
     runId: string;
+    /** Optional own-record metadata for incurred-meter replay (#2972). */
+    createdAt?: string | null;
+    modelId?: string | null;
+    parentRunId?: string | null;
     state: 'FAILED';
     title: string | null;
     configName: string | null;

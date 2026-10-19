@@ -106,6 +106,17 @@ import {
 
 const log = createLogger('kernel');
 
+async function recoverIncurredUsage(): Promise<void> {
+  // Independent of in-flight selection and publish claims, but deliberately
+  // after ordinary watches so historical lineage reads cannot starve them.
+  try {
+    const { sweepWarpIncurredUsage } = await import('./usage-sweep');
+    await sweepWarpIncurredUsage();
+  } catch {
+    log.warn({}, 'Warp incurred recovery unavailable; lifecycle sweep continues');
+  }
+}
+
 /**
  * How far back — measured from a run's latest activity (dispatch or resume) —
  * this sweep keeps quietly re-checking a still-non-terminal run before
@@ -479,8 +490,9 @@ export async function sweepInFlightWarpRuns(
   let candidates: InFlightRun[];
   try {
     candidates = await listInFlightRuns();
-  } catch (err) {
-    log.error({ err: String(err) }, 'Warp run watch sweep: could not list in-flight runs');
+  } catch {
+    log.error({}, 'Warp run watch sweep: could not list in-flight runs');
+    await recoverIncurredUsage();
     return outcome;
   }
 
@@ -493,11 +505,14 @@ export async function sweepInFlightWarpRuns(
       outcome.errors += 1;
       const status = err instanceof WarpApiError ? err.status : undefined;
       log.warn(
-        { err: String(err), status, runId: candidate.runId, principalDid: candidate.principalDid },
+        { status, runId: candidate.runId, principalDid: candidate.principalDid },
         'Warp run watch sweep: could not check run',
       );
     }
   });
 
+  // Run even with zero in-flight candidates: terminal publish success must
+  // not permanently hide a failed meter write or a later terminal child.
+  await recoverIncurredUsage();
   return outcome;
 }
