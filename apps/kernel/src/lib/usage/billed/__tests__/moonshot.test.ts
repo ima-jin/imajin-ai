@@ -9,6 +9,12 @@ const envelope = {
   data: { available_balance: 49.58894, voucher_balance: 46.58893, cash_balance: 3.00001 },
 };
 
+function stalledRequest(_url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () => reject(new Error(key)), { once: true });
+  });
+}
+
 describe('Moonshot balance reader', () => {
   it('reads the documented USD snapshot, not a billed line or balance-derived spend', async () => {
     const http = vi.fn().mockResolvedValue(Response.json(envelope));
@@ -53,9 +59,7 @@ describe('Moonshot balance reader', () => {
   });
 
   it('aborts a stalled balance request and reports only a safe error', async () => {
-    const http: typeof fetch = vi.fn((_url, init) => new Promise<Response>((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => reject(new Error(key)), { once: true });
-    }));
+    const http: typeof fetch = vi.fn(stalledRequest);
     await expect(createMoonshotBalanceReader({ apiKey: key, fetchImpl: http, timeoutMs: 5 }).fetch())
       .rejects.toThrow('Moonshot balance unavailable');
   });
