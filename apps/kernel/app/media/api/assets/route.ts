@@ -190,10 +190,9 @@ async function resolveListOwnerDid(
   }
   const { auth } = authResult;
   const didParam = searchParams.get("did");
-  // The caller's own raw identity: the session identity when present, else
-  // the app-token's `sub` (which has no separate delegate identity).
-  const callerDid = auth.identity?.id ?? auth.did;
-  if (didParam && didParam !== callerDid) {
+  // Compare with the authenticated effective owner, including validated
+  // act-as delegation, rather than the admin/agent's raw identity.
+  if (didParam && didParam !== auth.did) {
     return { ownerDid: didParam, isAgentQuery: true };
   }
   return { ownerDid: auth.did, isAgentQuery: false };
@@ -363,7 +362,7 @@ export async function POST(request: NextRequest) {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/assets — own library, or a DID-scoped anonymous public listing
+// GET /api/assets — own library, or a DID-scoped public listing
 // ---------------------------------------------------------------------------
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
@@ -390,23 +389,21 @@ export async function GET(request: NextRequest) {
     const conditions = [eq(assets.ownerDid, ownerDid), eq(assets.status, "active")];
 
     // If querying another DID's assets, restrict to public ones
-    if (isAnonymous) {
+    if (isAgentQuery) {
       // Match getAccessType's explicit string/object public forms. Missing,
       // null and unknown access fail closed, as on the single-asset read.
       conditions.push(sql`(
         ${assets.fairManifest}->'access' = '"public"'::jsonb
         OR ${assets.fairManifest}->'access'->>'type' = 'public'
       )`);
-    } else if (isAgentQuery) {
-      // Preserve the pre-existing authenticated cross-DID query.
-      conditions.push(
-        sql`COALESCE((${assets.fairManifest}->'access'->>'type'), 'private') = 'public'`
-      );
     }
 
     // DB-level MIME prefix and filename filters
     if (type) conditions.push(like(assets.mimeType, `${type}/%`));
-    if (search) conditions.push(ilike(assets.filename, `%${search}%`));
+    if (search) {
+      const literalSearch = search.replaceAll(/[\\%_]/g, String.raw`\$&`);
+      conditions.push(ilike(assets.filename, `%${literalSearch}%`));
+    }
 
     // Upload-context filters (#2648)
     conditions.push(...contextFilterConditions(searchParams));
@@ -423,7 +420,7 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    const listedAssets = isAnonymous ? rows.map(publicAssetDescriptor) : rows;
+    const listedAssets = isAgentQuery ? rows.map(publicAssetDescriptor) : rows;
     return NextResponse.json({ assets: listedAssets, limit, offset, count: rows.length }, { headers: cors });
   } catch (err) {
     log.error({ err: String(err) }, "DB query failed");
