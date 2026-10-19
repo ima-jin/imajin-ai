@@ -7,6 +7,8 @@ import { crypto as authCrypto, type Identity } from '@imajin/auth';
 import * as schema from '@/src/db/schemas/auth';
 
 const mocked = vi.hoisted(() => ({ db: null as unknown, client: vi.fn(), jwt: vi.fn() }));
+// Keep the private requester transport/legacy reply fixture independent of the new Inbox publication adapter.
+vi.mock('@/src/lib/notify/reach-approvals', () => ({ publishReachApproval: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'),
   ...await import('@/src/db/schemas/access'),

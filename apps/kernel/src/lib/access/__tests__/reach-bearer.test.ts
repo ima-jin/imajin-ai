@@ -28,6 +28,8 @@ import {
 } from '../reach-bearer';
 
 const state = vi.hoisted(() => ({ db: null as unknown, client: null as unknown, log: vi.fn(), auth: vi.fn(), node: vi.fn(), limit: vi.fn() }));
+// Inbox publication is covered by reach-approvals.integration; this fixture owns bearer transport and envelope persistence.
+vi.mock('@/src/lib/notify/reach-approvals', () => ({ publishReachApproval: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@imajin/db', () => ({ getClient: () => state.client }));
 vi.mock('@/src/db', async () => ({
   ...await import('@/src/db/schemas/auth'), ...await import('@/src/db/schemas/access'),
