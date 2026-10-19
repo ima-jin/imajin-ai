@@ -439,9 +439,11 @@ The existing authenticated `GET /usage/api/summary` accepts:
   `?budgetSince=2026-10-19T16:13:00Z&budgetCap=4000USD`, for weekly incurred
   totals by provider, cumulative spend, remaining cap and a straight-line
   trailing-seven-day projection.
-- Paired `from` and `to` timezone-bearing timestamps for an independent
-  date-range cost report: `from` is inclusive and `to` exclusive. These timestamps
-  do not change the legacy `window` summary or the budget's own interval.
+- Paired `from` and `to` UTC dates (`YYYY-MM-DD`) or timezone-bearing timestamps
+  for an independent date-range cost report: `from` is inclusive and `to`
+  exclusive. An open period may end in the future; `asOf` makes the current
+  observation cutoff explicit. These bounds do not change the legacy `window`
+  summary or the budget's own interval.
 
 Both new views use `usage.incurred.created_at` and `cost_usd`, exclude failed
 upstream attempts, and expose unpriced-row counts. Missing cost is not proof
