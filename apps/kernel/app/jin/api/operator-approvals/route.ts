@@ -32,6 +32,10 @@
  * delegated agents still have no Inbox. `canAccess` follows panel visibility
  * (node operator, group controller, or a principal with addressed cards).
  * This changes neither the default session projection nor decision authority.
+ *
+ * #2970: `?count=true` returns only `pending` (plus `isOperator` and, for
+ * `view=acting`, `canAccess`). It aggregates the durable approval projection:
+ * no card hydration, Reach recovery writes, gate rules or topic payloads.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth } from '@imajin/auth';
@@ -65,6 +69,13 @@ async function listInboxApprovals(inboxDid: string, reachPrincipal: string | nul
   return approvals;
 }
 
+function emptyInbox(countOnly: boolean, actingView: boolean) {
+  return {
+    isOperator: false, ...(countOnly ? { pending: 0 } : { approvals: [] }),
+    ...(actingView ? { canAccess: false } : {}),
+  };
+}
+
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -72,6 +83,7 @@ export async function GET(request: NextRequest) {
   // session view and self-only decision rail retain their existing semantics.
   const { searchParams } = new URL(request.url);
   const actingView = searchParams.get('view') === 'acting';
+  const countOnly = searchParams.get('count') === 'true';
   const authResult = await requireAuth(request, actingView ? { service: 'jin' } : undefined);
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status, headers: cors });
@@ -88,13 +100,24 @@ export async function GET(request: NextRequest) {
   const inboxDid = sessionInboxDid && actingView
     ? authResult.identity.actingAs ?? sessionInboxDid : sessionInboxDid;
   if (!inboxDid) {
-    return NextResponse.json({ isOperator: false, approvals: [], ...(actingView ? { canAccess: false } : {}) }, { headers: cors });
+    return NextResponse.json(emptyInbox(countOnly, actingView), { headers: cors });
   }
 
   const operatorDid = await getOperatorDid();
   const isOperator = operatorDid !== null && isOperatorIdentity(authResult.identity, operatorDid);
 
   const reachPrincipal = await reachActAsPrincipal(authResult.identity);
+  if (countOnly) {
+    const { countInboxApprovals } = await import('@/src/lib/notify/approval-inbox-count');
+    const counts = await countInboxApprovals(inboxDid, {
+      source: searchParams.get('source') || undefined,
+      sharedReachPrincipal: reachPrincipal,
+    });
+    return NextResponse.json({
+      isOperator, pending: counts.pending,
+      ...(actingView ? { canAccess: isOperator || Boolean(identity.actingAs) || counts.total > 0 } : {}),
+    }, { headers: cors });
+  }
   const approvals = await listInboxApprovals(inboxDid, reachPrincipal, searchParams.get('source'));
   return NextResponse.json(
     {

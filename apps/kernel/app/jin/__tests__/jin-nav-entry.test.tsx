@@ -15,7 +15,7 @@ const fetchMock = vi.fn();
 const href = 'https://node.example/jin';
 const identityDid = 'did:imajin:operator';
 function inbox(statuses: string[] = [], canAccess = true) {
-  return { ok: true, json: async () => ({ canAccess, approvals: statuses.map(status => ({ status })) }) };
+  return { ok: true, json: async () => ({ canAccess, pending: statuses.filter(status => status === 'pending').length }) };
 }
 function entry() {
   return render(<JinNavEntry href={href} identityDid={identityDid} />);
@@ -39,7 +39,7 @@ describe('persistent Jin nav entry', () => {
     const link = await screen.findByRole('link', { name: '/jin — operator console' });
     expect(link.getAttribute('href')).toBe(href);
     expect(link.textContent).toBe('/jin');
-    expect(fetchMock).toHaveBeenCalledWith(`${href}/api/operator-approvals?view=acting`, expect.objectContaining({
+    expect(fetchMock).toHaveBeenCalledWith(`${href}/api/operator-approvals?view=acting&count=true`, expect.objectContaining({
       credentials: 'include', cache: 'no-store', headers: {},
     }));
   });

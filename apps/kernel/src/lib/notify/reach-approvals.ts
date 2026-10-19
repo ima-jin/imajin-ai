@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { canonicalize } from '@imajin/auth';
 import { getClient } from '@imajin/db';
+import { createLogger } from '@imajin/logger';
 import type { ReachEnvelope } from '@/src/db/schemas/reach';
 import type { KnockRecord } from '../auth/knock';
 import { computeApprovalContentHash } from './operator-approvals';
-import { forEachSequential } from '../async/sequential';
+
+const log = createLogger('kernel:reach-approvals');
 
 export function reachCardFields(envelope: ReachEnvelope) {
   return {
@@ -80,6 +82,61 @@ export async function backfillReachApprovals(principalDid: string): Promise<void
   const { listReachEnvelopes } = await import('../auth/reach-envelope-store');
   const { listPendingKnocksForTarget } = await import('../auth/knock');
   const envelopes = await listReachEnvelopes({ principalDid, limit: 100 });
-  await forEachSequential(envelopes, publishReachApproval);
-  await forEachSequential(await listPendingKnocksForTarget(principalDid), publishKnockApproval);
+  const knocks = (await listPendingKnocksForTarget(principalDid))
+    .filter((knock) => knock.status === 'pending' && Date.parse(knock.expiresAt) > Date.now());
+  const knockFields = knocks.map(knockCardFields);
+  const candidates = [
+    ...envelopes.filter((envelope) => !envelope.reply && !envelope.approvalDecision).map((envelope) => ({
+      ...reachCardFields(envelope), signerDid: envelope.requesterDid,
+    })),
+    ...knockFields.map((fields, index) => ({ ...fields, signerDid: knocks[index].agentDid })),
+  ].map(({ signerDid, ...fields }) => ({
+    ...fields, signerDid, contentHash: computeApprovalContentHash(fields),
+  }));
+  if (!candidates.length) return;
+
+  // A retry or concurrent publication must never replace signed evidence or
+  // rewind a decision. RETURNING also limits push to genuinely new cards.
+  const inserted = await getClient().unsafe<{ proposal_id: string }[]>(`
+    INSERT INTO operator.approvals
+      (proposal_id, operator_did, source, kind, summary, keys_touched, detail,
+       content_hash, notification_id, signer_did, status)
+    SELECT card."proposalId", $1, card.source, card.kind, card.summary,
+           card."keysTouched", card.detail, card."contentHash", NULL, card."signerDid", 'pending'
+    FROM jsonb_to_recordset($2::jsonb) AS card(
+      "proposalId" text, source text, kind text, summary text, "keysTouched" jsonb,
+      detail jsonb, "contentHash" text, "signerDid" text
+    )
+    ON CONFLICT (proposal_id) DO NOTHING
+    RETURNING proposal_id
+  `, [principalDid, JSON.stringify(candidates)]);
+
+  if (knockFields.length) {
+    // Retire all superseded pending knock cards in one statement. Only state
+    // changes: the old detail/content hash and any prior decision stay intact.
+    await getClient().unsafe(`
+      UPDATE operator.approvals AS approval
+      SET status = 'expired', updated_at = statement_timestamp()
+      FROM jsonb_to_recordset($2::jsonb) AS current("knockId" text, "proposalId" text)
+      WHERE approval.operator_did = $1 AND approval.source = 'knock'
+        AND approval.kind = 'knock:request' AND approval.status = 'pending'
+        AND approval.detail->>'knockId' = current."knockId"
+        AND approval.proposal_id <> current."proposalId"
+    `, [principalDid, JSON.stringify(knockFields.map((fields) => ({
+      knockId: fields.detail.knockId, proposalId: fields.proposalId,
+    })))]);
+  }
+
+  // One aggregate push avoids per-card subscription/VAPID queries. As on the
+  // ordinary publish path, transport failure cannot undo durable publication.
+  if (inserted.length) {
+    const { pushWebNotificationToOperator } = await import('./web-push');
+    void pushWebNotificationToOperator(principalDid, {
+      title: 'Operator approvals needed',
+      body: `${inserted.length} incoming Reach or knock request${inserted.length === 1 ? '' : 's'}`,
+      url: '/jin',
+    }).catch((err: unknown) => {
+      log.error({ err: String(err), principalDid }, 'recovered approval web-push failed (non-fatal)');
+    });
+  }
 }

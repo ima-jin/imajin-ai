@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { backfillReachApprovals } from '@/src/lib/notify/reach-approvals';
+import { reachActAsPrincipal } from '@/src/lib/notify/reach-approval-authority';
 vi.mock('@/src/lib/notify/reach-approvals', () => ({ backfillReachApprovals: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/src/lib/notify/reach-approval-authority', () => ({ reachActAsPrincipal: vi.fn().mockResolvedValue(null) }));
 import {
@@ -14,13 +16,15 @@ import {
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
-const { mockRequireAuth, mockGetOperatorDid, mockList, mockGroupMember } = vi.hoisted(() => ({
+const { mockRequireAuth, mockGetOperatorDid, mockList, mockGroupMember, mockCount } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
   mockGetOperatorDid: vi.fn(),
   mockList: vi.fn(),
   mockGroupMember: vi.fn(),
+  mockCount: vi.fn(),
 }));
 vi.mock('@/src/lib/auth/group-membership', () => ({ isActiveGroupMember: mockGroupMember }));
+vi.mock('@/src/lib/notify/approval-inbox-count', () => ({ countInboxApprovals: mockCount }));
 
 // #2359: the route's act-as context is computed by the real
 // `isUnderActAs`/`resolveActingDid`, so keep the actual implementations
@@ -28,6 +32,69 @@ vi.mock('@/src/lib/auth/group-membership', () => ({ isActiveGroupMember: mockGro
 vi.mock('@imajin/auth', async () => {
   const actual = await vi.importActual<typeof import('@imajin/auth')>('@imajin/auth');
   return { ...actual, requireAuth: mockRequireAuth };
+});
+describe('count-only Inbox projection (#2970)', () => {
+  it.each([
+    ['personal', operatorIdentity, OPERATOR_DID],
+    ['acting', operatorActingAsGroupIdentity, GROUP_DID],
+  ])('counts the %s Inbox without loading cards or running recovery', async (_label, identity, did) => {
+    const session = identity();
+    mockRequireAuth.mockResolvedValue({ identity: session });
+    vi.mocked(reachActAsPrincipal).mockResolvedValue(session.actingAs ?? null);
+    const req = makeReq('?view=acting&count=true&source=reach&did=did:imajin:untrusted');
+    const res = await GET(req as Parameters<typeof GET>[0]);
+    expect(mockRequireAuth).toHaveBeenCalledWith(req, { service: 'jin' });
+    expect(mockCount).toHaveBeenCalledWith(did, { source: 'reach', sharedReachPrincipal: session.actingAs ?? null });
+    expect(await res.json()).toEqual({ isOperator: true, pending: 120, canAccess: true });
+    expect(mockList).not.toHaveBeenCalled();
+    expect(backfillReachApprovals).not.toHaveBeenCalled();
+  });
+
+  it('retains the default session projection plus verified shared Reach cards', async () => {
+    mockRequireAuth.mockResolvedValue({ identity: operatorActingAsGroupIdentity() });
+    vi.mocked(reachActAsPrincipal).mockResolvedValue(GROUP_DID);
+    const res = await GET(makeReq('?count=true') as Parameters<typeof GET>[0]);
+    expect(await res.json()).toEqual({ isOperator: true, pending: 120 });
+    expect(mockCount).toHaveBeenCalledWith(OPERATOR_DID, { sharedReachPrincipal: GROUP_DID });
+  });
+
+  it.each([
+    [operatorIdentity, 0, true],
+    [otherHumanIdentity, 0, false],
+    [otherHumanIdentity, 1, true],
+    [operatorActingAsGroupIdentity, 0, true],
+  ])('preserves console visibility independently of pending count', async (identity, total, canAccess) => {
+    mockRequireAuth.mockResolvedValue({ identity: identity() });
+    mockCount.mockResolvedValue({ pending: 0, total });
+    const res = await GET(makeReq('?view=acting&count=true') as Parameters<typeof GET>[0]);
+    expect(await res.json()).toMatchObject({ pending: 0, canAccess });
+  });
+
+  it.each([401, 403])('propagates auth/service refusal %s without querying', async status => {
+    mockRequireAuth.mockResolvedValue({ error: 'Denied', status });
+    const res = await GET(makeReq('?view=acting&count=true') as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(status);
+    expect(mockCount).not.toHaveBeenCalled();
+  });
+
+  it.each(['member', 'removed'])('rejects %s acting authority before counting', async authority => {
+    mockRequireAuth.mockResolvedValue({
+      identity: { ...operatorActingAsGroupIdentity(), ...(authority === 'member' ? { actingAsRole: 'member' } : {}) },
+    });
+    mockGroupMember.mockResolvedValue(authority !== 'removed');
+    const res = await GET(makeReq('?view=acting&count=true') as Parameters<typeof GET>[0]);
+    expect(res.status).toBe(403);
+    expect(mockCount).not.toHaveBeenCalled();
+  });
+
+  it.each(['?count=true', '?view=acting&count=true'])('gives delegates no count for %s', async query => {
+    mockRequireAuth.mockResolvedValue({ identity: agentActingForOperatorIdentity() });
+    const res = await GET(makeReq(query) as Parameters<typeof GET>[0]);
+    expect(await res.json()).toEqual({
+      isOperator: false, pending: 0, ...(query.includes('view=acting') ? { canAccess: false } : {}),
+    });
+    expect(mockCount).not.toHaveBeenCalled();
+  });
 });
 
 
@@ -58,6 +125,8 @@ beforeEach(() => {
   mockGetOperatorDid.mockResolvedValue(OPERATOR_DID);
   mockList.mockResolvedValue([pendingApprovalCard()]);
   mockGroupMember.mockResolvedValue(true);
+  mockCount.mockResolvedValue({ pending: 120, total: 125 });
+  vi.mocked(reachActAsPrincipal).mockResolvedValue(null);
 });
 
 describe('OPTIONS /jin/api/operator-approvals', () => {
