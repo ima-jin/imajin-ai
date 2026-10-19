@@ -47,6 +47,24 @@ import { isReachApproval } from '@/src/lib/notify/reach-approval-contract';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * The session Inbox plus, for a verified act-as owner/admin, the acting
+ * principal's Reach/knock cards only (#2597). Backfill recovers failed or
+ * pre-upgrade publications before listing.
+ */
+async function listInboxApprovals(inboxDid: string, reachPrincipal: string | null, source: string | null) {
+  const filter = source ? { source } : {};
+  const sharedPrincipal = reachPrincipal && reachPrincipal !== inboxDid ? reachPrincipal : null;
+  await backfillReachApprovals(inboxDid);
+  if (sharedPrincipal) await backfillReachApprovals(sharedPrincipal);
+  const approvals = await listApprovalsForOperator(inboxDid, filter);
+  if (sharedPrincipal) {
+    const shared = await listApprovalsForOperator(sharedPrincipal, filter);
+    approvals.push(...shared.filter(isReachApproval));
+  }
+  return approvals;
+}
+
 export async function GET(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -76,15 +94,8 @@ export async function GET(request: NextRequest) {
   const operatorDid = await getOperatorDid();
   const isOperator = operatorDid !== null && isOperatorIdentity(authResult.identity, operatorDid);
 
-  const source = searchParams.get('source');
   const reachPrincipal = await reachActAsPrincipal(authResult.identity);
-  await backfillReachApprovals(inboxDid);
-  if (reachPrincipal && reachPrincipal !== inboxDid) await backfillReachApprovals(reachPrincipal);
-  const approvals = await listApprovalsForOperator(inboxDid, source ? { source } : {});
-  if (reachPrincipal && reachPrincipal !== inboxDid) {
-    const shared = await listApprovalsForOperator(reachPrincipal, source ? { source } : {});
-    approvals.push(...shared.filter(isReachApproval));
-  }
+  const approvals = await listInboxApprovals(inboxDid, reachPrincipal, searchParams.get('source'));
   return NextResponse.json(
     {
       isOperator, approvals, actAs: actAsContext(authResult.identity), reachActAsAllowed: reachPrincipal !== null,
