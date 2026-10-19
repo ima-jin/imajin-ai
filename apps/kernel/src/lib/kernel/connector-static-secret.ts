@@ -130,8 +130,6 @@ export interface ConnectorStaticSecret {
    * Fail-closed: DB errors propagate.
    */
   resolveActiveGrant(ownerDid: string, requiredScope: string): Promise<boolean>;
-  /** Enumerate active scope holders without reading any credential material. */
-  listActiveGrantOwners(requiredScope: string): Promise<string[]>;
 }
 
 // ── Factory ───────────────────────────────────────────────────────────────────
@@ -234,20 +232,6 @@ export function createConnectorStaticSecret(
     });
   }
 
-  async function listActiveGrantOwners(requiredScope: string): Promise<string[]> {
-    const rows = await db
-      .select({ did: channelLinks.did, scopes: channelLinks.scopes })
-      .from(channelLinks)
-      .where(and(
-        eq(channelLinks.channel, opts.channel),
-        eq(channelLinks.appDid, opts.connectorDid),
-        eq(channelLinks.status, 'active'),
-      ));
-    return [...new Set(rows
-      .filter((row) => Array.isArray(row.scopes) && row.scopes.includes(requiredScope))
-      .map((row) => row.did))];
-  }
-
   return {
     secretField,
     sealAndGrant,
@@ -257,6 +241,5 @@ export function createConnectorStaticSecret(
     secretSealed,
     secretPending,
     resolveActiveGrant,
-    listActiveGrantOwners,
   };
 }

@@ -39,7 +39,6 @@ import {
   WARP_CONNECTOR_DID,
   WARP_CHANNEL,
   WARP_DISPATCH_SCOPE,
-  listWarpGrantOwners,
 } from '../connector';
 import * as warpConnectorModule from '../connector';
 
@@ -63,16 +62,6 @@ beforeEach(() => {
 // ── Identity ──────────────────────────────────────────────────────────────────
 
 describe('connector identity', () => {
-  it('enumerates and deduplicates only dispatch scope holders without unsealing keys', async () => {
-    whereMock.mockResolvedValue([
-      { did: PRINCIPAL, scopes: [WARP_DISPATCH_SCOPE] },
-      { did: PRINCIPAL, scopes: [WARP_DISPATCH_SCOPE] },
-      { did: OTHER, scopes: ['discovery:read'] },
-      { did: 'invalid', scopes: null },
-    ]);
-    expect(await listWarpGrantOwners()).toEqual([PRINCIPAL]);
-    expect(loadGranteeMock).not.toHaveBeenCalled();
-  });
   it('uses the warp connector DID and channel declared in the vocabulary', () => {
     expect(WARP_CONNECTOR_DID).toBe('did:imajin:warp-connector');
     expect(WARP_CHANNEL).toBe('warp');

@@ -426,58 +426,6 @@ See [the signed loop output contract](guide/loop-output.md) for the eight
 artifact retrieval used by the plugin and `/jin` Runs. This uses the existing
 database and auth configuration; no new environment variables are required.
 
-## Provider-billed usage and the v1 budget (#2972)
-
-`usage.incurred` is our meter; `usage.billed` is the counterparty's statement.
-They are never merged. `/usage/api/summary` exposes both and their drift.
-Discover the contract at `/usage/api/spec` (source: `apps/kernel/api-spec/usage.yaml`).
-The existing `usage-billed-ingest` cron is the only scheduled ingestion job.
-
-- **Warp:** seal the principal's Warp Agent key through the existing Warp
-  connector and grant `warp:dispatch`, the same authority used by dispatch/list.
-  Terminal orchestration children count even without an environment. Each run
-  has one billed line, with its credit conversion rate frozen at first ingest;
-  resumed usage growth updates that line, not a second charge. The existing
-  admin config key `usage.warp.credit-rate` accepts `{ "usd": 100, "credits": 6500 }`
-  (the default); the rate is stored in each line's audit `raw.creditRate`.
-  The scan begins at 2026-10-19T00:00:00Z and attributes the cumulative run
-  charge to its original creation instant, including after a resume.
-- **Anthropic:** the existing reader covers the organization visible to the
-  principal's **Admin API key**, not an inference key. Seal it through the
-  Anthropic billing slot and grant `anthropic:billing`. It paginates the org
-  messages-usage and cost reports; without that admin grant, automatic org
-  billed totals are unavailable. No inference key or chat subscription invoice
-  is a substitute for an org billing grant.
-- **Moonshot/Kimi:** grant `moonshot:billing` independently of `moonshot:infer`
-  on the existing Moonshot connector's sealed international-platform key.
-  The cron can read the USD balance at
-  `GET https://api.moonshot.ai/v1/users/me/balance`.
-  [Moonshot's documented response](https://platform.kimi.ai/docs/api/balance)
-  contains only available, voucher and cash balances, not period-billed costs,
-  top-up history or voucher expiry. A balance or its decrease is **not spend**:
-  top-ups, vouchers and expiry make that inference unsound. This reader never
-  writes a balance into `usage.billed`. Custom/China endpoints are rejected by
-  this USD-only balance reader.
-
-Moonshot billed reporting is therefore **manual only**. Record each USD top-up
-receipt using the existing authenticated `POST /usage/api/billed`, with
-`vendor: "moonshot"`, `source: "document"`, the owned `evidenceAssetId`,
-`amountMinor` in cents, `currency: "USD"`, `category: "top-up"` and the receipt's
-`periodStart`/`periodEnd`. Number-only entries use `source: "manual"`; evidence is
-optional on that existing path. The kernel binds evidence by content hash and
-attests the line; do not paste keys or vendor bills into chat. Top-ups are cash
-outlays, not inferred token-consumption charges: never record both a top-up and
-its later consumption as separate billed spend. Missing receipts are missing
-data, not proof of zero costs.
-
-Use the authenticated summary with paired `budgetSince` and `budgetCap`, for
-example `?budgetSince=2026-10-19T16:13:00Z&budgetCap=4000USD`.
-This optional block reads billed lines since the exact instant, independently
-of the normal `window`, groups them into UTC ISO weeks, and reports vendor
-totals, cumulative actuals, remaining cap and a trailing-seven-day projection.
-It does not backfill historical costs, prorate vendor daily statements, or
-claim that absent/ungranted providers have complete coverage. `/jin` Spend UI
-rendering remains owned by #2725.
 ## Testing
 
 - **End-to-end test cases:** `tests/HAPPY_PATH.md`

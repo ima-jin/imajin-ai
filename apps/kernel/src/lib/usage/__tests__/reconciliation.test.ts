@@ -8,17 +8,17 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 function createChain(result: unknown) {
   const chain: Record<string, unknown> = {
     from: () => chain,
-    where: (condition: unknown) => { whereConditions.push(condition); return chain; },
+    where: () => chain,
     groupBy: () => chain,
     then: (resolve: (value: unknown) => void) => resolve(result),
   };
   return chain;
 }
 
-const { mockSelect, queue, whereConditions } = vi.hoisted(() => {
+const { mockSelect, queue } = vi.hoisted(() => {
   const queue: unknown[] = [];
   const mockSelect = vi.fn();
-  return { mockSelect, queue, whereConditions: [] as unknown[] };
+  return { mockSelect, queue };
 });
 
 vi.mock('@/src/db', () => ({
@@ -36,7 +36,6 @@ vi.mock('@/src/db', () => ({
 vi.mock('drizzle-orm', () => ({
   and: (...args: unknown[]) => ({ and: args }),
   eq: (...args: unknown[]) => ({ eq: args }),
-  inArray: (...args: unknown[]) => ({ inArray: args }),
   gte: (...args: unknown[]) => ({ gte: args }),
   lt: (...args: unknown[]) => ({ lt: args }),
   sql: (strings: TemplateStringsArray, ...values: unknown[]) => ({ sql: strings.join('?'), values }),
@@ -46,7 +45,6 @@ import { readReconciliation } from '../reconciliation';
 
 beforeEach(() => {
   queue.length = 0;
-  whereConditions.length = 0;
   mockSelect.mockReset();
   mockSelect.mockImplementation(() => createChain(queue.shift() ?? []));
 });
@@ -58,16 +56,6 @@ function enqueue(computed: unknown[], billed: unknown[]) {
 }
 
 describe('readReconciliation', () => {
-  it('counts run-granularity billed lines in the daily drift while excluding month and manual buckets', async () => {
-    enqueue([], [{ date: '2026-10-19', provider: 'warp', model: null, billedUsd: '100', tokensIn: null, tokensOut: null }]);
-    expect(await readReconciliation({ principalDid: 'did:imajin:owner' })).toMatchObject([
-      { provider: 'warp', billedUsd: 100, computedUsd: null },
-    ]);
-    expect(whereConditions[1]).toEqual({ and: [
-      { eq: ['principal_did', 'did:imajin:owner'] },
-      { inArray: ['granularity', ['day', 'run']] },
-    ] });
-  });
   it('computes drift when both sides report the same day/provider/model', async () => {
     enqueue(
       [{ date: '2026-08-01', provider: 'anthropic', model: 'claude-opus-5', costUsd: '10.00000000', tokensIn: '1000', tokensOut: '200' }],

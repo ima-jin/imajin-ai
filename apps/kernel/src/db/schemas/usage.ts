@@ -9,7 +9,6 @@ import {
   date,
   index,
   uniqueIndex,
-  check,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
@@ -145,15 +144,15 @@ export type NewUsageEmitter = typeof usageEmitters.$inferInsert;
 // (migration 0121), neither of which this table touches.
 // ---------------------------------------------------------------------------
 
-// Fresh builders for both relations; never reuse already-bound column objects.
-function billedColumns() {
-  return {
+export const usageBilled = usageSchema.table(
+  'billed',
+  {
     id: text('id').primaryKey(),                          // billed_xxx (nanoid)
     principalDid: text('principal_did').notNull(),        // owner DID whose sealed admin/billing key was used
     provider: text('provider').notNull(),                 // 'anthropic' | 'openai' (manual/document rows: the submitted vendor name)
     periodStart: timestamp('period_start', { withTimezone: true }).notNull(),
     periodEnd: timestamp('period_end', { withTimezone: true }).notNull(),
-    granularity: text('granularity').notNull(),           // 'day' | 'month' | 'manual' | 'run' (#2972)
+    granularity: text('granularity').notNull(),           // 'day' | 'month' | 'manual' (#2030 — see migrations/0125)
     model: text('model'),                                 // nullable: providers report per-model where available
     tokensIn: bigint('tokens_in', { mode: 'number' }),
     tokensOut: bigint('tokens_out', { mode: 'number' }),
@@ -180,12 +179,7 @@ function billedColumns() {
     fxSource: text('fx_source'),                          // 'ecb' | 'ecb:triangulated' | 'identity'
     fxAsOf: date('fx_as_of', { mode: 'string' }),          // ECB reference date the rate was published for
     fxSignature: text('fx_signature'),                     // hex Ed25519 signature over the FxSnapshot (packages/money)
-  };
-}
-
-export const usageBilled = usageSchema.table(
-  'billed',
-  billedColumns(),
+  },
   (table) => ({
     // Idempotent upsert target on re-fetch — see the migration's comment on
     // why COALESCE(model, '') rather than a bare column.
@@ -200,24 +194,3 @@ export const usageBilled = usageSchema.table(
 
 export type UsageBilled = typeof usageBilled.$inferSelect;
 export type NewUsageBilled = typeof usageBilled.$inferInsert;
-
-/**
- * Physical run-write relation; normal reads keep targeting usageBilled.
- * Migration 0214 supplies PostgreSQL INHERITS, unsupported by Drizzle's DDL
- * generator. Parent SELECTs include these rows automatically; the parent's
- * bucket unique index and exact old-version ON CONFLICT target are unchanged.
- * Inheritance does NOT extend parent PK/FKs/indexes to children: this relation
- * owns its PK/read indexes, and billed_warp_ IDs are reserved for this writer.
- * Future FKs to the parent must not assume they cover inherited run IDs.
- */
-export const usageBilledWarpRuns = usageSchema.table(
-  'billed_warp_runs',
-  billedColumns(),
-  (table) => ({
-    runOnly: check('usage_billed_warp_runs_kind',
-      sql`${table.provider} = 'warp' AND ${table.source} = 'api' AND ${table.granularity} = 'run' AND ${table.currency} = 'USD'`),
-    principalIdx: index('idx_usage_billed_warp_runs_principal').on(table.principalDid, table.provider, table.periodStart),
-    fetchedIdx: index('idx_usage_billed_warp_runs_fetched').on(table.fetchedAt),
-    sourceIdx: index('idx_usage_billed_warp_runs_source').on(table.principalDid, table.source, table.periodStart),
-  }),
-);

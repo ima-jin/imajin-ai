@@ -31,8 +31,6 @@ export const MOONSHOT_CHANNEL = CONNECTOR_CHANNELS.moonshot;
 
 /** Scope the owner grants to let their key be used for inference. */
 export const MOONSHOT_INFER_SCOPE = 'moonshot:infer';
-/** Explicit owner permission for balance reads; never inferred from inference permission. */
-export const MOONSHOT_BILLING_SCOPE = 'moonshot:billing';
 
 /**
  * Moonshot's public API base, which is OpenAI-compatible.
@@ -92,15 +90,6 @@ export type MoonshotCredentials = TokenPasteCredentials;
  */
 export function loadMoonshotCredentials(ownerDid: string): Promise<MoonshotCredentials | undefined> {
   return moonshot.loadCredentials(ownerDid, MOONSHOT_INFER_SCOPE);
-}
-
-/** Same sealed Moonshot key, independently gated by the owner's billing grant. */
-export function loadMoonshotBillingCredentials(ownerDid: string): Promise<MoonshotCredentials | undefined> {
-  return moonshot.loadCredentials(ownerDid, MOONSHOT_BILLING_SCOPE);
-}
-
-export function listBillingGrantOwners(): Promise<string[]> {
-  return moonshot.listActiveGrantOwners(MOONSHOT_BILLING_SCOPE);
 }
 
 /**
