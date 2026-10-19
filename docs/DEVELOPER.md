@@ -239,6 +239,27 @@ A fixture preview is not evidence of a live gateway round-trip: that check
 remains pending the separately implemented plugin #77. Do not disable signature
 checks or change server/environment settings to make a preview appear live.
 
+
+### Runs horizon (#2880)
+
+Above Threads, the Runs lane reads each loaded loop's existing horizon projection
+and refreshes it every five seconds, without a page reload. Head, near, middle,
+tail and past are projection zones, not UI deductions. The depth counter is
+`N / 12`; a short horizon is an explicit, non-error state. Loading additional
+run pages also includes their horizons. Past retains open release/deployment
+conditions until the signed projection actually exits the step. An absent
+OUTCOME is never synthesized from intention or thread summary (#2931).
+
+**Sign & claim** sends a `session.send` request through the same full-body
+operator countersignature as the composer. It requests the named step's lease
+from the verified serving agent; it does not write the projection or claim a
+lease locally. Delivery is not acquisition: only a subsequent projected lease
+moves the item to head. Stale reads or missing command authority disable claims.
+
+`/dev/runs-preview` includes twelve steps passed through the real horizon
+projector. The fixture agent observes claim requests after transport acceptance;
+this demonstrates polling and grouping, not a live plugin/gateway round trip.
+
 ## Shared Packages
 
 Code shared across services lives in `packages/`:
