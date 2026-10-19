@@ -41,6 +41,9 @@ function plan(record: DnsRecord, existing: CloudflareRecord[]): Write {
   }
   if (existing.some((entry) => entry.type === 'CNAME')) throw new DnsError('dns_record_conflict');
   const txt = existing.filter((entry) => entry.type === 'TXT');
+  if (record.name.includes('._domainkey.') && txt.some((entry) => txtValue(entry.content) !== record.content)) {
+    throw new DnsError('dns_record_conflict');
+  }
   const spf = txt.filter((entry) => isSpf(txtValue(entry.content)));
   if (isSpf(record.content)) {
     if (spf.length > 1) throw new DnsError('ambiguous_spf');

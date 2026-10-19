@@ -107,6 +107,12 @@ describe('Cloudflare adapter HTTP contract', () => {
     expect(mutations()).toHaveLength(0);
   });
 
+  it('refuses an occupied DKIM selector rather than publishing an invalid second key', async () => {
+    stored = [{ ...dkim, content: 'v=DKIM1; p=existing-public-key', id: recordId }];
+    await expect(provider.apply([dkim])).rejects.toThrow('dns_record_conflict');
+    expect(mutations()).toHaveLength(0);
+  });
+
   it('refuses TXT over CNAME and multiple SPF policies', async () => {
     stored = [{ ...dkim, type: 'CNAME', content: 'existing.example.net', id: recordId }];
     await expect(provider.apply([dkim])).rejects.toMatchObject({ code: 'dns_record_conflict' });
@@ -162,13 +168,20 @@ describe('Cloudflare adapter HTTP contract', () => {
   });
 
   it('reports failed writes, and a later operation can recover without duplicating earlier writes', async () => {
-    http.mockResolvedValueOnce(envelope({ name: 'example.com' }))
-      .mockResolvedValueOnce(envelope([]))
-      .mockRejectedValueOnce(new Error('write failed'));
-    await expect(provider.apply([dkim])).rejects.toThrow('dns_provider_unavailable');
-    await provider.apply([dkim]);
-    await provider.apply([dkim]);
+    const implementation = http.getMockImplementation()!;
+    let failed = false;
+    http.mockImplementation(async (url: string, init: RequestInit) => {
+      if (init.method === 'POST' && stored.length === 1 && !failed) {
+        failed = true;
+        throw new Error('write failed');
+      }
+      return implementation(url, init);
+    });
+    await expect(provider.apply([dkim, cname])).rejects.toThrow('dns_provider_unavailable');
     expect(stored).toHaveLength(1);
+    await provider.apply([dkim, cname]);
+    await provider.apply([dkim, cname]);
+    expect(stored).toHaveLength(2);
   });
 
   it('decodes supported TXT chunks but never guesses unsupported encodings', () => {
