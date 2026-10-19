@@ -23,9 +23,13 @@ export const LETTER_NOT_COUNTERSIGNED_LABEL = 'letter not countersigned';
  * so `mode` is left off the object entirely rather than set to undefined.
  */
 export function countersignedMessage(fields: OperatorCountersignFields): string {
-  const { contentHash, decision, decidedAt, mode } = fields;
+  const { contentHash, decision, decidedAt, mode, replyMessage } = fields;
   const base = { contentHash, decision, decidedAt };
-  return canonicalize(mode === undefined ? base : { ...base, mode });
+  return canonicalize({
+    ...base,
+    ...(mode === undefined ? {} : { mode }),
+    ...(replyMessage === undefined ? {} : { replyMessage }),
+  });
 }
 
 /**
@@ -73,7 +77,10 @@ export function assessDecidedModeCountersignature(payload: unknown): ModeCounter
   const decidedAt = str(p.decidedAt);
   if (!keyId || !sig || !contentHash || !decision || !decidedAt) return 'not-applicable';
 
-  const base = { contentHash: bareHash(contentHash), decision: decision as OperatorCountersignFields['decision'], decidedAt };
+  const base = {
+    contentHash: bareHash(contentHash), decision: decision as OperatorCountersignFields['decision'], decidedAt,
+    ...(typeof p.replyMessage === 'string' ? { replyMessage: p.replyMessage } : {}),
+  };
   const mode = str(p.mode);
 
   if (mode === undefined) {

@@ -92,7 +92,7 @@ describe('GET /connections/api/connectors/[id]/spend (#1923)', () => {
 
     expect(res.status).toBe(401);
     expect(mockReadInferenceBurnDown).not.toHaveBeenCalled();
-    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:usage-read' });
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:usage-read', service: 'connections' });
   });
 
   it('reads the burn-down for the callers own registration, computing a connector id when none exists yet', async () => {

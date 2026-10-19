@@ -67,7 +67,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ did: string }> }
 ) {
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'connections' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }

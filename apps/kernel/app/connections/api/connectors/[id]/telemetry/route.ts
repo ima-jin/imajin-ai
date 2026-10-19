@@ -53,7 +53,7 @@ export async function GET(
     return NextResponse.json({ error: `Unknown connector: ${id}` }, { status: 404, headers });
   }
 
-  const auth = await resolveEffectiveDid(request, { scope: 'connectors:read-telemetry' });
+  const auth = await resolveEffectiveDid(request, { scope: 'connectors:read-telemetry', service: 'connections' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
   }

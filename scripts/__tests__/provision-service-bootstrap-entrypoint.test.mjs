@@ -200,17 +200,30 @@ describe('workflow wiring (#2483)', () => {
     expect(ci).toBe(`${stepRun('deploy-prod.yml', PROVISION)} --dry-run`);
   });
 
-  it('keeps #2478 ordering: build packages, provision, then build changed apps', () => {
-    const doc = parseYaml(workflow('deploy-prod.yml'));
-    const names = Object.values(doc.jobs).flatMap((job) => (job.steps ?? []).map((step) => step.name));
+  it.each(['dev', 'prod'])('keeps migrations before provisioning before any build/restart in %s (#2960)', (env) => {
+    const doc = parseYaml(workflow(`deploy-${env}.yml`));
+    const steps = doc.jobs.deploy.steps;
+    const names = steps.map((step) => step.name);
     const order = [
       'Install dependencies',
+      'Check VAULT_PATH single source of truth',
       'Build workspace packages (provisioning prerequisite)',
-      PROVISION,
-      'Build changed apps',
       'Run migrations',
+      PROVISION,
+      'Snapshot pm2 deploy state',
+      'Build changed apps',
+      `Restart ${env} services`,
     ].map((name) => names.indexOf(name));
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(order).not.toContain(-1);
+    expect(steps.find((step) => step.name === 'Run migrations').run).toBe(
+      'node scripts/migrate.mjs --owner kernel',
+    );
+  });
+
+  it('runs the workflow regression tests in CI Guards', () => {
+    expect(stepRun('ci.yml', 'Deploy provisioning order guard')).toBe(
+      'pnpm exec vitest run scripts/__tests__/provision-service-bootstrap-entrypoint.test.mjs',
+    );
   });
 });

@@ -94,6 +94,7 @@ const EMPTY_VALUES: ProvisionFormValues = {
   slug: '',
   displayName: '',
   template: DEFAULT_APP_TEMPLATE,
+  sourceRepo: '',
   attestationTypes: '',
 };
 
@@ -488,7 +489,7 @@ export function ProvisionAppPanel() {
       <div className="mb-3">
         <h2 className="text-base font-semibold text-gray-100">Provision app</h2>
         <p className="text-xs text-gray-500">
-          Propose <span className="font-mono">apps.provision</span> — creates the app repo and registers it. Nothing
+          Propose <span className="font-mono">apps.provision</span> — creates or uses an existing app repo and registers it. Nothing
           happens until you approve the proposal in Operator approvals below.
         </p>
       </div>
@@ -516,6 +517,15 @@ export function ProvisionAppPanel() {
           error={errors.displayName}
           placeholder="Coffee"
           required
+          disabled={busy}
+        />
+        <TextField
+          label="Source repository"
+          value={values.sourceRepo ?? ''}
+          onChange={setField('sourceRepo')}
+          error={errors.sourceRepo}
+          placeholder="gbscontracting/website"
+          hint="Optional — use an existing owner/name repository without creating one. Its own manifest is required; template is ignored."
           disabled={busy}
         />
         <TextField

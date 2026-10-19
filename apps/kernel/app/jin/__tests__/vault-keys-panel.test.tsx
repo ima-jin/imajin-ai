@@ -7,7 +7,7 @@
  * `POST /jin/api/vault-proposals`.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, waitFor, fireEvent, within } from '@testing-library/react';
 import { VaultKeysPanel } from '../vault-keys-panel';
 import { installIntervalSpy } from './panel-test-support';
 
@@ -377,7 +377,7 @@ describe('per-card proposal actions', () => {
     await screen.findByTestId('vault-key-card');
 
     fireEvent.click(screen.getByRole('button', { name: 'Revoke' }));
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'destroy' } });
+    fireEvent.change(within(screen.getByTestId('vault-key-card')).getByRole('combobox'), { target: { value: 'destroy' } });
     // The select's own 'destroy' option text also contains 'irreversible',
     // so this checks for the warning paragraph's distinctive phrase instead.
     expect(screen.getByText(/cannot be undone/)).toBeDefined();

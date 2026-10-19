@@ -9,6 +9,7 @@
  * a stand-in.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/notify/reach-approval-authority', () => ({ reachActAsPrincipal: vi.fn().mockResolvedValue(null) }));
 import {
   OPERATOR_DID,
   OTHER_HUMAN_DID,
@@ -203,13 +204,13 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
   it('approves and returns the signed card, calling the service as the operator DID', async () => {
     const res = await POST(makeReq({ decision: 'approve' }) as Parameters<typeof POST>[0], paramsFor(PROPOSAL_ID));
 
-    expect(mockDecide).toHaveBeenCalledWith({
+    expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({
       proposalId: PROPOSAL_ID,
       operatorDid: OPERATOR_DID,
       decision: 'approve',
       mode: undefined,
       reason: undefined,
-    });
+    }));
     expect(res.status).toBe(200);
     const body = (await res.json()) as { approval: { status: string } };
     expect(body.approval.status).toBe('approved');
@@ -223,13 +224,13 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
       paramsFor(PROPOSAL_ID),
     );
 
-    expect(mockDecide).toHaveBeenCalledWith({
+    expect(mockDecide).toHaveBeenCalledWith(expect.objectContaining({
       proposalId: PROPOSAL_ID,
       operatorDid: OPERATOR_DID,
       decision: 'reject',
       mode: undefined,
       reason: 'not tonight',
-    });
+    }));
     const body = (await res.json()) as { approval: { status: string } };
     expect(body.approval.status).toBe('denied');
   });
@@ -446,6 +447,9 @@ describe('POST /jin/api/operator-approvals/:proposalId/decision (#2059)', () => 
         reason: undefined,
         operatorSignature: undefined,
         decidedAt: undefined,
+        identity: operatorIdentity(),
+        replyMessage: undefined,
+        sessionCommand: undefined,
       });
       expect(res.status).toBe(200);
     });

@@ -4,11 +4,13 @@ const mocks = vi.hoisted(() => ({
   manifest: vi.fn(),
   token: vi.fn(),
   declarations: vi.fn(),
+  source: vi.fn(),
 }));
 vi.mock('@/src/lib/github/org-provisioning', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/src/lib/github/org-provisioning')>(),
   fetchAppManifest: mocks.manifest,
   tryGetInstallationToken: mocks.token,
+  resolveSourceRepo: mocks.source,
 }));
 vi.mock('@/src/lib/kernel/app-declarations', () => ({ validateAppDeclarations: mocks.declarations }));
 vi.mock('@/src/lib/vault', () => ({ loadAndUnseal: vi.fn() }));
@@ -26,6 +28,30 @@ beforeEach(() => {
 });
 
 describe('manifest declarations preview (#2813)', () => {
+  it.each([null, 'source-token'])('reads only the explicit source with its own read credential %s', async (token) => {
+    mocks.source.mockResolvedValue({ repoUrl: 'https://github.com/gbscontracting/website', created: false, token });
+    const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' }];
+    mocks.manifest.mockResolvedValue({ ok: { secrets } });
+    expect(await previewManifestDeclarations('gbs-contracting', undefined, 'gbscontracting/website'))
+      .toEqual({ ok: { ...empty, secrets } });
+    expect(mocks.source).toHaveBeenCalledWith('gbscontracting/website');
+    expect(mocks.manifest).toHaveBeenCalledTimes(1);
+    expect(mocks.manifest).toHaveBeenCalledWith('website', token, 'gbscontracting');
+    expect(mocks.token).not.toHaveBeenCalled();
+  });
+  it('does not fall back to the template when the explicit manifest is missing', async () => {
+    mocks.source.mockResolvedValue({ token: null });
+    expect(await previewManifestDeclarations('gbs-contracting', undefined, 'gbscontracting/website'))
+      .toEqual({ error: "App 'gbs-contracting' manifest unreadable (HTTP 404)" });
+    expect(mocks.manifest).toHaveBeenCalledTimes(1);
+  });
+  it('reports source access failure before reading declarations', async () => {
+    const { SourceRepoAccessError } = await import('@/src/lib/github/org-provisioning');
+    mocks.source.mockRejectedValue(new SourceRepoAccessError('gbscontracting/website'));
+    expect(await previewManifestDeclarations('gbs-contracting', undefined, 'gbscontracting/website'))
+      .toEqual({ error: expect.stringContaining("sourceRepo 'gbscontracting/website' does not exist or is not accessible") });
+    expect(mocks.manifest).not.toHaveBeenCalled();
+  });
   it('snapshots the validated widget for the signed approval card', async () => {
     const profileWidget = { path: '/profile/studio', label: 'Studio' };
     mocks.manifest.mockResolvedValue({ ok: { profileWidget } });

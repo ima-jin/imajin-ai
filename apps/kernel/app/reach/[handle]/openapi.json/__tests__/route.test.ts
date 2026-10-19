@@ -14,6 +14,7 @@ import { POST as status } from '@/app/auth/api/agents/[did]/reach/[reachId]/stat
 const mocks = vi.hoisted(() => ({
   recipient: vi.fn(), bearer: vi.fn(), signedReach: vi.fn(), bearerReach: vi.fn(),
   status: vi.fn(), authenticateStatus: vi.fn(), rows: vi.fn(),
+  config: vi.fn(),
 }));
 vi.mock('@/src/lib/access/reach-bearer', () => ({
   resolveReachRecipient: mocks.recipient, resolveReachBearer: mocks.bearer,
@@ -31,6 +32,10 @@ vi.mock('@/src/db', () => ({
   identities: { id: 'id', handle: 'handle' }, consentGrants: {},
 }));
 vi.mock('@imajin/bus', () => ({ publish: vi.fn() }));
+vi.mock('@/src/lib/jin/front-door', async (original) => ({
+  ...await original<typeof import('@/src/lib/jin/front-door')>(),
+  readFrontDoorConfig: mocks.config,
+}));
 
 const KERNEL_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const did = 'did:imajin:ryan';
@@ -65,6 +70,42 @@ function post(path: string, body?: unknown, authorization?: string) {
   });
 }
 
+describe('canonical and opted-in discovery', () => {
+  it.each(['ryan', '@ryan', did])('uses the canonical DID card path for %s', async (alias) => {
+    const response = await getSpec(alias);
+    const spec: Spec = await response.json();
+    expect(response.status).toBe(200);
+    expect(Object.keys(spec.paths)).toContain(`/.well-known/agent/${encodeURIComponent(did)}`);
+  });
+
+  it.each([
+    { tiers: { anonymous: false, soft: false, preliminary: false, established: false }, topics: {}, dailyCap: 25 },
+    null,
+  ])('withholds disabled or missing reach configuration: %j', async (config) => {
+    mocks.config.mockResolvedValue(config);
+    mocks.rows.mockResolvedValue([{
+      ...principal, handle: 'ryan', name: 'Ryan', scope: 'actor', subtype: 'human',
+      metadata: config === null ? {} : { agentReachGate: config },
+    }]);
+    const response = await getSpec();
+    expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(mocks.recipient).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { scope: 'community', subtype: 'human' },
+    { scope: 'actor', subtype: 'agent' },
+    { scope: 'actor', subtype: 'human', suspendedAt: new Date('2026-10-01') },
+  ])('withholds discovery for ineligible principals: %j', async (eligibility) => {
+    mocks.rows.mockResolvedValue([{ ...principal, handle: 'ryan', name: 'Ryan', ...eligibility }]);
+    const response = await getSpec();
+    expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(mocks.recipient).not.toHaveBeenCalled();
+  });
+});
+
 const signed = {
   requesterDid: 'did:web:agent.example', publicKey: 'a'.repeat(64),
   onBehalfOf: { platform: 'muse', externalRef: 'opaque-human' },
@@ -80,7 +121,8 @@ beforeEach(() => {
   vi.spyOn(process, 'cwd').mockReturnValue(KERNEL_ROOT);
   vi.stubEnv('APP_URL', 'https://node.example');
   mocks.recipient.mockResolvedValue(principal);
-  mocks.rows.mockResolvedValue([{ ...principal, handle: 'ryan', name: 'Ryan' }]);
+  mocks.rows.mockResolvedValue([{ ...principal, handle: 'ryan', name: 'Ryan', scope: 'actor', subtype: 'human', suspendedAt: null }]);
+  mocks.config.mockResolvedValue(metadata.agentReachGate);
   mocks.bearer.mockResolvedValue({ requesterDid: 'did:imajin:foreign_static' });
   mocks.signedReach.mockResolvedValue(answer);
   mocks.bearerReach.mockResolvedValue(delivered);
@@ -102,26 +144,26 @@ describe('public reach OpenAPI 3.1', () => {
     const validated = await SwaggerParser.validate(spec);
     expect(validated.openapi).toBe('3.1.0');
     expect(response.headers.get('content-type')).toContain('application/json');
-    expect(response.headers.get('cache-control')).toBe('public, max-age=60');
+    expect(response.headers.get('cache-control')).toBe('no-store');
     expect(response.headers.get('access-control-allow-origin')).toBe('*');
   });
 
   it('has exactly the three ruled operations, only real person-bound reach paths and one bearer scheme', async () => {
     const spec: Spec = await (await getSpec()).json();
     expect(Object.keys(spec.paths)).toEqual([
-      '/.well-known/agent/ryan', base, `${base}/{reachId}/status`,
+      `/.well-known/agent/${encodeURIComponent(did)}`, base, `${base}/{reachId}/status`,
     ]);
     expect(Object.entries(spec.paths).flatMap(([path, methods]) =>
       Object.entries(methods).map(([method, operation]) => [path, method, operation.operationId]),
     )).toEqual([
-      ['/.well-known/agent/ryan', 'get', 'reach_card'],
+      [`/.well-known/agent/${encodeURIComponent(did)}`, 'get', 'reach_card'],
       [base, 'post', 'reach_ask_send'],
       [`${base}/{reachId}/status`, 'post', 'reach_status'],
     ]);
     expect(spec.servers).toEqual([{ url: 'https://node.example' }]);
     expect(Object.keys(spec.components.securitySchemes)).toEqual(['reachBearer']);
     expect(spec.components.securitySchemes.reachBearer).toMatchObject({ type: 'http', scheme: 'bearer' });
-    expect(spec.paths['/.well-known/agent/ryan'].get.security).toEqual([]);
+    expect(spec.paths[`/.well-known/agent/${encodeURIComponent(did)}`].get.security).toEqual([]);
     for (const path of [base, `${base}/{reachId}/status`]) {
       expect(spec.paths[path].post.security).toEqual([{ reachBearer: [] }, {}]);
       expect(spec.paths[path].post.description).toMatch(/NOT\s+anonymous/);
@@ -136,7 +178,7 @@ describe('public reach OpenAPI 3.1', () => {
     const source = parse(readFileSync(join(KERNEL_ROOT, 'api-spec/auth.yaml'), 'utf-8'));
     const spec: Spec = await (await getSpec()).json();
     const routes = [
-      ['/.well-known/agent/{id}', '/.well-known/agent/ryan', 'get', 'app/.well-known/agent/[id]/route.ts'],
+      ['/.well-known/agent/{id}', `/.well-known/agent/${encodeURIComponent(did)}`, 'get', 'app/.well-known/agent/[id]/route.ts'],
       ['/api/agents/{did}/reach', base, 'post', 'app/auth/api/agents/[did]/reach/route.ts'],
       ['/api/agents/{did}/reach/{reachId}/status', `${base}/{reachId}/status`, 'post', 'app/auth/api/agents/[did]/reach/[reachId]/status/route.ts'],
     ];
@@ -161,7 +203,7 @@ describe('public reach OpenAPI 3.1', () => {
     expect(spec['x-published-topic-labels']).toEqual(['Collaboration']);
     const text = JSON.stringify(spec);
     for (const hidden of ['NEVER_DISCLOSE_PRIVATE_METADATA', 'speaking', 'Speaking',
-      'business_development', 'dailyCap', 'tiers', 'agentReachGate', 'agentReachTopics',
+      'business_development', 'dailyCap', 'agentReachGate', 'agentReachTopics',
       'cookieAuth', 'internalKeyAuth', 'AUTH_INTERNAL_API_KEY', '/api/health', '/api/grants']) {
       expect(text).not.toContain(hidden);
     }
@@ -182,6 +224,7 @@ describe('public reach OpenAPI 3.1', () => {
   it('binds each handle independently and ignores request credentials and untrusted host headers', async () => {
     const first: Spec = await (await getSpec('ryan', 'Bearer invalid')).json();
     mocks.recipient.mockResolvedValue({ id: 'did:imajin:alice', metadata: null });
+    mocks.rows.mockResolvedValue([{ id: 'did:imajin:alice', handle: 'alice', name: 'Alice', metadata: null, scope: 'actor', subtype: 'human' }]);
     const second: Spec = await (await getSpec('alice')).json();
     expect(first['x-principal-did']).toBe(did);
     expect(second['x-principal-did']).toBe('did:imajin:alice');
@@ -205,7 +248,7 @@ describe('public reach OpenAPI 3.1', () => {
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: 'Reach recipient not found' });
     expect(response.headers.get('cache-control')).toBe('no-store');
-    expect(mocks.recipient).toHaveBeenCalledWith('unknown');
+    expect(mocks.recipient).toHaveBeenCalledWith(did);
   });
 
   it('fails closed and uncached without exposing database errors', async () => {

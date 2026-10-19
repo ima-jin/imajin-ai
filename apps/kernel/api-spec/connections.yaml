@@ -76,8 +76,11 @@ components:
         toEmail: { type: string, nullable: true }
         toDid: { type: string, nullable: true }
         note: { type: string, nullable: true }
-        delivery: { type: string, enum: [link, email] }
-        status: { type: string, enum: [pending, accepted, revoked, expired] }
+        delivery: { type: string, enum: [link, email, direct] }
+        status: { type: string, enum: [pending, accepted, declined, revoked, expired] }
+        fromName: { type: string, nullable: true }
+        toHandle: { type: string, nullable: true }
+        toName: { type: string, nullable: true }
         maxUses: { type: integer }
         usedCount: { type: integer }
         expiresAt: { type: string, format: date-time, nullable: true }
@@ -509,6 +512,17 @@ paths:
       tags: [connections]
       operationId: listConnectionInvites
       summary: List all invites sent by authenticated user — includes quota info per role
+      description: >-
+        Uses connections:read and the effective act-as DID. direction=incoming
+        returns only direct pending requests addressed to that DID, including
+        fromDid/fromHandle/fromName/toDid/toHandle and no email fields.
+        Default outgoing retains existing invites and quotas, with effectiveDid
+        and effectiveName; direct targets are public before acceptance, but
+        pending email targets remain masked.
+      parameters:
+        - name: direction
+          in: query
+          schema: { type: string, enum: [outgoing, incoming], default: outgoing }
       security:
         - cookieAuth: []
       responses:
@@ -523,6 +537,9 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Invite" }
                   role: { type: string }
+                  tier: { type: string }
+                  effectiveDid: { type: string }
+                  effectiveName: { type: string }
                   limit: { type: integer, nullable: true }
                   pending: { type: integer }
                   remaining: { type: integer, nullable: true }
@@ -530,6 +547,17 @@ paths:
       tags: [connections]
       operationId: createConnectionInvite
       summary: Create a connection invite — link or email delivery; email requires hard DID + trust graph; 7-day cooldown
+      description: >-
+        Supply exactly one of toDid or handle (optional leading @, exact
+        case-insensitive match) to request an existing non-soft active identity.
+        This creates delivery=direct, maxUses=1 without creating a connection.
+        connections:write honors act-as. Missing targets return 404, self returns
+        400, already connected or pending in either direction returns 409.
+        Request and acceptance persist node-signed connection.invited and
+        connection.accepted events atomically with state; signing failure is 503
+        and rolls back. Direct responses contain public DID/name/handle, no email.
+        Direct creation is limited to 20 requests per minute for both the
+        authenticated actor and effective DID; 429 includes Retry-After.
       security:
         - cookieAuth: []
       requestBody:
@@ -541,8 +569,14 @@ paths:
               properties:
                 delivery:
                   type: string
-                  enum: [link, email]
+                  enum: [link, email, direct]
                   default: link
+                toDid:
+                  type: string
+                  description: Existing target DID, mutually exclusive with handle and email delivery
+                handle:
+                  type: string
+                  description: Exact existing handle, optional leading @, case insensitive
                 toEmail:
                   type: string
                   format: email
@@ -603,10 +637,39 @@ paths:
                       date: { type: string, format: date-time, nullable: true }
 
   /api/invites/{code}:
+    patch:
+      tags: [connections]
+      operationId: declineDirectConnectionInvite
+      summary: Decline a pending direct request as its named recipient
+      description: Uses connections:write and the effective act-as DID; terminal requests return 410.
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string, enum: [decline] }
+      responses:
+        "200":
+          description: Declined, no connection created; returns ok=true
+        "403":
+          description: Not the recipient
+        "410":
+          description: No longer pending
     get:
       tags: [connections]
       operationId: getConnectionInvite
       summary: Get invite by code (public, CORS-enabled — for preview before accepting)
+      description: Email/link previews remain public; direct previews require connections:read authentication as the sender or recipient.
       parameters:
         - name: code
           in: path
@@ -636,6 +699,7 @@ paths:
       tags: [connections]
       operationId: deleteConnectionInvite
       summary: Revoke (soft-delete) an invite — only the creator can revoke; email invite clears cooldown
+      description: Direct requests use connections:write and act-as, serialize against acceptance, and can only be cancelled by their sender while pending.
       security:
         - cookieAuth: []
       parameters:
@@ -662,6 +726,12 @@ paths:
       tags: [connections]
       operationId: acceptConnectionInvite
       summary: Accept an invite — creates a 2-person personal pod; emits connection.accepted and vouch attestations
+      description: >-
+        Direct requests require connections:write authentication as the named
+        recipient (including act-as); a leaked code grants no authority.
+        Pod, pair connection, pending-to-accepted transition and signed
+        connection.accepted evidence commit together. No membership authority
+        is granted. Repeat/declined/cancelled direct requests return 410.
       security:
         - cookieAuth: []
       parameters:

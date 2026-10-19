@@ -14,6 +14,8 @@ import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { act, render, screen, cleanup, fireEvent, within, waitFor } from '@testing-library/react';
 import { crypto as authCrypto } from '@imajin/auth';
 import { OPERATOR_DID, operatorIdentity, pendingApprovalCard } from '@/src/lib/notify/__tests__/operator-approvals-test-helpers';
+import { computeApprovalContentHash, type OperatorCountersignature } from '@/src/lib/notify/operator-approvals';
+import { countersignedMessage } from '@/src/lib/notify/operator-countersign-fields';
 
 const { mockRequireAuth, mockGetOperatorDid, mockDecide, mockRecordRequested, mockRunAppProvision, mockGetStatus, mockListSucceeded, logSpies } = vi.hoisted(() => ({
   mockRequireAuth: vi.fn(),
@@ -231,6 +233,60 @@ function seedPendingProvision() {
 }
 
 describe('approve → claim-code banner (#2707)', () => {
+  it('countersigns the visible external source and forwards it unchanged before revealing the claim code (#2932)', async () => {
+    const sourceRepo = 'GBScontracting/Website';
+    mockRunAppProvision.mockResolvedValue({
+      ...succeededOutcome(CLAIM_CODE), repoUrl: `https://github.com/${sourceRepo}`,
+    });
+    installRoutedFetch();
+    render(<ProvisionAppPanel />);
+    await screen.findByTestId('provision-app-panel');
+    fireEvent.change(screen.getByLabelText(/Slug/), { target: { value: 'gbs-contracting' } });
+    fireEvent.change(screen.getByLabelText(/Display name/), { target: { value: 'GBS Contracting' } });
+    fireEvent.change(screen.getByLabelText(/Source repository/), { target: { value: sourceRepo } });
+    fireEvent.click(screen.getByRole('button', { name: 'Propose provision' }));
+    await screen.findByTestId('provision-proposal-id');
+    render(<OperatorApprovalsPanel />);
+
+    const approve = await screen.findByRole('button', { name: 'Approve & provision' });
+    expect(screen.getByText(sourceRepo)).toBeDefined();
+    expect(screen.getByText(/No repository is created/)).toBeDefined();
+    expect(mockRunAppProvision).not.toHaveBeenCalled();
+    const proposed = mockRecordRequested.mock.calls[0][0];
+    expect(proposed.detail.sourceRepo).toBe(sourceRepo);
+    const hashFields = {
+      proposalId: proposed.proposalId, source: proposed.source, kind: proposed.kind,
+      summary: proposed.summary, keysTouched: proposed.keysTouched, detail: proposed.detail,
+    };
+    expect(proposed.contentHash).toBe(computeApprovalContentHash(hashFields));
+    const changedSourceHash = computeApprovalContentHash({
+      ...hashFields, detail: { ...proposed.detail, sourceRepo: 'other/website' },
+    });
+    expect(changedSourceHash).not.toBe(proposed.contentHash);
+
+    await approveDecision(approve);
+    const decision = mockDecide.mock.calls[0][0] as {
+      decision: 'approve'; decidedAt: string; operatorSignature: OperatorCountersignature;
+    };
+    const signature = decision.operatorSignature;
+    const signedFields = {
+      contentHash: proposed.contentHash, decision: decision.decision, decidedAt: decision.decidedAt,
+    };
+    expect(signature.alg).toBe('ed25519');
+    expect(authCrypto.verifySync(signature.sig, countersignedMessage(signedFields), signature.keyId)).toBe(true);
+    expect(authCrypto.verifySync(signature.sig, countersignedMessage({
+      ...signedFields, contentHash: changedSourceHash,
+    }), signature.keyId)).toBe(false);
+    expect(mockRunAppProvision).toHaveBeenCalledWith(expect.objectContaining({
+      slug: 'gbs-contracting', sourceRepo,
+      authorizedBy: expect.objectContaining({
+        approvalId: proposed.proposalId, operatorDid: OPERATOR_DID, contentHash: proposed.contentHash,
+      }),
+    }));
+    const box = await screen.findByTestId('revealed-claim-code');
+    expect(within(box).getByText(CLAIM_CODE)).toBeDefined();
+    expect(within(box).getByText(`${globalThis.location.origin}/gbs-contracting/claim`)).toBeDefined();
+  });
   it('shows the amber claim-code box, with Copy and the /<slug>/claim link, after approving an apps:provision card', async () => {
     seedPendingProvision();
     installRoutedFetch();
@@ -255,9 +311,9 @@ describe('approve → claim-code banner (#2707)', () => {
     await screen.findByTestId('revealed-claim-code');
 
     await screen.findByText('approved — pending apply');
-    const beforePoll = spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals').length;
+    const beforePoll = spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals?view=acting').length;
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-    expect(spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals')).toHaveLength(beforePoll + 1);
+    expect(spy.mock.calls.filter(([url]) => url === '/jin/api/operator-approvals?view=acting')).toHaveLength(beforePoll + 1);
     expect(screen.getByTestId('revealed-claim-code')).toBeDefined();
   });
 

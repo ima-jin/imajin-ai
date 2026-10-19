@@ -281,6 +281,10 @@ export async function executeVaultApproval(card: OperatorApprovalCard): Promise<
   }
 
   try {
+    if (card.kind === 'vault:custody-group-key' || card.kind === 'vault:revoke-group-key') {
+      const { executeGroupKeyApproval } = await import('./group-key');
+      return await executeGroupKeyApproval(card);
+    }
     if (card.kind === 'vault:import') {
       // This executor sanitizes every provider exception before it reaches the
       // generic bridge's historical diagnostic logging.

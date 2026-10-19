@@ -9,7 +9,7 @@ const log = createLogger('kernel');
 
 export async function POST(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request, { verifyChain: true });
+  const auth = await requireAuth(request, { verifyChain: true, service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const effectiveDid = resolveActingDid(auth.identity);
@@ -44,7 +44,7 @@ export async function POST(request: Request, props: { params: Promise<{ id: stri
 
 export async function PATCH(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request, { verifyChain: true });
+  const auth = await requireAuth(request, { verifyChain: true, service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const effectiveDid = resolveActingDid(auth.identity);
@@ -80,7 +80,7 @@ export async function PATCH(request: Request, props: { params: Promise<{ id: str
 
 export async function DELETE(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request, { verifyChain: true });
+  const auth = await requireAuth(request, { verifyChain: true, service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const effectiveDid = resolveActingDid(auth.identity);

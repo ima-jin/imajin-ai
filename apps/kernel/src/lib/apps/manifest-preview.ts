@@ -10,7 +10,7 @@
  * future app repository may use the template source for the approval snapshot.
  * Unreadable or invalid manifests are errors, never empty approved declarations.
  */
-import { appManifestError, fetchAppManifest, tryGetInstallationToken, DEFAULT_APP_TEMPLATE, PROVISIONING_ORG, type AppManifestResult } from '@/src/lib/github/org-provisioning';
+import { appManifestError, fetchAppManifest, tryGetInstallationToken, resolveSourceRepo, SourceRepoAccessError, DEFAULT_APP_TEMPLATE, PROVISIONING_ORG, type AppManifestResult } from '@/src/lib/github/org-provisioning';
 import { validateAppDeclarations } from '@/src/lib/kernel/app-declarations';
 import { validateEmittableEvents } from '@/src/lib/kernel/emittable-events';
 import type { ManifestDeclarations } from './declarations-approval';
@@ -44,8 +44,19 @@ async function readManifest(slug: string, template: string): Promise<AppManifest
 }
 
 /** Only readable, validated manifests can produce an approval snapshot. */
-export async function previewManifestDeclarations(slug: string, template = DEFAULT_APP_TEMPLATE): Promise<ManifestPreviewResult> {
-  const result = await readManifest(slug, template);
+export async function previewManifestDeclarations(slug: string, template = DEFAULT_APP_TEMPLATE, sourceRepo?: string): Promise<ManifestPreviewResult> {
+  let result: AppManifestResult;
+  try {
+    if (sourceRepo !== undefined) {
+      const source = await resolveSourceRepo(sourceRepo);
+      const [owner, repo] = sourceRepo.split('/');
+      result = await fetchAppManifest(repo, source.token, owner);
+    } else {
+      result = await readManifest(slug, template);
+    }
+  } catch (error) {
+    return { error: error instanceof SourceRepoAccessError ? error.message : appManifestError(slug, { error: 'unreadable' }) };
+  }
   if ('error' in result) return { error: appManifestError(slug, result) };
   const manifest = result.ok;
   const widget = validateProfileWidget(manifest.profileWidget);

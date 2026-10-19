@@ -77,7 +77,10 @@ async function lookupAppOwnerDid(appDid: string): Promise<string | undefined> {
  * rather than silently falling back to a session that may not exist — the
  * same fail-closed precedent `resolveInferenceAuth` set.
  */
-export async function resolveConnectorOwnerDid(request: NextRequest): Promise<ConnectorOwnerResult> {
+export async function resolveConnectorOwnerDid(
+  request: NextRequest,
+  options?: import('@imajin/auth').AuthOptions,
+): Promise<ConnectorOwnerResult> {
   const appResult = await requireAppAuth(request);
   if ('appAuth' in appResult) {
     // Owner-first (#1773): a delegating human's own DID outranks the app's,
@@ -109,7 +112,7 @@ export async function resolveConnectorOwnerDid(request: NextRequest): Promise<Co
     return { ok: true, ownerDid };
   }
 
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, options);
   if ('error' in authResult) {
     const hasAppAuthHint = Boolean(
       request.headers.get('x-app-did') ||

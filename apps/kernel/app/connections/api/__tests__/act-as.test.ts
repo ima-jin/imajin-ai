@@ -4,7 +4,7 @@ import { setVaultInternalApiKey } from '../../../../../../packages/auth/tests/su
 
 // A stateful query double evaluates the actual DID predicates, rather than
 // returning the expected owner's rows regardless of what the route queried.
-const { data, db, tables, publish, resolveSpy, sessionSpy } = vi.hoisted(() => {
+const { data, db, tables, publish, resolveSpy, sessionSpy, listConnections } = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   type Predicate = (row: Row) => boolean;
   const data: Record<string, Row[]> = {};
@@ -62,6 +62,7 @@ const { data, db, tables, publish, resolveSpy, sessionSpy } = vi.hoisted(() => {
     publish: vi.fn(async (_event: string, _envelope: { payload: Record<string, unknown> }) => undefined),
     resolveSpy: vi.fn(),
     sessionSpy: vi.fn(),
+    listConnections: vi.fn(async () => []),
   };
 });
 
@@ -78,6 +79,10 @@ vi.mock('drizzle-orm', () => ({
   desc: (column: string) => column,
 }));
 vi.mock('@/src/db', () => ({ db, ...tables }));
+// Relationship-label imports now reach node identity, whose raw SQL client
+// bypasses the mocked Drizzle DB. Keep real auth without requiring Postgres.
+vi.mock('@/src/lib/kernel/node-identity', () => ({ getNodeDid: async () => 'did:imajin:node' }));
+vi.mock('@/src/lib/connections/list', () => ({ listConnections }));
 vi.mock('@imajin/auth', async () => {
   const { resolveEffectiveDid } = await import('../../../../../../packages/auth/src/resolve-effective-did');
   const { requireAuth } = await import('../../../../../../packages/auth/src/require-auth');
@@ -98,7 +103,10 @@ vi.mock('@/src/lib/kernel/session', () => ({
 }));
 vi.mock('@/src/lib/kernel/id', () => ({ generateId: () => 'created' }));
 vi.mock('@/src/lib/kernel/lookup', () => ({ lookupIdentity: async () => null }));
-vi.mock('@/src/lib/kernel/cors', () => ({ corsHeaders: () => ({}), corsOptions: () => new Response() }));
+vi.mock('@/src/lib/kernel/cors', () => ({
+  corsHeaders: () => ({}), corsOptions: () => new Response(),
+  withCors: (response: Response) => response,
+}));
 vi.mock('@imajin/config', () => ({
   SESSION_COOKIE_NAME: 'imajin_session',
   corsHeaders: () => ({}), corsOptions: () => new Response(),
@@ -123,12 +131,14 @@ import * as invitedBy from '../invites/invited-by/route';
 import * as groups from '../groups/route';
 import * as group from '../groups/[id]/route';
 import * as members from '../groups/[id]/members/route';
+import * as connections from '../connections/route';
 
 const PERSON = 'did:imajin:person';
 const ORG = 'did:imajin:org';
 const OTHER = 'did:imajin:other';
 const props = { params: Promise.resolve({ id: 'org-group', code: 'org-code' }) };
 let controllerRole: string;
+let allowedServices: string[] | null;
 
 function request(acting = false, body?: object) {
   return new NextRequest('https://example.test/connections/api', {
@@ -143,9 +153,10 @@ beforeEach(() => {
   vi.stubEnv('AUTH_SERVICE_URL', 'https://auth.test');
   setVaultInternalApiKey('test-key');
   controllerRole = 'owner';
+  allowedServices = null;
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     if (url.endsWith('/api/session')) return Response.json({ did: PERSON, scope: 'actor' });
-    if (url.includes('/controllers/')) return Response.json({ valid: true, role: controllerRole });
+    if (url.includes('/controllers/')) return Response.json({ valid: true, role: controllerRole, allowedServices });
     throw new Error(`Unexpected auth URL: ${url}`);
   }));
   data.identities = [
@@ -185,7 +196,7 @@ describe.each([false, true])('connections identity isolation (acting as org: %s)
     expect(body.invites.map((invite: { fromDid: string }) => invite.fromDid)).toEqual([did]);
     expect(body).toMatchObject({ limit: acting ? 20 : 5, pending: 1, remaining: acting ? 19 : 4 });
     expect(sessionSpy).toHaveBeenCalledWith(did);
-    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), { scope: 'connections:read' });
+    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), { scope: 'connections:read', service: 'connections' });
   });
 
   it('creates, immediately lists, and revokes an invite as the same identity', async () => {
@@ -199,7 +210,7 @@ describe.each([false, true])('connections identity isolation (acting as org: %s)
     const revoked = await inviteCode.DELETE(request(acting), { params: Promise.resolve({ code: invite.code }) });
     expect(revoked.status).toBe(200);
     expect(data.invites.find((row) => row.code === invite.code)?.status).toBe('revoked');
-    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), { scope: 'connections:write' });
+    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), { scope: 'connections:write', service: 'connections' });
   });
 
   it('cannot revoke the other identity invite or clear its cooldown', async () => {
@@ -328,6 +339,7 @@ describe.each([false, true])('connections identity isolation (acting as org: %s)
 });
 
 const routes = [
+  ['connections list', (req: NextRequest) => connections.GET(req), 'read'],
   ['invite list', (req: NextRequest) => invites.GET(req), 'read'],
   ['invite create', (req: NextRequest) => invites.POST(req), 'write'],
   ['invite revoke', (req: NextRequest) => inviteCode.DELETE(req, props), 'write'],
@@ -343,12 +355,37 @@ const routes = [
 ] as const;
 
 describe.each(routes)('%s auth boundary', (_name, handler, scope) => {
+  it.each([{ services: null }, { services: ['connections'] }])('allows a maintainer with $services access as the org', async ({ services }) => {
+    controllerRole = 'maintainer';
+    allowedServices = services;
+    if (_name === 'member change' || _name === 'member remove') {
+      data.podMembers.push({ podId: 'org-group', did: OTHER, role: 'member', removedAt: null });
+    }
+    const response = await handler(request(true, { name: 'Allowed', did: OTHER, role: 'admin' }));
+    expect(response.status).toBe(_name.endsWith('create') || _name === 'member add' ? 201 : 200);
+    if (_name === 'connections list') expect(listConnections).toHaveBeenCalledWith(ORG);
+    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), {
+      scope: `connections:${scope}`, service: 'connections',
+    });
+  });
+  it.each([{ services: ['pay'] }, { services: [] }])('refuses service-restricted maintainers ($services) before reading or writing data', async ({ services }) => {
+    controllerRole = 'maintainer';
+    allowedServices = services;
+    const before = structuredClone(data);
+    const response = await handler(request(true, { name: 'Denied', did: OTHER, role: 'admin' }));
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Not authorized to act as this group' });
+    expect(data).toEqual(before);
+    expect(sessionSpy).not.toHaveBeenCalled();
+    expect(listConnections).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
   it('refuses a plain member attempting act-as, never falls back to personal data', async () => {
     controllerRole = 'member';
     const response = await handler(request(true, { name: 'Denied', did: OTHER, role: 'admin' }));
-    expect(response.status).toBe(401); // resolveEffectiveDid preserves the existing connections refusal.
-    expect(await response.json()).toEqual({ error: 'Unauthorized' });
-    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), { scope: `connections:${scope}` });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Not authorized to act as this group' });
+    expect(resolveSpy).toHaveBeenCalledWith(expect.anything(), { scope: `connections:${scope}`, service: 'connections' });
     expect(data.pods).toHaveLength(2);
     expect(data.invites).toHaveLength(2);
     expect(publish).not.toHaveBeenCalled();

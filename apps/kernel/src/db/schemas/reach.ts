@@ -1,5 +1,6 @@
 import { index, jsonb, pgSchema, primaryKey, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { SignedReachReplyEvent } from '@/src/lib/auth/reach-reply-wire';
+import type { OperatorApprovalDecidedPayload, ContentHashFields } from '@/src/lib/notify/operator-approvals';
 
 const reachSchema = pgSchema('auth');
 
@@ -28,6 +29,8 @@ export interface ReachEnvelope {
   reply?: SignedReachReplyEvent;
   /** Bus acknowledgement is separate so pending signed replies can be replayed. */
   replyPublishedAt?: string;
+  /** Shared decision proof: content hash binds envelope evidence; actor signature binds mode and reply text. */
+  approvalDecision?: { payload: OperatorApprovalDecidedPayload; evidence: ContentHashFields };
 }
 
 export const reachEnvelopes = reachSchema.table('reach_envelopes', {
@@ -45,7 +48,7 @@ export const reachEnvelopes = reachSchema.table('reach_envelopes', {
   senderDayIdx: index('idx_reach_envelopes_sender_day').on(table.principalDid, table.requesterDid, table.createdAt),
 }));
 
-/** Principal-owned sender blocks; intentionally no UI, callbacks, or reply workflow. */
+/** Principal-owned sender blocks shared by delivery, knocks and signed Inbox actions. */
 export const reachSenderBlocks = reachSchema.table('reach_sender_blocks', {
   principalDid: text('principal_did').notNull(),
   requesterDid: text('requester_did').notNull(),

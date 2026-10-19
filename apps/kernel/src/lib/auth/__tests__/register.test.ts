@@ -7,6 +7,8 @@ vi.mock('@/src/db', () => ({
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue([]),
+    insert: vi.fn(),
+    update: vi.fn(),
   },
   invitesInConnections: {},
   podsInConnections: {},
@@ -35,7 +37,7 @@ vi.mock('@/src/lib/www/verify-email-template', () => ({
 vi.mock('@imajin/bus', () => ({ publish: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@imajin/logger', () => ({ createLogger: () => ({ warn: vi.fn(), error: vi.fn() }) }));
 
-import { verifyRegistrationSignature, resolveInviteCode } from '../register';
+import { verifyRegistrationSignature, resolveInviteCode, autoAcceptInvite } from '../register';
 import { verifySignature } from '@/src/lib/auth/crypto';
 import { db } from '@/src/db';
 
@@ -158,6 +160,30 @@ describe('resolveInviteCode', () => {
     });
   });
 
+  it.each([false, true])('rejects a pending target-bound direct code even when registration gate disabled=%s', async (disabled) => {
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({
+          limit: vi.fn().mockResolvedValue([{ delivery: 'direct', status: 'pending', usedCount: 0, maxUses: 1, toDid: 'did:recipient' }]),
+        })),
+      })),
+    } as unknown as ReturnType<typeof db.select>);
+    expect(await resolveInviteCode('DIRECT', false, disabled)).toMatchObject({ ok: false, status: 403 });
+  });
+  it('autoAcceptInvite defensively rejects direct code before creating pods, pairs or changing the named recipient', async () => {
+    vi.mocked(db.select).mockReturnValue({
+      from: vi.fn(() => ({
+        where: vi.fn(() => ({ limit: vi.fn().mockResolvedValue([{ delivery: 'direct' }]) })),
+      })),
+    } as unknown as ReturnType<typeof db.select>);
+    const result = await autoAcceptInvite({
+      inviteData: { fromDid: 'did:sender' }, inviteCode: 'DIRECT',
+      identity: { id: 'did:unrelated-new-registration', handle: null, scope: 'actor', subtype: 'human' },
+    });
+    expect(result.ok).toBe(false);
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
+  });
   it('returns ok:true with null inviteData when gate is disabled but invite is invalid', async () => {
     vi.mocked(db.select).mockReturnValue({
       from: vi.fn().mockReturnValue({

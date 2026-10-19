@@ -73,6 +73,7 @@ const {
 // #2663: the registry/auth-backed validator is covered by app-declarations.test.ts;
 // here it passes manifest declarations through unless a test overrides it.
 const { validateAppDeclarationsMock } = vi.hoisted(() => ({ validateAppDeclarationsMock: vi.fn() }));
+const { resolveSourceRepoMock } = vi.hoisted(() => ({ resolveSourceRepoMock: vi.fn() }));
 const { ensureAppDeclaredSecretsMock } = vi.hoisted(() => ({ ensureAppDeclaredSecretsMock: vi.fn().mockResolvedValue(undefined) }));
 const { provisionAppDomainMock, validateProvisionOwnerMock } = vi.hoisted(() => ({
   provisionAppDomainMock: vi.fn().mockResolvedValue(undefined),
@@ -243,6 +244,7 @@ vi.mock('@/src/lib/vault', () => ({
 }));
 vi.mock('@/src/lib/github/org-provisioning', () => ({
   ensureRepoFromTemplate: ensureRepoFromTemplateMock,
+  resolveSourceRepo: resolveSourceRepoMock,
   tryGetInstallationToken: tryGetInstallationTokenMock,
   fetchAppManifest: fetchAppManifestMock,
   // Explicit formatter mock keeps consumer tests independent of reader integration.
@@ -319,12 +321,108 @@ beforeEach(() => {
 });
 
 describe('runAppProvision — verified domain issuance', () => {
+  it.each([undefined, 'public', 'unlisted', 'private', 'internal'] as const)('registers visibility %s without a follow-up PATCH', async (visibility) => {
+    expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS', visibility })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()][0].visibility).toBe(visibility ?? 'public');
+  });
+
+  it.each(['private', 'public'] as const)('keeps approved %s visibility and redirects across reissue/retry, rejecting conflicting settings', async (visibility) => {
+    const params = { slug: 'gbs', displayName: 'GBS', visibility, domain: 'dev-gbs.imajin.ai' };
+    ensureRepoFromTemplateMock.mockResolvedValue({ repoUrl: 'https://github.com/ima-jin/gbs', created: true });
+    issueSigningKeyClaimMock.mockRejectedValueOnce(new Error('temporary claim failure'));
+    expect(await runAppProvision(params)).toMatchObject({ status: 'failed', failedStep: 'app-signing-key-grant' });
+    const registered = structuredClone([...registryAppsStore.values()][0]);
+    getMintedKeyByDidMock.mockResolvedValue({ status: 'active', publicKey: 'freshly-minted-public-key' });
+    const differentVisibility = visibility === 'private' ? 'public' : 'private';
+    expect(await runAppProvision({ ...params, visibility: differentVisibility })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect(await runAppProvision({ ...params, domain: 'other.imajin.ai' })).toMatchObject({ status: 'failed', failedStep: 'register' });
+    expect((await runAppProvision(params)).status).toBe('succeeded');
+    expect([...registryAppsStore.values()]).toEqual([registered]);
+    expect(emitAttestationMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ allowedRedirectHosts: ['dev-gbs.imajin.ai'] }),
+    }));
+    expect((await runAppProvision({ slug: 'gbs', displayName: 'GBS' })).status).toBe('succeeded');
+    expect([...registryAppsStore.values()]).toEqual([registered]);
+    expect(mintKeypairMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['evil.test', 'https://dev-gbs.imajin.ai', 'dev-gbs.imajin.ai/path', 'nested.dev-gbs.imajin.ai'])('fails before side effects for invalid callback host %s', async (domain) => {
+    expect(await runAppProvision({ slug: 'gbs', displayName: 'GBS', domain })).toMatchObject({ status: 'failed', failedStep: 'config' });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+    expect(registryAppsStore.size).toBe(0);
+  });
+  it.each([null, 'source-token'])('provisions an existing external source with token %s without creating a repo', async (token) => {
+    resolveSourceRepoMock.mockResolvedValue({ repoUrl: 'https://github.com/gbscontracting/website', created: false, token });
+    const secrets = [{ name: 'SESSION_SECRET', kind: 'random-32B' as const }];
+    fetchAppManifestMock.mockResolvedValue({ ok: { name: 'GBS website', secrets } });
+    const outcome = await runAppProvision({
+      slug: 'gbs-contracting', displayName: 'GBS', sourceRepo: 'gbscontracting/website',
+      approvedDeclarations: { providesScopes: [], dependsOn: [], emittableEvents: [], secrets },
+    });
+    expect(outcome).toMatchObject({ status: 'succeeded', repoUrl: 'https://github.com/gbscontracting/website', claimCode: CLAIM_CODE });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+    expect(tryGetInstallationTokenMock).not.toHaveBeenCalled();
+    expect(fetchAppManifestMock).toHaveBeenCalledWith('website', token, 'gbscontracting');
+    expect([...registryAppsStore.values()][0]).toMatchObject({
+      sourceRepo: 'gbscontracting/website', template: 'ima-jin/imajin-app-template', joined: false, name: 'GBS website', secrets,
+    });
+    expect(JSON.stringify([...appProvisionsStore.values()])).not.toContain('source-token');
+    expect(ensureAppDeclaredSecretsMock).toHaveBeenCalled();
+  });
+  it('fails before minting or creating any repo when the source is inaccessible', async () => {
+    resolveSourceRepoMock.mockRejectedValue(new Error("sourceRepo 'gbscontracting/website' is not accessible to this node"));
+    expect(await runAppProvision({ slug: 'gbs-contracting', displayName: 'GBS', sourceRepo: 'gbscontracting/website' }))
+      .toMatchObject({ status: 'failed', failedStep: 'repo', error: expect.stringContaining('not accessible') });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+    expect(mintKeypairMock).not.toHaveBeenCalled();
+    expect(registryAppsStore.size).toBe(0);
+  });
+  it.each(['https://github.com/gbscontracting/website', '../website'])('rejects invalid sources before external work: %s', async (sourceRepo) => {
+    expect(await runAppProvision({ slug: 'gbs-contracting', displayName: 'GBS', sourceRepo }))
+      .toMatchObject({ status: 'failed', failedStep: 'repo' });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+  });
+  it('preserves an external source and key on retries, and reissues without requiring sourceRepo', async () => {
+    resolveSourceRepoMock.mockResolvedValue({ repoUrl: 'https://github.com/gbscontracting/website', created: false, token: null });
+    const params = { slug: 'gbs-contracting', displayName: 'GBS', sourceRepo: 'gbscontracting/website' };
+    fetchAppManifestMock.mockResolvedValueOnce({ error: 'unreadable', status: 404 });
+    expect(await runAppProvision(params)).toMatchObject({ status: 'failed', failedStep: 'register' });
+    getMintedKeyByDidMock.mockResolvedValue({ status: 'active', publicKey: 'public-key' });
+    expect(await runAppProvision(params)).toMatchObject({ status: 'succeeded', claimCode: CLAIM_CODE });
+    expect(await runAppProvision({ slug: params.slug, displayName: params.displayName })).toMatchObject({
+      status: 'succeeded', repoUrl: 'https://github.com/gbscontracting/website', claimCode: CLAIM_CODE,
+    });
+    expect(mintKeypairMock).toHaveBeenCalledTimes(1);
+    expect(resolveSourceRepoMock).toHaveBeenCalledTimes(2);
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+  });
+  it('rejects external manifest recipe drift before registration or secret issuance', async () => {
+    resolveSourceRepoMock.mockResolvedValue({ repoUrl: 'https://github.com/gbscontracting/website', created: false, token: null });
+    fetchAppManifestMock.mockResolvedValue({ ok: { secrets: [{ name: 'SESSION_SECRET', kind: 'random-32B' }] } });
+    expect(await runAppProvision({ slug: 'gbs-contracting', displayName: 'GBS', sourceRepo: 'gbscontracting/website' }))
+      .toMatchObject({ status: 'failed', failedStep: 'register', error: expect.stringContaining('differ') });
+    expect(registryAppsStore.size).toBe(0);
+    expect(ensureAppDeclaredSecretsMock).not.toHaveBeenCalled();
+  });
+  it('does not replace a failed external source with the default repo on retry', async () => {
+    appProvisionsStore.set('gbs-contracting', { slug: 'gbs-contracting', status: 'failed', repoUrl: 'https://github.com/gbscontracting/website' });
+    expect(await runAppProvision({ slug: 'gbs-contracting', displayName: 'GBS' })).toMatchObject({ status: 'failed', failedStep: 'repo' });
+    expect(ensureRepoFromTemplateMock).not.toHaveBeenCalled();
+  });
   it('records the countersigned GBS owner and issues its dev host before the claim code', async () => {
     const outcome = await runAppProvision({
-      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai',
+      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private',
     });
     expect(outcome.status).toBe('succeeded');
-    expect([...registryAppsStore.values()][0].ownerDid).toBe('did:imajin:gbs');
+    expect([...registryAppsStore.values()][0]).toMatchObject({
+      ownerDid: 'did:imajin:gbs', visibility: 'private',
+      callbackUrl: 'https://dev-gbs.imajin.ai/api/auth/callback', allowedRedirectHosts: ['dev-gbs.imajin.ai'],
+      tokenAudiences: ['dev-gbs'],
+    });
+    expect(emitAttestationMock).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ allowedRedirectHosts: ['dev-gbs.imajin.ai'] }),
+    }));
     expect(provisionAppDomainMock).toHaveBeenCalledWith(MINTED_DID, 'dev-gbs', 'dev-gbs.imajin.ai', 'did:imajin:gbs');
     expect(provisionAppDomainMock.mock.invocationCallOrder[0]).toBeLessThan(issueSigningKeyClaimMock.mock.invocationCallOrder[0]);
   });
@@ -1738,6 +1836,9 @@ describe('runAppProvision — fail-closed mid-step', () => {
     registryAppsStore.set('app_existing', {
       id: 'app_existing',
       appDid: MINTED_DID,
+      visibility: 'public',
+      callbackUrl: 'https://jin.imajin.ai/dykil',
+      allowedRedirectHosts: ['dykil'],
       publicKey: 'already-minted-public-key',
       tier: 'third_party',
       status: 'active',

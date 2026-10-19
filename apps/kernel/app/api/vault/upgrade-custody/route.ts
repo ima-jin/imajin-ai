@@ -4,7 +4,7 @@ import { createLogger } from '@imajin/logger';
 import { loadAndUnseal, sealAndStoreV2 } from '@/src/lib/vault';
 import { getNodeSigningIdentity } from '@/src/lib/vault/sealing';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
-import { parseVaultFieldName, isAppSecretStagingField } from '@/src/lib/vault/field-grammar';
+import { parseVaultFieldName, isAppSecretStagingField, isGroupKeyField } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
   }
 
   const trimmedField = parsedField.value.field;
+  if (isGroupKeyField(trimmedField)) {
+    return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 403 });
+  }
   if (isAppSecretStagingField(trimmedField)) {
     return NextResponse.json({ error: 'App-secret staging is not available through this route' }, { status: 403 });
   }

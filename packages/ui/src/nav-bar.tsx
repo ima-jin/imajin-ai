@@ -5,6 +5,7 @@ import { AppLauncher } from './app-launcher';
 import { NotificationBell } from './notification-bell';
 import { getPort } from '@imajin/config';
 import { useIdentities } from './use-identities';
+import { JinNavEntry } from './jin-nav-entry';
 
 export interface NavIdentity {
   isLoggedIn: boolean;
@@ -298,6 +299,10 @@ export function NavBar({
 
         {/* Children slot (center, fills available space) */}
         <div className="flex-1 min-w-0">{children}</div>
+        <JinNavEntry
+          href={`${buildUrl('www', servicePrefix, domain, serviceUrls).replace(/\/$/, '')}/jin`}
+          identityDid={identity?.isLoggedIn ? identity.did : null}
+        />
 
         {/* Right - Launcher + Quick Access (desktop) */}
         <div className="hidden sm:flex items-center gap-1">
@@ -351,7 +356,7 @@ export function NavBar({
         </button>
 
         {/* Right - Auth Section */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {(() => {
             if (identity?.isLoggedIn && identity?.tier === 'soft') return (
             /* Soft DID — just a logout button, no dropdown */
@@ -363,11 +368,11 @@ export function NavBar({
             </button>
           );
             if (identity?.isLoggedIn) return (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {(cashBalance !== null && cashBalance > 0) && (
                 <a
                   href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
-                  className="text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full hover:bg-green-100 dark:hover:bg-green-900/40 transition no-underline"
+                  className="hidden sm:inline text-sm font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2.5 py-1 rounded-full hover:bg-green-100 dark:hover:bg-green-900/40 transition no-underline"
                 >
                   ${cashBalance.toFixed(2)}
                 </a>
@@ -375,26 +380,26 @@ export function NavBar({
               {(mjnBalance !== null && mjnBalance > 0) && (
                 <a
                   href={buildUrl('pay', servicePrefix, domain, serviceUrls)}
-                  className="text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition no-underline"
+                  className="hidden sm:inline text-sm font-medium text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/40 transition no-underline"
                 >
                   人{Math.round(mjnBalance)}
                 </a>
               )}
-            <div className="relative" ref={dropdownRef}>
+            <div className="relative min-w-0" ref={dropdownRef}>
               <button type="button"
                 onClick={() => setShowDropdown(!showDropdown)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                className="flex items-center gap-2 px-3 py-1.5 max-w-[150px] sm:max-w-none rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition"
               >
                 <span className="text-xl">
                   {activeIdentityData ? scopeIcon(activeIdentityData.scope) : '👤'}
                 </span>
-                <span className="flex flex-col items-start" style={{ gap: '2px' }}>
+                <span className="flex flex-col items-start min-w-0" style={{ gap: '2px' }}>
                   {activeIdentityData && (
                     <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-none">
                       acting as
                     </span>
                   )}
-                  <span className="text-sm font-medium leading-none">
+                  <span className="text-sm font-medium leading-none max-w-full truncate">
                     {(() => {
                       if (activeIdentityData) return activeIdentityData.name || activeIdentityData.handle || 'Identity';
                       if (identity.handle) return `@${identity.handle}`;

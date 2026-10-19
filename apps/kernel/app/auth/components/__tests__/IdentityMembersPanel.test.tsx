@@ -5,11 +5,10 @@
  * The tab used to show truncated DIDs and a bare "Added 8/7/2026", which told a
  * controller nothing about who a member is or how they got there. What is
  * pinned here is the reading of that row — name, adder, provenance — plus the
- * `agent` role, which is what the X-Acting-For delegation check looks for, and
- * its service scoping, which is only enforced for agents.
+ * explicit service scoping for human and agent memberships.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react';
 
 const GROUP = 'did:imajin:artifact';
 const RYAN = 'did:imajin:88kPYWwv5YFrQwAteQQQQQQQQQQQQQQQQQ';
@@ -19,7 +18,7 @@ const JIN = 'did:imajin:jinQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ';
 // panel only ever consumes the DID it reports, so stand in a button that
 // reports one directly.
 vi.mock('../IdentityPicker', () => ({
-  default: ({ onSelect }: { onSelect: (identity: { did: string }) => void }) => (
+  default: ({ onSelect }: Readonly<{ onSelect: (identity: { did: string }) => void }>) => (
     <button type="button" onClick={() => onSelect({ did: JIN })}>
       pick-identity
     </button>
@@ -42,6 +41,9 @@ interface ControllerFixture {
   addedByName: string | null;
   addedByHandle: string | null;
 }
+
+const addScope = () => within(screen.getByRole('group', { name: 'New member services' }));
+const editScope = () => within(screen.getByRole('group', { name: 'Services for Jin (@jin)' }));
 
 function controller(overrides: Partial<ControllerFixture> = {}): ControllerFixture {
   return {
@@ -66,7 +68,11 @@ function installFetch(controllers: ControllerFixture[], viewerRole: string | nul
   const spy = vi.fn(async (url: string, init?: RequestInit) => {
     if (url === '/auth/api/apps/directory') {
       return { ok: true, json: async () => ({
-        apps: [{ slug: 'registry-only', name: 'Registry App', available: true }],
+        apps: [
+          { slug: 'registry-only', name: 'Registry App', available: true },
+          { slug: 'pay', name: 'Wallet', available: true },
+          { slug: 'unavailable-app', name: 'Unavailable App', available: false },
+        ],
       }) } as unknown as Response;
     }
     if (url.endsWith('/controllers')) {
@@ -82,21 +88,21 @@ function installFetch(controllers: ControllerFixture[], viewerRole: string | nul
     }
     return { ok: false, status: 404, json: async () => ({}) } as unknown as Response;
   });
+
+
   vi.stubGlobal('fetch', spy);
   return spy;
 }
 
-async function renderPanel(controllers: ControllerFixture[] = [controller()], viewerRole: string | null = 'owner', viewerDid = RYAN) {
+async function renderPanel(controllers: ControllerFixture[] = [controller()], viewerRole: string | null = 'owner', viewerDid = RYAN, scope = 'business') {
   const spy = installFetch(controllers, viewerRole, viewerDid);
-  render(<IdentityMembersPanel groupDid={GROUP} />);
+  render(<IdentityMembersPanel groupDid={GROUP} scope={scope} />);
   await waitFor(() => expect(screen.queryByText('Loading members…')).toBeNull());
   return spy;
 }
 
 function roleSelect(): HTMLSelectElement {
-  const select = document.querySelector('select');
-  if (!select) throw new Error('no role select rendered');
-  return select as HTMLSelectElement;
+  return screen.getByRole('combobox', { name: 'New member role' }) as HTMLSelectElement;
 }
 
 function roleOptions(): string[] {
@@ -116,6 +122,7 @@ function addControllerBody(spy: FetchSpy): Record<string, unknown> | null {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  localStorage.clear();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -171,34 +178,64 @@ describe('inline member editing', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
   });
 
-  it('initializes agent scope and saves kernel and registry service changes', async () => {
+  it('edits an agent with an existing registry-only restriction without losing its scope', async () => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['registry-only'] })]);
+    edit();
+    expect((editScope().getByLabelText('Registry App') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(editScope().getByLabelText('Wallet'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
+    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: ['registry-only', 'pay'] });
+  });
+
+  it('initializes agent scope and saves canonical service changes', async () => {
     const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
     edit();
     expect((screen.getByLabelText('Media') as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByLabelText('Media'));
-    fireEvent.click(screen.getByLabelText('Registry App'));
+    fireEvent.click(screen.getByLabelText('Wallet'));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
-    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: ['registry-only'] });
+    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: ['pay'] });
   });
 
-  it('clears the service restriction when all services are deselected', async () => {
-    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
+  it.each(['admin', 'maintainer', 'member', 'agent'])('refuses an empty restricted %s scope until All services is explicitly chosen', async (role) => {
+    const spy = await renderPanel([jin({ role, allowedServices: ['pay'] })]);
     edit();
-    fireEvent.click(screen.getByLabelText('Media'));
+    fireEvent.click(editScope().getByLabelText('Wallet'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByRole('alert').textContent).toBe('Pick at least one service, or choose All services.');
+    expect(patchCalls(spy)).toHaveLength(0);
+    fireEvent.click(editScope().getByRole('radio', { name: 'All services' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
-    expect(patchBody(spy)).toEqual({ role: 'agent', allowedServices: null });
+    expect(patchBody(spy)).toEqual({ role, allowedServices: null });
   });
 
-  it('sends null scope on a human role even when the agent was scoped', async () => {
-    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['media'] })]);
+  it.each(['admin', 'maintainer', 'member', 'agent'])('preserves the pay-only scope when changing to %s', async (role) => {
+    const spy = await renderPanel([jin({ role: 'agent', allowedServices: ['pay'] })]);
     edit();
-    fireEvent.change(editRole(), { target: { value: 'member' } });
-    expect(screen.queryByText('Restrict to specific services')).toBeNull();
+    fireEvent.change(editRole(), { target: { value: role } });
+    expect((editScope().getByLabelText('Wallet') as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(patchCalls(spy)).toHaveLength(1));
-    expect(patchBody(spy)).toEqual({ role: 'member', allowedServices: null });
+    expect(patchBody(spy)).toEqual({ role, allowedServices: ['pay'] });
+  });
+
+  it.each(['admin', 'maintainer', 'member', 'agent'])('restricts an unrestricted %s to pay then explicitly restores All services', async (role) => {
+    const spy = await renderPanel([jin({ role })]);
+    edit();
+    fireEvent.click(editScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(editScope().getByLabelText('Wallet'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
+    expect(patchBody(spy)).toEqual({ role, allowedServices: ['pay'] });
+    expect(screen.getByText('pay')).toBeDefined();
+    edit();
+    fireEvent.click(editScope().getByRole('radio', { name: 'All services' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(patchCalls(spy)).toHaveLength(2));
+    expect(JSON.parse(String(patchCalls(spy)[1][1]?.body))).toEqual({ role, allowedServices: null });
   });
 
   it('discards unsaved role and scope changes on Cancel', async () => {
@@ -214,7 +251,7 @@ describe('inline member editing', () => {
   });
 
   it.each(['server', 'invalid-json', 'network'])('retains edits after %s failure and permits retry', async (failure) => {
-    const spy = await renderPanel([jin()]);
+    const spy = await renderPanel([jin({ allowedServices: ['pay'] })]);
     edit();
     fireEvent.change(editRole(), { target: { value: 'maintainer' } });
     spy.mockImplementationOnce(async () => {
@@ -228,10 +265,15 @@ describe('inline member editing', () => {
       } as Response;
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    const expected = failure === 'network' ? 'Network error. Please try again.'
-      : failure === 'server' ? 'Member changed; retry.' : 'Failed to update member.';
+    const messages: Record<string, string> = {
+      network: 'Network error. Please try again.',
+      server: 'Member changed; retry.',
+      'invalid-json': 'Failed to update member.',
+    };
+    const expected = messages[failure];
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(expected));
     expect(editRole().value).toBe('maintainer');
+    expect((editScope().getByLabelText('Wallet') as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(screen.getByText('Member updated.')).toBeDefined());
   });
@@ -252,6 +294,7 @@ describe('inline member editing', () => {
   it('keeps owners immutable and routes ownership changes to the transfer flow', async () => {
     await renderPanel([controller(), jin()]);
     expect(screen.queryByRole('button', { name: 'Edit Ryan Veteze (@veteze)' })).toBeNull();
+    expect(screen.queryByRole('group', { name: 'Services for Ryan Veteze (@veteze)' })).toBeNull();
     expect(screen.getAllByTitle('Remove member')).toHaveLength(1);
     expect(screen.getByRole('link', { name: 'ownership transfer' }).getAttribute('href'))
       .toBe(`/auth/groups/${encodeURIComponent(GROUP)}/ownership`);
@@ -289,9 +332,60 @@ describe('inline member editing', () => {
     await renderPanel([jin()], viewerRole);
     expect(screen.queryByRole('button', { name: 'Edit Jin (@jin)' })).toBeNull();
   });
+
+  it('refuses empty restricted add scope and permits an explicit All services correction', async () => {
+    const spy = await renderPanel();
+    fireEvent.click(screen.getByText('pick-identity'));
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    expect(screen.getByRole('alert').textContent).toBe('Pick at least one service, or choose All services.');
+    expect(addControllerBody(spy)).toBeNull();
+    fireEvent.click(addScope().getByRole('radio', { name: 'All services' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(addControllerBody(spy)?.allowedServices).toBeNull());
+  });
+
+  it.each(['server', 'invalid-json', 'network'])('retains restricted add scope after %s failure', async (failure) => {
+    const spy = await renderPanel();
+    fireEvent.click(screen.getByText('pick-identity'));
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(addScope().getByLabelText('Wallet'));
+    spy.mockImplementationOnce(async () => {
+      if (failure === 'network') throw new Error('offline');
+      return { ok: false, json: async () => {
+        if (failure === 'invalid-json') throw new Error('invalid JSON');
+        return { error: 'Cannot add member.' };
+      } } as Response;
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    const messages: Record<string, string> = {
+      server: 'Cannot add member.',
+      'invalid-json': 'Failed to add member.',
+      network: 'Network error. Please try again.',
+    };
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(messages[failure]));
+    expect((addScope().getByLabelText('Wallet') as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.getByText('Member added.')).toBeDefined());
+  });
 });
 
 describe('member identity', () => {
+  it.each(['business', 'community', 'family'])('explains authority and roster access for %s identities', async (scope) => {
+    await renderPanel(undefined, 'owner', RYAN, scope);
+    expect(screen.getByText(/Members act for this organization and can see who's inside it/)).toBeDefined();
+    expect(screen.getByText(/Clients, vendors and partners should be added as a connection instead/)).toBeDefined();
+    const link = screen.getByRole('link', { name: 'Add a connection' });
+    expect(link.getAttribute('href')).toBe('/connections?connect=1');
+    link.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(link);
+    expect(localStorage.getItem('imajin:acting-as')).toBe(GROUP);
+  });
+
+  it('does not show org guardrail copy on personal identities', async () => {
+    await renderPanel(undefined, 'owner', RYAN, 'actor');
+    expect(screen.queryByRole('link', { name: 'Add a connection' })).toBeNull();
+  });
   it('shows the resolved name and handle instead of the DID', async () => {
     await renderPanel();
 
@@ -357,12 +451,36 @@ describe('provenance', () => {
   });
 });
 
-describe('agent role', () => {
-  it('offers registry-only apps for delegation without static rows', async () => {
-    await renderPanel();
-    fireEvent.change(roleSelect(), { target: { value: 'agent' } });
-    expect(screen.getByLabelText('Registry App')).toBeDefined();
+describe('adding scoped members', () => {
+  it('combines canonical and available registry-only services without duplicate options', async () => {
+    const spy = await renderPanel();
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    expect(addScope().getByLabelText('Identity')).toBeDefined();
+    expect(addScope().getByLabelText('Usage')).toBeDefined();
+    expect(addScope().getByLabelText('Notify')).toBeDefined();
+    expect(addScope().getByLabelText('Registry App')).toBeDefined();
+    expect(addScope().getAllByLabelText('Wallet')).toHaveLength(1);
+    expect(addScope().queryByLabelText('Unavailable App')).toBeNull();
+    expect(addScope().queryByLabelText('Project')).toBeNull();
+    expect(addScope().queryByLabelText('Broker Agent')).toBeNull();
+    expect(spy).toHaveBeenCalledWith('/auth/api/apps/directory', expect.objectContaining({
+      credentials: 'include',
+      headers: expect.objectContaining({ 'X-Acting-As': GROUP }),
+    }));
   });
+  it('adds an agent restricted to a registry-only service', async () => {
+    const spy = await renderPanel();
+    fireEvent.change(roleSelect(), { target: { value: 'agent' } });
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(addScope().getByLabelText('Registry App'));
+    fireEvent.click(screen.getByText('pick-identity'));
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    await waitFor(() => expect(screen.getByText('Member added.')).toBeDefined());
+    expect(addControllerBody(spy)).toEqual({
+      did: JIN, role: 'agent', allowedServices: ['registry-only'],
+    });
+  });
+
   it('offers agent in the role dropdown', async () => {
     await renderPanel();
 
@@ -375,39 +493,26 @@ describe('agent role', () => {
     expect(roleOptions()).not.toContain('owner');
   });
 
-  it('hides the service selector for non-agent roles', async () => {
-    await renderPanel();
-
-    expect(screen.queryByText('Restrict to specific services')).toBeNull();
-  });
-
-  it('reveals the service selector once agent is chosen', async () => {
-    await renderPanel();
-
-    fireEvent.change(roleSelect(), { target: { value: 'agent' } });
-
-    expect(screen.getByText('Restrict to specific services')).toBeDefined();
-    expect(screen.getByText(/may act across every service/)).toBeDefined();
-  });
-
-  it('sends the selected services with an agent membership', async () => {
+  it.each(['admin', 'maintainer', 'member', 'agent'])('adds %s with pay-only access preserved across role changes', async (role) => {
     const spy = await renderPanel();
-
-    fireEvent.change(roleSelect(), { target: { value: 'agent' } });
-    fireEvent.click(screen.getByText('Media'));
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(addScope().getByLabelText('Wallet'));
+    fireEvent.change(roleSelect(), { target: { value: role } });
     fireEvent.click(screen.getByText('pick-identity'));
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
 
     await waitFor(() => expect(addControllerBody(spy)).not.toBeNull());
     expect(addControllerBody(spy)).toEqual({
       did: JIN,
-      role: 'agent',
-      allowedServices: ['media'],
+      role,
+      allowedServices: ['pay'],
     });
   });
 
-  it('sends no service restriction for a non-agent role', async () => {
+  it.each(['admin', 'maintainer', 'member', 'agent'])('adds %s with explicit All services access', async (role) => {
     const spy = await renderPanel();
+    fireEvent.change(roleSelect(), { target: { value: role } });
+    expect((addScope().getByRole('radio', { name: 'All services' }) as HTMLInputElement).checked).toBe(true);
 
     fireEvent.click(screen.getByText('pick-identity'));
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
@@ -415,13 +520,34 @@ describe('agent role', () => {
     await waitFor(() => expect(addControllerBody(spy)).not.toBeNull());
     expect(addControllerBody(spy)).toEqual({
       did: JIN,
-      role: 'member',
+      role,
       allowedServices: null,
     });
   });
 });
 
 describe('service scoping badge', () => {
+  it('distinguishes add and inline service pickers with independent controls', async () => {
+    await renderPanel([controller({
+      controllerDid: JIN, role: 'member', name: 'Jin', handle: 'jin',
+    })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Jin (@jin)' }));
+    fireEvent.click(addScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(addScope().getByLabelText('Wallet'));
+    fireEvent.click(editScope().getByRole('radio', { name: 'Restricted services' }));
+    fireEvent.click(editScope().getByLabelText('Identity'));
+    fireEvent.click(editScope().getByLabelText('Usage'));
+    expect((addScope().getByLabelText('Wallet') as HTMLInputElement).checked).toBe(true);
+    expect((addScope().getByLabelText('Identity') as HTMLInputElement).checked).toBe(false);
+    expect((editScope().getByLabelText('Wallet') as HTMLInputElement).checked).toBe(false);
+    expect((editScope().getByLabelText('Identity') as HTMLInputElement).checked).toBe(true);
+    expect((editScope().getByLabelText('Usage') as HTMLInputElement).checked).toBe(true);
+  });
+
+  it('shows All services on an unrestricted membership row', async () => {
+    await renderPanel();
+    expect(screen.getAllByText('All services')).toHaveLength(2);
+  });
   it('names a single scoped service on the member row', async () => {
     await renderPanel([
       controller({ controllerDid: JIN, role: 'agent', name: 'Jin', handle: 'jin', allowedServices: ['media'] }),
@@ -430,7 +556,7 @@ describe('service scoping badge', () => {
     expect(screen.getByText('media')).toBeDefined();
   });
 
-  it('counts multiple scoped services', async () => {
+  it('joins the actual scoped services with wrapping rather than hiding them behind a count', async () => {
     await renderPanel([
       controller({
         controllerDid: JIN,
@@ -441,7 +567,8 @@ describe('service scoping badge', () => {
       }),
     ]);
 
-    expect(screen.getByText('3 services')).toBeDefined();
-    expect(screen.getByTitle('media, chat, pay')).toBeDefined();
+    const badge = screen.getByText('media, chat, pay');
+    expect(badge.className).toContain('break-words');
+    expect(badge.className).toContain('whitespace-normal');
   });
 });

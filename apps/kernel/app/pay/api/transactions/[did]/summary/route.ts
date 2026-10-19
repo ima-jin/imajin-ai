@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
   try {
     const { did } = params;
 
-    const auth = await resolveEffectiveDid(request, { scope: 'wallet:read' });
+    const auth = await resolveEffectiveDid(request, { scope: 'wallet:read', service: 'pay' });
     if (!auth.ok) {
       return NextResponse.json(
         { error: auth.error },

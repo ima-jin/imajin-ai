@@ -5,7 +5,7 @@ import { createLogger } from '@imajin/logger';
 import { loadAndUnseal, sealAndStoreV2 } from '@/src/lib/vault';
 import { db, vaultDelegationGrants } from '@/src/db';
 import { toVaultErrorResponse } from '@/src/lib/vault/errors';
-import { parseVaultFieldName, isAppSelfSecretField, isImportedKeyField } from '@/src/lib/vault/field-grammar';
+import { parseVaultFieldName, isAppSelfSecretField, isImportedKeyField, isGroupKeyField } from '@/src/lib/vault/field-grammar';
 
 const log = createLogger('kernel');
 
@@ -96,8 +96,8 @@ async function handleExport(): Promise<NextResponse> {
     const exported: { field: string; plaintext: string }[] = [];
 
     for (const { field } of rows) {
-      // App inputs and imported credentials never use the legacy plaintext export.
-      if (isAppSelfSecretField(field) || isImportedKeyField(field)) continue;
+      // Private custody credentials never use the legacy plaintext export.
+      if (isAppSelfSecretField(field) || isImportedKeyField(field) || isGroupKeyField(field)) continue;
       let plaintext: string | undefined;
       try {
         plaintext = await loadAndUnseal(field);
@@ -142,6 +142,9 @@ async function handleReimport(
 ): Promise<NextResponse> {
   if (fields.length === 0) {
     return NextResponse.json({ resealed: 0 });
+  }
+  if (fields.some(({ field }) => isGroupKeyField(field))) {
+    return NextResponse.json({ error: 'Group keys require countersigned group custody' }, { status: 403 });
   }
 
   if (fields.some(({ field }) => isAppSelfSecretField(field))) {

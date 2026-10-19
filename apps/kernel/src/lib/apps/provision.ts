@@ -50,6 +50,7 @@ import { getMintedKeyByDid } from '@/src/lib/vault/key-cards';
 import { grantExistingMintedKey, emitGrantEvents } from '@/src/lib/vault';
 import {
   ensureRepoFromTemplate,
+  resolveSourceRepo,
   tryGetInstallationToken,
   fetchAppManifest,
   appManifestError,
@@ -71,6 +72,8 @@ import { validateSecrets } from './secret-declarations';
 import { ensureAppDeclaredSecrets } from './self-secrets';
 import type { VaultAuthorization } from '@/src/lib/vault/authorization';
 import { provisionAppDomain, validateProvisionOwner } from './provision-domain';
+import { APP_VISIBILITY_ERROR, isAppVisibility, type AppVisibility } from './visibility';
+import { isRepositoryName } from './template-lineage';
 
 const log = createLogger('kernel:apps:provision');
 
@@ -105,12 +108,16 @@ const APP_KEY_PURPOSE_PREFIX = 'apps.provision:';
 
 export interface AppProvisionParams {
   authorizedBy?: VaultAuthorization;
+  /** Directory visibility approved by the operator; omitted means public. */
+  visibility?: AppVisibility;
   /** Ownership and host are part of the operator-countersigned proposal. */
   siteOwnerDid?: string;
   domain?: string;
   slug: string;
   displayName: string;
   template?: string;
+  /** Existing repository selected in the operator-countersigned proposal. */
+  sourceRepo?: string;
   /** Optional `<slug>/<type>` attestation types to seed (2026-09-26 refinement). */
   attestationTypes?: string[];
   /**
@@ -337,6 +344,19 @@ function resolveNavMetadata(slug: string, manifest: AppManifest): {
 }
 
 type ProvisionTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+interface RegistrationRedirects {
+  callbackUrl: string;
+  allowedRedirectHosts: string[];
+}
+
+function resolveRegistrationRedirects(slug: string, domain?: string): RegistrationRedirects {
+  const nodeOrigin = resolveCallbackOrigin();
+  if (!domain) return { callbackUrl: `${nodeOrigin}/${slug}`, allowedRedirectHosts: [slug] };
+  if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.imajin\.ai$/.test(domain)) {
+    throw new Error('Provisioned hosts must be direct imajin.ai subdomains; custom domains require TXT verification');
+  }
+  return { callbackUrl: `https://${domain}/api/auth/callback`, allowedRedirectHosts: [domain] };
+}
 
 /**
  * Lock both ownership seams before changing either: a manually cleared slug
@@ -392,23 +412,34 @@ async function registerApp(params: {
   publicKey: string;
   manifest: AppManifest;
   approvedDeclarations: ManifestDeclarations | null;
-  /** This node's public origin (see `resolveCallbackOrigin`); the app's callback is `<origin>/<slug>`. */
-  callbackOrigin: string;
+  redirects: RegistrationRedirects;
+  visibility: AppVisibility;
   retiredLegacyAppId: string | null;
   template: string;
+  sourceRepo: string;
   repoCreated: boolean;
   ownerDid: string;
-}): Promise<{ id: string; retiredLegacyAppId?: string }> {
-  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations, callbackOrigin } = params;
+}): Promise<{ id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string }> {
+  const { slug, displayName, appDid, publicKey, manifest, approvedDeclarations } = params;
 
   const [existing] = await db
-    .select({ id: registryApps.id })
+    .select({
+      id: registryApps.id,
+      visibility: registryApps.visibility,
+      callbackUrl: registryApps.callbackUrl,
+      allowedRedirectHosts: registryApps.allowedRedirectHosts,
+    })
     .from(registryApps)
     .where(eq(registryApps.appDid, appDid))
     .limit(1);
 
   if (existing) {
-    return { id: existing.id, ...retirementContext(params.retiredLegacyAppId) };
+    if (existing.visibility !== params.visibility
+      || existing.callbackUrl !== params.redirects.callbackUrl
+      || JSON.stringify(existing.allowedRedirectHosts) !== JSON.stringify(params.redirects.allowedRedirectHosts)) {
+      throw new Error('apps.provision: retry cannot change the registered visibility or callback — re-propose with the existing settings');
+    }
+    return { id: existing.id, allowedRedirectHosts: existing.allowedRedirectHosts, ...retirementContext(params.retiredLegacyAppId) };
   }
 
   let navMetadata: ReturnType<typeof resolveNavMetadata>;
@@ -462,18 +493,17 @@ async function registerApp(params: {
       description: `${displayName} (provisioned via apps.provision #2375)`,
       appDid,
       publicKey,
-      // #2746: the sign-in redirect target (`/oauth/authorize` falls back to it
-      // while `redirect_uris` is empty; `/auth/authorize` redirects to it). It is
-      // the node's own public origin, never a placeholder.
-      callbackUrl: `${callbackOrigin}/${slug}`,
+      // Explicit operator-approved hosts use the app's own auth callback.
+      // Without one, preserve the node-path callback (#2746).
+      ...params.redirects,
+      visibility: params.visibility,
       tier: 'third_party',
       status: 'active',
       slug,
-      sourceRepo: `${PROVISIONING_ORG}/${slug}`,
+      sourceRepo: params.sourceRepo,
       template: params.template,
       // A newly generated repo starts joined; reusing a repo does not prove adoption.
       joined: params.repoCreated,
-      allowedRedirectHosts: [slug],
       tokenAudiences: [slug],
       icon: navMetadata.icon,
       entryUrl: navMetadata.entryUrl,
@@ -495,18 +525,18 @@ async function registerApp(params: {
       retiredLegacyAppId: retiredLegacyAppId ?? params.retiredLegacyAppId,
       updatedAt: new Date(),
     }).where(eq(appProvisions.slug, slug));
-    return { id, ...retirementContext(retiredLegacyAppId ?? params.retiredLegacyAppId) };
+    return { id, allowedRedirectHosts: params.redirects.allowedRedirectHosts, ...retirementContext(retiredLegacyAppId ?? params.retiredLegacyAppId) };
   });
 }
 
-function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppId: string, displayName: string, slug: string, retirement: { retiredLegacyAppId?: string }): void {
+function emitRegisteredAttestation(nodeDid: string, appDid: string, registryAppId: string, displayName: string, slug: string, allowedRedirectHosts: string[], retirement: { retiredLegacyAppId?: string }): void {
   emitAttestation({
     issuer_did: nodeDid,
     subject_did: appDid,
     type: 'registry.app.registered',
     context_id: registryAppId,
     context_type: 'registry_app',
-    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts: [slug], ...retirement },
+    payload: { appId: registryAppId, name: displayName, tier: 'third_party', slug, tokenAudiences: [slug], allowedRedirectHosts, ...retirement },
   }).catch((err: unknown) => log.error({ err: String(err), registryAppId }, 'registry.app.registered attestation failed'));
 }
 
@@ -571,6 +601,27 @@ async function resumeSucceededProvision(
     };
 }
 
+function invalidProvisionSource(params: AppProvisionParams, existingRun: AppProvisionRow | undefined, sourceRepo: string): boolean {
+  if ((params.sourceRepo !== undefined && !isRepositoryName(params.sourceRepo))
+    || ((params.sourceRepo !== undefined || existingRun?.status !== 'succeeded') && existingRun?.repoUrl && existingRun.repoUrl.toLowerCase() !== `https://github.com/${sourceRepo}`.toLowerCase())) {
+    return true;
+  }
+  return false;
+}
+
+async function resolveProvisionRepo(params: AppProvisionParams, template: string, existingRun?: AppProvisionRow) {
+  if (params.sourceRepo !== undefined) return resolveSourceRepo(params.sourceRepo);
+  const ensured = await ensureRepoFromTemplate(params.slug, template);
+  // Finding a repo on retry must not erase durable template-creation provenance.
+  return { ...ensured, created: ensured.created || existingRun?.repoCreated === true, token: null };
+}
+
+async function provisionManifest(params: AppProvisionParams, sourceToken: string | null): Promise<AppManifestResult> {
+  if (params.sourceRepo === undefined) return fetchAppManifest(params.slug, await tryGetInstallationToken());
+  const [owner, name] = params.sourceRepo.split('/');
+  return fetchAppManifest(name, sourceToken, owner);
+}
+
 /**
  * Run (or resume) the full provisioning pipeline for one slug.
  * The operator bridge reports failed steps without exposing credentials.
@@ -579,13 +630,19 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   const { slug, displayName, template = DEFAULT_APP_TEMPLATE, attestationTypes = [] } = params;
   const nodeDid = getNodeSigningIdentity().senderDid;
   const existingRun = await getProvisionRow(slug);
+  const sourceRepo = params.sourceRepo ?? `${PROVISIONING_ORG}/${slug}`;
+  if (invalidProvisionSource(params, existingRun, sourceRepo)) {
+    return { status: 'failed', failedStep: 'repo', error: 'apps.provision: invalid sourceRepo or repository differs from the recorded provision — repository changes are not allowed on retry' };
+  }
   if (existingRun?.status === 'succeeded') return resumeSucceededProvision(params, existingRun, nodeDid);
 
   // #2746: resolve the callback origin up front so a node with no public URL
   // fails closed before the repo is created or any key is minted.
-  let callbackOrigin: string;
+  let redirects: RegistrationRedirects;
+  const visibility = params.visibility ?? 'public';
   try {
-    callbackOrigin = resolveCallbackOrigin();
+    if (!isAppVisibility(visibility)) throw new Error(APP_VISIBILITY_ERROR);
+    redirects = resolveRegistrationRedirects(slug, params.domain);
     await validateProvisionOwner(params.siteOwnerDid);
   } catch (err) {
     return markFailed(nodeDid, slug, 'config', err);
@@ -595,11 +652,11 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
 
   // ── Step 1: repo ──────────────────────────────────────────────────────
   let repo: EnsureRepoResult;
+  let sourceToken: string | null = null;
   try {
-    const ensured = await ensureRepoFromTemplate(slug, template);
-    // A prior attempt may have created the repo before failing mint/register.
-    // Finding it on retry must not erase durable template-creation provenance.
-    repo = { ...ensured, created: ensured.created || existingRun?.repoCreated === true };
+    const ensured = await resolveProvisionRepo(params, template, existingRun);
+    sourceToken = ensured.token;
+    repo = { repoUrl: ensured.repoUrl, created: ensured.created };
     await upsertProvisionRow(slug, { repoUrl: repo.repoUrl, repoCreated: repo.created });
   } catch (err) {
     return markFailed(nodeDid, slug, 'repo', err);
@@ -623,11 +680,10 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
   // ── Step 3: register (the app becomes servable ONLY from this point on) ──
   // #2813: unreadable/invalid manifests fail before registry writes or secret
   // issuance. Only a readable manifest may declare genuinely absent secrets.
-  let registration: { id: string; retiredLegacyAppId?: string };
+  let registration: { id: string; allowedRedirectHosts: string[]; retiredLegacyAppId?: string };
   let retirement: { retiredLegacyAppId?: string };
   try {
-    const manifestToken = await tryGetInstallationToken();
-    const manifest: AppManifestResult = await fetchAppManifest(slug, manifestToken);
+    const manifest = await provisionManifest(params, sourceToken);
     if ('error' in manifest) {
       throw new Error(appManifestError(slug, manifest));
     }
@@ -638,14 +694,16 @@ export async function runAppProvision(params: AppProvisionParams): Promise<AppPr
       publicKey: keypair.publicKey,
       manifest: manifest.ok,
       approvedDeclarations: params.approvedDeclarations ?? null,
-      callbackOrigin,
+      redirects,
+      visibility,
       retiredLegacyAppId: existingRun?.retiredLegacyAppId ?? null,
       template,
+      sourceRepo,
       repoCreated: repo.created,
       ownerDid: params.siteOwnerDid ?? params.authorizedBy?.operatorDid ?? 'did:imajin:platform',
     });
     retirement = retirementContext(registration.retiredLegacyAppId);
-    emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, retirement);
+    emitRegisteredAttestation(nodeDid, appDid, registration.id, displayName, slug, registration.allowedRedirectHosts, retirement);
   } catch (err) {
     return markFailed(nodeDid, slug, 'register', err);
   }

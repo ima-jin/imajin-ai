@@ -41,6 +41,7 @@ import { VaultDelegationError } from './errors';
 import { isInternalSecretField } from './internal-secret';
 import { rotateInternalSecret } from './internal-secret-rotate';
 import { reissueFieldGrants } from './shared-internal-secret';
+import { isGroupKeyField } from './field-grammar';
 import { forEachSequential, mapWithConcurrency } from '@/src/lib/async/sequential';
 
 const log = createLogger('kernel');
@@ -891,6 +892,7 @@ export async function vaultFieldExists(field: string): Promise<boolean> {
  * No plaintext is logged at any point.
  */
 export async function loadAndUnseal(field: string): Promise<string | undefined> {
+  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry) {
     return undefined;
@@ -1159,6 +1161,7 @@ export async function loadAndUnsealByGrantee(
   field: string,
   granteeDid: string,
 ): Promise<string | undefined> {
+  if (isGroupKeyField(field)) throw new Error('Group keys require an in-process purpose grant');
   const entry = await vaultService.get(field);
   if (!entry || entry.deleted) {
     return undefined;

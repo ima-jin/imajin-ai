@@ -14,6 +14,11 @@
  * `POST /auth/api/login/verify` rely on for any identity.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../reach-block', () => ({
+  isReachSenderBlocked: vi.fn().mockResolvedValue(false),
+  isReachSenderBlockedInTransaction: vi.fn().mockResolvedValue(false),
+}));
+vi.mock('../../notify/reach-approvals', () => ({ publishKnockApproval: vi.fn().mockResolvedValue(undefined) }));
 
 type Row = Record<string, unknown>;
 type Predicate = (row: Row) => boolean;
@@ -117,7 +122,12 @@ function updateTable(table: { __table: string }) {
 }
 
 vi.mock('@/src/db', () => ({
-  db: { insert: insertInto, select: selectFrom, update: updateTable },
+  db: {
+    insert: insertInto, select: selectFrom, update: updateTable,
+    transaction: (fn: (tx: unknown) => unknown) => fn({
+      insert: insertInto, select: selectFrom, update: updateTable, execute: vi.fn().mockResolvedValue([]),
+    }),
+  },
   identities: IDENTITIES_TABLE,
   agentKnocks: KNOCKS_TABLE,
   connections: CONNECTIONS_TABLE,

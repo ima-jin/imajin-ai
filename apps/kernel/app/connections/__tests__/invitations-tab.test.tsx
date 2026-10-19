@@ -63,11 +63,28 @@ async function openEmailPanelAndFillAddress() {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
 describe('successful email delivery', () => {
+  it('keeps direct requests on Connections rather than presenting them as shareable link invites', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({
+      ok: true,
+      json: async () => url.endsWith('/invited-by') ? { invitedBy: null } : {
+        ...invitesListResponse(),
+        invites: [{
+          id: 'direct-only', code: 'target-bound', delivery: 'direct', status: 'pending',
+          toDid: 'did:imajin:counterparty', note: 'not a bearer link', daysAgo: 0,
+        }],
+      },
+    })));
+    render(<InvitationsTab />);
+    await waitFor(() => expect(screen.getByText('Email Invite')).toBeDefined());
+    expect(screen.queryByText('not a bearer link')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Copy link' })).toBeNull();
+  });
   it('renders the success state when emailSent is true', async () => {
     installFetch(async () => ({
       ok: true,
@@ -84,6 +101,23 @@ describe('successful email delivery', () => {
 });
 
 describe('email delivery failure (#1860)', () => {
+  it('cancels copy feedback timers when leaving the invitations tab', async () => {
+    Object.assign(navigator, { clipboard: { writeText: vi.fn() } });
+    installFetch(async () => ({
+      ok: true,
+      json: async () => ({ invite: { code: 'abc123' }, url: INVITE_URL, emailSent: false }),
+    }));
+    const { unmount } = render(<InvitationsTab />);
+    await openEmailPanelAndFillAddress();
+    fireEvent.click(screen.getByRole('button', { name: 'Send Invite' }));
+    await screen.findByRole('button', { name: 'Copy link' });
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+    fireEvent.click(screen.getByRole('button', { name: '✓ Copied' }));
+    expect(vi.getTimerCount()).toBe(1);
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
   it('renders a distinct failed-delivery state instead of a false success when emailSent is false', async () => {
     installFetch(async () => ({
       ok: true,

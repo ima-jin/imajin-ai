@@ -31,12 +31,14 @@ import { getOperatorDid, isOperatorIdentity, computeApprovalContentHash } from '
 import { actAsRefusal } from '@/src/lib/notify/act-as-guard';
 import { recordApprovalRequested } from '@/src/lib/notify/operator-approvals-service';
 import { revokeTierLabel } from '@/src/lib/vault/revoke-tier';
+import { getNodeDidFromConfig } from '@/src/lib/kernel/node-identity';
+import { authorizeGroupKey, readGroupKeyDetail } from '@/src/lib/vault/group-key';
 
 const log = createLogger('kernel:vault-proposals');
 
 export const dynamic = 'force-dynamic';
 
-const VAULT_PROPOSAL_KINDS = new Set(['mint', 'grant', 'rotate', 'revoke']);
+const VAULT_PROPOSAL_KINDS = new Set(['mint', 'grant', 'rotate', 'revoke', 'custody-group-key', 'revoke-group-key']);
 const REVOKE_TIERS = new Set(['withdraw', 'tombstone', 'destroy']);
 const MAX_PURPOSE_LENGTH = 200;
 
@@ -117,6 +119,16 @@ function validateRevokeDetail(detail: Record<string, unknown>): ValidationResult
 /** Per-kind detail validation, split out so POST stays under the cognitive-complexity budget. */
 function validateDetailForKind(kind: string, detail: Record<string, unknown>): ValidationResult {
   switch (kind) {
+    case 'custody-group-key':
+    case 'revoke-group-key': {
+      const parsed = readGroupKeyDetail(detail);
+      if (!parsed) return { ok: false, error: 'Invalid group key proposal' };
+      return {
+        ok: true,
+        summary: `${kind === 'custody-group-key' ? 'Custody' : 'Revoke custody of'} group ${parsed.groupDid} signing key for ${parsed.purpose} on node ${parsed.nodeDid}.`,
+        keysTouched: [],
+      };
+    }
     case 'mint':
       return validateMintDetail(detail);
     case 'grant':
@@ -130,6 +142,22 @@ function validateDetailForKind(kind: string, detail: Record<string, unknown>): V
   }
 }
 
+async function prepareGroupDetail(kind: string, body: VaultProposalBody, detail: Record<string, unknown>, operatorDid: string) {
+  if (kind !== 'custody-group-key' && kind !== 'revoke-group-key') return null;
+  if (Object.keys(body).some(key => !['kind', 'detail'].includes(key))
+    || Object.keys(detail).some(key => !['groupDid', 'purpose'].includes(key))) {
+    return { error: 'Invalid group key proposal', status: 400 };
+  }
+  try {
+    detail.nodeDid = await getNodeDidFromConfig();
+    const parsed = readGroupKeyDetail(detail);
+    if (!parsed) return { error: 'Invalid group key proposal', status: 400 };
+    await authorizeGroupKey(operatorDid, parsed);
+    return null;
+  } catch {
+    return { error: 'Group key custody unavailable', status: 403 };
+  }
+}
 export async function POST(request: NextRequest) {
   const cors = corsHeaders(request);
 
@@ -159,7 +187,7 @@ export async function POST(request: NextRequest) {
   const { kind } = body;
   if (typeof kind !== 'string' || !VAULT_PROPOSAL_KINDS.has(kind)) {
     return NextResponse.json(
-      { error: "kind must be one of 'mint', 'grant', 'rotate', 'revoke'" },
+      { error: "kind must be one of 'mint', 'grant', 'rotate', 'revoke', 'custody-group-key', 'revoke-group-key'" },
       { status: 400, headers: cors },
     );
   }
@@ -167,6 +195,8 @@ export async function POST(request: NextRequest) {
   const detail = (typeof body.detail === 'object' && body.detail !== null && !Array.isArray(body.detail))
     ? (body.detail as Record<string, unknown>)
     : {};
+  const groupError = await prepareGroupDetail(kind, body, detail, operatorDid);
+  if (groupError) return NextResponse.json({ error: groupError.error }, { status: groupError.status, headers: cors });
 
   const validation = validateDetailForKind(kind, detail);
   if (!validation.ok) {
@@ -204,7 +234,10 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ proposalId }, { status: 201, headers: cors });
   } catch (err) {
-    log.error({ err: String(err), kind: proposalKind, operatorDid }, 'Failed to record vault proposal');
+    // Custody diagnostics never forward provider exceptions.
+    if (kind !== 'custody-group-key' && kind !== 'revoke-group-key') {
+      log.error({ err: String(err), kind: proposalKind, operatorDid }, 'Failed to record vault proposal');
+    }
     return NextResponse.json({ error: 'Failed to raise vault proposal' }, { status: 500, headers: cors });
   }
 }

@@ -4,11 +4,11 @@ vi.mock('next/server', () => {
   class MockNextResponse {
     body: unknown;
     status: number;
-    headers: Record<string, string>;
+    headers: Headers;
     constructor(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
       this.body = body;
       this.status = init?.status ?? 200;
-      this.headers = init?.headers ?? {};
+      this.headers = new Headers(init?.headers);
     }
     static json(body: unknown, init?: { status?: number; headers?: Record<string, string> }) {
       return new MockNextResponse(body, init);
@@ -26,7 +26,14 @@ vi.mock('@imajin/logger', () => ({ createLogger: () => ({ info: vi.fn(), warn: v
 
 type Row = Record<string, unknown>;
 
-const { identitiesStore } = vi.hoisted(() => ({ identitiesStore: new Map<string, Row>() }));
+const { identitiesStore, readConfig } = vi.hoisted(() => ({
+  identitiesStore: new Map<string, Row>(), readConfig: vi.fn(),
+}));
+
+vi.mock('@/src/lib/jin/front-door', async (original) => ({
+  ...await original<typeof import('@/src/lib/jin/front-door')>(),
+  readFrontDoorConfig: readConfig,
+}));
 
 vi.mock('drizzle-orm', async (importOriginal) => {
   const actual = await importOriginal<typeof import('drizzle-orm')>();
@@ -50,18 +57,25 @@ function whereClause(projection: Record<string, string>) {
 
 vi.mock('@/src/db', () => ({
   db: { select: (projection: Record<string, string>) => ({ from: () => whereClause(projection) }) },
-  identities: { id: 'id', handle: 'handle', name: 'name', metadata: 'metadata' },
+  identities: {
+    id: 'id', handle: 'handle', name: 'name', metadata: 'metadata',
+    scope: 'scope', subtype: 'subtype', suspendedAt: 'suspendedAt',
+  },
 }));
 
 // front-door.ts (imported for publishedTopicLabels) also pulls the bus; the card route only needs the pure helper.
 vi.mock('@imajin/bus', () => ({ publish: vi.fn() }));
 
-const { GET } = await import('../route');
+const { GET, OPTIONS } = await import('../route');
+const { buildReachCard, resolveReachDiscovery } = await import('@/src/lib/auth/reach-discovery');
 
 describe('GET /.well-known/agent/:id (#2251)', () => {
   beforeEach(() => {
     identitiesStore.clear();
-    identitiesStore.set('did:imajin:ryan', { id: 'did:imajin:ryan', handle: 'ryan', name: 'Ryan' });
+    readConfig.mockReset().mockResolvedValue({ tiers: { soft: true, preliminary: false, established: false } });
+    identitiesStore.set('did:imajin:ryan', {
+      id: 'did:imajin:ryan', handle: 'ryan', name: 'Ryan', scope: 'actor', subtype: 'human',
+    });
   });
 
   it('returns 404 with an onboarding pointer when the principal does not resolve', async () => {
@@ -87,7 +101,7 @@ describe('GET /.well-known/agent/:id (#2251)', () => {
     const response = await GET({} as never, { params: Promise.resolve({ id: 'did:imajin:ryan' }) });
     const body = (response as { body: { onboarding: { flow: string; endpoint: string } } }).body;
     expect(body.onboarding.flow).toBe('knock');
-    expect(body.onboarding.endpoint).toBe('https://imajin.ai/auth/api/knock');
+    expect(body.onboarding.endpoint).toBe('https://imajin.ai/reach/ryan/knock');
   });
 
   describe('published topics (#2598)', () => {
@@ -104,6 +118,8 @@ describe('GET /.well-known/agent/:id (#2251)', () => {
         id: 'did:imajin:ryan',
         handle: 'ryan',
         name: 'Ryan',
+        scope: 'actor',
+        subtype: 'human',
         metadata: {
           agentReachTopics: ['collaboration', 'speaking'],
           agentReachGate: {
@@ -122,5 +138,83 @@ describe('GET /.well-known/agent/:id (#2251)', () => {
       expect(body.reach.topics).toEqual(['Collaboration']);
       expect(JSON.stringify(body)).not.toContain('Speaking');
     });
+  });
+
+  it.each(['@ryan', '%40ryan', 'did%3Aimajin%3Aryan'])('resolves %s to the same canonical card', async (id) => {
+    const card = await resolveReachDiscovery(id);
+    expect(card?.principalDid).toBe('did:imajin:ryan');
+    expect(card?.url).toBe('https://imajin.ai/.well-known/agent/did%3Aimajin%3Aryan');
+    expect(card?.instructionsUrl).toBe('https://imajin.ai/ryan/reach');
+  });
+
+  it('retains the 0.1 contract while advertising only live transports and accurate credential tiers', async () => {
+    const card = await resolveReachDiscovery('@ryan');
+    expect(card).toMatchObject({
+      schemaVersion: '0.1',
+      reach: { protocol: 'imajin-agent-reach/0.1' },
+      authentication: { schemes: expect.arrayContaining(['did-imajin']) },
+      onboarding: { flow: 'knock' },
+    });
+    expect(card?.transports.map(({ id }) => id)).toEqual(['mcp', 'openapi', 'signed']);
+    expect(card?.transports[0]).toMatchObject({
+      endpoint: 'https://imajin.ai/reach/ryan/mcp',
+      authentication: ['anonymous', 'reach-bearer'],
+      discovery: 'https://imajin.ai/.well-known/oauth-protected-resource/reach/ryan/mcp',
+      tools: ['reach_card', 'reach_ask', 'reach_send', 'reach_status'],
+    });
+    expect(card?.transports[1].endpoint).toBe('https://imajin.ai/reach/ryan/openapi.json');
+    expect(card?.authentication.tiers.map(({ id }) => id)).toEqual(['anonymous', 'reach-bearer', 'did-imajin', 'did-web']);
+    expect(JSON.stringify(card)).not.toMatch(/agent-card\.json|authorization_endpoint/);
+  });
+
+  it.each([null, { tiers: { soft: false, preliminary: false, established: false } }])(
+    'does not publish a disabled reach card',
+    async (config) => {
+      readConfig.mockResolvedValue(config);
+      const response = await GET({} as never, { params: Promise.resolve({ id: '@ryan' }) });
+      expect(response.status).toBe(404);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(JSON.stringify(response.body)).not.toContain('transports');
+    },
+  );
+
+  it.each([
+    { scope: 'business' }, { subtype: 'agent' }, { suspendedAt: new Date() },
+  ])('withholds discovery for ineligible identities: %j', async (patch) => {
+    Object.assign(identitiesStore.get('did:imajin:ryan')!, patch);
+    expect(await resolveReachDiscovery('ryan')).toBeNull();
+    expect(readConfig).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '@', '%not-encoded'])('rejects malformed or empty identifiers: %s', async (id) => {
+    expect(await resolveReachDiscovery(id)).toBeNull();
+  });
+
+  it('uses the DID in transport URLs for principals without a handle', () => {
+    const card = buildReachCard({ id: 'did:imajin:123', handle: null, name: null, metadata: null }, 'https://node.example');
+    expect(card.instructionsUrl).toBe('https://node.example/did%3Aimajin%3A123/reach');
+    expect(card.transports[0].endpoint).toBe('https://node.example/reach/did%3Aimajin%3A123/mcp');
+  });
+
+  it('does not expose private policy even when arbitrary metadata exists', async () => {
+    Object.assign(identitiesStore.get('did:imajin:ryan')!, {
+      metadata: { dailyCap: 12, privateTopic: 'private marker', agentReachTopics: ['speaking'] },
+    });
+    const card = await resolveReachDiscovery('ryan');
+    expect(JSON.stringify(card)).not.toMatch(/private marker|dailyCap|agentReachTopics|agentReachGate/);
+  });
+
+  it('responds with uncached, sanitized failure metadata', async () => {
+    readConfig.mockRejectedValue(new Error('private database details'));
+    const response = await GET({} as never, { params: Promise.resolve({ id: 'ryan' }) });
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(JSON.stringify(response.body)).not.toContain('private database details');
+  });
+
+  it('allows public cross-origin discovery preflight', async () => {
+    const response = await OPTIONS();
+    expect(response.status).toBe(204);
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*');
   });
 });

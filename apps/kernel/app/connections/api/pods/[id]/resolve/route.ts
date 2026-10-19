@@ -5,7 +5,7 @@ import { resolvePodMembers } from '@imajin/trust-graph';
 
 export async function GET(request: Request, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const auth = await requireAuth(request);
+  const auth = await requireAuth(request, { service: 'connections' });
   if ('error' in auth) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
   const members = await resolvePodMembers(db, params.id);

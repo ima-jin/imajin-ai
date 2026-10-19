@@ -54,6 +54,42 @@ describe('vault import approval renderer (#2260)', () => {
     expect(screen.getByRole('button', { name: 'Sign' })).toBeDefined();
   });
 });
+describe('acting Inbox freshness (#2952)', () => {
+  it.each(['focus', 'imajin:acting-as-changed', 'imajin:session-changed'])('clears obsolete cards and refreshes on %s', async event => {
+    const spy = installFetch([{ isOperator: true, approvals: [approval()] }]);
+    const { result } = renderHook(() => useRunApprovals());
+    await waitFor(() => expect(result.current.approvals).toHaveLength(1));
+    spy.mockResolvedValueOnce({ ok: false, status: 403 } as Response);
+    act(() => { globalThis.dispatchEvent(new Event(event)); });
+    expect(result.current.approvals).toEqual([]);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.isOperator).toBe(false);
+  });
+
+  it('ignores older responses after another tab changes scope and unregisters on unmount', async () => {
+    const spy = installFetch([{ isOperator: true, approvals: [approval()] }]);
+    const { result, unmount } = renderHook(() => useRunApprovals());
+    await waitFor(() => expect(result.current.approvals).toHaveLength(1));
+    let resolveOld!: (response: Response) => void;
+    spy.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve; }));
+    let oldLoad!: Promise<void>;
+    act(() => { oldLoad = result.current.refresh(true); });
+    localStorage.setItem('imajin:acting-as', 'did:imajin:new-org');
+    spy.mockResolvedValueOnce({ ok: true, json: async () => ({ isOperator: false, approvals: [] }) } as Response);
+    act(() => { globalThis.dispatchEvent(new StorageEvent('storage', { key: 'imajin:acting-as' })); });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => {
+      resolveOld({ ok: true, json: async () => ({ isOperator: true, approvals: [approval()] }) } as Response);
+      await oldLoad;
+    });
+    expect(result.current.approvals).toEqual([]);
+    expect(result.current.isOperator).toBe(false);
+    const calls = spy.mock.calls.length;
+    unmount();
+    act(() => { globalThis.dispatchEvent(new Event('focus')); });
+    expect(spy).toHaveBeenCalledTimes(calls);
+  });
+});
 describe('shared native approval command controller', () => {
   const binding = { loopId: 'loop_native', principalDid: 'did:imajin:principal', agentDid: 'did:imajin:agent', approvalId: 'native_1' };
   const command = { type: 'session.approve', commandId: 'command_1', countersignature: { sig: 'full-wish' } };
@@ -345,11 +381,19 @@ afterEach(() => {
 });
 
 describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #2723)', () => {
+  it('shows an empty authorized organization Inbox read-only', async () => {
+    installFetch([{ isOperator: false, approvals: [], actAs: {
+      sessionDid: 'did:imajin:operator', actingDid: 'did:imajin:org',
+    } }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('No operator approvals yet.')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
   it('renders the Inbox for a non-operator principal who has something addressed to them (their own connector proposal)', async () => {
     installFetch([{ isOperator: false, approvals: [approval({ proposalId: 'opap_eric_1' })] }]);
     render(<OperatorApprovalsPanel />);
 
-    expect(await screen.findByText('Operator approvals')).toBeTruthy();
+    expect(await screen.findByText('Inbox')).toBeTruthy();
     expect(document.getElementById('approval-opap_eric_1')).not.toBeNull();
   });
 
@@ -361,7 +405,7 @@ describe('non-operator visibility (#2059 acceptance (c), per-principal Inbox #27
     });
     expect(spy).toHaveBeenCalledTimes(1);
     expect(container.firstChild).toBeNull();
-    expect(screen.queryByText('Operator approvals')).toBeNull();
+    expect(screen.queryByText('Inbox')).toBeNull();
   });
 
   it('renders nothing while the initial operator check is still loading', async () => {
@@ -408,7 +452,7 @@ describe('operator — empty state', () => {
     installFetch([{ isOperator: true, approvals: [] }]);
     render(<OperatorApprovalsPanel />);
 
-    expect(await screen.findByText('Operator approvals')).toBeDefined();
+    expect(await screen.findByText('Inbox')).toBeDefined();
     expect(screen.getByText('No operator approvals yet.')).toBeDefined();
   });
 });
@@ -588,7 +632,7 @@ describe('poll refresh', () => {
     installIntervalSpy();
     installFetch([{ isOperator: true, approvals: [] }]);
     const { unmount } = render(<OperatorApprovalsPanel />);
-    await screen.findByText('Operator approvals');
+    await screen.findByText('Inbox');
 
     unmount();
 
@@ -1242,6 +1286,30 @@ describe('per-source renderer registry — github', () => {
 // alongside the app's own `/claim` page URL (#2427) so the operator can
 // paste the code there instead of ssh-ing in to edit an env file.
 describe('per-source renderer registry — apps', () => {
+  it('shows the signed visibility, site owner and approved host before the operator approves', async () => {
+    const summary = "Provision app 'gbs' (GBS). Visibility: private. Site owner: did:imajin:gbs; issue dev-gbs.imajin.ai from Imajin's organization.";
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      summary,
+      detail: { slug: 'gbs', displayName: 'GBS', visibility: 'private', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai' },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText(summary)).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+  });
+  it('shows the exact existing source repository instead of a misleading template', async () => {
+    installFetch([{ isOperator: true, approvals: [appsApproval({
+      detail: {
+        slug: 'gbs', displayName: 'GBS', sourceRepo: 'GBScontracting/Website',
+        template: 'ima-jin/imajin-app-template',
+      },
+    })] }]);
+    render(<OperatorApprovalsPanel />);
+    expect(await screen.findByText('GBScontracting/Website')).toBeDefined();
+    expect(screen.getByText('Source repository')).toBeDefined();
+    expect(screen.getByText(/No repository is created/)).toBeDefined();
+    expect(screen.queryByText('Template')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Approve & provision' })).toBeDefined();
+  });
   it.each([true, false])('renders featured=%s as directory curation, never provisioning', async (featured) => {
     installFetch([{ isOperator: true, approvals: [appsApproval({
       kind: 'apps:featured',

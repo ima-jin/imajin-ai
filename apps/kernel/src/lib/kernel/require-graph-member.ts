@@ -27,12 +27,13 @@ export async function isInGraph(did: string): Promise<boolean> {
  * Require graph membership (hard DID + at least one connection)
  */
 export async function requireGraphMember(
-  request: Request
+  request: Request,
+  options?: import("@imajin/auth").AuthOptions
 ): Promise<
   { identity: import("@imajin/auth").Identity } | { error: string; status: number }
 > {
   const { requireAuth: auth } = await import("@imajin/auth");
-  const authResult = await auth(request);
+  const authResult = await auth(request, options);
 
   if ("error" in authResult) return authResult;
 

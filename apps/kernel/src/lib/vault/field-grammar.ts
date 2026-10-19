@@ -39,6 +39,12 @@ export const MINTED_KEY_NAMESPACE = 'vault-minted-key';
 
 /** Imported third-party credentials have immutable proposal-derived fields. */
 export const IMPORTED_KEY_NAMESPACE = 'vault-imported-key';
+/** Group signing seeds are private to the countersigned group custody rail. */
+export const GROUP_KEY_NAMESPACE = 'vault-group-key';
+
+export function isGroupKeyField(field: string): boolean {
+  return vaultFieldNamespace(field) === GROUP_KEY_NAMESPACE;
+}
 
 export function isImportedKeyField(field: string): boolean {
   return vaultFieldNamespace(field) === IMPORTED_KEY_NAMESPACE;

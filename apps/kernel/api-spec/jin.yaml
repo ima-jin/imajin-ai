@@ -720,13 +720,39 @@ components:
           type: string
           pattern: "^[a-z][a-z0-9-]{0,38}$"
           example: dykil
-          description: "Short, URL/repo-safe identifier. The repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
+          description: "Short, URL/repo-safe identifier. Unless sourceRepo is set, the repo is created as ima-jin/<slug>; the idempotency key this whole call is keyed on."
         displayName: { type: string, maxLength: 200, example: dykil }
+        visibility:
+          type: string
+          enum: [public, unlisted, private, internal]
+          default: public
+          description: |
+            Directory/add visibility (#2897), shown in and covered by the
+            operator-countersigned proposal. Private apps are visible/addable
+            only to the owning identity and its members; public web pages
+            remain public. The owner may be an unclaimed organization stub
+            with no members. Reissuing a claim cannot set or change visibility.
         template:
           type: string
           maxLength: 200
           default: ima-jin/imajin-app-template
-          description: "owner/repo of the template to generate the app repo from."
+          description: "owner/repo of the template to generate the app repo from. Ignored when sourceRepo is set."
+        sourceRepo:
+          type: string
+          maxLength: 140
+          example: gbscontracting/website
+          description: >-
+            Optional existing GitHub owner/name repository, not a URL. Owner
+            must be 1–39 letters/digits/hyphens with alphanumeric ends; name
+            must be 1–100 letters/digits/underscores/dots/hyphens, not . or ...
+            No repository is created. Reads this repository's own
+            imajin.app.json without template fallback, anonymously for public
+            repositories or with an installation token where available.
+            The exact value is shown on the proposal and included in its
+            countersigned content hash. Recorded as source lineage with
+            joined=false. Must be omitted entirely on claim reissue; an
+            already-succeeded app cannot change its repository, including
+            during domain retry.
         attestationTypes:
           type: array
           maxItems: 20
@@ -743,21 +769,27 @@ components:
             Optional authoritative site owner for the newly registered app.
             Defaults to the approving operator, not the proposing agent or node.
             Covered by the operator's countersigned provision proposal.
+            The identity must exist but need not be claimed or have members.
             Cannot change ownership during reissue.
         domain:
           type: string
           maxLength: 253
           description: |
             Optional direct subdomain of imajin.ai (for example dev-gbs.imajin.ai).
-            Defaults to <slug>.imajin.ai. Covered by the operator's countersign.
+            Defaults to <slug>.imajin.ai for domain issuance. Covered by the
+            operator's countersign. When explicitly set, registers callbackUrl
+            as https://<domain>/api/auth/callback and allowedRedirectHosts as
+            [<domain>]. When omitted, preserves the node-origin/<slug> callback
+            and [<slug>] redirect hosts.
             Provisioning issues signed domain evidence as the actual Imajin
             organization through its domain.issue grant, never a self-asserted
-            node identity. Missing organization identity or signing grant fails
-            the domain provisioning step. Cannot change a domain during reissue.
+            node identity. Missing organization identity or signing grant defers
+            domain issuance without blocking the claim code. Cannot change a
+            domain during reissue.
         reissueClaim:
           type: boolean
           default: false
-          description: Reissue a claim code for an already-succeeded app only; preserves app ownership and domain bindings.
+          description: Reissue a claim code for an already-succeeded app only; preserves ownership, visibility, callback URL, redirect hosts, source repository and domain bindings. Any provided sourceRepo is refused.
     AppServiceScopesRequest:
       type: object
       description: >-
@@ -1123,20 +1155,42 @@ paths:
       operationId: listOperatorApprovals
       summary: List operator approval proposals across every connected source
       description: >-
-        A non-operator identity — including `@jin` itself, or anyone else
-        authenticated on this node — gets `{isOperator: false, approvals:
-        []}`: no card, no data, indistinguishable from "nothing pending" so
-        this endpoint never confirms whether a proposal exists to a caller
-        who isn't allowed to see it. Optional `?source=` scopes the list to
+        Each principal sees only proposals addressed to their own Inbox
+        (#2723), including their own connector proposals, never another
+        principal's. A delegated agent gets `{isOperator: false, approvals: []}`.
+        Reach messages and pending agent knocks appear as source reach / kind
+        reach:message and source knock / kind knock:request, including safe
+        evidence but no gate rules. A verified human owner/admin acting as a
+        principal additionally sees that principal's Reach/knock cards, never
+        their unrelated proposals.
+        Optional `?source=` scopes the list to
         one source (#2152) — a view filter only, never a security boundary.
         This READ surface keeps listing under act-as (#2359) — hiding the
         queue would only make the act-as state harder to notice — and
         reports the act-as overlay as `actAs` so the panel can render its
         decision controls read-only instead of offering a tap the confirm
         rail will refuse with 403 `act_as_not_permitted`.
+        `?view=acting` (#2952) opts into the validated acting organization's
+        read-only Inbox, enforcing owner/admin membership of a genuine group
+        and controller access to service `jin`. Agent/maintainer roles cannot
+        use this projection to read a personal principal's Inbox. Without
+        an acting organization it reads the session Inbox. It additionally
+        returns `canAccess`: true for the node operator, an authorized group
+        controller, or a principal with addressed cards; false for delegated
+        agents or other empty Inboxes. The shared nav counts only `pending`
+        cards from this same projection. No query parameter selects a DID.
+        Decisions remain self-only; this read view grants no write authority.
+        The one exception is Reach/knock cards: `reachActAsAllowed` permits
+        their actions for a live owner/admin acting as the principal. All
+        other sources remain self-only.
       security:
         - cookieAuth: []
       parameters:
+        - name: view
+          in: query
+          required: false
+          schema: { type: string, enum: [acting] }
+          description: "Read the validated acting principal's Inbox; default is the real session Inbox."
         - name: source
           in: query
           required: false
@@ -1151,6 +1205,8 @@ paths:
                 type: object
                 properties:
                   isOperator: { type: boolean }
+                  canAccess: { type: boolean, description: "Present only for view=acting; shared nav and Inbox visibility." }
+                  reachActAsAllowed: { type: boolean, description: Live owner/admin membership verified for the acting principal; applies only to Reach/knock cards. }
                   approvals:
                     type: array
                     items: { $ref: "#/components/schemas/OperatorApprovalCard" }
@@ -1168,13 +1224,17 @@ paths:
       operationId: decideOperatorApproval
       summary: Approve, reject, or withdraw a pending operator approval proposal
       description: >-
-        Requires `requireAuth` to resolve the exact HUMAN operator identity
-        directly — never `X-Acting-For`/`onBehalfOf`. A non-operator
-        identity (including `@jin` acting for the operator) gets 403
-        without ever learning whether `proposalId` exists. Self-only
-        (#2359): a session under act-as of ANY shape — `X-Acting-For`, or
-        the `x-acting-as` cookie — is refused with 403
-        `act_as_not_permitted` before the operator comparison even runs.
+        Requires the proposal's addressee, never a delegated agent.
+        All sources remain self-only except reach:message and knock:request:
+        these allow a human session acting as the principal only after a
+        fresh active owner/admin membership check. The real actor's key
+        signs, and decidedBy records that actor, not the borrowed identity.
+        Reach/knock require decision approve and mode reply, accept, decline
+        or block, with a mandatory operatorSignature regardless of the node
+        flag. Reply additionally signs replyMessage (nonblank, max 16000).
+        Only accept creates a chat thread; block persists and prevents
+        future knocks/delivery. Domain mutation and signed decision commit
+        atomically; exact signed retries are idempotent. No grants are issued.
         `decision` is
         the open, source-agnostic vocabulary (#2152): the kernel never
         interprets it, only witnesses it and republishes it — together
@@ -1183,10 +1243,11 @@ paths:
         operator's chosen option — a decision-card option letter (required
         on `approve` for `decision:card`), exec `allow-once`/`deny`, or a
         github TTL `single`/`5m`/`24h` — and is refused with 400 when the
-        approval's kind does not offer it (every other kind offers none).
+        approval's kind does not offer it.
         `operatorSignature` + `decidedAt` (#2082): the operator's own
         countersignature over `{contentHash, decision, decidedAt}` plus
-        `mode` whenever the decision carries one (#2693), produced
+        `mode` whenever the decision carries one (#2693) and replyMessage
+        when replying to Reach/knock, produced
         client-side; required
         (400 otherwise) once the per-node `OPERATOR_COUNTERSIGN_REQUIRED`
         flag is on, verified whenever supplied regardless of the flag.
@@ -1212,7 +1273,8 @@ paths:
               required: [decision]
               properties:
                 decision: { type: string, enum: [approve, reject, withdrawn] }
-                mode: { type: string, minLength: 1, maxLength: 128, description: "The chosen option (#2693): decision-card option letter | exec 'allow-once'/'deny' | github TTL 'single'/'5m'/'24h'. 400 when the approval's kind does not offer it; covered by operatorSignature when supplied." }
+                mode: { type: string, minLength: 1, maxLength: 128, description: "The chosen option: decision-card letter | exec allow-once/deny | github TTL | Reach/knock reply/accept/decline/block. Covered by operatorSignature." }
+                replyMessage: { type: string, minLength: 1, maxLength: 16000, description: Required and countersigned only for Reach/knock mode reply; forbidden otherwise. }
                 reason: { type: string }
                 operatorSignature:
                   $ref: "#/components/schemas/OperatorCountersignature"
@@ -1339,7 +1401,7 @@ paths:
     post:
       tags: [jin]
       operationId: raiseVaultProposal
-      summary: Raise a vault:* proposal (mint/grant/rotate/revoke) as a canvas-native operator-approval card
+      summary: Raise a vault action as a canvas-native operator-approval card
       description: >-
         Canvas-native counterpart to an agent proposing in chat via
         `POST /notify/api/send` (#2247). Only the node operator may call
@@ -1352,6 +1414,22 @@ paths:
         server-side at that point (`src/lib/vault/approvals-execution.ts`).
         Self-only too (#2359): a session under act-as is refused with 403
         `act_as_not_permitted` before anything is written.
+        Group custody (#2934) accepts identifiers only: `custody-group-key`
+        and `revoke-group-key` require {groupDid,purpose}. The configured node
+        DID is resolved server-side and included in the signed proposal.
+        Both require the real node operator's cryptographic countersignature
+        and current group owner/admin membership with vault access, rechecked
+        at execution. Custody authenticates the existing server-encrypted key
+        in process, matches its public key, seals a unique vault-group-key field
+        and issues one reusable group-to-node purpose grant. Existing
+        fetchPurposeCredential is the internal consumer; HTTP fetch/export and
+        generic mutation paths refuse this namespace. Revoke erases the grant's
+        wrapped material and stops future fetches, not previously loaded keys.
+        It does not rotate/delete the group's original stored key. Both actions
+        atomically persist a node-signed audit binding purpose, public key,
+        group, node, field, grant and countersigned approval reference.
+        Unsupported ciphertext, absent/mismatched existing encryption secret,
+        Tier-1 custody or duplicate purpose grants fail closed without fallback.
       security:
         - cookieAuth: []
       requestBody:
@@ -1362,7 +1440,7 @@ paths:
               type: object
               required: [kind, detail]
               properties:
-                kind: { type: string, enum: [mint, grant, rotate, revoke] }
+                kind: { type: string, enum: [mint, grant, rotate, revoke, custody-group-key, revoke-group-key] }
                 detail:
                   type: object
                   description: >-
@@ -1370,7 +1448,9 @@ paths:
                     requesterDid, expiresAt?}; grant needs {did, grantedTo,
                     purpose?, oneTime?, expiresAt?}; rotate needs {did,
                     purpose?, requesterDid?, expiresAt?}; revoke needs
-                    {did, tier?: withdraw|tombstone|destroy}.
+                    {did, tier?: withdraw|tombstone|destroy}; custody-group-key
+                    and revoke-group-key accept only {groupDid,purpose},
+                    e.g. purpose domain.issue. Never submit a key or nodeDid.
       responses:
         "201":
           description: Proposal raised
@@ -1416,13 +1496,25 @@ paths:
         repo/mint/register/seal pipeline (`src/lib/apps/provision.ts`) only
         runs once the operator countersigns an 'approve' decision —
         provisioning is operator-authority, never self-service.
+        Optional sourceRepo selects an existing owner/name repository in any
+        organization instead of generating ima-jin/<slug> from a template.
+        Its own manifest is required and its source is visible on the signed
+        proposal. Default behavior is unchanged when sourceRepo is omitted.
         New app ownership is registry.apps.ownerDid (siteOwnerDid or approving
         operator), separate from DNS zone ownership. Provisioning attempts to
         issue the selected Imajin subdomain as the actual Imajin organization;
         unavailable issuer/grant/key defers the binding without blocking the
         signing-key grant or claim code. An explicit domain on a succeeded app
         stages a countersigned host retry. Plain claim reissue changes neither
-        domain nor owner.
+        domain, owner, visibility, callback URL nor redirect hosts.
+        New registrations use the countersigned visibility (default public).
+        An explicit approved domain registers https://<domain>/api/auth/callback
+        with that domain as its allowed redirect host; no domain preserves
+        the node-path callback. Existing registrations are never rewritten by
+        retry or claim reissue.
+        A failed-step retry that conflicts with already-registered visibility
+        or callbacks fails closed rather than reporting success with different
+        settings; re-propose with the existing settings.
         Optional imajin.app.json profileWidget ({path,label,icon?}) is a
         validated link-only contribution on the registered entryUrl origin,
         snapshotted on the signed operator card and rechecked for drift at
@@ -1456,12 +1548,17 @@ paths:
                   status: { type: string, enum: [pending] }
                   proposalId: { type: string }
         "400":
-          description: Malformed slug/displayName/template/attestationTypes/siteOwnerDid/domain, or forbidden owner/domain change on reissue
+          description: Malformed slug/displayName/template/sourceRepo/attestationTypes/siteOwnerDid/domain/visibility, or forbidden owner/domain/visibility/sourceRepo input on reissue
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401":
           description: Not authenticated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: No succeeded app exists for claim reissue, or sourceRepo would change an already-succeeded app's repository
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

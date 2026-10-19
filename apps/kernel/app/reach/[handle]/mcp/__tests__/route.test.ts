@@ -7,10 +7,15 @@ import { reachPrincipalWithCredential } from '@/src/lib/auth/agent-reach';
 import { reachStatus } from '@/src/lib/auth/reach-status';
 import { META_PROTOCOL_VERSION } from '@/src/lib/mcp/protocol';
 import { toolByName } from '@/src/lib/mcp/tools';
+import { buildReachCard, resolveReachDiscovery } from '@/src/lib/auth/reach-discovery';
 
 vi.mock('@/src/lib/access/reach-bearer', () => ({ resolveReachRecipient: vi.fn(), resolveReachBearer: vi.fn() }));
 vi.mock('@/src/lib/auth/agent-reach', () => ({ reachPrincipalWithCredential: vi.fn() }));
 vi.mock('@/src/lib/auth/reach-status', () => ({ reachStatus: vi.fn() }));
+vi.mock('@/src/lib/auth/reach-discovery', async (original) => ({
+  ...await original<typeof import('@/src/lib/auth/reach-discovery')>(),
+  resolveReachDiscovery: vi.fn(),
+}));
 vi.mock('@/src/db', () => ({ db: {}, identities: {}, consentGrants: {} }));
 vi.mock('@/src/lib/mcp/tools', () => ({ ALL_TOOLS: [{ name: 'owner_secret' }], toolByName: vi.fn() }));
 vi.mock('@/src/lib/mcp/mcp-grant', () => ({ resolveActiveMcpGrant: vi.fn() }));
@@ -44,7 +49,7 @@ async function content(response: Response) {
   return JSON.parse(body.result.content[0].text);
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.resetAllMocks();
   vi.stubEnv('APP_URL', 'https://node.test');
   vi.mocked(resolveReachRecipient).mockResolvedValue({
@@ -55,6 +60,11 @@ beforeEach(() => {
     } }, agentReachTopics: [topic, 'speaking'], privateGateRule: 'never-disclose' },
   });
   vi.mocked(resolveReachBearer).mockResolvedValue(credential);
+  const principal = await resolveReachRecipient('ryan');
+  vi.mocked(resolveReachRecipient).mockClear();
+  vi.mocked(resolveReachDiscovery).mockResolvedValue(buildReachCard({
+    ...principal!, handle: 'ryan', name: 'Ryan',
+  }, 'https://node.test'));
   vi.mocked(reachPrincipalWithCredential).mockResolvedValue({ delivered: true, reachId: 'reach_1' });
   vi.mocked(reachStatus).mockResolvedValue({ reachId: 'reach_1', state: 'replied', reply: null });
 });
@@ -66,6 +76,10 @@ describe('per-principal lazy-auth MCP', () => {
     const card = await content(response);
     expect(card).toMatchObject({ principalDid: 'did:imajin:ryan', mcp: 'https://node.test/reach/ryan/mcp' });
     expect(card.topics).toEqual(['Business development']);
+    expect(card).toMatchObject((await resolveReachDiscovery('ryan'))!);
+    expect(card.authentication).toMatchObject({
+      scope: 'agent:reach', knock: 'https://node.test/reach/ryan/knock',
+    });
     expect(JSON.stringify(card)).not.toContain('speaking');
     expect(JSON.stringify(card)).not.toContain('never-disclose');
     expect(resolveReachBearer).not.toHaveBeenCalled();
@@ -125,10 +139,12 @@ describe('per-principal lazy-auth MCP', () => {
   });
 
   it('uses the verified requester, not the recipient, to read a reply', async () => {
+    vi.mocked(resolveReachDiscovery).mockRejectedValue(new Error('Optional discovery unavailable'));
     const response = await call('reach_status', { reachId: 'reach_1' }, 'Bearer valid');
     expect(await content(response)).toMatchObject({ reachId: 'reach_1', state: 'replied' });
     expect(reachStatus).toHaveBeenCalledWith({ principalDid: 'did:imajin:ryan', requesterDid: credential.requesterDid, reachId: 'reach_1' });
     expect(resolveReachBearer).toHaveBeenCalledWith('valid', 'did:imajin:ryan', 'status');
+    expect(resolveReachDiscovery).not.toHaveBeenCalled();
   });
 
   it('returns a non-disclosing 404 for a foreign or missing receipt', async () => {
@@ -240,6 +256,44 @@ describe('per-principal lazy-auth MCP', () => {
     expect(await response.text()).not.toContain('SECRET_VALUE');
   });
 
+  it.each(['reach_card', 'tools/list', 'server/discover'])('hides disabled discovery %s with an uncached 404', async (name) => {
+    vi.mocked(resolveReachDiscovery).mockResolvedValue(null);
+    const response = name === 'reach_card'
+      ? await call(name)
+      : await POST(request(name), props());
+    expect(response.status).toBe(404);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(resolveReachRecipient).not.toHaveBeenCalled();
+    expect(resolveReachBearer).not.toHaveBeenCalled();
+    expect(await response.text()).not.toContain('Business development');
+  });
+
+  it('keeps authenticated receipt polling available after discovery opt-out', async () => {
+    vi.mocked(resolveReachDiscovery).mockResolvedValue(null);
+    const response = await call('reach_status', { reachId: 'reach_1' }, 'Bearer valid');
+    expect(response.status).toBe(200);
+    expect(reachStatus).toHaveBeenCalledWith({
+      principalDid: 'did:imajin:ryan', requesterDid: credential.requesterDid, reachId: 'reach_1',
+    });
+  });
+
+  it.each(['reach_ask', 'reach_send'])('keeps the existing authority boundary for %s after opt-out', async (name) => {
+    vi.mocked(resolveReachDiscovery).mockResolvedValue(null);
+    const response = await call(name, { topic, ...(name === 'reach_send' ? { message: 'Hello' } : {}) }, 'Bearer valid');
+    expect(response.status).toBe(200);
+    expect(reachPrincipalWithCredential).toHaveBeenCalledWith('did:imajin:ryan', credential,
+      name === 'reach_ask' ? { arg: topic } : { topic, message: 'Hello', replyHandle: 'mcp:reach_status' });
+  });
+
+  it.each(['@ryan', 'did:imajin:ryan'])('returns canonical unified fields when addressed by %s', async (handle) => {
+    const response = await POST(request('tools/call', { name: 'reach_card', arguments: {} }), props(handle));
+    const card = await content(response);
+    expect(resolveReachDiscovery).toHaveBeenCalledWith(handle);
+    expect(card.url).toBe('https://node.test/.well-known/agent/did%3Aimajin%3Aryan');
+    expect(card.mcp).toBe('https://node.test/reach/ryan/mcp');
+    expect(card.handle).toBe('ryan');
+  });
+
   it('offers CORS preflight, never SSE or session deletion', () => {
     expect(OPTIONS().status).toBe(204);
     expect(OPTIONS().headers.get('access-control-allow-headers')).toContain('Mcp-Name');
@@ -249,19 +303,21 @@ describe('per-principal lazy-auth MCP', () => {
 });
 
 describe('per-resource protected metadata', () => {
-  it.each(['ryan', 'other', 'did:imajin:ryan'])('names only the addressed MCP resource (%s)', async handle => {
+  it.each(['ryan', '@ryan', 'did:imajin:ryan'])('names the canonical MCP resource (%s)', async handle => {
     const response = await metadata(new Request('https://node.test/metadata'), props(handle));
     expect(await response.json()).toEqual({
-      resource: `https://node.test/reach/${encodeURIComponent(handle)}/mcp`,
+      resource: 'https://node.test/reach/ryan/mcp',
       scopes_supported: ['agent:reach'], bearer_methods_supported: ['header'],
-      resource_documentation: `https://node.test/reach/${encodeURIComponent(handle)}/knock`,
+      resource_documentation: 'https://node.test/reach/ryan/knock',
     });
     expect(resolveReachBearer).not.toHaveBeenCalled();
   });
 
   it('returns 404 for unknown recipients and sanitizes infrastructure errors', async () => {
-    vi.mocked(resolveReachRecipient).mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('SECRET_VALUE'));
-    expect((await metadata(new Request('https://node.test/metadata'), props())).status).toBe(404);
+    vi.mocked(resolveReachDiscovery).mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('SECRET_VALUE'));
+    const missing = await metadata(new Request('https://node.test/metadata'), props());
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('cache-control')).toBe('no-store');
     const response = await metadata(new Request('https://node.test/metadata'), props());
     expect(response.status).toBe(503);
     expect(await response.text()).not.toContain('SECRET_VALUE');

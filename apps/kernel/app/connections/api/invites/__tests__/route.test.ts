@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('@/src/lib/auth/emit-mechanical-attestation', () => ({ prepareMechanicalAttestation: vi.fn() }));
+vi.mock('@/src/lib/notify/ws-push', () => ({ buildNotificationFrame: vi.fn(), pushNotificationToDid: vi.fn() }));
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 
@@ -57,7 +59,8 @@ vi.mock('@imajin/bus', () => ({
   publish: mockPublish,
 }));
 
-vi.mock('@imajin/config', () => ({
+vi.mock('@imajin/config', async (original) => ({
+  ...await original<typeof import('@imajin/config')>(),
   buildPublicUrl: (service: string) => `https://${service}.example`,
 }));
 
@@ -116,7 +119,7 @@ vi.mock('@/src/db', () => ({
 
 // ─── Subject ─────────────────────────────────────────────────────────────────
 
-import { POST, GET } from '../route';
+import { POST, GET, OPTIONS } from '../route';
 import { sendKernelEmail as sendEmail } from '@/src/lib/mail/send';
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
@@ -178,13 +181,26 @@ beforeEach(() => {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('POST /connections/api/invites — dual guard via resolveEffectiveDid (#1832)', () => {
+  it('supports allowed-origin JSON preflight and includes CORS on successful and failed creation', async () => {
+    const req = makeReq({}, { origin: 'https://learn.imajin.ai' });
+    const preflight = OPTIONS(req);
+    expect(preflight.status).toBe(204);
+    expect(preflight.headers.get('Access-Control-Allow-Origin')).toBe('https://learn.imajin.ai');
+    expect(preflight.headers.get('Access-Control-Allow-Methods')).toContain('POST');
+    expect((await POST(req)).headers.get('Access-Control-Allow-Origin')).toBe('https://learn.imajin.ai');
+    mockResolveEffectiveDid.mockResolvedValueOnce(UNAUTHENTICATED);
+    const failed = await POST(req);
+    expect(failed.status).toBe(401);
+    expect(failed.headers.get('Access-Control-Allow-Origin')).toBe('https://learn.imajin.ai');
+    expect(OPTIONS(makeReq({}, { origin: 'https://untrusted.example' })).headers.get('Access-Control-Allow-Origin')).toBe('');
+  });
   it('creates a link invite for a cookie/session-authenticated user', async () => {
     const res = await POST(makeReq({}));
 
     expect(res.status).toBe(201);
     expect(mockResolveEffectiveDid).toHaveBeenCalledWith(
       expect.anything(),
-      { scope: 'connections:write' },
+      { scope: 'connections:write', service: 'connections' },
     );
     expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
     expect(mockDbInsert).toHaveBeenCalled();
@@ -551,6 +567,21 @@ describe('POST /connections/api/invites — rejects whitespace-only toEmail for 
 });
 
 describe('GET /connections/api/invites — no-disclosure list masking (#1839)', () => {
+  it('uses the scoped read path for incoming direct requests', async () => {
+    mockDbSelect.mockReset();
+    mockDbSelect
+      .mockImplementationOnce(() => makeSelectChain([]))
+      .mockImplementationOnce(() => makeSelectChain([{ handle: SESSION.handle }]));
+    const req = {
+      url: 'http://localhost/connections/api/invites?direction=incoming',
+      headers: new Headers(),
+    } as unknown as Parameters<typeof GET>[0];
+    const response = await GET(req);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ invites: [] });
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read', service: 'connections' });
+    expect(mockGetSessionForDid).toHaveBeenCalledWith(OWNER_DID);
+  });
   const INVITER_DID = OWNER_DID;
   const REAL_TARGET_DID = 'did:imajin:real-target';
 
@@ -595,7 +626,7 @@ describe('GET /connections/api/invites — no-disclosure list masking (#1839)', 
   }
 
   function makeGetReq(): Parameters<typeof GET>[0] {
-    return { headers: new Headers({ cookie: 'session=x' }) } as unknown as Parameters<typeof GET>[0];
+    return { url: 'http://localhost/connections/api/invites', headers: new Headers({ cookie: 'session=x' }) } as unknown as Parameters<typeof GET>[0];
   }
 
   it('never discloses toDid, acceptedBy, or acceptedHandle for a pending invite — even when toDid resolved to a real, already-profiled user', async () => {
@@ -631,6 +662,19 @@ describe('GET /connections/api/invites — no-disclosure list masking (#1839)', 
     expect(row.acceptedHandle).toBe('friend-handle');
   });
 
+  it('discloses pending direct public targets while preserving quota and effective org display', async () => {
+    mockDbSelect.mockReset();
+    mockDbSelect.mockImplementation(() => makeListChain([{
+      ...pendingEmailInviteRow({ delivery: 'direct', toEmail: null }),
+      toHandle: 'real-user-handle', toName: 'Real User',
+    }]));
+    const req = makeGetReq();
+    const body = await (await GET(req)).json();
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(req, { scope: 'connections:read', service: 'connections' });
+    expect(body).toMatchObject({ effectiveDid: OWNER_DID, effectiveName: SESSION.handle, pending: 0 });
+    expect(body.invites[0]).toMatchObject({ toDid: REAL_TARGET_DID, toHandle: 'real-user-handle', toName: 'Real User' });
+    expect(body.invites[0]).not.toHaveProperty('toEmail');
+  });
   it('returns 401 for an unrelated, unauthenticated caller — no list data leaks without a session', async () => {
     mockResolveEffectiveDid.mockResolvedValueOnce(UNAUTHENTICATED);
 

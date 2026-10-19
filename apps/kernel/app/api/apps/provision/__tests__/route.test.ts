@@ -106,6 +106,63 @@ beforeEach(() => {
 });
 
 describe('POST /api/apps/provision — auth + validation', () => {
+  it.each([undefined, 'public', 'unlisted', 'private', 'internal'])('countersigns and discloses visibility %s', async (visibility) => {
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', visibility }) as never);
+    expect(response.status).toBe(201);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0];
+    expect(recorded.detail.visibility).toBe(visibility ?? 'public');
+    expect(recorded.summary).toContain(`Visibility: ${visibility ?? 'public'}`);
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
+      detail: recorded.detail, summary: recorded.summary,
+    }));
+  });
+  it.each([null, '', 42, 'https://github.com/gbscontracting/website', 'owner/repo/extra', '../website', ' owner/repo', 'owner/..'])(
+    'rejects invalid sourceRepo %j before manifest reads or proposals', async (sourceRepo) => {
+      const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', sourceRepo }) as never);
+      expect(response.status).toBe(400);
+      expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
+      expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([null, '', 'gbscontracting/website'])('refuses any sourceRepo on claim reissue: %j', async (sourceRepo) => {
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', reissueClaim: true, sourceRepo }) as never);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Reissuing a claim cannot change sourceRepo' });
+    expect(getAppProvisionStatusMock).not.toHaveBeenCalled();
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+
+  it('previews the exact source and includes it in both recorded and hashed content', async () => {
+    const sourceRepo = 'GBScontracting/Website';
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', sourceRepo }) as never);
+    expect(response.status).toBe(201);
+    expect(previewManifestDeclarationsMock).toHaveBeenCalledWith('gbs', undefined, sourceRepo);
+    const recorded = recordApprovalRequestedMock.mock.calls[0][0];
+    expect(recorded.detail.sourceRepo).toBe(sourceRepo);
+    expect(recorded.summary).toContain(`use existing repository ${sourceRepo}`);
+    expect(recorded.summary).not.toContain('create ima-jin/');
+    expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
+      detail: recorded.detail, summary: recorded.summary,
+    }));
+  });
+
+  it.each([null, '', 'Private', 'hidden', 1, {}, []])('rejects invalid visibility %j before proposing', async (visibility) => {
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', visibility }) as never)).status).toBe(400);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+    expect(computeApprovalContentHashMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['public', 'private'])('refuses visibility %s on claim reissue', async (visibility) => {
+    expect((await POST(postRequest({ slug: 'gbs', displayName: 'GBS', reissueClaim: true, visibility }) as never)).status).toBe(400);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+  it('never raises a proposal when the explicit source manifest cannot be read', async () => {
+    previewManifestDeclarationsMock.mockResolvedValue({ error: 'Source manifest unreadable' });
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', sourceRepo: 'gbscontracting/website' }) as never);
+    expect(response.status).toBe(400);
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
   it.each([
     null, [], { siteOwnerDid: 'not-a-did' }, { domain: 'customer.example' },
     { domain: 'nested.dev-gbs.imajin.ai' }, { reissueClaim: true, siteOwnerDid: 'did:imajin:gbs' },
@@ -117,11 +174,11 @@ describe('POST /api/apps/provision — auth + validation', () => {
 
   it('includes site owner and domain in the countersigned proposal content', async () => {
     const response = await POST(postRequest({
-      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai',
+      slug: 'dev-gbs', displayName: 'GBS', siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private',
     }) as never);
     expect(response.status).toBe(201);
     expect(computeApprovalContentHashMock).toHaveBeenCalledWith(expect.objectContaining({
-      detail: expect.objectContaining({ siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai' }),
+      detail: expect.objectContaining({ siteOwnerDid: 'did:imajin:gbs', domain: 'dev-gbs.imajin.ai', visibility: 'private' }),
       summary: expect.stringContaining('did:imajin:gbs'),
     }));
   });
@@ -183,6 +240,29 @@ describe('OPTIONS /api/apps/provision', () => {
 });
 
 describe('POST /api/apps/provision — idempotency', () => {
+  it.each([undefined, 'dev-gbs.imajin.ai'])('refuses a source change for an already-succeeded app, domain=%j', async (domain) => {
+    getAppProvisionStatusMock.mockResolvedValue({
+      slug: 'gbs', status: 'succeeded', repoUrl: 'https://github.com/gbscontracting/website',
+    });
+    const response = await POST(postRequest({ slug: 'gbs', displayName: 'GBS', sourceRepo: 'other/website', domain }) as never);
+    expect(response.status).toBe(409);
+    expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
+    expect(recordApprovalRequestedMock).not.toHaveBeenCalled();
+  });
+
+  it('permits a domain retry with the same signed source without rereading the manifest', async () => {
+    getAppProvisionStatusMock.mockResolvedValue({
+      slug: 'gbs', status: 'succeeded', repoUrl: 'https://github.com/gbscontracting/website', appDid: 'did:imajin:gbs',
+    });
+    const response = await POST(postRequest({
+      slug: 'gbs', displayName: 'GBS', sourceRepo: 'gbscontracting/website', domain: 'dev-gbs.imajin.ai',
+    }) as never);
+    expect(response.status).toBe(201);
+    expect(recordApprovalRequestedMock).toHaveBeenCalledWith(expect.objectContaining({
+      detail: expect.objectContaining({ sourceRepo: 'gbscontracting/website', manifestDeclarations: null }),
+    }));
+    expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
+  });
   it('requires a fresh countersigned proposal to retry an explicit host on an existing app, without rereading its manifest', async () => {
     getAppProvisionStatusMock.mockResolvedValue({
       slug: 'gbs', status: 'succeeded', appDid: 'did:imajin:gbs-app',
@@ -267,6 +347,7 @@ describe('POST /api/apps/provision — idempotency', () => {
     expect(previewManifestDeclarationsMock).not.toHaveBeenCalled();
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { summary: string; detail: Record<string, unknown> };
     expect(recorded.detail).toMatchObject({ slug: 'dykil', displayName: 'Dykil', reissueClaim: true, manifestDeclarations: null });
+    expect(recorded.detail).not.toHaveProperty('visibility');
     expect(recorded.summary).toMatch(/^Reissue the claim code for app 'dykil'/);
     expect(recorded.summary).not.toContain('Will retire');
     // The same detail is what the content hash covers, so the operator signs "reissue" and nothing else.
@@ -298,6 +379,7 @@ describe('POST /api/apps/provision — idempotency', () => {
 
     const recorded = recordApprovalRequestedMock.mock.calls[0][0] as { detail: Record<string, unknown> };
     expect(recorded.detail).not.toHaveProperty('reissueClaim');
+    expect(recorded.detail).not.toHaveProperty('sourceRepo');
   });
 });
 

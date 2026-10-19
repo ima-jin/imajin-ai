@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm';
 
 export async function GET(request: NextRequest, props: { params: Promise<{ did: string }> }) {
   const params = await props.params;
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'connections' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ did: 
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ did: string }> }) {
   const params = await props.params;
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'connections' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }
@@ -47,7 +47,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ did
 
 export async function DELETE(request: NextRequest, props: { params: Promise<{ did: string }> }) {
   const params = await props.params;
-  const authResult = await requireAuth(request);
+  const authResult = await requireAuth(request, { service: 'connections' });
   if ('error' in authResult) {
     return NextResponse.json({ error: authResult.error }, { status: authResult.status });
   }

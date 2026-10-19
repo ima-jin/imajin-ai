@@ -37,7 +37,7 @@ function responseHeaders(request: NextRequest): Record<string, string> {
 export async function GET(request: NextRequest) {
   const headers = responseHeaders(request);
 
-  const auth = await resolveEffectiveDid(request, { scope: EMITTERS_SCOPE });
+  const auth = await resolveEffectiveDid(request, { scope: EMITTERS_SCOPE, service: 'usage' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
   }
@@ -68,7 +68,7 @@ function isNonEmptyString(value: unknown): value is string {
 export async function PUT(request: NextRequest) {
   const headers = responseHeaders(request);
 
-  const auth = await resolveEffectiveDid(request, { scope: EMITTERS_SCOPE });
+  const auth = await resolveEffectiveDid(request, { scope: EMITTERS_SCOPE, service: 'usage' });
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status, headers });
   }

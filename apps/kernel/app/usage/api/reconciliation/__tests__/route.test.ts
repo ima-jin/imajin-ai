@@ -36,7 +36,7 @@ describe('GET /usage/api/reconciliation (#1076 Stage 1)', () => {
 
     expect(res.status).toBe(401);
     expect(mockReadReconciliation).not.toHaveBeenCalled();
-    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:usage-read' });
+    expect(mockResolveEffectiveDid).toHaveBeenCalledWith(expect.anything(), { scope: 'infer:usage-read', service: 'usage' });
   });
 
   it("reads reconciliation rows scoped to the caller's own DID, never a query-supplied one", async () => {

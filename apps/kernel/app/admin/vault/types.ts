@@ -13,6 +13,7 @@ export interface VaultSecretRow {
   custodyScheme: VaultCustodyScheme;
   /** Only present when custodyScheme === 'delegation-grant' */
   grantedTo?: string | null;
+  purpose?: string | null;
   expiresAt?: string | null;
   grantStatus?: VaultGrantStatus;
 }
@@ -47,6 +48,7 @@ export interface VaultListApiRow {
   status: 'active' | 'deleted';
   custodyScheme: VaultCustodyScheme;
   grantedTo?: string | null;
+  purpose?: string | null;
   expiresAt?: string | null;
   grantStatus?: VaultGrantStatus;
 }
